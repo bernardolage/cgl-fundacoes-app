@@ -223,7 +223,15 @@ async function salvarUsuario(){
           "Authorization": `Bearer ${session?.access_token || ""}`,
           "apikey": SUPABASE_KEY
         },
-        body: JSON.stringify({ email, nome, cargo, telefone })
+        body: JSON.stringify({
+          email, nome, cargo, telefone,
+          /* URL completa do app (com subcaminho — ex.: /cgl-fundacoes-app/)
+             para o link do convite voltar exatamente para cá; em file://
+             não há URL válida e a function usa o Site URL do Supabase */
+          redirect_to: location.protocol.startsWith("http")
+            ? location.origin + location.pathname
+            : undefined
+        })
       });
       const body = await resp.json().catch(()=> ({}));
       if(!resp.ok){
