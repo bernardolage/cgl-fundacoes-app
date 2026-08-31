@@ -1,0 +1,2510 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CGL Fundações — Sistema de Gestão</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/estilo.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+
+<!-- ============ TELA DE LOGIN ============ -->
+<div id="tela-login">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </div>
+    <h1>CGL Fundações</h1>
+    <p class="sub">Sistema de Gestão</p>
+    <div id="login-aviso" class="aviso"></div>
+    <form id="form-login">
+      <div class="campo">
+        <label>E-mail</label>
+        <input type="email" id="login-email" required autocomplete="username" placeholder="seu@email.com" />
+      </div>
+      <div class="campo">
+        <label>Senha</label>
+        <div class="senha-wrap">
+          <input type="password" id="login-senha" required autocomplete="current-password" placeholder="Sua senha" />
+          <button type="button" class="ver-senha" id="btn-ver-senha">mostrar</button>
+        </div>
+      </div>
+      <button type="submit" class="btn" id="btn-entrar">Entrar no Sistema</button>
+    </form>
+    <!-- Step MFA: exibido quando o usuário já tem TOTP cadastrado -->
+    <div id="mfa-desafio" style="display:none;">
+      <p class="sub" style="margin:0 0 16px;font-size:14px;">Autenticação em dois fatores</p>
+      <div id="mfa-desafio-aviso" class="aviso"></div>
+      <div class="campo">
+        <label>Código do autenticador (6 dígitos)</label>
+        <input type="text" id="mfa-desafio-codigo" maxlength="6" inputmode="numeric"
+               autocomplete="one-time-code" placeholder="000000"
+               style="letter-spacing:6px;font-size:22px;text-align:center;font-family:monospace;" />
+      </div>
+      <button type="button" class="btn" id="btn-mfa-desafio-ok" style="width:100%;">Confirmar</button>
+      <button type="button" id="btn-mfa-desafio-cancelar"
+              style="width:100%;margin-top:10px;background:none;border:none;
+                     color:var(--txt-fraco);cursor:pointer;font-size:13px;padding:8px 0;">
+        ← Voltar ao login
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ APLICAÇÃO ============ -->
+<div id="tela-app">
+  <!-- BARRA LATERAL (SIDEBAR) -->
+  <aside id="app-sidebar">
+    <div class="sidebar-header">
+      <div class="marca">CGL <span>Fundações</span></div>
+      <button id="btn-menu-close" class="mobile-only" aria-label="Fechar Menu">&times;</button>
+    </div>
+    <nav class="sidebar-nav">
+      <button data-secao="inicio" class="ativo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+        <span>Início</span>
+      </button>
+      <button data-secao="clientes">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <span>Clientes</span>
+      </button>
+      <button data-secao="fornecedores">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+        <span>Fornecedores</span>
+      </button>
+      <button data-secao="funcionarios">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path><path d="M19 8v6M22 11h-6"></path></svg>
+        <span>Funcionários</span>
+      </button>
+      <button data-secao="servicos">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+        <span>Serviços</span>
+      </button>
+      <button data-secao="produtos">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+        <span>Produtos</span>
+      </button>
+      <button data-secao="estoque">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+        <span>Entrada de Estoque</span>
+      </button>
+      <button data-secao="orcamentos">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        <span>Orçamentos</span>
+      </button>
+      <button data-secao="contratos">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><polyline points="9 15 11 17 15 13"></polyline></svg>
+        <span>Contratos</span>
+      </button>
+      <button data-secao="carteira" id="nav-carteira" style="display:none;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg>
+        <span>Carteira</span>
+      </button>
+      <button data-secao="obras">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="9" y1="22" x2="9" y2="16"></line><line x1="15" y1="22" x2="15" y2="16"></line><line x1="9" y1="16" x2="15" y2="16"></line><path d="M9 6h6M9 10h6M9 14h6"></path></svg>
+        <span>Obras</span>
+      </button>
+      <button data-secao="medicoes">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="8" y1="4" x2="8" y2="8"></line><line x1="12" y1="4" x2="12" y2="6"></line><line x1="16" y1="4" x2="16" y2="8"></line><line x1="8" y1="20" x2="8" y2="16"></line><line x1="12" y1="20" x2="12" y2="18"></line><line x1="16" y1="20" x2="16" y2="16"></line></svg>
+        <span>Medições</span>
+      </button>
+      <button data-secao="movimentacoes">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+        <span>Movimentações</span>
+      </button>
+      <button data-secao="rdo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
+        <span>Diário de Obra</span>
+      </button>
+      <button data-secao="usuarios" id="nav-usuarios" style="display:none;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 11h-6"></path><path d="M19 8v6"></path></svg>
+        <span>Usuários</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="usuario-perfil">
+        <div class="usuario-avatar">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        </div>
+        <div class="usuario-detalhes">
+          <span id="usr-nome">...</span>
+        </div>
+      </div>
+      <button id="btn-sair" class="btn-logout" title="Sair do sistema">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        <span>Sair</span>
+      </button>
+    </div>
+  </aside>
+
+  <div id="sidebar-overlay"></div>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <div id="app-viewport">
+    <header id="app-header">
+      <div class="header-esquerda">
+        <button id="btn-menu-toggle" aria-label="Abrir Menu">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        <h1 id="app-secao-titulo">Início</h1>
+      </div>
+    </header>
+    <main>
+      <div id="app-aviso" class="aviso" style="max-width:none;"></div>
+
+    <!-- INÍCIO -->
+    <section class="secao ativa" id="sec-inicio">
+      <!-- Saudação -->
+      <div style="background:linear-gradient(135deg,var(--marca-900) 0%,var(--marca-600) 100%);color:var(--txt-sobre);padding:18px 22px;border-radius:8px;margin-bottom:18px;">
+        <div style="font-size:18px;font-weight:600;" id="dash-saudacao">Bem-vindo</div>
+        <div style="font-size:12px;opacity:0.85;margin-top:4px;" id="dash-data-hoje">—</div>
+      </div>
+
+      <!-- KPIs Financeiros (4 cards grandes) -->
+      <h3 style="font-size:13px;color:var(--txt-fraco);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.5px;">💰 Financeiro</h3>
+      <div class="dash-cards">
+        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
+          <div class="dash-card-rot">Total Contratado</div>
+          <div class="dash-card-num" id="dash-contratado">R$ —</div>
+          <div class="dash-card-sub" id="dash-contratado-sub">— obras ativas</div>
+        </div>
+        <div class="dash-card" style="border-left:4px solid var(--sucesso);">
+          <div class="dash-card-rot">Total Medido</div>
+          <div class="dash-card-num" id="dash-medido">R$ —</div>
+          <div class="dash-card-sub" id="dash-medido-sub">— medições aprovadas/faturadas</div>
+        </div>
+        <div class="dash-card" style="border-left:4px solid var(--aviso);">
+          <div class="dash-card-rot">A Medir</div>
+          <div class="dash-card-num" id="dash-a-medir">R$ —</div>
+          <div class="dash-card-sub">Saldo do contratado − medido</div>
+        </div>
+        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
+          <div class="dash-card-rot">% Execução Financeira</div>
+          <div class="dash-card-num" id="dash-pct">—%</div>
+          <div class="dash-card-sub" style="font-size:11px;">
+            <div style="background:var(--borda);border-radius:4px;height:6px;margin-top:6px;overflow:hidden;">
+              <div id="dash-pct-bar" style="background:var(--marca-600);height:100%;width:0%;transition:width 0.4s;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs Operacionais -->
+      <h3 style="font-size:13px;color:var(--txt-fraco);margin:20px 0 8px;text-transform:uppercase;letter-spacing:0.5px;">🏗️ Operacional</h3>
+      <div class="dash-cards">
+        <div class="dash-card">
+          <div class="dash-card-rot">Obras Ativas</div>
+          <div class="dash-card-num" id="dash-obras-ativas">—</div>
+          <div class="dash-card-sub" id="dash-obras-sub">— em andamento · — concluídas mês</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-rot">RDOs (mês)</div>
+          <div class="dash-card-num" id="dash-rdos-mes">—</div>
+          <div class="dash-card-sub" id="dash-rdos-sub">— RDOs registrados em maio</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-rot">Estacas Executadas (mês)</div>
+          <div class="dash-card-num" id="dash-estacas-mes">—</div>
+          <div class="dash-card-sub" id="dash-estacas-sub">— metros · — m³ concreto</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-rot">Orçamentos abertos</div>
+          <div class="dash-card-num" id="dash-orc-abertos">—</div>
+          <div class="dash-card-sub" id="dash-orc-sub">— em negociação · R$ —</div>
+        </div>
+      </div>
+
+      <!-- Linha 2: Ações pendentes + Produção 30 dias -->
+      <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-top:20px;">
+        <!-- Ações Pendentes -->
+        <div class="card compacto">
+          <h3 style="font-size:13px;color:var(--perigo);margin:0 0 10px;">🚨 Ações Pendentes</h3>
+          <div id="dash-pendencias"><p class="vazio" style="font-size:12px;">Carregando...</p></div>
+        </div>
+        <!-- Mini gráfico produção 30 dias -->
+        <div class="card compacto">
+          <h3 style="font-size:13px;color:var(--marca-600);margin:0 0 10px;">📊 Produção 30 dias</h3>
+          <div id="dash-grafico-prod"><p class="vazio" style="font-size:12px;">Carregando...</p></div>
+        </div>
+      </div>
+
+      <!-- Linha 3: Top 5 obras + Atividade recente -->
+      <div style="display:grid;grid-template-columns:1fr 1.5fr;gap:16px;margin-top:16px;">
+        <!-- Top 5 obras -->
+        <div class="card compacto">
+          <h3>📈 Top 5 obras (valor)</h3>
+          <div id="dash-top-obras"><p class="vazio" style="font-size:12px;">Carregando...</p></div>
+        </div>
+        <!-- Atividade recente -->
+        <div class="card compacto">
+          <h3>🕒 Atividade Recente (48h)</h3>
+          <div id="dash-atividade"><p class="vazio" style="font-size:12px;">Carregando...</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CLIENTES -->
+    <section class="secao" id="sec-clientes">
+      <h2>Clientes</h2>
+
+      <!-- Painel -->
+      <div id="cli-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Clientes cadastrados <span id="cli-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban (por UF)</button>
+            </div>
+            <button type="button" class="btn" id="btn-novo-cliente">+ Novo</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="cli-busca" placeholder="Buscar por nome, CPF/CNPJ ou cidade..." />
+            <select id="cli-f-tipo">
+              <option value="">Todos os tipos</option>
+              <option value="juridica">Pessoa Jurídica</option>
+              <option value="fisica">Pessoa Física</option>
+            </select>
+            <select id="cli-f-ativo">
+              <option value="">Todos</option>
+              <option value="ativos">Só ativos</option>
+              <option value="inativos">Só inativos</option>
+            </select>
+          </div>
+          <div id="cli-conteudo"></div>
+          <table style="display:none;"><tbody id="tab-clientes"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="cli-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-cli">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-cli">💾 Salvar</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-excluir-cli">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <strong id="cli-ficha-titulo" class="ficha-titulo">Novo cliente</strong>
+            </div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Nome</span><strong id="cli-ficha-nome">—</strong></div>
+            <div class="chip"><span>Tipo</span><strong id="cli-ficha-tipo-chip">—</strong></div>
+            <div class="chip"><span>CPF/CNPJ</span><strong id="cli-ficha-doc-chip">—</strong></div>
+            <div class="chip"><span>Cidade</span><strong id="cli-ficha-cidade-chip">—</strong></div>
+            <div class="chip"><span>Telefone</span><strong id="cli-ficha-tel-chip">—</strong></div>
+            <div class="chip"><span>Situação</span><strong id="cli-ficha-ativo-chip">—</strong></div>
+          </div>
+
+          <div class="odoo-notebook" id="cli-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="endereco">Endereço</button>
+            <button type="button" data-tab="contato">Contato</button>
+            <button type="button" data-tab="observacoes">Observações</button>
+            <button type="button" data-tab="historico">Histórico</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Tipo</label>
+                  <select id="cli-tipo"><option value="juridica">Pessoa Jurídica</option><option value="fisica">Pessoa Física</option></select>
+                </div>
+                <div class="campo"><label>Nome / Razão social *</label><input id="cli-nome" required /></div>
+                <div class="campo"><label>Nome fantasia</label><input id="cli-fantasia" /></div>
+                <div class="campo"><label>CPF / CNPJ</label><input id="cli-doc" /></div>
+                <div class="campo"><label>Inscrição estadual</label><input id="cli-ie" /></div>
+                <div class="campo"><label>Situação</label>
+                  <label class="check-inline"><input type="checkbox" id="cli-ativo" /> Cliente ativo</label>
+                </div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="endereco">
+              <div class="grade">
+                <div class="campo"><label>CEP</label><input id="cli-cep" /></div>
+                <div class="campo"><label>Logradouro</label><input id="cli-logradouro" /></div>
+                <div class="campo"><label>Número</label><input id="cli-numero" /></div>
+                <div class="campo"><label>Complemento</label><input id="cli-complemento" /></div>
+                <div class="campo"><label>Bairro</label><input id="cli-bairro" /></div>
+                <div class="campo"><label>Cidade</label><input id="cli-cidade" /></div>
+                <div class="campo"><label>UF</label><select id="cli-uf"></select></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="contato">
+              <div class="grade">
+                <div class="campo"><label>E-mail</label><input id="cli-email" type="email" /></div>
+                <div class="campo"><label>Telefone</label><input id="cli-tel" /></div>
+                <div class="campo"><label>Pessoa de contato</label><input id="cli-contato" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="observacoes">
+              <div class="grade">
+                <div class="campo largo"><label>Observações</label><textarea id="cli-obs" rows="6"></textarea></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="historico">
+              <div id="cli-historico" class="historico"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FORNECEDORES -->
+    <section class="secao" id="sec-fornecedores">
+      <h2>Fornecedores</h2>
+
+      <!-- Painel -->
+      <div id="forn-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Fornecedores cadastrados <span id="forn-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban (por categoria)</button>
+            </div>
+            <button type="button" class="btn" id="btn-novo-fornecedor">+ Novo</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="forn-busca" placeholder="Buscar por razão social, CNPJ ou cidade..." />
+            <select id="forn-f-categoria"></select>
+            <select id="forn-f-ativo">
+              <option value="">Todos</option>
+              <option value="ativos">Só ativos</option>
+              <option value="inativos">Só inativos</option>
+            </select>
+          </div>
+          <div id="forn-conteudo"></div>
+          <table style="display:none;"><tbody id="tab-fornecedores"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="forn-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-forn">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-forn">💾 Salvar</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-excluir-forn">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <strong id="forn-ficha-titulo" class="ficha-titulo">Novo fornecedor</strong>
+            </div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Razão social</span><strong id="forn-ficha-nome">—</strong></div>
+            <div class="chip"><span>CPF/CNPJ</span><strong id="forn-ficha-doc-chip">—</strong></div>
+            <div class="chip"><span>Categoria</span><strong id="forn-ficha-categoria-chip">—</strong></div>
+            <div class="chip"><span>Cidade</span><strong id="forn-ficha-cidade-chip">—</strong></div>
+            <div class="chip"><span>Telefone</span><strong id="forn-ficha-tel-chip">—</strong></div>
+            <div class="chip"><span>Situação</span><strong id="forn-ficha-ativo-chip">—</strong></div>
+          </div>
+
+          <!-- Smart buttons (Odoo style) -->
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-forn-contratos" data-goto-tab="contratos">
+              <span class="sb-num">0</span><span class="sb-icon">📋</span><span class="sb-lbl">contratos</span>
+            </button>
+          </div>
+
+          <div class="odoo-notebook" id="forn-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="endereco">Endereço</button>
+            <button type="button" data-tab="contato">Contato</button>
+            <button type="button" data-tab="contratos">Contratos</button>
+            <button type="button" data-tab="observacoes">Observações</button>
+            <button type="button" data-tab="historico">Histórico</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Tipo</label>
+                  <select id="forn-tipo"><option value="juridica">Pessoa Jurídica</option><option value="fisica">Pessoa Física</option></select>
+                </div>
+                <div class="campo"><label>Razão social / Nome *</label><input id="forn-razao" required /></div>
+                <div class="campo"><label>Nome fantasia</label><input id="forn-fantasia" /></div>
+                <div class="campo"><label>CPF / CNPJ</label><input id="forn-doc" /></div>
+                <div class="campo"><label>Inscrição estadual</label><input id="forn-ie" /></div>
+                <div class="campo"><label>Categoria</label><input id="forn-categoria" placeholder="ex.: Diesel, Locação..." /></div>
+                <div class="campo"><label>Situação</label>
+                  <label class="check-inline"><input type="checkbox" id="forn-ativo" /> Fornecedor ativo</label>
+                </div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="endereco">
+              <div class="grade">
+                <div class="campo"><label>CEP</label><input id="forn-cep" /></div>
+                <div class="campo"><label>Logradouro</label><input id="forn-logradouro" /></div>
+                <div class="campo"><label>Número</label><input id="forn-numero" /></div>
+                <div class="campo"><label>Complemento</label><input id="forn-complemento" /></div>
+                <div class="campo"><label>Bairro</label><input id="forn-bairro" /></div>
+                <div class="campo"><label>Cidade</label><input id="forn-cidade" /></div>
+                <div class="campo"><label>UF</label><select id="forn-uf"></select></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="contato">
+              <div class="grade">
+                <div class="campo"><label>E-mail</label><input id="forn-email" type="email" /></div>
+                <div class="campo"><label>Telefone</label><input id="forn-tel" /></div>
+                <div class="campo"><label>Pessoa de contato</label><input id="forn-contato" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="contratos">
+              <div id="forn-contratos-conteudo"></div>
+            </div>
+            <div class="odoo-tab" data-tab="observacoes">
+              <div class="grade">
+                <div class="campo largo"><label>Observações</label><textarea id="forn-obs" rows="6"></textarea></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="historico">
+              <div id="forn-historico" class="historico"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FUNCIONÁRIOS -->
+    <section class="secao" id="sec-funcionarios">
+      <h2>Funcionários</h2>
+
+      <!-- Painel: sidebar de departamentos + lista/kanban -->
+      <div id="func-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Funcionários cadastrados <span id="func-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+            </div>
+            <button type="button" class="btn" id="btn-novo-funcionario">+ Novo</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="func-busca" placeholder="Buscar por nome, CPF, matrícula ou função..." />
+            <select id="func-f-status"></select>
+            <select id="func-f-contrato"></select>
+          </div>
+          <div class="func-painel-layout">
+            <div class="func-dept-sidebar">
+              <div class="func-dept-header">Departamento</div>
+              <div id="func-dept-tree"></div>
+            </div>
+            <div class="func-conteudo-wrap">
+              <div id="func-conteudo"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="func-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-func">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-func">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-excluir-func" style="color:var(--perigo);display:none;">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <button type="button" class="sb-btn" id="func-sb-docs" style="display:none;" title="Ver documentos">
+                <span class="sb-num" id="func-sb-docs-num">0</span>
+                <span class="sb-lbl">Documentos</span>
+              </button>
+              <button type="button" class="sb-btn func-sb-alerta" id="func-sb-vencendo" style="display:none;" title="Documentos vencendo ou vencidos">
+                <span class="sb-num" id="func-sb-vencendo-num">0</span>
+                <span class="sb-lbl">⚠️ Vencendo</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="odoo-statusbar" id="func-statusbar">
+            <div class="stage" data-status="ativo">Ativo</div>
+            <div class="stage" data-status="afastado">Afastado</div>
+            <div class="stage" data-status="ferias">Férias</div>
+            <div class="stage" data-status="demitido">Demitido</div>
+          </div>
+
+          <!-- Foto + chips de resumo -->
+          <div class="func-ficha-topo">
+            <div class="func-foto-wrap" id="func-foto-wrap" title="Clique para alterar foto">
+              <div class="func-foto-avatar" id="func-foto-preview"><span>?</span></div>
+              <div class="func-foto-overlay">📷</div>
+              <input type="file" id="func-foto-input" accept="image/jpeg,image/png,image/webp" style="display:none;" />
+            </div>
+            <div class="odoo-contexto">
+              <div class="chip"><span>Nome</span><strong id="func-ficha-nome">—</strong></div>
+              <div class="chip"><span>Função</span><strong id="func-ficha-funcao-chip">—</strong></div>
+              <div class="chip"><span>Departamento</span><strong id="func-ficha-depto-chip">—</strong></div>
+              <div class="chip"><span>Matrícula</span><strong id="func-ficha-matricula-chip">—</strong></div>
+              <div class="chip"><span>Admissão</span><strong id="func-ficha-admissao-chip">—</strong></div>
+              <div class="chip"><span>Contrato</span><strong id="func-ficha-contrato-chip">—</strong></div>
+              <div class="chip"><span>Situação</span><strong id="func-ficha-status-chip">—</strong></div>
+            </div>
+          </div>
+
+          <div class="odoo-notebook" id="func-notebook">
+            <button type="button" data-tab="pessoais" class="ativo">Dados pessoais</button>
+            <button type="button" data-tab="profissional">Profissional</button>
+            <button type="button" data-tab="documentos">Documentos</button>
+            <button type="button" data-tab="emergencia">Emergência</button>
+            <button type="button" data-tab="endereco">Endereço</button>
+            <button type="button" data-tab="observacoes">Observações</button>
+          </div>
+
+          <div class="odoo-body">
+            <!-- TAB PESSOAIS -->
+            <div class="odoo-tab ativa" data-tab="pessoais">
+              <div class="grade">
+                <div class="campo"><label>Nome completo *</label><input id="func-nome" required /></div>
+                <div class="campo"><label>CPF</label><input id="func-cpf" /></div>
+                <div class="campo"><label>RG</label><input id="func-rg" /></div>
+                <div class="campo"><label>Data de nascimento</label><input id="func-nascimento" type="date" /></div>
+              </div>
+            </div>
+
+            <!-- TAB PROFISSIONAL -->
+            <div class="odoo-tab" data-tab="profissional">
+              <div class="grade">
+                <div class="campo"><label>Matrícula</label><input id="func-matricula" placeholder="ex.: 0001" /></div>
+                <div class="campo"><label>Função *</label><input id="func-funcao" required placeholder="ex.: Operador de perfuratriz" /></div>
+                <div class="campo"><label>Departamento</label><select id="func-departamento"></select></div>
+                <div class="campo"><label>Tipo de contrato</label>
+                  <select id="func-tipo-contrato">
+                    <option value="clt">CLT</option>
+                    <option value="pj">PJ</option>
+                    <option value="estagiario">Estagiário</option>
+                    <option value="autonomo">Autônomo</option>
+                    <option value="terceirizado">Terceirizado</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Situação</label><select id="func-status"></select></div>
+                <div class="campo"><label>Data de admissão</label><input id="func-admissao" type="date" /></div>
+                <div class="campo"><label>Data de demissão</label><input id="func-demissao" type="date" /></div>
+                <div class="campo"><label>Salário (R$)</label><input id="func-salario" type="number" step="0.01" min="0" /></div>
+                <div class="campo"><label>Supervisor direto</label><select id="func-supervisor"><option value="">— Sem supervisor —</option></select></div>
+                <div class="campo"><label>E-mail</label><input id="func-email" type="email" /></div>
+                <div class="campo"><label>Telefone</label><input id="func-telefone" /></div>
+                <div class="campo">
+                  <label>Situação no sistema</label>
+                  <label class="check-inline"><input type="checkbox" id="func-ativo" checked /> Funcionário ativo</label>
+                </div>
+                <div class="campo" style="grid-column:1/-1;padding-top:8px;border-top:1px solid var(--border-color);">
+                  <label style="font-weight:700;color:var(--marca-900);">CNH</label>
+                </div>
+                <div class="campo"><label>Categoria da CNH</label>
+                  <select id="func-cnh-categoria">
+                    <option value="">Não possui</option>
+                    <option value="A">A</option><option value="B">B</option>
+                    <option value="C">C</option><option value="D">D</option>
+                    <option value="E">E</option><option value="AB">AB</option>
+                    <option value="AC">AC</option><option value="AD">AD</option>
+                    <option value="AE">AE</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Validade da CNH</label><input id="func-cnh-validade" type="date" /></div>
+              </div>
+            </div>
+
+            <!-- TAB DOCUMENTOS -->
+            <div class="odoo-tab" data-tab="documentos">
+              <div style="margin-bottom:12px;">
+                <button type="button" class="btn-sec" id="btn-add-doc-func">+ Adicionar documento</button>
+              </div>
+              <div id="func-docs-aviso" class="aviso" style="margin-bottom:8px;"></div>
+              <div id="func-docs-lista"></div>
+              <div id="func-doc-form" style="display:none;" class="func-doc-inline-form">
+                <div class="grade">
+                  <div class="campo"><label>Tipo</label>
+                    <select id="func-doc-tipo">
+                      <option value="aso">ASO — Atestado de Saúde</option>
+                      <option value="nr35">NR-35 — Trabalho em altura</option>
+                      <option value="nr18">NR-18 — Construção civil</option>
+                      <option value="nr10">NR-10 — Elétrica</option>
+                      <option value="nr33">NR-33 — Espaço confinado</option>
+                      <option value="cipa">CIPA</option>
+                      <option value="cnh">CNH</option>
+                      <option value="crea">CREA</option>
+                      <option value="cau">CAU</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </div>
+                  <div class="campo"><label>Descrição</label><input id="func-doc-descricao" placeholder="ex.: ASO periódico 2026" /></div>
+                  <div class="campo"><label>Número / Protocolo</label><input id="func-doc-numero" /></div>
+                  <div class="campo"><label>Emissão</label><input id="func-doc-emissao" type="date" /></div>
+                  <div class="campo"><label>Validade</label><input id="func-doc-validade" type="date" /></div>
+                  <div class="campo"><label>Observações</label><input id="func-doc-obs" /></div>
+                </div>
+                <div class="form-acoes">
+                  <button type="button" class="btn" id="btn-salvar-doc-func">Salvar documento</button>
+                  <button type="button" class="btn-sec" id="btn-cancelar-doc-func">Cancelar</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB EMERGÊNCIA -->
+            <div class="odoo-tab" data-tab="emergencia">
+              <div class="grade">
+                <div class="campo"><label>Nome do contato</label><input id="func-emerg-nome" /></div>
+                <div class="campo"><label>Telefone</label><input id="func-emerg-tel" /></div>
+                <div class="campo"><label>Parentesco</label><input id="func-emerg-parentesco" placeholder="ex.: Cônjuge, Pai, Mãe..." /></div>
+              </div>
+            </div>
+
+            <!-- TAB ENDEREÇO -->
+            <div class="odoo-tab" data-tab="endereco">
+              <div class="grade">
+                <div class="campo"><label>CEP</label><input id="func-cep" /></div>
+                <div class="campo"><label>Logradouro</label><input id="func-logradouro" /></div>
+                <div class="campo"><label>Número</label><input id="func-numero" /></div>
+                <div class="campo"><label>Complemento</label><input id="func-complemento" /></div>
+                <div class="campo"><label>Bairro</label><input id="func-bairro" /></div>
+                <div class="campo"><label>Cidade</label><input id="func-cidade" /></div>
+                <div class="campo"><label>UF</label><select id="func-uf"></select></div>
+              </div>
+            </div>
+
+            <!-- TAB OBSERVAÇÕES -->
+            <div class="odoo-tab" data-tab="observacoes">
+              <div class="grade">
+                <div class="campo largo"><label>Observações</label><textarea id="func-obs" rows="6"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SERVIÇOS -->
+    <section class="secao" id="sec-servicos">
+      <h2>Catálogo de Serviços</h2>
+
+      <!-- vista: painel (lista / catálogo / kanban) -->
+      <div id="serv-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Serviços e preços <span id="serv-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="catalogo">Catálogo</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+            </div>
+          </div>
+          <div class="serv-filtros">
+            <input id="serv-busca" placeholder="Buscar por código, variante ou serviço..." />
+            <select id="serv-f-categoria"></select>
+            <select id="serv-f-natureza"></select>
+            <select id="serv-f-tipoobra"></select>
+          </div>
+          <div id="serv-conteudo"></div>
+        </div>
+      </div>
+
+      <!-- vista: ficha (edição da variante + preço de referência) -->
+      <div id="serv-ficha" style="display:none;">
+        <div class="card">
+          <div class="ficha-topo">
+            <button type="button" class="btn-sec" id="btn-voltar-serv">&larr; Voltar</button>
+            <h3 id="serv-ficha-titulo">Editar serviço</h3>
+          </div>
+          <div id="serv-ficha-contexto" class="serv-contexto"></div>
+          <form id="form-servico">
+            <div class="grade">
+              <div class="campo"><label>Código da variante</label><input id="serv-codigo" disabled /></div>
+              <div class="campo"><label>Nome da variante *</label><input id="serv-nome" required /></div>
+              <div class="campo"><label>Tipo de obra</label><select id="serv-tipoobra"></select></div>
+              <div class="campo"><label>Diâmetro (mm)</label><input id="serv-diam" type="number" step="1" min="0" /></div>
+              <div class="campo"><label>Profundidade mín. (m)</label><input id="serv-profmin" type="number" step="0.01" min="0" /></div>
+              <div class="campo"><label>Profundidade máx. (m)</label><input id="serv-profmax" type="number" step="0.01" min="0" /></div>
+              <div class="campo largo"><label>Descrição</label><input id="serv-desc" /></div>
+            </div>
+            <h3 class="titulo-bloco">Preço de referência</h3>
+            <div class="grade">
+              <div class="campo"><label>Preço de referência (R$)</label><input id="serv-preco" type="number" step="0.01" min="0" /></div>
+              <div class="campo"><label>Custo estimado (R$)</label><input id="serv-custo" type="number" step="0.01" min="0" /></div>
+              <div class="campo"><label>Margem mínima (%)</label><input id="serv-margem" type="number" step="0.01" min="0" /></div>
+              <div class="campo"><label>Situação</label>
+                <label class="check-inline"><input type="checkbox" id="serv-ativo" /> Variante ativa</label>
+              </div>
+              <div class="campo largo"><label>Observações</label><textarea id="serv-obs"></textarea></div>
+            </div>
+            <div class="form-acoes"><button type="submit" class="btn">Salvar serviço</button></div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRODUTOS -->
+    <section class="secao" id="sec-produtos">
+      <h2>Produtos</h2>
+
+      <!-- Painel -->
+      <div id="prod-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Produtos cadastrados <span id="prod-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban (por categoria)</button>
+            </div>
+            <button type="button" class="btn" id="btn-novo-produto">+ Novo</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="prod-busca" placeholder="Buscar por código ou nome..." />
+            <select id="prod-f-categoria"></select>
+            <select id="prod-f-estoque">
+              <option value="">Todos os estoques</option>
+              <option value="baixo">Abaixo do mínimo</option>
+              <option value="zero">Estoque zero</option>
+              <option value="positivo">Estoque > 0</option>
+            </select>
+          </div>
+          <div id="prod-conteudo"></div>
+          <table style="display:none;"><tbody id="tab-produtos"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="prod-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-prod">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-prod">💾 Salvar</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-excluir-prod">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <strong id="prod-ficha-titulo" class="ficha-titulo">Novo produto</strong>
+            </div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Código</span><strong id="prod-ficha-codigo">—</strong></div>
+            <div class="chip"><span>Nome</span><strong id="prod-ficha-nome-chip">—</strong></div>
+            <div class="chip"><span>Categoria</span><strong id="prod-ficha-categoria-chip">—</strong></div>
+            <div class="chip"><span>Estoque</span><strong id="prod-ficha-estoque-chip">—</strong></div>
+            <div class="chip"><span>Custo</span><strong id="prod-ficha-custo-chip">R$ 0,00</strong></div>
+            <div class="chip"><span>Inventário</span><strong id="prod-ficha-conf-chip">—</strong></div>
+          </div>
+
+          <div class="odoo-notebook" id="prod-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="estoque">Estoque</button>
+            <button type="button" data-tab="identificacao">Identificação</button>
+            <button type="button" data-tab="observacoes">Observações</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Código *</label><input id="prod-codigo" required /></div>
+                <div class="campo"><label>Nome *</label><input id="prod-nome" required /></div>
+                <div class="campo"><label>Categoria
+                  <button type="button" class="link-mini" id="btn-nova-cat">+ nova</button></label>
+                  <select id="prod-categoria"><option value="">— sem categoria —</option></select>
+                </div>
+                <div class="campo"><label>Unidade</label><select id="prod-unidade"></select></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="estoque">
+              <div class="grade">
+                <div class="campo"><label>Estoque mínimo</label><input id="prod-minimo" type="number" step="0.001" value="0" /></div>
+                <div class="campo"><label>Localização (depósito)</label><input id="prod-localizacao" placeholder="ex.: Prateleira A-3" /></div>
+                <div class="campo largo">
+                  <label>Inventário</label>
+                  <label class="check-inline"><input type="checkbox" id="prod-conferido" /> Inventário conferido fisicamente</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="identificacao">
+              <div class="grade">
+                <div class="campo"><label>Código de barras</label><input id="prod-codbarras" /></div>
+                <div class="campo"><label>Referência externa</label><input id="prod-refext" placeholder="ex.: família Odoo" /></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="observacoes">
+              <div class="grade">
+                <div class="campo largo"><label>Descrição / observações</label><textarea id="prod-descricao" rows="6"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ENTRADA DE ESTOQUE -->
+    <section class="secao" id="sec-estoque">
+      <h2>Entrada de Estoque</h2>
+
+      <div class="card">
+        <div class="lista-topo">
+          <h3>Registrar entrada (compra / recebimento)</h3>
+        </div>
+        <div class="grade">
+          <div class="campo"><label>Produto *</label><select id="ent-produto" required></select></div>
+          <div class="campo"><label>Quantidade *</label><input id="ent-qtd" type="number" step="0.001" min="0.001" required /></div>
+          <div class="campo"><label>Custo unitário (R$) *</label><input id="ent-custo" type="number" step="0.01" min="0" required /></div>
+          <div class="campo"><label>Fornecedor
+            <button type="button" class="link-mini" id="btn-novo-forn">+ novo</button></label>
+            <select id="ent-fornecedor"><option value="">— não informado —</option></select>
+          </div>
+          <div class="campo"><label>Documento (NF / pedido)</label><input id="ent-doc" /></div>
+        </div>
+        <div class="form-acoes">
+          <button type="button" class="btn" id="btn-registrar-entrada">💾 Registrar entrada</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="lista-topo">
+          <h3>Últimas entradas (50)</h3>
+        </div>
+        <div class="serv-filtros">
+          <input id="ent-busca" placeholder="Buscar por produto, fornecedor ou documento..." />
+        </div>
+        <div id="ent-historico"></div>
+        <table style="display:none;"><tbody id="tab-estoque"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ORÇAMENTOS -->
+    <section class="secao" id="sec-orcamentos">
+      <h2>Orçamentos</h2>
+
+      <!-- Painel -->
+      <div id="orc-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Orçamentos cadastrados <span id="orc-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+            </div>
+            <button type="button" class="btn" id="btn-novo-orcamento">+ Novo</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="orc-busca" placeholder="Buscar por número ou cliente..." />
+            <select id="orc-f-status"></select>
+            <select id="orc-f-cliente"></select>
+          </div>
+          <div id="orc-conteudo"></div>
+          <table style="display:none;"><tbody id="tab-orcamentos"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="orc-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-orc">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-orc">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-ver-proposta">👁️ Visualizar</button>
+              <button type="button" class="btn-sec" id="btn-baixar-proposta">📄 PDF</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-excluir-orc">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <strong id="orc-ficha-titulo" class="ficha-titulo">Novo orçamento</strong>
+            </div>
+          </div>
+
+          <div class="odoo-statusbar" id="orc-statusbar">
+            <div class="stage" data-status="rascunho">Rascunho</div>
+            <div class="stage" data-status="enviado">Enviado</div>
+            <div class="stage" data-status="em_negociacao">Em negociação</div>
+            <div class="stage" data-status="aprovado">Aprovado</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="orc-ficha-numero">—</strong></div>
+            <div class="chip"><span>Revisão</span><strong id="orc-ficha-revisao-chip">—</strong></div>
+            <div class="chip"><span>Cliente</span><strong id="orc-ficha-cliente-chip">—</strong></div>
+            <div class="chip"><span>Status</span><strong id="orc-ficha-status-chip">—</strong></div>
+            <div class="chip"><span>Validade</span><strong id="orc-ficha-validade-chip">—</strong></div>
+            <div class="chip"><span>Valor</span><strong id="orc-ficha-valor-chip">R$ 0,00</strong></div>
+          </div>
+
+          <!-- Smart-buttons (Odoo style): mostram o que orçamento está sustentando -->
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-orc-contratos" data-goto-tab="vinculos">
+              <span class="sb-num">0</span><span class="sb-icon">📋</span><span class="sb-lbl">contratos</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-orc-obras" data-goto-tab="vinculos">
+              <span class="sb-num">0</span><span class="sb-icon">🏗️</span><span class="sb-lbl">obras</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-orc-medicoes" data-goto-tab="vinculos">
+              <span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">medições</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-orc-revisoes" data-goto-tab="revisoes">
+              <span class="sb-num">1</span><span class="sb-icon">🔄</span><span class="sb-lbl">revisões</span>
+            </button>
+          </div>
+
+          <!-- Ações secundárias contextuais -->
+          <div style="background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;font-size:12px;align-items:center;">
+            <span style="color:var(--txt-sec);">Ações:</span>
+            <button type="button" class="btn-sec btn-sm" id="btn-orc-nova-revisao" title="Cria uma nova revisão deste orçamento (mantém número, incrementa revisão, copia itens)">➕ Nova revisão</button>
+            <button type="button" class="btn-sec btn-sm" id="btn-orc-criar-obra" title="Disponível quando o orçamento está APROVADO e ainda não gerou obra" style="background:var(--sucesso);color:var(--txt-sobre);border-color:var(--sucesso);display:none;">🏗️ Criar obra</button>
+            <span id="orc-acao-hint" style="color:var(--txt-sutil);font-style:italic;font-size:11px;"></span>
+          </div>
+
+          <div class="odoo-notebook" id="orc-notebook">
+            <button type="button" data-tab="geral" class="ativo">📋 Geral</button>
+            <button type="button" data-tab="itens">📊 Itens</button>
+            <button type="button" data-tab="proposta">📄 Modelo</button>
+            <button type="button" data-tab="adicionais">⚙️ Adicionais CGL</button>
+            <button type="button" data-tab="comerciais">💼 Comerciais</button>
+            <button type="button" data-tab="revisoes">🔄 Revisões <span id="orc-rev-badge" class="conf-badge"></span></button>
+            <button type="button" data-tab="vinculos">🔗 Vínculos</button>
+            <button type="button" data-tab="observacoes">📝 Obs.</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Número *</label><input id="orc-numero" required placeholder="ex.: ORC-0001" /></div>
+                <div class="campo"><label>Cliente *</label><select id="orc-cliente" required></select></div>
+                <div class="campo"><label>Status</label><select id="orc-status"></select></div>
+                <div class="campo"><label>Data do orçamento</label><input id="orc-data" type="date" /></div>
+                <div class="campo"><label>Validade (data)</label><input id="orc-validade" type="date" /></div>
+                <div class="campo"><label>Responsável</label><select id="orc-responsavel"><option value="">— não informado —</option></select></div>
+                <div class="campo largo"><label>Descrição (resumo interno)</label><input id="orc-descricao" placeholder="objeto do orçamento" /></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="itens">
+              <div class="tabela-rola">
+                <table class="itens-tabela">
+                  <thead><tr>
+                    <th style="min-width:140px;">Seção (agrupador)</th>
+                    <th style="min-width:180px;">Serviço (catálogo)</th>
+                    <th style="min-width:180px;">Descrição</th>
+                    <th style="width:90px;">Qtd.</th>
+                    <th style="width:80px;">Un.</th>
+                    <th style="width:130px;">Valor unit. (R$)</th>
+                    <th style="width:120px;">Total</th>
+                    <th style="min-width:160px;">Obs. (Obs: Item N)</th>
+                    <th class="col-acao"></th>
+                  </tr></thead>
+                  <tbody id="orc-itens"></tbody>
+                </table>
+              </div>
+              <div class="form-acoes">
+                <button type="button" class="btn-sec" id="btn-add-item">+ adicionar item</button>
+              </div>
+              <div class="itens-total">Valor total: <span id="orc-total">R$ 0,00</span></div>
+            </div>
+
+            <div class="odoo-tab" data-tab="proposta">
+              <div class="grade">
+                <div class="campo"><label>Tipo de proposta *</label>
+                  <select id="orc-tipo-proposta">
+                    <option value="helice">HÉLICE (RG 11.8)</option>
+                    <option value="trado">TRADO (RG 11.9)</option>
+                    <option value="raiz">RAÍZ (RG 11.10)</option>
+                    <option value="secante">SECANTE (RG 11.11)</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Revisão (REV)</label><input id="orc-revisao" placeholder="00" maxlength="6" /></div>
+                <div class="campo"><label>Cidade de emissão</label><input id="orc-cidade-emissao" placeholder="Itabira/MG" /></div>
+                <div class="campo"><label>Validade em dias</label><input id="orc-validade-dias" type="number" min="1" max="365" step="1" value="30" /></div>
+                <div class="campo"><label>ISS (%)</label><input id="orc-iss-perc" type="number" min="0" max="100" step="0.01" value="5.00" /></div>
+                <div class="campo">
+                  <label>Cálculo do ISS</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-iss-pdentro" checked /> ISS calculado por dentro (mão de obra)</label>
+                </div>
+                <div class="campo largo">
+                  <label>Cliente forneceu projeto/sondagem?</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-proj-sond" /> Sim — omitir a cláusula "Proposta sujeita a alteração após análise de projeto e sondagem"</label>
+                </div>
+                <div class="campo largo"><label>Referência da obra (vai no "Ref:" da proposta)</label><input id="orc-ref-obra" placeholder='ex.: CONTÍNUA MONITORADA para obra da SUZANO - Aracruz / ES' /></div>
+                <div class="campo largo"><label>Escopo dos serviços (uma linha por item — vai nas Condições Gerais)</label>
+                  <textarea id="orc-escopo" rows="3" placeholder='ex.: 29 Estacas Ø 400 mm - Profundidade Estimada: até 06,00m'></textarea>
+                </div>
+                <div class="campo largo"><label>Equipamento considerado</label><input id="orc-equipamento" placeholder='ex.: EM800/24 - CZM (ou similar)' /></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="adicionais">
+              <div class="grade">
+                <div class="campo largo">
+                  <label class="check-inline"><input type="checkbox" id="orc-cgl-diesel" /> CGL fornece diesel (adiciona item no quadro + muda matriz)</label>
+                </div>
+                <div class="campo"><label>Diesel — R$/L</label><input id="orc-diesel-preco" type="number" min="0" step="0.0001" value="8.34" /></div>
+                <div class="campo largo">
+                  <label class="check-inline"><input type="checkbox" id="orc-cgl-hospedagem" /> CGL fornece hospedagem (adiciona item no quadro + muda matriz)</label>
+                </div>
+                <div class="campo"><label>Hospedagem — R$/mês</label><input id="orc-hosp-valor" type="number" min="0" step="0.01" placeholder="0,00" /></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="comerciais">
+              <div class="grade">
+                <div class="campo largo"><label>Condições de pagamento</label><textarea id="orc-pagamento" rows="3"></textarea></div>
+                <div class="campo"><label>Prazo de execução</label><input id="orc-prazo" placeholder='ex.: 60 dias após mobilização' /></div>
+                <div class="campo"><label>Local de execução</label><input id="orc-local" placeholder='ex.: SUZANO - Aracruz / ES' /></div>
+              </div>
+            </div>
+
+            <!-- 🔄 Revisões: outras versões do mesmo número -->
+            <div class="odoo-tab" data-tab="revisoes">
+              <p class="texto-apoio compacto">
+                Outras revisões deste orçamento (mesmo <code>número</code>). A revisão <strong>ATUAL</strong> é a aberta nesta tela.
+                Use <strong>➕ Nova revisão</strong> no topo pra criar uma nova versão (copia itens + incrementa <code>numero_revisao</code>).
+              </p>
+              <div id="orc-revisoes-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- 🔗 Vínculos: contratos + obras + medições alimentados por este orçamento -->
+            <div class="odoo-tab" data-tab="vinculos">
+              <p class="texto-apoio compacto">
+                Onde este orçamento está sendo usado como fonte de preços (cascata <strong>orcamento_obra</strong>).
+              </p>
+              <div id="orc-vinculos-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <div class="odoo-tab" data-tab="observacoes">
+              <div class="grade">
+                <div class="campo largo"><label>Observações internas</label><textarea id="orc-obs" rows="6"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTRATOS -->
+    <section class="secao" id="sec-contratos">
+      <h2>Contratos de fornecedores</h2>
+
+      <!-- Painel -->
+      <div id="con-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Contratos cadastrados <span id="con-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+            </div>
+            <button type="button" class="btn" id="btn-novo-contrato">+ Novo</button>
+          </div>
+          <div id="con-alerta-venc"></div>
+          <div class="serv-filtros">
+            <input id="con-busca" placeholder="Buscar por número, fornecedor ou objeto..." />
+            <select id="con-f-status"></select>
+            <select id="con-f-categoria"></select>
+            <select id="con-f-vencimento">
+              <option value="">Qualquer vencimento</option>
+              <option value="30">Vence em até 30 dias</option>
+              <option value="60">Vence em até 60 dias</option>
+              <option value="90">Vence em até 90 dias</option>
+              <option value="vencidos">Já vencidos</option>
+            </select>
+          </div>
+          <div id="con-conteudo"></div>
+          <table style="display:none;"><tbody id="tab-contratos"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="con-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-con">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-con">💾 Salvar</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-excluir-con">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <strong id="con-ficha-titulo" class="ficha-titulo">Novo contrato</strong>
+            </div>
+          </div>
+
+          <div class="odoo-statusbar" id="con-statusbar">
+            <div class="stage" data-status="em_elaboracao">Em elaboração</div>
+            <div class="stage" data-status="aguardando_assinatura">Aguardando assinatura</div>
+            <div class="stage" data-status="vigente">Vigente</div>
+            <div class="stage" data-status="encerrado">Encerrado</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="con-ficha-numero">—</strong></div>
+            <div class="chip"><span>Fornecedor</span><strong id="con-ficha-contraparte-chip">—</strong></div>
+            <div class="chip"><span>Categoria</span><strong id="con-ficha-categoria-chip">—</strong></div>
+            <div class="chip"><span>Status</span><strong id="con-ficha-status-chip">—</strong></div>
+            <div class="chip"><span>Vigência</span><strong id="con-ficha-vigencia-chip">—</strong></div>
+            <div class="chip"><span>Valor total</span><strong id="con-ficha-valor-chip">R$ 0,00</strong></div>
+            <div class="chip"><span>Assinatura</span><strong id="con-ficha-assinatura-chip">—</strong></div>
+          </div>
+
+          <!-- Smart buttons (Odoo style) -->
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-con-documentos" data-goto-tab="documentos">
+              <span class="sb-num">0</span><span class="sb-icon">📎</span><span class="sb-lbl">documentos</span>
+            </button>
+          </div>
+
+          <div class="odoo-notebook" id="con-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="vigencia">Vigência</button>
+            <button type="button" data-tab="financeiro">Financeiro</button>
+            <button type="button" data-tab="documentos">Documentos</button>
+            <button type="button" data-tab="observacoes">Observações</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Fornecedor *</label><select id="con-fornecedor"></select></div>
+                <div class="campo"><label>Número *</label><input id="con-numero" required placeholder="ex.: CT-0001" /></div>
+                <div class="campo"><label>Categoria</label><select id="con-categoria"></select></div>
+                <div class="campo"><label>Situação</label><select id="con-status"></select></div>
+                <div class="campo"><label>Responsável</label><select id="con-responsavel"><option value="">— não informado —</option></select></div>
+                <div class="campo largo"><label>Descrição / objeto</label><input id="con-descricao" /></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="vigencia">
+              <div class="grade">
+                <div class="campo"><label>Data de assinatura</label><input id="con-assinatura" type="date" /></div>
+                <div class="campo"><label>Data de início</label><input id="con-inicio" type="date" /></div>
+                <div class="campo"><label>Fim da vigência</label><input id="con-fim" type="date" /></div>
+                <div class="campo"><label>Aviso de vencimento (dias)</label><input id="con-aviso" type="number" min="0" step="1" value="30" /></div>
+                <div class="campo"><label>Renovação</label>
+                  <label class="check-inline"><input type="checkbox" id="con-renovacao" /> Renova automaticamente</label>
+                </div>
+                <div class="campo largo">
+                  <p class="ajuda-campo">O contrato entra no alerta de vencimento (aqui no painel e no Início) quando faltarem menos dias para o fim da vigência do que o valor de "aviso de vencimento".</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="financeiro">
+              <div class="grade">
+                <div class="campo"><label>Recorrência do pagamento</label><select id="con-recorrencia"></select></div>
+                <div class="campo"><label>Valor da parcela (R$)</label><input id="con-valor-rec" type="number" step="0.01" min="0" value="0" /></div>
+                <div class="campo"><label>Dia de vencimento</label><input id="con-dia-venc" type="number" min="1" max="31" step="1" placeholder="1 a 31" /></div>
+                <div class="campo"><label>Valor total (R$)</label><input id="con-valor" type="number" step="0.01" min="0" value="0" /></div>
+                <div class="campo"><label>Índice de reajuste</label>
+                  <input id="con-indice" list="lista-indices" placeholder="ex.: IPCA" />
+                  <datalist id="lista-indices"></datalist>
+                </div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="documentos">
+              <div id="con-assinatura-bloco"></div>
+              <div id="con-doc-conteudo"></div>
+            </div>
+
+            <div class="odoo-tab" data-tab="observacoes">
+              <div class="grade">
+                <div class="campo largo"><label>Observações</label><textarea id="con-obs" rows="6"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CARTEIRA — Controle de Contratos & Pendências (views vw_controle_contratos / vw_pendencias_contratos) -->
+    <section class="secao" id="sec-carteira">
+      <h2>Controle de Contratos &amp; Pendências</h2>
+      <p class="texto-apoio">Valor vigente = valor original + aditivos <strong>assinados</strong>. Aditivo sem prova de assinatura aparece como pendência e não soma. As pendências são calculadas dos dados: corrigido o cadastro, a linha some sozinha.</p>
+
+      <div class="indicadores">
+        <div class="ind"><div class="num" id="cart-kpi-qtd">—</div><div class="rot">Contratos</div></div>
+        <div class="ind"><div class="num" id="cart-kpi-vigente">—</div><div class="rot">Carteira vigente</div></div>
+        <div class="ind"><div class="num" id="cart-kpi-assinada" style="color:var(--sucesso);">—</div><div class="rot">Com assinatura</div></div>
+        <div class="ind ind-click" id="cart-card-sem" title="Ver a fila de contratos sem prova de assinatura"><div class="num" id="cart-kpi-sem" style="color:var(--perigo);">—</div><div class="rot">Sem prova de assinatura</div></div>
+        <div class="ind ind-click" id="cart-card-pend" title="Ver todas as pendências"><div class="num" id="cart-kpi-pend" style="color:var(--aviso-txt);">—</div><div class="rot" id="cart-kpi-pend-rot">Pendências</div></div>
+      </div>
+
+      <div class="card">
+        <div class="lista-topo">
+          <h3>Carteira <span id="cart-contador" class="contador"></span></h3>
+          <div class="serv-views">
+            <button type="button" class="serv-view-btn ativo" data-view="contratos">Contratos</button>
+            <button type="button" class="serv-view-btn" data-view="pendencias">Pendências</button>
+          </div>
+          <button type="button" class="btn-sec" id="btn-cart-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+        </div>
+        <div class="serv-filtros">
+          <input id="cart-busca" placeholder="Buscar nº CGL, nº do cliente ou cliente..." />
+          <label class="check-inline"><input type="checkbox" id="cart-f-pendentes" /> só com pendência</label>
+          <label class="check-inline"><input type="checkbox" id="cart-f-historico" checked /> incluir obras finalizadas</label>
+          <select id="cart-f-tipo" style="display:none;"></select>
+        </div>
+        <div id="cart-conteudo"><p class="vazio">Carregando carteira…</p></div>
+      </div>
+    </section>
+
+    <!-- OBRAS -->
+    <section class="secao" id="sec-obras">
+      <h2>Obras</h2>
+
+      <!-- ===== Painel (lista / kanban) ===== -->
+      <div id="obr-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Obras cadastradas <span id="obr-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+            </div>
+            <button type="button" class="btn" id="btn-nova-obra">+ Nova</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="obr-busca" placeholder="Buscar por código, nome, cliente ou cidade..." />
+            <select id="obr-f-status"></select>
+            <select id="obr-f-cliente"></select>
+          </div>
+          <div id="obr-conteudo"></div>
+          <!-- tbody legacy mantido invisível (compat com chamadas externas) -->
+          <table style="display:none;"><tbody id="tab-obras"></tbody></table>
+        </div>
+      </div>
+
+      <!-- ===== Ficha (estilo Odoo) ===== -->
+      <div id="obr-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-obra">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-obra">💾 Salvar</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-excluir-obra">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <strong id="obr-ficha-titulo" class="ficha-titulo">Nova obra</strong>
+            </div>
+          </div>
+
+          <div class="odoo-statusbar" id="obr-statusbar">
+            <div class="stage" data-status="planejada">Planejada</div>
+            <div class="stage" data-status="em_andamento">Em andamento</div>
+            <div class="stage" data-status="paralisada">Paralisada</div>
+            <div class="stage" data-status="concluida">Concluída</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Código</span><strong id="obr-ficha-codigo">—</strong></div>
+            <div class="chip"><span>Cliente</span><strong id="obr-ficha-cliente-chip">—</strong></div>
+            <div class="chip"><span>Status</span><strong id="obr-ficha-status-chip">—</strong></div>
+            <div class="chip"><span>Valor contratado</span><strong id="obr-ficha-valor-chip">R$ 0,00</strong></div>
+            <div class="chip"><span>Cidade</span><strong id="obr-ficha-cidade-chip">—</strong></div>
+          </div>
+
+          <!-- Smart buttons (Odoo style) -->
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-estacas" data-goto-tab="estacas">
+              <span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">estacas</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-equipamentos" data-goto-tab="equipamentos">
+              <span class="sb-num">0</span><span class="sb-icon">🚜</span><span class="sb-lbl">equipamentos</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-rdos" data-goto-tab="rdos">
+              <span class="sb-num">0</span><span class="sb-icon">📋</span><span class="sb-lbl">RDOs</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-medicoes" data-goto-tab="medicoes">
+              <span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">medições</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-documentos" data-goto-tab="documentos">
+              <span class="sb-num">0</span><span class="sb-icon">📎</span><span class="sb-lbl">documentos</span>
+            </button>
+          </div>
+
+          <div class="odoo-notebook" id="obr-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="endereco">Endereço</button>
+            <button type="button" data-tab="datas">Datas & valor</button>
+            <button type="button" data-tab="contrato">Contrato <span id="obr-con-badge" class="aba-badge"></span></button>
+            <button type="button" data-tab="estacas">Estacas</button>
+            <button type="button" data-tab="equipamentos">Equipamentos</button>
+            <button type="button" data-tab="medicoes">Medições</button>
+            <button type="button" data-tab="rdos">RDOs</button>
+            <button type="button" data-tab="documentos">Documentos</button>
+            <button type="button" data-tab="timeline">Timeline</button>
+            <button type="button" data-tab="descricao">Obs.</button>
+          </div>
+
+          <div class="odoo-body">
+            <!-- Aba Geral -->
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Código *</label><input id="obr-codigo" required placeholder="ex.: OB-0001" /></div>
+                <div class="campo"><label>Nome *</label><input id="obr-nome" required /></div>
+                <div class="campo"><label>Cliente *</label><select id="obr-cliente" required></select></div>
+                <div class="campo"><label>Status</label><select id="obr-status"></select></div>
+                <div class="campo"><label>Responsável</label><select id="obr-responsavel"><option value="">— não informado —</option></select></div>
+              </div>
+            </div>
+
+            <!-- Aba Endereço -->
+            <div class="odoo-tab" data-tab="endereco">
+              <div class="grade">
+                <div class="campo"><label>CEP</label><input id="obr-cep" /></div>
+                <div class="campo"><label>Logradouro</label><input id="obr-logradouro" /></div>
+                <div class="campo"><label>Número</label><input id="obr-numero" /></div>
+                <div class="campo"><label>Complemento</label><input id="obr-complemento" /></div>
+                <div class="campo"><label>Bairro</label><input id="obr-bairro" /></div>
+                <div class="campo"><label>Cidade</label><input id="obr-cidade" /></div>
+                <div class="campo"><label>UF</label><select id="obr-uf"></select></div>
+              </div>
+            </div>
+
+            <!-- Aba Datas & valor -->
+            <div class="odoo-tab" data-tab="datas">
+              <div class="grade">
+                <div class="campo"><label>Data de início</label><input id="obr-inicio" type="date" /></div>
+                <div class="campo"><label>Fim previsto</label><input id="obr-fim-prev" type="date" /></div>
+                <div class="campo"><label>Fim real</label><input id="obr-fim-real" type="date" /></div>
+                <div class="campo"><label>Valor contratado (R$)</label><input id="obr-valor" type="number" step="0.01" min="0" value="0" /></div>
+              </div>
+            </div>
+
+            <!-- Aba Contrato (contrato do cliente; vive na obra desde a fase 21) -->
+            <div class="odoo-tab" data-tab="contrato">
+              <p class="ajuda-campo">
+                Dados contratuais desta obra. Cliente, valor, datas e responsável vêm das outras abas —
+                aqui ficam só os campos do contrato em si. Preencha o número e salve a obra para gerar
+                o contrato; deixe em branco se esta obra não tiver contrato formal.
+              </p>
+              <div class="grade">
+                <div class="campo"><label>Número do contrato</label><input id="obr-con-numero" placeholder="ex.: CT-0001" /></div>
+                <div class="campo"><label>Categoria</label><select id="obr-con-categoria"></select></div>
+                <div class="campo"><label>Situação do contrato</label><select id="obr-con-status"></select></div>
+                <div class="campo"><label>Data de assinatura</label><input id="obr-con-assinatura" type="date" /></div>
+                <div class="campo"><label>Orçamento de origem</label><select id="obr-con-orcamento"><option value="">— nenhum —</option></select></div>
+                <div class="campo"><label>Índice de reajuste</label>
+                  <input id="obr-con-indice" list="lista-indices" placeholder="ex.: IPCA" />
+                </div>
+                <div class="campo largo"><label>Objeto do contrato</label><input id="obr-con-descricao" placeholder="deixe em branco para usar a descrição da obra" /></div>
+              </div>
+
+              <h4 class="sub-titulo">📎 Contrato assinado e aditivos</h4>
+              <div id="obr-con-assinatura-bloco"></div>
+              <div id="obr-con-doc-conteudo"></div>
+            </div>
+
+            <!-- Aba Estacas -->
+            <div class="odoo-tab" data-tab="estacas">
+              <!-- Mini-stats -->
+              <div class="indicadores" style="margin-bottom:14px;">
+                <div class="ind"><div class="num" id="est-stat-total">0</div><div class="rot">Estacas previstas</div></div>
+                <div class="ind"><div class="num" id="est-stat-executadas">0</div><div class="rot">Executadas</div></div>
+                <div class="ind"><div class="num" id="est-stat-pct">0%</div><div class="rot">% avanço</div></div>
+                <div class="ind"><div class="num" id="est-stat-metragem">0 m</div><div class="rot">Metragem executada</div></div>
+              </div>
+
+              <div class="lista-topo" style="border-bottom:none;">
+                <h3 class="titulo-linha">Estacas da obra</h3>
+                <div class="serv-views">
+                  <button type="button" class="serv-view-btn ativo" data-est-view="lista">Lista</button>
+                  <button type="button" class="serv-view-btn" data-est-view="planta">Planta</button>
+                </div>
+                <button type="button" class="btn-sec" id="btn-est-reconciliar" style="margin-left:8px;display:none;">🔍 Conferência <span id="est-reconciliar-badge" style="background:var(--perigo);color:var(--txt-sobre);border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span></button>
+                <button type="button" class="btn-sec" id="btn-est-importar">📄 Importar PDF</button>
+                <button type="button" class="btn" id="btn-est-nova">+ Nova</button>
+              </div>
+              <div class="serv-filtros">
+                <input id="est-busca" placeholder="Buscar por nº ou observação..." />
+                <select id="est-f-status">
+                  <option value="">Todos os status</option>
+                  <option value="prevista">Prevista</option>
+                  <option value="em_execucao">Em execução</option>
+                  <option value="executada">Executada</option>
+                  <option value="refugada">Refurada</option>
+                </select>
+                <select id="est-f-tipo">
+                  <option value="">Todos os tipos</option>
+                  <option value="helice_continua">Hélice contínua</option>
+                  <option value="pre_moldada">Pré-moldada</option>
+                  <option value="raiz">Raiz</option>
+                  <option value="escavada">Escavada</option>
+                  <option value="strauss">Strauss</option>
+                  <option value="metalica">Metálica</option>
+                  <option value="franki">Franki</option>
+                  <option value="hsa">HSA</option>
+                  <option value="barrete">Barrete</option>
+                  <option value="outro">Outro</option>
+                </select>
+              </div>
+              <!-- Vista lista -->
+              <div id="est-conteudo"></div>
+              <!-- Vista planta -->
+              <div id="est-planta-wrap" style="display:none;">
+                <div class="planta-toolbar">
+                  <div class="planta-legenda">
+                    <span><i style="background:var(--estaca-prevista)"></i>Prevista</span>
+                    <span><i style="background:var(--aviso)"></i>Em execução</span>
+                    <span><i style="background:var(--sucesso)"></i>Executada</span>
+                    <span><i style="background:var(--perigo)"></i>Refurada</span>
+                    <span><i style="background:var(--estaca-hoje)"></i>Hoje</span>
+                  </div>
+                  <div class="planta-zoom">
+                    <button type="button" class="btn-sec btn-sm" id="btn-planta-zoom-in">+</button>
+                    <button type="button" class="btn-sec btn-sm" id="btn-planta-zoom-out">−</button>
+                    <button type="button" class="btn-sec btn-sm" id="btn-planta-zoom-fit" title="Ajustar à tela">⛶</button>
+                  </div>
+                </div>
+                <div id="est-planta-svg-container">
+                  <svg id="est-planta-svg" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid meet"></svg>
+                </div>
+                <div class="planta-rodape">
+                  <div class="planta-progresso">
+                    <div class="planta-progresso-barra"><div id="planta-progresso-fill"></div></div>
+                    <span id="planta-progresso-texto">0 de 0 executadas (0%)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Aba Equipamentos -->
+            <div class="odoo-tab" data-tab="equipamentos">
+              <div id="obr-equip-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Medições -->
+            <div class="odoo-tab" data-tab="medicoes">
+              <div id="obr-medic-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba RDOs -->
+            <div class="odoo-tab" data-tab="rdos">
+              <div id="obr-rdo-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Documentos -->
+            <div class="odoo-tab" data-tab="documentos">
+              <div id="obr-doc-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Timeline -->
+            <div class="odoo-tab" data-tab="timeline">
+              <div id="obr-timeline-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Descrição & observações -->
+            <div class="odoo-tab" data-tab="descricao">
+              <div class="grade">
+                <div class="campo largo"><label>Descrição</label><input id="obr-descricao" /></div>
+                <div class="campo largo"><label>Observações</label><textarea id="obr-obs" rows="6"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Estaca (nova / editar) -->
+      <div id="est-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:680px;width:90%;max-height:85vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
+          <h3 id="est-modal-titulo" style="margin:0 0 14px;">Nova estaca</h3>
+          <div class="grade">
+            <div class="campo"><label>Nº da estaca *</label><input id="est-numero" placeholder="ex.: E-01" /></div>
+            <div class="campo"><label>Tipo</label>
+              <select id="est-tipo">
+                <option value="helice_continua">Hélice contínua</option>
+                <option value="pre_moldada">Pré-moldada</option>
+                <option value="raiz">Raiz</option>
+                <option value="escavada">Escavada</option>
+                <option value="strauss">Strauss</option>
+                <option value="metalica">Metálica</option>
+                <option value="franki">Franki</option>
+                <option value="hsa">HSA</option>
+                <option value="barrete">Barrete</option>
+                <option value="outro">Outro</option>
+              </select>
+            </div>
+            <div class="campo"><label>Status</label>
+              <select id="est-status">
+                <option value="prevista">Prevista</option>
+                <option value="em_execucao">Em execução</option>
+                <option value="executada">Executada</option>
+                <option value="refugada">Refurada</option>
+              </select>
+            </div>
+            <div class="campo"><label>Diâmetro (mm)</label><input id="est-diametro" type="number" step="0.1" min="0" /></div>
+            <div class="campo"><label>Profundidade (m)</label><input id="est-profundidade" type="number" step="0.01" min="0" /></div>
+            <div class="campo"><label>Cota topo</label><input id="est-cota-topo" type="number" step="0.01" /></div>
+            <div class="campo"><label>Cota ponta</label><input id="est-cota-ponta" type="number" step="0.01" /></div>
+            <div class="campo"><label>Volume concreto (m³)</label><input id="est-volume" type="number" step="0.001" min="0" /></div>
+            <div class="campo"><label>Data execução</label><input id="est-data" type="date" /></div>
+            <div class="campo largo"><label>Observações</label><textarea id="est-obs" rows="2"></textarea></div>
+          </div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn" id="btn-est-salvar">💾 Salvar</button>
+            <button type="button" class="btn-sec" id="btn-est-cancelar">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Execução rápida (clique na planta) -->
+      <div id="est-exec-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:480px;width:92%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+              <div style="font-size:11px;color:var(--txt-sutil);text-transform:uppercase;letter-spacing:.4px;">Estaca</div>
+              <h3 id="exec-titulo" style="margin:2px 0 0;font-size:18px;">—</h3>
+            </div>
+            <button type="button" class="btn-sec" id="btn-exec-fechar">×</button>
+          </div>
+          <div id="exec-resumo" style="background:var(--sup-2);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--txt-sec);"></div>
+
+          <div class="grade">
+            <div class="campo"><label>Status</label>
+              <select id="exec-status">
+                <option value="prevista">Prevista</option>
+                <option value="em_execucao">Em execução</option>
+                <option value="executada">Executada</option>
+                <option value="refugada">Refurada</option>
+              </select>
+            </div>
+            <div class="campo"><label>Data execução</label><input id="exec-data" type="date" /></div>
+            <div class="campo"><label>Profundidade real (m)</label><input id="exec-profundidade" type="number" step="0.01" min="0" inputmode="decimal" /></div>
+            <div class="campo"><label>Volume concreto (m³)</label><input id="exec-volume" type="number" step="0.001" min="0" inputmode="decimal" /></div>
+            <div class="campo"><label>Equipamento</label>
+              <select id="exec-equipamento"><option value="">— nenhum —</option></select>
+            </div>
+            <div class="campo"><label>Operador</label>
+              <select id="exec-operador"><option value="">— nenhum —</option></select>
+            </div>
+            <div class="campo largo"><label>Observações</label><textarea id="exec-obs" rows="2"></textarea></div>
+          </div>
+
+          <div class="form-acoes" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn" id="btn-exec-iniciar" style="background:var(--aviso);">▶ Iniciar execução</button>
+            <button type="button" class="btn btn-sucesso" id="btn-exec-concluir">✅ Marcar executada</button>
+            <button type="button" class="btn-sec acao-perigo" id="btn-exec-refugar">✗ Refugar</button>
+            <button type="button" class="btn-sec" id="btn-exec-salvar">💾 Salvar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Conferência do Projeto (órfãs + duplicadas + refuradas) -->
+      <div id="est-reconciliar-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:1100px;width:95%;max-height:92vh;border-radius:8px;padding:0;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--borda);">
+            <h3 class="titulo-linha">🔍 Conferência do Projeto</h3>
+            <button type="button" class="btn-sec" id="btn-est-rec-fechar">×</button>
+          </div>
+
+          <!-- Abas internas -->
+          <div class="odoo-notebook" id="conf-notebook" style="margin:0;background:var(--sup-2);">
+            <button type="button" data-conf-tab="orfas" class="ativo">⚠️ Execuções órfãs <span id="conf-tab-orfas-badge" class="conf-badge"></span></button>
+            <button type="button" data-conf-tab="alteradas">🔄 Estacas alteradas <span id="conf-tab-alt-badge" class="conf-badge"></span></button>
+            <button type="button" data-conf-tab="duplicadas">📑 Estacas duplicadas <span id="conf-tab-dups-badge" class="conf-badge"></span></button>
+            <button type="button" data-conf-tab="refuradas">✗ Estacas refuradas <span id="conf-tab-ref-badge" class="conf-badge"></span></button>
+          </div>
+
+          <div style="padding:18px 20px;overflow-y:auto;flex:1;">
+            <!-- Aba Órfãs -->
+            <div class="odoo-tab ativa" data-conf-tab="orfas">
+              <p class="texto-apoio">
+                Execuções de RDO/CSV que não casaram com nenhuma estaca cadastrada do projeto. Sugestões automáticas por similaridade de dígitos — confirme ou ajuste.
+              </p>
+              <div id="est-reconciliar-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Alteradas: estacas com 2+ execuções (refuros legítimos OU casamentos errados) -->
+            <div class="odoo-tab" data-conf-tab="alteradas">
+              <p class="texto-apoio">
+                Estacas que receberam <strong>mais de uma execução</strong>. Refuros (mesmo nome + R) são marcados em verde; demais casos podem ser
+                <strong>casamento errado</strong> (uma execução deveria estar em outra estaca). Reatribua se necessário.
+              </p>
+              <div id="conf-alteradas-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Duplicadas -->
+            <div class="odoo-tab" data-conf-tab="duplicadas">
+              <p class="texto-apoio">
+                Grupos de estacas com o mesmo número na mesma obra (erro de import ou cadastro duplicado).
+                Você pode manter uma e excluir as duplicatas, ou renomear.
+              </p>
+              <div id="conf-duplicadas-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Refuradas -->
+            <div class="odoo-tab" data-conf-tab="refuradas">
+              <p class="texto-apoio">
+                Estacas marcadas como refuradas. Você pode criar uma substituta (mantém o histórico),
+                restaurar para 'prevista' (se foi erro), ou simplesmente revisar/anotar.
+              </p>
+              <div id="conf-refuradas-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+          </div>
+
+          <div style="padding:14px 20px;border-top:1px solid var(--borda);display:flex;gap:8px;flex-wrap:wrap;" id="conf-acoes-rodape">
+            <!-- Ações de cada aba são renderizadas dinamicamente -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Importar PDF (IA) -->
+      <div id="est-import-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:920px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <h3 class="titulo-linha">📄 Importar estacas de planta PDF</h3>
+            <button type="button" class="btn-sec" id="btn-est-fechar-import">×</button>
+          </div>
+          <p class="texto-apoio">
+            Envie um PDF de planta de locação (ou tabela de estacas). A IA Claude vai extrair número, bloco, diâmetro, profundidade e tipo.<br>
+            <strong>Dica:</strong> exporte do AutoCAD com todas as layers visíveis. A extração leva ~30 segundos.
+          </p>
+          <div class="grade">
+            <div class="campo largo">
+              <label>Arquivo PDF</label>
+              <input id="est-import-file" type="file" accept="application/pdf" />
+            </div>
+          </div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn" id="btn-est-extrair">🤖 Extrair com IA</button>
+          </div>
+          <div id="est-import-preview" style="display:none;margin-top:18px;border-top:1px solid var(--borda);padding-top:14px;">
+            <h4>Preview — revise antes de importar</h4>
+            <div id="est-import-preview-conteudo"></div>
+            <div class="form-acoes compacta">
+              <button type="button" class="btn btn-sucesso" id="btn-est-confirmar-import">✅ Importar todas</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- DIÁRIO DE OBRA (RDO) -->
+    <section class="secao" id="sec-rdo">
+      <h2>Diário de Obra (RDO)</h2>
+
+      <!-- Painel -->
+      <div id="rdo-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Diários cadastrados <span id="rdo-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban (por tipo)</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-importar-csv-painel">📄 Importar arquivo</button>
+            <button type="button" class="btn" id="btn-novo-rdo">+ Novo</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="rdo-busca" placeholder="Buscar por obra, data, tipo..." />
+            <select id="rdo-f-obra"></select>
+            <select id="rdo-f-tipo"></select>
+            <select id="rdo-f-status"></select>
+          </div>
+          <div id="rdo-conteudo"></div>
+          <table style="display:none;"><tbody id="tab-rdo"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="rdo-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-rdo">&larr; Voltar</button>
+              <button type="button" class="btn-sec" id="btn-rdo-anterior" title="RDO anterior da mesma obra/tipo">◀ Dia anterior</button>
+              <button type="button" class="btn-sec" id="btn-rdo-proximo" title="Próximo RDO da mesma obra/tipo">Dia posterior ▶</button>
+              <button type="button" class="btn" id="btn-salvar-rdo">💾 Salvar</button>
+              <button type="button" class="btn btn-sucesso" id="btn-finalizar-rdo">✅ Finalizar</button>
+              <button type="button" class="btn-sec" id="btn-importar-csv">📄 Importar arquivo</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-excluir-rdo">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <span id="rdo-ficha-posicao" style="font-size:12px;color:var(--txt-sutil);margin-right:10px;"></span>
+              <strong id="rdo-ficha-titulo" class="ficha-titulo">Novo RDO</strong>
+            </div>
+          </div>
+
+          <div class="odoo-statusbar" id="rdo-statusbar">
+            <div class="stage" data-status="rascunho">Rascunho</div>
+            <div class="stage" data-status="finalizado">Finalizado</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Obra</span><strong id="rdo-ficha-obra-chip">—</strong></div>
+            <div class="chip"><span>Data</span><strong id="rdo-ficha-data-chip">—</strong></div>
+            <div class="chip"><span>Tipo</span><strong id="rdo-ficha-tipo-chip">—</strong></div>
+            <div class="chip"><span>Status</span><strong id="rdo-ficha-status-chip">—</strong></div>
+            <div class="chip"><span>Estacas</span><strong id="rdo-ficha-execs-chip">0</strong></div>
+            <div class="chip"><span>Metragem</span><strong id="rdo-ficha-metragem-chip">0 m</strong></div>
+          </div>
+
+          <div class="odoo-notebook" id="rdo-notebook">
+            <button type="button" data-tab="cabecalho" class="ativo">Cabeçalho</button>
+            <button type="button" data-tab="equipe-clima">Clima & efetivo</button>
+            <button type="button" data-tab="equipe">👷 Equipe</button>
+            <button type="button" data-tab="execucoes">Execuções</button>
+            <button type="button" data-tab="raiz-dados" data-rdo-aba-raiz="1">Dados Raiz</button>
+            <button type="button" data-tab="observacoes">Observações</button>
+          </div>
+
+          <div class="odoo-body">
+            <!-- Cabeçalho -->
+            <div class="odoo-tab ativa" data-tab="cabecalho">
+              <div class="grade">
+                <div class="campo"><label>Obra *</label><select id="rdo-obra" required></select></div>
+                <div class="campo"><label>Data *</label><input id="rdo-data" type="date" required /></div>
+                <div class="campo"><label>Tipo de serviço *</label><select id="rdo-tipo-servico" required></select></div>
+                <div class="campo"><label>Status</label><select id="rdo-status"></select></div>
+                <div class="campo"><label>Responsável</label><select id="rdo-responsavel"><option value="">— não informado —</option></select></div>
+              </div>
+            </div>
+
+            <!-- Equipe & Clima -->
+            <div class="odoo-tab" data-tab="equipe-clima">
+              <div class="grade">
+                <div class="campo"><label>Efetivo próprio</label><input id="rdo-efetivo-proprio" type="number" min="0" step="1" value="0" /></div>
+                <div class="campo"><label>Efetivo terceiro</label><input id="rdo-efetivo-terceiro" type="number" min="0" step="1" value="0" /></div>
+                <div class="campo"><label>Tempo — manhã</label><select id="rdo-tempo-manha"><option value="">—</option></select></div>
+                <div class="campo"><label>Tempo — tarde</label><select id="rdo-tempo-tarde"><option value="">—</option></select></div>
+                <div class="campo largo"><label>Atividades executadas</label><textarea id="rdo-atividades" rows="3" placeholder="resumo do dia"></textarea></div>
+              </div>
+            </div>
+
+            <!-- Execuções -->
+            <div class="odoo-tab" data-tab="execucoes">
+              <div class="lista-topo compacta">
+                <h4 class="titulo-linha">Estacas executadas no dia</h4>
+                <button type="button" class="btn-sec" id="btn-add-execucao">+ Estaca</button>
+              </div>
+              <div style="background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;">
+                <label style="color:var(--txt-sec);">Atribuir operador a <strong>todas</strong> as execuções:</label>
+                <select id="rdo-exec-op-massa" style="min-width:180px;"><option value="">— escolha um operador da equipe —</option></select>
+                <button type="button" class="btn-sec btn-sm" id="btn-rdo-aplicar-op">Aplicar</button>
+              </div>
+              <div class="tabela-rola" style="max-height:60vh;overflow-y:auto;">
+                <table class="itens-tabela">
+                  <thead>
+                    <tr>
+                      <th>Nº estaca</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante">Ø (mm)</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante">Prof. proj.</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante">Prof. exec.</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,helice_secante">Perf. início</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,helice_secante">Perf. fim</th>
+                      <th data-col-tipo="helice_continua,helice_secante">Concr. início</th>
+                      <th data-col-tipo="helice_continua,helice_secante">Concr. fim</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,helice_secante">Torque</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,helice_secante">Vol. m³</th>
+                      <th>Equip.</th>
+                      <th>Máq. txt</th>
+                      <th title="Operador da execução — vem da aba Equipe">👷 Operador</th>
+                      <th>Obs.</th>
+                      <th data-col-tipo="estaca_raiz" style="width:40px;" title="Boletim por estaca">📋</th>
+                      <th class="col-acao"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="rdo-execs"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Dados Raiz (só raiz) — apenas cabeçalho do dia -->
+            <div class="odoo-tab" data-tab="raiz-dados">
+              <h4 class="titulo-bloco">Cabeçalho do boletim (dados do dia)</h4>
+              <div class="grade">
+                <div class="campo"><label>Folha</label><input id="rdo-raiz-folha" placeholder="1/1" /></div>
+                <div class="campo"><label>Projeto</label><input id="rdo-raiz-projeto" /></div>
+                <div class="campo"><label>Local</label><input id="rdo-raiz-local" /></div>
+                <div class="campo"><label>Bloco</label><input id="rdo-raiz-bloco" /></div>
+              </div>
+              <p style="margin-top:16px;font-size:12px;color:var(--txt-fraco);line-height:1.5;">
+                Solo, injeção de argamassa e justificativas são preenchidos por estaca<br>
+                através do botão 📋 na aba <strong>Execuções</strong>.
+              </p>
+            </div>
+
+            <!-- Stubs legados — elementos existem mas ficam ocultos; solo/just agora são por estaca -->
+            <div id="rdo-raiz-solo" style="display:none;"></div>
+            <div id="rdo-raiz-just" style="display:none;"></div>
+
+            <!-- 👷 Equipe (disponível em TODOS os tipos de serviço) -->
+            <div class="odoo-tab" data-tab="equipe">
+              <div class="lista-topo compacta">
+                <h4 class="titulo-linha">Equipe em campo neste RDO</h4>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" class="btn-sec" id="btn-rdo-equipe-do-time" title="Importa todos os membros ativos de uma equipe cadastrada">📥 Importar equipe</button>
+                  <button type="button" class="btn-sec" id="btn-add-rdo-equipe">+ integrante</button>
+                </div>
+              </div>
+              <div class="tabela-rola">
+                <table class="itens-tabela">
+                  <thead>
+                    <tr>
+                      <th style="width:32px;">#</th>
+                      <th>Funcionário</th>
+                      <th>Nome avulso<br><small style="font-weight:400;color:var(--txt-sutil);">(terceiro sem cadastro)</small></th>
+                      <th>Função no dia</th>
+                      <th>Entrada</th>
+                      <th>Saída</th>
+                      <th title="Horas extras 50% (seg-sáb)">HE 50%</th>
+                      <th title="Horas extras 100% (dom/feriado)">HE 100%</th>
+                      <th>Obs.</th>
+                      <th class="col-acao"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="rdo-equipe-tbody"></tbody>
+                </table>
+              </div>
+              <p class="nota">
+                💡 Preencha <strong>Entrada/Saída</strong> e o sistema calcula horas trabalhadas. Use <strong>HE 50%/100%</strong> só quando passar do expediente normal.
+              </p>
+            </div>
+
+            <!-- Observações -->
+            <div class="odoo-tab" data-tab="observacoes">
+              <div class="grade">
+                <div class="campo largo"><label>Observações gerais</label><textarea id="rdo-obs" rows="6"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: importar CSV Geodigitus -->
+      <div id="csv-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:820px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <h3 class="titulo-linha">📄 Importar arquivo (Geodigitus / equipamento)</h3>
+            <button type="button" class="btn-sec" id="btn-fechar-csv">×</button>
+          </div>
+          <p class="texto-apoio">
+            <strong>Formatos aceitos (detecção automática):</strong>
+            <br>• <strong>Geodigitus</strong> (.csv) — cabeçalho <code>DATA;OBRA;ESTACA;PROFUNDIDADE_EXECUTADA;...;MAQUINA;OBSERVACAO</code>
+            <br>• <strong>SoftSaci V7.x</strong> (.txt) — relatório sintético com colunas <code>Contrato | Obra | Estaca | Data | Ini.P | Ini.C | Fim C | Diam | Comp | V.Conc | Supercon | Incli</code>
+            <br><br>O sistema agrupa por data e cria 1 RDO por dia (na obra detectada). Estacas existentes na obra são marcadas como executadas.
+          </p>
+          <div class="grade">
+            <div class="campo largo">
+              <label>Arquivo (CSV ou TXT)</label>
+              <input id="csv-arquivo" type="file" accept=".csv,.txt,text/csv,text/plain" />
+            </div>
+          </div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn" id="btn-csv-processar">🔍 Processar</button>
+          </div>
+          <div id="csv-preview" style="display:none;margin-top:18px;border-top:1px solid var(--borda);padding-top:14px;">
+            <h4>Preview — agrupado por dia</h4>
+            <div id="csv-preview-conteudo"></div>
+            <div class="form-acoes compacta">
+              <button type="button" class="btn btn-sucesso" id="btn-csv-confirmar">✅ Importar tudo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEDIÇÕES -->
+    <section class="secao" id="sec-medicoes">
+      <h2>Medições</h2>
+
+      <!-- Painel -->
+      <div id="med-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Medições cadastradas <span id="med-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+            </div>
+            <button type="button" class="btn" id="btn-nova-medicao">+ Nova</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="med-busca" placeholder="Buscar por número ou obra..." />
+            <select id="med-f-status"></select>
+            <select id="med-f-obra"></select>
+          </div>
+          <div id="med-conteudo"></div>
+          <table style="display:none;"><tbody id="tab-medicoes"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="med-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-med">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-med">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-gerar-pdf-med" title="Gera PDF da medição estilo CGL RG 11.4 (precisa estar salva)">📄 Gerar PDF</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-excluir-med">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right">
+              <strong id="med-ficha-titulo" class="ficha-titulo">Nova medição</strong>
+            </div>
+          </div>
+
+          <div class="odoo-statusbar" id="med-statusbar">
+            <div class="stage" data-status="rascunho">Rascunho</div>
+            <div class="stage" data-status="enviada">Enviada</div>
+            <div class="stage" data-status="aprovada">Aprovada</div>
+            <div class="stage" data-status="faturada">Faturada</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="med-ficha-numero">—</strong></div>
+            <div class="chip"><span>Obra</span><strong id="med-ficha-obra-chip">—</strong></div>
+            <div class="chip"><span>Status</span><strong id="med-ficha-status-chip">—</strong></div>
+            <div class="chip"><span>Subtotal</span><strong id="med-ficha-subtotal-chip">R$ 0,00</strong></div>
+            <div class="chip"><span>Valor final</span><strong id="med-ficha-valor-chip">R$ 0,00</strong></div>
+          </div>
+
+          <div class="odoo-notebook" id="med-notebook">
+            <button type="button" data-tab="geral" class="ativo">📋 Geral</button>
+            <button type="button" data-tab="itens">📊 Itens <span id="med-itens-badge" class="conf-badge"></span></button>
+            <button type="button" data-tab="detalhes">🔧 Detalhes Execução <span id="med-detalhes-badge" class="conf-badge"></span></button>
+            <button type="button" data-tab="resumo">💰 Resumo</button>
+            <button type="button" data-tab="descricao">📝 Obs.</button>
+          </div>
+
+          <div class="odoo-body">
+            <!-- Geral -->
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Número *</label><input id="med-numero" required placeholder="ex.: 01" /></div>
+                <div class="campo"><label>Obra *</label><select id="med-obra" required></select></div>
+                <div class="campo"><label>Tipo de medição</label>
+                  <select id="med-tipo">
+                    <option value="quinzenal">Quinzenal</option>
+                    <option value="sinal_contratual">Sinal contratual (30%)</option>
+                    <option value="final">Final (fechamento)</option>
+                    <option value="avulsa">Avulsa</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Status</label><select id="med-status"></select></div>
+                <div class="campo"><label>Data da medição</label><input id="med-data" type="date" /></div>
+                <div class="campo"><label>Período — início</label><input id="med-inicio" type="date" /></div>
+                <div class="campo"><label>Período — fim</label><input id="med-fim" type="date" /></div>
+              </div>
+            </div>
+
+            <!-- 📊 Itens da Medição -->
+            <div class="odoo-tab" data-tab="itens">
+              <div class="lista-topo compacta">
+                <h4 class="titulo-linha">Itens da medição</h4>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" class="btn" id="btn-med-compor-sinal" title="Compõe medição de SINAL CONTRATUAL a partir do orçamento aprovado da obra" style="background:var(--sucesso);display:none;">✨ Compor sinal contratual</button>
+                  <button type="button" class="btn-sec" id="btn-med-sugerir" title="Lê execuções do período e sugere itens com preço do orçamento">✨ Sugerir do período</button>
+                  <button type="button" class="btn-sec" id="btn-med-add-item">+ Item manual</button>
+                </div>
+              </div>
+              <div class="tabela-rola">
+                <table class="itens-tabela">
+                  <thead>
+                    <tr>
+                      <th style="width:32px;">#</th>
+                      <th>Variante / Descrição</th>
+                      <th>Qty</th>
+                      <th>Un.</th>
+                      <th>Unit. (R$)</th>
+                      <th class="num">Total (R$)</th>
+                      <th title="De onde veio o preço unitário">Origem</th>
+                      <th class="col-acao"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="med-itens-tbody"></tbody>
+                </table>
+              </div>
+              <div id="med-itens-vazio" style="display:none;padding:18px;text-align:center;color:var(--txt-sutil);font-size:12px;">
+                Nenhum item ainda. Clique <strong>✨ Sugerir do período</strong> pra gerar a partir das execuções dos RDOs, ou <strong>+ Item manual</strong> pra digitar.
+              </div>
+              <p class="nota">
+                💡 Sugestão automática usa execuções dos RDOs do período + preço do orçamento aprovado da obra. Mostra origem do preço em cada linha.
+              </p>
+            </div>
+
+            <!-- 🔧 Detalhes Execução (read-only) — lista cada estaca executada no período + ocorrências -->
+            <div class="odoo-tab" data-tab="detalhes">
+              <p class="texto-apoio compacto">
+                Estacas executadas no período (vem dos RDOs da obra). Mesmos dados que vão pro PDF.
+                Read-only — edição direta na execução é feita pelo módulo RDO.
+              </p>
+              <div id="med-detalhes-conteudo"><p class="vazio">Salve a obra + período pra carregar.</p></div>
+            </div>
+
+            <!-- 💰 Resumo -->
+            <div class="odoo-tab" data-tab="resumo">
+              <div class="grade">
+                <div class="campo">
+                  <label>Subtotal (calculado dos itens)</label>
+                  <input id="med-subtotal" type="number" step="0.01" readonly style="background:var(--sup-2);" value="0" />
+                </div>
+                <div class="campo">
+                  <label>Desconto sinal contratual (R$)</label>
+                  <input id="med-desc-sinal" type="number" step="0.01" min="0" value="0" />
+                </div>
+                <div class="campo largo">
+                  <label>Descrição do desconto</label>
+                  <input id="med-desc-sinal-obs" placeholder="ex.: Sinal contratual 30% pago em 07/05/2026" />
+                </div>
+                <div class="campo">
+                  <label>Acréscimo (R$) — HE, refuros, etc</label>
+                  <input id="med-acrescimo" type="number" step="0.01" min="0" value="0" />
+                </div>
+                <div class="campo largo">
+                  <label>Descrição do acréscimo</label>
+                  <input id="med-acrescimo-obs" placeholder="ex.: 11h45 de hora extra a R$ 420/h" />
+                  <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+                    <button type="button" class="btn-sec btn-sm" id="btn-med-calc-he" title="Soma horas extras dos RDOs do período × valor configurado">✨ Calcular Hora Extra</button>
+                    <button type="button" class="btn-sec btn-sm" id="btn-med-calc-fatmin" title="Conta dias úteis sem produção × faturamento mínimo diário">✨ Calcular Fat. Mínimo</button>
+                    <span id="med-acresc-hint" style="font-size:10px;color:var(--txt-sutil);align-self:center;"></span>
+                  </div>
+                </div>
+                <div class="campo" id="campo-med-multiplicador" style="display:none;">
+                  <label>Multiplicador (%) <small style="font-weight:400;color:var(--txt-sutil);">— Sinal Contratual usa 30%</small></label>
+                  <input id="med-multiplicador" type="number" step="0.01" min="0" max="100" value="100" />
+                </div>
+                <div class="campo">
+                  <label>Valor final (R$)</label>
+                  <input id="med-valor-final" type="number" step="0.01" readonly style="background:var(--sucesso-bg);font-weight:700;color:var(--sucesso-txt);" value="0" />
+                </div>
+                <div class="campo">
+                  <label>Percentual sobre contrato (%)</label>
+                  <input id="med-percentual" type="number" step="0.001" min="0" max="100" value="0" />
+                </div>
+              </div>
+              <div style="background:var(--sup-2);border-radius:6px;padding:12px;margin-top:14px;font-size:12px;color:var(--txt-sec);">
+                <strong>Fórmula:</strong> Valor final = (Subtotal − Desconto sinal + Acréscimo) × (Multiplicador / 100)<br>
+                <strong>Auto-calculado:</strong> subtotal vem dos itens; o multiplicador só aparece quando tipo = <em>Sinal Contratual</em> (default 30%). Demais tipos usam 100%.
+              </div>
+            </div>
+
+            <!-- 📝 Obs. -->
+            <div class="odoo-tab" data-tab="descricao">
+              <div class="grade">
+                <div class="campo largo"><label>Descrição</label><input id="med-descricao" /></div>
+                <div class="campo largo"><label>Observações</label><textarea id="med-obs" rows="6"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MOVIMENTAÇÕES DE ATIVOS (NF-e / MDF-e) -->
+    <section class="secao" id="sec-movimentacoes">
+      <h2>Movimentações de Ativos</h2>
+
+      <!-- ===== Painel (lista / kanban) — padrão Serviços ===== -->
+      <div id="mov-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Movimentações registradas <span id="mov-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+            </div>
+            <button type="button" class="btn" id="btn-nova-movimentacao">+ Nova</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="mov-busca" placeholder="Buscar por número, NF, origem, destino..." />
+            <select id="mov-f-status">
+              <option value="">Todos os status</option>
+              <option value="rascunho">Rascunho</option>
+              <option value="emitida">Emitida</option>
+              <option value="em_transito">Em trânsito</option>
+              <option value="recebida">Recebida</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+            <select id="mov-f-tipo">
+              <option value="">Todos os tipos</option>
+              <option value="remessa">Remessa</option>
+              <option value="retorno">Retorno</option>
+              <option value="transferencia">Transferência</option>
+              <option value="conserto">Conserto</option>
+              <option value="emprestimo">Empréstimo</option>
+              <option value="venda">Venda</option>
+              <option value="setup_inicial">Setup inicial</option>
+            </select>
+          </div>
+          <div id="mov-conteudo"></div>
+        </div>
+      </div>
+
+      <!-- ===== Ficha (estilo Odoo: statusbar + actions + contexto + notebook) ===== -->
+      <div id="mov-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <!-- Ações no header (Odoo header buttons) -->
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-mov">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-rascunho">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-sugerir-fiscais" title="Sugere CFOP e natureza baseado nos itens">🪄 Sugerir fiscais</button>
+              <button type="button" class="btn-sec" id="btn-dados-uninfe">📋 Dados UniNFe</button>
+              <button type="button" class="btn-sec" id="btn-recomenda-mdf">🚚 Verificar MDF-e</button>
+            </div>
+            <div class="actions-right">
+              <button type="button" class="btn" id="btn-marcar-emitida" style="background:var(--marca-600);">✓ Emitida</button>
+              <button type="button" class="btn" id="btn-marcar-transito" style="background:var(--aviso);">🚛 Trânsito</button>
+              <button type="button" class="btn btn-sucesso" id="btn-marcar-recebida">✅ Recebida</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-cancelar">✗ Cancelar</button>
+            </div>
+          </div>
+
+          <!-- Statusbar clicável (Odoo) -->
+          <div class="odoo-statusbar" id="mov-statusbar">
+            <div class="stage" data-status="rascunho">Rascunho</div>
+            <div class="stage" data-status="emitida">Emitida</div>
+            <div class="stage" data-status="em_transito">Em trânsito</div>
+            <div class="stage" data-status="recebida">Recebida</div>
+          </div>
+
+          <!-- Título + contexto (chips) -->
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="mov-ficha-numero">—</strong></div>
+            <div class="chip"><span>Tipo</span><strong id="mov-ficha-tipo-chip">—</strong></div>
+            <div class="chip"><span>Origem</span><strong id="mov-ficha-origem-chip">—</strong></div>
+            <div class="chip"><span>Destino</span><strong id="mov-ficha-destino-chip">—</strong></div>
+            <div class="chip"><span>NF</span><strong id="mov-ficha-nf-chip">—</strong></div>
+            <div class="chip"><span>Total</span><strong id="mov-ficha-total-chip">R$ 0,00</strong></div>
+          </div>
+
+          <!-- Notebook com abas -->
+          <div class="odoo-notebook" id="mov-notebook">
+            <button type="button" data-tab="cabecalho" class="ativo">Cabeçalho</button>
+            <button type="button" data-tab="itens">Itens</button>
+            <button type="button" data-tab="transporte">Transporte</button>
+            <button type="button" data-tab="fiscal">Fiscal (NF-e)</button>
+            <button type="button" data-tab="observacoes">Observações</button>
+          </div>
+
+          <div class="odoo-body">
+            <!-- Aba Cabeçalho -->
+            <div class="odoo-tab ativa" data-tab="cabecalho">
+              <div class="grade">
+                <div class="campo"><label>Tipo *</label>
+                  <select id="mov-tipo">
+                    <option value="remessa">Remessa</option>
+                    <option value="retorno">Retorno</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="conserto">Conserto / manutenção</option>
+                    <option value="emprestimo">Empréstimo</option>
+                    <option value="venda">Venda</option>
+                    <option value="setup_inicial">Setup inicial</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Data de emissão</label><input id="mov-data-emissao" type="date" /></div>
+                <div class="campo"><label>Data de saída</label><input id="mov-data-saida" type="date" /></div>
+                <div class="campo"><label>Data de recebimento</label><input id="mov-data-recebimento" type="date" /></div>
+              </div>
+              <h3 class="titulo-bloco">Origem</h3>
+              <div class="grade">
+                <div class="campo"><label>Tipo da origem</label>
+                  <select id="mov-origem-tipo">
+                    <option value="base">Base CGL</option>
+                    <option value="obra">Obra</option>
+                    <option value="fornecedor_manutencao">Fornecedor / manutenção</option>
+                    <option value="cliente">Cliente</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Descrição</label><input id="mov-origem-descricao" placeholder="ex.: Base Itabira" /></div>
+                <div class="campo"><label>UF</label><select id="mov-origem-uf"></select></div>
+              </div>
+              <h3 class="titulo-bloco">Destino</h3>
+              <div class="grade">
+                <div class="campo"><label>Tipo do destino</label>
+                  <select id="mov-destino-tipo">
+                    <option value="obra">Obra</option>
+                    <option value="base">Base CGL</option>
+                    <option value="fornecedor_manutencao">Fornecedor / manutenção</option>
+                    <option value="cliente">Cliente</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Descrição</label><input id="mov-destino-descricao" placeholder="ex.: Obra ArcelorMittal Tubarão" /></div>
+                <div class="campo"><label>UF</label><select id="mov-destino-uf"></select></div>
+              </div>
+            </div>
+
+            <!-- Aba Itens -->
+            <div class="odoo-tab" data-tab="itens">
+              <div class="tabela-rola">
+                <table class="itens-tabela">
+                  <thead><tr>
+                    <th>Item</th>
+                    <th style="width:90px;">Qtd</th>
+                    <th style="width:60px;">Un</th>
+                    <th style="width:120px;">Valor unit.</th>
+                    <th class="num" style="width:140px;">Total</th>
+                    <th class="col-acao"></th>
+                  </tr></thead>
+                  <tbody id="mov-itens"></tbody>
+                </table>
+              </div>
+              <div class="grade" style="margin-top:12px;">
+                <div class="campo"><label>+ Adicionar equipamento (TAG)</label>
+                  <div style="display:flex;gap:6px;">
+                    <select id="mov-add-equip" style="flex:1;"></select>
+                    <button type="button" class="btn-sec" id="btn-add-equipamento">Adicionar</button>
+                  </div>
+                </div>
+                <div class="campo largo"><label>+ Adicionar produto (busque por nome)</label>
+                  <input id="mov-busca-produto" placeholder="digite ≥ 2 letras..." autocomplete="off" />
+                  <div id="mov-resultados-produto" class="autocomplete-lista" style="display:none;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Aba Transporte -->
+            <div class="odoo-tab" data-tab="transporte">
+              <div class="grade">
+                <div class="campo"><label>Frete por conta</label>
+                  <select id="mov-frete">
+                    <option value="proprio">Próprio CGL</option>
+                    <option value="remetente">Remetente</option>
+                    <option value="destinatario">Destinatário</option>
+                    <option value="terceiro">Terceiro</option>
+                    <option value="sem_frete">Sem frete</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Placa do veículo</label><input id="mov-transp-placa" placeholder="AAA-0000" /></div>
+                <div class="campo"><label>Motorista</label><input id="mov-motorista" /></div>
+                <div class="campo"><label>Peso bruto (kg)</label><input id="mov-peso-bruto" type="number" step="0.001" min="0" /></div>
+                <div class="campo"><label>Peso líquido (kg)</label><input id="mov-peso-liquido" type="number" step="0.001" min="0" /></div>
+              </div>
+              <div id="bloco-transportador" style="display:none;">
+                <h3 class="titulo-bloco">Dados da transportadora (frete terceiro)</h3>
+                <div class="grade">
+                  <div class="campo largo"><label>Nome / Razão social</label><input id="mov-transp-nome" /></div>
+                  <div class="campo"><label>CNPJ</label><input id="mov-transp-cnpj" /></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Aba Fiscal -->
+            <div class="odoo-tab" data-tab="fiscal">
+              <p class="nota">Preencha após emitir a NF-e no UniNFe.</p>
+              <div class="grade">
+                <div class="campo"><label>Natureza da operação</label><input id="mov-natureza" placeholder="ex.: REMESSA BEM ATIVO IMOBILIZADO" /></div>
+                <div class="campo"><label>CFOP</label><input id="mov-cfop" placeholder="5554 ou 5949" /></div>
+                <div class="campo"><label>NF nº</label><input id="mov-nf-numero" /></div>
+                <div class="campo"><label>Série</label><input id="mov-nf-serie" value="1" /></div>
+                <div class="campo largo"><label>Chave de acesso (44 dígitos)</label><input id="mov-nf-chave" /></div>
+                <div class="campo largo"><label>Protocolo de autorização</label><input id="mov-nf-protocolo" /></div>
+                <div class="campo"><label>Valor total dos produtos (R$)</label><input id="mov-valor-produtos" type="number" step="0.01" min="0" readonly style="background:var(--sup-2);" /></div>
+                <div class="campo largo"><label>Informação complementar</label><textarea id="mov-info-complementar" placeholder="se vazio, sistema sugere texto padrão na geração"></textarea></div>
+              </div>
+            </div>
+
+            <!-- Aba Observações -->
+            <div class="odoo-tab" data-tab="observacoes">
+              <div class="grade">
+                <div class="campo largo"><label>Observações internas</label><textarea id="mov-observacoes" rows="6"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Dados pra UniNFe -->
+      <div id="mov-uninfe-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:720px;width:90%;max-height:80vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 class="titulo-linha">Dados pra colar no UniNFe</h3>
+            <button type="button" class="btn-sec" id="btn-fechar-uninfe">×</button>
+          </div>
+          <pre id="mov-uninfe-conteudo" style="background:var(--sup-2);padding:14px;border-radius:6px;overflow:auto;font-size:12px;flex:1;font-family:Consolas,monospace;white-space:pre-wrap;"></pre>
+          <div class="form-acoes" style="margin-top:12px;">
+            <button type="button" class="btn" id="btn-copiar-uninfe">📋 Copiar tudo</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- USUÁRIOS (acesso apenas para admin) -->
+    <section class="secao" id="sec-usuarios">
+      <h2>Usuários</h2>
+
+      <!-- Painel -->
+      <div id="usr-painel">
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Usuários cadastrados <span id="usr-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Kanban (por cargo)</button>
+            </div>
+            <button type="button" class="btn" id="btn-novo-usuario">+ Convidar</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="usr-busca" placeholder="Buscar por nome, e-mail ou cargo..." />
+            <select id="usr-f-cargo"></select>
+            <select id="usr-f-ativo">
+              <option value="">Todos</option>
+              <option value="ativos">Só ativos</option>
+              <option value="inativos">Só inativos</option>
+            </select>
+          </div>
+          <div id="usr-conteudo"></div>
+          <table style="display:none;"><tbody id="tab-usuarios"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Ficha -->
+      <div id="usr-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-usr">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-usr">📨 Enviar convite</button>
+              <button type="button" class="btn-sec" id="btn-reset-senha-usr" style="display:none;">🔑 Resetar senha</button>
+            </div>
+            <div class="actions-right">
+              <strong id="usr-ficha-titulo" class="ficha-titulo">Convidar usuário</strong>
+            </div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Nome</span><strong id="usr-ficha-nome">—</strong></div>
+            <div class="chip"><span>Cargo</span><strong id="usr-ficha-cargo-chip">—</strong></div>
+            <div class="chip"><span>E-mail</span><strong id="usr-ficha-email-chip">—</strong></div>
+            <div class="chip"><span>Telefone</span><strong id="usr-ficha-tel-chip">—</strong></div>
+            <div class="chip"><span>Situação</span><strong id="usr-ficha-ativo-chip">—</strong></div>
+          </div>
+
+          <div class="odoo-notebook" id="usr-notebook">
+            <button type="button" data-tab="perfil" class="ativo">Perfil</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="perfil">
+              <div class="grade">
+                <div class="campo"><label>E-mail *</label><input id="usr-email" type="email" required autocomplete="off" /></div>
+                <div class="campo"><label>Nome completo *</label><input id="usr-nome-input" required autocomplete="off" /></div>
+                <div class="campo"><label>Cargo *</label><select id="usr-cargo" required></select></div>
+                <div class="campo"><label>Telefone</label><input id="usr-telefone" /></div>
+                <div class="campo"><label>Situação</label>
+                  <label class="check-inline"><input type="checkbox" id="usr-ativo" /> Usuário ativo</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- ===== Modal: definir senha (chegada por convite/recuperação) ===== -->
+    <div id="senha-modal" class="modal-fundo" style="display:none;">
+      <div class="modal-caixa" style="max-width:420px;">
+        <h3 class="titulo-linha" style="margin-bottom:8px;">🔐 Defina sua senha</h3>
+        <p class="texto-apoio">Você entrou por um link de convite ou recuperação. Escolha a senha que usará nos próximos acessos.</p>
+        <div class="campo"><label>Nova senha (mín. 8 caracteres)</label><input id="senha-nova" type="password" autocomplete="new-password" /></div>
+        <div class="campo"><label>Confirmar senha</label><input id="senha-confirma" type="password" autocomplete="new-password" /></div>
+        <div id="senha-modal-aviso" class="aviso"></div>
+        <div class="form-acoes compacta">
+          <button type="button" class="btn" id="btn-senha-salvar">Salvar senha</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Modal: enviar contrato para assinatura (D4Sign) =====
+         Compartilhado pela ficha do contrato de fornecedor e pela aba
+         Contrato da obra; js/contratos.js controla. -->
+    <div id="d4s-modal" class="modal-fundo" style="display:none;">
+      <div class="modal-caixa">
+        <h3 class="titulo-linha" style="margin-bottom:14px;">✍️ Enviar para assinatura (D4Sign)</h3>
+        <p class="texto-apoio">O documento vai para a plataforma D4Sign e os signatários recebem o link por e-mail.
+           Quando todos assinarem, o PDF assinado volta automaticamente para a aba Documentos.</p>
+        <div class="grade">
+          <div class="campo largo"><label>Documento a assinar *</label>
+            <select id="d4s-documento"></select>
+          </div>
+          <div class="campo"><label>Signatário 1 — nome</label><input id="d4s-nome-1" /></div>
+          <div class="campo"><label>Signatário 1 — e-mail *</label><input id="d4s-email-1" type="email" /></div>
+          <div class="campo"><label>Signatário 2 — nome</label><input id="d4s-nome-2" /></div>
+          <div class="campo"><label>Signatário 2 — e-mail</label><input id="d4s-email-2" type="email" /></div>
+          <div class="campo"><label>Signatário 3 — nome</label><input id="d4s-nome-3" /></div>
+          <div class="campo"><label>Signatário 3 — e-mail</label><input id="d4s-email-3" type="email" /></div>
+          <div class="campo largo"><label>Mensagem do e-mail (opcional)</label>
+            <input id="d4s-mensagem" placeholder="ex.: Segue contrato para assinatura." />
+          </div>
+        </div>
+        <p class="nota" id="d4s-cota-nota"></p>
+        <div class="form-acoes compacta">
+          <button type="button" class="btn" id="btn-d4s-enviar">✍️ Enviar</button>
+          <button type="button" class="btn-sec" id="btn-d4s-cancelar">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL: ENROLAMENTO MFA (admin sem TOTP cadastrado) -->
+<div id="modal-mfa" style="display:none; position:fixed; inset:0; z-index:10000;
+     background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+  <div style="background:var(--sup-0); border-radius:8px; padding:28px 32px; max-width:440px; width:92%;
+              box-shadow:0 8px 40px rgba(0,0,0,0.3); max-height:90vh; overflow-y:auto;">
+    <h3 style="margin:0 0 6px; font-size:17px; color:var(--marca-900);">🔐 Autenticação em dois fatores</h3>
+    <p style="margin:0 0 20px; font-size:13px; color:var(--txt-fraco); line-height:1.55;">
+      Escaneie o QR code com <strong>Google Authenticator</strong>, <strong>Authy</strong> ou similar.
+      Depois, digite o código de 6 dígitos gerado para confirmar.
+    </p>
+    <div id="mfa-qr-area" style="text-align:center; padding:8px 0 20px; min-height:60px;"></div>
+    <div id="mfa-secret-area" style="display:none; background:var(--sup-2); border-radius:4px;
+         padding:10px 14px; font-size:12px; margin-bottom:16px; word-break:break-all;
+         color:var(--txt-sec); line-height:1.6;">
+      <strong>Chave manual:</strong><br>
+      <span id="mfa-secret-text" style="font-family:monospace; font-size:14px; letter-spacing:2px;"></span>
+    </div>
+    <button type="button" id="btn-mfa-mostrar-codigo"
+            style="font-size:12px; background:none; border:none; color:var(--marca-600); cursor:pointer;
+                   margin-bottom:18px; padding:0; display:block; text-decoration:underline;">
+      Não consigo escanear — mostrar chave manual
+    </button>
+    <div class="campo" style="margin-bottom:12px;">
+      <label>Código de verificação (6 dígitos)</label>
+      <input type="text" id="mfa-codigo-input" maxlength="6" placeholder="000000"
+             autocomplete="one-time-code" inputmode="numeric"
+             style="letter-spacing:6px; font-size:22px; text-align:center; font-family:monospace;" />
+    </div>
+    <div id="mfa-modal-aviso" class="aviso" style="margin-bottom:10px;"></div>
+    <div style="display:flex; gap:10px;">
+      <button type="button" class="btn" id="btn-mfa-verificar" style="flex:1;">✅ Verificar e ativar</button>
+      <button type="button" class="btn-sec" id="btn-mfa-cancelar">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====================== SCRIPTS ====================== -->
+<!-- core.js define o cliente Supabase, helpers, login e navegação -->
+<script src="js/core.js"></script>
+<!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
+<script src="js/historico.js"></script>
+<!-- módulos: cada arquivo registra seus formulários e funções de carga -->
+<script src="js/clientes.js"></script>
+<script src="js/fornecedores.js"></script>
+<script src="js/funcionarios.js"></script>
+<script src="js/servicos.js"></script>
+<script src="js/produtos.js"></script>
+<script src="js/estoque.js"></script>
+<script src="js/orcamentos.js"></script>
+<script src="js/propostas.js"></script>
+<script src="js/contratos.js"></script>
+<script src="js/carteira.js"></script>
+<script src="js/obras.js"></script>
+<script src="js/estacas.js"></script>
+<script src="js/obra_abas.js"></script>
+<script src="js/medicoes.js"></script>
+<script src="js/movimentacoes.js"></script>
+<script src="js/rdo.js"></script>
+<script src="js/usuarios.js"></script>
+<script src="js/dashboard.js"></script>
+<!-- init.js dispara a inicialização depois que tudo foi carregado -->
+<script src="js/init.js"></script>
+</body>
+</html>
