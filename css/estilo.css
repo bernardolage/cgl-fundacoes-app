@@ -2426,3 +2426,16 @@ tr.cart-aberta td { background: var(--info-bg); }
   background: var(--sup-0);
 }
 .tl-nova-caixa .btn { padding: 8px 16px; font-size: var(--txt-md); }
+
+/* Link "Esqueci minha senha" na tela de login */
+.link-esqueci {
+  display: block;
+  margin: var(--esp-3) auto 0;
+  font-size: var(--txt-sm);
+  color: var(--marca-600);
+  text-decoration: underline;
+  background: none;
+  border: none;
+}
+.link-esqueci:hover { color: var(--marca-700); }
+.link-esqueci:disabled { color: var(--txt-sutil); cursor: default; text-decoration: none; }

@@ -266,6 +266,37 @@ $("form-login").addEventListener("submit", async (e)=>{
   iniciarApp();
 });
 
+/* ---------- Esqueci minha senha ----------
+   Envia o link de redefinição; o retorno chega com #type=recovery e o
+   modal "Defina sua senha" (fase 24) cuida do resto. O e-mail sai pelo
+   serviço embutido do Supabase (limite de poucos envios/hora), por isso
+   o botão trava por 60s após cada envio. */
+$("btn-esqueci-senha")?.addEventListener("click", async ()=>{
+  const email = $("login-email").value.trim().toLowerCase();
+  if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    aviso("login-aviso","Digite seu e-mail no campo acima e clique de novo em \"Esqueci minha senha\".","erro");
+    $("login-email").focus();
+    return;
+  }
+  const btn = $("btn-esqueci-senha");
+  btn.disabled = true;
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: location.protocol.startsWith("http")
+      ? location.origin + location.pathname
+      : undefined
+  });
+  if(error){
+    btn.disabled = false;
+    const m = (error.message||"").toLowerCase();
+    aviso("login-aviso", m.includes("rate") || m.includes("seconds")
+      ? "Muitas tentativas — aguarde um minuto e tente de novo."
+      : "Não foi possível enviar: " + error.message, "erro");
+    return;
+  }
+  aviso("login-aviso",`📧 Enviamos um link de redefinição para ${email}. Abra o e-mail (confira o spam) e clique no link — você voltará aqui direto na tela de nova senha.`,"ok");
+  setTimeout(()=>{ btn.disabled = false; }, 60000);
+});
+
 $("btn-ver-senha").addEventListener("click", ()=>{
   const inp = $("login-senha");
   const oculto = inp.type === "password";
