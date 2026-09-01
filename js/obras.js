@@ -23,7 +23,7 @@ const OBR_CON_DOC_CONF = {
 
 /* ---------- Carga ---------- */
 async function carregarObras(){
-  const { data, error } = await sb.from("obras")
+  const { data, error } = await sb.from("vw_obras_controle")
     .select("id,codigo,nome,cliente_id,status,valor_contratado,data_inicio,data_fim_prevista,responsavel_id,cidade,uf")
     .order("codigo");
   if(error){
