@@ -9,6 +9,8 @@ let _obrRegistros = [];   // cache da lista (filtros client-side)
 let _obrView      = "lista";
 let obraEditId    = null; // null = nova; uuid = editando
 let _obrContrato  = null; // contrato do cliente vinculado à obra aberta (fase 21)
+let _obrContratoPend = []; // pendências do contrato da obra aberta (fase 26)
+let _obrPendMap   = {};   // contrato_id -> [pendências] (badge na lista, fase 26)
 
 /* Etapas do statusbar (ordem do enum obra_status) */
 const OBR_STAGES = ["planejada","em_andamento","paralisada","concluida"];
@@ -24,7 +26,7 @@ const OBR_CON_DOC_CONF = {
 /* ---------- Carga ---------- */
 async function carregarObras(){
   const { data, error } = await sb.from("vw_obras_controle")
-    .select("id,codigo,nome,cliente_id,status,valor_contratado,data_inicio,data_fim_prevista,responsavel_id,cidade,uf")
+    .select("id,codigo,nome,cliente_id,contrato_id,status,valor_contratado,data_inicio,data_fim_prevista,responsavel_id,cidade,uf")
     .order("codigo");
   if(error){
     _obrRegistros = [];
@@ -33,6 +35,7 @@ async function carregarObras(){
     mapaObras = {};
     _obrRegistros.forEach(o => mapaObras[o.id] = `${o.codigo} — ${o.nome}`);
   }
+  await carregarPendenciasObras();
   renderObras();
 
   // alimenta selects que dependem de obras
@@ -42,6 +45,29 @@ async function carregarObras(){
       _obrRegistros.map(o => ({ id:o.id, txt:`${o.codigo} — ${o.nome}` })),
       "id","txt","— selecione —");
   }
+}
+
+/* Carrega as pendências de contrato (mesma fonte da Carteira) e indexa por
+   contrato_id, para destacar na lista/kanban de obras. Falha em silêncio
+   se o perfil não puder ler a view. (fase 26) */
+async function carregarPendenciasObras(){
+  _obrPendMap = {};
+  try {
+    const { data, error } = await sb.from("vw_pendencias_contratos")
+      .select("contrato_id,tipo,severidade");
+    if(error || !data) return;
+    data.forEach(p => { (_obrPendMap[p.contrato_id] ||= []).push(p); });
+  } catch(_e) { /* sem permissão / view ausente: sem badge */ }
+}
+
+/* Badge de pendência para a lista/kanban de obras. Saldo negativo (precisa
+   de aditivo) tem destaque vermelho; demais pendências, âmbar com contagem. */
+function obrPendBadge(o){
+  const pend = (o && o.contrato_id) ? _obrPendMap[o.contrato_id] : null;
+  if(!pend || !pend.length) return "";
+  if(pend.some(p => p.tipo === "saldo_negativo"))
+    return `<span class="tag vermelho" title="Saldo negativo — precisa de aditivo">precisa aditivo</span>`;
+  return `<span class="tag ambar" title="${pend.length} pendência(s) no contrato deste cliente">${pend.length} pend.</span>`;
 }
 
 /* ---------- Filtros ---------- */
@@ -99,7 +125,7 @@ function renderObrasLista(dados){
     return;
   }
   const linhas = dados.map(o => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
-    <td>${esc(o.codigo)}</td>
+    <td>${esc(o.codigo)} ${obrPendBadge(o)}</td>
     <td>${esc(o.nome)}</td>
     <td>${esc(mapaClientes[o.cliente_id] || "—")}</td>
     <td>${esc((o.cidade||"") + (o.uf ? "/" + o.uf.toUpperCase() : ""))}</td>
@@ -127,6 +153,7 @@ function renderObrasKanban(dados){
         <div class="serv-kan-card-nome">${esc(o.codigo)} · ${esc(o.nome)}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">${esc(mapaClientes[o.cliente_id]||"—")}</span>
+          ${obrPendBadge(o)}
         </div>
         <div class="serv-kan-card-rod">
           <span>${o.cidade ? esc(o.cidade) + "/" + esc((o.uf||"").toUpperCase()) : "—"}</span>
@@ -223,6 +250,8 @@ async function abrirObra(id){
    ==================================================================== */
 function limparAbaContratoObra(){
   _obrContrato = null;
+  _obrContratoPend = [];
+  const box = $("obr-con-pendencias"); if(box) box.innerHTML = "";
   ["obr-con-numero","obr-con-assinatura","obr-con-orcamento","obr-con-indice","obr-con-descricao"]
     .forEach(k => { const el = $(k); if(el) el.value = ""; });
   const cat = $("obr-con-categoria"); if(cat) cat.value = "empreitada";
@@ -243,12 +272,56 @@ async function carregarContratoDaObra(contratoId){
   $("obr-con-indice").value     = data.indice_reajuste || "";
   $("obr-con-descricao").value  = data.descricao || "";
   atualizarBadgeContratoObra();
+  renderPendenciasContratoObra(contratoId);
+}
+
+/* Bloco de pendências do contrato dentro da ficha da Obra (fase 26).
+   Mesma fonte da Carteira (vw_pendencias_contratos), para a engenharia
+   ver e resolver sem depender do acesso à Carteira. */
+async function renderPendenciasContratoObra(contratoId){
+  const box = $("obr-con-pendencias");
+  _obrContratoPend = [];
+  if(box) box.innerHTML = "";
+  if(!contratoId){ atualizarBadgeContratoObra(); return; }
+  const { data, error } = await sb.from("vw_pendencias_contratos")
+    .select("tipo,detalhe,valor_impacto,severidade").eq("contrato_id", contratoId);
+  if(error){ atualizarBadgeContratoObra(); return; }
+  const pend = (data || []).slice().sort((a,b) => (a.severidade||9) - (b.severidade||9));
+  _obrContratoPend = pend;
+  atualizarBadgeContratoObra();
+  if(!box) return;
+  if(!pend.length){
+    box.innerHTML = `<div class="dist-aviso ok" style="margin-bottom:14px;">✓ Sem pendências neste contrato.</div>`;
+    return;
+  }
+  const meta = (typeof CART_PEND_META !== "undefined") ? CART_PEND_META : {};
+  const itens = pend.map(p => {
+    const m = meta[p.tipo] || { label: p.tipo, cor: "cinza" };
+    let txt = esc(p.detalhe || "");
+    if(p.tipo === "saldo_negativo" && p.valor_impacto != null)
+      txt += ` <strong>(excede ${brl(p.valor_impacto)} — abra um aditivo)</strong>`;
+    return `<li><span class="tag ${m.cor}">${esc(m.label)}</span> ${txt}</li>`;
+  }).join("");
+  const grave = pend.some(p => (p.severidade || 9) === 1);
+  box.innerHTML = `<div class="dist-aviso ${grave ? "alerta" : "neutro"}" style="margin-bottom:14px;">
+    <strong>⚠️ ${pend.length} pendência(s) neste contrato</strong>
+    <span class="meta">resolva o quanto antes — cada linha some sozinha quando o cadastro é corrigido</span>
+    <ul style="margin:6px 0 0;padding-left:18px;">${itens}</ul>
+  </div>`;
 }
 
 /* Badge da aba: ✓ quando há contrato, alerta quando ele ainda não foi assinado */
 function atualizarBadgeContratoObra(){
   const badge = $("obr-con-badge");
   if(!badge) return;
+  // Pendências (fase 26) têm prioridade no badge: mostra a contagem em alerta.
+  const nPend = (_obrContratoPend || []).length;
+  if(nPend){
+    badge.textContent = String(nPend);
+    badge.className   = "aba-badge alerta";
+    badge.title       = `${nPend} pendência(s) no contrato — ver aba Contrato`;
+    return;
+  }
   if(!_obrContrato){ badge.textContent = ""; badge.className = "aba-badge"; return; }
   const pendente = !_obrContrato.data_assinatura;
   badge.textContent = pendente ? "!" : "✓";

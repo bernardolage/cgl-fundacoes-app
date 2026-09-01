@@ -356,10 +356,12 @@ async function iniciarApp(){
   const navUsr = $("nav-usuarios");
   if(navUsr) navUsr.style.display = ehDiretorOuAdmin ? "" : "none";
 
-  /* "Carteira" (controle de contratos & pendências): diretoria/engenharia */
+  /* "Carteira" (controle de contratos & pendências): só diretoria.
+     As pendências que interessam à engenharia aparecem dentro da ficha
+     da Obra (aba Contrato) e como badge na lista de obras. */
   const navCart = $("nav-carteira");
   if(navCart) navCart.style.display =
-    (perfil && ["diretor","admin","engenheiro"].includes(perfil.cargo)) ? "" : "none";
+    (perfil && ["diretor","admin"].includes(perfil.cargo)) ? "" : "none";
 
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";

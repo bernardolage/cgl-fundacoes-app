@@ -33,7 +33,8 @@ const CART_PEND_META = {
   aditivo_sem_valor:     { label: "Aditivo s/ valor",      curto: "aditivo s/ valor", cor: "ambar"  },
   valor_provisorio:      { label: "Valor provisório",      curto: "provisório",     cor: "ambar"    },
   quadro_parcial:        { label: "Quadro parcial",        curto: "quadro",         cor: "azul"     },
-  composicao_divergente: { label: "Composição divergente", curto: "divergência",    cor: "azul"     }
+  composicao_divergente: { label: "Composição divergente", curto: "divergência",    cor: "azul"     },
+  saldo_negativo:        { label: "Saldo negativo — precisa de aditivo", curto: "precisa aditivo", cor: "vermelho" }
 };
 
 /* ---------- Formatação ---------- */
