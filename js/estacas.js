@@ -12,12 +12,33 @@ let _estExecId = null;        // estaca aberta no modal de execução rápida
 let _estacaFuncs = [];        // cache funcionários para select operador
 let _estacaEquips = [];       // cache equipamentos para select equipamento
 let _plantaState = { zoom: 1, panX: 0, panY: 0 }; // estado do pan/zoom
+let _plantaCor = "status";  // como colorir a planta: "status" | "maquina"
+const _mapaMaquinas = {};   // equipamento_id -> { codigo, nome }
+let _equipamentosCache = []; // equipamentos ativos da obra atual
+let _distanciaMinObra = 2.05; // distância mínima entre estacas em sequência
+let _dxfParsed = null;        // resultado do parse do DXF: { entidades, layers }
+let _dxfCfg = null;           // config escolhida no modal DXF
 
+/* Paleta para colorir por máquina (cores de domínio, não semânticas) */
+const CORES_MAQUINA = ["#F4A020", "#1B5FA8", "#8B5CF6", "#2D7D46", "#C0392B",
+                        "#0EA5E9", "#DB2777", "#65A30D", "#EA580C", "#4B5563"];
+function corDaMaquina(eqId){
+  if(!eqId) return "var(--txt-sutil)";
+  const ids = Object.keys(_mapaMaquinas).sort();
+  const i = ids.indexOf(eqId);
+  return CORES_MAQUINA[i % CORES_MAQUINA.length];
+}
+
+/* Cores da estaca por status na planta. Fluxo (fase 25):
+   prevista → em_execucao → perfuracao_concluida → armacao_aplicada
+   → executada(=concretada) → refugada. */
 const COR_STATUS = {
-  prevista:    "var(--estaca-prevista)",
-  em_execucao: "var(--aviso)",
-  executada:   "var(--sucesso)",
-  refugada:    "var(--perigo)"
+  prevista:             "var(--estaca-prevista)",
+  em_execucao:          "var(--aviso)",
+  perfuracao_concluida: "var(--estaca-hoje)",
+  armacao_aplicada:     "var(--marca-laranja)",
+  executada:            "var(--sucesso)",
+  refugada:             "var(--perigo)"
 };
 const COR_HOJE = "var(--estaca-hoje)";
 
@@ -70,10 +91,12 @@ const ESTACA_TIPOS = {
 };
 
 const ESTACA_STATUS = {
-  prevista:     { label: "Prevista",     cor: "cinza" },
-  em_execucao:  { label: "Em execução",  cor: "ambar" },
-  executada:    { label: "Executada",    cor: "verde" },
-  refugada:     { label: "Refurada",     cor: "vermelho" }
+  prevista:             { label: "Prevista",              cor: "cinza"    },
+  em_execucao:          { label: "Em execução",           cor: "ambar"    },
+  perfuracao_concluida: { label: "Perfuração concluída",  cor: "azul"     },
+  armacao_aplicada:     { label: "Armação aplicada",      cor: "ambar"    },
+  executada:            { label: "Executada",             cor: "verde"    },
+  refugada:             { label: "Refurada",              cor: "vermelho" }
 };
 
 /* ---------- Carga ---------- */
@@ -83,15 +106,19 @@ async function carregarEstacasDaObra(obraId){
     renderEstacas();
     return;
   }
-  const [estsRes, execsRes] = await Promise.all([
+  const [estsRes, execsRes, equipsRes, obraRes] = await Promise.all([
     sb.from("estacas")
-      .select("id,numero,tipo,status,diametro_mm,profundidade_m,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo")
+      .select("id,numero,tipo,status,diametro_mm,profundidade_m,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y")
       .eq("obra_id", obraId)
       .order("numero"),
     sb.from("rdo_execucao_estaca")
       .select("estaca_id, modalidade_execucao, rdo:rdo_id(obra_id)")
-      .not("estaca_id", "is", null)
+      .not("estaca_id", "is", null),
+    sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo"),
+    sb.from("obras").select("distancia_minima_estacas").eq("id", obraId).single()
   ]);
+  _equipamentosCache = equipsRes.error ? [] : (equipsRes.data || []);
+  _distanciaMinObra = obraRes.data?.distancia_minima_estacas ?? 2.05;
   _estacas = estsRes.error ? [] : (estsRes.data || []);
   // Conta execuções por estaca pra detectar "ALTERADO" (refuros, casamentos errados)
   const contExec = {};
@@ -218,8 +245,27 @@ function abrirModalEstaca(id){
   $("est-cota-ponta").value     = e.cota_ponta ?? "";
   $("est-volume").value         = e.volume_concreto_m3 ?? "";
   $("est-data").value           = e.data_execucao || "";
+  $("est-bloco").value          = e.bloco || "";
+  $("est-ordem").value          = e.ordem_execucao ?? "";
+  $("est-coord-x").value        = e.coord_x ?? "";
+  $("est-coord-y").value        = e.coord_y ?? "";
   $("est-obs").value            = e.observacoes || "";
+  preencherSelectMaquinasEstaca("est-equipamento", e.equipamento_id);
   $("est-modal").style.display = "flex";
+}
+
+/* Preenche um select com as máquinas (equipamentos) disponíveis */
+async function preencherSelectMaquinasEstaca(selId, selecionado){
+  const sel = $(selId);
+  if(!sel) return;
+  if(!sel.dataset.carregado){
+    const { data } = await sb.from("equipamentos")
+      .select("id,codigo,nome").eq("ativo", true).order("codigo");
+    sel.innerHTML = `<option value="">— nenhuma —</option>` +
+      (data || []).map(eq => `<option value="${esc(eq.id)}">${esc(eq.codigo || eq.nome)}${eq.codigo && eq.nome ? " — " + esc(eq.nome) : ""}</option>`).join("");
+    sel.dataset.carregado = "1";
+  }
+  sel.value = selecionado || "";
 }
 
 function fecharModalEstaca(){
@@ -243,6 +289,11 @@ async function salvarEstaca(){
     cota_ponta: $("est-cota-ponta").value !== "" ? Number($("est-cota-ponta").value) : null,
     volume_concreto_m3: $("est-volume").value !== "" ? Number($("est-volume").value) : null,
     data_execucao: $("est-data").value || null,
+    bloco: $("est-bloco").value.trim() || null,
+    equipamento_id: $("est-equipamento").value || null,
+    ordem_execucao: $("est-ordem").value !== "" ? Number($("est-ordem").value) : null,
+    coord_x: $("est-coord-x").value !== "" ? Number($("est-coord-x").value) : null,
+    coord_y: $("est-coord-y").value !== "" ? Number($("est-coord-y").value) : null,
     observacoes: $("est-obs").value.trim() || null
   };
 
@@ -344,8 +395,9 @@ async function importarEstacasPDF(){
   }
 }
 
-function renderImportPreview(observacoes, meta){
-  $("est-import-preview").style.display = "";
+function renderImportPreview(observacoes, meta, contId = "est-import-preview-conteudo", wrapId = "est-import-preview"){
+  if($(wrapId)) $(wrapId).style.display = "";
+  const temCoord = _importPreview.some(e => e.coord_x != null || e.coord_y != null);
   const obs = observacoes ? `<p style="font-size:12px;color:var(--txt-fraco);margin:0 0 8px;"><b>Notas da IA:</b> ${esc(observacoes)}</p>` : "";
   const metaTxt = meta ? `<p style="font-size:11px;color:var(--txt-sutil);margin:0 0 8px;">Modelo: ${esc(meta.modelo)} · Tokens: ${meta.tokens_input}/${meta.tokens_output}</p>` : "";
 
@@ -443,38 +495,41 @@ function renderImportPreview(observacoes, meta){
       </td>
       <td ${semDiamHl}><input type="number" step="0.1" value="${esc(e.diametro_mm ?? "")}" data-idx="${idx}" data-field="diametro_mm" class="prev-input col-xs"/></td>
       <td ${semProfHl}><input type="number" step="0.01" value="${esc(e.profundidade_m ?? "")}" data-idx="${idx}" data-field="profundidade_m" class="prev-input col-xs"/></td>
+      ${temCoord ? `
+      <td><input type="number" step="any" value="${esc(e.coord_x ?? "")}" data-idx="${idx}" data-field="coord_x" class="prev-input col-xs"/></td>
+      <td><input type="number" step="any" value="${esc(e.coord_y ?? "")}" data-idx="${idx}" data-field="coord_y" class="prev-input col-xs"/></td>` : ""}
       <td><input type="text" value="${esc(e.observacoes||"")}" data-idx="${idx}" data-field="observacoes" class="prev-input"/></td>
       <td><button type="button" class="btn-sec btn-sm prev-del txt-perigo" data-idx="${idx}">×</button></td>
     </tr>`;
   }).join("");
 
-  $("est-import-preview-conteudo").innerHTML = `
+  $(contId).innerHTML = `
     ${obs}${metaTxt}${alerta}${reorganizador}${massEdit}
     <div class="tabela-rola">
       <table>
         <thead><tr>
-          <th>Nº</th><th>Bloco</th><th>Tipo</th><th>Ø (mm)</th><th>Prof. (m)</th><th>Obs.</th><th></th>
+          <th>Nº</th><th>Bloco</th><th>Tipo</th><th>Ø (mm)</th><th>Prof. (m)</th>${temCoord ? "<th>X</th><th>Y</th>" : ""}<th>Obs.</th><th></th>
         </tr></thead>
         <tbody>${linhas}</tbody>
       </table>
     </div>
-    <p style="margin-top:8px;font-size:12px;color:var(--txt-fraco);">${_importPreview.length} estacas extraídas. Edite o que precisar antes de importar. <span style="background:var(--aviso-bg);padding:1px 6px;">células amarelas</span> = campos vazios.</p>
+    <p style="margin-top:8px;font-size:12px;color:var(--txt-fraco);">${_importPreview.length} estacas${temCoord ? " (com coordenadas)" : " extraídas"}. Edite o que precisar antes de importar. <span style="background:var(--aviso-bg);padding:1px 6px;">células amarelas</span> = campos vazios.</p>
   `;
 
   // listeners de edição inline
-  $("est-import-preview-conteudo").querySelectorAll(".prev-input").forEach(inp => {
+  $(contId).querySelectorAll(".prev-input").forEach(inp => {
     inp.addEventListener("input", (e) => {
       const idx = Number(e.target.dataset.idx);
       const field = e.target.dataset.field;
       let v = e.target.value;
-      if(field === "diametro_mm" || field === "profundidade_m") v = v !== "" ? Number(v) : null;
+      if(field === "diametro_mm" || field === "profundidade_m" || field === "coord_x" || field === "coord_y") v = v !== "" ? Number(v) : null;
       _importPreview[idx][field] = v;
     });
   });
-  $("est-import-preview-conteudo").querySelectorAll(".prev-del").forEach(b => {
+  $(contId).querySelectorAll(".prev-del").forEach(b => {
     b.addEventListener("click", (e) => {
       _importPreview.splice(Number(e.target.dataset.idx), 1);
-      renderImportPreview(observacoes, meta);
+      renderImportPreview(observacoes, meta, contId, wrapId);
     });
   });
 
@@ -494,7 +549,7 @@ function renderImportPreview(observacoes, meta){
     });
     const labelAcao = { swap: "Trocadas", mover: "Movidas", copiar: "Copiadas", limpar: "Limpas" }[acao];
     aviso("app-aviso", `${labelAcao} colunas em ${_importPreview.length} linhas.`, "ok");
-    renderImportPreview(observacoes, meta);
+    renderImportPreview(observacoes, meta, contId, wrapId);
   }
   $("btn-reorg-aplicar")?.addEventListener("click", () => {
     aplicarReorg($("reorg-acao").value, $("reorg-a").value, $("reorg-b").value);
@@ -520,7 +575,7 @@ function renderImportPreview(observacoes, meta){
       if(vTipo && (!soVazios || !e.tipo || e.tipo === "outro")){ e.tipo = vTipo; }
     });
     aviso("app-aviso", `Aplicado a ${alterados || _importPreview.length} estacas.`, "ok");
-    renderImportPreview(observacoes, meta);
+    renderImportPreview(observacoes, meta, contId, wrapId);
   });
 }
 
@@ -538,9 +593,10 @@ async function confirmarImportEstacas(){
       status: "prevista",
       diametro_mm: e.diametro_mm ?? null,
       profundidade_m: e.profundidade_m ?? null,
-      observacoes: e.bloco
-        ? `Bloco ${e.bloco}${e.observacoes ? " · " + e.observacoes : ""}`
-        : (e.observacoes || null)
+      bloco: e.bloco || null,
+      coord_x: e.coord_x ?? null,
+      coord_y: e.coord_y ?? null,
+      observacoes: e.observacoes || null
     }));
   if(!regs.length){ aviso("app-aviso","Nenhuma estaca válida (todas sem nº).","erro"); return; }
 
@@ -570,6 +626,246 @@ function abrirModalImport(){
 function fecharModalImport(){
   $("est-import-modal").style.display = "none";
   _importPreview = [];
+}
+
+/* ====================================================================
+   IMPORTAÇÃO via DXF (CAD) — parser client-side, sem servidor.
+   DWG é binário proprietário da Autodesk; peça ao projetista/CAD para
+   exportar em DXF (ou use o ODA File Converter, grátis) antes de importar.
+   ==================================================================== */
+
+/* Limpa formatação de MTEXT (\A1;  {\fArial...}  \P  etc) deixando só o texto */
+function _limparTextoDXF(s){
+  if(!s) return "";
+  return String(s)
+    .replace(/\\[A-Za-z][^;]*;/g, "")   // \A1;  \fArial|b0;  \H2.5x;
+    .replace(/[{}]/g, "")
+    .replace(/\\P/g, " ")
+    .replace(/\\~/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/* Parser DXF: percorre pares (código, valor) e extrai entidades da seção
+   ENTITIES. Retorna { entidades:[{tipo,layer,x,y,r,texto,bloco}], layers:{} } */
+function parsearDXF(texto){
+  const L = texto.split(/\r\n|\r|\n/);
+  const ents = [];
+  let cur = null;
+  let inEntities = false;
+  let esperandoNomeSecao = false;
+
+  for(let i = 0; i + 1 < L.length; i += 2){
+    const code = parseInt(L[i], 10);
+    if(Number.isNaN(code)) continue;
+    const v = (L[i+1] || "").trim();
+
+    if(code === 0){
+      if(inEntities && cur){ ents.push(cur); cur = null; }
+      if(v === "SECTION"){ esperandoNomeSecao = true; }
+      else if(v === "ENDSEC"){ inEntities = false; }
+      else if(inEntities){
+        cur = { tipo: v, layer: "0", x: null, y: null, r: null, texto: "", bloco: "" };
+      }
+      continue;
+    }
+    if(esperandoNomeSecao && code === 2){
+      inEntities = (v === "ENTITIES");
+      esperandoNomeSecao = false;
+      continue;
+    }
+    if(!inEntities || !cur) continue;
+    switch(code){
+      case 8:  cur.layer = v; break;
+      case 10: cur.x = parseFloat(v); break;
+      case 20: cur.y = parseFloat(v); break;
+      case 40: cur.r = parseFloat(v); break;
+      case 1:  cur.texto = _limparTextoDXF(cur.texto + " " + v); break;
+      case 3:  cur.texto = _limparTextoDXF(cur.texto + v); break;
+      case 2:  cur.bloco = v; break;   // nome do bloco no INSERT
+    }
+  }
+  if(inEntities && cur) ents.push(cur);
+
+  // Resumo por layer (contagem por tipo relevante)
+  const layers = {};
+  const TIPOS = ["POINT","CIRCLE","INSERT","TEXT","MTEXT"];
+  ents.forEach(e => {
+    if(!TIPOS.includes(e.tipo)) return;
+    if(e.x == null || e.y == null) return;
+    (layers[e.layer] ||= { POINT:0, CIRCLE:0, INSERT:0, TEXT:0, MTEXT:0 });
+    layers[e.layer][e.tipo]++;
+  });
+  return { entidades: ents, layers };
+}
+
+async function lerArquivoDXF(){
+  const fileInput = $("est-dxf-file");
+  if(!fileInput.files || !fileInput.files[0]){
+    aviso("app-aviso","Selecione um arquivo .dxf.","erro");
+    return;
+  }
+  const file = fileInput.files[0];
+  const nome = (file.name || "").toLowerCase();
+  if(nome.endsWith(".dwg")){
+    aviso("app-aviso","Arquivo DWG não é lido diretamente. Exporte como DXF no AutoCAD (SALVARCOMO → DXF) ou use o ODA File Converter (grátis) e envie o .dxf.","erro");
+    return;
+  }
+  try {
+    const texto = await file.text();
+    _dxfParsed = parsearDXF(texto);
+    const layers = _dxfParsed.layers;
+    if(!Object.keys(layers).length){
+      aviso("app-aviso","Nenhuma geometria (POINT/CIRCLE/INSERT/TEXT) encontrada no DXF. Confira se as estacas estão como pontos/círculos/blocos e não como hachura/imagem.","erro");
+      return;
+    }
+    renderDXFConfig();
+    aviso("app-aviso", `DXF lido: ${_dxfParsed.entidades.length} entidades em ${Object.keys(layers).length} layers. Escolha a layer das estacas.`, "ok");
+  } catch(err){
+    aviso("app-aviso","Erro ao ler DXF: " + err.message,"erro");
+  }
+}
+
+/* Monta a UI de seleção: qual layer/tipo = estacas, e de onde vêm os rótulos */
+function renderDXFConfig(){
+  const box = $("est-dxf-config");
+  if(!box || !_dxfParsed) return;
+  const layers = _dxfParsed.layers;
+
+  // Layers candidatas a geometria (têm POINT/CIRCLE/INSERT)
+  const geomLayers = Object.entries(layers)
+    .filter(([,c]) => c.POINT + c.CIRCLE + c.INSERT > 0)
+    .sort((a,b) => (b[1].POINT+b[1].CIRCLE+b[1].INSERT) - (a[1].POINT+a[1].CIRCLE+a[1].INSERT));
+  const textLayers = Object.entries(layers).filter(([,c]) => c.TEXT + c.MTEXT > 0);
+
+  if(!geomLayers.length){
+    box.innerHTML = `<div class="dist-aviso alerta">Nenhuma layer com pontos, círculos ou blocos. As estacas podem estar como texto apenas — nesse caso use o import por PDF.</div>`;
+    box.style.display = "";
+    return;
+  }
+
+  const geomOpts = geomLayers.map(([nome, c], i) => {
+    const partes = [];
+    if(c.POINT)  partes.push(`${c.POINT} pontos`);
+    if(c.CIRCLE) partes.push(`${c.CIRCLE} círculos`);
+    if(c.INSERT) partes.push(`${c.INSERT} blocos`);
+    return `<option value="${esc(nome)}" ${i===0?"selected":""}>${esc(nome)} — ${partes.join(", ")}</option>`;
+  }).join("");
+
+  const textOpts = `<option value="__auto__" selected>Automático (texto mais próximo de cada estaca)</option>`
+    + textLayers.map(([nome, c]) => `<option value="${esc(nome)}">${esc(nome)} — ${c.TEXT+c.MTEXT} textos</option>`).join("")
+    + `<option value="__none__">Sem rótulo (numero em branco)</option>`;
+
+  box.innerHTML = `
+    <div style="background:var(--sup-2);border:1px solid var(--borda-forte);border-radius:6px;padding:12px;margin-top:12px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+        <div>
+          <label class="meta bloco">Layer das estacas</label>
+          <select id="dxf-layer-geom" class="col-xl">${geomOpts}</select>
+        </div>
+        <div>
+          <label class="meta bloco">Rótulo (número) vem de</label>
+          <select id="dxf-layer-text" class="col-xl">${textOpts}</select>
+        </div>
+        <label style="font-size:11px;color:var(--txt-fraco);display:flex;align-items:center;gap:4px;margin-bottom:6px;">
+          <input type="checkbox" id="dxf-bloco-da-layer" />
+          Usar nome da layer como Bloco
+        </label>
+      </div>
+      <p class="meta" style="margin:8px 0 0;">As coordenadas X/Y do CAD entram como estão; a planta faz a auto-escala. A distância mínima usa esses metros de verdade.</p>
+      <div class="form-acoes compacta" style="margin-top:10px;">
+        <button type="button" class="btn" id="btn-dxf-extrair">📐 Extrair estacas</button>
+      </div>
+    </div>`;
+  box.style.display = "";
+  $("btn-dxf-extrair")?.addEventListener("click", extrairEstacasDXF);
+}
+
+/* Casa cada geometria (estaca) com o texto mais próximo dentro de um raio */
+function extrairEstacasDXF(){
+  if(!_dxfParsed){ aviso("app-aviso","Leia um DXF primeiro.","erro"); return; }
+  const layerGeom = $("dxf-layer-geom")?.value;
+  const modoTexto = $("dxf-layer-text")?.value || "__auto__";
+  const blocoDaLayer = $("dxf-bloco-da-layer")?.checked;
+  const ents = _dxfParsed.entidades;
+
+  const geoms = ents.filter(e =>
+    e.layer === layerGeom &&
+    ["POINT","CIRCLE","INSERT"].includes(e.tipo) &&
+    e.x != null && e.y != null);
+  if(!geoms.length){ aviso("app-aviso","Nenhuma estaca nessa layer.","erro"); return; }
+
+  let textos = [];
+  if(modoTexto !== "__none__"){
+    textos = ents.filter(e =>
+      ["TEXT","MTEXT"].includes(e.tipo) &&
+      e.x != null && e.y != null && e.texto &&
+      (modoTexto === "__auto__" || e.layer === modoTexto));
+  }
+
+  // Raio de busca do rótulo: metade do espaçamento médio entre estacas
+  let raio = Infinity;
+  if(geoms.length > 1){
+    // diagonal do bbox / sqrt(n) ≈ espaçamento típico
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    geoms.forEach(g => { if(g.x<minX)minX=g.x; if(g.x>maxX)maxX=g.x; if(g.y<minY)minY=g.y; if(g.y>maxY)maxY=g.y; });
+    const diag = Math.hypot(maxX-minX, maxY-minY) || 1;
+    raio = (diag / Math.sqrt(geoms.length)) * 0.75;
+  }
+
+  const usados = new Set();
+  const acharTexto = (gx, gy) => {
+    let melhor = null, melhorD = Infinity, melhorIdx = -1;
+    textos.forEach((t, idx) => {
+      if(usados.has(idx)) return;
+      const d = Math.hypot(t.x - gx, t.y - gy);
+      if(d < melhorD){ melhorD = d; melhor = t; melhorIdx = idx; }
+    });
+    if(melhor && melhorD <= raio){ usados.add(melhorIdx); return melhor.texto; }
+    return "";
+  };
+
+  _importPreview = geoms.map(g => {
+    const numero = acharTexto(g.x, g.y);
+    // círculo: diâmetro em unidades do desenho — não assume mm (deixa o usuário definir)
+    return {
+      numero: numero || "",
+      bloco: blocoDaLayer ? layerGeom : "",
+      tipo: "outro",
+      diametro_mm: null,
+      profundidade_m: null,
+      coord_x: g.x,
+      coord_y: g.y,
+      observacoes: ""
+    };
+  });
+
+  const semNum = _importPreview.filter(e => !e.numero).length;
+  const nota = `${geoms.length} estacas extraídas da layer "${layerGeom}".` +
+    (semNum ? ` ${semNum} sem número (preencha na tabela ou pela reorganização).` : "");
+  renderImportPreview(nota, null, "est-dxf-preview-conteudo", "est-dxf-preview");
+  aviso("app-aviso", nota, "ok");
+}
+
+function abrirModalDXF(){
+  if(!obraEditId){
+    aviso("app-aviso","Salve a obra antes de importar estacas.","erro");
+    return;
+  }
+  _importPreview = [];
+  _dxfParsed = null;
+  $("est-dxf-file").value = "";
+  $("est-dxf-config").style.display = "none";
+  $("est-dxf-config").innerHTML = "";
+  $("est-dxf-preview").style.display = "none";
+  $("est-dxf-preview-conteudo").innerHTML = "";
+  $("est-dxf-modal").style.display = "flex";
+}
+
+function fecharModalDXF(){
+  $("est-dxf-modal").style.display = "none";
+  _importPreview = [];
+  _dxfParsed = null;
 }
 
 /* ====================================================================
@@ -632,6 +928,28 @@ function gerarGridParaSemCoords(estacas){
   return posicoes;
 }
 
+/* Auto-escala: mapeia coordenadas reais (UTM/metros, valores grandes) para
+   o viewBox 600×400, preservando proporção e invertendo o eixo Y (norte pra
+   cima). Retorna uma função (x,y) -> {vx, vy}. As coordenadas reais continuam
+   intactas nos dados (a validação de distância usa os metros de verdade). */
+function _transformCoords(estsComCoord){
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  estsComCoord.forEach(e => {
+    const x = Number(e.coord_x), y = Number(e.coord_y);
+    if(x < minX) minX = x; if(x > maxX) maxX = x;
+    if(y < minY) minY = y; if(y > maxY) maxY = y;
+  });
+  const VW = 600, VH = 400, PAD = 32;
+  const dx = (maxX - minX) || 1, dy = (maxY - minY) || 1;
+  const s = Math.min((VW - 2*PAD) / dx, (VH - 2*PAD) / dy);
+  const offX = (VW - s*dx) / 2;
+  const offY = (VH - s*dy) / 2;
+  return (x, y) => ({
+    vx: offX + (Number(x) - minX) * s,
+    vy: offY + (maxY - Number(y)) * s   // flip Y
+  });
+}
+
 function renderPlantaSVG(){
   const svg = $("est-planta-svg");
   if(!svg) return;
@@ -653,13 +971,24 @@ function renderPlantaSVG(){
 
   svg.innerHTML = "";
 
+  // Mapa de máquinas presentes (para colorir/legenda por máquina)
+  Object.keys(_mapaMaquinas).forEach(k => delete _mapaMaquinas[k]);
+  _estacas.forEach(e => {
+    if(e.equipamento_id && !_mapaMaquinas[e.equipamento_id]){
+      const eq = (_equipamentosCache || []).find(x => x.id === e.equipamento_id);
+      _mapaMaquinas[e.equipamento_id] = eq ? { codigo: eq.codigo, nome: eq.nome } : { codigo: "?", nome: "" };
+    }
+  });
+  renderLegendaPlanta();
+  renderConflitosDistancia(filtradas);
+
   // Grupo que carrega o transform pan/zoom
   const g = document.createElementNS(ns, "g");
   g.setAttribute("id", "planta-g");
   g.setAttribute("transform", `translate(${_plantaState.panX}, ${_plantaState.panY}) scale(${_plantaState.zoom})`);
   svg.appendChild(g);
 
-  const semCoords = filtradas.filter(e => e.pos_x == null || e.pos_y == null);
+  const semCoords = filtradas.filter(e => e.coord_x == null || e.coord_y == null);
   let grid = null;
   let usandoGrid = false;
   if(semCoords.length && semCoords.length === filtradas.length){
@@ -711,18 +1040,22 @@ function renderPlantaSVG(){
 
   const hoje = hojeISO();
 
-  // Desenha cada estaca (com coords reais OU do grid)
+  // Transform de auto-escala a partir das estacas com coordenadas reais
+  const comCoordF = filtradas.filter(e => e.coord_x != null && e.coord_y != null);
+  const tf = comCoordF.length ? _transformCoords(comCoordF) : null;
+
+  // Desenha cada estaca (com coords reais auto-escaladas OU do grid)
   filtradas.forEach(e => {
     let x, y;
-    if(e.pos_x != null && e.pos_y != null){
-      x = e.pos_x; y = e.pos_y;
+    if(e.coord_x != null && e.coord_y != null && tf){
+      const p = tf(e.coord_x, e.coord_y);
+      x = p.vx; y = p.vy;
     } else if(grid && grid.has(e.id)){
       const p = grid.get(e.id);
       x = p.x; y = p.y;
     } else {
       return;
     }
-    // adapta o objeto pra função interna que espera pos_x/pos_y
     desenharEstaca(g, ns, e, x, y, hoje);
   });
 
@@ -741,9 +1074,84 @@ function renderPlantaSVG(){
   }
 }
 
+/* Legenda da planta: por status (fixa) ou por máquina (dinâmica) */
+function renderLegendaPlanta(){
+  const box = $("planta-legenda");
+  if(!box) return;
+  if(_plantaCor === "maquina"){
+    const ids = Object.keys(_mapaMaquinas).sort();
+    box.innerHTML = ids.map(id => {
+      const m = _mapaMaquinas[id];
+      return `<span><i style="background:${corDaMaquina(id)}"></i>${esc(m.codigo || m.nome || "?")}</span>`;
+    }).join("") || `<span class="meta">nenhuma máquina atribuída às estacas</span>`;
+  } else {
+    box.innerHTML = Object.entries(ESTACA_STATUS)
+      .map(([v]) => `<span><i style="background:${COR_STATUS[v] || "var(--txt-sutil)"}"></i>${esc(ESTACA_STATUS[v].label)}</span>`).join("") +
+      `<span><i style="background:var(--estaca-hoje)"></i>Hoje</span>`;
+  }
+}
+
+/* Validação de distância (regra de cura): dentro da sequência de cada
+   máquina (ordenada por ordem_execucao), acusa quando uma estaca é
+   executada perto demais de outra recém-concretada da mesma máquina.
+   Só roda quando há coordenadas; sem elas, orienta como habilitar. */
+function renderConflitosDistancia(filtradas){
+  const box = $("planta-conflitos");
+  if(!box) return;
+
+  const comCoord = _estacas.filter(e => e.coord_x != null && e.coord_y != null);
+  const comOrdem = _estacas.filter(e => e.ordem_execucao != null && e.equipamento_id);
+  if(comCoord.length < 2 || comOrdem.length < 2){
+    box.innerHTML = comCoord.length < 2
+      ? `<div class="dist-aviso neutro">📐 Validação de distância inativa — preencha as coordenadas (X/Y) das estacas para ativá-la.</div>`
+      : `<div class="dist-aviso neutro">📐 Defina a máquina e a ordem de execução das estacas para validar a distância da sequência.</div>`;
+    return;
+  }
+
+  const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
+  const min = Number(_distanciaMinObra) || 2.05;
+
+  // agrupa por máquina, ordena pela sequência
+  const porMaq = {};
+  _estacas.forEach(e => {
+    if(e.coord_x == null || e.coord_y == null || e.ordem_execucao == null || !e.equipamento_id) return;
+    (porMaq[e.equipamento_id] ||= []).push(e);
+  });
+
+  const conflitos = [];
+  // Para cada estaca, checa contra a ANTERIOR na sequência da mesma máquina
+  Object.values(porMaq).forEach(lista => {
+    lista.sort((a, b) => a.ordem_execucao - b.ordem_execucao);
+    for(let i = 1; i < lista.length; i++){
+      const d = dist(lista[i], lista[i - 1]);
+      if(d < min){
+        conflitos.push({ a: lista[i - 1], b: lista[i], d });
+      }
+    }
+  });
+
+  if(!conflitos.length){
+    box.innerHTML = `<div class="dist-aviso ok">✓ Nenhum conflito de distância (mínimo ${min.toLocaleString("pt-BR")} m entre estacas consecutivas da mesma máquina).</div>`;
+    return;
+  }
+  const itens = conflitos.slice(0, 8).map(c =>
+    `<li><strong>${esc(c.b.numero)}</strong> logo após <strong>${esc(c.a.numero)}</strong> — ${c.d.toLocaleString("pt-BR",{maximumFractionDigits:2})} m (< ${min.toLocaleString("pt-BR")} m)</li>`).join("");
+  const resto = conflitos.length > 8 ? `<li>… e mais ${conflitos.length - 8}.</li>` : "";
+  box.innerHTML = `<div class="dist-aviso alerta">
+    <strong>⚠️ ${conflitos.length} conflito(s) de distância na sequência</strong>
+    <span class="meta">a sequência fura ao lado de uma estaca recém-concretada (regra de cura)</span>
+    <ul>${itens}${resto}</ul>
+  </div>`;
+}
+
 function desenharEstaca(g, ns, e, x, y, hoje){
   const ehHoje = (e.data_execucao === hoje);
-  const cor = ehHoje ? COR_HOJE : (COR_STATUS[e.status] || "var(--txt-sutil)");
+  let cor;
+  if(_plantaCor === "maquina"){
+    cor = corDaMaquina(e.equipamento_id);
+  } else {
+    cor = ehHoje ? COR_HOJE : (COR_STATUS[e.status] || "var(--txt-sutil)");
+  }
   const circ = document.createElementNS(ns, "circle");
   circ.setAttribute("class", "estaca-circ");
   circ.setAttribute("cx", x);
@@ -1766,6 +2174,10 @@ function ligarEstacas(){
     abrirModalEstaca(null);
   });
   $("btn-est-importar")?.addEventListener("click", abrirModalImport);
+  $("btn-est-importar-dxf")?.addEventListener("click", abrirModalDXF);
+  $("btn-est-fechar-dxf")?.addEventListener("click", fecharModalDXF);
+  $("btn-dxf-ler")?.addEventListener("click", lerArquivoDXF);
+  $("btn-est-dxf-confirmar")?.addEventListener("click", confirmarImportEstacas);
   $("btn-est-salvar")?.addEventListener("click", salvarEstaca);
   $("btn-est-cancelar")?.addEventListener("click", fecharModalEstaca);
 
@@ -1796,6 +2208,16 @@ function ligarEstacas(){
       _estView = b.dataset.estView;
       renderEstacas();
       if(_estView === "planta") configurarPanZoom();
+    });
+  });
+
+  // Colorir planta por status / por máquina
+  document.querySelectorAll("[data-planta-cor]").forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("[data-planta-cor]").forEach(x => x.classList.remove("ativo"));
+      b.classList.add("ativo");
+      _plantaCor = b.dataset.plantaCor;
+      renderPlantaSVG();
     });
   });
 

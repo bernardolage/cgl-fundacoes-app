@@ -1420,6 +1420,7 @@
                 </div>
                 <button type="button" class="btn-sec" id="btn-est-reconciliar" style="margin-left:8px;display:none;">🔍 Conferência <span id="est-reconciliar-badge" style="background:var(--perigo);color:var(--txt-sobre);border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span></button>
                 <button type="button" class="btn-sec" id="btn-est-importar">📄 Importar PDF</button>
+                <button type="button" class="btn-sec" id="btn-est-importar-dxf">📐 Importar DXF</button>
                 <button type="button" class="btn" id="btn-est-nova">+ Nova</button>
               </div>
               <div class="serv-filtros">
@@ -1428,6 +1429,8 @@
                   <option value="">Todos os status</option>
                   <option value="prevista">Prevista</option>
                   <option value="em_execucao">Em execução</option>
+                  <option value="perfuracao_concluida">Perfuração concluída</option>
+                  <option value="armacao_aplicada">Armação aplicada</option>
                   <option value="executada">Executada</option>
                   <option value="refugada">Refurada</option>
                 </select>
@@ -1450,19 +1453,18 @@
               <!-- Vista planta -->
               <div id="est-planta-wrap" style="display:none;">
                 <div class="planta-toolbar">
-                  <div class="planta-legenda">
-                    <span><i style="background:var(--estaca-prevista)"></i>Prevista</span>
-                    <span><i style="background:var(--aviso)"></i>Em execução</span>
-                    <span><i style="background:var(--sucesso)"></i>Executada</span>
-                    <span><i style="background:var(--perigo)"></i>Refurada</span>
-                    <span><i style="background:var(--estaca-hoje)"></i>Hoje</span>
+                  <div class="serv-views" style="margin-right:auto;">
+                    <button type="button" class="serv-view-btn ativo" data-planta-cor="status">Por status</button>
+                    <button type="button" class="serv-view-btn" data-planta-cor="maquina">Por máquina</button>
                   </div>
+                  <div class="planta-legenda" id="planta-legenda"></div>
                   <div class="planta-zoom">
                     <button type="button" class="btn-sec btn-sm" id="btn-planta-zoom-in">+</button>
                     <button type="button" class="btn-sec btn-sm" id="btn-planta-zoom-out">−</button>
                     <button type="button" class="btn-sec btn-sm" id="btn-planta-zoom-fit" title="Ajustar à tela">⛶</button>
                   </div>
                 </div>
+                <div id="planta-conflitos"></div>
                 <div id="est-planta-svg-container">
                   <svg id="est-planta-svg" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid meet"></svg>
                 </div>
@@ -1535,6 +1537,8 @@
               <select id="est-status">
                 <option value="prevista">Prevista</option>
                 <option value="em_execucao">Em execução</option>
+                <option value="perfuracao_concluida">Perfuração concluída</option>
+                <option value="armacao_aplicada">Armação aplicada</option>
                 <option value="executada">Executada</option>
                 <option value="refugada">Refurada</option>
               </select>
@@ -1545,6 +1549,11 @@
             <div class="campo"><label>Cota ponta</label><input id="est-cota-ponta" type="number" step="0.01" /></div>
             <div class="campo"><label>Volume concreto (m³)</label><input id="est-volume" type="number" step="0.001" min="0" /></div>
             <div class="campo"><label>Data execução</label><input id="est-data" type="date" /></div>
+            <div class="campo"><label>Bloco</label><input id="est-bloco" placeholder="ex.: B1, Anel 1 int." /></div>
+            <div class="campo"><label>Máquina</label><select id="est-equipamento"><option value="">— nenhuma —</option></select></div>
+            <div class="campo"><label>Ordem de execução</label><input id="est-ordem" type="number" step="1" min="1" placeholder="sequência da máquina" /></div>
+            <div class="campo"><label>Coordenada X (m)</label><input id="est-coord-x" type="number" step="0.01" placeholder="opcional — p/ validar distância" /></div>
+            <div class="campo"><label>Coordenada Y (m)</label><input id="est-coord-y" type="number" step="0.01" placeholder="opcional" /></div>
             <div class="campo largo"><label>Observações</label><textarea id="est-obs" rows="2"></textarea></div>
           </div>
           <div class="form-acoes compacta">
@@ -1571,6 +1580,8 @@
               <select id="exec-status">
                 <option value="prevista">Prevista</option>
                 <option value="em_execucao">Em execução</option>
+                <option value="perfuracao_concluida">Perfuração concluída</option>
+                <option value="armacao_aplicada">Armação aplicada</option>
                 <option value="executada">Executada</option>
                 <option value="refugada">Refurada</option>
               </select>
@@ -1680,6 +1691,37 @@
             <div id="est-import-preview-conteudo"></div>
             <div class="form-acoes compacta">
               <button type="button" class="btn btn-sucesso" id="btn-est-confirmar-import">✅ Importar todas</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Importar DXF (CAD) -->
+      <div id="est-dxf-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:960px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <h3 class="titulo-linha">📐 Importar estacas de arquivo DXF (CAD)</h3>
+            <button type="button" class="btn-sec" id="btn-est-fechar-dxf">×</button>
+          </div>
+          <p class="texto-apoio">
+            Envie o <strong>.dxf</strong> do projeto. O sistema lê os pontos/círculos/blocos e as coordenadas X/Y direto do CAD — sem digitação.<br>
+            <strong>Recebeu em DWG?</strong> Exporte como DXF no AutoCAD (SALVARCOMO → DXF) ou use o <em>ODA File Converter</em> (grátis). O DWG é binário e não é lido diretamente.
+          </p>
+          <div class="grade">
+            <div class="campo largo">
+              <label>Arquivo DXF</label>
+              <input id="est-dxf-file" type="file" accept=".dxf" />
+            </div>
+          </div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn" id="btn-dxf-ler">📂 Ler arquivo</button>
+          </div>
+          <div id="est-dxf-config" style="display:none;"></div>
+          <div id="est-dxf-preview" style="display:none;margin-top:18px;border-top:1px solid var(--borda);padding-top:14px;">
+            <h4>Preview — revise antes de importar</h4>
+            <div id="est-dxf-preview-conteudo"></div>
+            <div class="form-acoes compacta">
+              <button type="button" class="btn btn-sucesso" id="btn-est-dxf-confirmar">✅ Importar todas</button>
             </div>
           </div>
         </div>

@@ -2439,3 +2439,18 @@ tr.cart-aberta td { background: var(--info-bg); }
 }
 .link-esqueci:hover { color: var(--marca-700); }
 .link-esqueci:disabled { color: var(--txt-sutil); cursor: default; text-decoration: none; }
+
+/* ---- Estacas: validação de distância na planta (fase 25) ---- */
+.dist-aviso {
+  font-size: var(--txt-sm);
+  padding: var(--esp-2) var(--esp-3);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--esp-2);
+  line-height: 1.5;
+}
+.dist-aviso.ok      { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.dist-aviso.alerta  { background: var(--aviso-bg);   color: var(--aviso-txt); }
+.dist-aviso.neutro  { background: var(--sup-2);      color: var(--txt-fraco); }
+.dist-aviso ul { margin: var(--esp-1) 0 0; padding-left: 18px; }
+.dist-aviso li { margin-bottom: 2px; }
+.dist-aviso .meta { display: block; margin-top: 2px; }
