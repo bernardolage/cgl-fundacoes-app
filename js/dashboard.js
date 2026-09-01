@@ -2,6 +2,8 @@
    Dashboard (Home) — visão geral do negócio CGL
    ==================================================================== */
 
+let _dashPendNav = [];   // ações de navegação por índice dos itens pendentes
+
 async function carregarDashboard(){
   // Saudação
   const nome = (typeof usuarioAtual !== "undefined" && usuarioAtual?.nome) ? usuarioAtual.nome.split(" ")[0] : "";
@@ -25,6 +27,51 @@ async function carregarDashboard(){
 
   // Mantém compat: alimenta a aba Estoque antiga
   await carregarPosicaoEstoque();
+
+  // Cliques dos cards de KPI (os painéis ligam os seus ao renderizar)
+  ligarCliquesDashboard();
+}
+
+/* ============================================================
+   NAVEGAÇÃO CLICÁVEL — cada indicador leva ao seu fluxo
+   ============================================================ */
+async function dashAbrirObra(obraId, tab){
+  irParaSecao("obras");
+  if(obraId && typeof abrirObra === "function"){
+    await abrirObra(obraId);
+    if(tab && typeof ativarTabObra === "function") ativarTabObra(tab);
+  }
+}
+function dashAbrirMedicao(id){ irParaSecao("medicoes"); if(id && typeof abrirMedicao === "function") abrirMedicao(id); }
+function dashAbrirOrcamento(id){ irParaSecao("orcamentos"); if(id && typeof abrirOrcamento === "function") abrirOrcamento(id); }
+function dashAbrirContrato(id){ irParaSecao("contratos"); if(id && typeof abrirContrato === "function") abrirContrato(id); }
+function dashIrObrasAtivas(){
+  irParaSecao("obras");
+  const f = $("obr-f-status");
+  if(f){ f.value = "em_andamento"; if(typeof renderObras === "function") renderObras(); }
+}
+function dashIrOrcamentos(){ irParaSecao("orcamentos"); }
+function dashIrFinanceiro(){
+  // diretoria vê a Carteira; demais vão para Medições
+  if(usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo)) irParaSecao("carteira");
+  else irParaSecao("medicoes");
+}
+
+function ligarCliquesDashboard(){
+  const liga = (id, fn, dica) => {
+    const el = $(id); const card = el ? el.closest(".dash-card") : null;
+    if(card && !card.dataset.clicavel){
+      card.dataset.clicavel = "1";
+      card.classList.add("clicavel");
+      if(dica) card.title = dica;
+      card.addEventListener("click", fn);
+    }
+  };
+  liga("dash-obras-ativas", dashIrObrasAtivas, "Ver obras em andamento");
+  liga("dash-orc-abertos",  dashIrOrcamentos,  "Ver orçamentos abertos");
+  liga("dash-contratado",   dashIrFinanceiro,  "Ver medições / carteira");
+  liga("dash-medido",       dashIrFinanceiro,  "Ver medições / carteira");
+  liga("dash-a-medir",      dashIrFinanceiro,  "Ver medições / carteira");
 }
 
 /* ============================================================
@@ -120,7 +167,7 @@ async function carregarDashPendencias(){
     // comentários de obra em que EU fui marcado como responsável (fase 23)
     usuarioAtual?.id
       ? sb.from("obras_comentarios")
-          .select("id,texto,created_at,obra:obra_id(codigo,nome)")
+          .select("id,texto,created_at,obra_id,obra:obra_id(codigo,nome)")
           .eq("responsavel_id", usuarioAtual.id).eq("resolvido", false)
           .order("created_at")
       : Promise.resolve({ data: [] })
@@ -144,28 +191,35 @@ async function carregarDashPendencias(){
     itens.push({
       icone: "💬", cor: "var(--marca-600)", bg: "var(--info-bg)",
       texto: `Você foi marcado na obra <strong>${esc(cm.obra?.codigo || "?")}</strong>${
-        dias > 0 ? ` há ${dias} dia(s)` : ""}: “${esc(resumo)}” — abra a obra → Timeline`
+        dias > 0 ? ` há ${dias} dia(s)` : ""}: “${esc(resumo)}” — abra a obra → Timeline`,
+      nav: () => dashAbrirObra(cm.obra_id, "timeline")
     });
   });
 
   if(totalOrfas > 0){
+    const idsOrfas = Object.keys(orfasPorObra);
     itens.push({
       icone: "🔧", cor: "var(--aviso)", bg: "var(--aviso-bg)",
-      texto: `<strong>${totalOrfas} execuções órfãs</strong> em ${obrasComOrfas} obra(s) — abra a obra → Estacas → 🔍 Conferência`
+      texto: `<strong>${totalOrfas} execuções órfãs</strong> em ${obrasComOrfas} obra(s) — abra a obra → Estacas → 🔍 Conferência`,
+      nav: idsOrfas.length === 1
+        ? () => dashAbrirObra(idsOrfas[0], "estacas")
+        : () => irParaSecao("obras")
     });
   }
   (orcVenc||[]).forEach(o => {
     const dias = Math.ceil((new Date(o.validade) - hoje) / 86400000);
     itens.push({
       icone: "📄", cor: "var(--perigo)", bg: "var(--perigo-bg)",
-      texto: `Orçamento <strong>${esc(o.numero)}</strong> vence em ${dias} dia(s) (${dataBR(o.validade)})`
+      texto: `Orçamento <strong>${esc(o.numero)}</strong> vence em ${dias} dia(s) (${dataBR(o.validade)})`,
+      nav: () => dashAbrirOrcamento(o.id)
     });
   });
   (medParadas||[]).forEach(m => {
     const dias = Math.ceil((hoje - new Date(m.updated_at)) / 86400000);
     itens.push({
       icone: "💰", cor: "var(--marca-600)", bg: "var(--info-bg)",
-      texto: `Medição <strong>${esc(m.numero)}</strong> parada em rascunho há ${dias} dia(s)`
+      texto: `Medição <strong>${esc(m.numero)}</strong> parada em rascunho há ${dias} dia(s)`,
+      nav: () => dashAbrirMedicao(m.id)
     });
   });
 
@@ -183,7 +237,8 @@ async function carregarDashPendencias(){
         icone: dias < 0 ? "⛔" : "📋",
         cor: dias < 0 ? "var(--perigo)" : "var(--aviso)",
         bg:  dias < 0 ? "var(--perigo-bg)" : "var(--aviso-bg)",
-        texto: `Contrato <strong>${esc(c.numero)}</strong> (${esc(forn)}) ${quando} (${dataBR(c.data_fim_prevista)})${renova}`
+        texto: `Contrato <strong>${esc(c.numero)}</strong> (${esc(forn)}) ${quando} (${dataBR(c.data_fim_prevista)})${renova}`,
+        nav: () => dashAbrirContrato(c.id)
       });
     });
   }
@@ -192,11 +247,19 @@ async function carregarDashPendencias(){
     cont.innerHTML = `<p class="vazio" style="font-size:12px;color:var(--sucesso);">✅ Nenhuma pendência. Bom trabalho!</p>`;
     return;
   }
-  cont.innerHTML = itens.map(it => `
-    <div class="dash-pendencia-item">
+  _dashPendNav = itens.map(it => it.nav || null);
+  cont.innerHTML = itens.map((it, idx) => `
+    <div class="dash-pendencia-item${it.nav ? " clicavel" : ""}" ${it.nav ? `data-idx="${idx}" title="Ir para o registro"` : ""}>
       <div class="dash-pendencia-icone" style="background:${it.bg};color:${it.cor};">${it.icone}</div>
       <div style="flex:1;">${it.texto}</div>
+      ${it.nav ? '<span class="dash-pend-seta">›</span>' : ""}
     </div>`).join("");
+  cont.querySelectorAll(".dash-pendencia-item.clicavel").forEach(el => {
+    el.addEventListener("click", () => {
+      const fn = _dashPendNav[Number(el.dataset.idx)];
+      if(typeof fn === "function") fn();
+    });
+  });
 }
 
 /* ============================================================
@@ -249,12 +312,15 @@ async function carregarDashTopObras(){
     return;
   }
   cont.innerHTML = `<div style="font-size:12px;">${data.map((o,i) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 4px;border-bottom:1px solid var(--sup-3);">
+    <div class="dash-linha-obra clicavel" data-obra-id="${esc(o.id)}" title="Abrir a obra" style="display:flex;justify-content:space-between;align-items:center;padding:6px 4px;border-bottom:1px solid var(--sup-3);">
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
         <strong>${i+1}.</strong> ${esc(o.codigo)} <span style="color:var(--txt-sutil);">·</span> ${esc((o.nome||"").slice(0,30))}${(o.nome||"").length>30?"…":""}
       </div>
       <strong style="color:var(--sucesso);">${brl(o.valor_contratado)}</strong>
     </div>`).join("")}</div>`;
+  cont.querySelectorAll(".dash-linha-obra[data-obra-id]").forEach(el => {
+    el.addEventListener("click", () => dashAbrirObra(el.dataset.obraId));
+  });
 }
 
 /* ============================================================
@@ -270,9 +336,9 @@ async function carregarDashAtividade(){
     { data: rdosNovos },
     { data: estsAlt }
   ] = await Promise.all([
-    sb.from("medicoes").select("numero,obra:obra_id(codigo,nome),created_at,criado_por").gte("created_at", desde).order("created_at",{ascending:false}).limit(10),
-    sb.from("rdo").select("data,tipo_servico,obra:obra_id(codigo,nome),created_at,criado_por").gte("created_at", desde).order("created_at",{ascending:false}).limit(10),
-    sb.from("estacas").select("numero,alterada_em,alterada_por,alteracao_motivo,obra:obra_id(codigo,nome)").not("alterada_em","is",null).gte("alterada_em", desde).order("alterada_em",{ascending:false}).limit(10)
+    sb.from("medicoes").select("numero,obra_id,obra:obra_id(codigo,nome),created_at,criado_por").gte("created_at", desde).order("created_at",{ascending:false}).limit(10),
+    sb.from("rdo").select("data,tipo_servico,obra_id,obra:obra_id(codigo,nome),created_at,criado_por").gte("created_at", desde).order("created_at",{ascending:false}).limit(10),
+    sb.from("estacas").select("numero,obra_id,alterada_em,alterada_por,alteracao_motivo,obra:obra_id(codigo,nome)").not("alterada_em","is",null).gte("alterada_em", desde).order("alterada_em",{ascending:false}).limit(10)
   ]);
 
   const userIds = new Set();
@@ -288,15 +354,15 @@ async function carregarDashAtividade(){
 
   const eventos = [];
   (medsNovas||[]).forEach(m => eventos.push({
-    quando: m.created_at,
+    quando: m.created_at, obraId: m.obra_id, tab: "medicoes",
     txt: `💰 ${nomeDe(m.criado_por)} criou medição <strong>${esc(m.numero)}</strong> · ${esc(m.obra?.codigo||"")} ${esc((m.obra?.nome||"").slice(0,25))}`
   }));
   (rdosNovos||[]).forEach(r => eventos.push({
-    quando: r.created_at,
+    quando: r.created_at, obraId: r.obra_id, tab: "rdos",
     txt: `📋 ${nomeDe(r.criado_por)} criou RDO ${dataBR(r.data)} (${esc((r.tipo_servico||"").replace("_"," "))}) · ${esc(r.obra?.codigo||"")} ${esc((r.obra?.nome||"").slice(0,25))}`
   }));
   (estsAlt||[]).forEach(e => eventos.push({
-    quando: e.alterada_em,
+    quando: e.alterada_em, obraId: e.obra_id, tab: "estacas",
     txt: `🔄 ${nomeDe(e.alterada_por)} alterou estaca <strong>${esc(e.numero)}</strong> · ${esc((e.alteracao_motivo||"").slice(0,60))}`
   }));
   eventos.sort((a,b) => new Date(b.quando) - new Date(a.quando));
@@ -305,13 +371,23 @@ async function carregarDashAtividade(){
     cont.innerHTML = `<p class="vazio" style="font-size:12px;">Nenhuma atividade nas últimas 48h.</p>`;
     return;
   }
-  cont.innerHTML = `<div style="font-size:12px;">${eventos.slice(0,8).map(e => {
+  const vis = eventos.slice(0,8);
+  cont.innerHTML = `<div style="font-size:12px;">${vis.map((e, idx) => {
     const dt = new Date(e.quando);
     const hora = dt.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-    return `<div style="padding:6px 4px;border-bottom:1px solid var(--sup-3);">
+    const cls   = e.obraId ? ' class="dash-ativ-item clicavel"' : "";
+    const extra = e.obraId ? `cursor:pointer;` : "";
+    const attrs = e.obraId ? ` data-idx="${idx}" title="Abrir a obra"` : "";
+    return `<div${cls}${attrs} style="padding:6px 4px;border-bottom:1px solid var(--sup-3);${extra}">
       <span style="color:var(--txt-sutil);font-size:11px;">${hora}</span> · ${e.txt}
     </div>`;
   }).join("")}</div>`;
+  cont.querySelectorAll(".dash-ativ-item[data-idx]").forEach(el => {
+    el.addEventListener("click", () => {
+      const e = vis[Number(el.dataset.idx)];
+      if(e && e.obraId) dashAbrirObra(e.obraId, e.tab);
+    });
+  });
 }
 
 /* ============================================================

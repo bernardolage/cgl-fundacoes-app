@@ -442,6 +442,14 @@ document.querySelectorAll(".sidebar-nav button").forEach(b=>{
   });
 });
 
+/* Navega para uma seção via o botão da nav (reusa o handler acima, que
+   ativa a seção e o título). Usado pelos atalhos clicáveis do dashboard. */
+function irParaSecao(secao){
+  const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"]`);
+  if(b){ b.click(); return true; }
+  return false;
+}
+
 /* ====================== CARGA GERAL ====================== */
 async function carregarTudo(){
   // 1. Carrega cadastros base
