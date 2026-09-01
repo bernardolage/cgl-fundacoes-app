@@ -608,6 +608,7 @@ async function confirmarImportEstacas(){
   aviso("app-aviso", `${regs.length} estacas importadas com sucesso.`, "ok");
   _importPreview = [];
   fecharModalImport();
+  fecharModalDXF();
   await carregarEstacasDaObra(obraEditId);
 }
 
