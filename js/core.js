@@ -16,7 +16,26 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    diálogo para definir a senha — sem isso, o convidado entrava uma vez
    e nunca mais conseguia logar. */
 const _hashChegada = location.hash || "";
-const _chegouPorConvite = /type=(invite|recovery|signup)/.test(_hashChegada);
+/* recovery/invite/signup abrem o diálogo de senha; magiclink também, porque
+   é o que usamos quando o reset por e-mail está no limite */
+const _chegouPorConvite = /type=(invite|recovery|signup|magiclink)/.test(_hashChegada);
+
+/* Consome o token que vem no hash (#access_token=...&refresh_token=...) e
+   estabelece a sessão explicitamente. Não dependemos do detectSessionInUrl
+   do supabase-js, que em fluxo PKCE ignora tokens no hash — era por isso que
+   o magic link chegava com token válido mas não logava. */
+async function consumirTokenDoHash(){
+  const h = new URLSearchParams(_hashChegada.replace(/^#/, ""));
+  const access_token  = h.get("access_token");
+  const refresh_token = h.get("refresh_token");
+  if(access_token && refresh_token){
+    try {
+      await sb.auth.setSession({ access_token, refresh_token });
+      /* limpa o token da barra de endereço (não deixa vazar em histórico) */
+      history.replaceState(null, "", location.pathname + location.search);
+    } catch(e){ /* token expirado: segue para a tela de login normal */ }
+  }
+}
 
 /* ---------- Cache Global de Mapas ---------- */
 let mapaClientes = {};

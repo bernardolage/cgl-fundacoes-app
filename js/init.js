@@ -9,7 +9,10 @@ montarSelects();
 /* preenche datas padrão dos formulários com a data de hoje */
 ["orc-data","med-data"].forEach(id=>{ const el = $(id); if(el) el.value = hojeISO(); });
 
-/* se já houver uma sessão ativa, entra direto no app */
-sb.auth.getSession().then(({ data:{ session } })=>{
+/* Arranque: primeiro consome um token que tenha vindo no hash (magic link /
+   convite / recuperação), depois verifica a sessão e entra no app. */
+(async () => {
+  await consumirTokenDoHash();
+  const { data:{ session } } = await sb.auth.getSession();
   if(session) iniciarApp();
-});
+})();
