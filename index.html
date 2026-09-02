@@ -968,8 +968,8 @@
 
           <div class="odoo-notebook" id="orc-notebook">
             <button type="button" data-tab="geral" class="ativo">📋 Geral</button>
-            <button type="button" data-tab="itens">📊 Itens</button>
             <button type="button" data-tab="proposta">📄 Modelo</button>
+            <button type="button" data-tab="itens">📊 Itens</button>
             <button type="button" data-tab="adicionais">⚙️ Adicionais CGL</button>
             <button type="button" data-tab="comerciais">💼 Comerciais</button>
             <button type="button" data-tab="revisoes">🔄 Revisões <span id="orc-rev-badge" class="conf-badge"></span></button>
@@ -984,13 +984,18 @@
                 <div class="campo"><label>Cliente *</label><select id="orc-cliente" required></select></div>
                 <div class="campo"><label>Status</label><select id="orc-status"></select></div>
                 <div class="campo"><label>Data do orçamento</label><input id="orc-data" type="date" /></div>
-                <div class="campo"><label>Validade (data)</label><input id="orc-validade" type="date" /></div>
+                <div class="campo"><label>Validade (data · = data + dias do Modelo)</label><input id="orc-validade" type="date" /></div>
                 <div class="campo"><label>Responsável</label><select id="orc-responsavel"><option value="">— não informado —</option></select></div>
                 <div class="campo largo"><label>Descrição (resumo interno)</label><input id="orc-descricao" placeholder="objeto do orçamento" /></div>
               </div>
             </div>
 
             <div class="odoo-tab" data-tab="itens">
+              <div class="orc-filtro-cat" id="orc-filtro-cat">
+                <span>Catálogo filtrado por:</span> <strong id="orc-filtro-cat-txt">—</strong>
+                <button type="button" class="btn-sec btn-sm" id="btn-orc-ir-modelo">alterar no Modelo</button>
+                <span class="orc-filtro-dica">Em cada linha, o botão ⋯ mostra o catálogo completo.</span>
+              </div>
               <div class="tabela-rola">
                 <table class="itens-tabela">
                   <thead><tr>
@@ -1023,6 +1028,14 @@
                     <option value="secante">SECANTE (RG 11.11)</option>
                     <option value="outro">Outro</option>
                   </select>
+                </div>
+                <div class="campo"><label>Tipo de obra *</label>
+                  <div class="seg-btns" id="orc-tipo-obra" role="group" aria-label="Tipo de obra">
+                    <button type="button" data-v="convencional" class="ativo" aria-pressed="true">Convencional</button>
+                    <button type="button" data-v="industrial" aria-pressed="false">Industrial</button>
+                    <button type="button" data-v="especial" aria-pressed="false">Especial</button>
+                  </div>
+                  <input type="hidden" id="orc-tipo-obra-val" value="convencional" />
                 </div>
                 <div class="campo"><label>Revisão (REV)</label><input id="orc-revisao" placeholder="00" maxlength="6" /></div>
                 <div class="campo"><label>Cidade de emissão</label><input id="orc-cidade-emissao" placeholder="Itabira/MG" /></div>

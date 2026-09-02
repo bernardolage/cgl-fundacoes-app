@@ -461,9 +461,10 @@ async function iniciarApp(){
   /* "Carteira" (controle de contratos & pendências): só diretoria.
      As pendências que interessam à engenharia aparecem dentro da ficha
      da Obra (aba Contrato) e como badge na lista de obras. */
+  // Carteira: só cargo diretor (admin ficou de fora em 02/09/2026 a pedido da diretoria;
+  // as pendências por contrato continuam visíveis na aba Contrato da Obra para todos)
   const navCart = $("nav-carteira");
-  if(navCart) navCart.style.display =
-    (perfil && ["diretor","admin"].includes(perfil.cargo)) ? "" : "none";
+  if(navCart) navCart.style.display = (perfil && perfil.cargo === "diretor") ? "" : "none";
 
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";

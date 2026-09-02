@@ -63,7 +63,7 @@ function dashEhDiretoria(){
 
 function dashIrFinanceiro(){
   // diretoria vê a Carteira; demais vão para Medições
-  if(usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo)) irParaSecao("carteira");
+  if(dashEhDiretoria()) irParaSecao("carteira");
   else irParaSecao("medicoes");
 }
 

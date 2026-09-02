@@ -17,34 +17,129 @@ let _orcVarById     = {};
 let _orcServUnidade = {};
 let _orcPrecos      = {};
 
+let _orcServicos  = [];   // serviços ativos com o "eixo" (helice/raiz/trado/secante/null=comum)
+let _orcVariantes = [];   // variantes ativas com tipo_obra
+let _orcCatFiltro = { tipoProp: "helice", tipoObra: "convencional" };
+
+// Eixo do serviço pelo caminho da categoria + nome (servicos.tipo_estaca é nulo em 21/29)
+function _eixoServicoOrc(texto){
+  const t = (texto || "").toLowerCase();
+  if(t.includes("secante")) return "secante";
+  if(t.includes("hélice") || t.includes("helice")) return "helice";
+  if(t.includes("raiz") || t.includes("raíz")) return "raiz";
+  if(t.includes("trado") || t.includes("escavad")) return "trado";
+  return null; // comum: diárias, insumos, verbas, bomba/compressor/gerador…
+}
+
 async function prepararCatalogoOrc(){
-  const [srv, vrt, prc] = await Promise.all([
-    sb.from("servicos").select("id,codigo,nome,unidade").order("codigo"),
-    sb.from("servico_variantes").select("id,servico_id,nome,ativo").order("codigo"),
+  const [srv, vrt, prc, cat] = await Promise.all([
+    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo").order("codigo"),
+    sb.from("servico_variantes").select("id,servico_id,nome,ativo,tipo_obra").order("codigo"),
     sb.from("servico_precos").select("variante_id,preco_referencia,vigente_desde")
-      .order("vigente_desde",{ ascending:false })
+      .order("vigente_desde",{ ascending:false }),
+    sb.from("categorias_servico").select("id,nome,parent_id")
   ]);
-  const servicos  = srv.data || [];
-  const variantes = (vrt.data || []).filter(v => v.ativo !== false);
+  const cats = {};
+  (cat.data || []).forEach(c => { cats[c.id] = c; });
+  const caminho = (id) => {
+    const partes = []; let c = cats[id]; let guarda = 0;
+    while(c && guarda++ < 6){ partes.unshift(c.nome); c = c.parent_id ? cats[c.parent_id] : null; }
+    return partes.join(" > ");
+  };
+  _orcServicos  = (srv.data || []).filter(s => s.ativo !== false)
+                    .map(s => ({ ...s, eixo: _eixoServicoOrc(caminho(s.categoria_id) + " " + s.nome) }));
+  _orcVariantes = (vrt.data || []).filter(v => v.ativo !== false);
 
   _orcVarById = {};
   _orcServUnidade = {};
   _orcPrecos = {};
-  servicos.forEach(s => { _orcServUnidade[s.id] = s.unidade; });
-  variantes.forEach(v => { _orcVarById[v.id] = v; });
+  _orcServicos.forEach(s => { _orcServUnidade[s.id] = s.unidade; });
+  _orcVariantes.forEach(v => { _orcVarById[v.id] = v; });
   (prc.data || []).forEach(p => {
     if(!(p.variante_id in _orcPrecos)) _orcPrecos[p.variante_id] = p.preco_referencia;
   });
+  _orcCatOptions = montarOpcoesCatalogoOrc(null, null); // catálogo completo
+}
 
+function _servicoVisivelOrc(s, tipoProp){
+  if(!tipoProp || tipoProp === "outro" || !s.eixo) return true;
+  if(s.eixo === tipoProp) return true;
+  if(tipoProp === "secante" && s.eixo === "helice") return true; // secante usa mobilização/locação/fat. mínimo de hélice
+  return false;
+}
+
+// tipoProp/tipoObra nulos = catálogo completo
+function montarOpcoesCatalogoOrc(tipoProp, tipoObra){
   let html = '<option value="">— item livre (digitar) —</option>';
-  servicos.forEach(s => {
-    const vars = variantes.filter(v => v.servico_id === s.id);
+  _orcServicos.forEach(s => {
+    if(!_servicoVisivelOrc(s, tipoProp)) return;
+    let vars = _orcVariantes.filter(v => v.servico_id === s.id);
     if(!vars.length) return;
-    html += `<optgroup label="${esc(s.nome)}">`;
-    html += vars.map(v => `<option value="${esc(v.id)}">${esc(v.nome)}</option>`).join("");
-    html += `</optgroup>`;
+    if(tipoObra){
+      const doTipo = vars.filter(v => v.tipo_obra === tipoObra || v.tipo_obra === "especial");
+      // serviço sem variante do tipo escolhido → mostra todas (ex.: Mão de Obra Extra só tem industrial)
+      if(doTipo.length) vars = doTipo;
+    }
+    html += `<optgroup label="${esc(s.nome)}">`
+          + vars.map(v => `<option value="${esc(v.id)}">${esc(v.nome)}</option>`).join("")
+          + `</optgroup>`;
   });
-  _orcCatOptions = html;
+  return html;
+}
+function _opcoesFiltradasOrc(){ return montarOpcoesCatalogoOrc(_orcCatFiltro.tipoProp, _orcCatFiltro.tipoObra); }
+
+// Troca as opções do select preservando o item escolhido (mesmo fora do filtro)
+function _trocarOpcoesSelect(sel, html){
+  const atual = sel.value;
+  sel.innerHTML = html;
+  if(atual && ![...sel.options].some(o => o.value === atual)){
+    const v = _orcVarById[atual];
+    sel.insertAdjacentHTML("beforeend", `<option value="${esc(atual)}">${esc(v ? v.nome : "(item)")} · fora do filtro</option>`);
+  }
+  sel.value = atual;
+}
+
+// Muda tipo de proposta / tipo de obra → refaz o select de cada linha (exceto as em "todo o catálogo")
+function atualizarFiltroCatalogoOrc(){
+  _orcCatFiltro = {
+    tipoProp: $("orc-tipo-proposta")?.value || "helice",
+    tipoObra: $("orc-tipo-obra-val")?.value || "convencional"
+  };
+  const html = _opcoesFiltradasOrc();
+  document.querySelectorAll("#orc-itens tr").forEach(tr => {
+    const sel = tr.querySelector(".it-cat");
+    const btn = tr.querySelector(".it-cat-all");
+    if(!sel || (btn && btn.classList.contains("ativo"))) return;
+    _trocarOpcoesSelect(sel, html);
+  });
+  const txt = $("orc-filtro-cat-txt");
+  if(txt){
+    const nomeProp = { helice:"Hélice", trado:"Trado", raiz:"Raiz", secante:"Secante (+ apoio de hélice)", outro:"Outro — sem filtro de eixo" }[_orcCatFiltro.tipoProp] || _orcCatFiltro.tipoProp;
+    const nomeObra = { convencional:"Convencional", industrial:"Industrial", especial:"Especial" }[_orcCatFiltro.tipoObra] || _orcCatFiltro.tipoObra;
+    txt.textContent = nomeProp + " · " + nomeObra;
+  }
+}
+
+function definirTipoObraOrc(valor){
+  const v = valor || "convencional";
+  const hid = $("orc-tipo-obra-val");
+  if(hid) hid.value = v;
+  document.querySelectorAll("#orc-tipo-obra button").forEach(b => {
+    const on = b.dataset.v === v;
+    b.classList.toggle("ativo", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  atualizarFiltroCatalogoOrc();
+}
+
+// Validade (data) = data do orçamento + validade em dias (aba Modelo). Continua editável.
+function recalcularValidadeOrc(){
+  const d = $("orc-data")?.value;
+  const dias = Number($("orc-validade-dias")?.value || 0);
+  const alvo = $("orc-validade");
+  if(!alvo || !d || !dias) return;
+  const [y, m, dd] = d.split("-").map(Number);
+  alvo.value = dataLocalISO(new Date(y, m - 1, dd + dias));
 }
 
 /* ---------- Carga ---------- */
@@ -181,11 +276,15 @@ function novoOrcamento(){
   $("orc-itens").innerHTML = "";
   $("orc-status").value = "rascunho";
   $("orc-data").value = hojeISO();
-  $("orc-numero").value = "ORC-" + String(_orcamentos.length + 1).padStart(4,"0");
+  // próximo número pelo maior sufixo existente (contagem colidia após exclusões)
+  const maxN = _orcamentos.reduce((m, o) => { const mm = String(o.numero || "").match(/([0-9]+)$/); return mm ? Math.max(m, Number(mm[1])) : m; }, 0);
+  $("orc-numero").value = "ORC-" + String(maxN + 1).padStart(4,"0");
   $("orc-tipo-proposta").value  = "helice";
   $("orc-revisao").value        = "00";
   $("orc-cidade-emissao").value = "Itabira/MG";
   $("orc-validade-dias").value  = 30;
+  definirTipoObraOrc("convencional");
+  recalcularValidadeOrc();
   $("orc-iss-perc").value       = 5.00;
   $("orc-iss-pdentro").checked  = true;
   $("orc-proj-sond").checked    = false;
@@ -212,6 +311,8 @@ async function abrirOrcamento(id){
   $("orc-revisao").value         = o.numero_revisao || "00";
   $("orc-cidade-emissao").value  = o.cidade_emissao || "Itabira/MG";
   $("orc-validade-dias").value   = o.validade_dias != null ? o.validade_dias : 30;
+  definirTipoObraOrc(o.tipo_obra || "convencional"); // antes dos itens: define o filtro do catálogo
+  if(!o.validade) recalcularValidadeOrc();
   $("orc-iss-perc").value        = o.iss_percentual != null ? o.iss_percentual : 5.00;
   $("orc-iss-pdentro").checked   = o.iss_por_dentro !== false;
   $("orc-proj-sond").checked     = o.projeto_sondagem_fornecido === true;
@@ -568,7 +669,7 @@ function linhaItemHTML(){
   const uns = UNIDADES.map(u=>`<option value="${u}"${u==="un"?" selected":""}>${u}</option>`).join("");
   return `<tr>
     <td><input type="text" class="it-secao" placeholder='(opcional) ex.: Perfuração Ø310mm' /></td>
-    <td><select class="it-cat">${_orcCatOptions}</select></td>
+    <td><div class="it-cat-wrap"><select class="it-cat">${_opcoesFiltradasOrc()}</select><button type="button" class="it-cat-all" title="Ver todo o catálogo nesta linha" aria-pressed="false">⋯</button></div></td>
     <td><input type="text" class="it-desc" placeholder="descrição do item" /></td>
     <td><input type="number" class="it-qtd" step="0.001" min="0" value="1" /></td>
     <td><select class="it-un">${uns}</select></td>
@@ -590,7 +691,11 @@ function adicionarItemPreenchido(item){
   it.insertAdjacentHTML("beforeend", linhaItemHTML());
   const tr = it.lastElementChild;
   if(item.variante_id && _orcVarById[item.variante_id]){
-    tr.querySelector(".it-cat").value = item.variante_id;
+    const sel = tr.querySelector(".it-cat");
+    if(![...sel.options].some(o => o.value === item.variante_id)){
+      sel.insertAdjacentHTML("beforeend", `<option value="${esc(item.variante_id)}">${esc(_orcVarById[item.variante_id].nome)} · fora do filtro</option>`);
+    }
+    sel.value = item.variante_id;
   }
   tr.querySelector(".it-secao").value = item.secao || "";
   tr.querySelector(".it-desc").value  = item.descricao || "";
@@ -668,6 +773,7 @@ async function salvarOrcamento(novoStatus){
     });
   }
   const valor_total = Number(recalcularOrc().toFixed(2));
+  if(!$("orc-validade").value) recalcularValidadeOrc();
 
   const tipoProp = $("orc-tipo-proposta").value || "helice";
   const codigosRG = { helice:"RG 11.8", trado:"RG 11.9", raiz:"RG 11.10", secante:"RG 11.11", outro:"RG 11.0" };
@@ -683,6 +789,7 @@ async function salvarOrcamento(novoStatus){
     responsavel_id: $("orc-responsavel").value || null,
     observacoes:    $("orc-obs").value.trim() || null,
     tipo_proposta:              tipoProp,
+    tipo_obra:                  $("orc-tipo-obra-val")?.value || "convencional",
     codigo_modelo:              codigosRG[tipoProp] || null,
     numero_revisao:             $("orc-revisao").value.trim() || "00",
     cidade_emissao:             $("orc-cidade-emissao").value.trim() || "Itabira/MG",
@@ -770,6 +877,12 @@ function ligarOrcamentos(){
   $("btn-excluir-orc")?.addEventListener("click", excluirOrcamento);
   $("btn-add-item")?.addEventListener("click", adicionarItem);
 
+  // Filtro do catálogo (aba Modelo → aba Itens) e validade derivada
+  $("orc-tipo-proposta")?.addEventListener("change", atualizarFiltroCatalogoOrc);
+  document.querySelectorAll("#orc-tipo-obra button").forEach(b => b.addEventListener("click", () => definirTipoObraOrc(b.dataset.v)));
+  ["orc-data","orc-validade-dias"].forEach(id => $(id)?.addEventListener("change", recalcularValidadeOrc));
+  $("btn-orc-ir-modelo")?.addEventListener("click", () => ativarTabOrc("proposta"));
+
   // Ações novas: nova revisão + criar contrato
   $("btn-orc-nova-revisao")?.addEventListener("click", criarNovaRevisaoOrc);
   $("btn-orc-criar-obra")?.addEventListener("click", criarObraDoOrcamento);
@@ -788,6 +901,16 @@ function ligarOrcamentos(){
       if(e.target.classList.contains("it-cat")) aplicarItemCatalogo(e.target);
     });
     orcItens.addEventListener("click", (e)=>{
+      if(e.target.classList.contains("it-cat-all")){
+        const btn = e.target;
+        const sel = btn.closest("tr").querySelector(".it-cat");
+        const ativo = !btn.classList.contains("ativo");
+        btn.classList.toggle("ativo", ativo);
+        btn.setAttribute("aria-pressed", ativo ? "true" : "false");
+        btn.title = ativo ? "Voltar ao catálogo filtrado" : "Ver todo o catálogo nesta linha";
+        _trocarOpcoesSelect(sel, ativo ? _orcCatOptions : _opcoesFiltradasOrc());
+        return;
+      }
       if(e.target.classList.contains("btn-rem")){
         e.target.closest("tr").remove();
         recalcularOrc();

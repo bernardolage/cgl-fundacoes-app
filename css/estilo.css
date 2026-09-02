@@ -2511,3 +2511,15 @@ input:disabled, select:disabled, textarea:disabled {
 /* cabeçalho fixo nas tabelas com rolagem (RDO com 16 colunas, listas longas) */
 .tabela-rola { position: relative; }
 .tabela-rola thead th { position: sticky; top: 0; z-index: 1; background: var(--sup-3); }
+
+/* ---- Orçamentos: tipo de obra (segmentado) + filtro do catálogo (fase 31) ---- */
+.seg-btns { display:inline-flex; border:1px solid var(--sup-3); border-radius:6px; overflow:hidden; }
+.seg-btns button { border:0; background:var(--sup-1); color:var(--txt-sec); padding:6px 12px; font:inherit; font-size:var(--txt-sm); cursor:pointer; }
+.seg-btns button + button { border-left:1px solid var(--sup-3); }
+.seg-btns button.ativo { background:var(--marca-600); color:#fff; font-weight:600; }
+.orc-filtro-cat { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:var(--txt-sm); background:var(--marca-50); border:1px solid var(--marca-100); border-radius:4px; padding:6px 10px; margin-bottom:10px; }
+.orc-filtro-dica { color:var(--txt-fraco); font-style:italic; font-size:var(--txt-xs); }
+.it-cat-wrap { display:flex; gap:4px; align-items:center; }
+.it-cat-wrap select { flex:1; min-width:0; }
+.it-cat-all { border:1px solid var(--sup-3); background:var(--sup-1); color:var(--txt-sec); border-radius:4px; padding:2px 7px; cursor:pointer; font-size:var(--txt-sm); line-height:1.4; }
+.it-cat-all.ativo { background:color-mix(in srgb, var(--aviso) 18%, transparent); border-color:var(--aviso); color:var(--txt); }
