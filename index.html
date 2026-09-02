@@ -6,7 +6,7 @@
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/estilo.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -39,7 +39,7 @@
     </form>
     <!-- Step MFA: exibido quando o usuário já tem TOTP cadastrado -->
     <div id="mfa-desafio" style="display:none;">
-      <p class="sub" style="margin:0 0 16px;font-size:var(--txt-base);">Autenticação em dois fatores</p>
+      <p class="sub" style="margin:0 0 16px;font-size:14px;">Autenticação em dois fatores</p>
       <div id="mfa-desafio-aviso" class="aviso"></div>
       <div class="campo">
         <label>Código do autenticador (6 dígitos)</label>
@@ -50,7 +50,7 @@
       <button type="button" class="btn" id="btn-mfa-desafio-ok" style="width:100%;">Confirmar</button>
       <button type="button" id="btn-mfa-desafio-cancelar"
               style="width:100%;margin-top:10px;background:none;border:none;
-                     color:var(--txt-fraco);cursor:pointer;font-size:var(--txt-md);padding:8px 0;">
+                     color:var(--txt-fraco);cursor:pointer;font-size:13px;padding:8px 0;">
         ← Voltar ao login
       </button>
     </div>
@@ -163,12 +163,11 @@
       <!-- Saudação -->
       <div style="background:linear-gradient(135deg,var(--marca-900) 0%,var(--marca-600) 100%);color:var(--txt-sobre);padding:18px 22px;border-radius:8px;margin-bottom:18px;">
         <div style="font-size:18px;font-weight:600;" id="dash-saudacao">Bem-vindo</div>
-        <div style="font-size:var(--txt-sm);opacity:0.85;margin-top:4px;" id="dash-data-hoje">—</div>
+        <div style="font-size:12px;opacity:0.85;margin-top:4px;" id="dash-data-hoje">—</div>
       </div>
 
-      <!-- KPIs Financeiros (4 cards grandes) — só diretoria (dashboard.js mostra) -->
-      <div id="dash-financeiro" style="display:none;">
-      <h3 style="font-size:var(--txt-md);color:var(--txt-fraco);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.5px;">💰 Financeiro</h3>
+      <!-- KPIs Financeiros (4 cards grandes) -->
+      <h3 style="font-size:13px;color:var(--txt-fraco);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.5px;">💰 Financeiro</h3>
       <div class="dash-cards">
         <div class="dash-card" style="border-left:4px solid var(--marca-600);">
           <div class="dash-card-rot">Total Contratado</div>
@@ -188,7 +187,7 @@
         <div class="dash-card" style="border-left:4px solid var(--marca-600);">
           <div class="dash-card-rot">% Execução Financeira</div>
           <div class="dash-card-num" id="dash-pct">—%</div>
-          <div class="dash-card-sub" style="font-size:var(--txt-xs);">
+          <div class="dash-card-sub" style="font-size:11px;">
             <div style="background:var(--borda);border-radius:4px;height:6px;margin-top:6px;overflow:hidden;">
               <div id="dash-pct-bar" style="background:var(--marca-600);height:100%;width:0%;transition:width 0.4s;"></div>
             </div>
@@ -196,27 +195,25 @@
         </div>
       </div>
 
-      </div>
-
       <!-- KPIs Operacionais -->
-      <h3 style="font-size:var(--txt-md);color:var(--txt-fraco);margin:20px 0 8px;text-transform:uppercase;letter-spacing:0.5px;">🏗️ Operacional</h3>
+      <h3 style="font-size:13px;color:var(--txt-fraco);margin:20px 0 8px;text-transform:uppercase;letter-spacing:0.5px;">🏗️ Operacional</h3>
       <div class="dash-cards">
-        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
+        <div class="dash-card">
           <div class="dash-card-rot">Obras Ativas</div>
           <div class="dash-card-num" id="dash-obras-ativas">—</div>
           <div class="dash-card-sub" id="dash-obras-sub">— em andamento · — concluídas mês</div>
         </div>
-        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
+        <div class="dash-card">
           <div class="dash-card-rot">RDOs (mês)</div>
           <div class="dash-card-num" id="dash-rdos-mes">—</div>
           <div class="dash-card-sub" id="dash-rdos-sub">— RDOs registrados em maio</div>
         </div>
-        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
+        <div class="dash-card">
           <div class="dash-card-rot">Estacas Executadas (mês)</div>
           <div class="dash-card-num" id="dash-estacas-mes">—</div>
           <div class="dash-card-sub" id="dash-estacas-sub">— metros · — m³ concreto</div>
         </div>
-        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
+        <div class="dash-card">
           <div class="dash-card-rot">Orçamentos abertos</div>
           <div class="dash-card-num" id="dash-orc-abertos">—</div>
           <div class="dash-card-sub" id="dash-orc-sub">— em negociação · R$ —</div>
@@ -227,13 +224,13 @@
       <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-top:20px;">
         <!-- Ações Pendentes -->
         <div class="card compacto">
-          <h3 style="font-size:var(--txt-md);color:var(--perigo);margin:0 0 10px;">🚨 Ações Pendentes</h3>
-          <div id="dash-pendencias"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
+          <h3 style="font-size:13px;color:var(--perigo);margin:0 0 10px;">🚨 Ações Pendentes</h3>
+          <div id="dash-pendencias"><p class="vazio" style="font-size:12px;">Carregando...</p></div>
         </div>
         <!-- Mini gráfico produção 30 dias -->
         <div class="card compacto">
-          <h3 style="font-size:var(--txt-md);color:var(--marca-600);margin:0 0 10px;">📊 Produção 30 dias</h3>
-          <div id="dash-grafico-prod"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
+          <h3 style="font-size:13px;color:var(--marca-600);margin:0 0 10px;">📊 Produção 30 dias</h3>
+          <div id="dash-grafico-prod"><p class="vazio" style="font-size:12px;">Carregando...</p></div>
         </div>
       </div>
 
@@ -241,13 +238,13 @@
       <div style="display:grid;grid-template-columns:1fr 1.5fr;gap:16px;margin-top:16px;">
         <!-- Top 5 obras -->
         <div class="card compacto">
-          <h3 id="dash-top-obras-titulo">📈 Top 5 obras</h3>
-          <div id="dash-top-obras"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
+          <h3>📈 Top 5 obras (valor)</h3>
+          <div id="dash-top-obras"><p class="vazio" style="font-size:12px;">Carregando...</p></div>
         </div>
         <!-- Atividade recente -->
         <div class="card compacto">
           <h3>🕒 Atividade Recente (48h)</h3>
-          <div id="dash-atividade"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
+          <div id="dash-atividade"><p class="vazio" style="font-size:12px;">Carregando...</p></div>
         </div>
       </div>
     </section>
@@ -379,7 +376,7 @@
           </div>
           <div class="serv-filtros">
             <input id="forn-busca" placeholder="Buscar por razão social, CNPJ ou cidade..." />
-            <select id="forn-f-categoria"><option value="">Todas as categorias</option></select>
+            <select id="forn-f-categoria"></select>
             <select id="forn-f-ativo">
               <option value="">Todos</option>
               <option value="ativos">Só ativos</option>
@@ -954,22 +951,22 @@
               <span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">medições</span>
             </button>
             <button type="button" class="sb-btn" id="sb-orc-revisoes" data-goto-tab="revisoes">
-              <span class="sb-num">0</span><span class="sb-icon">🔄</span><span class="sb-lbl">revisões</span>
+              <span class="sb-num">1</span><span class="sb-icon">🔄</span><span class="sb-lbl">revisões</span>
             </button>
           </div>
 
           <!-- Ações secundárias contextuais -->
-          <div style="background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;font-size:var(--txt-sm);align-items:center;">
+          <div style="background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;font-size:12px;align-items:center;">
             <span style="color:var(--txt-sec);">Ações:</span>
             <button type="button" class="btn-sec btn-sm" id="btn-orc-nova-revisao" title="Cria uma nova revisão deste orçamento (mantém número, incrementa revisão, copia itens)">➕ Nova revisão</button>
-            <button type="button" class="btn btn-sucesso btn-sm" id="btn-orc-criar-obra" title="Disponível quando o orçamento está APROVADO e ainda não gerou obra" style="display:none;">🏗️ Criar obra</button>
-            <span id="orc-acao-hint" style="color:var(--txt-fraco);font-style:italic;font-size:var(--txt-xs);"></span>
+            <button type="button" class="btn-sec btn-sm" id="btn-orc-criar-obra" title="Disponível quando o orçamento está APROVADO e ainda não gerou obra" style="background:var(--sucesso);color:var(--txt-sobre);border-color:var(--sucesso);display:none;">🏗️ Criar obra</button>
+            <span id="orc-acao-hint" style="color:var(--txt-sutil);font-style:italic;font-size:11px;"></span>
           </div>
 
           <div class="odoo-notebook" id="orc-notebook">
             <button type="button" data-tab="geral" class="ativo">📋 Geral</button>
-            <button type="button" data-tab="proposta">📄 Modelo</button>
             <button type="button" data-tab="itens">📊 Itens</button>
+            <button type="button" data-tab="proposta">📄 Modelo</button>
             <button type="button" data-tab="adicionais">⚙️ Adicionais CGL</button>
             <button type="button" data-tab="comerciais">💼 Comerciais</button>
             <button type="button" data-tab="revisoes">🔄 Revisões <span id="orc-rev-badge" class="conf-badge"></span></button>
@@ -984,21 +981,17 @@
                 <div class="campo"><label>Cliente *</label><select id="orc-cliente" required></select></div>
                 <div class="campo"><label>Status</label><select id="orc-status"></select></div>
                 <div class="campo"><label>Data do orçamento</label><input id="orc-data" type="date" /></div>
-                <div class="campo"><label>Validade (data · = data + dias do Modelo)</label><input id="orc-validade" type="date" /></div>
+                <div class="campo"><label>Validade (data)</label><input id="orc-validade" type="date" /></div>
                 <div class="campo"><label>Responsável</label><select id="orc-responsavel"><option value="">— não informado —</option></select></div>
                 <div class="campo largo"><label>Descrição (resumo interno)</label><input id="orc-descricao" placeholder="objeto do orçamento" /></div>
               </div>
             </div>
 
             <div class="odoo-tab" data-tab="itens">
-              <div class="orc-filtro-cat" id="orc-filtro-cat">
-                <span>Catálogo filtrado por:</span> <strong id="orc-filtro-cat-txt">—</strong>
-                <button type="button" class="btn-sec btn-sm" id="btn-orc-ir-modelo">alterar no Modelo</button>
-                <span class="orc-filtro-dica">Em cada linha, o botão ⋯ mostra o catálogo completo.</span>
-              </div>
               <div class="tabela-rola">
                 <table class="itens-tabela">
                   <thead><tr>
+                    <th style="min-width:140px;">Seção (agrupador)</th>
                     <th style="min-width:180px;">Serviço (catálogo)</th>
                     <th style="min-width:180px;">Descrição</th>
                     <th style="width:90px;">Qtd.</th>
@@ -1026,13 +1019,6 @@
                     <option value="raiz">RAÍZ (RG 11.10)</option>
                     <option value="secante">SECANTE (RG 11.11)</option>
                     <option value="outro">Outro</option>
-                  </select>
-                </div>
-                <div class="campo"><label>Tipo de obra *</label>
-                  <select id="orc-tipo-obra">
-                    <option value="convencional">Convencional</option>
-                    <option value="industrial">Industrial</option>
-                    <option value="especial">Especial</option>
                   </select>
                 </div>
                 <div class="campo"><label>Revisão (REV)</label><input id="orc-revisao" placeholder="00" maxlength="6" /></div>
@@ -1394,7 +1380,6 @@
 
             <!-- Aba Contrato (contrato do cliente; vive na obra desde a fase 21) -->
             <div class="odoo-tab" data-tab="contrato">
-              <div id="obr-con-pendencias"></div>
               <p class="ajuda-campo">
                 Dados contratuais desta obra. Cliente, valor, datas e responsável vêm das outras abas —
                 aqui ficam só os campos do contrato em si. Preencha o número e salve a obra para gerar
@@ -1433,7 +1418,7 @@
                   <button type="button" class="serv-view-btn ativo" data-est-view="lista">Lista</button>
                   <button type="button" class="serv-view-btn" data-est-view="planta">Planta</button>
                 </div>
-                <button type="button" class="btn-sec" id="btn-est-reconciliar" style="margin-left:8px;display:none;">🔍 Conferência <span id="est-reconciliar-badge" style="background:var(--perigo);color:var(--txt-sobre);border-radius:10px;padding:1px 7px;font-size:var(--txt-xs);margin-left:4px;"></span></button>
+                <button type="button" class="btn-sec" id="btn-est-reconciliar" style="margin-left:8px;display:none;">🔍 Conferência <span id="est-reconciliar-badge" style="background:var(--perigo);color:var(--txt-sobre);border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span></button>
                 <button type="button" class="btn-sec" id="btn-est-importar">📄 Importar PDF</button>
                 <button type="button" class="btn-sec" id="btn-est-importar-dxf">📐 Importar DXF</button>
                 <button type="button" class="btn" id="btn-est-nova">+ Nova</button>
@@ -1479,18 +1464,6 @@
                     <button type="button" class="btn-sec btn-sm" id="btn-planta-zoom-fit" title="Ajustar à tela">⛶</button>
                   </div>
                 </div>
-                <details class="regra-dist" id="regra-dist">
-                  <summary>📐 Regra de distância: <strong id="regra-dist-txt">execução 5×Ø · locação 3×Ø · coordenadas em mm</strong> <span class="meta">editar</span></summary>
-                  <div class="regra-dist-form">
-                    <label>Locação (projeto) <span><input id="regra-fator-loc" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
-                    <label>Execução — hélice / raiz / demais <span><input id="regra-fator" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
-                    <label>Execução — escavada <span><input id="regra-fator-esc" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
-                    <label>Piso absoluto (m; 0 = sem piso) <span><input id="regra-piso" type="number" step="0.05" min="0" /> m</span></label>
-                    <label>Unidade das coordenadas do projeto <span><select id="regra-unidade"><option value="mm">mm (padrão)</option><option value="cm">cm</option><option value="m">m</option></select></span></label>
-                    <button type="button" class="btn-sec btn-sm" id="btn-regra-salvar">Salvar regra</button>
-                    <span class="meta">Eixo a eixo, usando o maior Ø do par. Locação: todo par do projeto (vermelho na planta). Execução: estacas consecutivas da mesma máquina, regra de cura (âmbar na planta).</span>
-                  </div>
-                </details>
                 <div id="planta-conflitos"></div>
                 <div id="est-planta-svg-container">
                   <svg id="est-planta-svg" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid meet"></svg>
@@ -1579,8 +1552,8 @@
             <div class="campo"><label>Bloco</label><input id="est-bloco" placeholder="ex.: B1, Anel 1 int." /></div>
             <div class="campo"><label>Máquina</label><select id="est-equipamento"><option value="">— nenhuma —</option></select></div>
             <div class="campo"><label>Ordem de execução</label><input id="est-ordem" type="number" step="1" min="1" placeholder="sequência da máquina" /></div>
-            <div class="campo"><label id="lbl-est-coord-x">Coordenada X / Leste (mm)</label><input id="est-coord-x" type="number" step="0.01" placeholder="opcional — p/ validar distância" /></div>
-            <div class="campo"><label id="lbl-est-coord-y">Coordenada Y / Norte (mm)</label><input id="est-coord-y" type="number" step="0.01" placeholder="opcional" /></div>
+            <div class="campo"><label>Coordenada X (m)</label><input id="est-coord-x" type="number" step="0.01" placeholder="opcional — p/ validar distância" /></div>
+            <div class="campo"><label>Coordenada Y (m)</label><input id="est-coord-y" type="number" step="0.01" placeholder="opcional" /></div>
             <div class="campo largo"><label>Observações</label><textarea id="est-obs" rows="2"></textarea></div>
           </div>
           <div class="form-acoes compacta">
@@ -1595,12 +1568,12 @@
         <div style="background:var(--sup-0);max-width:480px;width:92%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <div>
-              <div style="font-size:var(--txt-xs);color:var(--txt-fraco);text-transform:uppercase;letter-spacing:.4px;">Estaca</div>
+              <div style="font-size:11px;color:var(--txt-sutil);text-transform:uppercase;letter-spacing:.4px;">Estaca</div>
               <h3 id="exec-titulo" style="margin:2px 0 0;font-size:18px;">—</h3>
             </div>
             <button type="button" class="btn-sec" id="btn-exec-fechar">×</button>
           </div>
-          <div id="exec-resumo" style="background:var(--sup-2);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:var(--txt-sm);color:var(--txt-sec);"></div>
+          <div id="exec-resumo" style="background:var(--sup-2);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--txt-sec);"></div>
 
           <div class="grade">
             <div class="campo"><label>Status</label>
@@ -1696,7 +1669,7 @@
       <!-- Modal: Importar PDF (IA) -->
       <div id="est-import-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:920px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
-          <div class="modal-topo">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
             <h3 class="titulo-linha">📄 Importar estacas de planta PDF</h3>
             <button type="button" class="btn-sec" id="btn-est-fechar-import">×</button>
           </div>
@@ -1713,7 +1686,7 @@
           <div class="form-acoes compacta">
             <button type="button" class="btn" id="btn-est-extrair">🤖 Extrair com IA</button>
           </div>
-          <div id="est-import-preview" class="bloco-preview" style="display:none;">
+          <div id="est-import-preview" style="display:none;margin-top:18px;border-top:1px solid var(--borda);padding-top:14px;">
             <h4>Preview — revise antes de importar</h4>
             <div id="est-import-preview-conteudo"></div>
             <div class="form-acoes compacta">
@@ -1726,7 +1699,7 @@
       <!-- Modal: Importar DXF (CAD) -->
       <div id="est-dxf-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:960px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
-          <div class="modal-topo">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
             <h3 class="titulo-linha">📐 Importar estacas de arquivo DXF (CAD)</h3>
             <button type="button" class="btn-sec" id="btn-est-fechar-dxf">×</button>
           </div>
@@ -1744,7 +1717,7 @@
             <button type="button" class="btn" id="btn-dxf-ler">📂 Ler arquivo</button>
           </div>
           <div id="est-dxf-config" style="display:none;"></div>
-          <div id="est-dxf-preview" class="bloco-preview" style="display:none;">
+          <div id="est-dxf-preview" style="display:none;margin-top:18px;border-top:1px solid var(--borda);padding-top:14px;">
             <h4>Preview — revise antes de importar</h4>
             <div id="est-dxf-preview-conteudo"></div>
             <div class="form-acoes compacta">
@@ -1797,7 +1770,7 @@
               <button type="button" class="btn-sec acao-perigo" id="btn-excluir-rdo">🗑️ Excluir</button>
             </div>
             <div class="actions-right">
-              <span id="rdo-ficha-posicao" style="font-size:var(--txt-sm);color:var(--txt-fraco);margin-right:10px;"></span>
+              <span id="rdo-ficha-posicao" style="font-size:12px;color:var(--txt-sutil);margin-right:10px;"></span>
               <strong id="rdo-ficha-titulo" class="ficha-titulo">Novo RDO</strong>
             </div>
           </div>
@@ -1854,7 +1827,7 @@
                 <h4 class="titulo-linha">Estacas executadas no dia</h4>
                 <button type="button" class="btn-sec" id="btn-add-execucao">+ Estaca</button>
               </div>
-              <div style="background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--txt-sm);">
+              <div style="background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;">
                 <label style="color:var(--txt-sec);">Atribuir operador a <strong>todas</strong> as execuções:</label>
                 <select id="rdo-exec-op-massa" style="min-width:180px;"><option value="">— escolha um operador da equipe —</option></select>
                 <button type="button" class="btn-sec btn-sm" id="btn-rdo-aplicar-op">Aplicar</button>
@@ -1895,7 +1868,7 @@
                 <div class="campo"><label>Local</label><input id="rdo-raiz-local" /></div>
                 <div class="campo"><label>Bloco</label><input id="rdo-raiz-bloco" /></div>
               </div>
-              <p style="margin-top:16px;font-size:var(--txt-sm);color:var(--txt-fraco);line-height:1.5;">
+              <p style="margin-top:16px;font-size:12px;color:var(--txt-fraco);line-height:1.5;">
                 Solo, injeção de argamassa e justificativas são preenchidos por estaca<br>
                 através do botão 📋 na aba <strong>Execuções</strong>.
               </p>
@@ -1920,7 +1893,7 @@
                     <tr>
                       <th style="width:32px;">#</th>
                       <th>Funcionário</th>
-                      <th>Nome avulso<br><small style="font-weight:400;color:var(--txt-fraco);">(terceiro sem cadastro)</small></th>
+                      <th>Nome avulso<br><small style="font-weight:400;color:var(--txt-sutil);">(terceiro sem cadastro)</small></th>
                       <th>Função no dia</th>
                       <th>Entrada</th>
                       <th>Saída</th>
@@ -1951,27 +1924,26 @@
       <!-- Modal: importar CSV Geodigitus -->
       <div id="csv-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:820px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
-          <div class="modal-topo">
-            <h3 class="titulo-linha">📄 Importar diário (PDF, foto ou arquivo do equipamento)</h3>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <h3 class="titulo-linha">📄 Importar arquivo (Geodigitus / equipamento)</h3>
             <button type="button" class="btn-sec" id="btn-fechar-csv">×</button>
           </div>
           <p class="texto-apoio">
             <strong>Formatos aceitos (detecção automática):</strong>
-            <br>• <strong>PDF ou foto do diário</strong> (.pdf, .jpg, .png) — digital ou preenchido à mão. A IA lê cabeçalho, equipe e estacas; você <strong>confere e corrige</strong> numa tabela antes de gravar.
             <br>• <strong>Geodigitus</strong> (.csv) — cabeçalho <code>DATA;OBRA;ESTACA;PROFUNDIDADE_EXECUTADA;...;MAQUINA;OBSERVACAO</code>
             <br>• <strong>SoftSaci V7.x</strong> (.txt) — relatório sintético com colunas <code>Contrato | Obra | Estaca | Data | Ini.P | Ini.C | Fim C | Diam | Comp | V.Conc | Supercon | Incli</code>
             <br><br>O sistema agrupa por data e cria 1 RDO por dia (na obra detectada). Estacas existentes na obra são marcadas como executadas.
           </p>
           <div class="grade">
             <div class="campo largo">
-              <label>Arquivo (PDF, foto, CSV ou TXT)</label>
-              <input id="csv-arquivo" type="file" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp,.csv,.txt,text/csv,text/plain" />
+              <label>Arquivo (CSV ou TXT)</label>
+              <input id="csv-arquivo" type="file" accept=".csv,.txt,text/csv,text/plain" />
             </div>
           </div>
           <div class="form-acoes compacta">
             <button type="button" class="btn" id="btn-csv-processar">🔍 Processar</button>
           </div>
-          <div id="csv-preview" class="bloco-preview" style="display:none;">
+          <div id="csv-preview" style="display:none;margin-top:18px;border-top:1px solid var(--borda);padding-top:14px;">
             <h4>Preview — agrupado por dia</h4>
             <div id="csv-preview-conteudo"></div>
             <div class="form-acoes compacta">
@@ -2063,6 +2035,11 @@
                 <div class="campo"><label>Data da medição</label><input id="med-data" type="date" /></div>
                 <div class="campo"><label>Período — início</label><input id="med-inicio" type="date" /></div>
                 <div class="campo"><label>Período — fim</label><input id="med-fim" type="date" /></div>
+                <div class="campo"><label>Documento fiscal</label><select id="med-doc-tipo"><option value="">—</option><option value="nf">NF — Nota Fiscal</option><option value="rr">RR — Recibo de Receita</option></select></div>
+                <div class="campo"><label>Nº do documento</label><input id="med-nf-numero" placeholder="ex.: 234" /></div>
+                <div class="campo"><label>Emissão</label><input id="med-nf-emissao" type="date" /></div>
+                <div class="campo"><label>Vencimento</label><input id="med-nf-venc" type="date" /></div>
+                <div class="campo"><label>Valor do documento (se ≠ medição)</label><input id="med-nf-valor" type="number" step="0.01" /></div>
               </div>
             </div>
 
@@ -2093,7 +2070,7 @@
                   <tbody id="med-itens-tbody"></tbody>
                 </table>
               </div>
-              <div id="med-itens-vazio" style="display:none;padding:18px;text-align:center;color:var(--txt-fraco);font-size:var(--txt-sm);">
+              <div id="med-itens-vazio" style="display:none;padding:18px;text-align:center;color:var(--txt-sutil);font-size:12px;">
                 Nenhum item ainda. Clique <strong>✨ Sugerir do período</strong> pra gerar a partir das execuções dos RDOs, ou <strong>+ Item manual</strong> pra digitar.
               </div>
               <p class="nota">
@@ -2135,11 +2112,11 @@
                   <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
                     <button type="button" class="btn-sec btn-sm" id="btn-med-calc-he" title="Soma horas extras dos RDOs do período × valor configurado">✨ Calcular Hora Extra</button>
                     <button type="button" class="btn-sec btn-sm" id="btn-med-calc-fatmin" title="Conta dias úteis sem produção × faturamento mínimo diário">✨ Calcular Fat. Mínimo</button>
-                    <span id="med-acresc-hint" style="font-size:var(--txt-xs);color:var(--txt-fraco);align-self:center;"></span>
+                    <span id="med-acresc-hint" style="font-size:10px;color:var(--txt-sutil);align-self:center;"></span>
                   </div>
                 </div>
                 <div class="campo" id="campo-med-multiplicador" style="display:none;">
-                  <label>Multiplicador (%) <small style="font-weight:400;color:var(--txt-fraco);">— Sinal Contratual usa 30%</small></label>
+                  <label>Multiplicador (%) <small style="font-weight:400;color:var(--txt-sutil);">— Sinal Contratual usa 30%</small></label>
                   <input id="med-multiplicador" type="number" step="0.01" min="0" max="100" value="100" />
                 </div>
                 <div class="campo">
@@ -2151,7 +2128,7 @@
                   <input id="med-percentual" type="number" step="0.001" min="0" max="100" value="0" />
                 </div>
               </div>
-              <div style="background:var(--sup-2);border-radius:6px;padding:12px;margin-top:14px;font-size:var(--txt-sm);color:var(--txt-sec);">
+              <div style="background:var(--sup-2);border-radius:6px;padding:12px;margin-top:14px;font-size:12px;color:var(--txt-sec);">
                 <strong>Fórmula:</strong> Valor final = (Subtotal − Desconto sinal + Acréscimo) × (Multiplicador / 100)<br>
                 <strong>Auto-calculado:</strong> subtotal vem dos itens; o multiplicador só aparece quando tipo = <em>Sinal Contratual</em> (default 30%). Demais tipos usam 100%.
               </div>
@@ -2222,8 +2199,8 @@
               <button type="button" class="btn-sec" id="btn-recomenda-mdf">🚚 Verificar MDF-e</button>
             </div>
             <div class="actions-right">
-              <button type="button" class="btn" id="btn-marcar-emitida">✓ Emitida</button>
-              <button type="button" class="btn btn-aviso" id="btn-marcar-transito">🚛 Trânsito</button>
+              <button type="button" class="btn" id="btn-marcar-emitida" style="background:var(--marca-600);">✓ Emitida</button>
+              <button type="button" class="btn" id="btn-marcar-transito" style="background:var(--aviso);">🚛 Trânsito</button>
               <button type="button" class="btn btn-sucesso" id="btn-marcar-recebida">✅ Recebida</button>
               <button type="button" class="btn-sec acao-perigo" id="btn-cancelar">✗ Cancelar</button>
             </div>
@@ -2390,7 +2367,7 @@
             <h3 class="titulo-linha">Dados pra colar no UniNFe</h3>
             <button type="button" class="btn-sec" id="btn-fechar-uninfe">×</button>
           </div>
-          <pre id="mov-uninfe-conteudo" style="background:var(--sup-2);padding:14px;border-radius:6px;overflow:auto;font-size:var(--txt-sm);flex:1;font-family:Consolas,monospace;white-space:pre-wrap;"></pre>
+          <pre id="mov-uninfe-conteudo" style="background:var(--sup-2);padding:14px;border-radius:6px;overflow:auto;font-size:12px;flex:1;font-family:Consolas,monospace;white-space:pre-wrap;"></pre>
           <div class="form-acoes" style="margin-top:12px;">
             <button type="button" class="btn" id="btn-copiar-uninfe">📋 Copiar tudo</button>
           </div>
@@ -2521,19 +2498,19 @@
   <div style="background:var(--sup-0); border-radius:8px; padding:28px 32px; max-width:440px; width:92%;
               box-shadow:0 8px 40px rgba(0,0,0,0.3); max-height:90vh; overflow-y:auto;">
     <h3 style="margin:0 0 6px; font-size:17px; color:var(--marca-900);">🔐 Autenticação em dois fatores</h3>
-    <p style="margin:0 0 20px; font-size:var(--txt-md); color:var(--txt-fraco); line-height:1.55;">
+    <p style="margin:0 0 20px; font-size:13px; color:var(--txt-fraco); line-height:1.55;">
       Escaneie o QR code com <strong>Google Authenticator</strong>, <strong>Authy</strong> ou similar.
       Depois, digite o código de 6 dígitos gerado para confirmar.
     </p>
     <div id="mfa-qr-area" style="text-align:center; padding:8px 0 20px; min-height:60px;"></div>
     <div id="mfa-secret-area" style="display:none; background:var(--sup-2); border-radius:4px;
-         padding:10px 14px; font-size:var(--txt-sm); margin-bottom:16px; word-break:break-all;
+         padding:10px 14px; font-size:12px; margin-bottom:16px; word-break:break-all;
          color:var(--txt-sec); line-height:1.6;">
       <strong>Chave manual:</strong><br>
-      <span id="mfa-secret-text" style="font-family:monospace; font-size:var(--txt-base); letter-spacing:2px;"></span>
+      <span id="mfa-secret-text" style="font-family:monospace; font-size:14px; letter-spacing:2px;"></span>
     </div>
     <button type="button" id="btn-mfa-mostrar-codigo"
-            style="font-size:var(--txt-sm); background:none; border:none; color:var(--marca-600); cursor:pointer;
+            style="font-size:12px; background:none; border:none; color:var(--marca-600); cursor:pointer;
                    margin-bottom:18px; padding:0; display:block; text-decoration:underline;">
       Não consigo escanear — mostrar chave manual
     </button>
