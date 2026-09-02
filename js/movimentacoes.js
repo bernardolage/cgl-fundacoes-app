@@ -255,12 +255,14 @@ function atualizarStatusbar(){
   const idxAtual = STATUSBAR_STAGES.indexOf(st);
   sb.querySelectorAll(".stage").forEach(el => {
     el.classList.remove("atual","passada","cancelada");
+    el.removeAttribute("aria-current");
     const idx = STATUSBAR_STAGES.indexOf(el.dataset.status);
     if(st === "cancelada"){
       // tudo cinza, último marcado vermelho
-      if(idx === STATUSBAR_STAGES.length - 1) el.classList.add("cancelada");
+      if(idx === STATUSBAR_STAGES.length - 1){ el.classList.add("cancelada"); el.setAttribute("aria-current", "step"); }
     } else if(idx === idxAtual){
       el.classList.add("atual");
+      el.setAttribute("aria-current", "step");
     } else if(idx < idxAtual){
       el.classList.add("passada");
     }

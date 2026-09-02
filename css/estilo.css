@@ -227,7 +227,7 @@ h4 {
   z-index: 0;
 }
 #tela-login::before {
-  background: rgba(59, 130, 246, 0.15); /* blue */
+  background: color-mix(in srgb, var(--marca-600) 25%, transparent); /* blue */
   top: -10%;
   right: -5%;
 }
@@ -295,7 +295,7 @@ h4 {
 .campo input:focus, .campo select:focus, .campo textarea:focus {
   outline: none;
   border-color: var(--azul-accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--marca-600) 25%, transparent);
 }
 .campo textarea {
   resize: vertical;
@@ -345,7 +345,7 @@ h4 {
 #form-login .btn { width: 100%; }
 .btn:hover {
   background: var(--azul-accent-hover);
-  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--marca-600) 25%, transparent);
 }
 .btn:active {
   transform: translateY(1px);
@@ -463,7 +463,7 @@ h4 {
 .sidebar-nav button.ativo {
   background-color: var(--azul-accent);
   color: var(--txt-sobre);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--marca-600) 30%, transparent);
 }
 
 .nav-icon {
@@ -735,7 +735,7 @@ td.num, th.num {
 .ind:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: color-mix(in srgb, var(--marca-600) 35%, transparent);
 }
 .ind .num {
   font-size: 28px;
@@ -799,7 +799,7 @@ td.num, th.num {
 .busca:focus {
   outline: none;
   border-color: var(--azul-accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--marca-600) 25%, transparent);
 }
 
 .ficha-topo {
@@ -988,7 +988,7 @@ td.num, th.num {
 .serv-filtros select:focus {
   outline: none;
   border-color: var(--azul-accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--marca-600) 25%, transparent);
 }
 @media (max-width: 760px) {
   .serv-filtros { grid-template-columns: 1fr 1fr; }
@@ -1164,7 +1164,7 @@ td.num, th.num {
 .hist-compositor textarea:focus {
   outline: none;
   border-color: var(--azul-accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--marca-600) 25%, transparent);
 }
 .hist-compositor-acoes {
   display: flex;
@@ -2462,3 +2462,36 @@ tr.cart-aberta td { background: var(--info-bg); }
 .dist-aviso ul { margin: var(--esp-1) 0 0; padding-left: 18px; }
 .dist-aviso li { margin-bottom: 2px; }
 .dist-aviso .meta { display: block; margin-top: 2px; }
+
+/* ====================================================================
+   ACESSIBILIDADE GLOBAL (Onda 3 — 01/09/2026)
+   Foco de teclado visível em TUDO que é clicável, na cor da marca;
+   estado desabilitado padronizado. Antes: foco só em inputs (e num azul
+   que não era de paleta nenhuma), botões/abas/statusbar/linhas invisíveis
+   para quem navega por Tab.
+   ==================================================================== */
+:focus-visible {
+  outline: 2px solid var(--marca-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.btn:focus-visible, .btn-sec:focus-visible, .serv-view-btn:focus-visible,
+.odoo-notebook button:focus-visible, .odoo-statusbar .stage:focus-visible,
+.sb-btn:focus-visible, .chip:focus-visible, .linha-clicavel:focus-visible,
+.serv-kan-card:focus-visible, .ind-click:focus-visible, .dash-card.clicavel:focus-visible,
+.dash-pendencia-item.clicavel:focus-visible, .dash-linha-obra:focus-visible,
+.dash-ativ-item:focus-visible, .sidebar-nav button:focus-visible {
+  outline: 2px solid var(--marca-600);
+  outline-offset: 2px;
+}
+tr.linha-clicavel:focus-visible { outline-offset: -2px; }
+#est-planta-svg .estaca-circ:focus-visible { outline: none; stroke: var(--marca-600) !important; stroke-width: 3 !important; }
+/* mouse não precisa do anel */
+:focus:not(:focus-visible) { outline: none; }
+
+.btn-sec:disabled, .btn-sec[disabled],
+input:disabled, select:disabled, textarea:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  background: var(--sup-3);
+}

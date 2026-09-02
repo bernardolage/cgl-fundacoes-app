@@ -379,8 +379,9 @@ function atualizarStatusbarRDO(st){
   const idxAtual = RDO_STAGES.indexOf(st);
   bar.querySelectorAll(".stage").forEach(el => {
     el.classList.remove("atual","passada");
+    el.removeAttribute("aria-current");
     const idx = RDO_STAGES.indexOf(el.dataset.status);
-    if(idx === idxAtual) el.classList.add("atual");
+    if(idx === idxAtual){ el.classList.add("atual"); el.setAttribute("aria-current", "step"); }
     else if(idx < idxAtual) el.classList.add("passada");
   });
 }

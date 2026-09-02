@@ -424,11 +424,13 @@ function atualizarStatusbarObra(st){
   const idxAtual = OBR_STAGES.indexOf(st);
   bar.querySelectorAll(".stage").forEach(el => {
     el.classList.remove("atual","passada","cancelada");
+    el.removeAttribute("aria-current"); // etapa atual é anunciada pelo leitor de tela
     const idx = OBR_STAGES.indexOf(el.dataset.status);
     if(st === "cancelada"){
-      if(idx === OBR_STAGES.length - 1) el.classList.add("cancelada");
+      if(idx === OBR_STAGES.length - 1){ el.classList.add("cancelada"); el.setAttribute("aria-current", "step"); }
     } else if(idx === idxAtual){
       el.classList.add("atual");
+      el.setAttribute("aria-current", "step");
     } else if(idx < idxAtual){
       el.classList.add("passada");
     }

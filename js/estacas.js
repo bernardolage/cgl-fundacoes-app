@@ -1098,6 +1098,9 @@ function renderPlantaSVG(){
   const pct = total ? Math.round((exec/total) * 100) : 0;
   const fill = $("planta-progresso-fill");
   if(fill) fill.style.width = pct + "%";
+  // Resumo da planta para leitores de tela (o SVG é decorativo sem isso)
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `Planta de locação: ${exec} de ${total} estacas executadas (${pct}%)`);
   const txt = $("planta-progresso-texto");
   if(txt){
     let extra = "";
@@ -1195,6 +1198,10 @@ function desenharEstaca(g, ns, e, x, y, hoje){
   circ.style.stroke = "var(--sup-0)";
   circ.style.strokeWidth = "1.5";
   circ.dataset.id = e.id;
+  // Acessível: nome + status lidos pelo leitor de tela; tabindex/role vêm do
+  // observer global (core.js) e Enter dispara o click delegado.
+  circ.setAttribute("role", "button");
+  circ.setAttribute("aria-label", `Estaca ${e.numero || ""}, ${(ESTACA_STATUS[e.status] || {}).label || e.status || ""}`);
   g.appendChild(circ);
 
   const label = document.createElementNS(ns, "text");

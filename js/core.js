@@ -296,6 +296,62 @@ function debounce(fn, ms = 150){
   };
 }
 
+/* ====================== ACESSIBILIDADE (Onda 3) ======================
+   Um único inicializador cobre o app inteiro sem tocar nos templates:
+   1. <label> sem `for` dentro de .campo passa a apontar para o campo seguinte
+      (clicar no rótulo foca; leitor de tela associa).
+   2. Buscas/filtros/selects sem rótulo ganham aria-label (do placeholder ou
+      da 1ª opção); botões "×" viram "Fechar".
+   3. Tudo que é clicável mas é <div>/<tr>/<circle> (linhas, cards, statusbar,
+      KPIs, planta) ganha tabindex=0 + role=button — via MutationObserver,
+      então vale também para o que os módulos renderizam depois.
+   4. Enter/Espaço num desses elementos dispara o mesmo click do mouse. */
+const ACIONAVEIS = ".linha-clicavel, .serv-kan-card, .odoo-statusbar .stage, .ind-click, .dash-card.clicavel, .dash-pendencia-item.clicavel, .dash-linha-obra, .dash-ativ-item, #est-planta-svg .estaca-circ";
+function marcarAcionaveis(raiz){
+  const alvo = raiz && raiz.querySelectorAll ? raiz : document;
+  alvo.querySelectorAll(ACIONAVEIS).forEach(el => {
+    if(el.hasAttribute("tabindex")) return;
+    el.setAttribute("tabindex", "0");
+    if(!el.hasAttribute("role")) el.setAttribute("role", "button");
+  });
+}
+function rotularControles(raiz){
+  const alvo = raiz && raiz.querySelectorAll ? raiz : document;
+  alvo.querySelectorAll(".campo > label:not([for])").forEach(lb => {
+    const campo = lb.parentElement.querySelector("input, select, textarea");
+    if(campo && campo.id) lb.setAttribute("for", campo.id);
+  });
+  alvo.querySelectorAll("input[placeholder]:not([aria-label]):not([aria-labelledby])").forEach(i => {
+    if(!i.closest(".campo")) i.setAttribute("aria-label", i.placeholder);
+  });
+  alvo.querySelectorAll("select:not([aria-label]):not([aria-labelledby])").forEach(s => {
+    if(!s.closest(".campo") && s.options[0]) s.setAttribute("aria-label", s.options[0].textContent.trim());
+  });
+  alvo.querySelectorAll("button:not([aria-label])").forEach(b => {
+    if(b.textContent.trim() === "×") b.setAttribute("aria-label", "Fechar");
+  });
+}
+function iniciarAcessibilidade(){
+  rotularControles(document);
+  marcarAcionaveis(document);
+  // Renders posteriores (innerHTML dos módulos) passam pelo observer
+  const obs = new MutationObserver(muts => {
+    for(const m of muts){
+      m.addedNodes.forEach(n => { if(n.nodeType === 1){ marcarAcionaveis(n); rotularControles(n); } });
+    }
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+  // Teclado: Enter/Espaço = click (reaproveita os handlers já existentes)
+  document.addEventListener("keydown", (ev) => {
+    if(ev.key !== "Enter" && ev.key !== " ") return;
+    const el = ev.target;
+    if(!el || !el.matches || !el.matches(ACIONAVEIS)) return;
+    if(el.tagName === "BUTTON" || el.tagName === "A" || el.tagName === "INPUT") return;
+    ev.preventDefault();
+    el.click();
+  });
+}
+
 
 /* ====================== AUTENTICAÇÃO ====================== */
 $("form-login").addEventListener("submit", async (e)=>{
@@ -529,6 +585,9 @@ async function carregarTudo(){
   // 7. Atualiza dashboard e sugestões sequenciais
   await carregarDashboard();
   sugerirNumeros();
+
+  // 8. Acessibilidade global (rótulos, aria-label, teclado nos clicáveis)
+  iniciarAcessibilidade();
 }
 
 /* ============================================================
