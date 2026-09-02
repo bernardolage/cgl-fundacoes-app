@@ -348,7 +348,8 @@ async function carregarDashAtividade(){
   const mapaU = {};
   if(userIds.size){
     const { data: profs } = await sb.from("profiles").select("id,nome").in("id",[...userIds]);
-    (profs||[]).forEach(p => { mapaU[p.id] = p.nome; });
+    // esc() aqui: profiles.nome é editável pelo próprio usuário e vai para innerHTML
+    (profs||[]).forEach(p => { mapaU[p.id] = esc(p.nome); });
   }
   const nomeDe = (uid) => uid ? (mapaU[uid] || "usuário") : "sistema";
 
