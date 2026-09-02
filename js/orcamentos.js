@@ -307,10 +307,11 @@ async function carregarAbasOrc(o){
     sb.from("contratos")
       .select("id,numero,status,data_assinatura,valor_total,obras:obras!contrato_id(id,codigo,nome,status)")
       .eq("orcamento_id", orcEditId),
+    // Filtra pelo item embutido (!inner) em vez de um await aninhado que
+    // serializava as 3 consultas do Promise.all (1 round-trip a menos)
     sb.from("medicao_itens")
-      .select("medicao_id, valor_total, medicao:medicao_id(id,numero,status,data_medicao,obra:obra_id(codigo,nome))")
-      .in("orcamento_item_id",
-        (await sb.from("orcamento_itens").select("id").eq("orcamento_id", orcEditId)).data?.map(x => x.id) || [])
+      .select("medicao_id, valor_total, orcamento_item:orcamento_item_id!inner(orcamento_id), medicao:medicao_id(id,numero,status,data_medicao,obra:obra_id(codigo,nome))")
+      .eq("orcamento_item.orcamento_id", orcEditId)
   ]);
 
   const revisoes  = revRes.data || [];

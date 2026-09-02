@@ -1005,6 +1005,22 @@ function renderPlantaSVG(){
   g.setAttribute("transform", `translate(${_plantaState.panX}, ${_plantaState.panY}) scale(${_plantaState.zoom})`);
   svg.appendChild(g);
 
+  // Delegação de eventos: 1 handler para todos os círculos (em vez de 3 por
+  // estaca recriados a cada render). Lookup O(1) pelo data-id.
+  const porId = new Map(filtradas.map(e => [e.id, e]));
+  const alvo = (ev) => {
+    const c = ev.target && ev.target.closest ? ev.target.closest(".estaca-circ") : null;
+    return c ? porId.get(c.dataset.id) : null;
+  };
+  g.addEventListener("click", (ev) => {
+    const e = alvo(ev);
+    if(!e) return;
+    ev.stopPropagation();
+    abrirModalExecucao(e.id);
+  });
+  g.addEventListener("mouseover", (ev) => { const e = alvo(ev); if(e) mostrarTooltipPlanta(ev, e); });
+  g.addEventListener("mouseout",  (ev) => { if(alvo(ev)) esconderTooltipPlanta(); });
+
   const semCoords = filtradas.filter(e => e.coord_x == null || e.coord_y == null);
   let grid = null;
   let usandoGrid = false;
@@ -1189,12 +1205,8 @@ function desenharEstaca(g, ns, e, x, y, hoje){
   label.textContent = so_num || (e.numero || "").slice(0,3);
   g.appendChild(label);
 
-  circ.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    abrirModalExecucao(e.id);
-  });
-  circ.addEventListener("mouseenter", (ev) => mostrarTooltipPlanta(ev, e));
-  circ.addEventListener("mouseleave", esconderTooltipPlanta);
+  // Sem listeners por círculo: click/hover são delegados no <g id="planta-g">
+  // (renderPlantaSVG) — antes eram 3 listeners × N estacas a cada tecla da busca.
 }
 
 /* ---------- Tooltip ---------- */
@@ -1560,6 +1572,11 @@ function renderizarReconciliacao(){
        </div>`
     : "";
 
+  // Options das previstas montadas UMA vez (antes: re-escapadas por órfã, com
+  // um .find() por item — 100 órfãs × 160 previstas = 16k options recalculadas)
+  const optPorId = new Map(_recPrevs.map(p => [p.id,
+    `<option value="${esc(p.id)}">${esc(p.numero)}${p.status==='executada' ? " ⚠ já executada" : ""}</option>`]));
+
   // Pra cada órfã, calcula sugestões e pré-seleciona a melhor
   const linhas = _recOrfas.map(o => {
     const sugs = _recPrevs
@@ -1575,12 +1592,10 @@ function renderizarReconciliacao(){
       return `<option value="${esc(p.id)}">${stars} ${esc(p.numero)} — ${pct}%${exec}</option>`;
     }).join("");
 
+    const idsSug = new Set(sugs.map(s => s.p.id));
     const optionsTodas = _recPrevs
-      .filter(p => !sugs.find(s => s.p.id === p.id))
-      .map(p => {
-        const exec = p.status==='executada' ? " ⚠ já executada" : "";
-        return `<option value="${esc(p.id)}">${esc(p.numero)}${exec}</option>`;
-      }).join("");
+      .filter(p => !idsSug.has(p.id))
+      .map(p => optPorId.get(p.id)).join("");
 
     const sugestaoTop = sugs[0];
     const sugId = sugestaoTop?.p.id || "";
