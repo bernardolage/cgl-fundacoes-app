@@ -103,7 +103,7 @@ function _trocarOpcoesSelect(sel, html){
 function atualizarFiltroCatalogoOrc(){
   _orcCatFiltro = {
     tipoProp: $("orc-tipo-proposta")?.value || "helice",
-    tipoObra: $("orc-tipo-obra-val")?.value || "convencional"
+    tipoObra: $("orc-tipo-obra")?.value || "convencional"
   };
   const html = _opcoesFiltradasOrc();
   document.querySelectorAll("#orc-itens tr").forEach(tr => {
@@ -122,13 +122,8 @@ function atualizarFiltroCatalogoOrc(){
 
 function definirTipoObraOrc(valor){
   const v = valor || "convencional";
-  const hid = $("orc-tipo-obra-val");
-  if(hid) hid.value = v;
-  document.querySelectorAll("#orc-tipo-obra button").forEach(b => {
-    const on = b.dataset.v === v;
-    b.classList.toggle("ativo", on);
-    b.setAttribute("aria-pressed", on ? "true" : "false");
-  });
+  const sel = $("orc-tipo-obra");
+  if(sel) sel.value = v;
   atualizarFiltroCatalogoOrc();
 }
 
@@ -343,6 +338,18 @@ async function abrirOrcamento(id){
   abrirFichaOrcVisual(o);
 }
 
+// Orçamento novo: zera smart-buttons e abas (senão ficam os valores do último aberto)
+function zerarAbasOrc(){
+  ["sb-orc-contratos","sb-orc-obras","sb-orc-medicoes","sb-orc-revisoes"].forEach(id => {
+    const el = $(id); if(!el) return;
+    const n = el.querySelector(".sb-num"); if(n) n.textContent = "0";
+    el.classList.add("zero");
+  });
+  if($("orc-rev-badge")) $("orc-rev-badge").textContent = "";
+  renderizarRevisoesOrc([], null);
+  renderizarVinculosOrc([], [], []);
+}
+
 function abrirFichaOrcVisual(o){
   $("orc-painel").style.display = "none";
   $("orc-ficha").style.display = "";
@@ -359,6 +366,7 @@ function abrirFichaOrcVisual(o){
   atualizarAcoesOrc(o);
   // Carrega smart-buttons + revisões + vínculos em paralelo
   if(orcEditId) carregarAbasOrc(o);
+  else zerarAbasOrc();
   ativarTabOrc("geral");
 }
 
@@ -438,10 +446,10 @@ async function carregarAbasOrc(o){
   setSB("sb-orc-contratos", contratos.length);
   setSB("sb-orc-obras",     obras.length);
   setSB("sb-orc-medicoes",  medicoes.length);
-  setSB("sb-orc-revisoes",  revisoes.length);
+  setSB("sb-orc-revisoes",  Math.max(0, revisoes.length - 1)); // revisões ALÉM da original (Rev 00 não conta)
 
   // Badge na aba Revisões
-  if($("orc-rev-badge")) $("orc-rev-badge").textContent = revisoes.length > 1 ? revisoes.length : "";
+  if($("orc-rev-badge")) $("orc-rev-badge").textContent = revisoes.length > 1 ? revisoes.length - 1 : "";
 
   // Renderiza aba Revisões
   renderizarRevisoesOrc(revisoes, o);
@@ -668,7 +676,6 @@ function ativarTabOrc(nome){
 function linhaItemHTML(){
   const uns = UNIDADES.map(u=>`<option value="${u}"${u==="un"?" selected":""}>${u}</option>`).join("");
   return `<tr>
-    <td><input type="text" class="it-secao" placeholder='(opcional) ex.: Perfuração Ø310mm' /></td>
     <td><div class="it-cat-wrap"><select class="it-cat">${_opcoesFiltradasOrc()}</select><button type="button" class="it-cat-all" title="Ver todo o catálogo nesta linha" aria-pressed="false">⋯</button></div></td>
     <td><input type="text" class="it-desc" placeholder="descrição do item" /></td>
     <td><input type="number" class="it-qtd" step="0.001" min="0" value="1" /></td>
@@ -697,7 +704,6 @@ function adicionarItemPreenchido(item){
     }
     sel.value = item.variante_id;
   }
-  tr.querySelector(".it-secao").value = item.secao || "";
   tr.querySelector(".it-desc").value  = item.descricao || "";
   tr.querySelector(".it-qtd").value   = item.quantidade != null ? item.quantidade : 1;
   const selUn = tr.querySelector(".it-un");
@@ -762,7 +768,7 @@ async function salvarOrcamento(novoStatus){
       if(!desc) return;
       itens.push({
         ordem:          itens.length + 1,
-        secao:          tr.querySelector(".it-secao").value.trim() || null,
+        secao:          null, // "Seção (agrupador)" saiu da tela em 02/09/2026 (2 de 915 itens usavam; nenhum PDF lê)
         descricao:      desc,
         quantidade:     Number(tr.querySelector(".it-qtd").value || 0),
         unidade:        tr.querySelector(".it-un").value,
@@ -789,7 +795,7 @@ async function salvarOrcamento(novoStatus){
     responsavel_id: $("orc-responsavel").value || null,
     observacoes:    $("orc-obs").value.trim() || null,
     tipo_proposta:              tipoProp,
-    tipo_obra:                  $("orc-tipo-obra-val")?.value || "convencional",
+    tipo_obra:                  $("orc-tipo-obra")?.value || "convencional",
     codigo_modelo:              codigosRG[tipoProp] || null,
     numero_revisao:             $("orc-revisao").value.trim() || "00",
     cidade_emissao:             $("orc-cidade-emissao").value.trim() || "Itabira/MG",
@@ -879,7 +885,7 @@ function ligarOrcamentos(){
 
   // Filtro do catálogo (aba Modelo → aba Itens) e validade derivada
   $("orc-tipo-proposta")?.addEventListener("change", atualizarFiltroCatalogoOrc);
-  document.querySelectorAll("#orc-tipo-obra button").forEach(b => b.addEventListener("click", () => definirTipoObraOrc(b.dataset.v)));
+  $("orc-tipo-obra")?.addEventListener("change", atualizarFiltroCatalogoOrc);
   ["orc-data","orc-validade-dias"].forEach(id => $(id)?.addEventListener("change", recalcularValidadeOrc));
   $("btn-orc-ir-modelo")?.addEventListener("click", () => ativarTabOrc("proposta"));
 

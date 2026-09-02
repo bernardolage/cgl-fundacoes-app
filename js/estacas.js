@@ -988,15 +988,162 @@ function _transformCoords(estsComCoord){
     if(x < minX) minX = x; if(x > maxX) maxX = x;
     if(y < minY) minY = y; if(y > maxY) maxY = y;
   });
-  const VW = 600, VH = 400, PAD = 32;
+  const VW = 600, VH = 400, PAD = 56;
   const dx = (maxX - minX) || 1, dy = (maxY - minY) || 1;
   const s = Math.min((VW - 2*PAD) / dx, (VH - 2*PAD) / dy);
   const offX = (VW - s*dx) / 2;
   const offY = (VH - s*dy) / 2;
-  return (x, y) => ({
+  const tf = (x, y) => ({
     vx: offX + (Number(x) - minX) * s,
     vy: offY + (maxY - Number(y)) * s   // flip Y
   });
+  // s = pixels do viewBox por metro; usado para desenhar em escala real
+  Object.assign(tf, { s, minX, maxX, minY, maxY, offX, offY });
+  return tf;
+}
+
+/* ---------- Desenho "de projeto" (escala real) ----------
+   Com coordenadas reais a planta deixa de ser um mapa de bolinhas e vira um
+   desenho de locação: estaca no diâmetro real, malha em metros com eixos
+   N/E, contorno dos blocos, cotas entre vizinhas (vermelhas abaixo da
+   distância mínima), barra de escala e norte. Tudo dentro do <g> de
+   pan/zoom, então escala e cotas continuam verdadeiras ao dar zoom. */
+function raioEstacaPx(e, s){
+  const d = Number(e.diametro_mm) || 400;
+  return Math.max(6, Math.min(40, (d / 2000) * s));
+}
+function _passoGrade(s, minPx){
+  const cands = [0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000];
+  return cands.find(c => c * s >= (minPx || 36)) || 1000;
+}
+function _fmtM(v, passo){
+  const dec = passo < 1 ? 2 : 0;
+  return v.toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function desenharFundoProjeto(g, ns, tf, ests){
+  const s = tf.s;
+  const mk = (tag, attrs, cls) => {
+    const el = document.createElementNS(ns, tag);
+    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+    if(cls) el.setAttribute("class", cls);
+    return el;
+  };
+  const fundo = mk("g", {}, "planta-fundo");
+  g.appendChild(fundo);
+
+  // 1) Malha em metros reais + eixos (E embaixo, N à esquerda)
+  const passo = _passoGrade(s);
+  const wx0 = tf.minX - tf.offX / s, wx1 = tf.minX + (600 - tf.offX) / s;
+  const wy0 = tf.maxY - (400 - tf.offY) / s, wy1 = tf.maxY + tf.offY / s;
+  const x0 = Math.floor(wx0 / passo) * passo, y0 = Math.floor(wy0 / passo) * passo;
+  let n = 0;
+  for(let x = x0; x <= wx1 && n < 400; x += passo, n++){
+    const vx = tf(x, 0).vx;
+    const forte = Math.round(x / passo) % 5 === 0;
+    fundo.appendChild(mk("line", { x1: vx, y1: 0, x2: vx, y2: 400 }, "planta-grid" + (forte ? " forte" : "")));
+    if(forte){ const t = mk("text", { x: vx + 2, y: 396 }, "planta-eixo"); t.textContent = "E " + _fmtM(x, passo); fundo.appendChild(t); }
+  }
+  n = 0;
+  for(let y = y0; y <= wy1 && n < 400; y += passo, n++){
+    const vy = tf(0, y).vy;
+    const forte = Math.round(y / passo) % 5 === 0;
+    fundo.appendChild(mk("line", { x1: 0, y1: vy, x2: 600, y2: vy }, "planta-grid" + (forte ? " forte" : "")));
+    if(forte){ const t = mk("text", { x: 3, y: vy - 2 }, "planta-eixo"); t.textContent = "N " + _fmtM(y, passo); fundo.appendChild(t); }
+  }
+
+  // 2) Contorno dos blocos (caixa das estacas do bloco + folga de 35 cm)
+  const porBloco = new Map();
+  ests.forEach(e => {
+    const b = String(e.bloco || "").trim();
+    if(!b) return;
+    if(!porBloco.has(b)) porBloco.set(b, []);
+    porBloco.get(b).push(e);
+  });
+  porBloco.forEach((lista, nome) => {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    lista.forEach(e => {
+      const p = tf(e.coord_x, e.coord_y), r = raioEstacaPx(e, s);
+      x1 = Math.min(x1, p.vx - r); x2 = Math.max(x2, p.vx + r);
+      y1 = Math.min(y1, p.vy - r); y2 = Math.max(y2, p.vy + r);
+    });
+    // folga de 35 cm em volta da estaca, limitada para o contorno não sair da área (PAD 56 − raio 40)
+    const folga = Math.min(Math.max(8, 0.35 * s), 28);
+    fundo.appendChild(mk("rect", { x: x1 - folga, y: y1 - folga, width: (x2 - x1) + 2*folga, height: (y2 - y1) + 2*folga, rx: 2 }, "planta-bloco"));
+    // rótulo acima do contorno; se o bloco encosta na borda de cima, vai para dentro
+    const ly = (y1 - folga - 3) < 8 ? Math.max(y1 - folga + 9, 9) : (y1 - folga - 3);
+    const lx = Math.max(x1 - folga + 2, 3);
+    const t = mk("text", { x: lx, y: ly }, "planta-bloco-lbl");
+    t.textContent = nome;
+    fundo.appendChild(t);
+  });
+
+  // 3) Cotas entre vizinhas (2 mais próximas de cada estaca; em obras grandes
+  //    só os pares abaixo do mínimo) — vermelho abaixo da distância mínima
+  const min = Number(_distanciaMinObra) || 2.05;
+  const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
+  const todas = ests.length <= 80;
+  const pares = new Map();
+  for(let i = 0; i < ests.length; i++){
+    const viz = [];
+    for(let j = 0; j < ests.length; j++){
+      if(i === j) continue;
+      const d = dist(ests[i], ests[j]);
+      if(todas || d < min) viz.push({ j, d });
+    }
+    viz.sort((a, b) => a.d - b.d);
+    (todas ? viz.slice(0, 2) : viz).forEach(v => {
+      const k = i < v.j ? i + ":" + v.j : v.j + ":" + i;
+      if(!pares.has(k)) pares.set(k, { a: ests[i], b: ests[v.j], d: v.d });
+    });
+  }
+  pares.forEach(p => {
+    const pa = tf(p.a.coord_x, p.a.coord_y), pb = tf(p.b.coord_x, p.b.coord_y);
+    const ra = raioEstacaPx(p.a, s), rb = raioEstacaPx(p.b, s);
+    const dx = pb.vx - pa.vx, dy = pb.vy - pa.vy, L = Math.hypot(dx, dy) || 1;
+    if(L <= ra + rb + 6) return; // círculos encostados: sem espaço para a cota
+    const ux = dx / L, uy = dy / L;
+    const x1 = pa.vx + ux * ra, y1 = pa.vy + uy * ra, x2 = pb.vx - ux * rb, y2 = pb.vy - uy * rb;
+    const perigo = p.d < min;
+    fundo.appendChild(mk("line", { x1, y1, x2, y2 }, "planta-cota" + (perigo ? " perigo" : "")));
+    const t = mk("text", { x: (x1 + x2) / 2 - uy * 6, y: (y1 + y2) / 2 + ux * 6 + 2.5 }, "planta-cota-txt" + (perigo ? " perigo" : ""));
+    t.textContent = p.d.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    fundo.appendChild(t);
+  });
+
+  // 4) Barra de escala (canto inferior esquerdo) + norte (canto superior direito)
+  const escM = _passoGrade(s, 60);
+  const escPx = escM * s, bx = 14, by = 378;
+  fundo.appendChild(mk("line", { x1: bx, y1: by, x2: bx + escPx, y2: by }, "planta-escala"));
+  fundo.appendChild(mk("line", { x1: bx, y1: by - 4, x2: bx, y2: by + 4 }, "planta-escala"));
+  fundo.appendChild(mk("line", { x1: bx + escPx, y1: by - 4, x2: bx + escPx, y2: by + 4 }, "planta-escala"));
+  const te = mk("text", { x: bx + escPx / 2, y: by - 5, "text-anchor": "middle" }, "planta-hud-txt");
+  te.textContent = _fmtM(escM, escM) + " m";
+  fundo.appendChild(te);
+  fundo.appendChild(mk("line", { x1: 582, y1: 30, x2: 582, y2: 12 }, "planta-escala"));
+  fundo.appendChild(mk("polygon", { points: "578,16 582,8 586,16" }, "planta-norte"));
+  const tn = mk("text", { x: 582, y: 40, "text-anchor": "middle" }, "planta-hud-txt");
+  tn.textContent = "N";
+  fundo.appendChild(tn);
+}
+
+// Pares de estacas geometricamente abaixo do mínimo (independe da sequência):
+// é o que a NBR/regra de cura proíbe executar em seguida pela mesma máquina.
+function _avisoParesProximos(comCoord){
+  const min = Number(_distanciaMinObra) || 2.05;
+  if(comCoord.length < 2) return "";
+  const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
+  const pares = [];
+  for(let i = 0; i < comCoord.length; i++){
+    for(let j = i + 1; j < comCoord.length; j++){
+      const d = dist(comCoord[i], comCoord[j]);
+      if(d < min) pares.push({ a: comCoord[i], b: comCoord[j], d });
+    }
+  }
+  if(!pares.length) return "";
+  pares.sort((x, y) => x.d - y.d);
+  const lista = pares.slice(0, 6).map(p => `<strong>${esc(p.a.numero)}–${esc(p.b.numero)}</strong> ${p.d.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})} m`).join(" · ");
+  const resto = pares.length > 6 ? ` · e mais ${pares.length - 6}` : "";
+  return `<div class="dist-aviso alerta">📏 ${pares.length} par(es) de estacas a menos de ${min.toLocaleString("pt-BR")} m: ${lista}${resto}. <span class="meta">Não podem ser executadas em sequência pela mesma máquina (cura).</span></div>`;
 }
 
 function renderPlantaSVG(){
@@ -1108,6 +1255,7 @@ function renderPlantaSVG(){
   // Transform de auto-escala a partir das estacas com coordenadas reais
   const comCoordF = filtradas.filter(e => e.coord_x != null && e.coord_y != null);
   const tf = comCoordF.length ? _transformCoords(comCoordF) : null;
+  if(tf) desenharFundoProjeto(g, ns, tf, comCoordF);
 
   // Desenha cada estaca (com coords reais auto-escaladas OU do grid)
   filtradas.forEach(e => {
@@ -1121,7 +1269,8 @@ function renderPlantaSVG(){
     } else {
       return;
     }
-    desenharEstaca(g, ns, e, x, y, hoje);
+    const raio = (tf && e.coord_x != null && e.coord_y != null) ? raioEstacaPx(e, tf.s) : 11;
+    desenharEstaca(g, ns, e, x, y, hoje, raio);
   });
 
   // Atualiza barra de progresso (sobre o que está filtrado)
@@ -1176,10 +1325,11 @@ function renderConflitosDistancia(filtradas){
 
   const comCoord = _estacas.filter(e => e.coord_x != null && e.coord_y != null);
   const comOrdem = _estacas.filter(e => e.ordem_execucao != null && e.equipamento_id);
+  const htmlProx = _avisoParesProximos(comCoord);
   if(comCoord.length < 2 || comOrdem.length < 2){
-    box.innerHTML = comCoord.length < 2
+    box.innerHTML = htmlProx + (comCoord.length < 2
       ? `<div class="dist-aviso neutro">📐 Validação de distância inativa — preencha as coordenadas (X/Y) das estacas para ativá-la.</div>`
-      : `<div class="dist-aviso neutro">📐 Defina a máquina e a ordem de execução das estacas para validar a distância da sequência.</div>`;
+      : `<div class="dist-aviso neutro">📐 Defina a máquina e a ordem de execução das estacas para validar a distância da sequência.</div>`);
     return;
   }
 
@@ -1206,20 +1356,20 @@ function renderConflitosDistancia(filtradas){
   });
 
   if(!conflitos.length){
-    box.innerHTML = `<div class="dist-aviso ok">✓ Nenhum conflito de distância (mínimo ${min.toLocaleString("pt-BR")} m entre estacas consecutivas da mesma máquina).</div>`;
+    box.innerHTML = htmlProx + `<div class="dist-aviso ok">✓ Nenhum conflito de distância (mínimo ${min.toLocaleString("pt-BR")} m entre estacas consecutivas da mesma máquina).</div>`;
     return;
   }
   const itens = conflitos.slice(0, 8).map(c =>
     `<li><strong>${esc(c.b.numero)}</strong> logo após <strong>${esc(c.a.numero)}</strong> — ${c.d.toLocaleString("pt-BR",{maximumFractionDigits:2})} m (< ${min.toLocaleString("pt-BR")} m)</li>`).join("");
   const resto = conflitos.length > 8 ? `<li>… e mais ${conflitos.length - 8}.</li>` : "";
-  box.innerHTML = `<div class="dist-aviso alerta">
+  box.innerHTML = htmlProx + `<div class="dist-aviso alerta">
     <strong>⚠️ ${conflitos.length} conflito(s) de distância na sequência</strong>
     <span class="meta">a sequência fura ao lado de uma estaca recém-concretada (regra de cura)</span>
     <ul>${itens}${resto}</ul>
   </div>`;
 }
 
-function desenharEstaca(g, ns, e, x, y, hoje){
+function desenharEstaca(g, ns, e, x, y, hoje, r = 11){
   const ehHoje = (e.data_execucao === hoje);
   let cor;
   if(_plantaCor === "maquina"){
@@ -1231,7 +1381,7 @@ function desenharEstaca(g, ns, e, x, y, hoje){
   circ.setAttribute("class", "estaca-circ");
   circ.setAttribute("cx", x);
   circ.setAttribute("cy", y);
-  circ.setAttribute("r", 11);
+  circ.setAttribute("r", r);
   // via style, e não setAttribute: atributo de apresentação do SVG ignora tokens CSS
   circ.style.fill = cor;
   // Redundância à cor (daltônicos): o CONTORNO codifica o status —
@@ -1257,9 +1407,11 @@ function desenharEstaca(g, ns, e, x, y, hoje){
   g.appendChild(circ);
 
   const label = document.createElementNS(ns, "text");
-  label.setAttribute("class", "estaca-label");
+  // Número dentro do círculo quando cabe; acima dele quando a estaca é pequena na escala
+  label.setAttribute("class", "estaca-label" + (r < 8 ? " fora" : ""));
   label.setAttribute("x", x);
-  label.setAttribute("y", y);
+  label.setAttribute("y", r < 8 ? y - r - 3 : y);
+  label.setAttribute("font-size", Math.max(7, Math.min(12, r * 0.85)));
   const so_num = (e.numero || "").replace(/\D/g, "").slice(-3);
   label.textContent = so_num || (e.numero || "").slice(0,3);
   g.appendChild(label);

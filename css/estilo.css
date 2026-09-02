@@ -2513,13 +2513,24 @@ input:disabled, select:disabled, textarea:disabled {
 .tabela-rola thead th { position: sticky; top: 0; z-index: 1; background: var(--sup-3); }
 
 /* ---- Orçamentos: tipo de obra (segmentado) + filtro do catálogo (fase 31) ---- */
-.seg-btns { display:inline-flex; border:1px solid var(--sup-3); border-radius:6px; overflow:hidden; }
-.seg-btns button { border:0; background:var(--sup-1); color:var(--txt-sec); padding:6px 12px; font:inherit; font-size:var(--txt-sm); cursor:pointer; }
-.seg-btns button + button { border-left:1px solid var(--sup-3); }
-.seg-btns button.ativo { background:var(--marca-600); color:#fff; font-weight:600; }
 .orc-filtro-cat { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:var(--txt-sm); background:var(--marca-50); border:1px solid var(--marca-100); border-radius:4px; padding:6px 10px; margin-bottom:10px; }
 .orc-filtro-dica { color:var(--txt-fraco); font-style:italic; font-size:var(--txt-xs); }
 .it-cat-wrap { display:flex; gap:4px; align-items:center; }
 .it-cat-wrap select { flex:1; min-width:0; }
 .it-cat-all { border:1px solid var(--sup-3); background:var(--sup-1); color:var(--txt-sec); border-radius:4px; padding:2px 7px; cursor:pointer; font-size:var(--txt-sm); line-height:1.4; }
 .it-cat-all.ativo { background:color-mix(in srgb, var(--aviso) 18%, transparent); border-color:var(--aviso); color:var(--txt); }
+
+/* ---- Planta de estacas em escala real: malha, eixos, blocos, cotas, escala ---- */
+#est-planta-svg .planta-grid { stroke: var(--sup-3); stroke-width: 0.6; }
+#est-planta-svg .planta-grid.forte { stroke: #d3dbe4; stroke-width: 0.9; }
+#est-planta-svg .planta-eixo { font-size: 7px; fill: var(--txt-fraco); pointer-events: none; }
+#est-planta-svg .planta-bloco { fill: none; stroke: #b8c4d0; stroke-width: 0.9; stroke-dasharray: 3 2; }
+#est-planta-svg .planta-bloco-lbl { font-size: 8px; fill: var(--txt-sec); font-weight: 600; pointer-events: none; }
+#est-planta-svg .planta-cota { stroke: #9aa8b6; stroke-width: 0.7; stroke-dasharray: 2 2; }
+#est-planta-svg .planta-cota.perigo { stroke: var(--perigo); stroke-width: 1.4; stroke-dasharray: none; }
+#est-planta-svg .planta-cota-txt { font-size: 7.5px; fill: var(--txt-sec); text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 2.5px; }
+#est-planta-svg .planta-cota-txt.perigo { fill: var(--perigo); font-weight: 700; }
+#est-planta-svg .planta-escala { stroke: var(--txt); stroke-width: 1.2; }
+#est-planta-svg .planta-norte { fill: var(--txt); }
+#est-planta-svg .planta-hud-txt { font-size: 8px; fill: var(--txt-sec); pointer-events: none; }
+#est-planta-svg .estaca-label.fora { dominant-baseline: auto; fill: var(--txt); }

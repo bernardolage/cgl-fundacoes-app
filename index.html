@@ -954,7 +954,7 @@
               <span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">medições</span>
             </button>
             <button type="button" class="sb-btn" id="sb-orc-revisoes" data-goto-tab="revisoes">
-              <span class="sb-num">1</span><span class="sb-icon">🔄</span><span class="sb-lbl">revisões</span>
+              <span class="sb-num">0</span><span class="sb-icon">🔄</span><span class="sb-lbl">revisões</span>
             </button>
           </div>
 
@@ -999,7 +999,6 @@
               <div class="tabela-rola">
                 <table class="itens-tabela">
                   <thead><tr>
-                    <th style="min-width:140px;">Seção (agrupador)</th>
                     <th style="min-width:180px;">Serviço (catálogo)</th>
                     <th style="min-width:180px;">Descrição</th>
                     <th style="width:90px;">Qtd.</th>
@@ -1030,12 +1029,11 @@
                   </select>
                 </div>
                 <div class="campo"><label>Tipo de obra *</label>
-                  <div class="seg-btns" id="orc-tipo-obra" role="group" aria-label="Tipo de obra">
-                    <button type="button" data-v="convencional" class="ativo" aria-pressed="true">Convencional</button>
-                    <button type="button" data-v="industrial" aria-pressed="false">Industrial</button>
-                    <button type="button" data-v="especial" aria-pressed="false">Especial</button>
-                  </div>
-                  <input type="hidden" id="orc-tipo-obra-val" value="convencional" />
+                  <select id="orc-tipo-obra">
+                    <option value="convencional">Convencional</option>
+                    <option value="industrial">Industrial</option>
+                    <option value="especial">Especial</option>
+                  </select>
                 </div>
                 <div class="campo"><label>Revisão (REV)</label><input id="orc-revisao" placeholder="00" maxlength="6" /></div>
                 <div class="campo"><label>Cidade de emissão</label><input id="orc-cidade-emissao" placeholder="Itabira/MG" /></div>
