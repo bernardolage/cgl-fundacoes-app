@@ -15,7 +15,45 @@ let _plantaState = { zoom: 1, panX: 0, panY: 0 }; // estado do pan/zoom
 let _plantaCor = "status";  // como colorir a planta: "status" | "maquina"
 const _mapaMaquinas = {};   // equipamento_id -> { codigo, nome }
 let _equipamentosCache = []; // equipamentos ativos da obra atual
-let _distanciaMinObra = 2.05; // distância mínima entre estacas em sequência
+let _distanciaMinObra = 0;    // piso absoluto opcional da obra (0 = sem piso)
+let _regraDist = { fatorHelice: 5, fatorEscavada: 2.5, piso: 0 };
+
+// Regra de cura da CGL: distância mínima EIXO A EIXO = fator × Ø (maior Ø do par).
+// Hélice/raiz/demais 5×Ø; escavada × escavada 2,5×Ø. Piso opcional por obra.
+// Sem Ø conhecido nas duas estacas cai no piso ou, se não houver, nos 2,05 m históricos.
+function distMinEntre(a, b){
+  const dA = Number(a?.diametro_mm) || 0, dB = Number(b?.diametro_mm) || 0;
+  const diam = Math.max(dA, dB) / 1000;
+  const escav = (t) => t === "escavada";
+  const fator = (escav(a?.tipo) && escav(b?.tipo)) ? _regraDist.fatorEscavada : _regraDist.fatorHelice;
+  const porDiam = diam > 0 ? fator * diam : 0;
+  const exigido = Math.max(porDiam, Number(_regraDist.piso) || 0);
+  return exigido > 0 ? exigido : 2.05;
+}
+function descreverRegraDist(){
+  const f = (n) => Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  return f(_regraDist.fatorHelice) + "×Ø eixo a eixo (escavada " + f(_regraDist.fatorEscavada) + "×Ø)"
+    + (Number(_regraDist.piso) > 0 ? " · piso " + f(_regraDist.piso) + " m" : "");
+}
+function preencherRegraDistUI(){
+  const t = $("regra-dist-txt"); if(t) t.textContent = descreverRegraDist();
+  if($("regra-fator"))     $("regra-fator").value     = _regraDist.fatorHelice;
+  if($("regra-fator-esc")) $("regra-fator-esc").value = _regraDist.fatorEscavada;
+  if($("regra-piso"))      $("regra-piso").value      = _regraDist.piso;
+}
+async function salvarRegraDist(){
+  if(!obraEditId) return;
+  const fh = Number($("regra-fator")?.value), fe = Number($("regra-fator-esc")?.value), piso = Number($("regra-piso")?.value);
+  if(!(fh > 0) || !(fe > 0) || !(piso >= 0)){ aviso("app-aviso","Informe fatores maiores que zero e piso ≥ 0.","erro"); return; }
+  const { error } = await sb.from("obras").update({ fator_dist_diametro: fh, fator_dist_diametro_escavada: fe, distancia_minima_estacas: piso }).eq("id", obraEditId);
+  if(error){ aviso("app-aviso","Não foi possível salvar a regra: " + error.message,"erro"); return; }
+  _regraDist = { fatorHelice: fh, fatorEscavada: fe, piso };
+  _distanciaMinObra = piso;
+  preencherRegraDistUI();
+  const d = $("regra-dist"); if(d) d.open = false;
+  renderPlantaSVG();
+  aviso("app-aviso","Regra de distância salva: " + descreverRegraDist(), "ok");
+}
 let _dxfParsed = null;        // resultado do parse do DXF: { entidades, layers }
 let _dxfCfg = null;           // config escolhida no modal DXF
 
@@ -148,13 +186,19 @@ async function carregarEstacasDaObra(obraId){
       .eq("rdo.obra_id", obraId)
       .not("estaca_id", "is", null),
     sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo"),
-    sb.from("obras").select("distancia_minima_estacas").eq("id", obraId).single()
+    sb.from("obras").select("distancia_minima_estacas,fator_dist_diametro,fator_dist_diametro_escavada").eq("id", obraId).single()
   ]);
   // Guarda de corrida: se o usuário abriu OUTRA obra enquanto esta carregava,
   // descarta o resultado (antes a ficha de B mostrava as estacas de A).
   if(obraId !== obraEditId) return;
   _equipamentosCache = equipsRes.error ? [] : (equipsRes.data || []);
-  _distanciaMinObra = obraRes.data?.distancia_minima_estacas ?? 2.05;
+  _regraDist = {
+    fatorHelice:   Number(obraRes.data?.fator_dist_diametro ?? 5) || 5,
+    fatorEscavada: Number(obraRes.data?.fator_dist_diametro_escavada ?? 2.5) || 2.5,
+    piso:          Number(obraRes.data?.distancia_minima_estacas ?? 0) || 0
+  };
+  _distanciaMinObra = _regraDist.piso;
+  preencherRegraDistUI();
   _estacas = estsRes.error ? [] : (estsRes.data || []);
   // Conta execuções por estaca pra detectar "ALTERADO" (refuros, casamentos errados)
   const contExec = {};
@@ -1079,7 +1123,6 @@ function desenharFundoProjeto(g, ns, tf, ests){
 
   // 3) Cotas entre vizinhas (2 mais próximas de cada estaca; em obras grandes
   //    só os pares abaixo do mínimo) — vermelho abaixo da distância mínima
-  const min = Number(_distanciaMinObra) || 2.05;
   const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
   const todas = ests.length <= 80;
   const pares = new Map();
@@ -1088,7 +1131,7 @@ function desenharFundoProjeto(g, ns, tf, ests){
     for(let j = 0; j < ests.length; j++){
       if(i === j) continue;
       const d = dist(ests[i], ests[j]);
-      if(todas || d < min) viz.push({ j, d });
+      if(todas || d < distMinEntre(ests[i], ests[j])) viz.push({ j, d });
     }
     viz.sort((a, b) => a.d - b.d);
     (todas ? viz.slice(0, 2) : viz).forEach(v => {
@@ -1103,7 +1146,7 @@ function desenharFundoProjeto(g, ns, tf, ests){
     if(L <= ra + rb + 6) return; // círculos encostados: sem espaço para a cota
     const ux = dx / L, uy = dy / L;
     const x1 = pa.vx + ux * ra, y1 = pa.vy + uy * ra, x2 = pb.vx - ux * rb, y2 = pb.vy - uy * rb;
-    const perigo = p.d < min;
+    const perigo = p.d < distMinEntre(p.a, p.b);
     fundo.appendChild(mk("line", { x1, y1, x2, y2 }, "planta-cota" + (perigo ? " perigo" : "")));
     const t = mk("text", { x: (x1 + x2) / 2 - uy * 6, y: (y1 + y2) / 2 + ux * 6 + 2.5 }, "planta-cota-txt" + (perigo ? " perigo" : ""));
     t.textContent = p.d.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1129,21 +1172,22 @@ function desenharFundoProjeto(g, ns, tf, ests){
 // Pares de estacas geometricamente abaixo do mínimo (independe da sequência):
 // é o que a NBR/regra de cura proíbe executar em seguida pela mesma máquina.
 function _avisoParesProximos(comCoord){
-  const min = Number(_distanciaMinObra) || 2.05;
   if(comCoord.length < 2) return "";
   const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
   const pares = [];
   for(let i = 0; i < comCoord.length; i++){
     for(let j = i + 1; j < comCoord.length; j++){
       const d = dist(comCoord[i], comCoord[j]);
-      if(d < min) pares.push({ a: comCoord[i], b: comCoord[j], d });
+      const min = distMinEntre(comCoord[i], comCoord[j]);
+      if(d < min) pares.push({ a: comCoord[i], b: comCoord[j], d, min });
     }
   }
   if(!pares.length) return "";
   pares.sort((x, y) => x.d - y.d);
-  const lista = pares.slice(0, 6).map(p => `<strong>${esc(p.a.numero)}–${esc(p.b.numero)}</strong> ${p.d.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})} m`).join(" · ");
+  const f2 = (n) => n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const lista = pares.slice(0, 6).map(p => `<strong>${esc(p.a.numero)}–${esc(p.b.numero)}</strong> ${f2(p.d)} m (mín. ${f2(p.min)})`).join(" · ");
   const resto = pares.length > 6 ? ` · e mais ${pares.length - 6}` : "";
-  return `<div class="dist-aviso alerta">📏 ${pares.length} par(es) de estacas a menos de ${min.toLocaleString("pt-BR")} m: ${lista}${resto}. <span class="meta">Não podem ser executadas em sequência pela mesma máquina (cura).</span></div>`;
+  return `<div class="dist-aviso alerta">📏 ${pares.length} par(es) de estacas abaixo da regra ${esc(descreverRegraDist())}: ${lista}${resto}. <span class="meta">Não podem ser executadas em sequência pela mesma máquina (cura).</span></div>`;
 }
 
 function renderPlantaSVG(){
@@ -1334,7 +1378,6 @@ function renderConflitosDistancia(filtradas){
   }
 
   const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
-  const min = Number(_distanciaMinObra) || 2.05;
 
   // agrupa por máquina, ordena pela sequência
   const porMaq = {};
@@ -1349,18 +1392,19 @@ function renderConflitosDistancia(filtradas){
     lista.sort((a, b) => a.ordem_execucao - b.ordem_execucao);
     for(let i = 1; i < lista.length; i++){
       const d = dist(lista[i], lista[i - 1]);
+      const min = distMinEntre(lista[i - 1], lista[i]);
       if(d < min){
-        conflitos.push({ a: lista[i - 1], b: lista[i], d });
+        conflitos.push({ a: lista[i - 1], b: lista[i], d, min });
       }
     }
   });
 
   if(!conflitos.length){
-    box.innerHTML = htmlProx + `<div class="dist-aviso ok">✓ Nenhum conflito de distância (mínimo ${min.toLocaleString("pt-BR")} m entre estacas consecutivas da mesma máquina).</div>`;
+    box.innerHTML = htmlProx + `<div class="dist-aviso ok">✓ Nenhum conflito de distância na sequência (regra ${esc(descreverRegraDist())} entre estacas consecutivas da mesma máquina).</div>`;
     return;
   }
   const itens = conflitos.slice(0, 8).map(c =>
-    `<li><strong>${esc(c.b.numero)}</strong> logo após <strong>${esc(c.a.numero)}</strong> — ${c.d.toLocaleString("pt-BR",{maximumFractionDigits:2})} m (< ${min.toLocaleString("pt-BR")} m)</li>`).join("");
+    `<li><strong>${esc(c.b.numero)}</strong> logo após <strong>${esc(c.a.numero)}</strong> — ${c.d.toLocaleString("pt-BR",{maximumFractionDigits:2})} m (mín. ${c.min.toLocaleString("pt-BR",{maximumFractionDigits:2})} m)</li>`).join("");
   const resto = conflitos.length > 8 ? `<li>… e mais ${conflitos.length - 8}.</li>` : "";
   box.innerHTML = htmlProx + `<div class="dist-aviso alerta">
     <strong>⚠️ ${conflitos.length} conflito(s) de distância na sequência</strong>
@@ -2468,6 +2512,7 @@ function ligarEstacas(){
   $("btn-planta-zoom-in")?.addEventListener("click", () => plantaZoom(0.2));
   $("btn-planta-zoom-out")?.addEventListener("click", () => plantaZoom(-0.2));
   $("btn-planta-zoom-fit")?.addEventListener("click", plantaZoomFit);
+  $("btn-regra-salvar")?.addEventListener("click", () => comBotaoTravado("btn-regra-salvar", salvarRegraDist));
 
   // Modal de execução rápida
   $("btn-exec-fechar")?.addEventListener("click", fecharModalExecucao);

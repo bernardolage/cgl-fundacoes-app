@@ -2546,3 +2546,13 @@ input:disabled, select:disabled, textarea:disabled {
 .ia-tabela td { padding: 3px 4px; }
 .ia-equipe { margin-top: 8px; }
 .ia-equipe summary { cursor: pointer; font-size: var(--txt-sm); color: var(--txt-sec); }
+
+/* ---- Planta: regra de distância por diâmetro (editável por obra) ---- */
+.regra-dist { font-size: var(--txt-sm); margin: 4px 0 8px; }
+.regra-dist summary { cursor: pointer; color: var(--txt-sec); }
+.regra-dist summary .meta { margin-left: 6px; }
+.regra-dist-form { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; padding: 8px 0 4px; }
+.regra-dist-form label { display: flex; flex-direction: column; gap: 3px; font-size: var(--txt-xs); color: var(--txt-sec); }
+.regra-dist-form label span { display: inline-flex; align-items: center; gap: 4px; }
+.regra-dist-form input { width: 80px; }
+.regra-dist-form > .meta { flex-basis: 100%; }
