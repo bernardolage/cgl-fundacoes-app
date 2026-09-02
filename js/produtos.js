@@ -295,7 +295,7 @@ function ligarProdutos(){
 
   $("btn-novo-produto")?.addEventListener("click", novoProduto);
   $("btn-voltar-prod")?.addEventListener("click", mostrarPainelProd);
-  $("btn-salvar-prod")?.addEventListener("click", salvarProduto);
+  $("btn-salvar-prod")?.addEventListener("click", () => comBotaoTravado("btn-salvar-prod", salvarProduto));
   $("btn-excluir-prod")?.addEventListener("click", excluirProduto);
   $("btn-nova-cat")?.addEventListener("click", criarNovaCategoria);
 

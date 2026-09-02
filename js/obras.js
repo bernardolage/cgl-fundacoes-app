@@ -207,7 +207,9 @@ function novaObra(){
 
   $("btn-excluir-obra").style.display = "none";
   abrirFichaObra({ codigo: "", nome: "(nova)", status: "planejada", valor_contratado: 0 });
-  sugerirNumeros();
+  // Sem sugestão automática de código: sugerirNumeros() contava um <tbody> sempre
+  // vazio e propunha "OB-0001" (já usado → erro de UNIQUE). O código da obra
+  // segue o padrão da CGL (ex.: 7822-2025) e é informado pelo usuário.
 }
 
 async function abrirObra(id){
@@ -534,7 +536,7 @@ function ligarObras(){
 
   $("btn-nova-obra")?.addEventListener("click", novaObra);
   $("btn-voltar-obra")?.addEventListener("click", mostrarPainelObra);
-  $("btn-salvar-obra")?.addEventListener("click", () => salvarObra());
+  $("btn-salvar-obra")?.addEventListener("click", () => comBotaoTravado("btn-salvar-obra", () => salvarObra()));
   $("btn-excluir-obra")?.addEventListener("click", excluirObra);
 
   // Notebook

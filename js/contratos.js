@@ -509,7 +509,8 @@ async function enviarDocumentoContrato(contratoId, opts){
   btn.textContent = "Enviando...";
 
   try {
-    const ext = file.name.split(".").pop().toLowerCase();
+    // Extensão entra no caminho do storage: só letras/dígitos (1-5), senão "bin"
+    const ext = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "bin";
     const nomeUnico = `${contratoId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const { error: errUp } = await sb.storage.from("contratos-docs").upload(nomeUnico, file, {
       cacheControl: "3600", contentType: file.type, upsert: false
@@ -758,7 +759,7 @@ function ligarContratos(){
 
   $("btn-novo-contrato")?.addEventListener("click", novoContrato);
   $("btn-voltar-con")?.addEventListener("click", mostrarPainelCon);
-  $("btn-salvar-con")?.addEventListener("click", () => salvarContrato());
+  $("btn-salvar-con")?.addEventListener("click", () => comBotaoTravado("btn-salvar-con", () => salvarContrato()));
   $("btn-excluir-con")?.addEventListener("click", excluirContrato);
 
   document.querySelectorAll("#con-notebook button").forEach(b => {

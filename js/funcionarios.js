@@ -71,7 +71,7 @@ function avatarHtml(f, sz=40){
   if(f.foto_url){
     return `<div class="func-kan-avatar" style="${style}"><img src="${esc(f.foto_url)}" alt="" loading="lazy" /></div>`;
   }
-  return `<div class="func-kan-avatar" style="${style}">${iniciais(f.nome)}</div>`;
+  return `<div class="func-kan-avatar" style="${style}">${esc(iniciais(f.nome))}</div>`;
 }
 
 /* ---------- selects fixos ---------- */
@@ -345,12 +345,13 @@ function funcCarregarFoto(url, nome){
   const preview = $("func-foto-preview");
   if(!preview) return;
   if(url) preview.innerHTML = `<img src="${esc(url)}?t=${Date.now()}" alt="" />`;
-  else    preview.innerHTML = `<span>${iniciais(nome)}</span>`;
+  else    preview.innerHTML = `<span>${esc(iniciais(nome))}</span>`;
 }
 
 async function uploadFotoFuncionario(file){
   if(!funcEditId){ aviso("app-aviso","Salve o funcionário antes de adicionar foto.","aviso"); return; }
-  const ext  = file.name.split(".").pop().toLowerCase()||"jpg";
+  // Extensão entra no caminho do storage: só letras/dígitos (1-5), senão cai em "jpg"
+  const ext  = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "jpg";
   const path = `${funcEditId}/foto.${ext}`;
   const { error: upErr } = await sb.storage.from("funcionarios-fotos")
     .upload(path, file, { upsert:true, contentType:file.type });
@@ -411,13 +412,12 @@ function renderDocsFuncionario(docs){
       else               valCls="func-doc-ok";
     }
     return `<tr>
-      <td><strong>${DOC_TIPO_LABEL[d.tipo]||d.tipo}</strong></td>
+      <td><strong>${esc(DOC_TIPO_LABEL[d.tipo]||d.tipo)}</strong></td>
       <td>${esc(d.descricao||"—")}</td>
       <td>${esc(d.numero||"—")}</td>
       <td>${dataBR(d.emissao)||"—"}</td>
       <td class="${valCls}">${valTxt}</td>
-      <td><button type="button" class="btn-sec" style="font-size:11px;padding:3px 10px;"
-          onclick="excluirDocFuncionario('${d.id}')">Excluir</button></td>
+      <td><button type="button" class="btn-sec btn-sm func-doc-del" data-id="${esc(d.id)}">Excluir</button></td>
     </tr>`;
   }).join("");
 
@@ -426,6 +426,10 @@ function renderDocsFuncionario(docs){
       <th>Tipo</th><th>Descrição</th><th>Número</th>
       <th>Emissão</th><th>Validade</th><th></th>
     </tr></thead><tbody>${linhas}</tbody></table></div>`;
+  // data-id + listener (era onclick inline com interpolação — único do app)
+  cont.querySelectorAll(".func-doc-del").forEach(b => {
+    b.addEventListener("click", () => excluirDocFuncionario(b.dataset.id));
+  });
 }
 
 async function salvarDocFuncionario(){
@@ -604,7 +608,7 @@ function ligarFuncionarios(){
     $("func-doc-form").style.display = "";
     $("func-doc-descricao")?.focus();
   });
-  $("btn-salvar-doc-func")?.addEventListener("click", salvarDocFuncionario);
+  $("btn-salvar-doc-func")?.addEventListener("click", () => comBotaoTravado("btn-salvar-doc-func", salvarDocFuncionario));
   $("btn-cancelar-doc-func")?.addEventListener("click", () => {
     $("func-doc-form").style.display = "none";
   });

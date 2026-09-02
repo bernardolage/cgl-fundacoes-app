@@ -111,12 +111,18 @@ async function carregarEstacasDaObra(obraId){
       .select("id,numero,tipo,status,diametro_mm,profundidade_m,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y")
       .eq("obra_id", obraId)
       .order("numero"),
+    // !inner + eq no join: filtra por obra NO SERVIDOR (antes baixava a tabela
+    // inteira de execuções e filtrava no navegador a cada abertura)
     sb.from("rdo_execucao_estaca")
-      .select("estaca_id, modalidade_execucao, rdo:rdo_id(obra_id)")
+      .select("estaca_id, modalidade_execucao, rdo:rdo_id!inner(obra_id)")
+      .eq("rdo.obra_id", obraId)
       .not("estaca_id", "is", null),
     sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo"),
     sb.from("obras").select("distancia_minima_estacas").eq("id", obraId).single()
   ]);
+  // Guarda de corrida: se o usuário abriu OUTRA obra enquanto esta carregava,
+  // descarta o resultado (antes a ficha de B mostrava as estacas de A).
+  if(obraId !== obraEditId) return;
   _equipamentosCache = equipsRes.error ? [] : (equipsRes.data || []);
   _distanciaMinObra = obraRes.data?.distancia_minima_estacas ?? 2.05;
   _estacas = estsRes.error ? [] : (estsRes.data || []);
@@ -342,13 +348,21 @@ async function importarEstacasPDF(){
   btn.textContent = "🤖 Extraindo... (~30s)";
 
   try {
-    // Converte PDF → base64
+    // Converte PDF → base64 (FileReader é nativo e não estoura a pilha como o
+    // loop byte a byte). Limite de 20 MB: acima disso a Edge Function/IA falha
+    // com erro genérico — melhor avisar antes de enviar.
     const file = fileInput.files[0];
-    const buf = await file.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let binary = "";
-    for(let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    const base64 = btoa(binary);
+    const LIMITE_MB = 20;
+    if(file.size > LIMITE_MB * 1024 * 1024){
+      aviso("app-aviso",`PDF com ${(file.size/1048576).toFixed(1)} MB — o limite é ${LIMITE_MB} MB. Exporte só as folhas de locação/tabela de estacas.`,"erro");
+      return;
+    }
+    const base64 = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload  = () => res(String(fr.result).split(",")[1] || "");
+      fr.onerror = () => rej(new Error("Falha ao ler o arquivo."));
+      fr.readAsDataURL(file);
+    });
 
     // Chama Edge Function (extrai body mesmo em erro pra ver mensagem real)
     const { data, error } = await sb.functions.invoke("extrair-estacas-pdf", {
@@ -2180,12 +2194,12 @@ function ligarEstacas(){
   $("btn-est-importar-dxf")?.addEventListener("click", abrirModalDXF);
   $("btn-est-fechar-dxf")?.addEventListener("click", fecharModalDXF);
   $("btn-dxf-ler")?.addEventListener("click", lerArquivoDXF);
-  $("btn-est-dxf-confirmar")?.addEventListener("click", confirmarImportEstacas);
-  $("btn-est-salvar")?.addEventListener("click", salvarEstaca);
+  $("btn-est-dxf-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-est-dxf-confirmar", confirmarImportEstacas));
+  $("btn-est-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-salvar", salvarEstaca));
   $("btn-est-cancelar")?.addEventListener("click", fecharModalEstaca);
 
   $("btn-est-extrair")?.addEventListener("click", importarEstacasPDF);
-  $("btn-est-confirmar-import")?.addEventListener("click", confirmarImportEstacas);
+  $("btn-est-confirmar-import")?.addEventListener("click", () => comBotaoTravado("btn-est-confirmar-import", confirmarImportEstacas));
   $("btn-est-fechar-import")?.addEventListener("click", fecharModalImport);
 
   // Conferência do Projeto (modal expandido)
@@ -2231,7 +2245,7 @@ function ligarEstacas(){
 
   // Modal de execução rápida
   $("btn-exec-fechar")?.addEventListener("click", fecharModalExecucao);
-  $("btn-exec-salvar")?.addEventListener("click", () => salvarExecucao());
+  $("btn-exec-salvar")?.addEventListener("click", () => comBotaoTravado("btn-exec-salvar", () => salvarExecucao()));
   $("btn-exec-iniciar")?.addEventListener("click", () => salvarExecucao("em_execucao"));
   $("btn-exec-concluir")?.addEventListener("click", () => {
     if(!$("exec-profundidade").value){

@@ -266,9 +266,24 @@ function sugerirNumeros(){
   };
   const orcNum = $("orc-numero");
   if(orcNum && !orcNum.value) orcNum.value = proximo("tab-orcamentos","ORC-");
-  /* con-numero é sugerido pelo próprio módulo (proximoNumeroContrato) */
-  const obrCod = $("obr-codigo");
-  if(obrCod && !obrCod.value) obrCod.value = proximo("tab-obras","OB-");
+  /* con-numero é sugerido pelo próprio módulo (proximoNumeroContrato).
+     obr-codigo NÃO é sugerido: o <tbody> #tab-obras é sempre esvaziado pelo
+     render, então a contagem dava "OB-0001" (já existente → erro de UNIQUE).
+     O código da obra segue o padrão da CGL (ex.: 7822-2025) e é digitado. */
+}
+
+/* Executa fn() com o botão desabilitado até terminar — evita clique duplo em
+   Salvar (que duplicava execuções de RDO, entradas de estoque e movimentações).
+   Aceita o id do botão ou o elemento. Reentrância é ignorada. */
+async function comBotaoTravado(btnOuId, fn){
+  const b = typeof btnOuId === "string" ? $(btnOuId) : btnOuId;
+  if(b){
+    if(b.dataset.travado) return;
+    b.dataset.travado = "1";
+    b.disabled = true;
+  }
+  try { return await fn(); }
+  finally { if(b){ delete b.dataset.travado; b.disabled = false; } }
 }
 
 

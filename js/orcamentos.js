@@ -763,7 +763,7 @@ function ligarOrcamentos(){
 
   $("btn-novo-orcamento")?.addEventListener("click", novoOrcamento);
   $("btn-voltar-orc")?.addEventListener("click", mostrarPainelOrc);
-  $("btn-salvar-orc")?.addEventListener("click", () => salvarOrcamento());
+  $("btn-salvar-orc")?.addEventListener("click", () => comBotaoTravado("btn-salvar-orc", () => salvarOrcamento()));
   $("btn-excluir-orc")?.addEventListener("click", excluirOrcamento);
   $("btn-add-item")?.addEventListener("click", adicionarItem);
 

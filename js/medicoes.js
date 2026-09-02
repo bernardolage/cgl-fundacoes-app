@@ -1201,7 +1201,7 @@ function ligarMedicoes(){
 
   $("btn-nova-medicao")?.addEventListener("click", novaMedicao);
   $("btn-voltar-med")?.addEventListener("click", mostrarPainelMed);
-  $("btn-salvar-med")?.addEventListener("click", () => salvarMedicao());
+  $("btn-salvar-med")?.addEventListener("click", () => comBotaoTravado("btn-salvar-med", () => salvarMedicao()));
   $("btn-gerar-pdf-med")?.addEventListener("click", gerarPDFMedicao);
   $("btn-excluir-med")?.addEventListener("click", excluirMedicao);
 

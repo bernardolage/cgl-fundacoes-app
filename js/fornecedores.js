@@ -322,7 +322,7 @@ function ligarFornecedores(){
 
   $("btn-novo-fornecedor")?.addEventListener("click", novoFornecedor);
   $("btn-voltar-forn")?.addEventListener("click", mostrarPainelForn);
-  $("btn-salvar-forn")?.addEventListener("click", salvarFornecedor);
+  $("btn-salvar-forn")?.addEventListener("click", () => comBotaoTravado("btn-salvar-forn", salvarFornecedor));
   $("btn-excluir-forn")?.addEventListener("click", excluirFornecedor);
 
   document.querySelectorAll("#forn-notebook button").forEach(b => {

@@ -96,7 +96,7 @@ async function criarNovoFornecedorRapido(){
 
 /* ---------- Listeners ---------- */
 function ligarEstoque(){
-  $("btn-registrar-entrada")?.addEventListener("click", registrarEntrada);
+  $("btn-registrar-entrada")?.addEventListener("click", () => comBotaoTravado("btn-registrar-entrada", registrarEntrada));
   $("btn-novo-forn")?.addEventListener("click", criarNovoFornecedorRapido);
   $("ent-busca")?.addEventListener("input", renderUltimasEntradas);
 

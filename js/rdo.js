@@ -1155,7 +1155,7 @@ function ligarRDO(){
 
   $("btn-novo-rdo")?.addEventListener("click", novoRDO);
   $("btn-voltar-rdo")?.addEventListener("click", mostrarPainelRDO);
-  $("btn-salvar-rdo")?.addEventListener("click", () => salvarRDO());
+  $("btn-salvar-rdo")?.addEventListener("click", () => comBotaoTravado("btn-salvar-rdo", () => salvarRDO()));
   $("btn-finalizar-rdo")?.addEventListener("click", () => salvarRDO("finalizado"));
   $("btn-excluir-rdo")?.addEventListener("click", excluirRDO);
   $("btn-add-execucao")?.addEventListener("click", adicionarExecucao);
@@ -1592,7 +1592,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     const ests = porDia[d];
     html += `<div style="margin-bottom:8px;border:1px solid var(--borda-forte);border-radius:4px;padding:8px 10px;">
       <div style="font-weight:600;font-size:12px;color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length} estaca${ests.length>1?"s":""}</div>
-      <div class="meta">${ests.map(e=>e.estaca_numero).slice(0,10).join(", ")}${ests.length>10?` +${ests.length-10}`:""}</div>
+      <div class="meta">${ests.map(e=>esc(e.estaca_numero)).slice(0,10).join(", ")}${ests.length>10?` +${ests.length-10}`:""}</div>
     </div>`;
   });
   $("csv-preview-conteudo").innerHTML = html;

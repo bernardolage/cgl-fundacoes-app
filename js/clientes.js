@@ -249,7 +249,7 @@ function ligarClientes(){
 
   $("btn-novo-cliente")?.addEventListener("click", novoCliente);
   $("btn-voltar-cli")?.addEventListener("click", mostrarPainelCli);
-  $("btn-salvar-cli")?.addEventListener("click", salvarCliente);
+  $("btn-salvar-cli")?.addEventListener("click", () => comBotaoTravado("btn-salvar-cli", salvarCliente));
   $("btn-excluir-cli")?.addEventListener("click", excluirCliente);
 
   document.querySelectorAll("#cli-notebook button").forEach(b => {

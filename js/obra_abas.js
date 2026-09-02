@@ -21,6 +21,8 @@ async function carregarAbasObra(obraId){
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("status", "executada")
   ]);
+  // Guarda de corrida: outra obra foi aberta enquanto esta carregava → descarta
+  if(obraId !== obraEditId) return;
   _obrAbasContagens = {
     estacas: estsTotal.count || 0,
     estacas_previstas: estsTotal.count || 0,
@@ -456,7 +458,8 @@ async function enviarDocumento(obraId){
   btn.textContent = "Enviando...";
 
   try {
-    const ext = file.name.split(".").pop().toLowerCase();
+    // Extensão entra no caminho do storage: só letras/dígitos (1-5), senão "bin"
+    const ext = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "bin";
     const nomeUnico = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, file, {
       cacheControl: "3600", contentType: file.type, upsert: false
