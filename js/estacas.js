@@ -51,6 +51,36 @@ function normalizarNumeroEstacaEstacas(s){
 }
 
 /* Reduz a string a apenas dígitos (pra comparar "B66" vs "B6.6" → ambos viram "66") */
+// ---- Coordenadas/cotas vindas como texto no import (IA v4 escrevia
+// "Coordenadas N=2553,000 E=4253,940. CAE=99,350m, CPE=87,300m" em observacoes).
+// Sem coord_x/coord_y a planta vira grid por bloco e a checagem de 2,05 m nao roda.
+function _numBRImport(s){
+  if(s == null) return null;
+  let t = String(s).trim();
+  if(/,\d{1,3}$/.test(t) && t.includes(".")) t = t.replace(/\./g, "").replace(",", ".");
+  else t = t.replace(",", ".");
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+function _pegaRotuloImport(txt, rotulo){
+  const m = txt.match(new RegExp("(?:^|[\\s,;(])" + rotulo + "\\s*[=:]\\s*(-?[0-9]+(?:[.,][0-9]+)?)", "i"));
+  return m ? _numBRImport(m[1]) : null;
+}
+function extrairCoordsDaObservacao(item){
+  const e = Object.assign({}, item);
+  for(const k of ["coord_x","coord_y","cota_topo","cota_ponta"]) if(typeof e[k] === "string") e[k] = _numBRImport(e[k]);
+  const obs = typeof e.observacoes === "string" ? e.observacoes : "";
+  if(!obs) return e;
+  if(e.coord_x == null && e.coord_y == null){
+    const X = _pegaRotuloImport(obs, "E") ?? _pegaRotuloImport(obs, "X") ?? _pegaRotuloImport(obs, "Leste");
+    const Y = _pegaRotuloImport(obs, "N") ?? _pegaRotuloImport(obs, "Y") ?? _pegaRotuloImport(obs, "Norte");
+    if(X != null && Y != null){ e.coord_x = X; e.coord_y = Y; }
+  }
+  if(e.cota_topo == null){ const v = _pegaRotuloImport(obs, "CAE") ?? _pegaRotuloImport(obs, "Cota de arrasamento"); if(v != null) e.cota_topo = v; }
+  if(e.cota_ponta == null){ const v = _pegaRotuloImport(obs, "CPE") ?? _pegaRotuloImport(obs, "Cota de ponta"); if(v != null) e.cota_ponta = v; }
+  return e;
+}
+
 function soDigitos(s){
   return String(s||"").replace(/\D/g, "");
 }
@@ -395,7 +425,7 @@ async function importarEstacasPDF(){
       aviso("app-aviso","A IA não encontrou estacas neste PDF. Tente outro arquivo ou cadastre manualmente.","erro");
       return;
     }
-    _importPreview = estacas;
+    _importPreview = estacas.map(extrairCoordsDaObservacao);
     // Junta aviso da heurística (se houver) às observações da IA
     let obsCombinadas = data.observacoes || "";
     if(data._aviso_confusao){
@@ -612,6 +642,8 @@ async function confirmarImportEstacas(){
       bloco: e.bloco || null,
       coord_x: e.coord_x ?? null,
       coord_y: e.coord_y ?? null,
+      cota_topo: e.cota_topo ?? null,
+      cota_ponta: e.cota_ponta ?? null,
       observacoes: e.observacoes || null
     }));
   if(!regs.length){ aviso("app-aviso","Nenhuma estaca válida (todas sem nº).","erro"); return; }
