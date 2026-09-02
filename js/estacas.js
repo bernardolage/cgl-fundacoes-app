@@ -7,6 +7,23 @@
 let _estacas = [];            // cache das estacas da obra atual
 let _estacaEdit = null;       // estaca em edição no modal
 let _importPreview = [];      // estacas extraídas do PDF aguardando confirmação
+let _importUnidade = null;    // unidade das coordenadas do import (IA ou heurística): "m" | "cm" | "mm"
+
+// Heurística pela MENOR distância entre estacas nas unidades cruas do arquivo:
+// estacas nunca ficam a menos de ~0,5 m nem a mais de ~500 m da vizinha mais próxima.
+//   dmin < 50    → metros (ex.: 1,70)      50 ≤ dmin < 500 → centímetros (ex.: 170)
+//   dmin ≥ 500   → milímetros (ex.: 1700)
+function unidadeSugeridaCoords(lista){
+  const pts = (lista || []).filter(e => e.coord_x != null && e.coord_y != null).map(e => [Number(e.coord_x), Number(e.coord_y)]);
+  if(pts.length < 2) return null;
+  let dmin = Infinity;
+  for(let i = 0; i < pts.length; i++) for(let j = i + 1; j < pts.length; j++){
+    const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+    if(d > 0 && d < dmin) dmin = d;
+  }
+  if(!isFinite(dmin)) return null;
+  return dmin < 50 ? "m" : dmin < 500 ? "cm" : "mm";
+}
 let _estView = "lista";       // vista atual da aba Estacas: lista | planta
 let _estExecId = null;        // estaca aberta no modal de execução rápida
 let _estacaFuncs = [];        // cache funcionários para select operador
@@ -505,6 +522,7 @@ async function importarEstacasPDF(){
       return;
     }
     _importPreview = estacas.map(extrairCoordsDaObservacao);
+    _importUnidade = FATOR_UNIDADE[data.unidade_coordenadas] ? data.unidade_coordenadas : unidadeSugeridaCoords(_importPreview);
     // Junta aviso da heurística (se houver) às observações da IA
     let obsCombinadas = data.observacoes || "";
     if(data._aviso_confusao){
@@ -523,6 +541,18 @@ async function importarEstacasPDF(){
 function renderImportPreview(observacoes, meta, contId = "est-import-preview-conteudo", wrapId = "est-import-preview"){
   if($(wrapId)) $(wrapId).style.display = "";
   const temCoord = _importPreview.some(e => e.coord_x != null || e.coord_y != null);
+  // Unidade das coordenadas: detectada (IA/heurística) e confirmada pela pessoa; vale para a obra inteira
+  let blocoUnidade = "";
+  if(temCoord){
+    const sug = _importUnidade || unidadeSugeridaCoords(_importPreview) || _unidadeCoord || "mm";
+    const opt = (v, l) => `<option value="${v}"${v === sug ? " selected" : ""}>${l}</option>`;
+    const aviso_ = (sug !== _unidadeCoord) ? ` <span style="color:var(--aviso-txt);">— a obra estava em <strong>${esc(_unidadeCoord)}</strong>; ao importar, a obra passa para a unidade escolhida.</span>` : "";
+    blocoUnidade = `<div style="background:var(--marca-50);border-left:3px solid var(--marca-600);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-sm);">
+      📏 <strong>Unidade das coordenadas:</strong>
+      <select id="import-unidade" style="margin:0 6px;">${opt("m","metros (ex.: 4253,94)")}${opt("cm","centímetros (ex.: 425394)")}${opt("mm","milímetros (ex.: 4253940)")}</select>
+      <span class="meta">detectada: ${esc(sug)}</span>${aviso_}
+    </div>`;
+  }
   const obs = observacoes ? `<p style="font-size:var(--txt-sm);color:var(--txt-fraco);margin:0 0 8px;"><b>Notas da IA:</b> ${esc(observacoes)}</p>` : "";
   const metaTxt = meta ? `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0 0 8px;">Modelo: ${esc(meta.modelo)} · Tokens: ${meta.tokens_input}/${meta.tokens_output}</p>` : "";
 
@@ -629,7 +659,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   }).join("");
 
   $(contId).innerHTML = `
-    ${obs}${metaTxt}${alerta}${reorganizador}${massEdit}
+    ${obs}${metaTxt}${blocoUnidade}${alerta}${reorganizador}${massEdit}
     <div class="tabela-rola">
       <table>
         <thead><tr>
@@ -727,6 +757,12 @@ async function confirmarImportEstacas(){
     }));
   if(!regs.length){ aviso("app-aviso","Nenhuma estaca válida (todas sem nº).","erro"); return; }
 
+  // Unidade das coordenadas escolhida no preview → obra (a planta converte para metros a partir dela)
+  const unSel = $("import-unidade")?.value || _importUnidade;
+  if(unSel && FATOR_UNIDADE[unSel] && unSel !== _unidadeCoord && regs.some(r => r.coord_x != null)){
+    const { error: errUn } = await sb.from("obras").update({ unidade_coordenadas: unSel }).eq("id", obraEditId);
+    if(errUn){ aviso("app-aviso","Não foi possível gravar a unidade das coordenadas: " + errUn.message,"erro"); return; }
+  }
   const { error } = await sb.from("estacas").insert(regs);
   if(error){
     aviso("app-aviso","Erro ao importar: " + error.message,"erro");
@@ -971,6 +1007,7 @@ function extrairEstacasDXF(){
   const semNum = _importPreview.filter(e => !e.numero).length;
   const nota = `${geoms.length} estacas extraídas da layer "${layerGeom}".` +
     (semNum ? ` ${semNum} sem número (preencha na tabela ou pela reorganização).` : "");
+  _importUnidade = unidadeSugeridaCoords(_importPreview) || "mm";
   renderImportPreview(nota, null, "est-dxf-preview-conteudo", "est-dxf-preview");
   aviso("app-aviso", nota, "ok");
 }
@@ -1212,6 +1249,19 @@ function desenharFundoProjeto(g, ns, tf, ests){
 function _avisoParesProximos(comCoord){
   if(comCoord.length < 2) return "";
   const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
+  // Sanidade da unidade: distâncias (já em metros) todas < 5 cm ou a vizinha mais próxima > 500 m
+  // significam que a unidade da obra não bate com a das coordenadas gravadas.
+  {
+    let dmin = Infinity, dmax = 0;
+    for(let i = 0; i < comCoord.length; i++) for(let j = i + 1; j < comCoord.length; j++){
+      const d = dist(comCoord[i], comCoord[j]); if(d > 0 && d < dmin) dmin = d; if(d > dmax) dmax = d;
+    }
+    const sug = dmax > 0 && dmax < 0.05 ? (_unidadeCoord === "mm" ? "m ou cm" : "m")
+              : (isFinite(dmin) && dmin > 500 ? (_unidadeCoord === "m" ? "mm ou cm" : "mm") : null);
+    if(sug){
+      return `<div class="dist-aviso alerta">📏 <strong>Unidade das coordenadas provavelmente errada.</strong> A obra está em <strong>${esc(_unidadeCoord)}</strong>, mas as distâncias entre estacas ficaram ${dmax < 0.05 ? "todas abaixo de 5 cm" : "acima de 500 m"} — as coordenadas parecem estar em <strong>${sug}</strong>. Ajuste em "Regra de distância → Unidade das coordenadas".</div>`;
+    }
+  }
   const f2 = (n) => n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
   const locacao = [], execucao = [];
   for(let i = 0; i < comCoord.length; i++){
