@@ -188,6 +188,15 @@ function tagStatus(grupo, valor){
   return `<span class="tag ${o.cor}">${esc(o.label)}</span>`;
 }
 
+/* Situação ativo/inativo — UMA semântica para Clientes, Fornecedores e
+   Usuários (antes: cinza numa tela, vermelho noutra, e "ativo" nem aparecia).
+   O glifo (●/○) é redundância à cor, para daltônicos. */
+function tagSituacao(ativo){
+  return ativo === false
+    ? `<span class="tag cinza" title="Inativo">○ inativo</span>`
+    : `<span class="tag verde" title="Ativo">● ativo</span>`;
+}
+
 /* devolve as <option> de um objeto simples { valor: "Rótulo" } */
 function opcoesDe(obj){
   return Object.entries(obj)

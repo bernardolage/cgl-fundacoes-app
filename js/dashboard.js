@@ -127,10 +127,12 @@ async function carregarDashOperacional(){
     sb.from("orcamentos").select("valor_total").in("status",["rascunho","enviado","em_negociacao"])
   ]);
 
-  if($("dash-obras-ativas")) $("dash-obras-ativas").textContent = cntAtivas || 0;
+  // Estado "vazio": zero em cinza (não "quebrado") — ver .dash-num-vazio
+  const kpiNum = (id, v) => { const n = $(id); if(!n) return; n.textContent = v; n.classList.toggle("dash-num-vazio", !(Number(v) > 0)); };
+  kpiNum("dash-obras-ativas", cntAtivas || 0);
   if($("dash-obras-sub"))    $("dash-obras-sub").textContent = `${cntAtivas||0} em andamento · ${cntConcluidasMes||0} concluída(s) este mês`;
 
-  if($("dash-rdos-mes")) $("dash-rdos-mes").textContent = (rdosMes||[]).length;
+  kpiNum("dash-rdos-mes", (rdosMes||[]).length);
   const totalProdRDO = (rdosMes||[]).reduce((s,r) => s + (Number(r.producao_dia_m)||0), 0);
   if($("dash-rdos-sub")) $("dash-rdos-sub").textContent = `${num(totalProdRDO)} m de produção no mês`;
 
@@ -138,11 +140,11 @@ async function carregarDashOperacional(){
   const totalEstacas = execs.length;
   const totalProf    = execs.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
   const totalConc    = execs.reduce((s,e) => s + (Number(e.volume_concreto_m3)||0), 0);
-  if($("dash-estacas-mes")) $("dash-estacas-mes").textContent = totalEstacas;
+  kpiNum("dash-estacas-mes", totalEstacas);
   if($("dash-estacas-sub")) $("dash-estacas-sub").textContent = `${num(totalProf)} m executados · ${num(totalConc)} m³ concreto`;
 
   const valorOrcAbertos = (orcAbertos||[]).reduce((s,o) => s + (Number(o.valor_total)||0), 0);
-  if($("dash-orc-abertos")) $("dash-orc-abertos").textContent = cntOrcAbertos || 0;
+  kpiNum("dash-orc-abertos", cntOrcAbertos || 0);
   if($("dash-orc-sub"))     $("dash-orc-sub").textContent = `${brl(valorOrcAbertos)} em pipeline`;
 }
 

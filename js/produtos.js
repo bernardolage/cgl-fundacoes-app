@@ -106,7 +106,7 @@ function renderProdLista(dados){
       <td class="num">${num(p.estoque_atual)}</td>
       <td class="num">${num(p.estoque_minimo)}</td>
       <td class="num">${brl(p.custo_ultimo)}</td>
-      <td><span class="tag ${baixo?"vermelho":"verde"}">${baixo?"Abaixo do mínimo":"OK"}</span></td>
+      <td><span class="tag ${baixo?"vermelho":"verde"}">${baixo?"▲ Abaixo do mínimo":"● OK"}</span></td>
     </tr>`;
   }).join("");
   cont.innerHTML = `${aviso_lim}<div class="tabela-rola"><table>
@@ -139,7 +139,7 @@ function renderProdKanban(dados){
           ${baixo ? '<span class="tag vermelho" style="font-size:10px;">baixo</span>' : ''}
         </div>
         <div class="serv-kan-card-rod">
-          <span></span>
+          <span class="meta">${esc(p.codigo||"")}</span>
           <strong>${brl(p.custo_ultimo)}</strong>
         </div>
       </div>`;
@@ -204,7 +204,7 @@ function abrirFichaProdVisual(p){
   const conf = p.inventario_conferido;
   $("prod-ficha-conf-chip").innerHTML = conf
     ? '<span class="tag verde">Conferido</span>'
-    : '<span class="tag ambar">A conferir</span>';
+    : '<span class="tag ambar">⚠ A conferir</span>';
   $("prod-ficha-titulo").textContent = prodEditId ? `${p.codigo} — ${p.nome}` : "Novo produto";
 
   ativarTabProd("geral");

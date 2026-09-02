@@ -1121,8 +1121,15 @@ function renderLegendaPlanta(){
       return `<span><i style="background:${corDaMaquina(id)}"></i>${esc(m.codigo || m.nome || "?")}</span>`;
     }).join("") || `<span class="meta">nenhuma máquina atribuída às estacas</span>`;
   } else {
+    // A amostra da legenda repete o CONTORNO usado nos círculos (cor + forma):
+    // quem não distingue as cores ainda separa prevista / em andamento / executada / refurada
+    const contorno = {
+      prevista: "1.5px solid var(--sup-3)",
+      em_execucao: "2px dashed var(--txt-sec)", perfuracao_concluida: "2px dashed var(--txt-sec)", armacao_aplicada: "2px dashed var(--txt-sec)",
+      executada: "2.5px solid var(--txt)", refugada: "2.5px dotted var(--txt)"
+    };
     box.innerHTML = Object.entries(ESTACA_STATUS)
-      .map(([v]) => `<span><i style="background:${COR_STATUS[v] || "var(--txt-sutil)"}"></i>${esc(ESTACA_STATUS[v].label)}</span>`).join("") +
+      .map(([v]) => `<span title="${esc(ESTACA_STATUS[v].label)}"><i style="background:${COR_STATUS[v] || "var(--txt-sutil)"};border:${contorno[v] || "1.5px solid var(--sup-3)"};box-sizing:border-box;"></i>${esc(ESTACA_STATUS[v].label)}</span>`).join("") +
       `<span><i style="background:var(--estaca-hoje)"></i>Hoje</span>`;
   }
 }
@@ -1195,8 +1202,21 @@ function desenharEstaca(g, ns, e, x, y, hoje){
   circ.setAttribute("r", 11);
   // via style, e não setAttribute: atributo de apresentação do SVG ignora tokens CSS
   circ.style.fill = cor;
-  circ.style.stroke = "var(--sup-0)";
-  circ.style.strokeWidth = "1.5";
+  // Redundância à cor (daltônicos): o CONTORNO codifica o status —
+  // prevista: fino e claro · em andamento (execução/perfuração/armação):
+  // tracejado · executada: contorno escuro sólido · refurada: tracejado curto
+  // escuro. Assim executada ≠ refurada mesmo sem enxergar verde/vermelho.
+  const traco = {
+    prevista:             { stroke: "var(--sup-0)",   w: "1.5", dash: "" },
+    em_execucao:          { stroke: "var(--txt-sec)", w: "2",   dash: "4 2" },
+    perfuracao_concluida: { stroke: "var(--txt-sec)", w: "2",   dash: "4 2" },
+    armacao_aplicada:     { stroke: "var(--txt-sec)", w: "2",   dash: "4 2" },
+    executada:            { stroke: "var(--txt)",     w: "2.5", dash: "" },
+    refugada:             { stroke: "var(--txt)",     w: "2.5", dash: "2 2" }
+  }[e.status] || { stroke: "var(--sup-0)", w: "1.5", dash: "" };
+  circ.style.stroke = traco.stroke;
+  circ.style.strokeWidth = traco.w;
+  if(traco.dash) circ.setAttribute("stroke-dasharray", traco.dash);
   circ.dataset.id = e.id;
   // Acessível: nome + status lidos pelo leitor de tela; tabindex/role vêm do
   // observer global (core.js) e Enter dispara o click delegado.

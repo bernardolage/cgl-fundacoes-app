@@ -2497,3 +2497,8 @@ input:disabled, select:disabled, textarea:disabled {
   cursor: not-allowed;
   background: var(--sup-3);
 }
+
+/* ---- Onda 5: estado vazio de KPI e botão de aviso (sem estilo inline) ---- */
+.dash-card-num.dash-num-vazio { color: var(--txt-fraco); font-weight: 600; }
+.btn.btn-aviso { background: var(--aviso); border-color: var(--aviso); color: var(--txt); }
+.btn.btn-aviso:hover { filter: brightness(0.95); }

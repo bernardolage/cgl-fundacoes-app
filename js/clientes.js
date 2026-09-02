@@ -53,7 +53,7 @@ function renderCliLista(dados){
     return;
   }
   const linhas = dados.map(c => `<tr class="linha-clicavel" data-id="${esc(c.id)}">
-    <td>${esc(c.nome)}${c.ativo===false?' <span class="tag cinza">inativo</span>':''}</td>
+    <td>${esc(c.nome)} ${tagSituacao(c.ativo)}</td>
     <td>${esc(c.cpf_cnpj||"—")}</td>
     <td>${esc(c.tipo_pessoa === "fisica" ? "Pessoa Física" : "Pessoa Jurídica")}</td>
     <td>${esc([c.cidade,(c.uf||"").toUpperCase()].filter(Boolean).join("/")||"—")}</td>
@@ -88,7 +88,7 @@ function renderCliKanban(dados){
         </div>
         <div class="serv-kan-card-rod">
           <span>${esc(c.telefone || "")}</span>
-          ${c.ativo===false ? '<span class="tag cinza">inativo</span>' : ''}
+          ${tagSituacao(c.ativo)}
         </div>
       </div>`).join("");
     return `<div class="serv-kan-col">

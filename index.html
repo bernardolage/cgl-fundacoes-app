@@ -198,22 +198,22 @@
       <!-- KPIs Operacionais -->
       <h3 style="font-size:13px;color:var(--txt-fraco);margin:20px 0 8px;text-transform:uppercase;letter-spacing:0.5px;">🏗️ Operacional</h3>
       <div class="dash-cards">
-        <div class="dash-card">
+        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
           <div class="dash-card-rot">Obras Ativas</div>
           <div class="dash-card-num" id="dash-obras-ativas">—</div>
           <div class="dash-card-sub" id="dash-obras-sub">— em andamento · — concluídas mês</div>
         </div>
-        <div class="dash-card">
+        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
           <div class="dash-card-rot">RDOs (mês)</div>
           <div class="dash-card-num" id="dash-rdos-mes">—</div>
           <div class="dash-card-sub" id="dash-rdos-sub">— RDOs registrados em maio</div>
         </div>
-        <div class="dash-card">
+        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
           <div class="dash-card-rot">Estacas Executadas (mês)</div>
           <div class="dash-card-num" id="dash-estacas-mes">—</div>
           <div class="dash-card-sub" id="dash-estacas-sub">— metros · — m³ concreto</div>
         </div>
-        <div class="dash-card">
+        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
           <div class="dash-card-rot">Orçamentos abertos</div>
           <div class="dash-card-num" id="dash-orc-abertos">—</div>
           <div class="dash-card-sub" id="dash-orc-sub">— em negociação · R$ —</div>
@@ -376,7 +376,7 @@
           </div>
           <div class="serv-filtros">
             <input id="forn-busca" placeholder="Buscar por razão social, CNPJ ou cidade..." />
-            <select id="forn-f-categoria"></select>
+            <select id="forn-f-categoria"><option value="">Todas as categorias</option></select>
             <select id="forn-f-ativo">
               <option value="">Todos</option>
               <option value="ativos">Só ativos</option>
@@ -959,7 +959,7 @@
           <div style="background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;font-size:12px;align-items:center;">
             <span style="color:var(--txt-sec);">Ações:</span>
             <button type="button" class="btn-sec btn-sm" id="btn-orc-nova-revisao" title="Cria uma nova revisão deste orçamento (mantém número, incrementa revisão, copia itens)">➕ Nova revisão</button>
-            <button type="button" class="btn-sec btn-sm" id="btn-orc-criar-obra" title="Disponível quando o orçamento está APROVADO e ainda não gerou obra" style="background:var(--sucesso);color:var(--txt-sobre);border-color:var(--sucesso);display:none;">🏗️ Criar obra</button>
+            <button type="button" class="btn btn-sucesso btn-sm" id="btn-orc-criar-obra" title="Disponível quando o orçamento está APROVADO e ainda não gerou obra" style="display:none;">🏗️ Criar obra</button>
             <span id="orc-acao-hint" style="color:var(--txt-fraco);font-style:italic;font-size:11px;"></span>
           </div>
 
@@ -2195,8 +2195,8 @@
               <button type="button" class="btn-sec" id="btn-recomenda-mdf">🚚 Verificar MDF-e</button>
             </div>
             <div class="actions-right">
-              <button type="button" class="btn" id="btn-marcar-emitida" style="background:var(--marca-600);">✓ Emitida</button>
-              <button type="button" class="btn" id="btn-marcar-transito" style="background:var(--aviso);">🚛 Trânsito</button>
+              <button type="button" class="btn" id="btn-marcar-emitida">✓ Emitida</button>
+              <button type="button" class="btn btn-aviso" id="btn-marcar-transito">🚛 Trânsito</button>
               <button type="button" class="btn btn-sucesso" id="btn-marcar-recebida">✅ Recebida</button>
               <button type="button" class="btn-sec acao-perigo" id="btn-cancelar">✗ Cancelar</button>
             </div>

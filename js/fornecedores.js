@@ -64,7 +64,7 @@ function renderFornLista(dados){
     return;
   }
   const linhas = dados.map(f => `<tr class="linha-clicavel" data-id="${esc(f.id)}">
-    <td>${esc(f.razao_social)}${f.ativo===false?' <span class="tag cinza">inativo</span>':''}</td>
+    <td>${esc(f.razao_social)} ${tagSituacao(f.ativo)}</td>
     <td>${esc(f.cpf_cnpj||"—")}</td>
     <td>${esc([f.cidade,(f.uf||"").toUpperCase()].filter(Boolean).join("/")||"—")}</td>
     <td>${esc(f.categoria||"—")}</td>
@@ -99,7 +99,7 @@ function renderFornKanban(dados){
         </div>
         <div class="serv-kan-card-rod">
           <span>${esc(f.cidade || "—")}</span>
-          ${f.ativo===false ? '<span class="tag cinza">inativo</span>' : ''}
+          ${tagSituacao(f.ativo)}
         </div>
       </div>`).join("");
     return `<div class="serv-kan-col">

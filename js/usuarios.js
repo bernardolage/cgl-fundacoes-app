@@ -80,9 +80,7 @@ function renderUsrLista(dados){
     <td>${esc(u.email||"—")}</td>
     <td>${esc(CARGOS[u.cargo] || u.cargo || "—")}</td>
     <td>${esc(u.telefone||"—")}</td>
-    <td>${u.ativo === false
-      ? '<span class="tag vermelho">Inativo</span>'
-      : '<span class="tag verde">Ativo</span>'}</td>
+    <td>${tagSituacao(u.ativo)}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
@@ -112,7 +110,7 @@ function renderUsrKanban(dados){
         </div>
         <div class="serv-kan-card-rod">
           <span>${esc(u.telefone || "")}</span>
-          ${u.ativo === false ? '<span class="tag vermelho">inativo</span>' : '<span class="tag verde">ativo</span>'}
+          ${tagSituacao(u.ativo)}
         </div>
       </div>`).join("");
     return `<div class="serv-kan-col">

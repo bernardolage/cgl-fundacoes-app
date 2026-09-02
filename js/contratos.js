@@ -581,7 +581,9 @@ const ASSINATURA_META = {
 
 function tagAssinatura(st){
   const m = ASSINATURA_META[st] || ASSINATURA_META.nao_iniciada;
-  return `<span class="tag ${m.cor}">${esc(m.label)}</span>`;
+  // Glifo redundante à cor (daltônicos não distinguem verde/âmbar/vermelho)
+  const glifo = { verde: "✓ ", ambar: "◔ ", vermelho: "✕ ", azul: "→ " }[m.cor] || "○ ";
+  return `<span class="tag ${m.cor}">${glifo}${esc(m.label)}</span>`;
 }
 
 /* Alvo atual do modal: contrato + como recarregar a ficha de origem */
