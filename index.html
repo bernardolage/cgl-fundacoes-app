@@ -166,7 +166,8 @@
         <div style="font-size:var(--txt-sm);opacity:0.85;margin-top:4px;" id="dash-data-hoje">—</div>
       </div>
 
-      <!-- KPIs Financeiros (4 cards grandes) -->
+      <!-- KPIs Financeiros (4 cards grandes) — só diretoria (dashboard.js mostra) -->
+      <div id="dash-financeiro" style="display:none;">
       <h3 style="font-size:var(--txt-md);color:var(--txt-fraco);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.5px;">💰 Financeiro</h3>
       <div class="dash-cards">
         <div class="dash-card" style="border-left:4px solid var(--marca-600);">
@@ -193,6 +194,8 @@
             </div>
           </div>
         </div>
+      </div>
+
       </div>
 
       <!-- KPIs Operacionais -->
@@ -238,7 +241,7 @@
       <div style="display:grid;grid-template-columns:1fr 1.5fr;gap:16px;margin-top:16px;">
         <!-- Top 5 obras -->
         <div class="card compacto">
-          <h3>📈 Top 5 obras (valor)</h3>
+          <h3 id="dash-top-obras-titulo">📈 Top 5 obras</h3>
           <div id="dash-top-obras"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
         </div>
         <!-- Atividade recente -->

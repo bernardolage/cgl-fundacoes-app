@@ -15,9 +15,13 @@ async function carregarDashboard(){
     hojeEl.textContent = hoje.toLocaleDateString("pt-BR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
   }
 
+  // Bloco financeiro (contratado / medido / a medir / %) só para diretoria
+  const finEl = $("dash-financeiro");
+  if(finEl) finEl.style.display = dashEhDiretoria() ? "" : "none";
+
   // Roda tudo em paralelo
   await Promise.all([
-    carregarDashFinanceiro(),
+    dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
     carregarDashOperacional(),
     carregarDashPendencias(),
     carregarDashGraficoProducao(),
@@ -52,6 +56,11 @@ function dashIrObrasAtivas(){
   if(f){ f.value = "em_andamento"; if(typeof renderObras === "function") renderObras(); }
 }
 function dashIrOrcamentos(){ irParaSecao("orcamentos"); }
+// Só o cargo diretor vê valores consolidados (contratado, medido, a medir, valor por obra)
+function dashEhDiretoria(){
+  return !!(usuarioAtual && usuarioAtual.cargo === "diretor");
+}
+
 function dashIrFinanceiro(){
   // diretoria vê a Carteira; demais vão para Medições
   if(usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo)) irParaSecao("carteira");
@@ -308,6 +317,9 @@ async function carregarDashGraficoProducao(){
 async function carregarDashTopObras(){
   const cont = $("dash-top-obras");
   if(!cont) return;
+  const mostraValor = dashEhDiretoria();
+  const tit = $("dash-top-obras-titulo");
+  if(tit) tit.textContent = mostraValor ? "📈 Top 5 obras (valor)" : "📈 Top 5 obras";
   const { data } = await sb.from("obras")
     .select("id,codigo,nome,valor_contratado,status")
     .in("status",["em_andamento","planejada","paralisada"])
@@ -322,7 +334,7 @@ async function carregarDashTopObras(){
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
         <strong>${i+1}.</strong> ${esc(o.codigo)} <span style="color:var(--txt-sutil);">·</span> ${esc((o.nome||"").slice(0,30))}${(o.nome||"").length>30?"…":""}
       </div>
-      <strong style="color:var(--sucesso);">${brl(o.valor_contratado)}</strong>
+      ${mostraValor ? `<strong style="color:var(--sucesso);">${brl(o.valor_contratado)}</strong>` : ""}
     </div>`).join("")}</div>`;
   cont.querySelectorAll(".dash-linha-obra[data-obra-id]").forEach(el => {
     el.addEventListener("click", () => dashAbrirObra(el.dataset.obraId));
