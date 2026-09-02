@@ -17,15 +17,15 @@
    -------------------------------------------------------------------- */
 :root {
   /* ---- Marca ---- */
-  --marca-50:  #f0f6fc;   /* fundo de realce muito leve */
-  --marca-100: #dde9f6;   /* fundo de item selecionado */
-  --marca-200: #b9d2ea;   /* borda de realce */
-  --marca-500: #2b7ad1;   /* hover de ações */
-  --marca-600: #1B5FA8;   /* AZUL CGL — ações, links, aba ativa */
-  --marca-700: #164c88;   /* pressionado */
-  --marca-900: #1A2E44;   /* azul escuro — títulos, barra lateral */
+  --marca-50:  #EEF8F8;   /* fundo de realce muito leve (teal) */
+  --marca-100: #D6EFF0;   /* fundo de item selecionado */
+  --marca-200: #A8DFE1;   /* borda de realce */
+  --marca-500: #52B8BC;   /* hover de ações */
+  --marca-600: #3BA7AC;   /* TEAL do site CGL — ações, links, aba ativa, foco (Variante A, 01/09/2026) */
+  --marca-700: #2E8A8E;   /* pressionado */
+  --marca-900: #1B3F42;   /* teal escuro — títulos, barra lateral, banner */
 
-  --marca-laranja: #E67E22;   /* laranja do logo, usar com parcimônia */
+  --marca-laranja: #FF9318;   /* LARANJA do site CGL — destaque de marca: item ativo, CTA, realce */
 
   /* ---- Superfícies ---- */
   --sup-0: #ffffff;   /* cartão */
@@ -55,13 +55,13 @@
   --perigo-bg:   #fdecec;
   --perigo-txt:  #8a2020;
 
-  --aviso:       #F4A020;   /* só preenchimento e borda; como texto tem 2:1 */
-  --aviso-bg:    #fff3cd;
-  --aviso-txt:   #856404;   /* é este que se usa para texto em laranja */
+  --aviso:       #E0A100;   /* âmbar — separado do laranja da marca; só preenchimento e borda */
+  --aviso-bg:    #FFF4CC;
+  --aviso-txt:   #7A5600;   /* texto em âmbar (contraste ok) */
 
-  --info:        #1B5FA8;
-  --info-bg:     #e7f3ff;
-  --info-txt:    #164c88;
+  --info:        #2B7AD1;   /* azul mantido para "informativo" (distinto da marca teal) */
+  --info-bg:     #E7F1FC;
+  --info-txt:    #1F5FA8;
 
   --neutro:      #64748b;
   --neutro-bg:   #eef2f6;
@@ -83,7 +83,7 @@
   --esp-8: 32px;
 
   /* ---- Tipografia ---- */
-  --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --txt-xs: 11px;   /* rótulo de chip, meta */
   --txt-sm: 12px;   /* tabela, filtros */
   --txt-md: 13px;   /* corpo */
@@ -100,6 +100,8 @@
   --shadow-premium: 0 20px 25px -5px rgba(15, 23, 42, 0.05), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
 
   --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-rapido: all 0.15s ease;   /* hover/foco */
+  --transition-lento:  all 0.3s ease;    /* painéis, colapsos */
 
   /* ---- Apelidos dos nomes antigos (não usar em código novo) ---- */
   --azul-primary: var(--marca-900);
@@ -127,7 +129,7 @@
   --bg-card: var(--sup-0);
   --border-color: var(--borda);
   --text-main: var(--txt);
-  --text-sec: var(--txt-fraco);
+  --text-sec: var(--txt-sec);   /* alinhado ao PT (era --txt-fraco: cores diferentes p/ o mesmo nome) */
 }
 
 /* Reset Geral */
@@ -732,7 +734,7 @@ td.num, th.num {
   flex-direction: column;
   transition: var(--transition);
 }
-.ind:hover {
+.ind-click:hover {   /* só KPIs clicáveis "levantam" (era .ind:hover: falsa affordância) */
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
   border-color: color-mix(in srgb, var(--marca-600) 35%, transparent);
@@ -1285,7 +1287,7 @@ td.num, th.num {
 }
 /* Indicadores/itens clicáveis do dashboard (levam ao fluxo correspondente) */
 .clicavel { cursor: pointer; }
-.dash-card.clicavel { transition: background .15s, box-shadow .15s; }
+.dash-card.clicavel { transition: var(--transition-rapido); }
 .dash-card.clicavel:hover { background: var(--sup-2); box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 .dash-pendencia-item.clicavel:hover,
 .dash-linha-obra.clicavel:hover,
@@ -1293,7 +1295,7 @@ td.num, th.num {
 .dash-pend-seta { color: var(--txt-sutil); font-size: 18px; font-weight: 700; margin-left: 6px; }
 .dash-card-rot {
   font-size: 11px;
-  color: var(--txt-sutil);
+  color: var(--txt-fraco);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 6px;
@@ -1306,7 +1308,7 @@ td.num, th.num {
 }
 .dash-card-sub {
   font-size: 11px;
-  color: var(--txt-sutil);
+  color: var(--txt-fraco);
   margin-top: 6px;
 }
 .dash-pendencia-item {
@@ -1386,7 +1388,7 @@ td.num, th.num {
   padding: 10px 18px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--txt-sutil);
+  color: var(--txt-fraco);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   cursor: pointer;
@@ -1430,7 +1432,7 @@ td.num, th.num {
   font-size: 11px;
 }
 .odoo-contexto .chip span {
-  color: var(--txt-sutil); text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--txt-fraco); text-transform: uppercase; letter-spacing: 0.4px;
 }
 .odoo-contexto .chip strong {
   font-size: 14px; color: var(--marca-900);

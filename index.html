@@ -6,7 +6,7 @@
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/estilo.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -960,7 +960,7 @@
             <span style="color:var(--txt-sec);">Ações:</span>
             <button type="button" class="btn-sec btn-sm" id="btn-orc-nova-revisao" title="Cria uma nova revisão deste orçamento (mantém número, incrementa revisão, copia itens)">➕ Nova revisão</button>
             <button type="button" class="btn-sec btn-sm" id="btn-orc-criar-obra" title="Disponível quando o orçamento está APROVADO e ainda não gerou obra" style="background:var(--sucesso);color:var(--txt-sobre);border-color:var(--sucesso);display:none;">🏗️ Criar obra</button>
-            <span id="orc-acao-hint" style="color:var(--txt-sutil);font-style:italic;font-size:11px;"></span>
+            <span id="orc-acao-hint" style="color:var(--txt-fraco);font-style:italic;font-size:11px;"></span>
           </div>
 
           <div class="odoo-notebook" id="orc-notebook">
@@ -1569,7 +1569,7 @@
         <div style="background:var(--sup-0);max-width:480px;width:92%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <div>
-              <div style="font-size:11px;color:var(--txt-sutil);text-transform:uppercase;letter-spacing:.4px;">Estaca</div>
+              <div style="font-size:11px;color:var(--txt-fraco);text-transform:uppercase;letter-spacing:.4px;">Estaca</div>
               <h3 id="exec-titulo" style="margin:2px 0 0;font-size:18px;">—</h3>
             </div>
             <button type="button" class="btn-sec" id="btn-exec-fechar">×</button>
@@ -1771,7 +1771,7 @@
               <button type="button" class="btn-sec acao-perigo" id="btn-excluir-rdo">🗑️ Excluir</button>
             </div>
             <div class="actions-right">
-              <span id="rdo-ficha-posicao" style="font-size:12px;color:var(--txt-sutil);margin-right:10px;"></span>
+              <span id="rdo-ficha-posicao" style="font-size:12px;color:var(--txt-fraco);margin-right:10px;"></span>
               <strong id="rdo-ficha-titulo" class="ficha-titulo">Novo RDO</strong>
             </div>
           </div>
@@ -1894,7 +1894,7 @@
                     <tr>
                       <th style="width:32px;">#</th>
                       <th>Funcionário</th>
-                      <th>Nome avulso<br><small style="font-weight:400;color:var(--txt-sutil);">(terceiro sem cadastro)</small></th>
+                      <th>Nome avulso<br><small style="font-weight:400;color:var(--txt-fraco);">(terceiro sem cadastro)</small></th>
                       <th>Função no dia</th>
                       <th>Entrada</th>
                       <th>Saída</th>
@@ -2066,7 +2066,7 @@
                   <tbody id="med-itens-tbody"></tbody>
                 </table>
               </div>
-              <div id="med-itens-vazio" style="display:none;padding:18px;text-align:center;color:var(--txt-sutil);font-size:12px;">
+              <div id="med-itens-vazio" style="display:none;padding:18px;text-align:center;color:var(--txt-fraco);font-size:12px;">
                 Nenhum item ainda. Clique <strong>✨ Sugerir do período</strong> pra gerar a partir das execuções dos RDOs, ou <strong>+ Item manual</strong> pra digitar.
               </div>
               <p class="nota">
@@ -2108,11 +2108,11 @@
                   <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
                     <button type="button" class="btn-sec btn-sm" id="btn-med-calc-he" title="Soma horas extras dos RDOs do período × valor configurado">✨ Calcular Hora Extra</button>
                     <button type="button" class="btn-sec btn-sm" id="btn-med-calc-fatmin" title="Conta dias úteis sem produção × faturamento mínimo diário">✨ Calcular Fat. Mínimo</button>
-                    <span id="med-acresc-hint" style="font-size:10px;color:var(--txt-sutil);align-self:center;"></span>
+                    <span id="med-acresc-hint" style="font-size:10px;color:var(--txt-fraco);align-self:center;"></span>
                   </div>
                 </div>
                 <div class="campo" id="campo-med-multiplicador" style="display:none;">
-                  <label>Multiplicador (%) <small style="font-weight:400;color:var(--txt-sutil);">— Sinal Contratual usa 30%</small></label>
+                  <label>Multiplicador (%) <small style="font-weight:400;color:var(--txt-fraco);">— Sinal Contratual usa 30%</small></label>
                   <input id="med-multiplicador" type="number" step="0.01" min="0" max="100" value="100" />
                 </div>
                 <div class="campo">
