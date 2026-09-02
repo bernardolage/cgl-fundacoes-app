@@ -678,11 +678,11 @@ async function excluirEstaca(id){
 async function importarEstacasPDF(){
   const fileInput = $("est-import-file");
   if(!fileInput.files || !fileInput.files[0]){
-    aviso("app-aviso","Selecione um PDF.","erro");
+    avisoImport("Selecione um PDF.","erro");
     return;
   }
   if(!obraEditId){
-    aviso("app-aviso","Salve a obra primeiro.","erro");
+    avisoImport("Salve a obra primeiro.","erro");
     return;
   }
   const btn = $("btn-est-extrair");
@@ -696,7 +696,7 @@ async function importarEstacasPDF(){
     const file = fileInput.files[0];
     const LIMITE_MB = 20;
     if(file.size > LIMITE_MB * 1024 * 1024){
-      aviso("app-aviso",`PDF com ${(file.size/1048576).toFixed(1)} MB — o limite é ${LIMITE_MB} MB. Exporte só as folhas de locação/tabela de estacas.`,"erro");
+      avisoImport(`PDF com ${(file.size/1048576).toFixed(1)} MB — o limite é ${LIMITE_MB} MB. Exporte só as folhas de locação/tabela de estacas.`,"erro");
       return;
     }
     const base64 = await new Promise((res, rej) => {
@@ -734,7 +734,7 @@ async function importarEstacasPDF(){
 
     const estacas = data.estacas || [];
     if(!estacas.length){
-      aviso("app-aviso","A IA não encontrou estacas neste PDF. Tente outro arquivo ou cadastre manualmente.","erro");
+      avisoImport("A IA não encontrou estacas neste PDF. Tente outro arquivo ou cadastre manualmente.","erro");
       return;
     }
     _importPreview = estacas.map(extrairCoordsDaObservacao);
@@ -747,9 +747,9 @@ async function importarEstacasPDF(){
       obsCombinadas = `⚠️ ${data._aviso_confusao}\n\n${obsCombinadas}`;
     }
     renderImportPreview(obsCombinadas, data._meta);
-    aviso("app-aviso", `IA extraiu ${estacas.length} estacas. Revise antes de importar.`, "ok");
+    avisoImport(`IA extraiu ${estacas.length} estacas. Revise antes de importar.`, "ok");
   } catch(err){
-    aviso("app-aviso","Erro ao extrair: " + err.message,"erro");
+    avisoImport("Erro ao extrair: " + err.message,"erro");
   } finally {
     btn.disabled = false;
     btn.textContent = "🤖 Extrair com IA";
@@ -954,9 +954,26 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   });
 }
 
+/* Aviso visível dentro do modal de import aberto (PDF ou DXF) — o app-aviso do topo
+   fica atrás do modal e a pessoa não vê o erro ("parecia que não tinha clicado"). */
+function avisoImport(msg, tipo){
+  aviso("app-aviso", msg, tipo);
+  const alvo = ($("est-dxf-modal")?.style.display !== "none" && $("est-dxf-modal")?.style.display !== "") ? $("est-dxf-aviso")
+             : ($("est-import-modal")?.style.display !== "none" && $("est-import-modal")?.style.display !== "") ? $("est-import-aviso") : null;
+  const el = alvo || $("est-import-aviso");
+  if(!el) return;
+  el.textContent = msg;
+  el.className = "aviso " + tipo;
+  if(tipo === "ok") setTimeout(() => { el.className = "aviso"; el.textContent = ""; }, 4000);
+  el.scrollIntoView({ block: "nearest" });
+}
+function limparAvisoImport(){
+  ["est-import-aviso","est-dxf-aviso"].forEach(id => { const el = $(id); if(el){ el.textContent = ""; el.className = "aviso"; } });
+}
+
 async function confirmarImportEstacas(){
-  if(!_importPreview.length){ aviso("app-aviso","Nada a importar.","erro"); return; }
-  if(!obraEditId){ aviso("app-aviso","Obra não identificada.","erro"); return; }
+  if(!_importPreview.length){ avisoImport("Nada a importar.","erro"); return; }
+  if(!obraEditId){ avisoImport("Obra não identificada.","erro"); return; }
   if(!confirm(`Importar ${_importPreview.length} estacas pra esta obra?`)) return;
 
   const regs = _importPreview
@@ -976,20 +993,36 @@ async function confirmarImportEstacas(){
       cota_ponta: e.cota_ponta ?? null,
       observacoes: e.observacoes || null
     }));
-  if(!regs.length){ aviso("app-aviso","Nenhuma estaca válida (todas sem nº).","erro"); return; }
+  if(!regs.length){ avisoImport("Nenhuma estaca válida (todas sem nº).","erro"); return; }
+
+  // Duplicidade = mesmo número NO MESMO LOCAL (projetos de locais diferentes repetem E01…).
+  const chave = (r) => String(r.local || "").trim().toUpperCase() + "|" + String(r.numero || "").toUpperCase();
+  const existentes = new Set(_estacas.map(chave));
+  const vistos = new Set();
+  const novos = [], repetidos = [];
+  regs.forEach(r => {
+    const k = chave(r);
+    if(existentes.has(k) || vistos.has(k)) repetidos.push(r); else { vistos.add(k); novos.push(r); }
+  });
+  if(!novos.length){
+    avisoImport(`Todas as ${regs.length} estacas já existem nesta obra no mesmo local — nada foi importado. Se são de outro local/projeto, preencha a coluna Local no preview.`, "erro");
+    return;
+  }
+  if(repetidos.length && !confirm(`${repetidos.length} estaca(s) já existem no mesmo local e serão ignoradas (${repetidos.slice(0,8).map(r => r.numero).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?`)) return;
+  regs.length = 0; novos.forEach(r => regs.push(r));
 
   // Unidade das coordenadas escolhida no preview → obra (a planta converte para metros a partir dela)
   const unSel = $("import-unidade")?.value || _importUnidade;
   if(unSel && FATOR_UNIDADE[unSel] && unSel !== _unidadeCoord && regs.some(r => r.coord_x != null)){
     const { error: errUn } = await sb.from("obras").update({ unidade_coordenadas: unSel }).eq("id", obraEditId);
-    if(errUn){ aviso("app-aviso","Não foi possível gravar a unidade das coordenadas: " + errUn.message,"erro"); return; }
+    if(errUn){ avisoImport("Não foi possível gravar a unidade das coordenadas: " + errUn.message,"erro"); return; }
   }
   const { error } = await sb.from("estacas").insert(regs);
   if(error){
-    aviso("app-aviso","Erro ao importar: " + error.message,"erro");
+    avisoImport("Erro ao importar: " + error.message,"erro");
     return;
   }
-  aviso("app-aviso", `${regs.length} estacas importadas com sucesso.`, "ok");
+  avisoImport(`${regs.length} estacas importadas com sucesso.`, "ok");
   _importPreview = [];
   fecharModalImport();
   fecharModalDXF();
@@ -997,6 +1030,7 @@ async function confirmarImportEstacas(){
 }
 
 function abrirModalImport(){
+  limparAvisoImport();
   if(!obraEditId){
     aviso("app-aviso","Salve a obra antes de importar estacas.","erro");
     return;
@@ -1087,13 +1121,13 @@ function parsearDXF(texto){
 async function lerArquivoDXF(){
   const fileInput = $("est-dxf-file");
   if(!fileInput.files || !fileInput.files[0]){
-    aviso("app-aviso","Selecione um arquivo .dxf.","erro");
+    avisoImport("Selecione um arquivo .dxf.","erro");
     return;
   }
   const file = fileInput.files[0];
   const nome = (file.name || "").toLowerCase();
   if(nome.endsWith(".dwg")){
-    aviso("app-aviso","Arquivo DWG não é lido diretamente. Exporte como DXF no AutoCAD (SALVARCOMO → DXF) ou use o ODA File Converter (grátis) e envie o .dxf.","erro");
+    avisoImport("Arquivo DWG não é lido diretamente. Exporte como DXF no AutoCAD (SALVARCOMO → DXF) ou use o ODA File Converter (grátis) e envie o .dxf.","erro");
     return;
   }
   try {
@@ -1101,13 +1135,13 @@ async function lerArquivoDXF(){
     _dxfParsed = parsearDXF(texto);
     const layers = _dxfParsed.layers;
     if(!Object.keys(layers).length){
-      aviso("app-aviso","Nenhuma geometria (POINT/CIRCLE/INSERT/TEXT) encontrada no DXF. Confira se as estacas estão como pontos/círculos/blocos e não como hachura/imagem.","erro");
+      avisoImport("Nenhuma geometria (POINT/CIRCLE/INSERT/TEXT) encontrada no DXF. Confira se as estacas estão como pontos/círculos/blocos e não como hachura/imagem.","erro");
       return;
     }
     renderDXFConfig();
-    aviso("app-aviso", `DXF lido: ${_dxfParsed.entidades.length} entidades em ${Object.keys(layers).length} layers. Escolha a layer das estacas.`, "ok");
+    avisoImport(`DXF lido: ${_dxfParsed.entidades.length} entidades em ${Object.keys(layers).length} layers. Escolha a layer das estacas.`, "ok");
   } catch(err){
-    aviso("app-aviso","Erro ao ler DXF: " + err.message,"erro");
+    avisoImport("Erro ao ler DXF: " + err.message,"erro");
   }
 }
 
@@ -1168,7 +1202,7 @@ function renderDXFConfig(){
 
 /* Casa cada geometria (estaca) com o texto mais próximo dentro de um raio */
 function extrairEstacasDXF(){
-  if(!_dxfParsed){ aviso("app-aviso","Leia um DXF primeiro.","erro"); return; }
+  if(!_dxfParsed){ avisoImport("Leia um DXF primeiro.","erro"); return; }
   const layerGeom = $("dxf-layer-geom")?.value;
   const modoTexto = $("dxf-layer-text")?.value || "__auto__";
   const blocoDaLayer = $("dxf-bloco-da-layer")?.checked;
@@ -1178,7 +1212,7 @@ function extrairEstacasDXF(){
     e.layer === layerGeom &&
     ["POINT","CIRCLE","INSERT"].includes(e.tipo) &&
     e.x != null && e.y != null);
-  if(!geoms.length){ aviso("app-aviso","Nenhuma estaca nessa layer.","erro"); return; }
+  if(!geoms.length){ avisoImport("Nenhuma estaca nessa layer.","erro"); return; }
 
   let textos = [];
   if(modoTexto !== "__none__"){
@@ -1232,10 +1266,11 @@ function extrairEstacasDXF(){
   const locDxf = ($("est-dxf-local")?.value || "").trim();
   if(locDxf) _importPreview.forEach(e => { e.local = locDxf; });
   renderImportPreview(nota, null, "est-dxf-preview-conteudo", "est-dxf-preview");
-  aviso("app-aviso", nota, "ok");
+  avisoImport(nota, "ok");
 }
 
 function abrirModalDXF(){
+  limparAvisoImport();
   if(!obraEditId){
     aviso("app-aviso","Salve a obra antes de importar estacas.","erro");
     return;
@@ -2272,9 +2307,14 @@ async function criarPrevistaDaOrfa(orfaId, numero, profundidade){
   if(!obraEditId) return;
   const nomeNorm = normalizarNumeroEstacaEstacas(numero);
   // Verifica se já existe (pode ter sido criada por outra órfã na mesma sessão)
-  const { data: existente } = await sb.from("estacas")
-    .select("id").eq("obra_id", obraEditId)
-    .eq("numero", nomeNorm).maybeSingle(); // eq, não ilike: "_" e "%" são curingas no ILIKE (B6.1_BB casava com B6.1XBB)
+  const { data: candidatas } = await sb.from("estacas")
+    .select("id,local").eq("obra_id", obraEditId)
+    .eq("numero", nomeNorm).limit(2); // eq, não ilike: "_" e "%" são curingas no ILIKE
+  if((candidatas || []).length > 1){
+    aviso("app-aviso", `"${nomeNorm}" existe em mais de um local (${candidatas.map(c => c.local || "sem local").join(" / ")}). Vincule manualmente pela sugestão da Conferência.`, "erro");
+    return;
+  }
+  const existente = (candidatas || [])[0];
   let estacaId;
   if(existente){
     estacaId = existente.id;
@@ -2315,9 +2355,11 @@ async function criarTodasPrevistasFaltantes(){
   for(const o of _recOrfas){
     const nomeNorm = normalizarNumeroEstacaEstacas(o.estaca_numero);
     // Verifica/cria
-    const { data: existente } = await sb.from("estacas")
-      .select("id").eq("obra_id", obraEditId)
-      .eq("numero", nomeNorm).maybeSingle(); // eq, não ilike: "_" e "%" são curingas no ILIKE (B6.1_BB casava com B6.1XBB)
+    const { data: candidatas } = await sb.from("estacas")
+      .select("id,local").eq("obra_id", obraEditId)
+      .eq("numero", nomeNorm).limit(2); // eq, não ilike: "_" e "%" são curingas no ILIKE
+    if((candidatas || []).length > 1) continue; // mesmo número em locais diferentes: fica para vínculo manual
+    const existente = (candidatas || [])[0];
     let estacaId;
     if(existente){
       estacaId = existente.id;
