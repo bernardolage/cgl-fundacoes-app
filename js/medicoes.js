@@ -13,7 +13,7 @@ const MED_STAGES = ["rascunho","enviada","aprovada","faturada"];
 /* ---------- Carga ---------- */
 async function carregarMedicoes(){
   const { data, error } = await sb.from("medicoes")
-    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes")
+    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,obra:obras(codigo,nome)")
     .order("data_medicao", { ascending: false });
   _medRegistros = error ? [] : (data || []);
   renderMedicoes();
@@ -28,7 +28,7 @@ function medFiltradas(){
     if(fStatus && m.status !== fStatus) return false;
     if(fObra && m.obra_id !== fObra) return false;
     if(termo){
-      const alvo = `${m.numero||""} ${mapaObras[m.obra_id]||""}`.toLowerCase();
+      const alvo = `${m.numero||""} ${medObraTxt(m)} ${m.nf_numero||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -42,11 +42,9 @@ function preencherFiltrosMed(){
   }
   const selObra = $("med-f-obra");
   if(selObra){
-    const atual = selObra.value; // preserva a seleção (o render roda a cada tecla)
     const lista = Object.entries(mapaObras).map(([id, txt]) => ({ id, txt }));
     selObra.innerHTML = `<option value="">Todas as obras</option>` +
       lista.map(o => `<option value="${esc(o.id)}">${esc(o.txt)}</option>`).join("");
-    selObra.value = atual;
   }
 }
 
@@ -64,6 +62,20 @@ function renderMedicoes(){
   if(legacy) legacy.innerHTML = "";
 }
 
+function medObraTxt(m){
+  if(m.obra && m.obra.codigo) return `${m.obra.codigo} — ${m.obra.nome||""}`.trim();
+  return mapaObras[m.obra_id] || "—";
+}
+function medPeriodoTxt(m){
+  if(m.periodo_inicio && m.periodo_fim) return `${dataBR(m.periodo_inicio)} – ${dataBR(m.periodo_fim)}`;
+  if(m.periodo_fim) return dataBR(m.periodo_fim);
+  return dataBR(m.data_medicao);
+}
+function medDocTxt(m){
+  if(!m.nf_numero) return "—";
+  return `${m.doc_tipo === "rr" ? "RR" : "NF"} ${m.nf_numero}`;
+}
+
 function renderMedLista(dados){
   const cont = $("med-conteudo");
   if(!cont) return;
@@ -73,15 +85,16 @@ function renderMedLista(dados){
   }
   const linhas = dados.map(m => `<tr class="linha-clicavel" data-id="${esc(m.id)}">
     <td>${esc(m.numero)}</td>
-    <td>${esc(mapaObras[m.obra_id] || "—")}</td>
-    <td>${dataBR(m.data_medicao)}</td>
+    <td>${esc(medObraTxt(m))}</td>
+    <td>${medPeriodoTxt(m)}</td>
     <td>${num(m.percentual)}%</td>
     <td>${tagStatus("medicao", m.status)}</td>
+    <td>${esc(medDocTxt(m))}</td>
     <td class="num">${brl(m.valor_medido)}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Nº</th><th>Obra</th><th>Data</th><th>%</th><th>Status</th><th class="num">Valor medido</th>
+      <th>Nº</th><th>Obra</th><th>Período</th><th>%</th><th>Status</th><th>NF/RR</th><th class="num">Valor medido</th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 }
@@ -95,12 +108,12 @@ function renderMedKanban(dados){
     const stMeta = (STATUS.medicao && STATUS.medicao[st]) || { label: st, cor: "cinza" };
     const cards = itens.map(m => `
       <div class="serv-kan-card linha-clicavel" data-id="${esc(m.id)}">
-        <div class="serv-kan-card-nome">${esc(m.numero)} · ${esc(mapaObras[m.obra_id]||"—")}</div>
+        <div class="serv-kan-card-nome">${esc(m.numero)} · ${esc(medObraTxt(m))}</div>
         <div class="serv-kan-card-meta">
-          <span class="meta">${num(m.percentual)}% · ${dataBR(m.data_medicao)}</span>
+          <span class="meta">${num(m.percentual)}% · ${medPeriodoTxt(m)}</span>
         </div>
         <div class="serv-kan-card-rod">
-          <span></span>
+          <span>${esc(medDocTxt(m))}</span>
           <strong>${brl(m.valor_medido)}</strong>
         </div>
       </div>`).join("");
@@ -171,6 +184,11 @@ function novaMedicao(){
   $("med-data").value = hojeISO();
   $("med-inicio").value = "";
   $("med-fim").value = "";
+  if($("med-doc-tipo"))  $("med-doc-tipo").value  = "";
+  if($("med-nf-numero")) $("med-nf-numero").value = "";
+  if($("med-nf-emissao"))$("med-nf-emissao").value= "";
+  if($("med-nf-venc"))   $("med-nf-venc").value   = "";
+  if($("med-nf-valor"))  $("med-nf-valor").value  = "";
   $("med-percentual").value = 0;
   if($("med-subtotal"))      $("med-subtotal").value = 0;
   if($("med-desc-sinal"))    $("med-desc-sinal").value = 0;
@@ -194,12 +212,6 @@ async function abrirMedicao(id){
       .eq("medicao_id", id).order("ordem")
   ]);
   if(medRes.error){ aviso("app-aviso","Erro ao abrir medição: "+medRes.error.message, "erro"); return; }
-  // Itens não carregaram → NÃO abrir: salvarMedicao apaga e reinsere os itens,
-  // e reinseriria uma lista vazia (perda dos itens da medição).
-  if(itensRes.error){
-    aviso("app-aviso","Não foi possível carregar os itens da medição ("+itensRes.error.message+"). Tente abrir de novo.","erro");
-    return;
-  }
   const data = medRes.data;
   medEditId = id;
   $("med-numero").value = data.numero || "";
@@ -211,6 +223,11 @@ async function abrirMedicao(id){
   $("med-data").value = data.data_medicao || "";
   $("med-inicio").value = data.periodo_inicio || "";
   $("med-fim").value = data.periodo_fim || "";
+  if($("med-doc-tipo"))  $("med-doc-tipo").value  = data.doc_tipo || "";
+  if($("med-nf-numero")) $("med-nf-numero").value = data.nf_numero || "";
+  if($("med-nf-emissao"))$("med-nf-emissao").value= data.nf_data_emissao || "";
+  if($("med-nf-venc"))   $("med-nf-venc").value   = data.nf_vencimento || "";
+  if($("med-nf-valor"))  $("med-nf-valor").value  = data.nf_valor ?? "";
   $("med-percentual").value = data.percentual || 0;
   if($("med-subtotal"))      $("med-subtotal").value = data.subtotal ?? 0;
   if($("med-desc-sinal"))    $("med-desc-sinal").value = data.desconto_sinal ?? 0;
@@ -357,11 +374,8 @@ async function carregarDetalhesExecucaoMed(){
   }
   cont.innerHTML = `<p class="vazio">Carregando...</p>`;
 
-  // !inner + filtros no join: só as execuções desta obra/período saem do servidor
-  // (antes baixava a tabela inteira e filtrava no navegador a cada medição aberta)
   const { data: execs, error } = await sb.from("rdo_execucao_estaca")
-    .select("id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id!inner(obra_id,data)")
-    .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim)
+    .select("id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id(obra_id,data)")
     .order("perfuracao_inicio");
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
 
@@ -381,9 +395,7 @@ async function carregarDetalhesExecucaoMed(){
     const num = e.estaca_numero || e.estaca?.numero || "—";
     const diam = e.estaca?.diametro_mm || "—";
     const data = e.rdo?.data ? dataBR(e.rdo.data) : "—";
-    // Horário do RDO é gravado "sem fuso" (naive); fatiar a string mostra o que foi
-    // digitado. toLocaleTimeString convertia de UTC e exibia 3h a menos.
-    const hora = e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(11,16) : "—";
+    const hora = e.perfuracao_inicio ? new Date(e.perfuracao_inicio).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—";
     return `<tr ${isRef ? 'style="background:var(--aviso-bg);"' : ""}>
       <td style="text-align:center;">${i+1}</td>
       <td><strong>${esc(num)}</strong>${isRef ? ' <span class="badge-alterado" style="background:var(--aviso-bg);color:var(--aviso-txt);border-color:var(--aviso);">REFURO</span>' : ""}</td>
@@ -664,6 +676,11 @@ async function salvarMedicao(novoStatus){
     desconto_descricao: $("med-desc-sinal-obs")?.value.trim() || null,
     acrescimo,
     acrescimo_descricao: $("med-acrescimo-obs")?.value.trim() || null,
+    doc_tipo: $("med-doc-tipo")?.value || null,
+    nf_numero: $("med-nf-numero")?.value.trim() || null,
+    nf_data_emissao: $("med-nf-emissao")?.value || null,
+    nf_vencimento: $("med-nf-venc")?.value || null,
+    nf_valor: $("med-nf-valor")?.value ? Number($("med-nf-valor").value) : null,
     observacoes: $("med-obs").value.trim() || null
     // valor_final é recalculado por trigger no banco
   };
@@ -745,8 +762,7 @@ async function gerarPDFMedicao(){
         .select("ordem,descricao,quantidade,unidade,valor_unitario,valor_total,preco_origem,variante_id")
         .eq("medicao_id", medEditId).order("ordem"),
       (!ehSinal && obraId && pIni && pFim) ? sb.from("rdo_execucao_estaca")
-        .select("estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id!inner(obra_id,data)")
-        .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim)
+        .select("estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id(obra_id,data)")
         .order("perfuracao_inicio") : Promise.resolve({ data: [] }),
       (!ehSinal && obraId && pIni && pFim) ? sb.from("rdo")
         .select("id,data,producao_dia_m,observacoes,atividades")
@@ -897,29 +913,25 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
   const endereco = [obra.logradouro, obra.numero, obra.cidade, obra.uf ? obra.uf.toUpperCase() : ""].filter(Boolean).join(" - ");
 
   // SEÇÃO 2: Estacas executadas (1 linha por execução)
-  // Preço por metro vem do item de estaca/hélice/trado da medição. Sem item de
-  // referência, NÃO inventar valor (antes caía num R$ 52/m fictício que ia
-  // para o PDF do cliente): mostra "—" nas colunas de valor.
-  const itemRef = itens.find(i => /estaca|h.lice|trado/i.test(i.descricao||""));
-  const valorPorMetro = itemRef && Number(itemRef.valor_unitario) > 0 ? Number(itemRef.valor_unitario) : null;
+  const valorPorMetro = itens.length ? (Number(itens.find(i => /estaca|h.lice|trado/i.test(i.descricao||""))?.valor_unitario) || 52) : 52;
   const linhasEstacas = execs.length ? execs.map((e, i) => {
     const numEstaca = e.estaca_numero || e.estaca?.numero || "—";
     const diam = e.estaca?.diametro_mm || "—";
     const prof = Number(e.profundidade_executada) || 0;
-    const valor = valorPorMetro != null ? prof * valorPorMetro : null;
+    const valor = prof * valorPorMetro;
     return `<tr>
       <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${i+1}</td>
       <td style="padding:4px 6px;border:1px solid #000;">${esc(numEstaca)}</td>
       <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${e.rdo?.data ? dataBR(e.rdo.data) : "—"}</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${esc(diam)}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${diam}</td>
       <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${num(prof)} m</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(valorPorMetro) : "—"}</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valor != null ? brl(valor) : "—"}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valorPorMetro)}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valor)}</td>
     </tr>`;
   }).join("") : "";
 
   const totalMetragem = execs.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
-  const totalEstacasValor = valorPorMetro != null ? totalMetragem * valorPorMetro : null;
+  const totalEstacasValor = totalMetragem * valorPorMetro;
 
   const blocoEstacas = execs.length ? `
     <div style="font-size:12.5px;font-weight:700;text-align:center;margin:14px 0 6px;background:#e8e8e8;padding:6px;border:1px solid #000;">Estacas Executadas</div>
@@ -941,7 +953,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
           <td colspan="4" style="padding:5px;border:1px solid #000;text-align:right;">TOTAL DE ESTACAS:</td>
           <td style="padding:5px;border:1px solid #000;text-align:right;">${num(totalMetragem)} m</td>
           <td style="padding:5px;border:1px solid #000;"></td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
         </tr>
       </tfoot>
     </table>` : "";
@@ -970,14 +982,14 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
         ${Object.entries(porDiam).map(([d, info]) => `<tr>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${d}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${num(info.metragem)} m</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(valorPorMetro) : "—"}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valorPorMetro)}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${info.qty}</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(info.metragem * valorPorMetro) : "—"}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(info.metragem * valorPorMetro)}</td>
         </tr>`).join("")}
         <tr style="background:#f4f4f4;font-weight:700;">
           <td colspan="3" style="padding:5px;border:1px solid #000;text-align:right;">TOTAL:</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${execs.length}</td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
         </tr>
       </tbody>
     </table>` : "";
@@ -1028,13 +1040,13 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${dataBR(d)}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${porDia[d].estacas}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${num(porDia[d].metragem)} m</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(porDia[d].metragem * valorPorMetro) : "—"}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(porDia[d].metragem * valorPorMetro)}</td>
         </tr>`).join("")}
         <tr style="background:#f4f4f4;font-weight:700;">
           <td style="padding:5px;border:1px solid #000;text-align:right;">TOTAL:</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${execs.length}</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${num(totalMetragem)} m</td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
         </tr>
       </tbody>
     </table>` : "";
@@ -1198,7 +1210,7 @@ function ligarMedicoes(){
   });
   ["med-busca","med-f-status","med-f-obra"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "med-busca" ? "input" : "change", id === "med-busca" ? debounce(renderMedicoes) : renderMedicoes);
+    if(el) el.addEventListener(id === "med-busca" ? "input" : "change", renderMedicoes);
   });
   $("med-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");
@@ -1207,7 +1219,7 @@ function ligarMedicoes(){
 
   $("btn-nova-medicao")?.addEventListener("click", novaMedicao);
   $("btn-voltar-med")?.addEventListener("click", mostrarPainelMed);
-  $("btn-salvar-med")?.addEventListener("click", () => comBotaoTravado("btn-salvar-med", () => salvarMedicao()));
+  $("btn-salvar-med")?.addEventListener("click", () => salvarMedicao());
   $("btn-gerar-pdf-med")?.addEventListener("click", gerarPDFMedicao);
   $("btn-excluir-med")?.addEventListener("click", excluirMedicao);
 
