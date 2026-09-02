@@ -284,13 +284,39 @@ function atualizarFiltroLocal(){
   if(locais.includes(atual)) sel.value = atual;
   sel.style.display = locais.length ? "" : "none";
 }
+/* Abas de local na planta: aparecem quando a obra tem 2+ locais; a aba seleciona o
+   filtro de local (mesmo filtro da lista/acompanhamento). Sem local escolhido, a
+   planta abre no primeiro local em vez de misturar projetos. */
+function renderAbasLocaisPlanta(){
+  const box = $("planta-locais");
+  const sel = $("est-f-local");
+  if(!box || !sel) return;
+  const locais = [...new Set(_estacas.map(e => (e.local || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  const semLocal = _estacas.some(e => !(e.local || "").trim());
+  if(locais.length < 2 && !(locais.length === 1 && semLocal)){ box.style.display = "none"; box.innerHTML = ""; return; }
+  if(!sel.value || (!locais.includes(sel.value))) sel.value = locais[0];
+  const opcoes = locais.map(l => ({ v: l, t: l })).concat(semLocal ? [{ v: "__sem__", t: "Sem local" }] : []);
+  box.innerHTML = opcoes.map(o => `<button type="button" class="serv-view-btn${sel.value === o.v ? " ativo" : ""}" data-planta-local="${esc(o.v)}" title="Planta do projeto ${esc(o.t)}">📄 ${esc(o.t)}</button>`).join("");
+  box.style.display = "";
+  box.querySelectorAll("[data-planta-local]").forEach(b => b.addEventListener("click", () => {
+    sel.value = b.dataset.plantaLocal;
+    _plantaState = { zoom: 1, panX: 0, panY: 0 };
+    renderEstacas();
+  }));
+}
 /* Botão "Acompanhamento raiz" só para obra com estacas raiz */
 function atualizarBotaoRaiz(){
   const b = $("btn-est-view-raiz");
   if(!b) return;
   const tem = _estacas.some(e => e.tipo === "raiz");
   b.style.display = tem ? "" : "none";
-  if(!tem && _estView === "raiz"){ _estView = "lista"; document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === "lista")); }
+  // Obra de raiz: o Acompanhamento substitui a Lista (Bernardo, 02/09/2026) — a aba Lista some
+  // e a vista padrão passa a ser o acompanhamento; em obra sem raiz, volta ao normal.
+  const bLista = document.querySelector('[data-est-view="lista"]');
+  if(bLista) bLista.style.display = tem ? "none" : "";
+  const irPara = (v) => { _estView = v; document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === v)); };
+  if(tem && _estView === "lista") irPara("raiz");
+  if(!tem && _estView === "raiz") irPara("lista");
 }
 
 /* ====================================================================
@@ -1554,6 +1580,10 @@ function renderPlantaSVG(){
   const svg = $("est-planta-svg");
   if(!svg) return;
   const ns = "http://www.w3.org/2000/svg";
+
+  // Uma aba por LOCAL (= um PDF de projeto): plantas de locais diferentes têm
+  // referenciais diferentes e não cabem na mesma escala (Bernardo, 02/09/2026).
+  renderAbasLocaisPlanta();
 
   // Aplica filtros (mesma lógica que a lista)
   const fStatus = $("est-f-status")?.value || "";
