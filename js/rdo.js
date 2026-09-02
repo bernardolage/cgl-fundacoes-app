@@ -16,6 +16,7 @@ let _rdoRaizJust   = [];
 let _rdoRaizEquipe = [];
 let _rdoRaizDados  = null;
 let _rdoFuncs = [];           // cache funcionários
+const FERRAMENTAS_RAIZ = { revestimento:"Revestimento", martelo:"Martelo", tricone:"Tricone", trado:"Trado", outro:"Outro" };
 let _rdoEquipsCache = [];     // cache equipamentos
 let _rdoVizinhos = { anterior: null, proximo: null, indice: 0, total: 0 };
 let _rdoBoletimAberto = null;
@@ -571,11 +572,12 @@ function toggleBoletimEstaca(idx){
 function renderBoletimSoloRows(idx){
   const solos = (_rdoExecucoes[idx]?._solo) || [];
   if(!solos.length)
-    return `<tr><td colspan="4" class="vazio" style="font-size:var(--txt-xs);">Sem camadas. Clique em "+ Camada de solo".</td></tr>`;
+    return `<tr><td colspan="5" class="vazio" style="font-size:var(--txt-xs);">Sem camadas. Clique em "+ Camada de solo".</td></tr>`;
   return solos.map((s, si) => `<tr data-solo-idx="${si}">
     <td><input type="number" step="0.01" min="0" class="blt-solo-ini col-sm" value="${esc(s.inicio_ml??'')}" /></td>
     <td><input type="number" step="0.01" min="0" class="blt-solo-fim col-sm" value="${esc(s.final_ml??'')}" /></td>
     <td><input type="text" class="blt-solo-class" value="${esc(s.classificacao||'')}" style="min-width:200px;" /></td>
+    <td><select class="blt-solo-ferr"><option value="">—</option>${Object.entries(FERRAMENTAS_RAIZ).map(([v,l]) => `<option value="${v}"${s.ferramenta===v?' selected':''}>${l}</option>`).join('')}</select></td>
     <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-blt-solo-rem txt-perigo" data-si="${si}">×</button></td>
   </tr>`).join('');
 }
@@ -622,7 +624,7 @@ function renderBoletimExpandidoHTML(idx){
         <div class="rdo-boletim-secao">Característica da Estaca (Solo)</div>
         <div class="tabela-rola">
           <table class="itens-tabela" id="blt-solo-tbl-${idx}">
-            <thead><tr><th>Início (ml)</th><th>Final (ml)</th><th>Classificação do Solo</th><th class="col-acao"></th></tr></thead>
+            <thead><tr><th>Início (ml)</th><th>Final (ml)</th><th>Classificação do Solo</th><th>Ferramenta</th><th class="col-acao"></th></tr></thead>
             <tbody>${renderBoletimSoloRows(idx)}</tbody>
           </table>
         </div>
@@ -693,6 +695,7 @@ function attachBoletimListeners(idx){
         e._solo[si].inicio_ml     = numOrNull(tr.querySelector('.blt-solo-ini').value);
         e._solo[si].final_ml      = numOrNull(tr.querySelector('.blt-solo-fim').value);
         e._solo[si].classificacao = tr.querySelector('.blt-solo-class').value.trim() || null;
+        e._solo[si].ferramenta    = tr.querySelector('.blt-solo-ferr')?.value || null;
       });
     });
     tb2.querySelectorAll('.btn-blt-solo-rem').forEach(b => {
@@ -1048,7 +1051,7 @@ async function salvarRDO(novoStatus){
           .forEach((s, si) => solosAll.push({
             execucao_id: execId, rdo_id: savedId,
             inicio_ml: s.inicio_ml, final_ml: s.final_ml,
-            classificacao: s.classificacao || null, ordem: si + 1
+            classificacao: s.classificacao || null, ferramenta: s.ferramenta || null, ordem: si + 1
           }));
         (e._just || []).filter(j => j.h_inicial || j.h_final || j.motivo)
           .forEach((j, ji) => justsAll.push({

@@ -2561,3 +2561,14 @@ input:disabled, select:disabled, textarea:disabled {
 #est-planta-svg .planta-cota.atencao { stroke: var(--aviso); stroke-width: 1.2; stroke-dasharray: 3 2; }
 #est-planta-svg .planta-cota-txt.atencao { fill: var(--aviso-txt); font-weight: 600; }
 .dist-aviso.atencao { background: var(--aviso-bg); border-left: 3px solid var(--aviso); color: var(--aviso-txt); }
+
+/* ---- Estacas: acompanhamento raiz (RG 11.1) ---- */
+.raiz-resumo { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: var(--txt-sm); color: var(--txt-sec); padding: 8px 0 10px; }
+.raiz-tabela { font-size: var(--txt-xs); border-collapse: collapse; white-space: nowrap; }
+.raiz-tabela th, .raiz-tabela td { padding: 4px 6px; border-bottom: 1px solid var(--sup-3); }
+.raiz-tabela thead th { position: sticky; top: 0; background: var(--sup-3); z-index: 1; }
+.raiz-tabela .raiz-cab-grupo th { background: var(--marca-100); color: var(--marca-900); text-align: center; letter-spacing: .3px; }
+.raiz-tabela tr.raiz-grupo td { background: var(--marca-50); font-weight: 600; color: var(--marca-700); }
+.raiz-tabela tr.ok td:nth-child(2) { color: var(--sucesso); }
+.raiz-tabela tr.perigo td:nth-child(2) { color: var(--perigo); }
+.raiz-tabela tfoot td { background: var(--sup-2); }

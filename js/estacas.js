@@ -226,7 +226,7 @@ async function carregarEstacasDaObra(obraId){
   }
   const [estsRes, execsRes, equipsRes, obraRes] = await Promise.all([
     sb.from("estacas")
-      .select("id,numero,tipo,status,diametro_mm,profundidade_m,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y")
+      .select("id,numero,tipo,status,diametro_mm,profundidade_m,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local")
       .eq("obra_id", obraId)
       .order("numero"),
     // !inner + eq no join: filtra por obra NO SERVIDOR (antes baixava a tabela
@@ -251,6 +251,7 @@ async function carregarEstacasDaObra(obraId){
   _distanciaMinObra = _regraDist.piso;
   _unidadeCoord = FATOR_UNIDADE[obraRes.data?.unidade_coordenadas] ? obraRes.data.unidade_coordenadas : "mm";
   _fatorCoord = FATOR_UNIDADE[_unidadeCoord];
+  _raizDados = null; // acompanhamento raiz recarrega com a obra
   _estacas = estsRes.error ? [] : (estsRes.data || []);
   // Conta execuções por estaca pra detectar "ALTERADO" (refuros, casamentos errados)
   const contExec = {};
@@ -273,7 +274,212 @@ async function carregarEstacasDaObra(obraId){
 }
 
 /* ---------- Render ---------- */
+/* Filtro por local (1º nível acima do bloco) — só aparece quando a obra tem locais */
+function atualizarFiltroLocal(){
+  const sel = $("est-f-local");
+  if(!sel) return;
+  const locais = [...new Set(_estacas.map(e => (e.local || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">Todos os locais</option>' + locais.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join("");
+  if(locais.includes(atual)) sel.value = atual;
+  sel.style.display = locais.length ? "" : "none";
+}
+/* Botão "Acompanhamento raiz" só para obra com estacas raiz */
+function atualizarBotaoRaiz(){
+  const b = $("btn-est-view-raiz");
+  if(!b) return;
+  const tem = _estacas.some(e => e.tipo === "raiz");
+  b.style.display = tem ? "" : "none";
+  if(!tem && _estView === "raiz"){ _estView = "lista"; document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === "lista")); }
+}
+
+/* ====================================================================
+   ACOMPANHAMENTO RAIZ (RG 11.1) — vista "Raiz" da aba Estacas.
+   Replica a planilha de acompanhamento de estaca raiz da CGL, por estaca:
+   Local · Bloco · Estaca · Ø · Comp. estimado | EXECUÇÃO: comp. final,
+   comp. total executado (inclui refuros), data, metros por ferramenta
+   (revestimento / martelo / tricone), TAG | INJEÇÃO: data, sacos, m³, TAG |
+   Período · Medição (BM) · Observação. Tudo derivado do RDO (execuções +
+   trechos de solo com ferramenta + itens de medição) — nada é digitado aqui.
+   Só aparece quando a obra tem estacas do tipo raiz.
+   ==================================================================== */
+let _raizDados = null;   // { execsPorEstaca: Map, carregadoEm }
+
+function _raizPeriodo(iso){
+  if(!iso) return "";
+  const h = Number(String(iso).slice(11, 13));
+  if(Number.isNaN(h)) return "";
+  return (h >= 18 || h < 6) ? "NOTURNO" : "DIURNO";
+}
+function _raizTag(exec){
+  if(exec.equipamento_id){
+    const eq = (_equipamentosCache || []).find(x => x.id === exec.equipamento_id);
+    if(eq) return eq.codigo || eq.nome || "";
+  }
+  return exec.maquina_codigo || "";
+}
+
+async function carregarAcompanhamentoRaiz(){
+  if(!obraEditId) return null;
+  const { data: execs, error } = await sb.from("rdo_execucao_estaca")
+    .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo:rdo_id!inner(obra_id,data)")
+    .eq("rdo.obra_id", obraEditId)
+    .order("perfuracao_inicio", { ascending: true });
+  if(error){ aviso("app-aviso", "Não foi possível carregar as execuções: " + error.message, "erro"); return null; }
+  const ids = (execs || []).map(e => e.id);
+  let solos = [], meds = [];
+  if(ids.length){
+    const [sRes, mRes] = await Promise.all([
+      sb.from("rdo_raiz_solo").select("execucao_id,inicio_ml,final_ml,ferramenta").in("execucao_id", ids),
+      sb.from("medicao_itens").select("execucao_id, medicao:medicao_id(numero,status)").in("execucao_id", ids)
+    ]);
+    solos = sRes.data || [];
+    meds  = mRes.data || [];
+  }
+  const soloPorExec = new Map();
+  solos.forEach(s => { if(!soloPorExec.has(s.execucao_id)) soloPorExec.set(s.execucao_id, []); soloPorExec.get(s.execucao_id).push(s); });
+  const medPorExec = new Map();
+  meds.forEach(m => { if(m.medicao?.numero){ if(!medPorExec.has(m.execucao_id)) medPorExec.set(m.execucao_id, new Set()); medPorExec.get(m.execucao_id).add(m.medicao.numero); } });
+
+  // agrupa por estaca (id; sem id, pelo número normalizado)
+  const porEstaca = new Map();
+  (execs || []).forEach(ex => {
+    const chave = ex.estaca_id || ("n:" + normalizarNumeroEstacaEstacas(ex.estaca_numero || ""));
+    if(!porEstaca.has(chave)) porEstaca.set(chave, []);
+    porEstaca.get(chave).push({ ...ex, _solo: soloPorExec.get(ex.id) || [], _meds: [...(medPorExec.get(ex.id) || [])] });
+  });
+  _raizDados = { porEstaca, carregadoEm: Date.now() };
+  return _raizDados;
+}
+
+function _raizLinha(est, execs){
+  const num = (v) => (v == null ? null : Number(v));
+  const furos = execs.filter(x => (x.modalidade_execucao || "furo_normal") !== "refuro");
+  const ultimo = execs.length ? execs[execs.length - 1] : null;
+  const compFinal = furos.length ? Math.max(...furos.map(x => num(x.profundidade_executada) || 0)) : (ultimo ? num(ultimo.profundidade_executada) : null);
+  const compTotal = execs.reduce((s, x) => s + (num(x.profundidade_executada) || 0), 0);
+  const ferr = { revestimento: 0, martelo: 0, tricone: 0, outro: 0 };
+  execs.forEach(x => (x._solo || []).forEach(s => {
+    const m = Math.max(0, (num(s.final_ml) || 0) - (num(s.inicio_ml) || 0));
+    const k = ferr[s.ferramenta] != null ? s.ferramenta : "outro";
+    ferr[k] += m;
+  }));
+  const comInj = execs.filter(x => x.concretagem_inicio || x.volume_concreto_m3 != null || x.consumo_cimento_raiz);
+  const ultInj = comInj.length ? comInj[comInj.length - 1] : null;
+  let sacos = 0, sacosTxt = [];
+  execs.forEach(x => {
+    if(!x.consumo_cimento_raiz) return;
+    const n = Number(String(x.consumo_cimento_raiz).replace(",", "."));
+    if(isFinite(n) && (!x.consumo_cimento_unidade || /saco/i.test(x.consumo_cimento_unidade))) sacos += n;
+    else sacosTxt.push(String(x.consumo_cimento_raiz) + (x.consumo_cimento_unidade ? " " + x.consumo_cimento_unidade : ""));
+  });
+  const m3 = execs.reduce((s, x) => s + (num(x.volume_concreto_m3) || 0), 0);
+  const meds = [...new Set(execs.flatMap(x => x._meds))];
+  return {
+    local: est.local || "", bloco: est.bloco || "", numero: est.numero || "", diametro: est.diametro_mm, estimado: est.profundidade_m,
+    compFinal: execs.length ? compFinal : null, compTotal: execs.length ? compTotal : null,
+    dataExec: ultimo ? (ultimo.perfuracao_fim || ultimo.perfuracao_inicio || ultimo.rdo?.data || null) : null,
+    revest: ferr.revestimento, martelo: ferr.martelo, tricone: ferr.tricone, outro: ferr.outro,
+    tagExec: ultimo ? _raizTag(ultimo) : "",
+    dataInj: ultInj ? (ultInj.concretagem_inicio || ultInj.rdo?.data || null) : null,
+    sacos: sacos || null, sacosTxt: sacosTxt.join("; "), m3: comInj.length ? m3 : null,
+    tagInj: ultInj ? _raizTag(ultInj) : "",
+    periodo: ultimo ? _raizPeriodo(ultimo.perfuracao_inicio) : "",
+    medicoes: meds.join(", "),
+    refuros: execs.length - furos.length,
+    obs: est.observacoes || "",
+    status: est.status
+  };
+}
+
+async function renderAcompanhamentoRaiz(){
+  const cont = $("est-raiz-conteudo");
+  if(!cont) return;
+  if(!_raizDados) { cont.innerHTML = `<p class="vazio">Carregando execuções do RDO…</p>`; if(!(await carregarAcompanhamentoRaiz())) return; }
+
+  const fStatus = $("est-f-status")?.value || "";
+  const fLocal  = $("est-f-local")?.value || "";
+  const termo   = ($("est-busca")?.value || "").trim().toLowerCase();
+  const lista = _estacas.filter(e => e.tipo === "raiz")
+    .filter(e => !fStatus || e.status === fStatus)
+    .filter(e => !fLocal || (e.local || "") === fLocal)
+    .filter(e => !termo || `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase().includes(termo));
+  if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz para os filtros.</p>`; return; }
+
+  const linhas = lista.map(e => _raizLinha(e, _raizDados.porEstaca.get(e.id) || _raizDados.porEstaca.get("n:" + normalizarNumeroEstacaEstacas(e.numero || "")) || []));
+  // ordena por local, bloco, número
+  const ord = (a, b) => (a.local.localeCompare(b.local, "pt-BR") || a.bloco.localeCompare(b.bloco, "pt-BR", { numeric: true }) || a.numero.localeCompare(b.numero, "pt-BR", { numeric: true }));
+  linhas.sort(ord);
+
+  const f2 = (v) => (v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const f0 = (v) => (v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 }));
+  const dt = (v) => (v ? dataBR(String(v).slice(0, 10)) : "—");
+  const soma = (k) => linhas.reduce((s, l) => s + (Number(l[k]) || 0), 0);
+  const execN = linhas.filter(l => l.compFinal != null).length;
+  const semFerr = linhas.filter(l => l.compFinal != null && !(l.revest + l.martelo + l.tricone + l.outro)).length;
+
+  let html = `<div class="raiz-resumo">
+      <span><strong>${linhas.length}</strong> estacas raiz</span>
+      <span><strong>${execN}</strong> executadas</span>
+      <span><strong>${f2(soma("compTotal"))} m</strong> executados (com refuros)</span>
+      <span><strong>${f2(soma("revest"))} m</strong> revestimento · <strong>${f2(soma("martelo"))} m</strong> martelo · <strong>${f2(soma("tricone"))} m</strong> tricone</span>
+      <span><strong>${f0(soma("sacos"))}</strong> sacos · <strong>${f2(soma("m3"))} m³</strong></span>
+      <button type="button" class="btn-sec btn-sm" id="btn-raiz-csv">⬇️ CSV</button>
+    </div>`;
+  if(semFerr) html += `<div class="dist-aviso neutro">ℹ️ ${semFerr} estaca(s) executada(s) sem trechos de solo com ferramenta no RDO — as colunas revestimento/martelo/tricone ficam zeradas até o RDO ser preenchido.</div>`;
+
+  let localAtual = null;
+  const trs = linhas.map(l => {
+    let cab = "";
+    if(l.local !== localAtual){ localAtual = l.local; cab = `<tr class="raiz-grupo"><td colspan="19">📍 ${esc(l.local || "Sem local")}</td></tr>`; }
+    const stCls = l.status === "executada" ? "ok" : (l.status === "refugada" ? "perigo" : "");
+    return cab + `<tr class="${stCls}">
+      <td>${esc(l.bloco || "—")}</td><td><strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${l.refuros} refuro(s)">🔄${l.refuros}</span>` : ""}</td>
+      <td class="num">${f0(l.diametro)}</td><td class="num">${f2(l.estimado)}</td>
+      <td class="num">${f2(l.compFinal)}</td><td class="num">${f2(l.compTotal)}</td><td>${dt(l.dataExec)}</td>
+      <td class="num">${l.compFinal != null ? f2(l.revest) : "—"}</td><td class="num">${l.compFinal != null ? f2(l.martelo) : "—"}</td><td class="num">${l.compFinal != null ? f2(l.tricone) : "—"}</td>
+      <td>${esc(l.tagExec || "—")}</td>
+      <td>${dt(l.dataInj)}</td><td class="num">${l.sacos != null ? f0(l.sacos) : (l.sacosTxt ? esc(l.sacosTxt) : "—")}</td><td class="num">${f2(l.m3)}</td><td>${esc(l.tagInj || "—")}</td>
+      <td>${esc(l.periodo || "—")}</td><td>${esc(l.medicoes || "—")}</td><td class="meta">${esc(l.obs)}</td>
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm raiz-edit" data-num="${esc(l.numero)}" title="abrir estaca">✏️</button></td>
+    </tr>`;
+  }).join("");
+
+  html += `<div class="tabela-rola"><table class="raiz-tabela">
+    <thead>
+      <tr class="raiz-cab-grupo"><th colspan="4"></th><th colspan="7">EXECUÇÃO DA ESTACA</th><th colspan="4">INJEÇÃO</th><th colspan="4"></th></tr>
+      <tr><th>Bloco</th><th>Estaca</th><th class="num">Ø (mm)</th><th class="num">Comp. est. (m)</th>
+        <th class="num">Comp. final</th><th class="num">Total exec.</th><th>Data</th><th class="num">Revest.</th><th class="num">Martelo</th><th class="num">Tricone</th><th>TAG</th>
+        <th>Data</th><th class="num">Sacos</th><th class="num">m³</th><th>TAG</th>
+        <th>Período</th><th>Medição</th><th>Obs.</th><th></th></tr>
+    </thead>
+    <tbody>${trs}</tbody>
+    <tfoot><tr><td colspan="4"><strong>Totais</strong></td><td class="num"></td><td class="num"><strong>${f2(soma("compTotal"))}</strong></td><td></td>
+      <td class="num"><strong>${f2(soma("revest"))}</strong></td><td class="num"><strong>${f2(soma("martelo"))}</strong></td><td class="num"><strong>${f2(soma("tricone"))}</strong></td><td></td>
+      <td></td><td class="num"><strong>${f0(soma("sacos"))}</strong></td><td class="num"><strong>${f2(soma("m3"))}</strong></td><td colspan="5"></td></tr></tfoot>
+  </table></div>`;
+  cont.innerHTML = html;
+
+  cont.querySelectorAll(".raiz-edit").forEach(b => b.addEventListener("click", () => {
+    const e = _estacas.find(x => x.numero === b.dataset.num);
+    if(e) abrirModalEstaca(e.id);
+  }));
+  $("btn-raiz-csv")?.addEventListener("click", () => {
+    const cab = ["Local","Bloco","Estaca","Diametro_mm","Comp_estimado_m","Comp_final_m","Comp_total_exec_m","Data_execucao","Revestimento_m","Martelo_m","Tricone_m","TAG_exec","Data_injecao","Sacos","m3","TAG_injecao","Periodo","Medicao","Observacao"];
+    const cel = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+    const csv = [cab.join(";")].concat(linhas.map(l => [l.local, l.bloco, l.numero, l.diametro, l.estimado, l.compFinal, l.compTotal, l.dataExec ? String(l.dataExec).slice(0,10) : "", l.revest, l.martelo, l.tricone, l.tagExec, l.dataInj ? String(l.dataInj).slice(0,10) : "", l.sacos ?? l.sacosTxt, l.m3, l.tagInj, l.periodo, l.medicoes, l.obs].map(cel).join(";"))).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `acompanhamento-raiz-${(obraEditId || "obra").slice(0, 8)}-${hojeISO()}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+}
+
 function renderEstacas(){
+  atualizarFiltroLocal();
+  atualizarBotaoRaiz();
   // Mini-stats — contagem literal (todas as estacas cadastradas contam, incluindo BB)
   const total = _estacas.length;
   const exec  = _estacas.filter(e => e.status === "executada").length;
@@ -289,14 +495,19 @@ function renderEstacas(){
   // Toggle vistas
   const wrapLista  = $("est-conteudo");
   const wrapPlanta = $("est-planta-wrap");
+  const wrapRaiz   = $("est-raiz-wrap");
+  const mostrar = (el, on) => { if(el) el.style.display = on ? "" : "none"; };
   if(_estView === "planta"){
-    if(wrapLista)  wrapLista.style.display = "none";
-    if(wrapPlanta) wrapPlanta.style.display = "";
+    mostrar(wrapLista, false); mostrar(wrapRaiz, false); mostrar(wrapPlanta, true);
     renderPlantaSVG();
     return;
   }
-  if(wrapLista)  wrapLista.style.display = "";
-  if(wrapPlanta) wrapPlanta.style.display = "none";
+  if(_estView === "raiz"){
+    mostrar(wrapLista, false); mostrar(wrapPlanta, false); mostrar(wrapRaiz, true);
+    renderAcompanhamentoRaiz();
+    return;
+  }
+  mostrar(wrapLista, true); mostrar(wrapPlanta, false); mostrar(wrapRaiz, false);
 
   const cont = wrapLista;
   if(!cont) return;
@@ -304,10 +515,12 @@ function renderEstacas(){
   // Filtros
   const fStatus = $("est-f-status")?.value || "";
   const fTipo   = $("est-f-tipo")?.value || "";
+  const fLocal  = $("est-f-local")?.value || "";
   const termo   = ($("est-busca")?.value || "").trim().toLowerCase();
   const filtradas = _estacas.filter(e => {
     if(fStatus && e.status !== fStatus) return false;
     if(fTipo && e.tipo !== fTipo) return false;
+    if(fLocal && (e.local || "") !== fLocal) return false;
     if(termo){
       const alvo = `${e.numero||""} ${e.observacoes||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
@@ -337,6 +550,7 @@ function renderEstacas(){
     }
     return `<tr data-id="${esc(e.id)}">
       <td>${esc(e.numero)} ${badgeAlt}</td>
+      <td class="meta">${esc([e.local, e.bloco].filter(Boolean).join(" · ") || "—")}</td>
       <td>${esc(ESTACA_TIPOS[e.tipo] || e.tipo || "—")}</td>
       <td class="num">${e.diametro_mm != null ? num(e.diametro_mm) : "—"}</td>
       <td class="num">${e.profundidade_m != null ? num(e.profundidade_m) : "—"}</td>
@@ -350,7 +564,7 @@ function renderEstacas(){
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Nº</th><th>Tipo</th><th class="num">Ø (mm)</th><th class="num">Prof. (m)</th>
+      <th>Nº</th><th>Local · bloco</th><th>Tipo</th><th class="num">Ø (mm)</th><th class="num">Prof. (m)</th>
       <th>Execução</th><th>Status</th><th class="col-acao"></th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
@@ -378,6 +592,7 @@ function abrirModalEstaca(id){
   $("est-volume").value         = e.volume_concreto_m3 ?? "";
   $("est-data").value           = e.data_execucao || "";
   $("est-bloco").value          = e.bloco || "";
+  $("est-local").value          = e.local || "";
   $("est-ordem").value          = e.ordem_execucao ?? "";
   $("est-coord-x").value        = e.coord_x ?? "";
   $("est-coord-y").value        = e.coord_y ?? "";
@@ -424,6 +639,7 @@ async function salvarEstaca(){
     volume_concreto_m3: $("est-volume").value !== "" ? Number($("est-volume").value) : null,
     data_execucao: $("est-data").value || null,
     bloco: $("est-bloco").value.trim() || null,
+    local: $("est-local").value.trim() || null,
     equipamento_id: $("est-equipamento").value || null,
     ordem_execucao: $("est-ordem").value !== "" ? Number($("est-ordem").value) : null,
     coord_x: $("est-coord-x").value !== "" ? Number($("est-coord-x").value) : null,
@@ -523,6 +739,8 @@ async function importarEstacasPDF(){
     }
     _importPreview = estacas.map(extrairCoordsDaObservacao);
     _importUnidade = FATOR_UNIDADE[data.unidade_coordenadas] ? data.unidade_coordenadas : unidadeSugeridaCoords(_importPreview);
+    // Local do projeto (prancha inteira de um local): aplica às estacas que vieram sem
+    if(data.local_detectado) _importPreview.forEach(e => { if(!e.local) e.local = data.local_detectado; });
     // Junta aviso da heurística (se houver) às observações da IA
     let obsCombinadas = data.observacoes || "";
     if(data._aviso_confusao){
@@ -571,6 +789,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
 
   const COLUNAS_LBL = {
     numero: "Nº da estaca",
+    local: "Local",
     bloco: "Bloco",
     tipo: "Tipo",
     diametro_mm: "Diâmetro (mm)",
@@ -642,6 +861,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     const semProfHl = e.profundidade_m == null ? 'style="background:var(--aviso-bg);"' : "";
     return `<tr>
       <td><input type="text" value="${esc(e.numero||"")}" data-idx="${idx}" data-field="numero" class="prev-input col-xs"/></td>
+      <td><input type="text" value="${esc(e.local||"")}" data-idx="${idx}" data-field="local" class="prev-input col-sm" placeholder="local"/></td>
       <td><input type="text" value="${esc(e.bloco||"")}" data-idx="${idx}" data-field="bloco" class="prev-input col-xs"/></td>
       <td>
         <select data-idx="${idx}" data-field="tipo" class="prev-input">
@@ -663,7 +883,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     <div class="tabela-rola">
       <table>
         <thead><tr>
-          <th>Nº</th><th>Bloco</th><th>Tipo</th><th>Ø (mm)</th><th>Prof. (m)</th>${temCoord ? "<th>X</th><th>Y</th>" : ""}<th>Obs.</th><th></th>
+          <th>Nº</th><th>Local</th><th>Bloco</th><th>Tipo</th><th>Ø (mm)</th><th>Prof. (m)</th>${temCoord ? "<th>X</th><th>Y</th>" : ""}<th>Obs.</th><th></th>
         </tr></thead>
         <tbody>${linhas}</tbody>
       </table>
@@ -749,6 +969,7 @@ async function confirmarImportEstacas(){
       diametro_mm: e.diametro_mm ?? null,
       profundidade_m: e.profundidade_m ?? null,
       bloco: e.bloco || null,
+      local: (e.local || "").trim() || null,
       coord_x: e.coord_x ?? null,
       coord_y: e.coord_y ?? null,
       cota_topo: e.cota_topo ?? null,
@@ -1008,6 +1229,8 @@ function extrairEstacasDXF(){
   const nota = `${geoms.length} estacas extraídas da layer "${layerGeom}".` +
     (semNum ? ` ${semNum} sem número (preencha na tabela ou pela reorganização).` : "");
   _importUnidade = unidadeSugeridaCoords(_importPreview) || "mm";
+  const locDxf = ($("est-dxf-local")?.value || "").trim();
+  if(locDxf) _importPreview.forEach(e => { e.local = locDxf; });
   renderImportPreview(nota, null, "est-dxf-preview-conteudo", "est-dxf-preview");
   aviso("app-aviso", nota, "ok");
 }
@@ -1172,10 +1395,12 @@ function desenharFundoProjeto(g, ns, tf, ests){
   ests.forEach(e => {
     const b = String(e.bloco || "").trim();
     if(!b) return;
-    if(!porBloco.has(b)) porBloco.set(b, []);
-    porBloco.get(b).push(e);
+    const k = String(e.local || "") + "|" + b; // BL03 existe em mais de um local
+    if(!porBloco.has(k)) porBloco.set(k, []);
+    porBloco.get(k).push(e);
   });
-  porBloco.forEach((lista, nome) => {
+  porBloco.forEach((lista, chave) => {
+    const nome = chave.split("|")[1];
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     lista.forEach(e => {
       const p = tf(e.coord_x, e.coord_y), r = raioEstacaPx(e, s);
@@ -1202,6 +1427,7 @@ function desenharFundoProjeto(g, ns, tf, ests){
     const viz = [];
     for(let j = 0; j < ests.length; j++){
       if(i === j) continue;
+      if((ests[i].local || "") !== (ests[j].local || "")) continue; // cotas só dentro do mesmo local
       const d = dist(ests[i], ests[j]);
       if(todas || d < distMinEntre(ests[i], ests[j])) viz.push({ j, d });
     }
@@ -1266,7 +1492,9 @@ function _avisoParesProximos(comCoord){
   const locacao = [], execucao = [];
   for(let i = 0; i < comCoord.length; i++){
     for(let j = i + 1; j < comCoord.length; j++){
-      const a = comCoord[i], b = comCoord[j], d = dist(a, b);
+      const a = comCoord[i], b = comCoord[j];
+      if((a.local || "") !== (b.local || "")) continue; // locais diferentes = plantas diferentes
+      const d = dist(a, b);
       const loc = distMinLocacao(a, b);
       if(loc && d < loc){ locacao.push({ a, b, d, min: loc }); continue; }
       const exe = distMinEntre(a, b);
@@ -1295,10 +1523,12 @@ function renderPlantaSVG(){
   // Aplica filtros (mesma lógica que a lista)
   const fStatus = $("est-f-status")?.value || "";
   const fTipo   = $("est-f-tipo")?.value || "";
+  const fLocal  = $("est-f-local")?.value || "";
   const termo   = ($("est-busca")?.value || "").trim().toLowerCase();
   const filtradas = _estacas.filter(e => {
     if(fStatus && e.status !== fStatus) return false;
     if(fTipo && e.tipo !== fTipo) return false;
+    if(fLocal && (e.local || "") !== fLocal) return false;
     if(termo){
       const alvo = `${e.numero||""} ${e.observacoes||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
@@ -1427,6 +1657,8 @@ function renderPlantaSVG(){
   const txt = $("planta-progresso-texto");
   if(txt){
     let extra = "";
+    const locaisPlanta = new Set(comCoordF.map(e => (e.local || "").trim()));
+    if(locaisPlanta.size > 1) extra += ` · 🗂️ ${locaisPlanta.size} locais na mesma planta — filtre por local para ver cada projeto`;
     if(usandoGrid) extra = " · 📐 posições em grid (planta original sem coordenadas)";
     else if(semCoords.length) extra = ` · ${semCoords.length} sem coords no grid auxiliar`;
     txt.textContent = `${exec} de ${total} executadas (${pct}%)${extra}`;
@@ -1489,6 +1721,7 @@ function renderConflitosDistancia(filtradas){
   Object.values(porMaq).forEach(lista => {
     lista.sort((a, b) => a.ordem_execucao - b.ordem_execucao);
     for(let i = 1; i < lista.length; i++){
+      if((lista[i].local || "") !== (lista[i - 1].local || "")) continue; // mudou de local/planta
       const d = dist(lista[i], lista[i - 1]);
       const min = distMinEntre(lista[i - 1], lista[i]);
       if(d < min){
@@ -2580,7 +2813,7 @@ function ligarEstacas(){
     if(t) ativarConfAba(t.dataset.confTab);
   });
 
-  ["est-busca","est-f-status","est-f-tipo"].forEach(id => {
+  ["est-busca","est-f-status","est-f-tipo","est-f-local"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "est-busca" ? "input" : "change", id === "est-busca" ? debounce(renderEstacas) : renderEstacas);
   });
