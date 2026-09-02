@@ -684,7 +684,7 @@ async function verificarMFAAdmin(){
     banner.innerHTML = `
       <div style="
         position:fixed; top:0; left:0; right:0; z-index:9999;
-        background:#7a2a1a; color:var(--txt-sobre); font-size:13px;
+        background:#7a2a1a; color:var(--txt-sobre); font-size:var(--txt-md);
         padding:10px 16px; display:flex; align-items:center; gap:12px;
         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
         box-shadow:0 2px 8px rgba(0,0,0,0.3);
@@ -694,12 +694,12 @@ async function verificarMFAAdmin(){
         <button onclick="abrirModalMFA()" style="
           background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.5);
           color:var(--txt-sobre); padding:4px 14px; cursor:pointer; border-radius:3px;
-          font-size:12px; font-weight:600; white-space:nowrap;
+          font-size:var(--txt-sm); font-weight:600; white-space:nowrap;
         ">Configurar agora</button>
         <button onclick="document.getElementById('mfa-aviso-banner').remove()" style="
           background:rgba(255,255,255,0.15); border:none;
           color:var(--txt-sobre); padding:4px 10px; cursor:pointer; border-radius:2px;
-          font-size:12px; white-space:nowrap;
+          font-size:var(--txt-sm); white-space:nowrap;
         ">Fechar</button>
       </div>`;
     document.body.prepend(banner);
@@ -747,7 +747,7 @@ async function abrirModalMFA(){
   if(!modal) return;
   modal.style.display = "flex";
   const qrArea = $("mfa-qr-area");
-  qrArea.innerHTML = '<p style="font-size:13px;color:var(--txt-sutil);">Gerando QR code…</p>';
+  qrArea.innerHTML = '<p style="font-size:var(--txt-md);color:var(--txt-sutil);">Gerando QR code…</p>';
   $("mfa-modal-aviso").textContent = "";
   $("mfa-codigo-input").value = "";
   $("mfa-secret-area").style.display = "none";
@@ -771,7 +771,7 @@ async function abrirModalMFA(){
     }
     $("mfa-secret-text").textContent = data.totp.secret;
   } catch(err){
-    qrArea.innerHTML = `<p style="color:red;font-size:13px;">Erro: ${esc(err.message)}</p>`;
+    qrArea.innerHTML = `<p style="color:red;font-size:var(--txt-md);">Erro: ${esc(err.message)}</p>`;
   }
 }
 

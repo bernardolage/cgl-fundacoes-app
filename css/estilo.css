@@ -87,6 +87,7 @@
   --txt-xs: 11px;   /* rótulo de chip, meta */
   --txt-sm: 12px;   /* tabela, filtros */
   --txt-md: 13px;   /* corpo */
+  --txt-base: 14px;   /* inputs, botões, texto de formulário (faltava na escala) */
   --txt-lg: 15px;   /* título de bloco */
   --txt-xl: 20px;   /* título de seção */
 
@@ -974,7 +975,7 @@ td.num, th.num {
 
 .serv-filtros {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));   /* adapta a 3, 4 ou 5 filtros (era 4 col fixas: sobrava coluna vazia) */
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -2502,3 +2503,11 @@ input:disabled, select:disabled, textarea:disabled {
 .dash-card-num.dash-num-vazio { color: var(--txt-fraco); font-weight: 600; }
 .btn.btn-aviso { background: var(--aviso); border-color: var(--aviso); color: var(--txt); }
 .btn.btn-aviso:hover { filter: brightness(0.95); }
+
+/* ---- Onda 6: utilitárias extraídas dos inlines mais repetidos ---- */
+.serv-filtros > :first-child { grid-column: span 2; }          /* a busca é mais larga */
+.modal-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.bloco-preview { margin-top: 18px; border-top: 1px solid var(--borda); padding-top: 14px; }
+/* cabeçalho fixo nas tabelas com rolagem (RDO com 16 colunas, listas longas) */
+.tabela-rola { position: relative; }
+.tabela-rola thead th { position: sticky; top: 0; z-index: 1; background: var(--sup-3); }

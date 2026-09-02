@@ -444,7 +444,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
     .map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
   const uploader = `
     <div class="card" style="margin-bottom:14px;padding:12px;">
-      <h4 style="margin:0 0 8px;font-size:13px;">📤 Anexar arquivo</h4>
+      <h4 style="margin:0 0 8px;font-size:var(--txt-md);">📤 Anexar arquivo</h4>
       <div class="grade">
         <div class="campo"><label>Tipo</label>
           <select id="${px}-categoria">${cats}</select>

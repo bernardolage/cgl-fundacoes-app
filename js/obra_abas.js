@@ -93,7 +93,7 @@ async function carregarEquipamentosDaObra(obraId){
   </tr>`).join("");
   cont.innerHTML = `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
-      <h4 style="margin:0;font-size:13px;">${data.length} equipamento${data.length>1?"s":""} alocado${data.length>1?"s":""} a esta obra</h4>
+      <h4 style="margin:0;font-size:var(--txt-md);">${data.length} equipamento${data.length>1?"s":""} alocado${data.length>1?"s":""} a esta obra</h4>
       <button type="button" class="btn" id="btn-equip-mov-nova">+ Nova movimentação</button>
     </div>
     <div class="tabela-rola"><table>
@@ -101,7 +101,7 @@ async function carregarEquipamentosDaObra(obraId){
         <th>TAG</th><th>Nome</th><th>Tipo</th><th>Status</th><th>Desde</th><th class="col-acao"></th>
       </tr></thead>
       <tbody>${linhas}</tbody></table></div>
-    <p style="font-size:11px;color:var(--txt-sutil);margin-top:8px;">💡 Localizações são derivadas das Movimentações de Ativos. Para mudar, crie nova movimentação.</p>
+    <p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin-top:8px;">💡 Localizações são derivadas das Movimentações de Ativos. Para mudar, crie nova movimentação.</p>
   `;
   $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
   cont.querySelectorAll(".btn-equip-devolver").forEach(b => {
@@ -195,7 +195,7 @@ async function carregarMedicoesDaObra(obraId){
   </tr>`).join("");
   cont.innerHTML = `${stats}
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
-      <h4 style="margin:0;font-size:13px;">Medições da obra</h4>
+      <h4 style="margin:0;font-size:var(--txt-md);">Medições da obra</h4>
       <button type="button" class="btn" id="btn-medic-nova">+ Nova medição</button>
     </div>
     <div class="tabela-rola"><table>
@@ -267,7 +267,7 @@ async function carregarRDOsDaObra(obraId){
 
   const header = `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
-      <h4 style="margin:0;font-size:13px;">RDOs registrados</h4>
+      <h4 style="margin:0;font-size:var(--txt-md);">RDOs registrados</h4>
       <button type="button" class="btn" id="btn-rdo-novo">+ Novo RDO</button>
     </div>`;
 
@@ -288,7 +288,7 @@ async function carregarRDOsDaObra(obraId){
   }).join("");
   const grafico = `
     <div style="background:var(--sup-2);border-radius:6px;padding:12px;margin-bottom:14px;">
-      <div style="font-size:12px;color:var(--txt-sec);margin-bottom:6px;font-weight:600;">📊 Metragem diária — últimos ${ultimos.length} RDOs</div>
+      <div style="font-size:var(--txt-sm);color:var(--txt-sec);margin-bottom:6px;font-weight:600;">📊 Metragem diária — últimos ${ultimos.length} RDOs</div>
       <div style="display:flex;align-items:flex-end;height:62px;overflow-x:auto;">${barras}</div>
     </div>`;
 
@@ -380,7 +380,7 @@ async function carregarDocumentosDaObra(obraId){
     .map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
   const uploader = `
     <div class="card" style="margin-bottom:14px;padding:12px;">
-      <h4 style="margin:0 0 8px;font-size:13px;">📤 Enviar novo documento</h4>
+      <h4 style="margin:0 0 8px;font-size:var(--txt-md);">📤 Enviar novo documento</h4>
       <div class="grade">
         <div class="campo"><label>Categoria</label>
           <select id="doc-categoria"><option value="outro">Outro</option>${cats}</select>
@@ -415,7 +415,7 @@ async function carregarDocumentosDaObra(obraId){
       const isImg = (d.mime_type||"").startsWith("image/");
       const tamKB = d.tamanho_bytes ? (d.tamanho_bytes/1024).toFixed(0) + " KB" : "—";
       const origemBadge = d.origem === "movimentacao_ativa"
-        ? '<span class="tag azul" style="font-size:10px;">auto</span>' : "";
+        ? '<span class="tag azul" style="font-size:var(--txt-xs);">auto</span>' : "";
       return `<tr>
         <td>${isImg ? '🖼️' : '📄'} ${esc(d.nome)} ${origemBadge}</td>
         <td>${esc(d.descricao||"—")}</td>
@@ -428,7 +428,7 @@ async function carregarDocumentosDaObra(obraId){
       </tr>`;
     }).join("");
     return `<div style="margin-bottom:14px;">
-      <h4 style="font-size:12px;color:var(--marca-600);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px;">${esc(cat)} (${docs.length})</h4>
+      <h4 style="font-size:var(--txt-sm);color:var(--marca-600);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px;">${esc(cat)} (${docs.length})</h4>
       <div class="tabela-rola"><table>
         <thead><tr><th>Arquivo</th><th>Descrição</th><th>Tamanho</th><th>Enviado em</th><th class="col-acao"></th></tr></thead>
         <tbody>${linhas}</tbody></table></div>

@@ -93,7 +93,7 @@ function renderProdLista(dados){
   const max = 500;
   const exibidos = dados.slice(0, max);
   const aviso_lim = dados.length > max
-    ? `<p style="font-size:11px;color:var(--txt-sutil);margin:6px 0;">Mostrando primeiros ${max} de ${dados.length} — refine a busca pra ver os outros.</p>`
+    ? `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:6px 0;">Mostrando primeiros ${max} de ${dados.length} — refine a busca pra ver os outros.</p>`
     : "";
   const linhas = exibidos.map(p => {
     const baixo = Number(p.estoque_atual) <= Number(p.estoque_minimo);
@@ -136,7 +136,7 @@ function renderProdKanban(dados){
         <div class="serv-kan-card-nome">${esc(p.codigo)} · ${esc(p.nome)}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">${num(p.estoque_atual)} ${esc(p.unidade)}</span>
-          ${baixo ? '<span class="tag vermelho" style="font-size:10px;">baixo</span>' : ''}
+          ${baixo ? '<span class="tag vermelho" style="font-size:var(--txt-xs);">baixo</span>' : ''}
         </div>
         <div class="serv-kan-card-rod">
           <span class="meta">${esc(p.codigo||"")}</span>
@@ -145,7 +145,7 @@ function renderProdKanban(dados){
       </div>`;
     }).join("");
     const extra = grupos[nome].length > 30
-      ? `<div style="padding:6px;font-size:11px;color:var(--txt-sutil);">+${grupos[nome].length - 30} mais</div>`
+      ? `<div style="padding:6px;font-size:var(--txt-xs);color:var(--txt-sutil);">+${grupos[nome].length - 30} mais</div>`
       : "";
     return `<div class="serv-kan-col">
       <div class="serv-kan-col-head">${esc(nome)}<span>${grupos[nome].length}</span></div>

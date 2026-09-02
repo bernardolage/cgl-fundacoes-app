@@ -414,15 +414,15 @@ async function importarEstacasPDF(){
 function renderImportPreview(observacoes, meta, contId = "est-import-preview-conteudo", wrapId = "est-import-preview"){
   if($(wrapId)) $(wrapId).style.display = "";
   const temCoord = _importPreview.some(e => e.coord_x != null || e.coord_y != null);
-  const obs = observacoes ? `<p style="font-size:12px;color:var(--txt-fraco);margin:0 0 8px;"><b>Notas da IA:</b> ${esc(observacoes)}</p>` : "";
-  const metaTxt = meta ? `<p style="font-size:11px;color:var(--txt-sutil);margin:0 0 8px;">Modelo: ${esc(meta.modelo)} · Tokens: ${meta.tokens_input}/${meta.tokens_output}</p>` : "";
+  const obs = observacoes ? `<p style="font-size:var(--txt-sm);color:var(--txt-fraco);margin:0 0 8px;"><b>Notas da IA:</b> ${esc(observacoes)}</p>` : "";
+  const metaTxt = meta ? `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0 0 8px;">Modelo: ${esc(meta.modelo)} · Tokens: ${meta.tokens_input}/${meta.tokens_output}</p>` : "";
 
   // Conta quantas precisam de cada campo
   const semDiam = _importPreview.filter(e => e.diametro_mm == null).length;
   const semProf = _importPreview.filter(e => e.profundidade_m == null).length;
   const semTipo = _importPreview.filter(e => !e.tipo || e.tipo === "outro").length;
   const alerta = (semDiam || semProf || semTipo)
-    ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:8px 12px;margin-bottom:10px;font-size:12px;">
+    ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-sm);">
         ⚠️ A IA não extraiu tudo:
         ${semDiam ? `<strong>${semDiam}</strong> sem diâmetro · ` : ""}
         ${semProf ? `<strong>${semProf}</strong> sem profundidade · ` : ""}
@@ -442,7 +442,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   // Barra de reorganização de colunas
   const reorganizador = `
     <div style="background:#f0f7ff;border:1px solid #b6d4f5;border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-      <div style="font-size:12px;color:var(--marca-600);margin-bottom:8px;font-weight:600;">🔀 Reorganizar colunas (se a IA interpretou errado)</div>
+      <div style="font-size:var(--txt-sm);color:var(--marca-600);margin-bottom:8px;font-weight:600;">🔀 Reorganizar colunas (se a IA interpretou errado)</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
         <div>
           <label class="meta bloco">Coluna A</label>
@@ -473,7 +473,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   // Barra de mass-edit
   const massEdit = `
     <div style="background:var(--sup-2);border:1px solid var(--borda-forte);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-      <div style="font-size:12px;color:var(--txt-sec);margin-bottom:8px;font-weight:600;">📋 Aplicar a TODAS as estacas</div>
+      <div style="font-size:var(--txt-sm);color:var(--txt-sec);margin-bottom:8px;font-weight:600;">📋 Aplicar a TODAS as estacas</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
         <div>
           <label class="meta bloco">Diâmetro (mm)</label>
@@ -490,7 +490,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
             ${Object.entries(ESTACA_TIPOS).map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("")}
           </select>
         </div>
-        <label style="font-size:11px;color:var(--txt-fraco);display:flex;align-items:center;gap:4px;margin-bottom:6px;">
+        <label style="font-size:var(--txt-xs);color:var(--txt-fraco);display:flex;align-items:center;gap:4px;margin-bottom:6px;">
           <input type="checkbox" id="mass-so-vazios" checked />
           Só os vazios
         </label>
@@ -529,7 +529,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
         <tbody>${linhas}</tbody>
       </table>
     </div>
-    <p style="margin-top:8px;font-size:12px;color:var(--txt-fraco);">${_importPreview.length} estacas${temCoord ? " (com coordenadas)" : " extraídas"}. Edite o que precisar antes de importar. <span style="background:var(--aviso-bg);padding:1px 6px;">células amarelas</span> = campos vazios.</p>
+    <p style="margin-top:8px;font-size:var(--txt-sm);color:var(--txt-fraco);">${_importPreview.length} estacas${temCoord ? " (com coordenadas)" : " extraídas"}. Edite o que precisar antes de importar. <span style="background:var(--aviso-bg);padding:1px 6px;">células amarelas</span> = campos vazios.</p>
   `;
 
   // listeners de edição inline
@@ -784,7 +784,7 @@ function renderDXFConfig(){
           <label class="meta bloco">Rótulo (número) vem de</label>
           <select id="dxf-layer-text" class="col-xl">${textOpts}</select>
         </div>
-        <label style="font-size:11px;color:var(--txt-fraco);display:flex;align-items:center;gap:4px;margin-bottom:6px;">
+        <label style="font-size:var(--txt-xs);color:var(--txt-fraco);display:flex;align-items:center;gap:4px;margin-bottom:6px;">
           <input type="checkbox" id="dxf-bloco-da-layer" />
           Usar nome da layer como Bloco
         </label>
@@ -1568,11 +1568,11 @@ function renderizarAcoesRodape(aba){
     $("btn-est-rec-criar-todas")?.addEventListener("click", criarTodasPrevistasFaltantes);
     $("btn-est-rec-confirmar")?.addEventListener("click", confirmarReconciliacao);
   } else if(aba === "alteradas"){
-    rodape.innerHTML = `<p style="font-size:11px;color:var(--txt-sutil);margin:0;">Use as ações em cada execução extra: ↻ marcar como refuro (legítimo) ou → realocar para outra estaca prevista.</p>`;
+    rodape.innerHTML = `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0;">Use as ações em cada execução extra: ↻ marcar como refuro (legítimo) ou → realocar para outra estaca prevista.</p>`;
   } else if(aba === "duplicadas"){
-    rodape.innerHTML = `<p style="font-size:11px;color:var(--txt-sutil);margin:0;">Use as ações em cada grupo (manter / excluir / renomear).</p>`;
+    rodape.innerHTML = `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0;">Use as ações em cada grupo (manter / excluir / renomear).</p>`;
   } else if(aba === "refuradas"){
-    rodape.innerHTML = `<p style="font-size:11px;color:var(--txt-sutil);margin:0;">Use as ações em cada estaca refurada.</p>`;
+    rodape.innerHTML = `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0;">Use as ações em cada estaca refurada.</p>`;
   }
 }
 
@@ -1592,7 +1592,7 @@ function renderizarReconciliacao(){
   // Aviso útil quando não há previstas — não bloqueia, só orienta
   const semPrevistas = !_recPrevs.length;
   const avisoSemPrev = semPrevistas
-    ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:12px;">
+    ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
         ⚠️ Esta obra não tem estacas previstas cadastradas.
         Você pode <strong>criar cada estaca individualmente</strong> (botão <strong>+ Criar</strong> em cada linha)
         ou <strong>todas de uma vez</strong> com o botão verde do rodapé.
@@ -1654,7 +1654,7 @@ function renderizarReconciliacao(){
   }).join("");
 
   cont.innerHTML = `
-    <div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:12px;">
+    <div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
       ⚠️ <strong>${_recOrfas.length} execução(ões) órfã(s)</strong> nesta obra · <strong>${_recPrevs.length}</strong> estacas previstas no projeto
     </div>
     ${avisoSemPrev}
@@ -1905,7 +1905,7 @@ function renderizarAlteradas(){
       const semPrevistas = optsPrev.length === 0;
       const selectBlock = semPrevistas
         ? `<small style="color:var(--txt-sutil);font-style:italic;">Nenhuma estaca prevista disponível pra realocar</small>`
-        : `<select class="alt-realoc-sel" data-exec-id="${esc(re.id)}" style="font-size:11px;max-width:220px;">
+        : `<select class="alt-realoc-sel" data-exec-id="${esc(re.id)}" style="font-size:var(--txt-xs);max-width:220px;">
              <option value="">— manter aqui —</option>
              ${optsPrev}
            </select>
@@ -1926,12 +1926,12 @@ function renderizarAlteradas(){
 
     return `<div style="border:1px solid ${bordaTopo};border-radius:6px;margin-bottom:12px;background:${corTopo};">
       <div style="padding:10px 14px;border-bottom:1px solid ${bordaTopo};display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <strong style="font-size:14px;">${esc(g.estaca.numero)}</strong>
+        <strong style="font-size:var(--txt-base);">${esc(g.estaca.numero)}</strong>
         ${tagTopo}
         <span class="meta">${g.execs.length} execuções vinculadas</span>
       </div>
       <div style="padding:8px 14px;background:var(--sup-0);">
-        <table style="width:100%;font-size:12px;">
+        <table style="width:100%;font-size:var(--txt-sm);">
           <thead><tr style="background:var(--sup-2);">
             <th>Tipo</th><th>Data</th><th class="num">Prof.</th><th class="num">Concreto</th><th>Ação</th>
           </tr></thead>
@@ -1942,7 +1942,7 @@ function renderizarAlteradas(){
   }).join("");
 
   cont.innerHTML = `
-    <div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:12px;font-size:12px;">
+    <div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:12px;font-size:var(--txt-sm);">
       📊 <strong>${_confAlteradas.length} estaca(s) com múltiplas execuções.</strong>
       Refuros legítimos (mesmo nome + R no CSV) já vêm marcados em verde.
       Casos suspeitos em <strong>vermelho</strong> precisam de revisão.
@@ -2215,11 +2215,11 @@ async function confirmarReconciliacao(){
       ? `${sucesso} execução(ões) vinculada(s) com sucesso!`
       : `${sucesso} vinculada(s) · ${falhas} falharam`;
     const detalhe = falhas > 0
-      ? `<details style="margin-top:6px;font-size:11px;"><summary>Ver erros</summary><pre style="white-space:pre-wrap;">${esc(erros.slice(0,5).join("\n"))}</pre></details>`
-      : `<div style="font-size:12px;margin-top:4px;color:var(--txt-sec);">As estacas previstas correspondentes foram marcadas como <strong>executada</strong> automaticamente.</div>`;
+      ? `<details style="margin-top:6px;font-size:var(--txt-xs);"><summary>Ver erros</summary><pre style="white-space:pre-wrap;">${esc(erros.slice(0,5).join("\n"))}</pre></details>`
+      : `<div style="font-size:var(--txt-sm);margin-top:4px;color:var(--txt-sec);">As estacas previstas correspondentes foram marcadas como <strong>executada</strong> automaticamente.</div>`;
     const banner = `
       <div style="background:${cor};border-left:4px solid ${borda};padding:14px 18px;margin-bottom:14px;border-radius:4px;">
-        <div style="font-size:14px;font-weight:600;color:var(--marca-900);">${icone} ${titulo}</div>
+        <div style="font-size:var(--txt-base);font-weight:600;color:var(--marca-900);">${icone} ${titulo}</div>
         ${detalhe}
       </div>`;
     cont.insertAdjacentHTML("afterbegin", banner);

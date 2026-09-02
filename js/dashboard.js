@@ -250,7 +250,7 @@ async function carregarDashPendencias(){
   }
 
   if(!itens.length){
-    cont.innerHTML = `<p class="vazio" style="font-size:12px;color:var(--sucesso);">✅ Nenhuma pendência. Bom trabalho!</p>`;
+    cont.innerHTML = `<p class="vazio" style="font-size:var(--txt-sm);color:var(--sucesso);">✅ Nenhuma pendência. Bom trabalho!</p>`;
     return;
   }
   _dashPendNav = itens.map(it => it.nav || null);
@@ -281,7 +281,7 @@ async function carregarDashGraficoProducao(){
     .gte("data", ini)
     .order("data");
   if(!data || !data.length){
-    cont.innerHTML = `<p class="vazio" style="font-size:12px;">Sem RDOs nos últimos 30 dias.</p>`;
+    cont.innerHTML = `<p class="vazio" style="font-size:var(--txt-sm);">Sem RDOs nos últimos 30 dias.</p>`;
     return;
   }
   // Agrupa por dia
@@ -298,7 +298,7 @@ async function carregarDashGraficoProducao(){
   }).join("");
   const total = Object.values(porDia).reduce((s,v) => s + v, 0);
   cont.innerHTML = `
-    <div style="font-size:11px;color:var(--txt-fraco);margin-bottom:6px;">${num(total)} m totais em ${dias.length} dia(s)</div>
+    <div style="font-size:var(--txt-xs);color:var(--txt-fraco);margin-bottom:6px;">${num(total)} m totais em ${dias.length} dia(s)</div>
     <div style="display:flex;align-items:flex-end;height:82px;overflow-x:auto;">${barras}</div>`;
 }
 
@@ -314,10 +314,10 @@ async function carregarDashTopObras(){
     .order("valor_contratado",{ascending:false})
     .limit(5);
   if(!data || !data.length){
-    cont.innerHTML = `<p class="vazio" style="font-size:12px;">Nenhuma obra ativa.</p>`;
+    cont.innerHTML = `<p class="vazio" style="font-size:var(--txt-sm);">Nenhuma obra ativa.</p>`;
     return;
   }
-  cont.innerHTML = `<div style="font-size:12px;">${data.map((o,i) => `
+  cont.innerHTML = `<div style="font-size:var(--txt-sm);">${data.map((o,i) => `
     <div class="dash-linha-obra clicavel" data-obra-id="${esc(o.id)}" title="Abrir a obra" style="display:flex;justify-content:space-between;align-items:center;padding:6px 4px;border-bottom:1px solid var(--sup-3);">
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
         <strong>${i+1}.</strong> ${esc(o.codigo)} <span style="color:var(--txt-sutil);">·</span> ${esc((o.nome||"").slice(0,30))}${(o.nome||"").length>30?"…":""}
@@ -375,18 +375,18 @@ async function carregarDashAtividade(){
   eventos.sort((a,b) => new Date(b.quando) - new Date(a.quando));
 
   if(!eventos.length){
-    cont.innerHTML = `<p class="vazio" style="font-size:12px;">Nenhuma atividade nas últimas 48h.</p>`;
+    cont.innerHTML = `<p class="vazio" style="font-size:var(--txt-sm);">Nenhuma atividade nas últimas 48h.</p>`;
     return;
   }
   const vis = eventos.slice(0,8);
-  cont.innerHTML = `<div style="font-size:12px;">${vis.map((e, idx) => {
+  cont.innerHTML = `<div style="font-size:var(--txt-sm);">${vis.map((e, idx) => {
     const dt = new Date(e.quando);
     const hora = dt.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
     const cls   = e.obraId ? ' class="dash-ativ-item clicavel"' : "";
     const extra = e.obraId ? `cursor:pointer;` : "";
     const attrs = e.obraId ? ` data-idx="${idx}" title="Abrir a obra"` : "";
     return `<div${cls}${attrs} style="padding:6px 4px;border-bottom:1px solid var(--sup-3);${extra}">
-      <span style="color:var(--txt-sutil);font-size:11px;">${hora}</span> · ${e.txt}
+      <span style="color:var(--txt-sutil);font-size:var(--txt-xs);">${hora}</span> · ${e.txt}
     </div>`;
   }).join("")}</div>`;
   cont.querySelectorAll(".dash-ativ-item[data-idx]").forEach(el => {

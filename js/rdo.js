@@ -172,7 +172,7 @@ function renderRDOKanban(dados){
         <div class="serv-kan-card-nome">${esc(mapaObras[g.obra_id]||"(sem obra)")}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">📋 ${r.length} RDO${r.length>1?'s':''} · ${qtdEstacas} estaca${qtdEstacas>1?'s':''}</span>
-          <span style="font-size:11px;color:var(--marca-600);display:block;">${esc(periodo)}</span>
+          <span style="font-size:var(--txt-xs);color:var(--marca-600);display:block;">${esc(periodo)}</span>
         </div>
         <div class="serv-kan-card-rod">
           <span>${num(metragem)} m</span>
@@ -571,7 +571,7 @@ function toggleBoletimEstaca(idx){
 function renderBoletimSoloRows(idx){
   const solos = (_rdoExecucoes[idx]?._solo) || [];
   if(!solos.length)
-    return `<tr><td colspan="4" class="vazio" style="font-size:11px;">Sem camadas. Clique em "+ Camada de solo".</td></tr>`;
+    return `<tr><td colspan="4" class="vazio" style="font-size:var(--txt-xs);">Sem camadas. Clique em "+ Camada de solo".</td></tr>`;
   return solos.map((s, si) => `<tr data-solo-idx="${si}">
     <td><input type="number" step="0.01" min="0" class="blt-solo-ini col-sm" value="${esc(s.inicio_ml??'')}" /></td>
     <td><input type="number" step="0.01" min="0" class="blt-solo-fim col-sm" value="${esc(s.final_ml??'')}" /></td>
@@ -583,7 +583,7 @@ function renderBoletimSoloRows(idx){
 function renderBoletimJustRows(idx){
   const justs = (_rdoExecucoes[idx]?._just) || [];
   if(!justs.length)
-    return `<tr><td colspan="4" class="vazio" style="font-size:11px;">Sem justificativas.</td></tr>`;
+    return `<tr><td colspan="4" class="vazio" style="font-size:var(--txt-xs);">Sem justificativas.</td></tr>`;
   return justs.map((j, ji) => `<tr data-just-idx="${ji}">
     <td><input type="text" class="blt-just-hi col-xs" placeholder="HH:MM" value="${esc(j.h_inicial||'')}" /></td>
     <td><input type="text" class="blt-just-hf col-xs" placeholder="HH:MM" value="${esc(j.h_final||'')}" /></td>
@@ -1521,12 +1521,12 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   // Bloco de identificação de obra
   let blocoObra = "";
   if(_csvObraDetectada && _csvObraDetectada.casamento === "exato"){
-    blocoObra = `<div style="background:var(--sucesso-bg);border-left:3px solid var(--sucesso);padding:10px 14px;margin-bottom:10px;font-size:12px;">
+    blocoObra = `<div style="background:var(--sucesso-bg);border-left:3px solid var(--sucesso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
       ✅ <strong>Obra identificada automaticamente:</strong> ${esc(_csvObraDetectada.nome)}
-      <div style="font-size:11px;color:var(--txt-fraco);margin-top:2px;">CSV trouxe "${esc(obraCSV)}" — casamento exato.</div>
+      <div style="font-size:var(--txt-xs);color:var(--txt-fraco);margin-top:2px;">CSV trouxe "${esc(obraCSV)}" — casamento exato.</div>
     </div>`;
   } else if(_csvObraDetectada){
-    blocoObra = `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:12px;">
+    blocoObra = `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
       ⚠️ <strong>Obra identificada (casamento parcial):</strong>
       <div style="margin-top:6px;">
         CSV: "${esc(obraCSV)}" → cadastrada: <strong>${esc(_csvObraDetectada.nome)}</strong>
@@ -1537,7 +1537,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
       </div>
     </div>`;
   } else {
-    blocoObra = `<div style="background:var(--perigo-bg);border-left:3px solid var(--perigo);padding:10px 14px;margin-bottom:10px;font-size:12px;">
+    blocoObra = `<div style="background:var(--perigo-bg);border-left:3px solid var(--perigo);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
       ❌ <strong>Obra não identificada</strong> — o CSV trouxe "${esc(obraCSV)}" mas não casa com nenhuma obra cadastrada.
       <div style="margin-top:6px;">
         <label class="meta">Escolha a obra manualmente:</label>
@@ -1547,7 +1547,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   }
 
   // Bloco de tipo de serviço
-  const blocoTipo = `<div style="background:var(--sup-2);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:12px;">
+  const blocoTipo = `<div style="background:var(--sup-2);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
     🔧 <strong>Tipo de serviço detectado:</strong> ${esc((TIPO_SERVICO[_csvTipoDetectado]||{}).label || _csvTipoDetectado)}
     <div style="margin-top:6px;">
       <label class="meta">Confirme ou altere:</label>
@@ -1565,16 +1565,16 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     const linhasMaq = _csvMaquinasSemMatch.map(maq => `
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
         <code style="background:var(--sup-0);padding:2px 8px;border-radius:3px;border:1px solid var(--borda-forte);min-width:80px;text-align:center;"><strong>${esc(maq)}</strong></code>
-        <span style="color:var(--txt-fraco);font-size:11px;">→</span>
+        <span style="color:var(--txt-fraco);font-size:var(--txt-xs);">→</span>
         <select class="csv-maq-select" data-maq="${esc(maq)}" style="flex:1;min-width:240px;">${equipOpts}</select>
-        <label style="font-size:11px;color:var(--txt-fraco);display:flex;align-items:center;gap:4px;">
+        <label style="font-size:var(--txt-xs);color:var(--txt-fraco);display:flex;align-items:center;gap:4px;">
           <input type="checkbox" class="csv-maq-salvar" data-maq="${esc(maq)}" checked />
           Salvar como código externo
         </label>
       </div>`).join("");
-    blocoMaq = `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:12px;">
+    blocoMaq = `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
       ⚠️ <strong>${_csvMaquinasSemMatch.length} máquina${_csvMaquinasSemMatch.length>1?'s':''} sem equipamento cadastrado:</strong>
-      <div style="font-size:11px;color:var(--txt-fraco);margin-top:2px;">Vincule cada código do CSV ao equipamento correspondente. Marque "salvar" para o sistema reconhecer automaticamente nas próximas importações.</div>
+      <div style="font-size:var(--txt-xs);color:var(--txt-fraco);margin-top:2px;">Vincule cada código do CSV ao equipamento correspondente. Marque "salvar" para o sistema reconhecer automaticamente nas próximas importações.</div>
       <div style="margin-top:10px;">${linhasMaq}</div>
     </div>`;
   }
@@ -1582,9 +1582,9 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   const fmtLbl = formato === "softsaci"
     ? "📄 <strong>Formato detectado:</strong> SoftSaci V7.x (TXT colunas fixas)"
     : "📄 <strong>Formato detectado:</strong> Geodigitus (CSV)";
-  const blocoFormato = `<div style="background:#eef2f6;border-left:3px solid var(--txt-fraco);padding:8px 12px;margin-bottom:10px;font-size:11px;color:#495057;">${fmtLbl}</div>`;
+  const blocoFormato = `<div style="background:#eef2f6;border-left:3px solid var(--txt-fraco);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-xs);color:#495057;">${fmtLbl}</div>`;
 
-  let html = blocoFormato + blocoObra + blocoTipo + blocoMaq + `<div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:12px;">
+  let html = blocoFormato + blocoObra + blocoTipo + blocoMaq + `<div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
     📊 <strong>${totalEstacas}</strong> estacas em <strong>${dias.length}</strong> dia${dias.length>1?"s":""} — vão gerar ${dias.length} RDO${dias.length>1?"s":""} novo${dias.length>1?"s":""}.
     Total metragem: <strong>${num(registros.reduce((s,r) => s + (r.profundidade_executada||0), 0))} m</strong>.
     Total concreto: <strong>${num(registros.reduce((s,r) => s + (r.volume_concreto_m3||0), 0))} m³</strong>.
@@ -1592,7 +1592,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   dias.forEach(d => {
     const ests = porDia[d];
     html += `<div style="margin-bottom:8px;border:1px solid var(--borda-forte);border-radius:4px;padding:8px 10px;">
-      <div style="font-weight:600;font-size:12px;color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length} estaca${ests.length>1?"s":""}</div>
+      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length} estaca${ests.length>1?"s":""}</div>
       <div class="meta">${ests.map(e=>esc(e.estaca_numero)).slice(0,10).join(", ")}${ests.length>10?` +${ests.length-10}`:""}</div>
     </div>`;
   });
