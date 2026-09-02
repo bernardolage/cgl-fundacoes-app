@@ -25,8 +25,9 @@ async function carregarDashboard(){
     carregarDashAtividade()
   ]);
 
-  // Mantém compat: alimenta a aba Estoque antiga
-  await carregarPosicaoEstoque();
+  // A posição de estoque (aba antiga, oculta) NÃO carrega mais no boot: eram
+  // 9.479 produtos + 9.479 <tr> a cada login (~60% do payload inicial).
+  // Passou a carregar sob demanda ao abrir a seção Estoque (core.js, nav).
 
   // Cliques dos cards de KPI (os painéis ligam os seus ao renderizar)
   ligarCliquesDashboard();
@@ -119,7 +120,9 @@ async function carregarDashOperacional(){
     sb.from("obras").select("id",{count:"exact",head:true})
       .eq("status","concluida").gte("data_fim_real", inicioMes).lte("data_fim_real", fimMes),
     sb.from("rdo").select("id,producao_dia_m").gte("data", inicioMes).lte("data", fimMes),
-    sb.from("rdo_execucao_estaca").select("profundidade_executada,volume_concreto_m3,rdo:rdo_id(data)").gte("rdo.data", inicioMes),
+    // !inner faz o filtro em rdo.data valer para as linhas-pai (sem ele, o PostgREST
+    // devolvia TODAS as execuções e o filtro era só no navegador); lte fecha o mês.
+    sb.from("rdo_execucao_estaca").select("profundidade_executada,volume_concreto_m3,rdo:rdo_id!inner(data)").gte("rdo.data", inicioMes).lte("rdo.data", fimMes),
     sb.from("orcamentos").select("id",{count:"exact",head:true}).in("status",["rascunho","enviado","em_negociacao"]),
     sb.from("orcamentos").select("valor_total").in("status",["rascunho","enviado","em_negociacao"])
   ]);
@@ -398,7 +401,8 @@ async function carregarDashAtividade(){
 async function carregarPosicaoEstoque(){
   const tb = $("tab-estoque");
   if(!tb) return;
-  const { data } = await sb.from("produtos").select("codigo,nome,estoque_atual,estoque_minimo,custo_ultimo").order("nome");
+  // Só ativos e limitado: esta aba é legada; 9.479 linhas num tbody oculto não faz sentido
+  const { data } = await sb.from("produtos").select("codigo,nome,estoque_atual,estoque_minimo,custo_ultimo").eq("ativo", true).order("nome").limit(200);
   const lista = data || [];
   if(!lista.length){ tb.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum produto.</td></tr>`; return; }
   tb.innerHTML = lista.map(p => `<tr>

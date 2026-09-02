@@ -750,7 +750,7 @@ function ligarContratos(){
   });
   ["con-busca","con-f-status","con-f-categoria","con-f-vencimento"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "con-busca" ? "input" : "change", renderContratos);
+    if(el) el.addEventListener(id === "con-busca" ? "input" : "change", id === "con-busca" ? debounce(renderContratos) : renderContratos);
   });
   $("con-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");

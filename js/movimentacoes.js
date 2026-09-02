@@ -653,7 +653,7 @@ function ligarFichaMovimentacao(){
   });
   ["mov-busca","mov-f-status","mov-f-tipo"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "mov-busca" ? "input" : "change", renderMovimentacoes);
+    if(el) el.addEventListener(id === "mov-busca" ? "input" : "change", id === "mov-busca" ? debounce(renderMovimentacoes) : renderMovimentacoes);
   });
   $("mov-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");

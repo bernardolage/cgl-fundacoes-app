@@ -240,7 +240,7 @@ function ligarClientes(){
   });
   ["cli-busca","cli-f-tipo","cli-f-ativo"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "cli-busca" ? "input" : "change", renderClientes);
+    if(el) el.addEventListener(id === "cli-busca" ? "input" : "change", id === "cli-busca" ? debounce(renderClientes) : renderClientes);
   });
   $("cli-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");

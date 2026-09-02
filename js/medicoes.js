@@ -42,9 +42,11 @@ function preencherFiltrosMed(){
   }
   const selObra = $("med-f-obra");
   if(selObra){
+    const atual = selObra.value; // preserva a seleção (o render roda a cada tecla)
     const lista = Object.entries(mapaObras).map(([id, txt]) => ({ id, txt }));
     selObra.innerHTML = `<option value="">Todas as obras</option>` +
       lista.map(o => `<option value="${esc(o.id)}">${esc(o.txt)}</option>`).join("");
+    selObra.value = atual;
   }
 }
 
@@ -355,8 +357,11 @@ async function carregarDetalhesExecucaoMed(){
   }
   cont.innerHTML = `<p class="vazio">Carregando...</p>`;
 
+  // !inner + filtros no join: só as execuções desta obra/período saem do servidor
+  // (antes baixava a tabela inteira e filtrava no navegador a cada medição aberta)
   const { data: execs, error } = await sb.from("rdo_execucao_estaca")
-    .select("id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id(obra_id,data)")
+    .select("id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id!inner(obra_id,data)")
+    .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim)
     .order("perfuracao_inicio");
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
 
@@ -740,7 +745,8 @@ async function gerarPDFMedicao(){
         .select("ordem,descricao,quantidade,unidade,valor_unitario,valor_total,preco_origem,variante_id")
         .eq("medicao_id", medEditId).order("ordem"),
       (!ehSinal && obraId && pIni && pFim) ? sb.from("rdo_execucao_estaca")
-        .select("estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id(obra_id,data)")
+        .select("estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id!inner(obra_id,data)")
+        .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim)
         .order("perfuracao_inicio") : Promise.resolve({ data: [] }),
       (!ehSinal && obraId && pIni && pFim) ? sb.from("rdo")
         .select("id,data,producao_dia_m,observacoes,atividades")
@@ -1192,7 +1198,7 @@ function ligarMedicoes(){
   });
   ["med-busca","med-f-status","med-f-obra"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "med-busca" ? "input" : "change", renderMedicoes);
+    if(el) el.addEventListener(id === "med-busca" ? "input" : "change", id === "med-busca" ? debounce(renderMedicoes) : renderMedicoes);
   });
   $("med-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");

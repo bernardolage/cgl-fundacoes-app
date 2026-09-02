@@ -92,9 +92,11 @@ function preencherFiltrosOrc(){
   }
   const selCli = $("orc-f-cliente");
   if(selCli){
+    const atual = selCli.value; // preserva a seleção (o render roda a cada tecla)
     const lista = Object.entries(mapaClientes).map(([id, nome]) => ({ id, nome }));
     selCli.innerHTML = `<option value="">Todos os clientes</option>` +
       lista.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+    selCli.value = atual;
   }
 }
 
@@ -754,7 +756,7 @@ function ligarOrcamentos(){
   });
   ["orc-busca","orc-f-status","orc-f-cliente"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "orc-busca" ? "input" : "change", renderOrcamentos);
+    if(el) el.addEventListener(id === "orc-busca" ? "input" : "change", id === "orc-busca" ? debounce(renderOrcamentos) : renderOrcamentos);
   });
   $("orc-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");

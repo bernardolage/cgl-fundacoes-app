@@ -560,7 +560,7 @@ function ligarFuncionarios(){
 
   ["func-busca","func-f-status","func-f-contrato"].forEach(id => {
     const el=$(id);
-    if(el) el.addEventListener(id==="func-busca"?"input":"change", renderFuncionarios);
+    if(el) el.addEventListener(id==="func-busca"?"input":"change", id==="func-busca" ? debounce(renderFuncionarios) : renderFuncionarios);
   });
 
   $("func-conteudo")?.addEventListener("click", e => {

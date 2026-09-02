@@ -286,6 +286,16 @@ async function comBotaoTravado(btnOuId, fn){
   finally { if(b){ delete b.dataset.travado; b.disabled = false; } }
 }
 
+/* Debounce para campos de busca: re-renderizar a lista inteira a cada tecla
+   travava nas listas grandes (produtos, estacas). 150 ms é imperceptível. */
+function debounce(fn, ms = 150){
+  let t = null;
+  return function(...args){
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
 
 /* ====================== AUTENTICAÇÃO ====================== */
 $("form-login").addEventListener("submit", async (e)=>{
@@ -458,6 +468,8 @@ document.querySelectorAll(".sidebar-nav button").forEach(b=>{
     const secId = "sec-" + b.dataset.secao;
     const secEl = $(secId);
     if(secEl) secEl.classList.add("ativa");
+    // Carga sob demanda: a posição de estoque (aba legada) só ao abrir a seção
+    if(b.dataset.secao === "estoque" && typeof carregarPosicaoEstoque === "function") carregarPosicaoEstoque();
     
     // Atualiza o título no cabeçalho
     const spanText = b.querySelector("span");
@@ -504,15 +516,15 @@ async function carregarTudo(){
     carregarMedicoes()
   ]);
 
-  // 5. Módulos operacionais (dependem de obras carregadas)
-  if(typeof carregarFuncionarios === "function") await carregarFuncionarios();
-  if(typeof carregarRDO === "function") await carregarRDO();
-  if(typeof carregarMovimentacoes === "function") await carregarMovimentacoes();
-
-  // 6. Usuários (só admin)
-  if(usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo) && typeof carregarUsuarios === "function"){
-    await carregarUsuarios();
-  }
+  // 5+6. Módulos operacionais e usuários — em paralelo (dependem só de obras,
+  // já carregadas no passo 4; antes eram 4 ondas sequenciais de latência)
+  const ehGestao = usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo);
+  await Promise.all([
+    typeof carregarFuncionarios  === "function" ? carregarFuncionarios()  : null,
+    typeof carregarRDO           === "function" ? carregarRDO()           : null,
+    typeof carregarMovimentacoes === "function" ? carregarMovimentacoes() : null,
+    (ehGestao && typeof carregarUsuarios === "function") ? carregarUsuarios() : null
+  ]);
 
   // 7. Atualiza dashboard e sugestões sequenciais
   await carregarDashboard();

@@ -243,7 +243,8 @@ async function carregarRDOsDaObra(obraId){
   // Resumo dos RDOs + execuções por rdo (pra contar vinculadas)
   const [resumoRes, execsRes] = await Promise.all([
     sb.from("vw_rdo_resumo").select("*").eq("obra_id", obraId).order("data", { ascending: false }),
-    sb.from("rdo_execucao_estaca").select("rdo_id, estaca_id, rdo:rdo_id(obra_id)")
+    // !inner + eq: só execuções desta obra (antes vinha a tabela inteira)
+    sb.from("rdo_execucao_estaca").select("rdo_id, estaca_id, rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)
   ]);
   if(resumoRes.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(resumoRes.error.message)}</p>`; return; }
   const data = resumoRes.data;

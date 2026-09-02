@@ -320,7 +320,7 @@ function ligarCarteira(){
   document.querySelectorAll("#sec-carteira .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => cartTrocarAba(b.dataset.view));
   });
-  $("cart-busca")?.addEventListener("input", renderCarteira);
+  $("cart-busca")?.addEventListener("input", debounce(renderCarteira));
   $("cart-f-pendentes")?.addEventListener("change", renderCarteira);
   $("cart-f-historico")?.addEventListener("change", renderCarteira);
   $("cart-f-tipo")?.addEventListener("change", renderCarteira);

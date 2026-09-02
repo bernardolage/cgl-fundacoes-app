@@ -98,7 +98,7 @@ async function criarNovoFornecedorRapido(){
 function ligarEstoque(){
   $("btn-registrar-entrada")?.addEventListener("click", () => comBotaoTravado("btn-registrar-entrada", registrarEntrada));
   $("btn-novo-forn")?.addEventListener("click", criarNovoFornecedorRapido);
-  $("ent-busca")?.addEventListener("input", renderUltimasEntradas);
+  $("ent-busca")?.addEventListener("input", debounce(renderUltimasEntradas));
 
   const navEst = document.querySelector('nav button[data-secao="estoque"]');
   if(navEst) navEst.addEventListener("click", carregarUltimasEntradas);

@@ -2214,7 +2214,7 @@ function ligarEstacas(){
 
   ["est-busca","est-f-status","est-f-tipo"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "est-busca" ? "input" : "change", renderEstacas);
+    if(el) el.addEventListener(id === "est-busca" ? "input" : "change", id === "est-busca" ? debounce(renderEstacas) : renderEstacas);
   });
 
   // Toggle Lista | Planta

@@ -57,11 +57,16 @@ function prodFiltrados(){
 function preencherFiltrosProd(){
   const sel = $("prod-f-categoria");
   if(sel){
+    // Preserva o valor escolhido: este render roda a cada tecla/filtro e
+    // substituir o innerHTML zerava a seleção ANTES de prodFiltrados ler
+    // (o filtro por categoria nunca chegava a filtrar).
+    const atual = sel.value;
     const cats = Object.entries(_prodCategorias)
       .map(([id, nome]) => ({ id, nome }))
       .sort((a,b) => a.nome.localeCompare(b.nome,"pt-BR"));
     sel.innerHTML = `<option value="">Todas as categorias</option>` +
       cats.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+    sel.value = atual;
   }
 }
 

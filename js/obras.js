@@ -95,9 +95,11 @@ function preencherFiltrosObras(){
   // Cliente (popula a partir do mapaClientes carregado em core.js)
   const selCli = $("obr-f-cliente");
   if(selCli){
+    const atual = selCli.value; // preserva a seleção (o render roda a cada tecla)
     const lista = Object.entries(mapaClientes).map(([id, nome]) => ({ id, nome }));
     selCli.innerHTML = `<option value="">Todos os clientes</option>` +
       lista.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+    selCli.value = atual;
   }
 }
 
@@ -527,7 +529,7 @@ function ligarObras(){
   });
   ["obr-busca","obr-f-status","obr-f-cliente"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "obr-busca" ? "input" : "change", renderObras);
+    if(el) el.addEventListener(id === "obr-busca" ? "input" : "change", id === "obr-busca" ? debounce(renderObras) : renderObras);
   });
   $("obr-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");

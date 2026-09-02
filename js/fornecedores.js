@@ -36,9 +36,11 @@ function fornFiltrados(){
 function preencherFiltrosForn(){
   const sel = $("forn-f-categoria");
   if(sel){
+    const atual = sel.value; // preserva a seleção (o render roda a cada tecla)
     const cats = [...new Set(_fornecedores.map(f => f.categoria).filter(Boolean))].sort();
     sel.innerHTML = `<option value="">Todas as categorias</option>` +
       cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    sel.value = atual;
   }
 }
 
@@ -313,7 +315,7 @@ function ligarFornecedores(){
   });
   ["forn-busca","forn-f-ativo","forn-f-categoria"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "forn-busca" ? "input" : "change", renderFornecedores);
+    if(el) el.addEventListener(id === "forn-busca" ? "input" : "change", id === "forn-busca" ? debounce(renderFornecedores) : renderFornecedores);
   });
   $("forn-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");
