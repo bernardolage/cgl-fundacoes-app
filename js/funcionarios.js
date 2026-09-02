@@ -158,12 +158,48 @@ function funcRenderizarSidebarDept(){
   tree.innerHTML = html;
 }
 
+/* ---------- dados sensíveis (fase 35) ----------
+   CPF, RG, nascimento, salário, endereço e contato de emergência saíram de
+   funcionarios e vivem em funcionarios_sensiveis: RLS só diretor e rh, e toda
+   leitura passa por fn_funcionario_sensivel() (fica em registros_log). Para os
+   demais cargos os campos nem aparecem na ficha. */
+function funcVeSensivel(){
+  return !!(usuarioAtual && ["diretor", "rh"].includes(usuarioAtual.cargo));
+}
+function funcAplicarVisibilidadeSensivel(){
+  const ve = funcVeSensivel();
+  document.querySelectorAll(".func-sens").forEach(el => { el.style.display = ve ? "" : "none"; });
+  const av = $("func-sens-aviso"); if(av) av.style.display = ve ? "none" : "";
+}
+async function funcCarregarSensivel(id){
+  const { data, error } = await sb.rpc("fn_funcionario_sensivel", { p_funcionario_id: id });
+  if(error){ console.warn("dados sensíveis:", error.message); return null; }
+  return Array.isArray(data) ? (data[0] || null) : (data || null);
+}
+async function funcSalvarSensivel(funcId){
+  if(!funcVeSensivel()) return null;
+  const v = (id) => ($(id)?.value ?? "").toString().trim() || null;
+  const reg = {
+    funcionario_id: funcId,
+    cpf: v("func-cpf"), rg: v("func-rg"), data_nascimento: v("func-nascimento"),
+    salario_contabil: $("func-salario")?.value !== "" ? Number($("func-salario").value) : null,
+    cep: v("func-cep"), logradouro: v("func-logradouro"), numero: v("func-numero"), complemento: v("func-complemento"),
+    bairro: v("func-bairro"), cidade: v("func-cidade"), uf: $("func-uf")?.value || null,
+    contato_emergencia_nome: v("func-emerg-nome"), contato_emergencia_tel: v("func-emerg-tel"), contato_emergencia_parentesco: v("func-emerg-parentesco")
+  };
+  const { error } = await sb.from("funcionarios_sensiveis").upsert(reg, { onConflict: "funcionario_id" });
+  return error;
+}
+
 /* ---------- carga principal ---------- */
 async function carregarFuncionarios(){
   funcMontarSelectsFixos();
+  // Estado de origem (logística) usa a mesma lista de UF do endereço
+  if($("func-estado-origem") && $("func-uf") && !$("func-estado-origem").options.length) $("func-estado-origem").innerHTML = $("func-uf").innerHTML;
+  funcAplicarVisibilidadeSensivel();
   const [{ data, error }] = await Promise.all([
     sb.from("funcionarios")
-      .select("id,nome,cpf,matricula,funcao,data_admissao,status,ativo,telefone,foto_url,departamento_id,tipo_contrato,cnh_validade")
+      .select("id,nome,matricula,funcao,data_admissao,status,ativo,telefone,foto_url,departamento_id,tipo_contrato,cnh_validade,categoria_operacional,especialidade,coringa,avaliacao")
       .order("nome"),
     _depts.length ? Promise.resolve() : funcCarregarDepts(),
     _supervisores.length ? Promise.resolve() : funcCarregarSupervisores(),
@@ -184,7 +220,7 @@ function funcFiltrados(){
     if(fContr && f.tipo_contrato  !== fContr) return false;
     if(deptIds && !deptIds.has(f.departamento_id)) return false;
     if(termo){
-      const alvo = `${f.nome||""} ${f.cpf||""} ${f.matricula||""} ${f.funcao||""}`.toLowerCase();
+      const alvo = `${f.nome||""} ${f.matricula||""} ${f.funcao||""} ${f.categoria_operacional||""} ${f.especialidade||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -291,21 +327,22 @@ async function abrirFuncionario(id){
   $("func-matricula").value   = data.matricula||"";
   $("func-funcao").value      = data.funcao||"";
   $("func-status").value      = data.status||"ativo";
-  $("func-cpf").value         = data.cpf||"";
-  $("func-rg").value          = data.rg||"";
-  $("func-nascimento").value  = (data.data_nascimento||"").slice(0,10);
+  const sens = funcVeSensivel() ? (await funcCarregarSensivel(id)) || {} : {};
+  $("func-cpf").value         = sens.cpf||"";
+  $("func-rg").value          = sens.rg||"";
+  $("func-nascimento").value  = (sens.data_nascimento||"").slice(0,10);
   $("func-admissao").value    = (data.data_admissao||"").slice(0,10);
   $("func-demissao").value    = (data.data_demissao||"").slice(0,10);
-  $("func-salario").value     = data.salario??""  ;
+  $("func-salario").value     = sens.salario_contabil??""  ;
   $("func-email").value       = data.email||"";
   $("func-telefone").value    = data.telefone||"";
-  $("func-cep").value         = data.cep||"";
-  $("func-logradouro").value  = data.logradouro||"";
-  $("func-numero").value      = data.numero||"";
-  $("func-complemento").value = data.complemento||"";
-  $("func-bairro").value      = data.bairro||"";
-  $("func-cidade").value      = data.cidade||"";
-  $("func-uf").value          = data.uf||"";
+  $("func-cep").value         = sens.cep||"";
+  $("func-logradouro").value  = sens.logradouro||"";
+  $("func-numero").value      = sens.numero||"";
+  $("func-complemento").value = sens.complemento||"";
+  $("func-bairro").value      = sens.bairro||"";
+  $("func-cidade").value      = sens.cidade||"";
+  $("func-uf").value          = sens.uf||"";
   $("func-obs").value         = data.observacoes||"";
   $("func-ativo").checked     = data.ativo!==false;
   $("func-tipo-contrato").value  = data.tipo_contrato||"clt";
@@ -313,9 +350,18 @@ async function abrirFuncionario(id){
   $("func-supervisor").value     = data.supervisor_id||"";
   $("func-cnh-categoria").value  = data.cnh_categoria||"";
   $("func-cnh-validade").value   = (data.cnh_validade||"").slice(0,10);
-  $("func-emerg-nome").value     = data.contato_emergencia_nome||"";
-  $("func-emerg-tel").value      = data.contato_emergencia_tel||"";
-  $("func-emerg-parentesco").value = data.contato_emergencia_parentesco||"";
+  $("func-emerg-nome").value     = sens.contato_emergencia_nome||"";
+  $("func-emerg-tel").value      = sens.contato_emergencia_tel||"";
+  $("func-emerg-parentesco").value = sens.contato_emergencia_parentesco||"";
+  // logística (Planejamento Logística / RG 8.1)
+  if($("func-estado-origem")) $("func-estado-origem").value = data.estado_origem||"";
+  if($("func-categoria"))     $("func-categoria").value     = data.categoria_operacional||"";
+  if($("func-especialidade")) $("func-especialidade").value = data.especialidade||"";
+  if($("func-avaliacao"))     $("func-avaliacao").value     = data.avaliacao||"";
+  if($("func-coringa"))       $("func-coringa").checked     = data.coringa===true;
+  if($("func-ciclo-baixada")) $("func-ciclo-baixada").value = data.ciclo_baixada_dias??90;
+  if($("func-obs-logistica")) $("func-obs-logistica").value = data.observacao_logistica||"";
+  funcAplicarVisibilidadeSensivel();
 
   funcCarregarFoto(data.foto_url, data.nome);
   $("btn-excluir-func").style.display = "";
@@ -489,21 +535,10 @@ async function salvarFuncionario(novoStatus){
     matricula:       $("func-matricula").value.trim()||null,
     funcao:          $("func-funcao").value.trim(),
     status:          novoStatus||$("func-status").value||"ativo",
-    cpf:             $("func-cpf").value.trim()||null,
-    rg:              $("func-rg").value.trim()||null,
-    data_nascimento: $("func-nascimento").value||null,
     data_admissao:   $("func-admissao").value||null,
     data_demissao:   $("func-demissao").value||null,
-    salario:         $("func-salario").value!==""?Number($("func-salario").value):null,
     email:           $("func-email").value.trim()||null,
     telefone:        $("func-telefone").value.trim()||null,
-    cep:             $("func-cep").value.trim()||null,
-    logradouro:      $("func-logradouro").value.trim()||null,
-    numero:          $("func-numero").value.trim()||null,
-    complemento:     $("func-complemento").value.trim()||null,
-    bairro:          $("func-bairro").value.trim()||null,
-    cidade:          $("func-cidade").value.trim()||null,
-    uf:              $("func-uf").value||null,
     observacoes:     $("func-obs").value.trim()||null,
     ativo:           $("func-ativo").checked,
     tipo_contrato:   $("func-tipo-contrato").value||"clt",
@@ -511,9 +546,13 @@ async function salvarFuncionario(novoStatus){
     supervisor_id:   $("func-supervisor").value||null,
     cnh_categoria:   $("func-cnh-categoria").value||null,
     cnh_validade:    $("func-cnh-validade").value||null,
-    contato_emergencia_nome:         $("func-emerg-nome").value.trim()||null,
-    contato_emergencia_tel:          $("func-emerg-tel").value.trim()||null,
-    contato_emergencia_parentesco:   $("func-emerg-parentesco").value.trim()||null,
+    estado_origem:        $("func-estado-origem")?.value||null,
+    categoria_operacional:$("func-categoria")?.value||null,
+    especialidade:        $("func-especialidade")?.value||null,
+    avaliacao:            $("func-avaliacao")?.value||null,
+    coringa:              !!$("func-coringa")?.checked,
+    ciclo_baixada_dias:   $("func-ciclo-baixada")?.value!=="" ? Number($("func-ciclo-baixada").value) : 90,
+    observacao_logistica: $("func-obs-logistica")?.value.trim()||null,
   };
 
   let result;
@@ -528,6 +567,13 @@ async function salvarFuncionario(novoStatus){
     return;
   }
   funcEditId = result.data.id;
+  // dados sensíveis (só diretor/rh; o upsert respeita o RLS)
+  const errSens = await funcSalvarSensivel(funcEditId);
+  if(errSens){
+    const ms = (errSens.message||"").toLowerCase();
+    aviso("app-aviso", ms.includes("cpf") ? "Já existe um funcionário com este CPF." : "Funcionário salvo, mas os dados sensíveis não foram gravados: " + errSens.message, "erro");
+    await carregarFuncionarios(); await abrirFuncionario(funcEditId); return;
+  }
   $("btn-excluir-func").style.display = "";
   $("func-status").value = result.data.status;
   aviso("app-aviso","Funcionário salvo.","ok");

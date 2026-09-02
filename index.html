@@ -573,9 +573,10 @@
             <div class="odoo-tab ativa" data-tab="pessoais">
               <div class="grade">
                 <div class="campo"><label>Nome completo *</label><input id="func-nome" required /></div>
-                <div class="campo"><label>CPF</label><input id="func-cpf" /></div>
-                <div class="campo"><label>RG</label><input id="func-rg" /></div>
-                <div class="campo"><label>Data de nascimento</label><input id="func-nascimento" type="date" /></div>
+                <div class="campo func-sens"><label>CPF</label><input id="func-cpf" /></div>
+                <div class="campo func-sens"><label>RG</label><input id="func-rg" /></div>
+                <div class="campo func-sens"><label>Data de nascimento</label><input id="func-nascimento" type="date" /></div>
+                <p class="meta" id="func-sens-aviso" style="display:none;grid-column:1/-1;">🔒 CPF, RG, nascimento, salário, endereço e contato de emergência são visíveis só para diretoria e RH.</p>
               </div>
             </div>
 
@@ -597,10 +598,17 @@
                 <div class="campo"><label>Situação</label><select id="func-status"></select></div>
                 <div class="campo"><label>Data de admissão</label><input id="func-admissao" type="date" /></div>
                 <div class="campo"><label>Data de demissão</label><input id="func-demissao" type="date" /></div>
-                <div class="campo"><label>Salário (R$)</label><input id="func-salario" type="number" step="0.01" min="0" /></div>
+                <div class="campo func-sens"><label>Salário (R$)</label><input id="func-salario" type="number" step="0.01" min="0" /></div>
                 <div class="campo"><label>Supervisor direto</label><select id="func-supervisor"><option value="">— Sem supervisor —</option></select></div>
                 <div class="campo"><label>E-mail</label><input id="func-email" type="email" /></div>
                 <div class="campo"><label>Telefone</label><input id="func-telefone" /></div>
+                <div class="campo"><label>Estado de origem</label><select id="func-estado-origem"></select></div>
+                <div class="campo"><label>Categoria operacional</label><select id="func-categoria"><option value="">—</option><option value="ajudante">Ajudante</option><option value="operador">Operador</option><option value="bombista">Bombista</option><option value="motorista">Motorista</option><option value="encarregado">Encarregado</option><option value="adm">Administrativo</option><option value="oficina">Oficina</option><option value="outro">Outro</option></select></div>
+                <div class="campo"><label>Especialidade (frente)</label><select id="func-especialidade"><option value="">—</option><option value="helice">Hélice</option><option value="raiz">Raiz</option><option value="secante">Secante</option><option value="trado">Trado</option><option value="munck">Munck</option></select></div>
+                <div class="campo"><label>Avaliação</label><select id="func-avaliacao"><option value="">—</option><option value="novato">Novato</option><option value="bom">Bom</option><option value="muito_bom">Muito bom</option><option value="excelente">Excelente</option><option value="atencao">Atenção</option></select></div>
+                <div class="campo"><label>Coringa</label><label class="check-inline"><input type="checkbox" id="func-coringa" /> atende qualquer frente / encarregado</label></div>
+                <div class="campo"><label>Ciclo de baixada (dias)</label><input id="func-ciclo-baixada" type="number" min="0" step="1" value="90" /></div>
+                <div class="campo largo"><label>Observação logística</label><input id="func-obs-logistica" placeholder="ex.: Está no RJ · aviso 17/08 · vendeu" /></div>
                 <div class="campo">
                   <label>Situação no sistema</label>
                   <label class="check-inline"><input type="checkbox" id="func-ativo" checked /> Funcionário ativo</label>
@@ -661,22 +669,22 @@
             <!-- TAB EMERGÊNCIA -->
             <div class="odoo-tab" data-tab="emergencia">
               <div class="grade">
-                <div class="campo"><label>Nome do contato</label><input id="func-emerg-nome" /></div>
-                <div class="campo"><label>Telefone</label><input id="func-emerg-tel" /></div>
-                <div class="campo"><label>Parentesco</label><input id="func-emerg-parentesco" placeholder="ex.: Cônjuge, Pai, Mãe..." /></div>
+                <div class="campo func-sens"><label>Nome do contato</label><input id="func-emerg-nome" /></div>
+                <div class="campo func-sens"><label>Telefone</label><input id="func-emerg-tel" /></div>
+                <div class="campo func-sens"><label>Parentesco</label><input id="func-emerg-parentesco" placeholder="ex.: Cônjuge, Pai, Mãe..." /></div>
               </div>
             </div>
 
             <!-- TAB ENDEREÇO -->
             <div class="odoo-tab" data-tab="endereco">
               <div class="grade">
-                <div class="campo"><label>CEP</label><input id="func-cep" /></div>
-                <div class="campo"><label>Logradouro</label><input id="func-logradouro" /></div>
-                <div class="campo"><label>Número</label><input id="func-numero" /></div>
-                <div class="campo"><label>Complemento</label><input id="func-complemento" /></div>
-                <div class="campo"><label>Bairro</label><input id="func-bairro" /></div>
-                <div class="campo"><label>Cidade</label><input id="func-cidade" /></div>
-                <div class="campo"><label>UF</label><select id="func-uf"></select></div>
+                <div class="campo func-sens"><label>CEP</label><input id="func-cep" /></div>
+                <div class="campo func-sens"><label>Logradouro</label><input id="func-logradouro" /></div>
+                <div class="campo func-sens"><label>Número</label><input id="func-numero" /></div>
+                <div class="campo func-sens"><label>Complemento</label><input id="func-complemento" /></div>
+                <div class="campo func-sens"><label>Bairro</label><input id="func-bairro" /></div>
+                <div class="campo func-sens"><label>Cidade</label><input id="func-cidade" /></div>
+                <div class="campo func-sens"><label>UF</label><select id="func-uf"></select></div>
               </div>
             </div>
 
