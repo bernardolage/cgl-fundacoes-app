@@ -17,6 +17,21 @@ const _mapaMaquinas = {};   // equipamento_id -> { codigo, nome }
 let _equipamentosCache = []; // equipamentos ativos da obra atual
 let _distanciaMinObra = 0;    // piso absoluto opcional da obra (0 = sem piso)
 let _regraDist = { fatorHelice: 5, fatorEscavada: 2.5, piso: 0, fatorLocacao: 3 };
+// Coordenadas ficam gravadas na unidade do projeto (mm por padrão — DXF/PDF vêm assim).
+// Tudo que desenha ou mede converte para metros via _coordM().
+let _unidadeCoord = "mm";
+let _fatorCoord = 1000;
+const FATOR_UNIDADE = { mm: 1000, cm: 100, m: 1 };
+function _coordM(e){
+  if(e == null || e.coord_x == null || e.coord_y == null) return e;
+  return Object.assign({}, e, { coord_x: Number(e.coord_x) / _fatorCoord, coord_y: Number(e.coord_y) / _fatorCoord });
+}
+function _aplicarUnidadeCoordUI(){
+  const lx = $("lbl-est-coord-x"), ly = $("lbl-est-coord-y");
+  if(lx) lx.textContent = "Coordenada X / Leste (" + _unidadeCoord + ")";
+  if(ly) ly.textContent = "Coordenada Y / Norte (" + _unidadeCoord + ")";
+  if($("regra-unidade")) $("regra-unidade").value = _unidadeCoord;
+}
 
 // Regra de cura da CGL: distância mínima EIXO A EIXO = fator × Ø (maior Ø do par).
 // Hélice/raiz/demais 5×Ø; escavada × escavada 2,5×Ø. Piso opcional por obra.
@@ -39,24 +54,33 @@ function distMinLocacao(a, b){
 }
 function descreverRegraDist(){
   const f = (n) => Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-  return "execução " + f(_regraDist.fatorHelice) + "×Ø (escavada " + f(_regraDist.fatorEscavada) + "×Ø)"
+  // Só menciona o fator de escavada se a obra tiver estacas escavadas (obra de raiz/hélice não precisa ver isso)
+  const tipos = new Set((_estacas || []).map(e => e.tipo).filter(Boolean));
+  const temEsc = tipos.has("escavada"), soEsc = temEsc && tipos.size === 1;
+  const exec = soEsc ? f(_regraDist.fatorEscavada) + "×Ø"
+    : f(_regraDist.fatorHelice) + "×Ø" + (temEsc ? " (escavada " + f(_regraDist.fatorEscavada) + "×Ø)" : "");
+  return "execução " + exec
     + (Number(_regraDist.piso) > 0 ? " · piso " + f(_regraDist.piso) + " m" : "")
     + " · locação " + f(_regraDist.fatorLocacao) + "×Ø";
 }
 function preencherRegraDistUI(){
-  const t = $("regra-dist-txt"); if(t) t.textContent = descreverRegraDist();
+  const t = $("regra-dist-txt"); if(t) t.textContent = descreverRegraDist() + " · coordenadas em " + _unidadeCoord;
   if($("regra-fator"))     $("regra-fator").value     = _regraDist.fatorHelice;
   if($("regra-fator-esc")) $("regra-fator-esc").value = _regraDist.fatorEscavada;
   if($("regra-piso"))      $("regra-piso").value      = _regraDist.piso;
   if($("regra-fator-loc")) $("regra-fator-loc").value = _regraDist.fatorLocacao;
+  _aplicarUnidadeCoordUI();
 }
 async function salvarRegraDist(){
   if(!obraEditId) return;
   const fh = Number($("regra-fator")?.value), fe = Number($("regra-fator-esc")?.value), piso = Number($("regra-piso")?.value), fl = Number($("regra-fator-loc")?.value);
   if(!(fh > 0) || !(fe > 0) || !(fl > 0) || !(piso >= 0)){ aviso("app-aviso","Informe fatores maiores que zero e piso ≥ 0.","erro"); return; }
-  const { error } = await sb.from("obras").update({ fator_dist_diametro: fh, fator_dist_diametro_escavada: fe, distancia_minima_estacas: piso, fator_dist_locacao: fl }).eq("id", obraEditId);
+  const un = $("regra-unidade")?.value || "mm";
+  if(!FATOR_UNIDADE[un]){ aviso("app-aviso","Unidade inválida.","erro"); return; }
+  const { error } = await sb.from("obras").update({ fator_dist_diametro: fh, fator_dist_diametro_escavada: fe, distancia_minima_estacas: piso, fator_dist_locacao: fl, unidade_coordenadas: un }).eq("id", obraEditId);
   if(error){ aviso("app-aviso","Não foi possível salvar a regra: " + error.message,"erro"); return; }
   _regraDist = { fatorHelice: fh, fatorEscavada: fe, piso, fatorLocacao: fl };
+  _unidadeCoord = un; _fatorCoord = FATOR_UNIDADE[un];
   _distanciaMinObra = piso;
   preencherRegraDistUI();
   const d = $("regra-dist"); if(d) d.open = false;
@@ -195,7 +219,7 @@ async function carregarEstacasDaObra(obraId){
       .eq("rdo.obra_id", obraId)
       .not("estaca_id", "is", null),
     sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo"),
-    sb.from("obras").select("distancia_minima_estacas,fator_dist_diametro,fator_dist_diametro_escavada,fator_dist_locacao").eq("id", obraId).single()
+    sb.from("obras").select("distancia_minima_estacas,fator_dist_diametro,fator_dist_diametro_escavada,fator_dist_locacao,unidade_coordenadas").eq("id", obraId).single()
   ]);
   // Guarda de corrida: se o usuário abriu OUTRA obra enquanto esta carregava,
   // descarta o resultado (antes a ficha de B mostrava as estacas de A).
@@ -208,7 +232,8 @@ async function carregarEstacasDaObra(obraId){
     fatorLocacao:  Number(obraRes.data?.fator_dist_locacao ?? 3) || 3
   };
   _distanciaMinObra = _regraDist.piso;
-  preencherRegraDistUI();
+  _unidadeCoord = FATOR_UNIDADE[obraRes.data?.unidade_coordenadas] ? obraRes.data.unidade_coordenadas : "mm";
+  _fatorCoord = FATOR_UNIDADE[_unidadeCoord];
   _estacas = estsRes.error ? [] : (estsRes.data || []);
   // Conta execuções por estaca pra detectar "ALTERADO" (refuros, casamentos errados)
   const contExec = {};
@@ -1229,7 +1254,7 @@ function renderPlantaSVG(){
       if(!alvo.includes(termo)) return false;
     }
     return true;
-  });
+  }).map(_coordM); // planta e cotas sempre em metros
 
   svg.innerHTML = "";
 
@@ -1243,6 +1268,7 @@ function renderPlantaSVG(){
   });
   renderLegendaPlanta();
   renderConflitosDistancia(filtradas);
+  preencherRegraDistUI(); // texto da regra depende dos tipos de estaca carregados
 
   // Grupo que carrega o transform pan/zoom
   const g = document.createElementNS(ns, "g");
@@ -1389,7 +1415,7 @@ function renderConflitosDistancia(filtradas){
   const box = $("planta-conflitos");
   if(!box) return;
 
-  const comCoord = _estacas.filter(e => e.coord_x != null && e.coord_y != null);
+  const comCoord = _estacas.filter(e => e.coord_x != null && e.coord_y != null).map(_coordM); // em metros
   const comOrdem = _estacas.filter(e => e.ordem_execucao != null && e.equipamento_id);
   const htmlProx = _avisoParesProximos(comCoord);
   if(comCoord.length < 2 || comOrdem.length < 2){
@@ -1403,8 +1429,8 @@ function renderConflitosDistancia(filtradas){
 
   // agrupa por máquina, ordena pela sequência
   const porMaq = {};
-  _estacas.forEach(e => {
-    if(e.coord_x == null || e.coord_y == null || e.ordem_execucao == null || !e.equipamento_id) return;
+  comCoord.forEach(e => {
+    if(e.ordem_execucao == null || !e.equipamento_id) return;
     (porMaq[e.equipamento_id] ||= []).push(e);
   });
 

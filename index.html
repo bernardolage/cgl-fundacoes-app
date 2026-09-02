@@ -1480,12 +1480,13 @@
                   </div>
                 </div>
                 <details class="regra-dist" id="regra-dist">
-                  <summary>📐 Regra de distância: <strong id="regra-dist-txt">execução 5×Ø (escavada 2,5×Ø) · locação 3×Ø</strong> <span class="meta">editar</span></summary>
+                  <summary>📐 Regra de distância: <strong id="regra-dist-txt">execução 5×Ø · locação 3×Ø · coordenadas em mm</strong> <span class="meta">editar</span></summary>
                   <div class="regra-dist-form">
                     <label>Locação (projeto) <span><input id="regra-fator-loc" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
                     <label>Execução — hélice / raiz / demais <span><input id="regra-fator" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
                     <label>Execução — escavada <span><input id="regra-fator-esc" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
                     <label>Piso absoluto (m; 0 = sem piso) <span><input id="regra-piso" type="number" step="0.05" min="0" /> m</span></label>
+                    <label>Unidade das coordenadas do projeto <span><select id="regra-unidade"><option value="mm">mm (padrão)</option><option value="cm">cm</option><option value="m">m</option></select></span></label>
                     <button type="button" class="btn-sec btn-sm" id="btn-regra-salvar">Salvar regra</button>
                     <span class="meta">Eixo a eixo, usando o maior Ø do par. Locação: todo par do projeto (vermelho na planta). Execução: estacas consecutivas da mesma máquina, regra de cura (âmbar na planta).</span>
                   </div>
@@ -1578,8 +1579,8 @@
             <div class="campo"><label>Bloco</label><input id="est-bloco" placeholder="ex.: B1, Anel 1 int." /></div>
             <div class="campo"><label>Máquina</label><select id="est-equipamento"><option value="">— nenhuma —</option></select></div>
             <div class="campo"><label>Ordem de execução</label><input id="est-ordem" type="number" step="1" min="1" placeholder="sequência da máquina" /></div>
-            <div class="campo"><label>Coordenada X (m)</label><input id="est-coord-x" type="number" step="0.01" placeholder="opcional — p/ validar distância" /></div>
-            <div class="campo"><label>Coordenada Y (m)</label><input id="est-coord-y" type="number" step="0.01" placeholder="opcional" /></div>
+            <div class="campo"><label id="lbl-est-coord-x">Coordenada X / Leste (mm)</label><input id="est-coord-x" type="number" step="0.01" placeholder="opcional — p/ validar distância" /></div>
+            <div class="campo"><label id="lbl-est-coord-y">Coordenada Y / Norte (mm)</label><input id="est-coord-y" type="number" step="0.01" placeholder="opcional" /></div>
             <div class="campo largo"><label>Observações</label><textarea id="est-obs" rows="2"></textarea></div>
           </div>
           <div class="form-acoes compacta">
