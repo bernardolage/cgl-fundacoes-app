@@ -225,8 +225,14 @@ async function abrirOrcamento(id){
   $("orc-hosp-valor").value        = o.hospedagem_valor_mensal != null ? o.hospedagem_valor_mensal : "";
 
   $("orc-itens").innerHTML = "";
-  const { data:itens } = await sb.from("orcamento_itens")
+  const { data:itens, error: errItens } = await sb.from("orcamento_itens")
     .select("*").eq("orcamento_id",id).order("ordem");
+  // Itens não carregaram → não abrir: salvar faria delete+insert com lista vazia.
+  if(errItens){
+    orcEditId = null;
+    aviso("app-aviso","Não foi possível carregar os itens do orçamento ("+errItens.message+"). Tente abrir de novo.","erro");
+    return;
+  }
   (itens || []).forEach(it => adicionarItemPreenchido(it));
 
   $("btn-excluir-orc").style.display = "";
@@ -434,13 +440,21 @@ async function criarNovaRevisaoOrc(){
   const { data: novoOrc, error: e2 } = await sb.from("orcamentos").insert(novo).select("id").single();
   if(e2){ aviso("app-aviso","Erro ao criar revisão: "+e2.message,"erro"); return; }
 
-  // Copia itens
-  const { data: itensAtuais } = await sb.from("orcamento_itens")
+  // Copia itens — se a leitura ou a cópia falhar, desfaz a revisão recém-criada
+  // (antes ficava uma revisão vazia com "✅ criada").
+  const { data: itensAtuais, error: errLer } = await sb.from("orcamento_itens")
     .select("ordem,secao,descricao,variante_id,quantidade,unidade,valor_unitario,observacao")
     .eq("orcamento_id", orcEditId).order("ordem");
-  if(itensAtuais && itensAtuais.length){
+  let errCopia = errLer || null;
+  if(!errCopia && itensAtuais && itensAtuais.length){
     const novosItens = itensAtuais.map(it => ({ ...it, orcamento_id: novoOrc.id }));
-    await sb.from("orcamento_itens").insert(novosItens);
+    const { error: errIns } = await sb.from("orcamento_itens").insert(novosItens);
+    errCopia = errIns || null;
+  }
+  if(errCopia){
+    await sb.from("orcamentos").delete().eq("id", novoOrc.id);
+    aviso("app-aviso","Não foi possível copiar os itens para a nova revisão ("+errCopia.message+"). A revisão não foi criada.","erro");
+    return;
   }
 
   aviso("app-aviso", `✅ Revisão ${novaRev} criada. Abrindo...`, "ok");
@@ -689,7 +703,8 @@ async function salvarOrcamento(novoStatus){
   if(orcEditId){
     const { error } = await sb.from("orcamentos").update(reg).eq("id", orcEditId);
     if(error){ aviso("app-aviso","Não foi possível salvar o orçamento: "+error.message,"erro"); return; }
-    await sb.from("orcamento_itens").delete().eq("orcamento_id", orcEditId);
+    const { error: errDel } = await sb.from("orcamento_itens").delete().eq("orcamento_id", orcEditId);
+    if(errDel){ aviso("app-aviso","Erro ao substituir os itens: "+errDel.message+". Nada foi reinserido — tente salvar de novo.","erro"); return; }
   } else {
     const { data:novo, error } = await sb.from("orcamentos").insert(reg).select("id").single();
     if(error){ aviso("app-aviso","Não foi possível salvar o orçamento: "+error.message,"erro"); return; }

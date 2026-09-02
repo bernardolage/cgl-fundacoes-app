@@ -275,7 +275,9 @@ function fecharModalEstaca(){
 
 async function salvarEstaca(){
   if(!obraEditId){ aviso("app-aviso","Salve a obra antes de adicionar estacas.","erro"); return; }
-  const numero = $("est-numero").value.trim();
+  // Mesma normalização (UPPER + trim) dos imports e do trigger SQL: sem isso,
+  // "b12" manual e "B12" importada coexistiam (UNIQUE é case-sensitive).
+  const numero = normalizarNumeroEstacaEstacas($("est-numero").value);
   if(!numero){ aviso("app-aviso","Informe o nº da estaca.","erro"); return; }
 
   const reg = {
@@ -1568,7 +1570,7 @@ function renderizarReconciliacao(){
 
     const sugestaoTop = sugs[0];
     const sugId = sugestaoTop?.p.id || "";
-    const data = o.perfuracao_inicio ? new Date(o.perfuracao_inicio).toLocaleDateString("pt-BR") : "";
+    const data = o.perfuracao_inicio ? dataBR(o.perfuracao_inicio) : ""; // fatia a string: sem conversão de fuso
 
     // Badge de confiança ao lado do select
     const badge = sugestaoTop
@@ -1657,7 +1659,7 @@ async function criarPrevistaDaOrfa(orfaId, numero, profundidade){
   // Verifica se já existe (pode ter sido criada por outra órfã na mesma sessão)
   const { data: existente } = await sb.from("estacas")
     .select("id").eq("obra_id", obraEditId)
-    .ilike("numero", nomeNorm).maybeSingle();
+    .eq("numero", nomeNorm).maybeSingle(); // eq, não ilike: "_" e "%" são curingas no ILIKE (B6.1_BB casava com B6.1XBB)
   let estacaId;
   if(existente){
     estacaId = existente.id;
@@ -1700,7 +1702,7 @@ async function criarTodasPrevistasFaltantes(){
     // Verifica/cria
     const { data: existente } = await sb.from("estacas")
       .select("id").eq("obra_id", obraEditId)
-      .ilike("numero", nomeNorm).maybeSingle();
+      .eq("numero", nomeNorm).maybeSingle(); // eq, não ilike: "_" e "%" são curingas no ILIKE (B6.1_BB casava com B6.1XBB)
     let estacaId;
     if(existente){
       estacaId = existente.id;
@@ -1836,7 +1838,7 @@ function renderizarAlteradas(){
 
     // Linhas das execuções
     const linhasExec = g.execs.map((re, idx) => {
-      const data = re.perfuracao_inicio ? new Date(re.perfuracao_inicio).toLocaleDateString("pt-BR") : "—";
+      const data = re.perfuracao_inicio ? dataBR(re.perfuracao_inicio) : "—"; // sem conversão de fuso
       const tag = re.modalidade_execucao === "refuro"
         ? `<span class="rec-badge rec-badge-alta">REFURO</span>`
         : (idx === 0 ? `<span class="rec-badge" style="background:var(--info-bg);color:var(--marca-600);">furo original</span>` : `<span class="rec-badge rec-badge-baixa">extra</span>`);

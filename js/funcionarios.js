@@ -60,7 +60,7 @@ function deptNome(id){
 
 function cnhStatus(validade){
   if(!validade) return "";
-  const dias = Math.floor((new Date(validade) - new Date()) / 864e5);
+  const dias = Math.floor((new Date(String(validade).slice(0,10) + "T00:00:00") - new Date()) / 864e5); // fuso local
   if(dias < 0)   return `<span class="tag vermelho" title="${dataBR(validade)}">CNH vencida</span>`;
   if(dias <= 90) return `<span class="tag ambar" title="${dataBR(validade)}">CNH vence em ${dias}d</span>`;
   return "";
@@ -376,7 +376,8 @@ async function carregarDocsFuncionario(){
   const em90 = new Date(hoje); em90.setDate(em90.getDate()+90);
   const alertas = docs.filter(d => {
     if(!d.validade) return false;
-    return new Date(d.validade) <= em90;
+    // "T00:00:00" força fuso local; "YYYY-MM-DD" puro é UTC (= 21h do dia anterior no BR)
+    return new Date(String(d.validade).slice(0,10) + "T00:00:00") <= em90;
   }).length;
 
   const sbDocs = $("func-sb-docs");
@@ -404,7 +405,7 @@ function renderDocsFuncionario(docs){
   const linhas = docs.map(d => {
     let valCls="", valTxt = dataBR(d.validade)||"—";
     if(d.validade){
-      const v = new Date(d.validade); v.setHours(0,0,0,0);
+      const v = new Date(String(d.validade).slice(0,10) + "T00:00:00"); // fuso local
       if(v<hoje)       { valCls="func-doc-vencido";  valTxt+=" ⚠️"; }
       else if(v<=em90) { valCls="func-doc-vencendo"; valTxt+=" ⚠️"; }
       else               valCls="func-doc-ok";

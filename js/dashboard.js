@@ -104,8 +104,8 @@ async function carregarDashFinanceiro(){
    ============================================================ */
 async function carregarDashOperacional(){
   const hoje = new Date();
-  const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0,10);
-  const fimMes    = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).toISOString().slice(0,10);
+  const inicioMes = dataLocalISO(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+  const fimMes    = dataLocalISO(new Date(hoje.getFullYear(), hoje.getMonth()+1, 0));
 
   const [
     { count: cntAtivas },
@@ -151,9 +151,9 @@ async function carregarDashPendencias(){
   if(!cont) return;
 
   const hoje = new Date();
-  const proximos7 = new Date(hoje.getTime() + 7*86400000).toISOString().slice(0,10);
-  const hojeISOstr = hoje.toISOString().slice(0,10);
-  const d5atras = new Date(hoje.getTime() - 5*86400000).toISOString().slice(0,10);
+  const proximos7  = addDiasISO(7);   // datas em fuso local (ver hojeISO em core.js)
+  const hojeISOstr = hojeISO();
+  const d5atras    = addDiasISO(-5);
 
   const [
     { data: orfas },
@@ -207,7 +207,8 @@ async function carregarDashPendencias(){
     });
   }
   (orcVenc||[]).forEach(o => {
-    const dias = Math.ceil((new Date(o.validade) - hoje) / 86400000);
+    // "T00:00:00" força leitura no fuso local (sem isso, "YYYY-MM-DD" é UTC = 21h do dia anterior no BR)
+    const dias = Math.ceil((new Date(String(o.validade).slice(0,10) + "T00:00:00") - hoje) / 86400000);
     itens.push({
       icone: "📄", cor: "var(--perigo)", bg: "var(--perigo-bg)",
       texto: `Orçamento <strong>${esc(o.numero)}</strong> vence em ${dias} dia(s) (${dataBR(o.validade)})`,
@@ -269,7 +270,7 @@ async function carregarDashGraficoProducao(){
   const cont = $("dash-grafico-prod");
   if(!cont) return;
   const hoje = new Date();
-  const ini  = new Date(hoje.getTime() - 30*86400000).toISOString().slice(0,10);
+  const ini  = addDiasISO(-30);
   const { data } = await sb.from("rdo")
     .select("data,producao_dia_m")
     .gte("data", ini)

@@ -192,6 +192,12 @@ async function abrirMedicao(id){
       .eq("medicao_id", id).order("ordem")
   ]);
   if(medRes.error){ aviso("app-aviso","Erro ao abrir medição: "+medRes.error.message, "erro"); return; }
+  // Itens não carregaram → NÃO abrir: salvarMedicao apaga e reinsere os itens,
+  // e reinseriria uma lista vazia (perda dos itens da medição).
+  if(itensRes.error){
+    aviso("app-aviso","Não foi possível carregar os itens da medição ("+itensRes.error.message+"). Tente abrir de novo.","erro");
+    return;
+  }
   const data = medRes.data;
   medEditId = id;
   $("med-numero").value = data.numero || "";
@@ -370,7 +376,9 @@ async function carregarDetalhesExecucaoMed(){
     const num = e.estaca_numero || e.estaca?.numero || "—";
     const diam = e.estaca?.diametro_mm || "—";
     const data = e.rdo?.data ? dataBR(e.rdo.data) : "—";
-    const hora = e.perfuracao_inicio ? new Date(e.perfuracao_inicio).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—";
+    // Horário do RDO é gravado "sem fuso" (naive); fatiar a string mostra o que foi
+    // digitado. toLocaleTimeString convertia de UTC e exibia 3h a menos.
+    const hora = e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(11,16) : "—";
     return `<tr ${isRef ? 'style="background:var(--aviso-bg);"' : ""}>
       <td style="text-align:center;">${i+1}</td>
       <td><strong>${esc(num)}</strong>${isRef ? ' <span class="badge-alterado" style="background:var(--aviso-bg);color:var(--aviso-txt);border-color:var(--aviso);">REFURO</span>' : ""}</td>
@@ -883,25 +891,29 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
   const endereco = [obra.logradouro, obra.numero, obra.cidade, obra.uf ? obra.uf.toUpperCase() : ""].filter(Boolean).join(" - ");
 
   // SEÇÃO 2: Estacas executadas (1 linha por execução)
-  const valorPorMetro = itens.length ? (Number(itens.find(i => /estaca|h.lice|trado/i.test(i.descricao||""))?.valor_unitario) || 52) : 52;
+  // Preço por metro vem do item de estaca/hélice/trado da medição. Sem item de
+  // referência, NÃO inventar valor (antes caía num R$ 52/m fictício que ia
+  // para o PDF do cliente): mostra "—" nas colunas de valor.
+  const itemRef = itens.find(i => /estaca|h.lice|trado/i.test(i.descricao||""));
+  const valorPorMetro = itemRef && Number(itemRef.valor_unitario) > 0 ? Number(itemRef.valor_unitario) : null;
   const linhasEstacas = execs.length ? execs.map((e, i) => {
     const numEstaca = e.estaca_numero || e.estaca?.numero || "—";
     const diam = e.estaca?.diametro_mm || "—";
     const prof = Number(e.profundidade_executada) || 0;
-    const valor = prof * valorPorMetro;
+    const valor = valorPorMetro != null ? prof * valorPorMetro : null;
     return `<tr>
       <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${i+1}</td>
       <td style="padding:4px 6px;border:1px solid #000;">${esc(numEstaca)}</td>
       <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${e.rdo?.data ? dataBR(e.rdo.data) : "—"}</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${diam}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${esc(diam)}</td>
       <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${num(prof)} m</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valorPorMetro)}</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valor)}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(valorPorMetro) : "—"}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valor != null ? brl(valor) : "—"}</td>
     </tr>`;
   }).join("") : "";
 
   const totalMetragem = execs.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
-  const totalEstacasValor = totalMetragem * valorPorMetro;
+  const totalEstacasValor = valorPorMetro != null ? totalMetragem * valorPorMetro : null;
 
   const blocoEstacas = execs.length ? `
     <div style="font-size:12.5px;font-weight:700;text-align:center;margin:14px 0 6px;background:#e8e8e8;padding:6px;border:1px solid #000;">Estacas Executadas</div>
@@ -923,7 +935,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
           <td colspan="4" style="padding:5px;border:1px solid #000;text-align:right;">TOTAL DE ESTACAS:</td>
           <td style="padding:5px;border:1px solid #000;text-align:right;">${num(totalMetragem)} m</td>
           <td style="padding:5px;border:1px solid #000;"></td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
         </tr>
       </tfoot>
     </table>` : "";
@@ -952,14 +964,14 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
         ${Object.entries(porDiam).map(([d, info]) => `<tr>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${d}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${num(info.metragem)} m</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valorPorMetro)}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(valorPorMetro) : "—"}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${info.qty}</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(info.metragem * valorPorMetro)}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(info.metragem * valorPorMetro) : "—"}</td>
         </tr>`).join("")}
         <tr style="background:#f4f4f4;font-weight:700;">
           <td colspan="3" style="padding:5px;border:1px solid #000;text-align:right;">TOTAL:</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${execs.length}</td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
         </tr>
       </tbody>
     </table>` : "";
@@ -1010,13 +1022,13 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${dataBR(d)}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${porDia[d].estacas}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${num(porDia[d].metragem)} m</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(porDia[d].metragem * valorPorMetro)}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(porDia[d].metragem * valorPorMetro) : "—"}</td>
         </tr>`).join("")}
         <tr style="background:#f4f4f4;font-weight:700;">
           <td style="padding:5px;border:1px solid #000;text-align:right;">TOTAL:</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${execs.length}</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${num(totalMetragem)} m</td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
         </tr>
       </tbody>
     </table>` : "";

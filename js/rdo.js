@@ -232,6 +232,15 @@ async function abrirRDO(id){
     sb.from("rdo_equipe").select("*").eq("rdo_id", id).order("ordem")
   ]);
   if(rdo.error){ aviso("app-aviso","Erro: "+rdo.error.message,"erro"); return; }
+  // Se a leitura das execuções/equipe falhar (rede, RLS), NÃO abrir a ficha:
+  // salvarRDO faz delete+insert dos filhos e reinseriria um array vazio,
+  // apagando as execuções do dia. Abortar aqui é o que evita perda de dados.
+  const falha = execs.error || equipe.error || dadosRaiz.error;
+  if(falha){
+    rdoEditId = null;
+    aviso("app-aviso","Não foi possível carregar as execuções deste RDO ("+falha.message+"). Tente abrir de novo.","erro");
+    return;
+  }
   const data = rdo.data;
   $("rdo-obra").value             = data.obra_id || "";
   $("rdo-data").value             = (data.data||"").slice(0,10);
@@ -440,10 +449,10 @@ function renderExecucoes(){
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-diam" step="0.1" min="0" value="${esc(e.diametro_mm ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pproj" step="0.01" min="0" value="${esc(e.profundidade_projeto ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" style="width:75px;" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perfi col-lg" value="${e.perfuracao_inicio ? new Date(e.perfuracao_inicio).toISOString().slice(0,16) : ""}" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perff col-lg" value="${e.perfuracao_fim ? new Date(e.perfuracao_fim).toISOString().slice(0,16) : ""}" /></td>
-      <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-conci col-lg" value="${e.concretagem_inicio ? new Date(e.concretagem_inicio).toISOString().slice(0,16) : ""}" /></td>
-      <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-concf col-lg" value="${e.concretagem_fim ? new Date(e.concretagem_fim).toISOString().slice(0,16) : ""}" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perfi col-lg" value="${e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(0,16) : ""}" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perff col-lg" value="${e.perfuracao_fim ? String(e.perfuracao_fim).slice(0,16) : ""}" /></td>
+      <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-conci col-lg" value="${e.concretagem_inicio ? String(e.concretagem_inicio).slice(0,16) : ""}" /></td>
+      <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-concf col-lg" value="${e.concretagem_fim ? String(e.concretagem_fim).slice(0,16) : ""}" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="number" class="ex-torque" step="0.1" value="${esc(e.torque ?? "")}" style="width:70px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="number" class="ex-vol" step="0.001" min="0" value="${esc(e.volume_concreto_m3 ?? "")}" style="width:70px;" /></td>
       <td><select class="ex-equip col-sm">${eqOpts}</select></td>
@@ -952,13 +961,23 @@ async function salvarRDO(novoStatus){
         aviso("app-aviso","Erro ao salvar: "+error.message,"erro");
       return;
     }
-    // Substitui execuções e sub-tabelas
-    await sb.from("rdo_execucao_estaca").delete().eq("rdo_id", rdoEditId);
-    await sb.from("rdo_equipe").delete().eq("rdo_id", rdoEditId);
-    if(tipo === "estaca_raiz"){
-      await sb.from("rdo_raiz_solo").delete().eq("rdo_id", rdoEditId);
-      await sb.from("rdo_raiz_justificativa").delete().eq("rdo_id", rdoEditId);
-      await sb.from("rdo_raiz_dados").delete().eq("rdo_id", rdoEditId);
+    // Substitui execuções e sub-tabelas. Cada delete é checado: se um falhar,
+    // paramos ANTES do insert para não deixar o RDO pela metade. As tabelas de
+    // raiz são limpas sempre (se o tipo mudou de raiz para outro, o boletim
+    // antigo não pode ficar órfão).
+    const dels = [
+      ["rdo_execucao_estaca",   sb.from("rdo_execucao_estaca").delete().eq("rdo_id", rdoEditId)],
+      ["rdo_equipe",            sb.from("rdo_equipe").delete().eq("rdo_id", rdoEditId)],
+      ["rdo_raiz_solo",         sb.from("rdo_raiz_solo").delete().eq("rdo_id", rdoEditId)],
+      ["rdo_raiz_justificativa",sb.from("rdo_raiz_justificativa").delete().eq("rdo_id", rdoEditId)],
+      ["rdo_raiz_dados",        sb.from("rdo_raiz_dados").delete().eq("rdo_id", rdoEditId)]
+    ];
+    for(const [tabela, req] of dels){
+      const { error: errDel } = await req;
+      if(errDel){
+        aviso("app-aviso",`Erro ao substituir ${tabela}: ${errDel.message}. Nada foi reinserido — reabra o RDO e tente de novo.`,"erro");
+        return;
+      }
     }
   } else {
     const { data: novo, error } = await sb.from("rdo").insert(reg).select("id").single();

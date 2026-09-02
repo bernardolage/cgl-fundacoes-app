@@ -144,8 +144,20 @@ function dataBR(d){
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d;
 }
 
-/* data de hoje em formato ISO, para preencher campos <input type=date> */
-function hojeISO(){ return new Date().toISOString().slice(0,10); }
+/* data de hoje em formato ISO (yyyy-mm-dd) no FUSO LOCAL, para preencher
+   campos <input type=date> e gravar datas. NÃO usar toISOString(): ele é UTC
+   e, no Brasil (UTC-3), das 21h às 00h devolve o dia seguinte — gravava RDO,
+   medição e NF com a data de amanhã. */
+function dataLocalISO(d){
+  const x = d instanceof Date ? d : new Date(d);
+  return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+}
+function hojeISO(){ return dataLocalISO(new Date()); }
+/* hoje ± n dias, em ISO local (n negativo = passado) */
+function addDiasISO(n){
+  const h = new Date();
+  return dataLocalISO(new Date(h.getFullYear(), h.getMonth(), h.getDate() + n));
+}
 
 /* mostra um aviso temporário (ok) ou fixo (erro) */
 function aviso(elId, msg, tipo){

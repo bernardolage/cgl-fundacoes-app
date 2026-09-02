@@ -179,9 +179,14 @@ async function abrirMovimentacao(id){
   const { data: m, error } = await sb.from("movimentacoes_ativos")
     .select("*").eq("id", id).single();
   if(error){ aviso("app-aviso","Erro ao abrir movimentação: "+error.message, "erro"); return; }
-  movimentacaoAtual = m;
-  const { data: itens } = await sb.from("movimentacao_itens")
+  const { data: itens, error: errItens } = await sb.from("movimentacao_itens")
     .select("*").eq("movimentacao_id", id).order("created_at");
+  // Itens não carregaram → não abrir: salvar faz delete+insert e reinseriria vazio.
+  if(errItens){
+    aviso("app-aviso","Não foi possível carregar os itens da movimentação ("+errItens.message+"). Tente abrir de novo.","erro");
+    return;
+  }
+  movimentacaoAtual = m;
   itensAtuais = itens || [];
   mostrarFichaMovimentacao();
 }
@@ -490,7 +495,8 @@ async function salvarMovimentacao(novoStatus){
     movimentacaoAtual = upd;
   }
 
-  await sb.from("movimentacao_itens").delete().eq("movimentacao_id", movId);
+  const { error: errDelItens } = await sb.from("movimentacao_itens").delete().eq("movimentacao_id", movId);
+  if(errDelItens){ aviso("app-aviso","Erro ao substituir os itens: "+errDelItens.message+". Nada foi reinserido — tente salvar de novo.","erro"); return; }
   const itensInsert = itensAtuais.map(it => ({
     movimentacao_id: movId,
     equipamento_id: it.equipamento_id || null,
