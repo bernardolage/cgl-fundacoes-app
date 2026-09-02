@@ -1480,13 +1480,14 @@
                   </div>
                 </div>
                 <details class="regra-dist" id="regra-dist">
-                  <summary>📐 Regra de distância: <strong id="regra-dist-txt">5×Ø eixo a eixo (escavada 2,5×Ø)</strong> <span class="meta">editar</span></summary>
+                  <summary>📐 Regra de distância: <strong id="regra-dist-txt">execução 5×Ø (escavada 2,5×Ø) · locação 3×Ø</strong> <span class="meta">editar</span></summary>
                   <div class="regra-dist-form">
-                    <label>Hélice / raiz / demais <span><input id="regra-fator" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
-                    <label>Escavada <span><input id="regra-fator-esc" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
+                    <label>Locação (projeto) <span><input id="regra-fator-loc" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
+                    <label>Execução — hélice / raiz / demais <span><input id="regra-fator" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
+                    <label>Execução — escavada <span><input id="regra-fator-esc" type="number" step="0.5" min="1" max="20" /> × Ø</span></label>
                     <label>Piso absoluto (m; 0 = sem piso) <span><input id="regra-piso" type="number" step="0.05" min="0" /> m</span></label>
                     <button type="button" class="btn-sec btn-sm" id="btn-regra-salvar">Salvar regra</button>
-                    <span class="meta">Eixo a eixo, usando o maior Ø do par. Vale para a sequência por máquina, as cotas vermelhas e o aviso de pares.</span>
+                    <span class="meta">Eixo a eixo, usando o maior Ø do par. Locação: todo par do projeto (vermelho na planta). Execução: estacas consecutivas da mesma máquina, regra de cura (âmbar na planta).</span>
                   </div>
                 </details>
                 <div id="planta-conflitos"></div>

@@ -16,7 +16,7 @@ let _plantaCor = "status";  // como colorir a planta: "status" | "maquina"
 const _mapaMaquinas = {};   // equipamento_id -> { codigo, nome }
 let _equipamentosCache = []; // equipamentos ativos da obra atual
 let _distanciaMinObra = 0;    // piso absoluto opcional da obra (0 = sem piso)
-let _regraDist = { fatorHelice: 5, fatorEscavada: 2.5, piso: 0 };
+let _regraDist = { fatorHelice: 5, fatorEscavada: 2.5, piso: 0, fatorLocacao: 3 };
 
 // Regra de cura da CGL: distância mínima EIXO A EIXO = fator × Ø (maior Ø do par).
 // Hélice/raiz/demais 5×Ø; escavada × escavada 2,5×Ø. Piso opcional por obra.
@@ -30,24 +30,33 @@ function distMinEntre(a, b){
   const exigido = Math.max(porDiam, Number(_regraDist.piso) || 0);
   return exigido > 0 ? exigido : 2.05;
 }
+// Regra de LOCAÇÃO do projeto (independe de máquina/sequência): fatorLocacao × maior Ø do par.
+// null quando nenhuma das duas tem Ø (não dá para avaliar).
+function distMinLocacao(a, b){
+  const diam = Math.max(Number(a?.diametro_mm) || 0, Number(b?.diametro_mm) || 0) / 1000;
+  const f = Number(_regraDist.fatorLocacao) || 0;
+  return (diam > 0 && f > 0) ? f * diam : null;
+}
 function descreverRegraDist(){
   const f = (n) => Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-  return f(_regraDist.fatorHelice) + "×Ø eixo a eixo (escavada " + f(_regraDist.fatorEscavada) + "×Ø)"
-    + (Number(_regraDist.piso) > 0 ? " · piso " + f(_regraDist.piso) + " m" : "");
+  return "execução " + f(_regraDist.fatorHelice) + "×Ø (escavada " + f(_regraDist.fatorEscavada) + "×Ø)"
+    + (Number(_regraDist.piso) > 0 ? " · piso " + f(_regraDist.piso) + " m" : "")
+    + " · locação " + f(_regraDist.fatorLocacao) + "×Ø";
 }
 function preencherRegraDistUI(){
   const t = $("regra-dist-txt"); if(t) t.textContent = descreverRegraDist();
   if($("regra-fator"))     $("regra-fator").value     = _regraDist.fatorHelice;
   if($("regra-fator-esc")) $("regra-fator-esc").value = _regraDist.fatorEscavada;
   if($("regra-piso"))      $("regra-piso").value      = _regraDist.piso;
+  if($("regra-fator-loc")) $("regra-fator-loc").value = _regraDist.fatorLocacao;
 }
 async function salvarRegraDist(){
   if(!obraEditId) return;
-  const fh = Number($("regra-fator")?.value), fe = Number($("regra-fator-esc")?.value), piso = Number($("regra-piso")?.value);
-  if(!(fh > 0) || !(fe > 0) || !(piso >= 0)){ aviso("app-aviso","Informe fatores maiores que zero e piso ≥ 0.","erro"); return; }
-  const { error } = await sb.from("obras").update({ fator_dist_diametro: fh, fator_dist_diametro_escavada: fe, distancia_minima_estacas: piso }).eq("id", obraEditId);
+  const fh = Number($("regra-fator")?.value), fe = Number($("regra-fator-esc")?.value), piso = Number($("regra-piso")?.value), fl = Number($("regra-fator-loc")?.value);
+  if(!(fh > 0) || !(fe > 0) || !(fl > 0) || !(piso >= 0)){ aviso("app-aviso","Informe fatores maiores que zero e piso ≥ 0.","erro"); return; }
+  const { error } = await sb.from("obras").update({ fator_dist_diametro: fh, fator_dist_diametro_escavada: fe, distancia_minima_estacas: piso, fator_dist_locacao: fl }).eq("id", obraEditId);
   if(error){ aviso("app-aviso","Não foi possível salvar a regra: " + error.message,"erro"); return; }
-  _regraDist = { fatorHelice: fh, fatorEscavada: fe, piso };
+  _regraDist = { fatorHelice: fh, fatorEscavada: fe, piso, fatorLocacao: fl };
   _distanciaMinObra = piso;
   preencherRegraDistUI();
   const d = $("regra-dist"); if(d) d.open = false;
@@ -186,7 +195,7 @@ async function carregarEstacasDaObra(obraId){
       .eq("rdo.obra_id", obraId)
       .not("estaca_id", "is", null),
     sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo"),
-    sb.from("obras").select("distancia_minima_estacas,fator_dist_diametro,fator_dist_diametro_escavada").eq("id", obraId).single()
+    sb.from("obras").select("distancia_minima_estacas,fator_dist_diametro,fator_dist_diametro_escavada,fator_dist_locacao").eq("id", obraId).single()
   ]);
   // Guarda de corrida: se o usuário abriu OUTRA obra enquanto esta carregava,
   // descarta o resultado (antes a ficha de B mostrava as estacas de A).
@@ -195,7 +204,8 @@ async function carregarEstacasDaObra(obraId){
   _regraDist = {
     fatorHelice:   Number(obraRes.data?.fator_dist_diametro ?? 5) || 5,
     fatorEscavada: Number(obraRes.data?.fator_dist_diametro_escavada ?? 2.5) || 2.5,
-    piso:          Number(obraRes.data?.distancia_minima_estacas ?? 0) || 0
+    piso:          Number(obraRes.data?.distancia_minima_estacas ?? 0) || 0,
+    fatorLocacao:  Number(obraRes.data?.fator_dist_locacao ?? 3) || 3
   };
   _distanciaMinObra = _regraDist.piso;
   preencherRegraDistUI();
@@ -1146,9 +1156,11 @@ function desenharFundoProjeto(g, ns, tf, ests){
     if(L <= ra + rb + 6) return; // círculos encostados: sem espaço para a cota
     const ux = dx / L, uy = dy / L;
     const x1 = pa.vx + ux * ra, y1 = pa.vy + uy * ra, x2 = pb.vx - ux * rb, y2 = pb.vy - uy * rb;
-    const perigo = p.d < distMinEntre(p.a, p.b);
-    fundo.appendChild(mk("line", { x1, y1, x2, y2 }, "planta-cota" + (perigo ? " perigo" : "")));
-    const t = mk("text", { x: (x1 + x2) / 2 - uy * 6, y: (y1 + y2) / 2 + ux * 6 + 2.5 }, "planta-cota-txt" + (perigo ? " perigo" : ""));
+    // vermelho: fere a locação (3×Ø) · âmbar: abaixo da distância de execução (cura) · cinza: ok
+    const loc = distMinLocacao(p.a, p.b);
+    const cls = (loc && p.d < loc) ? " perigo" : (p.d < distMinEntre(p.a, p.b) ? " atencao" : "");
+    fundo.appendChild(mk("line", { x1, y1, x2, y2 }, "planta-cota" + cls));
+    const t = mk("text", { x: (x1 + x2) / 2 - uy * 6, y: (y1 + y2) / 2 + ux * 6 + 2.5 }, "planta-cota-txt" + cls);
     t.textContent = p.d.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     fundo.appendChild(t);
   });
@@ -1169,25 +1181,35 @@ function desenharFundoProjeto(g, ns, tf, ests){
   fundo.appendChild(tn);
 }
 
-// Pares de estacas geometricamente abaixo do mínimo (independe da sequência):
-// é o que a NBR/regra de cura proíbe executar em seguida pela mesma máquina.
+// Duas regras geométricas, independentes da sequência:
+//  • LOCAÇÃO (projeto): todo par deve ter d >= fatorLocacao × Ø → abaixo disso é erro de projeto (vermelho)
+//  • EXECUÇÃO (cura): pares abaixo de fator × Ø não podem ser executados em seguida pela mesma máquina (âmbar)
 function _avisoParesProximos(comCoord){
   if(comCoord.length < 2) return "";
   const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
-  const pares = [];
+  const f2 = (n) => n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const locacao = [], execucao = [];
   for(let i = 0; i < comCoord.length; i++){
     for(let j = i + 1; j < comCoord.length; j++){
-      const d = dist(comCoord[i], comCoord[j]);
-      const min = distMinEntre(comCoord[i], comCoord[j]);
-      if(d < min) pares.push({ a: comCoord[i], b: comCoord[j], d, min });
+      const a = comCoord[i], b = comCoord[j], d = dist(a, b);
+      const loc = distMinLocacao(a, b);
+      if(loc && d < loc){ locacao.push({ a, b, d, min: loc }); continue; }
+      const exe = distMinEntre(a, b);
+      if(d < exe) execucao.push({ a, b, d, min: exe });
     }
   }
-  if(!pares.length) return "";
-  pares.sort((x, y) => x.d - y.d);
-  const f2 = (n) => n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
-  const lista = pares.slice(0, 6).map(p => `<strong>${esc(p.a.numero)}–${esc(p.b.numero)}</strong> ${f2(p.d)} m (mín. ${f2(p.min)})`).join(" · ");
-  const resto = pares.length > 6 ? ` · e mais ${pares.length - 6}` : "";
-  return `<div class="dist-aviso alerta">📏 ${pares.length} par(es) de estacas abaixo da regra ${esc(descreverRegraDist())}: ${lista}${resto}. <span class="meta">Não podem ser executadas em sequência pela mesma máquina (cura).</span></div>`;
+  const lista = (arr) => arr.sort((x, y) => x.d - y.d).slice(0, 6)
+    .map(p => `<strong>${esc(p.a.numero)}–${esc(p.b.numero)}</strong> ${f2(p.d)} m (mín. ${f2(p.min)})`).join(" · ")
+    + (arr.length > 6 ? ` · e mais ${arr.length - 6}` : "");
+  const fL = Number(_regraDist.fatorLocacao).toLocaleString("pt-BR");
+  let html = "";
+  if(locacao.length){
+    html += `<div class="dist-aviso alerta">❌ <strong>Locação fora da regra (${fL}×Ø eixo a eixo):</strong> ${locacao.length} par(es) — ${lista(locacao)}. <span class="meta">Confira o projeto ou as coordenadas antes de executar.</span></div>`;
+  }
+  if(execucao.length){
+    html += `<div class="dist-aviso atencao">⚠️ <strong>${execucao.length} par(es) abaixo da distância de execução</strong> (${esc(descreverRegraDist())}): ${lista(execucao)}. <span class="meta">Não podem ser executadas em sequência pela mesma máquina (cura).</span></div>`;
+  }
+  return html;
 }
 
 function renderPlantaSVG(){

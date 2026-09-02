@@ -2556,3 +2556,8 @@ input:disabled, select:disabled, textarea:disabled {
 .regra-dist-form label span { display: inline-flex; align-items: center; gap: 4px; }
 .regra-dist-form input { width: 80px; }
 .regra-dist-form > .meta { flex-basis: 100%; }
+
+/* ---- Planta: cota âmbar = abaixo da distância de execução (cura); vermelha = fere a locação ---- */
+#est-planta-svg .planta-cota.atencao { stroke: var(--aviso); stroke-width: 1.2; stroke-dasharray: 3 2; }
+#est-planta-svg .planta-cota-txt.atencao { fill: var(--aviso-txt); font-weight: 600; }
+.dist-aviso.atencao { background: var(--aviso-bg); border-left: 3px solid var(--aviso); color: var(--aviso-txt); }
