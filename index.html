@@ -1940,19 +1940,20 @@
       <div id="csv-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:820px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
           <div class="modal-topo">
-            <h3 class="titulo-linha">📄 Importar arquivo (Geodigitus / equipamento)</h3>
+            <h3 class="titulo-linha">📄 Importar diário (PDF, foto ou arquivo do equipamento)</h3>
             <button type="button" class="btn-sec" id="btn-fechar-csv">×</button>
           </div>
           <p class="texto-apoio">
             <strong>Formatos aceitos (detecção automática):</strong>
+            <br>• <strong>PDF ou foto do diário</strong> (.pdf, .jpg, .png) — digital ou preenchido à mão. A IA lê cabeçalho, equipe e estacas; você <strong>confere e corrige</strong> numa tabela antes de gravar.
             <br>• <strong>Geodigitus</strong> (.csv) — cabeçalho <code>DATA;OBRA;ESTACA;PROFUNDIDADE_EXECUTADA;...;MAQUINA;OBSERVACAO</code>
             <br>• <strong>SoftSaci V7.x</strong> (.txt) — relatório sintético com colunas <code>Contrato | Obra | Estaca | Data | Ini.P | Ini.C | Fim C | Diam | Comp | V.Conc | Supercon | Incli</code>
             <br><br>O sistema agrupa por data e cria 1 RDO por dia (na obra detectada). Estacas existentes na obra são marcadas como executadas.
           </p>
           <div class="grade">
             <div class="campo largo">
-              <label>Arquivo (CSV ou TXT)</label>
-              <input id="csv-arquivo" type="file" accept=".csv,.txt,text/csv,text/plain" />
+              <label>Arquivo (PDF, foto, CSV ou TXT)</label>
+              <input id="csv-arquivo" type="file" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp,.csv,.txt,text/csv,text/plain" />
             </div>
           </div>
           <div class="form-acoes compacta">

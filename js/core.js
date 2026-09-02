@@ -534,6 +534,9 @@ document.querySelectorAll(".sidebar-nav button").forEach(b=>{
     const secId = "sec-" + b.dataset.secao;
     const secEl = $(secId);
     if(secEl) secEl.classList.add("ativa");
+    // aviso da tela anterior não deve seguir para a próxima
+    const av = $("app-aviso");
+    if(av){ av.textContent = ""; av.className = "aviso"; }
     // Carga sob demanda: a posição de estoque (aba legada) só ao abrir a seção
     if(b.dataset.secao === "estoque" && typeof carregarPosicaoEstoque === "function") carregarPosicaoEstoque();
     

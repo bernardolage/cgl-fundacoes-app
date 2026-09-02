@@ -2534,3 +2534,15 @@ input:disabled, select:disabled, textarea:disabled {
 #est-planta-svg .planta-norte { fill: var(--txt); }
 #est-planta-svg .planta-hud-txt { font-size: 8px; fill: var(--txt-sec); pointer-events: none; }
 #est-planta-svg .estaca-label.fora { dominant-baseline: auto; fill: var(--txt); }
+
+/* ---- RDO: conferência do diário lido por IA ---- */
+.ia-conf-topo { background: var(--marca-50); border-left: 3px solid var(--marca-600); padding: 10px 14px; margin: 10px 0; font-size: var(--txt-sm); display: flex; flex-direction: column; gap: 6px; }
+.ia-duvidas { background: color-mix(in srgb, var(--aviso) 15%, transparent); border-radius: 4px; padding: 6px 10px; font-size: var(--txt-xs); }
+.ia-dia { border: 1px solid var(--borda-forte); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; }
+.ia-dia-titulo { font-weight: 600; color: var(--marca-600); margin-bottom: 8px; }
+.ia-cab .campo input, .ia-cab .campo select { font-size: var(--txt-sm); }
+.ia-tabela input, .ia-tabela select { font-size: var(--txt-xs); padding: 3px 5px; min-width: 0; }
+.ia-tabela input[type="time"] { width: 86px; }
+.ia-tabela td { padding: 3px 4px; }
+.ia-equipe { margin-top: 8px; }
+.ia-equipe summary { cursor: pointer; font-size: var(--txt-sm); color: var(--txt-sec); }

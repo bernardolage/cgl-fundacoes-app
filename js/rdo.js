@@ -1244,6 +1244,7 @@ function abrirModalImportCSV(){
   _csvParsed = null;
   _csvObraDetectada = null;
   _csvTipoDetectado = null;
+  _iaExtras = null; _iaOrigem = null;
   $("csv-modal").style.display = "flex";
 }
 
@@ -1403,6 +1404,9 @@ async function processarCSV(){
   const inp = $("csv-arquivo");
   if(!inp.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo (CSV ou TXT).","erro"); return; }
   const file = inp.files[0];
+  const mediaIA = _ehArquivoIA(file);
+  if(mediaIA){ await processarArquivoIA(file, mediaIA); return; }
+  _iaExtras = null; _iaOrigem = null;
   const text = await file.text();
   const formato = detectarFormatoArquivo(text);
 
@@ -1425,6 +1429,274 @@ async function processarCSV(){
   }
 
   await continuarProcessamentoImport(registros, obraTxtFonte, formato);
+}
+
+/* ====================================================================
+   IMPORTAÇÃO POR IA — PDF digital ou foto/scan de diário feito à mão.
+   A Edge Function extrair-rdo-arquivo devolve dias → cabeçalho, equipe e
+   estacas. Aqui convertemos para o MESMO formato de registros do Geodigitus
+   (reaproveita detecção de obra/tipo/máquinas e a gravação) e mostramos uma
+   tabela de conferência editável: a pessoa confere/corrige e só então grava.
+   ==================================================================== */
+let _iaExtras = null;   // { [data_dia]: { tempo_manha, tempo_tarde, responsavel, atividades, observacoes, equipe:[...] } }
+let _iaOrigem = null;   // "ia_pdf" | "ia_foto"
+
+function _ehArquivoIA(file){
+  const t = (file.type || "").toLowerCase();
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  if(t === "application/pdf" || ext === "pdf") return "application/pdf";
+  if(t.startsWith("image/") || ["jpg","jpeg","png","webp","gif"].includes(ext)){
+    return t.startsWith("image/") ? t : ({ jpg:"image/jpeg", jpeg:"image/jpeg", png:"image/png", webp:"image/webp", gif:"image/gif" })[ext];
+  }
+  return null;
+}
+
+// Foto de celular vem com 4–12 MB; reduz para no máx. 2200 px (JPEG 85%) antes de enviar
+function _imagemParaBase64Reduzida(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 2200;
+      const fator = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.round(img.width * fator), h = Math.round(img.height * fator);
+      const cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      cv.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      const dataUrl = cv.toDataURL("image/jpeg", 0.85);
+      resolve({ base64: dataUrl.split(",")[1], media_type: "image/jpeg" });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível abrir a imagem (formato não suportado pelo navegador — use JPG ou PNG).")); };
+    img.src = url;
+  });
+}
+function _pdfParaBase64(file){
+  return new Promise((resolve, reject) => {
+    if(file.size > 20 * 1024 * 1024){ reject(new Error("PDF acima de 20 MB. Envie só as páginas do diário.")); return; }
+    const fr = new FileReader();
+    fr.onload = () => resolve({ base64: String(fr.result).split(",")[1], media_type: "application/pdf" });
+    fr.onerror = () => reject(new Error("Não foi possível ler o PDF."));
+    fr.readAsDataURL(file);
+  });
+}
+
+async function processarArquivoIA(file, mediaType){
+  const btn = $("btn-csv-processar");
+  const txtBtn = btn ? btn.textContent : "";
+  if(btn){ btn.disabled = true; btn.textContent = "🤖 Lendo o diário…"; }
+  try {
+    const arq = mediaType === "application/pdf" ? await _pdfParaBase64(file) : await _imagemParaBase64Reduzida(file);
+    _iaOrigem = mediaType === "application/pdf" ? "ia_pdf" : "ia_foto";
+
+    // Contexto: obra escolhida na ficha (se houver), estacas cadastradas nela e TAGs das máquinas
+    const obraSel = $("rdo-obra")?.value || null;
+    const contexto = { maquinas: _rdoEquipsCache.map(e => e.codigo).filter(Boolean) };
+    if(obraSel){
+      contexto.obra_nome = mapaObras[obraSel] || null;
+      contexto.tipo_servico = $("rdo-tipo-servico")?.value || null;
+      const { data: ests } = await sb.from("estacas").select("numero").eq("obra_id", obraSel).limit(400);
+      contexto.estacas = (ests || []).map(e => e.numero).filter(Boolean);
+    }
+
+    const { data, error } = await sb.functions.invoke("extrair-rdo-arquivo", {
+      body: { arquivo_base64: arq.base64, media_type: arq.media_type, contexto }
+    });
+    if(error){
+      let detalhe = error.message || "";
+      try {
+        if(error.context && typeof error.context.json === "function"){
+          const b = await error.context.json();
+          if(b){ detalhe = b.error || JSON.stringify(b); if(b.sugestao) detalhe += " 💡 " + b.sugestao; }
+        }
+      } catch(_){ /* segue */ }
+      throw new Error(detalhe || "Falha ao chamar a leitura por IA.");
+    }
+    const dias = (data && Array.isArray(data.dias)) ? data.dias : [];
+    if(!dias.length){
+      throw new Error("A IA não reconheceu um diário de obra neste arquivo. " + (data?.observacoes || "Tente uma foto mais nítida ou um PDF com as páginas do diário."));
+    }
+
+    // Converte para o formato de registros do pipeline (1 registro por estaca por dia)
+    const mapaMaq = {};
+    _rdoEquipsCache.forEach(e => {
+      [e.codigo_externo, e.codigo, (e.codigo||"").replace(/\s/g,""), (e.codigo||"").replace(/-/g,""), e.nome]
+        .filter(Boolean).forEach(c => { const k = c.toUpperCase(); if(!(k in mapaMaq)) mapaMaq[k] = e.id; });
+    });
+    const ts = (dia, hhmm) => hhmm ? `${dia}T${hhmm}:00` : null;
+    const registros = [];
+    _iaExtras = {};
+    dias.forEach(d => {
+      _iaExtras[d.data] = {
+        tempo_manha: d.tempo_manha || null, tempo_tarde: d.tempo_tarde || null,
+        responsavel: d.responsavel || null, atividades: d.atividades || null, observacoes: d.observacoes || null,
+        tipo_servico: d.tipo_servico || null, equipe: Array.isArray(d.equipe) ? d.equipe : []
+      };
+      (d.estacas || []).forEach(e => {
+        const maq = (e.maquina || d.maquina || "").trim();
+        const ref = detectarRefuro(normalizarNumeroEstaca(e.numero || ""));
+        registros.push({
+          data_dia: d.data,
+          obra_csv: d.obra || "",
+          estaca_numero: ref.nomeBase,
+          modalidade_execucao: (e.refuro || ref.isRefuro) ? "refuro" : "furo_normal",
+          profundidade_executada: e.profundidade_executada,
+          profundidade_projeto: e.profundidade_projeto,
+          perfuracao_inicio: ts(d.data, e.perfuracao_inicio),
+          perfuracao_fim: ts(d.data, e.perfuracao_fim),
+          concretagem_inicio: ts(d.data, e.concretagem_inicio),
+          concretagem_fim: ts(d.data, e.concretagem_fim),
+          torque: e.torque,
+          volume_concreto_m3: e.volume_concreto_m3,
+          diametro_mm: e.diametro_mm,
+          maquina_codigo: maq,
+          equipamento_id: mapaMaq[maq.toUpperCase()] || null,
+          observacoes: e.observacoes || null,
+          origem_dados: _iaOrigem
+        });
+      });
+    });
+    if(!registros.length){
+      throw new Error("A IA leu o diário, mas não encontrou linhas de estacas. " + (data?.observacoes || ""));
+    }
+
+    await continuarProcessamentoImport(registros, dias[0].obra || "", _iaOrigem);
+
+    // Obra: se a ficha já tinha obra escolhida e a detecção não foi exata, pré-seleciona
+    const selObra = $("csv-obra-select");
+    if(selObra && obraSel && !selObra.value) selObra.value = obraSel;
+    // Tipo: o que a IA leu, se veio
+    const tipoIA = dias.find(d => d.tipo_servico)?.tipo_servico;
+    if(tipoIA && $("csv-tipo-select")) $("csv-tipo-select").value = tipoIA;
+
+    renderConferenciaIA(data);
+  } catch(err){
+    aviso("app-aviso", "Leitura por IA: " + err.message, "erro");
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = txtBtn; }
+  }
+}
+
+const CONDICAO_TEMPO_IA = { bom:"Bom", nublado:"Nublado", chuva_fraca:"Chuva fraca", chuva_forte:"Chuva forte", impraticavel:"Impraticável" };
+const FUNCOES_RDO_IA = ["encarregado","operador","ajudante","sondador","motorista","soldador","apontador","tecnico","engenheiro","seguranca","terceirizado","outro"];
+
+/* Tabela de conferência: tudo editável; o que estiver aqui é o que será gravado */
+function renderConferenciaIA(resp){
+  const cont = $("csv-preview-conteudo");
+  if(!cont || !_csvParsed) return;
+  const hh = (iso) => iso ? String(iso).slice(11, 16) : "";
+  const v  = (x) => (x == null ? "" : x);
+  const tempoOpts = (sel) => '<option value="">—</option>' + Object.entries(CONDICAO_TEMPO_IA).map(([k,l]) => `<option value="${k}"${k===sel?" selected":""}>${l}</option>`).join("");
+  const funcOpts  = (sel) => FUNCOES_RDO_IA.map(f => `<option value="${f}"${f===sel?" selected":""}>${f}</option>`).join("");
+
+  const conf = resp?.confianca || "media";
+  const corConf = conf === "alta" ? "var(--sucesso)" : conf === "baixa" ? "var(--perigo)" : "var(--aviso)";
+  const duvidas = (resp?.duvidas || []);
+  let html = `<div class="ia-conf-topo">
+    <div>🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
+      ${resp?.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
+    ${duvidas.length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${duvidas.map(esc).join(" · ")}</div>` : ""}
+    <div class="meta">Confira e corrija abaixo. O que estiver na tabela é exatamente o que será gravado. Linhas removidas com ✕ não entram.</div>
+  </div>`;
+
+  Object.keys(_csvParsed).sort().forEach(dia => {
+    const ex = _iaExtras?.[dia] || { equipe: [] };
+    const ests = _csvParsed[dia];
+    html += `<div class="ia-dia" data-dia="${esc(dia)}">
+      <div class="ia-dia-titulo">📅 ${dataBR(dia)}</div>
+      <div class="grade ia-cab">
+        <div class="campo"><label>Tempo manhã</label><select data-cab="tempo_manha">${tempoOpts(ex.tempo_manha)}</select></div>
+        <div class="campo"><label>Tempo tarde</label><select data-cab="tempo_tarde">${tempoOpts(ex.tempo_tarde)}</select></div>
+        <div class="campo"><label>Responsável (texto do diário)</label><input data-cab="responsavel" value="${esc(v(ex.responsavel))}" /></div>
+        <div class="campo largo"><label>Atividades</label><input data-cab="atividades" value="${esc(v(ex.atividades))}" /></div>
+        <div class="campo largo"><label>Observações / ocorrências</label><input data-cab="observacoes" value="${esc(v(ex.observacoes))}" /></div>
+      </div>
+      <div class="tabela-rola"><table class="itens-tabela ia-tabela ia-estacas">
+        <thead><tr><th>Estaca</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th>Prof. exec.</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
+        <tbody>${ests.map((e, i) => `<tr data-idx="${i}">
+          <td><input data-c="estaca_numero" value="${esc(v(e.estaca_numero))}" style="width:70px" /></td>
+          <td><input type="checkbox" data-c="refuro" ${e.modalidade_execucao === "refuro" ? "checked" : ""} /></td>
+          <td><input type="number" step="1" data-c="diametro_mm" value="${v(e.diametro_mm)}" style="width:64px" /></td>
+          <td><input type="number" step="0.01" data-c="profundidade_projeto" value="${v(e.profundidade_projeto)}" style="width:70px" /></td>
+          <td><input type="number" step="0.01" data-c="profundidade_executada" value="${v(e.profundidade_executada)}" style="width:70px" /></td>
+          <td><input type="time" data-c="perfuracao_inicio" value="${hh(e.perfuracao_inicio)}" /></td>
+          <td><input type="time" data-c="perfuracao_fim" value="${hh(e.perfuracao_fim)}" /></td>
+          <td><input type="time" data-c="concretagem_inicio" value="${hh(e.concretagem_inicio)}" /></td>
+          <td><input type="time" data-c="concretagem_fim" value="${hh(e.concretagem_fim)}" /></td>
+          <td><input type="number" step="0.01" data-c="volume_concreto_m3" value="${v(e.volume_concreto_m3)}" style="width:70px" /></td>
+          <td><input type="number" step="0.1" data-c="torque" value="${v(e.torque)}" style="width:60px" /></td>
+          <td><input data-c="maquina_codigo" value="${esc(v(e.maquina_codigo))}" style="width:80px" /></td>
+          <td><input data-c="observacoes" value="${esc(v(e.observacoes))}" style="width:140px" /></td>
+          <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="não importar esta linha">&times;</button></td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+      <details class="ia-equipe" ${ex.equipe.length ? "open" : ""}>
+        <summary>👷 Equipe do dia (${ex.equipe.length})</summary>
+        <table class="itens-tabela ia-tabela"><thead><tr><th>Nome</th><th>Função</th><th>Entrada</th><th>Saída</th><th>H. normais</th><th>H. 50%</th><th>H. 100%</th><th></th></tr></thead>
+        <tbody>${ex.equipe.map(p => `<tr>
+          <td><input data-e="nome" value="${esc(v(p.nome))}" /></td>
+          <td><select data-e="funcao">${funcOpts(p.funcao || "outro")}</select></td>
+          <td><input type="time" data-e="hora_entrada" value="${esc(v(p.hora_entrada))}" /></td>
+          <td><input type="time" data-e="hora_saida" value="${esc(v(p.hora_saida))}" /></td>
+          <td><input type="number" step="0.5" data-e="horas_normais" value="${v(p.horas_normais)}" style="width:60px" /></td>
+          <td><input type="number" step="0.5" data-e="horas_50" value="${v(p.horas_50)}" style="width:60px" /></td>
+          <td><input type="number" step="0.5" data-e="horas_100" value="${v(p.horas_100)}" style="width:60px" /></td>
+          <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="remover">&times;</button></td>
+        </tr>`).join("")}</tbody></table>
+      </details>
+    </div>`;
+  });
+  cont.insertAdjacentHTML("beforeend", html);
+  cont.querySelectorAll(".ia-rem").forEach(b => b.addEventListener("click", () => b.closest("tr").remove()));
+}
+
+/* Lê a tabela de conferência de volta para _csvParsed/_iaExtras (o que será gravado) */
+function lerConferenciaIA(){
+  if(!_iaExtras) return;
+  const num = (x) => (x === "" || x == null) ? null : (isFinite(Number(x)) ? Number(x) : null);
+  const ts = (dia, hhmm) => hhmm ? `${dia}T${hhmm}:00` : null;
+  document.querySelectorAll(".ia-dia").forEach(bloco => {
+    const dia = bloco.dataset.dia;
+    const orig = _csvParsed[dia] || [];
+    const ex = _iaExtras[dia] || (_iaExtras[dia] = { equipe: [] });
+    bloco.querySelectorAll("[data-cab]").forEach(el => { ex[el.dataset.cab] = el.value.trim() || null; });
+    const novos = [];
+    bloco.querySelectorAll("table.ia-estacas tbody tr[data-idx]").forEach(tr => {
+      const base = orig[Number(tr.dataset.idx)] || {};
+      const g = (c) => tr.querySelector(`[data-c="${c}"]`);
+      const numero = normalizarNumeroEstaca(g("estaca_numero").value.trim());
+      if(!numero) return;
+      const maq = g("maquina_codigo").value.trim();
+      const eq = _rdoEquipsCache.find(e => [e.codigo_externo, e.codigo].filter(Boolean).some(c => c.toUpperCase() === maq.toUpperCase()));
+      novos.push({ ...base,
+        estaca_numero: numero,
+        modalidade_execucao: g("refuro").checked ? "refuro" : "furo_normal",
+        diametro_mm: num(g("diametro_mm").value),
+        profundidade_projeto: num(g("profundidade_projeto").value),
+        profundidade_executada: num(g("profundidade_executada").value),
+        perfuracao_inicio: ts(dia, g("perfuracao_inicio").value), perfuracao_fim: ts(dia, g("perfuracao_fim").value),
+        concretagem_inicio: ts(dia, g("concretagem_inicio").value), concretagem_fim: ts(dia, g("concretagem_fim").value),
+        volume_concreto_m3: num(g("volume_concreto_m3").value),
+        torque: num(g("torque").value),
+        maquina_codigo: maq,
+        equipamento_id: eq ? eq.id : (base.maquina_codigo === maq ? base.equipamento_id : null),
+        observacoes: g("observacoes").value.trim() || null
+      });
+    });
+    if(novos.length) _csvParsed[dia] = novos; else delete _csvParsed[dia];
+    ex.equipe = [];
+    bloco.querySelectorAll(".ia-equipe tbody tr").forEach(tr => {
+      const g = (c) => tr.querySelector(`[data-e="${c}"]`);
+      const nome = g("nome").value.trim();
+      if(!nome) return;
+      ex.equipe.push({ nome, funcao: g("funcao").value || "outro", hora_entrada: g("hora_entrada").value || null, hora_saida: g("hora_saida").value || null,
+        horas_normais: num(g("horas_normais").value), horas_50: num(g("horas_50").value), horas_100: num(g("horas_100").value) });
+    });
+  });
+  // máquinas sem match após a edição
+  const regs = Object.values(_csvParsed).flat();
+  const maqs = [...new Set(regs.map(r => (r.maquina_codigo||"").trim()).filter(Boolean))];
+  _csvMaquinasSemMatch = maqs.filter(m => !regs.find(r => r.maquina_codigo === m && r.equipamento_id));
 }
 
 /* Pipeline CSV Geodigitus extraído de processarCSV (separado pra coexistir com SoftSaci) */
@@ -1581,6 +1853,8 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
 
   const fmtLbl = formato === "softsaci"
     ? "📄 <strong>Formato detectado:</strong> SoftSaci V7.x (TXT colunas fixas)"
+    : formato === "ia_pdf" ? "🤖 <strong>Lido por IA</strong> de um PDF — confira a tabela abaixo antes de importar"
+    : formato === "ia_foto" ? "🤖 <strong>Lido por IA</strong> de uma foto/scan — confira a tabela abaixo antes de importar"
     : "📄 <strong>Formato detectado:</strong> Geodigitus (CSV)";
   const blocoFormato = `<div style="background:#eef2f6;border-left:3px solid var(--txt-fraco);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-xs);color:#495057;">${fmtLbl}</div>`;
 
@@ -1633,7 +1907,9 @@ function parseCSVLine(linha){
 }
 
 async function confirmarImportCSV(){
-  if(!_csvParsed){ aviso("app-aviso","Processe o CSV primeiro.","erro"); return; }
+  if(!_csvParsed){ aviso("app-aviso","Processe o arquivo primeiro.","erro"); return; }
+  lerConferenciaIA(); // import por IA: o que está na tabela de conferência é o que vale
+  if(!Object.keys(_csvParsed).length){ aviso("app-aviso","Nenhuma linha para importar.","erro"); return; }
 
   // Obra: pega do select do preview se houver, senão da obra detectada exata
   let obra_id = null;
@@ -1701,10 +1977,17 @@ async function confirmarImportCSV(){
       if(rdoExist){
         rdoId = rdoExist.id;
       } else {
+        const ex = _iaExtras?.[dia];
         const reg = {
           obra_id, data: dia, tipo_servico: tipo,
           status: "rascunho", responsavel_id: responsavel,
-          producao_dia_m: ests.reduce((s,e) => s + (e.profundidade_executada||0), 0)
+          producao_dia_m: ests.reduce((s,e) => s + (e.profundidade_executada||0), 0),
+          ...(ex ? {
+            tempo_manha: ex.tempo_manha || null, tempo_tarde: ex.tempo_tarde || null,
+            atividades: ex.atividades || null,
+            observacoes: [ex.observacoes, ex.responsavel ? "Responsável no diário: " + ex.responsavel : null].filter(Boolean).join("\n") || null,
+            efetivo_proprio: ex.equipe.length || null
+          } : {})
         };
         const { data: novo, error } = await sb.from("rdo").insert(reg).select("id").single();
         if(error){ throw new Error(`Dia ${dia}: ${error.message}`); }
@@ -1733,12 +2016,21 @@ async function confirmarImportCSV(){
           maquina_codigo: e.maquina_codigo,
           observacoes: e.observacoes,
           modalidade_execucao: e.modalidade_execucao || "furo_normal",
-          origem_dados: "csv_geodigitus"
+          origem_dados: e.origem_dados || "csv_geodigitus"
         };
       });
       const { error: errEx } = await sb.from("rdo_execucao_estaca").insert(exs);
       if(errEx){ throw new Error(`Execuções de ${dia}: ${errEx.message}`); }
       totalExecs += exs.length;
+      // Equipe lida pela IA (só em RDO criado agora, para não duplicar num RDO existente)
+      const eqIA = _iaExtras?.[dia]?.equipe || [];
+      if(eqIA.length && !rdoExist){
+        const linhas = eqIA.map((p, i) => ({ rdo_id: rdoId, nome_avulso: p.nome, funcao_no_dia: p.funcao || "outro",
+          hora_entrada: p.hora_entrada || null, hora_saida: p.hora_saida || null,
+          horas_normais: p.horas_normais, horas_50: p.horas_50, horas_100: p.horas_100, ordem: i + 1 }));
+        const { error: errEq } = await sb.from("rdo_equipe").insert(linhas);
+        if(errEq) console.warn("Equipe de " + dia + " não gravada:", errEq.message);
+      }
     }
     aviso("app-aviso", `✅ Importado: ${totalRdos} RDOs novos, ${totalExecs} execuções de estaca.`, "ok");
     fecharModalImportCSV();
