@@ -42,9 +42,11 @@ function preencherFiltrosMed(){
   }
   const selObra = $("med-f-obra");
   if(selObra){
+    const atual = selObra.value; // preserva a seleção (o render roda a cada tecla)
     const lista = Object.entries(mapaObras).map(([id, txt]) => ({ id, txt }));
     selObra.innerHTML = `<option value="">Todas as obras</option>` +
       lista.map(o => `<option value="${esc(o.id)}">${esc(o.txt)}</option>`).join("");
+    selObra.value = atual;
   }
 }
 
@@ -62,6 +64,7 @@ function renderMedicoes(){
   if(legacy) legacy.innerHTML = "";
 }
 
+/* Textos da listagem (outra sessão, 02/09/2026): obra pelo join, período como data, NF/RR */
 function medObraTxt(m){
   if(m.obra && m.obra.codigo) return `${m.obra.codigo} — ${m.obra.nome||""}`.trim();
   return mapaObras[m.obra_id] || "—";
@@ -212,6 +215,12 @@ async function abrirMedicao(id){
       .eq("medicao_id", id).order("ordem")
   ]);
   if(medRes.error){ aviso("app-aviso","Erro ao abrir medição: "+medRes.error.message, "erro"); return; }
+  // Itens não carregaram → NÃO abrir: salvarMedicao apaga e reinsere os itens,
+  // e reinseriria uma lista vazia (perda dos itens da medição).
+  if(itensRes.error){
+    aviso("app-aviso","Não foi possível carregar os itens da medição ("+itensRes.error.message+"). Tente abrir de novo.","erro");
+    return;
+  }
   const data = medRes.data;
   medEditId = id;
   $("med-numero").value = data.numero || "";
@@ -374,8 +383,11 @@ async function carregarDetalhesExecucaoMed(){
   }
   cont.innerHTML = `<p class="vazio">Carregando...</p>`;
 
+  // !inner + filtros no join: só as execuções desta obra/período saem do servidor
+  // (antes baixava a tabela inteira e filtrava no navegador a cada medição aberta)
   const { data: execs, error } = await sb.from("rdo_execucao_estaca")
-    .select("id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id(obra_id,data)")
+    .select("id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id!inner(obra_id,data)")
+    .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim)
     .order("perfuracao_inicio");
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
 
@@ -395,7 +407,9 @@ async function carregarDetalhesExecucaoMed(){
     const num = e.estaca_numero || e.estaca?.numero || "—";
     const diam = e.estaca?.diametro_mm || "—";
     const data = e.rdo?.data ? dataBR(e.rdo.data) : "—";
-    const hora = e.perfuracao_inicio ? new Date(e.perfuracao_inicio).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—";
+    // Horário do RDO é gravado "sem fuso" (naive); fatiar a string mostra o que foi
+    // digitado. toLocaleTimeString convertia de UTC e exibia 3h a menos.
+    const hora = e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(11,16) : "—";
     return `<tr ${isRef ? 'style="background:var(--aviso-bg);"' : ""}>
       <td style="text-align:center;">${i+1}</td>
       <td><strong>${esc(num)}</strong>${isRef ? ' <span class="badge-alterado" style="background:var(--aviso-bg);color:var(--aviso-txt);border-color:var(--aviso);">REFURO</span>' : ""}</td>
@@ -762,7 +776,8 @@ async function gerarPDFMedicao(){
         .select("ordem,descricao,quantidade,unidade,valor_unitario,valor_total,preco_origem,variante_id")
         .eq("medicao_id", medEditId).order("ordem"),
       (!ehSinal && obraId && pIni && pFim) ? sb.from("rdo_execucao_estaca")
-        .select("estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id(obra_id,data)")
+        .select("estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id!inner(obra_id,data)")
+        .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim)
         .order("perfuracao_inicio") : Promise.resolve({ data: [] }),
       (!ehSinal && obraId && pIni && pFim) ? sb.from("rdo")
         .select("id,data,producao_dia_m,observacoes,atividades")
@@ -913,25 +928,29 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
   const endereco = [obra.logradouro, obra.numero, obra.cidade, obra.uf ? obra.uf.toUpperCase() : ""].filter(Boolean).join(" - ");
 
   // SEÇÃO 2: Estacas executadas (1 linha por execução)
-  const valorPorMetro = itens.length ? (Number(itens.find(i => /estaca|h.lice|trado/i.test(i.descricao||""))?.valor_unitario) || 52) : 52;
+  // Preço por metro vem do item de estaca/hélice/trado da medição. Sem item de
+  // referência, NÃO inventar valor (antes caía num R$ 52/m fictício que ia
+  // para o PDF do cliente): mostra "—" nas colunas de valor.
+  const itemRef = itens.find(i => /estaca|h.lice|trado/i.test(i.descricao||""));
+  const valorPorMetro = itemRef && Number(itemRef.valor_unitario) > 0 ? Number(itemRef.valor_unitario) : null;
   const linhasEstacas = execs.length ? execs.map((e, i) => {
     const numEstaca = e.estaca_numero || e.estaca?.numero || "—";
     const diam = e.estaca?.diametro_mm || "—";
     const prof = Number(e.profundidade_executada) || 0;
-    const valor = prof * valorPorMetro;
+    const valor = valorPorMetro != null ? prof * valorPorMetro : null;
     return `<tr>
       <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${i+1}</td>
       <td style="padding:4px 6px;border:1px solid #000;">${esc(numEstaca)}</td>
       <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${e.rdo?.data ? dataBR(e.rdo.data) : "—"}</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${diam}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${esc(diam)}</td>
       <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${num(prof)} m</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valorPorMetro)}</td>
-      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valor)}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(valorPorMetro) : "—"}</td>
+      <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valor != null ? brl(valor) : "—"}</td>
     </tr>`;
   }).join("") : "";
 
   const totalMetragem = execs.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
-  const totalEstacasValor = totalMetragem * valorPorMetro;
+  const totalEstacasValor = valorPorMetro != null ? totalMetragem * valorPorMetro : null;
 
   const blocoEstacas = execs.length ? `
     <div style="font-size:12.5px;font-weight:700;text-align:center;margin:14px 0 6px;background:#e8e8e8;padding:6px;border:1px solid #000;">Estacas Executadas</div>
@@ -953,7 +972,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
           <td colspan="4" style="padding:5px;border:1px solid #000;text-align:right;">TOTAL DE ESTACAS:</td>
           <td style="padding:5px;border:1px solid #000;text-align:right;">${num(totalMetragem)} m</td>
           <td style="padding:5px;border:1px solid #000;"></td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
         </tr>
       </tfoot>
     </table>` : "";
@@ -982,14 +1001,14 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
         ${Object.entries(porDiam).map(([d, info]) => `<tr>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${d}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${num(info.metragem)} m</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(valorPorMetro)}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(valorPorMetro) : "—"}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${info.qty}</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(info.metragem * valorPorMetro)}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(info.metragem * valorPorMetro) : "—"}</td>
         </tr>`).join("")}
         <tr style="background:#f4f4f4;font-weight:700;">
           <td colspan="3" style="padding:5px;border:1px solid #000;text-align:right;">TOTAL:</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${execs.length}</td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
         </tr>
       </tbody>
     </table>` : "";
@@ -1040,13 +1059,13 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${dataBR(d)}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${porDia[d].estacas}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${num(porDia[d].metragem)} m</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${brl(porDia[d].metragem * valorPorMetro)}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(porDia[d].metragem * valorPorMetro) : "—"}</td>
         </tr>`).join("")}
         <tr style="background:#f4f4f4;font-weight:700;">
           <td style="padding:5px;border:1px solid #000;text-align:right;">TOTAL:</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${execs.length}</td>
           <td style="padding:5px;border:1px solid #000;text-align:center;">${num(totalMetragem)} m</td>
-          <td style="padding:5px;border:1px solid #000;text-align:right;">${brl(totalEstacasValor)}</td>
+          <td style="padding:5px;border:1px solid #000;text-align:right;">${totalEstacasValor != null ? brl(totalEstacasValor) : "—"}</td>
         </tr>
       </tbody>
     </table>` : "";
@@ -1210,7 +1229,7 @@ function ligarMedicoes(){
   });
   ["med-busca","med-f-status","med-f-obra"].forEach(id => {
     const el = $(id);
-    if(el) el.addEventListener(id === "med-busca" ? "input" : "change", renderMedicoes);
+    if(el) el.addEventListener(id === "med-busca" ? "input" : "change", id === "med-busca" ? debounce(renderMedicoes) : renderMedicoes);
   });
   $("med-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");
@@ -1219,7 +1238,7 @@ function ligarMedicoes(){
 
   $("btn-nova-medicao")?.addEventListener("click", novaMedicao);
   $("btn-voltar-med")?.addEventListener("click", mostrarPainelMed);
-  $("btn-salvar-med")?.addEventListener("click", () => salvarMedicao());
+  $("btn-salvar-med")?.addEventListener("click", () => comBotaoTravado("btn-salvar-med", () => salvarMedicao()));
   $("btn-gerar-pdf-med")?.addEventListener("click", gerarPDFMedicao);
   $("btn-excluir-med")?.addEventListener("click", excluirMedicao);
 
