@@ -496,6 +496,8 @@
             <div class="serv-views">
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+              <button type="button" class="serv-view-btn" data-view="logistica" title="Onde cada um está, TAG, próxima baixada">Logística</button>
+              <button type="button" class="serv-view-btn" data-view="he" title="Horas por colaborador e obra a partir dos RDOs">Horas extras</button>
             </div>
             <button type="button" class="btn" id="btn-novo-funcionario">+ Novo</button>
           </div>
@@ -503,6 +505,7 @@
             <input id="func-busca" placeholder="Buscar por nome, CPF, matrícula ou função..." />
             <select id="func-f-status"></select>
             <select id="func-f-contrato"></select>
+            <select id="func-he-competencia" style="display:none;"></select>
           </div>
           <div class="func-painel-layout">
             <div class="func-dept-sidebar">
@@ -1407,6 +1410,10 @@
             <!-- Aba Contrato (contrato do cliente; vive na obra desde a fase 21) -->
             <div class="odoo-tab" data-tab="contrato">
               <div id="obr-con-pendencias"></div>
+              <div class="form-acoes compacta" style="justify-content:flex-start;margin-bottom:10px;">
+                <button type="button" class="btn-sec" id="btn-obr-criar-mob" title="Abre o quadro de Mobilizações com esta obra já selecionada">🚚 Criar mobilização</button>
+                <span class="meta">obra × equipamento; gera as pendências por setor</span>
+              </div>
               <p class="ajuda-campo">
                 Dados contratuais desta obra. Cliente, valor, datas e responsável vêm das outras abas —
                 aqui ficam só os campos do contrato em si. Preencha o número e salve a obra para gerar
@@ -1854,6 +1861,7 @@
                 <div class="campo"><label>Tipo de serviço *</label><select id="rdo-tipo-servico" required></select></div>
                 <div class="campo"><label>Status</label><select id="rdo-status"></select></div>
                 <div class="campo"><label>Responsável</label><select id="rdo-responsavel"><option value="">— não informado —</option></select></div>
+                <div class="campo"><label>Local / frente</label><input id="rdo-local" list="rdo-local-lista" placeholder="ex.: PONTILHÃO 17C (locais da obra)" /><datalist id="rdo-local-lista"></datalist></div>
               </div>
             </div>
 

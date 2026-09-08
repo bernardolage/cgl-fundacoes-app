@@ -2618,3 +2618,7 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-pend-meta { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .mob-pend-topo { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: var(--txt-sm); padding: 6px 0 10px; }
 @media (max-width: 720px){ .mob-pend { grid-template-columns: auto 1fr; } .mob-pend-lista .mob-pend { grid-template-columns: auto 1fr; } .mob-pend-meta { justify-content: flex-start; } }
+
+/* ---- Funcionários: vista Logística ---- */
+.func-log-row { cursor: pointer; }
+.func-log-row:hover td { background: var(--marca-50); }

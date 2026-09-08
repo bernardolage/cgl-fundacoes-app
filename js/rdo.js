@@ -210,6 +210,8 @@ async function novoRDO(){
   $("rdo-tipo-servico").value = "helice_continua";
   $("rdo-status").value = "rascunho";
   $("rdo-responsavel").value = "";
+  if($("rdo-local")) $("rdo-local").value = "";
+  carregarLocaisRDO(null);
   $("rdo-tempo-manha").value = "";
   $("rdo-tempo-tarde").value = "";
   $("rdo-efetivo-proprio").value = 0;
@@ -248,6 +250,8 @@ async function abrirRDO(id){
   $("rdo-tipo-servico").value     = data.tipo_servico || "helice_continua";
   $("rdo-status").value           = data.status || "rascunho";
   $("rdo-responsavel").value      = data.responsavel_id || "";
+  if($("rdo-local")) $("rdo-local").value = data.local || "";
+  carregarLocaisRDO(data.obra_id);
   $("rdo-tempo-manha").value      = data.tempo_manha || "";
   $("rdo-tempo-tarde").value      = data.tempo_tarde || "";
   $("rdo-efetivo-proprio").value  = data.efetivo_proprio ?? 0;
@@ -945,6 +949,7 @@ async function salvarRDO(novoStatus){
     tipo_servico:     tipo,
     status:           novoStatus || $("rdo-status").value || "rascunho",
     responsavel_id:   $("rdo-responsavel").value || null,
+    local:            $("rdo-local")?.value.trim() || null,
     tempo_manha:      $("rdo-tempo-manha").value || null,
     tempo_tarde:      $("rdo-tempo-tarde").value || null,
     efetivo_proprio:  Number($("rdo-efetivo-proprio").value || 0),
@@ -2045,3 +2050,20 @@ async function confirmarImportCSV(){
     btn.textContent = txt;
   }
 }
+
+/* ---------- Local / frente do RDO (fase 36) ----------
+   Mesmo valor de estacas.local: desempata a execução quando o número da estaca se
+   repete entre locais da obra. O datalist sugere os locais já cadastrados nas estacas. */
+async function carregarLocaisRDO(obraId){
+  const dl = $("rdo-local-lista");
+  if(!dl) return;
+  dl.innerHTML = "";
+  if(!obraId) return;
+  const { data } = await sb.from("estacas").select("local").eq("obra_id", obraId).not("local", "is", null).limit(500);
+  const locais = [...new Set((data || []).map(e => (e.local || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  dl.innerHTML = locais.map(l => `<option value="${esc(l)}"></option>`).join("");
+}
+(function(){
+  const f = () => $("rdo-obra")?.addEventListener("change", () => carregarLocaisRDO($("rdo-obra").value));
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", f); else f();
+})();

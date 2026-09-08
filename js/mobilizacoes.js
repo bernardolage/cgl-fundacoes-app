@@ -525,5 +525,13 @@ function ligarMobilizacoes(){
   $("mob-modal")?.addEventListener("click", (e) => { if(e.target.id === "mob-modal") fecharMobilizacao(); });
   $("mob-kpi-card-minhas")?.addEventListener("click", () => { _mobView = "pendencias"; renderMobilizacoes(); });
   document.querySelector('nav button[data-secao="mobilizacoes"]')?.addEventListener("click", () => carregarMobilizacoes(false));
+  // Gatilho a partir da ficha da Obra (aba Contrato): abre o quadro com a obra já escolhida
+  $("btn-obr-criar-mob")?.addEventListener("click", async () => {
+    const id = (typeof obraEditId !== "undefined") ? obraEditId : null;
+    if(!id){ aviso("app-aviso", "Salve a obra antes de criar a mobilização.", "erro"); return; }
+    if(typeof irParaSecao === "function") irParaSecao("mobilizacoes");
+    await carregarMobilizacoes(false);
+    abrirNovaMobilizacao(id);
+  });
 }
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarMobilizacoes); else ligarMobilizacoes();

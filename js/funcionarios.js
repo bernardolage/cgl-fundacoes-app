@@ -233,7 +233,10 @@ function renderFuncionarios(){
   const dados = funcFiltrados();
   const cont = $("func-contador");
   if(cont) cont.textContent = `${dados.length} de ${_funcs.length}`;
+  const selComp = $("func-he-competencia"); if(selComp) selComp.style.display = _funcView === "he" ? "" : "none";
   if(_funcView==="kanban") renderFuncKanban(dados);
+  else if(_funcView==="logistica") renderFuncLogistica();
+  else if(_funcView==="he"){ funcPreencherCompetencias(); renderFuncHE(); }
   else                     renderFuncLista(dados);
 }
 
@@ -577,6 +580,7 @@ async function salvarFuncionario(novoStatus){
   $("btn-excluir-func").style.display = "";
   $("func-status").value = result.data.status;
   aviso("app-aviso","Funcionário salvo.","ok");
+  _funcLog = null; // vista Logística recarrega
   await carregarFuncionarios();
   await abrirFuncionario(funcEditId);
 }
@@ -604,6 +608,7 @@ function ligarFuncionarios(){
     });
   });
 
+  $("func-he-competencia")?.addEventListener("change", renderFuncionarios);
   ["func-busca","func-f-status","func-f-contrato"].forEach(id => {
     const el=$(id);
     if(el) el.addEventListener(id==="func-busca"?"input":"change", id==="func-busca" ? debounce(renderFuncionarios) : renderFuncionarios);
@@ -670,4 +675,113 @@ if(document.readyState==="loading"){
   document.addEventListener("DOMContentLoaded", ligarFuncionarios);
 } else {
   ligarFuncionarios();
+}
+
+/* ====================================================================
+   Vista LOGÍSTICA (fase 35 · SPEC tela 1): onde cada um está, TAG, próxima baixada
+   com semáforo — fonte vw_funcionarios_logistica (próxima = último retorno + ciclo,
+   ou data acordada). Vista HORAS EXTRAS (tela 3): horas por colaborador × obra na
+   competência, a partir de rdo_equipe. É o "HORAS EXTRAS – mês" da RG 8.1.3.
+   ==================================================================== */
+let _funcLog = null;
+let _funcHE  = { comp: null, dados: null };
+const FUNC_AVAL_LBL = { novato: "Novato", bom: "Bom", muito_bom: "Muito bom", excelente: "Excelente", atencao: "Atenção" };
+
+async function renderFuncLogistica(){
+  const cont = $("func-conteudo");
+  if(!cont) return;
+  if(!_funcLog){
+    cont.innerHTML = `<p class="vazio">Carregando logística…</p>`;
+    const { data, error } = await sb.from("vw_funcionarios_logistica").select("*").order("nome");
+    if(error){ cont.innerHTML = `<p class="vazio">Erro ao carregar: ${esc(error.message)}</p>`; return; }
+    _funcLog = data || [];
+  }
+  const termo = ($("func-busca")?.value || "").trim().toLowerCase();
+  const fStatus = $("func-f-status")?.value || "", fContr = $("func-f-contrato")?.value || "";
+  const lista = _funcLog
+    .filter(f => (!fStatus || f.status === fStatus) && (!fContr || f.tipo_contrato === fContr))
+    .filter(f => !termo || `${f.nome} ${f.funcao || ""} ${f.tag_atual || ""} ${f.obra_atual || ""} ${f.categoria_operacional || ""} ${f.especialidade || ""}`.toLowerCase().includes(termo))
+    .sort((a, b) => (a.dias_para_baixada ?? 9999) - (b.dias_para_baixada ?? 9999) || a.nome.localeCompare(b.nome, "pt-BR"));
+  const sem = (d) => d == null ? `<span class="tag cinza">sem baixada</span>`
+    : d < 0 ? `<span class="tag vermelho">vencida há ${-d} d</span>` : d <= 30 ? `<span class="tag ambar">em ${d} d</span>` : `<span class="tag verde">em ${d} d</span>`;
+  const venc = lista.filter(f => f.dias_para_baixada != null && f.dias_para_baixada < 0).length;
+  const prox = lista.filter(f => f.dias_para_baixada != null && f.dias_para_baixada >= 0 && f.dias_para_baixada <= 30).length;
+  cont.innerHTML = `<div class="meta" style="margin:0 0 8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+      <span><strong>${lista.length}</strong> pessoas</span>
+      <span class="tag vermelho">${venc} baixada vencida</span><span class="tag ambar">${prox} em até 30 dias</span>
+      <span>próxima baixada = último retorno + ciclo (padrão 90 d) ou data acordada · clique na linha para abrir a ficha</span>
+    </div>
+    <div class="tabela-rola"><table>
+      <thead><tr><th>Nome</th><th>Função</th><th>Categoria</th><th>Frente</th><th>UF</th><th>TAG</th><th>Obra atual</th><th>Aval.</th><th>Últ. retorno</th><th>Próx. baixada</th><th>Situação</th><th>Obs. logística</th></tr></thead>
+      <tbody>${lista.map(f => `<tr class="func-log-row" data-id="${esc(f.id)}">
+        <td><strong>${esc(f.nome)}</strong>${f.coringa ? ' <span class="tag azul">coringa</span>' : ""}</td>
+        <td>${esc(f.funcao || "—")}</td><td>${esc(f.categoria_operacional || "—")}</td><td>${esc(f.especialidade || "—")}</td>
+        <td>${esc((f.estado_origem || "").toUpperCase() || "—")}</td><td>${esc(f.tag_atual || "—")}</td>
+        <td>${esc(f.obra_atual ? f.obra_atual + (f.cidade_atual ? " · " + f.cidade_atual : "") : "—")}</td>
+        <td>${esc(FUNC_AVAL_LBL[f.avaliacao] || "—")}</td>
+        <td>${f.ultimo_retorno_baixada ? dataBR(f.ultimo_retorno_baixada) : "—"}</td>
+        <td>${f.proxima_baixada ? dataBR(f.proxima_baixada) + " " : ""}${sem(f.dias_para_baixada)}${f.baixada_acordada ? ' <span class="tag azul">acordada</span>' : ""}</td>
+        <td>${esc(f.status || "")}</td><td class="meta">${esc(f.observacao_logistica || "")}</td>
+      </tr>`).join("") || `<tr><td colspan="12" class="vazio">Ninguém para os filtros.</td></tr>`}</tbody>
+    </table></div>`;
+  cont.querySelectorAll(".func-log-row").forEach(tr => tr.addEventListener("click", () => abrirFuncionario(tr.dataset.id)));
+}
+
+function funcPreencherCompetencias(){
+  const sel = $("func-he-competencia");
+  if(!sel || sel.options.length) return;
+  const hoje = new Date(); const opts = [];
+  for(let i = 0; i < 12; i++){
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    opts.push(`<option value="${v}">${d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</option>`);
+  }
+  sel.innerHTML = opts.join("");
+}
+
+async function renderFuncHE(){
+  const cont = $("func-conteudo");
+  if(!cont) return;
+  const comp = $("func-he-competencia")?.value || hojeISO().slice(0, 7);
+  if(!_funcHE.dados || _funcHE.comp !== comp){
+    cont.innerHTML = `<p class="vazio">Apurando ${comp}…</p>`;
+    const ini = comp + "-01";
+    const fim = dataLocalISO(new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0));
+    const { data, error } = await sb.from("rdo_equipe")
+      .select("funcionario_id,nome_avulso,funcao_no_dia,hora_entrada,hora_saida,horas_normais,horas_50,horas_100,horas_noturnas,rdo:rdo_id!inner(data,obra_id)")
+      .gte("rdo.data", ini).lte("rdo.data", fim).limit(5000);
+    if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
+    _funcHE = { comp, dados: data || [] };
+  }
+  const nomeDe = (r) => r.funcionario_id ? ((_funcs.find(f => f.id === r.funcionario_id) || {}).nome || "?") : (r.nome_avulso || "—");
+  const presenca = (r) => { if(!r.hora_entrada || !r.hora_saida) return 0; const [h1, m1] = r.hora_entrada.split(":").map(Number), [h2, m2] = r.hora_saida.split(":").map(Number); let d = (h2 * 60 + m2) - (h1 * 60 + m1); if(d < 0) d += 1440; return d / 60; };
+  const g = new Map();
+  _funcHE.dados.forEach(r => {
+    const k = nomeDe(r) + "|" + (r.rdo?.obra_id || "");
+    if(!g.has(k)) g.set(k, { nome: nomeDe(r), obra: mapaObras[r.rdo?.obra_id] || "—", dias: new Set(), pres: 0, hn: 0, h50: 0, h100: 0, hnot: 0 });
+    const a = g.get(k); a.dias.add(r.rdo?.data); a.pres += presenca(r);
+    a.hn += Number(r.horas_normais) || 0; a.h50 += Number(r.horas_50) || 0; a.h100 += Number(r.horas_100) || 0; a.hnot += Number(r.horas_noturnas) || 0;
+  });
+  const termo = ($("func-busca")?.value || "").trim().toLowerCase();
+  const linhas = [...g.values()].filter(a => !termo || `${a.nome} ${a.obra}`.toLowerCase().includes(termo))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR") || a.obra.localeCompare(b.obra, "pt-BR"));
+  const f1 = (v) => Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  const tot = linhas.reduce((s, a) => ({ dias: s.dias + a.dias.size, pres: s.pres + a.pres, hn: s.hn + a.hn, h50: s.h50 + a.h50, h100: s.h100 + a.h100, hnot: s.hnot + a.hnot }), { dias: 0, pres: 0, hn: 0, h50: 0, h100: 0, hnot: 0 });
+  const semHoras = (tot.pres + tot.hn + tot.h50 + tot.h100 + tot.hnot) === 0 && linhas.length > 0;
+  cont.innerHTML = `<div class="meta" style="margin:0 0 8px;">Competência <strong>${esc(comp)}</strong> · ${linhas.length} colaborador×obra · ${_funcHE.dados.length} presenças em RDO
+      ${semHoras ? `<br><span class="txt-perigo">⚠️ Nenhum RDO desta competência tem entrada/saída ou horas preenchidas — a equipe do RDO precisa registrar os horários para este relatório substituir a planilha.</span>` : ""}
+      <button type="button" class="btn-sec btn-sm" id="btn-func-he-csv" style="margin-left:8px;">⬇️ CSV</button></div>
+    <div class="tabela-rola"><table>
+      <thead><tr><th>Colaborador</th><th>Obra</th><th class="num">Dias</th><th class="num">Horas (entrada→saída)</th><th class="num">Normais</th><th class="num">HE 50%</th><th class="num">HE 100%</th><th class="num">Noturnas</th></tr></thead>
+      <tbody>${linhas.map(a => `<tr><td>${esc(a.nome)}</td><td>${esc(a.obra)}</td><td class="num">${a.dias.size}</td><td class="num">${f1(a.pres)}</td><td class="num">${f1(a.hn)}</td><td class="num">${f1(a.h50)}</td><td class="num">${f1(a.h100)}</td><td class="num">${f1(a.hnot)}</td></tr>`).join("") || `<tr><td colspan="8" class="vazio">Sem presenças em RDO nesta competência.</td></tr>`}</tbody>
+      <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${tot.dias}</strong></td><td class="num"><strong>${f1(tot.pres)}</strong></td><td class="num"><strong>${f1(tot.hn)}</strong></td><td class="num"><strong>${f1(tot.h50)}</strong></td><td class="num"><strong>${f1(tot.h100)}</strong></td><td class="num"><strong>${f1(tot.hnot)}</strong></td></tr></tfoot>
+    </table></div>`;
+  $("btn-func-he-csv")?.addEventListener("click", () => {
+    const cel = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = ["Colaborador;Obra;Dias;Horas_presenca;Normais;HE50;HE100;Noturnas"]
+      .concat(linhas.map(a => [a.nome, a.obra, a.dias.size, a.pres.toFixed(2), a.hn, a.h50, a.h100, a.hnot].map(cel).join(";"))).join("\n");
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `horas-extras-${comp}.csv`;
+    document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);
+  });
 }
