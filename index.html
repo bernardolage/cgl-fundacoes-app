@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/estilo.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 </head>
 <body>
@@ -113,6 +114,10 @@
       <button data-secao="mobilizacoes">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="4" width="7" height="16" rx="1"></rect><rect x="14" y="4" width="7" height="9" rx="1"></rect><line x1="6" y1="8" x2="7" y2="8"></line><line x1="6" y1="12" x2="7" y2="12"></line><line x1="17" y1="8" x2="18" y2="8"></line></svg>
         <span>Mobilizações</span>
+      </button>
+      <button data-secao="frota">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+        <span>Frota</span>
       </button>
       <button data-secao="medicoes">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="8" y1="4" x2="8" y2="8"></line><line x1="12" y1="4" x2="12" y2="6"></line><line x1="16" y1="4" x2="16" y2="8"></line><line x1="8" y1="20" x2="8" y2="16"></line><line x1="12" y1="20" x2="12" y2="18"></line><line x1="16" y1="20" x2="16" y2="16"></line></svg>
@@ -498,6 +503,7 @@
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
               <button type="button" class="serv-view-btn" data-view="logistica" title="Onde cada um está, TAG, próxima baixada">Logística</button>
               <button type="button" class="serv-view-btn" data-view="he" title="Horas por colaborador e obra a partir dos RDOs">Horas extras</button>
+              <button type="button" class="serv-view-btn func-sens" data-view="aprop" title="Folha apropriada por obra (import mensal da planilha Financeiro – Apropriações)">Apropriações</button>
             </div>
             <button type="button" class="btn" id="btn-novo-funcionario">+ Novo</button>
           </div>
@@ -2067,6 +2073,89 @@
     </section>
 
     <!-- MEDIÇÕES -->
+    <!-- ============ FROTA (fase 37) ============ -->
+    <section class="secao" id="sec-frota">
+      <h2>Frota</h2>
+      <p class="texto-apoio">Caminhões e veículos com seus deslocamentos — o "KM Caminhões" da planilha RG 8.1. O valor da viagem é km rodado × R$/km do caminhão; o km atual do veículo acompanha a última chegada registrada.</p>
+
+      <div class="indicadores">
+        <div class="ind"><div class="num" id="frota-kpi-viagens">—</div><div class="rot">Viagens no período</div></div>
+        <div class="ind"><div class="num" id="frota-kpi-km">—</div><div class="rot">km rodados</div></div>
+        <div class="ind"><div class="num" id="frota-kpi-valor" style="color:var(--marca-600);">—</div><div class="rot">Custo de deslocamento</div></div>
+        <div class="ind"><div class="num" id="frota-kpi-obras">—</div><div class="rot">Obras atendidas</div></div>
+        <div class="ind"><div class="num" id="frota-kpi-caminhoes">—</div><div class="rot">Caminhões ativos</div></div>
+        <div class="ind"><div class="num" id="frota-kpi-veiculos">—</div><div class="rot">Veículos leves</div></div>
+      </div>
+
+      <div class="card">
+        <div class="lista-topo">
+          <h3>Frota</h3>
+          <div class="serv-views">
+            <button type="button" class="serv-view-btn ativo" data-view="desloc">Deslocamentos</button>
+            <button type="button" class="serv-view-btn" data-view="veiculos">Veículos</button>
+          </div>
+          <button type="button" class="btn-sec" id="btn-frota-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+          <button type="button" class="btn" id="btn-frota-novo-desl">+ Deslocamento</button>
+          <button type="button" class="btn" id="btn-frota-novo-veic" style="display:none;">+ Veículo</button>
+        </div>
+        <div class="serv-filtros">
+          <input id="frota-busca" placeholder="Buscar motorista, obra, TAG..." />
+          <span id="frota-filtros-desl" style="display:contents;">
+            <input type="month" id="frota-f-mes" title="Competência (vazio = últimos 12 meses)" />
+            <select id="frota-f-caminhao"><option value="">Todos os caminhões</option></select>
+          </span>
+        </div>
+        <div id="frota-conteudo"><p class="vazio">Carregando…</p></div>
+      </div>
+
+      <!-- modal: deslocamento -->
+      <div id="frota-desl-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:720px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo">
+            <h3 class="titulo-linha" id="fdesl-titulo">Novo deslocamento</h3>
+            <button type="button" class="btn-sec" id="btn-fdesl-fechar">×</button>
+          </div>
+          <div class="grade">
+            <div class="campo"><label>Data *</label><input type="date" id="fdesl-data" /></div>
+            <div class="campo"><label>Motorista</label><select id="fdesl-motorista"></select></div>
+            <div class="campo"><label>Caminhão *</label><select id="fdesl-caminhao"></select></div>
+            <div class="campo"><label>Equipamento atendido</label><select id="fdesl-equip"></select></div>
+            <div class="campo largo"><label>Obra atendida</label><select id="fdesl-obra"></select></div>
+            <div class="campo"><label>km saída</label><input type="number" id="fdesl-km-saida" min="0" step="1" /></div>
+            <div class="campo"><label>km chegada</label><input type="number" id="fdesl-km-chegada" min="0" step="1" /></div>
+            <div class="campo"><label>R$/km</label><input type="number" id="fdesl-valor-km" min="0" step="0.01" /></div>
+            <div class="campo largo"><label>Observações</label><input id="fdesl-obs" placeholder="Ex.: mobilização da TAG 09, retorno ao pátio…" /></div>
+          </div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn-sec" id="btn-fdesl-excluir" style="color:var(--perigo);display:none;">🗑️ Excluir</button>
+            <button type="button" class="btn" id="btn-fdesl-salvar">💾 Salvar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- modal: veículo -->
+      <div id="frota-veic-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:640px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo">
+            <h3 class="titulo-linha" id="fveic-titulo">Veículo</h3>
+            <button type="button" class="btn-sec" id="btn-fveic-fechar">×</button>
+          </div>
+          <div class="grade">
+            <div class="campo"><label>TAG *</label><input id="fveic-codigo" placeholder="Ex.: 26-CM" /></div>
+            <div class="campo"><label>Tipo</label><select id="fveic-tipo"><option value="caminhao">Caminhão</option><option value="veiculo">Veículo leve</option></select></div>
+            <div class="campo largo"><label>Descrição</label><input id="fveic-nome" placeholder="Ex.: VW 24250" /></div>
+            <div class="campo"><label>Placa</label><input id="fveic-placa" placeholder="ABC1D23" /></div>
+            <div class="campo"><label>km atual</label><input type="number" id="fveic-km" min="0" step="1" /></div>
+            <div class="campo"><label>R$/km</label><input type="number" id="fveic-valor-km" min="0" step="0.01" /></div>
+            <div class="campo"><label>Status</label><select id="fveic-status"><option value="disponivel">Disponível</option><option value="em_uso">Em uso</option><option value="manutencao">Manutenção</option><option value="inativo">Inativo</option></select></div>
+            <div class="campo"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fveic-ativo" checked /> Ativo na frota</label></div>
+            <div class="campo largo"><label>Observações</label><input id="fveic-obs" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-fveic-salvar">💾 Salvar</button></div>
+        </div>
+      </div>
+    </section>
+
     <section class="secao" id="sec-medicoes">
       <h2>Medições</h2>
 
@@ -2648,6 +2737,7 @@
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
 <script src="js/clientes.js"></script>
 <script src="js/fornecedores.js"></script>
+<script src="js/apropriacoes.js"></script>
 <script src="js/funcionarios.js"></script>
 <script src="js/servicos.js"></script>
 <script src="js/produtos.js"></script>
@@ -2657,6 +2747,7 @@
 <script src="js/contratos.js"></script>
 <script src="js/carteira.js"></script>
 <script src="js/obras.js"></script>
+<script src="js/frota.js"></script>
 <script src="js/mobilizacoes.js"></script>
 <script src="js/estacas.js"></script>
 <script src="js/obra_abas.js"></script>

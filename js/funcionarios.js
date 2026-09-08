@@ -237,6 +237,7 @@ function renderFuncionarios(){
   if(_funcView==="kanban") renderFuncKanban(dados);
   else if(_funcView==="logistica") renderFuncLogistica();
   else if(_funcView==="he"){ funcPreencherCompetencias(); renderFuncHE(); }
+  else if(_funcView==="aprop") renderFuncAprop();
   else                     renderFuncLista(dados);
 }
 
