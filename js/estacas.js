@@ -305,17 +305,50 @@ function renderAbasLocaisPlanta(){
   }));
 }
 /* Botão "Acompanhamento raiz" só para obra com estacas raiz */
+/* Alterar tipo em lote: aplica às estacas que passam pelos filtros da lista (status/tipo/local/busca) */
+function estacasFiltradasLista(){
+  const fStatus = $("est-f-status")?.value || "", fTipo = $("est-f-tipo")?.value || "", fLocal = $("est-f-local")?.value || "";
+  const termo = ($("est-busca")?.value || "").trim().toLowerCase();
+  return _estacas.filter(e => {
+    if(fStatus && e.status !== fStatus) return false;
+    if(fTipo && e.tipo !== fTipo) return false;
+    if(fLocal && (e.local || "") !== fLocal) return false;
+    if(termo && !`${e.numero || ""} ${e.observacoes || ""}`.toLowerCase().includes(termo)) return false;
+    return true;
+  });
+}
+async function alterarTipoEmLote(tipo){
+  const sel = $("est-lote-tipo");
+  if(!tipo || !obraEditId) return;
+  const alvo = estacasFiltradasLista().filter(e => e.tipo !== tipo);
+  const rot = $("est-lote-tipo")?.selectedOptions?.[0]?.textContent?.replace(/^→\s*/, "") || tipo;
+  if(!alvo.length){ aviso("app-aviso", "Nenhuma estaca do filtro precisa mudar para " + rot + ".", "aviso"); if(sel) sel.value = ""; return; }
+  const filtroAtivo = ($("est-f-status")?.value || $("est-f-tipo")?.value || $("est-f-local")?.value || ($("est-busca")?.value || "").trim());
+  if(!confirm(`Mudar o tipo de ${alvo.length} estaca(s)${filtroAtivo ? " (as que aparecem no filtro atual)" : " — TODAS as estacas da obra"} para ${rot}?`)){ if(sel) sel.value = ""; return; }
+  for(let i = 0; i < alvo.length; i += 200){
+    const { error } = await sb.from("estacas").update({ tipo }).in("id", alvo.slice(i, i + 200).map(e => e.id));
+    if(error){ aviso("app-aviso", "Erro ao alterar tipo: " + error.message, "erro"); if(sel) sel.value = ""; return; }
+  }
+  if(sel) sel.value = "";
+  aviso("app-aviso", `${alvo.length} estaca(s) agora são ${rot}.`, "sucesso");
+  await carregarEstacasDaObra(obraEditId);
+}
+
 function atualizarBotaoRaiz(){
   const b = $("btn-est-view-raiz");
   if(!b) return;
-  const tem = _estacas.some(e => e.tipo === "raiz");
+  const nRaiz = _estacas.filter(e => e.tipo === "raiz").length;
+  const tem = nRaiz > 0;
+  // Obra "de raiz" = raiz é o tipo predominante (08/09/2026: obra de hélice com 8 estacas
+  // classificadas como raiz pela IA virava painel raiz e escondia a lista).
+  const predominante = tem && nRaiz * 2 > _estacas.length;
   b.style.display = tem ? "" : "none";
   // Obra de raiz: o Acompanhamento substitui a Lista (Bernardo, 02/09/2026) — a aba Lista some
-  // e a vista padrão passa a ser o acompanhamento; em obra sem raiz, volta ao normal.
+  // e a vista padrão passa a ser o acompanhamento; em obra mista ou sem raiz, a Lista fica.
   const bLista = document.querySelector('[data-est-view="lista"]');
-  if(bLista) bLista.style.display = tem ? "none" : "";
+  if(bLista) bLista.style.display = predominante ? "none" : "";
   const irPara = (v) => { _estView = v; document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === v)); };
-  if(tem && _estView === "lista") irPara("raiz");
+  if(predominante && _estView === "lista") irPara("raiz");
   if(!tem && _estView === "raiz") irPara("lista");
 }
 
@@ -2885,6 +2918,7 @@ function ligarEstacas(){
     if(t) ativarConfAba(t.dataset.confTab);
   });
 
+  $("est-lote-tipo")?.addEventListener("change", e => alterarTipoEmLote(e.target.value));
   ["est-busca","est-f-status","est-f-tipo","est-f-local"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "est-busca" ? "input" : "change", id === "est-busca" ? debounce(renderEstacas) : renderEstacas);
