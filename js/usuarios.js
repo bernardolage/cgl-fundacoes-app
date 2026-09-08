@@ -14,6 +14,9 @@ const CARGOS = {
   mecanico:     "Mecânico",
   encarregado:  "Encarregado",
   operador:     "Operador",
+  rh:           "RH (folha e dados sensíveis)",   /* só diretor atribui — trigger proteger_cargo_rh */
+  sesmt:        "SESMT",
+  logistica:    "Logística",
   visualizador: "Visualizador"
 };
 
@@ -130,7 +133,9 @@ function mostrarPainelUsr(){
 }
 
 function preencherCargosFicha(){
+  // perfil RH (vê salários e dados pessoais): só a diretoria atribui
   $("usr-cargo").innerHTML = Object.entries(CARGOS)
+    .filter(([v]) => v !== "rh" || usuarioAtual?.cargo === "diretor")
     .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
 }
 

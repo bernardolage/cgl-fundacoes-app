@@ -503,7 +503,7 @@
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
               <button type="button" class="serv-view-btn" data-view="logistica" title="Onde cada um está, TAG, próxima baixada">Logística</button>
               <button type="button" class="serv-view-btn" data-view="he" title="Horas por colaborador e obra a partir dos RDOs">Horas extras</button>
-              <button type="button" class="serv-view-btn func-sens" data-view="aprop" title="Folha apropriada por obra (import mensal da planilha Financeiro – Apropriações)">Apropriações</button>
+              <button type="button" class="serv-view-btn func-sens" data-view="aprop" title="Apropriação da folha por obra calculada pelo sistema (dias de RDO × custo mensal da ficha)">Apropriações</button>
             </div>
             <button type="button" class="btn" id="btn-novo-funcionario">+ Novo</button>
           </div>
@@ -610,7 +610,25 @@
                 <div class="campo"><label>Situação</label><select id="func-status"></select></div>
                 <div class="campo"><label>Data de admissão</label><input id="func-admissao" type="date" /></div>
                 <div class="campo"><label>Data de demissão</label><input id="func-demissao" type="date" /></div>
-                <div class="campo func-sens"><label>Salário (R$)</label><input id="func-salario" type="number" step="0.01" min="0" /></div>
+                <div class="campo func-sens"><label>Salário contábil (R$)</label><input id="func-salario" type="number" step="0.01" min="0" /></div>
+                <details class="func-sens" style="grid-column:1/-1;">
+                  <summary style="cursor:pointer;"><strong>Folha e benefícios (RH)</strong> <span class="meta">— base mensal usada na apropriação por obra</span></summary>
+                  <div class="grade" style="margin-top:8px;">
+                    <div class="campo"><label>Banco</label><input id="func-banco" /></div>
+                    <div class="campo"><label>Agência</label><input id="func-agencia" /></div>
+                    <div class="campo"><label>Operação</label><input id="func-operacao" /></div>
+                    <div class="campo"><label>Conta</label><input id="func-conta" /></div>
+                    <div class="campo"><label>Salário particular (R$)</label><input id="func-salario-particular" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Unimed (R$/mês)</label><input id="func-unimed" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Unimed coparticipação (R$/mês)</label><input id="func-unimed-copart" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>MetLife (R$/mês)</label><input id="func-metlife" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Seguro de vida (R$/mês)</label><input id="func-seguro-vida" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Vale-transporte (R$/mês)</label><input id="func-vt" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>VR (R$/mês)</label><input id="func-vr" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Flash (R$/mês)</label><input id="func-flash" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Consignado (R$/mês)</label><input id="func-consignado" type="number" step="0.01" min="0" /></div>
+                  </div>
+                </details>
                 <div class="campo"><label>Supervisor direto</label><select id="func-supervisor"><option value="">— Sem supervisor —</option></select></div>
                 <div class="campo"><label>E-mail</label><input id="func-email" type="email" /></div>
                 <div class="campo"><label>Telefone</label><input id="func-telefone" /></div>
