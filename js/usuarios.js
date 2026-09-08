@@ -7,6 +7,7 @@ const CARGOS = {
   diretor:      "Diretor",        /* acesso total — has_role() no banco sempre passa */
   admin:        "Administrador",
   engenheiro:   "Engenheiro",
+  assistente_engenharia: "Assistente de engenharia",  /* RDO + pendências (fase 39) */
   comercial:    "Comercial",
   financeiro:   "Financeiro",
   comprador:    "Comprador",

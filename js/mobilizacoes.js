@@ -37,7 +37,7 @@ const MOB_COLUNAS = [
 const MOB_STATUS = { prevista: "Prevista", em_preparacao: "Em preparação", em_transito: "Em trânsito", em_obra: "Em obra", desmobilizada: "Desmobilizada", cancelada: "Cancelada" };
 const MOB_SETOR  = { engenharia: "Engenharia", sesmt: "SESMT", rh: "RH", manutencao: "Manutenção", almoxarifado: "Almoxarifado", logistica: "Logística", comercial: "Comercial" };
 // profiles.cargo → setor cujas pendências a pessoa vê em "Minhas pendências"
-const MOB_CARGO_SETOR = { engenheiro: "engenharia", encarregado: "engenharia", operador: "engenharia", sesmt: "sesmt", rh: "rh", mecanico: "manutencao", almoxarife: "almoxarifado", comprador: "almoxarifado", logistica: "logistica", comercial: "comercial" };
+const MOB_CARGO_SETOR = { engenheiro: "engenharia", assistente_engenharia: "engenharia", encarregado: "engenharia", operador: "engenharia", sesmt: "sesmt", rh: "rh", mecanico: "manutencao", almoxarife: "almoxarifado", comprador: "almoxarifado", logistica: "logistica", comercial: "comercial" };
 const MOB_TIPO_ICONE = { helice: "🌀", secante: "🌀", raiz: "🌱", trado: "🔩", outro: "⚙️" };
 // transições válidas por status atual (quem pode é o RLS + regra no confirmar)
 const MOB_TRANSICOES = {
@@ -262,7 +262,7 @@ function renderDrawerMob(){
   if(!cont || !m) return;
   const col = MOB_COLUNAS.find(x => x.k === c.coluna) || {};
   const est = Array.isArray(m.estacas_resumo) ? m.estacas_resumo : [];
-  const podeEditar = usuarioAtual && ["diretor", "admin", "engenheiro", "comercial", "encarregado", "logistica"].includes(usuarioAtual.cargo);
+  const podeEditar = usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica"].includes(usuarioAtual.cargo);
   const porQuem = (id, v) => `<select id="${id}"><option value="">—</option><option value="cgl"${v === "cgl" ? " selected" : ""}>CGL</option><option value="cliente"${v === "cliente" ? " selected" : ""}>Cliente</option></select>`;
   const simNao = (id, v) => `<select id="${id}"><option value="">—</option><option value="true"${v === true ? " selected" : ""}>Sim</option><option value="false"${v === false ? " selected" : ""}>Não</option></select>`;
   const apoioIds = new Set(m.equipamentos_apoio || []);

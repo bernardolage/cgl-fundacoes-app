@@ -435,6 +435,7 @@ async function carregarAbasOrc(o){
     medMap[m.id]._itens++;
   });
   const medicoes = Object.values(medMap);
+  _orcVinculos = { contratos, obras, medicoes };
 
   // Atualiza smart-buttons
   const setSB = (id, n) => {
@@ -488,6 +489,13 @@ function renderizarRevisoesOrc(revs, atual){
   });
 }
 
+let _orcVinculos = { contratos: [], obras: [], medicoes: [] };
+async function orcAbrirVinculo(tipo, id){
+  if(tipo === "obra"){ irParaSecao("obras"); if(typeof abrirObra === "function") await abrirObra(id); }
+  else if(tipo === "contrato"){ irParaSecao("contratos"); if(typeof abrirContrato === "function") await abrirContrato(id); }
+  else if(tipo === "medicao"){ irParaSecao("medicoes"); if(typeof abrirMedicao === "function") await abrirMedicao(id); }
+}
+
 function renderizarVinculosOrc(contratos, obras, medicoes){
   const cont = $("orc-vinculos-conteudo");
   if(!cont) return;
@@ -499,7 +507,7 @@ function renderizarVinculosOrc(contratos, obras, medicoes){
     <h4>📋 Contratos (${contratos.length})</h4>
     <div class="tabela-rola" style="margin-bottom:14px;"><table>
       <thead><tr><th>Número</th><th>Status</th><th>Data assinatura</th><th class="num">Valor</th></tr></thead>
-      <tbody>${contratos.map(c => `<tr>
+      <tbody>${contratos.map(c => `<tr class="linha-clicavel" data-abrir="contrato" data-id="${c.id}" title="Abrir contrato">
         <td><strong>${esc(c.numero||"—")}</strong></td>
         <td>${tagStatus("contrato", c.status)}</td>
         <td>${dataBR(c.data_assinatura)}</td>
@@ -510,7 +518,7 @@ function renderizarVinculosOrc(contratos, obras, medicoes){
     <h4>🏗️ Obras (${obras.length})</h4>
     <div class="tabela-rola" style="margin-bottom:14px;"><table>
       <thead><tr><th>Código</th><th>Nome</th><th>Status</th></tr></thead>
-      <tbody>${obras.map(o => `<tr>
+      <tbody>${obras.map(o => `<tr class="linha-clicavel" data-abrir="obra" data-id="${o.id}" title="Abrir obra">
         <td><strong>${esc(o.codigo||"—")}</strong></td>
         <td>${esc(o.nome||"—")}</td>
         <td>${tagStatus("obra", o.status)}</td>
@@ -520,7 +528,7 @@ function renderizarVinculosOrc(contratos, obras, medicoes){
     <h4>💰 Medições (${medicoes.length})</h4>
     <div class="tabela-rola"><table>
       <thead><tr><th>Nº</th><th>Obra</th><th>Status</th><th>Data</th><th class="num">Itens com este orçamento</th></tr></thead>
-      <tbody>${medicoes.map(m => `<tr>
+      <tbody>${medicoes.map(m => `<tr class="linha-clicavel" data-abrir="medicao" data-id="${m.id}" title="Abrir medição">
         <td><strong>${esc(m.numero||"—")}</strong></td>
         <td>${esc(m.obra?.codigo||"")} ${esc(m.obra?.nome||"")}</td>
         <td>${tagStatus("medicao", m.status)}</td>
@@ -893,11 +901,22 @@ function ligarOrcamentos(){
   $("btn-orc-nova-revisao")?.addEventListener("click", criarNovaRevisaoOrc);
   $("btn-orc-criar-obra")?.addEventListener("click", criarObraDoOrcamento);
 
-  // Smart-buttons navegam pras abas
+  // Smart-buttons: com um único vínculo abrem a ficha direto; senão vão para a aba
+  const SB_ORC_LISTA = { "sb-orc-contratos": ["contratos", "contrato"], "sb-orc-obras": ["obras", "obra"], "sb-orc-medicoes": ["medicoes", "medicao"] };
   document.querySelectorAll(".sb-btn[data-goto-tab]").forEach(b => {
     if(b.id.startsWith("sb-orc-")){
-      b.addEventListener("click", () => ativarTabOrc(b.dataset.gotoTab));
+      b.addEventListener("click", () => {
+        const cfg = SB_ORC_LISTA[b.id];
+        const lista = cfg ? (_orcVinculos[cfg[0]] || []) : [];
+        if(lista.length === 1) orcAbrirVinculo(cfg[1], lista[0].id);
+        else ativarTabOrc(b.dataset.gotoTab);
+      });
     }
+  });
+  // Aba Vínculos: clique na linha abre a ficha
+  $("orc-vinculos-conteudo")?.addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-abrir]");
+    if(tr && tr.dataset.id) orcAbrirVinculo(tr.dataset.abrir, tr.dataset.id);
   });
 
   const orcItens = $("orc-itens");
