@@ -22,6 +22,7 @@ async function carregarDashboard(){
   // Roda tudo em paralelo
   await Promise.all([
     dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
+    dashEhDiretoria() ? carregarDashIA() : Promise.resolve(),
     carregarDashOperacional(),
     carregarDashPendencias(),
     carregarDashGraficoProducao(),
@@ -423,4 +424,32 @@ async function carregarPosicaoEstoque(){
     <td>${esc(p.codigo)}</td><td>${esc(p.nome)}</td>
     <td>${num(p.estoque_atual)}</td><td>${brl(p.custo_ultimo)}</td>
     <td>${brl(Number(p.estoque_atual)*Number(p.custo_ultimo))}</td></tr>`).join("");
+}
+
+/* ============================================================
+   FASE 41 — consumo das leituras por IA no mês (ia_chamadas)
+   Só diretoria (RLS: is_admin). Custo estimado em US$ pela tabela
+   de preços do modelo, gravado pelas Edge Functions.
+   ============================================================ */
+async function carregarDashIA(){
+  const elNum = $("dash-ia-custo"), elSub = $("dash-ia-sub");
+  if(!elNum || !elSub) return;
+  const hoje = new Date();
+  const inicioMes = dataLocalISO(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+  const { data, error } = await sb.from("ia_chamadas")
+    .select("funcao,status,tokens_input,tokens_output,custo_usd")
+    .gte("created_at", inicioMes + "T00:00:00");
+  if(error){ elNum.textContent = "US$ —"; elSub.textContent = "sem acesso ao registro"; return; }
+  const linhas = data || [];
+  const custo  = linhas.reduce((s, l) => s + Number(l.custo_usd || 0), 0);
+  const ok     = linhas.filter(l => l.status === "ok").length;
+  const erros  = linhas.length - ok;
+  const rdo    = linhas.filter(l => l.funcao === "extrair-rdo-arquivo" && l.status === "ok").length;
+  const est    = linhas.filter(l => l.funcao === "extrair-estacas-pdf" && l.status === "ok").length;
+  const tokens = linhas.reduce((s, l) => s + Number(l.tokens_input || 0) + Number(l.tokens_output || 0), 0);
+  elNum.textContent = "US$ " + custo.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  elNum.classList.toggle("dash-num-vazio", !(linhas.length > 0));
+  elSub.textContent = linhas.length
+    ? `${ok} leitura(s): ${rdo} RDO · ${est} plantas${erros ? ` · ${erros} erro(s)` : ""} · ${num(Math.round(tokens / 1000))} mil tokens`
+    : "nenhuma leitura este mês";
 }
