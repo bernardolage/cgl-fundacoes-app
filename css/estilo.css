@@ -2626,3 +2626,31 @@ input:disabled, select:disabled, textarea:disabled {
 /* Fase 40: linha do ISS abaixo do total dos itens do orçamento */
 .itens-total.orc-iss-linha { margin-top: 4px; font-size: var(--txt-sm); font-weight: 500; color: var(--txt-sec); }
 .itens-total.orc-iss-linha span { margin-left: 4px; font-weight: 700; }
+
+
+/* ---------- fase 42: import por IA (trechos de solo / equipe) ---------- */
+.ia-sub > td { background: var(--sup-2); padding: 2px 8px 6px 28px !important; border-bottom: 1px solid var(--borda-forte); }
+.ia-trechos summary { cursor: pointer; font-size: var(--txt-xs); color: var(--txt-sec); padding: 3px 0; }
+.ia-trechos-tbl { width: auto; margin-top: 4px; }
+.ia-trechos-tbl th { font-size: var(--txt-xs); font-weight: 600; color: var(--txt-fraco); }
+.ia-sem-cadastro td { background: color-mix(in srgb, var(--aviso) 12%, transparent); }
+.ia-funcao-cadastro { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- fase 42: chamados ---------- */
+.header-direita { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.cham-contexto { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; font-size: var(--txt-xs); }
+.cham-contexto .chip { background: var(--sup-2); border: 1px solid var(--borda-forte); border-radius: 12px; padding: 2px 10px; color: var(--txt-sec); }
+.cham-contexto .chip strong { color: var(--txt); }
+.cham-drawer { background: var(--sup-0); width: min(760px, 96%); max-height: 92vh; overflow-y: auto; border-radius: 8px; padding: 20px; }
+.cham-lista td { vertical-align: top; }
+.cham-titulo { font-weight: 600; }
+.cham-desc { color: var(--txt-fraco); font-size: var(--txt-xs); margin-top: 2px; white-space: pre-wrap; }
+.cham-comentario { border-left: 3px solid var(--borda-forte); padding: 6px 10px; margin: 8px 0; background: var(--sup-2); border-radius: 0 4px 4px 0; }
+.cham-comentario .meta { margin-bottom: 2px; }
+.cham-comentario.resolucao { border-left-color: var(--sucesso); }
+.cham-comentario.sistema { border-left-color: var(--marca-600); font-style: italic; }
+.cham-status-bar { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.cham-status-bar .stage { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--borda-forte); font-size: var(--txt-xs); cursor: pointer; background: var(--sup-1); }
+.cham-status-bar .stage.atual { background: var(--marca-600); color: #fff; border-color: var(--marca-600); cursor: default; }
+.cham-status-bar .stage[aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
+@media (max-width: 720px){ #btn-reportar-problema span { display: none; } }

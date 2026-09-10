@@ -205,6 +205,7 @@ function novaObra(){
   $("obr-uf").value = "";
   $("obr-descricao").value = "";
   $("obr-obs").value = "";
+  preencherParametrosObra({});
   limparAbaContratoObra();
 
   $("btn-excluir-obra").style.display = "none";
@@ -237,6 +238,7 @@ async function abrirObra(id){
   $("obr-uf").value = data.uf || "";
   $("obr-descricao").value = data.descricao || "";
   $("obr-obs").value = data.observacoes || "";
+  preencherParametrosObra(data);
 
   await carregarContratoDaObra(data.contrato_id);
 
@@ -446,6 +448,66 @@ function ativarTabObra(nome){
   });
 }
 
+/* ---------- Aba Parâmetros (fase 42): jornada e concretagem ----------
+   Jornada fica na obra (valor da proposta, editável) e alimenta as horas extras da equipe
+   do RDO. Concretagem parametriza o cálculo automático de volume (fn_volume_concreto):
+   usinado → (Ø/2000)²·π·prof·perda; saco → peso_saco × sacos ÷ traço. */
+const OBR_PARAM_DEFAULTS = { traco_kg_cimento_m3: 750, peso_saco_kg: 50, fator_perda_concreto: 1.20 };
+function preencherParametrosObra(d){
+  const hhmm = (t) => t ? String(t).slice(0, 5) : "";
+  const set = (id, v) => { const el = $(id); if(el) el.value = v; };
+  set("obr-jornada-entrada",     hhmm(d.jornada_entrada));
+  set("obr-jornada-saida",       hhmm(d.jornada_saida));
+  set("obr-jornada-sab-entrada", hhmm(d.jornada_sabado_entrada));
+  set("obr-jornada-sab-saida",   hhmm(d.jornada_sabado_saida));
+  set("obr-conc-tipo",           d.concretagem_tipo_padrao || "");
+  set("obr-conc-fornecedor",     d.concreto_fornecedor || "");
+  set("obr-conc-traco",          d.traco_kg_cimento_m3 ?? OBR_PARAM_DEFAULTS.traco_kg_cimento_m3);
+  set("obr-conc-peso-saco",      d.peso_saco_kg ?? OBR_PARAM_DEFAULTS.peso_saco_kg);
+  set("obr-conc-fator-perda",    d.fator_perda_concreto ?? OBR_PARAM_DEFAULTS.fator_perda_concreto);
+  atualizarResumoParametrosObra();
+}
+function lerParametrosObra(){
+  const t = (id) => { const v = $(id)?.value; return v ? v : null; };
+  const n = (id, padrao) => { const v = $(id)?.value; if(v === "" || v == null) return padrao; const x = Number(String(v).replace(",", ".")); return isFinite(x) && x > 0 ? x : padrao; };
+  return {
+    jornada_entrada:        t("obr-jornada-entrada"),
+    jornada_saida:          t("obr-jornada-saida"),
+    jornada_sabado_entrada: t("obr-jornada-sab-entrada"),
+    jornada_sabado_saida:   t("obr-jornada-sab-saida"),
+    concretagem_tipo_padrao: t("obr-conc-tipo"),
+    concreto_fornecedor:     t("obr-conc-fornecedor"),
+    traco_kg_cimento_m3:  n("obr-conc-traco", OBR_PARAM_DEFAULTS.traco_kg_cimento_m3),
+    peso_saco_kg:         n("obr-conc-peso-saco", OBR_PARAM_DEFAULTS.peso_saco_kg),
+    fator_perda_concreto: n("obr-conc-fator-perda", OBR_PARAM_DEFAULTS.fator_perda_concreto)
+  };
+}
+/* Exemplo ao vivo do que a parametrização produz (ajuda a pegar traço/perda errados) */
+function atualizarResumoParametrosObra(){
+  const el = $("obr-param-resumo");
+  if(!el) return;
+  const p = lerParametrosObra();
+  const linhas = [];
+  if(p.jornada_entrada && p.jornada_saida){
+    const m = (s) => { const [h, mi] = s.split(":").map(Number); return h * 60 + mi; };
+    let dur = m(p.jornada_saida) - m(p.jornada_entrada); if(dur < 0) dur += 1440;
+    linhas.push(`Jornada seg–sex: ${p.jornada_entrada}–${p.jornada_saida} (${(dur / 60).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} h de intervalo; acima disso vira HE 50 %).`);
+    if(!(p.jornada_sabado_entrada && p.jornada_sabado_saida)) linhas.push("Sábado sem jornada: horas de sábado contam inteiras como HE 50 %.");
+  } else {
+    linhas.push("Sem jornada cadastrada: as horas extras da equipe no RDO ficam em branco para preencher à mão.");
+  }
+  if(p.concretagem_tipo_padrao === "saco"){
+    linhas.push(`Saco: 10 sacos de ${p.peso_saco_kg} kg com traço ${p.traco_kg_cimento_m3} kg/m³ = ${(p.peso_saco_kg * 10 / p.traco_kg_cimento_m3).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³.`);
+  } else if(p.concretagem_tipo_padrao === "usinado"){
+    const v = Math.pow(400 / 2000, 2) * Math.PI * 10 * p.fator_perda_concreto;
+    linhas.push(`Usinado: estaca Ø400 mm × 10 m com perda ${p.fator_perda_concreto} = ${v.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³.`);
+  } else {
+    linhas.push("Sem tipo de concretagem: o cálculo automático do RDO assume usinado com os padrões.");
+  }
+  if(p.concreto_fornecedor === "cliente") linhas.push("Concreto fornecido pelo cliente: o volume calculado é controle de consumo, não custo da CGL.");
+  el.textContent = linhas.join(" ");
+}
+
 /* ---------- Salvar (insert ou update) ---------- */
 async function salvarObra(novoStatus){
   const cliente_id = $("obr-cliente").value;
@@ -471,7 +533,8 @@ async function salvarObra(novoStatus){
     cidade: $("obr-cidade").value.trim() || null,
     uf: $("obr-uf").value || null,
     descricao: $("obr-descricao").value.trim() || null,
-    observacoes: $("obr-obs").value.trim() || null
+    observacoes: $("obr-obs").value.trim() || null,
+    ...lerParametrosObra()
   };
 
   let result;
@@ -546,6 +609,12 @@ function ligarObras(){
   // Notebook
   document.querySelectorAll("#obr-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabObra(b.dataset.tab));
+  });
+  // Aba Parâmetros: resumo ao vivo da jornada/concretagem
+  ["obr-jornada-entrada","obr-jornada-saida","obr-jornada-sab-entrada","obr-jornada-sab-saida",
+   "obr-conc-tipo","obr-conc-fornecedor","obr-conc-traco","obr-conc-peso-saco","obr-conc-fator-perda"].forEach(id => {
+    $(id)?.addEventListener("input", atualizarResumoParametrosObra);
+    $(id)?.addEventListener("change", atualizarResumoParametrosObra);
   });
 
   // Statusbar clicável (muda status)

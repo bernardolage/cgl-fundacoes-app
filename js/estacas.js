@@ -8,6 +8,13 @@ let _estacas = [];            // cache das estacas da obra atual
 let _estacaEdit = null;       // estaca em edição no modal
 let _importPreview = [];      // estacas extraídas do PDF aguardando confirmação
 let _importUnidade = null;    // unidade das coordenadas do import (IA ou heurística): "m" | "cm" | "mm"
+let _importNomenclatura = null; // "BLOCO" | "ANEL" | "PILAR" | … detectado pela extrair-estacas-pdf v12 (rotula a coluna)
+/* Rótulo da coluna de agrupamento: "Bloco" por padrão; a IA informa a nomenclatura do projeto */
+function rotuloAgrupamento(){
+  const n = String(_importNomenclatura || "").trim();
+  if(!n) return "Bloco";
+  return n.charAt(0).toUpperCase() + n.slice(1).toLowerCase();
+}
 
 // Heurística pela MENOR distância entre estacas nas unidades cruas do arquivo:
 // estacas nunca ficam a menos de ~0,5 m nem a mais de ~500 m da vizinha mais próxima.
@@ -798,6 +805,7 @@ async function importarEstacasPDF(){
     }
     _importPreview = estacas.map(extrairCoordsDaObservacao);
     _importUnidade = FATOR_UNIDADE[data.unidade_coordenadas] ? data.unidade_coordenadas : unidadeSugeridaCoords(_importPreview);
+    _importNomenclatura = data.agrupamento_nomenclatura || null;
     // Local do projeto (prancha inteira de um local): aplica às estacas que vieram sem
     if(data.local_detectado) _importPreview.forEach(e => { if(!e.local) e.local = data.local_detectado; });
     // Junta aviso da heurística (se houver) às observações da IA
@@ -849,7 +857,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   const COLUNAS_LBL = {
     numero: "Nº da estaca",
     local: "Local",
-    bloco: "Bloco",
+    bloco: rotuloAgrupamento(),
     tipo: "Tipo",
     diametro_mm: "Diâmetro (mm)",
     profundidade_m: "Profundidade (m)",
@@ -883,7 +891,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
           </select>
         </div>
         <button type="button" class="btn" id="btn-reorg-aplicar" style="padding:5px 12px;background:var(--marca-600);">Aplicar</button>
-        <button type="button" class="btn-sec" id="btn-reorg-rapido" style="padding:5px 12px;" title="Atalho: troca Nº e Bloco">↔ Trocar Nº ↔ Bloco</button>
+        <button type="button" class="btn-sec" id="btn-reorg-rapido" style="padding:5px 12px;" title="Atalho: troca Nº e ${esc(rotuloAgrupamento())}">↔ Trocar Nº ↔ ${esc(rotuloAgrupamento())}</button>
       </div>
     </div>`;
 
@@ -921,7 +929,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     return `<tr>
       <td><input type="text" value="${esc(e.numero||"")}" data-idx="${idx}" data-field="numero" class="prev-input col-xs"/></td>
       <td><input type="text" value="${esc(e.local||"")}" data-idx="${idx}" data-field="local" class="prev-input col-sm" placeholder="local"/></td>
-      <td><input type="text" value="${esc(e.bloco||"")}" data-idx="${idx}" data-field="bloco" class="prev-input col-xs"/></td>
+      <td><input type="text" value="${esc(e.bloco||"")}" data-idx="${idx}" data-field="bloco" class="prev-input col-xs" placeholder="${esc(rotuloAgrupamento().toLowerCase())}"/></td>
       <td>
         <select data-idx="${idx}" data-field="tipo" class="prev-input">
           ${Object.entries(ESTACA_TIPOS).map(([v,l]) => `<option value="${v}" ${e.tipo===v?"selected":""}>${esc(l)}</option>`).join("")}
@@ -942,7 +950,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     <div class="tabela-rola">
       <table>
         <thead><tr>
-          <th>Nº</th><th>Local</th><th>Bloco</th><th>Tipo</th><th>Ø (mm)</th><th>Prof. (m)</th>${temCoord ? "<th>X</th><th>Y</th>" : ""}<th>Obs.</th><th></th>
+          <th>Nº</th><th>Local</th><th title="Agrupamento da estaca (${esc(String(_importNomenclatura || "bloco").toLowerCase())}) — faz parte da identidade: E1 do BL-01 e E1 do BL-02 são estacas diferentes">${esc(rotuloAgrupamento())}</th><th>Tipo</th><th>Ø (mm)</th><th>Prof. (m)</th>${temCoord ? "<th>X</th><th>Y</th>" : ""}<th>Obs.</th><th></th>
         </tr></thead>
         <tbody>${linhas}</tbody>
       </table>
@@ -1054,8 +1062,9 @@ async function confirmarImportEstacas(){
     }));
   if(!regs.length){ avisoImport("Nenhuma estaca válida (todas sem nº).","erro"); return; }
 
-  // Duplicidade = mesmo número NO MESMO LOCAL (projetos de locais diferentes repetem E01…).
-  const chave = (r) => String(r.local || "").trim().toUpperCase() + "|" + String(r.numero || "").toUpperCase();
+  // Duplicidade = mesmo número NO MESMO LOCAL E NO MESMO AGRUPAMENTO (bloco/anel/pilar):
+  // E1 do BL-01 e E1 do BL-02 são estacas diferentes (índice único do banco: obra, local, bloco, numero).
+  const chave = (r) => String(r.local || "").trim().toUpperCase() + "|" + String(r.bloco || "").trim().toUpperCase() + "|" + String(r.numero || "").toUpperCase();
   const existentes = new Set(_estacas.map(chave));
   const vistos = new Set();
   const novos = [], repetidos = [];
@@ -1064,10 +1073,10 @@ async function confirmarImportEstacas(){
     if(existentes.has(k) || vistos.has(k)) repetidos.push(r); else { vistos.add(k); novos.push(r); }
   });
   if(!novos.length){
-    avisoImport(`Todas as ${regs.length} estacas já existem nesta obra no mesmo local — nada foi importado. Se são de outro local/projeto, preencha a coluna Local no preview.`, "erro");
+    avisoImport(`Todas as ${regs.length} estacas já existem nesta obra no mesmo local e ${rotuloAgrupamento().toLowerCase()} — nada foi importado. Se são de outro local/projeto ou de outro ${rotuloAgrupamento().toLowerCase()}, preencha as colunas Local/${rotuloAgrupamento()} no preview.`, "erro");
     return;
   }
-  if(repetidos.length && !confirm(`${repetidos.length} estaca(s) já existem no mesmo local e serão ignoradas (${repetidos.slice(0,8).map(r => r.numero).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?`)) return;
+  if(repetidos.length && !confirm(`${repetidos.length} estaca(s) já existem no mesmo local/${rotuloAgrupamento().toLowerCase()} e serão ignoradas (${repetidos.slice(0,8).map(r => [r.bloco, r.numero].filter(Boolean).join(" ")).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?`)) return;
   regs.length = 0; novos.forEach(r => regs.push(r));
 
   // Unidade das coordenadas escolhida no preview → obra (a planta converte para metros a partir dela)

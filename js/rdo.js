@@ -20,6 +20,7 @@ const FERRAMENTAS_RAIZ = { revestimento:"Revestimento", martelo:"Martelo", trico
 let _rdoEquipsCache = [];     // cache equipamentos
 let _rdoVizinhos = { anterior: null, proximo: null, indice: 0, total: 0 };
 let _rdoBoletimAberto = null;
+let _rdoObraParams = null;    // obras.concretagem_tipo_padrao/traco/peso_saco/fator_perda/jornada_* da obra da ficha
 
 const RDO_STAGES = ["rascunho","finalizado"];
 
@@ -51,7 +52,7 @@ function rdoPreencherObras(){
 
 async function rdoCarregarAuxiliares(){
   const [f, e] = await Promise.all([
-    sb.from("funcionarios").select("id,nome,matricula").eq("ativo",true).order("nome"),
+    sb.from("funcionarios").select("id,nome,matricula,funcao").eq("ativo",true).order("nome"),
     sb.from("equipamentos").select("id,codigo,nome,codigo_externo,tipo").eq("ativo",true).order("codigo")
   ]);
   _rdoFuncs = f.data || [];
@@ -252,6 +253,7 @@ async function abrirRDO(id){
   $("rdo-responsavel").value      = data.responsavel_id || "";
   if($("rdo-local")) $("rdo-local").value = data.local || "";
   carregarLocaisRDO(data.obra_id);
+  carregarParamsObraRDO(data.obra_id);
   $("rdo-tempo-manha").value      = data.tempo_manha || "";
   $("rdo-tempo-tarde").value      = data.tempo_tarde || "";
   $("rdo-efetivo-proprio").value  = data.efetivo_proprio ?? 0;
@@ -454,7 +456,9 @@ function renderExecucoes(){
       <td><input type="text" class="ex-num col-md" value="${esc(e.estaca_numero||"")}" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-diam" step="0.1" min="0" value="${esc(e.diametro_mm ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pproj" step="0.01" min="0" value="${esc(e.profundidade_projeto ?? "")}" style="width:75px;" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" style="width:75px;" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" style="width:75px;" title="Acumulado da estaca" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pde" step="0.01" min="0" value="${esc(e.perfuracao_de_m ?? "")}" style="width:62px;" title="Trecho perfurado neste dia — de (m)" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pate" step="0.01" min="0" value="${esc(e.perfuracao_ate_m ?? "")}" style="width:62px;" title="Trecho perfurado neste dia — até (m)" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perfi col-lg" value="${e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(0,16) : ""}" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perff col-lg" value="${e.perfuracao_fim ? String(e.perfuracao_fim).slice(0,16) : ""}" /></td>
       <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-conci col-lg" value="${e.concretagem_inicio ? String(e.concretagem_inicio).slice(0,16) : ""}" /></td>
@@ -517,6 +521,8 @@ function coletarExecucao(tr, idx){
   e.diametro_mm         = numOrNull(tr.querySelector(".ex-diam")?.value);
   e.profundidade_projeto = numOrNull(tr.querySelector(".ex-pproj")?.value);
   e.profundidade_executada = numOrNull(tr.querySelector(".ex-pexec")?.value);
+  e.perfuracao_de_m     = numOrNull(tr.querySelector(".ex-pde")?.value);
+  e.perfuracao_ate_m    = numOrNull(tr.querySelector(".ex-pate")?.value);
   e.perfuracao_inicio   = tr.querySelector(".ex-perfi")?.value || null;
   e.perfuracao_fim      = tr.querySelector(".ex-perff")?.value || null;
   e.concretagem_inicio  = tr.querySelector(".ex-conci")?.value || null;
@@ -700,6 +706,7 @@ function attachBoletimListeners(idx){
         e._solo[si].final_ml      = numOrNull(tr.querySelector('.blt-solo-fim').value);
         e._solo[si].classificacao = tr.querySelector('.blt-solo-class').value.trim() || null;
         e._solo[si].ferramenta    = tr.querySelector('.blt-solo-ferr')?.value || null;
+        sincronizarTrechoDaEstaca(idx);
       });
     });
     tb2.querySelectorAll('.btn-blt-solo-rem').forEach(b => {
@@ -745,6 +752,88 @@ function attachBoletimListeners(idx){
     const tb2 = document.querySelector(`#blt-just-tbl-${idx} tbody`);
     if(tb2){ tb2.innerHTML = renderBoletimJustRows(idx); rebindJust(); }
   });
+}
+
+/* Trecho do dia (de–até) derivado das camadas de solo do boletim: menor início → De,
+   maior final → Até. O acumulado (Prof. exec.) só é preenchido quando estava vazio ou
+   igual ao "Até" anterior — se a pessoa digitou outro valor, fica como está. */
+function sincronizarTrechoDaEstaca(idx){
+  const e = _rdoExecucoes[idx];
+  if(!e) return;
+  const camadas = (e._solo || []).filter(s => s.inicio_ml != null || s.final_ml != null);
+  if(!camadas.length) return;
+  const de  = camadas.reduce((m, s) => (s.inicio_ml != null && (m == null || s.inicio_ml < m)) ? s.inicio_ml : m, null);
+  const ate = camadas.reduce((m, s) => (s.final_ml  != null && (m == null || s.final_ml  > m)) ? s.final_ml  : m, null);
+  const ateAnterior = e.perfuracao_ate_m;
+  e.perfuracao_de_m = de; e.perfuracao_ate_m = ate;
+  if(ate != null && (e.profundidade_executada == null || e.profundidade_executada === ateAnterior)) e.profundidade_executada = ate;
+  const tr = $("rdo-execs")?.querySelector(`tr[data-idx="${idx}"]`);
+  if(tr){
+    const set = (cls, v) => { const el = tr.querySelector(cls); if(el) el.value = v ?? ""; };
+    set(".ex-pde", de); set(".ex-pate", ate); set(".ex-pexec", e.profundidade_executada);
+  }
+  atualizarChipsExec();
+}
+
+/* ---------- Concretagem: volume automático (mesma fórmula de fn_volume_concreto no banco) ----------
+   saco:    peso_saco × qtd_sacos ÷ traço (kg cimento/m³)
+   usinado: (Ø/2000)² × π × profundidade × fator de perda
+   Parâmetros vêm da obra (obras.concretagem_tipo_padrao, traco_kg_cimento_m3, peso_saco_kg,
+   fator_perda_concreto); os defaults são os mesmos do banco. */
+function volumeConcretoJS(tipo, diametroMm, profMaxM, qtdSacos, params){
+  const p = params || {};
+  const peso  = Number(p.peso_saco_kg ?? 50) || 50;
+  const traco = Number(p.traco_kg_cimento_m3 ?? 750) || 750;
+  const perda = Number(p.fator_perda_concreto ?? 1.20) || 1.20;
+  if(tipo === "saco"){
+    if(qtdSacos == null || !(traco > 0)) return null;
+    return Math.round(peso * qtdSacos / traco * 1000) / 1000;
+  }
+  if(tipo === "usinado"){
+    if(diametroMm == null || profMaxM == null) return null;
+    return Math.round(Math.pow(diametroMm / 2000, 2) * Math.PI * profMaxM * perda * 1000) / 1000;
+  }
+  return null;
+}
+async function carregarParamsObraRDO(obraId){
+  _rdoObraParams = null;
+  if(!obraId) return null;
+  const { data } = await sb.from("obras")
+    .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sabado_entrada,jornada_sabado_saida")
+    .eq("id", obraId).maybeSingle();
+  _rdoObraParams = data || null;
+  return _rdoObraParams;
+}
+/* Preenche Vol. m³ das execuções pela parametrização da obra. Só as vazias, a menos
+   que a pessoa confirme sobrescrever. Raiz em saco usa o consumo de cimento do boletim. */
+async function calcularConcretoExecucoes(){
+  const obraId = $("rdo-obra")?.value;
+  if(!obraId){ aviso("app-aviso","Selecione a obra antes.","erro"); return; }
+  if(!_rdoObraParams) await carregarParamsObraRDO(obraId);
+  const p = _rdoObraParams || {};
+  const tipo = p.concretagem_tipo_padrao || "usinado";
+  if(!p.concretagem_tipo_padrao){
+    aviso("app-aviso","A obra não tem tipo de concretagem cadastrado (Obra › Parâmetros). Calculando como usinado com os padrões (traço 750, perda 1,20).","erro");
+  }
+  const preenchidas = _rdoExecucoes.filter(e => e.volume_concreto_m3 != null).length;
+  const sobrescrever = preenchidas ? confirm(`${preenchidas} execução(ões) já têm volume. Sobrescrever também essas? (Cancelar = só preencher as vazias)`) : false;
+  let n = 0, semDados = 0;
+  _rdoExecucoes.forEach(e => {
+    if(e.volume_concreto_m3 != null && !sobrescrever) return;
+    let qtdSacos = null;
+    if(tipo === "saco"){
+      const un = e.consumo_cimento_unidade || "saco";
+      const q = numOrNull(e.consumo_cimento_raiz);
+      if(q != null) qtdSacos = un === "kg" ? q / (Number(p.peso_saco_kg ?? 50) || 50) : un === "saco" ? q : null;
+    }
+    const prof = Math.max(Number(e.profundidade_executada) || 0, Number(e.perfuracao_ate_m) || 0) || null;
+    const v = volumeConcretoJS(tipo, e.diametro_mm, prof, qtdSacos, p);
+    if(v == null){ semDados++; return; }
+    e.volume_concreto_m3 = v; n++;
+  });
+  renderExecucoes();
+  const forn = p.concreto_fornecedor === "cliente" ? " Concreto fornecido pelo cliente: o volume é só controle, não entra em custo da CGL." : "";
+  aviso("app-aviso", `Volume calculado em ${n} execução(ões) (${tipo === "saco" ? "cimento em saco" : "usinado"}).${semDados ? ` ${semDados} sem dados suficientes (Ø/profundidade ou sacos).` : ""}${forn} Não esqueça de salvar.`, n ? "ok" : "erro");
 }
 
 /* ---------- Sub-grades Raiz ---------- */
@@ -1014,6 +1103,8 @@ async function salvarRDO(novoStatus){
         diametro_mm: e.diametro_mm,
         profundidade_projeto: e.profundidade_projeto,
         profundidade_executada: e.profundidade_executada,
+        perfuracao_de_m: numOrNull(e.perfuracao_de_m),
+        perfuracao_ate_m: numOrNull(e.perfuracao_ate_m),
         perfuracao_inicio: e.perfuracao_inicio || null,
         perfuracao_fim: e.perfuracao_fim || null,
         concretagem_inicio: e.concretagem_inicio || null,
@@ -1173,6 +1264,8 @@ function ligarRDO(){
   $("btn-add-rdo-equipe")?.addEventListener("click", adicionarRdoEquipe);
   $("btn-rdo-equipe-do-time")?.addEventListener("click", importarEquipeCadastrada);
   $("btn-rdo-aplicar-op")?.addEventListener("click", aplicarOperadorEmMassa);
+  $("btn-rdo-calc-concreto")?.addEventListener("click", calcularConcretoExecucoes);
+  $("rdo-obra")?.addEventListener("change", () => carregarParamsObraRDO($("rdo-obra").value));
 
   $("rdo-tipo-servico")?.addEventListener("change", (e) => {
     atualizarVisibilidadeAbasRaiz(e.target.value);
@@ -1535,21 +1628,41 @@ async function processarArquivoIA(file, mediaType){
     const registros = [];
     _iaExtras = {};
     dias.forEach(d => {
-      _iaExtras[d.data] = {
+      // v3: equipe casada com o cadastro (função vem de funcionarios.funcao), injeção por estaca,
+      // responsável = operador/encarregado. Campos ausentes (função v2) degradam para vazio.
+      const injecao = Array.isArray(d.injecao) ? d.injecao : [];
+      const ex = {
         tempo_manha: d.tempo_manha || null, tempo_tarde: d.tempo_tarde || null,
         responsavel: d.responsavel || null, atividades: d.atividades || null, observacoes: d.observacoes || null,
-        tipo_servico: d.tipo_servico || null, equipe: Array.isArray(d.equipe) ? d.equipe : []
+        tipo_servico: d.tipo_servico || null,
+        equipe: (Array.isArray(d.equipe) ? d.equipe : []).map(iaCasarIntegrante),
+        injecao, responsavel_id: null
       };
+      ex.responsavel_id = iaSugerirResponsavel(ex);
+      _iaExtras[d.data] = ex;
       (d.estacas || []).forEach(e => {
         const maq = (e.maquina || d.maquina || "").trim();
         const ref = detectarRefuro(normalizarNumeroEstaca(e.numero || ""));
+        const trechos = (Array.isArray(e.trechos) ? e.trechos : [])
+          .map(t => ({ de: numOrNull(t.de), ate: numOrNull(t.ate), ferramenta: t.ferramenta || null, solo: t.solo || null }))
+          .filter(t => t.de != null || t.ate != null || t.solo || t.ferramenta);
+        const inj = iaInjecaoDaEstaca(injecao, ref.nomeBase, e.agrupamento);
+        const maxAte = iaMaxAte(trechos);
         registros.push({
           data_dia: d.data,
           obra_csv: d.obra || "",
           estaca_numero: ref.nomeBase,
+          agrupamento: (e.agrupamento || "").trim() || null,
           modalidade_execucao: (e.refuro || ref.isRefuro) ? "refuro" : "furo_normal",
-          profundidade_executada: e.profundidade_executada,
+          profundidade_executada: e.profundidade_executada ?? maxAte,
           profundidade_projeto: e.profundidade_projeto,
+          perfuracao_de_m: numOrNull(e.perfuracao_de_m) ?? iaMinDe(trechos),
+          perfuracao_ate_m: numOrNull(e.perfuracao_ate_m) ?? maxAte,
+          trechos,
+          inclinacao: e.inclinacao != null && String(e.inclinacao).trim() ? String(e.inclinacao).trim() : null,
+          consumo_cimento_raiz: inj && inj.consumo_cimento != null ? String(inj.consumo_cimento) : null,
+          consumo_areia_raiz:   inj && inj.consumo_areia   != null ? String(inj.consumo_areia)   : null,
+          pressao_injecao_kgcm2: inj ? (inj.pressao_kgcm2 ?? null) : null,
           perfuracao_inicio: ts(d.data, e.perfuracao_inicio),
           perfuracao_fim: ts(d.data, e.perfuracao_fim),
           concretagem_inicio: ts(d.data, e.concretagem_inicio),
@@ -1577,7 +1690,10 @@ async function processarArquivoIA(file, mediaType){
     const tipoIA = dias.find(d => d.tipo_servico)?.tipo_servico;
     if(tipoIA && $("csv-tipo-select")) $("csv-tipo-select").value = tipoIA;
 
+    // Jornada da obra (horas extras da equipe) — da obra escolhida no preview
+    await iaCarregarJornadaObra((selObra && selObra.value) || (_csvObraDetectada && _csvObraDetectada.id) || obraSel || null);
     renderConferenciaIA(data);
+    selObra?.addEventListener("change", async () => { await iaCarregarJornadaObra(selObra.value); iaRecalcularHorasNoDOM(false); });
   } catch(err){
     aviso("app-aviso", "Leitura por IA: " + err.message, "erro");
   } finally {
@@ -1587,6 +1703,155 @@ async function processarArquivoIA(file, mediaType){
 
 const CONDICAO_TEMPO_IA = { bom:"Bom", nublado:"Nublado", chuva_fraca:"Chuva fraca", chuva_forte:"Chuva forte", impraticavel:"Impraticável" };
 const FUNCOES_RDO_IA = ["encarregado","operador","ajudante","sondador","motorista","soldador","apontador","tecnico","engenheiro","seguranca","terceirizado","outro"];
+const FERRAMENTAS_TRECHO_IA = { revestimento:"Revestimento", martelo:"Martelo", tricone:"Tricone" };
+
+/* ---------- Import por IA: casamento com o cadastro (fase 42) ----------
+   Regras decididas em 10/09: o NOME do boletim casa com funcionarios (mesma regra do
+   fn_funcionario_por_nome do banco: exato, senão prefixo único ≥ 8 caracteres); a
+   FUNÇÃO exibida vem SEMPRE do cadastro (funcionarios.funcao); funcao_no_dia só quando
+   o boletim diz explicitamente outra função; sem correspondência → nome_avulso + aviso.
+   Responsável do dia = operador da máquina ou encarregado presente — nunca o 1º da lista. */
+function normalizarNomePessoa(s){
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s*\(.*?\)\s*$/, "").replace(/[^A-Za-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().toUpperCase();
+}
+// funcionarios.funcao (texto do RH: "Operador de Máquinas Pleno", "Encarregado de Fundações Junior"…) → enum funcao_rdo
+function funcaoRdoDoCargo(funcao){
+  const f = normalizarNomePessoa(funcao);
+  if(!f) return null;
+  if(f.includes("ENCARREGADO") || f.includes("FEITOR") || f.includes("SUPERVISOR DE OBRA")) return "encarregado";
+  if(f.includes("SEGURANCA")) return "seguranca";
+  if(f.includes("OPERADOR DE CAMINHAO") || f.includes("MOTORISTA")) return "motorista";
+  if(f.includes("OPERADOR")) return "operador";
+  if(f.includes("AJUDANTE") || f.includes("SERVENTE")) return "ajudante";
+  if(f.includes("SONDADOR")) return "sondador";
+  if(f.includes("SOLDADOR")) return "soldador";
+  if(f.includes("APONTADOR")) return "apontador";
+  if(f.includes("ENGENHEIRO")) return "engenheiro";
+  if(f.includes("TECNICO")) return "tecnico";
+  if(f.includes("TERCEIRIZADO") || f === "PJ") return "terceirizado";
+  return "outro";
+}
+function casarFuncionarioPorNome(nome){
+  const n = normalizarNomePessoa(nome);
+  if(!n) return null;
+  const norm = (f) => normalizarNomePessoa(f.nome);
+  const exato = _rdoFuncs.filter(f => norm(f) === n);
+  if(exato.length === 1) return exato[0];
+  if(exato.length > 1) return null;
+  if(n.length < 8) return null;
+  const pref = _rdoFuncs.filter(f => norm(f).startsWith(n + " "));
+  if(pref.length === 1) return pref[0];
+  // "Marcos Vinicius Silva" no papel × "Marcos Vinicius da Silva" no cadastro: primeiro + último nome
+  const partes = n.split(" ");
+  if(partes.length >= 2){
+    const cand = _rdoFuncs.filter(f => { const p = norm(f).split(" "); return p.length >= 2 && p[0] === partes[0] && p[p.length - 1] === partes[partes.length - 1]; });
+    if(cand.length === 1) return cand[0];
+  }
+  return null;
+}
+function iaCasarIntegrante(p){
+  const f = casarFuncionarioPorNome(p.nome);
+  const funcaoIA = FUNCOES_RDO_IA.includes(p.funcao) ? p.funcao : null;
+  const m = {
+    nome: p.nome || "", funcionario_id: f ? f.id : null,
+    funcao_ia: funcaoIA, funcao_no_dia: null,
+    hora_entrada: p.hora_entrada || null, hora_saida: p.hora_saida || null,
+    horas_normais: p.horas_normais ?? null, horas_50: p.horas_50 ?? null, horas_100: p.horas_100 ?? null
+  };
+  iaAplicarCadastroIntegrante(m);
+  return m;
+}
+/* Recalcula os campos derivados do cadastro (chamado ao casar e quando a pessoa troca o funcionário) */
+function iaAplicarCadastroIntegrante(m){
+  const f = m.funcionario_id ? _rdoFuncs.find(x => x.id === m.funcionario_id) : null;
+  m.nome_cadastro = f ? f.nome : null;
+  m.funcao_cadastro = f ? (f.funcao || null) : null;
+  m.funcao_cadastro_rdo = funcaoRdoDoCargo(m.funcao_cadastro);
+  if(f) m.funcao_no_dia = (m.funcao_ia && m.funcao_ia !== m.funcao_cadastro_rdo) ? m.funcao_ia : null;
+  else  m.funcao_no_dia = m.funcao_ia || "outro";
+  return m;
+}
+const iaFuncaoEfetiva = (m) => m.funcao_no_dia || m.funcao_cadastro_rdo || m.funcao_ia || null;
+function iaSugerirResponsavel(ex){
+  const equipe = (ex.equipe || []).filter(m => m.funcionario_id);
+  if(ex.responsavel){
+    const f = casarFuncionarioPorNome(ex.responsavel);
+    if(f) return f.id; // o boletim nomeou operador/encarregado e a pessoa existe no cadastro
+  }
+  const enc = equipe.find(m => iaFuncaoEfetiva(m) === "encarregado");
+  if(enc) return enc.funcionario_id;
+  const op = equipe.find(m => iaFuncaoEfetiva(m) === "operador");
+  if(op) return op.funcionario_id;
+  return null;
+}
+/* "BL-03", "BL 3", "Bloco 3", "BL3" → "BL3" (identidade do agrupamento para casar estaca e injeção) */
+function normalizarAgrupamento(s){
+  let t = String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim()
+    .replace(/^BLOCO\s*/, "BL").replace(/^ANEL\s*/, "AN").replace(/^PILAR\s*/, "P");
+  t = t.replace(/[^A-Z0-9]+/g, "");
+  return t.replace(/(\D|^)0+(\d)/g, "$1$2");
+}
+function iaInjecaoDaEstaca(injecao, numero, agrupamento){
+  const n = normalizarNumeroEstaca(numero || "");
+  const cands = (injecao || []).filter(j => detectarRefuro(normalizarNumeroEstaca(j.estaca || "")).nomeBase === n);
+  if(!cands.length) return null;
+  if(cands.length === 1) return cands[0];
+  const a = normalizarAgrupamento(agrupamento);
+  return cands.find(j => normalizarAgrupamento(j.agrupamento) === a) || cands[0];
+}
+const iaMinDe  = (ts) => (ts || []).reduce((m, t) => (t.de  != null && (m == null || t.de  < m)) ? t.de  : m, null);
+const iaMaxAte = (ts) => (ts || []).reduce((m, t) => (t.ate != null && (m == null || t.ate > m)) ? t.ate : m, null);
+
+/* ---------- Horas da equipe pela jornada da obra ----------
+   Seg–sex usa obras.jornada_entrada/saida; sábado usa jornada_sabado_*; domingo é 100 %.
+   Entrada/saída do boletim e a jornada são comparadas como intervalo (almoço cancela nos
+   dois lados). Sem jornada cadastrada → null: fica em branco para preencher à mão. */
+let _iaJornadaObra = null;
+async function iaCarregarJornadaObra(obraId){
+  _iaJornadaObra = null;
+  if(!obraId) return null;
+  const { data } = await sb.from("obras").select("jornada_entrada,jornada_saida,jornada_sabado_entrada,jornada_sabado_saida").eq("id", obraId).maybeSingle();
+  _iaJornadaObra = data || null;
+  return _iaJornadaObra;
+}
+function minutosHHMM(s){ const m = String(s || "").match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+function calcularHorasEquipe(dataISO, entrada, saida, jornada){
+  const e = minutosHHMM(entrada), sd = minutosHHMM(saida);
+  if(e == null || sd == null) return null;
+  let trab = sd - e; if(trab < 0) trab += 24 * 60;
+  const dow = new Date(dataISO + "T12:00:00").getDay();
+  const h = (m) => Math.round(m / 60 * 4) / 4; // quartos de hora
+  if(dow === 0) return { horas_normais: 0, horas_50: 0, horas_100: h(trab) };
+  if(!jornada) return null;
+  const je = minutosHHMM(dow === 6 ? jornada.jornada_sabado_entrada : jornada.jornada_entrada);
+  const js = minutosHHMM(dow === 6 ? jornada.jornada_sabado_saida   : jornada.jornada_saida);
+  if(je == null || js == null){
+    if(dow === 6 && minutosHHMM(jornada.jornada_entrada) != null) return { horas_normais: 0, horas_50: h(trab), horas_100: 0 }; // obra sem jornada de sábado: sábado inteiro é extra
+    return null;
+  }
+  let jor = js - je; if(jor < 0) jor += 24 * 60;
+  const normais = Math.min(trab, jor);
+  return { horas_normais: h(normais), horas_50: h(Math.max(0, trab - normais)), horas_100: 0 };
+}
+/* Aplica a jornada nas linhas da equipe do preview. soVazias=true não mexe no que a pessoa já digitou. */
+function iaRecalcularHorasNoDOM(soVazias){
+  document.querySelectorAll(".ia-dia").forEach(bloco => {
+    const dia = bloco.dataset.dia;
+    bloco.querySelectorAll(".ia-equipe tbody tr").forEach(tr => iaRecalcularHorasLinha(tr, dia, soVazias));
+  });
+  const aviso_ = document.querySelector(".ia-jornada-aviso");
+  if(aviso_) aviso_.style.display = _iaJornadaObra && _iaJornadaObra.jornada_entrada ? "none" : "";
+}
+function iaRecalcularHorasLinha(tr, dia, soVazias){
+  const g = (c) => tr.querySelector(`[data-e="${c}"]`);
+  const r = calcularHorasEquipe(dia, g("hora_entrada")?.value, g("hora_saida")?.value, _iaJornadaObra);
+  ["horas_normais","horas_50","horas_100"].forEach(k => {
+    const el = g(k); if(!el) return;
+    if(soVazias && el.value !== "" && el.dataset.auto !== "1") return;
+    el.value = r ? r[k] : ""; el.dataset.auto = "1";
+  });
+}
 
 /* Tabela de conferência: tudo editável; o que estiver aqui é o que será gravado */
 function renderConferenciaIA(resp){
@@ -1595,38 +1860,54 @@ function renderConferenciaIA(resp){
   const hh = (iso) => iso ? String(iso).slice(11, 16) : "";
   const v  = (x) => (x == null ? "" : x);
   const tempoOpts = (sel) => '<option value="">—</option>' + Object.entries(CONDICAO_TEMPO_IA).map(([k,l]) => `<option value="${k}"${k===sel?" selected":""}>${l}</option>`).join("");
-  const funcOpts  = (sel) => FUNCOES_RDO_IA.map(f => `<option value="${f}"${f===sel?" selected":""}>${f}</option>`).join("");
+  const funcOpts  = (sel, comCadastro) => (comCadastro ? '<option value="">— do cadastro —</option>' : "") + FUNCOES_RDO_IA.map(f => `<option value="${f}"${f===sel?" selected":""}>${f}</option>`).join("");
+  const ferrOpts  = (sel) => '<option value="">—</option>' + Object.entries(FERRAMENTAS_TRECHO_IA).map(([k,l]) => `<option value="${k}"${k===sel?" selected":""}>${l}</option>`).join("");
+  const funcOptsCadastro = '<option value="">— sem cadastro (avulso) —</option>' + _rdoFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
 
   const conf = resp?.confianca || "media";
   const corConf = conf === "alta" ? "var(--sucesso)" : conf === "baixa" ? "var(--perigo)" : "var(--aviso)";
   const duvidas = (resp?.duvidas || []);
+  const temJornada = !!(_iaJornadaObra && _iaJornadaObra.jornada_entrada);
   let html = `<div class="ia-conf-topo">
     <div>🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
       ${resp?.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
     ${duvidas.length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${duvidas.map(esc).join(" · ")}</div>` : ""}
-    <div class="meta">Confira e corrija abaixo. O que estiver na tabela é exatamente o que será gravado. Linhas removidas com ✕ não entram.</div>
+    <div class="ia-duvidas ia-jornada-aviso" style="${temJornada ? "display:none;" : ""}">⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros): as horas extras da equipe ficam em branco até alguém preencher.</div>
+    <div class="meta">Confira e corrija abaixo. O que estiver na tabela é exatamente o que será gravado. Linhas removidas com ✕ não entram. A função da equipe vem do cadastro de funcionários; "Função no dia" só quando o boletim disser outra.</div>
   </div>`;
 
   Object.keys(_csvParsed).sort().forEach(dia => {
     const ex = _iaExtras?.[dia] || { equipe: [] };
     const ests = _csvParsed[dia];
+    const semCadastro = ex.equipe.filter(m => !m.funcionario_id).length;
+    // Responsável: integrantes casados primeiro, depois o restante do cadastro
+    const idsEquipe = new Set(ex.equipe.map(m => m.funcionario_id).filter(Boolean));
+    const respOpts = '<option value="">— não informado —</option>' +
+      (idsEquipe.size ? `<optgroup label="Equipe do dia">${_rdoFuncs.filter(f => idsEquipe.has(f.id)).map(f => `<option value="${esc(f.id)}"${f.id===ex.responsavel_id?" selected":""}>${esc(f.nome)}${f.funcao ? " · " + esc(f.funcao) : ""}</option>`).join("")}</optgroup>` : "") +
+      `<optgroup label="Outros do cadastro">${_rdoFuncs.filter(f => !idsEquipe.has(f.id)).map(f => `<option value="${esc(f.id)}"${f.id===ex.responsavel_id?" selected":""}>${esc(f.nome)}</option>`).join("")}</optgroup>`;
     html += `<div class="ia-dia" data-dia="${esc(dia)}">
       <div class="ia-dia-titulo">📅 ${dataBR(dia)}</div>
       <div class="grade ia-cab">
         <div class="campo"><label>Tempo manhã</label><select data-cab="tempo_manha">${tempoOpts(ex.tempo_manha)}</select></div>
         <div class="campo"><label>Tempo tarde</label><select data-cab="tempo_tarde">${tempoOpts(ex.tempo_tarde)}</select></div>
-        <div class="campo"><label>Responsável (texto do diário)</label><input data-cab="responsavel" value="${esc(v(ex.responsavel))}" /></div>
+        <div class="campo"><label>Responsável do dia <small class="meta">(operador ou encarregado)</small></label><select data-cab="responsavel_id">${respOpts}</select>
+          ${ex.responsavel ? `<div class="meta">No diário: "${esc(ex.responsavel)}"</div>` : ""}</div>
         <div class="campo largo"><label>Atividades</label><input data-cab="atividades" value="${esc(v(ex.atividades))}" /></div>
         <div class="campo largo"><label>Observações / ocorrências</label><input data-cab="observacoes" value="${esc(v(ex.observacoes))}" /></div>
       </div>
       <div class="tabela-rola"><table class="itens-tabela ia-tabela ia-estacas">
-        <thead><tr><th>Estaca</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th>Prof. exec.</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
-        <tbody>${ests.map((e, i) => `<tr data-idx="${i}">
+        <thead><tr><th>Estaca</th><th title="Bloco / anel / pilar">Agrup.</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th title="Acumulado da estaca">Prof. exec.</th><th title="Trecho do turno">De (m)</th><th title="Trecho do turno">Até (m)</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
+        <tbody>${ests.map((e, i) => {
+          const trechos = e.trechos || [];
+          return `<tr data-idx="${i}">
           <td><input data-c="estaca_numero" value="${esc(v(e.estaca_numero))}" style="width:70px" /></td>
+          <td><input data-c="agrupamento" value="${esc(v(e.agrupamento))}" style="width:60px" placeholder="BL3" /></td>
           <td><input type="checkbox" data-c="refuro" ${e.modalidade_execucao === "refuro" ? "checked" : ""} /></td>
           <td><input type="number" step="1" data-c="diametro_mm" value="${v(e.diametro_mm)}" style="width:64px" /></td>
           <td><input type="number" step="0.01" data-c="profundidade_projeto" value="${v(e.profundidade_projeto)}" style="width:70px" /></td>
           <td><input type="number" step="0.01" data-c="profundidade_executada" value="${v(e.profundidade_executada)}" style="width:70px" /></td>
+          <td><input type="number" step="0.01" data-c="perfuracao_de_m" value="${v(e.perfuracao_de_m)}" style="width:62px" /></td>
+          <td><input type="number" step="0.01" data-c="perfuracao_ate_m" value="${v(e.perfuracao_ate_m)}" style="width:62px" /></td>
           <td><input type="time" data-c="perfuracao_inicio" value="${hh(e.perfuracao_inicio)}" /></td>
           <td><input type="time" data-c="perfuracao_fim" value="${hh(e.perfuracao_fim)}" /></td>
           <td><input type="time" data-c="concretagem_inicio" value="${hh(e.concretagem_inicio)}" /></td>
@@ -1636,26 +1917,114 @@ function renderConferenciaIA(resp){
           <td><input data-c="maquina_codigo" value="${esc(v(e.maquina_codigo))}" style="width:80px" /></td>
           <td><input data-c="observacoes" value="${esc(v(e.observacoes))}" style="width:140px" /></td>
           <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="não importar esta linha">&times;</button></td>
-        </tr>`).join("")}</tbody>
+        </tr>
+        <tr class="ia-sub" data-sub="${i}"><td colspan="17">
+          <details class="ia-trechos" ${trechos.length ? "open" : ""}>
+            <summary>⛏️ Trechos de solo / ferramenta (${trechos.length})${e.inclinacao ? ` · inclinação ${esc(e.inclinacao)}` : ""}${(e.consumo_cimento_raiz || e.pressao_injecao_kgcm2 != null) ? ` · injeção: cimento ${esc(v(e.consumo_cimento_raiz))} · areia ${esc(v(e.consumo_areia_raiz))} · ${esc(v(e.pressao_injecao_kgcm2))} kg/cm²` : ""}</summary>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:4px 0;">
+              <label class="meta">Inclinação <input data-c="inclinacao" value="${esc(v(e.inclinacao))}" style="width:60px" placeholder="90" /></label>
+              <label class="meta">Cimento <input data-c="consumo_cimento_raiz" value="${esc(v(e.consumo_cimento_raiz))}" style="width:56px" /></label>
+              <label class="meta">Areia <input data-c="consumo_areia_raiz" value="${esc(v(e.consumo_areia_raiz))}" style="width:56px" /></label>
+              <label class="meta">Pressão kg/cm² <input type="number" step="0.01" data-c="pressao_injecao_kgcm2" value="${v(e.pressao_injecao_kgcm2)}" style="width:62px" /></label>
+              <button type="button" class="btn-sec btn-sm ia-add-trecho">+ trecho</button>
+            </div>
+            <table class="itens-tabela ia-tabela ia-trechos-tbl"><thead><tr><th>De (m)</th><th>Até (m)</th><th>Ferramenta</th><th>Classificação do solo</th><th></th></tr></thead>
+            <tbody>${trechos.map(t => `<tr>
+              <td><input type="number" step="0.01" data-t="de" value="${v(t.de)}" style="width:62px" /></td>
+              <td><input type="number" step="0.01" data-t="ate" value="${v(t.ate)}" style="width:62px" /></td>
+              <td><select data-t="ferramenta">${ferrOpts(t.ferramenta)}</select></td>
+              <td><input data-t="solo" value="${esc(v(t.solo))}" style="min-width:180px" /></td>
+              <td class="col-acao"><button type="button" class="btn-rem ia-rem-trecho" title="remover trecho">&times;</button></td>
+            </tr>`).join("")}</tbody></table>
+          </details>
+        </td></tr>`; }).join("")}</tbody>
       </table></div>
       <details class="ia-equipe" ${ex.equipe.length ? "open" : ""}>
-        <summary>👷 Equipe do dia (${ex.equipe.length})</summary>
-        <table class="itens-tabela ia-tabela"><thead><tr><th>Nome</th><th>Função</th><th>Entrada</th><th>Saída</th><th>H. normais</th><th>H. 50%</th><th>H. 100%</th><th></th></tr></thead>
-        <tbody>${ex.equipe.map(p => `<tr>
+        <summary>👷 Equipe do dia (${ex.equipe.length})${semCadastro ? ` <span style="color:var(--aviso-txt);">· ⚠️ ${semCadastro} sem correspondência no cadastro → entram como avulsos</span>` : ""}</summary>
+        <table class="itens-tabela ia-tabela"><thead><tr><th>Nome no diário</th><th>Funcionário (cadastro)</th><th>Função (cadastro)</th><th title="Só quando o boletim disser outra função">Função no dia</th><th>Entrada</th><th>Saída</th><th>H. normais</th><th>H. 50%</th><th>H. 100%</th><th></th></tr></thead>
+        <tbody>${ex.equipe.map(p => `<tr${p.funcionario_id ? "" : ' class="ia-sem-cadastro"'}>
           <td><input data-e="nome" value="${esc(v(p.nome))}" /></td>
-          <td><select data-e="funcao">${funcOpts(p.funcao || "outro")}</select></td>
+          <td><select data-e="funcionario_id">${funcOptsCadastro}</select></td>
+          <td class="ia-funcao-cadastro meta">${p.funcionario_id ? esc(p.funcao_cadastro || "—") : "⚠️ sem cadastro"}</td>
+          <td><select data-e="funcao">${funcOpts(p.funcao_no_dia || "", !!p.funcionario_id)}</select></td>
           <td><input type="time" data-e="hora_entrada" value="${esc(v(p.hora_entrada))}" /></td>
           <td><input type="time" data-e="hora_saida" value="${esc(v(p.hora_saida))}" /></td>
-          <td><input type="number" step="0.5" data-e="horas_normais" value="${v(p.horas_normais)}" style="width:60px" /></td>
-          <td><input type="number" step="0.5" data-e="horas_50" value="${v(p.horas_50)}" style="width:60px" /></td>
-          <td><input type="number" step="0.5" data-e="horas_100" value="${v(p.horas_100)}" style="width:60px" /></td>
+          <td><input type="number" step="0.25" data-e="horas_normais" value="${v(p.horas_normais)}" style="width:60px" /></td>
+          <td><input type="number" step="0.25" data-e="horas_50" value="${v(p.horas_50)}" style="width:60px" /></td>
+          <td><input type="number" step="0.25" data-e="horas_100" value="${v(p.horas_100)}" style="width:60px" /></td>
           <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="remover">&times;</button></td>
         </tr>`).join("")}</tbody></table>
       </details>
     </div>`;
   });
   cont.insertAdjacentHTML("beforeend", html);
-  cont.querySelectorAll(".ia-rem").forEach(b => b.addEventListener("click", () => b.closest("tr").remove()));
+
+  // selects (valor via innerHTML não funciona): funcionário casado por linha
+  cont.querySelectorAll(".ia-dia").forEach(bloco => {
+    const ex = _iaExtras?.[bloco.dataset.dia];
+    bloco.querySelectorAll(".ia-equipe tbody tr").forEach((tr, i) => {
+      const m = ex?.equipe?.[i];
+      const sel = tr.querySelector('[data-e="funcionario_id"]');
+      if(sel && m?.funcionario_id) sel.value = m.funcionario_id;
+      // horas: se o boletim não trouxe, calcula pela jornada da obra (campos ficam editáveis)
+      iaRecalcularHorasLinha(tr, bloco.dataset.dia, true);
+      tr.querySelector('[data-e="hora_entrada"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));
+      tr.querySelector('[data-e="hora_saida"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));
+      ["horas_normais","horas_50","horas_100"].forEach(k => tr.querySelector(`[data-e="${k}"]`)?.addEventListener("input", (ev) => { ev.target.dataset.auto = "0"; }));
+      // troca de funcionário → função do cadastro e "Função no dia" voltam a seguir o cadastro
+      sel?.addEventListener("change", () => {
+        const f = _rdoFuncs.find(x => x.id === sel.value);
+        tr.querySelector(".ia-funcao-cadastro").textContent = f ? (f.funcao || "—") : "⚠️ sem cadastro";
+        tr.classList.toggle("ia-sem-cadastro", !f);
+        const selFun = tr.querySelector('[data-e="funcao"]');
+        selFun.innerHTML = funcOpts(f ? "" : "outro", !!f);
+      });
+    });
+  });
+
+  // trechos: editar De/Até/Prof. exec. da linha principal conforme os trechos
+  const sincronizarTrechos = (sub) => {
+    const idx = sub.dataset.sub;
+    const main = sub.parentElement.querySelector(`tr[data-idx="${idx}"]`);
+    if(!main) return;
+    const ts = [...sub.querySelectorAll(".ia-trechos-tbl tbody tr")].map(tr => ({ de: numOrNull(tr.querySelector('[data-t="de"]').value), ate: numOrNull(tr.querySelector('[data-t="ate"]').value) }));
+    const de = iaMinDe(ts), ate = iaMaxAte(ts);
+    if(!ts.length) return;
+    const inDe = main.querySelector('[data-c="perfuracao_de_m"]'), inAte = main.querySelector('[data-c="perfuracao_ate_m"]'), inPe = main.querySelector('[data-c="profundidade_executada"]');
+    const ateAnterior = numOrNull(inAte.value);
+    inDe.value = de ?? ""; inAte.value = ate ?? "";
+    if(ate != null && (inPe.value === "" || numOrNull(inPe.value) === ateAnterior)) inPe.value = ate;
+    sub.querySelector("summary").firstChild.textContent = `⛏️ Trechos de solo / ferramenta (${ts.length})`;
+  };
+  const ligarTrechos = (sub) => {
+    sub.querySelectorAll(".ia-trechos-tbl tbody tr").forEach(tr => {
+      if(tr.dataset.ligado) return; tr.dataset.ligado = "1";
+      tr.addEventListener("input", () => sincronizarTrechos(sub));
+      tr.querySelector(".ia-rem-trecho").addEventListener("click", () => { tr.remove(); sincronizarTrechos(sub); });
+    });
+  };
+  cont.querySelectorAll(".ia-sub").forEach(sub => {
+    ligarTrechos(sub);
+    sub.querySelector(".ia-add-trecho").addEventListener("click", () => {
+      const tb = sub.querySelector(".ia-trechos-tbl tbody");
+      const ult = tb.querySelector("tr:last-child");
+      const deIni = ult ? (ult.querySelector('[data-t="ate"]').value || "") : "0";
+      tb.insertAdjacentHTML("beforeend", `<tr>
+        <td><input type="number" step="0.01" data-t="de" value="${esc(deIni)}" style="width:62px" /></td>
+        <td><input type="number" step="0.01" data-t="ate" value="" style="width:62px" /></td>
+        <td><select data-t="ferramenta">${ferrOpts("")}</select></td>
+        <td><input data-t="solo" value="" style="min-width:180px" /></td>
+        <td class="col-acao"><button type="button" class="btn-rem ia-rem-trecho" title="remover trecho">&times;</button></td></tr>`);
+      sub.querySelector("details").open = true;
+      ligarTrechos(sub);
+    });
+  });
+  cont.querySelectorAll(".ia-rem").forEach(b => b.addEventListener("click", () => {
+    const tr = b.closest("tr");
+    const prox = tr.nextElementSibling;
+    if(prox && prox.classList.contains("ia-sub") && prox.dataset.sub === tr.dataset.idx) prox.remove();
+    tr.remove();
+  }));
 }
 
 /* Lê a tabela de conferência de volta para _csvParsed/_iaExtras (o que será gravado) */
@@ -1669,19 +2038,36 @@ function lerConferenciaIA(){
     const ex = _iaExtras[dia] || (_iaExtras[dia] = { equipe: [] });
     bloco.querySelectorAll("[data-cab]").forEach(el => { ex[el.dataset.cab] = el.value.trim() || null; });
     const novos = [];
-    bloco.querySelectorAll("table.ia-estacas tbody tr[data-idx]").forEach(tr => {
+    bloco.querySelectorAll("table.ia-estacas > tbody > tr[data-idx]").forEach(tr => {
       const base = orig[Number(tr.dataset.idx)] || {};
       const g = (c) => tr.querySelector(`[data-c="${c}"]`);
       const numero = normalizarNumeroEstaca(g("estaca_numero").value.trim());
       if(!numero) return;
       const maq = g("maquina_codigo").value.trim();
       const eq = _rdoEquipsCache.find(e => [e.codigo_externo, e.codigo].filter(Boolean).some(c => c.toUpperCase() === maq.toUpperCase()));
+      // sub-linha (trechos, inclinação, injeção)
+      const sub = tr.nextElementSibling && tr.nextElementSibling.classList.contains("ia-sub") ? tr.nextElementSibling : null;
+      const gs = (c) => sub ? sub.querySelector(`[data-c="${c}"]`) : null;
+      const trechos = sub ? [...sub.querySelectorAll(".ia-trechos-tbl tbody tr")].map((r, i) => ({
+        ordem: i + 1,
+        de: num(r.querySelector('[data-t="de"]').value), ate: num(r.querySelector('[data-t="ate"]').value),
+        ferramenta: r.querySelector('[data-t="ferramenta"]').value || null,
+        solo: r.querySelector('[data-t="solo"]').value.trim() || null
+      })).filter(t => t.de != null || t.ate != null || t.solo || t.ferramenta) : (base.trechos || []);
+      const de  = num(g("perfuracao_de_m").value)  ?? iaMinDe(trechos);
+      const ate = num(g("perfuracao_ate_m").value) ?? iaMaxAte(trechos);
       novos.push({ ...base,
         estaca_numero: numero,
+        agrupamento: g("agrupamento").value.trim() || null,
         modalidade_execucao: g("refuro").checked ? "refuro" : "furo_normal",
         diametro_mm: num(g("diametro_mm").value),
         profundidade_projeto: num(g("profundidade_projeto").value),
-        profundidade_executada: num(g("profundidade_executada").value),
+        profundidade_executada: num(g("profundidade_executada").value) ?? ate,
+        perfuracao_de_m: de, perfuracao_ate_m: ate, trechos,
+        inclinacao: gs("inclinacao") ? (gs("inclinacao").value.trim() || null) : (base.inclinacao || null),
+        consumo_cimento_raiz: gs("consumo_cimento_raiz") ? (gs("consumo_cimento_raiz").value.trim() || null) : (base.consumo_cimento_raiz || null),
+        consumo_areia_raiz:   gs("consumo_areia_raiz")   ? (gs("consumo_areia_raiz").value.trim()   || null) : (base.consumo_areia_raiz   || null),
+        pressao_injecao_kgcm2: gs("pressao_injecao_kgcm2") ? num(gs("pressao_injecao_kgcm2").value) : (base.pressao_injecao_kgcm2 ?? null),
         perfuracao_inicio: ts(dia, g("perfuracao_inicio").value), perfuracao_fim: ts(dia, g("perfuracao_fim").value),
         concretagem_inicio: ts(dia, g("concretagem_inicio").value), concretagem_fim: ts(dia, g("concretagem_fim").value),
         volume_concreto_m3: num(g("volume_concreto_m3").value),
@@ -1692,19 +2078,43 @@ function lerConferenciaIA(){
       });
     });
     if(novos.length) _csvParsed[dia] = novos; else delete _csvParsed[dia];
+    const equipeAnt = ex.equipe || [];
     ex.equipe = [];
-    bloco.querySelectorAll(".ia-equipe tbody tr").forEach(tr => {
+    bloco.querySelectorAll(".ia-equipe tbody tr").forEach((tr, i) => {
       const g = (c) => tr.querySelector(`[data-e="${c}"]`);
       const nome = g("nome").value.trim();
       if(!nome) return;
-      ex.equipe.push({ nome, funcao: g("funcao").value || "outro", hora_entrada: g("hora_entrada").value || null, hora_saida: g("hora_saida").value || null,
-        horas_normais: num(g("horas_normais").value), horas_50: num(g("horas_50").value), horas_100: num(g("horas_100").value) });
+      const m = { ...(equipeAnt[i] || {}), nome,
+        funcionario_id: g("funcionario_id")?.value || null,
+        hora_entrada: g("hora_entrada").value || null, hora_saida: g("hora_saida").value || null,
+        horas_normais: num(g("horas_normais").value), horas_50: num(g("horas_50").value), horas_100: num(g("horas_100").value) };
+      iaAplicarCadastroIntegrante(m);
+      // select "Função no dia": vazio = segue o cadastro; preenchido = o boletim disse outra função
+      const fSel = g("funcao").value || null;
+      m.funcao_no_dia = m.funcionario_id ? fSel : (fSel || "outro");
+      ex.equipe.push(m);
     });
   });
   // máquinas sem match após a edição
   const regs = Object.values(_csvParsed).flat();
   const maqs = [...new Set(regs.map(r => (r.maquina_codigo||"").trim()).filter(Boolean))];
   _csvMaquinasSemMatch = maqs.filter(m => !regs.find(r => r.maquina_codigo === m && r.equipamento_id));
+}
+
+/* Vínculo estaca ↔ cadastro no import: número normalizado + agrupamento (bloco) quando
+   o boletim trouxer. A trigger do banco só desempata por local; com bloco resolvido aqui
+   ela recebe estaca_id pronto. Ambíguo (mesmo número em vários blocos, sem agrupamento) → null. */
+function resolverEstacaImport(estacasObra, numero, agrupamento){
+  const n = normalizarNumeroEstaca(numero || "");
+  const cands = estacasObra.filter(e => normalizarNumeroEstaca(e.numero || "") === n);
+  if(!cands.length) return null;
+  if(cands.length === 1) return cands[0].id;
+  const a = normalizarAgrupamento(agrupamento);
+  if(a){
+    const porBloco = cands.filter(e => normalizarAgrupamento(e.bloco) === a);
+    if(porBloco.length === 1) return porBloco[0].id;
+  }
+  return null;
 }
 
 /* Pipeline CSV Geodigitus extraído de processarCSV (separado pra coexistir com SoftSaci) */
@@ -1975,8 +2385,11 @@ async function confirmarImportCSV(){
         }
       }
     }
+    // Estacas cadastradas na obra: vínculo por número + agrupamento (bloco) feito aqui
+    const { data: estacasObra } = await sb.from("estacas").select("id,numero,bloco,local").eq("obra_id", obra_id).limit(5000);
+    const estsObra = estacasObra || [];
     const dias = Object.keys(_csvParsed).sort();
-    let totalRdos = 0, totalExecs = 0;
+    let totalRdos = 0, totalExecs = 0, totalTrechos = 0;
     for(const dia of dias){
       const ests = _csvParsed[dia];
       // Upsert do RDO (cria se não existe)
@@ -1988,12 +2401,12 @@ async function confirmarImportCSV(){
         const ex = _iaExtras?.[dia];
         const reg = {
           obra_id, data: dia, tipo_servico: tipo,
-          status: "rascunho", responsavel_id: responsavel,
+          status: "rascunho", responsavel_id: (ex && ex.responsavel_id) || responsavel,
           producao_dia_m: ests.reduce((s,e) => s + (e.profundidade_executada||0), 0),
           ...(ex ? {
             tempo_manha: ex.tempo_manha || null, tempo_tarde: ex.tempo_tarde || null,
             atividades: ex.atividades || null,
-            observacoes: [ex.observacoes, ex.responsavel ? "Responsável no diário: " + ex.responsavel : null].filter(Boolean).join("\n") || null,
+            observacoes: [ex.observacoes, (ex.responsavel && !ex.responsavel_id) ? "Responsável no diário: " + ex.responsavel : null].filter(Boolean).join("\n") || null,
             efetivo_proprio: ex.equipe.length || null
           } : {})
         };
@@ -2010,10 +2423,19 @@ async function confirmarImportCSV(){
         }
         return {
           rdo_id: rdoId,
+          estaca_id: resolverEstacaImport(estsObra, e.estaca_numero, e.agrupamento),
           estaca_numero: e.estaca_numero,
           diametro_mm: e.diametro_mm,
           profundidade_projeto: e.profundidade_projeto,
           profundidade_executada: e.profundidade_executada,
+          perfuracao_de_m: e.perfuracao_de_m ?? null,
+          perfuracao_ate_m: e.perfuracao_ate_m ?? null,
+          inclinacao: e.inclinacao || null,
+          consumo_cimento_raiz: e.consumo_cimento_raiz || null,
+          consumo_cimento_unidade: e.consumo_cimento_raiz ? "saco" : null,
+          consumo_areia_raiz: e.consumo_areia_raiz || null,
+          consumo_areia_unidade: e.consumo_areia_raiz ? "m3" : null,
+          pressao_injecao_kgcm2: e.pressao_injecao_kgcm2 ?? null,
           perfuracao_inicio: e.perfuracao_inicio,
           perfuracao_fim: e.perfuracao_fim,
           concretagem_inicio: e.concretagem_inicio,
@@ -2027,20 +2449,40 @@ async function confirmarImportCSV(){
           origem_dados: e.origem_dados || "csv_geodigitus"
         };
       });
-      const { error: errEx } = await sb.from("rdo_execucao_estaca").insert(exs);
+      const { data: execIds, error: errEx } = await sb.from("rdo_execucao_estaca").insert(exs).select("id");
       if(errEx){ throw new Error(`Execuções de ${dia}: ${errEx.message}`); }
       totalExecs += exs.length;
-      // Equipe lida pela IA (só em RDO criado agora, para não duplicar num RDO existente)
+      // Trechos de solo/ferramenta → rdo_raiz_solo (por execução)
+      const solos = [];
+      ests.forEach((e, i) => {
+        const execId = execIds?.[i]?.id;
+        if(!execId) return;
+        (e.trechos || []).forEach((t, ti) => solos.push({
+          rdo_id: rdoId, execucao_id: execId, ordem: ti + 1,
+          inicio_ml: t.de ?? null, final_ml: t.ate ?? null,
+          classificacao: t.solo || null, ferramenta: t.ferramenta || null
+        }));
+      });
+      if(solos.length){
+        const { error: errSolo } = await sb.from("rdo_raiz_solo").insert(solos);
+        if(errSolo) throw new Error(`Trechos de solo de ${dia}: ${errSolo.message}`);
+        totalTrechos += solos.length;
+      }
+      // Equipe lida pela IA (só em RDO criado agora, para não duplicar num RDO existente).
+      // Casada com o cadastro: funcionario_id quando há correspondência; senão nome_avulso.
       const eqIA = _iaExtras?.[dia]?.equipe || [];
       if(eqIA.length && !rdoExist){
-        const linhas = eqIA.map((p, i) => ({ rdo_id: rdoId, nome_avulso: p.nome, funcao_no_dia: p.funcao || "outro",
+        const linhas = eqIA.map((p, i) => ({ rdo_id: rdoId,
+          funcionario_id: p.funcionario_id || null,
+          nome_avulso: p.funcionario_id ? null : p.nome,
+          funcao_no_dia: p.funcao_no_dia || (p.funcionario_id ? null : "outro"),
           hora_entrada: p.hora_entrada || null, hora_saida: p.hora_saida || null,
           horas_normais: p.horas_normais, horas_50: p.horas_50, horas_100: p.horas_100, ordem: i + 1 }));
         const { error: errEq } = await sb.from("rdo_equipe").insert(linhas);
         if(errEq) console.warn("Equipe de " + dia + " não gravada:", errEq.message);
       }
     }
-    aviso("app-aviso", `✅ Importado: ${totalRdos} RDOs novos, ${totalExecs} execuções de estaca.`, "ok");
+    aviso("app-aviso", `✅ Importado: ${totalRdos} RDOs novos, ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}.`, "ok");
     fecharModalImportCSV();
     await carregarRDO();
   } catch(err){

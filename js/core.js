@@ -592,6 +592,7 @@ async function carregarTudo(){
     typeof carregarFuncionarios  === "function" ? carregarFuncionarios()  : null,
     typeof carregarRDO           === "function" ? carregarRDO()           : null,
     typeof carregarMovimentacoes === "function" ? carregarMovimentacoes() : null,
+    typeof carregarChamados      === "function" ? carregarChamados(true)  : null,
     (ehGestao && typeof carregarUsuarios === "function") ? carregarUsuarios() : null
   ]);
 
