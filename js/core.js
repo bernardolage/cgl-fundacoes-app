@@ -44,7 +44,7 @@ let mapaObras = {};
 
 /* ---------- Constantes ---------- */
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
-const UNIDADES = ["un","pc","cx","kg","g","ton","m","m2","m3","l","ml","sc","par","rl","jg"];
+const UNIDADES = ["un","pc","cx","kg","g","ton","m","m2","m3","l","ml","sc","par","rl","jg","vb","diária","mês"]; // vb/diária/mês: fase 40 (proposta RG 11.8)
 
 /* Status de cada etapa do fluxo comercial: rótulo amigável + cor da tag */
 const STATUS = {

@@ -65,6 +65,14 @@ const PROPOSTA_TIPOS = {
   outro:   { rotulo: "PROPOSTA",codigo: "RG 11.0",  revisao_padrao: "01" }
 };
 
+/* Fase 40: condição de pagamento padrão do modelo. É o texto que a ficha do orçamento
+   traz preenchido; o que o comercial editar em orcamentos.condicoes_pagamento substitui
+   esta cláusula na proposta. */
+const TEXTO_PAGAMENTO_PADRAO =
+  "O Sinal Contratual de 30% será medido no ato da assinatura do contrato ou mobilização do equipamento. " +
+  "Restante, será medição quinzenal, com prazo 28 dias após a data do último dia referente ao período da " +
+  "medição através de boleto bancário.";
+
 /* parágrafo institucional padrão (texto "Desde 1997...") */
 const TEXTO_INSTITUCIONAL =
   'Desde 1997, a CGL FUNDAÇÕES, <b>ESPECIALIZADA EM ESTACA HÉLICE CONTÍNUA MONITORADA, ' +
@@ -150,8 +158,8 @@ const CSS_PROPOSTA = `
   .quadro-precos .col-item { width: 56%; }
   .quadro-precos .col-un   { width: 9%; text-align:center; }
   .quadro-precos .col-qtd  { width: 9%; text-align:center; }
-  .quadro-precos .col-vu   { width: 12%; text-align:right; }
-  .quadro-precos .col-vt   { width: 14%; text-align:right; }
+  .quadro-precos .col-vu   { width: 12%; text-align:right; white-space: nowrap; }
+  .quadro-precos .col-vt   { width: 14%; text-align:right; white-space: nowrap; }
   .quadro-precos .total-linha td { font-weight: bold; background: #d9d9d9; }
   .obs-itens { margin-top: 8px; }
   .obs-itens .obs { border:1px solid #000; padding: 4px 6px; font-size: 8.5pt; }
@@ -219,8 +227,10 @@ function blocoCabecalho(tipo, codigoModelo, revisao, paginaAtual, paginaTotal){
 }
 
 /* bloco de identificação do destinatário (cliente) + cidade/data */
-function blocoDestinatario(cliente, cidadeEmissao, dataOrcamento){
+function blocoDestinatario(cliente, cidadeEmissao, dataOrcamento, orcamento){
   if(!cliente) cliente = {};
+  const o = orcamento || {};
+  /* fase 40: contato da proposta (A/c, tel, e-mail) por orçamento; cadastro do cliente é o fallback */
   return `
     <div class="destinatario">
       <div class="data-cidade">${esc(cidadeEmissao || "Itabira/MG")}, ${esc(dataPorExtensoBR(dataOrcamento))}</div>
@@ -229,9 +239,9 @@ function blocoDestinatario(cliente, cidadeEmissao, dataOrcamento){
       <div class="campos">
         <div>Razão Social: ${esc(cliente.nome || "")}</div>
         <div>CNPJ de faturamento: ${esc(cliente.cpf_cnpj || "")}</div>
-        <div>E-mail: ${esc(cliente.email || "")}</div>
-        <div>A/c: ${esc(cliente.contato_nome || "")}</div>
-        <div>Tel.: ${esc(cliente.telefone || "")}</div>
+        <div>E-mail: ${esc(o.contato_email || cliente.email || "")}</div>
+        <div>A/c: ${esc(o.contato_nome || cliente.contato_nome || "")}</div>
+        <div>Tel.: ${esc(o.contato_telefone || cliente.telefone || "")}</div>
       </div>
     </div>`;
 }
@@ -263,29 +273,42 @@ function blocoIntroducao(referenciaObra, tipo){
 }
 
 /* bloco "CONDIÇÕES GERAIS DA PROPOSTA" com escopo dos serviços.
-   A cláusula de ressalva sobre projeto/sondagem só aparece quando o
-   cliente NÃO forneceu o projeto de fundação ou a sondagem
-   (campo orcamentos.projeto_sondagem_fornecido = false). */
-function blocoCondicoesGerais(escopo, equipamento, projetoSondagemFornecido){
+   Fase 40: a ressalva cita só o que o cliente NÃO forneceu (projeto e/ou sondagem —
+   orcamentos.projeto_fornecido / sondagem_fornecida; o campo antigo
+   projeto_sondagem_fornecido = true continua valendo como "forneceu os dois").
+   Prazo e local de execução, quando preenchidos, saem aqui. */
+function blocoCondicoesGerais(escopo, equipamento, orcamento){
+  const o = orcamento || {};
   const linhas = (escopo || "").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   const escopoHTML = linhas.length
     ? linhas.map(l => `<div class="escopo">• ${esc(l)}</div>`).join("")
     : `<div class="escopo">• Escopo a ser preenchido na ficha do orçamento.</div>`;
-  const mostraRessalva = projetoSondagemFornecido !== true;
+  const temProj = o.projeto_fornecido === true || o.projeto_sondagem_fornecido === true;
+  const temSond = o.sondagem_fornecida === true || o.projeto_sondagem_fornecido === true;
+  let ressalva = "";
+  if(!temProj && !temSond) ressalva = "Proposta sujeita a alteração após análise de projeto e sondagem.";
+  else if(!temProj)        ressalva = "Proposta sujeita a alteração após análise do projeto de fundações.";
+  else if(!temSond)        ressalva = "Proposta sujeita a alteração após análise da sondagem.";
   return `
     <div class="secao-titulo">CONDIÇÕES GERAIS DA PROPOSTA</div>
     <div class="cond-gerais">
       <div>Baseado nas informações fornecidas por V. Sas., previmos executar as estacas conforme discriminado abaixo:</div>
       ${escopoHTML}
-      ${mostraRessalva ? `<div><i>Proposta sujeita a alteração após análise de projeto e sondagem.</i></div>` : ""}
+      ${ressalva ? `<div><i>${esc(ressalva)}</i></div>` : ""}
       ${equipamento ? `<div><i>Considerado equipamento ${esc(equipamento)}.</i></div>` : ""}
+      ${o.local_execucao ? `<div>Local de execução: <b>${esc(o.local_execucao)}</b></div>` : ""}
+      ${o.prazo_execucao ? `<div>Prazo de execução previsto: <b>${esc(o.prazo_execucao)}</b></div>` : ""}
     </div>`;
 }
 
-/* itens virtuais gerados a partir dos flags do orçamento (CGL fornece...) */
-function itensVirtuais(orcamento){
+/* itens virtuais gerados a partir dos flags do orçamento (CGL fornece...).
+   Fase 40: os flags mudam a matriz de encargos; o item só é acrescentado se o quadro
+   ainda não tiver um item equivalente (antes o diesel saía duplicado) e, no caso da
+   hospedagem, se houver valor mensal (antes imprimia R$ 0,00). */
+function itensVirtuais(orcamento, itens){
   const extras = [];
-  if(orcamento.cgl_fornece_diesel){
+  const temItem = (re) => (itens || []).some(it => re.test(String(it.descricao || "")));
+  if(orcamento.cgl_fornece_diesel && !temItem(/diesel/i)){
     extras.push({
       descricao:      "Diesel (fornecido pela CGL)",
       quantidade:     1,
@@ -294,7 +317,7 @@ function itensVirtuais(orcamento){
       _virtual:       true
     });
   }
-  if(orcamento.cgl_fornece_hospedagem){
+  if(orcamento.cgl_fornece_hospedagem && Number(orcamento.hospedagem_valor_mensal || 0) > 0 && !temItem(/hosped|aliment/i)){
     extras.push({
       descricao:      "Hospedagem e alimentação externa (fornecidas pela CGL)",
       quantidade:     1,
@@ -306,13 +329,28 @@ function itensVirtuais(orcamento){
   return extras;
 }
 
-/* quadro de preços com auto-numeração 1, 2, ..., 7.1, 7.2 quando há `secao` */
-function blocoQuadroPrecos(itens, valorTotal){
+/* Fase 40: totais da proposta. ISS "por dentro" = subtotal × p/(100-p) (é assim que a
+   RG 11.8 chega aos R$ 23.478,80 sobre R$ 446.097,12); senão subtotal × p/100. */
+function calcularTotaisProposta(itens, orcamento){
+  const subtotal = (itens || []).reduce((s, it) => s + Number(it.quantidade || 0) * Number(it.valor_unitario || 0), 0);
+  const p  = Number((orcamento && orcamento.iss_percentual) || 0);
+  const pd = !orcamento || orcamento.iss_por_dentro !== false;
+  const iss = p > 0 ? (pd && p < 100 ? subtotal * (p / (100 - p)) : subtotal * p / 100) : 0;
+  const pTxt = String(p).replace(".", ",").replace(/,0+$/, "");
+  const rotulo = p > 0 ? `ISS ${pTxt}% ${pd ? "( Mão de obra Calculo por dentro)" : "(sobre os serviços)"}` : "";
+  return { subtotal, iss, total: subtotal + iss, rotulo };
+}
+
+/* quadro de preços com auto-numeração 1, 2, ..., 7.1, 7.2 quando há `secao`.
+   Fase 40: grava it._num (usado nas "Obs: Item N"), quantidade 0 sai como "-" e
+   a linha do ISS entra no fim do quadro, somada ao Valor Total Estimado. */
+function blocoQuadroPrecos(itens, orcamento){
   if(!itens || !itens.length){
     return `
       <div class="secao-titulo" style="margin-top:8px;">Quadro de Preços</div>
       <div class="cond-gerais" style="text-align:center;">Sem itens cadastrados.</div>`;
   }
+  const tot = calcularTotaisProposta(itens, orcamento);
 
   let html = `
     <table class="quadro-precos">
@@ -358,6 +396,7 @@ function blocoQuadroPrecos(itens, valorTotal){
     const qtd = Number(it.quantidade || 0);
     const vu  = Number(it.valor_unitario || 0);
     const vt  = qtd * vu;
+    it._num = rotuloNum;
 
     html += `
       <tr>
@@ -365,14 +404,25 @@ function blocoQuadroPrecos(itens, valorTotal){
         <td class="col-un">${esc(it.unidade || "")}</td>
         <td class="col-qtd">${qtd ? num(qtd) : ""}</td>
         <td class="col-vu">${brl(vu)}</td>
-        <td colspan="2" class="col-vt">${brl(vt)}</td>
+        <td colspan="2" class="col-vt">${qtd ? brl(vt) : "R$ -"}</td>
       </tr>`;
   });
+
+  if(tot.iss > 0){
+    html += `
+      <tr>
+        <td>${nivel}- ${esc(tot.rotulo)}</td>
+        <td class="col-un"></td>
+        <td class="col-qtd"></td>
+        <td class="col-vu"></td>
+        <td colspan="2" class="col-vt">${brl(tot.iss)}</td>
+      </tr>`;
+  }
 
   html += `
         <tr class="total-linha">
           <td colspan="4" style="text-align:right;">Valor Total Estimado</td>
-          <td colspan="2" class="col-vt">${brl(valorTotal || 0)}</td>
+          <td colspan="2" class="col-vt">${brl(tot.total)}</td>
         </tr>
       </tbody>
     </table>`;
@@ -380,13 +430,19 @@ function blocoQuadroPrecos(itens, valorTotal){
   return html;
 }
 
-/* observações dos itens (Obs: Item N - ...) listadas após o quadro */
+/* observações dos itens listadas após o quadro. Fase 40: usa a numeração real do quadro
+   ("Obs: Item N - …"); texto que já começa com "Obs" (orçamentos antigos) sai como está. */
 function blocoObservacoesItens(itens){
   const obs = (itens || []).filter(i => i.observacao && i.observacao.trim());
   if(!obs.length) return "";
+  const texto = (i) => {
+    const t = i.observacao.trim();
+    if(/^obs\b/i.test(t)) return t;
+    return i._num ? `Obs: Item ${i._num} - ${t}` : `Obs: ${t}`;
+  };
   return `
     <div class="obs-itens">
-      ${obs.map(i => `<div class="obs">${esc(i.observacao)}</div>`).join("")}
+      ${obs.map(i => `<div class="obs">${esc(texto(i))}</div>`).join("")}
     </div>`;
 }
 
@@ -488,19 +544,11 @@ function encargosHelice(flags){
   ];
 }
 
-/* observações específicas que aparecem após o quadro de preços (Obs: Item N - ...) */
-function obsItensHelice(){
-  return [
-    "Obs: Item 3 - Será cobrado em caso da equipe ter que ser disponibilizada para execução de treinamentos/integração que ultrapasse meio período.",
-    "Obs: Item 3.1 - Contratada fornece os programas PCMSO e PPRA padrão, caso seja necessário realização de novos programas, exames médicos, clínicos e laboratoriais, serão por conta da contratante ou sendo paga a verba nesse item.",
-    "Obs: Item 6 - Qualquer paralisação dos serviços por motivos que independem de nossa vontade tais como indefinição de projeto, falta de matéria prima (aço, concreto, etc.), remoção de interferências, falta de licenças (publicas ou privadas), falta de acesso ou condições do terreno, ou frentes de serviços contínuos, etc estará incluso no faturamento mínimo dia do equipamento e/ou prestação de serviço.",
-    "Obs: Item 9 - Será cobrado em caso de mobilizações em áreas de acesso restrito e/ou quando houver necessidade de que a mobilização ocorra de noite devido a obra esta localizada em centro urbano."
-  ];
-}
-
 /* CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS — texto integral do PDF.
    Itens com destaque=true são impressos em negrito + itálico no PDF original. */
-function criteriosMedicaoHelice(){
+function criteriosMedicaoHelice(orcamento){
+  /* fase 40: condição de pagamento editada no orçamento substitui a cláusula padrão */
+  const pagamento = (orcamento && orcamento.condicoes_pagamento && orcamento.condicoes_pagamento.trim()) || TEXTO_PAGAMENTO_PADRAO;
   return [
     { t: "Estacas serão medidas do nível do terreno até a cota inferior da estaca." },
     { t: "O Diário de obra será utilizado para Medição." },
@@ -512,7 +560,7 @@ function criteriosMedicaoHelice(){
     { t: "No caso da inserção das armaduras se darem com o uso de nossos equipamentos cobraremos de preço de R$ 0,75 por kg levantado." },
     { t: "CHUVA: em caso de paralisações das atividades por motivo de chuva intermitente e/ou praça de trabalho saturada, que impossibilite trânsito de equipamentos pesados, será considerado 50% do faturamento mínimo acordado para cobrir despesas da CONTRATADA." },
     { t: "Os preços se referem aos serviços prestados em jornada de trabalho no horário normal segunda à sexta-feira de 07:00 as 17:00hs. Caso seja feito horas extras o valor será de R$ 380,00 por hora (equipe)." },
-    { t: "O Sinal Contratual de 30% será medido no ato da assinatura do contrato ou mobilização do equipamento. Restante, será medição quinzenal, com prazo 28 dias após a data do último dia referente ao período da medição através de boleto bancário.", destaque: true },
+    { t: pagamento, destaque: true },
     { t: "O atraso no pagamento pela CONTRATANTE, acarretará a mesma, multa de 2,0% (dois por cento) ao mês, mais juros diários de 0,10% (dez centésimos) ao dia, até o pagamento." },
     { t: "Em caso de ser necessário atividades no segundo turno, será cobrado 25% adicionais sobre os valores dos serviços executados.", destaque: true },
     { t: "Nos casos de eventual demanda da CONTRATANTE por fornecimento de ajudantes-extras para limpeza de terra dos trados, considerar o custo adicional de R$ 10,00/m³ (dez reais por metro cúbico escavado), garantindo-se o mínimo de R$ 420,00 por dia por ajudante-extra disponibilizado pela CONTRATADA." },
@@ -567,18 +615,9 @@ function encargosPorTipo(tipo, flags){
     default:        return [];
   }
 }
-function obsItensPorTipo(tipo){
+function criteriosMedicaoPorTipo(tipo, orcamento){
   switch(tipo){
-    case "helice":  return obsItensHelice();
-    case "trado":   return []; /* TODO */
-    case "raiz":    return []; /* TODO */
-    case "secante": return []; /* TODO */
-    default:        return [];
-  }
-}
-function criteriosMedicaoPorTipo(tipo){
-  switch(tipo){
-    case "helice":  return criteriosMedicaoHelice();
+    case "helice":  return criteriosMedicaoHelice(orcamento);
     case "trado":   return []; /* TODO */
     case "raiz":    return []; /* TODO */
     case "secante": return []; /* TODO */
@@ -646,26 +685,22 @@ function montarHtmlProposta(dados){
   const revisao      = orcamento.numero_revisao || "00";
 
   /* combina itens reais do banco + itens virtuais gerados pelos flags
-     (Diesel quando cgl_fornece_diesel; Hospedagem quando cgl_fornece_hospedagem) */
-  const extras = itensVirtuais(orcamento);
+     (Diesel quando cgl_fornece_diesel; Hospedagem quando cgl_fornece_hospedagem) —
+     fase 40: sem duplicar item que já está no quadro */
+  const extras = itensVirtuais(orcamento, itens);
   const itensQuadro = [...(itens || []), ...extras];
-  const totalQuadro = itensQuadro.reduce(
-    (s, it) => s + Number(it.quantidade || 0) * Number(it.valor_unitario || 0),
-    0
-  );
 
   const corpo = `
     ${blocoCabecalho(tipo, codigoModelo, revisao, 1, 1)}
-    ${blocoDestinatario(cliente, orcamento.cidade_emissao, orcamento.data_orcamento)}
+    ${blocoDestinatario(cliente, orcamento.cidade_emissao, orcamento.data_orcamento, orcamento)}
     ${blocoNumeroProposta(orcamento.numero, orcamento.data_orcamento, revisao)}
     ${blocoIntroducao(orcamento.referencia_obra || orcamento.descricao, tipo)}
-    ${blocoCondicoesGerais(orcamento.escopo_servicos || orcamento.observacoes, orcamento.equipamento_considerado, orcamento.projeto_sondagem_fornecido)}
-    ${blocoQuadroPrecos(itensQuadro, totalQuadro)}
+    ${blocoCondicoesGerais(orcamento.escopo_servicos || orcamento.observacoes, orcamento.equipamento_considerado, orcamento)}
+    ${blocoQuadroPrecos(itensQuadro, orcamento)}
     ${blocoNotaINSS()}
-    ${blocoObservacoesItens(itens)}
-    ${(obsItensPorTipo(tipo) || []).map(t => `<div class="obs-itens"><div class="obs">${esc(t)}</div></div>`).join("")}
+    ${blocoObservacoesItens(itensQuadro)}
     ${blocoEncargos(encargosPorTipo(tipo, orcamento))}
-    ${blocoClausulas("CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS", criteriosMedicaoPorTipo(tipo))}
+    ${blocoClausulas("CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS", criteriosMedicaoPorTipo(tipo, orcamento))}
     ${blocoClausulas("CONDIÇÕES GERAIS", condicoesGeraisPorTipo(tipo))}
     ${blocoClausulas("CONTRATAÇÃO DOS SERVIÇOS", contratacaoServicosTextoComum())}
     ${blocoClausulas("VALIDADE DA PROPOSTA", validadeTextoComum(orcamento.validade_dias || 30))}

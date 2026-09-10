@@ -943,6 +943,7 @@
             <input id="orc-busca" placeholder="Buscar por número ou cliente..." />
             <select id="orc-f-status"></select>
             <select id="orc-f-cliente"></select>
+            <select id="orc-f-porte" title="Porte do equipamento considerado (aba Modelo)"></select>
           </div>
           <div id="orc-conteudo"></div>
           <table style="display:none;"><tbody id="tab-orcamentos"></tbody></table>
@@ -1026,6 +1027,9 @@
                 <div class="campo"><label>Validade (data · = data + dias do Modelo)</label><input id="orc-validade" type="date" /></div>
                 <div class="campo"><label>Responsável</label><select id="orc-responsavel"><option value="">— não informado —</option></select></div>
                 <div class="campo largo"><label>Descrição (resumo interno)</label><input id="orc-descricao" placeholder="objeto do orçamento" /></div>
+                <div class="campo"><label>A/c (contato da proposta)</label><input id="orc-contato-nome" placeholder="puxa do cadastro do cliente" /></div>
+                <div class="campo"><label>Tel. do contato</label><input id="orc-contato-tel" placeholder="ex.: 31 9 8654-4743" /></div>
+                <div class="campo"><label>E-mail do contato</label><input id="orc-contato-email" type="email" /></div>
               </div>
             </div>
 
@@ -1052,8 +1056,10 @@
               </div>
               <div class="form-acoes">
                 <button type="button" class="btn-sec" id="btn-add-item">+ adicionar item</button>
+                <button type="button" class="btn-sec" id="btn-orc-itens-padrao" title="Adiciona os itens que não podem faltar no modelo (mob/desmob, mudança de frente, fat. mínimo, diesel, alimentação/hospedagem, bomba ou injeção) — quantidade 0 sai como “-” na proposta">⟳ Itens padrão do modelo</button>
               </div>
               <div class="itens-total">Valor total: <span id="orc-total">R$ 0,00</span></div>
+              <div class="itens-total orc-iss-linha">ISS <span id="orc-iss-lbl">5% por dentro</span>: <span id="orc-iss-valor">R$ 0,00</span> &nbsp;·&nbsp; Total da proposta (com ISS): <span id="orc-total-iss">R$ 0,00</span></div>
             </div>
 
             <div class="odoo-tab" data-tab="proposta">
@@ -1082,15 +1088,36 @@
                   <label>Cálculo do ISS</label>
                   <label class="check-inline"><input type="checkbox" id="orc-iss-pdentro" checked /> ISS calculado por dentro (mão de obra)</label>
                 </div>
+                <div class="campo"><label>Porte do equipamento</label>
+                  <select id="orc-porte" title="Filtra mobilização por porte e permite filtrar a lista de orçamentos">
+                    <option value="">— qualquer —</option>
+                    <option value="pequeno">Pequeno porte</option>
+                    <option value="medio">Médio porte</option>
+                    <option value="grande">Grande porte</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Faixa de profundidade</label>
+                  <select id="orc-faixa" title="Filtra fat. mínimo, locação e metro de hélice pela faixa">
+                    <option value="">— qualquer —</option>
+                    <option value="ate18">até 18 m</option>
+                    <option value="18a24">18 a 24 m</option>
+                    <option value="24a30">24 a 30 m</option>
+                    <option value="mais30">acima de 30 m</option>
+                  </select>
+                </div>
                 <div class="campo largo">
-                  <label>Cliente forneceu projeto/sondagem?</label>
-                  <label class="check-inline"><input type="checkbox" id="orc-proj-sond" /> Sim — omitir a cláusula "Proposta sujeita a alteração após análise de projeto e sondagem"</label>
+                  <label>Cliente forneceu…</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-proj-forn" /> projeto de fundações</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-sond-forn" /> sondagem</label>
+                  <span class="orc-filtro-dica">O que faltar entra na cláusula “Proposta sujeita a alteração após análise de …”.</span>
                 </div>
                 <div class="campo largo"><label>Referência da obra (vai no "Ref:" da proposta)</label><input id="orc-ref-obra" placeholder='ex.: CONTÍNUA MONITORADA para obra da SUZANO - Aracruz / ES' /></div>
                 <div class="campo largo"><label>Escopo dos serviços (uma linha por item — vai nas Condições Gerais)</label>
                   <textarea id="orc-escopo" rows="3" placeholder='ex.: 29 Estacas Ø 400 mm - Profundidade Estimada: até 06,00m'></textarea>
                 </div>
                 <div class="campo largo"><label>Equipamento considerado</label><input id="orc-equipamento" placeholder='ex.: EM800/24 - CZM (ou similar)' /></div>
+                <div class="campo"><label>Prazo de execução (vai nas Condições Gerais)</label><input id="orc-prazo" placeholder='ex.: 22 dias trabalhados' /></div>
+                <div class="campo"><label>Local de execução (vai nas Condições Gerais)</label><input id="orc-local" placeholder='ex.: Belo Horizonte / MG' /></div>
               </div>
             </div>
 
@@ -1109,9 +1136,8 @@
 
             <div class="odoo-tab" data-tab="comerciais">
               <div class="grade">
-                <div class="campo largo"><label>Condições de pagamento</label><textarea id="orc-pagamento" rows="3"></textarea></div>
-                <div class="campo"><label>Prazo de execução</label><input id="orc-prazo" placeholder='ex.: 60 dias após mobilização' /></div>
-                <div class="campo"><label>Local de execução</label><input id="orc-local" placeholder='ex.: SUZANO - Aracruz / ES' /></div>
+                <div class="campo largo"><label>Condições de pagamento (substitui a cláusula padrão de sinal/medição na proposta)</label><textarea id="orc-pagamento" rows="3"></textarea></div>
+                <div class="campo largo"><span class="orc-filtro-dica">Vem preenchido com o texto padrão do modelo (sinal de 30%, medição quinzenal, 28 dias, boleto). Altere aqui quando negociar a obra. Prazo e local de execução ficam na aba Modelo.</span></div>
               </div>
             </div>
 

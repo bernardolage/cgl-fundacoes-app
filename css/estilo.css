@@ -2622,3 +2622,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* ---- Funcionários: vista Logística ---- */
 .func-log-row { cursor: pointer; }
 .func-log-row:hover td { background: var(--marca-50); }
+
+/* Fase 40: linha do ISS abaixo do total dos itens do orçamento */
+.itens-total.orc-iss-linha { margin-top: 4px; font-size: var(--txt-sm); font-weight: 500; color: var(--txt-sec); }
+.itens-total.orc-iss-linha span { margin-left: 4px; font-weight: 700; }

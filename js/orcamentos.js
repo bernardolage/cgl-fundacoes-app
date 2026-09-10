@@ -15,11 +15,50 @@ const ORC_STAGES = ["rascunho","enviado","em_negociacao","aprovado"];
 let _orcCatOptions  = '<option value="">— item livre (digitar) —</option>';
 let _orcVarById     = {};
 let _orcServUnidade = {};
+let _orcServObs     = {};   // servico_id -> observação padrão do item (fase 40: vira "Obs: Item N - …")
+let _orcServByCod   = {};   // codigo do serviço -> serviço
+let _orcVarByCod    = {};   // codigo da variante -> variante
 let _orcPrecos      = {};
 
 let _orcServicos  = [];   // serviços ativos com o "eixo" (helice/raiz/trado/secante/null=comum)
-let _orcVariantes = [];   // variantes ativas com tipo_obra
-let _orcCatFiltro = { tipoProp: "helice", tipoObra: "convencional" };
+let _orcVariantes = [];   // variantes ativas com tipo_obra, porte, faixa_prof e unidade própria
+let _orcCatFiltro = { tipoProp: "helice", tipoObra: "convencional", porte: "", faixa: "" };
+
+const ORC_PORTE_LBL = { pequeno: "Pequeno porte", medio: "Médio porte", grande: "Grande porte" };
+const ORC_FAIXA_LBL = { ate18: "até 18 m", "18a24": "18 a 24 m", "24a30": "24 a 30 m", mais30: "> 30 m" };
+const ORC_TIPO_LBL  = { helice: "Hélice", trado: "Trado", raiz: "Raiz", secante: "Secante", outro: "Outro" };
+
+/* Fase 40: itens que não podem faltar em cada modelo de proposta (pedido do comercial).
+   qtd 0 sai como "-" na proposta (igual à RG 11.8). `var` fixa a variante; sem `var`,
+   entra a primeira variante que passa no filtro do Modelo (tipo de obra, porte, faixa). */
+const ITENS_PADRAO_ORC = {
+  helice: [
+    { serv: "MOB.HC.SERV", qtd: 1 },
+    { serv: "DIA.MDP.SERV" },
+    { serv: "DIA.FM.HC.SERV" },
+    { serv: "INS.DI.SERV", var: "INS-DI-HC" },
+    { serv: "VRB.ALH.SERV" },
+    { serv: "LOC.BO.SERV", var: "LOC-BO-MOB" },
+    { serv: "LOC.BO.SERV", var: "LOC-BO-DIA" }
+  ],
+  raiz: [
+    { serv: "MOB.RZ.SERV", qtd: 1 },
+    { serv: "DIA.MDP.SERV" },
+    { serv: "DIA.FM.RZ.SERV" },
+    { serv: "INS.DI.SERV", var: "INS-DI-RZ" },
+    { serv: "VRB.ALH.SERV" },
+    { serv: "EXEC.RZ.INJ.SERV" }
+  ],
+  trado: [
+    { serv: "MOB.ESC.SERV", var: "MOB-ESC", qtd: 1 },
+    { serv: "DIA.MDP.SERV" },
+    { serv: "DIA.FM.ESC.SERV" },
+    { serv: "INS.DI.SERV", var: "INS-DI-HC" },
+    { serv: "VRB.ALH.SERV" }
+  ],
+  outro: []
+};
+ITENS_PADRAO_ORC.secante = ITENS_PADRAO_ORC.helice; // secante usa mobilização/fat. mínimo/bomba de hélice
 
 // Eixo do serviço pelo caminho da categoria + nome (servicos.tipo_estaca é nulo em 21/29)
 function _eixoServicoOrc(texto){
@@ -33,8 +72,8 @@ function _eixoServicoOrc(texto){
 
 async function prepararCatalogoOrc(){
   const [srv, vrt, prc, cat] = await Promise.all([
-    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo").order("codigo"),
-    sb.from("servico_variantes").select("id,servico_id,nome,ativo,tipo_obra").order("codigo"),
+    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao").order("codigo"),
+    sb.from("servico_variantes").select("id,servico_id,codigo,nome,ativo,tipo_obra,unidade,porte,faixa_prof").order("codigo"),
     sb.from("servico_precos").select("variante_id,preco_referencia,vigente_desde")
       .order("vigente_desde",{ ascending:false }),
     sb.from("categorias_servico").select("id,nome,parent_id")
@@ -52,13 +91,20 @@ async function prepararCatalogoOrc(){
 
   _orcVarById = {};
   _orcServUnidade = {};
+  _orcServObs = {};
+  _orcServByCod = {};
+  _orcVarByCod = {};
   _orcPrecos = {};
-  _orcServicos.forEach(s => { _orcServUnidade[s.id] = s.unidade; });
-  _orcVariantes.forEach(v => { _orcVarById[v.id] = v; });
+  _orcServicos.forEach(s => {
+    _orcServUnidade[s.id] = s.unidade;
+    if(s.observacoes_padrao) _orcServObs[s.id] = s.observacoes_padrao;
+    if(s.codigo) _orcServByCod[s.codigo] = s;
+  });
+  _orcVariantes.forEach(v => { _orcVarById[v.id] = v; if(v.codigo) _orcVarByCod[v.codigo] = v; });
   (prc.data || []).forEach(p => {
     if(!(p.variante_id in _orcPrecos)) _orcPrecos[p.variante_id] = p.preco_referencia;
   });
-  _orcCatOptions = montarOpcoesCatalogoOrc(null, null); // catálogo completo
+  _orcCatOptions = montarOpcoesCatalogoOrc(null); // catálogo completo
 }
 
 function _servicoVisivelOrc(s, tipoProp){
@@ -68,25 +114,42 @@ function _servicoVisivelOrc(s, tipoProp){
   return false;
 }
 
-// tipoProp/tipoObra nulos = catálogo completo
-function montarOpcoesCatalogoOrc(tipoProp, tipoObra){
+// Variantes de um serviço que passam no filtro (tipo de obra, porte, faixa de profundidade).
+// Cada critério só é aplicado se sobrar alguma variante — serviço sem variante do tipo/porte/faixa
+// escolhido mostra todas (ex.: Mão de Obra Extra só tem industrial). Variante sem porte/faixa
+// (nulo) vale para qualquer.
+function _variantesFiltradasOrc(s, f){
+  let vars = _orcVariantes.filter(v => v.servico_id === s.id);
+  if(!vars.length || !f) return vars;
+  if(f.tipoObra){
+    const d = vars.filter(v => v.tipo_obra === f.tipoObra || v.tipo_obra === "especial");
+    if(d.length) vars = d;
+  }
+  if(f.porte){
+    const d = vars.filter(v => !v.porte || v.porte === f.porte);
+    if(d.length) vars = d;
+  }
+  if(f.faixa){
+    const d = vars.filter(v => !v.faixa_prof || v.faixa_prof === f.faixa);
+    if(d.length) vars = d;
+  }
+  return vars;
+}
+
+// f nulo = catálogo completo; senão { tipoProp, tipoObra, porte, faixa }
+function montarOpcoesCatalogoOrc(f){
   let html = '<option value="">— item livre (digitar) —</option>';
   _orcServicos.forEach(s => {
-    if(!_servicoVisivelOrc(s, tipoProp)) return;
-    let vars = _orcVariantes.filter(v => v.servico_id === s.id);
+    if(f && !_servicoVisivelOrc(s, f.tipoProp)) return;
+    const vars = _variantesFiltradasOrc(s, f);
     if(!vars.length) return;
-    if(tipoObra){
-      const doTipo = vars.filter(v => v.tipo_obra === tipoObra || v.tipo_obra === "especial");
-      // serviço sem variante do tipo escolhido → mostra todas (ex.: Mão de Obra Extra só tem industrial)
-      if(doTipo.length) vars = doTipo;
-    }
     html += `<optgroup label="${esc(s.nome)}">`
           + vars.map(v => `<option value="${esc(v.id)}">${esc(v.nome)}</option>`).join("")
           + `</optgroup>`;
   });
   return html;
 }
-function _opcoesFiltradasOrc(){ return montarOpcoesCatalogoOrc(_orcCatFiltro.tipoProp, _orcCatFiltro.tipoObra); }
+function _opcoesFiltradasOrc(){ return montarOpcoesCatalogoOrc(_orcCatFiltro); }
 
 // Troca as opções do select preservando o item escolhido (mesmo fora do filtro)
 function _trocarOpcoesSelect(sel, html){
@@ -99,25 +162,91 @@ function _trocarOpcoesSelect(sel, html){
   sel.value = atual;
 }
 
-// Muda tipo de proposta / tipo de obra → refaz o select de cada linha (exceto as em "todo o catálogo")
+// Muda tipo de proposta / tipo de obra / porte / faixa → refaz o select de cada linha (exceto as
+// em "todo o catálogo"). Fase 40: linha cujo item ficou fora do filtro troca sozinha para a variante
+// equivalente do mesmo serviço quando ela é única (ex.: Fat. mínimo 24-30m → até 18m) ou quando
+// só muda o porte e a distância é a mesma (Mob. Grande (até 100km) → Mob. Médio (até 100km)).
 function atualizarFiltroCatalogoOrc(){
   _orcCatFiltro = {
     tipoProp: $("orc-tipo-proposta")?.value || "helice",
-    tipoObra: $("orc-tipo-obra")?.value || "convencional"
+    tipoObra: $("orc-tipo-obra")?.value || "convencional",
+    porte:    $("orc-porte")?.value || "",
+    faixa:    $("orc-faixa")?.value || ""
   };
   const html = _opcoesFiltradasOrc();
+  let ajustados = 0;
   document.querySelectorAll("#orc-itens tr").forEach(tr => {
     const sel = tr.querySelector(".it-cat");
     const btn = tr.querySelector(".it-cat-all");
     if(!sel || (btn && btn.classList.contains("ativo"))) return;
     _trocarOpcoesSelect(sel, html);
+    const v = _orcVarById[sel.value];
+    const opt = sel.selectedOptions && sel.selectedOptions[0];
+    if(!v || !opt || !opt.textContent.endsWith("· fora do filtro")) return;
+    const s = _orcServicos.find(x => x.id === v.servico_id);
+    if(!s || !_servicoVisivelOrc(s, _orcCatFiltro.tipoProp)) return; // mudou o eixo: não troca sozinho
+    let cand = _variantesFiltradasOrc(s, _orcCatFiltro).filter(c => c.id !== v.id);
+    if(cand.length > 1){
+      // mesma distância "(até 100km)" (mobilização por porte) …
+      const suf = (v.nome.match(/\(([^)]*)\)\s*$/) || [])[1];
+      if(suf) cand = cand.filter(c => c.nome.endsWith(`(${suf})`));
+    }
+    if(cand.length > 1){
+      // … ou mesmo diâmetro em outra faixa ("Hélice Ø 600mm 24 a 30m" → "Hélice Ø 600mm até 18m")
+      const faixaRe = /\s*(até 18 ?m|18 a 24 ?m|24 a 30 ?m|> ?30 ?m)\s*$/i;
+      const base = v.nome.replace(faixaRe, "").trim();
+      const c2 = cand.filter(c => faixaRe.test(c.nome) && c.nome.replace(faixaRe, "").trim() === base);
+      if(c2.length) cand = c2;
+    }
+    if(cand.length === 1){
+      sel.value = cand[0].id;
+      aplicarItemCatalogo(sel);
+      ajustados++;
+    }
   });
+  if(ajustados) aviso("app-aviso", `${ajustados} item(ns) trocado(s) para a variante do porte/faixa escolhidos no Modelo — confira valores.`, "ok");
   const txt = $("orc-filtro-cat-txt");
   if(txt){
     const nomeProp = { helice:"Hélice", trado:"Trado", raiz:"Raiz", secante:"Secante (+ apoio de hélice)", outro:"Outro — sem filtro de eixo" }[_orcCatFiltro.tipoProp] || _orcCatFiltro.tipoProp;
     const nomeObra = { convencional:"Convencional", industrial:"Industrial", especial:"Especial" }[_orcCatFiltro.tipoObra] || _orcCatFiltro.tipoObra;
-    txt.textContent = nomeProp + " · " + nomeObra;
+    const extras = [ORC_PORTE_LBL[_orcCatFiltro.porte], ORC_FAIXA_LBL[_orcCatFiltro.faixa]].filter(Boolean);
+    txt.textContent = [nomeProp, nomeObra].concat(extras).join(" · ");
   }
+}
+
+/* Fase 40: adiciona os itens padrão do modelo que ainda não estão no orçamento.
+   Não duplica: compara pela variante e (sem `var`) pelo serviço. */
+function carregarItensPadraoOrc(silencioso){
+  const tipo  = $("orc-tipo-proposta")?.value || "helice";
+  const lista = ITENS_PADRAO_ORC[tipo] || [];
+  if(!lista.length || !_orcServicos.length) return 0;
+  const presentes = new Set([...document.querySelectorAll("#orc-itens .it-cat")].map(s => s.value).filter(Boolean));
+  const servPresentes = new Set([...presentes].map(id => _orcVarById[id]?.servico_id).filter(Boolean));
+  let n = 0;
+  lista.forEach(d => {
+    const s = _orcServByCod[d.serv];
+    if(!s) return;
+    let v = d.var ? _orcVarByCod[d.var] : null;
+    if(!v) v = _variantesFiltradasOrc(s, _orcCatFiltro)[0];
+    if(!v || presentes.has(v.id)) return;
+    if(!d.var && servPresentes.has(s.id)) return;
+    adicionarItemPreenchido({
+      variante_id:    v.id,
+      descricao:      v.nome,
+      quantidade:     d.qtd || 0,
+      unidade:        v.unidade || _orcServUnidade[s.id] || "un",
+      valor_unitario: _orcPrecos[v.id] != null ? Number(_orcPrecos[v.id]) : 0,
+      observacao:     _orcServObs[s.id] || ""
+    });
+    presentes.add(v.id); servPresentes.add(s.id); n++;
+  });
+  recalcularOrc();
+  if(!silencioso){
+    aviso("app-aviso", n
+      ? `${n} item(ns) padrão do modelo ${ORC_TIPO_LBL[tipo] || tipo} adicionado(s). Quantidade 0 sai como “-” na proposta.`
+      : "Todos os itens padrão deste modelo já estão no orçamento.", "ok");
+  }
+  return n;
 }
 
 function definirTipoObraOrc(valor){
@@ -143,7 +272,7 @@ async function carregarOrcamentos(){
     try { await prepararCatalogoOrc(); } catch(_){ /* segue */ }
   }
   const { data, error } = await sb.from("orcamentos")
-    .select("id,numero,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id")
+    .select("id,numero,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade")
     .order("data_orcamento",{ ascending:false });
   _orcamentos = error ? [] : (data || []);
   renderOrcamentos();
@@ -162,11 +291,13 @@ async function carregarOrcamentos(){
 /* ---------- Filtros ---------- */
 function orcFiltrados(){
   const termo = ($("orc-busca")?.value || "").trim().toLowerCase();
-  const fStat = $("orc-f-status")?.value || "";
-  const fCli  = $("orc-f-cliente")?.value || "";
+  const fStat  = $("orc-f-status")?.value || "";
+  const fCli   = $("orc-f-cliente")?.value || "";
+  const fPorte = $("orc-f-porte")?.value || "";
   return _orcamentos.filter(o => {
     if(fStat && o.status !== fStat) return false;
     if(fCli && o.cliente_id !== fCli) return false;
+    if(fPorte && (o.porte_equipamento || "") !== fPorte) return false;
     if(termo){
       const cli = (mapaClientes[o.cliente_id] || "").toLowerCase();
       if(!((o.numero||"").toLowerCase().includes(termo) || cli.includes(termo))) return false;
@@ -180,6 +311,11 @@ function preencherFiltrosOrc(){
   if(selSt && !selSt.options.length){
     selSt.innerHTML = `<option value="">Todos os status</option>` + opcoesStatus("orcamento");
   }
+  const selPorte = $("orc-f-porte");
+  if(selPorte && !selPorte.options.length){
+    selPorte.innerHTML = `<option value="">Todos os portes</option>` +
+      Object.entries(ORC_PORTE_LBL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  }
   const selCli = $("orc-f-cliente");
   if(selCli){
     const atual = selCli.value; // preserva a seleção (o render roda a cada tecla)
@@ -191,6 +327,12 @@ function preencherFiltrosOrc(){
 }
 
 /* ---------- Render ---------- */
+// "Hélice · Grande porte · 24 a 30 m" (o que estiver preenchido)
+function _orcTipoPorteTxt(o){
+  return [ORC_TIPO_LBL[o.tipo_proposta] || "", ORC_PORTE_LBL[o.porte_equipamento], ORC_FAIXA_LBL[o.faixa_profundidade]]
+    .filter(Boolean).join(" · ") || "—";
+}
+
 function renderOrcamentos(){
   preencherFiltrosOrc();
   const dados = orcFiltrados();
@@ -212,6 +354,7 @@ function renderOrcLista(dados){
   const linhas = dados.map(o => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
     <td>${esc(o.numero)}</td>
     <td>${esc(mapaClientes[o.cliente_id]||"—")}</td>
+    <td>${esc(_orcTipoPorteTxt(o))}</td>
     <td>${dataBR(o.data_orcamento)}</td>
     <td>${dataBR(o.validade)}</td>
     <td>${tagStatus("orcamento", o.status)}</td>
@@ -219,7 +362,7 @@ function renderOrcLista(dados){
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Número</th><th>Cliente</th><th>Data</th><th>Validade</th><th>Status</th><th class="num">Valor</th>
+      <th>Número</th><th>Cliente</th><th>Tipo · Porte</th><th>Data</th><th>Validade</th><th>Status</th><th class="num">Valor</th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 }
@@ -235,7 +378,7 @@ function renderOrcKanban(dados){
       <div class="serv-kan-card linha-clicavel" data-id="${esc(o.id)}">
         <div class="serv-kan-card-nome">${esc(o.numero)} · ${esc(mapaClientes[o.cliente_id]||"—")}</div>
         <div class="serv-kan-card-meta">
-          <span class="meta">${dataBR(o.data_orcamento)}${o.validade ? " · val " + dataBR(o.validade) : ""}</span>
+          <span class="meta">${dataBR(o.data_orcamento)}${o.validade ? " · val " + dataBR(o.validade) : ""} · ${esc(_orcTipoPorteTxt(o))}</span>
         </div>
         <div class="serv-kan-card-rod">
           <span></span>
@@ -267,13 +410,19 @@ function novoOrcamento(){
   // limpa form
   ["orc-numero","orc-cliente","orc-descricao","orc-validade","orc-responsavel","orc-obs",
    "orc-ref-obra","orc-escopo","orc-equipamento","orc-pagamento","orc-prazo","orc-local",
-   "orc-hosp-valor"].forEach(k => { const el = $(k); if(el) el.value = ""; });
+   "orc-hosp-valor","orc-porte","orc-faixa","orc-contato-nome","orc-contato-tel","orc-contato-email"]
+    .forEach(k => { const el = $(k); if(el) el.value = ""; });
   $("orc-itens").innerHTML = "";
   $("orc-status").value = "rascunho";
   $("orc-data").value = hojeISO();
   // próximo número pelo maior sufixo existente (contagem colidia após exclusões)
   const maxN = _orcamentos.reduce((m, o) => { const mm = String(o.numero || "").match(/([0-9]+)$/); return mm ? Math.max(m, Number(mm[1])) : m; }, 0);
   $("orc-numero").value = "ORC-" + String(maxN + 1).padStart(4,"0");
+  // Fase 40: responsável = quem está logado (continua editável)
+  const selResp = $("orc-responsavel");
+  if(selResp && typeof usuarioAtual !== "undefined" && usuarioAtual && [...selResp.options].some(o => o.value === usuarioAtual.id)){
+    selResp.value = usuarioAtual.id;
+  }
   $("orc-tipo-proposta").value  = "helice";
   $("orc-revisao").value        = "00";
   $("orc-cidade-emissao").value = "Itabira/MG";
@@ -282,12 +431,16 @@ function novoOrcamento(){
   recalcularValidadeOrc();
   $("orc-iss-perc").value       = 5.00;
   $("orc-iss-pdentro").checked  = true;
-  $("orc-proj-sond").checked    = false;
+  $("orc-proj-forn").checked    = false;
+  $("orc-sond-forn").checked    = false;
   $("orc-cgl-diesel").checked   = false;
   $("orc-diesel-preco").value   = 8.34;
   $("orc-cgl-hospedagem").checked = false;
+  // Fase 40: condição de pagamento já vem com o texto padrão do modelo (edita-se na negociação)
+  if(typeof TEXTO_PAGAMENTO_PADRAO !== "undefined") $("orc-pagamento").value = TEXTO_PAGAMENTO_PADRAO;
   $("btn-excluir-orc").style.display = "none";
   abrirFichaOrcVisual({ numero: "(novo)", status: "rascunho", valor_total: 0 });
+  carregarItensPadraoOrc(true); // itens que não podem faltar no modelo
 }
 
 async function abrirOrcamento(id){
@@ -306,11 +459,17 @@ async function abrirOrcamento(id){
   $("orc-revisao").value         = o.numero_revisao || "00";
   $("orc-cidade-emissao").value  = o.cidade_emissao || "Itabira/MG";
   $("orc-validade-dias").value   = o.validade_dias != null ? o.validade_dias : 30;
+  $("orc-porte").value           = o.porte_equipamento || "";
+  $("orc-faixa").value           = o.faixa_profundidade || "";
   definirTipoObraOrc(o.tipo_obra || "convencional"); // antes dos itens: define o filtro do catálogo
   if(!o.validade) recalcularValidadeOrc();
   $("orc-iss-perc").value        = o.iss_percentual != null ? o.iss_percentual : 5.00;
   $("orc-iss-pdentro").checked   = o.iss_por_dentro !== false;
-  $("orc-proj-sond").checked     = o.projeto_sondagem_fornecido === true;
+  $("orc-proj-forn").checked     = o.projeto_fornecido === true || o.projeto_sondagem_fornecido === true;
+  $("orc-sond-forn").checked     = o.sondagem_fornecida === true || o.projeto_sondagem_fornecido === true;
+  $("orc-contato-nome").value    = o.contato_nome || "";
+  $("orc-contato-tel").value     = o.contato_telefone || "";
+  $("orc-contato-email").value   = o.contato_email || "";
   $("orc-ref-obra").value        = o.referencia_obra || "";
   $("orc-escopo").value          = o.escopo_servicos || "";
   $("orc-equipamento").value     = o.equipamento_considerado || "";
@@ -732,7 +891,7 @@ function aplicarItemCatalogo(select){
   const v = _orcVarById[vid];
   if(!v) return;
   tr.querySelector(".it-desc").value = v.nome || "";
-  const un = _orcServUnidade[v.servico_id];
+  const un = v.unidade || _orcServUnidade[v.servico_id]; // fase 40: variante pode ter unidade própria
   if(un){
     const selUn = tr.querySelector(".it-un");
     if(![...selUn.options].some(o=>o.value===un)){
@@ -742,6 +901,9 @@ function aplicarItemCatalogo(select){
   }
   const preco = _orcPrecos[vid];
   if(preco != null) tr.querySelector(".it-vu").value = Number(preco);
+  // fase 40: observação padrão do serviço entra na Obs do item (sai como "Obs: Item N - …")
+  const obs = tr.querySelector(".it-obs");
+  if(obs && !obs.value.trim() && _orcServObs[v.servico_id]) obs.value = _orcServObs[v.servico_id];
   recalcularOrc();
 }
 
@@ -760,6 +922,13 @@ function recalcularOrc(){
   if(totalEl) totalEl.textContent = brl(soma);
   const chip = $("orc-ficha-valor-chip");
   if(chip) chip.textContent = brl(soma);
+  // Fase 40: ISS da proposta (por dentro = soma × p/(100-p), como na RG 11.8)
+  const p  = Number($("orc-iss-perc")?.value || 0);
+  const pd = !!$("orc-iss-pdentro")?.checked;
+  const iss = p > 0 ? (pd && p < 100 ? soma * (p / (100 - p)) : soma * p / 100) : 0;
+  if($("orc-iss-lbl"))   $("orc-iss-lbl").textContent   = `${p}%${pd ? " por dentro" : ""}`;
+  if($("orc-iss-valor")) $("orc-iss-valor").textContent = brl(iss);
+  if($("orc-total-iss")) $("orc-total-iss").textContent = brl(soma + iss);
   return soma;
 }
 
@@ -813,7 +982,14 @@ async function salvarOrcamento(novoStatus){
     iss_percentual:             Number($("orc-iss-perc").value || 5),
     iss_por_dentro:             $("orc-iss-pdentro").checked,
     validade_dias:              Number($("orc-validade-dias").value || 30),
-    projeto_sondagem_fornecido: $("orc-proj-sond").checked,
+    porte_equipamento:          $("orc-porte").value || null,
+    faixa_profundidade:         $("orc-faixa").value || null,
+    projeto_fornecido:          $("orc-proj-forn").checked,
+    sondagem_fornecida:         $("orc-sond-forn").checked,
+    projeto_sondagem_fornecido: $("orc-proj-forn").checked && $("orc-sond-forn").checked, // compat
+    contato_nome:               $("orc-contato-nome").value.trim() || null,
+    contato_telefone:           $("orc-contato-tel").value.trim() || null,
+    contato_email:              $("orc-contato-email").value.trim() || null,
     condicoes_pagamento:        $("orc-pagamento").value.trim() || null,
     prazo_execucao:             $("orc-prazo").value.trim() || null,
     local_execucao:             $("orc-local").value.trim() || null,
@@ -876,7 +1052,7 @@ function ligarOrcamentos(){
       renderOrcamentos();
     });
   });
-  ["orc-busca","orc-f-status","orc-f-cliente"].forEach(id => {
+  ["orc-busca","orc-f-status","orc-f-cliente","orc-f-porte"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "orc-busca" ? "input" : "change", id === "orc-busca" ? debounce(renderOrcamentos) : renderOrcamentos);
   });
@@ -892,10 +1068,22 @@ function ligarOrcamentos(){
   $("btn-add-item")?.addEventListener("click", adicionarItem);
 
   // Filtro do catálogo (aba Modelo → aba Itens) e validade derivada
-  $("orc-tipo-proposta")?.addEventListener("change", atualizarFiltroCatalogoOrc);
-  $("orc-tipo-obra")?.addEventListener("change", atualizarFiltroCatalogoOrc);
+  ["orc-tipo-proposta","orc-tipo-obra","orc-porte","orc-faixa"].forEach(id => $(id)?.addEventListener("change", atualizarFiltroCatalogoOrc));
   ["orc-data","orc-validade-dias"].forEach(id => $(id)?.addEventListener("change", recalcularValidadeOrc));
+  ["orc-iss-perc","orc-iss-pdentro"].forEach(id => $(id)?.addEventListener("change", recalcularOrc));
   $("btn-orc-ir-modelo")?.addEventListener("click", () => ativarTabOrc("proposta"));
+  $("btn-orc-itens-padrao")?.addEventListener("click", () => carregarItensPadraoOrc(false));
+  // Fase 40: ao escolher o cliente, A/c, telefone e e-mail vêm do cadastro (só se estiverem vazios)
+  $("orc-cliente")?.addEventListener("change", async () => {
+    const id = $("orc-cliente").value;
+    if(!id) return;
+    const { data:c } = await sb.from("clientes").select("contato_nome,telefone,email").eq("id", id).maybeSingle();
+    if(!c) return;
+    const preencher = (k, val) => { const el = $(k); if(el && !el.value.trim() && val) el.value = val; };
+    preencher("orc-contato-nome",  c.contato_nome);
+    preencher("orc-contato-tel",   c.telefone);
+    preencher("orc-contato-email", c.email);
+  });
 
   // Ações novas: nova revisão + criar contrato
   $("btn-orc-nova-revisao")?.addEventListener("click", criarNovaRevisaoOrc);
