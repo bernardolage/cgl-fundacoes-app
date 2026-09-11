@@ -31,6 +31,7 @@ const CHAM_CATEGORIA = {
   valor:       { label: "Valor errado (preço, quantidade, medição)", validacao: true, dica: "Mudança de valor: só depois da validação da diretoria." },
   regra:       { label: "Regra de negócio",                     validacao: true,  dica: "Mudança de regra: só depois da validação da diretoria." },
   estrutura:   { label: "Campo / tela / relatório novo",        validacao: true,  dica: "Mudança de estrutura: só depois da validação da diretoria." },
+  melhoria:    { label: "Sugestão de melhoria",                 validacao: true,  dica: "Sugestão: a triagem avalia e a diretoria decide se entra na fila." },
   exclusao:    { label: "Excluir dado",                         validacao: true,  dica: "Exclusão de dado: só depois da validação da diretoria." },
   duvida:      { label: "Dúvida / como usar",                   validacao: false, dica: "Dúvida: respondida no próprio chamado." },
   outro:       { label: "Outro",                                validacao: false, dica: "" }
@@ -48,7 +49,7 @@ let _chamCarregado = false;
 let _chamTabelaOk  = true;   // false quando a migration ainda não existe
 let _chamAberto    = null;   // chamado aberto no drawer
 let _chamComentarios = [];
-let _chamContexto  = null;   // contexto capturado ao clicar em "Reportar problema"
+let _chamContexto  = null;   // contexto capturado ao clicar em "Relatar problema ou melhoria"
 
 const chamPodeTriar = () => !!(usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo));
 const chamNome = (id) => id ? (_chamPerfis[id] || (usuarioAtual && usuarioAtual.id === id ? usuarioAtual.nome : null) || "—") : "—";
@@ -164,7 +165,7 @@ function renderChamados(){
   const lista = chamadosFiltrados();
   if($("cham-contador")) $("cham-contador").textContent = lista.length ? `(${lista.length})` : "";
   if(!lista.length){
-    cont.innerHTML = `<p class="vazio">Nenhum chamado ${_chamados.length ? "com estes filtros" : "aberto ainda"}. Use <strong>🐞 Reportar problema</strong> no topo de qualquer tela.</p>`;
+    cont.innerHTML = `<p class="vazio">Nenhum chamado ${_chamados.length ? "com estes filtros" : "aberto ainda"}. Use <strong>💡 Relatar problema ou melhoria</strong> no topo de qualquer tela.</p>`;
     return;
   }
   cont.innerHTML = `<div class="tabela-rola"><table class="cham-lista">
@@ -283,7 +284,7 @@ async function comentarChamado(resolver){
   renderChamados(); atualizarBadgeChamados();
 }
 
-/* ---------- Novo chamado / Reportar problema ----------
+/* ---------- Novo chamado / Relatar problema ou melhoria ----------
    O contexto vem da tela aberta: módulo (item ativo do menu), obra e registro em edição.
    Cada módulo guarda o id em edição num global próprio (obraEditId, rdoEditId…); os
    typeof protegem contra módulo ausente. */
@@ -332,6 +333,7 @@ function abrirNovoChamado(ctx){
   selObra.innerHTML = `<option value="">— nenhuma —</option>` + obras.map(o => `<option value="${esc(o.id)}">${esc(o.nome)}</option>`).join("");
   selObra.value = c.obra_id || "";
   $("chamn-titulo").value = "";
+  $("chamn-titulo").placeholder = "ex.: Import do boletim não trouxe os trechos de solo · ou: seria útil filtrar RDOs por máquina";
   $("chamn-descricao").value = "";
   atualizarNotaCategoriaChamado();
   const av = $("chamn-aviso"); if(av){ av.textContent = ""; av.className = "aviso"; }
