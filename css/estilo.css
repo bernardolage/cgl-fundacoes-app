@@ -403,13 +403,16 @@ h4 {
 /* ---------- APLICAÇÃO (LAYOUT COM SIDEBAR) ---------- */
 #tela-app {
   display: none; /* Controlado via JS */
-  min-height: 100vh;
+  height: 100vh;          /* era min-height: a sidebar mais alta que a tela esticava o body e
+                             aparecia uma 2ª barra de rolagem vertical ao lado da do <main> */
+  overflow: hidden;
   flex-direction: row;
 }
 
 /* Sidebar Estilos */
 #app-sidebar {
   width: 280px;
+  height: 100vh;          /* a rolagem da sidebar fica dentro de .sidebar-nav */
   background-color: var(--azul-primary-dark);
   color: var(--sup-3);
   display: flex;
@@ -591,6 +594,9 @@ h4 {
   display: none;
   animation: fadeIn 0.25s ease;
 }
+/* O título da seção já aparece no cabeçalho (#app-secao-titulo, alimentado pelo h2);
+   o h2 dentro da seção repetia a mesma palavra logo abaixo. */
+.secao > h2:first-child { display: none; }
 .secao.ativa {
   display: block;
 }

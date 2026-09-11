@@ -540,10 +540,13 @@ document.querySelectorAll(".sidebar-nav button").forEach(b=>{
     // Carga sob demanda: a posição de estoque (aba legada) só ao abrir a seção
     if(b.dataset.secao === "estoque" && typeof carregarPosicaoEstoque === "function") carregarPosicaoEstoque();
     
-    // Atualiza o título no cabeçalho
+    // Atualiza o título no cabeçalho: usa o h2 da seção (nome completo, ex.: "Diário de
+    // Obra (RDO)") e cai no rótulo do menu quando a seção não tem h2
     const spanText = b.querySelector("span");
-    if(spanText && $("app-secao-titulo")) {
-      $("app-secao-titulo").textContent = spanText.textContent;
+    const h2 = secEl ? secEl.querySelector(":scope > h2:first-child") : null;
+    const titulo = (h2 && h2.textContent.trim()) || (spanText && spanText.textContent.trim());
+    if(titulo && $("app-secao-titulo")) {
+      $("app-secao-titulo").textContent = titulo;
     }
     
     closeSidebar();
