@@ -536,10 +536,42 @@ function ativarTabFunc(nome){
 }
 
 /* ---------- salvar / excluir ---------- */
+/* ---------- Homônimos (regra do Bernardo, 11/09/2026) ----------
+   Nome igual a outro funcionário não entra, a não ser com CPF diferente. O CPF vive
+   em funcionarios_sensiveis (só diretor/rh leem), então quem não vê CPF não consegue
+   provar que é outra pessoa e o cadastro é recusado com orientação. Isso também protege
+   o casamento por nome do import de RDO (fn_funcionario_por_nome e o preview),
+   que com homônimos vira chute. */
+function funcNormalizarNome(s){
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().toUpperCase();
+}
+async function funcBloqueiaHomonimo(nome){
+  const n = funcNormalizarNome(nome);
+  if(!n) return null;
+  const iguais = _funcs.filter(f => f.id !== funcEditId && funcNormalizarNome(f.nome) === n);
+  if(!iguais.length) return null;
+  const rotulo = iguais.map(f => `${f.nome}${f.matricula ? " (matr. " + f.matricula + ")" : ""}${f.ativo === false ? " — inativo" : ""}`).join(", ");
+  if(!funcVeSensivel()){
+    return `Já existe funcionário com este nome: ${rotulo}. Nome igual só é aceito com CPF diferente, e o CPF só é visível para diretor/RH — peça a eles o cadastro ou confira se não é a mesma pessoa.`;
+  }
+  const soDigitos = (v) => String(v || "").replace(/\D/g, "");
+  const cpfNovo = soDigitos($("func-cpf")?.value);
+  if(!cpfNovo) return `Já existe funcionário com este nome: ${rotulo}. Para cadastrar um homônimo, informe o CPF (tem que ser diferente do dele).`;
+  for(const f of iguais){
+    const sens = await funcCarregarSensivel(f.id);
+    const cpfOutro = soDigitos(sens?.cpf);
+    if(!cpfOutro) return `Já existe funcionário com este nome (${f.nome}) e ele está sem CPF no cadastro. Preencha o CPF dele primeiro para o sistema conseguir distinguir os dois.`;
+    if(cpfOutro === cpfNovo) return `${f.nome} já está cadastrado com este mesmo CPF — é a mesma pessoa. Abra o cadastro dele em vez de criar outro.`;
+  }
+  return null; // homônimo legítimo: CPFs diferentes
+}
+
 async function salvarFuncionario(novoStatus){
   if(!$("func-nome").value.trim()){
     aviso("app-aviso","Informe o nome.","erro"); ativarTabFunc("pessoais"); return;
   }
+  const bloqueio = await funcBloqueiaHomonimo($("func-nome").value);
+  if(bloqueio){ aviso("app-aviso", bloqueio, "erro"); ativarTabFunc("pessoais"); return; }
   const reg = {
     nome:            $("func-nome").value.trim(),
     matricula:       $("func-matricula").value.trim()||null,
