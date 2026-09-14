@@ -465,6 +465,7 @@ function preencherParametrosObra(d){
   set("obr-conc-traco",          d.traco_kg_cimento_m3 ?? OBR_PARAM_DEFAULTS.traco_kg_cimento_m3);
   set("obr-conc-peso-saco",      d.peso_saco_kg ?? OBR_PARAM_DEFAULTS.peso_saco_kg);
   set("obr-conc-fator-perda",    d.fator_perda_concreto ?? OBR_PARAM_DEFAULTS.fator_perda_concreto);
+  set("obr-sinal-modelo",        d.sinal_abatimento_modelo || "proporcional");
   atualizarResumoParametrosObra();
 }
 function lerParametrosObra(){
@@ -479,7 +480,8 @@ function lerParametrosObra(){
     concreto_fornecedor:     t("obr-conc-fornecedor"),
     traco_kg_cimento_m3:  n("obr-conc-traco", OBR_PARAM_DEFAULTS.traco_kg_cimento_m3),
     peso_saco_kg:         n("obr-conc-peso-saco", OBR_PARAM_DEFAULTS.peso_saco_kg),
-    fator_perda_concreto: n("obr-conc-fator-perda", OBR_PARAM_DEFAULTS.fator_perda_concreto)
+    fator_perda_concreto: n("obr-conc-fator-perda", OBR_PARAM_DEFAULTS.fator_perda_concreto),
+    sinal_abatimento_modelo: t("obr-sinal-modelo") || "proporcional"
   };
 }
 /* Exemplo ao vivo do que a parametrização produz (ajuda a pegar traço/perda errados) */
@@ -505,6 +507,9 @@ function atualizarResumoParametrosObra(){
     linhas.push("Sem tipo de concretagem: o cálculo automático do RDO assume usinado com os padrões.");
   }
   if(p.concreto_fornecedor === "cliente") linhas.push("Concreto fornecido pelo cliente: o volume calculado é controle de consumo, não custo da CGL.");
+  if(p.sinal_abatimento_modelo === "cliente") linhas.push("Sinal: o cliente elabora o boletim e já consumiu o sinal no quadro dele; as medições desta obra não descontam sinal.");
+  else if(p.sinal_abatimento_modelo === "percentual") linhas.push("Sinal: cada medição desconta o % do sinal sobre o contrato, até zerar o saldo.");
+  else linhas.push("Sinal: cada medição desconta subtotal × saldo do sinal ÷ saldo a medir; aditivo ou redução do contrato ajustam a fração sozinhos.");
   el.textContent = linhas.join(" ");
 }
 
@@ -537,16 +542,23 @@ async function salvarObra(novoStatus){
     ...lerParametrosObra()
   };
 
-  let result;
-  if(obraEditId){
-    result = await sb.from("obras").update(reg).eq("id", obraEditId).select().single();
-  } else {
-    result = await sb.from("obras").insert(reg).select().single();
+  const gravar = (r) => obraEditId
+    ? sb.from("obras").update(r).eq("id", obraEditId).select().single()
+    : sb.from("obras").insert(r).select().single();
+  let result = await gravar(reg);
+  // obras.sinal_abatimento_modelo depende de migration da sessão de gestão: enquanto a coluna
+  // não existe, grava o resto e avisa, em vez de perder a obra inteira
+  let semColunaSinal = false;
+  if(result.error && /sinal_abatimento_modelo/i.test(result.error.message || "")){
+    const { sinal_abatimento_modelo, ...semSinal } = reg;
+    result = await gravar(semSinal);
+    semColunaSinal = true;
   }
   if(result.error){
     aviso("app-aviso","Não foi possível salvar a obra: "+result.error.message,"erro");
     return;
   }
+  if(semColunaSinal) console.warn("obras.sinal_abatimento_modelo ainda não existe no banco — modelo de abatimento não gravado (usa 'proporcional').");
   obraEditId = result.data.id;
   $("btn-excluir-obra").style.display = "";
   $("obr-status").value = result.data.status;
@@ -612,7 +624,7 @@ function ligarObras(){
   });
   // Aba Parâmetros: resumo ao vivo da jornada/concretagem
   ["obr-jornada-entrada","obr-jornada-saida","obr-jornada-sab-entrada","obr-jornada-sab-saida",
-   "obr-conc-tipo","obr-conc-fornecedor","obr-conc-traco","obr-conc-peso-saco","obr-conc-fator-perda"].forEach(id => {
+   "obr-conc-tipo","obr-conc-fornecedor","obr-conc-traco","obr-conc-peso-saco","obr-conc-fator-perda","obr-sinal-modelo"].forEach(id => {
     $(id)?.addEventListener("input", atualizarResumoParametrosObra);
     $(id)?.addEventListener("change", atualizarResumoParametrosObra);
   });

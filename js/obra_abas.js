@@ -159,20 +159,42 @@ async function carregarMedicoesDaObra(obraId){
     cont.innerHTML = `<p class="vazio">Salve a obra primeiro.</p>`;
     return;
   }
-  const { data, error } = await sb.from("medicoes")
-    .select("id,numero,data_medicao,percentual,valor_medido,status,observacoes")
-    .eq("obra_id", obraId)
-    .order("data_medicao", { ascending: false });
+  const [{ data, error }, sinal] = await Promise.all([
+    sb.from("medicoes")
+      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes")
+      .eq("obra_id", obraId)
+      .order("data_medicao", { ascending: false }),
+    typeof calcularSaldoSinalObra === "function" ? calcularSaldoSinalObra(obraId, null) : Promise.resolve(null)
+  ]);
   if(error){
     cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`;
     return;
   }
   const valorContratado = Number($("obr-valor").value || 0);
-  const totalMedido = (data || []).reduce((s,m) => s + (Number(m.valor_medido) || 0), 0);
+  const valorEfetivo = (m) => Number(m.valor_final) || Number(m.valor_medido) || 0;
+  const totalMedido = (data || []).filter(m => m.status !== "rejeitada").reduce((s,m) => s + valorEfetivo(m), 0);
   const saldo = valorContratado - totalMedido;
   const pctTotal = valorContratado > 0 ? (totalMedido / valorContratado * 100) : 0;
 
-  const stats = `
+  // Painel do sinal contratual: recebido, abatido nas medições seguintes e o que falta abater
+  let blocoSinal = "";
+  if(sinal && sinal.recebido > 0){
+    const modeloLbl = (typeof SINAL_MODELOS !== "undefined" && SINAL_MODELOS[sinal.modelo]) || sinal.modelo;
+    const zerado = sinal.saldoSinal < 0.005;
+    blocoSinal = `
+    <div style="background:${zerado ? "var(--sucesso-bg)" : "var(--marca-50)"};border-left:3px solid ${zerado ? "var(--sucesso)" : "var(--marca-600)"};padding:10px 14px;margin-bottom:14px;font-size:var(--txt-sm);">
+      <strong>Sinal contratual</strong> · ${(sinal.pctSinal * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% do contrato atual (${brl(sinal.valorContratado)})
+      <div class="indicadores" style="margin:8px 0 6px;">
+        <div class="ind"><div class="num">${brl(sinal.recebido)}</div><div class="rot">Recebido (${sinal.qtdSinais} medição${sinal.qtdSinais > 1 ? "ões" : ""})</div></div>
+        <div class="ind"><div class="num">${brl(sinal.abatido)}</div><div class="rot">Já abatido</div></div>
+        <div class="ind"><div class="num" style="color:${zerado ? "var(--sucesso)" : "var(--aviso-txt)"};">${brl(sinal.saldoSinal)}</div><div class="rot">A abater</div></div>
+        <div class="ind"><div class="num">${brl(sinal.saldoAMedir)}</div><div class="rot">Saldo a medir</div></div>
+      </div>
+      <div class="meta">Modelo: ${esc(modeloLbl)} — define-se em Parâmetros. ${zerado ? "Sinal totalmente abatido." : sinal.modelo === "cliente" ? "O cliente já consumiu o sinal no quadro dele; conciliar contra o saldo do boletim do cliente." : "Cada nova medição sugere o abatimento pelo botão ✨ na aba Resumo."}</div>
+    </div>`;
+  }
+
+  const stats = `${blocoSinal}
     <div class="indicadores" style="margin-bottom:14px;">
       <div class="ind"><div class="num">${data.length}</div><div class="rot">Medições</div></div>
       <div class="ind"><div class="num">${brl(totalMedido)}</div><div class="rot">Total medido</div></div>
@@ -186,12 +208,15 @@ async function carregarMedicoesDaObra(obraId){
     $("btn-medic-nova")?.addEventListener("click", abrirMedicaoPraObra);
     return;
   }
+  const tipoLbl = { sinal_contratual: "Sinal", quinzenal: "Quinzenal", final: "Final", avulsa: "Avulsa" };
   const linhas = data.map(m => `<tr class="linha-clicavel" data-id="${esc(m.id)}">
     <td>${esc(m.numero)}</td>
     <td>${dataBR(m.data_medicao)}</td>
+    <td>${esc(tipoLbl[m.tipo_medicao] || m.tipo_medicao || "—")}</td>
     <td>${num(m.percentual)}%</td>
     <td>${tagStatus("medicao", m.status)}</td>
-    <td class="num">${brl(m.valor_medido)}</td>
+    <td class="num">${Number(m.desconto_sinal) ? "− " + brl(m.desconto_sinal) : "—"}</td>
+    <td class="num">${brl(valorEfetivo(m))}</td>
   </tr>`).join("");
   cont.innerHTML = `${stats}
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
@@ -199,7 +224,7 @@ async function carregarMedicoesDaObra(obraId){
       <button type="button" class="btn" id="btn-medic-nova">+ Nova medição</button>
     </div>
     <div class="tabela-rola"><table>
-      <thead><tr><th>Nº</th><th>Data</th><th>%</th><th>Status</th><th class="num">Valor</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>%</th><th>Status</th><th class="num" title="Abatimento do sinal contratual nesta medição">Sinal abatido</th><th class="num">Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table></div>
   `;
   $("btn-medic-nova")?.addEventListener("click", abrirMedicaoPraObra);

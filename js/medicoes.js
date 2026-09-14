@@ -227,6 +227,8 @@ async function abrirMedicao(id){
   }
   const data = medRes.data;
   medEditId = id;
+  _medSaldoSinal = null;
+  if($("med-sinal-hint")){ $("med-sinal-hint").textContent = ""; $("med-sinal-hint").style.color = ""; }
   $("med-numero").value = data.numero || "";
   $("med-obra").value = data.obra_id || "";
   if($("med-tipo")) $("med-tipo").value = data.tipo_medicao || "quinzenal";
@@ -350,6 +352,94 @@ function renderMedItens(){
   recalcularTotaisMedicao();
 }
 
+/* ====================================================================
+   SINAL CONTRATUAL — saldo por obra e abatimento nas medições seguintes
+   (decisão do Bernardo, 14/09/2026)
+   recebido  = Σ valor das medições tipo sinal_contratual (valor_final, ou valor_medido
+               quando a medição não tem itens), status ≠ rejeitada
+   abatido   = Σ desconto_sinal das demais medições
+   saldo     = recebido − abatido  (tem de chegar a zero no fim da obra)
+   Modelo de abatimento (obras.sinal_abatimento_modelo):
+     proporcional (padrão): desconto = subtotal × saldo_sinal ÷ saldo_a_medir
+                            → se o contrato cresce (aditivo) a fração cai, se encolhe sobe;
+                              fecha em zero na última medição sem ajuste manual
+     percentual:            desconto = subtotal × (recebido ÷ valor contratado), com teto no saldo
+     cliente:               o cliente elabora o boletim e já consumiu o sinal no quadro dele
+                            (ex.: Monlevade Mall) → não descontar por medição
+   ==================================================================== */
+const SINAL_MODELOS = {
+  proporcional: "Proporcional ao saldo (padrão)",
+  percentual:   "Percentual fixo do sinal em cada medição",
+  cliente:      "Boletim do cliente (sinal já consumido no quadro dele; sem desconto)"
+};
+const medValorEfetivo = (m) => Number(m.valor_final) || Number(m.valor_medido) || 0;
+async function calcularSaldoSinalObra(obraId, excluirMedId){
+  if(!obraId) return null;
+  const [obraRes, medsRes] = await Promise.all([
+    sb.from("obras").select("*").eq("id", obraId).single(),
+    sb.from("medicoes").select("id,numero,tipo_medicao,status,valor_medido,valor_final,subtotal,desconto_sinal,percentual").eq("obra_id", obraId)
+  ]);
+  if(obraRes.error || medsRes.error) return null;
+  const obra = obraRes.data || {};
+  const meds = (medsRes.data || []).filter(m => m.status !== "rejeitada" && m.id !== excluirMedId);
+  const sinais = meds.filter(m => m.tipo_medicao === "sinal_contratual");
+  const outras = meds.filter(m => m.tipo_medicao !== "sinal_contratual");
+  const recebido = sinais.reduce((s, m) => s + medValorEfetivo(m), 0);
+  const abatido  = outras.reduce((s, m) => s + (Number(m.desconto_sinal) || 0), 0);
+  const medidoBruto = outras.reduce((s, m) => s + (Number(m.subtotal) || medValorEfetivo(m)), 0);
+  const valorContratado = Number(obra.valor_contratado) || 0;
+  return {
+    obra, valorContratado, recebido, abatido, saldoSinal: Math.max(0, recebido - abatido),
+    medidoBruto, saldoAMedir: Math.max(0, valorContratado - medidoBruto),
+    pctSinal: valorContratado > 0 ? recebido / valorContratado : 0,
+    modelo: SINAL_MODELOS[obra.sinal_abatimento_modelo] ? obra.sinal_abatimento_modelo : "proporcional",
+    qtdSinais: sinais.length
+  };
+}
+let _medSaldoSinal = null; // último saldo calculado para a medição aberta (aviso de desconto > saldo)
+async function sugerirAbatimentoSinal(){
+  const obraId = $("med-obra")?.value;
+  if(!obraId){ aviso("app-aviso","Selecione a obra da medição (aba Geral).","erro"); return; }
+  if(($("med-tipo")?.value || "") === "sinal_contratual"){ aviso("app-aviso","Esta É a medição do sinal — o abatimento vale para as medições seguintes.","erro"); return; }
+  const hint = $("med-sinal-hint");
+  const r = await calcularSaldoSinalObra(obraId, medEditId);
+  _medSaldoSinal = r;
+  if(!r){ aviso("app-aviso","Não foi possível ler o saldo do sinal da obra.","erro"); return; }
+  if(!r.recebido){
+    if(hint) hint.textContent = "Obra sem medição de sinal contratual registrada — nada a abater.";
+    return;
+  }
+  const subtotal = _medItens.reduce((s, it) => s + (Number(it.valor_total) || 0), 0);
+  let desconto = 0, regra = "";
+  if(r.modelo === "cliente"){
+    regra = "modelo 'boletim do cliente': o sinal já foi consumido no quadro do cliente, sem desconto por medição";
+  } else if(r.modelo === "percentual"){
+    desconto = Math.min(subtotal * r.pctSinal, r.saldoSinal);
+    regra = `${(r.pctSinal * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% do subtotal (percentual fixo), limitado ao saldo`;
+  } else {
+    desconto = r.saldoAMedir > 0 ? Math.min(subtotal * r.saldoSinal / r.saldoAMedir, r.saldoSinal) : r.saldoSinal;
+    regra = `subtotal × saldo do sinal ${brl(r.saldoSinal)} ÷ saldo a medir ${brl(r.saldoAMedir)} (proporcional)`;
+  }
+  desconto = Math.round(desconto * 100) / 100;
+  if(!subtotal && r.modelo !== "cliente"){ aviso("app-aviso","Adicione os itens da medição antes: o abatimento é calculado sobre o subtotal.","erro"); return; }
+  $("med-desc-sinal").value = desconto.toFixed(2);
+  $("med-desc-sinal-obs").value = `Abatimento do sinal contratual — ${regra}. Saldo do sinal antes: ${brl(r.saldoSinal)}; depois: ${brl(r.saldoSinal - desconto)}.`;
+  recalcularTotaisMedicao();
+  if(hint) hint.textContent = `Sinal recebido ${brl(r.recebido)} · já abatido ${brl(r.abatido)} · saldo ${brl(r.saldoSinal)} · modelo: ${SINAL_MODELOS[r.modelo]}`;
+  aviso("app-aviso", `Abatimento sugerido: ${brl(desconto)}. Confira e salve.`, "ok");
+}
+/* Aviso quando o desconto digitado passa do saldo do sinal (só depois de calcular o saldo) */
+function avisarDescontoAcimaDoSaldo(descSinal){
+  const hint = $("med-sinal-hint");
+  if(!hint || !_medSaldoSinal) return;
+  if(descSinal > _medSaldoSinal.saldoSinal + 0.005){
+    hint.style.color = "var(--perigo)";
+    hint.textContent = `⚠️ Desconto ${brl(descSinal)} maior que o saldo do sinal ${brl(_medSaldoSinal.saldoSinal)}.`;
+  } else {
+    hint.style.color = "";
+  }
+}
+
 /* Medição SEM itens (sinal contratual, boletim elaborado pelo cliente): o valor final é
    informado à mão e preservado. Antes, o recálculo zerava o campo e o Salvar gravava
    valor_medido = 0 por cima do valor existente (caso BM01 Monlevade Mall, 14/09/2026). */
@@ -374,6 +464,7 @@ function recalcularTotaisMedicao(){
   }
 
   if($("med-subtotal"))      $("med-subtotal").value = subtotal.toFixed(2);
+  avisarDescontoAcimaDoSaldo(descSinal);
   // retenção: % sobre o valor final, a menos que o valor tenha sido digitado à mão
   const retPct = parseFloat($("med-ret-pct")?.value);
   if($("med-ret-valor") && $("med-ret-valor").dataset.manual !== "1"){
@@ -1296,6 +1387,7 @@ function ligarMedicoes(){
 
   // Cálculos automáticos de Hora Extra e Faturamento Mínimo
   $("btn-med-calc-he")?.addEventListener("click", calcularHoraExtraMedicao);
+  $("btn-med-sugerir-abat")?.addEventListener("click", () => comBotaoTravado("btn-med-sugerir-abat", sugerirAbatimentoSinal));
   $("btn-med-calc-fatmin")?.addEventListener("click", calcularFatMinimoMedicao);
 
   document.querySelectorAll("#med-notebook button").forEach(b => {

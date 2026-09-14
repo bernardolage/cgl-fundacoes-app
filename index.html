@@ -1490,6 +1490,15 @@
                 <div class="campo"><label>Peso do saco (kg)</label><input id="obr-conc-peso-saco" type="number" step="1" min="1" value="50" /></div>
                 <div class="campo"><label>Fator de perda</label><input id="obr-conc-fator-perda" type="number" step="0.01" min="1" value="1.20" /></div>
               </div>
+              <h4 class="titulo-bloco" style="margin-top:16px;">Sinal contratual <small class="meta">(como o sinal recebido é abatido nas medições seguintes)</small></h4>
+              <div class="grade">
+                <div class="campo largo"><label>Modelo de abatimento</label>
+                  <select id="obr-sinal-modelo">
+                    <option value="proporcional">Proporcional ao saldo (padrão) — subtotal × saldo do sinal ÷ saldo a medir; fecha em zero mesmo com aditivo ou redução</option>
+                    <option value="percentual">Percentual fixo — o % do sinal sobre o contrato, em cada medição, até zerar o saldo</option>
+                    <option value="cliente">Boletim do cliente — o cliente já consumiu o sinal no quadro dele; sem desconto por medição</option>
+                  </select></div>
+              </div>
               <p class="nota" id="obr-param-resumo"></p>
             </div>
 
@@ -2374,6 +2383,10 @@
                 <div class="campo largo">
                   <label>Descrição do desconto</label>
                   <input id="med-desc-sinal-obs" placeholder="ex.: Sinal contratual 30% pago em 07/05/2026" />
+                  <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
+                    <button type="button" class="btn-sec btn-sm" id="btn-med-sugerir-abat" title="Calcula o abatimento do sinal pelo modelo da obra (Obra › Parâmetros) e pelo saldo ainda não abatido">✨ Sugerir abatimento do sinal</button>
+                    <span id="med-sinal-hint" style="font-size:var(--txt-xs);color:var(--txt-fraco);"></span>
+                  </div>
                 </div>
                 <div class="campo">
                   <label>Acréscimo (R$) — HE, refuros, etc</label>
