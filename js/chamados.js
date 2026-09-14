@@ -388,6 +388,10 @@ async function criarChamado(){
 
 /* ---------- Listeners ---------- */
 function ligarChamados(){
+  // Os modais nascem dentro de <section id="sec-chamados">, que fica display:none fora dessa tela.
+  // O botao "Relatar problema" e global (topbar), entao o modal precisa viver fora das secoes
+  // - senao abre invisivel (bug relatado em 14/09/2026).
+  ["cham-novo-modal", "cham-modal"].forEach(id => { const m = $(id); if(m && m.closest(".secao")) document.body.appendChild(m); });
   document.querySelector('.sidebar-nav button[data-secao="chamados"]')?.addEventListener("click", () => carregarChamados(true));
   $("btn-cham-atualizar")?.addEventListener("click", () => carregarChamados(false));
   $("btn-cham-novo")?.addEventListener("click", () => abrirNovoChamado({ modulo: "chamados", modulo_label: "Chamados" }));
