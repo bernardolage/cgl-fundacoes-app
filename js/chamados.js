@@ -368,7 +368,12 @@ async function criarChamado(){
   };
   const btn = $("btn-chamn-criar");
   btn.disabled = true;
-  const { data, error } = await sb.from(CHAM_TBL.chamados).insert(reg).select("*").single();
+  let { data, error } = await sb.from(CHAM_TBL.chamados).insert(reg).select("*").single();
+  // A check constraint de categoria no banco (migration 42c) ainda não conhece 'melhoria':
+  // grava como 'estrutura' com o título prefixado, para o chamado não se perder.
+  if(error && reg.categoria === "melhoria" && /categoria|check constraint/i.test(error.message || "")){
+    ({ data, error } = await sb.from(CHAM_TBL.chamados).insert({ ...reg, categoria: "estrutura", titulo: "[Melhoria] " + reg.titulo }).select("*").single());
+  }
   btn.disabled = false;
   if(error){
     aviso("chamn-aviso", chamErroTabela(error)

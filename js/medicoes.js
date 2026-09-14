@@ -251,7 +251,8 @@ async function abrirMedicao(id){
   if($("med-desc-sinal-obs"))$("med-desc-sinal-obs").value = data.desconto_descricao || "";
   if($("med-acrescimo"))     $("med-acrescimo").value = data.acrescimo ?? 0;
   if($("med-acrescimo-obs")) $("med-acrescimo-obs").value = data.acrescimo_descricao || "";
-  if($("med-valor-final"))   $("med-valor-final").value = data.valor_final ?? 0;
+  // valor_final vem da trigger (itens); numa medição sem itens ele é 0 e o valor real está em valor_medido
+  if($("med-valor-final"))   $("med-valor-final").value = (Number(data.valor_final) || Number(data.valor_medido) || 0).toFixed(2);
   $("med-descricao").value = data.descricao || "";
   $("med-obs").value = data.observacoes || "";
 
@@ -349,16 +350,30 @@ function renderMedItens(){
   recalcularTotaisMedicao();
 }
 
+/* Medição SEM itens (sinal contratual, boletim elaborado pelo cliente): o valor final é
+   informado à mão e preservado. Antes, o recálculo zerava o campo e o Salvar gravava
+   valor_medido = 0 por cima do valor existente (caso BM01 Monlevade Mall, 14/09/2026). */
+function medicaoSemItens(){ return _medItens.length === 0; }
 function recalcularTotaisMedicao(){
   const subtotal = _medItens.reduce((s, it) => s + (Number(it.valor_total) || 0), 0);
   const descSinal = parseFloat($("med-desc-sinal")?.value)   || 0;
   const acresc    = parseFloat($("med-acrescimo")?.value)    || 0;
   const mult      = parseFloat($("med-multiplicador")?.value);
   const multiplicador = (isFinite(mult) && mult > 0) ? mult : 100;
-  const valorFinal = ((subtotal - descSinal + acresc) * multiplicador / 100);
+  const campoVF = $("med-valor-final");
+  const nota    = $("med-valor-final-nota");
+  let valorFinal;
+  if(medicaoSemItens()){
+    valorFinal = parseFloat(campoVF?.value) || 0;
+    if(campoVF){ campoVF.readOnly = false; campoVF.style.background = "var(--aviso-bg)"; campoVF.title = "Sem itens: informe o valor da medição à mão"; }
+    if(nota) nota.style.display = "";
+  } else {
+    valorFinal = ((subtotal - descSinal + acresc) * multiplicador / 100);
+    if(campoVF){ campoVF.readOnly = true; campoVF.style.background = "var(--sucesso-bg)"; campoVF.title = ""; campoVF.value = valorFinal.toFixed(2); }
+    if(nota) nota.style.display = "none";
+  }
 
   if($("med-subtotal"))      $("med-subtotal").value = subtotal.toFixed(2);
-  if($("med-valor-final"))   $("med-valor-final").value = valorFinal.toFixed(2);
   // retenção: % sobre o valor final, a menos que o valor tenha sido digitado à mão
   const retPct = parseFloat($("med-ret-pct")?.value);
   if($("med-ret-valor") && $("med-ret-valor").dataset.manual !== "1"){
@@ -1272,7 +1287,7 @@ function ligarMedicoes(){
   $("med-obra")?.addEventListener("change", sugerirNumeroMedicao);
 
   // Aba Resumo: recalcula valor final quando desc/acresc/multiplicador mudam
-  ["med-desc-sinal","med-acrescimo","med-multiplicador"].forEach(id => {
+  ["med-desc-sinal","med-acrescimo","med-multiplicador","med-valor-final"].forEach(id => {
     $(id)?.addEventListener("input", recalcularTotaisMedicao);
   });
   // Retenção: % recalcula o valor; digitar o valor à mão desliga o automático
