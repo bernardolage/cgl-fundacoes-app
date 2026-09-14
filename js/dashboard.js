@@ -155,7 +155,9 @@ async function carregarDashOperacional(){
 
   const valorOrcAbertos = (orcAbertos||[]).reduce((s,o) => s + (Number(o.valor_total)||0), 0);
   kpiNum("dash-orc-abertos", cntOrcAbertos || 0);
-  if($("dash-orc-sub"))     $("dash-orc-sub").textContent = `${brl(valorOrcAbertos)} em pipeline`;
+  // Chamado 1 (14/09/2026): cargo financeiro não vê valores agregados no painel — só a contagem
+  const semValores = !!(usuarioAtual && usuarioAtual.cargo === "financeiro");
+  if($("dash-orc-sub"))     $("dash-orc-sub").textContent = semValores ? `${cntOrcAbertos || 0} em negociação` : `${brl(valorOrcAbertos)} em pipeline`;
 }
 
 /* ============================================================

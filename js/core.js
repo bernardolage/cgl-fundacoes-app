@@ -691,7 +691,7 @@ async function verificarMFAAdmin(){
     banner.id = "mfa-aviso-banner";
     banner.innerHTML = `
       <div style="
-        position:fixed; top:0; left:0; right:0; z-index:9999;
+        position:sticky; top:0; z-index:9999;
         background:#7a2a1a; color:var(--txt-sobre); font-size:var(--txt-md);
         padding:10px 16px; display:flex; align-items:center; gap:12px;
         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;

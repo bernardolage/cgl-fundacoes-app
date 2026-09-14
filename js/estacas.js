@@ -206,6 +206,7 @@ const ESTACA_TIPOS = {
   helice_continua: "Hélice contínua",
   pre_moldada: "Pré-moldada",
   raiz: "Raiz",
+  secante: "Hélice secante",
   escavada: "Escavada",
   strauss: "Strauss",
   metalica: "Metálica",
@@ -214,6 +215,28 @@ const ESTACA_TIPOS = {
   barrete: "Barrete",
   outro: "Outro"
 };
+
+/* Tipos oferecidos nos selects (filtro, lote, modal, preview de importação): os ATIVOS
+   + os legados que ainda existem na obra. ESTACA_TIPOS completo segue só como rótulo. */
+const ESTACA_TIPOS_ATIVOS = ["helice_continua", "raiz", "escavada", "secante", "outro"];
+function tiposEstacaDisponiveis(extras){
+  const emUso = new Set((_estacas || []).map(e => e.tipo).filter(Boolean));
+  (extras || []).forEach(t => t && emUso.add(t));
+  return Object.keys(ESTACA_TIPOS).filter(t => ESTACA_TIPOS_ATIVOS.includes(t) || emUso.has(t));
+}
+function opcoesTipoEstaca(selecionado, prefixo){
+  return tiposEstacaDisponiveis(selecionado ? [selecionado] : [])
+    .map(t => `<option value="${t}"${t === selecionado ? " selected" : ""}>${esc((prefixo || "") + ESTACA_TIPOS[t])}</option>`).join("");
+}
+function montarSelectsTipoEstaca(){
+  const disp = tiposEstacaDisponiveis();
+  const f = $("est-f-tipo");
+  if(f){ const v = f.value; f.innerHTML = '<option value="">Todos os tipos</option>' + opcoesTipoEstaca(); f.value = disp.includes(v) ? v : ""; }
+  const l = $("est-lote-tipo");
+  if(l){ l.innerHTML = '<option value="">⚙️ Alterar tipo das filtradas…</option>' + opcoesTipoEstaca(null, "→ "); }
+  const m = $("est-tipo");
+  if(m){ const v = m.value; m.innerHTML = opcoesTipoEstaca(); if(disp.includes(v)) m.value = v; }
+}
 
 const ESTACA_STATUS = {
   prevista:             { label: "Prevista",              cor: "cinza"    },
@@ -228,6 +251,7 @@ const ESTACA_STATUS = {
 async function carregarEstacasDaObra(obraId){
   if(!obraId){
     _estacas = [];
+    montarSelectsTipoEstaca();
     renderEstacas();
     return;
   }
@@ -260,6 +284,7 @@ async function carregarEstacasDaObra(obraId){
   _fatorCoord = FATOR_UNIDADE[_unidadeCoord];
   _raizDados = null; // acompanhamento raiz recarrega com a obra
   _estacas = estsRes.error ? [] : (estsRes.data || []);
+  montarSelectsTipoEstaca(); // tipos ativos + legados desta obra
   // Conta execuções por estaca pra detectar "ALTERADO" (refuros, casamentos errados)
   const contExec = {};
   (execsRes.data || []).forEach(re => {
@@ -320,7 +345,7 @@ function estacasFiltradasLista(){
     if(fStatus && e.status !== fStatus) return false;
     if(fTipo && e.tipo !== fTipo) return false;
     if(fLocal && (e.local || "") !== fLocal) return false;
-    if(termo && !`${e.numero || ""} ${e.observacoes || ""}`.toLowerCase().includes(termo)) return false;
+    if(termo && !`${e.numero || ""} ${e.observacoes || ""} ${e.local || ""} ${e.bloco || ""}`.toLowerCase().includes(termo)) return false;
     return true;
   });
 }
@@ -588,7 +613,7 @@ function renderEstacas(){
     if(fTipo && e.tipo !== fTipo) return false;
     if(fLocal && (e.local || "") !== fLocal) return false;
     if(termo){
-      const alvo = `${e.numero||""} ${e.observacoes||""}`.toLowerCase();
+      const alvo = `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -912,7 +937,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
           <label class="meta bloco">Tipo</label>
           <select id="mass-tipo" class="col-xl">
             <option value="">— não alterar —</option>
-            ${Object.entries(ESTACA_TIPOS).map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("")}
+            ${opcoesTipoEstaca()}
           </select>
         </div>
         <label style="font-size:var(--txt-xs);color:var(--txt-fraco);display:flex;align-items:center;gap:4px;margin-bottom:6px;">
@@ -932,7 +957,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
       <td><input type="text" value="${esc(e.bloco||"")}" data-idx="${idx}" data-field="bloco" class="prev-input col-xs" placeholder="${esc(rotuloAgrupamento().toLowerCase())}"/></td>
       <td>
         <select data-idx="${idx}" data-field="tipo" class="prev-input">
-          ${Object.entries(ESTACA_TIPOS).map(([v,l]) => `<option value="${v}" ${e.tipo===v?"selected":""}>${esc(l)}</option>`).join("")}
+          ${opcoesTipoEstaca(e.tipo)}
         </select>
       </td>
       <td ${semDiamHl}><input type="number" step="0.1" value="${esc(e.diametro_mm ?? "")}" data-idx="${idx}" data-field="diametro_mm" class="prev-input col-xs"/></td>
@@ -1637,7 +1662,7 @@ function renderPlantaSVG(){
     if(fTipo && e.tipo !== fTipo) return false;
     if(fLocal && (e.local || "") !== fLocal) return false;
     if(termo){
-      const alvo = `${e.numero||""} ${e.observacoes||""}`.toLowerCase();
+      const alvo = `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -2928,6 +2953,7 @@ function ligarEstacas(){
   });
 
   $("est-lote-tipo")?.addEventListener("change", e => alterarTipoEmLote(e.target.value));
+  montarSelectsTipoEstaca(); // selects começam com os tipos ativos (a obra acrescenta os legados)
   ["est-busca","est-f-status","est-f-tipo","est-f-local"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "est-busca" ? "input" : "change", id === "est-busca" ? debounce(renderEstacas) : renderEstacas);

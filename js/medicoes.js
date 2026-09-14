@@ -192,6 +192,10 @@ function novaMedicao(){
   if($("med-nf-emissao"))$("med-nf-emissao").value= "";
   if($("med-nf-venc"))   $("med-nf-venc").value   = "";
   if($("med-nf-valor"))  $("med-nf-valor").value  = "";
+  if($("med-ret-pct"))      $("med-ret-pct").value = "";
+  if($("med-ret-valor"))  { $("med-ret-valor").value = ""; $("med-ret-valor").dataset.manual = "0"; }
+  if($("med-ret-liberada")) $("med-ret-liberada").value = "false";
+  if($("med-ret-data"))     $("med-ret-data").value = "";
   $("med-percentual").value = 0;
   if($("med-subtotal"))      $("med-subtotal").value = 0;
   if($("med-desc-sinal"))    $("med-desc-sinal").value = 0;
@@ -237,6 +241,10 @@ async function abrirMedicao(id){
   if($("med-nf-emissao"))$("med-nf-emissao").value= data.nf_data_emissao || "";
   if($("med-nf-venc"))   $("med-nf-venc").value   = data.nf_vencimento || "";
   if($("med-nf-valor"))  $("med-nf-valor").value  = data.nf_valor ?? "";
+  if($("med-ret-pct"))      $("med-ret-pct").value = data.retencao_percentual ?? "";
+  if($("med-ret-valor"))  { $("med-ret-valor").value = data.retencao_valor ?? ""; $("med-ret-valor").dataset.manual = (data.retencao_valor != null && data.retencao_percentual == null) ? "1" : "0"; }
+  if($("med-ret-liberada")) $("med-ret-liberada").value = data.retencao_liberada ? "true" : "false";
+  if($("med-ret-data"))     $("med-ret-data").value = data.retencao_data_liberacao || "";
   $("med-percentual").value = data.percentual || 0;
   if($("med-subtotal"))      $("med-subtotal").value = data.subtotal ?? 0;
   if($("med-desc-sinal"))    $("med-desc-sinal").value = data.desconto_sinal ?? 0;
@@ -351,6 +359,11 @@ function recalcularTotaisMedicao(){
 
   if($("med-subtotal"))      $("med-subtotal").value = subtotal.toFixed(2);
   if($("med-valor-final"))   $("med-valor-final").value = valorFinal.toFixed(2);
+  // retenção: % sobre o valor final, a menos que o valor tenha sido digitado à mão
+  const retPct = parseFloat($("med-ret-pct")?.value);
+  if($("med-ret-valor") && $("med-ret-valor").dataset.manual !== "1"){
+    $("med-ret-valor").value = (isFinite(retPct) && retPct > 0) ? (valorFinal * retPct / 100).toFixed(2) : "";
+  }
   if($("med-ficha-subtotal-chip")) $("med-ficha-subtotal-chip").textContent = brl(subtotal);
   if($("med-ficha-valor-chip"))    $("med-ficha-valor-chip").textContent = brl(valorFinal);
 }
@@ -695,6 +708,11 @@ async function salvarMedicao(novoStatus){
     nf_data_emissao: $("med-nf-emissao")?.value || null,
     nf_vencimento: $("med-nf-venc")?.value || null,
     nf_valor: $("med-nf-valor")?.value ? Number($("med-nf-valor").value) : null,
+    // Retenção contratual / caução (14/09/2026): valor retido pelo cliente nesta medição, a receber depois
+    retencao_percentual: $("med-ret-pct")?.value ? Number($("med-ret-pct").value) : null,
+    retencao_valor: $("med-ret-valor")?.value ? Number($("med-ret-valor").value) : null,
+    retencao_liberada: $("med-ret-liberada")?.value === "true",
+    retencao_data_liberacao: $("med-ret-data")?.value || null,
     observacoes: $("med-obs").value.trim() || null
     // valor_final é recalculado por trigger no banco
   };
@@ -1257,6 +1275,9 @@ function ligarMedicoes(){
   ["med-desc-sinal","med-acrescimo","med-multiplicador"].forEach(id => {
     $(id)?.addEventListener("input", recalcularTotaisMedicao);
   });
+  // Retenção: % recalcula o valor; digitar o valor à mão desliga o automático
+  $("med-ret-pct")?.addEventListener("input", () => { if($("med-ret-valor")) $("med-ret-valor").dataset.manual = "0"; recalcularTotaisMedicao(); });
+  $("med-ret-valor")?.addEventListener("input", () => { $("med-ret-valor").dataset.manual = "1"; });
 
   // Cálculos automáticos de Hora Extra e Faturamento Mínimo
   $("btn-med-calc-he")?.addEventListener("click", calcularHoraExtraMedicao);

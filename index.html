@@ -1558,29 +1558,9 @@
                 <select id="est-f-local" style="display:none;"><option value="">Todos os locais</option></select>
                 <select id="est-f-tipo">
                   <option value="">Todos os tipos</option>
-                  <option value="helice_continua">Hélice contínua</option>
-                  <option value="pre_moldada">Pré-moldada</option>
-                  <option value="raiz">Raiz</option>
-                  <option value="escavada">Escavada</option>
-                  <option value="strauss">Strauss</option>
-                  <option value="metalica">Metálica</option>
-                  <option value="franki">Franki</option>
-                  <option value="hsa">HSA</option>
-                  <option value="barrete">Barrete</option>
-                  <option value="outro">Outro</option>
                 </select>
                 <select id="est-lote-tipo" title="Muda o tipo de TODAS as estacas que aparecem no filtro atual (útil quando a IA classificou errado no import)" style="border-color:var(--marca-600);">
                   <option value="">⚙️ Alterar tipo das filtradas…</option>
-                  <option value="helice_continua">→ Hélice contínua (monitorada)</option>
-                  <option value="raiz">→ Raiz</option>
-                  <option value="escavada">→ Escavada</option>
-                  <option value="pre_moldada">→ Pré-moldada</option>
-                  <option value="strauss">→ Strauss</option>
-                  <option value="metalica">→ Metálica</option>
-                  <option value="franki">→ Franki</option>
-                  <option value="hsa">→ HSA</option>
-                  <option value="barrete">→ Barrete</option>
-                  <option value="outro">→ Outro</option>
                 </select>
               </div>
               <!-- Vista lista -->
@@ -1669,18 +1649,7 @@
           <div class="grade">
             <div class="campo"><label>Nº da estaca *</label><input id="est-numero" placeholder="ex.: E-01" /></div>
             <div class="campo"><label>Tipo</label>
-              <select id="est-tipo">
-                <option value="helice_continua">Hélice contínua</option>
-                <option value="pre_moldada">Pré-moldada</option>
-                <option value="raiz">Raiz</option>
-                <option value="escavada">Escavada</option>
-                <option value="strauss">Strauss</option>
-                <option value="metalica">Metálica</option>
-                <option value="franki">Franki</option>
-                <option value="hsa">HSA</option>
-                <option value="barrete">Barrete</option>
-                <option value="outro">Outro</option>
-              </select>
+              <select id="est-tipo"></select>
             </div>
             <div class="campo"><label>Status</label>
               <select id="est-status">
@@ -1957,6 +1926,7 @@
               <div class="grade">
                 <div class="campo"><label>Obra *</label><select id="rdo-obra" required></select></div>
                 <div class="campo"><label>Data *</label><input id="rdo-data" type="date" required /></div>
+                <div class="campo"><label>Feriado?</label><label class="meta" style="display:flex;align-items:center;gap:6px;min-height:34px;cursor:pointer;" title="Regra RH 11/09/2026: em feriado, sábado e domingo toda hora trabalhada é HE 100%"><input type="checkbox" id="rdo-feriado" /> Dia de feriado (tudo HE 100%)</label></div>
                 <div class="campo"><label>Tipo de serviço *</label><select id="rdo-tipo-servico" required></select></div>
                 <div class="campo"><label>Status</label><select id="rdo-status"></select></div>
                 <div class="campo"><label>Responsável</label><select id="rdo-responsavel"><option value="">— não informado —</option></select></div>
@@ -2055,8 +2025,9 @@
                       <th>Função no dia</th>
                       <th>Entrada</th>
                       <th>Saída</th>
-                      <th title="Horas extras 50% (seg-sáb)">HE 50%</th>
-                      <th title="Horas extras 100% (dom/feriado)">HE 100%</th>
+                      <th title="Intervalo de almoço REAL (min). Vazio = 60 min padrão; piso de 30 min no cálculo">Interv. (min)</th>
+                      <th title="Sem uso desde 11/09/2026 (regra RH): toda hora extra é paga a 100%">HE 50%<br><small style="font-weight:400;color:var(--txt-fraco);">(sem uso)</small></th>
+                      <th title="Horas extras 100%: seg-sex o que passar da jornada da obra; sábado, domingo e feriado o dia inteiro">HE 100%</th>
                       <th>Obs.</th>
                       <th class="col-acao"></th>
                     </tr>
@@ -2065,7 +2036,7 @@
                 </table>
               </div>
               <p class="nota">
-                💡 Preencha <strong>Entrada/Saída</strong> e o sistema calcula horas trabalhadas. Use <strong>HE 50%/100%</strong> só quando passar do expediente normal.
+                💡 Preencha <strong>Entrada/Saída</strong> (e o intervalo real de almoço, se o diário registrar) e o sistema calcula a <strong>HE 100%</strong> pela jornada da obra (Obra › Parâmetros): seg-sex o que passar da jornada; sábado, domingo e feriado o dia inteiro. Regra RH de 11/09/2026: toda HE é 100%; a coluna HE 50% ficou sem uso.
               </p>
             </div>
 
@@ -2338,6 +2309,10 @@
                 <div class="campo"><label>Emissão</label><input id="med-nf-emissao" type="date" /></div>
                 <div class="campo"><label>Vencimento</label><input id="med-nf-venc" type="date" /></div>
                 <div class="campo"><label>Valor do documento (se ≠ medição)</label><input id="med-nf-valor" type="number" step="0.01" /></div>
+                <div class="campo"><label>Retenção contratual (%)</label><input id="med-ret-pct" type="number" step="0.01" min="0" max="100" placeholder="ex.: 5" title="Caução / retenção técnica que o cliente segura de cada medição (liberada 30–120 dias após o fim da obra)" /></div>
+                <div class="campo"><label>Valor retido (R$)</label><input id="med-ret-valor" type="number" step="0.01" min="0" title="Calculado pelo % sobre o valor final; pode ser ajustado à mão" /></div>
+                <div class="campo"><label>Retenção liberada?</label><select id="med-ret-liberada"><option value="false">Não (a receber)</option><option value="true">Sim</option></select></div>
+                <div class="campo"><label>Data da liberação</label><input id="med-ret-data" type="date" /></div>
               </div>
             </div>
 

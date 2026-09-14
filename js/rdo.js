@@ -208,6 +208,7 @@ async function novoRDO(){
   _rdoRaizDados = null;
   $("rdo-obra").value = "";
   $("rdo-data").value = hojeISO();
+  if($("rdo-feriado")) $("rdo-feriado").checked = false;
   $("rdo-tipo-servico").value = "helice_continua";
   $("rdo-status").value = "rascunho";
   $("rdo-responsavel").value = "";
@@ -248,6 +249,7 @@ async function abrirRDO(id){
   const data = rdo.data;
   $("rdo-obra").value             = data.obra_id || "";
   $("rdo-data").value             = (data.data||"").slice(0,10);
+  if($("rdo-feriado")) $("rdo-feriado").checked = !!data.feriado;
   $("rdo-tipo-servico").value     = data.tipo_servico || "helice_continua";
   $("rdo-status").value           = data.status || "rascunho";
   $("rdo-responsavel").value      = data.responsavel_id || "";
@@ -927,7 +929,7 @@ function renderRdoEquipe(){
   const tb = $("rdo-equipe-tbody");
   if(!tb) return;
   if(!_rdoEquipe.length){
-    tb.innerHTML = `<tr><td colspan="10" class="vazio">Nenhum integrante. Use "+ integrante" ou "📥 Importar equipe".</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="11" class="vazio">Nenhum integrante. Use "+ integrante" ou "📥 Importar equipe".</td></tr>`;
     return;
   }
   const optFunc = '<option value="">— do cadastro —</option>' +
@@ -942,6 +944,7 @@ function renderRdoEquipe(){
     <td><select class="eq-funcao">${optFuncao}</select></td>
     <td><input type="time" class="eq-entrada" value="${esc(e.hora_entrada||"")}" /></td>
     <td><input type="time" class="eq-saida" value="${esc(e.hora_saida||"")}" /></td>
+    <td><input type="number" class="eq-interv" step="5" min="0" max="240" value="${e.intervalo_minutos ?? ""}" style="width:60px;" placeholder="60" title="Intervalo real de almoço (min). Vazio = 60; piso 30" /></td>
     <td><input type="number" class="eq-h50" step="0.5" min="0" value="${e.horas_50 ?? ""}" style="width:60px;" /></td>
     <td><input type="number" class="eq-h100" step="0.5" min="0" value="${e.horas_100 ?? ""}" style="width:60px;" /></td>
     <td><input type="text" class="eq-obs" value="${esc(e.observacoes||"")}" style="min-width:120px;" /></td>
@@ -967,6 +970,7 @@ function renderRdoEquipe(){
         funcao_no_dia:  tr.querySelector(".eq-funcao").value || null,
         hora_entrada:   tr.querySelector(".eq-entrada").value || null,
         hora_saida:     tr.querySelector(".eq-saida").value || null,
+        intervalo_minutos: tr.querySelector(".eq-interv").value === "" ? null : Number(tr.querySelector(".eq-interv").value),
         horas_50:       parseFloat(tr.querySelector(".eq-h50").value)  || null,
         horas_100:      parseFloat(tr.querySelector(".eq-h100").value) || null,
         observacoes:    tr.querySelector(".eq-obs").value.trim() || null,
@@ -975,6 +979,17 @@ function renderRdoEquipe(){
     };
     tr.addEventListener("input", sync);
     tr.addEventListener("change", sync);
+    // Entrada/saída/intervalo → HE 100 calculada pela jornada da obra (regra RH 11/09/2026); a pessoa pode ajustar depois
+    [".eq-entrada", ".eq-saida", ".eq-interv"].forEach(cls => tr.querySelector(cls)?.addEventListener("change", async () => {
+      const obraId = $("rdo-obra")?.value;
+      if(obraId && !_rdoObraParams) await carregarParamsObraRDO(obraId);
+      const l = _rdoEquipe[idx] || {};
+      const r = calcularHorasEquipe($("rdo-data")?.value, l.hora_entrada, l.hora_saida, _rdoObraParams, l.intervalo_minutos, !!$("rdo-feriado")?.checked);
+      if(!r) return;
+      tr.querySelector(".eq-h100").value = r.horas_100 || "";
+      tr.querySelector(".eq-h50").value = "";
+      sync();
+    }));
   });
   tb.querySelectorAll(".btn-eq-rem").forEach(b => {
     b.addEventListener("click", () => { _rdoEquipe.splice(Number(b.dataset.idx),1); renderRdoEquipe(); });
@@ -1041,6 +1056,7 @@ async function salvarRDO(novoStatus){
     local:            $("rdo-local")?.value.trim() || null,
     tempo_manha:      $("rdo-tempo-manha").value || null,
     tempo_tarde:      $("rdo-tempo-tarde").value || null,
+    feriado:          !!$("rdo-feriado")?.checked,
     efetivo_proprio:  Number($("rdo-efetivo-proprio").value || 0),
     efetivo_terceiro: Number($("rdo-efetivo-terceiro").value || 0),
     producao_dia_m:   _rdoExecucoes.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0),
@@ -1177,6 +1193,7 @@ async function salvarRDO(novoStatus){
       funcao_no_dia:  e.funcao_no_dia || null,
       hora_entrada:   e.hora_entrada || null,
       hora_saida:     e.hora_saida || null,
+      intervalo_minutos: e.intervalo_minutos ?? null,
       horas_50:       e.horas_50 || null,
       horas_100:      e.horas_100 || null,
       observacoes:    e.observacoes || null,
@@ -1635,6 +1652,7 @@ async function processarArquivoIA(file, mediaType){
         tempo_manha: d.tempo_manha || null, tempo_tarde: d.tempo_tarde || null,
         responsavel: d.responsavel || null, atividades: d.atividades || null, observacoes: d.observacoes || null,
         tipo_servico: d.tipo_servico || null,
+        intervalo_minutos: d.intervalo_minutos ?? null, almoco_inicio: d.almoco_inicio || null, almoco_fim: d.almoco_fim || null, feriado: false,
         equipe: (Array.isArray(d.equipe) ? d.equipe : []).map(iaCasarIntegrante),
         injecao, responsavel_id: null
       };
@@ -1803,10 +1821,11 @@ function iaInjecaoDaEstaca(injecao, numero, agrupamento){
 const iaMinDe  = (ts) => (ts || []).reduce((m, t) => (t.de  != null && (m == null || t.de  < m)) ? t.de  : m, null);
 const iaMaxAte = (ts) => (ts || []).reduce((m, t) => (t.ate != null && (m == null || t.ate > m)) ? t.ate : m, null);
 
-/* ---------- Horas da equipe pela jornada da obra ----------
-   Seg–sex usa obras.jornada_entrada/saida; sábado usa jornada_sabado_*; domingo é 100 %.
-   Entrada/saída do boletim e a jornada são comparadas como intervalo (almoço cancela nos
-   dois lados). Sem jornada cadastrada → null: fica em branco para preencher à mão. */
+/* ---------- Horas da equipe pela jornada da obra (espelha fn_horas_equipe do banco) ----------
+   Regra RH (Ju, 11/09/2026) + decisão do Bernardo: toda HE é 100%; seg-sex o que passar da
+   jornada da obra (descontada 1h de almoço) é HE; sábado, domingo e feriado: tudo HE 100.
+   Intervalo: sem registro = 60 min; registrado = tempo REAL com piso de 30 min.
+   Sem jornada cadastrada → null em dia útil: fica em branco para preencher à mão. */
 let _iaJornadaObra = null;
 async function iaCarregarJornadaObra(obraId){
   _iaJornadaObra = null;
@@ -1816,23 +1835,27 @@ async function iaCarregarJornadaObra(obraId){
   return _iaJornadaObra;
 }
 function minutosHHMM(s){ const m = String(s || "").match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
-function calcularHorasEquipe(dataISO, entrada, saida, jornada){
+function calcularHorasEquipe(dataISO, entrada, saida, jornada, intervaloMin, feriado){
   const e = minutosHHMM(entrada), sd = minutosHHMM(saida);
   if(e == null || sd == null) return null;
-  let trab = sd - e; if(trab < 0) trab += 24 * 60;
+  let bruto = sd - e; if(bruto < 0) bruto += 24 * 60;
+  const iv = (intervaloMin == null || intervaloMin === "") ? 60 : Math.max(30, Number(intervaloMin) || 0);
+  const trab = Math.max(0, bruto - iv);
   const dow = new Date(dataISO + "T12:00:00").getDay();
   const h = (m) => Math.round(m / 60 * 4) / 4; // quartos de hora
-  if(dow === 0) return { horas_normais: 0, horas_50: 0, horas_100: h(trab) };
+  if(dow === 0 || dow === 6 || feriado) return { horas_normais: 0, horas_50: 0, horas_100: h(trab) };
   if(!jornada) return null;
-  const je = minutosHHMM(dow === 6 ? jornada.jornada_sabado_entrada : jornada.jornada_entrada);
-  const js = minutosHHMM(dow === 6 ? jornada.jornada_sabado_saida   : jornada.jornada_saida);
-  if(je == null || js == null){
-    if(dow === 6 && minutosHHMM(jornada.jornada_entrada) != null) return { horas_normais: 0, horas_50: h(trab), horas_100: 0 }; // obra sem jornada de sábado: sábado inteiro é extra
-    return null;
-  }
+  const je = minutosHHMM(jornada.jornada_entrada), js = minutosHHMM(jornada.jornada_saida);
+  if(je == null || js == null) return null;
   let jor = js - je; if(jor < 0) jor += 24 * 60;
+  jor = Math.max(0, jor - 60); // jornada do dia já descontada 1h de almoço (mesma regra do banco)
   const normais = Math.min(trab, jor);
-  return { horas_normais: h(normais), horas_50: h(Math.max(0, trab - normais)), horas_100: 0 };
+  return { horas_normais: h(normais), horas_50: 0, horas_100: h(Math.max(0, trab - normais)) };
+}
+/* Feriado marcado no cabeçalho do dia (preview da IA) */
+function iaDiaFeriado(dia){
+  const cb = document.querySelector(`.ia-dia[data-dia="${dia}"] [data-cab="feriado"]`);
+  return !!(cb && cb.checked);
 }
 /* Aplica a jornada nas linhas da equipe do preview. soVazias=true não mexe no que a pessoa já digitou. */
 function iaRecalcularHorasNoDOM(soVazias){
@@ -1845,7 +1868,7 @@ function iaRecalcularHorasNoDOM(soVazias){
 }
 function iaRecalcularHorasLinha(tr, dia, soVazias){
   const g = (c) => tr.querySelector(`[data-e="${c}"]`);
-  const r = calcularHorasEquipe(dia, g("hora_entrada")?.value, g("hora_saida")?.value, _iaJornadaObra);
+  const r = calcularHorasEquipe(dia, g("hora_entrada")?.value, g("hora_saida")?.value, _iaJornadaObra, g("intervalo_minutos")?.value, iaDiaFeriado(dia));
   ["horas_normais","horas_50","horas_100"].forEach(k => {
     const el = g(k); if(!el) return;
     if(soVazias && el.value !== "" && el.dataset.auto !== "1") return;
@@ -1890,6 +1913,7 @@ function renderConferenciaIA(resp){
       <div class="grade ia-cab">
         <div class="campo"><label>Tempo manhã</label><select data-cab="tempo_manha">${tempoOpts(ex.tempo_manha)}</select></div>
         <div class="campo"><label>Tempo tarde</label><select data-cab="tempo_tarde">${tempoOpts(ex.tempo_tarde)}</select></div>
+        <div class="campo"><label>Feriado?</label><label class="meta" style="display:flex;align-items:center;gap:6px;min-height:34px;cursor:pointer;"><input type="checkbox" data-cab="feriado" ${ex.feriado ? "checked" : ""} /> tudo HE 100%</label></div>
         <div class="campo"><label>Responsável do dia <small class="meta">(operador ou encarregado)</small></label><select data-cab="responsavel_id">${respOpts}</select>
           ${ex.responsavel ? `<div class="meta">No diário: "${esc(ex.responsavel)}"</div>` : ""}</div>
         <div class="campo largo"><label>Atividades</label><input data-cab="atividades" value="${esc(v(ex.atividades))}" /></div>
@@ -1941,7 +1965,7 @@ function renderConferenciaIA(resp){
       </table></div>
       <details class="ia-equipe" ${ex.equipe.length ? "open" : ""}>
         <summary>👷 Equipe do dia (${ex.equipe.length})${semCadastro ? ` <span style="color:var(--aviso-txt);">· ⚠️ ${semCadastro} sem correspondência no cadastro → entram como avulsos</span>` : ""}</summary>
-        <table class="itens-tabela ia-tabela"><thead><tr><th>Nome no diário</th><th>Funcionário (cadastro)</th><th>Função (cadastro)</th><th title="Só quando o boletim disser outra função">Função no dia</th><th>Entrada</th><th>Saída</th><th>H. normais</th><th>H. 50%</th><th>H. 100%</th><th></th></tr></thead>
+        <table class="itens-tabela ia-tabela"><thead><tr><th>Nome no diário</th><th>Funcionário (cadastro)</th><th>Função (cadastro)</th><th title="Só quando o boletim disser outra função">Função no dia</th><th>Entrada</th><th>Saída</th><th title="Intervalo real de almoço (min). Vazio = 60; piso 30">Interv. (min)</th><th>H. normais</th><th title="Sem uso: toda HE é 100% (regra RH 11/09/2026)">H. 50%</th><th>H. 100%</th><th></th></tr></thead>
         <tbody>${ex.equipe.map(p => `<tr${p.funcionario_id ? "" : ' class="ia-sem-cadastro"'}>
           <td><input data-e="nome" value="${esc(v(p.nome))}" /></td>
           <td><select data-e="funcionario_id">${funcOptsCadastro}</select></td>
@@ -1949,6 +1973,7 @@ function renderConferenciaIA(resp){
           <td><select data-e="funcao">${funcOpts(p.funcao_no_dia || "", !!p.funcionario_id)}</select></td>
           <td><input type="time" data-e="hora_entrada" value="${esc(v(p.hora_entrada))}" /></td>
           <td><input type="time" data-e="hora_saida" value="${esc(v(p.hora_saida))}" /></td>
+          <td><input type="number" step="5" min="0" max="240" data-e="intervalo_minutos" value="${v(p.intervalo_minutos ?? ex.intervalo_minutos)}" style="width:60px" placeholder="60" /></td>
           <td><input type="number" step="0.25" data-e="horas_normais" value="${v(p.horas_normais)}" style="width:60px" /></td>
           <td><input type="number" step="0.25" data-e="horas_50" value="${v(p.horas_50)}" style="width:60px" /></td>
           <td><input type="number" step="0.25" data-e="horas_100" value="${v(p.horas_100)}" style="width:60px" /></td>
@@ -1962,6 +1987,8 @@ function renderConferenciaIA(resp){
   // selects (valor via innerHTML não funciona): funcionário casado por linha
   cont.querySelectorAll(".ia-dia").forEach(bloco => {
     const ex = _iaExtras?.[bloco.dataset.dia];
+    // feriado do dia → recalcula as horas de toda a equipe do dia (tudo vira HE 100)
+    bloco.querySelector('[data-cab="feriado"]')?.addEventListener("change", () => bloco.querySelectorAll(".ia-equipe tbody tr").forEach(tr => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false)));
     bloco.querySelectorAll(".ia-equipe tbody tr").forEach((tr, i) => {
       const m = ex?.equipe?.[i];
       const sel = tr.querySelector('[data-e="funcionario_id"]');
@@ -1970,6 +1997,7 @@ function renderConferenciaIA(resp){
       iaRecalcularHorasLinha(tr, bloco.dataset.dia, true);
       tr.querySelector('[data-e="hora_entrada"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));
       tr.querySelector('[data-e="hora_saida"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));
+      tr.querySelector('[data-e="intervalo_minutos"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));
       ["horas_normais","horas_50","horas_100"].forEach(k => tr.querySelector(`[data-e="${k}"]`)?.addEventListener("input", (ev) => { ev.target.dataset.auto = "0"; }));
       // troca de funcionário → função do cadastro e "Função no dia" voltam a seguir o cadastro
       sel?.addEventListener("change", () => {
@@ -2036,7 +2064,7 @@ function lerConferenciaIA(){
     const dia = bloco.dataset.dia;
     const orig = _csvParsed[dia] || [];
     const ex = _iaExtras[dia] || (_iaExtras[dia] = { equipe: [] });
-    bloco.querySelectorAll("[data-cab]").forEach(el => { ex[el.dataset.cab] = el.value.trim() || null; });
+    bloco.querySelectorAll("[data-cab]").forEach(el => { ex[el.dataset.cab] = el.type === "checkbox" ? el.checked : (el.value.trim() || null); });
     const novos = [];
     bloco.querySelectorAll("table.ia-estacas > tbody > tr[data-idx]").forEach(tr => {
       const base = orig[Number(tr.dataset.idx)] || {};
@@ -2087,6 +2115,7 @@ function lerConferenciaIA(){
       const m = { ...(equipeAnt[i] || {}), nome,
         funcionario_id: g("funcionario_id")?.value || null,
         hora_entrada: g("hora_entrada").value || null, hora_saida: g("hora_saida").value || null,
+        intervalo_minutos: num(g("intervalo_minutos")?.value),
         horas_normais: num(g("horas_normais").value), horas_50: num(g("horas_50").value), horas_100: num(g("horas_100").value) };
       iaAplicarCadastroIntegrante(m);
       // select "Função no dia": vazio = segue o cadastro; preenchido = o boletim disse outra função
@@ -2406,6 +2435,7 @@ async function confirmarImportCSV(){
           ...(ex ? {
             tempo_manha: ex.tempo_manha || null, tempo_tarde: ex.tempo_tarde || null,
             atividades: ex.atividades || null,
+            feriado: !!ex.feriado,
             observacoes: [ex.observacoes, (ex.responsavel && !ex.responsavel_id) ? "Responsável no diário: " + ex.responsavel : null].filter(Boolean).join("\n") || null,
             efetivo_proprio: ex.equipe.length || null
           } : {})
@@ -2476,7 +2506,7 @@ async function confirmarImportCSV(){
           funcionario_id: p.funcionario_id || null,
           nome_avulso: p.funcionario_id ? null : p.nome,
           funcao_no_dia: p.funcao_no_dia || (p.funcionario_id ? null : "outro"),
-          hora_entrada: p.hora_entrada || null, hora_saida: p.hora_saida || null,
+          hora_entrada: p.hora_entrada || null, hora_saida: p.hora_saida || null, intervalo_minutos: p.intervalo_minutos ?? null,
           horas_normais: p.horas_normais, horas_50: p.horas_50, horas_100: p.horas_100, ordem: i + 1 }));
         const { error: errEq } = await sb.from("rdo_equipe").insert(linhas);
         if(errEq) console.warn("Equipe de " + dia + " não gravada:", errEq.message);

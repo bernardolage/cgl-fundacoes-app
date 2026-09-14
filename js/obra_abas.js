@@ -444,6 +444,21 @@ async function carregarDocumentosDaObra(obraId){
   });
 }
 
+/* MIME por extensão: o navegador manda "application/octet-stream" (ou vazio) para .dwg/.dxf/.zip
+   e o bucket obras-documentos recusava. Lista alinhada aos allowed_mime_types do bucket. */
+const MIME_POR_EXTENSAO = {
+  pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  doc: "application/msword", xls: "application/vnd.ms-excel", txt: "text/plain", csv: "text/csv",
+  dwg: "image/vnd.dwg", dxf: "image/vnd.dxf", zip: "application/zip"
+};
+function mimeDoArquivo(file, ext){
+  const t = String(file.type || "").toLowerCase();
+  if(t && t !== "application/octet-stream") return t;
+  return MIME_POR_EXTENSAO[ext] || "application/octet-stream";
+}
+
 function ligarUploadDoc(obraId){
   $("btn-doc-enviar")?.addEventListener("click", () => enviarDocumento(obraId));
 }
@@ -462,8 +477,9 @@ async function enviarDocumento(obraId){
     // Extensão entra no caminho do storage: só letras/dígitos (1-5), senão "bin"
     const ext = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "bin";
     const nomeUnico = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const mime = mimeDoArquivo(file, ext);
     const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, file, {
-      cacheControl: "3600", contentType: file.type, upsert: false
+      cacheControl: "3600", contentType: mime, upsert: false
     });
     if(errUp) throw errUp;
 
@@ -474,7 +490,7 @@ async function enviarDocumento(obraId){
       nome: file.name,
       descricao: $("doc-descricao").value.trim() || null,
       storage_path: nomeUnico,
-      mime_type: file.type,
+      mime_type: mime,
       tamanho_bytes: file.size,
       enviado_por: user ? user.id : null,
       origem: "manual"
