@@ -2222,6 +2222,10 @@ async function abrirModalReconciliacao(){
   renderizarAlteradas();
   renderizarDuplicadas();
   renderizarRefuradas();
+  // Abre na primeira aba que tem algo a conferir (antes ficava na última aba usada,
+  // então a obra seguinte abria direto em "duplicadas" mesmo sem duplicata).
+  const altSuspeitas = _confAlteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
+  _confAbaAtual = _recOrfas.length ? "orfas" : altSuspeitas ? "alteradas" : _confDuplicadas.length ? "duplicadas" : _confRefuradas.length ? "refuradas" : "orfas";
   ativarConfAba(_confAbaAtual);
 }
 
