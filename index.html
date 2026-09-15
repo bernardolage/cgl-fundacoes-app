@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=6c3b9b6" />
+<link rel="stylesheet" href="css/estilo.css?v=c99e9af" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -118,6 +118,10 @@
       <button data-secao="frota">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
         <span>Frota</span>
+      </button>
+      <button data-secao="acessorios">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+        <span>Acessórios</span>
       </button>
       <button data-secao="medicoes">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="8" y1="4" x2="8" y2="8"></line><line x1="12" y1="4" x2="12" y2="6"></line><line x1="16" y1="4" x2="16" y2="8"></line><line x1="8" y1="20" x2="8" y2="16"></line><line x1="12" y1="20" x2="12" y2="18"></line><line x1="16" y1="20" x2="16" y2="16"></line></svg>
@@ -2245,6 +2249,246 @@
       </div>
     </section>
 
+    <!-- ================= ACESSÓRIOS (fase 47/48) ================= -->
+    <section class="secao" id="sec-acessorios">
+      <div id="ace-painel">
+        <h2>Acessórios</h2>
+        <p class="texto-apoio">Peças com identidade (marcação): segmentos, pontas, caixas e prolongas de hélice; hastes, camisas, coroas, martelos e bombas de raiz. Onde está cada peça, em que condição e o histórico de cada movimento. Substitui as planilhas CONTROLE_ACESSORIOS_OBRA (hélice) e ESTOQUE DE ACESSÓRIOS DE ESTACA RAIZ (raiz).</p>
+
+        <div class="indicadores">
+          <div class="ind ind-click" data-kpi=""><div class="num" id="ace-kpi-total">—</div><div class="rot">Cadastradas</div></div>
+          <div class="ind ind-click" data-kpi="estoque"><div class="num" id="ace-kpi-estoque">—</div><div class="rot">Em estoque (pátio · oficina · máquina)</div></div>
+          <div class="ind ind-click" data-kpi="obra"><div class="num" id="ace-kpi-obra">—</div><div class="rot">Em obra / em trânsito</div></div>
+          <div class="ind ind-click" data-kpi="manutencao"><div class="num" id="ace-kpi-manut" style="color:var(--marca-600);">—</div><div class="rot">Em manutenção</div></div>
+          <div class="ind ind-click" data-kpi="atencao"><div class="num" id="ace-kpi-atencao">—</div><div class="rot">Precisam de atenção</div></div>
+          <div class="ind ind-click" data-kpi="perdido"><div class="num" id="ace-kpi-perdido">—</div><div class="rot">Perdidas</div></div>
+        </div>
+
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Peças <span id="ace-contador" class="contador"></span></h3>
+            <div class="serv-views" id="ace-familias" title="Família de acessórios (o sistema lembra a sua escolha)">
+              <button type="button" class="serv-view-btn" data-familia="raiz">Raiz</button>
+              <button type="button" class="serv-view-btn" data-familia="helice">Hélice</button>
+              <button type="button" class="serv-view-btn" data-familia="secante">Secante</button>
+              <button type="button" class="serv-view-btn" data-familia="trado">Trado</button>
+              <button type="button" class="serv-view-btn" data-familia="">Todas</button>
+            </div>
+            <div class="serv-views" id="ace-views">
+              <button type="button" class="serv-view-btn ativo" data-view="kanban">Onde está</button>
+              <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="contagem">Contagem</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-ace-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-ace-modelo" style="display:none;">+ Modelo</button>
+            <button type="button" class="btn" id="btn-ace-nova" style="display:none;">+ Nova peça</button>
+          </div>
+          <div class="serv-filtros" id="ace-filtros">
+            <input id="ace-busca" placeholder="Buscar marcação, jogo, modelo, nº de série…" />
+            <select id="ace-f-tipo"><option value="">Todos os tipos</option></select>
+            <select id="ace-f-medida"><option value="">Ø / medida</option></select>
+            <select id="ace-f-acopl"><option value="">Acoplamento</option></select>
+            <select id="ace-f-condicao"><option value="">Condição</option></select>
+            <select id="ace-f-local"><option value="">Onde está</option></select>
+            <select id="ace-f-equip"><option value="">Equipamento (está / pertence)</option></select>
+            <select id="ace-f-obra"><option value="">Obra</option></select>
+            <select id="ace-f-jogo"><option value="">Jogo</option></select>
+          </div>
+          <div id="ace-selecao" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-body);">
+            <strong id="ace-selecao-n">0 selecionadas</strong>
+            <button type="button" class="btn-sec btn-sm" data-acao="obra">📦 Enviar para obra</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="patio">↩️ Retornar ao pátio</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="mover">📍 Mover…</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="reparo">🔧 Abrir reparo</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="condicao">✅ Condição…</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="perda" style="color:var(--perigo);">⚠️ Registrar perda</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="limpar" style="margin-left:auto;">Limpar seleção</button>
+          </div>
+          <div id="ace-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha (estilo Odoo) -->
+      <div id="ace-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-ace-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-ace-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec ace-so-existente" id="btn-ace-mover">📍 Mover</button>
+              <button type="button" class="btn-sec ace-so-existente" id="btn-ace-reparo">🔧 Abrir reparo</button>
+              <button type="button" class="btn-sec ace-so-existente" id="btn-ace-perda" style="color:var(--perigo);">⚠️ Perda</button>
+              <button type="button" class="btn-sec ace-so-existente" id="btn-ace-excluir" style="color:var(--perigo);">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right"><strong id="ace-ficha-titulo">Nova peça</strong></div>
+          </div>
+
+          <div class="odoo-statusbar" id="ace-statusbar" title="Condição da peça — clique para mudar">
+            <div class="stage" data-status="sem_avaliacao">Sem avaliação</div>
+            <div class="stage" data-status="sem_marcacao">Sem marcação</div>
+            <div class="stage" data-status="bom_estado">Bom estado</div>
+            <div class="stage" data-status="precisa_manutencao">Precisa manutenção</div>
+            <div class="stage" data-status="em_manutencao">Em manutenção</div>
+            <div class="stage" data-status="baixado">Baixado</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Marcação</span><strong id="ace-chip-marc">—</strong></div>
+            <div class="chip"><span>Modelo</span><strong id="ace-chip-modelo">—</strong></div>
+            <div class="chip"><span>Ø / medida</span><strong id="ace-chip-medida">—</strong></div>
+            <div class="chip"><span>Onde está</span><strong id="ace-chip-onde">—</strong></div>
+            <div class="chip"><span>Pertence</span><strong id="ace-chip-pertence">—</strong></div>
+            <div class="chip"><span>Condição</span><strong id="ace-chip-cond">—</strong></div>
+          </div>
+
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-ace-hist" data-goto-tab="historico"><span class="sb-num">0</span><span class="sb-icon">🕓</span><span class="sb-lbl">histórico</span></button>
+            <button type="button" class="sb-btn" id="sb-ace-rep" data-goto-tab="reparos"><span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">reparos</span></button>
+            <button type="button" class="sb-btn" id="sb-ace-jogo" data-goto-tab="jogo"><span class="sb-num">0</span><span class="sb-icon">🧩</span><span class="sb-lbl">no jogo</span></button>
+            <button type="button" class="sb-btn" id="sb-ace-compat" data-goto-tab="dados"><span class="sb-num">0</span><span class="sb-icon">🚜</span><span class="sb-lbl">compatível</span></button>
+          </div>
+
+          <div class="odoo-notebook" id="ace-notebook">
+            <button type="button" data-tab="dados" class="ativo">Dados técnicos</button>
+            <button type="button" data-tab="jogo">Jogo</button>
+            <button type="button" data-tab="historico">Histórico</button>
+            <button type="button" data-tab="reparos">Reparos</button>
+            <button type="button" data-tab="obs">Observações</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="dados">
+              <div class="grade">
+                <div class="campo"><label>Marcação *</label><input id="ace-marcacao" placeholder="Ex.: CGL-01-1, G122, CC39" /></div>
+                <div class="campo"><label>Família *</label><select id="ace-familia"></select></div>
+                <div class="campo"><label>Tipo *</label><select id="ace-tipo"></select></div>
+                <div class="campo largo"><label>Modelo (linha da contagem)</label>
+                  <div style="display:flex;gap:6px;"><select id="ace-modelo" style="flex:1;"></select><button type="button" class="btn-sec btn-sm" id="btn-ace-novo-modelo" title="Cadastrar um modelo novo">+</button></div>
+                </div>
+                <div class="campo"><label>Jogo</label><input id="ace-jogo" placeholder="Ex.: CGL-01" /></div>
+                <div class="campo"><label>Sequência no jogo</label><input type="number" id="ace-seq" min="0" step="1" /></div>
+                <div class="campo"><label>Ø externo (mm)</label><input type="number" id="ace-diam" min="0" step="1" /></div>
+                <div class="campo"><label>Ø real (mm)</label><input type="number" id="ace-diam-real" min="0" step="1" /></div>
+                <div class="campo"><label>Passo (mm)</label><input type="number" id="ace-passo" min="0" step="1" /></div>
+                <div class="campo"><label>Passo ideal (mm)</label><input type="number" id="ace-passo-ideal" min="0" step="1" /></div>
+                <div class="campo"><label>Acoplamento</label><select id="ace-acopl"></select></div>
+                <div class="campo"><label>Ø interno (pol)</label><input type="number" id="ace-pol" min="0" step="0.5" /></div>
+                <div class="campo"><label>Comprimento (m)</label><input type="number" id="ace-comp" min="0" step="0.01" /></div>
+                <div class="campo"><label>Ø tubo (mm)</label><input type="number" id="ace-tubo" min="0" step="1" /></div>
+                <div class="campo"><label>Detalhe</label><input id="ace-detalhe" placeholder="Bits, Unha, Com U, Pino 28…" /></div>
+                <div class="campo"><label>Peso (kg)</label><input type="number" id="ace-peso" min="0" step="0.1" /></div>
+                <div class="campo"><label>Nº de série</label><input id="ace-serie" /></div>
+                <div class="campo"><label>Pertence ao equipamento</label><select id="ace-padrao"></select></div>
+                <div class="campo largo"><label>Também compatível com (Ctrl+clique para vários)</label><select id="ace-compat" multiple size="4"></select></div>
+                <div class="campo"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="ace-ativo" checked /> Peça ativa no cadastro</label></div>
+              </div>
+              <p class="meta" id="ace-local-atual" style="margin-top:10px;"></p>
+            </div>
+            <div class="odoo-tab" data-tab="jogo">
+              <div class="lista-topo"><h3>Peças do mesmo jogo</h3><button type="button" class="btn-sec btn-sm" id="btn-ace-mover-jogo" style="margin-left:auto;">📍 Mover o jogo inteiro</button></div>
+              <div id="ace-jogo-lista"><p class="vazio">—</p></div>
+            </div>
+            <div class="odoo-tab" data-tab="historico">
+              <div id="ace-hist-lista"><p class="vazio">—</p></div>
+            </div>
+            <div class="odoo-tab" data-tab="reparos">
+              <div id="ace-rep-lista"><p class="vazio">—</p></div>
+            </div>
+            <div class="odoo-tab" data-tab="obs">
+              <div class="grade">
+                <div class="campo largo"><label>Observações</label><textarea id="ace-obs" rows="4"></textarea></div>
+              </div>
+              <div id="ace-chatter" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- modal: mover / enviar para obra / retornar ao pátio -->
+      <div id="ace-mover-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:640px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha" id="ace-mv-titulo">Mover peças</h3><button type="button" class="btn-sec" id="btn-ace-mv-fechar">×</button></div>
+          <p class="meta" id="ace-mv-resumo"></p>
+          <div class="grade">
+            <div class="campo"><label>Destino *</label><select id="ace-mv-tipo"></select></div>
+            <div class="campo"><label>Data</label><input type="date" id="ace-mv-data" /></div>
+            <div class="campo largo" id="ace-mv-c-obra"><label>Obra *</label><select id="ace-mv-obra"></select></div>
+            <div class="campo largo" id="ace-mv-c-equip"><label>Equipamento</label><select id="ace-mv-equip"></select></div>
+            <div class="campo largo" id="ace-mv-c-forn"><label>Fornecedor *</label><select id="ace-mv-forn"></select></div>
+            <div class="campo largo"><label>Local / detalhe</label><input id="ace-mv-desc" placeholder="Ex.: prateleira 3, oficina CGL, container da obra…" /></div>
+            <div class="campo largo"><label>Observação</label><input id="ace-mv-obs" placeholder="Vai para o histórico de cada peça" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-mv-salvar">📍 Confirmar</button></div>
+        </div>
+      </div>
+
+      <!-- modal: perda -->
+      <div id="ace-perda-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:560px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha">Registrar perda</h3><button type="button" class="btn-sec" id="btn-ace-pd-fechar">×</button></div>
+          <p class="meta" id="ace-pd-resumo"></p>
+          <div class="grade">
+            <div class="campo largo"><label>Motivo *</label><input id="ace-pd-motivo" list="ace-pd-motivos" placeholder="Ex.: perda em obra / motivos operacionais" />
+              <datalist id="ace-pd-motivos"><option value="Perda em obra / motivos operacionais"></option><option value="Desgaste natural"></option><option value="Amassado por operação"></option><option value="Concretado no furo"></option><option value="Roubo"></option><option value="Não encontrado na conferência de pátio"></option><option value="Quebra em obra"></option></datalist></div>
+            <div class="campo"><label>Data</label><input type="date" id="ace-pd-data" /></div>
+            <div class="campo largo"><label>Observação</label><input id="ace-pd-obs" placeholder="Obra, equipamento, quem informou…" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-pd-salvar" style="background:var(--perigo);">⚠️ Registrar perda</button></div>
+        </div>
+      </div>
+
+      <!-- modal: condição -->
+      <div id="ace-cond-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:520px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha">Mudar condição</h3><button type="button" class="btn-sec" id="btn-ace-cd-fechar">×</button></div>
+          <p class="meta" id="ace-cd-resumo"></p>
+          <div class="grade">
+            <div class="campo"><label>Condição *</label><select id="ace-cd-cond"></select></div>
+            <div class="campo"><label>Data</label><input type="date" id="ace-cd-data" /></div>
+            <div class="campo largo"><label>Motivo / observação</label><input id="ace-cd-motivo" list="ace-cd-motivos" placeholder="Ex.: cabeça fêmea gasta" />
+              <datalist id="ace-cd-motivos"><option value="Cabeça fêmea gasta"></option><option value="Blank empenado"></option><option value="U's gastos"></option><option value="Entupido"></option><option value="Rosca danificada"></option><option value="Trinca na solda"></option><option value="Amassado"></option><option value="Desgaste"></option></datalist></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-cd-salvar">✅ Aplicar</button></div>
+        </div>
+      </div>
+
+      <!-- modal: abrir reparo -->
+      <div id="ace-reparo-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:600px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha">Abrir reparo de caldeiraria</h3><button type="button" class="btn-sec" id="btn-ace-rp-fechar">×</button></div>
+          <p class="meta" id="ace-rp-resumo"></p>
+          <div class="grade">
+            <div class="campo largo"><label>O que precisa ser feito *</label><input id="ace-rp-desc" list="ace-cd-motivos" placeholder="Ex.: trocar rosca, recuperar cabeça fêmea" /></div>
+            <div class="campo"><label>Tipo de serviço</label><select id="ace-rp-tipo"></select></div>
+            <div class="campo"><label>Data de abertura</label><input type="date" id="ace-rp-data" /></div>
+            <div class="campo"><label>Onde será feito</label><select id="ace-rp-local"><option value="oficina">Oficina CGL</option><option value="fornecedor">Fornecedor</option></select></div>
+            <div class="campo" id="ace-rp-c-forn" style="display:none;"><label>Fornecedor</label><select id="ace-rp-forn"></select></div>
+            <div class="campo"><label>Custo estimado (R$)</label><input type="number" id="ace-rp-custo" min="0" step="0.01" /></div>
+            <div class="campo largo"><label>Observações</label><input id="ace-rp-obs" placeholder="Nº da OS, prazo combinado…" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-rp-salvar">🔧 Abrir reparo</button></div>
+        </div>
+      </div>
+
+      <!-- modal: modelo -->
+      <div id="ace-modelo-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:600px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha" id="ace-md-titulo">Modelo de acessório</h3><button type="button" class="btn-sec" id="btn-ace-md-fechar">×</button></div>
+          <p class="meta">O modelo é a linha da contagem: tipo + descrição + medida, com o preço de referência que valoriza o estoque.</p>
+          <div class="grade">
+            <div class="campo"><label>Família *</label><select id="ace-md-familia"></select></div>
+            <div class="campo"><label>Tipo *</label><select id="ace-md-tipo"></select></div>
+            <div class="campo largo"><label>Descrição *</label><input id="ace-md-desc" placeholder="Ex.: REVESTIMENTO METÁLICO 410, Segmento Ø600 CZM 5&quot;" /></div>
+            <div class="campo"><label>Medida</label><input id="ace-md-medida" placeholder="Ex.: 1.5, 410, 5,5&quot;" /></div>
+            <div class="campo"><label>Grupo na contagem</label><input id="ace-md-grupo" list="ace-md-grupos" placeholder="Ex.: CAMISAS" /><datalist id="ace-md-grupos"></datalist></div>
+            <div class="campo"><label>Preço de referência (R$)</label><input type="number" id="ace-md-preco" min="0" step="0.01" /></div>
+            <div class="campo"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="ace-md-ativo" checked /> Modelo ativo</label></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-md-salvar">💾 Salvar modelo</button></div>
+        </div>
+      </div>
+    </section>
+
     <section class="secao" id="sec-medicoes">
       <h2>Medições</h2>
 
@@ -2885,33 +3129,34 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=6c3b9b6"></script>
+<script src="js/core.js?v=c99e9af"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=6c3b9b6"></script>
+<script src="js/historico.js?v=c99e9af"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=6c3b9b6"></script>
-<script src="js/fornecedores.js?v=6c3b9b6"></script>
-<script src="js/apropriacoes.js?v=6c3b9b6"></script>
-<script src="js/funcionarios.js?v=6c3b9b6"></script>
-<script src="js/servicos.js?v=6c3b9b6"></script>
-<script src="js/produtos.js?v=6c3b9b6"></script>
-<script src="js/estoque.js?v=6c3b9b6"></script>
-<script src="js/orcamentos.js?v=6c3b9b6"></script>
-<script src="js/propostas.js?v=6c3b9b6"></script>
-<script src="js/contratos.js?v=6c3b9b6"></script>
-<script src="js/carteira.js?v=6c3b9b6"></script>
-<script src="js/obras.js?v=6c3b9b6"></script>
-<script src="js/frota.js?v=6c3b9b6"></script>
-<script src="js/mobilizacoes.js?v=6c3b9b6"></script>
-<script src="js/estacas.js?v=6c3b9b6"></script>
-<script src="js/obra_abas.js?v=6c3b9b6"></script>
-<script src="js/medicoes.js?v=6c3b9b6"></script>
-<script src="js/movimentacoes.js?v=6c3b9b6"></script>
-<script src="js/rdo.js?v=6c3b9b6"></script>
-<script src="js/usuarios.js?v=6c3b9b6"></script>
-<script src="js/chamados.js?v=6c3b9b6"></script>
-<script src="js/dashboard.js?v=6c3b9b6"></script>
+<script src="js/clientes.js?v=c99e9af"></script>
+<script src="js/fornecedores.js?v=c99e9af"></script>
+<script src="js/apropriacoes.js?v=c99e9af"></script>
+<script src="js/funcionarios.js?v=c99e9af"></script>
+<script src="js/servicos.js?v=c99e9af"></script>
+<script src="js/produtos.js?v=c99e9af"></script>
+<script src="js/estoque.js?v=c99e9af"></script>
+<script src="js/orcamentos.js?v=c99e9af"></script>
+<script src="js/propostas.js?v=c99e9af"></script>
+<script src="js/contratos.js?v=c99e9af"></script>
+<script src="js/carteira.js?v=c99e9af"></script>
+<script src="js/obras.js?v=c99e9af"></script>
+<script src="js/frota.js?v=c99e9af"></script>
+<script src="js/acessorios.js?v=c99e9af"></script>
+<script src="js/mobilizacoes.js?v=c99e9af"></script>
+<script src="js/estacas.js?v=c99e9af"></script>
+<script src="js/obra_abas.js?v=c99e9af"></script>
+<script src="js/medicoes.js?v=c99e9af"></script>
+<script src="js/movimentacoes.js?v=c99e9af"></script>
+<script src="js/rdo.js?v=c99e9af"></script>
+<script src="js/usuarios.js?v=c99e9af"></script>
+<script src="js/chamados.js?v=c99e9af"></script>
+<script src="js/dashboard.js?v=c99e9af"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=6c3b9b6"></script>
+<script src="js/init.js?v=c99e9af"></script>
 </body>
 </html>
