@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=c99e9af" />
+<link rel="stylesheet" href="css/estilo.css?v=be66497" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -2805,6 +2805,7 @@
                     <option value="cliente">Cliente</option>
                   </select>
                 </div>
+                <div class="campo" id="mov-origem-obra-campo" style="display:none;"><label>Obra de origem</label><select id="mov-origem-obra"></select></div>
                 <div class="campo"><label>Descrição</label><input id="mov-origem-descricao" placeholder="ex.: Base Itabira" /></div>
                 <div class="campo"><label>UF</label><select id="mov-origem-uf"></select></div>
               </div>
@@ -2818,6 +2819,7 @@
                     <option value="cliente">Cliente</option>
                   </select>
                 </div>
+                <div class="campo" id="mov-destino-obra-campo" style="display:none;"><label>Obra de destino</label><select id="mov-destino-obra"></select></div>
                 <div class="campo"><label>Descrição</label><input id="mov-destino-descricao" placeholder="ex.: Obra ArcelorMittal Tubarão" /></div>
                 <div class="campo"><label>UF</label><select id="mov-destino-uf"></select></div>
               </div>
@@ -2849,6 +2851,23 @@
                   <input id="mov-busca-produto" placeholder="digite ≥ 2 letras..." autocomplete="off" />
                   <div id="mov-resultados-produto" class="autocomplete-lista" style="display:none;"></div>
                 </div>
+                <div class="campo largo"><label>+ Adicionar acessório (marcação, jogo ou descrição)</label>
+                  <input id="mov-busca-acessorio" placeholder="ex.: CGL-12-3, H12, camisa 250..." autocomplete="off" />
+                  <div id="mov-resultados-acessorio" class="autocomplete-lista" style="display:none;"></div>
+                </div>
+              </div>
+              <!-- Sugestão de peças: retorno = o que está na obra de origem; remessa = peças da TAG que vai na carga -->
+              <div id="mov-ace-sugestao" class="mov-ace-sugestao" style="display:none;">
+                <div class="lista-topo">
+                  <h3 id="mov-ace-sug-titulo">Peças na obra</h3>
+                  <span class="meta" id="mov-ace-sug-resumo"></span>
+                  <div class="acoes" style="margin-left:auto;display:flex;gap:6px;">
+                    <button type="button" class="btn-sec btn-sm" id="btn-mov-ace-sug-todos">Marcar todas</button>
+                    <button type="button" class="btn-sec btn-sm" id="btn-mov-ace-sug-nenhum">Desmarcar</button>
+                    <button type="button" class="btn btn-sm" id="btn-mov-ace-sug-add">＋ Adicionar marcadas</button>
+                  </div>
+                </div>
+                <div id="mov-ace-sug-lista" class="mov-ace-sug-lista"></div>
               </div>
             </div>
 
@@ -3129,34 +3148,34 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=c99e9af"></script>
+<script src="js/core.js?v=be66497"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=c99e9af"></script>
+<script src="js/historico.js?v=be66497"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=c99e9af"></script>
-<script src="js/fornecedores.js?v=c99e9af"></script>
-<script src="js/apropriacoes.js?v=c99e9af"></script>
-<script src="js/funcionarios.js?v=c99e9af"></script>
-<script src="js/servicos.js?v=c99e9af"></script>
-<script src="js/produtos.js?v=c99e9af"></script>
-<script src="js/estoque.js?v=c99e9af"></script>
-<script src="js/orcamentos.js?v=c99e9af"></script>
-<script src="js/propostas.js?v=c99e9af"></script>
-<script src="js/contratos.js?v=c99e9af"></script>
-<script src="js/carteira.js?v=c99e9af"></script>
-<script src="js/obras.js?v=c99e9af"></script>
-<script src="js/frota.js?v=c99e9af"></script>
-<script src="js/acessorios.js?v=c99e9af"></script>
-<script src="js/mobilizacoes.js?v=c99e9af"></script>
-<script src="js/estacas.js?v=c99e9af"></script>
-<script src="js/obra_abas.js?v=c99e9af"></script>
-<script src="js/medicoes.js?v=c99e9af"></script>
-<script src="js/movimentacoes.js?v=c99e9af"></script>
-<script src="js/rdo.js?v=c99e9af"></script>
-<script src="js/usuarios.js?v=c99e9af"></script>
-<script src="js/chamados.js?v=c99e9af"></script>
-<script src="js/dashboard.js?v=c99e9af"></script>
+<script src="js/clientes.js?v=be66497"></script>
+<script src="js/fornecedores.js?v=be66497"></script>
+<script src="js/apropriacoes.js?v=be66497"></script>
+<script src="js/funcionarios.js?v=be66497"></script>
+<script src="js/servicos.js?v=be66497"></script>
+<script src="js/produtos.js?v=be66497"></script>
+<script src="js/estoque.js?v=be66497"></script>
+<script src="js/orcamentos.js?v=be66497"></script>
+<script src="js/propostas.js?v=be66497"></script>
+<script src="js/contratos.js?v=be66497"></script>
+<script src="js/carteira.js?v=be66497"></script>
+<script src="js/obras.js?v=be66497"></script>
+<script src="js/frota.js?v=be66497"></script>
+<script src="js/acessorios.js?v=be66497"></script>
+<script src="js/mobilizacoes.js?v=be66497"></script>
+<script src="js/estacas.js?v=be66497"></script>
+<script src="js/obra_abas.js?v=be66497"></script>
+<script src="js/medicoes.js?v=be66497"></script>
+<script src="js/movimentacoes.js?v=be66497"></script>
+<script src="js/rdo.js?v=be66497"></script>
+<script src="js/usuarios.js?v=be66497"></script>
+<script src="js/chamados.js?v=be66497"></script>
+<script src="js/dashboard.js?v=be66497"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=c99e9af"></script>
+<script src="js/init.js?v=be66497"></script>
 </body>
 </html>

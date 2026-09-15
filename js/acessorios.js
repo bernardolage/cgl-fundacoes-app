@@ -163,6 +163,25 @@ async function carregarAcessorios(force){
   renderAcessorios();
 }
 
+/* Catálogo para outros módulos (Movimentações, Mobilizações): devolve as peças em cache ou carrega.
+   Também garante _aceEq (nomes de TAG usados por aceOnde). */
+let _aceCatalogoEm = 0;
+async function aceCatalogo(force){
+  const fresco = _aceRegistros.length && (_aceCarregado || (Date.now() - _aceCatalogoEm) < 120000);
+  if(!force && fresco) return _aceRegistros;
+  const [regs, eq] = await Promise.all([
+    aceFetchTodos(),
+    _aceEquips.length ? Promise.resolve({ data: null }) : sb.from("equipamentos").select("id,codigo,nome,tipo,ativo,status,localizacao_tipo,localizacao_obra_id").not("tipo", "in", "(caminhao,veiculo)").order("codigo")
+  ]);
+  _aceRegistros = regs;
+  if(eq.data){ _aceEquips = eq.data; _aceEq = {}; _aceEquips.forEach(e => _aceEq[e.id] = e); }
+  _aceCatalogoEm = Date.now();
+  _aceContagem = null;
+  return _aceRegistros;
+}
+/* outro módulo mudou peças de lugar (remessa recebida, mobilização): próxima visita recarrega */
+function aceInvalidar(){ _aceCarregado = false; _aceCatalogoEm = 0; }
+
 /* recarrega só algumas peças (depois de uma ação) e re-renderiza */
 async function aceRefetch(ids){
   if(!ids || !ids.length) return;

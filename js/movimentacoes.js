@@ -10,6 +10,10 @@ let _movRegistros    = [];            // cache da lista (para filtros client-sid
 let _movView         = "lista";       // visão atual: lista | kanban
 let movimentacaoAtual = null;         // edição em andamento
 let itensAtuais      = [];            // linhas do grid
+let _movObras        = [];            // obras (para vincular origem/destino e sugerir peças)
+let _movObraMap      = {};            // id -> obra
+let _movAceSug       = [];            // peças sugeridas no painel da aba Itens
+const MOV_EQ_PRODUCAO = ["perfuratriz","bate_estaca","escavadeira","retroescavadeira","guindaste"]; // TAG que "leva" acessório
 
 const MOV_TIPOS = {
   remessa: "Remessa",
@@ -50,10 +54,28 @@ const FRETE_POR_CONTA = {
 
 /* ---------- Carga inicial ---------- */
 async function carregarMovimentacoes(){
-  await carregarEquipamentosSelect();
+  await Promise.all([carregarEquipamentosSelect(), carregarObrasMov()]);
   await fetchMovimentacoes();
   renderMovimentacoes();
 }
+
+async function carregarObrasMov(){
+  const { data } = await sb.from("obras").select("id,codigo,nome,cidade,uf,status")
+    .not("status", "in", "(cancelada)").order("codigo", { ascending: false });
+  _movObras = data || [];
+  _movObraMap = {};
+  _movObras.forEach(o => {
+    _movObraMap[o.id] = o;
+    if(typeof mapaObras === "object" && mapaObras && !mapaObras[o.id]) mapaObras[o.id] = `${o.codigo} — ${o.nome}`;
+  });
+  ["mov-origem-obra","mov-destino-obra"].forEach(id => {
+    const sel = $(id); if(!sel) return;
+    const v = sel.value;
+    preencherSelect(sel, _movObras.map(o => ({ id: o.id, txt: `${o.codigo} — ${o.nome}${o.status === "em_andamento" ? "" : " (" + o.status + ")"}` })), "id", "txt", "— escolha a obra —");
+    sel.value = v;
+  });
+}
+function movObraTxt(id){ const o = _movObraMap[id]; return o ? `${o.codigo} — ${o.nome}` : ""; }
 
 async function carregarEquipamentosSelect(){
   const { data } = await sb.from("equipamentos")
@@ -209,9 +231,11 @@ function mostrarFichaMovimentacao(){
   $("mov-origem-tipo").value = m.origem_tipo || "base";
   $("mov-origem-descricao").value = m.origem_descricao || "";
   $("mov-origem-uf").value = m.origem_uf || "";
+  $("mov-origem-obra").value = m.origem_obra_id || "";
   $("mov-destino-tipo").value = m.destino_tipo || "obra";
   $("mov-destino-descricao").value = m.destino_descricao || "";
   $("mov-destino-uf").value = m.destino_uf || "";
+  $("mov-destino-obra").value = m.destino_obra_id || "";
   $("mov-data-emissao").value = m.data_emissao || hojeISO();
   $("mov-data-saida").value = m.data_saida || "";
   $("mov-data-recebimento").value = m.data_recebimento || "";
@@ -232,8 +256,12 @@ function mostrarFichaMovimentacao(){
   $("mov-info-complementar").value = m.info_complementar || "";
   $("mov-observacoes").value = m.observacoes || "";
 
+  // descrições padrão de uma movimentação nova podem ser trocadas pela obra escolhida
+  ["origem","destino"].forEach(l => { $(`mov-${l}-descricao`).dataset.auto = m.id ? "0" : "1"; });
   toggleTransportadorVisivel();
+  toggleObraCampos();
   popularSelectEquipamentos();
+  movFecharBuscaAcessorio();
   renderizarItens();
   atualizarStatusbar();
   atualizarChipsContexto();
@@ -248,6 +276,37 @@ function toggleTransportadorVisivel(){
 }
 
 /* ---------- Statusbar + chips ---------- */
+/* Origem/destino do tipo obra ou cliente ganham o select de obra (é o vínculo que faz as peças
+   e a TAG "saberem" em que obra estão ao receber). */
+function toggleObraCampos(){
+  ["origem","destino"].forEach(lado => {
+    const tipo = $(`mov-${lado}-tipo`).value;
+    const mostra = tipo === "obra" || tipo === "cliente";
+    $(`mov-${lado}-obra-campo`).style.display = mostra ? "" : "none";
+    if(!mostra) $(`mov-${lado}-obra`).value = "";
+  });
+  movAtualizarSugestao();
+}
+function movObraEscolhida(lado){
+  const id = $(`mov-${lado}-obra`).value;
+  const o = _movObraMap[id];
+  if(o){
+    const desc = $(`mov-${lado}-descricao`);
+    if(!desc.value.trim() || desc.dataset.auto === "1"){ desc.value = `${o.codigo} — ${o.nome}`; desc.dataset.auto = "1"; }
+    const uf = $(`mov-${lado}-uf`);
+    if(o.uf && !uf.value) uf.value = String(o.uf).toLowerCase();
+  }
+  movAtualizarSugestao();
+}
+/* usado pela aba Movimentações da obra (atalho "remessa/retorno para esta obra") */
+function movDefinirObra(lado, obraId){
+  const tipoSel = $(`mov-${lado}-tipo`);
+  if(tipoSel.value !== "obra" && tipoSel.value !== "cliente") tipoSel.value = "obra";
+  toggleObraCampos();
+  $(`mov-${lado}-obra`).value = obraId || "";
+  movObraEscolhida(lado);
+}
+
 function atualizarStatusbar(){
   const sb = $("mov-statusbar");
   if(!sb) return;
@@ -293,13 +352,14 @@ function ativarTab(nome){
 function renderizarItens(){
   const tb = $("mov-itens");
   if(!itensAtuais.length){
-    tb.innerHTML = `<tr><td colspan="6" class="vazio">Adicione equipamentos ou produtos abaixo.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="6" class="vazio">Adicione equipamentos, produtos ou acessórios abaixo.</td></tr>`;
     atualizarTotal();
+    movAtualizarSugestao();
     return;
   }
   tb.innerHTML = itensAtuais.map((it, idx) => `
     <tr>
-      <td>${it.equipamento_id ? "🔧" : "📦"} ${esc(it.descricao)}</td>
+      <td>${it.acessorio_id ? "⚙️" : it.equipamento_id ? "🔧" : "📦"} ${esc(it.descricao)}${it.acessorio_id && it._onde ? ` <span class="meta">· ${esc(it._onde)}</span>` : ""}</td>
       <td><input type="number" step="0.001" min="0" value="${esc(it.quantidade)}" data-idx="${idx}" data-field="quantidade" class="item-input" style="width:80px;text-align:right;" /></td>
       <td>${esc(it.unidade)}</td>
       <td><input type="number" step="0.01" min="0" value="${esc(it.valor_unitario || 0)}" data-idx="${idx}" data-field="valor_unitario" class="item-input" style="width:110px;text-align:right;" /></td>
@@ -327,6 +387,7 @@ function renderizarItens(){
     });
   });
   atualizarTotal();
+  movAtualizarSugestao();
 }
 
 function atualizarTotal(){
@@ -426,6 +487,135 @@ function configurarBuscaProdutos(){
   });
 }
 
+/* ---------- Acessórios na carga ----------
+   Catálogo vem do módulo Acessórios (aceCatalogo). Peça entra como item com acessorio_id; ao marcar
+   em trânsito / recebida, o gatilho do banco move a peça junto (e vincula à TAG que vai na mesma carga). */
+function movAceDescr(a){
+  const d = typeof aceDescr === "function" ? aceDescr(a) : (a.tipo || "Acessório");
+  return `${d} · ${a.marcacao}`;
+}
+function movAceOnde(a){ return typeof aceOnde === "function" ? aceOnde(a) : (a.local_tipo || ""); }
+function movAceCond(a){
+  const o = (STATUS.acessorio || {})[a.condicao] || {};
+  return `<span class="tag ${o.cor || "cinza"}">${esc(o.label || a.condicao || "")}</span>`;
+}
+function movAddAcessorio(a){
+  if(itensAtuais.some(i => i.acessorio_id === a.id)) return false;
+  itensAtuais.push({
+    equipamento_id: null, produto_id: null, acessorio_id: a.id,
+    descricao: movAceDescr(a), quantidade: 1, unidade: "un",
+    valor_unitario: Number(a.modelo?.preco_referencia || 0),
+    _onde: movAceOnde(a)
+  });
+  return true;
+}
+function movAddAcessorios(lista){
+  let n = 0; lista.forEach(a => { if(movAddAcessorio(a)) n++; });
+  renderizarItens();
+  if(n) aviso("app-aviso", `${n} peça(s) adicionada(s) à carga.`, "ok");
+  else aviso("app-aviso", "Essas peças já estão na lista.", "erro");
+}
+async function movCatalogoAce(){
+  if(typeof aceCatalogo !== "function") return [];
+  try { return await aceCatalogo(); } catch(e){ aviso("app-aviso", "Não foi possível carregar os acessórios: " + (e.message || e), "erro"); return []; }
+}
+function movFecharBuscaAcessorio(){
+  const inp = $("mov-busca-acessorio"), lista = $("mov-resultados-acessorio");
+  if(inp) inp.value = "";
+  if(lista){ lista.innerHTML = ""; lista.style.display = "none"; }
+}
+let buscaAceTimeout = null;
+function configurarBuscaAcessorios(){
+  const inp = $("mov-busca-acessorio");
+  const lista = $("mov-resultados-acessorio");
+  if(!inp) return;
+  inp.addEventListener("focus", () => { movCatalogoAce(); });   // pré-carrega
+  inp.addEventListener("input", () => {
+    clearTimeout(buscaAceTimeout);
+    buscaAceTimeout = setTimeout(async () => {
+      const termo = inp.value.trim().toLowerCase();
+      if(termo.length < 2){ lista.innerHTML = ""; lista.style.display = "none"; return; }
+      const cat = await movCatalogoAce();
+      const disp = cat.filter(a => a.ativo !== false && a.local_tipo !== "perdido" && a.condicao !== "baixado");
+      const hits = disp.filter(a =>
+        String(a.marcacao || "").toLowerCase().includes(termo) ||
+        String(a.jogo || "").toLowerCase() === termo ||
+        movAceDescr(a).toLowerCase().includes(termo));
+      const jogos = [...new Set(disp.filter(a => a.jogo && String(a.jogo).toLowerCase().includes(termo)).map(a => a.jogo))].slice(0, 5);
+      if(!hits.length && !jogos.length){ lista.innerHTML = `<div class="resultado-item vazio">Nenhuma peça encontrada.</div>`; lista.style.display = ""; return; }
+      const jogoHTML = jogos.map(j => {
+        const pecas = disp.filter(a => a.jogo === j);
+        return `<div class="resultado-item mov-ace-jogo" data-jogo="${esc(j)}"><strong>🧩 Jogo ${esc(j)}</strong> — adicionar as ${pecas.length} peça(s) <em>(${esc(movAceOnde(pecas[0]))})</em></div>`;
+      }).join("");
+      const naLista = new Set(itensAtuais.map(i => i.acessorio_id).filter(Boolean));
+      const itemHTML = hits.slice(0, 30).map(a => `
+        <div class="resultado-item${naLista.has(a.id) ? " ja" : ""}" data-id="${esc(a.id)}">
+          <strong>${esc(a.marcacao)}</strong> — ${esc(typeof aceDescr === "function" ? aceDescr(a) : a.tipo)}${a.jogo ? ` <span class="meta">jogo ${esc(a.jogo)}</span>` : ""}
+          <span class="meta" style="float:right;">${movAceCond(a)} ${esc(movAceOnde(a))}${naLista.has(a.id) ? " · já na lista" : ""}</span>
+        </div>`).join("");
+      lista.innerHTML = jogoHTML + itemHTML + (hits.length > 30 ? `<div class="resultado-item vazio">… e mais ${hits.length - 30}. Refine a busca.</div>` : "");
+      lista.style.display = "";
+      lista.querySelectorAll(".resultado-item[data-id]").forEach(div => div.addEventListener("click", () => {
+        const a = cat.find(x => x.id === div.dataset.id); if(!a) return;
+        movAddAcessorios([a]); movFecharBuscaAcessorio();
+      }));
+      lista.querySelectorAll(".mov-ace-jogo").forEach(div => div.addEventListener("click", () => {
+        movAddAcessorios(disp.filter(a => a.jogo === div.dataset.jogo)); movFecharBuscaAcessorio();
+      }));
+    }, 200);
+  });
+}
+
+/* Painel de sugestão na aba Itens:
+   - origem é obra  → peças que estão nessa obra (retorno com conferência: desmarca o que ficou lá);
+   - senão, TAG de produção na carga → peças que estão nessa TAG ou pertencem a ela (kit da remessa). */
+async function movAtualizarSugestao(){
+  const box = $("mov-ace-sugestao"); if(!box || !movimentacaoAtual) return;
+  const st = movimentacaoAtual.status || "rascunho";
+  if(st !== "rascunho" && st !== "emitida"){ box.style.display = "none"; return; }
+  const origemTipo = $("mov-origem-tipo").value, origemObra = $("mov-origem-obra").value;
+  const eqIds = itensAtuais.filter(i => i.equipamento_id && MOV_EQ_PRODUCAO.includes((mapaEquipamentos[i.equipamento_id] || {}).tipo)).map(i => i.equipamento_id);
+  let titulo = "", filtro = null;
+  if(["obra","cliente"].includes(origemTipo) && origemObra){
+    titulo = `Peças na obra ${movObraTxt(origemObra)}`;
+    filtro = a => a.local_tipo === "obra" && a.local_obra_id === origemObra;
+  } else if(eqIds.length){
+    titulo = `Peças da TAG ${eqIds.map(id => (mapaEquipamentos[id] || {}).codigo || "?").join(", ")}`;
+    filtro = a => ["patio","oficina","equipamento"].includes(a.local_tipo) && a.condicao !== "em_manutencao" &&
+      ((a.local_tipo === "equipamento" && eqIds.includes(a.local_equipamento_id)) || eqIds.includes(a.equipamento_padrao_id));
+  }
+  if(!filtro){ box.style.display = "none"; _movAceSug = []; return; }
+  const cat = await movCatalogoAce();
+  // o estado pode ter mudado enquanto o catálogo carregava
+  if(!movimentacaoAtual) return;
+  _movAceSug = cat.filter(a => a.ativo !== false && a.condicao !== "baixado" && filtro(a))
+    .sort((x, y) => movAceDescr(x).localeCompare(movAceDescr(y), "pt-BR", { numeric: true }));
+  $("mov-ace-sug-titulo").textContent = titulo;
+  const naLista = new Set(itensAtuais.map(i => i.acessorio_id).filter(Boolean));
+  const fora = _movAceSug.filter(a => !naLista.has(a.id));
+  $("mov-ace-sug-resumo").textContent = _movAceSug.length ? `${_movAceSug.length} peça(s) · ${fora.length} ainda fora da carga` : "";
+  const l = $("mov-ace-sug-lista");
+  if(!_movAceSug.length){ l.innerHTML = `<p class="vazio">Nenhuma peça registrada aqui.</p>`; box.style.display = ""; return; }
+  const grupos = new Map();
+  _movAceSug.forEach(a => { const k = typeof aceDescr === "function" ? aceDescr(a) : a.tipo; (grupos.get(k) || grupos.set(k, []).get(k)).push(a); });
+  l.innerHTML = [...grupos.entries()].map(([k, pecas]) => `
+    <div class="mov-ace-sug-grupo">
+      <div class="mov-ace-sug-grupo-t">${esc(k)} <span class="meta">${pecas.length}</span></div>
+      ${pecas.map(a => `<label class="mov-ace-sug-item${naLista.has(a.id) ? " ja" : ""}">
+        <input type="checkbox" value="${esc(a.id)}" ${naLista.has(a.id) ? "disabled" : "checked"} />
+        <strong>${esc(a.marcacao)}</strong>${a.jogo ? ` <span class="meta">jogo ${esc(a.jogo)}</span>` : ""}
+        ${movAceCond(a)} <span class="meta">${esc(movAceOnde(a))}${naLista.has(a.id) ? " · já na carga" : ""}</span>
+      </label>`).join("")}
+    </div>`).join("");
+  box.style.display = "";
+}
+function movSugMarcar(on){ document.querySelectorAll("#mov-ace-sug-lista input[type=checkbox]:not(:disabled)").forEach(c => c.checked = on); }
+function movSugAdicionar(){
+  const ids = [...document.querySelectorAll("#mov-ace-sug-lista input[type=checkbox]:checked:not(:disabled)")].map(c => c.value);
+  if(!ids.length){ aviso("app-aviso", "Marque as peças que vão na carga.", "erro"); return; }
+  movAddAcessorios(_movAceSug.filter(a => ids.includes(a.id)));
+}
+
 /* ---------- Botões de ação contextuais ---------- */
 function atualizarBotoesAcao(){
   const st = movimentacaoAtual.status;
@@ -446,9 +636,11 @@ function coletarDadosForm(){
     origem_tipo: $("mov-origem-tipo").value,
     origem_descricao: $("mov-origem-descricao").value.trim() || null,
     origem_uf: $("mov-origem-uf").value || null,
+    origem_obra_id: ["obra","cliente"].includes($("mov-origem-tipo").value) ? ($("mov-origem-obra").value || null) : null,
     destino_tipo: $("mov-destino-tipo").value,
     destino_descricao: $("mov-destino-descricao").value.trim() || null,
     destino_uf: $("mov-destino-uf").value || null,
+    destino_obra_id: ["obra","cliente"].includes($("mov-destino-tipo").value) ? ($("mov-destino-obra").value || null) : null,
     data_emissao: $("mov-data-emissao").value || hojeISO(),
     data_saida: $("mov-data-saida").value || null,
     data_recebimento: $("mov-data-recebimento").value || null,
@@ -480,6 +672,12 @@ async function salvarMovimentacao(novoStatus){
   }
   const dados = coletarDadosForm();
   if(novoStatus) dados.status = novoStatus;
+  const temAce = itensAtuais.some(it => it.acessorio_id);
+  if(temAce && ["obra","cliente"].includes(dados.destino_tipo) && !dados.destino_obra_id){
+    aviso("app-aviso","Há acessórios na carga: escolha a obra de destino para as peças ficarem vinculadas a ela.", "erro");
+    ativarTab("cabecalho"); $("mov-destino-obra")?.focus();
+    return null;
+  }
 
   let movId = movimentacaoAtual.id;
 
@@ -503,6 +701,7 @@ async function salvarMovimentacao(novoStatus){
     movimentacao_id: movId,
     equipamento_id: it.equipamento_id || null,
     produto_id: it.produto_id || null,
+    acessorio_id: it.acessorio_id || null,
     descricao: it.descricao,
     quantidade: it.quantidade,
     unidade: it.unidade,
@@ -517,6 +716,7 @@ async function salvarMovimentacao(novoStatus){
   if(itErr){ aviso("app-aviso","Erro ao salvar itens: "+itErr.message, "erro"); return null; }
 
   aviso("app-aviso","Movimentação salva com sucesso.", "ok");
+  if(temAce && typeof aceInvalidar === "function") aceInvalidar();   // peças mudaram de lugar (trigger)
   await fetchMovimentacoes();
   renderMovimentacoes();
   await carregarEquipamentosSelect();
@@ -635,7 +835,7 @@ function ligarStatusbarClicavel(){
         return;
       }
       if(novo === "recebida"){
-        if(!confirm("Marcar como RECEBIDA? Isso atualiza a localização dos equipamentos automaticamente.")) return;
+        if(!confirm("Marcar como RECEBIDA? Isso atualiza a localização dos equipamentos e acessórios automaticamente.")) return;
       }
       await salvarMovimentacao(novo);
     });
@@ -666,7 +866,15 @@ function ligarFichaMovimentacao(){
   $("btn-nova-movimentacao")?.addEventListener("click", novaMovimentacao);
   $("btn-voltar-mov")?.addEventListener("click", voltarParaLista);
   $("mov-frete")?.addEventListener("change", toggleTransportadorVisivel);
+  $("mov-origem-tipo")?.addEventListener("change", toggleObraCampos);
+  $("mov-destino-tipo")?.addEventListener("change", toggleObraCampos);
+  $("mov-origem-obra")?.addEventListener("change", () => movObraEscolhida("origem"));
+  $("mov-destino-obra")?.addEventListener("change", () => movObraEscolhida("destino"));
+  ["origem","destino"].forEach(l => $(`mov-${l}-descricao`)?.addEventListener("input", (e) => { e.target.dataset.auto = "0"; }));
   $("btn-add-equipamento")?.addEventListener("click", adicionarEquipamento);
+  $("btn-mov-ace-sug-todos")?.addEventListener("click", () => movSugMarcar(true));
+  $("btn-mov-ace-sug-nenhum")?.addEventListener("click", () => movSugMarcar(false));
+  $("btn-mov-ace-sug-add")?.addEventListener("click", movSugAdicionar);
 
   $("btn-salvar-rascunho")?.addEventListener("click", () => salvarMovimentacao(movimentacaoAtual?.status || "rascunho"));
   $("btn-marcar-emitida")?.addEventListener("click", async () => {
@@ -679,7 +887,7 @@ function ligarFichaMovimentacao(){
   });
   $("btn-marcar-transito")?.addEventListener("click", () => salvarMovimentacao("em_transito"));
   $("btn-marcar-recebida")?.addEventListener("click", async () => {
-    if(!confirm("Marcar como RECEBIDA? Isso atualiza a localização dos equipamentos automaticamente.")) return;
+    if(!confirm("Marcar como RECEBIDA? Isso atualiza a localização dos equipamentos e acessórios automaticamente.")) return;
     await salvarMovimentacao("recebida");
   });
   $("btn-cancelar")?.addEventListener("click", async () => {
@@ -700,6 +908,7 @@ function ligarFichaMovimentacao(){
 
   ligarStatusbarClicavel();
   configurarBuscaProdutos();
+  configurarBuscaAcessorios();
 }
 
 if(document.readyState === "loading"){
