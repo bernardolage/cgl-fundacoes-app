@@ -2688,3 +2688,7 @@ input:disabled, select:disabled, textarea:disabled {
 .eqp-diam-bloco { margin-bottom: 14px; }
 .eqp-diam-titulo { font-weight: 700; font-size: var(--txt-sm); margin: 6px 0; padding: 4px 8px; background: var(--sup-1); border-left: 3px solid var(--marca-600); border-radius: 4px; }
 .eqp-diam-bloco table td, .eqp-diam-bloco table th { font-size: 12.5px; }
+
+/* ---- Estoque: reposição (fase 51) ---- */
+.est-rep-tabela tr.est-rep-critico td { background: var(--perigo-bg); }
+.est-rep-tabela td .btn-sm { min-width: 28px; }
