@@ -716,7 +716,7 @@ async function verificarMFAAdmin(){
     banner.id = "mfa-aviso-banner";
     banner.innerHTML = `
       <div style="
-        position:sticky; top:0; z-index:9999;
+        z-index:9999;
         background:#7a2a1a; color:var(--txt-sobre); font-size:var(--txt-md);
         padding:10px 16px; display:flex; align-items:center; gap:12px;
         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -735,7 +735,9 @@ async function verificarMFAAdmin(){
           font-size:var(--txt-sm); white-space:nowrap;
         ">Fechar</button>
       </div>`;
-    document.body.prepend(banner);
+    // Dentro do viewport (coluna flex de altura fixa): o banner ocupa espaço e o <main> encolhe.
+    // Antes ia no <body>, empurrava a tela inteira para baixo e escondia o rodapé da sidebar.
+    ($("app-viewport") || document.body).prepend(banner);
   } catch(_){}
 }
 
