@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=938318f" />
+<link rel="stylesheet" href="css/estilo.css?v=fd6b1f1" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -885,6 +885,8 @@
             <div class="odoo-tab" data-tab="estoque">
               <div class="grade">
                 <div class="campo"><label>Estoque mínimo</label><input id="prod-minimo" type="number" step="0.001" value="0" /></div>
+                <div class="campo"><label>Estoque ideal</label><input id="prod-ideal" type="number" step="0.001" placeholder="para a lista de reposição" /></div>
+                <div class="campo"><label>Reposição</label><label class="check-inline"><input type="checkbox" id="prod-reposicao" /> Controlar na lista de reposição</label></div>
                 <div class="campo"><label>Localização (depósito)</label><input id="prod-localizacao" placeholder="ex.: Prateleira A-3" /></div>
                 <div class="campo largo">
                   <label>Inventário</label>
@@ -912,36 +914,89 @@
 
     <!-- ENTRADA DE ESTOQUE -->
     <section class="secao" id="sec-estoque">
-      <h2>Entrada de Estoque</h2>
+      <h2>Estoque</h2>
+      <p class="texto-apoio">Entradas, saídas e ajustes por quantidade, e a lista de reposição dos itens controlados (pontas e caçambas das estacas escavadas, bits, unhas). Peças com marcação ficam em Acessórios.</p>
 
       <div class="card">
         <div class="lista-topo">
-          <h3>Registrar entrada (compra / recebimento)</h3>
+          <h3>Registrar movimento</h3>
+          <div class="serv-views" id="est-tipos">
+            <button type="button" class="serv-view-btn ativo" data-tipo="entrada">Entrada</button>
+            <button type="button" class="serv-view-btn" data-tipo="saida">Saída</button>
+            <button type="button" class="serv-view-btn" data-tipo="ajuste">Ajuste / inventário</button>
+          </div>
         </div>
+        <p class="meta" id="est-tipo-ajuda">Compra ou recebimento: soma ao estoque e atualiza o custo do produto.</p>
         <div class="grade">
-          <div class="campo"><label>Produto *</label><select id="ent-produto" required></select></div>
-          <div class="campo"><label>Quantidade *</label><input id="ent-qtd" type="number" step="0.001" min="0.001" required /></div>
-          <div class="campo"><label>Custo unitário (R$) *</label><input id="ent-custo" type="number" step="0.01" min="0" required /></div>
-          <div class="campo"><label>Fornecedor
+          <div class="campo largo"><label>Produto *</label>
+            <input id="est-busca-prod" placeholder="digite ≥ 2 letras (código ou nome)…" autocomplete="off" />
+            <div id="est-res-prod" class="autocomplete-lista" style="display:none;"></div>
+            <div class="meta" id="est-prod-info"></div>
+            <select id="ent-produto" style="display:none;"></select>
+          </div>
+          <div class="campo"><label id="est-qtd-label">Quantidade *</label><input id="ent-qtd" type="number" step="0.001" required /></div>
+          <div class="campo est-so-entrada"><label>Custo unitário (R$) *</label><input id="ent-custo" type="number" step="0.01" min="0" required /></div>
+          <div class="campo est-so-entrada"><label>Fornecedor
             <button type="button" class="link-mini" id="btn-novo-forn">+ novo</button></label>
             <select id="ent-fornecedor"><option value="">— não informado —</option></select>
           </div>
-          <div class="campo"><label>Documento (NF / pedido)</label><input id="ent-doc" /></div>
+          <div class="campo est-so-saida" style="display:none;"><label>Obra atendida</label><select id="est-obra"><option value="">— nenhuma —</option></select></div>
+          <div class="campo est-so-saida" style="display:none;"><label>Equipamento (TAG)</label><select id="est-equip"><option value="">— nenhum —</option></select></div>
+          <div class="campo"><label>Documento (NF / pedido / requisição)</label><input id="ent-doc" /></div>
+          <div class="campo largo"><label>Observações</label><input id="est-obs" placeholder="ex.: montado na TAG 65, obra X" /></div>
         </div>
         <div class="form-acoes">
-          <button type="button" class="btn" id="btn-registrar-entrada">💾 Registrar entrada</button>
+          <button type="button" class="btn" id="btn-registrar-entrada">💾 Registrar</button>
         </div>
+      </div>
+
+      <div class="card" id="est-reposicao-card">
+        <div class="lista-topo">
+          <h3>Reposição <span id="est-rep-contador" class="contador"></span></h3>
+          <span class="meta">itens com controle de reposição: atual · mínimo · ideal · a comprar</span>
+          <button type="button" class="btn-sec" id="btn-est-controlar" style="margin-left:auto;">+ Controlar item</button>
+          <button type="button" class="btn-sec" id="btn-est-lista-compra">🛒 Gerar lista de compra</button>
+        </div>
+        <div class="serv-filtros">
+          <input id="est-rep-busca" placeholder="Filtrar por código ou nome…" />
+          <label class="check-inline"><input type="checkbox" id="est-rep-so-falta" /> só o que falta</label>
+        </div>
+        <div id="est-reposicao"><p class="vazio">Carregando…</p></div>
       </div>
 
       <div class="card">
         <div class="lista-topo">
-          <h3>Últimas entradas (50)</h3>
+          <h3>Últimos movimentos (100)</h3>
+          <div class="serv-views" id="est-hist-tipos">
+            <button type="button" class="serv-view-btn ativo" data-tipo="">Todos</button>
+            <button type="button" class="serv-view-btn" data-tipo="entrada">Entradas</button>
+            <button type="button" class="serv-view-btn" data-tipo="saida">Saídas</button>
+            <button type="button" class="serv-view-btn" data-tipo="ajuste">Ajustes</button>
+          </div>
         </div>
         <div class="serv-filtros">
-          <input id="ent-busca" placeholder="Buscar por produto, fornecedor ou documento..." />
+          <input id="ent-busca" placeholder="Buscar por produto, fornecedor, obra ou documento..." />
         </div>
         <div id="ent-historico"></div>
         <table style="display:none;"><tbody id="tab-estoque"></tbody></table>
+      </div>
+
+      <!-- modal: controlar item na reposição -->
+      <div class="modal-fundo" id="est-ctrl-modal" style="display:none;">
+        <div class="modal" style="max-width:560px;">
+          <div class="modal-topo"><h3>Controlar item na reposição</h3><button type="button" class="btn-sec" id="btn-est-ctrl-fechar">×</button></div>
+          <div class="grade">
+            <div class="campo largo"><label>Produto</label>
+              <input id="est-ctrl-busca" placeholder="digite ≥ 2 letras…" autocomplete="off" />
+              <div id="est-ctrl-res" class="autocomplete-lista" style="display:none;"></div>
+              <div class="meta" id="est-ctrl-info">Nenhum produto escolhido.</div>
+            </div>
+            <div class="campo"><label>Estoque mínimo</label><input id="est-ctrl-min" type="number" step="1" min="0" /></div>
+            <div class="campo"><label>Estoque ideal</label><input id="est-ctrl-ideal" type="number" step="1" min="0" /></div>
+            <div class="campo"><label>Contagem inicial (opcional)</label><input id="est-ctrl-contagem" type="number" step="0.001" min="0" placeholder="deixa o estoque nesse valor" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-est-ctrl-salvar">💾 Controlar</button></div>
+        </div>
       </div>
     </section>
 
@@ -3305,35 +3360,35 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=938318f"></script>
+<script src="js/core.js?v=fd6b1f1"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=938318f"></script>
+<script src="js/historico.js?v=fd6b1f1"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=938318f"></script>
-<script src="js/fornecedores.js?v=938318f"></script>
-<script src="js/apropriacoes.js?v=938318f"></script>
-<script src="js/funcionarios.js?v=938318f"></script>
-<script src="js/servicos.js?v=938318f"></script>
-<script src="js/produtos.js?v=938318f"></script>
-<script src="js/estoque.js?v=938318f"></script>
-<script src="js/orcamentos.js?v=938318f"></script>
-<script src="js/propostas.js?v=938318f"></script>
-<script src="js/contratos.js?v=938318f"></script>
-<script src="js/carteira.js?v=938318f"></script>
-<script src="js/obras.js?v=938318f"></script>
-<script src="js/frota.js?v=938318f"></script>
-<script src="js/equipamentos.js?v=938318f"></script>
-<script src="js/acessorios.js?v=938318f"></script>
-<script src="js/mobilizacoes.js?v=938318f"></script>
-<script src="js/estacas.js?v=938318f"></script>
-<script src="js/obra_abas.js?v=938318f"></script>
-<script src="js/medicoes.js?v=938318f"></script>
-<script src="js/movimentacoes.js?v=938318f"></script>
-<script src="js/rdo.js?v=938318f"></script>
-<script src="js/usuarios.js?v=938318f"></script>
-<script src="js/chamados.js?v=938318f"></script>
-<script src="js/dashboard.js?v=938318f"></script>
+<script src="js/clientes.js?v=fd6b1f1"></script>
+<script src="js/fornecedores.js?v=fd6b1f1"></script>
+<script src="js/apropriacoes.js?v=fd6b1f1"></script>
+<script src="js/funcionarios.js?v=fd6b1f1"></script>
+<script src="js/servicos.js?v=fd6b1f1"></script>
+<script src="js/produtos.js?v=fd6b1f1"></script>
+<script src="js/estoque.js?v=fd6b1f1"></script>
+<script src="js/orcamentos.js?v=fd6b1f1"></script>
+<script src="js/propostas.js?v=fd6b1f1"></script>
+<script src="js/contratos.js?v=fd6b1f1"></script>
+<script src="js/carteira.js?v=fd6b1f1"></script>
+<script src="js/obras.js?v=fd6b1f1"></script>
+<script src="js/frota.js?v=fd6b1f1"></script>
+<script src="js/equipamentos.js?v=fd6b1f1"></script>
+<script src="js/acessorios.js?v=fd6b1f1"></script>
+<script src="js/mobilizacoes.js?v=fd6b1f1"></script>
+<script src="js/estacas.js?v=fd6b1f1"></script>
+<script src="js/obra_abas.js?v=fd6b1f1"></script>
+<script src="js/medicoes.js?v=fd6b1f1"></script>
+<script src="js/movimentacoes.js?v=fd6b1f1"></script>
+<script src="js/rdo.js?v=fd6b1f1"></script>
+<script src="js/usuarios.js?v=fd6b1f1"></script>
+<script src="js/chamados.js?v=fd6b1f1"></script>
+<script src="js/dashboard.js?v=fd6b1f1"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=938318f"></script>
+<script src="js/init.js?v=fd6b1f1"></script>
 </body>
 </html>
