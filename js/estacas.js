@@ -2161,7 +2161,7 @@ async function abrirModalReconciliacao(){
       .select("id, estaca_numero, perfuracao_inicio, profundidade_executada, equipamento_id, rdo:rdo_id(obra_id)")
       .is("estaca_id", null),
     sb.from("estacas")
-      .select("id, numero, tipo, diametro_mm, profundidade_m, status, data_execucao, observacoes")
+      .select("id, numero, bloco, local, tipo, diametro_mm, profundidade_m, status, data_execucao, observacoes")
       .eq("obra_id", obraEditId)
       .order("numero"),
     sb.from("rdo_execucao_estaca")
@@ -2180,17 +2180,20 @@ async function abrirModalReconciliacao(){
   _recPrevs = previstas;
   _recVinculos = {};
 
-  // Detecta duplicadas: agrupa pelo nome LITERAL (UPPER + trim).
-  // BB1.1 e B1.1 são estacas distintas — não agrupamos.
+  // Detecta duplicadas pela IDENTIDADE da estaca (fase 42b): local + bloco + número,
+  // a mesma chave única do banco (estacas_obra_local_bloco_numero_key). E1 do bloco B404
+  // e E1 do bloco B405 são estacas distintas — antes agrupava só pelo número e acusava
+  // "E1 aparece 242×" numa obra com 1 E1 por bloco (15/09/2026). Nome LITERAL (UPPER + trim):
+  // BB1.1 e B1.1 continuam distintas.
   const grupos = {};
   previstas.forEach(e => {
-    const k = (e.numero||"").trim().toUpperCase();
+    const k = [(e.local||"").trim().toUpperCase(), (e.bloco||"").trim().toUpperCase(), (e.numero||"").trim().toUpperCase()].join("|");
     if(!grupos[k]) grupos[k] = [];
     grupos[k].push(e);
   });
-  _confDuplicadas = Object.entries(grupos)
-    .filter(([_, ests]) => ests.length > 1)
-    .map(([num, ests]) => ({ numero: num, estacas: ests }));
+  _confDuplicadas = Object.values(grupos)
+    .filter(ests => ests.length > 1)
+    .map(ests => ({ numero: (ests[0].numero||"").trim().toUpperCase(), bloco: ests[0].bloco || "", local: ests[0].local || "", estacas: ests }));
 
   // Refuradas
   _confRefuradas = previstas.filter(e => e.status === "refurada");
@@ -2714,7 +2717,7 @@ function renderizarDuplicadas(){
   const cont = $("conf-duplicadas-conteudo");
   if(!cont) return;
   if(!_confDuplicadas.length){
-    cont.innerHTML = `<p class="vazio">🎉 Não há estacas duplicadas nesta obra.</p>`;
+    cont.innerHTML = `<p class="vazio">🎉 Não há estacas duplicadas nesta obra (mesmo número no mesmo local e ${esc(rotuloAgrupamento().toLowerCase())}).</p>`;
     return;
   }
   const blocos = _confDuplicadas.map(grupo => {
@@ -2723,6 +2726,7 @@ function renderizarDuplicadas(){
       return `<tr data-id="${esc(e.id)}">
         <td><strong>#${i+1}</strong></td>
         <td>${esc(e.numero)}</td>
+        <td>${esc(e.local||"—")}</td>
         <td>${esc(extrairBloco(e)||"—")}</td>
         <td>${esc((ESTACA_TIPOS[e.tipo]||e.tipo||"—"))}</td>
         <td class="num">${e.diametro_mm!=null ? num(e.diametro_mm) : "—"}</td>
@@ -2736,11 +2740,11 @@ function renderizarDuplicadas(){
     }).join("");
     return `<div style="margin-bottom:18px;border:1px solid var(--aviso);border-radius:6px;padding:10px;background:#fff8e8;">
       <h4>
-        ⚠️ Número <code style="background:var(--sup-0);padding:2px 8px;border-radius:3px;">${esc(grupo.numero)}</code> aparece <strong>${grupo.estacas.length}× </strong>
+        ⚠️ Número <code style="background:var(--sup-0);padding:2px 8px;border-radius:3px;">${esc(grupo.numero)}</code>${grupo.bloco ? ` no ${esc(rotuloAgrupamento().toLowerCase())} <code style="background:var(--sup-0);padding:2px 8px;border-radius:3px;">${esc(grupo.bloco)}</code>` : ""}${grupo.local ? ` (${esc(grupo.local)})` : ""} aparece <strong>${grupo.estacas.length}× </strong>
       </h4>
       <div class="tabela-rola"><table>
         <thead><tr>
-          <th>#</th><th>Número</th><th>Bloco</th><th>Tipo</th>
+          <th>#</th><th>Número</th><th>Local</th><th>${esc(rotuloAgrupamento())}</th><th>Tipo</th>
           <th class="num">Ø</th><th class="num">Prof.</th><th>Status</th><th class="col-acao"></th>
         </tr></thead>
         <tbody>${linhas}</tbody></table></div>
