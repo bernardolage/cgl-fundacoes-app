@@ -1952,6 +1952,18 @@
                 <div class="campo"><label>Tempo — tarde</label><select id="rdo-tempo-tarde"><option value="">—</option></select></div>
                 <div class="campo largo"><label>Atividades executadas</label><textarea id="rdo-atividades" rows="3" placeholder="resumo do dia"></textarea></div>
               </div>
+              <!-- Chamado #5 (15/09/2026): atividades hora a hora (justificativa do diário) com duração e total -->
+              <div class="lista-topo compacta" style="margin-top:14px;">
+                <h4 class="titulo-linha">Atividades hora a hora <span class="meta" style="font-weight:400;">(justificativa do diário — duração = fim − início)</span></h4>
+                <button type="button" class="btn-sec btn-sm" id="btn-add-rdo-atividade">+ Atividade</button>
+              </div>
+              <div class="tabela-rola">
+                <table class="itens-tabela">
+                  <thead><tr><th style="width:110px;">Início</th><th style="width:110px;">Fim</th><th>Atividade</th><th class="num" style="width:90px;">Duração</th><th class="col-acao"></th></tr></thead>
+                  <tbody id="rdo-atividades-grade"></tbody>
+                  <tfoot><tr><td colspan="3"><strong>Total do dia</strong></td><td class="num"><strong id="rdo-atividades-total">—</strong></td><td></td></tr></tfoot>
+                </table>
+              </div>
             </div>
 
             <!-- Execuções -->

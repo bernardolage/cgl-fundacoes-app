@@ -147,6 +147,7 @@ function cardMobHTML(c){
   const icone = MOB_TIPO_ICONE[c.tipo_proposta] || "⚙️";
   return `<div class="mob-card" data-id="${esc(c.id)}" style="border-left-color:${(MOB_COLUNAS.find(x => x.k === c.coluna) || {}).cor || "var(--sup-3)"}" tabindex="0" role="button" aria-label="Abrir mobilização ${esc(c.titulo_card)}">
     <div class="mob-card-titulo">${icone} ${esc(c.titulo_card)}</div>
+    ${c.obra_codigo && c.obra_id ? `<div class="meta">🏗️ ${linkObra(c.obra_id, `${c.obra_codigo} — ${c.obra_nome || ""}`.trim())}</div>` : ""}
     <div class="mob-card-chips">
       <span class="mob-chip tag">${esc(c.equipamento_tag || "XX")}</span>
       ${c.apoio_tags ? `<span class="mob-chip">+ ${esc(c.apoio_tags)}</span>` : ""}
@@ -292,7 +293,7 @@ function renderDrawerMob(){
         <div class="mob-drawer-sub">
           <span class="mob-chip st">${esc(MOB_STATUS[m.status] || m.status)}</span>
           <span class="mob-chip" style="border-color:${col.cor || "var(--sup-3)"}">${esc(col.label || "")}</span>
-          ${c.obra_codigo ? `<a href="#" class="mob-link-obra" data-obra="${esc(m.obra_id)}">🏗️ ${esc(c.obra_codigo)} — ${esc(c.obra_nome || "")}</a>` : ""}
+          ${c.obra_codigo ? `🏗️ ${linkObra(m.obra_id, `${c.obra_codigo} — ${c.obra_nome || ""}`.trim())}` : ""}
           ${m.trello_card_url ? `<a href="${esc(m.trello_card_url)}" target="_blank" rel="noopener" class="meta">card no Trello ↗</a>` : ""}
         </div>
       </div>
@@ -360,7 +361,6 @@ function renderDrawerMob(){
   $("btn-mob-fechar")?.addEventListener("click", fecharMobilizacao);
   $("btn-mob-salvar")?.addEventListener("click", () => comBotaoTravado("btn-mob-salvar", salvarMobilizacao));
   $("btn-mob-est-add")?.addEventListener("click", () => $("mob-est-tbody").insertAdjacentHTML("beforeend", mobEstacaLinhaHTML({})));
-  cont.querySelector(".mob-link-obra")?.addEventListener("click", (e) => { e.preventDefault(); fecharMobilizacao(); if(typeof dashAbrirObra === "function") dashAbrirObra(e.currentTarget.dataset.obra); });
   cont.querySelectorAll("[data-mob-status]").forEach(b => b.addEventListener("click", () => mudarStatusMobilizacao(b.dataset.mobStatus, b)));
   cont.querySelectorAll("input[type=checkbox][data-pend]").forEach(cb => cb.addEventListener("change", () => concluirPendenciaMob(cb.dataset.pend, cb.checked, cb)));
   cont.querySelectorAll(".mob-pend-resp").forEach(s => s.addEventListener("change", () => atualizarPendenciaMob(s.dataset.pend, { responsavel_id: s.value || null })));

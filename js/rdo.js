@@ -12,7 +12,7 @@ let _rdoExecucoes  = [];      // execuções do RDO atual
 let _rdoEquipe     = [];   // equipe do dia (genérico, todos os tipos de RDO)
 let _rdoEquipes    = [];   // cache equipes cadastradas (pra modal "Importar equipe")
 let _rdoRaizSolo   = [];
-let _rdoRaizJust   = [];
+let _rdoAtividades = [];   // chamado #5: atividades hora-a-hora do dia (rdo_raiz_justificativa, execucao_id nulo)
 let _rdoRaizEquipe = [];
 let _rdoRaizDados  = null;
 let _rdoFuncs = [];           // cache funcionários
@@ -118,7 +118,7 @@ function renderRDOLista(dados){
     const t = TIPO_SERVICO[r.tipo_servico] || { label: r.tipo_servico, icone: "" };
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
       <td>${dataBR(r.data)}</td>
-      <td>${esc(mapaObras[r.obra_id] || "—")}</td>
+      <td>${linkObra(r.obra_id)}</td>
       <td>${t.icone} ${esc(t.label)}</td>
       <td>${r.qtd_estacas_executadas || 0}</td>
       <td class="num">${num(r.metragem_total)} m</td>
@@ -203,7 +203,7 @@ async function novoRDO(){
   _rdoExecucoes = [];
   _rdoEquipe = [];
   _rdoRaizSolo = [];
-  _rdoRaizJust = [];
+  _rdoAtividades = [];
   _rdoRaizEquipe = [];
   _rdoRaizDados = null;
   $("rdo-obra").value = "";
@@ -230,17 +230,19 @@ async function novoRDO(){
 async function abrirRDO(id){
   rdoEditId = id;
   _rdoBoletimAberto = null;
-  const [rdo, execs, dadosRaiz, equipe] = await Promise.all([
+  const [rdo, execs, dadosRaiz, equipe, ativs] = await Promise.all([
     sb.from("rdo").select("*").eq("id", id).single(),
     sb.from("rdo_execucao_estaca").select("*").eq("rdo_id", id).order("perfuracao_inicio"),
     sb.from("rdo_raiz_dados").select("*").eq("rdo_id", id).maybeSingle(),
-    sb.from("rdo_equipe").select("*").eq("rdo_id", id).order("ordem")
+    sb.from("rdo_equipe").select("*").eq("rdo_id", id).order("ordem"),
+    // chamado #5: atividades hora-a-hora do dia (linhas sem execucao_id; as com execucao_id são as paradas do boletim raiz)
+    sb.from("rdo_raiz_justificativa").select("id,ordem,h_inicial,h_final,motivo").eq("rdo_id", id).is("execucao_id", null).order("ordem")
   ]);
   if(rdo.error){ aviso("app-aviso","Erro: "+rdo.error.message,"erro"); return; }
   // Se a leitura das execuções/equipe falhar (rede, RLS), NÃO abrir a ficha:
   // salvarRDO faz delete+insert dos filhos e reinseriria um array vazio,
   // apagando as execuções do dia. Abortar aqui é o que evita perda de dados.
-  const falha = execs.error || equipe.error || dadosRaiz.error;
+  const falha = execs.error || equipe.error || dadosRaiz.error || ativs.error;
   if(falha){
     rdoEditId = null;
     aviso("app-aviso","Não foi possível carregar as execuções deste RDO ("+falha.message+"). Tente abrir de novo.","erro");
@@ -268,7 +270,7 @@ async function abrirRDO(id){
   _rdoRaizEquipe = _rdoEquipe.map(e => ({ funcionario_id: e.funcionario_id, nome_avulso: e.nome_avulso }));
   _rdoRaizDados  = dadosRaiz.data || null;
   _rdoRaizSolo   = [];
-  _rdoRaizJust   = [];
+  _rdoAtividades = (ativs.data || []).map(a => ({ h_inicial: a.h_inicial, h_final: a.h_final, motivo: a.motivo }));
 
   // Fase 20+: carrega solo/just por execucao_id
   if(data.tipo_servico === "estaca_raiz"){
@@ -306,7 +308,7 @@ function abrirFichaRDOVisual(rdo){
   $("rdo-ficha").style.display = "";
 
   const t = TIPO_SERVICO[rdo.tipo_servico] || { label: "—", icone: "" };
-  $("rdo-ficha-obra-chip").textContent = mapaObras[rdo.obra_id] || "—";
+  $("rdo-ficha-obra-chip").innerHTML = linkObra(rdo.obra_id); // chamado #4: clicável
   $("rdo-ficha-data-chip").textContent = rdo.data ? dataBR(rdo.data) : "—";
   $("rdo-ficha-tipo-chip").textContent = `${t.icone} ${t.label}`;
   $("rdo-ficha-status-chip").innerHTML = tagStatus("rdo", rdo.status);
@@ -321,6 +323,7 @@ function abrirFichaRDOVisual(rdo){
   ativarTabRDO("cabecalho");
   renderExecucoes();
   renderRdoEquipe();
+  renderRdoAtividades();
   atualizarVizinhosRDO(rdo);
 }
 
@@ -872,37 +875,72 @@ function adicionarRaizSolo(){
   renderRaizSolo();
 }
 
-function renderRaizJust(){
-  const tb = $("rdo-raiz-just");
+/* ---------- Chamado #5 (Arthur, 15/09/2026): atividades hora a hora do dia ----------
+   Grade na aba "Clima & efetivo", abaixo do resumo de atividades: hora início, hora fim,
+   descrição e duração calculada (fim − início), com total do dia. Gravada em
+   rdo_raiz_justificativa com execucao_id nulo (tabela já existente; as linhas com
+   execucao_id são as paradas por estaca do boletim raiz e não passam por aqui).
+   A importação de diário por IA (v3.2) preenche esta lista a partir da JUSTIFICATIVA. */
+function rdoDuracaoMin(hi, hf){
+  const a = minutosHHMM(hi), b = minutosHHMM(hf);
+  if(a == null || b == null) return null;
+  let d = b - a;
+  if(d < 0) d += 1440;
+  return d;
+}
+function rdoFmtDuracao(min){
+  if(min == null) return "—";
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
+}
+function renderRdoAtividades(){
+  const tb = $("rdo-atividades-grade");
   if(!tb) return;
-  if(!_rdoRaizJust.length){
-    tb.innerHTML = `<tr><td colspan="4" class="vazio">Sem paradas registradas.</td></tr>`;
+  const tot = $("rdo-atividades-total");
+  if(!_rdoAtividades.length){
+    tb.innerHTML = `<tr><td colspan="5" class="vazio">Sem atividades hora a hora. Importe o diário ou use "+ Atividade".</td></tr>`;
+    if(tot) tot.textContent = "—";
     return;
   }
-  tb.innerHTML = _rdoRaizJust.map((j, idx) => `<tr data-idx="${idx}">
-    <td><input type="text" class="rj-hi col-sm" placeholder="HH:MM" value="${esc(j.h_inicial||"")}" /></td>
-    <td><input type="text" class="rj-hf col-sm" placeholder="HH:MM" value="${esc(j.h_final||"")}" /></td>
-    <td><input type="text" class="rj-mot" value="${esc(j.motivo||"")}" /></td>
-    <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-rj-rem txt-perigo" data-idx="${idx}">×</button></td>
-  </tr>`).join("");
+  let total = 0, algum = false;
+  tb.innerHTML = _rdoAtividades.map((a, idx) => {
+    const d = rdoDuracaoMin(a.h_inicial, a.h_final);
+    if(d != null){ total += d; algum = true; }
+    return `<tr data-idx="${idx}">
+      <td><input type="time" class="ra-hi" value="${esc(a.h_inicial || "")}" /></td>
+      <td><input type="time" class="ra-hf" value="${esc(a.h_final || "")}" /></td>
+      <td><input type="text" class="ra-mot" value="${esc(a.motivo || "")}" placeholder="descrição da atividade" /></td>
+      <td class="num ra-dur">${rdoFmtDuracao(d)}</td>
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-ra-rem txt-perigo" data-idx="${idx}" title="remover">×</button></td>
+    </tr>`;
+  }).join("");
+  if(tot) tot.textContent = algum ? rdoFmtDuracao(total) : "—";
   tb.querySelectorAll("tr").forEach(tr => {
     const idx = Number(tr.dataset.idx);
     tr.addEventListener("input", () => {
-      _rdoRaizJust[idx] = {
-        h_inicial: tr.querySelector(".rj-hi").value.trim() || null,
-        h_final: tr.querySelector(".rj-hf").value.trim() || null,
-        motivo: tr.querySelector(".rj-mot").value.trim() || null
+      _rdoAtividades[idx] = {
+        h_inicial: tr.querySelector(".ra-hi").value || null,
+        h_final:   tr.querySelector(".ra-hf").value || null,
+        motivo:    tr.querySelector(".ra-mot").value.trim() || null
       };
+      const d = rdoDuracaoMin(_rdoAtividades[idx].h_inicial, _rdoAtividades[idx].h_final);
+      tr.querySelector(".ra-dur").textContent = rdoFmtDuracao(d);
+      let t = 0, ok = false;
+      _rdoAtividades.forEach(x => { const dd = rdoDuracaoMin(x.h_inicial, x.h_final); if(dd != null){ t += dd; ok = true; } });
+      if(tot) tot.textContent = ok ? rdoFmtDuracao(t) : "—";
     });
   });
-  tb.querySelectorAll(".btn-rj-rem").forEach(b => {
-    b.addEventListener("click", () => { _rdoRaizJust.splice(Number(b.dataset.idx),1); renderRaizJust(); });
+  tb.querySelectorAll(".btn-ra-rem").forEach(b => {
+    b.addEventListener("click", () => { _rdoAtividades.splice(Number(b.dataset.idx), 1); renderRdoAtividades(); });
   });
 }
-
-function adicionarRaizJust(){
-  _rdoRaizJust.push({});
-  renderRaizJust();
+function adicionarRdoAtividade(){
+  // hora inicial sugerida = hora final da última linha
+  const ult = _rdoAtividades[_rdoAtividades.length - 1];
+  _rdoAtividades.push({ h_inicial: (ult && ult.h_final) || null, h_final: null, motivo: null });
+  renderRdoAtividades();
+  const tb = $("rdo-atividades-grade");
+  tb?.querySelector("tr:last-child .ra-mot")?.focus();
 }
 
 /* ====================================================================
@@ -1183,6 +1221,17 @@ async function salvarRDO(novoStatus){
     }
   }
 
+  // Chamado #5: atividades hora a hora do dia (todos os tipos de RDO; execucao_id nulo).
+  // O delete de rdo_raiz_justificativa por rdo_id acima removeu as antigas: reinsere a lista da tela.
+  const ativLimpa = _rdoAtividades
+    .filter(a => a.h_inicial || a.h_final || a.motivo)
+    .map((a, i) => ({ rdo_id: savedId, execucao_id: null, ordem: i + 1,
+      h_inicial: a.h_inicial || null, h_final: a.h_final || null, motivo: a.motivo || null }));
+  if(ativLimpa.length){
+    const { error: errAtiv } = await sb.from("rdo_raiz_justificativa").insert(ativLimpa);
+    if(errAtiv){ aviso("app-aviso","Erro ao salvar as atividades do dia: "+errAtiv.message,"erro"); return; }
+  }
+
   // Insere equipe do dia (genérico, todos os tipos de RDO)
   const eqLimpa = _rdoEquipe
     .filter(e => e.funcionario_id || (e.nome_avulso && e.nome_avulso.trim()))
@@ -1277,7 +1326,7 @@ function ligarRDO(){
   $("btn-excluir-rdo")?.addEventListener("click", excluirRDO);
   $("btn-add-execucao")?.addEventListener("click", adicionarExecucao);
   $("btn-add-raiz-solo")?.addEventListener("click", adicionarRaizSolo);
-  $("btn-add-raiz-just")?.addEventListener("click", adicionarRaizJust);
+  $("btn-add-rdo-atividade")?.addEventListener("click", adicionarRdoAtividade);
   $("btn-add-rdo-equipe")?.addEventListener("click", adicionarRdoEquipe);
   $("btn-rdo-equipe-do-time")?.addEventListener("click", importarEquipeCadastrada);
   $("btn-rdo-aplicar-op")?.addEventListener("click", aplicarOperadorEmMassa);
@@ -1654,6 +1703,10 @@ async function processarArquivoIA(file, mediaType){
         tipo_servico: d.tipo_servico || null,
         intervalo_minutos: d.intervalo_minutos ?? null, almoco_inicio: d.almoco_inicio || null, almoco_fim: d.almoco_fim || null, feriado: false,
         equipe: (Array.isArray(d.equipe) ? d.equipe : []).map(iaCasarIntegrante),
+        // v3.2 (chamado #5): lista hora-a-hora da justificativa; função v3.1 não manda → []
+        justificativa: (Array.isArray(d.justificativa) ? d.justificativa : [])
+          .map(j => ({ h_inicial: j.h_inicial || null, h_final: j.h_final || null, motivo: (j.motivo || "").trim() || null }))
+          .filter(j => j.h_inicial || j.h_final || j.motivo),
         injecao, responsavel_id: null
       };
       ex.responsavel_id = iaSugerirResponsavel(ex);
@@ -1919,6 +1972,19 @@ function renderConferenciaIA(resp){
         <div class="campo largo"><label>Atividades</label><input data-cab="atividades" value="${esc(v(ex.atividades))}" /></div>
         <div class="campo largo"><label>Observações / ocorrências</label><input data-cab="observacoes" value="${esc(v(ex.observacoes))}" /></div>
       </div>
+      <details class="ia-just" ${(ex.justificativa || []).length ? "open" : ""}>
+        <summary>⏱️ Atividades hora a hora (${(ex.justificativa || []).length})<span class="meta"> · justificativa do diário; duração = fim − início</span></summary>
+        <table class="itens-tabela ia-tabela ia-just-tbl"><thead><tr><th>Início</th><th>Fim</th><th>Atividade</th><th class="num">Duração</th><th></th></tr></thead>
+        <tbody>${(ex.justificativa || []).map(j => `<tr>
+          <td><input type="time" data-j="h_inicial" value="${esc(v(j.h_inicial))}" /></td>
+          <td><input type="time" data-j="h_final" value="${esc(v(j.h_final))}" /></td>
+          <td><input data-j="motivo" value="${esc(v(j.motivo))}" style="min-width:220px" /></td>
+          <td class="num ia-just-dur">${rdoFmtDuracao(rdoDuracaoMin(j.h_inicial, j.h_final))}</td>
+          <td class="col-acao"><button type="button" class="btn-rem ia-rem-just" title="remover">&times;</button></td>
+        </tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="3"><strong>Total do dia</strong></td><td class="num"><strong class="ia-just-total">—</strong></td><td></td></tr></tfoot></table>
+        <button type="button" class="btn-sec btn-sm ia-add-just" style="margin-top:6px;">+ atividade</button>
+      </details>
       <div class="tabela-rola"><table class="itens-tabela ia-tabela ia-estacas">
         <thead><tr><th>Estaca</th><th title="Bloco / anel / pilar">Agrup.</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th title="Acumulado da estaca">Prof. exec.</th><th title="Trecho do turno">De (m)</th><th title="Trecho do turno">Até (m)</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
         <tbody>${ests.map((e, i) => {
@@ -2010,6 +2076,42 @@ function renderConferenciaIA(resp){
     });
   });
 
+  // atividades hora a hora (chamado #5): duração por linha + total do dia, remover, adicionar
+  const recalcJust = (det) => {
+    let total = 0, ok = false;
+    det.querySelectorAll(".ia-just-tbl tbody tr").forEach(tr => {
+      const d = rdoDuracaoMin(tr.querySelector('[data-j="h_inicial"]').value, tr.querySelector('[data-j="h_final"]').value);
+      tr.querySelector(".ia-just-dur").textContent = rdoFmtDuracao(d);
+      if(d != null){ total += d; ok = true; }
+    });
+    const n = det.querySelectorAll(".ia-just-tbl tbody tr").length;
+    det.querySelector(".ia-just-total").textContent = ok ? rdoFmtDuracao(total) : "—";
+    det.querySelector("summary").firstChild.textContent = `⏱️ Atividades hora a hora (${n})`;
+  };
+  const ligarJust = (det) => {
+    det.querySelectorAll(".ia-just-tbl tbody tr").forEach(tr => {
+      if(tr.dataset.ligado) return; tr.dataset.ligado = "1";
+      tr.addEventListener("input", () => recalcJust(det));
+      tr.querySelector(".ia-rem-just").addEventListener("click", () => { tr.remove(); recalcJust(det); });
+    });
+  };
+  cont.querySelectorAll(".ia-just").forEach(det => {
+    ligarJust(det); recalcJust(det);
+    det.querySelector(".ia-add-just").addEventListener("click", () => {
+      const tb = det.querySelector(".ia-just-tbl tbody");
+      const ult = tb.querySelector("tr:last-child");
+      const hi = ult ? (ult.querySelector('[data-j="h_final"]').value || "") : "";
+      tb.insertAdjacentHTML("beforeend", `<tr>
+        <td><input type="time" data-j="h_inicial" value="${esc(hi)}" /></td>
+        <td><input type="time" data-j="h_final" value="" /></td>
+        <td><input data-j="motivo" value="" style="min-width:220px" /></td>
+        <td class="num ia-just-dur">—</td>
+        <td class="col-acao"><button type="button" class="btn-rem ia-rem-just" title="remover">&times;</button></td></tr>`);
+      det.open = true;
+      ligarJust(det); recalcJust(det);
+    });
+  });
+
   // trechos: editar De/Até/Prof. exec. da linha principal conforme os trechos
   const sincronizarTrechos = (sub) => {
     const idx = sub.dataset.sub;
@@ -2065,6 +2167,12 @@ function lerConferenciaIA(){
     const orig = _csvParsed[dia] || [];
     const ex = _iaExtras[dia] || (_iaExtras[dia] = { equipe: [] });
     bloco.querySelectorAll("[data-cab]").forEach(el => { ex[el.dataset.cab] = el.type === "checkbox" ? el.checked : (el.value.trim() || null); });
+    // atividades hora a hora (chamado #5): o que está na tabela é o que vai para rdo_raiz_justificativa
+    ex.justificativa = [...bloco.querySelectorAll(".ia-just-tbl tbody tr")].map(tr => ({
+      h_inicial: tr.querySelector('[data-j="h_inicial"]').value || null,
+      h_final:   tr.querySelector('[data-j="h_final"]').value || null,
+      motivo:    tr.querySelector('[data-j="motivo"]').value.trim() || null
+    })).filter(j => j.h_inicial || j.h_final || j.motivo);
     const novos = [];
     bloco.querySelectorAll("table.ia-estacas > tbody > tr[data-idx]").forEach(tr => {
       const base = orig[Number(tr.dataset.idx)] || {};
@@ -2418,7 +2526,7 @@ async function confirmarImportCSV(){
     const { data: estacasObra } = await sb.from("estacas").select("id,numero,bloco,local").eq("obra_id", obra_id).limit(5000);
     const estsObra = estacasObra || [];
     const dias = Object.keys(_csvParsed).sort();
-    let totalRdos = 0, totalExecs = 0, totalTrechos = 0;
+    let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0;
     for(const dia of dias){
       const ests = _csvParsed[dia];
       // Upsert do RDO (cria se não existe)
@@ -2498,6 +2606,16 @@ async function confirmarImportCSV(){
         if(errSolo) throw new Error(`Trechos de solo de ${dia}: ${errSolo.message}`);
         totalTrechos += solos.length;
       }
+      // Atividades hora a hora lidas pela IA (chamado #5) → rdo_raiz_justificativa (execucao_id nulo).
+      // Só em RDO criado agora, pela mesma razão da equipe (não duplicar num RDO existente).
+      const justIA = _iaExtras?.[dia]?.justificativa || [];
+      if(justIA.length && !rdoExist){
+        const linhasJ = justIA.map((j, i) => ({ rdo_id: rdoId, execucao_id: null, ordem: i + 1,
+          h_inicial: j.h_inicial || null, h_final: j.h_final || null, motivo: j.motivo || null }));
+        const { error: errJ } = await sb.from("rdo_raiz_justificativa").insert(linhasJ);
+        if(errJ) console.warn("Atividades de " + dia + " não gravadas:", errJ.message);
+        else totalAtiv += linhasJ.length;
+      }
       // Equipe lida pela IA (só em RDO criado agora, para não duplicar num RDO existente).
       // Casada com o cadastro: funcionario_id quando há correspondência; senão nome_avulso.
       const eqIA = _iaExtras?.[dia]?.equipe || [];
@@ -2512,7 +2630,7 @@ async function confirmarImportCSV(){
         if(errEq) console.warn("Equipe de " + dia + " não gravada:", errEq.message);
       }
     }
-    aviso("app-aviso", `✅ Importado: ${totalRdos} RDOs novos, ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}.`, "ok");
+    aviso("app-aviso", `✅ Importado: ${totalRdos} RDOs novos, ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.`, "ok");
     fecharModalImportCSV();
     await carregarRDO();
   } catch(err){

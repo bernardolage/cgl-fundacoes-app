@@ -1445,6 +1445,15 @@ td.num, th.num {
   font-size: 14px; color: var(--marca-900);
 }
 
+/* Chamado #4: obra clicável em qualquer tela (linkObra em core.js) */
+a.link-obra {
+  color: inherit; text-decoration: none; cursor: pointer;
+  border-bottom: 1px dotted currentColor;
+}
+a.link-obra:hover, a.link-obra:focus-visible {
+  color: var(--marca-600); border-bottom-style: solid;
+}
+
 .odoo-notebook {
   display: flex;
   border-bottom: 1px solid var(--border-color);
