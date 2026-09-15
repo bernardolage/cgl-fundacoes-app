@@ -177,7 +177,7 @@ function renderChamados(){
         <td><strong>${c.numero != null ? "#" + esc(c.numero) : "—"}</strong></td>
         <td><div class="cham-titulo">${esc(c.titulo || "(sem título)")}</div><div class="cham-desc">${esc(desc.length > 140 ? desc.slice(0, 140) + "…" : desc)}</div></td>
         <td>${esc(cat.label)}${cat.validacao ? ' <span class="tag ambar" title="Exige validação da diretoria antes de executar">validação</span>' : ""}</td>
-        <td><div>${esc(chamModuloLabel(c.modulo))}</div><div class="meta">${esc(mapaObras[c.obra_id] || "")}</div></td>
+        <td><div>${esc(chamModuloLabel(c.modulo))}</div><div class="meta">${c.obra_id ? linkObra(c.obra_id) : ""}</div></td>
         <td><div>${esc(chamNome(c[CHAM_COL.abertoPor]))}</div><div class="meta">${esc(chamDataHora(c[CHAM_COL.criado]))}</div></td>
         <td>${chamTag(c.status)}</td>
       </tr>`;
@@ -219,7 +219,7 @@ function renderFichaChamado(erroComentarios){
       <span class="chip">Status: ${chamTag(c.status)}</span>
       <span class="chip">Categoria: <strong>${esc(cat.label)}</strong>${cat.validacao ? " · exige validação" : ""}</span>
       <span class="chip">Módulo: <strong>${esc(chamModuloLabel(c.modulo))}</strong></span>
-      ${c.obra_id ? `<span class="chip">Obra: <strong>${esc(mapaObras[c.obra_id] || c.obra_id)}</strong></span>` : ""}
+      ${c.obra_id ? `<span class="chip">Obra: <strong>${linkObra(c.obra_id, mapaObras[c.obra_id] || c.obra_id)}</strong></span>` : ""}
       ${c.registro_tipo ? `<span class="chip">Registro: <strong>${esc(c.registro_tipo)}</strong> ${abreRegistro ? `<button type="button" class="btn-sec btn-sm" id="btn-cham-abrir-registro">abrir</button>` : ""}</span>` : ""}
       <span class="chip">Aberto por <strong>${esc(chamNome(c[CHAM_COL.abertoPor]))}</strong> em ${esc(chamDataHora(c[CHAM_COL.criado]))}</span>
     </div>

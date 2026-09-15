@@ -797,7 +797,7 @@ async function renderFuncHE(){
   const g = new Map();
   _funcHE.dados.forEach(r => {
     const k = nomeDe(r) + "|" + (r.rdo?.obra_id || "");
-    if(!g.has(k)) g.set(k, { nome: nomeDe(r), obra: mapaObras[r.rdo?.obra_id] || "—", dias: new Set(), pres: 0, hn: 0, h50: 0, h100: 0, hnot: 0 });
+    if(!g.has(k)) g.set(k, { nome: nomeDe(r), obra: mapaObras[r.rdo?.obra_id] || "—", obra_id: r.rdo?.obra_id || null, dias: new Set(), pres: 0, hn: 0, h50: 0, h100: 0, hnot: 0 });
     const a = g.get(k); a.dias.add(r.rdo?.data); a.pres += presenca(r);
     a.hn += Number(r.horas_normais) || 0; a.h50 += Number(r.horas_50) || 0; a.h100 += Number(r.horas_100) || 0; a.hnot += Number(r.horas_noturnas) || 0;
   });
@@ -812,7 +812,7 @@ async function renderFuncHE(){
       <button type="button" class="btn-sec btn-sm" id="btn-func-he-csv" style="margin-left:8px;">⬇️ CSV</button></div>
     <div class="tabela-rola"><table>
       <thead><tr><th>Colaborador</th><th>Obra</th><th class="num">Dias</th><th class="num">Horas (entrada→saída)</th><th class="num">Normais</th><th class="num">HE 50%</th><th class="num">HE 100%</th><th class="num">Noturnas</th></tr></thead>
-      <tbody>${linhas.map(a => `<tr><td>${esc(a.nome)}</td><td>${esc(a.obra)}</td><td class="num">${a.dias.size}</td><td class="num">${f1(a.pres)}</td><td class="num">${f1(a.hn)}</td><td class="num">${f1(a.h50)}</td><td class="num">${f1(a.h100)}</td><td class="num">${f1(a.hnot)}</td></tr>`).join("") || `<tr><td colspan="8" class="vazio">Sem presenças em RDO nesta competência.</td></tr>`}</tbody>
+      <tbody>${linhas.map(a => `<tr><td>${esc(a.nome)}</td><td>${linkObra(a.obra_id, a.obra)}</td><td class="num">${a.dias.size}</td><td class="num">${f1(a.pres)}</td><td class="num">${f1(a.hn)}</td><td class="num">${f1(a.h50)}</td><td class="num">${f1(a.h100)}</td><td class="num">${f1(a.hnot)}</td></tr>`).join("") || `<tr><td colspan="8" class="vazio">Sem presenças em RDO nesta competência.</td></tr>`}</tbody>
       <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${tot.dias}</strong></td><td class="num"><strong>${f1(tot.pres)}</strong></td><td class="num"><strong>${f1(tot.hn)}</strong></td><td class="num"><strong>${f1(tot.h50)}</strong></td><td class="num"><strong>${f1(tot.h100)}</strong></td><td class="num"><strong>${f1(tot.hnot)}</strong></td></tr></tfoot>
     </table></div>`;
   $("btn-func-he-csv")?.addEventListener("click", () => {

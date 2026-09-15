@@ -88,7 +88,7 @@ function renderMedLista(dados){
   }
   const linhas = dados.map(m => `<tr class="linha-clicavel" data-id="${esc(m.id)}">
     <td>${esc(m.numero)}</td>
-    <td>${esc(medObraTxt(m))}</td>
+    <td>${linkObra(m.obra_id, medObraTxt(m))}</td>
     <td>${medPeriodoTxt(m)}</td>
     <td>${num(m.percentual)}%</td>
     <td>${tagStatus("medicao", m.status)}</td>
@@ -111,7 +111,7 @@ function renderMedKanban(dados){
     const stMeta = (STATUS.medicao && STATUS.medicao[st]) || { label: st, cor: "cinza" };
     const cards = itens.map(m => `
       <div class="serv-kan-card linha-clicavel" data-id="${esc(m.id)}">
-        <div class="serv-kan-card-nome">${esc(m.numero)} · ${esc(medObraTxt(m))}</div>
+        <div class="serv-kan-card-nome">${esc(m.numero)} · ${linkObra(m.obra_id, medObraTxt(m))}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">${num(m.percentual)}% · ${medPeriodoTxt(m)}</span>
         </div>
@@ -269,7 +269,7 @@ function abrirFichaMed(med){
   $("med-ficha").style.display = "";
 
   $("med-ficha-numero").textContent = med.numero || "(novo)";
-  $("med-ficha-obra-chip").textContent = mapaObras[med.obra_id] || "—";
+  $("med-ficha-obra-chip").innerHTML = linkObra(med.obra_id); // chamado #4: clicável
   $("med-ficha-status-chip").innerHTML = tagStatus("medicao", med.status);
   if($("med-ficha-subtotal-chip")) $("med-ficha-subtotal-chip").textContent = brl(med.subtotal||0);
   $("med-ficha-valor-chip").textContent = brl(med.valor_final || med.valor_medido || 0);

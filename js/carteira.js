@@ -213,15 +213,19 @@ async function carregarDetalheCarteira(contratoId){
 
   let det = _cartDetalhes.get(contratoId);
   if(!det){
-    const [a, o] = await Promise.all([
+    const [a, o, ob] = await Promise.all([
       sb.from("contrato_aditivos")
         .select("id,numero,tipo,valor_delta,descricao,assinatura_status,data_assinatura,observacoes")
         .eq("contrato_id", contratoId).order("ordem"),
       sb.from("orcamentos")
         .select("id,numero,valor_total,iss_percentual,observacoes")
-        .eq("contrato_id", contratoId).order("numero")
+        .eq("contrato_id", contratoId).order("numero"),
+      // chamado #4: obras do contrato, clicáveis (abrem a ficha da obra)
+      sb.from("obras")
+        .select("id,codigo,nome,status,cidade,uf")
+        .eq("contrato_id", contratoId).order("codigo")
     ]);
-    det = { aditivos: a.data || [], orcamentos: o.data || [] };
+    det = { aditivos: a.data || [], orcamentos: o.data || [], obras: ob.data || [] };
     _cartDetalhes.set(contratoId, det);
     if(_cartExpandido !== contratoId) return; // usuário já fechou/mudou
   }
@@ -242,11 +246,19 @@ async function carregarDetalheCarteira(contratoId){
       </div>`).join("")
     : `<p class="meta">nenhum (contrato sem proposta CGL — ex.: SCT Direcional)</p>`;
 
+  const blocoObras = det.obras.length
+    ? det.obras.map(o => `<div class="cart-det-linha">
+        <span>${linkObra(o.id, `${o.codigo || "—"} — ${o.nome || ""}`.trim())}${o.cidade ? ` <span class="meta">${esc(o.cidade)}${o.uf ? "/" + esc(o.uf) : ""}</span>` : ""}</span>
+        <span>${typeof tagStatus === "function" ? tagStatus("obra", o.status) : esc(o.status || "")}</span>
+      </div>`).join("")
+    : `<p class="meta">nenhuma obra vinculada a este contrato</p>`;
+
   const resumo = c ? `<p class="meta" style="margin:0 0 8px;">
       ${esc(c.descricao || "")}${c.descricao ? " · " : ""}valor exato vigente: <strong>${brl(c.valor_vigente)}</strong>
       · ${c.qtd_obras || 0} obra(s)</p>` : "";
 
   cel.innerHTML = `${resumo}<div class="cart-detalhe">
+    <div><h4>Obras (${det.obras.length})</h4>${blocoObras}</div>
     <div><h4>Aditivos (${det.aditivos.length})</h4>${blocoAdit}</div>
     <div><h4>Orçamentos vinculados (${det.orcamentos.length})</h4>${blocoOrc}</div>
   </div>`;

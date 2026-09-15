@@ -19,6 +19,7 @@ let _orcServObs     = {};   // servico_id -> observação padrão do item (fase 
 let _orcServByCod   = {};   // codigo do serviço -> serviço
 let _orcVarByCod    = {};   // codigo da variante -> variante
 let _orcPrecos      = {};
+let _orcServAgrupado = {};  // chamado #2: servico_id -> true quando as variantes ativas têm o mesmo preço (1 opção só)
 
 let _orcServicos  = [];   // serviços ativos com o "eixo" (helice/raiz/trado/secante/null=comum)
 let _orcVariantes = [];   // variantes ativas com tipo_obra, porte, faixa_prof e unidade própria
@@ -60,10 +61,18 @@ const ITENS_PADRAO_ORC = {
 };
 ITENS_PADRAO_ORC.secante = ITENS_PADRAO_ORC.helice; // secante usa mobilização/fat. mínimo/bomba de hélice
 
-// Eixo do serviço pelo caminho da categoria + nome (servicos.tipo_estaca é nulo em 21/29)
-function _eixoServicoOrc(texto){
+// Chamado #3 (Thales, 15/09/2026): eixo do serviço de execução pelo servicos.tipo_estaca
+// (helice → helice_continua/hsa; trado → escavada/strauss; raiz → raiz; secante → secante).
+// Serviços auxiliares (tipo_estaca nulo: mobilizações, locações, diesel, verbas…) seguem a
+// classificação por caminho da categoria + nome que já existia (fase 40) — assim
+// "Mobilização Raiz" continua fora de uma proposta de hélice; o que não tem eixo nenhum
+// (diárias, verbas, insumos comuns) fica sempre visível. Quando a planilha do Thales
+// classificar os auxiliares por tipo de proposta, esse mapeamento entra aqui.
+const EIXO_POR_TIPO_ESTACA = { helice_continua: "helice", hsa: "helice", escavada: "trado", strauss: "trado", raiz: "raiz", secante: "secante" };
+function _eixoServicoOrc(texto, tipoEstaca){
   const t = (texto || "").toLowerCase();
-  if(t.includes("secante")) return "secante";
+  if(t.includes("secante")) return "secante"; // "Estaca Hélice Secante" tem tipo_estaca helice_continua
+  if(tipoEstaca && EIXO_POR_TIPO_ESTACA[tipoEstaca]) return EIXO_POR_TIPO_ESTACA[tipoEstaca];
   if(t.includes("hélice") || t.includes("helice")) return "helice";
   if(t.includes("raiz") || t.includes("raíz")) return "raiz";
   if(t.includes("trado") || t.includes("escavad")) return "trado";
@@ -72,7 +81,7 @@ function _eixoServicoOrc(texto){
 
 async function prepararCatalogoOrc(){
   const [srv, vrt, prc, cat] = await Promise.all([
-    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao").order("codigo"),
+    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao,tipo_estaca").order("codigo"),
     sb.from("servico_variantes").select("id,servico_id,codigo,nome,ativo,tipo_obra,unidade,porte,faixa_prof").order("codigo"),
     sb.from("servico_precos").select("variante_id,preco_referencia,vigente_desde")
       .order("vigente_desde",{ ascending:false }),
@@ -86,7 +95,7 @@ async function prepararCatalogoOrc(){
     return partes.join(" > ");
   };
   _orcServicos  = (srv.data || []).filter(s => s.ativo !== false)
-                    .map(s => ({ ...s, eixo: _eixoServicoOrc(caminho(s.categoria_id) + " " + s.nome) }));
+                    .map(s => ({ ...s, eixo: _eixoServicoOrc(caminho(s.categoria_id) + " " + s.nome, s.tipo_estaca) }));
   _orcVariantes = (vrt.data || []).filter(v => v.ativo !== false);
 
   _orcVarById = {};
@@ -104,7 +113,42 @@ async function prepararCatalogoOrc(){
   (prc.data || []).forEach(p => {
     if(!(p.variante_id in _orcPrecos)) _orcPrecos[p.variante_id] = p.preco_referencia;
   });
+  // Chamado #2 (Thales, 15/09/2026): serviço com 2+ variantes ativas, todas com preço e o MESMO
+  // preço (ex.: Óleo Diesel S10 — "Diesel p/ Hélice" e "Diesel p/ Raiz", R$ 10,01/L), vira UMA
+  // opção com o nome do serviço. As variantes continuam no banco (22 itens de orçamentos
+  // apontam para elas); ao escolher, grava-se o variante_id da primeira variante que passa
+  // no filtro. Se os preços divergirem no futuro, o seletor volta a separar sozinho.
+  _orcServAgrupado = {};
+  _orcServicos.forEach(s => {
+    const vars = _orcVariantes.filter(v => v.servico_id === s.id);
+    if(vars.length < 2) return;
+    const precos = vars.map(v => _orcPrecos[v.id]);
+    if(precos.some(p => p == null)) return;
+    if(precos.every(p => Number(p) === Number(precos[0]))) _orcServAgrupado[s.id] = true;
+  });
   _orcCatOptions = montarOpcoesCatalogoOrc(null); // catálogo completo
+}
+
+// Nome que vai para a descrição do item: nome do serviço quando as variantes estão agrupadas
+function _nomeItemCatalogoOrc(v){
+  if(!v) return "";
+  if(_orcServAgrupado[v.servico_id]){
+    const s = _orcServicos.find(x => x.id === v.servico_id);
+    if(s) return s.nome || v.nome || "";
+  }
+  return v.nome || "";
+}
+
+// Seleciona a variante no select: opção exata; senão a opção agrupada que a contém (o value
+// passa a ser o id guardado no item, preservando o variante_id existente); senão "fora do filtro".
+function _selecionarVarianteSelect(sel, vid){
+  if(!vid){ sel.value = ""; return; }
+  if([...sel.options].some(o => o.value === vid)){ sel.value = vid; return; }
+  const grp = [...sel.options].find(o => o.dataset.grupo && o.dataset.grupo.split(",").includes(vid));
+  if(grp){ grp.value = vid; sel.value = vid; return; }
+  const v = _orcVarById[vid];
+  sel.insertAdjacentHTML("beforeend", `<option value="${esc(vid)}">${esc(v ? _nomeItemCatalogoOrc(v) : "(item)")} · fora do filtro</option>`);
+  sel.value = vid;
 }
 
 function _servicoVisivelOrc(s, tipoProp){
@@ -143,6 +187,12 @@ function montarOpcoesCatalogoOrc(f){
     if(f && !_servicoVisivelOrc(s, f.tipoProp)) return;
     const vars = _variantesFiltradasOrc(s, f);
     if(!vars.length) return;
+    if(_orcServAgrupado[s.id]){
+      // chamado #2: 1 opção com o nome do serviço; value = 1ª variante do filtro; data-grupo = todas as ativas
+      const todas = _orcVariantes.filter(v => v.servico_id === s.id).map(v => v.id).join(",");
+      html += `<optgroup label="${esc(s.nome)}"><option value="${esc(vars[0].id)}" data-grupo="${esc(todas)}">${esc(s.nome)}</option></optgroup>`;
+      return;
+    }
     html += `<optgroup label="${esc(s.nome)}">`
           + vars.map(v => `<option value="${esc(v.id)}">${esc(v.nome)}</option>`).join("")
           + `</optgroup>`;
@@ -155,11 +205,7 @@ function _opcoesFiltradasOrc(){ return montarOpcoesCatalogoOrc(_orcCatFiltro); }
 function _trocarOpcoesSelect(sel, html){
   const atual = sel.value;
   sel.innerHTML = html;
-  if(atual && ![...sel.options].some(o => o.value === atual)){
-    const v = _orcVarById[atual];
-    sel.insertAdjacentHTML("beforeend", `<option value="${esc(atual)}">${esc(v ? v.nome : "(item)")} · fora do filtro</option>`);
-  }
-  sel.value = atual;
+  _selecionarVarianteSelect(sel, atual);
 }
 
 // Muda tipo de proposta / tipo de obra / porte / faixa → refaz o select de cada linha (exceto as
@@ -232,7 +278,7 @@ function carregarItensPadraoOrc(silencioso){
     if(!d.var && servPresentes.has(s.id)) return;
     adicionarItemPreenchido({
       variante_id:    v.id,
-      descricao:      v.nome,
+      descricao:      _nomeItemCatalogoOrc(v),
       quantidade:     d.qtd || 0,
       unidade:        v.unidade || _orcServUnidade[s.id] || "un",
       valor_unitario: _orcPrecos[v.id] != null ? Number(_orcPrecos[v.id]) : 0,
@@ -865,11 +911,7 @@ function adicionarItemPreenchido(item){
   it.insertAdjacentHTML("beforeend", linhaItemHTML());
   const tr = it.lastElementChild;
   if(item.variante_id && _orcVarById[item.variante_id]){
-    const sel = tr.querySelector(".it-cat");
-    if(![...sel.options].some(o => o.value === item.variante_id)){
-      sel.insertAdjacentHTML("beforeend", `<option value="${esc(item.variante_id)}">${esc(_orcVarById[item.variante_id].nome)} · fora do filtro</option>`);
-    }
-    sel.value = item.variante_id;
+    _selecionarVarianteSelect(tr.querySelector(".it-cat"), item.variante_id);
   }
   tr.querySelector(".it-desc").value  = item.descricao || "";
   tr.querySelector(".it-qtd").value   = item.quantidade != null ? item.quantidade : 1;
@@ -890,7 +932,7 @@ function aplicarItemCatalogo(select){
   if(!vid){ recalcularOrc(); return; }
   const v = _orcVarById[vid];
   if(!v) return;
-  tr.querySelector(".it-desc").value = v.nome || "";
+  tr.querySelector(".it-desc").value = _nomeItemCatalogoOrc(v);
   const un = v.unidade || _orcServUnidade[v.servico_id]; // fase 40: variante pode ter unidade própria
   if(un){
     const selUn = tr.querySelector(".it-un");

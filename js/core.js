@@ -561,6 +561,31 @@ function irParaSecao(secao){
   return false;
 }
 
+/* Chamado #4 (Thales, 15/09/2026): a obra é clicável em qualquer tela.
+   linkObra(obraId, texto) devolve um <a class="link-obra"> que abre a ficha da
+   obra; sem obraId devolve só o texto. O clique é tratado aqui, em fase de
+   captura, para não disparar o clique da linha/card que contém o link
+   (ex.: abrir a medição em vez da obra). Fecha drawers/modais abertos antes
+   de navegar (chamado, mobilização, import de RDO). */
+function linkObra(obraId, texto){
+  const t = texto != null ? texto : (mapaObras[obraId] || "—");
+  if(!obraId) return esc(t);
+  return `<a href="#" class="link-obra" data-obra-id="${esc(obraId)}" title="Abrir a ficha da obra">${esc(t)}</a>`;
+}
+document.addEventListener("click", (e) => {
+  const a = e.target && e.target.closest ? e.target.closest("a.link-obra") : null;
+  if(!a) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const id = a.dataset.obraId;
+  if(!id) return;
+  if(typeof fecharChamado === "function" && $("cham-modal") && $("cham-modal").style.display !== "none") fecharChamado();
+  if(typeof fecharMobilizacao === "function" && $("mob-modal") && $("mob-modal").style.display !== "none") fecharMobilizacao();
+  if(typeof fecharModalImportCSV === "function" && $("csv-modal") && $("csv-modal").style.display !== "none") fecharModalImportCSV();
+  if(typeof dashAbrirObra === "function") dashAbrirObra(id);
+  else { irParaSecao("obras"); if(typeof abrirObra === "function") abrirObra(id); }
+}, true);
+
 /* ====================== CARGA GERAL ====================== */
 async function carregarTudo(){
   // 1. Carrega cadastros base

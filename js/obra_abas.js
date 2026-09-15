@@ -5,7 +5,7 @@
    Depende de obraEditId (id da obra aberta) — set em obras.js.
    ==================================================================== */
 
-let _obrAbasContagens = { estacas: 0, equipamentos: 0, rdos: 0, raiz: 0, medicoes: 0, documentos: 0 };
+let _obrAbasContagens = { estacas: 0, equipamentos: 0, mobilizacoes: 0, rdos: 0, raiz: 0, medicoes: 0, documentos: 0 };
 
 /* ---------- Despachante: carrega tudo quando a obra abre ---------- */
 async function carregarAbasObra(obraId){
@@ -13,13 +13,14 @@ async function carregarAbasObra(obraId){
   // Em paralelo, busca as contagens pra smart-buttons.
   // Estacas: contamos APENAS pela tabela `estacas` (literal, sem dedup — BB são nomes legítimos).
   // Execuções órfãs aparecem no badge separado "🔗 Reconciliar".
-  const [eq, med, rdoG, doc, estsTotal, estsExec] = await Promise.all([
+  const [eq, med, rdoG, doc, estsTotal, estsExec, mob] = await Promise.all([
     sb.from("equipamentos").select("id", { count: "exact", head: true }).eq("localizacao_obra_id", obraId).eq("ativo", true),
     sb.from("medicoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("rdo").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("obras_documentos").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
-    sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("status", "executada")
+    sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("status", "executada"),
+    sb.from("mobilizacoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId).neq("status", "cancelada")
   ]);
   // Guarda de corrida: outra obra foi aberta enquanto esta carregava → descarta
   if(obraId !== obraEditId) return;
@@ -28,6 +29,7 @@ async function carregarAbasObra(obraId){
     estacas_previstas: estsTotal.count || 0,
     estacas_executadas: estsExec.count || 0,
     equipamentos: eq.count || 0,
+    mobilizacoes: mob.count || 0,
     medicoes: med.count || 0,
     rdos: rdoG.count || 0,
     documentos: doc.count || 0
@@ -44,7 +46,7 @@ function atualizarSmartButtons(){
     : "estacas";
   const map = {
     "sb-estacas": [estacasNum, "🔧", estacasLbl],
-    "sb-equipamentos": [c.equipamentos, "🚜", "equipamentos"],
+    "sb-equipamentos": [c.equipamentos, "🚜", c.mobilizacoes ? `equip. · ${c.mobilizacoes} mobiliz.` : "equip. · mobilização"],
     "sb-rdos": [c.rdos, "📋", "RDOs"],
     "sb-medicoes": [c.medicoes, "💰", "medições"],
     "sb-documentos": [c.documentos, "📎", "documentos"]
@@ -58,8 +60,49 @@ function atualizarSmartButtons(){
 }
 
 /* ====================================================================
-   ABA EQUIPAMENTOS — TAGs alocadas via Movimentações
+   ABA MOBILIZAÇÃO & EQUIPAMENTOS (15/09/2026, pedido do Bernardo)
+   Em cima: as mobilizações da obra (processo — status, máquina e apoio, datas
+   prevista/real, pendências abertas por setor e atrasos), lidas das mesmas views
+   do quadro de Mobilizações. Embaixo: os equipamentos fisicamente na obra (TAGs
+   alocadas via Movimentações), que continuam aqui porque 7 dos 27 equipamentos em
+   obra hoje não pertencem a mobilização nenhuma (apoio, remessa direta).
    ==================================================================== */
+
+// Garante o módulo Mobilizações carregado antes de abrir o drawer/modal dele a partir da obra
+async function _obrMobPronto(){
+  if(typeof carregarMobilizacoes === "function" && typeof _mobCarregado !== "undefined" && !_mobCarregado) await carregarMobilizacoes();
+}
+
+function _obrMobCardHTML(c, pend){
+  const col = (typeof MOB_COLUNAS !== "undefined" ? MOB_COLUNAS : []).find(x => x.k === c.coluna) || {};
+  const stLbl = (typeof MOB_STATUS !== "undefined" && MOB_STATUS[c.mob_status]) || c.mob_status || "—";
+  const icone = (typeof MOB_TIPO_ICONE !== "undefined" && MOB_TIPO_ICONE[c.tipo_proposta]) || "⚙️";
+  const setorLbl = (s) => (typeof MOB_SETOR !== "undefined" && MOB_SETOR[s]) || s || "—";
+  const d = (v) => v ? dataBR(v) : "—";
+  const abertas = pend.filter(p => !p.concluida);
+  const atrasadas = abertas.filter(p => p.atrasada).length;
+  const porSetor = {};
+  abertas.forEach(p => { porSetor[p.setor] = (porSetor[p.setor] || 0) + 1; });
+  const chipsSetor = Object.entries(porSetor).map(([s, n]) => `<span class="mob-chip">${esc(setorLbl(s))} ${n}</span>`).join("");
+  const listaPend = abertas.slice(0, 6).map(p => `<li${p.atrasada ? ' class="txt-perigo"' : ""}>${p.atrasada ? "⏰ " : ""}${esc(p.titulo)} <span class="meta">· ${esc(setorLbl(p.setor))}${p.prazo ? " · até " + dataBR(p.prazo) : ""}</span></li>`).join("")
+    + (abertas.length > 6 ? `<li class="meta">… mais ${abertas.length - 6}</li>` : "");
+  const datas = [
+    ["Prevista", c.data_mobilizacao_prev], ["Saída", c.data_saida_real], ["Chegada", c.data_chegada_real], ["Desmob.", c.data_desmob_real]
+  ].filter(([, v]) => v).map(([l, v]) => `<span class="mob-chip" title="${l}">${l}: ${d(v)}</span>`).join("");
+  return `<div class="mob-card obr-mob-card" data-id="${esc(c.id)}" style="border-left-color:${col.cor || "var(--sup-3)"};cursor:pointer;" tabindex="0" role="button" aria-label="Abrir mobilização">
+    <div class="mob-card-titulo">${icone} ${esc(col.label || c.coluna || "Mobilização")} <span class="mob-chip st">${esc(stLbl)}</span></div>
+    <div class="mob-card-chips">
+      <span class="mob-chip tag">${esc(c.equipamento_tag || "sem máquina")}</span>${c.equipamento_nome ? `<span class="meta">${esc(c.equipamento_nome)}</span>` : ""}
+      ${c.apoio_tags ? `<span class="mob-chip">+ apoio: ${esc(c.apoio_tags)}</span>` : ""}
+      ${datas}
+    </div>
+    <div class="mob-card-rodape">
+      <span>${abertas.length ? `${abertas.length} pendência${abertas.length > 1 ? "s" : ""} aberta${abertas.length > 1 ? "s" : ""}${atrasadas ? ` <span class="mob-badge perigo">⏰ ${atrasadas} atrasada${atrasadas > 1 ? "s" : ""}</span>` : ""}` : (pend.length ? `<span class="mob-badge ok">✓ ${pend.length}/${pend.length} pendências concluídas</span>` : "sem pendências cadastradas")}</span>
+      <span>${chipsSetor}</span>
+    </div>
+    ${abertas.length ? `<ul class="obr-mob-pend" style="margin:6px 0 0 16px;padding:0;font-size:var(--txt-xs);line-height:1.6;">${listaPend}</ul>` : ""}
+  </div>`;
+}
 
 async function carregarEquipamentosDaObra(obraId){
   const cont = $("obr-equip-conteudo");
@@ -68,16 +111,51 @@ async function carregarEquipamentosDaObra(obraId){
     cont.innerHTML = `<p class="vazio">Salve a obra primeiro.</p>`;
     return;
   }
-  const { data, error } = await sb.from("vw_equipamentos_localizacao")
-    .select("*")
-    .eq("localizacao_obra_id", obraId);
-  if(error){
-    cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`;
+  const [eqRes, mobRes, pendRes] = await Promise.all([
+    sb.from("vw_equipamentos_localizacao").select("*").eq("localizacao_obra_id", obraId),
+    sb.from("vw_mobilizacoes_quadro").select("*").eq("obra_id", obraId).order("data_mobilizacao_prev", { ascending: true, nullsFirst: false }),
+    sb.from("vw_mobilizacao_pendencias_setor").select("*").eq("obra_id", obraId)
+  ]);
+  if(obraId !== obraEditId) return; // trocou de obra enquanto carregava
+  if(eqRes.error){
+    cont.innerHTML = `<p class="vazio">Erro: ${esc(eqRes.error.message)}</p>`;
     return;
   }
+  const data = eqRes.data;
+  const mobs = mobRes.error ? [] : (mobRes.data || []);
+  const pends = pendRes.error ? [] : (pendRes.data || []);
+
+  // ---- bloco 1: mobilizações da obra ----
+  const cardsMob = mobs.map(c => _obrMobCardHTML(c, pends.filter(p => p.mobilizacao_id === c.id))).join("");
+  const blocoMob = `
+    <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
+      <h4 style="margin:0;font-size:var(--txt-md);">🚚 ${mobs.length ? `${mobs.length} mobilizaç${mobs.length > 1 ? "ões" : "ão"} desta obra` : "Mobilização"}</h4>
+      <button type="button" class="btn-sec" id="btn-obr-mob-nova">+ Nova mobilização</button>
+    </div>
+    ${mobRes.error ? `<p class="vazio">Não foi possível ler as mobilizações: ${esc(mobRes.error.message)}</p>`
+      : (cardsMob || `<p class="vazio" style="padding:10px 0;">Nenhuma mobilização cadastrada para esta obra. A mobilização acompanha preparação, saída, chegada e as pendências de cada setor.</p>`)}
+    <p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:4px 0 16px;">Clique na mobilização para abrir a ficha (pendências, transições, remessa/retorno).</p>
+    <hr style="border:none;border-top:1px solid var(--borda);margin:0 0 14px;">`;
+
+  const ligarMob = () => {
+    $("btn-obr-mob-nova")?.addEventListener("click", async () => { await _obrMobPronto(); if(typeof abrirNovaMobilizacao === "function") abrirNovaMobilizacao(obraId); });
+    cont.querySelectorAll(".obr-mob-card").forEach(el => {
+      const abrir = async () => {
+        await _obrMobPronto();
+        // quadro em cache sem esta mobilização (criada depois) → recarrega antes de abrir
+        if(typeof _mobCards !== "undefined" && !_mobCards.some(c => c.id === el.dataset.id) && typeof carregarMobilizacoes === "function") await carregarMobilizacoes(true);
+        if(typeof abrirMobilizacao === "function") abrirMobilizacao(el.dataset.id);
+      };
+      el.addEventListener("click", abrir);
+      el.addEventListener("keydown", (e) => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); abrir(); } });
+    });
+  };
+
+  // ---- bloco 2: equipamentos fisicamente na obra ----
   if(!data || !data.length){
-    cont.innerHTML = `<p class="vazio">Nenhum equipamento alocado a esta obra.<br>
+    cont.innerHTML = blocoMob + `<p class="vazio">Nenhum equipamento alocado a esta obra.<br>
       <button type="button" class="btn" id="btn-equip-mov-nova" style="margin-top:10px;">+ Registrar movimentação de chegada</button></p>`;
+    ligarMob();
     $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
     return;
   }
@@ -91,9 +169,9 @@ async function carregarEquipamentosDaObra(obraId){
       <button type="button" class="btn-sec btn-sm btn-equip-devolver" data-id="${esc(e.id)}" title="Devolver para base">↩ Devolver</button>
     </td>
   </tr>`).join("");
-  cont.innerHTML = `
+  cont.innerHTML = blocoMob + `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
-      <h4 style="margin:0;font-size:var(--txt-md);">${data.length} equipamento${data.length>1?"s":""} alocado${data.length>1?"s":""} a esta obra</h4>
+      <h4 style="margin:0;font-size:var(--txt-md);">🚜 ${data.length} equipamento${data.length>1?"s":""} alocado${data.length>1?"s":""} a esta obra</h4>
       <button type="button" class="btn" id="btn-equip-mov-nova">+ Nova movimentação</button>
     </div>
     <div class="tabela-rola"><table>
@@ -103,6 +181,7 @@ async function carregarEquipamentosDaObra(obraId){
       <tbody>${linhas}</tbody></table></div>
     <p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin-top:8px;">💡 Localizações são derivadas das Movimentações de Ativos. Para mudar, crie nova movimentação.</p>
   `;
+  ligarMob();
   $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
   cont.querySelectorAll(".btn-equip-devolver").forEach(b => {
     b.addEventListener("click", () => abrirMovimentacaoPraObra("retorno", b.dataset.id));

@@ -1428,7 +1428,7 @@
             <button type="button" data-tab="parametros" title="Jornada e concretagem (alimentam o RDO)">Parâmetros</button>
             <button type="button" data-tab="contrato">Contrato <span id="obr-con-badge" class="aba-badge"></span></button>
             <button type="button" data-tab="estacas">Estacas</button>
-            <button type="button" data-tab="equipamentos">Equipamentos</button>
+            <button type="button" data-tab="equipamentos">Mobilização &amp; equipamentos</button>
             <button type="button" data-tab="medicoes">Medições</button>
             <button type="button" data-tab="rdos">RDOs</button>
             <button type="button" data-tab="documentos">Documentos</button>
@@ -1772,7 +1772,7 @@
             <!-- Aba Duplicadas -->
             <div class="odoo-tab" data-conf-tab="duplicadas">
               <p class="texto-apoio">
-                Grupos de estacas com o mesmo número na mesma obra (erro de import ou cadastro duplicado).
+                Grupos de estacas com o mesmo número no mesmo local e bloco da obra (erro de import ou cadastro duplicado).
                 Você pode manter uma e excluir as duplicatas, ou renomear.
               </p>
               <div id="conf-duplicadas-conteudo"><p class="vazio">Carregando...</p></div>
@@ -1951,6 +1951,18 @@
                 <div class="campo"><label>Tempo — manhã</label><select id="rdo-tempo-manha"><option value="">—</option></select></div>
                 <div class="campo"><label>Tempo — tarde</label><select id="rdo-tempo-tarde"><option value="">—</option></select></div>
                 <div class="campo largo"><label>Atividades executadas</label><textarea id="rdo-atividades" rows="3" placeholder="resumo do dia"></textarea></div>
+              </div>
+              <!-- Chamado #5 (15/09/2026): atividades hora a hora (justificativa do diário) com duração e total -->
+              <div class="lista-topo compacta" style="margin-top:14px;">
+                <h4 class="titulo-linha">Atividades hora a hora <span class="meta" style="font-weight:400;">(justificativa do diário — duração = fim − início)</span></h4>
+                <button type="button" class="btn-sec btn-sm" id="btn-add-rdo-atividade">+ Atividade</button>
+              </div>
+              <div class="tabela-rola">
+                <table class="itens-tabela">
+                  <thead><tr><th style="width:110px;">Início</th><th style="width:110px;">Fim</th><th>Atividade</th><th class="num" style="width:90px;">Duração</th><th class="col-acao"></th></tr></thead>
+                  <tbody id="rdo-atividades-grade"></tbody>
+                  <tfoot><tr><td colspan="3"><strong>Total do dia</strong></td><td class="num"><strong id="rdo-atividades-total">—</strong></td><td></td></tr></tfoot>
+                </table>
               </div>
             </div>
 
