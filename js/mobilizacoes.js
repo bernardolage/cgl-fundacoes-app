@@ -250,7 +250,11 @@ async function abrirMobilizacao(id){
   renderDrawerMob();
   $("mob-modal").style.display = "flex";
 }
-function fecharMobilizacao(){ $("mob-modal").style.display = "none"; _mobAberta = null; }
+function fecharMobilizacao(){
+  $("mob-modal").style.display = "none"; _mobAberta = null;
+  // Aberta a partir da ficha da obra (aba Mobilização & equipamentos): recarrega a aba ao fechar
+  if(typeof obraEditId !== "undefined" && obraEditId && document.querySelector("#sec-obras.ativa") && typeof carregarEquipamentosDaObra === "function") carregarEquipamentosDaObra(obraEditId);
+}
 
 function mobEquipOpts(sel, filtro){
   const lista = _mobEquips.filter(filtro || (() => true));
