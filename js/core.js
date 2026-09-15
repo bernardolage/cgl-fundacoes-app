@@ -92,6 +92,12 @@ const STATUS = {
     demitido: { label:"Demitido", cor:"vermelho" }
   },
   /* Acessórios (fase 47): condição da peça e onde ela está */
+  equipamento: {
+    disponivel:     { label:"Disponível",     cor:"verde"    },
+    em_uso:         { label:"Em uso",         cor:"azul"     },
+    em_manutencao:  { label:"Em manutenção",  cor:"ambar"    },
+    inativo:        { label:"Inativo",        cor:"cinza"    }
+  },
   acessorio: {
     sem_avaliacao:      { label:"Sem avaliação",      cor:"cinza"    },
     sem_marcacao:       { label:"Sem marcação",       cor:"ambar"    },

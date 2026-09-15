@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=be66497" />
+<link rel="stylesheet" href="css/estilo.css?v=938318f" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -114,6 +114,10 @@
       <button data-secao="mobilizacoes">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="4" width="7" height="16" rx="1"></rect><rect x="14" y="4" width="7" height="9" rx="1"></rect><line x1="6" y1="8" x2="7" y2="8"></line><line x1="6" y1="12" x2="7" y2="12"></line><line x1="17" y1="8" x2="18" y2="8"></line></svg>
         <span>Mobilizações</span>
+      </button>
+      <button data-secao="equipamentos">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span>Equipamentos</span>
       </button>
       <button data-secao="frota">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
@@ -2167,6 +2171,159 @@
 
     <!-- MEDIÇÕES -->
     <!-- ============ FROTA (fase 37) ============ -->
+    <section class="secao" id="sec-equipamentos">
+      <div id="eqp-painel">
+        <h2>Equipamentos</h2>
+        <p class="texto-apoio">Máquinas de produção (perfuratrizes, bate-estacas, bombas, compressores, geradores) com ficha técnica, onde estão, mobilizações, remessas e os acessórios de cada uma. Caminhões e veículos ficam na Frota.</p>
+
+        <div class="indicadores">
+          <div class="ind ind-click" data-kpi=""><div class="num" id="eqp-kpi-total">—</div><div class="rot">Ativos</div></div>
+          <div class="ind ind-click" data-kpi="obra"><div class="num" id="eqp-kpi-obra">—</div><div class="rot">Em obra</div></div>
+          <div class="ind ind-click" data-kpi="base"><div class="num" id="eqp-kpi-base">—</div><div class="rot">Na base</div></div>
+          <div class="ind ind-click" data-kpi="transito"><div class="num" id="eqp-kpi-transito">—</div><div class="rot">Em trânsito</div></div>
+          <div class="ind ind-click" data-kpi="manutencao"><div class="num" id="eqp-kpi-manut" style="color:var(--marca-600);">—</div><div class="rot">Em manutenção</div></div>
+          <div class="ind ind-click" data-kpi="acessorios"><div class="num" id="eqp-kpi-ace">—</div><div class="rot">Acessórios nas máquinas</div></div>
+        </div>
+
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Máquinas <span id="eqp-contador" class="contador"></span></h3>
+            <div class="serv-views" id="eqp-views">
+              <button type="button" class="serv-view-btn ativo" data-view="kanban">Por status</button>
+              <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-eqp-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+            <button type="button" class="btn" id="btn-eqp-novo" style="display:none;">+ Novo equipamento</button>
+          </div>
+          <div class="serv-filtros" id="eqp-filtros">
+            <input id="eqp-busca" placeholder="Buscar TAG, nome, marca, modelo, nº de série…" />
+            <select id="eqp-f-tipo"><option value="">Todos os tipos</option></select>
+            <select id="eqp-f-status"><option value="">Status</option></select>
+            <select id="eqp-f-local"><option value="">Onde está</option></select>
+            <select id="eqp-f-obra"><option value="">Obra</option></select>
+            <label class="check-inline"><input type="checkbox" id="eqp-f-inativos" /> mostrar inativos</label>
+          </div>
+          <div id="eqp-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha (estilo Odoo) -->
+      <div id="eqp-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-eqp-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-eqp-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec eqp-so-existente" id="btn-eqp-remessa" title="Abre uma remessa em Movimentações com esta TAG na carga">🚚 Nova remessa</button>
+              <button type="button" class="btn-sec eqp-so-existente" id="btn-eqp-acessorios" title="Abre o módulo Acessórios filtrado por esta TAG">⚙️ Ver acessórios</button>
+            </div>
+            <div class="actions-right"><strong id="eqp-ficha-titulo">Novo equipamento</strong></div>
+          </div>
+
+          <div class="odoo-statusbar" id="eqp-statusbar" title="Status — clique para mudar">
+            <div class="stage" data-status="disponivel">Disponível</div>
+            <div class="stage" data-status="em_uso">Em uso</div>
+            <div class="stage" data-status="em_manutencao">Em manutenção</div>
+            <div class="stage" data-status="inativo">Inativo</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>TAG</span><strong id="eqp-chip-tag">—</strong></div>
+            <div class="chip"><span>Tipo</span><strong id="eqp-chip-tipo">—</strong></div>
+            <div class="chip"><span>Onde está</span><strong id="eqp-chip-onde">—</strong></div>
+            <div class="chip"><span>Mobilização</span><strong id="eqp-chip-mob">—</strong></div>
+            <div class="chip"><span>Horímetro</span><strong id="eqp-chip-hor">—</strong></div>
+            <div class="chip"><span>Encaixe / Ø máx.</span><strong id="eqp-chip-tec">—</strong></div>
+          </div>
+
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-eqp-ace" data-goto-tab="acessorios"><span class="sb-num">0</span><span class="sb-icon">⚙️</span><span class="sb-lbl">acessórios</span></button>
+            <button type="button" class="sb-btn" id="sb-eqp-mob" data-goto-tab="mobilizacoes"><span class="sb-num">0</span><span class="sb-icon">🏗️</span><span class="sb-lbl">mobilizações</span></button>
+            <button type="button" class="sb-btn" id="sb-eqp-mov" data-goto-tab="movimentacoes"><span class="sb-num">0</span><span class="sb-icon">🚚</span><span class="sb-lbl">movimentações</span></button>
+            <button type="button" class="sb-btn" id="sb-eqp-rep" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">reparos</span></button>
+            <button type="button" class="sb-btn" id="sb-eqp-man" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🛠️</span><span class="sb-lbl">manutenções</span></button>
+          </div>
+
+          <div class="odoo-notebook" id="eqp-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="tecnica">Ficha técnica</button>
+            <button type="button" data-tab="acessorios">Acessórios</button>
+            <button type="button" data-tab="mobilizacoes">Mobilizações</button>
+            <button type="button" data-tab="movimentacoes">Movimentações</button>
+            <button type="button" data-tab="manutencao">Reparos & manutenções</button>
+            <button type="button" data-tab="timeline">Timeline</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>TAG *</label><input id="eqp-codigo" placeholder="Ex.: 09, 77, DR80" /></div>
+                <div class="campo largo"><label>Nome *</label><input id="eqp-nome" placeholder="Ex.: Perfuratriz CZM MC140" /></div>
+                <div class="campo"><label>Tipo *</label><select id="eqp-tipo"></select></div>
+                <div class="campo"><label>Marca</label><input id="eqp-marca" /></div>
+                <div class="campo"><label>Modelo</label><input id="eqp-modelo" /></div>
+                <div class="campo"><label>Ano de fabricação</label><input type="number" id="eqp-ano" min="1950" max="2100" step="1" /></div>
+                <div class="campo"><label>Nº de série</label><input id="eqp-serie" /></div>
+                <div class="campo"><label>Horímetro (h)</label><input type="number" id="eqp-horimetro" min="0" step="0.1" /></div>
+                <div class="campo"><label>Data de aquisição</label><input type="date" id="eqp-aquisicao" /></div>
+                <div class="campo"><label>Valor de aquisição (R$)</label><input type="number" id="eqp-valor" min="0" step="0.01" /></div>
+                <div class="campo"><label>Código externo</label><input id="eqp-cod-ext" placeholder="Ex.: código no Odoo" /></div>
+                <div class="campo"><label class="check-inline"><input type="checkbox" id="eqp-ativo" checked /> Ativo</label></div>
+              </div>
+              <h3 class="titulo-bloco">Localização</h3>
+              <p class="meta" id="eqp-local-info">A localização muda sozinha quando uma movimentação é recebida. Ajuste aqui só para corrigir o cadastro.</p>
+              <div class="grade">
+                <div class="campo"><label>Onde está</label>
+                  <select id="eqp-local-tipo">
+                    <option value="base">Base</option>
+                    <option value="obra">Obra</option>
+                    <option value="em_transito">Em trânsito</option>
+                    <option value="fornecedor_manutencao">Fornecedor / manutenção</option>
+                    <option value="cliente">Cliente</option>
+                  </select>
+                </div>
+                <div class="campo" id="eqp-local-obra-campo"><label>Obra</label><select id="eqp-local-obra"></select></div>
+                <div class="campo largo"><label>Descrição</label><input id="eqp-local-desc" placeholder="Ex.: Base Itabira, Oficina CZM" /></div>
+              </div>
+              <div class="grade" style="margin-top:8px;">
+                <div class="campo largo"><label>Observações</label><textarea id="eqp-obs" rows="3"></textarea></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="tecnica">
+              <p class="texto-apoio">Dados que definem quais acessórios servem na máquina. São os da aba Informações da planilha de hélice.</p>
+              <div class="grade">
+                <div class="campo"><label>Encaixe do trado</label><input id="eqp-encaixe" placeholder='Ex.: 5" CZM, quadrado 130' /></div>
+                <div class="campo"><label>Acoplamento</label><select id="eqp-acopl"></select></div>
+                <div class="campo"><label>Ø máximo (mm)</label><input type="number" id="eqp-diam-max" min="0" step="1" /></div>
+                <div class="campo"><label>Profundidade máxima (m)</label><input type="number" id="eqp-prof-max" min="0" step="0.5" /></div>
+                <div class="campo"><label>Pino do trado (mm)</label><input type="number" id="eqp-pino" min="0" step="1" /></div>
+                <div class="campo largo"><label>Observações sobre acessórios</label><textarea id="eqp-obs-ace" rows="3" placeholder="Ex.: usa caixa redutora X; ponta chinesa só com adaptador…"></textarea></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="acessorios">
+              <div class="lista-topo">
+                <h3>Acessórios <span class="meta">por Ø e jogo</span></h3>
+                <div class="serv-views" id="eqp-ace-modo">
+                  <button type="button" class="serv-view-btn ativo" data-modo="">Todos</button>
+                  <button type="button" class="serv-view-btn" data-modo="na">Na máquina</button>
+                  <button type="button" class="serv-view-btn" data-modo="pertence">Pertencem</button>
+                  <button type="button" class="serv-view-btn" data-modo="compat">Compatíveis</button>
+                </div>
+              </div>
+              <div id="eqp-ace-lista"><p class="vazio">Salve o equipamento para ver os acessórios.</p></div>
+            </div>
+
+            <div class="odoo-tab" data-tab="mobilizacoes"><div id="eqp-mob-lista"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="movimentacoes"><div id="eqp-mov-lista"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="manutencao"><div id="eqp-rep-lista"><p class="vazio">—</p></div><div id="eqp-man-lista" style="margin-top:16px;"></div></div>
+            <div class="odoo-tab" data-tab="timeline"><div id="eqp-chatter"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="secao" id="sec-frota">
       <h2>Frota</h2>
       <p class="texto-apoio">Caminhões e veículos com seus deslocamentos — o "KM Caminhões" da planilha RG 8.1. O valor da viagem é km rodado × R$/km do caminhão; o km atual do veículo acompanha a última chegada registrada.</p>
@@ -3148,34 +3305,35 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=be66497"></script>
+<script src="js/core.js?v=938318f"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=be66497"></script>
+<script src="js/historico.js?v=938318f"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=be66497"></script>
-<script src="js/fornecedores.js?v=be66497"></script>
-<script src="js/apropriacoes.js?v=be66497"></script>
-<script src="js/funcionarios.js?v=be66497"></script>
-<script src="js/servicos.js?v=be66497"></script>
-<script src="js/produtos.js?v=be66497"></script>
-<script src="js/estoque.js?v=be66497"></script>
-<script src="js/orcamentos.js?v=be66497"></script>
-<script src="js/propostas.js?v=be66497"></script>
-<script src="js/contratos.js?v=be66497"></script>
-<script src="js/carteira.js?v=be66497"></script>
-<script src="js/obras.js?v=be66497"></script>
-<script src="js/frota.js?v=be66497"></script>
-<script src="js/acessorios.js?v=be66497"></script>
-<script src="js/mobilizacoes.js?v=be66497"></script>
-<script src="js/estacas.js?v=be66497"></script>
-<script src="js/obra_abas.js?v=be66497"></script>
-<script src="js/medicoes.js?v=be66497"></script>
-<script src="js/movimentacoes.js?v=be66497"></script>
-<script src="js/rdo.js?v=be66497"></script>
-<script src="js/usuarios.js?v=be66497"></script>
-<script src="js/chamados.js?v=be66497"></script>
-<script src="js/dashboard.js?v=be66497"></script>
+<script src="js/clientes.js?v=938318f"></script>
+<script src="js/fornecedores.js?v=938318f"></script>
+<script src="js/apropriacoes.js?v=938318f"></script>
+<script src="js/funcionarios.js?v=938318f"></script>
+<script src="js/servicos.js?v=938318f"></script>
+<script src="js/produtos.js?v=938318f"></script>
+<script src="js/estoque.js?v=938318f"></script>
+<script src="js/orcamentos.js?v=938318f"></script>
+<script src="js/propostas.js?v=938318f"></script>
+<script src="js/contratos.js?v=938318f"></script>
+<script src="js/carteira.js?v=938318f"></script>
+<script src="js/obras.js?v=938318f"></script>
+<script src="js/frota.js?v=938318f"></script>
+<script src="js/equipamentos.js?v=938318f"></script>
+<script src="js/acessorios.js?v=938318f"></script>
+<script src="js/mobilizacoes.js?v=938318f"></script>
+<script src="js/estacas.js?v=938318f"></script>
+<script src="js/obra_abas.js?v=938318f"></script>
+<script src="js/medicoes.js?v=938318f"></script>
+<script src="js/movimentacoes.js?v=938318f"></script>
+<script src="js/rdo.js?v=938318f"></script>
+<script src="js/usuarios.js?v=938318f"></script>
+<script src="js/chamados.js?v=938318f"></script>
+<script src="js/dashboard.js?v=938318f"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=be66497"></script>
+<script src="js/init.js?v=938318f"></script>
 </body>
 </html>

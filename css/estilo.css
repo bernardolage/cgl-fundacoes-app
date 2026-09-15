@@ -2682,3 +2682,9 @@ input:disabled, select:disabled, textarea:disabled {
 .mov-ace-sug-item { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 0; cursor: pointer; }
 .mov-ace-sug-item.ja { opacity: .5; cursor: default; }
 .mov-ace-sug-item .tag { font-size: 10px; padding: 0 6px; }
+
+/* ---- Equipamentos (fase 50) ---- */
+.eqp-card-rodape { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.eqp-diam-bloco { margin-bottom: 14px; }
+.eqp-diam-titulo { font-weight: 700; font-size: var(--txt-sm); margin: 6px 0; padding: 4px 8px; background: var(--sup-1); border-left: 3px solid var(--marca-600); border-radius: 4px; }
+.eqp-diam-bloco table td, .eqp-diam-bloco table th { font-size: 12.5px; }
