@@ -10,6 +10,7 @@ let _rdoView  = "lista";
 let rdoEditId = null;
 let _rdoExecucoes  = [];      // execuções do RDO atual
 let _rdoEquipe     = [];   // equipe do dia (genérico, todos os tipos de RDO)
+let _rdoVoltarPara = null; // chamado #8 (Isaque, 16/09/2026): obra_id quando o RDO foi aberto pela aba RDOs da obra — o Voltar devolve para lá
 let _rdoAbast      = [];   // abastecimento do dia (fase 46, 16/09/2026): litros/horímetro do diário do operador
 let _rdoEquipes    = [];   // cache equipes cadastradas (pra modal "Importar equipe")
 let _rdoRaizSolo   = [];
@@ -197,6 +198,13 @@ function mostrarPainelRDO(){
   $("rdo-painel").style.display = "";
   $("rdo-ficha").style.display = "none";
   rdoEditId = null;
+  // Chamado #8 (Isaque, 16/09/2026): RDO aberto por Obras › RDOs volta para a ficha da obra, na aba RDOs,
+  // em vez da lista geral do Diário de Obra. A marca é limpa aqui e em qualquer clique no menu lateral.
+  if(_rdoVoltarPara){
+    const obraId = _rdoVoltarPara; _rdoVoltarPara = null;
+    irParaSecao("obras");
+    if(typeof abrirObra === "function") Promise.resolve(abrirObra(obraId)).then(() => { if(typeof ativarTabObra === "function") ativarTabObra("rdos"); });
+  }
 }
 
 async function novoRDO(){
@@ -1383,6 +1391,7 @@ function ligarRDO(){
 
   $("btn-novo-rdo")?.addEventListener("click", novoRDO);
   $("btn-voltar-rdo")?.addEventListener("click", mostrarPainelRDO);
+  document.querySelectorAll(".sidebar-nav button[data-secao]").forEach(b => b.addEventListener("click", () => { _rdoVoltarPara = null; })); // chamado #8: navegação manual esquece a obra de origem
   $("btn-salvar-rdo")?.addEventListener("click", () => comBotaoTravado("btn-salvar-rdo", () => salvarRDO()));
   $("btn-finalizar-rdo")?.addEventListener("click", () => salvarRDO("finalizado"));
   $("btn-excluir-rdo")?.addEventListener("click", excluirRDO);

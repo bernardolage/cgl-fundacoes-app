@@ -1022,8 +1022,8 @@
           <div class="odoo-notebook" id="orc-notebook">
             <button type="button" data-tab="geral" class="ativo">📋 Geral</button>
             <button type="button" data-tab="proposta">📄 Modelo</button>
-            <button type="button" data-tab="itens">📊 Itens</button>
             <button type="button" data-tab="adicionais">⚙️ Adicionais CGL</button>
+            <button type="button" data-tab="itens">📊 Itens</button>
             <button type="button" data-tab="comerciais">💼 Comerciais</button>
             <button type="button" data-tab="revisoes">🔄 Revisões <span id="orc-rev-badge" class="conf-badge"></span></button>
             <button type="button" data-tab="vinculos">🔗 Vínculos</button>
@@ -1094,7 +1094,6 @@
                   </select>
                 </div>
                 <div class="campo"><label>Revisão (REV)</label><input id="orc-revisao" placeholder="00" maxlength="6" /></div>
-                <div class="campo"><label>Cidade de emissão</label><input id="orc-cidade-emissao" placeholder="Itabira/MG" /></div>
                 <div class="campo"><label>Validade em dias</label><input id="orc-validade-dias" type="number" min="1" max="365" step="1" value="30" /></div>
                 <div class="campo"><label>ISS (%)</label><input id="orc-iss-perc" type="number" min="0" max="100" step="0.01" value="5.00" /></div>
                 <div class="campo">
@@ -1137,11 +1136,11 @@
             <div class="odoo-tab" data-tab="adicionais">
               <div class="grade">
                 <div class="campo largo">
-                  <label class="check-inline"><input type="checkbox" id="orc-cgl-diesel" /> CGL fornece diesel (adiciona item no quadro + muda matriz)</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-cgl-diesel" /> CGL fornece diesel (libera o serviço na aba Itens, entra como item padrão e muda a matriz de encargos)</label>
                 </div>
                 <div class="campo"><label>Diesel — R$/L</label><input id="orc-diesel-preco" type="number" min="0" step="0.0001" value="8.34" /></div>
                 <div class="campo largo">
-                  <label class="check-inline"><input type="checkbox" id="orc-cgl-hospedagem" /> CGL fornece hospedagem (adiciona item no quadro + muda matriz)</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-cgl-hospedagem" /> CGL fornece hospedagem (libera o serviço na aba Itens, entra como item padrão e muda a matriz de encargos)</label>
                 </div>
                 <div class="campo"><label>Hospedagem — R$/mês</label><input id="orc-hosp-valor" type="number" min="0" step="0.01" placeholder="0,00" /></div>
               </div>
@@ -1149,8 +1148,16 @@
 
             <div class="odoo-tab" data-tab="comerciais">
               <div class="grade">
-                <div class="campo largo"><label>Condições de pagamento (substitui a cláusula padrão de sinal/medição na proposta)</label><textarea id="orc-pagamento" rows="3"></textarea></div>
-                <div class="campo largo"><span class="orc-filtro-dica">Vem preenchido com o texto padrão do modelo (sinal de 30%, medição quinzenal, 28 dias, boleto). Altere aqui quando negociar a obra. Prazo e local de execução ficam na aba Modelo.</span></div>
+                <div class="campo"><label>Vencimento das medições do saldo</label>
+                  <select id="orc-prazo-pagamento" title="Dias corridos após o último dia do período medido (chamado #12)">
+                    <option value="5">5 dias corridos</option><option value="7">7 dias corridos</option><option value="10">10 dias corridos</option>
+                    <option value="15" selected>15 dias corridos (padrão)</option><option value="20">20 dias corridos</option><option value="21">21 dias corridos</option>
+                    <option value="28">28 dias corridos</option><option value="30">30 dias corridos</option><option value="45">45 dias corridos</option><option value="60">60 dias corridos</option>
+                  </select></div>
+                <div class="campo"><label>Forma de pagamento</label>
+                  <select id="orc-pagamento-forma"><option value="deposito" selected>Depósito bancário</option><option value="boleto">Boleto bancário</option></select></div>
+                <div class="campo largo"><label>Condições de pagamento (texto que vai para a proposta)</label><textarea id="orc-pagamento" rows="4"></textarea></div>
+                <div class="campo largo"><span class="orc-filtro-dica">Texto padrão aprovado em 16/09/2026: sinal de 30% medido na assinatura, pago em até 3 dias úteis; saldo medido quinzenalmente com vencimento no prazo escolhido acima. Trocar o prazo ou a forma regera o texto; depois é só editar o que a negociação pedir. Prazo e local de execução ficam na aba Modelo.</span></div>
               </div>
             </div>
 
@@ -1479,6 +1486,7 @@
                 <div class="campo"><label>Segunda a quinta — saída</label><input id="obr-jornada-saida" type="time" /></div>
                 <div class="campo"><label>Sexta-feira — entrada <small style="font-weight:400;color:var(--txt-fraco);">(se diferente)</small></label><input id="obr-jornada-sex-entrada" type="time" /></div>
                 <div class="campo"><label>Sexta-feira — saída</label><input id="obr-jornada-sex-saida" type="time" title="Sábado não tem jornada: todo o trabalhado no sábado é HE 100%" /></div>
+                <div class="campo"><label>ISS do município (%)</label><input id="obr-iss-pct" type="number" step="0.01" min="0" max="100" value="5" title="Alíquota de ISS da cidade da obra. Toda NF tem ISS; as medições desta obra herdam este valor (financeiro, 16/09/2026)" /></div>
               </div>
               <h4 class="titulo-bloco" style="margin-top:16px;">Concretagem <small class="meta">(cálculo automático do volume no RDO)</small></h4>
               <div class="grade">
@@ -2360,6 +2368,10 @@
                 <div class="campo"><label>Valor retido (R$)</label><input id="med-ret-valor" type="number" step="0.01" min="0" title="Calculado pelo % sobre o valor final; pode ser ajustado à mão" /></div>
                 <div class="campo"><label>Retenção liberada?</label><select id="med-ret-liberada"><option value="false">Não (a receber)</option><option value="true">Sim</option></select></div>
                 <div class="campo"><label>Data da liberação</label><input id="med-ret-data" type="date" /></div>
+                <div class="campo"><label>ISS (%)</label><input id="med-iss-pct" type="number" step="0.01" min="0" max="100" placeholder="ex.: 5" title="ISS por dentro: valor = valor final × %. Pedido do financeiro, 16/09/2026" /></div>
+                <div class="campo"><label>ISS retido na fonte?</label><select id="med-iss-retido"><option value="true">Sim (cliente retém e recolhe)</option><option value="false">Não (CGL recolhe)</option></select></div>
+                <div class="campo"><label>Valor do ISS (R$)</label><input id="med-iss-valor" type="number" step="0.01" min="0" title="Calculado pelo %; pode ser ajustado à mão" /></div>
+                <div class="campo"><label>Líquido a receber (R$)</label><input id="med-liquido" type="number" step="0.01" readonly title="Valor final − retenção contratual − ISS retido na fonte" style="background:var(--sucesso-bg);font-weight:700;color:var(--sucesso-txt);" /></div>
               </div>
             </div>
 

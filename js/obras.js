@@ -460,6 +460,7 @@ function preencherParametrosObra(d){
   set("obr-jornada-saida",       hhmm(d.jornada_saida));
   set("obr-jornada-sex-entrada", hhmm(d.jornada_sexta_entrada));
   set("obr-jornada-sex-saida",   hhmm(d.jornada_sexta_saida));
+  set("obr-iss-pct",             d.iss_percentual ?? 5);
   set("obr-conc-tipo",           d.concretagem_tipo_padrao || "");
   set("obr-conc-fornecedor",     d.concreto_fornecedor || "");
   set("obr-conc-traco",          d.traco_kg_cimento_m3 ?? OBR_PARAM_DEFAULTS.traco_kg_cimento_m3);
@@ -476,6 +477,7 @@ function lerParametrosObra(){
     jornada_saida:          t("obr-jornada-saida"),
     jornada_sexta_entrada:  t("obr-jornada-sex-entrada"),
     jornada_sexta_saida:    t("obr-jornada-sex-saida"),
+    iss_percentual:         n("obr-iss-pct", 5), // ISS do município (16/09/2026): a medição herda
     concretagem_tipo_padrao: t("obr-conc-tipo"),
     concreto_fornecedor:     t("obr-conc-fornecedor"),
     traco_kg_cimento_m3:  n("obr-conc-traco", OBR_PARAM_DEFAULTS.traco_kg_cimento_m3),

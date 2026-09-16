@@ -196,6 +196,9 @@ function novaMedicao(){
   if($("med-ret-valor"))  { $("med-ret-valor").value = ""; $("med-ret-valor").dataset.manual = "0"; }
   if($("med-ret-liberada")) $("med-ret-liberada").value = "false";
   if($("med-ret-data"))     $("med-ret-data").value = "";
+  if($("med-iss-pct"))      $("med-iss-pct").value = "";
+  if($("med-iss-retido"))   $("med-iss-retido").value = "true";
+  if($("med-iss-valor"))  { $("med-iss-valor").value = ""; $("med-iss-valor").dataset.manual = "0"; }
   $("med-percentual").value = 0;
   if($("med-subtotal"))      $("med-subtotal").value = 0;
   if($("med-desc-sinal"))    $("med-desc-sinal").value = 0;
@@ -247,6 +250,10 @@ async function abrirMedicao(id){
   if($("med-ret-valor"))  { $("med-ret-valor").value = data.retencao_valor ?? ""; $("med-ret-valor").dataset.manual = (data.retencao_valor != null && data.retencao_percentual == null) ? "1" : "0"; }
   if($("med-ret-liberada")) $("med-ret-liberada").value = data.retencao_liberada ? "true" : "false";
   if($("med-ret-data"))     $("med-ret-data").value = data.retencao_data_liberacao || "";
+  if($("med-iss-pct"))      $("med-iss-pct").value = data.iss_percentual ?? "";
+  if($("med-iss-retido"))   $("med-iss-retido").value = data.iss_retido_fonte === false ? "false" : "true";
+  if($("med-iss-valor"))  { $("med-iss-valor").value = data.iss_valor ?? ""; $("med-iss-valor").dataset.manual = (data.iss_valor != null && data.iss_percentual == null) ? "1" : "0"; }
+  if(data.iss_percentual == null) medPreencherIssDaObra(data.obra_id); // medição antiga sem ISS: herda a alíquota da obra
   $("med-percentual").value = data.percentual || 0;
   if($("med-subtotal"))      $("med-subtotal").value = data.subtotal ?? 0;
   if($("med-desc-sinal"))    $("med-desc-sinal").value = data.desconto_sinal ?? 0;
@@ -444,6 +451,20 @@ function avisarDescontoAcimaDoSaldo(descSinal){
    informado à mão e preservado. Antes, o recálculo zerava o campo e o Salvar gravava
    valor_medido = 0 por cima do valor existente (caso BM01 Monlevade Mall, 14/09/2026). */
 function medicaoSemItens(){ return _medItens.length === 0; }
+/* ISS (16/09/2026): toda NF tem ISS e a alíquota varia por município — fica em obras.iss_percentual
+   (Obra › Parâmetros). A medição herda quando não tem ISS próprio (ou quando a obra é trocada). */
+async function medPreencherIssDaObra(obraId, sobrescrever){
+  const el = $("med-iss-pct");
+  if(!el || !obraId) return;
+  if(!sobrescrever && el.value !== "") return;
+  const { data } = await sb.from("obras").select("iss_percentual").eq("id", obraId).maybeSingle();
+  if(data && data.iss_percentual != null){
+    el.value = data.iss_percentual;
+    if($("med-iss-valor")) $("med-iss-valor").dataset.manual = "0";
+    recalcularTotaisMedicao();
+  }
+}
+
 function recalcularTotaisMedicao(){
   const subtotal = _medItens.reduce((s, it) => s + (Number(it.valor_total) || 0), 0);
   const descSinal = parseFloat($("med-desc-sinal")?.value)   || 0;
@@ -469,6 +490,16 @@ function recalcularTotaisMedicao(){
   const retPct = parseFloat($("med-ret-pct")?.value);
   if($("med-ret-valor") && $("med-ret-valor").dataset.manual !== "1"){
     $("med-ret-valor").value = (isFinite(retPct) && retPct > 0) ? (valorFinal * retPct / 100).toFixed(2) : "";
+  }
+  // ISS (financeiro, 16/09/2026): por dentro — valor = valor final × %; retido na fonte sai do líquido a receber
+  const issPct = parseFloat($("med-iss-pct")?.value);
+  if($("med-iss-valor") && $("med-iss-valor").dataset.manual !== "1"){
+    $("med-iss-valor").value = (isFinite(issPct) && issPct > 0) ? (valorFinal * issPct / 100).toFixed(2) : "";
+  }
+  if($("med-liquido")){
+    const retV = parseFloat($("med-ret-valor")?.value) || 0;
+    const issV = ($("med-iss-retido")?.value === "false") ? 0 : (parseFloat($("med-iss-valor")?.value) || 0);
+    $("med-liquido").value = (valorFinal - retV - issV).toFixed(2);
   }
   if($("med-ficha-subtotal-chip")) $("med-ficha-subtotal-chip").textContent = brl(subtotal);
   if($("med-ficha-valor-chip"))    $("med-ficha-valor-chip").textContent = brl(valorFinal);
@@ -819,6 +850,10 @@ async function salvarMedicao(novoStatus){
     retencao_valor: $("med-ret-valor")?.value ? Number($("med-ret-valor").value) : null,
     retencao_liberada: $("med-ret-liberada")?.value === "true",
     retencao_data_liberacao: $("med-ret-data")?.value || null,
+    // ISS (financeiro, 16/09/2026)
+    iss_percentual: $("med-iss-pct")?.value ? Number($("med-iss-pct").value) : null,
+    iss_valor: $("med-iss-valor")?.value ? Number($("med-iss-valor").value) : null,
+    iss_retido_fonte: $("med-iss-retido")?.value !== "false",
     observacoes: $("med-obs").value.trim() || null
     // valor_final é recalculado por trigger no banco
   };
@@ -1383,7 +1418,12 @@ function ligarMedicoes(){
   });
   // Retenção: % recalcula o valor; digitar o valor à mão desliga o automático
   $("med-ret-pct")?.addEventListener("input", () => { if($("med-ret-valor")) $("med-ret-valor").dataset.manual = "0"; recalcularTotaisMedicao(); });
-  $("med-ret-valor")?.addEventListener("input", () => { $("med-ret-valor").dataset.manual = "1"; });
+  $("med-ret-valor")?.addEventListener("input", () => { $("med-ret-valor").dataset.manual = "1"; recalcularTotaisMedicao(); });
+  // ISS: % recalcula o valor; valor à mão desliga o automático; tudo recalcula o líquido a receber
+  $("med-iss-pct")?.addEventListener("input", () => { if($("med-iss-valor")) $("med-iss-valor").dataset.manual = "0"; recalcularTotaisMedicao(); });
+  $("med-iss-valor")?.addEventListener("input", () => { $("med-iss-valor").dataset.manual = "1"; recalcularTotaisMedicao(); });
+  $("med-iss-retido")?.addEventListener("change", recalcularTotaisMedicao);
+  $("med-obra")?.addEventListener("change", () => medPreencherIssDaObra($("med-obra").value, true));
 
   // Cálculos automáticos de Hora Extra e Faturamento Mínimo
   $("btn-med-calc-he")?.addEventListener("click", calcularHoraExtraMedicao);

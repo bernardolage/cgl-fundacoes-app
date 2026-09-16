@@ -151,7 +151,11 @@ function _selecionarVarianteSelect(sel, vid){
   sel.value = vid;
 }
 
-function _servicoVisivelOrc(s, tipoProp){
+function _servicoVisivelOrc(s, tipoProp, f){
+  // Chamado #11 (Thales, 16/09/2026): diesel e hospedagem só aparecem na aba Itens quando a CGL fornece (aba Adicionais CGL)
+  const cod = String(s.codigo || "");
+  if(f && cod.startsWith("INS.DI") && f.cglDiesel === false) return false;
+  if(f && cod.startsWith("VRB.ALH") && f.cglHosp === false) return false;
   if(!tipoProp || tipoProp === "outro" || !s.eixo) return true;
   if(s.eixo === tipoProp) return true;
   if(tipoProp === "secante" && s.eixo === "helice") return true; // secante usa mobilização/locação/fat. mínimo de hélice
@@ -184,7 +188,7 @@ function _variantesFiltradasOrc(s, f){
 function montarOpcoesCatalogoOrc(f){
   let html = '<option value="">— item livre (digitar) —</option>';
   _orcServicos.forEach(s => {
-    if(f && !_servicoVisivelOrc(s, f.tipoProp)) return;
+    if(f && !_servicoVisivelOrc(s, f.tipoProp, f)) return;
     const vars = _variantesFiltradasOrc(s, f);
     if(!vars.length) return;
     if(_orcServAgrupado[s.id]){
@@ -215,6 +219,8 @@ function _trocarOpcoesSelect(sel, html){
 function atualizarFiltroCatalogoOrc(){
   _orcCatFiltro = {
     tipoProp: $("orc-tipo-proposta")?.value || "helice",
+    cglDiesel: !!$("orc-cgl-diesel")?.checked,      // chamado #11
+    cglHosp:   !!$("orc-cgl-hospedagem")?.checked,  // chamado #11
     tipoObra: $("orc-tipo-obra")?.value || "convencional",
     porte:    $("orc-porte")?.value || "",
     faixa:    $("orc-faixa")?.value || ""
@@ -264,7 +270,9 @@ function atualizarFiltroCatalogoOrc(){
    Não duplica: compara pela variante e (sem `var`) pelo serviço. */
 function carregarItensPadraoOrc(silencioso){
   const tipo  = $("orc-tipo-proposta")?.value || "helice";
-  const lista = ITENS_PADRAO_ORC[tipo] || [];
+  // Chamado #11: diesel e hospedagem só entram como padrão quando a CGL fornece (aba Adicionais CGL)
+  const cglDiesel = !!$("orc-cgl-diesel")?.checked, cglHosp = !!$("orc-cgl-hospedagem")?.checked;
+  const lista = (ITENS_PADRAO_ORC[tipo] || []).filter(d => !(d.serv.startsWith("INS.DI") && !cglDiesel) && !(d.serv.startsWith("VRB.ALH") && !cglHosp));
   if(!lista.length || !_orcServicos.length) return 0;
   const presentes = new Set([...document.querySelectorAll("#orc-itens .it-cat")].map(s => s.value).filter(Boolean));
   const servPresentes = new Set([...presentes].map(id => _orcVarById[id]?.servico_id).filter(Boolean));
@@ -471,7 +479,6 @@ function novoOrcamento(){
   }
   $("orc-tipo-proposta").value  = "helice";
   $("orc-revisao").value        = "00";
-  $("orc-cidade-emissao").value = "Itabira/MG";
   $("orc-validade-dias").value  = 30;
   definirTipoObraOrc("convencional");
   recalcularValidadeOrc();
@@ -483,7 +490,9 @@ function novoOrcamento(){
   $("orc-diesel-preco").value   = 8.34;
   $("orc-cgl-hospedagem").checked = false;
   // Fase 40: condição de pagamento já vem com o texto padrão do modelo (edita-se na negociação)
-  if(typeof TEXTO_PAGAMENTO_PADRAO !== "undefined") $("orc-pagamento").value = TEXTO_PAGAMENTO_PADRAO;
+  if($("orc-prazo-pagamento")) $("orc-prazo-pagamento").value = "15";
+  if($("orc-pagamento-forma")) $("orc-pagamento-forma").value = "deposito";
+  if(typeof textoPagamentoPadrao === "function") $("orc-pagamento").value = textoPagamentoPadrao(15, "deposito"); // chamado #12
   $("btn-excluir-orc").style.display = "none";
   abrirFichaOrcVisual({ numero: "(novo)", status: "rascunho", valor_total: 0 });
   carregarItensPadraoOrc(true); // itens que não podem faltar no modelo
@@ -503,7 +512,6 @@ async function abrirOrcamento(id){
   $("orc-obs").value             = o.observacoes || "";
   $("orc-tipo-proposta").value   = o.tipo_proposta || "helice";
   $("orc-revisao").value         = o.numero_revisao || "00";
-  $("orc-cidade-emissao").value  = o.cidade_emissao || "Itabira/MG";
   $("orc-validade-dias").value   = o.validade_dias != null ? o.validade_dias : 30;
   $("orc-porte").value           = o.porte_equipamento || "";
   $("orc-faixa").value           = o.faixa_profundidade || "";
@@ -519,7 +527,9 @@ async function abrirOrcamento(id){
   $("orc-ref-obra").value        = o.referencia_obra || "";
   $("orc-escopo").value          = o.escopo_servicos || "";
   $("orc-equipamento").value     = o.equipamento_considerado || "";
-  $("orc-pagamento").value       = o.condicoes_pagamento || "";
+  if($("orc-prazo-pagamento")) $("orc-prazo-pagamento").value = String(o.prazo_pagamento_dias || 15);
+  if($("orc-pagamento-forma")) $("orc-pagamento-forma").value = o.pagamento_forma || "deposito";
+  $("orc-pagamento").value       = o.condicoes_pagamento || (typeof textoPagamentoPadrao === "function" ? textoPagamentoPadrao(o.prazo_pagamento_dias, o.pagamento_forma) : "");
   $("orc-prazo").value           = o.prazo_execucao || "";
   $("orc-local").value           = o.local_execucao || "";
   $("orc-cgl-diesel").checked      = o.cgl_fornece_diesel === true;
@@ -1017,7 +1027,7 @@ async function salvarOrcamento(novoStatus){
     tipo_obra:                  $("orc-tipo-obra")?.value || "convencional",
     codigo_modelo:              codigosRG[tipoProp] || null,
     numero_revisao:             $("orc-revisao").value.trim() || "00",
-    cidade_emissao:             $("orc-cidade-emissao").value.trim() || "Itabira/MG",
+    cidade_emissao:             "Itabira/MG", // chamado #9 (Thales, aprovado pelo Bernardo em 16/09/2026): campo saiu da tela; a proposta é sempre emitida na sede
     referencia_obra:            $("orc-ref-obra").value.trim() || null,
     escopo_servicos:            $("orc-escopo").value || null,
     equipamento_considerado:    $("orc-equipamento").value.trim() || null,
@@ -1033,6 +1043,8 @@ async function salvarOrcamento(novoStatus){
     contato_telefone:           $("orc-contato-tel").value.trim() || null,
     contato_email:              $("orc-contato-email").value.trim() || null,
     condicoes_pagamento:        $("orc-pagamento").value.trim() || null,
+    prazo_pagamento_dias:       Number($("orc-prazo-pagamento")?.value) || 15,   // chamado #12
+    pagamento_forma:            $("orc-pagamento-forma")?.value === "boleto" ? "boleto" : "deposito",
     prazo_execucao:             $("orc-prazo").value.trim() || null,
     local_execucao:             $("orc-local").value.trim() || null,
     cgl_fornece_diesel:         $("orc-cgl-diesel").checked,
@@ -1111,6 +1123,12 @@ function ligarOrcamentos(){
 
   // Filtro do catálogo (aba Modelo → aba Itens) e validade derivada
   ["orc-tipo-proposta","orc-tipo-obra","orc-porte","orc-faixa"].forEach(id => $(id)?.addEventListener("change", atualizarFiltroCatalogoOrc));
+  // Chamado #11: marcar "CGL fornece diesel/hospedagem" libera o serviço na aba Itens e já o acrescenta como item padrão
+  ["orc-cgl-diesel","orc-cgl-hospedagem"].forEach(id => $(id)?.addEventListener("change", (ev) => { atualizarFiltroCatalogoOrc(); if(ev.target.checked) carregarItensPadraoOrc(true); }));
+  // Chamado #12: prazo e forma de pagamento regeneram o texto padrão (que continua editável)
+  ["orc-prazo-pagamento","orc-pagamento-forma"].forEach(id => $(id)?.addEventListener("change", () => {
+    if(typeof textoPagamentoPadrao === "function" && $("orc-pagamento")) $("orc-pagamento").value = textoPagamentoPadrao($("orc-prazo-pagamento")?.value, $("orc-pagamento-forma")?.value);
+  }));
   ["orc-data","orc-validade-dias"].forEach(id => $(id)?.addEventListener("change", recalcularValidadeOrc));
   ["orc-iss-perc","orc-iss-pdentro"].forEach(id => $(id)?.addEventListener("change", recalcularOrc));
   $("btn-orc-ir-modelo")?.addEventListener("click", () => ativarTabOrc("proposta"));

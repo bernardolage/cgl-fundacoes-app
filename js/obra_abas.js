@@ -447,9 +447,14 @@ function abrirRdoPraObra(){
 }
 
 function abrirRdoExistente(id){
+  const obraOrigem = (typeof obraEditId !== "undefined" && obraEditId) || null;
   const nav = document.querySelector('nav button[data-secao="rdo"]');
   if(nav) nav.click();
-  setTimeout(() => { if(typeof abrirRDO === "function") abrirRDO(id); }, 250);
+  setTimeout(() => {
+    if(typeof abrirRDO === "function") abrirRDO(id);
+    // chamado #8 (Isaque, 16/09/2026): o Voltar da ficha do RDO devolve para esta obra, aba RDOs
+    if(typeof _rdoVoltarPara !== "undefined") _rdoVoltarPara = obraOrigem;
+  }, 250);
 }
 
 /* ====================================================================
