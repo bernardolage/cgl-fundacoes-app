@@ -2648,7 +2648,10 @@ async function confirmarImportCSV(){
             atividades: ex.atividades || null,
             feriado: !!ex.feriado,
             observacoes: [ex.observacoes, (ex.responsavel && !ex.responsavel_id) ? "Responsável no diário: " + ex.responsavel : null].filter(Boolean).join("\n") || null,
-            efetivo_proprio: ex.equipe.length || null
+            // chamado #6: boletim sem efetivo = 0 (coluna NOT NULL default 0; null explícito quebrava o insert).
+            // Regra da varredura de 16/09: nunca mandar null para coluna NOT NULL com default — ou o valor, ou omitir a chave.
+            efetivo_proprio: ex.equipe.length,
+            efetivo_terceiro: 0
           } : {})
         };
         const { data: novo, error } = await sb.from("rdo").insert(reg).select("id").single();
