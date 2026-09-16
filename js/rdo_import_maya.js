@@ -247,6 +247,8 @@ async function processarArquivoXlsxMaya(file){
     await montarPreviewDias(data, "xlsx_maya", obraSel);
   } catch(err){
     aviso("app-aviso", "Planilha do Maya: " + err.message, "erro");
+    if($("csv-aviso")) aviso("csv-aviso", "Planilha do Maya: " + err.message, "erro"); // o modal cobre o aviso geral
+    console.error("Planilha do Maya:", err);
   } finally {
     if(btn){ btn.disabled = false; btn.textContent = txtBtn; }
   }

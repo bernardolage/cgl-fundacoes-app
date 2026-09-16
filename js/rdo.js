@@ -1632,7 +1632,8 @@ function parseSoftSaci(text){
 
 async function processarCSV(){
   const inp = $("csv-arquivo");
-  if(!inp.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo (CSV ou TXT).","erro"); return; }
+  if($("csv-aviso")){ $("csv-aviso").textContent = ""; $("csv-aviso").className = "aviso"; }
+  if(!inp.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo.","erro"); if($("csv-aviso")) aviso("csv-aviso","Selecione um arquivo (PDF, foto, XLSX do Maya, CSV ou TXT).","erro"); return; }
   const file = inp.files[0];
   const mediaIA = _ehArquivoIA(file);
   if(mediaIA){ await processarArquivoIA(file, mediaIA); return; }
@@ -1746,6 +1747,7 @@ async function processarArquivoIA(file, mediaType){
     await montarPreviewDias(data, _iaOrigem, obraSel);
   } catch(err){
     aviso("app-aviso", "Leitura por IA: " + err.message, "erro");
+    if($("csv-aviso")) aviso("csv-aviso", "Leitura por IA: " + err.message, "erro"); // o modal cobre o aviso geral
   } finally {
     if(btn){ btn.disabled = false; btn.textContent = txtBtn; }
   }
