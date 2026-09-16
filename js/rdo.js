@@ -2520,9 +2520,9 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     Total concreto: <strong>${num(registros.reduce((s,r) => s + (r.volume_concreto_m3||0), 0))} m³</strong>.
   </div>`;
   dias.forEach(d => {
-    const ests = porDia[d];
+    const ests = porDia[d] || []; // dia só com ocorrência (planilha do Maya) não tem estacas
     html += `<div style="margin-bottom:8px;border:1px solid var(--borda-forte);border-radius:4px;padding:8px 10px;">
-      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length} estaca${ests.length>1?"s":""}</div>
+      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length ? `${ests.length} estaca${ests.length>1?"s":""}` : "sem estacas (só ocorrência/equipe)"}</div>
       <div class="meta">${ests.map(e=>esc(e.estaca_numero)).slice(0,10).join(", ")}${ests.length>10?` +${ests.length-10}`:""}</div>
     </div>`;
   });
