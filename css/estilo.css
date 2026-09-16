@@ -2669,26 +2669,3 @@ input:disabled, select:disabled, textarea:disabled {
 .cham-status-bar .stage.atual { background: var(--marca-600); color: #fff; border-color: var(--marca-600); cursor: default; }
 .cham-status-bar .stage[aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
 @media (max-width: 720px){ #btn-reportar-problema span { display: none; } }
-
-/* ---- Movimentações: acessórios na carga (fase 49) ---- */
-.autocomplete-lista .resultado-item.ja { opacity: .55; }
-.autocomplete-lista .resultado-item.mov-ace-jogo { background: var(--marca-50); }
-.mov-ace-sugestao { margin-top: 14px; border: 1px dashed var(--borda); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--sup-1); }
-.mov-ace-sugestao .lista-topo { margin-bottom: 6px; }
-.mov-ace-sugestao .lista-topo h3 { font-size: var(--txt-sm); margin: 0; }
-.mov-ace-sug-lista { display: flex; flex-wrap: wrap; gap: 8px 18px; max-height: 320px; overflow-y: auto; }
-.mov-ace-sug-grupo { min-width: 240px; flex: 1 1 240px; }
-.mov-ace-sug-grupo-t { font-weight: 600; font-size: var(--txt-xs); text-transform: uppercase; letter-spacing: .3px; color: var(--txt-sec); margin: 4px 0; }
-.mov-ace-sug-item { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 0; cursor: pointer; }
-.mov-ace-sug-item.ja { opacity: .5; cursor: default; }
-.mov-ace-sug-item .tag { font-size: 10px; padding: 0 6px; }
-
-/* ---- Equipamentos (fase 50) ---- */
-.eqp-card-rodape { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
-.eqp-diam-bloco { margin-bottom: 14px; }
-.eqp-diam-titulo { font-weight: 700; font-size: var(--txt-sm); margin: 6px 0; padding: 4px 8px; background: var(--sup-1); border-left: 3px solid var(--marca-600); border-radius: 4px; }
-.eqp-diam-bloco table td, .eqp-diam-bloco table th { font-size: 12.5px; }
-
-/* ---- Estoque: reposição (fase 51) ---- */
-.est-rep-tabela tr.est-rep-critico td { background: var(--perigo-bg); }
-.est-rep-tabela td .btn-sm { min-width: 28px; }

@@ -90,31 +90,6 @@ const STATUS = {
     afastado: { label:"Afastado", cor:"ambar"    },
     ferias:   { label:"Férias",   cor:"azul"     },
     demitido: { label:"Demitido", cor:"vermelho" }
-  },
-  /* Acessórios (fase 47): condição da peça e onde ela está */
-  equipamento: {
-    disponivel:     { label:"Disponível",     cor:"verde"    },
-    em_uso:         { label:"Em uso",         cor:"azul"     },
-    em_manutencao:  { label:"Em manutenção",  cor:"ambar"    },
-    inativo:        { label:"Inativo",        cor:"cinza"    }
-  },
-  acessorio: {
-    sem_avaliacao:      { label:"Sem avaliação",      cor:"cinza"    },
-    sem_marcacao:       { label:"Sem marcação",       cor:"ambar"    },
-    bom_estado:         { label:"Bom estado",         cor:"verde"    },
-    precisa_manutencao: { label:"Precisa manutenção", cor:"ambar"    },
-    em_manutencao:      { label:"Em manutenção",      cor:"azul"     },
-    baixado:            { label:"Baixado",            cor:"vermelho" }
-  },
-  acessorio_local: {
-    patio:        { label:"Pátio",          cor:"verde"    },
-    oficina:      { label:"Oficina",        cor:"azul"     },
-    fornecedor:   { label:"Fornecedor",     cor:"azul"     },
-    equipamento:  { label:"No equipamento", cor:"verde"    },
-    obra:         { label:"Em obra",        cor:"azul"     },
-    em_transito:  { label:"Em trânsito",    cor:"ambar"    },
-    perdido:      { label:"Perdido",        cor:"vermelho" },
-    desconhecido: { label:"Não localizado", cor:"cinza"    }
   }
 };
 

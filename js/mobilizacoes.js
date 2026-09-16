@@ -23,7 +23,6 @@ let _mobPendAberta = [];      // pendências da mobilização aberta
 let _mobEquips     = [];      // equipamentos ativos
 let _mobObras      = [];      // obras candidatas a nova mobilização
 let _mobProfiles   = [];      // responsáveis (profiles ativos)
-let _mobKit        = [];      // ids dos acessórios separados para a mobilização aberta (mobilizacoes.acessorios_ids)
 const _mobColapsadas = new Set(["finalizada", "cancelados"]);
 
 const MOB_COLUNAS = [
@@ -38,7 +37,7 @@ const MOB_COLUNAS = [
 const MOB_STATUS = { prevista: "Prevista", em_preparacao: "Em preparação", em_transito: "Em trânsito", em_obra: "Em obra", desmobilizada: "Desmobilizada", cancelada: "Cancelada" };
 const MOB_SETOR  = { engenharia: "Engenharia", sesmt: "SESMT", rh: "RH", manutencao: "Manutenção", almoxarifado: "Almoxarifado", logistica: "Logística", comercial: "Comercial" };
 // profiles.cargo → setor cujas pendências a pessoa vê em "Minhas pendências"
-const MOB_CARGO_SETOR = { engenheiro: "engenharia", assistente_engenharia: "engenharia", encarregado: "engenharia", operador: "engenharia", sesmt: "sesmt", rh: "rh", mecanico: "manutencao", almoxarife: "almoxarifado", comprador: "almoxarifado", gestor_acessorios: "almoxarifado", logistica: "logistica", comercial: "comercial" };
+const MOB_CARGO_SETOR = { engenheiro: "engenharia", assistente_engenharia: "engenharia", encarregado: "engenharia", operador: "engenharia", sesmt: "sesmt", rh: "rh", mecanico: "manutencao", almoxarife: "almoxarifado", comprador: "almoxarifado", logistica: "logistica", comercial: "comercial" };
 const MOB_TIPO_ICONE = { helice: "🌀", secante: "🌀", raiz: "🌱", trado: "🔩", outro: "⚙️" };
 // transições válidas por status atual (quem pode é o RLS + regra no confirmar)
 const MOB_TRANSICOES = {
@@ -248,7 +247,6 @@ async function abrirMobilizacao(id){
   _mobAberta = m;
   _mobAbertaCard = _mobCards.find(c => c.id === id) || {};
   _mobPendAberta = pend || [];
-  _mobKit = Array.isArray(m.acessorios_ids) ? [...m.acessorios_ids] : [];
   renderDrawerMob();
   $("mob-modal").style.display = "flex";
 }
@@ -330,11 +328,7 @@ function renderDrawerMob(){
       <button type="button" class="btn-sec btn-sm" id="btn-mob-est-add">+ linha</button>
     </div>
 
-    <div class="mob-sec"><h4>3 · Acessórios <span class="meta">(kit que sai na remessa junto com a TAG)</span></h4>
-      <div id="mob-kit"><p class="vazio">Carregando peças…</p></div>
-    </div>
-
-    <div class="mob-sec"><h4>4 · Observações técnicas</h4>
+    <div class="mob-sec"><h4>3 · Observações técnicas</h4>
       <div class="grade">
         <div class="campo"><label>Concreto usinado</label>${simNao("mob-concreto", m.concreto_usinado)}</div>
         <div class="campo"><label>Martelo</label>${simNao("mob-martelo", m.martelo)}</div>
@@ -343,7 +337,7 @@ function renderDrawerMob(){
       </div>
     </div>
 
-    <div class="mob-sec"><h4>5 · Endereço e contato da obra</h4>
+    <div class="mob-sec"><h4>4 · Endereço e contato da obra</h4>
       <p class="meta">${esc([c.cliente, c.cidade && c.uf ? `${c.cidade} / ${c.uf}` : (c.cidade || "")].filter(Boolean).join(" — ") || "Endereço na ficha da obra.")}</p>
       <div class="grade">
         <div class="campo"><label>Contato na obra</label><input id="mob-contato-nome" value="${esc(m.contato_obra_nome || "")}" /></div>
@@ -351,7 +345,7 @@ function renderDrawerMob(){
       </div>
     </div>
 
-    <div class="mob-sec"><h4>6 · Condições</h4>
+    <div class="mob-sec"><h4>5 · Condições</h4>
       <div class="grade">
         <div class="campo"><label>Alimentação interna por</label>${porQuem("mob-alim", m.alimentacao_interna_por)}</div>
         <div class="campo"><label>Diesel por</label>${porQuem("mob-diesel", m.diesel_por)}</div>
@@ -361,11 +355,11 @@ function renderDrawerMob(){
       ${podeEditar ? `<div class="form-acoes compacta"><button type="button" class="btn" id="btn-mob-salvar">💾 Salvar alterações</button></div>` : ""}
     </div>
 
-    <div class="mob-sec"><h4>7 · Pendências por setor <span class="meta">${_mobPendAberta.filter(p => !p.concluida).length} aberta(s) de ${_mobPendAberta.length}</span></h4>
+    <div class="mob-sec"><h4>6 · Pendências por setor <span class="meta">${_mobPendAberta.filter(p => !p.concluida).length} aberta(s) de ${_mobPendAberta.length}</span></h4>
       ${pendHTML}
     </div>
 
-    <div class="mob-sec"><h4>8 · Conversa</h4><div id="mob-chatter"></div></div>
+    <div class="mob-sec"><h4>7 · Conversa</h4><div id="mob-chatter"></div></div>
   `;
 
   $("btn-mob-fechar")?.addEventListener("click", fecharMobilizacao);
@@ -378,127 +372,6 @@ function renderDrawerMob(){
   cont.querySelectorAll(".mob-pend-obs").forEach(i => i.addEventListener("change", () => atualizarPendenciaMob(i.dataset.pend, { observacao: i.value.trim() || null })));
   cont.addEventListener("click", (e) => { if(e.target.classList.contains("mob-est-rem")) e.target.closest("tr").remove(); });
   if(typeof montarHistorico === "function") montarHistorico("mobilizacoes", m.id, "mob-chatter");
-  mobRenderKit();
-}
-
-/* ---------- Kit de acessórios da mobilização ----------
-   Antes da saída: escolhe as peças (sugestão pela TAG + Ø das estacas, ou busca por marcação/jogo).
-   Na saída, viram itens da remessa (acessorio_id) e a logística só confere na tela de Movimentações.
-   Em obra: mostra o que o sistema registra na obra; a conferência do retorno acontece na movimentação. */
-function mobKitEditavel(){ return _mobAberta && ["prevista","em_preparacao"].includes(_mobAberta.status); }
-function mobAceDescr(a){ return (typeof aceDescr === "function" ? aceDescr(a) : (a.tipo || "Acessório")); }
-function mobAceOnde(a){ return typeof aceOnde === "function" ? aceOnde(a) : (a.local_tipo || ""); }
-function mobAceCond(a){ const o = (STATUS.acessorio || {})[a.condicao] || {}; return `<span class="tag ${o.cor || "cinza"}">${esc(o.label || a.condicao || "")}</span>`; }
-async function mobCatalogo(force){
-  if(typeof aceCatalogo !== "function") return [];
-  try { return await aceCatalogo(force); } catch(e){ aviso("app-aviso", "Não foi possível carregar os acessórios: " + (e.message || e), "erro"); return []; }
-}
-function mobKitGruposHTML(pecas, remover){
-  const grupos = new Map();
-  pecas.forEach(a => { const k = mobAceDescr(a); (grupos.get(k) || grupos.set(k, []).get(k)).push(a); });
-  return [...grupos.entries()].map(([k, ps]) => `
-    <div class="mov-ace-sug-grupo">
-      <div class="mov-ace-sug-grupo-t">${esc(k)} <span class="meta">${ps.length}</span></div>
-      ${ps.map(a => `<div class="mov-ace-sug-item">
-        ${remover ? `<button type="button" class="btn-rem mob-kit-rem" data-id="${esc(a.id)}" title="tirar do kit">&times;</button>` : ""}
-        <strong>${esc(a.marcacao)}</strong>${a.jogo ? ` <span class="meta">jogo ${esc(a.jogo)}</span>` : ""}
-        ${mobAceCond(a)} <span class="meta">${esc(mobAceOnde(a))}</span>
-      </div>`).join("")}
-    </div>`).join("");
-}
-async function mobRenderKit(){
-  const box = $("mob-kit"); const m = _mobAberta;
-  if(!box || !m) return;
-  const cat = await mobCatalogo();
-  if(!$("mob-kit") || _mobAberta !== m) return;
-  const porId = {}; cat.forEach(a => porId[a.id] = a);
-  const kit = _mobKit.map(id => porId[id]).filter(Boolean);
-  if(mobKitEditavel()){
-    box.innerHTML = `
-      <div class="grade">
-        <div class="campo largo">
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-            <button type="button" class="btn-sec btn-sm" id="btn-mob-kit-sugerir" title="peças da TAG principal, filtradas pelos Ø das estacas">✨ Sugerir kit pela TAG e pelos Ø</button>
-            <input id="mob-kit-busca" placeholder="adicionar por marcação, jogo ou descrição…" autocomplete="off" style="flex:1;min-width:220px;" />
-          </div>
-          <div id="mob-kit-res" class="autocomplete-lista" style="display:none;"></div>
-        </div>
-      </div>
-      <div class="mov-ace-sug-lista" id="mob-kit-lista">${kit.length ? mobKitGruposHTML(kit, true) : `<p class="vazio">Nenhuma peça separada ainda.</p>`}</div>
-      <div class="form-acoes compacta" style="justify-content:space-between;align-items:center;">
-        <span class="meta">${kit.length} peça(s) no kit${_mobKit.length !== kit.length ? ` · ${_mobKit.length - kit.length} não encontrada(s) no cadastro` : ""}</span>
-        <button type="button" class="btn btn-sm" id="btn-mob-kit-salvar">💾 Salvar kit</button>
-      </div>`;
-    $("btn-mob-kit-sugerir")?.addEventListener("click", () => comBotaoTravado("btn-mob-kit-sugerir", mobSugerirKit));
-    $("btn-mob-kit-salvar")?.addEventListener("click", () => comBotaoTravado("btn-mob-kit-salvar", mobSalvarKit));
-    box.querySelectorAll(".mob-kit-rem").forEach(b => b.addEventListener("click", () => { _mobKit = _mobKit.filter(id => id !== b.dataset.id); mobRenderKit(); }));
-    mobLigarBuscaKit(cat);
-  } else {
-    const naObra = cat.filter(a => a.ativo !== false && a.local_tipo === "obra" && a.local_obra_id === m.obra_id);
-    const emTransito = cat.filter(a => a.ativo !== false && a.local_tipo === "em_transito" && a.local_obra_id === m.obra_id);
-    box.innerHTML = `
-      ${kit.length ? `<p class="meta">Kit separado na preparação: ${kit.length} peça(s)${m.movimentacao_remessa_id ? " · foram como itens da remessa" : ""}.</p>` : ""}
-      ${emTransito.length ? `<p class="meta">🚚 ${emTransito.length} peça(s) em trânsito para esta obra.</p>` : ""}
-      <div class="mov-ace-sug-grupo-t">Registradas nesta obra <span class="meta">${naObra.length}</span></div>
-      <div class="mov-ace-sug-lista">${naObra.length ? mobKitGruposHTML(naObra, false) : `<p class="vazio">Nenhuma peça registrada nesta obra.</p>`}</div>
-      ${m.status === "em_obra" ? `<p class="meta">Ao desmobilizar, essas peças entram no retorno para a logística conferir (o que ficar na obra é removido lá).</p>` : ""}`;
-  }
-}
-function mobLigarBuscaKit(cat){
-  const inp = $("mob-kit-busca"), lista = $("mob-kit-res");
-  if(!inp || !lista) return;
-  let t = null;
-  const fechar = () => { inp.value = ""; lista.innerHTML = ""; lista.style.display = "none"; };
-  inp.addEventListener("input", () => {
-    clearTimeout(t);
-    t = setTimeout(() => {
-      const termo = inp.value.trim().toLowerCase();
-      if(termo.length < 2){ lista.innerHTML = ""; lista.style.display = "none"; return; }
-      const disp = cat.filter(a => a.ativo !== false && a.local_tipo !== "perdido" && a.condicao !== "baixado");
-      const hits = disp.filter(a => String(a.marcacao || "").toLowerCase().includes(termo) || String(a.jogo || "").toLowerCase() === termo || mobAceDescr(a).toLowerCase().includes(termo));
-      const jogos = [...new Set(disp.filter(a => a.jogo && String(a.jogo).toLowerCase().includes(termo)).map(a => a.jogo))].slice(0, 5);
-      if(!hits.length && !jogos.length){ lista.innerHTML = `<div class="resultado-item vazio">Nenhuma peça encontrada.</div>`; lista.style.display = ""; return; }
-      const noKit = new Set(_mobKit);
-      lista.innerHTML = jogos.map(j => `<div class="resultado-item mov-ace-jogo" data-jogo="${esc(j)}"><strong>🧩 Jogo ${esc(j)}</strong> — adicionar as ${disp.filter(a => a.jogo === j).length} peça(s)</div>`).join("") +
-        hits.slice(0, 30).map(a => `<div class="resultado-item${noKit.has(a.id) ? " ja" : ""}" data-id="${esc(a.id)}"><strong>${esc(a.marcacao)}</strong> — ${esc(mobAceDescr(a))}${a.jogo ? ` <span class="meta">jogo ${esc(a.jogo)}</span>` : ""} <span class="meta" style="float:right;">${mobAceCond(a)} ${esc(mobAceOnde(a))}${noKit.has(a.id) ? " · já no kit" : ""}</span></div>`).join("") +
-        (hits.length > 30 ? `<div class="resultado-item vazio">… e mais ${hits.length - 30}. Refine a busca.</div>` : "");
-      lista.style.display = "";
-      lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => { mobKitAdicionar([d.dataset.id]); fechar(); }));
-      lista.querySelectorAll(".mov-ace-jogo").forEach(d => d.addEventListener("click", () => { mobKitAdicionar(disp.filter(a => a.jogo === d.dataset.jogo).map(a => a.id)); fechar(); }));
-    }, 200);
-  });
-}
-function mobKitAdicionar(ids){
-  const novos = ids.filter(id => !_mobKit.includes(id));
-  _mobKit.push(...novos);
-  if(novos.length) aviso("app-aviso", `${novos.length} peça(s) no kit. Lembre de salvar o kit.`, "ok");
-  else aviso("app-aviso", "Essas peças já estão no kit.", "erro");
-  mobRenderKit();
-}
-async function mobSugerirKit(){
-  const eq = $("mob-equip")?.value;
-  if(!eq){ aviso("app-aviso", "Defina a TAG principal para sugerir o kit.", "erro"); $("mob-equip")?.focus(); return; }
-  const diams = new Set(lerEstacasResumoMob().map(e => e.diametro_mm).filter(Boolean).map(Number));
-  const [cat, comp] = await Promise.all([mobCatalogo(), sb.from("acessorio_equipamentos").select("acessorio_id").eq("equipamento_id", eq)]);
-  const compIds = new Set((comp.data || []).map(c => c.acessorio_id));
-  const daTag = cat.filter(a => a.ativo !== false
-    && ["patio","oficina","equipamento"].includes(a.local_tipo)
-    && !["em_manutencao","baixado","sem_marcacao"].includes(a.condicao)
-    && (a.equipamento_padrao_id === eq || a.local_equipamento_id === eq || compIds.has(a.id)));
-  const cands = daTag.filter(a => !diams.size || !a.diametro_mm || diams.has(Number(a.diametro_mm)));
-  if(!daTag.length){ aviso("app-aviso", "Nenhuma peça disponível vinculada a essa TAG (campo \"pertence à TAG\" ou compatibilidade na ficha do acessório). Use a busca para montar o kit.", "erro"); return; }
-  const foraDiam = daTag.length - cands.length;
-  const novos = cands.map(a => a.id).filter(id => !_mobKit.includes(id));
-  _mobKit.push(...novos);
-  aviso("app-aviso", `${novos.length} peça(s) sugerida(s) entraram no kit${foraDiam ? ` (${foraDiam} da TAG ficaram de fora por não baterem com os Ø ${[...diams].join("/")})` : ""}. Revise e salve o kit.`, "ok");
-  mobRenderKit();
-}
-async function mobSalvarKit(){
-  if(!_mobAberta) return;
-  const { error } = await sb.from("mobilizacoes").update({ acessorios_ids: _mobKit }).eq("id", _mobAberta.id);
-  if(error){ aviso("app-aviso", "Não foi possível salvar o kit: " + error.message, "erro"); return; }
-  _mobAberta.acessorios_ids = [..._mobKit];
-  aviso("app-aviso", `Kit salvo: ${_mobKit.length} peça(s).`, "ok");
 }
 
 function mobEstacaLinhaHTML(e){
@@ -540,7 +413,6 @@ async function salvarMobilizacao(){
     alimentacao_interna_por: $("mob-alim").value || null, diesel_por: $("mob-diesel").value || null, hospedagem_por: $("mob-hosp").value || null,
     observacoes: $("mob-obs").value.trim() || null
   };
-  if(mobKitEditavel()) reg.acessorios_ids = _mobKit;
   const { error } = await sb.from("mobilizacoes").update(reg).eq("id", _mobAberta.id);
   if(error){
     const msg = /mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa (em preparação, em trânsito ou em obra)." : error.message;
@@ -565,20 +437,11 @@ async function criarMovimentacaoMob(tipo, m){
   if(errNum) throw new Error("número da movimentação: " + errNum.message);
   const reg = tipo === "remessa"
     ? { numero, tipo: "remessa", status: "rascunho", origem_tipo: "base", destino_tipo: "obra", destino_obra_id: m.obra_id, data_emissao: hojeISO(), observacoes: "Gerada pela mobilização (saída para a obra)." }
-    : { numero, tipo: "retorno", status: "rascunho", origem_tipo: "obra", origem_obra_id: m.obra_id, destino_tipo: "base", data_emissao: hojeISO(), observacoes: "Gerada pela mobilização (desmobilização). Conferir os acessórios: remova do retorno o que ficou na obra." };
+    : { numero, tipo: "retorno", status: "rascunho", origem_tipo: "obra", origem_obra_id: m.obra_id, destino_tipo: "base", data_emissao: hojeISO(), observacoes: "Gerada pela mobilização (desmobilização)." };
   const { data: mov, error } = await sb.from("movimentacoes_ativos").insert(reg).select("id").single();
   if(error) throw new Error("movimentação: " + error.message);
   const ids = [m.equipamento_id, ...(m.equipamentos_apoio || [])].filter(Boolean);
   const itens = ids.map(id => { const e = _mobEquips.find(x => x.id === id) || {}; return { movimentacao_id: mov.id, equipamento_id: id, descricao: [e.codigo, e.nome].filter(Boolean).join(" — ") || "Equipamento", quantidade: 1, unidade: "un" }; });
-  // Acessórios: remessa leva o kit separado; retorno traz o que o sistema registra na obra (logística confere no rascunho).
-  let aces = [];
-  try {
-    const cat = await mobCatalogo(true);
-    aces = tipo === "remessa"
-      ? cat.filter(a => (m.acessorios_ids || []).includes(a.id))
-      : cat.filter(a => a.ativo !== false && a.local_tipo === "obra" && a.local_obra_id === m.obra_id);
-  } catch(e){ console.warn("acessórios da movimentação:", e.message || e); }
-  aces.forEach(a => itens.push({ movimentacao_id: mov.id, acessorio_id: a.id, descricao: `${mobAceDescr(a)} · ${a.marcacao}`, quantidade: 1, unidade: "un", valor_unitario: Number(a.modelo?.preco_referencia || 0) }));
   if(itens.length){ const { error: errIt } = await sb.from("movimentacao_itens").insert(itens); if(errIt) console.warn("itens da movimentação:", errIt.message); }
   return mov.id;
 }
@@ -609,11 +472,6 @@ async function mudarStatusMobilizacao(novo, btn){
     if(novo === "desmobilizada") upd.movimentacao_retorno_id = await criarMovimentacaoMob("retorno", atual);
     const { error } = await sb.from("mobilizacoes").update(upd).eq("id", atual.id);
     if(error) throw new Error(/mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa." : error.message);
-    // kit saiu na remessa → a pendência "acessórios conferidos e separados" do almoxarifado está cumprida
-    if(novo === "em_transito" && (atual.acessorios_ids || []).length){
-      const p = _mobPendAberta.find(x => !x.concluida && x.setor === "almoxarifado" && /acess/i.test(x.titulo || ""));
-      if(p) await sb.from("mobilizacao_pendencias").update({ concluida: true }).eq("id", p.id);
-    }
     aviso("app-aviso", `Mobilização: ${MOB_STATUS[novo]}.`, "ok");
     await carregarMobilizacoes(true);
     if(typeof carregarMovimentacoes === "function" && (novo === "em_transito" || novo === "desmobilizada")) carregarMovimentacoes();
@@ -627,7 +485,6 @@ async function salvarMobilizacaoSilencioso(){
   if(!_mobAberta || !$("mob-equip")) return;
   const reg = { equipamento_id: $("mob-equip").value || null, equipamentos_apoio: [...document.querySelectorAll(".mob-apoio-cb:checked")].map(x => x.value),
     data_mobilizacao_prev: $("mob-data-prev").value || null, data_inicio_obra_prev: $("mob-data-inicio").value || null };
-  if(mobKitEditavel()) reg.acessorios_ids = _mobKit;
   const { data, error } = await sb.from("mobilizacoes").update(reg).eq("id", _mobAberta.id).select("*").single();
   if(error) throw new Error(/mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa." : error.message);
   _mobAberta = data;

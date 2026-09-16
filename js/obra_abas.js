@@ -213,11 +213,9 @@ function abrirMovimentacaoPraObra(tipo = "remessa", equipamentoIdPreSelecionado 
         $("mov-destino-tipo").value = "base";
         $("mov-destino-descricao").value = "Base Itabira";
         $("mov-destino-uf").value = "mg";
-        if(typeof movDefinirObra === "function") movDefinirObra("origem", obraEditId);
       } else {
         $("mov-destino-tipo").value = "obra";
         $("mov-destino-descricao").value = obraTxt;
-        if(typeof movDefinirObra === "function") movDefinirObra("destino", obraEditId);
       }
       // Pré-seleciona equipamento se passado
       if(equipamentoIdPreSelecionado && typeof adicionarEquipamento === "function"){

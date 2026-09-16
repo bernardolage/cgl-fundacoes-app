@@ -12,7 +12,6 @@ const CARGOS = {
   financeiro:   "Financeiro",
   comprador:    "Comprador",
   almoxarife:   "Almoxarife",
-  gestor_acessorios: "Gestor de acessórios",  /* trados, pontas, hastes, camisas… (fase 46) */
   mecanico:     "Mecânico",
   encarregado:  "Encarregado",
   operador:     "Operador",
