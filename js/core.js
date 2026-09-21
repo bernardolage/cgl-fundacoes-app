@@ -497,6 +497,9 @@ async function iniciarApp(){
     const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
     if(b) b.style.display = podeVerComercial() ? "" : "none";
   });
+  // Fase 53 (Bernardo, 21/09/2026): Movimentações de Ativos fica no app (base do fluxo de acessórios), mas só no menu de quem opera
+  const navMovAtivos = document.querySelector('.sidebar-nav button[data-secao="movimentacoes"]');
+  if(navMovAtivos) navMovAtivos.style.display = podeVerMovimentacoes() ? "" : "none";
 
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";
@@ -589,6 +592,11 @@ document.querySelectorAll(".sidebar-nav button").forEach(b=>{
    ativa a seção e o título). Usado pelos atalhos clicáveis do dashboard. */
 /* Fase 49: módulos comerciais (catálogo de serviços e orçamentos) — só diretoria e comercial */
 const SECOES_COMERCIAIS = ["servicos", "orcamentos"];
+/* Fase 53: Movimentações de Ativos (remessa/retorno de máquinas e acessórios) — diretoria, admin, logística, gestor de acessórios e almoxarife.
+   Os demais cargos seguem gerando remessa/retorno pela mobilização, sem precisar da tela. */
+function podeVerMovimentacoes(){
+  return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_acessorios", "almoxarife"].includes(usuarioAtual.cargo);
+}
 function podeVerComercial(){
   return !!usuarioAtual && ["diretor", "comercial"].includes(usuarioAtual.cargo);
 }
