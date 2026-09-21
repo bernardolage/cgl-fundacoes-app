@@ -2692,3 +2692,13 @@ input:disabled, select:disabled, textarea:disabled {
 /* ---- Estoque: reposição (fase 51) ---- */
 .est-rep-tabela tr.est-rep-critico td { background: var(--perigo-bg); }
 .est-rep-tabela td .btn-sm { min-width: 28px; }
+
+/* ---- Diálogos: nenhum pode passar da altura da tela (o corpo rola; cabeçalho/rodapé ficam alcançáveis).
+   Cobre as caixas montadas com estilo inline (frota, mobilização nova, acessórios) e a .modal-caixa. ---- */
+.modal-fundo > div:not(.mob-drawer):not(.cham-drawer) { max-height: 90vh; overflow-y: auto; box-sizing: border-box; }
+@media (max-height: 700px){ .modal-fundo > div:not(.mob-drawer):not(.cham-drawer) { max-height: 96vh; padding-top: 12px; padding-bottom: 12px; } }
+
+/* Diálogos: grade mais compacta (o .campo já tem margem própria; dentro de modal ela só alonga a caixa) */
+.modal-fundo .grade { gap: 10px 16px; }
+.modal-fundo .grade .campo { margin-bottom: 4px; }
+.modal-fundo .grade.grade-3 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }

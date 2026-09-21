@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=fd6b1f1" />
+<link rel="stylesheet" href="css/estilo.css?v=0451114" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -983,7 +983,7 @@
 
       <!-- modal: controlar item na reposição -->
       <div class="modal-fundo" id="est-ctrl-modal" style="display:none;">
-        <div class="modal" style="max-width:560px;">
+        <div class="modal-caixa" style="max-width:560px;">
           <div class="modal-topo"><h3>Controlar item na reposição</h3><button type="button" class="btn-sec" id="btn-est-ctrl-fechar">×</button></div>
           <div class="grade">
             <div class="campo largo"><label>Produto</label>
@@ -2440,21 +2440,24 @@
 
       <!-- modal: veículo -->
       <div id="frota-veic-modal" class="modal-fundo" style="display:none;">
-        <div style="background:var(--sup-0);max-width:640px;width:95%;border-radius:8px;padding:20px;">
+        <div class="modal-caixa" style="max-width:760px;">
           <div class="modal-topo">
             <h3 class="titulo-linha" id="fveic-titulo">Veículo</h3>
             <button type="button" class="btn-sec" id="btn-fveic-fechar">×</button>
           </div>
-          <div class="grade">
+          <div class="grade grade-3">
             <div class="campo"><label>TAG *</label><input id="fveic-codigo" placeholder="Ex.: 26-CM" /></div>
             <div class="campo"><label>Tipo</label><select id="fveic-tipo"><option value="caminhao">Caminhão</option><option value="veiculo">Veículo leve</option></select></div>
+            <div class="campo"><label>Status</label><select id="fveic-status"><option value="disponivel">Disponível</option><option value="em_uso">Em uso</option><option value="manutencao">Manutenção</option><option value="inativo">Inativo</option></select></div>
             <div class="campo largo"><label>Descrição</label><input id="fveic-nome" placeholder="Ex.: VW 24250" /></div>
             <div class="campo"><label>Placa</label><input id="fveic-placa" placeholder="ABC1D23" /></div>
             <div class="campo"><label>km atual</label><input type="number" id="fveic-km" min="0" step="1" /></div>
             <div class="campo"><label>R$/km</label><input type="number" id="fveic-valor-km" min="0" step="0.01" /></div>
-            <div class="campo"><label>Status</label><select id="fveic-status"><option value="disponivel">Disponível</option><option value="em_uso">Em uso</option><option value="manutencao">Manutenção</option><option value="inativo">Inativo</option></select></div>
-            <div class="campo"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fveic-ativo" checked /> Ativo na frota</label></div>
+            <div class="campo"><label>Valor FIPE (R$)</label><input type="number" id="fveic-fipe" min="0" step="0.01" placeholder="ex.: 58900" /></div>
+            <div class="campo"><label>Referência FIPE (mês)</label><input type="month" id="fveic-fipe-ref" /></div>
+            <div class="campo"><label>Código FIPE</label><input id="fveic-fipe-cod" placeholder="ex.: 005340-6" /></div>
             <div class="campo largo"><label>Observações</label><input id="fveic-obs" /></div>
+            <div class="campo largo"><label class="check-inline"><input type="checkbox" id="fveic-ativo" checked /> Ativo na frota</label></div>
           </div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-fveic-salvar">💾 Salvar</button></div>
         </div>
@@ -3360,35 +3363,35 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=fd6b1f1"></script>
+<script src="js/core.js?v=0451114"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=fd6b1f1"></script>
+<script src="js/historico.js?v=0451114"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=fd6b1f1"></script>
-<script src="js/fornecedores.js?v=fd6b1f1"></script>
-<script src="js/apropriacoes.js?v=fd6b1f1"></script>
-<script src="js/funcionarios.js?v=fd6b1f1"></script>
-<script src="js/servicos.js?v=fd6b1f1"></script>
-<script src="js/produtos.js?v=fd6b1f1"></script>
-<script src="js/estoque.js?v=fd6b1f1"></script>
-<script src="js/orcamentos.js?v=fd6b1f1"></script>
-<script src="js/propostas.js?v=fd6b1f1"></script>
-<script src="js/contratos.js?v=fd6b1f1"></script>
-<script src="js/carteira.js?v=fd6b1f1"></script>
-<script src="js/obras.js?v=fd6b1f1"></script>
-<script src="js/frota.js?v=fd6b1f1"></script>
-<script src="js/equipamentos.js?v=fd6b1f1"></script>
-<script src="js/acessorios.js?v=fd6b1f1"></script>
-<script src="js/mobilizacoes.js?v=fd6b1f1"></script>
-<script src="js/estacas.js?v=fd6b1f1"></script>
-<script src="js/obra_abas.js?v=fd6b1f1"></script>
-<script src="js/medicoes.js?v=fd6b1f1"></script>
-<script src="js/movimentacoes.js?v=fd6b1f1"></script>
-<script src="js/rdo.js?v=fd6b1f1"></script>
-<script src="js/usuarios.js?v=fd6b1f1"></script>
-<script src="js/chamados.js?v=fd6b1f1"></script>
-<script src="js/dashboard.js?v=fd6b1f1"></script>
+<script src="js/clientes.js?v=0451114"></script>
+<script src="js/fornecedores.js?v=0451114"></script>
+<script src="js/apropriacoes.js?v=0451114"></script>
+<script src="js/funcionarios.js?v=0451114"></script>
+<script src="js/servicos.js?v=0451114"></script>
+<script src="js/produtos.js?v=0451114"></script>
+<script src="js/estoque.js?v=0451114"></script>
+<script src="js/orcamentos.js?v=0451114"></script>
+<script src="js/propostas.js?v=0451114"></script>
+<script src="js/contratos.js?v=0451114"></script>
+<script src="js/carteira.js?v=0451114"></script>
+<script src="js/obras.js?v=0451114"></script>
+<script src="js/frota.js?v=0451114"></script>
+<script src="js/equipamentos.js?v=0451114"></script>
+<script src="js/acessorios.js?v=0451114"></script>
+<script src="js/mobilizacoes.js?v=0451114"></script>
+<script src="js/estacas.js?v=0451114"></script>
+<script src="js/obra_abas.js?v=0451114"></script>
+<script src="js/medicoes.js?v=0451114"></script>
+<script src="js/movimentacoes.js?v=0451114"></script>
+<script src="js/rdo.js?v=0451114"></script>
+<script src="js/usuarios.js?v=0451114"></script>
+<script src="js/chamados.js?v=0451114"></script>
+<script src="js/dashboard.js?v=0451114"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=fd6b1f1"></script>
+<script src="js/init.js?v=0451114"></script>
 </body>
 </html>
