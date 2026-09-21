@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=c2c0b1d" />
+<link rel="stylesheet" href="css/estilo.css?v=cda770c" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -93,7 +93,11 @@
       </button>
       <button data-secao="estoque">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-        <span>Entrada de Estoque</span>
+        <span>Estoque</span>
+      </button>
+      <button data-secao="compras">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+        <span>Compras</span>
       </button>
       <button data-secao="orcamentos">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -246,7 +250,7 @@
           <div class="dash-card-num" id="dash-estacas-mes">—</div>
           <div class="dash-card-sub" id="dash-estacas-sub">— metros · — m³ concreto</div>
         </div>
-        <div class="dash-card" id="dash-card-orc" style="border-left:4px solid var(--marca-600);">
+        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
           <div class="dash-card-rot">Orçamentos abertos</div>
           <div class="dash-card-num" id="dash-orc-abertos">—</div>
           <div class="dash-card-sub" id="dash-orc-sub">— em negociação · R$ —</div>
@@ -1000,6 +1004,199 @@
       </div>
     </section>
 
+    <!-- ================= COMPRAS (fase 53) ================= -->
+    <section class="secao" id="sec-compras">
+      <div id="cmp-painel">
+        <h2>Compras</h2>
+        <p class="texto-apoio">Pedido de compra com aprovação por alçada, recebimento da nota (entra no estoque ou vira custo direto da obra/TAG) e títulos a pagar para o financeiro. Substitui o Odoo em compras e estoque.</p>
+
+        <div class="indicadores">
+          <div class="ind ind-click" data-kpi=""><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div></div>
+          <div class="ind ind-click" data-kpi="aprovar"><div class="num" id="cmp-kpi-aprovar" style="color:var(--marca-600);">—</div><div class="rot">Aguardando aprovação</div></div>
+          <div class="ind ind-click" data-kpi="entrega"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando entrega</div></div>
+          <div class="ind ind-click" data-kpi="atrasados"><div class="num" id="cmp-kpi-atrasados">—</div><div class="rot">Entrega atrasada</div></div>
+          <div class="ind"><div class="num" id="cmp-kpi-valor">—</div><div class="rot">Valor em aberto</div></div>
+          <div class="ind ind-click" data-kpi="titulos"><div class="num" id="cmp-kpi-titulos">—</div><div class="rot">Títulos a exportar</div></div>
+        </div>
+
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Pedidos <span id="cmp-contador" class="contador"></span></h3>
+            <div class="serv-views" id="cmp-views">
+              <button type="button" class="serv-view-btn ativo" data-view="kanban">Por status</button>
+              <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="recebimentos">Recebimentos</button>
+              <button type="button" class="serv-view-btn" data-view="titulos">Títulos a pagar</button>
+              <button type="button" class="serv-view-btn" data-view="avulsos">Custos avulsos</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-cmp-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-cmp-receber-avulso" style="display:none;" title="Nota sem pedido (compra direta, emergência, cartão)">📥 Receber NF sem pedido</button>
+            <button type="button" class="btn-sec" id="btn-cmp-custo-avulso" style="display:none;" title="Multa, IPVA, seguro, locação, serviço sem NF de produto">＋ Custo avulso</button>
+            <button type="button" class="btn" id="btn-cmp-novo" style="display:none;">+ Novo pedido</button>
+          </div>
+          <div class="serv-filtros" id="cmp-filtros">
+            <input id="cmp-busca" placeholder="Buscar número, fornecedor, obra, TAG, item…" />
+            <select id="cmp-f-status"><option value="">Status</option></select>
+            <select id="cmp-f-forn"><option value="">Fornecedor</option></select>
+            <select id="cmp-f-obra"><option value="">Obra</option></select>
+            <select id="cmp-f-equip"><option value="">TAG</option></select>
+            <input type="month" id="cmp-f-mes" title="mês do pedido" />
+          </div>
+          <div id="cmp-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha do pedido (estilo Odoo) -->
+      <div id="cmp-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-cmp-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-cmp-salvar">💾 Salvar</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-enviar-aprov" data-acao="enviar_aprovacao">✅ Enviar para aprovação</button>
+              <button type="button" class="btn btn-sucesso cmp-acao" id="btn-cmp-aprovar" data-acao="aprovar">👍 Aprovar</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-enviado" data-acao="enviado">📤 Enviado ao fornecedor</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-receber" data-acao="receber">📥 Receber NF</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf" data-acao="pdf">🖨️ PDF do pedido</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-voltar-rascunho" data-acao="rascunho">↩ Voltar a rascunho</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-cancelar" data-acao="cancelar" style="color:var(--perigo);">✕ Cancelar pedido</button>
+            </div>
+            <div class="actions-right"><strong id="cmp-ficha-titulo">Novo pedido</strong></div>
+          </div>
+
+          <div class="odoo-statusbar" id="cmp-statusbar" title="Status do pedido">
+            <div class="stage" data-status="rascunho">Rascunho</div>
+            <div class="stage" data-status="aguardando_aprovacao">Aguardando aprovação</div>
+            <div class="stage" data-status="aprovado">Aprovado</div>
+            <div class="stage" data-status="enviado">Enviado</div>
+            <div class="stage" data-status="parcialmente_recebido">Parcial</div>
+            <div class="stage" data-status="recebido">Recebido</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="cmp-chip-num">—</strong></div>
+            <div class="chip"><span>Fornecedor</span><strong id="cmp-chip-forn">—</strong></div>
+            <div class="chip"><span>Destino</span><strong id="cmp-chip-destino">—</strong></div>
+            <div class="chip"><span>Total</span><strong id="cmp-chip-total">R$ 0,00</strong></div>
+            <div class="chip"><span>Previsão</span><strong id="cmp-chip-prev">—</strong></div>
+            <div class="chip"><span>Aprovação</span><strong id="cmp-chip-aprov">—</strong></div>
+          </div>
+
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-cmp-itens" data-goto-tab="itens"><span class="sb-num">0</span><span class="sb-icon">📦</span><span class="sb-lbl">itens</span></button>
+            <button type="button" class="sb-btn" id="sb-cmp-rec" data-goto-tab="recebimentos"><span class="sb-num">0</span><span class="sb-icon">📥</span><span class="sb-lbl">recebimentos</span></button>
+            <button type="button" class="sb-btn" id="sb-cmp-tit" data-goto-tab="financeiro"><span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">títulos</span></button>
+          </div>
+
+          <div class="odoo-notebook" id="cmp-notebook">
+            <button type="button" data-tab="cabecalho" class="ativo">Cabeçalho</button>
+            <button type="button" data-tab="itens">Itens</button>
+            <button type="button" data-tab="recebimentos">Recebimentos</button>
+            <button type="button" data-tab="financeiro">Financeiro</button>
+            <button type="button" data-tab="timeline">Timeline</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="cabecalho">
+              <div class="grade">
+                <div class="campo largo"><label>Fornecedor *</label><select id="cmp-forn"></select></div>
+                <div class="campo"><label>Data do pedido</label><input type="date" id="cmp-data" /></div>
+                <div class="campo"><label>Previsão de entrega</label><input type="date" id="cmp-prev" /></div>
+                <div class="campo"><label>Condição de pagamento</label><input id="cmp-cond" placeholder="ex.: 28 dias, 30/60, à vista" list="cmp-cond-lista" /><datalist id="cmp-cond-lista"><option value="À vista"></option><option value="28 dias"></option><option value="30 dias"></option><option value="30/60 dias"></option><option value="30/60/90 dias"></option><option value="Cartão"></option></datalist></div>
+                <div class="campo"><label>Local de entrega</label><select id="cmp-local"><option value="base">Base Itabira (estoque)</option><option value="obra">Direto na obra (custo direto)</option></select></div>
+                <div class="campo"><label>Obra (destino padrão dos itens)</label><select id="cmp-obra"></select></div>
+                <div class="campo"><label>TAG (destino padrão dos itens)</label><select id="cmp-equip"></select></div>
+                <div class="campo"><label>Frete (R$)</label><input type="number" id="cmp-frete" min="0" step="0.01" /></div>
+                <div class="campo"><label>Desconto (R$)</label><input type="number" id="cmp-desc" min="0" step="0.01" /></div>
+                <div class="campo largo"><label>Observações (saem no PDF)</label><textarea id="cmp-obs" rows="2"></textarea></div>
+              </div>
+              <p class="meta" id="cmp-alcada-info"></p>
+            </div>
+
+            <div class="odoo-tab" data-tab="itens">
+              <div class="tabela-rola">
+                <table class="itens-tabela cmp-itens-tabela">
+                  <thead><tr>
+                    <th>Item</th><th style="width:70px;">Un</th><th style="width:90px;">Qtd</th><th style="width:120px;">Unitário</th><th class="num" style="width:120px;">Total</th>
+                    <th style="width:130px;">Categoria</th><th style="width:150px;">Destino</th><th class="num" style="width:80px;" title="quantidade já recebida">Receb.</th><th class="col-acao"></th>
+                  </tr></thead>
+                  <tbody id="cmp-itens"></tbody>
+                </table>
+              </div>
+              <div class="grade" style="margin-top:12px;" id="cmp-itens-add">
+                <div class="campo largo"><label>+ Adicionar produto do catálogo</label>
+                  <input id="cmp-busca-prod" placeholder="digite ≥ 2 letras (código ou nome)…" autocomplete="off" />
+                  <div id="cmp-res-prod" class="autocomplete-lista" style="display:none;"></div>
+                </div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-item-livre">+ Item livre (serviço / sem cadastro)</button></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="recebimentos"><div id="cmp-rec-lista"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="financeiro"><div id="cmp-tit-lista"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="timeline"><div id="cmp-chatter"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- modal: recebimento de NF (com ou sem pedido) -->
+      <div class="modal-fundo" id="cmp-rec-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:1100px;">
+          <div class="modal-topo"><h3 id="cmp-rec-titulo">Receber NF</h3><button type="button" class="btn-sec" id="btn-cmp-rec-fechar">×</button></div>
+          <p class="meta" id="cmp-rec-ajuda">Confirmar gera a entrada no estoque (destino base) ou o custo direto (obra/TAG), baixa o pedido e cria os títulos a pagar.</p>
+          <div class="grade grade-3">
+            <div class="campo largo" id="cmp-rec-forn-campo"><label>Fornecedor *</label><select id="cmp-rec-forn"></select></div>
+            <div class="campo"><label>NF número</label><input id="cmp-rec-nf" /></div>
+            <div class="campo"><label>Série</label><input id="cmp-rec-serie" value="1" /></div>
+            <div class="campo largo"><label>Chave de acesso (44 dígitos)</label><input id="cmp-rec-chave" maxlength="54" /></div>
+            <div class="campo"><label>Emissão</label><input type="date" id="cmp-rec-emissao" /></div>
+            <div class="campo"><label>Recebido em</label><input type="date" id="cmp-rec-data" /></div>
+            <div class="campo"><label>Frete na NF (R$)</label><input type="number" id="cmp-rec-frete" min="0" step="0.01" /></div>
+            <div class="campo"><label>1º vencimento</label><input type="date" id="cmp-rec-venc" /></div>
+            <div class="campo"><label>Parcelas</label><input type="number" id="cmp-rec-parc" min="1" step="1" value="1" /></div>
+            <div class="campo"><label>Total da NF (R$)</label><input type="number" id="cmp-rec-total" min="0" step="0.01" placeholder="calcula pelos itens se vazio" /></div>
+            <div class="campo largo"><label>Observações</label><input id="cmp-rec-obs" /></div>
+          </div>
+          <div class="tabela-rola" style="margin-top:8px;">
+            <table class="itens-tabela">
+              <thead><tr><th>Item</th><th style="width:70px;">Un</th><th class="num" style="width:90px;" title="pendente no pedido">Pendente</th><th style="width:90px;">Qtd NF</th><th style="width:110px;">Unit. NF</th><th class="num" style="width:110px;">Total</th><th style="width:130px;">Destino</th><th style="width:160px;">Obra / TAG</th><th class="col-acao"></th></tr></thead>
+              <tbody id="cmp-rec-itens"></tbody>
+            </table>
+          </div>
+          <div class="grade" style="margin-top:10px;" id="cmp-rec-add">
+            <div class="campo largo"><label>+ Item da nota fora do pedido</label>
+              <input id="cmp-rec-busca" placeholder="produto do catálogo (≥ 2 letras)…" autocomplete="off" />
+              <div id="cmp-rec-res" class="autocomplete-lista" style="display:none;"></div>
+            </div>
+            <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-rec-livre">+ Item livre</button></div>
+          </div>
+          <div class="form-acoes compacta" style="justify-content:space-between;align-items:center;">
+            <strong id="cmp-rec-soma">Total dos itens: R$ 0,00</strong>
+            <button type="button" class="btn" id="btn-cmp-rec-confirmar">✅ Confirmar recebimento</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- modal: custo avulso -->
+      <div class="modal-fundo" id="cmp-av-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:640px;">
+          <div class="modal-topo"><h3>Custo avulso</h3><button type="button" class="btn-sec" id="btn-cmp-av-fechar">×</button></div>
+          <p class="meta">Multa, IPVA, seguro, locação, serviço pago sem nota de produto. Precisa de TAG ou obra.</p>
+          <div class="grade grade-3">
+            <div class="campo"><label>Data</label><input type="date" id="cmp-av-data" /></div>
+            <div class="campo"><label>Categoria</label><select id="cmp-av-cat"></select></div>
+            <div class="campo"><label>Valor (R$) *</label><input type="number" id="cmp-av-valor" min="0" step="0.01" /></div>
+            <div class="campo"><label>TAG</label><select id="cmp-av-equip"></select></div>
+            <div class="campo"><label>Obra</label><select id="cmp-av-obra"></select></div>
+            <div class="campo"><label>Fornecedor</label><select id="cmp-av-forn"></select></div>
+            <div class="campo largo"><label>Descrição *</label><input id="cmp-av-desc" placeholder="ex.: IPVA 2026 · Multa radar BR-381 · Locação de gerador" /></div>
+            <div class="campo"><label>Documento</label><input id="cmp-av-doc" placeholder="NF, recibo, auto" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cmp-av-salvar">💾 Lançar</button></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ORÇAMENTOS -->
     <section class="secao" id="sec-orcamentos">
       <h2>Orçamentos</h2>
@@ -1085,8 +1282,8 @@
           <div class="odoo-notebook" id="orc-notebook">
             <button type="button" data-tab="geral" class="ativo">📋 Geral</button>
             <button type="button" data-tab="proposta">📄 Modelo</button>
-            <button type="button" data-tab="adicionais">⚙️ Adicionais CGL</button>
             <button type="button" data-tab="itens">📊 Itens</button>
+            <button type="button" data-tab="adicionais">⚙️ Adicionais CGL</button>
             <button type="button" data-tab="comerciais">💼 Comerciais</button>
             <button type="button" data-tab="revisoes">🔄 Revisões <span id="orc-rev-badge" class="conf-badge"></span></button>
             <button type="button" data-tab="vinculos">🔗 Vínculos</button>
@@ -1157,6 +1354,7 @@
                   </select>
                 </div>
                 <div class="campo"><label>Revisão (REV)</label><input id="orc-revisao" placeholder="00" maxlength="6" /></div>
+                <div class="campo"><label>Cidade de emissão</label><input id="orc-cidade-emissao" placeholder="Itabira/MG" /></div>
                 <div class="campo"><label>Validade em dias</label><input id="orc-validade-dias" type="number" min="1" max="365" step="1" value="30" /></div>
                 <div class="campo"><label>ISS (%)</label><input id="orc-iss-perc" type="number" min="0" max="100" step="0.01" value="5.00" /></div>
                 <div class="campo">
@@ -1199,11 +1397,11 @@
             <div class="odoo-tab" data-tab="adicionais">
               <div class="grade">
                 <div class="campo largo">
-                  <label class="check-inline"><input type="checkbox" id="orc-cgl-diesel" /> CGL fornece diesel (libera o serviço na aba Itens, entra como item padrão e muda a matriz de encargos)</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-cgl-diesel" /> CGL fornece diesel (adiciona item no quadro + muda matriz)</label>
                 </div>
                 <div class="campo"><label>Diesel — R$/L</label><input id="orc-diesel-preco" type="number" min="0" step="0.0001" value="8.34" /></div>
                 <div class="campo largo">
-                  <label class="check-inline"><input type="checkbox" id="orc-cgl-hospedagem" /> CGL fornece hospedagem (libera o serviço na aba Itens, entra como item padrão e muda a matriz de encargos)</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-cgl-hospedagem" /> CGL fornece hospedagem (adiciona item no quadro + muda matriz)</label>
                 </div>
                 <div class="campo"><label>Hospedagem — R$/mês</label><input id="orc-hosp-valor" type="number" min="0" step="0.01" placeholder="0,00" /></div>
               </div>
@@ -1211,16 +1409,8 @@
 
             <div class="odoo-tab" data-tab="comerciais">
               <div class="grade">
-                <div class="campo"><label>Vencimento das medições do saldo</label>
-                  <select id="orc-prazo-pagamento" title="Dias corridos após o último dia do período medido (chamado #12)">
-                    <option value="5">5 dias corridos</option><option value="7">7 dias corridos</option><option value="10">10 dias corridos</option>
-                    <option value="15" selected>15 dias corridos (padrão)</option><option value="20">20 dias corridos</option><option value="21">21 dias corridos</option>
-                    <option value="28">28 dias corridos</option><option value="30">30 dias corridos</option><option value="45">45 dias corridos</option><option value="60">60 dias corridos</option>
-                  </select></div>
-                <div class="campo"><label>Forma de pagamento</label>
-                  <select id="orc-pagamento-forma"><option value="deposito" selected>Depósito bancário</option><option value="boleto">Boleto bancário</option></select></div>
-                <div class="campo largo"><label>Condições de pagamento (texto que vai para a proposta)</label><textarea id="orc-pagamento" rows="4"></textarea></div>
-                <div class="campo largo"><span class="orc-filtro-dica">Texto padrão aprovado em 16/09/2026: sinal de 30% medido na assinatura, pago em até 3 dias úteis; saldo medido quinzenalmente com vencimento no prazo escolhido acima. Trocar o prazo ou a forma regera o texto; depois é só editar o que a negociação pedir. Prazo e local de execução ficam na aba Modelo.</span></div>
+                <div class="campo largo"><label>Condições de pagamento (substitui a cláusula padrão de sinal/medição na proposta)</label><textarea id="orc-pagamento" rows="3"></textarea></div>
+                <div class="campo largo"><span class="orc-filtro-dica">Vem preenchido com o texto padrão do modelo (sinal de 30%, medição quinzenal, 28 dias, boleto). Altere aqui quando negociar a obra. Prazo e local de execução ficam na aba Modelo.</span></div>
               </div>
             </div>
 
@@ -1502,6 +1692,7 @@
             <button type="button" data-tab="medicoes">Medições</button>
             <button type="button" data-tab="rdos">RDOs</button>
             <button type="button" data-tab="documentos">Documentos</button>
+            <button type="button" data-tab="custos">Custos</button>
             <button type="button" data-tab="timeline">Timeline</button>
             <button type="button" data-tab="descricao">Obs.</button>
           </div>
@@ -1545,11 +1736,10 @@
             <div class="odoo-tab" data-tab="parametros">
               <h4 class="titulo-bloco">Jornada de trabalho <small class="meta">(valor da proposta; base das horas extras da equipe no RDO)</small></h4>
               <div class="grade">
-                <div class="campo"><label>Segunda a quinta — entrada</label><input id="obr-jornada-entrada" type="time" /></div>
-                <div class="campo"><label>Segunda a quinta — saída</label><input id="obr-jornada-saida" type="time" /></div>
-                <div class="campo"><label>Sexta-feira — entrada <small style="font-weight:400;color:var(--txt-fraco);">(se diferente)</small></label><input id="obr-jornada-sex-entrada" type="time" /></div>
-                <div class="campo"><label>Sexta-feira — saída</label><input id="obr-jornada-sex-saida" type="time" title="Sábado não tem jornada: todo o trabalhado no sábado é HE 100%" /></div>
-                <div class="campo"><label>ISS do município (%)</label><input id="obr-iss-pct" type="number" step="0.01" min="0" max="100" value="5" title="Alíquota de ISS da cidade da obra. Toda NF tem ISS; as medições desta obra herdam este valor (financeiro, 16/09/2026)" /></div>
+                <div class="campo"><label>Segunda a sexta — entrada</label><input id="obr-jornada-entrada" type="time" /></div>
+                <div class="campo"><label>Segunda a sexta — saída</label><input id="obr-jornada-saida" type="time" /></div>
+                <div class="campo"><label>Sábado — entrada</label><input id="obr-jornada-sab-entrada" type="time" /></div>
+                <div class="campo"><label>Sábado — saída</label><input id="obr-jornada-sab-saida" type="time" /></div>
               </div>
               <h4 class="titulo-bloco" style="margin-top:16px;">Concretagem <small class="meta">(cálculo automático do volume no RDO)</small></h4>
               <div class="grade">
@@ -1704,6 +1894,11 @@
             <!-- Aba Documentos -->
             <div class="odoo-tab" data-tab="documentos">
               <div id="obr-doc-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Custos (fase 53: vw_custos) -->
+            <div class="odoo-tab" data-tab="custos">
+              <div id="obr-custos"><p class="vazio">Carregando...</p></div>
             </div>
 
             <!-- Aba Timeline -->
@@ -2130,29 +2325,6 @@
               <p class="nota">
                 💡 Preencha <strong>Entrada/Saída</strong> (e o intervalo real de almoço, se o diário registrar) e o sistema calcula a <strong>HE 100%</strong> pela jornada da obra (Obra › Parâmetros): seg-sex o que passar da jornada; sábado, domingo e feriado o dia inteiro. Regra RH de 11/09/2026: toda HE é 100%; a coluna HE 50% ficou sem uso.
               </p>
-
-              <!-- Abastecimento do dia (fase 46, 16/09/2026): vem do diário preenchido à mão pelo operador -->
-              <div style="margin-top:16px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-                  <h4 style="margin:0;">⛽ Abastecimento do dia <small style="font-weight:400;color:var(--txt-fraco);">(litros e horímetro do diário do operador)</small></h4>
-                  <button type="button" class="btn-sec" id="btn-add-rdo-abast">+ abastecimento</button>
-                </div>
-                <div class="tabela-rola">
-                  <table class="itens-tabela">
-                    <thead>
-                      <tr>
-                        <th>Máquina</th>
-                        <th>Combustível</th>
-                        <th>Quantidade (L)</th>
-                        <th title="Leitura do horímetro no abastecimento">Horímetro</th>
-                        <th>Obs.</th>
-                        <th class="col-acao"></th>
-                      </tr>
-                    </thead>
-                    <tbody id="rdo-abast-tbody"></tbody>
-                  </table>
-                </div>
-              </div>
             </div>
 
             <!-- Observações -->
@@ -2169,26 +2341,23 @@
       <div id="csv-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:820px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
           <div class="modal-topo">
-            <h3 class="titulo-linha">📄 Importar diário (PDF, foto, planilha do Maya ou arquivo do equipamento)</h3>
+            <h3 class="titulo-linha">📄 Importar diário (PDF, foto ou arquivo do equipamento)</h3>
             <button type="button" class="btn-sec" id="btn-fechar-csv">×</button>
           </div>
           <p class="texto-apoio">
             <strong>Formatos aceitos (detecção automática):</strong>
             <br>• <strong>PDF ou foto do diário</strong> (.pdf, .jpg, .png) — digital ou preenchido à mão. A IA lê cabeçalho, equipe e estacas; você <strong>confere e corrige</strong> numa tabela antes de gravar.
-            <br>• <strong>Relatório Diário do Maya</strong> (.xlsx) — blocos <code>Estacas</code>, <code>Observações</code> e <code>Ocorrências</code> exatamente como o Maya exporta. Observações entram na estaca; ocorrências, período do operador e almoço entram no RDO do dia; dias só com ocorrência viram RDO sem estacas.
-            <br>• <strong>Blocos complementares na mesma planilha</strong> (qualquer aba, mesmo padrão: título na coluna A, cabeçalho e linhas) — <code>Abastecimento</code>: <code>Data | Máquina | Combustível | Quantidade (L) | Horímetro | Observação</code> · <code>Fim do Expediente</code>: <code>Data | Hora | Descrição</code>. É o que o Maya não traz e hoje é lançado à mão.
             <br>• <strong>Geodigitus</strong> (.csv) — cabeçalho <code>DATA;OBRA;ESTACA;PROFUNDIDADE_EXECUTADA;...;MAQUINA;OBSERVACAO</code>
             <br>• <strong>SoftSaci V7.x</strong> (.txt) — relatório sintético com colunas <code>Contrato | Obra | Estaca | Data | Ini.P | Ini.C | Fim C | Diam | Comp | V.Conc | Supercon | Incli</code>
             <br><br>O sistema agrupa por data e cria 1 RDO por dia (na obra detectada). Estacas existentes na obra são marcadas como executadas.
           </p>
           <div class="grade">
             <div class="campo largo">
-              <label>Arquivo (PDF, foto, XLSX do Maya, CSV ou TXT)</label>
-              <input id="csv-arquivo" type="file" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,.csv,.txt,text/csv,text/plain" />
+              <label>Arquivo (PDF, foto, CSV ou TXT)</label>
+              <input id="csv-arquivo" type="file" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp,.csv,.txt,text/csv,text/plain" />
             </div>
           </div>
           <div class="form-acoes compacta">
-            <div id="csv-aviso" class="aviso" style="flex:1;"></div>
             <button type="button" class="btn" id="btn-csv-processar">🔍 Processar</button>
           </div>
           <div id="csv-preview" class="bloco-preview" style="display:none;">
@@ -2331,6 +2500,7 @@
             <button type="button" class="sb-btn" id="sb-eqp-mov" data-goto-tab="movimentacoes"><span class="sb-num">0</span><span class="sb-icon">🚚</span><span class="sb-lbl">movimentações</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-rep" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">reparos</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-man" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🛠️</span><span class="sb-lbl">manutenções</span></button>
+            <button type="button" class="sb-btn" id="sb-eqp-custos" data-goto-tab="custos"><span class="sb-num">R$ 0</span><span class="sb-icon">💰</span><span class="sb-lbl">custos</span></button>
           </div>
 
           <div class="odoo-notebook" id="eqp-notebook">
@@ -2340,6 +2510,7 @@
             <button type="button" data-tab="mobilizacoes">Mobilizações</button>
             <button type="button" data-tab="movimentacoes">Movimentações</button>
             <button type="button" data-tab="manutencao">Reparos & manutenções</button>
+            <button type="button" data-tab="custos">Custos</button>
             <button type="button" data-tab="timeline">Timeline</button>
           </div>
 
@@ -2407,6 +2578,7 @@
             <div class="odoo-tab" data-tab="mobilizacoes"><div id="eqp-mob-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="movimentacoes"><div id="eqp-mov-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="manutencao"><div id="eqp-rep-lista"><p class="vazio">—</p></div><div id="eqp-man-lista" style="margin-top:16px;"></div></div>
+            <div class="odoo-tab" data-tab="custos"><div id="eqp-custos"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="timeline"><div id="eqp-chatter"></div></div>
           </div>
         </div>
@@ -2827,10 +2999,6 @@
                 <div class="campo"><label>Valor retido (R$)</label><input id="med-ret-valor" type="number" step="0.01" min="0" title="Calculado pelo % sobre o valor final; pode ser ajustado à mão" /></div>
                 <div class="campo"><label>Retenção liberada?</label><select id="med-ret-liberada"><option value="false">Não (a receber)</option><option value="true">Sim</option></select></div>
                 <div class="campo"><label>Data da liberação</label><input id="med-ret-data" type="date" /></div>
-                <div class="campo"><label>ISS (%)</label><input id="med-iss-pct" type="number" step="0.01" min="0" max="100" placeholder="ex.: 5" title="ISS por dentro: valor = valor final × %. Pedido do financeiro, 16/09/2026" /></div>
-                <div class="campo"><label>ISS retido na fonte?</label><select id="med-iss-retido"><option value="true">Sim (cliente retém e recolhe)</option><option value="false">Não (CGL recolhe)</option></select></div>
-                <div class="campo"><label>Valor do ISS (R$)</label><input id="med-iss-valor" type="number" step="0.01" min="0" title="Calculado pelo %; pode ser ajustado à mão" /></div>
-                <div class="campo"><label>Líquido a receber (R$)</label><input id="med-liquido" type="number" step="0.01" readonly title="Valor final − retenção contratual − ISS retido na fonte" style="background:var(--sucesso-bg);font-weight:700;color:var(--sucesso-txt);" /></div>
               </div>
             </div>
 
@@ -3237,9 +3405,6 @@
             <div class="campo"><label>Categoria *</label><select id="chamn-categoria"></select></div>
             <div class="campo"><label>Obra</label><select id="chamn-obra"><option value="">— nenhuma —</option></select></div>
             <div class="campo largo"><label>Descrição *</label><textarea id="chamn-descricao" rows="6" placeholder="O que você fez, o que esperava e o que aconteceu. Se der, cole a mensagem de erro."></textarea></div>
-            <div class="campo largo"><label>Anexos <small style="font-weight:400;color:var(--txt-fraco);">(opcional — até 5 arquivos, 20 MB cada)</small></label>
-              <input id="chamn-anexos" type="file" multiple accept=".pdf,.xlsx,.xls,.xlsm,.csv,.txt,.docx,.doc,.jpg,.jpeg,.png,.webp" />
-              <span class="orc-filtro-dica">Tem uma planilha, PDF ou foto do controle que você usa hoje? Anexe: ajuda a entender o seu processo e a trazer isso para o sistema. Só você e a diretoria conseguem abrir os anexos.</span></div>
           </div>
           <p class="nota" id="chamn-nota-categoria"></p>
           <div id="chamn-aviso" class="aviso"></div>
@@ -3404,36 +3569,36 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=c2c0b1d"></script>
+<script src="js/core.js?v=cda770c"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=c2c0b1d"></script>
+<script src="js/historico.js?v=cda770c"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=c2c0b1d"></script>
-<script src="js/fornecedores.js?v=c2c0b1d"></script>
-<script src="js/apropriacoes.js?v=c2c0b1d"></script>
-<script src="js/funcionarios.js?v=c2c0b1d"></script>
-<script src="js/servicos.js?v=c2c0b1d"></script>
-<script src="js/produtos.js?v=c2c0b1d"></script>
-<script src="js/estoque.js?v=c2c0b1d"></script>
-<script src="js/orcamentos.js?v=c2c0b1d"></script>
-<script src="js/propostas.js?v=c2c0b1d"></script>
-<script src="js/contratos.js?v=c2c0b1d"></script>
-<script src="js/carteira.js?v=c2c0b1d"></script>
-<script src="js/obras.js?v=c2c0b1d"></script>
-<script src="js/frota.js?v=c2c0b1d"></script>
-<script src="js/equipamentos.js?v=c2c0b1d"></script>
-<script src="js/acessorios.js?v=c2c0b1d"></script>
-<script src="js/mobilizacoes.js?v=c2c0b1d"></script>
-<script src="js/estacas.js?v=c2c0b1d"></script>
-<script src="js/obra_abas.js?v=c2c0b1d"></script>
-<script src="js/medicoes.js?v=c2c0b1d"></script>
-<script src="js/movimentacoes.js?v=c2c0b1d"></script>
-<script src="js/rdo.js?v=c2c0b1d"></script>
-<script src="js/rdo_import_maya.js?v=c2c0b1d"></script>
-<script src="js/usuarios.js?v=c2c0b1d"></script>
-<script src="js/chamados.js?v=c2c0b1d"></script>
-<script src="js/dashboard.js?v=c2c0b1d"></script>
+<script src="js/clientes.js?v=cda770c"></script>
+<script src="js/fornecedores.js?v=cda770c"></script>
+<script src="js/apropriacoes.js?v=cda770c"></script>
+<script src="js/funcionarios.js?v=cda770c"></script>
+<script src="js/servicos.js?v=cda770c"></script>
+<script src="js/produtos.js?v=cda770c"></script>
+<script src="js/estoque.js?v=cda770c"></script>
+<script src="js/compras.js?v=cda770c"></script>
+<script src="js/orcamentos.js?v=cda770c"></script>
+<script src="js/propostas.js?v=cda770c"></script>
+<script src="js/contratos.js?v=cda770c"></script>
+<script src="js/carteira.js?v=cda770c"></script>
+<script src="js/obras.js?v=cda770c"></script>
+<script src="js/frota.js?v=cda770c"></script>
+<script src="js/equipamentos.js?v=cda770c"></script>
+<script src="js/acessorios.js?v=cda770c"></script>
+<script src="js/mobilizacoes.js?v=cda770c"></script>
+<script src="js/estacas.js?v=cda770c"></script>
+<script src="js/obra_abas.js?v=cda770c"></script>
+<script src="js/medicoes.js?v=cda770c"></script>
+<script src="js/movimentacoes.js?v=cda770c"></script>
+<script src="js/rdo.js?v=cda770c"></script>
+<script src="js/usuarios.js?v=cda770c"></script>
+<script src="js/chamados.js?v=cda770c"></script>
+<script src="js/dashboard.js?v=cda770c"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=c2c0b1d"></script>
+<script src="js/init.js?v=cda770c"></script>
 </body>
 </html>

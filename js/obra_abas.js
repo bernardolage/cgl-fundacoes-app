@@ -154,7 +154,7 @@ async function carregarEquipamentosDaObra(obraId){
   // ---- bloco 2: equipamentos fisicamente na obra ----
   if(!data || !data.length){
     cont.innerHTML = blocoMob + `<p class="vazio">Nenhum equipamento alocado a esta obra.<br>
-      ${podeVerMovimentacoes() ? `<button type="button" class="btn" id="btn-equip-mov-nova" style="margin-top:10px;">+ Registrar movimentação de chegada</button>` : `<small>A alocação vem da mobilização: ao registrar a saída para a obra, a TAG aparece aqui.</small>`}</p>`;
+      <button type="button" class="btn" id="btn-equip-mov-nova" style="margin-top:10px;">+ Registrar movimentação de chegada</button></p>`;
     ligarMob();
     $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
     return;
@@ -166,13 +166,13 @@ async function carregarEquipamentosDaObra(obraId){
     <td>${tagStatusEquip(e.status)}</td>
     <td>${e.localizacao_atualizada_em ? new Date(e.localizacao_atualizada_em).toLocaleDateString("pt-BR") : "—"}</td>
     <td class="col-acao">
-      ${podeVerMovimentacoes() ? `<button type="button" class="btn-sec btn-sm btn-equip-devolver" data-id="${esc(e.id)}" title="Devolver para base">↩ Devolver</button>` : ""}
+      <button type="button" class="btn-sec btn-sm btn-equip-devolver" data-id="${esc(e.id)}" title="Devolver para base">↩ Devolver</button>
     </td>
   </tr>`).join("");
   cont.innerHTML = blocoMob + `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
       <h4 style="margin:0;font-size:var(--txt-md);">🚜 ${data.length} equipamento${data.length>1?"s":""} alocado${data.length>1?"s":""} a esta obra</h4>
-      ${podeVerMovimentacoes() ? `<button type="button" class="btn" id="btn-equip-mov-nova">+ Nova movimentação</button>` : ""}
+      <button type="button" class="btn" id="btn-equip-mov-nova">+ Nova movimentação</button>
     </div>
     <div class="tabela-rola"><table>
       <thead><tr>
@@ -197,7 +197,8 @@ function tagStatusEquip(st){
 /* Atalho: abre o módulo Movimentações com obra pré-preenchida */
 function abrirMovimentacaoPraObra(tipo = "remessa", equipamentoIdPreSelecionado = null){
   // Muda pra seção Movimentações
-  if(!irParaSecao("movimentacoes")) return; // fase 53: barra quem não tem o módulo no menu
+  const navMov = document.querySelector('nav button[data-secao="movimentacoes"]');
+  if(navMov) navMov.click();
   // Aguarda render e abre nova movimentação
   setTimeout(() => {
     if(typeof novaMovimentacao === "function"){
@@ -448,14 +449,9 @@ function abrirRdoPraObra(){
 }
 
 function abrirRdoExistente(id){
-  const obraOrigem = (typeof obraEditId !== "undefined" && obraEditId) || null;
   const nav = document.querySelector('nav button[data-secao="rdo"]');
   if(nav) nav.click();
-  setTimeout(() => {
-    if(typeof abrirRDO === "function") abrirRDO(id);
-    // chamado #8 (Isaque, 16/09/2026): o Voltar da ficha do RDO devolve para esta obra, aba RDOs
-    if(typeof _rdoVoltarPara !== "undefined") _rdoVoltarPara = obraOrigem;
-  }, 250);
+  setTimeout(() => { if(typeof abrirRDO === "function") abrirRDO(id); }, 250);
 }
 
 /* ====================================================================
@@ -588,9 +584,7 @@ async function enviarDocumento(obraId){
     const ext = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "bin";
     const nomeUnico = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const mime = mimeDoArquivo(file, ext);
-    // supabase-js ignora `contentType` quando o corpo é File/Blob (vale o type do próprio arquivo): reembala com o MIME da extensão
-    const corpo = file.type === mime ? file : new Blob([file], { type: mime });
-    const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, corpo, {
+    const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, file, {
       cacheControl: "3600", contentType: mime, upsert: false
     });
     if(errUp) throw errUp;
@@ -1016,6 +1010,7 @@ function ligarAbasObra(){
       else if(tab === "rdos") carregarRDOsDaObra(obraEditId);
       else if(tab === "documentos") carregarDocumentosDaObra(obraEditId);
       else if(tab === "timeline") carregarTimelineDaObra(obraEditId);
+      else if(tab === "custos" && typeof custosRender === "function") custosRender("obr-custos", { obra_id: obraEditId });
     });
   });
 

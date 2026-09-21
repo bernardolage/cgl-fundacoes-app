@@ -330,6 +330,9 @@ async function eqpCarregarFilhas(e){
       <td>${m.destino_obra_id ? linkObra(m.destino_obra_id, m.destino_descricao || eqpObra(m.destino_obra_id)) : esc(m.destino_descricao || locLbl(m.destino_tipo))}</td>
       <td>${dataBR(m.data_recebimento)}</td></tr>`).join("")}</tbody></table></div>`;
 
+  // custos (view unificada, módulo Compras)
+  if(typeof custosRender === "function") custosRender("eqp-custos", { equipamento_id: id }, (total) => { const b = $("sb-eqp-custos"); if(b){ b.querySelector(".sb-num").textContent = brl(total).replace(",00", ""); b.classList.toggle("zero", !total); } });
+
   // reparos e manutenções
   const reps = rep.data || [], mans = man.data || [];
   setSb("sb-eqp-rep", reps.length); setSb("sb-eqp-man", mans.length);

@@ -133,11 +133,9 @@ async function carregarDashOperacional(){
     // !inner faz o filtro em rdo.data valer para as linhas-pai (sem ele, o PostgREST
     // devolvia TODAS as execuções e o filtro era só no navegador); lte fecha o mês.
     sb.from("rdo_execucao_estaca").select("profundidade_executada,volume_concreto_m3,rdo:rdo_id!inner(data)").gte("rdo.data", inicioMes).lte("rdo.data", fimMes),
-    // fase 49: números de orçamento só para diretoria e comercial
-    podeVerComercial() ? sb.from("orcamentos").select("id",{count:"exact",head:true}).in("status",["rascunho","enviado","em_negociacao"]) : Promise.resolve({ count: 0 }),
-    podeVerComercial() ? sb.from("orcamentos").select("valor_total").in("status",["rascunho","enviado","em_negociacao"]) : Promise.resolve({ data: [] })
+    sb.from("orcamentos").select("id",{count:"exact",head:true}).in("status",["rascunho","enviado","em_negociacao"]),
+    sb.from("orcamentos").select("valor_total").in("status",["rascunho","enviado","em_negociacao"])
   ]);
-  if($("dash-card-orc")) $("dash-card-orc").style.display = podeVerComercial() ? "" : "none";
 
   // Estado "vazio": zero em cinza (não "quebrado") — ver .dash-num-vazio
   const kpiNum = (id, v) => { const n = $(id); if(!n) return; n.textContent = v; n.classList.toggle("dash-num-vazio", !(Number(v) > 0)); };
@@ -181,7 +179,7 @@ async function carregarDashPendencias(){
     { data: comentMarcado }
   ] = await Promise.all([
     sb.from("rdo_execucao_estaca").select("id, rdo:rdo_id(obra_id)").is("estaca_id", null),
-    podeVerComercial() ? sb.from("orcamentos").select("id,numero,validade,cliente_id").lte("validade", proximos7).gte("validade", hojeISOstr).in("status",["enviado","em_negociacao"]) : Promise.resolve({ data: [] }), // fase 49
+    sb.from("orcamentos").select("id,numero,validade,cliente_id").lte("validade", proximos7).gte("validade", hojeISOstr).in("status",["enviado","em_negociacao"]),
     sb.from("medicoes").select("id,numero,updated_at,obra_id").eq("status","rascunho").lte("updated_at", d5atras + "T23:59:59"),
     // comentários de obra em que EU fui marcado como responsável (fase 23)
     usuarioAtual?.id
