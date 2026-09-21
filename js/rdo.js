@@ -10,8 +10,6 @@ let _rdoView  = "lista";
 let rdoEditId = null;
 let _rdoExecucoes  = [];      // execuções do RDO atual
 let _rdoEquipe     = [];   // equipe do dia (genérico, todos os tipos de RDO)
-let _rdoVoltarPara = null; // chamado #8 (Isaque, 16/09/2026): obra_id quando o RDO foi aberto pela aba RDOs da obra — o Voltar devolve para lá
-let _rdoAbast      = [];   // abastecimento do dia (fase 46, 16/09/2026): litros/horímetro do diário do operador
 let _rdoEquipes    = [];   // cache equipes cadastradas (pra modal "Importar equipe")
 let _rdoRaizSolo   = [];
 let _rdoAtividades = [];   // chamado #5: atividades hora-a-hora do dia (rdo_raiz_justificativa, execucao_id nulo)
@@ -198,20 +196,12 @@ function mostrarPainelRDO(){
   $("rdo-painel").style.display = "";
   $("rdo-ficha").style.display = "none";
   rdoEditId = null;
-  // Chamado #8 (Isaque, 16/09/2026): RDO aberto por Obras › RDOs volta para a ficha da obra, na aba RDOs,
-  // em vez da lista geral do Diário de Obra. A marca é limpa aqui e em qualquer clique no menu lateral.
-  if(_rdoVoltarPara){
-    const obraId = _rdoVoltarPara; _rdoVoltarPara = null;
-    irParaSecao("obras");
-    if(typeof abrirObra === "function") Promise.resolve(abrirObra(obraId)).then(() => { if(typeof ativarTabObra === "function") ativarTabObra("rdos"); });
-  }
 }
 
 async function novoRDO(){
   rdoEditId = null;
   _rdoExecucoes = [];
   _rdoEquipe = [];
-  _rdoAbast = []; if(typeof renderRdoAbast === "function") renderRdoAbast();
   _rdoRaizSolo = [];
   _rdoAtividades = [];
   _rdoRaizEquipe = [];
@@ -240,12 +230,11 @@ async function novoRDO(){
 async function abrirRDO(id){
   rdoEditId = id;
   _rdoBoletimAberto = null;
-  const [rdo, execs, dadosRaiz, equipe, abast, ativs] = await Promise.all([
+  const [rdo, execs, dadosRaiz, equipe, ativs] = await Promise.all([
     sb.from("rdo").select("*").eq("id", id).single(),
     sb.from("rdo_execucao_estaca").select("*").eq("rdo_id", id).order("perfuracao_inicio"),
     sb.from("rdo_raiz_dados").select("*").eq("rdo_id", id).maybeSingle(),
     sb.from("rdo_equipe").select("*").eq("rdo_id", id).order("ordem"),
-    sb.from("rdo_abastecimento").select("*").eq("rdo_id", id).order("ordem"),
     // chamado #5: atividades hora-a-hora do dia (linhas sem execucao_id; as com execucao_id são as paradas do boletim raiz)
     sb.from("rdo_raiz_justificativa").select("id,ordem,h_inicial,h_final,motivo").eq("rdo_id", id).is("execucao_id", null).order("ordem")
   ]);
@@ -253,7 +242,7 @@ async function abrirRDO(id){
   // Se a leitura das execuções/equipe falhar (rede, RLS), NÃO abrir a ficha:
   // salvarRDO faz delete+insert dos filhos e reinseriria um array vazio,
   // apagando as execuções do dia. Abortar aqui é o que evita perda de dados.
-  const falha = execs.error || equipe.error || dadosRaiz.error || abast.error || ativs.error;
+  const falha = execs.error || equipe.error || dadosRaiz.error || ativs.error;
   if(falha){
     rdoEditId = null;
     aviso("app-aviso","Não foi possível carregar as execuções deste RDO ("+falha.message+"). Tente abrir de novo.","erro");
@@ -334,8 +323,6 @@ function abrirFichaRDOVisual(rdo){
   ativarTabRDO("cabecalho");
   renderExecucoes();
   renderRdoEquipe();
-  _rdoAbast = (abast.data || []).map(a => ({ ...a }));
-  renderRdoAbast();
   renderRdoAtividades();
   atualizarVizinhosRDO(rdo);
 }
@@ -817,7 +804,7 @@ async function carregarParamsObraRDO(obraId){
   _rdoObraParams = null;
   if(!obraId) return null;
   const { data } = await sb.from("obras")
-    .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida")
+    .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sabado_entrada,jornada_sabado_saida")
     .eq("id", obraId).maybeSingle();
   _rdoObraParams = data || null;
   return _rdoObraParams;
@@ -1047,52 +1034,6 @@ function renderRdoEquipe(){
   });
 }
 
-/* ---------- Abastecimento do dia (fase 46, 16/09/2026) — vem do diário preenchido à mão pelo operador ---------- */
-const RDO_COMBUSTIVEIS = ["diesel", "gasolina", "arla", "oleo_hidraulico", "graxa", "outro"];
-function renderRdoAbast(){
-  const tb = $("rdo-abast-tbody");
-  if(!tb) return;
-  if(!_rdoAbast.length){
-    tb.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum abastecimento. Use "+ abastecimento" para lançar litros e horímetro do diário do operador.</td></tr>`;
-    return;
-  }
-  const optMaq = '<option value="">— máquina —</option>' + _rdoEquipsCache.map(e => `<option value="${esc(e.id)}">${esc(e.codigo || "")}${e.nome ? " · " + esc(e.nome) : ""}</option>`).join("");
-  const optComb = RDO_COMBUSTIVEIS.map(c => `<option value="${c}">${c.replace("_", " ")}</option>`).join("");
-  tb.innerHTML = _rdoAbast.map((a, idx) => `<tr data-idx="${idx}">
-    <td><select class="ab-maq">${optMaq}</select>${a.maquina_codigo && !a.equipamento_id ? `<div class="meta">no diário: ${esc(a.maquina_codigo)}</div>` : ""}</td>
-    <td><select class="ab-comb">${optComb}</select></td>
-    <td><input type="number" class="ab-qtd" step="0.01" min="0" value="${a.quantidade ?? ""}" style="width:90px;" /></td>
-    <td><input type="number" class="ab-hor" step="0.1" min="0" value="${a.horimetro ?? ""}" style="width:100px;" /></td>
-    <td><input type="text" class="ab-obs" value="${esc(a.observacao || "")}" style="min-width:140px;" /></td>
-    <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-ab-rem txt-perigo" data-idx="${idx}">×</button></td>
-  </tr>`).join("");
-  _rdoAbast.forEach((a, idx) => {
-    const tr = tb.querySelector(`tr[data-idx="${idx}"]`); if(!tr) return;
-    if(a.equipamento_id) tr.querySelector(".ab-maq").value = a.equipamento_id;
-    tr.querySelector(".ab-comb").value = RDO_COMBUSTIVEIS.includes(a.combustivel) ? a.combustivel : "outro";
-  });
-  tb.querySelectorAll("tr").forEach(tr => {
-    const idx = Number(tr.dataset.idx);
-    const sync = () => {
-      const eqId = tr.querySelector(".ab-maq").value || null;
-      const eq = eqId ? _rdoEquipsCache.find(e => e.id === eqId) : null;
-      _rdoAbast[idx] = { ..._rdoAbast[idx],
-        equipamento_id: eqId, maquina_codigo: eq ? eq.codigo : (_rdoAbast[idx].maquina_codigo || null),
-        combustivel: tr.querySelector(".ab-comb").value || "diesel",
-        quantidade: tr.querySelector(".ab-qtd").value === "" ? null : Number(tr.querySelector(".ab-qtd").value),
-        horimetro:  tr.querySelector(".ab-hor").value === "" ? null : Number(tr.querySelector(".ab-hor").value),
-        observacao: tr.querySelector(".ab-obs").value.trim() || null };
-    };
-    tr.addEventListener("input", sync);
-    tr.addEventListener("change", sync);
-  });
-  tb.querySelectorAll(".btn-ab-rem").forEach(b => b.addEventListener("click", () => { _rdoAbast.splice(Number(b.dataset.idx), 1); renderRdoAbast(); }));
-}
-function adicionarRdoAbast(){
-  _rdoAbast.push({ combustivel: "diesel" });
-  renderRdoAbast();
-}
-
 function adicionarRdoEquipe(){
   _rdoEquipe.push({ ordem: _rdoEquipe.length });
   renderRdoEquipe();
@@ -1179,7 +1120,6 @@ async function salvarRDO(novoStatus){
     const dels = [
       ["rdo_execucao_estaca",   sb.from("rdo_execucao_estaca").delete().eq("rdo_id", rdoEditId)],
       ["rdo_equipe",            sb.from("rdo_equipe").delete().eq("rdo_id", rdoEditId)],
-      ["rdo_abastecimento",     sb.from("rdo_abastecimento").delete().eq("rdo_id", rdoEditId)],
       ["rdo_raiz_solo",         sb.from("rdo_raiz_solo").delete().eq("rdo_id", rdoEditId)],
       ["rdo_raiz_justificativa",sb.from("rdo_raiz_justificativa").delete().eq("rdo_id", rdoEditId)],
       ["rdo_raiz_dados",        sb.from("rdo_raiz_dados").delete().eq("rdo_id", rdoEditId)]
@@ -1312,16 +1252,6 @@ async function salvarRDO(novoStatus){
     const { error: errEq } = await sb.from("rdo_equipe").insert(eqLimpa);
     if(errEq){ aviso("app-aviso","Erro ao salvar equipe: "+errEq.message,"erro"); return; }
   }
-  // Abastecimento do dia (fase 46)
-  const abLimpo = _rdoAbast
-    .filter(a => a.equipamento_id || a.maquina_codigo || a.quantidade != null || a.horimetro != null)
-    .map((a, i) => ({ rdo_id: savedId, equipamento_id: a.equipamento_id || null, maquina_codigo: a.maquina_codigo || null,
-      combustivel: a.combustivel || "diesel", quantidade: a.quantidade ?? null, unidade: "L", horimetro: a.horimetro ?? null,
-      observacao: a.observacao || null, ordem: i + 1 }));
-  if(abLimpo.length){
-    const { error: errAb } = await sb.from("rdo_abastecimento").insert(abLimpo);
-    if(errAb){ aviso("app-aviso","Erro ao salvar abastecimento: "+errAb.message,"erro"); return; }
-  }
 
   // Insere cabeçalho do dia (Raiz)
   if(tipo === "estaca_raiz"){
@@ -1391,7 +1321,6 @@ function ligarRDO(){
 
   $("btn-novo-rdo")?.addEventListener("click", novoRDO);
   $("btn-voltar-rdo")?.addEventListener("click", mostrarPainelRDO);
-  document.querySelectorAll(".sidebar-nav button[data-secao]").forEach(b => b.addEventListener("click", () => { _rdoVoltarPara = null; })); // chamado #8: navegação manual esquece a obra de origem
   $("btn-salvar-rdo")?.addEventListener("click", () => comBotaoTravado("btn-salvar-rdo", () => salvarRDO()));
   $("btn-finalizar-rdo")?.addEventListener("click", () => salvarRDO("finalizado"));
   $("btn-excluir-rdo")?.addEventListener("click", excluirRDO);
@@ -1399,7 +1328,6 @@ function ligarRDO(){
   $("btn-add-raiz-solo")?.addEventListener("click", adicionarRaizSolo);
   $("btn-add-rdo-atividade")?.addEventListener("click", adicionarRdoAtividade);
   $("btn-add-rdo-equipe")?.addEventListener("click", adicionarRdoEquipe);
-  $("btn-add-rdo-abast")?.addEventListener("click", adicionarRdoAbast);
   $("btn-rdo-equipe-do-time")?.addEventListener("click", importarEquipeCadastrada);
   $("btn-rdo-aplicar-op")?.addEventListener("click", aplicarOperadorEmMassa);
   $("btn-rdo-calc-concreto")?.addEventListener("click", calcularConcretoExecucoes);
@@ -1641,12 +1569,10 @@ function parseSoftSaci(text){
 
 async function processarCSV(){
   const inp = $("csv-arquivo");
-  if($("csv-aviso")){ $("csv-aviso").textContent = ""; $("csv-aviso").className = "aviso"; }
-  if(!inp.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo.","erro"); if($("csv-aviso")) aviso("csv-aviso","Selecione um arquivo (PDF, foto, XLSX do Maya, CSV ou TXT).","erro"); return; }
+  if(!inp.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo (CSV ou TXT).","erro"); return; }
   const file = inp.files[0];
   const mediaIA = _ehArquivoIA(file);
   if(mediaIA){ await processarArquivoIA(file, mediaIA); return; }
-  if(typeof _ehArquivoXlsx === "function" && _ehArquivoXlsx(file)){ await processarArquivoXlsxMaya(file); return; } // Relatório Diário do Maya (.xlsx)
   _iaExtras = null; _iaOrigem = null;
   const text = await file.text();
   const formato = detectarFormatoArquivo(text);
@@ -1753,18 +1679,6 @@ async function processarArquivoIA(file, mediaType){
       } catch(_){ /* segue */ }
       throw new Error(detalhe || "Falha ao chamar a leitura por IA.");
     }
-    await montarPreviewDias(data, _iaOrigem, obraSel);
-  } catch(err){
-    aviso("app-aviso", "Leitura por IA: " + err.message, "erro");
-    if($("csv-aviso")) aviso("csv-aviso", "Leitura por IA: " + err.message, "erro"); // o modal cobre o aviso geral
-  } finally {
-    if(btn){ btn.disabled = false; btn.textContent = txtBtn; }
-  }
-}
-
-/* Dias já estruturados (contrato v3 — vindos da IA ou da planilha do Maya) → registros do pipeline
-   + tabela de conferência. Lança erro quando não há o que importar (o chamador mostra o aviso). */
-async function montarPreviewDias(data, origem, obraSel){
     const dias = (data && Array.isArray(data.dias)) ? data.dias : [];
     if(!dias.length){
       throw new Error("A IA não reconheceu um diário de obra neste arquivo. " + (data?.observacoes || "Tente uma foto mais nítida ou um PDF com as páginas do diário."));
@@ -1788,8 +1702,6 @@ async function montarPreviewDias(data, origem, obraSel){
         responsavel: d.responsavel || null, atividades: d.atividades || null, observacoes: d.observacoes || null,
         tipo_servico: d.tipo_servico || null,
         intervalo_minutos: d.intervalo_minutos ?? null, almoco_inicio: d.almoco_inicio || null, almoco_fim: d.almoco_fim || null, feriado: false,
-        sem_estacas: d.sem_estacas === true, // dia só com ocorrência (planilha do Maya): vira RDO sem execuções
-        abastecimentos: Array.isArray(d.abastecimentos) ? d.abastecimentos : [], // bloco Abastecimento da planilha (diário do operador)
         equipe: (Array.isArray(d.equipe) ? d.equipe : []).map(iaCasarIntegrante),
         // v3.2 (chamado #5): lista hora-a-hora da justificativa; função v3.1 não manda → []
         justificativa: (Array.isArray(d.justificativa) ? d.justificativa : [])
@@ -1832,7 +1744,7 @@ async function montarPreviewDias(data, origem, obraSel){
           maquina_codigo: maq,
           equipamento_id: mapaMaq[maq.toUpperCase()] || null,
           observacoes: e.observacoes || null,
-          origem_dados: origem
+          origem_dados: _iaOrigem
         });
       });
     });
@@ -1840,7 +1752,7 @@ async function montarPreviewDias(data, origem, obraSel){
       throw new Error("A IA leu o diário, mas não encontrou linhas de estacas. " + (data?.observacoes || ""));
     }
 
-    await continuarProcessamentoImport(registros, dias[0].obra || "", origem);
+    await continuarProcessamentoImport(registros, dias[0].obra || "", _iaOrigem);
 
     // Obra: se a ficha já tinha obra escolhida e a detecção não foi exata, pré-seleciona
     const selObra = $("csv-obra-select");
@@ -1853,6 +1765,11 @@ async function montarPreviewDias(data, origem, obraSel){
     await iaCarregarJornadaObra((selObra && selObra.value) || (_csvObraDetectada && _csvObraDetectada.id) || obraSel || null);
     renderConferenciaIA(data);
     selObra?.addEventListener("change", async () => { await iaCarregarJornadaObra(selObra.value); iaRecalcularHorasNoDOM(false); });
+  } catch(err){
+    aviso("app-aviso", "Leitura por IA: " + err.message, "erro");
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = txtBtn; }
+  }
 }
 
 const CONDICAO_TEMPO_IA = { bom:"Bom", nublado:"Nublado", chuva_fraca:"Chuva fraca", chuva_forte:"Chuva forte", impraticavel:"Impraticável" };
@@ -1954,26 +1871,19 @@ function iaInjecaoDaEstaca(injecao, numero, agrupamento){
   const a = normalizarAgrupamento(agrupamento);
   return cands.find(j => normalizarAgrupamento(j.agrupamento) === a) || cands[0];
 }
-/* Dias da importação: os que têm estacas + os marcados como "só ocorrência" (planilha do Maya) */
-function diasImportacao(){
-  const s = new Set(Object.keys(_csvParsed || {}));
-  Object.entries(_iaExtras || {}).forEach(([d, ex]) => { if(ex && ex.sem_estacas) s.add(d); });
-  return [...s].sort();
-}
 const iaMinDe  = (ts) => (ts || []).reduce((m, t) => (t.de  != null && (m == null || t.de  < m)) ? t.de  : m, null);
 const iaMaxAte = (ts) => (ts || []).reduce((m, t) => (t.ate != null && (m == null || t.ate > m)) ? t.ate : m, null);
 
 /* ---------- Horas da equipe pela jornada da obra (espelha fn_horas_equipe do banco) ----------
-   Regra RH (Ju, 11/09/2026) + decisão do Bernardo: toda HE é 100%; seg-qui o que passar da
-   jornada da obra (descontada 1h de almoço) é HE; sexta tem jornada própria quando cadastrada
-   (16/09/2026); sábado, domingo e feriado: tudo HE 100.
+   Regra RH (Ju, 11/09/2026) + decisão do Bernardo: toda HE é 100%; seg-sex o que passar da
+   jornada da obra (descontada 1h de almoço) é HE; sábado, domingo e feriado: tudo HE 100.
    Intervalo: sem registro = 60 min; registrado = tempo REAL com piso de 30 min.
    Sem jornada cadastrada → null em dia útil: fica em branco para preencher à mão. */
 let _iaJornadaObra = null;
 async function iaCarregarJornadaObra(obraId){
   _iaJornadaObra = null;
   if(!obraId) return null;
-  const { data } = await sb.from("obras").select("jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida").eq("id", obraId).maybeSingle();
+  const { data } = await sb.from("obras").select("jornada_entrada,jornada_saida,jornada_sabado_entrada,jornada_sabado_saida").eq("id", obraId).maybeSingle();
   _iaJornadaObra = data || null;
   return _iaJornadaObra;
 }
@@ -1988,10 +1898,7 @@ function calcularHorasEquipe(dataISO, entrada, saida, jornada, intervaloMin, fer
   const h = (m) => Math.round(m / 60 * 4) / 4; // quartos de hora
   if(dow === 0 || dow === 6 || feriado) return { horas_normais: 0, horas_50: 0, horas_100: h(trab) };
   if(!jornada) return null;
-  // seg-qui usam a jornada padrão; sexta usa a própria quando cadastrada (decisão de 16/09/2026)
-  const usaSexta = dow === 5 && minutosHHMM(jornada.jornada_sexta_entrada) != null && minutosHHMM(jornada.jornada_sexta_saida) != null;
-  const je = minutosHHMM(usaSexta ? jornada.jornada_sexta_entrada : jornada.jornada_entrada);
-  const js = minutosHHMM(usaSexta ? jornada.jornada_sexta_saida   : jornada.jornada_saida);
+  const je = minutosHHMM(jornada.jornada_entrada), js = minutosHHMM(jornada.jornada_saida);
   if(je == null || js == null) return null;
   let jor = js - je; if(jor < 0) jor += 24 * 60;
   jor = Math.max(0, jor - 60); // jornada do dia já descontada 1h de almoço (mesma regra do banco)
@@ -2038,16 +1945,16 @@ function renderConferenciaIA(resp){
   const duvidas = (resp?.duvidas || []);
   const temJornada = !!(_iaJornadaObra && _iaJornadaObra.jornada_entrada);
   let html = `<div class="ia-conf-topo">
-    <div>${resp?.origem_label ? resp.origem_label : `🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"}`} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
+    <div>🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
       ${resp?.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
     ${duvidas.length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${duvidas.map(esc).join(" · ")}</div>` : ""}
     <div class="ia-duvidas ia-jornada-aviso" style="${temJornada ? "display:none;" : ""}">⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros): as horas extras da equipe ficam em branco até alguém preencher.</div>
     <div class="meta">Confira e corrija abaixo. O que estiver na tabela é exatamente o que será gravado. Linhas removidas com ✕ não entram. A função da equipe vem do cadastro de funcionários; "Função no dia" só quando o boletim disser outra.</div>
   </div>`;
 
-  diasImportacao().forEach(dia => {
+  Object.keys(_csvParsed).sort().forEach(dia => {
     const ex = _iaExtras?.[dia] || { equipe: [] };
-    const ests = _csvParsed[dia] || [];
+    const ests = _csvParsed[dia];
     const semCadastro = ex.equipe.filter(m => !m.funcionario_id).length;
     // Responsável: integrantes casados primeiro, depois o restante do cadastro
     const idsEquipe = new Set(ex.equipe.map(m => m.funcionario_id).filter(Boolean));
@@ -2139,18 +2046,6 @@ function renderConferenciaIA(resp){
           <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="remover">&times;</button></td>
         </tr>`).join("")}</tbody></table>
       </details>
-      ${(ex.abastecimentos && ex.abastecimentos.length) ? `<details class="ia-abast" open>
-        <summary>⛽ Abastecimento do dia (${ex.abastecimentos.length}) <span class="meta">— do diário do operador</span></summary>
-        <table class="itens-tabela ia-tabela"><thead><tr><th>Máquina</th><th>Combustível</th><th>Quantidade (L)</th><th>Horímetro</th><th>Obs.</th><th></th></tr></thead>
-        <tbody>${ex.abastecimentos.map(a => `<tr>
-          <td><input data-a="maquina" value="${esc(v(a.maquina))}" style="width:90px" /></td>
-          <td><input data-a="combustivel" value="${esc(v(a.combustivel))}" style="width:90px" /></td>
-          <td><input type="number" step="0.01" data-a="quantidade" value="${v(a.quantidade)}" style="width:80px" /></td>
-          <td><input type="number" step="0.1" data-a="horimetro" value="${v(a.horimetro)}" style="width:90px" /></td>
-          <td><input data-a="observacao" value="${esc(v(a.observacao))}" style="min-width:160px" /></td>
-          <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="não importar">&times;</button></td>
-        </tr>`).join("")}</tbody></table>
-      </details>` : ""}
     </div>`;
   });
   cont.insertAdjacentHTML("beforeend", html);
@@ -2336,12 +2231,6 @@ function lerConferenciaIA(){
       m.funcao_no_dia = m.funcionario_id ? fSel : (fSel || "outro");
       ex.equipe.push(m);
     });
-    // abastecimento do dia (planilha do Maya, bloco complementar)
-    ex.abastecimentos = [...bloco.querySelectorAll(".ia-abast tbody tr")].map(tr => {
-      const ga = (c) => tr.querySelector(`[data-a="${c}"]`);
-      return { maquina: ga("maquina").value.trim() || null, combustivel: ga("combustivel").value.trim().toLowerCase() || "diesel",
-        quantidade: num(ga("quantidade").value), horimetro: num(ga("horimetro").value), unidade: "L", observacao: ga("observacao").value.trim() || null };
-    }).filter(a => a.quantidade != null || a.horimetro != null || a.observacao);
   });
   // máquinas sem match após a edição
   const regs = Object.values(_csvParsed).flat();
@@ -2453,7 +2342,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   _csvMapaManual = {};  // codigo CSV -> equipamento_id escolhido manualmente
 
   // Preview
-  const dias = [...new Set([...Object.keys(porDia), ...Object.entries(_iaExtras || {}).filter(([, ex]) => ex && ex.sem_estacas).map(([d]) => d)])].sort().reverse();
+  const dias = Object.keys(porDia).sort().reverse();
   const totalEstacas = registros.length;
 
   // Bloco de identificação de obra
@@ -2521,7 +2410,6 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     ? "📄 <strong>Formato detectado:</strong> SoftSaci V7.x (TXT colunas fixas)"
     : formato === "ia_pdf" ? "🤖 <strong>Lido por IA</strong> de um PDF — confira a tabela abaixo antes de importar"
     : formato === "ia_foto" ? "🤖 <strong>Lido por IA</strong> de uma foto/scan — confira a tabela abaixo antes de importar"
-    : formato === "xlsx_maya" ? "📊 <strong>Planilha do Maya</strong> (Relatório Diário .xlsx) — estacas, observações e ocorrências; confira a tabela abaixo antes de importar"
     : "📄 <strong>Formato detectado:</strong> Geodigitus (CSV)";
   const blocoFormato = `<div style="background:#eef2f6;border-left:3px solid var(--txt-fraco);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-xs);color:#495057;">${fmtLbl}</div>`;
 
@@ -2531,9 +2419,9 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     Total concreto: <strong>${num(registros.reduce((s,r) => s + (r.volume_concreto_m3||0), 0))} m³</strong>.
   </div>`;
   dias.forEach(d => {
-    const ests = porDia[d] || []; // dia só com ocorrência (planilha do Maya) não tem estacas
+    const ests = porDia[d];
     html += `<div style="margin-bottom:8px;border:1px solid var(--borda-forte);border-radius:4px;padding:8px 10px;">
-      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length ? `${ests.length} estaca${ests.length>1?"s":""}` : "sem estacas (só ocorrência/equipe)"}</div>
+      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length} estaca${ests.length>1?"s":""}</div>
       <div class="meta">${ests.map(e=>esc(e.estaca_numero)).slice(0,10).join(", ")}${ests.length>10?` +${ests.length-10}`:""}</div>
     </div>`;
   });
@@ -2576,7 +2464,7 @@ function parseCSVLine(linha){
 async function confirmarImportCSV(){
   if(!_csvParsed){ aviso("app-aviso","Processe o arquivo primeiro.","erro"); return; }
   lerConferenciaIA(); // import por IA: o que está na tabela de conferência é o que vale
-  if(!diasImportacao().length){ aviso("app-aviso","Nenhuma linha para importar.","erro"); return; }
+  if(!Object.keys(_csvParsed).length){ aviso("app-aviso","Nenhuma linha para importar.","erro"); return; }
 
   // Obra: pega do select do preview se houver, senão da obra detectada exata
   let obra_id = null;
@@ -2637,10 +2525,10 @@ async function confirmarImportCSV(){
     // Estacas cadastradas na obra: vínculo por número + agrupamento (bloco) feito aqui
     const { data: estacasObra } = await sb.from("estacas").select("id,numero,bloco,local").eq("obra_id", obra_id).limit(5000);
     const estsObra = estacasObra || [];
-    const dias = diasImportacao();
+    const dias = Object.keys(_csvParsed).sort();
     let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0;
     for(const dia of dias){
-      const ests = _csvParsed[dia] || [];
+      const ests = _csvParsed[dia];
       // Upsert do RDO (cria se não existe)
       const { data: rdoExist } = await sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", dia).maybeSingle();
       let rdoId;
@@ -2657,10 +2545,7 @@ async function confirmarImportCSV(){
             atividades: ex.atividades || null,
             feriado: !!ex.feriado,
             observacoes: [ex.observacoes, (ex.responsavel && !ex.responsavel_id) ? "Responsável no diário: " + ex.responsavel : null].filter(Boolean).join("\n") || null,
-            // chamado #6: boletim sem efetivo = 0 (coluna NOT NULL default 0; null explícito quebrava o insert).
-            // Regra da varredura de 16/09: nunca mandar null para coluna NOT NULL com default — ou o valor, ou omitir a chave.
-            efetivo_proprio: ex.equipe.length,
-            efetivo_terceiro: 0
+            efetivo_proprio: ex.equipe.length || null
           } : {})
         };
         const { data: novo, error } = await sb.from("rdo").insert(reg).select("id").single();
@@ -2702,7 +2587,7 @@ async function confirmarImportCSV(){
           origem_dados: e.origem_dados || "csv_geodigitus"
         };
       });
-      const { data: execIds, error: errEx } = exs.length ? await sb.from("rdo_execucao_estaca").insert(exs).select("id") : { data: [], error: null };
+      const { data: execIds, error: errEx } = await sb.from("rdo_execucao_estaca").insert(exs).select("id");
       if(errEx){ throw new Error(`Execuções de ${dia}: ${errEx.message}`); }
       totalExecs += exs.length;
       // Trechos de solo/ferramenta → rdo_raiz_solo (por execução)
@@ -2743,19 +2628,6 @@ async function confirmarImportCSV(){
           horas_normais: p.horas_normais, horas_50: p.horas_50, horas_100: p.horas_100, ordem: i + 1 }));
         const { error: errEq } = await sb.from("rdo_equipe").insert(linhas);
         if(errEq) console.warn("Equipe de " + dia + " não gravada:", errEq.message);
-      }
-      // Abastecimento lido da planilha do Maya (só em RDO criado agora)
-      const abIA = _iaExtras?.[dia]?.abastecimentos || [];
-      if(abIA.length && !rdoExist){
-        const linhasAb = abIA.map((a, i) => {
-          const cod = String(a.maquina || "").toUpperCase();
-          const eq = cod ? _rdoEquipsCache.find(e => [e.codigo_externo, e.codigo].filter(Boolean).some(c => c.toUpperCase() === cod)) : null;
-          return { rdo_id: rdoId, equipamento_id: eq ? eq.id : ((a.maquina && _csvMapaManual[a.maquina]) || null), maquina_codigo: a.maquina || null,
-            combustivel: a.combustivel || "diesel", quantidade: a.quantidade ?? null, unidade: a.unidade || "L", horimetro: a.horimetro ?? null,
-            observacao: a.observacao || null, ordem: i + 1 };
-        });
-        const { error: errAb } = await sb.from("rdo_abastecimento").insert(linhasAb);
-        if(errAb) console.warn("Abastecimento de " + dia + " não gravado:", errAb.message);
       }
     }
     aviso("app-aviso", `✅ Importado: ${totalRdos} RDOs novos, ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.`, "ok");

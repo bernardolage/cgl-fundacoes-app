@@ -213,9 +213,11 @@ function abrirMovimentacaoPraObra(tipo = "remessa", equipamentoIdPreSelecionado 
         $("mov-destino-tipo").value = "base";
         $("mov-destino-descricao").value = "Base Itabira";
         $("mov-destino-uf").value = "mg";
+        if(typeof movDefinirObra === "function") movDefinirObra("origem", obraEditId);
       } else {
         $("mov-destino-tipo").value = "obra";
         $("mov-destino-descricao").value = obraTxt;
+        if(typeof movDefinirObra === "function") movDefinirObra("destino", obraEditId);
       }
       // Pré-seleciona equipamento se passado
       if(equipamentoIdPreSelecionado && typeof adicionarEquipamento === "function"){
@@ -447,14 +449,9 @@ function abrirRdoPraObra(){
 }
 
 function abrirRdoExistente(id){
-  const obraOrigem = (typeof obraEditId !== "undefined" && obraEditId) || null;
   const nav = document.querySelector('nav button[data-secao="rdo"]');
   if(nav) nav.click();
-  setTimeout(() => {
-    if(typeof abrirRDO === "function") abrirRDO(id);
-    // chamado #8 (Isaque, 16/09/2026): o Voltar da ficha do RDO devolve para esta obra, aba RDOs
-    if(typeof _rdoVoltarPara !== "undefined") _rdoVoltarPara = obraOrigem;
-  }, 250);
+  setTimeout(() => { if(typeof abrirRDO === "function") abrirRDO(id); }, 250);
 }
 
 /* ====================================================================
@@ -587,9 +584,7 @@ async function enviarDocumento(obraId){
     const ext = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "bin";
     const nomeUnico = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const mime = mimeDoArquivo(file, ext);
-    // supabase-js ignora `contentType` quando o corpo é File/Blob (vale o type do próprio arquivo): reembala com o MIME da extensão
-    const corpo = file.type === mime ? file : new Blob([file], { type: mime });
-    const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, corpo, {
+    const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, file, {
       cacheControl: "3600", contentType: mime, upsert: false
     });
     if(errUp) throw errUp;
