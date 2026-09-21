@@ -977,8 +977,9 @@ function recalcularOrc(){
   // Fase 40: ISS da proposta (por dentro = soma × p/(100-p), como na RG 11.8)
   const p  = Number($("orc-iss-perc")?.value || 0);
   const pd = !!$("orc-iss-pdentro")?.checked;
-  const iss = p > 0 ? (pd && p < 100 ? soma * (p / (100 - p)) : soma * p / 100) : 0;
-  if($("orc-iss-lbl"))   $("orc-iss-lbl").textContent   = `${p}%${pd ? " por dentro" : ""}`;
+  // Chamado #18 (Thales, 21/09/2026): checkbox desmarcado = ISS não soma (antes virava "por fora")
+  const iss = (pd && p > 0 && p < 100) ? soma * (p / (100 - p)) : 0;
+  if($("orc-iss-lbl"))   $("orc-iss-lbl").textContent   = pd ? `${p}% por dentro` : "não incluso";
   if($("orc-iss-valor")) $("orc-iss-valor").textContent = brl(iss);
   if($("orc-total-iss")) $("orc-total-iss").textContent = brl(soma + iss);
   return soma;
