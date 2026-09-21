@@ -458,8 +458,9 @@ function preencherParametrosObra(d){
   const set = (id, v) => { const el = $(id); if(el) el.value = v; };
   set("obr-jornada-entrada",     hhmm(d.jornada_entrada));
   set("obr-jornada-saida",       hhmm(d.jornada_saida));
-  set("obr-jornada-sab-entrada", hhmm(d.jornada_sabado_entrada));
-  set("obr-jornada-sab-saida",   hhmm(d.jornada_sabado_saida));
+  set("obr-jornada-sex-entrada", hhmm(d.jornada_sexta_entrada));
+  set("obr-jornada-sex-saida",   hhmm(d.jornada_sexta_saida));
+  set("obr-iss-pct",             d.iss_percentual ?? 5);
   set("obr-conc-tipo",           d.concretagem_tipo_padrao || "");
   set("obr-conc-fornecedor",     d.concreto_fornecedor || "");
   set("obr-conc-traco",          d.traco_kg_cimento_m3 ?? OBR_PARAM_DEFAULTS.traco_kg_cimento_m3);
@@ -474,8 +475,9 @@ function lerParametrosObra(){
   return {
     jornada_entrada:        t("obr-jornada-entrada"),
     jornada_saida:          t("obr-jornada-saida"),
-    jornada_sabado_entrada: t("obr-jornada-sab-entrada"),
-    jornada_sabado_saida:   t("obr-jornada-sab-saida"),
+    jornada_sexta_entrada:  t("obr-jornada-sex-entrada"),
+    jornada_sexta_saida:    t("obr-jornada-sex-saida"),
+    iss_percentual:         n("obr-iss-pct", 5), // ISS do município (16/09/2026): a medição herda
     concretagem_tipo_padrao: t("obr-conc-tipo"),
     concreto_fornecedor:     t("obr-conc-fornecedor"),
     traco_kg_cimento_m3:  n("obr-conc-traco", OBR_PARAM_DEFAULTS.traco_kg_cimento_m3),
@@ -493,8 +495,14 @@ function atualizarResumoParametrosObra(){
   if(p.jornada_entrada && p.jornada_saida){
     const m = (s) => { const [h, mi] = s.split(":").map(Number); return h * 60 + mi; };
     let dur = m(p.jornada_saida) - m(p.jornada_entrada); if(dur < 0) dur += 1440;
-    linhas.push(`Jornada seg–sex: ${p.jornada_entrada}–${p.jornada_saida} (${(dur / 60).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} h de intervalo; acima disso vira HE 50 %).`);
-    if(!(p.jornada_sabado_entrada && p.jornada_sabado_saida)) linhas.push("Sábado sem jornada: horas de sábado contam inteiras como HE 50 %.");
+    linhas.push(`Jornada seg–qui: ${p.jornada_entrada}–${p.jornada_saida} (${((dur - 60) / 60).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} h úteis, já descontada 1 h de almoço; acima disso vira HE 100 %).`);
+    if(p.jornada_sexta_entrada && p.jornada_sexta_saida){
+      let durSex = m(p.jornada_sexta_saida) - m(p.jornada_sexta_entrada); if(durSex < 0) durSex += 1440;
+      linhas.push(`Sexta: ${p.jornada_sexta_entrada}–${p.jornada_sexta_saida} (${((durSex - 60) / 60).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} h úteis).`);
+    } else {
+      linhas.push("Sexta sem jornada própria: usa a de seg–qui.");
+    }
+    linhas.push("Sábado, domingo e feriado: todo o trabalhado é HE 100 % (regra RH 11/09/2026).");
   } else {
     linhas.push("Sem jornada cadastrada: as horas extras da equipe no RDO ficam em branco para preencher à mão.");
   }
