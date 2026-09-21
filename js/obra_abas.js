@@ -587,7 +587,9 @@ async function enviarDocumento(obraId){
     const ext = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "bin";
     const nomeUnico = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const mime = mimeDoArquivo(file, ext);
-    const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, file, {
+    // supabase-js ignora `contentType` quando o corpo é File/Blob (vale o type do próprio arquivo): reembala com o MIME da extensão
+    const corpo = file.type === mime ? file : new Blob([file], { type: mime });
+    const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, corpo, {
       cacheControl: "3600", contentType: mime, upsert: false
     });
     if(errUp) throw errUp;

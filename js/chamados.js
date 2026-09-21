@@ -332,7 +332,9 @@ async function chamEnviarAnexos(chamadoId, arquivos){
     const ext = chamExtensao(f.name);
     const caminho = `${usuarioAtual.id}/${chamadoId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const mime = CHAM_ANEXO_MIME[ext];
-    const up = await sb.storage.from(CHAM_ANEXO_BUCKET).upload(caminho, f, { cacheControl: "3600", contentType: mime, upsert: false });
+    // supabase-js ignora `contentType` quando o corpo é File/Blob (vale o type do próprio arquivo): reembala com o MIME da extensão
+    const corpo = f.type === mime ? f : new Blob([f], { type: mime });
+    const up = await sb.storage.from(CHAM_ANEXO_BUCKET).upload(caminho, corpo, { cacheControl: "3600", contentType: mime, upsert: false });
     if(up.error){ falhas.push(`${f.name}: ${up.error.message}`); continue; }
     const ins = await sb.from(CHAM_TBL.anexos).insert({ chamado_id: chamadoId, nome: f.name, storage_path: caminho, mime_type: mime, tamanho_bytes: f.size, enviado_por: usuarioAtual.id });
     if(ins.error){
