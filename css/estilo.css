@@ -2702,3 +2702,10 @@ input:disabled, select:disabled, textarea:disabled {
 .modal-fundo .grade { gap: 10px 16px; }
 .modal-fundo .grade .campo { margin-bottom: 4px; }
 .modal-fundo .grade.grade-3 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+/* ---- Compras / custos (fase 53) ---- */
+.custos-resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 24px; margin: 6px 0 12px; }
+.custos-linha { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border-bottom: 1px dashed var(--borda); font-size: 13px; }
+.cmp-itens-tabela td, .cmp-itens-tabela th { font-size: 12.5px; }
+.cmp-itens-tabela select { max-width: 100%; }
+.txt-perigo { color: var(--perigo); }

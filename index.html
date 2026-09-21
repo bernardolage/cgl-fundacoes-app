@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=0451114" />
+<link rel="stylesheet" href="css/estilo.css?v=cda770c" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -93,7 +93,11 @@
       </button>
       <button data-secao="estoque">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-        <span>Entrada de Estoque</span>
+        <span>Estoque</span>
+      </button>
+      <button data-secao="compras">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+        <span>Compras</span>
       </button>
       <button data-secao="orcamentos">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -1000,6 +1004,199 @@
       </div>
     </section>
 
+    <!-- ================= COMPRAS (fase 53) ================= -->
+    <section class="secao" id="sec-compras">
+      <div id="cmp-painel">
+        <h2>Compras</h2>
+        <p class="texto-apoio">Pedido de compra com aprovação por alçada, recebimento da nota (entra no estoque ou vira custo direto da obra/TAG) e títulos a pagar para o financeiro. Substitui o Odoo em compras e estoque.</p>
+
+        <div class="indicadores">
+          <div class="ind ind-click" data-kpi=""><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div></div>
+          <div class="ind ind-click" data-kpi="aprovar"><div class="num" id="cmp-kpi-aprovar" style="color:var(--marca-600);">—</div><div class="rot">Aguardando aprovação</div></div>
+          <div class="ind ind-click" data-kpi="entrega"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando entrega</div></div>
+          <div class="ind ind-click" data-kpi="atrasados"><div class="num" id="cmp-kpi-atrasados">—</div><div class="rot">Entrega atrasada</div></div>
+          <div class="ind"><div class="num" id="cmp-kpi-valor">—</div><div class="rot">Valor em aberto</div></div>
+          <div class="ind ind-click" data-kpi="titulos"><div class="num" id="cmp-kpi-titulos">—</div><div class="rot">Títulos a exportar</div></div>
+        </div>
+
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Pedidos <span id="cmp-contador" class="contador"></span></h3>
+            <div class="serv-views" id="cmp-views">
+              <button type="button" class="serv-view-btn ativo" data-view="kanban">Por status</button>
+              <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="recebimentos">Recebimentos</button>
+              <button type="button" class="serv-view-btn" data-view="titulos">Títulos a pagar</button>
+              <button type="button" class="serv-view-btn" data-view="avulsos">Custos avulsos</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-cmp-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-cmp-receber-avulso" style="display:none;" title="Nota sem pedido (compra direta, emergência, cartão)">📥 Receber NF sem pedido</button>
+            <button type="button" class="btn-sec" id="btn-cmp-custo-avulso" style="display:none;" title="Multa, IPVA, seguro, locação, serviço sem NF de produto">＋ Custo avulso</button>
+            <button type="button" class="btn" id="btn-cmp-novo" style="display:none;">+ Novo pedido</button>
+          </div>
+          <div class="serv-filtros" id="cmp-filtros">
+            <input id="cmp-busca" placeholder="Buscar número, fornecedor, obra, TAG, item…" />
+            <select id="cmp-f-status"><option value="">Status</option></select>
+            <select id="cmp-f-forn"><option value="">Fornecedor</option></select>
+            <select id="cmp-f-obra"><option value="">Obra</option></select>
+            <select id="cmp-f-equip"><option value="">TAG</option></select>
+            <input type="month" id="cmp-f-mes" title="mês do pedido" />
+          </div>
+          <div id="cmp-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha do pedido (estilo Odoo) -->
+      <div id="cmp-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-cmp-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-cmp-salvar">💾 Salvar</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-enviar-aprov" data-acao="enviar_aprovacao">✅ Enviar para aprovação</button>
+              <button type="button" class="btn btn-sucesso cmp-acao" id="btn-cmp-aprovar" data-acao="aprovar">👍 Aprovar</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-enviado" data-acao="enviado">📤 Enviado ao fornecedor</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-receber" data-acao="receber">📥 Receber NF</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf" data-acao="pdf">🖨️ PDF do pedido</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-voltar-rascunho" data-acao="rascunho">↩ Voltar a rascunho</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-cancelar" data-acao="cancelar" style="color:var(--perigo);">✕ Cancelar pedido</button>
+            </div>
+            <div class="actions-right"><strong id="cmp-ficha-titulo">Novo pedido</strong></div>
+          </div>
+
+          <div class="odoo-statusbar" id="cmp-statusbar" title="Status do pedido">
+            <div class="stage" data-status="rascunho">Rascunho</div>
+            <div class="stage" data-status="aguardando_aprovacao">Aguardando aprovação</div>
+            <div class="stage" data-status="aprovado">Aprovado</div>
+            <div class="stage" data-status="enviado">Enviado</div>
+            <div class="stage" data-status="parcialmente_recebido">Parcial</div>
+            <div class="stage" data-status="recebido">Recebido</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="cmp-chip-num">—</strong></div>
+            <div class="chip"><span>Fornecedor</span><strong id="cmp-chip-forn">—</strong></div>
+            <div class="chip"><span>Destino</span><strong id="cmp-chip-destino">—</strong></div>
+            <div class="chip"><span>Total</span><strong id="cmp-chip-total">R$ 0,00</strong></div>
+            <div class="chip"><span>Previsão</span><strong id="cmp-chip-prev">—</strong></div>
+            <div class="chip"><span>Aprovação</span><strong id="cmp-chip-aprov">—</strong></div>
+          </div>
+
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-cmp-itens" data-goto-tab="itens"><span class="sb-num">0</span><span class="sb-icon">📦</span><span class="sb-lbl">itens</span></button>
+            <button type="button" class="sb-btn" id="sb-cmp-rec" data-goto-tab="recebimentos"><span class="sb-num">0</span><span class="sb-icon">📥</span><span class="sb-lbl">recebimentos</span></button>
+            <button type="button" class="sb-btn" id="sb-cmp-tit" data-goto-tab="financeiro"><span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">títulos</span></button>
+          </div>
+
+          <div class="odoo-notebook" id="cmp-notebook">
+            <button type="button" data-tab="cabecalho" class="ativo">Cabeçalho</button>
+            <button type="button" data-tab="itens">Itens</button>
+            <button type="button" data-tab="recebimentos">Recebimentos</button>
+            <button type="button" data-tab="financeiro">Financeiro</button>
+            <button type="button" data-tab="timeline">Timeline</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="cabecalho">
+              <div class="grade">
+                <div class="campo largo"><label>Fornecedor *</label><select id="cmp-forn"></select></div>
+                <div class="campo"><label>Data do pedido</label><input type="date" id="cmp-data" /></div>
+                <div class="campo"><label>Previsão de entrega</label><input type="date" id="cmp-prev" /></div>
+                <div class="campo"><label>Condição de pagamento</label><input id="cmp-cond" placeholder="ex.: 28 dias, 30/60, à vista" list="cmp-cond-lista" /><datalist id="cmp-cond-lista"><option value="À vista"></option><option value="28 dias"></option><option value="30 dias"></option><option value="30/60 dias"></option><option value="30/60/90 dias"></option><option value="Cartão"></option></datalist></div>
+                <div class="campo"><label>Local de entrega</label><select id="cmp-local"><option value="base">Base Itabira (estoque)</option><option value="obra">Direto na obra (custo direto)</option></select></div>
+                <div class="campo"><label>Obra (destino padrão dos itens)</label><select id="cmp-obra"></select></div>
+                <div class="campo"><label>TAG (destino padrão dos itens)</label><select id="cmp-equip"></select></div>
+                <div class="campo"><label>Frete (R$)</label><input type="number" id="cmp-frete" min="0" step="0.01" /></div>
+                <div class="campo"><label>Desconto (R$)</label><input type="number" id="cmp-desc" min="0" step="0.01" /></div>
+                <div class="campo largo"><label>Observações (saem no PDF)</label><textarea id="cmp-obs" rows="2"></textarea></div>
+              </div>
+              <p class="meta" id="cmp-alcada-info"></p>
+            </div>
+
+            <div class="odoo-tab" data-tab="itens">
+              <div class="tabela-rola">
+                <table class="itens-tabela cmp-itens-tabela">
+                  <thead><tr>
+                    <th>Item</th><th style="width:70px;">Un</th><th style="width:90px;">Qtd</th><th style="width:120px;">Unitário</th><th class="num" style="width:120px;">Total</th>
+                    <th style="width:130px;">Categoria</th><th style="width:150px;">Destino</th><th class="num" style="width:80px;" title="quantidade já recebida">Receb.</th><th class="col-acao"></th>
+                  </tr></thead>
+                  <tbody id="cmp-itens"></tbody>
+                </table>
+              </div>
+              <div class="grade" style="margin-top:12px;" id="cmp-itens-add">
+                <div class="campo largo"><label>+ Adicionar produto do catálogo</label>
+                  <input id="cmp-busca-prod" placeholder="digite ≥ 2 letras (código ou nome)…" autocomplete="off" />
+                  <div id="cmp-res-prod" class="autocomplete-lista" style="display:none;"></div>
+                </div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-item-livre">+ Item livre (serviço / sem cadastro)</button></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="recebimentos"><div id="cmp-rec-lista"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="financeiro"><div id="cmp-tit-lista"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="timeline"><div id="cmp-chatter"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- modal: recebimento de NF (com ou sem pedido) -->
+      <div class="modal-fundo" id="cmp-rec-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:1100px;">
+          <div class="modal-topo"><h3 id="cmp-rec-titulo">Receber NF</h3><button type="button" class="btn-sec" id="btn-cmp-rec-fechar">×</button></div>
+          <p class="meta" id="cmp-rec-ajuda">Confirmar gera a entrada no estoque (destino base) ou o custo direto (obra/TAG), baixa o pedido e cria os títulos a pagar.</p>
+          <div class="grade grade-3">
+            <div class="campo largo" id="cmp-rec-forn-campo"><label>Fornecedor *</label><select id="cmp-rec-forn"></select></div>
+            <div class="campo"><label>NF número</label><input id="cmp-rec-nf" /></div>
+            <div class="campo"><label>Série</label><input id="cmp-rec-serie" value="1" /></div>
+            <div class="campo largo"><label>Chave de acesso (44 dígitos)</label><input id="cmp-rec-chave" maxlength="54" /></div>
+            <div class="campo"><label>Emissão</label><input type="date" id="cmp-rec-emissao" /></div>
+            <div class="campo"><label>Recebido em</label><input type="date" id="cmp-rec-data" /></div>
+            <div class="campo"><label>Frete na NF (R$)</label><input type="number" id="cmp-rec-frete" min="0" step="0.01" /></div>
+            <div class="campo"><label>1º vencimento</label><input type="date" id="cmp-rec-venc" /></div>
+            <div class="campo"><label>Parcelas</label><input type="number" id="cmp-rec-parc" min="1" step="1" value="1" /></div>
+            <div class="campo"><label>Total da NF (R$)</label><input type="number" id="cmp-rec-total" min="0" step="0.01" placeholder="calcula pelos itens se vazio" /></div>
+            <div class="campo largo"><label>Observações</label><input id="cmp-rec-obs" /></div>
+          </div>
+          <div class="tabela-rola" style="margin-top:8px;">
+            <table class="itens-tabela">
+              <thead><tr><th>Item</th><th style="width:70px;">Un</th><th class="num" style="width:90px;" title="pendente no pedido">Pendente</th><th style="width:90px;">Qtd NF</th><th style="width:110px;">Unit. NF</th><th class="num" style="width:110px;">Total</th><th style="width:130px;">Destino</th><th style="width:160px;">Obra / TAG</th><th class="col-acao"></th></tr></thead>
+              <tbody id="cmp-rec-itens"></tbody>
+            </table>
+          </div>
+          <div class="grade" style="margin-top:10px;" id="cmp-rec-add">
+            <div class="campo largo"><label>+ Item da nota fora do pedido</label>
+              <input id="cmp-rec-busca" placeholder="produto do catálogo (≥ 2 letras)…" autocomplete="off" />
+              <div id="cmp-rec-res" class="autocomplete-lista" style="display:none;"></div>
+            </div>
+            <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-rec-livre">+ Item livre</button></div>
+          </div>
+          <div class="form-acoes compacta" style="justify-content:space-between;align-items:center;">
+            <strong id="cmp-rec-soma">Total dos itens: R$ 0,00</strong>
+            <button type="button" class="btn" id="btn-cmp-rec-confirmar">✅ Confirmar recebimento</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- modal: custo avulso -->
+      <div class="modal-fundo" id="cmp-av-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:640px;">
+          <div class="modal-topo"><h3>Custo avulso</h3><button type="button" class="btn-sec" id="btn-cmp-av-fechar">×</button></div>
+          <p class="meta">Multa, IPVA, seguro, locação, serviço pago sem nota de produto. Precisa de TAG ou obra.</p>
+          <div class="grade grade-3">
+            <div class="campo"><label>Data</label><input type="date" id="cmp-av-data" /></div>
+            <div class="campo"><label>Categoria</label><select id="cmp-av-cat"></select></div>
+            <div class="campo"><label>Valor (R$) *</label><input type="number" id="cmp-av-valor" min="0" step="0.01" /></div>
+            <div class="campo"><label>TAG</label><select id="cmp-av-equip"></select></div>
+            <div class="campo"><label>Obra</label><select id="cmp-av-obra"></select></div>
+            <div class="campo"><label>Fornecedor</label><select id="cmp-av-forn"></select></div>
+            <div class="campo largo"><label>Descrição *</label><input id="cmp-av-desc" placeholder="ex.: IPVA 2026 · Multa radar BR-381 · Locação de gerador" /></div>
+            <div class="campo"><label>Documento</label><input id="cmp-av-doc" placeholder="NF, recibo, auto" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cmp-av-salvar">💾 Lançar</button></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ORÇAMENTOS -->
     <section class="secao" id="sec-orcamentos">
       <h2>Orçamentos</h2>
@@ -1495,6 +1692,7 @@
             <button type="button" data-tab="medicoes">Medições</button>
             <button type="button" data-tab="rdos">RDOs</button>
             <button type="button" data-tab="documentos">Documentos</button>
+            <button type="button" data-tab="custos">Custos</button>
             <button type="button" data-tab="timeline">Timeline</button>
             <button type="button" data-tab="descricao">Obs.</button>
           </div>
@@ -1696,6 +1894,11 @@
             <!-- Aba Documentos -->
             <div class="odoo-tab" data-tab="documentos">
               <div id="obr-doc-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Custos (fase 53: vw_custos) -->
+            <div class="odoo-tab" data-tab="custos">
+              <div id="obr-custos"><p class="vazio">Carregando...</p></div>
             </div>
 
             <!-- Aba Timeline -->
@@ -2297,6 +2500,7 @@
             <button type="button" class="sb-btn" id="sb-eqp-mov" data-goto-tab="movimentacoes"><span class="sb-num">0</span><span class="sb-icon">🚚</span><span class="sb-lbl">movimentações</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-rep" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">reparos</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-man" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🛠️</span><span class="sb-lbl">manutenções</span></button>
+            <button type="button" class="sb-btn" id="sb-eqp-custos" data-goto-tab="custos"><span class="sb-num">R$ 0</span><span class="sb-icon">💰</span><span class="sb-lbl">custos</span></button>
           </div>
 
           <div class="odoo-notebook" id="eqp-notebook">
@@ -2306,6 +2510,7 @@
             <button type="button" data-tab="mobilizacoes">Mobilizações</button>
             <button type="button" data-tab="movimentacoes">Movimentações</button>
             <button type="button" data-tab="manutencao">Reparos & manutenções</button>
+            <button type="button" data-tab="custos">Custos</button>
             <button type="button" data-tab="timeline">Timeline</button>
           </div>
 
@@ -2373,6 +2578,7 @@
             <div class="odoo-tab" data-tab="mobilizacoes"><div id="eqp-mob-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="movimentacoes"><div id="eqp-mov-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="manutencao"><div id="eqp-rep-lista"><p class="vazio">—</p></div><div id="eqp-man-lista" style="margin-top:16px;"></div></div>
+            <div class="odoo-tab" data-tab="custos"><div id="eqp-custos"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="timeline"><div id="eqp-chatter"></div></div>
           </div>
         </div>
@@ -3363,35 +3569,36 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=0451114"></script>
+<script src="js/core.js?v=cda770c"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=0451114"></script>
+<script src="js/historico.js?v=cda770c"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=0451114"></script>
-<script src="js/fornecedores.js?v=0451114"></script>
-<script src="js/apropriacoes.js?v=0451114"></script>
-<script src="js/funcionarios.js?v=0451114"></script>
-<script src="js/servicos.js?v=0451114"></script>
-<script src="js/produtos.js?v=0451114"></script>
-<script src="js/estoque.js?v=0451114"></script>
-<script src="js/orcamentos.js?v=0451114"></script>
-<script src="js/propostas.js?v=0451114"></script>
-<script src="js/contratos.js?v=0451114"></script>
-<script src="js/carteira.js?v=0451114"></script>
-<script src="js/obras.js?v=0451114"></script>
-<script src="js/frota.js?v=0451114"></script>
-<script src="js/equipamentos.js?v=0451114"></script>
-<script src="js/acessorios.js?v=0451114"></script>
-<script src="js/mobilizacoes.js?v=0451114"></script>
-<script src="js/estacas.js?v=0451114"></script>
-<script src="js/obra_abas.js?v=0451114"></script>
-<script src="js/medicoes.js?v=0451114"></script>
-<script src="js/movimentacoes.js?v=0451114"></script>
-<script src="js/rdo.js?v=0451114"></script>
-<script src="js/usuarios.js?v=0451114"></script>
-<script src="js/chamados.js?v=0451114"></script>
-<script src="js/dashboard.js?v=0451114"></script>
+<script src="js/clientes.js?v=cda770c"></script>
+<script src="js/fornecedores.js?v=cda770c"></script>
+<script src="js/apropriacoes.js?v=cda770c"></script>
+<script src="js/funcionarios.js?v=cda770c"></script>
+<script src="js/servicos.js?v=cda770c"></script>
+<script src="js/produtos.js?v=cda770c"></script>
+<script src="js/estoque.js?v=cda770c"></script>
+<script src="js/compras.js?v=cda770c"></script>
+<script src="js/orcamentos.js?v=cda770c"></script>
+<script src="js/propostas.js?v=cda770c"></script>
+<script src="js/contratos.js?v=cda770c"></script>
+<script src="js/carteira.js?v=cda770c"></script>
+<script src="js/obras.js?v=cda770c"></script>
+<script src="js/frota.js?v=cda770c"></script>
+<script src="js/equipamentos.js?v=cda770c"></script>
+<script src="js/acessorios.js?v=cda770c"></script>
+<script src="js/mobilizacoes.js?v=cda770c"></script>
+<script src="js/estacas.js?v=cda770c"></script>
+<script src="js/obra_abas.js?v=cda770c"></script>
+<script src="js/medicoes.js?v=cda770c"></script>
+<script src="js/movimentacoes.js?v=cda770c"></script>
+<script src="js/rdo.js?v=cda770c"></script>
+<script src="js/usuarios.js?v=cda770c"></script>
+<script src="js/chamados.js?v=cda770c"></script>
+<script src="js/dashboard.js?v=cda770c"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=0451114"></script>
+<script src="js/init.js?v=cda770c"></script>
 </body>
 </html>

@@ -1010,6 +1010,7 @@ function ligarAbasObra(){
       else if(tab === "rdos") carregarRDOsDaObra(obraEditId);
       else if(tab === "documentos") carregarDocumentosDaObra(obraEditId);
       else if(tab === "timeline") carregarTimelineDaObra(obraEditId);
+      else if(tab === "custos" && typeof custosRender === "function") custosRender("obr-custos", { obra_id: obraEditId });
     });
   });
 
