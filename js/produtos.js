@@ -23,7 +23,7 @@ async function carregarCategorias(){
 /* ---------- Produtos ---------- */
 async function carregarProdutos(){
   const { data, error } = await sb.from("produtos")
-    .select("id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,custo_ultimo,inventario_conferido,ativo")
+    .select("id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo")
     .order("nome").limit(2000);
   _produtos = error ? [] : (data || []);
   renderProdutos();
@@ -169,6 +169,8 @@ function novoProduto(){
   $("prod-categoria").value = "";
   $("prod-unidade").value = "un";
   $("prod-minimo").value = 0;
+  $("prod-ideal").value = "";
+  $("prod-reposicao").checked = false;
   $("prod-conferido").checked = true;
   $("btn-excluir-prod").style.display = "none";
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
@@ -183,6 +185,8 @@ async function abrirProduto(id){
   $("prod-categoria").value   = data.categoria_id || "";
   $("prod-unidade").value     = data.unidade || "un";
   $("prod-minimo").value      = data.estoque_minimo || 0;
+  $("prod-ideal").value       = data.estoque_ideal ?? "";
+  $("prod-reposicao").checked = data.controle_reposicao === true;
   $("prod-codbarras").value   = data.codigo_barras || "";
   $("prod-refext").value      = data.ref_externa || "";
   $("prod-localizacao").value = data.localizacao || "";
@@ -232,6 +236,8 @@ async function salvarProduto(){
     categoria_id:  $("prod-categoria").value || null,
     unidade:       $("prod-unidade").value,
     estoque_minimo: Number($("prod-minimo").value || 0),
+    estoque_ideal: $("prod-ideal").value === "" ? null : Number($("prod-ideal").value),
+    controle_reposicao: $("prod-reposicao").checked,
     codigo_barras: $("prod-codbarras").value.trim() || null,
     ref_externa:   $("prod-refext").value.trim() || null,
     localizacao:   $("prod-localizacao").value.trim() || null,

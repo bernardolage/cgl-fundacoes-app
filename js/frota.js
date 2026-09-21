@@ -34,7 +34,7 @@ async function carregarFrota(force){
   if(force || !_frotaVeic.length){
     cont.innerHTML = `<p class="vazio">Carregando frota…</p>`;
     const [eq, fu] = await Promise.all([
-      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,km,valor_km,status,ativo,localizacao_tipo,localizacao_descricao,localizacao_obra_id,observacoes").order("codigo"),
+      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,km,valor_km,valor_fipe,fipe_referencia,fipe_codigo,status,ativo,localizacao_tipo,localizacao_descricao,localizacao_obra_id,observacoes").order("codigo"),
       sb.from("funcionarios").select("id,nome,funcao").eq("ativo", true).order("nome"),
     ]);
     if(eq.error){ cont.innerHTML = `<p class="vazio">Erro ao carregar equipamentos: ${esc(eq.error.message)}</p>`; return; }
@@ -90,12 +90,18 @@ function renderFrotaVeiculos(){
   const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   kpi("frota-kpi-caminhoes", _frotaVeic.filter(v => v.tipo === "caminhao" && v.ativo !== false).length);
   kpi("frota-kpi-veiculos", _frotaVeic.filter(v => v.tipo === "veiculo" && v.ativo !== false).length);
-  cont.innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr><th>TAG</th><th>Tipo</th><th>Descrição</th><th>Placa</th><th class="num">km atual</th><th class="num">R$/km</th><th>Onde está</th><th>Status</th></tr></thead>
+  const ativos = _frotaVeic.filter(v => v.ativo !== false);
+  const comFipe = ativos.filter(v => v.valor_fipe != null);
+  const totalFipe = comFipe.reduce((s, v) => s + Number(v.valor_fipe || 0), 0);
+  const fipeRef = v => v.fipe_referencia ? ` <span class="meta" title="referência FIPE">${String(v.fipe_referencia).slice(5, 7)}/${String(v.fipe_referencia).slice(0, 4)}</span>` : "";
+  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Valor FIPE da frota ativa: <strong>${frotaMoeda(totalFipe)}</strong> (${comFipe.length} de ${ativos.length} com FIPE informada${ativos.length - comFipe.length ? ` · ${ativos.length - comFipe.length} sem valor` : ""})</p>
+  <div class="tabela-rola"><table>
+    <thead><tr><th>TAG</th><th>Tipo</th><th>Descrição</th><th>Placa</th><th class="num">km atual</th><th class="num">R$/km</th><th class="num">FIPE</th><th>Onde está</th><th>Status</th></tr></thead>
     <tbody>${lista.map(v => `<tr class="linha-clicavel" data-veic="${v.id}" ${v.ativo === false ? 'style="opacity:.55"' : ""}>
         <td><strong>${esc(v.codigo)}</strong></td><td>${FROTA_TIPO_LBL[v.tipo] || esc(v.tipo)}</td><td>${esc(v.nome || "")}</td><td>${esc(v.placa || "—")}</td>
         <td class="num">${v.km != null ? frotaNum(v.km) : "—"}</td><td class="num">${v.valor_km != null ? frotaNum(v.valor_km, 2) : "—"}</td>
-        <td>${esc(frotaOndeEsta(v))}</td><td>${FROTA_STATUS_LBL[v.status] || esc(v.status || "")}</td></tr>`).join("") || `<tr><td colspan="8" class="vazio">Nenhum veículo cadastrado.</td></tr>`}</tbody>
+        <td class="num">${v.valor_fipe != null ? frotaMoeda(v.valor_fipe) + fipeRef(v) : '<span class="tag ambar" title="sem valor FIPE">—</span>'}</td>
+        <td>${esc(frotaOndeEsta(v))}</td><td>${FROTA_STATUS_LBL[v.status] || esc(v.status || "")}</td></tr>`).join("") || `<tr><td colspan="9" class="vazio">Nenhum veículo cadastrado.</td></tr>`}</tbody>
   </table></div>`;
 }
 
@@ -227,6 +233,9 @@ function abrirVeiculo(id){
   $("fveic-placa").value = v?.placa || "";
   $("fveic-km").value = v?.km ?? "";
   $("fveic-valor-km").value = v?.valor_km ?? "";
+  $("fveic-fipe").value = v?.valor_fipe ?? "";
+  $("fveic-fipe-ref").value = v?.fipe_referencia ? String(v.fipe_referencia).slice(0, 7) : "";
+  $("fveic-fipe-cod").value = v?.fipe_codigo || "";
   $("fveic-status").value = v?.status || "disponivel";
   $("fveic-ativo").checked = v ? v.ativo !== false : true;
   $("fveic-obs").value = v?.observacoes || "";
@@ -238,6 +247,9 @@ async function salvarVeiculo(){
   const reg = {
     nome: $("fveic-nome").value.trim() || null, tipo: $("fveic-tipo").value, placa: ($("fveic-placa").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "")) || null,
     km: $("fveic-km").value === "" ? null : Number($("fveic-km").value), valor_km: $("fveic-valor-km").value === "" ? null : Number($("fveic-valor-km").value),
+    valor_fipe: $("fveic-fipe").value === "" ? null : Number($("fveic-fipe").value),
+    fipe_referencia: $("fveic-fipe-ref").value ? $("fveic-fipe-ref").value + "-01" : null,
+    fipe_codigo: $("fveic-fipe-cod").value.trim() || null,
     status: $("fveic-status").value, ativo: $("fveic-ativo").checked, observacoes: $("fveic-obs").value.trim() || null,
   };
   let r;

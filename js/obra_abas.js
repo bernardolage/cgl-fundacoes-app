@@ -153,7 +153,8 @@ async function carregarEquipamentosDaObra(obraId){
 
   // ---- bloco 2: equipamentos fisicamente na obra ----
   if(!data || !data.length){
-    cont.innerHTML = blocoMob + `<p class="vazio">Nenhum equipamento alocado a esta obra.<br><small>A alocação vem da mobilização: ao registrar a saída para a obra, a TAG aparece aqui.</small></p>`;
+    cont.innerHTML = blocoMob + `<p class="vazio">Nenhum equipamento alocado a esta obra.<br>
+      <button type="button" class="btn" id="btn-equip-mov-nova" style="margin-top:10px;">+ Registrar movimentação de chegada</button></p>`;
     ligarMob();
     $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
     return;
@@ -164,17 +165,21 @@ async function carregarEquipamentosDaObra(obraId){
     <td>${esc(e.tipo)}</td>
     <td>${tagStatusEquip(e.status)}</td>
     <td>${e.localizacao_atualizada_em ? new Date(e.localizacao_atualizada_em).toLocaleDateString("pt-BR") : "—"}</td>
+    <td class="col-acao">
+      <button type="button" class="btn-sec btn-sm btn-equip-devolver" data-id="${esc(e.id)}" title="Devolver para base">↩ Devolver</button>
+    </td>
   </tr>`).join("");
   cont.innerHTML = blocoMob + `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
       <h4 style="margin:0;font-size:var(--txt-md);">🚜 ${data.length} equipamento${data.length>1?"s":""} alocado${data.length>1?"s":""} a esta obra</h4>
+      <button type="button" class="btn" id="btn-equip-mov-nova">+ Nova movimentação</button>
     </div>
     <div class="tabela-rola"><table>
       <thead><tr>
-        <th>TAG</th><th>Nome</th><th>Tipo</th><th>Status</th><th>Desde</th>
+        <th>TAG</th><th>Nome</th><th>Tipo</th><th>Status</th><th>Desde</th><th class="col-acao"></th>
       </tr></thead>
       <tbody>${linhas}</tbody></table></div>
-    <p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin-top:8px;">💡 A localização de cada TAG vem do status da mobilização (saída para a obra / desmobilização). Para mudar, atualize a mobilização acima.</p>
+    <p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin-top:8px;">💡 Localizações são derivadas das Movimentações de Ativos. Para mudar, crie nova movimentação.</p>
   `;
   ligarMob();
   $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
@@ -208,9 +213,11 @@ function abrirMovimentacaoPraObra(tipo = "remessa", equipamentoIdPreSelecionado 
         $("mov-destino-tipo").value = "base";
         $("mov-destino-descricao").value = "Base Itabira";
         $("mov-destino-uf").value = "mg";
+        if(typeof movDefinirObra === "function") movDefinirObra("origem", obraEditId);
       } else {
         $("mov-destino-tipo").value = "obra";
         $("mov-destino-descricao").value = obraTxt;
+        if(typeof movDefinirObra === "function") movDefinirObra("destino", obraEditId);
       }
       // Pré-seleciona equipamento se passado
       if(equipamentoIdPreSelecionado && typeof adicionarEquipamento === "function"){
