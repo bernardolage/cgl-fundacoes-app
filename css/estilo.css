@@ -2709,3 +2709,11 @@ input:disabled, select:disabled, textarea:disabled {
 .cmp-itens-tabela td, .cmp-itens-tabela th { font-size: 12.5px; }
 .cmp-itens-tabela select { max-width: 100%; }
 .txt-perigo { color: var(--perigo); }
+
+/* ---- Compras: importação de XML e casamento de produto na linha (fase 54) ---- */
+.cmp-rec-xml { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; padding: 8px 10px; border: 1px dashed var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-1); }
+.cmp-rec-xml.arrastando { border-color: var(--marca-600); background: var(--marca-50); }
+.cmp-ri-pick { position: relative; margin-top: 3px; }
+.cmp-ri-pick input { width: 100%; font-size: 12px; padding: 4px 8px !important; }
+.cmp-ri-pick .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; background: var(--sup-0); }
+.cmp-ri-badge { font-size: 10.5px; padding: 0 6px; border-radius: 8px; margin-left: 4px; }

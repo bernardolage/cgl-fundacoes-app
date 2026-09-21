@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=cda770c" />
+<link rel="stylesheet" href="css/estilo.css?v=ad774f5" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -1144,6 +1144,11 @@
         <div class="modal-caixa" style="max-width:1100px;">
           <div class="modal-topo"><h3 id="cmp-rec-titulo">Receber NF</h3><button type="button" class="btn-sec" id="btn-cmp-rec-fechar">×</button></div>
           <p class="meta" id="cmp-rec-ajuda">Confirmar gera a entrada no estoque (destino base) ou o custo direto (obra/TAG), baixa o pedido e cria os títulos a pagar.</p>
+          <div class="cmp-rec-xml" id="cmp-rec-xml-zona">
+            <input type="file" id="cmp-rec-xml" accept=".xml,text/xml,application/xml" style="display:none;" />
+            <button type="button" class="btn" id="btn-cmp-rec-xml">📄 Importar XML da NF-e</button>
+            <span class="meta" id="cmp-rec-xml-info">Clique ou arraste o XML aqui. Preenche cabeçalho, duplicatas e itens; casa os produtos por código do fornecedor, EAN e pedido.</span>
+          </div>
           <div class="grade grade-3">
             <div class="campo largo" id="cmp-rec-forn-campo"><label>Fornecedor *</label><select id="cmp-rec-forn"></select></div>
             <div class="campo"><label>NF número</label><input id="cmp-rec-nf" /></div>
@@ -3569,36 +3574,36 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=cda770c"></script>
+<script src="js/core.js?v=ad774f5"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=cda770c"></script>
+<script src="js/historico.js?v=ad774f5"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=cda770c"></script>
-<script src="js/fornecedores.js?v=cda770c"></script>
-<script src="js/apropriacoes.js?v=cda770c"></script>
-<script src="js/funcionarios.js?v=cda770c"></script>
-<script src="js/servicos.js?v=cda770c"></script>
-<script src="js/produtos.js?v=cda770c"></script>
-<script src="js/estoque.js?v=cda770c"></script>
-<script src="js/compras.js?v=cda770c"></script>
-<script src="js/orcamentos.js?v=cda770c"></script>
-<script src="js/propostas.js?v=cda770c"></script>
-<script src="js/contratos.js?v=cda770c"></script>
-<script src="js/carteira.js?v=cda770c"></script>
-<script src="js/obras.js?v=cda770c"></script>
-<script src="js/frota.js?v=cda770c"></script>
-<script src="js/equipamentos.js?v=cda770c"></script>
-<script src="js/acessorios.js?v=cda770c"></script>
-<script src="js/mobilizacoes.js?v=cda770c"></script>
-<script src="js/estacas.js?v=cda770c"></script>
-<script src="js/obra_abas.js?v=cda770c"></script>
-<script src="js/medicoes.js?v=cda770c"></script>
-<script src="js/movimentacoes.js?v=cda770c"></script>
-<script src="js/rdo.js?v=cda770c"></script>
-<script src="js/usuarios.js?v=cda770c"></script>
-<script src="js/chamados.js?v=cda770c"></script>
-<script src="js/dashboard.js?v=cda770c"></script>
+<script src="js/clientes.js?v=ad774f5"></script>
+<script src="js/fornecedores.js?v=ad774f5"></script>
+<script src="js/apropriacoes.js?v=ad774f5"></script>
+<script src="js/funcionarios.js?v=ad774f5"></script>
+<script src="js/servicos.js?v=ad774f5"></script>
+<script src="js/produtos.js?v=ad774f5"></script>
+<script src="js/estoque.js?v=ad774f5"></script>
+<script src="js/compras.js?v=ad774f5"></script>
+<script src="js/orcamentos.js?v=ad774f5"></script>
+<script src="js/propostas.js?v=ad774f5"></script>
+<script src="js/contratos.js?v=ad774f5"></script>
+<script src="js/carteira.js?v=ad774f5"></script>
+<script src="js/obras.js?v=ad774f5"></script>
+<script src="js/frota.js?v=ad774f5"></script>
+<script src="js/equipamentos.js?v=ad774f5"></script>
+<script src="js/acessorios.js?v=ad774f5"></script>
+<script src="js/mobilizacoes.js?v=ad774f5"></script>
+<script src="js/estacas.js?v=ad774f5"></script>
+<script src="js/obra_abas.js?v=ad774f5"></script>
+<script src="js/medicoes.js?v=ad774f5"></script>
+<script src="js/movimentacoes.js?v=ad774f5"></script>
+<script src="js/rdo.js?v=ad774f5"></script>
+<script src="js/usuarios.js?v=ad774f5"></script>
+<script src="js/chamados.js?v=ad774f5"></script>
+<script src="js/dashboard.js?v=ad774f5"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=cda770c"></script>
+<script src="js/init.js?v=ad774f5"></script>
 </body>
 </html>
