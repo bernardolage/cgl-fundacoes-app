@@ -127,7 +127,7 @@ async function registrarEntrada(){
   const reg = {
     produto_id: _estProd.id, tipo: _estTipo, quantidade: qtdInformada,
     custo_unitario: 0, fornecedor_id: null, obra_id: null, equipamento_id: null,
-    documento: $("ent-doc").value.trim() || null, observacoes: $("est-obs").value.trim() || null
+    documento: $("ent-doc").value.trim() || null, observacoes: $("est-mov-obs").value.trim() || null
   };
   if(_estTipo === "entrada"){
     if(qtdInformada <= 0){ aviso("app-aviso", "Informe a quantidade.", "erro"); return; }
@@ -150,7 +150,7 @@ async function registrarEntrada(){
   const { error } = await sb.from("movimentacoes_estoque").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível registrar: " + error.message, "erro"); return; }
   aviso("app-aviso", _estTipo === "entrada" ? "Entrada registrada — estoque e custo atualizados." : _estTipo === "saida" ? "Saída registrada." : "Contagem lançada — estoque ajustado.", "ok");
-  ["ent-qtd","ent-custo","ent-doc","est-obs","est-busca-prod"].forEach(id => { const el = $(id); if(el) el.value = ""; });
+  ["ent-qtd","ent-custo","ent-doc","est-mov-obs","est-busca-prod"].forEach(id => { const el = $(id); if(el) el.value = ""; });
   $("est-obra").value = ""; $("est-equip").value = "";
   estSelecionarProduto(null);
   if(typeof carregarProdutos === "function") await carregarProdutos();
