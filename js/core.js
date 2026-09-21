@@ -466,6 +466,13 @@ async function iniciarApp(){
   const navCart = $("nav-carteira");
   if(navCart) navCart.style.display = (perfil && perfil.cargo === "diretor") ? "" : "none";
 
+  // Fase 49 (Bernardo, 21/09/2026): Catálogo de Serviços e Orçamentos só para diretoria e comercial.
+  // Os demais cargos não veem os itens no menu; irParaSecao() também barra atalhos de outras telas.
+  SECOES_COMERCIAIS.forEach(s => {
+    const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
+    if(b) b.style.display = podeVerComercial() ? "" : "none";
+  });
+
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";
 
@@ -555,8 +562,15 @@ document.querySelectorAll(".sidebar-nav button").forEach(b=>{
 
 /* Navega para uma seção via o botão da nav (reusa o handler acima, que
    ativa a seção e o título). Usado pelos atalhos clicáveis do dashboard. */
+/* Fase 49: módulos comerciais (catálogo de serviços e orçamentos) — só diretoria e comercial */
+const SECOES_COMERCIAIS = ["servicos", "orcamentos"];
+function podeVerComercial(){
+  return !!usuarioAtual && ["diretor", "comercial"].includes(usuarioAtual.cargo);
+}
 function irParaSecao(secao){
   const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"]`);
+  // item escondido do menu (Usuários, Carteira, Serviços, Orçamentos…) = módulo fora do perfil: não navega por atalho
+  if(b && b.style.display === "none"){ aviso("app-aviso", "Seu perfil não tem acesso a este módulo.", "erro"); return false; }
   if(b){ b.click(); return true; }
   return false;
 }
