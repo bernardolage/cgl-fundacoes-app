@@ -505,7 +505,9 @@ async function cmpAcao(acao){
 function abrirRecebimento(pedido){
   if(!cmpPodeOperar()) return;
   const semPedido = !pedido;
-  _cmpRec = { pedido: pedido || null, itens: [] };
+  _cmpRec = { pedido: pedido || null, itens: [], xml: null, duplicatas: null };
+  $("cmp-rec-xml").value = "";
+  $("cmp-rec-xml-info").textContent = "Clique ou arraste o XML aqui. Preenche cabeçalho, duplicatas e itens; casa os produtos por código do fornecedor, EAN e pedido.";
   $("cmp-rec-titulo").textContent = semPedido ? "Receber NF sem pedido" : `Receber NF — pedido ${pedido.numero}`;
   $("cmp-rec-forn").value = pedido?.fornecedor_id || ""; $("cmp-rec-forn").disabled = !semPedido;
   ["cmp-rec-nf","cmp-rec-chave","cmp-rec-emissao","cmp-rec-frete","cmp-rec-venc","cmp-rec-total","cmp-rec-obs"].forEach(id => $(id).value = "");
@@ -530,13 +532,14 @@ function renderItensRecebimento(){
   const tb = $("cmp-rec-itens"); const its = _cmpRec?.itens || [];
   if(!its.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${_cmpRec?.pedido ? "Tudo deste pedido já foi recebido. Adicione itens fora do pedido se a nota trouxer." : "Adicione os itens da nota."}</td></tr>`; }
   else tb.innerHTML = its.map((it, idx) => `<tr data-idx="${idx}">
-      <td>${it.produto_id || it.pedido_item_id ? esc(it.descricao) : `<input class="cmp-ri" data-f="descricao" value="${esc(it.descricao || "")}" placeholder="descrição na nota" style="width:100%;" />`}${!it.produto_id ? ' <span class="meta">sem cadastro</span>' : ""}</td>
+      <td>${it.livre && !it.produto_id ? `<input class="cmp-ri" data-f="descricao" value="${esc(it.descricao || "")}" placeholder="descrição na nota" style="width:100%;" />` : `<strong>${esc(it.descricao)}</strong>`}${it.codigo_fornecedor ? ` <span class="meta">cód. ${esc(it.codigo_fornecedor)}</span>` : ""}${cmpRiBadge(it)}
+        ${it.pedido_item_id && it.casamento !== "manual" && it.produto_id ? (it.produto_txt && it.produto_txt !== it.descricao ? `<div class="meta">→ ${esc(it.produto_txt)}</div>` : "") : `<div class="cmp-ri-pick"><input class="cmp-ri-prod" placeholder="casar com produto do catálogo…" value="${esc(it.produto_txt || "")}" autocomplete="off" /><div class="autocomplete-lista" style="display:none;"></div></div>`}</td>
       <td>${esc(it.unidade || "un")}</td>
       <td class="num">${it.pendente != null ? num(it.pendente) : "—"}</td>
       <td><input type="number" step="0.001" min="0" class="cmp-ri" data-f="quantidade_nf" value="${esc(it.quantidade_nf ?? 0)}" style="width:80px;text-align:right;" /></td>
       <td><input type="number" step="0.0001" min="0" class="cmp-ri" data-f="valor_unitario_nf" value="${esc(it.valor_unitario_nf ?? 0)}" style="width:100px;text-align:right;" /></td>
       <td class="num cmp-ri-total">${brl(Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0))}</td>
-      <td colspan="2"><select class="cmp-ri" data-f="destino" style="max-width:280px;">${cmpDestinoOptions(cmpDestinoValor(it))}</select>${!it.produto_id ? ' <span class="meta" title="item sem cadastro não entra no estoque">só custo direto</span>' : ""}</td>
+      <td colspan="2"><select class="cmp-ri" data-f="destino" style="max-width:280px;">${cmpDestinoOptions(cmpDestinoValor(it))}</select>${!it.produto_id ? ' <span class="meta" title="item sem produto casado não entra no estoque">só custo direto</span>' : ""}</td>
       <td><button type="button" class="btn-sec btn-sm cmp-ri-rem" title="tirar da nota">×</button></td>
     </tr>`).join("");
   tb.querySelectorAll(".cmp-ri").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", e => {
@@ -547,7 +550,38 @@ function renderItensRecebimento(){
     cmpRecSoma();
   }));
   tb.querySelectorAll(".cmp-ri-rem").forEach(b => b.addEventListener("click", e => { _cmpRec.itens.splice(Number(e.target.closest("tr").dataset.idx), 1); renderItensRecebimento(); }));
+  tb.querySelectorAll("tr[data-idx]").forEach(tr => { const inp = tr.querySelector(".cmp-ri-prod"); if(inp) cmpRiPicker(tr, inp); });
   cmpRecSoma();
+}
+function cmpRiBadge(it){
+  const m = { codigo: ["casado por código", "verde"], ean: ["casado por EAN", "verde"], pedido: ["do pedido", "azul"], manual: ["casado à mão", "verde"] };
+  if(it.casamento && m[it.casamento]) return ` <span class="tag ${m[it.casamento][1]} cmp-ri-badge">${m[it.casamento][0]}</span>`;
+  if(it.produto_id) return "";
+  return ` <span class="tag ambar cmp-ri-badge">sem produto</span>`;
+}
+/* casamento de produto na linha do recebimento (XML ou item livre) */
+function cmpRiPicker(tr, inp){
+  const lista = tr.querySelector(".cmp-ri-pick .autocomplete-lista"); let t = null;
+  const it = () => _cmpRec.itens[Number(tr.dataset.idx)];
+  inp.addEventListener("input", () => {
+    clearTimeout(t);
+    const x = it(); if(!x) return;
+    if(!inp.value.trim() && x.produto_id){ x.produto_id = null; x.produto_txt = ""; x.casamento = null; if(x.destino === "estoque" && !x.pedido_item_id){ /* fica para o usuário decidir */ } renderItensRecebimento(); return; }
+    t = setTimeout(async () => {
+      const termo = inp.value.trim(); if(termo.length < 2){ lista.style.display = "none"; return; }
+      const res = await cmpBuscarProdutos(termo);
+      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("") : `<div class="resultado-item vazio">Nenhum produto. Cadastre em Produtos ou mande para obra/TAG como custo direto.</div>`;
+      lista.style.display = "";
+      lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => {
+        const p = res.find(y => y.id === d.dataset.id); const x2 = it(); if(!p || !x2) return;
+        x2.produto_id = p.id; x2.produto_txt = `${p.codigo} — ${p.nome}`; x2.casamento = "manual"; if(!x2.categoria_custo || x2.categoria_custo === "peca") x2.categoria_custo = p.categoria_custo || "peca";
+        if(x2.livre && (!x2.descricao || !x2.descricao.trim())) x2.descricao = x2.produto_txt;
+        if(_cmpRec.pedido && !x2.pedido_item_id) cmpLigarItemAoPedido(x2, cmpPedidoPendentes());
+        renderItensRecebimento();
+      }));
+    }, 250);
+  });
+  inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 200));
 }
 function cmpRecSoma(){
   const s = (_cmpRec?.itens || []).reduce((a, it) => a + Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0), 0) + Number($("cmp-rec-frete").value || 0);
@@ -555,7 +589,7 @@ function cmpRecSoma(){
 }
 function cmpRecAddItem(p){
   const d = _cmpRec.pedido ? cmpDestinoDoValor(cmpDestinoPadraoDe(_cmpRec.pedido)) : { destino: "estoque", obra_id: null, equipamento_id: null };
-  _cmpRec.itens.push({ pedido_item_id: null, produto_id: p?.id || null, descricao: p ? `${p.codigo} — ${p.nome}` : "", unidade: p?.unidade || "un", pendente: null, quantidade_nf: 1,
+  _cmpRec.itens.push({ pedido_item_id: null, produto_id: p?.id || null, produto_txt: p ? `${p.codigo} — ${p.nome}` : "", casamento: p ? "manual" : null, livre: !p, descricao: p ? `${p.codigo} — ${p.nome}` : "", unidade: p?.unidade || "un", pendente: null, quantidade_nf: 1,
     valor_unitario_nf: Number(p?.custo_ultimo || 0), categoria_custo: p?.categoria_custo || "peca", ...(p ? d : { destino: d.destino === "estoque" ? "obra" : d.destino, obra_id: d.obra_id, equipamento_id: d.equipamento_id }) });
   renderItensRecebimento();
 }
@@ -573,18 +607,21 @@ async function confirmarRecebimento(){
     if(it.pendente != null && Number(it.quantidade_nf) > it.pendente * 1.1 && !confirm(`"${it.descricao}": a nota traz ${num(it.quantidade_nf)} e o pedido tem ${num(it.pendente)} pendente. Receber assim mesmo?`)) return;
   }
   const venc = $("cmp-rec-venc").value || null;
-  if(!venc && !confirm("Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?")) return;
+  const dups = Array.isArray(r.duplicatas) && r.duplicatas.length ? r.duplicatas : null;
+  if(!venc && !dups && !confirm("Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?")) return;
   const cab = {
     pedido_id: r.pedido?.id || null, fornecedor_id: forn, nf_numero: $("cmp-rec-nf").value.trim() || null, nf_serie: $("cmp-rec-serie").value.trim() || null,
     nf_chave: $("cmp-rec-chave").value.replace(/\D/g, "") || null, nf_data_emissao: $("cmp-rec-emissao").value || null, data_recebimento: $("cmp-rec-data").value || hojeISO(),
-    frete: Number($("cmp-rec-frete").value || 0), vencimento: venc, parcelas: Math.max(1, Number($("cmp-rec-parc").value || 1)), total_nf: Number($("cmp-rec-total").value || 0), observacoes: $("cmp-rec-obs").value.trim() || null
+    frete: Number($("cmp-rec-frete").value || 0), vencimento: venc, parcelas: Math.max(1, Number($("cmp-rec-parc").value || 1)), total_nf: Number($("cmp-rec-total").value || 0), observacoes: $("cmp-rec-obs").value.trim() || null,
+    duplicatas: dups, xml_texto: r.xml?.texto || null
   };
   const { data: rec, error } = await sb.from("recebimentos").insert(cab).select("id").single();
   if(error){ aviso("app-aviso", "Erro ao criar o recebimento: " + error.message, "erro"); return; }
   const { error: eIt } = await sb.from("recebimento_itens").insert(itens.map(it => ({
     recebimento_id: rec.id, pedido_item_id: it.pedido_item_id || null, produto_id: it.produto_id || null, descricao: it.descricao.trim(), unidade: it.unidade || "un",
     quantidade_nf: Number(it.quantidade_nf), valor_unitario_nf: Number(it.valor_unitario_nf || 0), quantidade_aceita: Number(it.quantidade_nf),
-    categoria_custo: it.categoria_custo || null, destino: it.destino || "estoque", obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null
+    categoria_custo: it.categoria_custo || null, destino: it.destino || "estoque", obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null,
+    codigo_fornecedor: it.codigo_fornecedor || null, ean: it.ean || null, ncm: it.ncm || null, cfop: it.cfop || null, casamento: it.casamento || null
   })));
   if(eIt){ await sb.from("recebimentos").delete().eq("id", rec.id); aviso("app-aviso", "Erro nos itens do recebimento: " + eIt.message, "erro"); return; }
   const { error: eRpc } = await sb.rpc("recebimento_confirmar", { p_id: rec.id });
@@ -595,6 +632,121 @@ async function confirmarRecebimento(){
   if(typeof carregarProdutos === "function") carregarProdutos();
   await cmpFetchPedidos();
   if(r.pedido?.id) await abrirPedido(r.pedido.id); else renderCompras();
+}
+
+/* ---------- XML da NF-e ---------- */
+function cmpLerXmlNfe(text){
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  if(doc.getElementsByTagName("parsererror").length) throw new Error("O arquivo não é um XML válido.");
+  const first = (el, tag) => el ? el.getElementsByTagNameNS("*", tag)[0] : null;
+  const g = (el, tag) => { const n = first(el, tag); return n ? n.textContent.trim() : ""; };
+  const inf = first(doc, "infNFe");
+  if(!inf) throw new Error("Não é um XML de NF-e (infNFe não encontrado). Eventos e cancelamentos não servem aqui.");
+  const ide = first(inf, "ide"), emit = first(inf, "emit"), dest = first(inf, "dest"), tot = first(inf, "ICMSTot"), ender = first(emit, "enderEmit");
+  const chave = (inf.getAttribute("Id") || "").replace(/^NFe/i, "") || g(doc, "chNFe");
+  const itens = [...inf.getElementsByTagNameNS("*", "det")].map(d => { const p = first(d, "prod"); return {
+    nItem: d.getAttribute("nItem"), cProd: g(p, "cProd"), cEAN: g(p, "cEAN") || g(p, "cEANTrib"), xProd: g(p, "xProd"), ncm: g(p, "NCM"), cfop: g(p, "CFOP"),
+    uCom: g(p, "uCom"), qCom: Number(g(p, "qCom") || 0), vUnCom: Number(g(p, "vUnCom") || 0), vProd: Number(g(p, "vProd") || 0) }; });
+  const duplicatas = [...inf.getElementsByTagNameNS("*", "dup")].map(d => ({ n: g(d, "nDup"), vencimento: g(d, "dVenc"), valor: Number(g(d, "vDup") || 0) })).filter(d => d.vencimento && d.valor > 0);
+  return {
+    chave, numero: g(ide, "nNF"), serie: g(ide, "serie"), emissao: (g(ide, "dhEmi") || g(ide, "dEmi")).slice(0, 10), natureza: g(ide, "natOp"),
+    emit: { cnpj: (g(emit, "CNPJ") || g(emit, "CPF")).replace(/\D/g, ""), nome: g(emit, "xNome"), fantasia: g(emit, "xFant"), ie: g(emit, "IE"), fone: g(ender, "fone"), cidade: g(ender, "xMun"), uf: g(ender, "UF"), cep: g(ender, "CEP"), logradouro: g(ender, "xLgr"), numero: g(ender, "nro"), bairro: g(ender, "xBairro") },
+    dest_cnpj: (g(dest, "CNPJ") || g(dest, "CPF")).replace(/\D/g, ""),
+    totais: { vNF: Number(g(tot, "vNF") || 0), vProd: Number(g(tot, "vProd") || 0), vFrete: Number(g(tot, "vFrete") || 0), vDesc: Number(g(tot, "vDesc") || 0), vIPI: Number(g(tot, "vIPI") || 0), vST: Number(g(tot, "vST") || 0) },
+    itens, duplicatas
+  };
+}
+function cmpPedidoPendentes(){
+  if(!_cmpRec?.pedido) return [];
+  if(!_cmpRec._pend) _cmpRec._pend = _cmpItens.filter(it => Number(it.quantidade || 0) - Number(it.quantidade_recebida || 0) > 0).map(it => ({ ...it, _usado: _cmpRec.itens.some(x => x.pedido_item_id === it.id) }));
+  return _cmpRec._pend;
+}
+function cmpTokens(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9]+/).filter(w => w.length > 2); }
+/* liga um item da nota a um item pendente do pedido: mesmo produto, ou descrição parecida quando o item do pedido é livre */
+function cmpLigarItemAoPedido(it, pend){
+  if(!pend || !pend.length || it.pedido_item_id) return false;
+  let p = it.produto_id ? pend.find(x => !x._usado && x.produto_id === it.produto_id) : null;
+  if(!p){
+    const tk = cmpTokens(it.descricao); if(tk.length){
+      let melhor = null, score = 0;
+      pend.filter(x => !x._usado && !x.produto_id).forEach(x => { const t2 = cmpTokens(x.descricao); const inter = tk.filter(w => t2.includes(w)).length; if(inter >= Math.min(2, t2.length) && inter > score){ score = inter; melhor = x; } });
+      p = melhor;
+    }
+  }
+  if(!p) return false;
+  it.pedido_item_id = p.id; it.pendente = Number(p.quantidade || 0) - Number(p.quantidade_recebida || 0);
+  it.destino = p.destino || it.destino; it.obra_id = p.obra_id || null; it.equipamento_id = p.equipamento_id || null;
+  if(p.categoria_custo) it.categoria_custo = p.categoria_custo;
+  if(!it.produto_id && p.produto_id){ it.produto_id = p.produto_id; it.produto_txt = p.descricao; it.casamento = "pedido"; }
+  if(!it.casamento) it.casamento = "pedido";
+  p._usado = true;
+  return true;
+}
+async function cmpImportarXml(file){
+  if(!_cmpRec || !file) return;
+  const info = $("cmp-rec-xml-info");
+  let texto, nf;
+  try { texto = await file.text(); nf = cmpLerXmlNfe(texto); } catch(e){ aviso("app-aviso", e.message || String(e), "erro"); return; }
+  info.textContent = "Lendo a nota…";
+  _cmpRec.xml = { texto, chave: nf.chave, nome: file.name }; _cmpRec._pend = null;
+  // cabeçalho
+  $("cmp-rec-nf").value = nf.numero; $("cmp-rec-serie").value = nf.serie || "1"; $("cmp-rec-chave").value = nf.chave; $("cmp-rec-emissao").value = nf.emissao;
+  $("cmp-rec-frete").value = nf.totais.vFrete || ""; $("cmp-rec-total").value = nf.totais.vNF || "";
+  if(nf.duplicatas.length){ _cmpRec.duplicatas = nf.duplicatas; $("cmp-rec-venc").value = nf.duplicatas[0].vencimento; $("cmp-rec-parc").value = nf.duplicatas.length; }
+  else { _cmpRec.duplicatas = null; }
+  // fornecedor pelo CNPJ
+  const forn = _cmpForns.find(f => (f.cpf_cnpj || "").replace(/\D/g, "") === nf.emit.cnpj);
+  const avisos = [];
+  if(forn){
+    if(_cmpRec.pedido && _cmpRec.pedido.fornecedor_id && _cmpRec.pedido.fornecedor_id !== forn.id) avisos.push(`⚠ a nota é de <strong>${esc(forn.razao_social)}</strong>, mas o pedido é de ${esc(cmpForn(_cmpRec.pedido.fornecedor_id))}`);
+    if(!_cmpRec.pedido) $("cmp-rec-forn").value = forn.id;
+  }
+  // já foi recebida?
+  if(nf.chave){ const { data: dupNf } = await sb.from("recebimentos").select("id,status").eq("nf_chave", nf.chave).neq("status", "cancelado").limit(1); if(dupNf?.length) avisos.push(`⚠ <strong>esta chave de acesso já tem um recebimento registrado</strong>. Confira antes de confirmar de novo`); }
+  // casamento de produtos: código do fornecedor → EAN → pedido
+  const [cod, ean] = await Promise.all([
+    forn ? sb.from("produto_fornecedor_codigos").select("codigo_fornecedor,produto:produtos(id,codigo,nome,unidade,custo_ultimo,categoria_custo)").eq("fornecedor_id", forn.id) : Promise.resolve({ data: [] }),
+    (() => { const eans = nf.itens.map(i => i.cEAN).filter(e => e && !/sem\s*gtin/i.test(e)); return eans.length ? sb.from("produtos").select("id,codigo,nome,unidade,custo_ultimo,categoria_custo,codigo_barras").in("codigo_barras", eans) : Promise.resolve({ data: [] }); })()
+  ]);
+  const mapCod = {}; (cod.data || []).forEach(c => { if(c.produto) mapCod[c.codigo_fornecedor] = c.produto; });
+  const mapEan = {}; (ean.data || []).forEach(p => mapEan[p.codigo_barras] = p);
+  const destPadrao = cmpDestinoDoValor(_cmpRec.pedido ? cmpDestinoPadraoDe(_cmpRec.pedido) : "estoque");
+  _cmpRec.itens = nf.itens.map(d => {
+    let prod = mapCod[d.cProd] || null, cas = prod ? "codigo" : null;
+    const eanOk = d.cEAN && !/sem\s*gtin/i.test(d.cEAN) ? d.cEAN : null;
+    if(!prod && eanOk && mapEan[eanOk]){ prod = mapEan[eanOk]; cas = "ean"; }
+    return { pedido_item_id: null, produto_id: prod?.id || null, produto_txt: prod ? `${prod.codigo} — ${prod.nome}` : "", casamento: cas, livre: false,
+      descricao: d.xProd, codigo_fornecedor: d.cProd || null, ean: eanOk, ncm: d.ncm || null, cfop: d.cfop || null,
+      unidade: (d.uCom || "un").toLowerCase().slice(0, 8), pendente: null, quantidade_nf: d.qCom, valor_unitario_nf: d.vUnCom,
+      categoria_custo: prod?.categoria_custo || "peca", ...destPadrao };
+  });
+  const pend = cmpPedidoPendentes(); pend.forEach(p => p._usado = false);
+  _cmpRec.itens.forEach(it => cmpLigarItemAoPedido(it, pend));
+  const naoVieram = pend.filter(p => !p._usado).length;
+  const casados = _cmpRec.itens.filter(i => i.produto_id).length, semProd = _cmpRec.itens.length - casados;
+  const somaItens = _cmpRec.itens.reduce((s, i) => s + i.quantidade_nf * i.valor_unitario_nf, 0);
+  const dif = nf.totais.vNF - somaItens - (nf.totais.vFrete || 0);
+  info.innerHTML = `✔ NF <strong>${esc(nf.numero)}</strong> de <strong>${esc(nf.emit.nome)}</strong> (${esc(nf.emit.cnpj)}) · ${nf.itens.length} item(ns): ${casados} casado(s) com o catálogo${semProd ? `, <strong>${semProd} para casar</strong> (ou mandar como custo direto)` : ""}`
+    + (nf.duplicatas.length ? ` · ${nf.duplicatas.length} duplicata(s)` : " · sem duplicatas no XML: informe o vencimento")
+    + (naoVieram ? ` · ${naoVieram} item(ns) do pedido não vieram nesta nota (ficam pendentes)` : "")
+    + (Math.abs(dif) >= 0.05 ? ` · total da NF ${brl(nf.totais.vNF)} difere dos itens + frete em ${brl(dif)} (IPI/ST/desconto)` : "")
+    + (!forn ? `<br>⚠ Emitente não está no cadastro de fornecedores. <button type="button" class="btn-sec btn-sm" id="btn-cmp-rec-criar-forn">Cadastrar a partir da NF</button>` : "")
+    + (avisos.length ? "<br>" + avisos.join("<br>") : "");
+  $("btn-cmp-rec-criar-forn")?.addEventListener("click", () => comBotaoTravado("btn-cmp-rec-criar-forn", () => cmpCriarFornecedorDaNf(nf.emit)));
+  renderItensRecebimento();
+}
+async function cmpCriarFornecedorDaNf(e){
+  const reg = { razao_social: e.nome || "Fornecedor da NF", nome_fantasia: e.fantasia || null, cpf_cnpj: e.cnpj || null, inscricao_estadual: e.ie || null, telefone: e.fone || null,
+    cidade: e.cidade || null, uf: e.uf ? e.uf.toLowerCase() : null, cep: e.cep || null, logradouro: e.logradouro || null, numero: e.numero || null, bairro: e.bairro || null,
+    tipo_pessoa: (e.cnpj || "").length === 11 ? "fisica" : "juridica", observacoes: "Cadastrado a partir do XML da NF-e em " + dataBR(hojeISO()) };
+  const { data, error } = await sb.from("fornecedores").insert(reg).select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").single();
+  if(error){ aviso("app-aviso", "Não foi possível cadastrar o fornecedor: " + error.message, "erro"); return; }
+  _cmpForns.push(data); _cmpFornMap[data.id] = data; _cmpForns.sort((a, b) => a.razao_social.localeCompare(b.razao_social));
+  cmpPreencherSelectsFixos();
+  if(!_cmpRec?.pedido) $("cmp-rec-forn").value = data.id;
+  if(typeof mapaFornecedores === "object" && mapaFornecedores) mapaFornecedores[data.id] = data.razao_social;
+  $("btn-cmp-rec-criar-forn")?.closest("span, div")?.querySelector("#btn-cmp-rec-criar-forn")?.remove();
+  aviso("app-aviso", `Fornecedor ${data.razao_social} cadastrado.`, "ok");
 }
 
 /* ---------- custo avulso ---------- */
@@ -739,6 +891,14 @@ function ligarCompras(){
   $("btn-cmp-rec-fechar")?.addEventListener("click", fecharRecebimento);
   $("btn-cmp-rec-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-rec-confirmar", confirmarRecebimento));
   $("cmp-rec-frete")?.addEventListener("input", cmpRecSoma);
+  $("btn-cmp-rec-xml")?.addEventListener("click", () => $("cmp-rec-xml").click());
+  $("cmp-rec-xml")?.addEventListener("change", e => { const f = e.target.files && e.target.files[0]; if(f) cmpImportarXml(f); });
+  const zona = $("cmp-rec-xml-zona");
+  if(zona){
+    ["dragenter","dragover"].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add("arrastando"); }));
+    ["dragleave","drop"].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove("arrastando"); }));
+    zona.addEventListener("drop", e => { const f = e.dataTransfer?.files && e.dataTransfer.files[0]; if(f) cmpImportarXml(f); });
+  }
   cmpLigarBusca("cmp-rec-busca", "cmp-rec-res", p => cmpRecAddItem(p));
   $("btn-cmp-rec-livre")?.addEventListener("click", () => cmpRecAddItem(null));
 
