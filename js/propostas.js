@@ -68,10 +68,21 @@ const PROPOSTA_TIPOS = {
 /* Fase 40: condição de pagamento padrão do modelo. É o texto que a ficha do orçamento
    traz preenchido; o que o comercial editar em orcamentos.condicoes_pagamento substitui
    esta cláusula na proposta. */
-const TEXTO_PAGAMENTO_PADRAO =
-  "O Sinal Contratual de 30% será medido no ato da assinatura do contrato ou mobilização do equipamento. " +
-  "Restante, será medição quinzenal, com prazo 28 dias após a data do último dia referente ao período da " +
-  "medição através de boleto bancário.";
+/* Chamado #12 (Thales, 16/09/2026; texto aprovado pelo Bernardo): condição de pagamento padrão com o prazo
+   do saldo e a forma de pagamento escolhidos na aba Comerciais do orçamento. O texto gerado vai para
+   orcamentos.condicoes_pagamento e continua editável na negociação. */
+const PRAZOS_PAGAMENTO_EXTENSO = { 5: "cinco", 7: "sete", 10: "dez", 15: "quinze", 20: "vinte", 21: "vinte e um", 28: "vinte e oito", 30: "trinta", 45: "quarenta e cinco", 60: "sessenta", 90: "noventa" };
+function textoPagamentoPadrao(prazoDias, forma){
+  const n = Number(prazoDias) > 0 ? Number(prazoDias) : 15;
+  const ext = PRAZOS_PAGAMENTO_EXTENSO[n];
+  const prazo = `${String(n).padStart(2, "0")}${ext ? ` (${ext})` : ""} dias corridos`;
+  const meio = forma === "boleto" ? "boleto bancário" : "depósito bancário";
+  return "Sinal Contratual correspondente a 30% do valor contratual, com medição realizada no ato da assinatura do contrato. " +
+    "O pagamento deverá ser realizado em até 03 (três) dias úteis após envio da respectiva medição do sinal. " +
+    "Saldo Contratual: o valor remanescente será medido quinzenalmente, considerando os serviços efetivamente executados no respectivo período. " +
+    `Cada medição terá vencimento em ${prazo} contados a partir do último dia do período a que se refere a medição, mediante ${meio}.`;
+}
+const TEXTO_PAGAMENTO_PADRAO = textoPagamentoPadrao(15, "deposito");
 
 /* parágrafo institucional padrão (texto "Desde 1997...") */
 const TEXTO_INSTITUCIONAL =
@@ -548,7 +559,8 @@ function encargosHelice(flags){
    Itens com destaque=true são impressos em negrito + itálico no PDF original. */
 function criteriosMedicaoHelice(orcamento){
   /* fase 40: condição de pagamento editada no orçamento substitui a cláusula padrão */
-  const pagamento = (orcamento && orcamento.condicoes_pagamento && orcamento.condicoes_pagamento.trim()) || TEXTO_PAGAMENTO_PADRAO;
+  const pagamento = (orcamento && orcamento.condicoes_pagamento && orcamento.condicoes_pagamento.trim())
+    || textoPagamentoPadrao(orcamento && orcamento.prazo_pagamento_dias, orcamento && orcamento.pagamento_forma);
   return [
     { t: "Estacas serão medidas do nível do terreno até a cota inferior da estaca." },
     { t: "O Diário de obra será utilizado para Medição." },
