@@ -16,7 +16,18 @@
    Se as tabelas ainda não existirem, o módulo avisa e não quebra o resto do app.
    ==================================================================== */
 
-const CHAM_TBL = { chamados: "chamados", comentarios: "chamado_comentarios" };
+const CHAM_TBL = { chamados: "chamados", comentarios: "chamado_comentarios", anexos: "chamado_anexos" };
+/* Fase 48 (21/09/2026): anexos do chamado — planilha, PDF ou foto do controle que a pessoa usa hoje.
+   Bucket privado; só quem enviou, quem abriu o chamado e a diretoria conseguem baixar. */
+const CHAM_ANEXO_BUCKET = "chamados-anexos";
+const CHAM_ANEXO_MAX = 5, CHAM_ANEXO_MAX_BYTES = 20 * 1024 * 1024;
+const CHAM_ANEXO_MIME = {
+  pdf: "application/pdf", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xls: "application/vnd.ms-excel",
+  xlsm: "application/vnd.ms-excel.sheet.macroEnabled.12", csv: "text/csv", txt: "text/plain",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", doc: "application/msword",
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp"
+};
+const CHAM_ANEXO_ACCEPT = Object.keys(CHAM_ANEXO_MIME).map(e => "." + e).join(",");
 const CHAM_COL = { criado: "criado_em", atualizado: "atualizado_em", autor: "autor", abertoPor: "aberto_por" };
 
 const CHAM_STATUS = {
@@ -49,6 +60,7 @@ let _chamCarregado = false;
 let _chamTabelaOk  = true;   // false quando a migration ainda não existe
 let _chamAberto    = null;   // chamado aberto no drawer
 let _chamComentarios = [];
+let _chamAnexos = [];        // fase 48: anexos do chamado aberto
 let _chamContexto  = null;   // contexto capturado ao clicar em "Relatar problema ou melhoria"
 
 const chamPodeTriar = () => !!(usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo));
@@ -192,7 +204,9 @@ async function abrirChamado(id){
   _chamAberto = c;
   const { data, error } = await sb.from(CHAM_TBL.comentarios).select("*").eq("chamado_id", id).order(CHAM_COL.criado, { ascending: true });
   _chamComentarios = error ? [] : (data || []);
-  await carregarPerfisChamados([c[CHAM_COL.abertoPor], ..._chamComentarios.map(k => k[CHAM_COL.autor])]);
+  const ax = await sb.from(CHAM_TBL.anexos).select("*").eq("chamado_id", id).order("criado_em", { ascending: true });
+  _chamAnexos = ax.error ? [] : (ax.data || []); // RLS: vem vazio para quem não é autor/diretoria
+  await carregarPerfisChamados([c[CHAM_COL.abertoPor], ..._chamComentarios.map(k => k[CHAM_COL.autor]), ..._chamAnexos.map(a => a.enviado_por)]);
   renderFichaChamado(error ? error.message : null);
   $("cham-modal").style.display = "flex";
 }
@@ -226,6 +240,13 @@ function renderFichaChamado(erroComentarios){
     <div class="cham-status-bar" id="cham-status-bar">${stages}</div>
     ${cat.dica ? `<p class="nota">${esc(cat.dica)}</p>` : ""}
     <div class="campo largo"><label>Descrição</label><div class="cham-desc" style="font-size:var(--txt-sm);color:var(--txt);">${esc(c.descricao || "—")}</div></div>
+    <h4 class="titulo-bloco" style="margin-top:14px;">📎 Anexos (${_chamAnexos.length})</h4>
+    <div id="cham-anexos">${_chamAnexos.length ? _chamAnexos.map(a => `<div class="cham-anexo">
+      <button type="button" class="btn-sec btn-sm btn-cham-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}" title="Baixar">⬇ ${esc(a.nome)}</button>
+      <span class="meta">${esc(chamTamanho(a.tamanho_bytes))} · ${esc(chamNome(a.enviado_por))} · ${esc(chamDataHora(a.criado_em))}</span>
+    </div>`).join("") : `<p class="vazio">Nenhum anexo visível. Os anexos só aparecem para quem enviou, para quem abriu o chamado e para a diretoria.</p>`}</div>
+    <div class="cham-anexo-novo"><input type="file" id="cham-anexo-novo" multiple accept="${CHAM_ANEXO_ACCEPT}" />
+      <button type="button" class="btn-sec btn-sm" id="btn-cham-anexar">📎 Anexar ao chamado</button></div>
     <h4 class="titulo-bloco" style="margin-top:14px;">Andamento (${_chamComentarios.length})</h4>
     ${erroComentarios ? `<p class="vazio">Não foi possível ler os comentários: ${esc(erroComentarios)}</p>` : ""}
     <div id="cham-comentarios">${_chamComentarios.length ? _chamComentarios.map(k => {
@@ -241,6 +262,8 @@ function renderFichaChamado(erroComentarios){
     </div>`;
 
   $("btn-cham-fechar").addEventListener("click", fecharChamado);
+  box.querySelectorAll(".btn-cham-anexo").forEach(b => b.addEventListener("click", () => chamBaixarAnexo(b.dataset.path, b.dataset.nome)));
+  $("btn-cham-anexar")?.addEventListener("click", () => comBotaoTravado("btn-cham-anexar", chamAnexarNaFicha));
   $("btn-cham-comentar").addEventListener("click", () => comentarChamado(false));
   $("btn-cham-resolver")?.addEventListener("click", () => comentarChamado(true));
   $("btn-cham-abrir-registro")?.addEventListener("click", () => { fecharChamado(); CHAM_ABRIR_REGISTRO[c.registro_tipo](c.registro_id); });
@@ -251,7 +274,7 @@ function renderFichaChamado(erroComentarios){
 }
 function fecharChamado(){
   $("cham-modal").style.display = "none";
-  _chamAberto = null; _chamComentarios = [];
+  _chamAberto = null; _chamComentarios = []; _chamAnexos = [];
 }
 async function mudarStatusChamado(novo){
   const c = _chamAberto;
@@ -282,6 +305,65 @@ async function comentarChamado(resolver){
   }
   await abrirChamado(c.id);
   renderChamados(); atualizarBadgeChamados();
+}
+
+/* ---------- Anexos (fase 48, 21/09/2026) ----------
+   Caminho no bucket: <usuario>/<chamado>/<timestamp>_<rand>.<ext> — a 1ª pasta é o id de quem enviou
+   (é o que a policy do storage confere). O MIME vai pela extensão: o navegador manda octet-stream
+   ou vazio para .xlsm/.csv em algumas máquinas e o bucket recusaria. */
+function chamTamanho(bytes){
+  const b = Number(bytes) || 0;
+  return b >= 1048576 ? (b / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+}
+function chamExtensao(nome){ return (String(nome || "").split(".").pop() || "").toLowerCase(); }
+function chamValidarAnexos(arquivos){
+  if(!arquivos.length) return null;
+  if(arquivos.length > CHAM_ANEXO_MAX) return `Anexe no máximo ${CHAM_ANEXO_MAX} arquivos por vez.`;
+  for(const f of arquivos){
+    if(!CHAM_ANEXO_MIME[chamExtensao(f.name)]) return `"${f.name}": tipo não aceito. Use PDF, Excel (.xlsx/.xls/.xlsm), CSV, Word, TXT ou imagem.`;
+    if(f.size > CHAM_ANEXO_MAX_BYTES) return `"${f.name}" tem ${chamTamanho(f.size)}; o limite é 20 MB por arquivo.`;
+  }
+  return null;
+}
+/* Envia os arquivos e registra em chamado_anexos. Devolve a lista de falhas (nome: motivo). */
+async function chamEnviarAnexos(chamadoId, arquivos){
+  const falhas = [];
+  for(const f of arquivos){
+    const ext = chamExtensao(f.name);
+    const caminho = `${usuarioAtual.id}/${chamadoId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const mime = CHAM_ANEXO_MIME[ext];
+    const up = await sb.storage.from(CHAM_ANEXO_BUCKET).upload(caminho, f, { cacheControl: "3600", contentType: mime, upsert: false });
+    if(up.error){ falhas.push(`${f.name}: ${up.error.message}`); continue; }
+    const ins = await sb.from(CHAM_TBL.anexos).insert({ chamado_id: chamadoId, nome: f.name, storage_path: caminho, mime_type: mime, tamanho_bytes: f.size, enviado_por: usuarioAtual.id });
+    if(ins.error){
+      await sb.storage.from(CHAM_ANEXO_BUCKET).remove([caminho]); // não deixa arquivo órfão
+      falhas.push(`${f.name}: ${ins.error.message}`);
+    }
+  }
+  return falhas;
+}
+async function chamBaixarAnexo(caminho, nome){
+  const { data, error } = await sb.storage.from(CHAM_ANEXO_BUCKET).createSignedUrl(caminho, 120, { download: nome || true });
+  if(error || !data?.signedUrl){ aviso("cham-ficha-aviso", "Não foi possível baixar o anexo: " + (error?.message || "sem permissão"), "erro"); return; }
+  window.open(data.signedUrl, "_blank", "noopener");
+}
+async function chamAnexarNaFicha(){
+  const c = _chamAberto, inp = $("cham-anexo-novo");
+  if(!c || !inp || !usuarioAtual) return;
+  const arquivos = [...(inp.files || [])];
+  if(!arquivos.length){ aviso("cham-ficha-aviso", "Escolha o arquivo antes de anexar.", "erro"); return; }
+  const erro = chamValidarAnexos(arquivos);
+  if(erro){ aviso("cham-ficha-aviso", erro, "erro"); return; }
+  const falhas = await chamEnviarAnexos(c.id, arquivos);
+  const enviados = arquivos.length - falhas.length;
+  if(enviados){
+    // trilha: o anexo vira um comentário de sistema, para a triagem ver que chegou material novo
+    await sb.from(CHAM_TBL.comentarios).insert({ chamado_id: c.id, [CHAM_COL.autor]: usuarioAtual.id,
+      texto: `[status] anexou ${enviados} arquivo(s): ${arquivos.filter(f => !falhas.some(x => x.startsWith(f.name + ":"))).map(f => f.name).join(", ")}` });
+  }
+  await abrirChamado(c.id);
+  if(falhas.length) aviso("cham-ficha-aviso", "Não foi possível anexar: " + falhas.join(" · "), "erro");
+  else aviso("cham-ficha-aviso", `${enviados} arquivo(s) anexado(s).`, "ok");
 }
 
 /* ---------- Novo chamado / Relatar problema ou melhoria ----------
@@ -335,6 +417,7 @@ function abrirNovoChamado(ctx){
   $("chamn-titulo").value = "";
   $("chamn-titulo").placeholder = "ex.: Import do boletim não trouxe os trechos de solo · ou: seria útil filtrar RDOs por máquina";
   $("chamn-descricao").value = "";
+  if($("chamn-anexos")){ $("chamn-anexos").value = ""; $("chamn-anexos").accept = CHAM_ANEXO_ACCEPT; }
   atualizarNotaCategoriaChamado();
   const av = $("chamn-aviso"); if(av){ av.textContent = ""; av.className = "aviso"; }
   $("cham-novo-modal").style.display = "flex";
@@ -353,6 +436,9 @@ async function criarChamado(){
   const categoria = $("chamn-categoria").value;
   if(!titulo){ aviso("chamn-aviso", "Dê um título ao chamado.", "erro"); return; }
   if(!descricao){ aviso("chamn-aviso", "Descreva o problema: o que fez, o que esperava e o que aconteceu.", "erro"); return; }
+  const arquivos = [...($("chamn-anexos")?.files || [])];
+  const erroAnexo = chamValidarAnexos(arquivos); // valida ANTES de criar, para não abrir chamado sem o anexo prometido
+  if(erroAnexo){ aviso("chamn-aviso", erroAnexo, "erro"); return; }
   const c = _chamContexto || {};
   // rodapé automático: ajuda a triagem a reproduzir (tela, registro, navegador)
   const rodape = [`tela: ${c.modulo_label || "—"}`, c.registro_label ? `registro: ${c.registro_label}` : null,
@@ -381,9 +467,16 @@ async function criarChamado(){
       : "Não foi possível abrir o chamado: " + error.message, "erro");
     return;
   }
+  let falhasAnexo = [];
+  if(arquivos.length && data?.id){
+    btn.disabled = true; btn.textContent = "Enviando anexos…";
+    falhasAnexo = await chamEnviarAnexos(data.id, arquivos);
+    btn.disabled = false; btn.textContent = "Abrir chamado";
+  }
   fecharNovoChamado();
   aviso("app-aviso", `✅ Chamado ${data?.numero != null ? "#" + data.numero + " " : ""}aberto. A triagem diária às 18h dá o retorno no próprio chamado.`, "ok");
   await carregarChamados(true);
+  if(falhasAnexo.length) aviso("app-aviso", `Chamado aberto, mas ${falhasAnexo.length} anexo(s) não subiram: ${falhasAnexo.join(" · ")}. Abra o chamado e anexe de novo.`, "erro");
 }
 
 /* ---------- Listeners ---------- */

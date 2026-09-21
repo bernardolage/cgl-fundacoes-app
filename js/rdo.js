@@ -474,7 +474,7 @@ function renderExecucoes(){
       <td><input type="text" class="ex-num col-md" value="${esc(e.estaca_numero||"")}" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-diam" step="0.1" min="0" value="${esc(e.diametro_mm ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pproj" step="0.01" min="0" value="${esc(e.profundidade_projeto ?? "")}" style="width:75px;" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" style="width:75px;" title="Metragem perfurada no dia (Até − De)" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" style="width:75px;" title="Acumulado da estaca" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pde" step="0.01" min="0" value="${esc(e.perfuracao_de_m ?? "")}" style="width:62px;" title="Trecho perfurado neste dia — de (m)" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pate" step="0.01" min="0" value="${esc(e.perfuracao_ate_m ?? "")}" style="width:62px;" title="Trecho perfurado neste dia — até (m)" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perfi col-lg" value="${e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(0,16) : ""}" /></td>
@@ -773,9 +773,8 @@ function attachBoletimListeners(idx){
 }
 
 /* Trecho do dia (de–até) derivado das camadas de solo do boletim: menor início → De,
-   maior final → Até. Prof. exec. = metragem DO DIA (Até − De — chamado #15, 21/09/2026);
-   só é preenchida quando estava vazia ou igual ao valor calculado/Até anterior — se a
-   pessoa digitou outro valor, fica como está. */
+   maior final → Até. O acumulado (Prof. exec.) só é preenchido quando estava vazio ou
+   igual ao "Até" anterior — se a pessoa digitou outro valor, fica como está. */
 function sincronizarTrechoDaEstaca(idx){
   const e = _rdoExecucoes[idx];
   if(!e) return;
@@ -783,12 +782,9 @@ function sincronizarTrechoDaEstaca(idx){
   if(!camadas.length) return;
   const de  = camadas.reduce((m, s) => (s.inicio_ml != null && (m == null || s.inicio_ml < m)) ? s.inicio_ml : m, null);
   const ate = camadas.reduce((m, s) => (s.final_ml  != null && (m == null || s.final_ml  > m)) ? s.final_ml  : m, null);
-  const r2 = (n) => Math.round(n * 100) / 100;
   const ateAnterior = e.perfuracao_ate_m;
-  const calcAnterior = ateAnterior != null ? r2(ateAnterior - (e.perfuracao_de_m || 0)) : null;
   e.perfuracao_de_m = de; e.perfuracao_ate_m = ate;
-  const calcNovo = ate != null ? r2(ate - (de || 0)) : null;
-  if(calcNovo != null && (e.profundidade_executada == null || e.profundidade_executada === calcAnterior || e.profundidade_executada === ateAnterior)) e.profundidade_executada = calcNovo;
+  if(ate != null && (e.profundidade_executada == null || e.profundidade_executada === ateAnterior)) e.profundidade_executada = ate;
   const tr = $("rdo-execs")?.querySelector(`tr[data-idx="${idx}"]`);
   if(tr){
     const set = (cls, v) => { const el = tr.querySelector(cls); if(el) el.value = v ?? ""; };
@@ -1792,7 +1788,7 @@ async function montarPreviewDias(data, origem, obraSel){
         responsavel: d.responsavel || null, atividades: d.atividades || null, observacoes: d.observacoes || null,
         tipo_servico: d.tipo_servico || null,
         intervalo_minutos: d.intervalo_minutos ?? null, almoco_inicio: d.almoco_inicio || null, almoco_fim: d.almoco_fim || null, feriado: false,
-        sem_estacas: d.sem_estacas === true || !(Array.isArray(d.estacas) && d.estacas.length), // dia só com ocorrência (Maya OU leitura por IA — chamado #14): vira RDO sem execuções
+        sem_estacas: d.sem_estacas === true, // dia só com ocorrência (planilha do Maya): vira RDO sem execuções
         abastecimentos: Array.isArray(d.abastecimentos) ? d.abastecimentos : [], // bloco Abastecimento da planilha (diário do operador)
         equipe: (Array.isArray(d.equipe) ? d.equipe : []).map(iaCasarIntegrante),
         // v3.2 (chamado #5): lista hora-a-hora da justificativa; função v3.1 não manda → []
@@ -1810,15 +1806,14 @@ async function montarPreviewDias(data, origem, obraSel){
           .map(t => ({ de: numOrNull(t.de), ate: numOrNull(t.ate), ferramenta: t.ferramenta || null, solo: t.solo || null }))
           .filter(t => t.de != null || t.ate != null || t.solo || t.ferramenta);
         const inj = iaInjecaoDaEstaca(injecao, ref.nomeBase, e.agrupamento);
-        const maxAte = iaMaxAte(trechos), minDe = iaMinDe(trechos);
+        const maxAte = iaMaxAte(trechos);
         registros.push({
           data_dia: d.data,
           obra_csv: d.obra || "",
           estaca_numero: ref.nomeBase,
           agrupamento: (e.agrupamento || "").trim() || null,
           modalidade_execucao: (e.refuro || ref.isRefuro) ? "refuro" : "furo_normal",
-          // chamado #15 (21/09/2026): metragem DO DIA (função v3.3 já manda; fallback = trechos, não o acumulado)
-          profundidade_executada: numOrNull(e.profundidade_executada) ?? iaMetragemDia(trechos) ?? (maxAte != null ? maxAte - (minDe || 0) : null),
+          profundidade_executada: e.profundidade_executada ?? maxAte,
           profundidade_projeto: e.profundidade_projeto,
           perfuracao_de_m: numOrNull(e.perfuracao_de_m) ?? iaMinDe(trechos),
           perfuracao_ate_m: numOrNull(e.perfuracao_ate_m) ?? maxAte,
@@ -1841,10 +1836,8 @@ async function montarPreviewDias(data, origem, obraSel){
         });
       });
     });
-    // chamado #14 (21/09/2026): dia improdutivo (só ocorrência/justificativa/equipe) importa mesmo sem estacas
-    const diasSoOcorrencia = Object.values(_iaExtras || {}).filter(x => x && x.sem_estacas).length;
-    if(!registros.length && !diasSoOcorrencia){
-      throw new Error("A IA leu o diário, mas não encontrou linhas de estacas nem ocorrências. " + (data?.observacoes || ""));
+    if(!registros.length){
+      throw new Error("A IA leu o diário, mas não encontrou linhas de estacas. " + (data?.observacoes || ""));
     }
 
     await continuarProcessamentoImport(registros, dias[0].obra || "", origem);
@@ -1968,8 +1961,6 @@ function diasImportacao(){
   return [...s].sort();
 }
 const iaMinDe  = (ts) => (ts || []).reduce((m, t) => (t.de  != null && (m == null || t.de  < m)) ? t.de  : m, null);
-/* Metragem perfurada no dia = soma de (até − de) dos trechos (chamado #15) */
-const iaMetragemDia = (ts) => { const s = (ts || []).reduce((a, t) => (t.de != null && t.ate != null && t.ate > t.de) ? a + (t.ate - t.de) : a, 0); return s > 0 ? Math.round(s * 100) / 100 : null; };
 const iaMaxAte = (ts) => (ts || []).reduce((m, t) => (t.ate != null && (m == null || t.ate > m)) ? t.ate : m, null);
 
 /* ---------- Horas da equipe pela jornada da obra (espelha fn_horas_equipe do banco) ----------
@@ -2088,7 +2079,7 @@ function renderConferenciaIA(resp){
         <button type="button" class="btn-sec btn-sm ia-add-just" style="margin-top:6px;">+ atividade</button>
       </details>
       <div class="tabela-rola"><table class="itens-tabela ia-tabela ia-estacas">
-        <thead><tr><th>Estaca</th><th title="Bloco / anel / pilar">Agrup.</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th title="Metragem perfurada no dia (Até − De)">Prof. exec.</th><th title="Trecho do turno">De (m)</th><th title="Trecho do turno">Até (m)</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
+        <thead><tr><th>Estaca</th><th title="Bloco / anel / pilar">Agrup.</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th title="Acumulado da estaca">Prof. exec.</th><th title="Trecho do turno">De (m)</th><th title="Trecho do turno">Até (m)</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
         <tbody>${ests.map((e, i) => {
           const trechos = e.trechos || [];
           return `<tr data-idx="${i}">
@@ -2235,12 +2226,9 @@ function renderConferenciaIA(resp){
     const de = iaMinDe(ts), ate = iaMaxAte(ts);
     if(!ts.length) return;
     const inDe = main.querySelector('[data-c="perfuracao_de_m"]'), inAte = main.querySelector('[data-c="perfuracao_ate_m"]'), inPe = main.querySelector('[data-c="profundidade_executada"]');
-    // chamado #15: Prof. exec. = metragem do dia (Até − De), não o acumulado
-    const deAnterior = numOrNull(inDe.value), ateAnterior = numOrNull(inAte.value);
-    const calcAnterior = ateAnterior != null ? Math.round((ateAnterior - (deAnterior || 0)) * 100) / 100 : null;
+    const ateAnterior = numOrNull(inAte.value);
     inDe.value = de ?? ""; inAte.value = ate ?? "";
-    const calcNovo = ate != null ? Math.round((ate - (de || 0)) * 100) / 100 : null;
-    if(calcNovo != null && (inPe.value === "" || numOrNull(inPe.value) === calcAnterior || numOrNull(inPe.value) === ateAnterior)) inPe.value = calcNovo;
+    if(ate != null && (inPe.value === "" || numOrNull(inPe.value) === ateAnterior)) inPe.value = ate;
     sub.querySelector("summary").firstChild.textContent = `⛏️ Trechos de solo / ferramenta (${ts.length})`;
   };
   const ligarTrechos = (sub) => {
@@ -2315,7 +2303,7 @@ function lerConferenciaIA(){
         modalidade_execucao: g("refuro").checked ? "refuro" : "furo_normal",
         diametro_mm: num(g("diametro_mm").value),
         profundidade_projeto: num(g("profundidade_projeto").value),
-        profundidade_executada: num(g("profundidade_executada").value) ?? (ate != null ? Math.round((ate - (de || 0)) * 100) / 100 : null), // chamado #15: metragem do dia
+        profundidade_executada: num(g("profundidade_executada").value) ?? ate,
         perfuracao_de_m: de, perfuracao_ate_m: ate, trechos,
         inclinacao: gs("inclinacao") ? (gs("inclinacao").value.trim() || null) : (base.inclinacao || null),
         consumo_cimento_raiz: gs("consumo_cimento_raiz") ? (gs("consumo_cimento_raiz").value.trim() || null) : (base.consumo_cimento_raiz || null),
@@ -2622,8 +2610,7 @@ async function confirmarImportCSV(){
     if(!confirm(`Atenção: ${semMatch.length} máquina(s) sem equipamento vinculado (${semMatch.join(", ")}).\nElas serão importadas só com o código texto. Continuar mesmo assim?`)) return;
   }
 
-  const _totEst = Object.values(_csvParsed).reduce((s,v) => s+v.length, 0);
-  if(!confirm(`Importar ${_totEst} estaca(s) em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}? Cada dia vira 1 RDO novo (dia sem estacas entra só com ocorrência/equipe).`)) return;
+  if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas como ${TIPO_SERVICO[tipo]?.label || tipo}? Cada dia vira 1 RDO novo.`)) return;
 
   const btn = $("btn-csv-confirmar");
   btn.disabled = true;
