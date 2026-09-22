@@ -243,6 +243,16 @@ async function carregarDashPendencias(){
     });
   });
 
+  // fase 60: requisições de material aguardando o comprador (só quem opera compras)
+  if(typeof cmpPodeOperar === "function" && cmpPodeOperar()){
+    const { count: nReq } = await sb.from("requisicoes").select("id", { count: "exact", head: true }).eq("status", "pendente");
+    if(nReq) itens.push({
+      icone: "📝", cor: "var(--aviso)", bg: "var(--aviso-bg)",
+      texto: `<strong>${nReq}</strong> requisição(ões) de material aguardando o comprador`,
+      nav: () => { if(irParaSecao("compras")){ _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; setTimeout(() => renderCompras(), 400); } }
+    });
+  }
+
   // fase 56: títulos a pagar vencidos e ainda não exportados ao Compor 90 (só quem opera Contas a pagar)
   if(podeVerContasPagar()){
     const { count: nVenc } = await sb.from("titulos_pagar").select("id", { count: "exact", head: true }).is("exportado_em", null).lt("vencimento", hojeISOstr);

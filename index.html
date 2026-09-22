@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=9e5e327" />
+<link rel="stylesheet" href="css/estilo.css?v=7331562" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -960,6 +960,7 @@
           <span class="meta">itens com controle de reposição: atual · mínimo · ideal · a comprar</span>
           <button type="button" class="btn-sec" id="btn-est-controlar" style="margin-left:auto;">+ Controlar item</button>
           <button type="button" class="btn-sec" id="btn-est-lista-compra">🛒 Gerar lista de compra</button>
+          <button type="button" class="btn" id="btn-est-requisitar" title="Abre uma requisição para o comprador com os itens abaixo do ideal (fase 60)">📝 Requisitar o que falta</button>
         </div>
         <div class="serv-filtros">
           <input id="est-rep-busca" placeholder="Filtrar por código ou nome…" />
@@ -1016,6 +1017,7 @@
           <div class="ind ind-click" data-kpi="entrega"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando entrega</div></div>
           <div class="ind ind-click" data-kpi="atrasados"><div class="num" id="cmp-kpi-atrasados">—</div><div class="rot">Entrega atrasada</div></div>
           <div class="ind"><div class="num" id="cmp-kpi-valor">—</div><div class="rot">Valor em aberto</div></div>
+          <div class="ind ind-click" data-kpi="requisicoes"><div class="num" id="cmp-kpi-req" style="color:var(--aviso);">—</div><div class="rot">Requisições pendentes</div></div>
         </div>
 
         <div class="card">
@@ -1025,8 +1027,10 @@
               <button type="button" class="serv-view-btn ativo" data-view="kanban">Por status</button>
               <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="recebimentos">Recebimentos</button>
+              <button type="button" class="serv-view-btn" data-view="requisicoes">Requisições</button>
             </div>
             <button type="button" class="btn-sec" id="btn-cmp-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-cmp-req-nova" style="display:none;" title="Pedir material ou serviço para o comprador">📝 + Requisição</button>
             <button type="button" class="btn-sec" id="btn-cmp-receber-avulso" style="display:none;" title="Nota sem pedido (compra direta, emergência, cartão)">📥 Receber NF sem pedido</button>
             <button type="button" class="btn" id="btn-cmp-novo" style="display:none;">+ Novo pedido</button>
           </div>
@@ -1181,6 +1185,41 @@
       </div>
 
       <!-- modal: custo avulso -->
+      <!-- fase 60: requisição de material / serviço -->
+      <div class="modal-fundo" id="cmp-req-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:860px;">
+          <div class="modal-topo"><h3 id="req-titulo">Nova requisição</h3><button type="button" class="btn-sec" id="btn-req-fechar">×</button></div>
+          <p class="meta">Peça o que precisa; o comprador junta as requisições e gera o pedido. Informe obra ou TAG para o custo cair no lugar certo. Sem os dois, é reposição do estoque da base.</p>
+          <div id="req-meta" class="meta" style="margin-bottom:6px;"></div>
+          <div class="grade grade-3">
+            <div class="campo"><label>Obra</label><select id="req-obra"></select></div>
+            <div class="campo"><label>Equipamento / TAG</label><select id="req-equip"></select></div>
+            <div class="campo"><label>Prioridade</label><select id="req-prioridade"><option value="normal">Normal</option><option value="urgente">Urgente (máquina parada)</option></select></div>
+            <div class="campo largo"><label>Justificativa / para quê</label><input id="req-just" placeholder="ex.: mangueira estourou na 02-HM · reposição da oficina · EPI da equipe da obra X" /></div>
+          </div>
+          <div id="req-itens-add" class="lista-topo compacta" style="margin-top:8px;">
+            <div class="campo largo" style="flex:1;margin:0;"><input id="req-busca" placeholder="Buscar produto por código ou nome (≥ 2 letras)…" autocomplete="off" /><div id="req-res" class="autocomplete-lista" style="display:none;"></div></div>
+            <button type="button" class="btn-sec" id="btn-req-livre">+ item livre</button>
+          </div>
+          <div class="tabela-rola"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th>Un</th><th class="col-acao"></th></tr></thead><tbody id="req-itens"></tbody></table></div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn-sec" id="btn-req-cancelar" style="display:none;color:var(--perigo);">✕ Cancelar requisição</button>
+            <button type="button" class="btn-sec" id="btn-req-rejeitar" style="display:none;">👎 Rejeitar</button>
+            <button type="button" class="btn-sec" id="btn-req-estoque" style="display:none;" title="Tem no estoque: atende sem comprar">📦 Atendida pelo estoque</button>
+            <button type="button" class="btn" id="btn-req-pedido" style="display:none;">🛒 Gerar pedido</button>
+            <button type="button" class="btn" id="btn-req-salvar">💾 Abrir requisição</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-fundo" id="cmp-req-ped-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:560px;">
+          <div class="modal-topo"><h3>Gerar pedido de compra</h3><button type="button" class="btn-sec" id="btn-req-ped-fechar">×</button></div>
+          <div id="req-ped-resumo"></div>
+          <div class="grade"><div class="campo largo"><label>Fornecedor do pedido *</label><select id="req-ped-forn"></select><span class="meta">Sugerido pelo fornecedor padrão dos produtos. Requisições de fornecedores diferentes: gere um pedido por vez.</span></div></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-req-ped-gerar">🛒 Gerar pedido em rascunho</button></div>
+        </div>
+      </div>
+
       <div class="modal-fundo" id="cmp-av-modal" style="display:none;">
         <div class="modal-caixa" style="max-width:640px;">
           <div class="modal-topo"><h3>Custo avulso</h3><button type="button" class="btn-sec" id="btn-cmp-av-fechar">×</button></div>
@@ -2652,6 +2691,27 @@
           </div>
         </div>
       </div>
+
+      <!-- fase 59: OS de manutenção da máquina -->
+      <div class="modal-fundo" id="eqp-os-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:720px;">
+          <div class="modal-topo"><h3 id="eqp-os-titulo">Nova OS</h3><button type="button" class="btn-sec" id="btn-eqp-os-fechar">×</button></div>
+          <p class="meta">Ordem de serviço de manutenção. O custo é o do serviço externo (fornecedor); peças aplicadas entram pela saída de estoque para a TAG. Concluída com horímetro, atualiza o horímetro da máquina.</p>
+          <div class="grade grade-3">
+            <div class="campo"><label>Tipo</label><select id="eqp-os-tipo"><option value="preventiva">Preventiva</option><option value="corretiva">Corretiva</option><option value="preditiva">Preditiva</option></select></div>
+            <div class="campo"><label>Status</label><select id="eqp-os-status"><option value="agendada">Agendada</option><option value="em_andamento">Em andamento</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option></select></div>
+            <div class="campo"><label>Prevista para</label><input type="date" id="eqp-os-prev" /></div>
+            <div class="campo largo"><label>Serviço *</label><input id="eqp-os-desc" placeholder="ex.: troca de mangueiras hidráulicas · revisão 500 h · retífica do motor" /></div>
+            <div class="campo"><label>Horímetro / km</label><input type="number" id="eqp-os-hor" step="0.1" min="0" /></div>
+            <div class="campo"><label>Início</label><input type="date" id="eqp-os-ini" /></div>
+            <div class="campo"><label>Conclusão</label><input type="date" id="eqp-os-fim" /></div>
+            <div class="campo"><label>Fornecedor (serviço externo)</label><select id="eqp-os-forn"><option value="">— interno / sem fornecedor —</option></select></div>
+            <div class="campo"><label>Custo do serviço (R$)</label><input type="number" id="eqp-os-custo" step="0.01" min="0" placeholder="entra no custo da TAG quando concluída" /></div>
+            <div class="campo largo"><label>Observações</label><textarea id="eqp-os-obs" rows="2"></textarea></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-eqp-os-salvar">💾 Salvar OS</button></div>
+        </div>
+      </div>
     </section>
 
     <section class="secao" id="sec-frota">
@@ -3680,38 +3740,39 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=9e5e327"></script>
+<script src="js/core.js?v=7331562"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=9e5e327"></script>
+<script src="js/historico.js?v=7331562"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=9e5e327"></script>
-<script src="js/fornecedores.js?v=9e5e327"></script>
-<script src="js/apropriacoes.js?v=9e5e327"></script>
-<script src="js/funcionarios.js?v=9e5e327"></script>
-<script src="js/servicos.js?v=9e5e327"></script>
-<script src="js/produtos.js?v=9e5e327"></script>
-<script src="js/estoque.js?v=9e5e327"></script>
-<script src="js/compras.js?v=9e5e327"></script>
-<script src="js/orcamentos.js?v=9e5e327"></script>
-<script src="js/propostas.js?v=9e5e327"></script>
-<script src="js/contratos.js?v=9e5e327"></script>
-<script src="js/contas_pagar.js?v=9e5e327"></script>
-<script src="js/carteira.js?v=9e5e327"></script>
-<script src="js/obras.js?v=9e5e327"></script>
-<script src="js/frota.js?v=9e5e327"></script>
-<script src="js/equipamentos.js?v=9e5e327"></script>
-<script src="js/acessorios.js?v=9e5e327"></script>
-<script src="js/mobilizacoes.js?v=9e5e327"></script>
-<script src="js/estacas.js?v=9e5e327"></script>
-<script src="js/obra_abas.js?v=9e5e327"></script>
-<script src="js/medicoes.js?v=9e5e327"></script>
-<script src="js/movimentacoes.js?v=9e5e327"></script>
-<script src="js/rdo.js?v=9e5e327"></script>
-<script src="js/rdo_import_maya.js?v=9e5e327"></script>
-<script src="js/usuarios.js?v=9e5e327"></script>
-<script src="js/chamados.js?v=9e5e327"></script>
-<script src="js/dashboard.js?v=9e5e327"></script>
+<script src="js/clientes.js?v=7331562"></script>
+<script src="js/fornecedores.js?v=7331562"></script>
+<script src="js/apropriacoes.js?v=7331562"></script>
+<script src="js/funcionarios.js?v=7331562"></script>
+<script src="js/servicos.js?v=7331562"></script>
+<script src="js/produtos.js?v=7331562"></script>
+<script src="js/estoque.js?v=7331562"></script>
+<script src="js/compras.js?v=7331562"></script>
+<script src="js/requisicoes.js?v=7331562"></script>
+<script src="js/orcamentos.js?v=7331562"></script>
+<script src="js/propostas.js?v=7331562"></script>
+<script src="js/contratos.js?v=7331562"></script>
+<script src="js/contas_pagar.js?v=7331562"></script>
+<script src="js/carteira.js?v=7331562"></script>
+<script src="js/obras.js?v=7331562"></script>
+<script src="js/frota.js?v=7331562"></script>
+<script src="js/equipamentos.js?v=7331562"></script>
+<script src="js/acessorios.js?v=7331562"></script>
+<script src="js/mobilizacoes.js?v=7331562"></script>
+<script src="js/estacas.js?v=7331562"></script>
+<script src="js/obra_abas.js?v=7331562"></script>
+<script src="js/medicoes.js?v=7331562"></script>
+<script src="js/movimentacoes.js?v=7331562"></script>
+<script src="js/rdo.js?v=7331562"></script>
+<script src="js/rdo_import_maya.js?v=7331562"></script>
+<script src="js/usuarios.js?v=7331562"></script>
+<script src="js/chamados.js?v=7331562"></script>
+<script src="js/dashboard.js?v=7331562"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=9e5e327"></script>
+<script src="js/init.js?v=7331562"></script>
 </body>
 </html>

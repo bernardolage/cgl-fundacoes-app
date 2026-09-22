@@ -13,6 +13,7 @@
    por usuário (localStorage): Walison abre em raiz, Lucas em hélice.
    ==================================================================== */
 let _aceView = "kanban";
+let _aceFoco = null; // { ids:Set, rotulo } — clique num card do quadro com várias peças mostra só elas na lista
 let _aceFamilia = null;            // '' = todas
 let _aceKpi = "";                  // filtro rápido dos indicadores
 let _aceRegistros = [];            // acessórios (cache)
@@ -298,6 +299,7 @@ function aceFiltradas(){
     if(fE && a.local_equipamento_id !== fE && a.equipamento_padrao_id !== fE) return false;
     if(fO && a.local_obra_id !== fO) return false;
     if(fJ && a.jogo !== fJ) return false;
+    if(_aceFoco && !_aceFoco.ids.has(a.id)) return false;
     if(_aceKpi === "estoque"    && !(["patio","oficina","equipamento"].includes(a.local_tipo) && a.condicao !== "em_manutencao")) return false;
     if(_aceKpi === "obra"       && !["obra","em_transito"].includes(a.local_tipo)) return false;
     if(_aceKpi === "manutencao" && a.condicao !== "em_manutencao") return false;
@@ -361,7 +363,7 @@ function renderAcessoriosKanban(dados){
       const todosSel = ids.every(id => _aceSel.has(id));
       const pills = g.sort(aceOrdMarc).map(a => `<span class="tag ${aceCondCor(a.condicao)} ace-pill" data-id="${a.id}" title="${esc(aceDescr(a))} · ${esc(aceLbl("acessorio", a.condicao))}${a.jogo ? " · jogo " + esc(a.jogo) : ""}\nClique: abrir · Ctrl+clique: selecionar" style="cursor:pointer;margin:2px 3px 2px 0;${_aceSel.has(a.id) ? "outline:2px solid var(--marca-600);outline-offset:1px;" : ""}">${_aceFotosN[a.id] ? "📷 " : ""}${esc(a.marcacao)}</span>`).join("");
       const med = aceMedida(g[0]);
-      return `<div class="serv-kan-card" data-ids="${ids.join(",")}" draggable="true" style="cursor:grab;">
+      return `<div class="serv-kan-card" data-ids="${ids.join(",")}" draggable="true" style="cursor:pointer;" title="${ids.length === 1 ? "Abrir a ficha da peça" : "Ver as " + ids.length + " peças"} · arraste para mover">
         <div class="serv-kan-card-nome" style="display:flex;align-items:center;gap:6px;">
           <input type="checkbox" class="ace-sel-grupo" ${todosSel ? "checked" : ""} title="Selecionar estas ${ids.length} peça(s)" style="margin:0;" />
           <span style="flex:1;">${esc(aceDescr(g[0]))}${med && !aceDescr(g[0]).includes(med) ? ` <span class="meta">${esc(med)}</span>` : ""}</span>
@@ -372,7 +374,7 @@ function renderAcessoriosKanban(dados){
     }).join("");
     return `<div class="serv-kan-col" data-col="${esc(k)}"><div class="serv-kan-col-head">${esc(aceColLabel(k))}<span>${itens.length}</span></div>${cards}</div>`;
   }).join("");
-  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Colunas = onde a peça está; cards = modelo. Clique na marcação para abrir a ficha, Ctrl+clique para selecionar; arraste um card para outra coluna para mover o grupo.</p><div class="serv-kanban">${html}</div>`;
+  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Colunas = onde a peça está; cards = modelo. Clique no card ou na marcação para abrir a ficha da peça (com várias peças, o card abre a lista delas); Ctrl+clique na marcação seleciona; arraste um card para outra coluna para mover o grupo.</p><div class="serv-kanban">${html}</div>`;
   aceLigarDrag(cont);
 }
 
@@ -380,7 +382,8 @@ function renderAcessoriosLista(dados){
   const cont = $("ace-conteudo");
   const todosSel = dados.length && dados.every(a => _aceSel.has(a.id));
   const temAcopl = dados.some(a => a.acoplamento), temJogo = dados.some(a => a.jogo);
-  cont.innerHTML = `<div class="tabela-rola"><table>
+  const foco = _aceFoco ? `<p class="meta" style="margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">Mostrando ${dados.length} peça(s) de <strong>${esc(_aceFoco.rotulo)}</strong>. Clique na linha para abrir a ficha.<button type="button" class="btn-sec btn-sm" id="ace-foco-limpar">← Voltar ao quadro</button></p>` : "";
+  cont.innerHTML = foco + `<div class="tabela-rola"><table>
     <thead><tr>
       <th style="width:28px;"><input type="checkbox" id="ace-sel-todos" ${todosSel ? "checked" : ""} title="Selecionar todas as ${dados.length} filtradas" /></th>
       <th>Marcação</th><th>Modelo</th><th>Tipo</th><th>Ø / medida</th>${temAcopl ? "<th>Acopl.</th>" : ""}${temJogo ? "<th>Jogo</th>" : ""}
@@ -1031,15 +1034,15 @@ async function excluirAcessorio(){
 function ligarAcessorios(){
   if(!$("sec-acessorios")) return;
   document.querySelector('nav button[data-secao="acessorios"]')?.addEventListener("click", () => carregarAcessorios(false));
-  document.querySelectorAll("#ace-views .serv-view-btn").forEach(b => b.addEventListener("click", () => { _aceView = b.dataset.view; renderAcessorios(); }));
+  document.querySelectorAll("#ace-views .serv-view-btn").forEach(b => b.addEventListener("click", () => { _aceFoco = null; _aceView = b.dataset.view; renderAcessorios(); }));
   document.querySelectorAll("#ace-familias .serv-view-btn").forEach(b => b.addEventListener("click", () => {
     _aceFamilia = b.dataset.familia; _aceKpi = "";
     try { localStorage.setItem(aceChaveFamilia(), _aceFamilia); } catch(e){}
     acePreencherFiltros(); renderAcessorios();
   }));
   document.querySelectorAll("#ace-painel .ind[data-kpi]").forEach(el => el.addEventListener("click", () => { _aceKpi = (_aceKpi === el.dataset.kpi) ? "" : el.dataset.kpi; if(_aceView === "contagem") _aceView = "kanban"; renderAcessorios(); }));
-  ["ace-f-tipo","ace-f-medida","ace-f-acopl","ace-f-condicao","ace-f-local","ace-f-equip","ace-f-obra","ace-f-jogo"].forEach(id => $(id)?.addEventListener("change", renderAcessorios));
-  $("ace-busca")?.addEventListener("input", debounce(renderAcessorios));
+  ["ace-f-tipo","ace-f-medida","ace-f-acopl","ace-f-condicao","ace-f-local","ace-f-equip","ace-f-obra","ace-f-jogo"].forEach(id => $(id)?.addEventListener("change", () => { _aceFoco = null; renderAcessorios(); }));
+  $("ace-busca")?.addEventListener("input", debounce(() => { _aceFoco = null; renderAcessorios(); }));
   $("btn-ace-atualizar")?.addEventListener("click", () => carregarAcessorios(true));
   $("btn-ace-nova")?.addEventListener("click", novoAcessorio);
   $("btn-ace-modelo")?.addEventListener("click", () => abrirModeloAcessorio(null));
@@ -1054,8 +1057,18 @@ function ligarAcessorios(){
     }
     const cbG = e.target.closest(".ace-sel-grupo");
     if(cbG){ const ids = cbG.closest(".serv-kan-card").dataset.ids.split(","); ids.forEach(id => aceToggleSel(id, cbG.checked)); renderAcessorios(); return; }
+    const card = e.target.closest(".serv-kan-card[data-ids]");
+    if(card){
+      const ids = card.dataset.ids.split(",").filter(Boolean);
+      if(ids.length === 1){ abrirAcessorio(ids[0]); return; }
+      const a0 = _aceRegistros.find(x => x.id === ids[0]);
+      _aceFoco = { ids: new Set(ids), rotulo: a0 ? `${aceDescr(a0)} · ${aceColLabel(aceColKey(a0))}` : "" };
+      _aceView = "lista"; renderAcessorios();
+      return;
+    }
     const cb = e.target.closest(".ace-sel");
     if(cb){ aceToggleSel(cb.dataset.id, cb.checked); aceRenderSelecao(); return; }
+    if(e.target.id === "ace-foco-limpar"){ _aceFoco = null; _aceView = "kanban"; renderAcessorios(); return; }
     if(e.target.id === "ace-sel-todos"){ const on = e.target.checked; aceFiltradas().forEach(a => aceToggleSel(a.id, on)); renderAcessorios(); return; }
     const trM = e.target.closest("tr[data-modelo]");
     if(trM){ if(acePodeEditar()) abrirModeloAcessorio(trM.dataset.modelo); return; }
