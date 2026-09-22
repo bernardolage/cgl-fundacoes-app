@@ -154,7 +154,7 @@ async function renderCustosAvulsosCap(){
   if(!data?.length){ cont.innerHTML = `<p class="vazio">Nenhum lançamento avulso. Use "＋ Custo avulso" para multa, IPVA, seguro, locação… Com vencimento, o lançamento vira também título a pagar.</p>`; return; }
   const podeApagar = !!usuarioAtual && ["admin","diretor","financeiro"].includes(usuarioAtual.cargo);
   cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>TAG</th><th>Obra</th><th>Fornecedor</th><th>Documento</th><th>Vencimento</th><th class="num">Valor</th>${podeApagar ? "<th></th>" : ""}</tr></thead>
-    <tbody>${data.map(c => `<tr><td>${dataBR(c.data)}</td><td>${esc(CMP_CAT_LBL[c.categoria] || c.categoria)}</td><td>${esc(c.descricao)}</td><td>${esc(cmpEq(c.equipamento_id) || (c.acessorio_jogo ? "jogo " + c.acessorio_jogo : "—"))}</td>
+    <tbody>${data.map(c => `<tr><td>${dataBR(c.data)}</td><td>${esc(CMP_CAT_LBL[c.categoria] || c.categoria)}</td><td>${esc(c.descricao)}</td><td>${esc(cmpEq(c.equipamento_id) || "—")}</td>
       <td>${c.obra_id ? linkObra(c.obra_id, cmpObra(c.obra_id)) : "—"}</td><td>${esc(cmpForn(c.fornecedor_id) || "—")}</td><td>${esc(c.documento || "—")}</td><td>${c.vencimento ? dataBR(c.vencimento) : '<span class="meta">sem título</span>'}</td><td class="num">${brl(c.valor)}</td>
       ${podeApagar ? `<td><button type="button" class="btn-sec btn-sm" data-del-av="${esc(c.id)}" title="excluir">✕</button></td>` : ""}</tr>`).join("")}</tbody>
     <tfoot><tr><td colspan="8"><strong>Total</strong></td><td class="num"><strong>${brl(data.reduce((s, c) => s + Number(c.valor || 0), 0))}</strong></td>${podeApagar ? "<td></td>" : ""}</tr></tfoot></table></div>`;

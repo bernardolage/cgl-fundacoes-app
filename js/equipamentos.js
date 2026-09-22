@@ -286,7 +286,7 @@ async function eqpCarregarFilhas(e){
     sb.from("mobilizacoes").select("id,obra_id,status,data_mobilizacao_prev,data_saida_real,data_chegada_real,data_desmob_real,equipamento_id,equipamentos_apoio").or(`equipamento_id.eq.${id},equipamentos_apoio.cs.{${id}}`).order("data_mobilizacao_prev", { ascending: false }),
     sb.from("movimentacao_itens").select("movimentacao_id,movimentacao:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_recebimento,origem_tipo,origem_descricao,destino_tipo,destino_descricao,destino_obra_id)").eq("equipamento_id", id),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_conclusao,custo_estimado,custo_real,acessorio_id").eq("equipamento_id", id).order("data_abertura", { ascending: false }).limit(200),
-    sb.from("manutencoes").select("id,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,horimetro_km").eq("equipamento_id", id).order("data_prevista", { ascending: false }).limit(200),
+    sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id").eq("equipamento_id", id).order("data_prevista", { ascending: false }).limit(200),
     sb.from("acessorio_equipamentos").select("acessorio_id").eq("equipamento_id", id),
     (typeof aceCatalogo === "function" ? aceCatalogo() : Promise.resolve([])).catch(() => [])
   ]);
@@ -335,6 +335,7 @@ async function eqpCarregarFilhas(e){
 
   // reparos e manutenções
   const reps = rep.data || [], mans = man.data || [];
+  _eqpMans = mans; // fase 59: OS abre pela linha
   setSb("sb-eqp-rep", reps.length); setSb("sb-eqp-man", mans.length);
   const repSt = { aberto: "ambar", em_execucao: "ambar", concluido: "verde", cancelado: "cinza" };
   const repLbl = (typeof ACE_REPARO_STATUS === "object" && ACE_REPARO_STATUS) || {};
@@ -345,12 +346,58 @@ async function eqpCarregarFilhas(e){
       <td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td></tr>`).join("")}</tbody></table></div>`);
   const manTipo = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
   const manSt = { agendada: ["Agendada","azul"], em_andamento: ["Em andamento","ambar"], concluida: ["Concluída","verde"], cancelada: ["Cancelada","cinza"] };
-  $("eqp-man-lista").innerHTML = `<h3 class="titulo-bloco">Manutenções</h3>` + (man.error ? `<p class="vazio">Erro: ${esc(man.error.message)}</p>` : !mans.length ? `<p class="vazio">Nenhuma manutenção registrada.</p>` :
-    `<div class="tabela-rola"><table><thead><tr><th>Prevista</th><th>Tipo</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Horímetro</th><th class="num">Custo</th></tr></thead>
-    <tbody>${mans.map(m => `<tr><td>${dataBR(m.data_prevista)}</td><td>${esc(manTipo[m.tipo] || m.tipo)}</td>
+  const podeOs = eqpPodeManutencao();
+  $("eqp-man-lista").innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Ordens de serviço (manutenção)</h3>${podeOs ? `<button type="button" class="btn btn-sm" id="btn-eqp-os-nova" style="margin-left:auto;">+ Nova OS</button>` : ""}</div>
+    <p class="meta">Preventiva, corretiva ou preditiva. O custo aqui é o serviço externo; peças aplicadas entram pela saída de estoque para a TAG. OS concluída com horímetro atualiza o horímetro da máquina.</p>` + (man.error ? `<p class="vazio">Erro: ${esc(man.error.message)}</p>` : !mans.length ? `<p class="vazio">Nenhuma OS registrada para esta TAG.</p>` :
+    `<div class="tabela-rola"><table><thead><tr><th>OS</th><th>Prevista</th><th>Tipo</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Horímetro</th><th class="num">Custo</th></tr></thead>
+    <tbody>${mans.map(m => `<tr class="${podeOs ? "linha-clicavel" : ""}" data-os="${esc(m.id)}"><td><strong>${esc(m.numero || "—")}</strong></td><td>${dataBR(m.data_prevista)}</td><td>${esc(manTipo[m.tipo] || m.tipo)}</td>
       <td><span class="tag ${(manSt[m.status] || [])[1] || "cinza"}">${esc((manSt[m.status] || [])[0] || m.status)}</span></td>
       <td>${esc(m.descricao || "")}</td><td>${dataBR(m.data_inicio)}</td><td>${dataBR(m.data_conclusao)}</td>
       <td class="num">${m.horimetro_km != null ? num(m.horimetro_km) : "—"}</td><td class="num">${m.custo != null ? brl(m.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>`);
+  $("btn-eqp-os-nova")?.addEventListener("click", () => abrirOsManutencao(null));
+}
+
+/* ---------- Fase 59: OS de manutenção (tabela manutencoes, sem tela até aqui) ---------- */
+let _eqpMans = [];
+let _eqpOsId = null;
+const EQP_OS_TIPO = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
+const EQP_OS_STATUS = { agendada: "Agendada", em_andamento: "Em andamento", concluida: "Concluída", cancelada: "Cancelada" };
+function eqpPodeManutencao(){
+  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","gestor_acessorios"].includes(usuarioAtual.cargo);
+}
+function abrirOsManutencao(m){
+  if(!_eqpAtual?.id){ aviso("app-aviso", "Salve o equipamento antes de abrir uma OS.", "erro"); return; }
+  if(!eqpPodeManutencao()){ aviso("app-aviso", "Seu perfil não abre OS de manutenção.", "erro"); return; }
+  _eqpOsId = m?.id || null;
+  const fornSel = $("eqp-os-forn");
+  if(fornSel && fornSel.options.length <= 1){
+    fornSel.innerHTML = `<option value="">— interno / sem fornecedor —</option>` + Object.entries(typeof mapaFornecedores === "object" ? mapaFornecedores : {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR")).map(([id, nome]) => `<option value="${esc(id)}">${esc(nome)}</option>`).join("");
+  }
+  $("eqp-os-titulo").textContent = m ? `${m.numero || "OS"} · TAG ${_eqpAtual.codigo}` : `Nova OS · TAG ${_eqpAtual.codigo}`;
+  $("eqp-os-tipo").value = m?.tipo || "corretiva"; $("eqp-os-status").value = m?.status || "agendada";
+  $("eqp-os-desc").value = m?.descricao || ""; $("eqp-os-prev").value = m?.data_prevista || hojeISO();
+  $("eqp-os-ini").value = m?.data_inicio || ""; $("eqp-os-fim").value = m?.data_conclusao || "";
+  $("eqp-os-hor").value = m?.horimetro_km ?? (_eqpAtual.horimetro ?? ""); $("eqp-os-forn").value = m?.fornecedor_id || "";
+  $("eqp-os-custo").value = m?.custo ?? ""; $("eqp-os-obs").value = m?.observacoes || "";
+  $("eqp-os-modal").style.display = "flex";
+}
+function fecharOsManutencao(){ $("eqp-os-modal").style.display = "none"; _eqpOsId = null; }
+async function salvarOsManutencao(){
+  if(!_eqpAtual?.id) return;
+  const reg = { equipamento_id: _eqpAtual.id, tipo: $("eqp-os-tipo").value, status: $("eqp-os-status").value, descricao: $("eqp-os-desc").value.trim() || null,
+    data_prevista: $("eqp-os-prev").value || null, data_inicio: $("eqp-os-ini").value || null, data_conclusao: $("eqp-os-fim").value || null,
+    horimetro_km: $("eqp-os-hor").value === "" ? null : Number($("eqp-os-hor").value), fornecedor_id: $("eqp-os-forn").value || null,
+    custo: $("eqp-os-custo").value === "" ? null : Number($("eqp-os-custo").value), observacoes: $("eqp-os-obs").value.trim() || null };
+  if(!reg.descricao){ aviso("app-aviso", "Descreva o serviço da OS.", "erro"); return; }
+  if(reg.status === "concluida" && reg.fornecedor_id && (reg.custo == null) && !confirm("OS concluída com fornecedor e sem custo: o serviço não vai aparecer no custo da máquina. Salvar assim mesmo?")) return;
+  const q = _eqpOsId ? sb.from("manutencoes").update(reg).eq("id", _eqpOsId) : sb.from("manutencoes").insert(reg) // aberto_por = auth.uid() no banco (responsavel_id é funcionário, não usuário);
+  const { error } = await q;
+  if(error){ aviso("app-aviso", "Não foi possível salvar a OS: " + error.message, "erro"); return; }
+  aviso("app-aviso", _eqpOsId ? "OS atualizada." : "OS aberta.", "ok");
+  fecharOsManutencao();
+  const e = _eqpAtual;
+  if(reg.status === "concluida" && reg.horimetro_km != null && (e.horimetro == null || e.horimetro < reg.horimetro_km)){ e.horimetro = reg.horimetro_km; if($("eqp-horimetro")) $("eqp-horimetro").value = reg.horimetro_km; }
+  eqpCarregarFilhas(e);
 }
 
 /* ---------- aba Acessórios (a GERAL da planilha de hélice) ---------- */
@@ -537,6 +584,10 @@ function ligarEquipamentos(){
   $("eqp-ace-lista")?.addEventListener("click", e => { const tr = e.target.closest("tr[data-ace]"); if(tr) eqpAbrirAcessorio(tr.dataset.ace); });
   $("eqp-mob-lista")?.addEventListener("click", e => { if(e.target.closest("a.link-obra")) return; const tr = e.target.closest("tr[data-mob]"); if(tr) eqpAbrirMobilizacao(tr.dataset.mob); });
   $("eqp-mov-lista")?.addEventListener("click", e => { if(e.target.closest("a.link-obra")) return; const tr = e.target.closest("tr[data-mov]"); if(tr) eqpAbrirMovimentacao(tr.dataset.mov); });
+  // fase 59: OS de manutenção
+  $("eqp-man-lista")?.addEventListener("click", e => { if(e.target.closest("button")) return; const tr = e.target.closest("tr[data-os]"); if(tr && eqpPodeManutencao()) abrirOsManutencao(_eqpMans.find(m => m.id === tr.dataset.os) || null); });
+  $("btn-eqp-os-fechar")?.addEventListener("click", fecharOsManutencao);
+  $("btn-eqp-os-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-os-salvar", salvarOsManutencao));
 }
 
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarEquipamentos);

@@ -38,7 +38,7 @@ const CMP_STATUS = {
 const CMP_STAGES = ["rascunho","aguardando_aprovacao","aprovado","enviado","parcialmente_recebido","recebido"];
 const CMP_ABERTOS = ["rascunho","aguardando_aprovacao","aprovado","enviado","parcialmente_recebido"];
 const CMP_CAT_LBL = { peca: "Peça", pneu: "Pneu", combustivel: "Combustível", lubrificante: "Lubrificante", servico_terceiro: "Serviço de terceiro", mao_obra_interna: "Mão de obra interna", frete: "Frete", locacao: "Locação", multa: "Multa", seguro_ipva: "Seguro / IPVA", deslocamento: "Deslocamento", outro: "Outro" };
-const CMP_ORIGEM_LBL = { compra: "Compra direta", estoque: "Saída de estoque", deslocamento: "Deslocamento", manutencao: "Manutenção", reparo: "Reparo caldeiraria", avulso: "Avulso", contrato: "Contrato" };
+const CMP_ORIGEM_LBL = { compra: "Compra direta", estoque: "Saída de estoque", deslocamento: "Deslocamento", manutencao: "Manutenção", reparo: "Reparo caldeiraria", avulso: "Avulso", contrato: "Contrato", combustivel: "Combustível (RDO)" };
 
 function cmpPodeOperar(){
   return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","gestor_acessorios","engenheiro","logistica","financeiro","mecanico"].includes(usuarioAtual.cargo);
@@ -711,7 +711,7 @@ async function abrirCustoAvulso(pre, depois){
   _cmpAvPre = depois || null;
   await cmpCarregarBase(false);
   $("cmp-av-data").value = hojeISO(); $("cmp-av-cat").value = pre?.categoria || "outro"; $("cmp-av-valor").value = "";
-  $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; $("cmp-av-forn").value = ""; if($("cmp-av-jogo")) $("cmp-av-jogo").value = pre?.acessorio_jogo || "";
+  $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; $("cmp-av-forn").value = "";
   $("cmp-av-desc").value = ""; $("cmp-av-doc").value = ""; if($("cmp-av-venc")) $("cmp-av-venc").value = "";
   $("cmp-av-modal").style.display = "flex";
   setTimeout(() => { if(pre?.equipamento_id && $("cmp-av-equip")) $("cmp-av-equip").value = pre.equipamento_id; if(pre?.obra_id && $("cmp-av-obra")) $("cmp-av-obra").value = pre.obra_id; }, 300);
@@ -719,11 +719,11 @@ async function abrirCustoAvulso(pre, depois){
 function fecharCustoAvulso(){ $("cmp-av-modal").style.display = "none"; }
 async function salvarCustoAvulso(){
   const reg = { data: $("cmp-av-data").value || hojeISO(), categoria: $("cmp-av-cat").value, valor: Number($("cmp-av-valor").value), equipamento_id: $("cmp-av-equip").value || null, obra_id: $("cmp-av-obra").value || null,
-    fornecedor_id: $("cmp-av-forn").value || null, acessorio_jogo: ($("cmp-av-jogo")?.value || "").trim().toUpperCase() || null, descricao: $("cmp-av-desc").value.trim(), documento: $("cmp-av-doc").value.trim() || null,
-    vencimento: $("cmp-av-venc")?.value || null }; // com vencimento vira também título a pagar
+    fornecedor_id: $("cmp-av-forn").value || null, descricao: $("cmp-av-desc").value.trim(), documento: $("cmp-av-doc").value.trim() || null,
+    vencimento: $("cmp-av-venc")?.value || null }; // fase 57: com vencimento vira também título a pagar
   if(!(reg.valor >= 0) || $("cmp-av-valor").value === ""){ aviso("app-aviso", "Informe o valor.", "erro"); return; }
   if(!reg.descricao){ aviso("app-aviso", "Informe a descrição.", "erro"); return; }
-  if(!reg.equipamento_id && !reg.obra_id && !reg.acessorio_jogo){ aviso("app-aviso", "Informe a TAG, a obra ou o jogo de acessórios.", "erro"); return; }
+  if(!reg.equipamento_id && !reg.obra_id){ aviso("app-aviso", "Informe a TAG ou a obra.", "erro"); return; }
   const { error } = await sb.from("custos_avulsos").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message, "erro"); return; }
   aviso("app-aviso", reg.vencimento ? "Custo lançado e título a pagar gerado." : "Custo lançado (sem vencimento: não gera título a pagar).", "ok");
@@ -761,7 +761,7 @@ async function custosRender(containerId, filtro, cbTotal){
       <div><div class="mov-ace-sug-grupo-t">Por mês</div>${meses.map(m => `<div class="custos-linha"><span>${m.slice(5, 7)}/${m.slice(0, 4)}</span><strong>${brl(porMes[m])}</strong></div>`).join("")}</div>
     </div>
     <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Categoria</th><th>Descrição</th><th>${filtro.equipamento_id ? "Obra" : "TAG"}</th><th>Fornecedor</th><th>Doc.</th><th class="num">Valor</th></tr></thead>
-      <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}</span></td>
+      <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : l.origem === "combustivel" ? "ambar" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}</span></td>
         <td>${esc(CMP_CAT_LBL[l.categoria] || l.categoria)}</td><td>${esc(l.descricao || "")}</td>
         <td>${filtro.equipamento_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : "—") : esc(nomeEq(l.equipamento_id) || "—")}</td>
         <td>${esc(nomeForn(l.fornecedor_id) || "—")}</td><td class="meta">${esc(l.documento || "")}</td><td class="num">${brl(l.valor)}</td></tr>`).join("")}</tbody></table></div>
