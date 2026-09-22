@@ -337,7 +337,8 @@ function aceRenderKpis(){
   set("ace-kpi-atencao", base.filter(a => ["precisa_manutencao","sem_marcacao"].includes(a.condicao) || a.local_tipo === "desconhecido").length);
   set("ace-kpi-perdido", base.filter(a => a.local_tipo === "perdido").length);
   const kv = $("ace-kpi-valor");
-  if(kv){
+  if(kv && kv.parentElement) kv.parentElement.style.display = (typeof ehDiretoria === "function" && ehDiretoria()) ? "" : "none";
+  if(kv && typeof ehDiretoria === "function" && ehDiretoria()){
     const soma = base.reduce((s, a) => s + Number(aceValor(a)?.valor || 0), 0);
     const semPreco = base.filter(a => aceValor(a)?.base === "sem_preco").length, est = base.filter(a => aceValor(a)?.base === "estimativa").length;
     kv.textContent = brl(soma).replace(",00", "");
@@ -415,6 +416,7 @@ async function renderAcessoriosContagem(){
     .sort((a, b) => (a.grupo_contagem || "ZZZ").localeCompare(b.grupo_contagem || "ZZZ", "pt-BR") || a.descricao.localeCompare(b.descricao, "pt-BR", { numeric: true }) || String(a.medida || "").localeCompare(String(b.medida || ""), "pt-BR", { numeric: true }));
   const c = $("ace-contador"); if(c) c.textContent = `${linhas.length} modelos`;
   const cols = ["cadastrados","em_estoque","em_obra","em_manutencao","perdas","sem_marcacao"];
+  const verTot = typeof ehDiretoria === "function" && ehDiretoria(); // somatório de reposição só para a diretoria
   const soma = arr => cols.reduce((o, k) => (o[k] = arr.reduce((s, l) => s + Number(l[k] || 0), 0), o), { valor_total: arr.reduce((s, l) => s + Number(l.valor_reposicao || 0), 0) });
   const precoTag = l => !l.preco_referencia ? '<span class="tag ambar" title="modelo sem preço: clique na linha e informe">sem preço</span>' : l.preco_origem === "estimativa" ? '<span class="tag ambar" title="estimado a partir do Ø vizinho, do R$/m ou do piso de um orçamento">estimado</span>' : (l.preco_origem === "cotacao" ? '<span class="tag azul" title="preço de cotação de fornecedor (S.A Trados, 2024)">cotação</span> ' : "") + (l.preco_vencido ? '<span class="tag ambar" title="preço com mais de 12 meses">vencido</span>' : (l.preco_origem === "compra" ? '<span class="tag verde" title="atualizado pela última compra">compra</span>' : ""));
   const grupos = new Map();
@@ -422,26 +424,26 @@ async function renderAcessoriosContagem(){
   const linha = (l) => `<tr class="linha-clicavel" data-modelo="${l.modelo_id}">
       <td>${esc(l.descricao)}</td><td>${esc(l.medida && l.medida !== "-" ? l.medida : "")}</td>
       <td class="num"><strong>${l.cadastrados}</strong></td><td class="num">${l.em_estoque}</td><td class="num">${l.em_obra}</td><td class="num">${l.em_manutencao}</td><td class="num">${l.perdas}</td><td class="num">${l.sem_marcacao}</td>
-      <td class="num">${l.preco_referencia != null ? brl(l.preco_referencia) : '<span class="meta">—</span>'} ${precoTag(l)}</td><td class="num">${brl(l.valor_reposicao)}</td></tr>`;
-  const sub = (g, arr) => { const t = soma(arr); return `<tr style="background:var(--bg-body);font-weight:600;"><td colspan="2">Subtotal ${esc(g)}</td>${cols.map(k => `<td class="num">${t[k]}</td>`).join("")}<td></td><td class="num">${brl(t.valor_total)}</td></tr>`; };
+      <td class="num">${l.preco_referencia != null ? brl(l.preco_referencia) : '<span class="meta">—</span>'} ${precoTag(l)}</td>${verTot ? `<td class="num">${brl(l.valor_reposicao)}</td>` : ""}</tr>`;
+  const sub = (g, arr) => { const t = soma(arr); return `<tr style="background:var(--bg-body);font-weight:600;"><td colspan="2">Subtotal ${esc(g)}</td>${cols.map(k => `<td class="num">${t[k]}</td>`).join("")}<td></td>${verTot ? `<td class="num">${brl(t.valor_total)}</td>` : ""}</tr>`; };
   const tot = soma(linhas);
   const semPreco = linhas.filter(l => !l.preco_referencia).length, estim = linhas.filter(l => l.preco_origem === "estimativa").length, venc = linhas.filter(l => l.preco_vencido).length;
   const sucPreco = _aceSucata[0];
   cont.innerHTML = `
     <div class="meta" style="margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <strong style="font-size:14px;color:var(--txt);">Valor de reposição${_aceFamilia ? " · " + esc(ACE_FAMILIA_LBL[_aceFamilia]) : ""}: ${brl(tot.valor_total)}</strong>
+      <strong style="font-size:14px;color:var(--txt);">${verTot ? "Valor de reposição" : "Contagem"}${_aceFamilia ? " · " + esc(ACE_FAMILIA_LBL[_aceFamilia]) : ""}${verTot ? ": " + brl(tot.valor_total) : ""}</strong>
       ${semPreco ? `<span class="tag ambar">${semPreco} modelo(s) sem preço</span>` : ""}${estim ? `<span class="tag ambar">${estim} estimado(s)</span>` : ""}${venc ? `<span class="tag ambar">${venc} vencido(s)</span>` : ""}
       <span>Sucata: ${sucPreco ? `${brl(sucPreco.preco_kg)}/kg (${String(sucPreco.competencia).slice(5, 7)}/${String(sucPreco.competencia).slice(0, 4)})` : '<span class="tag ambar">sem preço do kg</span>'}</span>
       ${acePodeEditar() ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-sucata">♻️ Preço da sucata</button>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-ace-xlsx" style="margin-left:auto;">⬇️ Excel</button>
     </div>
-    <p class="meta" style="margin:0 0 8px;">Valor = preço de reposição do modelo × fator da condição (bom estado 100%, precisa/em manutenção 60%, sucata = peso × R$/kg, baixada e perdida zero). Clique na linha para editar descrição, grupo, preço e peso do modelo.</p>
+    <p class="meta" style="margin:0 0 8px;">${verTot ? "Valor = preço de reposição do modelo × fator da condição (bom estado 100%, precisa/em manutenção 60%, sucata = peso × R$/kg, baixada e perdida zero). " : ""}Clique na linha para editar descrição, grupo, preço e peso do modelo.</p>
     <div class="tabela-rola"><table>
-      <thead><tr><th>Modelo</th><th>Medida</th><th class="num">Cadastradas</th><th class="num">Em estoque</th><th class="num">Em obra</th><th class="num">Em manut.</th><th class="num">Perdas</th><th class="num">S/M</th><th class="num">Preço reposição</th><th class="num">Valor</th></tr></thead>
-      <tbody>${[...grupos.entries()].map(([g, arr]) => `<tr><td colspan="10" style="background:var(--bg-body);"><strong>${esc(g)}</strong></td></tr>` + arr.map(linha).join("") + (arr.length > 1 ? sub(g, arr) : "")).join("") || `<tr><td colspan="10" class="vazio">Nenhum modelo com peças.</td></tr>`}</tbody>
-      <tfoot><tr><td colspan="2"><strong>Total geral</strong></td>${cols.map(k => `<td class="num"><strong>${tot[k]}</strong></td>`).join("")}<td></td><td class="num"><strong>${brl(tot.valor_total)}</strong></td></tr></tfoot>
+      <thead><tr><th>Modelo</th><th>Medida</th><th class="num">Cadastradas</th><th class="num">Em estoque</th><th class="num">Em obra</th><th class="num">Em manut.</th><th class="num">Perdas</th><th class="num">S/M</th><th class="num">Preço reposição</th>${verTot ? '<th class="num">Valor</th>' : ""}</tr></thead>
+      <tbody>${[...grupos.entries()].map(([g, arr]) => `<tr><td colspan="${verTot ? 10 : 9}" style="background:var(--bg-body);"><strong>${esc(g)}</strong></td></tr>` + arr.map(linha).join("") + (arr.length > 1 ? sub(g, arr) : "")).join("") || `<tr><td colspan="${verTot ? 10 : 9}" class="vazio">Nenhum modelo com peças.</td></tr>`}</tbody>
+      <tfoot><tr><td colspan="2"><strong>Total geral</strong></td>${cols.map(k => `<td class="num"><strong>${tot[k]}</strong></td>`).join("")}<td></td>${verTot ? `<td class="num"><strong>${brl(tot.valor_total)}</strong></td>` : ""}</tr></tfoot>
     </table></div>`;
-  $("btn-ace-xlsx")?.addEventListener("click", () => aceExportarContagem(linhas, grupos, tot));
+  $("btn-ace-xlsx")?.addEventListener("click", () => aceExportarContagem(linhas, grupos, tot, verTot));
   $("btn-ace-sucata")?.addEventListener("click", abrirPrecoSucata);
 }
 /* ---------- preço da sucata ---------- */
@@ -462,12 +464,12 @@ async function salvarPrecoSucata(){
   await carregarAcessorios(true);
 }
 
-function aceExportarContagem(linhas, grupos, tot){
+function aceExportarContagem(linhas, grupos, tot, verTot){
   if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
-  const cab = ["GRUPO","MODELO","MEDIDA","CADASTRADAS","EM ESTOQUE","EM OBRA","EM MANUTENÇÃO","PERDAS","SEM MARCAÇÃO","PREÇO REPOSIÇÃO","ORIGEM DO PREÇO","VALOR REPOSIÇÃO"];
+  const cab = ["GRUPO","MODELO","MEDIDA","CADASTRADAS","EM ESTOQUE","EM OBRA","EM MANUTENÇÃO","PERDAS","SEM MARCAÇÃO","PREÇO REPOSIÇÃO","ORIGEM DO PREÇO"].concat(verTot ? ["VALOR REPOSIÇÃO"] : []);
   const aoa = [cab];
-  grupos.forEach((arr, g) => arr.forEach(l => aoa.push([g, l.descricao, l.medida || "", +l.cadastrados, +l.em_estoque, +l.em_obra, +l.em_manutencao, +l.perdas, +l.sem_marcacao, l.preco_referencia != null ? +l.preco_referencia : null, l.preco_origem || "", +l.valor_reposicao])));
-  aoa.push(["TOTAL GERAL","","",tot.cadastrados,tot.em_estoque,tot.em_obra,tot.em_manutencao,tot.perdas,tot.sem_marcacao,null,"",tot.valor_total]);
+  grupos.forEach((arr, g) => arr.forEach(l => aoa.push([g, l.descricao, l.medida || "", +l.cadastrados, +l.em_estoque, +l.em_obra, +l.em_manutencao, +l.perdas, +l.sem_marcacao, l.preco_referencia != null ? +l.preco_referencia : null, l.preco_origem || ""].concat(verTot ? [+l.valor_reposicao] : []))));
+  aoa.push(["TOTAL GERAL","","",tot.cadastrados,tot.em_estoque,tot.em_obra,tot.em_manutencao,tot.perdas,tot.sem_marcacao,null,""].concat(verTot ? [tot.valor_total] : []));
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"] = [{ wch: 28 },{ wch: 46 },{ wch: 8 },{ wch: 12 },{ wch: 11 },{ wch: 9 },{ wch: 14 },{ wch: 8 },{ wch: 13 },{ wch: 15 },{ wch: 16 }];
   const wb = XLSX.utils.book_new();

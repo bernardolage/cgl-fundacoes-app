@@ -104,7 +104,7 @@ function renderFrotaVeiculos(){
   const comFipe = ativos.filter(v => v.valor_fipe != null);
   const totalFipe = comFipe.reduce((s, v) => s + Number(v.valor_fipe || 0), 0);
   const fipeRef = v => v.fipe_referencia ? ` <span class="meta" title="referência FIPE">${String(v.fipe_referencia).slice(5, 7)}/${String(v.fipe_referencia).slice(0, 4)}</span>` : "";
-  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Valor FIPE da frota ativa: <strong>${frotaMoeda(totalFipe)}</strong> (${comFipe.length} de ${ativos.length} com FIPE informada${ativos.length - comFipe.length ? ` · ${ativos.length - comFipe.length} sem valor` : ""})</p>
+  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">${(typeof ehDiretoria === "function" && ehDiretoria()) ? `Valor FIPE da frota ativa: <strong>${frotaMoeda(totalFipe)}</strong> ` : "FIPE "}(${comFipe.length} de ${ativos.length} com FIPE informada${ativos.length - comFipe.length ? ` · ${ativos.length - comFipe.length} sem valor` : ""})</p>
   <div class="tabela-rola"><table>
     <thead><tr><th>TAG</th><th>Tipo</th><th>Descrição</th><th>Placa</th><th class="num">km atual</th><th class="num">R$/km</th><th class="num">FIPE</th><th>Onde está</th><th>Status</th></tr></thead>
     <tbody>${lista.map(v => `<tr class="linha-clicavel" data-veic="${v.id}" ${v.ativo === false ? 'style="opacity:.55"' : ""}>
