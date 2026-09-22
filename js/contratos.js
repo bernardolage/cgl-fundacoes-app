@@ -7,6 +7,10 @@
    (cliente, valor, datas, status, responsável) e agora é editado na aba
    "Contrato" da ficha da Obra (ver obra_abas.js). Este módulo lista e
    edita apenas natureza = 'fornecedor'.
+
+   Fase 55 (21/09/2026): a seção virou "Contratos & Contas a pagar". As visões A pagar e
+   Lançamentos avulsos e os indicadores ficam em js/contas_pagar.js; aqui só o desvio de visão.
+   Menu restrito a diretor, admin, financeiro e comprador (podeVerContasPagar em core.js).
    ==================================================================== */
 
 let _contratos = [];
@@ -101,6 +105,15 @@ function preencherFiltrosCon(){
 /* ---------- Render ---------- */
 function renderContratos(){
   preencherFiltrosCon();
+  if(typeof capKpis === "function") capKpis();
+  // fase 55: visões de Contas a pagar (js/contas_pagar.js) — sem filtros nem alerta de vigência
+  const capView = ["titulos","avulsos"].includes(_conView);
+  const filtros = document.querySelector("#con-painel .serv-filtros"); if(filtros) filtros.style.display = capView ? "none" : "";
+  if(capView){
+    const al = $("con-alerta-venc"); if(al) al.innerHTML = "";
+    return _conView === "titulos" ? renderTitulosPagar() : renderCustosAvulsosCap();
+  }
+  if($("con-lista-titulo")) $("con-lista-titulo").textContent = "Contratos cadastrados";
   const dados = conFiltrados();
   const cont = $("con-contador");
   if(cont) cont.textContent = `${dados.length} de ${_contratos.length}`;

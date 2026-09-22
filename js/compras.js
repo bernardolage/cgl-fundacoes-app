@@ -1,8 +1,10 @@
 /* ====================================================================
    Módulo: Compras (fase 53 — plano "Compras e Custos por Equipamento", fase 1)
    Pedido de compra → aprovação por alçada → enviado → recebimento da NF (manual nesta fase)
-   → entrada de estoque (destino base) ou custo direto (obra/TAG) → títulos a pagar (exportação
-   para o financeiro). Também: custos avulsos e a aba Custos (vw_custos) usada por Equipamentos e Obras.
+   → entrada de estoque (destino base) ou custo direto (obra/TAG) → títulos a pagar.
+   Fase 55 (21/09/2026): as visões A pagar, Lançamentos avulsos e a exportação saíram daqui para
+   "Contratos & Contas a pagar" (js/contas_pagar.js). Ficam aqui o modal de custo avulso e a aba
+   Custos (vw_custos) usada por Equipamentos e Obras.
    Prefixo: cmp-. Regras de negócio ficam nas RPCs (pedido_enviar_aprovacao, pedido_aprovar,
    pedido_mudar_status, recebimento_confirmar).
    ==================================================================== */
@@ -18,7 +20,6 @@ let _cmpEquips = [];
 let _cmpEqMap = {};
 let _cmpAlcada = -1;              // null = sem limite; -1 = sem alçada
 let _cmpCarregado = false;
-let _cmpTitulosPend = 0;
 let _cmpAtual = null;             // pedido aberto
 let _cmpEditId = null;
 let _cmpItens = [];               // itens em edição na ficha
@@ -66,10 +67,11 @@ function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => 
 function cmpAlcadaTxt(){ return _cmpAlcada === null ? "sem limite" : _cmpAlcada < 0 ? "sem alçada de aprovação" : "até " + brl(_cmpAlcada); }
 
 /* ---------- carga ---------- */
-async function carregarCompras(force){
-  const cont = $("cmp-conteudo"); if(!cont) return;
-  if(force || !_cmpCarregado){
-    cont.innerHTML = `<p class="vazio">Carregando compras…</p>`;
+/* Cadastros de apoio (fornecedores, obras, TAGs, alçada): painel, ficha, modal de custo avulso e
+   também o módulo Contas a pagar (fase 55) usam daqui. */
+async function cmpCarregarBase(force){
+  if(!force && _cmpCarregado) return;
+  {
     const [fo, ob, eq, al] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").not("status", "in", "(cancelada,concluida)").order("codigo", { ascending: false }),
@@ -84,19 +86,20 @@ async function carregarCompras(force){
     cmpPreencherSelectsFixos();
     _cmpCarregado = true;
   }
+}
+async function carregarCompras(force){
+  const cont = $("cmp-conteudo"); if(!cont) return;
+  if(force || !_cmpCarregado) cont.innerHTML = `<p class="vazio">Carregando compras…</p>`;
+  await cmpCarregarBase(force);
   const pode = cmpPodeOperar();
-  ["btn-cmp-novo","btn-cmp-receber-avulso","btn-cmp-custo-avulso"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
+  ["btn-cmp-novo","btn-cmp-receber-avulso"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
   await cmpFetchPedidos();
   renderCompras();
 }
 async function cmpFetchPedidos(){
-  const [pd, ti] = await Promise.all([
-    sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), itens:pedido_compra_itens(id,descricao,quantidade,quantidade_recebida,obra_id,equipamento_id)").order("created_at", { ascending: false }).limit(1000),
-    sb.from("titulos_pagar").select("id", { count: "exact", head: true }).is("exportado_em", null)
-  ]);
+  const pd = await sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), itens:pedido_compra_itens(id,descricao,quantidade,quantidade_recebida,obra_id,equipamento_id)").order("created_at", { ascending: false }).limit(1000);
   if(pd.error){ aviso("app-aviso", "Erro ao carregar pedidos: " + pd.error.message, "erro"); return; }
   _cmpPedidos = pd.data || [];
-  _cmpTitulosPend = ti.count || 0;
 }
 function cmpPreencherSelectsFixos(){
   const fornOpts = ph => `<option value="">${ph}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
@@ -143,7 +146,6 @@ function cmpRenderKpis(){
   set("cmp-kpi-entrega", ab.filter(p => ["enviado","parcialmente_recebido"].includes(p.status)).length);
   set("cmp-kpi-atrasados", ab.filter(p => p.previsao_entrega && p.previsao_entrega < hoje).length);
   set("cmp-kpi-valor", brl(ab.reduce((s, p) => s + Number(p.total || 0), 0)));
-  set("cmp-kpi-titulos", _cmpTitulosPend);
 }
 function renderCompras(){
   const cont = $("cmp-conteudo"); if(!cont) return;
@@ -152,8 +154,6 @@ function renderCompras(){
   document.querySelectorAll("#cmp-painel .ind[data-kpi]").forEach(el => el.classList.toggle("ativo", el.dataset.kpi === _cmpKpi));
   $("cmp-filtros").style.display = ["kanban","lista"].includes(_cmpView) ? "" : "none";
   if(_cmpView === "recebimentos") return renderRecebimentos();
-  if(_cmpView === "titulos") return renderTitulos();
-  if(_cmpView === "avulsos") return renderCustosAvulsos();
   const dados = cmpFiltrados();
   $("cmp-contador").textContent = `${dados.length} de ${_cmpPedidos.length}`;
   if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhum pedido com esses filtros.</p>`; return; }
@@ -201,71 +201,6 @@ async function renderRecebimentos(){
     <tbody>${data.map(r => { const it = r.itens || []; const d = [...new Set(it.map(i => i.destino === "estoque" ? "estoque" : "custo direto"))].join(" + ");
       return `<tr class="linha-clicavel" data-pedido="${esc(r.pedido ? r.pedido.numero : "")}"><td>${dataBR(r.data_recebimento)}</td><td><strong>${esc(r.nf_numero || "—")}</strong>${r.nf_serie ? "/" + esc(r.nf_serie) : ""}</td>
       <td>${esc(cmpForn(r.fornecedor_id) || "—")}</td><td>${r.pedido ? esc(r.pedido.numero) : '<span class="meta">sem pedido</span>'}</td><td class="num">${it.length}</td><td class="meta">${esc(d)}</td><td class="num">${brl(r.total_nf)}</td><td>${stTag(r.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
-}
-
-/* títulos a pagar */
-let _cmpTitulos = [];
-async function renderTitulos(){
-  const cont = $("cmp-conteudo");
-  const incluirExp = !!document.getElementById("cmp-tit-incluir-exp")?.checked;
-  let q = sb.from("titulos_pagar").select("*").order("vencimento").limit(1000);
-  if(!incluirExp) q = q.is("exportado_em", null);
-  const { data, error } = await q;
-  if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
-  _cmpTitulos = data || [];
-  const pend = _cmpTitulos.filter(t => !t.exportado_em);
-  $("cmp-contador").textContent = `${_cmpTitulos.length} título(s)`;
-  const podeExp = !!usuarioAtual && ["admin","diretor","financeiro","comprador"].includes(usuarioAtual.cargo);
-  cont.innerHTML = `<div class="lista-topo compacta">
-      <span class="meta">Gerados no recebimento da NF. O financeiro paga no Compor 90; aqui só sai o arquivo do que pagar.</span>
-      <label class="check-inline" style="margin-left:auto;"><input type="checkbox" id="cmp-tit-incluir-exp" ${incluirExp ? "checked" : ""}/> mostrar já exportados</label>
-      ${podeExp ? `<button type="button" class="btn" id="btn-cmp-tit-exportar" ${pend.length ? "" : "disabled"}>⬇️ Exportar ${pend.length} não exportado(s) (CSV)</button>` : ""}
-    </div>
-    ${!_cmpTitulos.length ? `<p class="vazio">Nenhum título ${incluirExp ? "" : "pendente de exportação"}.</p>` : `<div class="tabela-rola"><table>
-    <thead><tr><th>Vencimento</th><th>Fornecedor</th><th>NF</th><th>Parcela</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>
-    <tbody>${_cmpTitulos.map(t => `<tr><td><strong>${dataBR(t.vencimento)}</strong></td><td>${esc(cmpForn(t.fornecedor_id) || "—")}</td><td>${esc(t.nf_numero || "—")}</td><td>${t.parcela}/${t.total_parcelas}</td>
-      <td class="num">${brl(t.valor)}</td><td>${t.obra_id ? linkObra(t.obra_id, cmpObra(t.obra_id)) : "—"}</td><td>${t.equipamento_id ? esc(cmpEq(t.equipamento_id)) : "—"}</td>
-      <td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="num"><strong>${brl(_cmpTitulos.reduce((s, t) => s + Number(t.valor || 0), 0))}</strong></td><td colspan="3"></td></tr></tfoot></table></div>`}`;
-  $("cmp-tit-incluir-exp")?.addEventListener("change", renderTitulos);
-  $("btn-cmp-tit-exportar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-tit-exportar", exportarTitulos));
-}
-async function exportarTitulos(){
-  const pend = _cmpTitulos.filter(t => !t.exportado_em);
-  if(!pend.length) return;
-  const cel = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const num2 = v => Number(v || 0).toFixed(2).replace(".", ",");
-  const cab = ["Fornecedor","CNPJ/CPF","NF","Parcela","Total parcelas","Emissao","Vencimento","Valor","Obra","TAG","Observacoes"];
-  const linhas = pend.map(t => { const f = _cmpFornMap[t.fornecedor_id] || {}; const o = _cmpObraMap[t.obra_id];
-    return [f.razao_social || "", f.cpf_cnpj || "", t.nf_numero || "", t.parcela, t.total_parcelas, dataBR(t.emissao), dataBR(t.vencimento), num2(t.valor), o ? `${o.codigo} — ${o.nome}` : "", cmpEq(t.equipamento_id), t.observacoes || ""].map(cel).join(";"); });
-  const csv = "﻿" + cab.join(";") + "\n" + linhas.join("\n");
-  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `titulos_a_pagar_${hojeISO()}.csv`; a.click();
-  if(!confirm(`Arquivo gerado com ${pend.length} título(s). Marcar como exportados? (Depois só aparecem com "mostrar já exportados".)`)) return;
-  const { error } = await sb.from("titulos_pagar").update({ exportado_em: new Date().toISOString() }).in("id", pend.map(t => t.id));
-  if(error){ aviso("app-aviso", "Arquivo gerado, mas não marcou como exportado: " + error.message, "erro"); return; }
-  aviso("app-aviso", `${pend.length} título(s) exportado(s).`, "ok");
-  await cmpFetchPedidos(); renderCompras();
-}
-
-/* custos avulsos (visão do painel) */
-async function renderCustosAvulsos(){
-  const cont = $("cmp-conteudo");
-  const { data, error } = await sb.from("custos_avulsos").select("*").order("data", { ascending: false }).limit(500);
-  if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
-  $("cmp-contador").textContent = `${(data || []).length} lançamento(s)`;
-  if(!data?.length){ cont.innerHTML = `<p class="vazio">Nenhum custo avulso. Use "+ Custo avulso" para multa, IPVA, seguro, locação…</p>`; return; }
-  const podeApagar = !!usuarioAtual && ["admin","diretor","financeiro"].includes(usuarioAtual.cargo);
-  cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>TAG</th><th>Obra</th><th>Fornecedor</th><th>Documento</th><th class="num">Valor</th>${podeApagar ? "<th></th>" : ""}</tr></thead>
-    <tbody>${data.map(c => `<tr><td>${dataBR(c.data)}</td><td>${esc(CMP_CAT_LBL[c.categoria] || c.categoria)}</td><td>${esc(c.descricao)}</td><td>${esc(cmpEq(c.equipamento_id) || "—")}</td>
-      <td>${c.obra_id ? linkObra(c.obra_id, cmpObra(c.obra_id)) : "—"}</td><td>${esc(cmpForn(c.fornecedor_id) || "—")}</td><td>${esc(c.documento || "—")}</td><td class="num">${brl(c.valor)}</td>
-      ${podeApagar ? `<td><button type="button" class="btn-sec btn-sm" data-del-av="${esc(c.id)}" title="excluir">✕</button></td>` : ""}</tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="7"><strong>Total</strong></td><td class="num"><strong>${brl(data.reduce((s, c) => s + Number(c.valor || 0), 0))}</strong></td>${podeApagar ? "<td></td>" : ""}</tr></tfoot></table></div>`;
-  cont.querySelectorAll("[data-del-av]").forEach(b => b.addEventListener("click", async () => {
-    if(!confirm("Excluir este custo avulso?")) return;
-    const { error } = await sb.from("custos_avulsos").delete().eq("id", b.dataset.delAv);
-    if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
-    renderCustosAvulsos();
-  }));
 }
 
 /* ---------- ficha do pedido ---------- */
@@ -365,7 +300,7 @@ async function cmpCarregarFilhas(id){
     recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>NF ${esc(r.nf_numero || "—")}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebida em ${dataBR(r.data_recebimento)}</span></h3>
       <span style="margin-left:auto;">${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
       <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${brl(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table></div>`).join("");
-  $("cmp-tit-lista").innerHTML = tit.error ? `<p class="vazio">Erro: ${esc(tit.error.message)}</p>` : !tits.length ? `<p class="vazio">Nenhum título. Eles nascem no recebimento da NF quando há vencimento informado.</p>` :
+  $("cmp-tit-lista").innerHTML = !podeVerContasPagar() ? `<p class="vazio">Os títulos deste pedido ficam em Contratos & Contas a pagar; seu perfil não tem acesso a esse módulo.</p>` : tit.error ? `<p class="vazio">Erro: ${esc(tit.error.message)}</p>` : !tits.length ? `<p class="vazio">Nenhum título. Eles nascem no recebimento da NF quando há vencimento informado.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Vencimento</th><th>NF</th><th>Parcela</th><th class="num">Valor</th><th>Exportado ao financeiro</th></tr></thead><tbody>${tits.map(t => `<tr><td><strong>${dataBR(t.vencimento)}</strong></td><td>${esc(t.nf_numero || "—")}</td><td>${t.parcela}/${t.total_parcelas}</td><td class="num">${brl(t.valor)}</td><td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
@@ -750,10 +685,10 @@ async function cmpCriarFornecedorDaNf(e){
 }
 
 /* ---------- custo avulso ---------- */
-function abrirCustoAvulso(pre, depois){
+async function abrirCustoAvulso(pre, depois){
   if(!cmpPodeOperar()){ aviso("app-aviso", "Seu perfil não lança custos.", "erro"); return; }
   _cmpAvPre = depois || null;
-  if(!_cmpCarregado) carregarCompras(false);
+  await cmpCarregarBase(false);
   $("cmp-av-data").value = hojeISO(); $("cmp-av-cat").value = pre?.categoria || "outro"; $("cmp-av-valor").value = "";
   $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; $("cmp-av-forn").value = "";
   $("cmp-av-desc").value = ""; $("cmp-av-doc").value = "";
@@ -771,7 +706,7 @@ async function salvarCustoAvulso(){
   if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message, "erro"); return; }
   aviso("app-aviso", "Custo lançado.", "ok");
   fecharCustoAvulso();
-  if(_cmpAvPre) _cmpAvPre(); else if(_cmpView === "avulsos") renderCustosAvulsos();
+  if(_cmpAvPre) _cmpAvPre();
 }
 
 /* ---------- aba Custos (equipamento / obra) — lê vw_custos ---------- */
@@ -859,7 +794,6 @@ function ligarCompras(){
   document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.addEventListener("click", () => { _cmpView = b.dataset.view; renderCompras(); }));
   document.querySelectorAll("#cmp-painel .ind[data-kpi]").forEach(el => el.addEventListener("click", () => {
     const k = el.dataset.kpi;
-    if(k === "titulos"){ _cmpView = "titulos"; renderCompras(); return; }
     _cmpKpi = (_cmpKpi === k) ? "" : k; if(!["kanban","lista"].includes(_cmpView)) _cmpView = "kanban"; renderCompras();
   }));
   ["cmp-f-status","cmp-f-forn","cmp-f-obra","cmp-f-equip","cmp-f-mes"].forEach(id => $(id)?.addEventListener("change", renderCompras));
@@ -867,7 +801,6 @@ function ligarCompras(){
   $("btn-cmp-atualizar")?.addEventListener("click", () => carregarCompras(true));
   $("btn-cmp-novo")?.addEventListener("click", () => novoPedido());
   $("btn-cmp-receber-avulso")?.addEventListener("click", () => { _cmpItens = []; abrirRecebimento(null); });
-  $("btn-cmp-custo-avulso")?.addEventListener("click", () => abrirCustoAvulso({}, () => { _cmpView = "avulsos"; renderCompras(); }));
   $("cmp-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a.link-obra") || e.target.closest("button") || e.target.closest("input,label")) return;
     const el = e.target.closest("[data-id]"); if(el){ abrirPedido(el.dataset.id); return; }

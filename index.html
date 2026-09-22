@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=bcfd82b" />
+<link rel="stylesheet" href="css/estilo.css?v=706c2ab" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -105,7 +105,7 @@
       </button>
       <button data-secao="contratos">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><polyline points="9 15 11 17 15 13"></polyline></svg>
-        <span>Contratos</span>
+        <span>Contratos &amp; Contas a pagar</span>
       </button>
       <button data-secao="carteira" id="nav-carteira" style="display:none;">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg>
@@ -1008,7 +1008,7 @@
     <section class="secao" id="sec-compras">
       <div id="cmp-painel">
         <h2>Compras</h2>
-        <p class="texto-apoio">Pedido de compra com aprovação por alçada, recebimento da nota (entra no estoque ou vira custo direto da obra/TAG) e títulos a pagar para o financeiro. Substitui o Odoo em compras e estoque.</p>
+        <p class="texto-apoio">Pedido de compra com aprovação por alçada e recebimento da nota (entra no estoque ou vira custo direto da obra/TAG). Substitui o Odoo em compras e estoque. Os títulos a pagar gerados pelas notas ficam em Contratos &amp; Contas a pagar.</p>
 
         <div class="indicadores">
           <div class="ind ind-click" data-kpi=""><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div></div>
@@ -1016,7 +1016,6 @@
           <div class="ind ind-click" data-kpi="entrega"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando entrega</div></div>
           <div class="ind ind-click" data-kpi="atrasados"><div class="num" id="cmp-kpi-atrasados">—</div><div class="rot">Entrega atrasada</div></div>
           <div class="ind"><div class="num" id="cmp-kpi-valor">—</div><div class="rot">Valor em aberto</div></div>
-          <div class="ind ind-click" data-kpi="titulos"><div class="num" id="cmp-kpi-titulos">—</div><div class="rot">Títulos a exportar</div></div>
         </div>
 
         <div class="card">
@@ -1026,12 +1025,9 @@
               <button type="button" class="serv-view-btn ativo" data-view="kanban">Por status</button>
               <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="recebimentos">Recebimentos</button>
-              <button type="button" class="serv-view-btn" data-view="titulos">Títulos a pagar</button>
-              <button type="button" class="serv-view-btn" data-view="avulsos">Custos avulsos</button>
             </div>
             <button type="button" class="btn-sec" id="btn-cmp-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
             <button type="button" class="btn-sec" id="btn-cmp-receber-avulso" style="display:none;" title="Nota sem pedido (compra direta, emergência, cartão)">📥 Receber NF sem pedido</button>
-            <button type="button" class="btn-sec" id="btn-cmp-custo-avulso" style="display:none;" title="Multa, IPVA, seguro, locação, serviço sem NF de produto">＋ Custo avulso</button>
             <button type="button" class="btn" id="btn-cmp-novo" style="display:none;">+ Novo pedido</button>
           </div>
           <div class="serv-filtros" id="cmp-filtros">
@@ -1133,7 +1129,7 @@
             </div>
 
             <div class="odoo-tab" data-tab="recebimentos"><div id="cmp-rec-lista"><p class="vazio">—</p></div></div>
-            <div class="odoo-tab" data-tab="financeiro"><div id="cmp-tit-lista"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="financeiro"><p class="ajuda-campo">Títulos gerados pelas notas deste pedido, só para consulta. A exportação para o Compor 90 é feita em Contratos &amp; Contas a pagar.</p><div id="cmp-tit-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="timeline"><div id="cmp-chatter"></div></div>
           </div>
         </div>
@@ -1455,18 +1451,29 @@
 
     <!-- CONTRATOS -->
     <section class="secao" id="sec-contratos">
-      <h2>Contratos de fornecedores</h2>
+      <h2>Contratos &amp; Contas a pagar</h2>
 
-      <!-- Painel -->
+      <!-- Painel (fase 55: contratos de fornecedor + títulos a pagar + lançamentos avulsos) -->
       <div id="con-painel">
+        <p class="texto-apoio">Contratos com fornecedores (locação, seguro, prestação de serviço…) e o que a CGL tem a pagar: títulos gerados pelo recebimento das notas em Compras e lançamentos avulsos (multa, IPVA…). O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</p>
+        <div class="indicadores" id="cap-indicadores">
+          <div class="ind ind-click" data-kpi="titulos"><div class="num" id="cap-kpi-titulos">—</div><div class="rot">Títulos a exportar</div></div>
+          <div class="ind ind-click" data-kpi="titulos"><div class="num" id="cap-kpi-titulos-valor">—</div><div class="rot">Valor a exportar</div></div>
+          <div class="ind ind-click" data-kpi="vencidos"><div class="num" id="cap-kpi-vencidos" style="color:var(--perigo);">—</div><div class="rot">Vencidos sem exportar</div></div>
+          <div class="ind ind-click" data-kpi="30"><div class="num" id="cap-kpi-30">—</div><div class="rot">A vencer em 30 dias</div></div>
+          <div class="ind ind-click" data-kpi="contratos"><div class="num" id="cap-kpi-contratos">—</div><div class="rot">Contratos vencendo</div></div>
+        </div>
         <div class="card">
           <div class="lista-topo">
-            <h3>Contratos cadastrados <span id="con-contador" class="contador"></span></h3>
+            <h3><span id="con-lista-titulo">Contratos cadastrados</span> <span id="con-contador" class="contador"></span></h3>
             <div class="serv-views">
-              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Contratos</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+              <button type="button" class="serv-view-btn" data-view="titulos">A pagar</button>
+              <button type="button" class="serv-view-btn" data-view="avulsos">Lançamentos avulsos</button>
             </div>
-            <button type="button" class="btn" id="btn-novo-contrato">+ Novo</button>
+            <button type="button" class="btn-sec" id="btn-cap-custo-avulso" style="margin-left:auto;" title="Multa, IPVA, seguro, locação, serviço sem NF de produto">＋ Custo avulso</button>
+            <button type="button" class="btn" id="btn-novo-contrato">+ Novo contrato</button>
           </div>
           <div id="con-alerta-venc"></div>
           <div class="serv-filtros">
@@ -2722,7 +2729,6 @@
           <div class="ind ind-click" data-kpi="manutencao"><div class="num" id="ace-kpi-manut" style="color:var(--marca-600);">—</div><div class="rot">Em manutenção</div></div>
           <div class="ind ind-click" data-kpi="atencao"><div class="num" id="ace-kpi-atencao">—</div><div class="rot">Precisam de atenção</div></div>
           <div class="ind ind-click" data-kpi="perdido"><div class="num" id="ace-kpi-perdido">—</div><div class="rot">Perdidas</div></div>
-          <div class="ind" title="Soma do valor de reposição das peças ativas da família (preço do modelo × fator da condição; sucata = peso × R$/kg)"><div class="num" id="ace-kpi-valor" style="color:var(--marca-700);">—</div><div class="rot">Valor de reposição</div></div>
         </div>
 
         <div class="card">
@@ -2781,7 +2787,7 @@
               <button type="button" class="btn-sec ace-so-existente" id="btn-ace-perda" style="color:var(--perigo);">⚠️ Perda</button>
               <button type="button" class="btn-sec ace-so-existente" id="btn-ace-excluir" style="color:var(--perigo);">🗑️ Excluir</button>
             </div>
-            <div class="actions-right"><img id="ace-capa" class="ace-capa" alt="" style="display:none;" /><strong id="ace-ficha-titulo">Nova peça</strong></div>
+            <div class="actions-right"><strong id="ace-ficha-titulo">Nova peça</strong></div>
           </div>
 
           <div class="odoo-statusbar" id="ace-statusbar" title="Condição da peça — clique para mudar">
@@ -2790,7 +2796,6 @@
             <div class="stage" data-status="bom_estado">Bom estado</div>
             <div class="stage" data-status="precisa_manutencao">Precisa manutenção</div>
             <div class="stage" data-status="em_manutencao">Em manutenção</div>
-            <div class="stage" data-status="sucata">Sucata</div>
             <div class="stage" data-status="baixado">Baixado</div>
           </div>
 
@@ -2801,7 +2806,6 @@
             <div class="chip"><span>Onde está</span><strong id="ace-chip-onde">—</strong></div>
             <div class="chip"><span>Pertence</span><strong id="ace-chip-pertence">—</strong></div>
             <div class="chip"><span>Condição</span><strong id="ace-chip-cond">—</strong></div>
-            <div class="chip"><span>Valor de reposição</span><strong id="ace-chip-valor">—</strong></div>
           </div>
 
           <div class="odoo-smart-buttons">
@@ -2816,7 +2820,6 @@
             <button type="button" data-tab="jogo">Jogo</button>
             <button type="button" data-tab="historico">Histórico</button>
             <button type="button" data-tab="reparos">Reparos</button>
-            <button type="button" data-tab="fotos">Fotos</button>
             <button type="button" data-tab="obs">Observações</button>
           </div>
 
@@ -2858,18 +2861,6 @@
             <div class="odoo-tab" data-tab="reparos">
               <div id="ace-rep-lista"><p class="vazio">—</p></div>
             </div>
-            <div class="odoo-tab" data-tab="fotos">
-              <div class="lista-topo compacta" style="gap:8px;flex-wrap:wrap;">
-                <h3>Fotos da peça</h3>
-                <select id="ace-ft-tipo" class="ace-so-existente"><option value="identificacao">Identificação</option><option value="avaria">Avaria</option><option value="descarte">Descarte / sucata</option><option value="outro">Outra</option></select>
-                <input id="ace-ft-legenda" class="ace-so-existente" placeholder="legenda (opcional)" style="flex:1;min-width:160px;" />
-                <input type="file" id="ace-ft-arquivos" accept="image/jpeg,image/png,image/webp" multiple style="display:none;" />
-                <button type="button" class="btn-sec btn-sm ace-so-existente" id="btn-ace-ft-enviar">📷 Adicionar fotos</button>
-              </div>
-              <p class="meta">JPG, PNG ou WebP até 10 MB. A foto de capa aparece no topo da ficha e marca a peça no painel. Foto de avaria ou descarte registra por que a peça saiu de uso.</p>
-              <div id="ace-fotos" class="ace-fotos"><p class="vazio">—</p></div>
-            </div>
-
             <div class="odoo-tab" data-tab="obs">
               <div class="grade">
                 <div class="campo largo"><label>Observações</label><textarea id="ace-obs" rows="4"></textarea></div>
@@ -2923,9 +2914,7 @@
             <div class="campo"><label>Data</label><input type="date" id="ace-cd-data" /></div>
             <div class="campo largo"><label>Motivo / observação</label><input id="ace-cd-motivo" list="ace-cd-motivos" placeholder="Ex.: cabeça fêmea gasta" />
               <datalist id="ace-cd-motivos"><option value="Cabeça fêmea gasta"></option><option value="Blank empenado"></option><option value="U's gastos"></option><option value="Entupido"></option><option value="Rosca danificada"></option><option value="Trinca na solda"></option><option value="Amassado"></option><option value="Desgaste"></option></datalist></div>
-            <div class="campo largo"><label>Foto (opcional: avaria, descarte, sucata)</label><input type="file" id="ace-cd-foto" accept="image/jpeg,image/png,image/webp" /></div>
           </div>
-          <p class="meta" id="ace-cd-valor-info"></p>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-cd-salvar">✅ Aplicar</button></div>
         </div>
       </div>
@@ -2948,21 +2937,6 @@
         </div>
       </div>
 
-      <!-- modal: preço da sucata -->
-      <div id="ace-sucata-modal" class="modal-fundo" style="display:none;">
-        <div class="modal-caixa" style="max-width:540px;">
-          <div class="modal-topo"><h3 class="titulo-linha">Preço da sucata (R$/kg)</h3><button type="button" class="btn-sec" id="btn-ace-sc-fechar">×</button></div>
-          <p class="meta">Peça em condição <strong>sucata</strong> vale peso × preço do kg do mês. Mês sem preço usa o último anterior. O peso vem da peça ou do padrão do modelo.</p>
-          <div class="grade">
-            <div class="campo"><label>Mês</label><input type="month" id="ace-sc-mes" /></div>
-            <div class="campo"><label>R$ por kg</label><input type="number" id="ace-sc-preco" min="0" step="0.01" /></div>
-            <div class="campo largo"><label>Observação</label><input id="ace-sc-obs" placeholder="ex.: cotação do ferro-velho local" /></div>
-          </div>
-          <div id="ace-sc-hist" class="meta" style="margin-top:6px;"></div>
-          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-sc-salvar">💾 Salvar</button></div>
-        </div>
-      </div>
-
       <!-- modal: modelo -->
       <div id="ace-modelo-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:600px;width:95%;border-radius:8px;padding:20px;">
@@ -2974,8 +2948,7 @@
             <div class="campo largo"><label>Descrição *</label><input id="ace-md-desc" placeholder="Ex.: REVESTIMENTO METÁLICO 410, Segmento Ø600 CZM 5&quot;" /></div>
             <div class="campo"><label>Medida</label><input id="ace-md-medida" placeholder="Ex.: 1.5, 410, 5,5&quot;" /></div>
             <div class="campo"><label>Grupo na contagem</label><input id="ace-md-grupo" list="ace-md-grupos" placeholder="Ex.: CAMISAS" /><datalist id="ace-md-grupos"></datalist></div>
-            <div class="campo"><label>Preço de reposição (R$)</label><input type="number" id="ace-md-preco" min="0" step="0.01" /><span class="meta" id="ace-md-preco-info"></span></div>
-            <div class="campo"><label>Peso padrão (kg)</label><input type="number" id="ace-md-peso" min="0" step="0.1" placeholder="para valor de sucata" /></div>
+            <div class="campo"><label>Preço de referência (R$)</label><input type="number" id="ace-md-preco" min="0" step="0.01" /></div>
             <div class="campo"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="ace-md-ativo" checked /> Modelo ativo</label></div>
           </div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-md-salvar">💾 Salvar modelo</button></div>
@@ -3649,37 +3622,38 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=bcfd82b"></script>
+<script src="js/core.js?v=706c2ab"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=bcfd82b"></script>
+<script src="js/historico.js?v=706c2ab"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=bcfd82b"></script>
-<script src="js/fornecedores.js?v=bcfd82b"></script>
-<script src="js/apropriacoes.js?v=bcfd82b"></script>
-<script src="js/funcionarios.js?v=bcfd82b"></script>
-<script src="js/servicos.js?v=bcfd82b"></script>
-<script src="js/produtos.js?v=bcfd82b"></script>
-<script src="js/estoque.js?v=bcfd82b"></script>
-<script src="js/compras.js?v=bcfd82b"></script>
-<script src="js/orcamentos.js?v=bcfd82b"></script>
-<script src="js/propostas.js?v=bcfd82b"></script>
-<script src="js/contratos.js?v=bcfd82b"></script>
-<script src="js/carteira.js?v=bcfd82b"></script>
-<script src="js/obras.js?v=bcfd82b"></script>
-<script src="js/frota.js?v=bcfd82b"></script>
-<script src="js/equipamentos.js?v=bcfd82b"></script>
-<script src="js/acessorios.js?v=bcfd82b"></script>
-<script src="js/mobilizacoes.js?v=bcfd82b"></script>
-<script src="js/estacas.js?v=bcfd82b"></script>
-<script src="js/obra_abas.js?v=bcfd82b"></script>
-<script src="js/medicoes.js?v=bcfd82b"></script>
-<script src="js/movimentacoes.js?v=bcfd82b"></script>
-<script src="js/rdo.js?v=bcfd82b"></script>
-<script src="js/rdo_import_maya.js?v=bcfd82b"></script>
-<script src="js/usuarios.js?v=bcfd82b"></script>
-<script src="js/chamados.js?v=bcfd82b"></script>
-<script src="js/dashboard.js?v=bcfd82b"></script>
+<script src="js/clientes.js?v=706c2ab"></script>
+<script src="js/fornecedores.js?v=706c2ab"></script>
+<script src="js/apropriacoes.js?v=706c2ab"></script>
+<script src="js/funcionarios.js?v=706c2ab"></script>
+<script src="js/servicos.js?v=706c2ab"></script>
+<script src="js/produtos.js?v=706c2ab"></script>
+<script src="js/estoque.js?v=706c2ab"></script>
+<script src="js/compras.js?v=706c2ab"></script>
+<script src="js/orcamentos.js?v=706c2ab"></script>
+<script src="js/propostas.js?v=706c2ab"></script>
+<script src="js/contratos.js?v=706c2ab"></script>
+<script src="js/contas_pagar.js?v=706c2ab"></script>
+<script src="js/carteira.js?v=706c2ab"></script>
+<script src="js/obras.js?v=706c2ab"></script>
+<script src="js/frota.js?v=706c2ab"></script>
+<script src="js/equipamentos.js?v=706c2ab"></script>
+<script src="js/acessorios.js?v=706c2ab"></script>
+<script src="js/mobilizacoes.js?v=706c2ab"></script>
+<script src="js/estacas.js?v=706c2ab"></script>
+<script src="js/obra_abas.js?v=706c2ab"></script>
+<script src="js/medicoes.js?v=706c2ab"></script>
+<script src="js/movimentacoes.js?v=706c2ab"></script>
+<script src="js/rdo.js?v=706c2ab"></script>
+<script src="js/rdo_import_maya.js?v=706c2ab"></script>
+<script src="js/usuarios.js?v=706c2ab"></script>
+<script src="js/chamados.js?v=706c2ab"></script>
+<script src="js/dashboard.js?v=706c2ab"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=bcfd82b"></script>
+<script src="js/init.js?v=706c2ab"></script>
 </body>
 </html>

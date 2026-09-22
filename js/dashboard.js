@@ -244,7 +244,8 @@ async function carregarDashPendencias(){
   });
 
   // Contratos de fornecedor entrando na janela de aviso (fase 21)
-  if(typeof contratosVencendo === "function"){
+  // fase 55: o módulo Contratos & Contas a pagar é restrito; o alerta só para quem consegue abrir
+  if(typeof contratosVencendo === "function" && podeVerContasPagar()){
     const contrVenc = await contratosVencendo();
     contrVenc.forEach(c => {
       const dias = diasParaVencer(c);
