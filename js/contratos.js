@@ -113,11 +113,12 @@ function renderContratos(){
   preencherFiltrosCon();
   if(typeof capKpis === "function") capKpis();
   // fase 55: visões de Contas a pagar (js/contas_pagar.js) — sem filtros nem alerta de vigência
-  const capView = ["titulos","avulsos"].includes(_conView);
+  const capView = ["titulos","avulsos","exportacoes"].includes(_conView);
   const filtros = document.querySelector("#con-painel .serv-filtros"); if(filtros) filtros.style.display = capView ? "none" : "";
   if(capView){
     const al = $("con-alerta-venc"); if(al) al.innerHTML = "";
-    return _conView === "titulos" ? renderTitulosPagar() : renderCustosAvulsosCap();
+    if(_conView !== "titulos") _capLote = null;
+    return _conView === "titulos" ? renderTitulosPagar() : _conView === "exportacoes" ? renderExportacoes() : renderCustosAvulsosCap();
   }
   if($("con-lista-titulo")) $("con-lista-titulo").textContent = "Contratos cadastrados";
   const dados = conFiltrados();
@@ -409,6 +410,7 @@ async function salvarContrato(novoStatus){
     return;
   }
   conEditId = result.data.id;
+  if(typeof _cmpContratosForn !== "undefined") _cmpContratosForn = null; // fase 57: lista de contratos do recebimento
   $("btn-excluir-con").style.display = "";
   $("con-status").value = result.data.status;
   aviso("app-aviso","Contrato salvo.","ok");

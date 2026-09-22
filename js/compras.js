@@ -445,6 +445,8 @@ function abrirRecebimento(pedido){
   $("cmp-rec-xml-info").textContent = "Clique ou arraste o XML aqui. Preenche cabeçalho, duplicatas e itens; casa os produtos por código do fornecedor, EAN e pedido.";
   $("cmp-rec-titulo").textContent = semPedido ? "Receber NF sem pedido" : `Receber NF — pedido ${pedido.numero}`;
   $("cmp-rec-forn").value = pedido?.fornecedor_id || ""; $("cmp-rec-forn").disabled = !semPedido;
+  if($("cmp-rec-contrato")) $("cmp-rec-contrato").value = "";
+  cmpRecPreencherContratos(); // fase 57: NF de contrato recorrente (só sem pedido)
   ["cmp-rec-nf","cmp-rec-chave","cmp-rec-emissao","cmp-rec-frete","cmp-rec-venc","cmp-rec-total","cmp-rec-obs"].forEach(id => $(id).value = "");
   $("cmp-rec-serie").value = "1"; $("cmp-rec-parc").value = "1"; $("cmp-rec-data").value = hojeISO();
   if(pedido && pedido.condicao_pagamento && /(\d+)\s*dias?/i.test(pedido.condicao_pagamento)){
@@ -463,6 +465,24 @@ function abrirRecebimento(pedido){
   $("cmp-rec-modal").style.display = "flex";
 }
 function fecharRecebimento(){ $("cmp-rec-modal").style.display = "none"; _cmpRec = null; }
+/* Fase 57: NF de contrato recorrente (aluguel, locação, seguro…) recebida sem pedido aponta o contrato; em
+   recebimento_confirmar o título previsto do mês é substituído pelo da nota, sem duplicar. A lista traz só
+   os contratos vigentes que o perfil enxerga (RLS); para quem não vê contratos o campo fica oculto. */
+let _cmpContratosForn = null;
+async function cmpRecPreencherContratos(){
+  const campo = $("cmp-rec-contrato-campo"), sel = $("cmp-rec-contrato"); if(!campo || !sel) return;
+  if(_cmpRec?.pedido){ campo.style.display = "none"; sel.value = ""; return; }
+  if(_cmpContratosForn === null){
+    const { data } = await sb.from("contratos").select("id,numero,descricao,fornecedor_id,categoria").eq("natureza", "fornecedor").in("status", ["vigente","renovado"]).order("numero");
+    _cmpContratosForn = data || [];
+  }
+  const forn = $("cmp-rec-forn").value;
+  const lista = _cmpContratosForn.filter(c => !forn || c.fornecedor_id === forn);
+  const atual = sel.value;
+  sel.innerHTML = `<option value="">— não é NF de contrato —</option>` + lista.map(c => `<option value="${esc(c.id)}">${esc(c.numero)} — ${esc(c.descricao || (typeof CONTRATO_CATEGORIA === "object" && CONTRATO_CATEGORIA[c.categoria]) || "")}</option>`).join("");
+  if([...sel.options].some(o => o.value === atual)) sel.value = atual;
+  campo.style.display = lista.length ? "" : "none";
+}
 function renderItensRecebimento(){
   const tb = $("cmp-rec-itens"); const its = _cmpRec?.itens || [];
   if(!its.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${_cmpRec?.pedido ? "Tudo deste pedido já foi recebido. Adicione itens fora do pedido se a nota trouxer." : "Adicione os itens da nota."}</td></tr>`; }
@@ -548,7 +568,8 @@ async function confirmarRecebimento(){
     pedido_id: r.pedido?.id || null, fornecedor_id: forn, nf_numero: $("cmp-rec-nf").value.trim() || null, nf_serie: $("cmp-rec-serie").value.trim() || null,
     nf_chave: $("cmp-rec-chave").value.replace(/\D/g, "") || null, nf_data_emissao: $("cmp-rec-emissao").value || null, data_recebimento: $("cmp-rec-data").value || hojeISO(),
     frete: Number($("cmp-rec-frete").value || 0), vencimento: venc, parcelas: Math.max(1, Number($("cmp-rec-parc").value || 1)), total_nf: Number($("cmp-rec-total").value || 0), observacoes: $("cmp-rec-obs").value.trim() || null,
-    duplicatas: dups, xml_texto: r.xml?.texto || null
+    duplicatas: dups, xml_texto: r.xml?.texto || null,
+    contrato_id: (!r.pedido && $("cmp-rec-contrato")?.value) || null // fase 57
   };
   const { data: rec, error } = await sb.from("recebimentos").insert(cab).select("id").single();
   if(error){ aviso("app-aviso", "Erro ao criar o recebimento: " + error.message, "erro"); return; }
@@ -634,7 +655,7 @@ async function cmpImportarXml(file){
   const avisos = [];
   if(forn){
     if(_cmpRec.pedido && _cmpRec.pedido.fornecedor_id && _cmpRec.pedido.fornecedor_id !== forn.id) avisos.push(`⚠ a nota é de <strong>${esc(forn.razao_social)}</strong>, mas o pedido é de ${esc(cmpForn(_cmpRec.pedido.fornecedor_id))}`);
-    if(!_cmpRec.pedido) $("cmp-rec-forn").value = forn.id;
+    if(!_cmpRec.pedido){ $("cmp-rec-forn").value = forn.id; cmpRecPreencherContratos(); }
   }
   // já foi recebida?
   if(nf.chave){ const { data: dupNf } = await sb.from("recebimentos").select("id,status").eq("nf_chave", nf.chave).neq("status", "cancelado").limit(1); if(dupNf?.length) avisos.push(`⚠ <strong>esta chave de acesso já tem um recebimento registrado</strong>. Confira antes de confirmar de novo`); }
@@ -691,20 +712,21 @@ async function abrirCustoAvulso(pre, depois){
   await cmpCarregarBase(false);
   $("cmp-av-data").value = hojeISO(); $("cmp-av-cat").value = pre?.categoria || "outro"; $("cmp-av-valor").value = "";
   $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; $("cmp-av-forn").value = "";
-  $("cmp-av-desc").value = ""; $("cmp-av-doc").value = "";
+  $("cmp-av-desc").value = ""; $("cmp-av-doc").value = ""; if($("cmp-av-venc")) $("cmp-av-venc").value = "";
   $("cmp-av-modal").style.display = "flex";
   setTimeout(() => { if(pre?.equipamento_id && $("cmp-av-equip")) $("cmp-av-equip").value = pre.equipamento_id; if(pre?.obra_id && $("cmp-av-obra")) $("cmp-av-obra").value = pre.obra_id; }, 300);
 }
 function fecharCustoAvulso(){ $("cmp-av-modal").style.display = "none"; }
 async function salvarCustoAvulso(){
   const reg = { data: $("cmp-av-data").value || hojeISO(), categoria: $("cmp-av-cat").value, valor: Number($("cmp-av-valor").value), equipamento_id: $("cmp-av-equip").value || null, obra_id: $("cmp-av-obra").value || null,
-    fornecedor_id: $("cmp-av-forn").value || null, descricao: $("cmp-av-desc").value.trim(), documento: $("cmp-av-doc").value.trim() || null };
+    fornecedor_id: $("cmp-av-forn").value || null, descricao: $("cmp-av-desc").value.trim(), documento: $("cmp-av-doc").value.trim() || null,
+    vencimento: $("cmp-av-venc")?.value || null }; // fase 57: com vencimento vira também título a pagar
   if(!(reg.valor >= 0) || $("cmp-av-valor").value === ""){ aviso("app-aviso", "Informe o valor.", "erro"); return; }
   if(!reg.descricao){ aviso("app-aviso", "Informe a descrição.", "erro"); return; }
   if(!reg.equipamento_id && !reg.obra_id){ aviso("app-aviso", "Informe a TAG ou a obra.", "erro"); return; }
   const { error } = await sb.from("custos_avulsos").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message, "erro"); return; }
-  aviso("app-aviso", "Custo lançado.", "ok");
+  aviso("app-aviso", reg.vencimento ? "Custo lançado e título a pagar gerado." : "Custo lançado (sem vencimento: não gera título a pagar).", "ok");
   fecharCustoAvulso();
   if(_cmpAvPre) _cmpAvPre();
 }
@@ -824,6 +846,7 @@ function ligarCompras(){
   $("btn-cmp-rec-fechar")?.addEventListener("click", fecharRecebimento);
   $("btn-cmp-rec-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-rec-confirmar", confirmarRecebimento));
   $("cmp-rec-frete")?.addEventListener("input", cmpRecSoma);
+  $("cmp-rec-forn")?.addEventListener("change", cmpRecPreencherContratos); // fase 57
   $("btn-cmp-rec-xml")?.addEventListener("click", () => $("cmp-rec-xml").click());
   $("cmp-rec-xml")?.addEventListener("change", e => { const f = e.target.files && e.target.files[0]; if(f) cmpImportarXml(f); });
   const zona = $("cmp-rec-xml-zona");
