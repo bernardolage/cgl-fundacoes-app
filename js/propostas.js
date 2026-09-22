@@ -341,14 +341,16 @@ function itensVirtuais(orcamento, itens){
 }
 
 /* Fase 40: totais da proposta. ISS "por dentro" = subtotal × p/(100-p) (é assim que a
-   RG 11.8 chega aos R$ 23.478,80 sobre R$ 446.097,12); senão subtotal × p/100. */
+   RG 11.8 chega aos R$ 23.478,80 sobre R$ 446.097,12).
+   Chamado #18 (Thales, 21/09/2026): iss_por_dentro desmarcado = ISS não entra na
+   proposta (linha some do quadro e o total = subtotal). Antes virava "por fora". */
 function calcularTotaisProposta(itens, orcamento){
   const subtotal = (itens || []).reduce((s, it) => s + Number(it.quantidade || 0) * Number(it.valor_unitario || 0), 0);
   const p  = Number((orcamento && orcamento.iss_percentual) || 0);
   const pd = !orcamento || orcamento.iss_por_dentro !== false;
-  const iss = p > 0 ? (pd && p < 100 ? subtotal * (p / (100 - p)) : subtotal * p / 100) : 0;
+  const iss = (pd && p > 0 && p < 100) ? subtotal * (p / (100 - p)) : 0;
   const pTxt = String(p).replace(".", ",").replace(/,0+$/, "");
-  const rotulo = p > 0 ? `ISS ${pTxt}% ${pd ? "( Mão de obra Calculo por dentro)" : "(sobre os serviços)"}` : "";
+  const rotulo = iss > 0 ? `ISS ${pTxt}% ( Mão de obra Calculo por dentro)` : "";
   return { subtotal, iss, total: subtotal + iss, rotulo };
 }
 
