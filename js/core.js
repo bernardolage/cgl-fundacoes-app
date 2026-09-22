@@ -104,6 +104,7 @@ const STATUS = {
     bom_estado:         { label:"Bom estado",         cor:"verde"    },
     precisa_manutencao: { label:"Precisa manutenção", cor:"ambar"    },
     em_manutencao:      { label:"Em manutenção",      cor:"azul"     },
+    sucata:             { label:"Sucata",             cor:"vermelho" },
     baixado:            { label:"Baixado",            cor:"vermelho" }
   },
   acessorio_local: {

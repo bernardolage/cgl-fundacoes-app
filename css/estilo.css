@@ -2721,3 +2721,12 @@ input:disabled, select:disabled, textarea:disabled {
 .cmp-ri-pick input { width: 100%; font-size: 12px; padding: 4px 8px !important; }
 .cmp-ri-pick .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; background: var(--sup-0); }
 .cmp-ri-badge { font-size: 10.5px; padding: 0 6px; border-radius: 8px; margin-left: 4px; }
+
+/* ---- Acessórios: fotos e valor (fase 55) ---- */
+.ace-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.ace-foto { border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; background: var(--sup-1); }
+.ace-foto img { width: 100%; height: 130px; object-fit: cover; display: block; cursor: zoom-in; background: var(--sup-2); }
+.ace-foto.capa { outline: 2px solid var(--marca-600); }
+.ace-foto-rod { padding: 6px 8px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.ace-foto-rod .acoes { display: flex; gap: 4px; flex-wrap: wrap; }
+.ace-capa { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; vertical-align: middle; margin-right: 8px; border: 1px solid var(--borda); }
