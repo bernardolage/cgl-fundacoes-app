@@ -583,6 +583,8 @@ function podeVerComercial(){
 }
 /* Fase 55: Contratos & Contas a pagar (contratos de fornecedor, títulos a pagar, lançamentos avulsos, exportação
    para o Compor 90). Quem não está aqui vê os valores só como custo, na aba Custos da obra e do equipamento. */
+/* 22/09/2026 (diretoria): somatórios patrimoniais (valor de reposição dos acessórios, FIPE da frota) só para o cargo diretor. */
+function ehDiretoria(){ return !!usuarioAtual && usuarioAtual.cargo === "diretor"; }
 function podeVerContasPagar(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador"].includes(usuarioAtual.cargo);
 }

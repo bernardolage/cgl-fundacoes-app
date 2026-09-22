@@ -742,6 +742,10 @@ async function salvarCustoAvulso(){
 /* ---------- aba Custos (equipamento / obra) — lê vw_custos ---------- */
 async function custosRender(containerId, filtro, cbTotal){
   const c = $(containerId); if(!c) return;
+  // 22/09/2026: custos por TAG/obra só para quem opera compras (mesmos cargos que leem as tabelas de custo no banco)
+  const abaBtn = c.closest(".odoo-body")?.previousElementSibling?.querySelector?.('button[data-tab="custos"]');
+  if(!cmpPodeOperar()){ if(abaBtn) abaBtn.style.display = "none"; c.innerHTML = `<p class="vazio">Seu perfil não vê custos.</p>`; return; }
+  if(abaBtn) abaBtn.style.display = "";
   c.innerHTML = `<p class="vazio">Carregando custos…</p>`;
   let q = sb.from("vw_custos").select("*").order("data", { ascending: false }).limit(2000);
   if(filtro.equipamento_id) q = q.eq("equipamento_id", filtro.equipamento_id);
