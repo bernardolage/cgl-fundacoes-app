@@ -501,6 +501,9 @@ async function iniciarApp(){
   // Fase 53 (Bernardo, 21/09/2026): Movimentações de Ativos fica no app (base do fluxo de acessórios), mas só no menu de quem opera
   const navMovAtivos = document.querySelector('.sidebar-nav button[data-secao="movimentacoes"]');
   if(navMovAtivos) navMovAtivos.style.display = podeVerMovimentacoes() ? "" : "none";
+  // Fase 55 (Bernardo, 21/09/2026): Contratos & Contas a pagar só para diretoria, admin, financeiro e comprador
+  const navCon = document.querySelector('.sidebar-nav button[data-secao="contratos"]');
+  if(navCon) navCon.style.display = podeVerContasPagar() ? "" : "none";
 
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";
@@ -600,6 +603,11 @@ function podeVerMovimentacoes(){
 }
 function podeVerComercial(){
   return !!usuarioAtual && ["diretor", "comercial"].includes(usuarioAtual.cargo);
+}
+/* Fase 55: Contratos & Contas a pagar (contratos de fornecedor, títulos a pagar, lançamentos avulsos, exportação
+   para o Compor 90). Quem não está aqui vê os valores só como custo, na aba Custos da obra e do equipamento. */
+function podeVerContasPagar(){
+  return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador"].includes(usuarioAtual.cargo);
 }
 function irParaSecao(secao){
   const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"]`);
