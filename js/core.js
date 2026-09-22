@@ -480,30 +480,7 @@ async function iniciarApp(){
      também devolve true para ele em qualquer verificação) */
   const ehDiretorOuAdmin = perfil && ["diretor","admin"].includes(perfil.cargo);
 
-  /* item "Usuários" só aparece para diretor/admin */
-  const navUsr = $("nav-usuarios");
-  if(navUsr) navUsr.style.display = ehDiretorOuAdmin ? "" : "none";
-
-  /* "Carteira" (controle de contratos & pendências): só diretoria.
-     As pendências que interessam à engenharia aparecem dentro da ficha
-     da Obra (aba Contrato) e como badge na lista de obras. */
-  // Carteira: só cargo diretor (admin ficou de fora em 02/09/2026 a pedido da diretoria;
-  // as pendências por contrato continuam visíveis na aba Contrato da Obra para todos)
-  const navCart = $("nav-carteira");
-  if(navCart) navCart.style.display = (perfil && perfil.cargo === "diretor") ? "" : "none";
-
-  // Fase 49 (Bernardo, 21/09/2026): Catálogo de Serviços e Orçamentos só para diretoria e comercial.
-  // Os demais cargos não veem os itens no menu; irParaSecao() também barra atalhos de outras telas.
-  SECOES_COMERCIAIS.forEach(s => {
-    const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
-    if(b) b.style.display = podeVerComercial() ? "" : "none";
-  });
-  // Fase 53 (Bernardo, 21/09/2026): Movimentações de Ativos fica no app (base do fluxo de acessórios), mas só no menu de quem opera
-  const navMovAtivos = document.querySelector('.sidebar-nav button[data-secao="movimentacoes"]');
-  if(navMovAtivos) navMovAtivos.style.display = podeVerMovimentacoes() ? "" : "none";
-  // Fase 55 (Bernardo, 21/09/2026): Contratos & Contas a pagar só para diretoria, admin, financeiro e comprador
-  const navCon = document.querySelector('.sidebar-nav button[data-secao="contratos"]');
-  if(navCon) navCon.style.display = podeVerContasPagar() ? "" : "none";
+  aplicarMenuPorCargo(perfil);
 
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";
@@ -608,6 +585,45 @@ function podeVerComercial(){
    para o Compor 90). Quem não está aqui vê os valores só como custo, na aba Custos da obra e do equipamento. */
 function podeVerContasPagar(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador"].includes(usuarioAtual.cargo);
+}
+/* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
+   22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
+const SECOES_OCULTAS_POR_CARGO = {
+  rh: ["medicoes", "acessorios", "equipamentos", "obras", "compras", "estoque", "produtos", "fornecedores", "clientes"]
+};
+/* Mostra/esconde os itens do menu conforme o cargo. Chamado no login; isolado para poder ser testado. */
+function aplicarMenuPorCargo(perfil){
+  const ehDiretorOuAdmin = !!perfil && ["diretor","admin"].includes(perfil.cargo);
+  /* item "Usuários" só aparece para diretor/admin */
+  const navUsr = $("nav-usuarios");
+  if(navUsr) navUsr.style.display = ehDiretorOuAdmin ? "" : "none";
+
+  /* "Carteira" (controle de contratos & pendências): só diretoria.
+     As pendências que interessam à engenharia aparecem dentro da ficha
+     da Obra (aba Contrato) e como badge na lista de obras. */
+  // Carteira: só cargo diretor (admin ficou de fora em 02/09/2026 a pedido da diretoria;
+  // as pendências por contrato continuam visíveis na aba Contrato da Obra para todos)
+  const navCart = $("nav-carteira");
+  if(navCart) navCart.style.display = (perfil && perfil.cargo === "diretor") ? "" : "none";
+
+  // Fase 49 (Bernardo, 21/09/2026): Catálogo de Serviços e Orçamentos só para diretoria e comercial.
+  // Os demais cargos não veem os itens no menu; irParaSecao() também barra atalhos de outras telas.
+  SECOES_COMERCIAIS.forEach(s => {
+    const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
+    if(b) b.style.display = podeVerComercial() ? "" : "none";
+  });
+  // Fase 53 (Bernardo, 21/09/2026): Movimentações de Ativos fica no app (base do fluxo de acessórios), mas só no menu de quem opera
+  const navMovAtivos = document.querySelector('.sidebar-nav button[data-secao="movimentacoes"]');
+  if(navMovAtivos) navMovAtivos.style.display = podeVerMovimentacoes() ? "" : "none";
+  // Fase 55 (Bernardo, 21/09/2026): Contratos & Contas a pagar só para diretoria, admin, financeiro e comprador
+  const navCon = document.querySelector('.sidebar-nav button[data-secao="contratos"]');
+  if(navCon) navCon.style.display = podeVerContasPagar() ? "" : "none";
+
+  const ocultas = SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || [];
+  new Set(Object.values(SECOES_OCULTAS_POR_CARGO).flat()).forEach(s => {
+    const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
+    if(b) b.style.display = ocultas.includes(s) ? "none" : "";
+  });
 }
 function irParaSecao(secao){
   const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"]`);
