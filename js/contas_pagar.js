@@ -11,6 +11,8 @@
 
 let _capTitulos = [];
 let _capFiltroVenc = "";        // "" | "vencidos" | "30"
+let _capFiltroOrigem = "";      // "" | nf_compra | contrato | avulso (fase 56)
+const CAP_ORIGEM_LBL = { nf_compra: "NF de compra", contrato: "Contrato", avulso: "Avulso" };
 let _capIncluirExp = false;
 
 function capPodeExportar(){ return !!usuarioAtual && ["admin","diretor","financeiro","comprador"].includes(usuarioAtual.cargo); }
@@ -47,7 +49,8 @@ async function renderTitulosPagar(){
   if(!podeVerContasPagar()){ cont.innerHTML = `<p class="vazio">Seu perfil não tem acesso às contas a pagar.</p>`; return; }
   await cmpCarregarBase(false); // nomes de fornecedor, obra e TAG
   const hoje = hojeISO();
-  let q = sb.from("titulos_pagar").select("*, recebimento:recebimentos(pedido_id, pedido:pedidos_compra(numero))").order("vencimento").limit(1000);
+  let q = sb.from("titulos_pagar").select("*, recebimento:recebimentos(pedido_id, pedido:pedidos_compra(numero)), contrato:contratos(numero)").order("vencimento").limit(1000);
+  if(_capFiltroOrigem) q = q.eq("origem", _capFiltroOrigem);
   if(!_capIncluirExp) q = q.is("exportado_em", null);
   if(_capFiltroVenc === "vencidos") q = q.lt("vencimento", hoje);
   if(_capFiltroVenc === "30") q = q.gte("vencimento", hoje).lte("vencimento", capDaqui(30));
@@ -58,8 +61,9 @@ async function renderTitulosPagar(){
   if($("con-contador")) $("con-contador").textContent = `${_capTitulos.length} título(s)`;
   const podeExp = capPodeExportar();
   cont.innerHTML = `<div class="lista-topo compacta">
-      <span class="meta">Títulos gerados no recebimento das notas (Compras). O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</span>
-      <select id="cap-f-venc" style="margin-left:auto;">
+      <span class="meta">Títulos gerados no recebimento das notas (Compras) e pelos contratos recorrentes. O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</span>
+      <select id="cap-f-origem" style="margin-left:auto;"><option value="">Todas as origens</option>${Object.entries(CAP_ORIGEM_LBL).map(([k, v]) => `<option value="${k}"${_capFiltroOrigem === k ? " selected" : ""}>${esc(v)}</option>`).join("")}</select>
+      <select id="cap-f-venc">
         <option value=""${_capFiltroVenc === "" ? " selected" : ""}>Qualquer vencimento</option>
         <option value="vencidos"${_capFiltroVenc === "vencidos" ? " selected" : ""}>Já vencidos</option>
         <option value="30"${_capFiltroVenc === "30" ? " selected" : ""}>Vencem em até 30 dias</option>
@@ -68,13 +72,16 @@ async function renderTitulosPagar(){
       ${podeExp ? `<button type="button" class="btn" id="btn-cap-exportar" ${pend.length ? "" : "disabled"}>⬇️ Exportar ${pend.length} não exportado(s) (CSV)</button>` : ""}
     </div>
     ${!_capTitulos.length ? `<p class="vazio">Nenhum título ${_capIncluirExp ? "" : "pendente de exportação"}${_capFiltroVenc ? " nesse vencimento" : ""}.</p>` : `<div class="tabela-rola"><table>
-    <thead><tr><th>Vencimento</th><th>Fornecedor</th><th>NF</th><th>Pedido</th><th>Parcela</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>
+    <thead><tr><th>Vencimento</th><th>Origem</th><th>Fornecedor</th><th>Documento</th><th>Pedido</th><th>Parcela</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>
     <tbody>${_capTitulos.map(t => { const venc = !t.exportado_em && t.vencimento < hoje; const ped = t.recebimento?.pedido;
-      return `<tr><td class="${venc ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong>${venc ? " ⚠" : ""}</td><td>${esc(cmpForn(t.fornecedor_id) || "—")}</td><td>${esc(t.nf_numero || "—")}</td>
+      const doc = t.origem === "contrato" ? `<a href="#" class="cap-contrato" data-contrato-id="${esc(t.contrato_id)}">${esc(t.contrato?.numero || "contrato")}</a>${t.competencia ? ` <span class="meta">${String(t.competencia).slice(5, 7)}/${String(t.competencia).slice(0, 4)}</span>` : ""}` : esc(t.nf_numero || "—");
+      return `<tr><td class="${venc ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong>${venc ? " ⚠" : ""}</td><td><span class="tag ${t.origem === "contrato" ? "verde" : t.origem === "avulso" ? "ambar" : "azul"}">${esc(CAP_ORIGEM_LBL[t.origem] || t.origem)}</span></td><td>${esc(cmpForn(t.fornecedor_id) || "—")}</td><td>${doc}</td>
       <td>${ped ? `<a href="#" class="cap-pedido" data-pedido-id="${esc(t.recebimento.pedido_id)}">${esc(ped.numero)}</a>` : '<span class="meta">sem pedido</span>'}</td><td>${t.parcela}/${t.total_parcelas}</td>
       <td class="num">${brl(t.valor)}</td><td>${t.obra_id ? linkObra(t.obra_id, cmpObra(t.obra_id)) : "—"}</td><td>${t.equipamento_id ? esc(cmpEq(t.equipamento_id)) : "—"}</td>
       <td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`; }).join("")}</tbody>
-    <tfoot><tr><td colspan="5"><strong>Total</strong></td><td class="num"><strong>${brl(capSoma(_capTitulos))}</strong></td><td colspan="3"></td></tr></tfoot></table></div>`}`;
+    <tfoot><tr><td colspan="6"><strong>Total</strong></td><td class="num"><strong>${brl(capSoma(_capTitulos))}</strong></td><td colspan="3"></td></tr></tfoot></table></div>`}`;
+  $("cap-f-origem")?.addEventListener("change", e => { _capFiltroOrigem = e.target.value; renderTitulosPagar(); });
+  cont.querySelectorAll("a.cap-contrato").forEach(a => a.addEventListener("click", e => { e.preventDefault(); abrirContrato(a.dataset.contratoId); }));
   $("cap-f-venc")?.addEventListener("change", e => { _capFiltroVenc = e.target.value; renderTitulosPagar(); });
   $("cap-incluir-exp")?.addEventListener("change", e => { _capIncluirExp = e.target.checked; renderTitulosPagar(); });
   $("btn-cap-exportar")?.addEventListener("click", () => comBotaoTravado("btn-cap-exportar", exportarTitulos));
@@ -90,9 +97,10 @@ async function exportarTitulos(){
   if(!pend.length) return;
   const cel = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const num2 = v => Number(v || 0).toFixed(2).replace(".", ",");
-  const cab = ["Fornecedor","CNPJ/CPF","NF","Parcela","Total parcelas","Emissao","Vencimento","Valor","Obra","TAG","Observacoes"];
+  const cab = ["Fornecedor","CNPJ/CPF","Documento","Parcela","Total parcelas","Emissao","Vencimento","Valor","Obra","TAG","Observacoes","Origem"];
   const linhas = pend.map(t => { const f = _cmpFornMap[t.fornecedor_id] || {}; const o = _cmpObraMap[t.obra_id];
-    return [f.razao_social || "", f.cpf_cnpj || "", t.nf_numero || "", t.parcela, t.total_parcelas, dataBR(t.emissao), dataBR(t.vencimento), num2(t.valor), o ? `${o.codigo} — ${o.nome}` : "", cmpEq(t.equipamento_id), t.observacoes || ""].map(cel).join(";"); });
+    const doc = t.origem === "contrato" ? `Contrato ${t.contrato?.numero || ""}${t.competencia ? " " + String(t.competencia).slice(5, 7) + "/" + String(t.competencia).slice(0, 4) : ""}` : (t.nf_numero || "");
+    return [f.razao_social || "", f.cpf_cnpj || "", doc, t.parcela, t.total_parcelas, dataBR(t.emissao), dataBR(t.vencimento), num2(t.valor), o ? `${o.codigo} — ${o.nome}` : "", cmpEq(t.equipamento_id), t.observacoes || "", CAP_ORIGEM_LBL[t.origem] || t.origem || ""].map(cel).join(";"); });
   const csv = "﻿" + cab.join(";") + "\n" + linhas.join("\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `titulos_a_pagar_${hojeISO()}.csv`; a.click();
   if(!confirm(`Arquivo gerado com ${pend.length} título(s). Marcar como exportados? (Depois só aparecem com "mostrar já exportados".)`)) return;
@@ -132,7 +140,7 @@ function ligarContasPagar(){
     const k = el.dataset.kpi;
     if(k === "contratos"){ if($("con-f-vencimento")) $("con-f-vencimento").value = "30"; capAtivarView("lista"); return; }
     _capFiltroVenc = k === "vencidos" ? "vencidos" : k === "30" ? "30" : "";
-    _capIncluirExp = false;
+    _capIncluirExp = false; _capFiltroOrigem = "";
     capAtivarView("titulos");
   }));
   $("btn-cap-custo-avulso")?.addEventListener("click", () => abrirCustoAvulso({}, () => capAtivarView("avulsos")));

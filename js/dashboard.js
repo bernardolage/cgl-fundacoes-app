@@ -243,6 +243,16 @@ async function carregarDashPendencias(){
     });
   });
 
+  // fase 56: títulos a pagar vencidos e ainda não exportados ao Compor 90 (só quem opera Contas a pagar)
+  if(podeVerContasPagar()){
+    const { count: nVenc } = await sb.from("titulos_pagar").select("id", { count: "exact", head: true }).is("exportado_em", null).lt("vencimento", hojeISOstr);
+    if(nVenc) itens.push({
+      icone: "💸", cor: "var(--perigo)", bg: "var(--perigo-bg)",
+      texto: `<strong>${nVenc}</strong> título(s) a pagar vencido(s) sem exportar ao financeiro`,
+      nav: () => { if(irParaSecao("contratos") && typeof capAtivarView === "function"){ _capFiltroVenc = "vencidos"; _capIncluirExp = false; _capFiltroOrigem = ""; capAtivarView("titulos"); } }
+    });
+  }
+
   // Contratos de fornecedor entrando na janela de aviso (fase 21)
   // fase 55: o módulo Contratos & Contas a pagar é restrito; o alerta só para quem consegue abrir
   if(typeof contratosVencendo === "function" && podeVerContasPagar()){
