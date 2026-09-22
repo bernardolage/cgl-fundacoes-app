@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=1736c00" />
+<link rel="stylesheet" href="css/estilo.css?v=9e5e327" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -1147,6 +1147,8 @@
           </div>
           <div class="grade grade-3">
             <div class="campo largo" id="cmp-rec-forn-campo"><label>Fornecedor *</label><select id="cmp-rec-forn"></select></div>
+            <div class="campo largo" id="cmp-rec-contrato-campo" style="display:none;"><label>Contrato do fornecedor <small style="font-weight:400;">(NF de aluguel, locação, seguro…)</small></label><select id="cmp-rec-contrato"></select>
+              <span class="meta">Aponte o contrato quando a nota for a cobrança dele: o título previsto do mês é substituído pelo da nota, sem duplicar.</span></div>
             <div class="campo"><label>NF número</label><input id="cmp-rec-nf" /></div>
             <div class="campo"><label>Série</label><input id="cmp-rec-serie" value="1" /></div>
             <div class="campo largo"><label>Chave de acesso (44 dígitos)</label><input id="cmp-rec-chave" maxlength="54" /></div>
@@ -1182,16 +1184,18 @@
       <div class="modal-fundo" id="cmp-av-modal" style="display:none;">
         <div class="modal-caixa" style="max-width:640px;">
           <div class="modal-topo"><h3>Custo avulso</h3><button type="button" class="btn-sec" id="btn-cmp-av-fechar">×</button></div>
-          <p class="meta">Multa, IPVA, seguro, locação, serviço pago sem nota de produto. Precisa de TAG ou obra.</p>
+          <p class="meta">Multa, IPVA, seguro, locação, serviço pago sem nota de produto. Precisa de TAG ou obra. Com vencimento, vira também título a pagar em Contratos &amp; Contas a pagar (lançado uma vez só).</p>
           <div class="grade grade-3">
             <div class="campo"><label>Data</label><input type="date" id="cmp-av-data" /></div>
             <div class="campo"><label>Categoria</label><select id="cmp-av-cat"></select></div>
             <div class="campo"><label>Valor (R$) *</label><input type="number" id="cmp-av-valor" min="0" step="0.01" /></div>
             <div class="campo"><label>TAG</label><select id="cmp-av-equip"></select></div>
             <div class="campo"><label>Obra</label><select id="cmp-av-obra"></select></div>
+            <div class="campo"><label>Jogo de acessórios</label><input id="cmp-av-jogo" placeholder="Ex.: CGL-65 (reforma de trado)" /></div>
             <div class="campo"><label>Fornecedor</label><select id="cmp-av-forn"></select></div>
             <div class="campo largo"><label>Descrição *</label><input id="cmp-av-desc" placeholder="ex.: IPVA 2026 · Multa radar BR-381 · Locação de gerador" /></div>
             <div class="campo"><label>Documento</label><input id="cmp-av-doc" placeholder="NF, recibo, auto" /></div>
+            <div class="campo"><label>Vencimento <small style="font-weight:400;">(gera título a pagar)</small></label><input type="date" id="cmp-av-venc" /></div>
           </div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cmp-av-salvar">💾 Lançar</button></div>
         </div>
@@ -1471,6 +1475,7 @@
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
               <button type="button" class="serv-view-btn" data-view="titulos">A pagar</button>
               <button type="button" class="serv-view-btn" data-view="avulsos">Lançamentos avulsos</button>
+              <button type="button" class="serv-view-btn" data-view="exportacoes">Exportações</button>
             </div>
             <button type="button" class="btn-sec" id="btn-cap-custo-avulso" style="margin-left:auto;" title="Multa, IPVA, seguro, locação, serviço sem NF de produto">＋ Custo avulso</button>
             <button type="button" class="btn" id="btn-novo-contrato">+ Novo contrato</button>
@@ -1529,12 +1534,16 @@
             <button type="button" class="sb-btn" id="sb-con-documentos" data-goto-tab="documentos">
               <span class="sb-num">0</span><span class="sb-icon">📎</span><span class="sb-lbl">documentos</span>
             </button>
+            <button type="button" class="sb-btn" id="sb-con-titulos" data-goto-tab="titulos" title="Títulos a pagar gerados por este contrato (fase 56)">
+              <span class="sb-num">0</span><span class="sb-icon">💸</span><span class="sb-lbl">títulos</span>
+            </button>
           </div>
 
           <div class="odoo-notebook" id="con-notebook">
             <button type="button" data-tab="geral" class="ativo">Geral</button>
             <button type="button" data-tab="vigencia">Vigência</button>
             <button type="button" data-tab="financeiro">Financeiro</button>
+            <button type="button" data-tab="titulos">Títulos a pagar</button>
             <button type="button" data-tab="documentos">Documentos</button>
             <button type="button" data-tab="observacoes">Observações</button>
           </div>
@@ -1576,7 +1585,21 @@
                   <input id="con-indice" list="lista-indices" placeholder="ex.: IPCA" />
                   <datalist id="lista-indices"></datalist>
                 </div>
+                <!-- fase 56: destino do custo e geração dos títulos a pagar -->
+                <div class="campo"><label>Obra (custo)</label><select id="con-obra"></select></div>
+                <div class="campo"><label>Equipamento / TAG (custo)</label><select id="con-equip"></select></div>
+                <div class="campo"><label>Categoria de custo</label><select id="con-cat-custo"></select></div>
+                <div class="campo"><label>Títulos a pagar</label>
+                  <label class="check-inline"><input type="checkbox" id="con-gera-titulos" checked /> Gera títulos a pagar pela recorrência</label>
+                </div>
+                <div class="campo largo">
+                  <p class="ajuda-campo">Com o contrato <strong>Vigente</strong>, o sistema gera os títulos a pagar pela recorrência (valor da parcela no dia de vencimento), do mês atual até 3 meses à frente, e completa o horizonte todo dia. Meses anteriores não são gerados: o histórico fica no Compor 90. Reajuste de valor ou troca de dia, obra ou TAG refaz os títulos ainda não exportados. Com obra ou TAG informada, o valor entra na aba Custos delas na competência.</p>
+                </div>
               </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="titulos">
+              <div id="con-titulos-conteudo"></div>
             </div>
 
             <div class="odoo-tab" data-tab="documentos">
@@ -2858,6 +2881,7 @@
             <div class="odoo-tab" data-tab="jogo">
               <div class="lista-topo"><h3>Peças do mesmo jogo</h3><button type="button" class="btn-sec btn-sm" id="btn-ace-mover-jogo" style="margin-left:auto;">📍 Mover o jogo inteiro</button></div>
               <div id="ace-jogo-lista"><p class="vazio">—</p></div>
+              <div id="ace-jogo-custos"></div>
             </div>
             <div class="odoo-tab" data-tab="historico">
               <div id="ace-hist-lista"><p class="vazio">—</p></div>
@@ -3656,38 +3680,38 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=1736c00"></script>
+<script src="js/core.js?v=9e5e327"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=1736c00"></script>
+<script src="js/historico.js?v=9e5e327"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=1736c00"></script>
-<script src="js/fornecedores.js?v=1736c00"></script>
-<script src="js/apropriacoes.js?v=1736c00"></script>
-<script src="js/funcionarios.js?v=1736c00"></script>
-<script src="js/servicos.js?v=1736c00"></script>
-<script src="js/produtos.js?v=1736c00"></script>
-<script src="js/estoque.js?v=1736c00"></script>
-<script src="js/compras.js?v=1736c00"></script>
-<script src="js/orcamentos.js?v=1736c00"></script>
-<script src="js/propostas.js?v=1736c00"></script>
-<script src="js/contratos.js?v=1736c00"></script>
-<script src="js/contas_pagar.js?v=1736c00"></script>
-<script src="js/carteira.js?v=1736c00"></script>
-<script src="js/obras.js?v=1736c00"></script>
-<script src="js/frota.js?v=1736c00"></script>
-<script src="js/equipamentos.js?v=1736c00"></script>
-<script src="js/acessorios.js?v=1736c00"></script>
-<script src="js/mobilizacoes.js?v=1736c00"></script>
-<script src="js/estacas.js?v=1736c00"></script>
-<script src="js/obra_abas.js?v=1736c00"></script>
-<script src="js/medicoes.js?v=1736c00"></script>
-<script src="js/movimentacoes.js?v=1736c00"></script>
-<script src="js/rdo.js?v=1736c00"></script>
-<script src="js/rdo_import_maya.js?v=1736c00"></script>
-<script src="js/usuarios.js?v=1736c00"></script>
-<script src="js/chamados.js?v=1736c00"></script>
-<script src="js/dashboard.js?v=1736c00"></script>
+<script src="js/clientes.js?v=9e5e327"></script>
+<script src="js/fornecedores.js?v=9e5e327"></script>
+<script src="js/apropriacoes.js?v=9e5e327"></script>
+<script src="js/funcionarios.js?v=9e5e327"></script>
+<script src="js/servicos.js?v=9e5e327"></script>
+<script src="js/produtos.js?v=9e5e327"></script>
+<script src="js/estoque.js?v=9e5e327"></script>
+<script src="js/compras.js?v=9e5e327"></script>
+<script src="js/orcamentos.js?v=9e5e327"></script>
+<script src="js/propostas.js?v=9e5e327"></script>
+<script src="js/contratos.js?v=9e5e327"></script>
+<script src="js/contas_pagar.js?v=9e5e327"></script>
+<script src="js/carteira.js?v=9e5e327"></script>
+<script src="js/obras.js?v=9e5e327"></script>
+<script src="js/frota.js?v=9e5e327"></script>
+<script src="js/equipamentos.js?v=9e5e327"></script>
+<script src="js/acessorios.js?v=9e5e327"></script>
+<script src="js/mobilizacoes.js?v=9e5e327"></script>
+<script src="js/estacas.js?v=9e5e327"></script>
+<script src="js/obra_abas.js?v=9e5e327"></script>
+<script src="js/medicoes.js?v=9e5e327"></script>
+<script src="js/movimentacoes.js?v=9e5e327"></script>
+<script src="js/rdo.js?v=9e5e327"></script>
+<script src="js/rdo_import_maya.js?v=9e5e327"></script>
+<script src="js/usuarios.js?v=9e5e327"></script>
+<script src="js/chamados.js?v=9e5e327"></script>
+<script src="js/dashboard.js?v=9e5e327"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=1736c00"></script>
+<script src="js/init.js?v=9e5e327"></script>
 </body>
 </html>

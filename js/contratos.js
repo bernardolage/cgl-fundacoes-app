@@ -58,7 +58,13 @@ async function contratosVencendo(){
 }
 
 /* ---------- Carga ---------- */
+let _conGerouTitulos = false;
 async function carregarContratos(){
+  // fase 56: completa o horizonte de títulos (3 meses) uma vez por sessão; o pg_cron faz o mesmo todo dia
+  if(!_conGerouTitulos && typeof podeVerContasPagar === "function" && podeVerContasPagar()){
+    _conGerouTitulos = true;
+    await sb.rpc("contrato_gerar_titulos");
+  }
   const { data, error } = await sb.from("contratos")
     .select("id,numero,fornecedor_id,categoria,status,valor_total,descricao,data_inicio,data_fim_prevista,aviso_vencimento_dias,renovacao_automatica")
     .eq("natureza","fornecedor")
@@ -107,11 +113,12 @@ function renderContratos(){
   preencherFiltrosCon();
   if(typeof capKpis === "function") capKpis();
   // fase 55: visões de Contas a pagar (js/contas_pagar.js) — sem filtros nem alerta de vigência
-  const capView = ["titulos","avulsos"].includes(_conView);
+  const capView = ["titulos","avulsos","exportacoes"].includes(_conView);
   const filtros = document.querySelector("#con-painel .serv-filtros"); if(filtros) filtros.style.display = capView ? "none" : "";
   if(capView){
     const al = $("con-alerta-venc"); if(al) al.innerHTML = "";
-    return _conView === "titulos" ? renderTitulosPagar() : renderCustosAvulsosCap();
+    if(_conView !== "titulos") _capLote = null;
+    return _conView === "titulos" ? renderTitulosPagar() : _conView === "exportacoes" ? renderExportacoes() : renderCustosAvulsosCap();
   }
   if($("con-lista-titulo")) $("con-lista-titulo").textContent = "Contratos cadastrados";
   const dados = conFiltrados();
@@ -261,6 +268,8 @@ async function novoContrato(){
   $("con-valor-rec").value = 0;
   $("con-dia-venc").value = "";
   $("con-valor").value = 0;
+  await conPreencherDestinos(); // fase 56
+  $("con-obra").value = ""; $("con-equip").value = ""; $("con-cat-custo").value = ""; $("con-gera-titulos").checked = true;
   $("btn-excluir-con").style.display = "none";
   abrirFichaConVisual({ numero: $("con-numero").value, status: "em_elaboracao", valor_total: 0, categoria: "prestacao_servico" });
 }
@@ -286,6 +295,9 @@ async function abrirContrato(id){
   $("con-valor").value = c.valor_total || 0;
   $("con-indice").value = c.indice_reajuste || "";
   $("con-obs").value = c.observacoes || "";
+  await conPreencherDestinos(); // fase 56: destino do custo e geração de títulos
+  $("con-obra").value = c.obra_id || ""; $("con-equip").value = c.equipamento_id || "";
+  $("con-cat-custo").value = c.categoria_custo || ""; $("con-gera-titulos").checked = c.gera_titulos !== false;
   $("btn-excluir-con").style.display = "";
   abrirFichaConVisual(c);
 }
@@ -302,6 +314,7 @@ function abrirFichaConVisual(c){
   $("con-ficha-categoria-chip").textContent = CONTRATO_CATEGORIA[c.categoria] || "—";
   $("con-ficha-status-chip").innerHTML = tagStatus("contrato", c.status);
   $("con-ficha-valor-chip").textContent = brl(c.valor_total || 0);
+  conCarregarTitulos(c.id || null); // fase 56
   const dias = diasParaVencer(c);
   $("con-ficha-vigencia-chip").innerHTML = c.data_inicio || c.data_fim_prevista
     ? `${dataBR(c.data_inicio)}${c.data_fim_prevista ? " → " + dataBR(c.data_fim_prevista) : ""}${tagDias(c)}`
@@ -372,6 +385,11 @@ async function salvarContrato(novoStatus){
     dia_vencimento: dia ? Number(dia) : null,
     valor_total: Number($("con-valor").value || 0),
     indice_reajuste: $("con-indice").value.trim() || null,
+    // fase 56: destino do custo (aba Custos da obra/TAG) e geração dos títulos a pagar (gatilho no banco)
+    obra_id: $("con-obra").value || null,
+    equipamento_id: $("con-equip").value || null,
+    categoria_custo: $("con-cat-custo").value || null,
+    gera_titulos: $("con-gera-titulos").checked,
     observacoes: $("con-obs").value.trim() || null
   };
 
@@ -392,6 +410,7 @@ async function salvarContrato(novoStatus){
     return;
   }
   conEditId = result.data.id;
+  if(typeof _cmpContratosForn !== "undefined") _cmpContratosForn = null; // fase 57: lista de contratos do recebimento
   $("btn-excluir-con").style.display = "";
   $("con-status").value = result.data.status;
   aviso("app-aviso","Contrato salvo.","ok");
@@ -752,6 +771,50 @@ async function atualizarStatusAssinatura(contratoId, conf){
 }
 
 /* ---------- Listeners ---------- */
+/* ---------- Fase 56: destino do custo + títulos gerados pelo contrato ---------- */
+let _conDestinosOk = false;
+async function conPreencherDestinos(){
+  if(_conDestinosOk) return;
+  if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false); // obras ativas, TAGs e categorias de custo (compras.js)
+  const obra = $("con-obra"), eq = $("con-equip"), cat = $("con-cat-custo");
+  if(obra) obra.innerHTML = `<option value="">— nenhuma —</option>` + (typeof _cmpObras === "object" ? _cmpObras : []).map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
+  if(eq)   eq.innerHTML   = `<option value="">— nenhuma —</option>` + (typeof _cmpEquips === "object" ? _cmpEquips : []).map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
+  if(cat)  cat.innerHTML  = `<option value="">— pela categoria do contrato —</option>` + Object.entries(typeof CMP_CAT_LBL === "object" ? CMP_CAT_LBL : {}).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  _conDestinosOk = true;
+}
+
+/* aba Títulos a pagar da ficha: o que o contrato gerou (mês corrente + 3 meses; o passado fica no Compor 90) */
+async function conCarregarTitulos(id){
+  const cont = $("con-titulos-conteudo"), sbt = $("sb-con-titulos");
+  const setSb = n => { if(sbt){ sbt.querySelector(".sb-num").textContent = n || 0; sbt.classList.toggle("zero", !n); } };
+  if(!cont) return;
+  if(!id){ setSb(0); cont.innerHTML = `<p class="vazio">Salve o contrato. Com status <strong>Vigente</strong>, recorrência, valor da parcela e dia de vencimento preenchidos, os títulos a pagar são gerados sozinhos: do mês atual até 3 meses à frente.</p>`; return; }
+  if(typeof podeVerContasPagar === "function" && !podeVerContasPagar()){ setSb(0); cont.innerHTML = `<p class="vazio">Seu perfil não vê os títulos a pagar.</p>`; return; }
+  const { data, error } = await sb.from("titulos_pagar").select("*").eq("contrato_id", id).order("vencimento");
+  if(conEditId !== id) return;
+  const tits = data || [];
+  setSb(tits.length);
+  const hoje = hojeISO();
+  const gerar = `<button type="button" class="btn-sec btn-sm" id="btn-con-gerar-titulos" title="Completa os títulos que faltam até 3 meses à frente (o sistema faz isso sozinho todo dia)">🔄 Gerar títulos agora</button>`;
+  if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
+  if(!tits.length){
+    cont.innerHTML = `<div class="lista-topo compacta"><span class="meta">Nenhum título gerado. Confira: status Vigente (ou Renovado), recorrência, valor da parcela (ou total, se única), dia de vencimento e a opção "gera títulos" na aba Financeiro. Títulos de meses anteriores ao atual não são gerados.</span>${gerar}</div>`;
+  } else {
+    cont.innerHTML = `<div class="lista-topo compacta"><span class="meta">Títulos deste contrato. A exportação ao Compor 90 é feita no painel, visão "A pagar". Reajuste de valor ou troca de dia/obra/TAG refaz os que ainda não foram exportados.</span>${gerar}</div>
+      <div class="tabela-rola"><table><thead><tr><th>Competência</th><th>Vencimento</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>
+      <tbody>${tits.map(t => `<tr><td>${t.competencia ? String(t.competencia).slice(5, 7) + "/" + String(t.competencia).slice(0, 4) : "—"}</td><td class="${!t.exportado_em && t.vencimento < hoje ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong></td><td class="num">${brl(t.valor)}</td>
+        <td>${t.obra_id ? linkObra(t.obra_id, (typeof cmpObra === "function" && cmpObra(t.obra_id)) || "obra") : "—"}</td><td>${t.equipamento_id ? esc((typeof cmpEq === "function" && cmpEq(t.equipamento_id)) || "TAG") : "—"}</td>
+        <td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${brl(tits.reduce((s, t) => s + Number(t.valor || 0), 0))}</strong></td><td colspan="3"></td></tr></tfoot></table></div>`;
+  }
+  $("btn-con-gerar-titulos")?.addEventListener("click", () => comBotaoTravado("btn-con-gerar-titulos", async () => {
+    const { data: n, error: e } = await sb.rpc("contrato_gerar_titulos", { p_contrato: id, p_meses: 3 });
+    if(e){ aviso("app-aviso", "Não foi possível gerar: " + e.message, "erro"); return; }
+    aviso("app-aviso", n ? `${n} título(s) gerado(s).` : "Nada a gerar: os títulos do horizonte já existem ou o contrato não atende às condições.", n ? "ok" : "erro");
+    conCarregarTitulos(id);
+  }));
+}
+
 function ligarContratos(){
   $("btn-d4s-enviar")?.addEventListener("click", enviarAssinaturaD4S);
   $("btn-d4s-cancelar")?.addEventListener("click", fecharModalAssinatura);
@@ -781,6 +844,7 @@ function ligarContratos(){
     b.addEventListener("click", () => ativarTabCon(b.dataset.tab));
   });
   $("sb-con-documentos")?.addEventListener("click", () => ativarTabCon("documentos"));
+  $("sb-con-titulos")?.addEventListener("click", () => ativarTabCon("titulos"));
 
   document.querySelectorAll("#con-statusbar .stage").forEach(el => {
     el.addEventListener("click", async () => {
