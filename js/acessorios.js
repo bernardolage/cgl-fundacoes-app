@@ -28,6 +28,14 @@ let _aceAtual = null;              // registro aberto na ficha
 let acessorioEditId = null;        // null = novo
 let _aceMdDepois = null;           // callback após salvar modelo
 let _aceMdEditId = null;
+let _aceValor = {};                // id -> { valor, base, preco_vencido, peso_kg } (vw_acessorios_valor)
+let _aceFotosN = {};               // id -> nº de fotos
+let _aceFotoUrl = {};              // storage_path -> url assinada
+let _aceSucata = [];               // últimos preços da sucata
+const ACE_FOTO_BUCKET = "acessorios-fotos";
+const ACE_FOTO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+const ACE_FOTO_TIPO_LBL = { identificacao: "Identificação", avaria: "Avaria", descarte: "Descarte / sucata", outro: "Outra" };
+const ACE_BASE_LBL = { ok: "", estimativa: "preço estimado", sem_preco: "sem preço", zero: "", sucata: "sucata (peso × R$/kg)", sem_peso: "sucata sem peso", sem_preco_sucata: "sucata sem R$/kg do mês" };
 
 const ACE_FAMILIA_LBL = { helice: "Hélice", raiz: "Raiz", secante: "Secante", trado: "Trado", comum: "Comum" };
 const ACE_TIPO_LBL = {
@@ -113,7 +121,7 @@ function aceChaveFamilia(){ return "ace_familia_" + (usuarioAtual?.id || "anon")
 
 /* ---------- carga ---------- */
 async function aceFetchTodos(){
-  const cols = "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia)";
+  const cols = "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia,peso_kg,preco_origem,preco_atualizado_em)";
   const tudo = []; const passo = 1000;
   for(let de = 0; ; de += passo){
     const { data, error } = await sb.from("acessorios").select(cols).order("marcacao").range(de, de + passo - 1);
@@ -122,6 +130,25 @@ async function aceFetchTodos(){
     if(!data || data.length < passo) break;
   }
   return tudo;
+}
+/* valor de reposição por peça (view) — paginado como o catálogo */
+async function aceFetchValor(ids){
+  const out = {}; const passo = 1000;
+  for(let de = 0; ; de += passo){
+    let q = sb.from("vw_acessorios_valor").select("id,valor,base,preco_vencido,peso_kg").order("id").range(de, de + passo - 1);
+    if(ids) q = q.in("id", ids);
+    const { data, error } = await q;
+    if(error){ console.warn("valor dos acessórios:", error.message); break; }
+    (data || []).forEach(v => out[v.id] = v);
+    if(!data || data.length < passo || ids) break;
+  }
+  return out;
+}
+function aceValor(a){ return _aceValor[a.id] || null; }
+function aceValorTxt(a){
+  const v = aceValor(a); if(!v) return "—";
+  const b = ACE_BASE_LBL[v.base];
+  return `${brl(v.valor)}${b ? ` <span class="meta" title="${esc(b)}">ⓘ</span>` : ""}${v.preco_vencido ? ' <span class="tag ambar" title="preço com mais de 12 meses">vencido</span>' : ""}`;
 }
 
 async function carregarAcessorios(force){
@@ -135,14 +162,20 @@ async function carregarAcessorios(force){
   if(force || !_aceCarregado){
     cont.innerHTML = `<p class="vazio">Carregando acessórios…</p>`;
     try {
-      const [regs, mod, eq, fo] = await Promise.all([
+      const [regs, mod, eq, fo, val, ft, sc] = await Promise.all([
         aceFetchTodos(),
-        sb.from("acessorio_modelos").select("id,familia,tipo,descricao,medida,grupo_contagem,preco_referencia,produto_id,ativo").order("descricao"),
+        sb.from("acessorio_modelos").select("id,familia,tipo,descricao,medida,grupo_contagem,preco_referencia,peso_kg,preco_origem,preco_atualizado_em,produto_id,ativo").order("descricao"),
         sb.from("equipamentos").select("id,codigo,nome,tipo,ativo,status,localizacao_tipo,localizacao_obra_id").not("tipo", "in", "(caminhao,veiculo)").order("codigo"),
-        sb.from("fornecedores").select("id,razao_social").eq("ativo", true).order("razao_social")
+        sb.from("fornecedores").select("id,razao_social").eq("ativo", true).order("razao_social"),
+        aceFetchValor(null),
+        sb.from("acessorio_fotos").select("acessorio_id"),
+        sb.from("sucata_precos").select("competencia,preco_kg,observacao").order("competencia", { ascending: false }).limit(12)
       ]);
       if(mod.error) throw mod.error;
       _aceRegistros = regs;
+      _aceValor = val || {};
+      _aceFotosN = {}; (ft.data || []).forEach(f => _aceFotosN[f.acessorio_id] = (_aceFotosN[f.acessorio_id] || 0) + 1);
+      _aceSucata = sc.data || [];
       _aceModelos = mod.data || [];
       _aceEquips = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
       _aceEq = {}; _aceEquips.forEach(e => _aceEq[e.id] = e);
@@ -193,6 +226,7 @@ async function aceRefetch(ids){
     if(i >= 0) _aceRegistros[i] = n; else _aceRegistros.push(n);
   });
   ids.forEach(id => { if(!(data || []).some(n => n.id === id)) _aceRegistros = _aceRegistros.filter(a => a.id !== id); });
+  Object.assign(_aceValor, await aceFetchValor(ids));
   _aceContagem = null;
   renderAcessorios();
   if(_aceAtual && ids.includes(_aceAtual.id)){
@@ -300,6 +334,13 @@ function aceRenderKpis(){
   set("ace-kpi-manut", base.filter(a => a.condicao === "em_manutencao").length);
   set("ace-kpi-atencao", base.filter(a => ["precisa_manutencao","sem_marcacao"].includes(a.condicao) || a.local_tipo === "desconhecido").length);
   set("ace-kpi-perdido", base.filter(a => a.local_tipo === "perdido").length);
+  const kv = $("ace-kpi-valor");
+  if(kv){
+    const soma = base.reduce((s, a) => s + Number(aceValor(a)?.valor || 0), 0);
+    const semPreco = base.filter(a => aceValor(a)?.base === "sem_preco").length, est = base.filter(a => aceValor(a)?.base === "estimativa").length;
+    kv.textContent = brl(soma).replace(",00", "");
+    kv.parentElement.querySelector(".rot").textContent = `Valor de reposição${semPreco ? ` · ${semPreco} sem preço` : ""}${est ? ` · ${est} estimadas` : ""}`;
+  }
 }
 
 function aceCondCor(c){ return (STATUS.acessorio[c] || {}).cor || "cinza"; }
@@ -318,7 +359,7 @@ function renderAcessoriosKanban(dados){
     const cards = [...grupos.values()].sort((x, y) => aceDescr(x[0]).localeCompare(aceDescr(y[0]), "pt-BR", { numeric: true })).map(g => {
       const ids = g.map(a => a.id);
       const todosSel = ids.every(id => _aceSel.has(id));
-      const pills = g.sort(aceOrdMarc).map(a => `<span class="tag ${aceCondCor(a.condicao)} ace-pill" data-id="${a.id}" title="${esc(aceDescr(a))} · ${esc(aceLbl("acessorio", a.condicao))}${a.jogo ? " · jogo " + esc(a.jogo) : ""}\nClique: abrir · Ctrl+clique: selecionar" style="cursor:pointer;margin:2px 3px 2px 0;${_aceSel.has(a.id) ? "outline:2px solid var(--marca-600);outline-offset:1px;" : ""}">${esc(a.marcacao)}</span>`).join("");
+      const pills = g.sort(aceOrdMarc).map(a => `<span class="tag ${aceCondCor(a.condicao)} ace-pill" data-id="${a.id}" title="${esc(aceDescr(a))} · ${esc(aceLbl("acessorio", a.condicao))}${a.jogo ? " · jogo " + esc(a.jogo) : ""}\nClique: abrir · Ctrl+clique: selecionar" style="cursor:pointer;margin:2px 3px 2px 0;${_aceSel.has(a.id) ? "outline:2px solid var(--marca-600);outline-offset:1px;" : ""}">${_aceFotosN[a.id] ? "📷 " : ""}${esc(a.marcacao)}</span>`).join("");
       const med = aceMedida(g[0]);
       return `<div class="serv-kan-card" data-ids="${ids.join(",")}" draggable="true" style="cursor:grab;">
         <div class="serv-kan-card-nome" style="display:flex;align-items:center;gap:6px;">
@@ -343,7 +384,7 @@ function renderAcessoriosLista(dados){
     <thead><tr>
       <th style="width:28px;"><input type="checkbox" id="ace-sel-todos" ${todosSel ? "checked" : ""} title="Selecionar todas as ${dados.length} filtradas" /></th>
       <th>Marcação</th><th>Modelo</th><th>Tipo</th><th>Ø / medida</th>${temAcopl ? "<th>Acopl.</th>" : ""}${temJogo ? "<th>Jogo</th>" : ""}
-      <th>Condição</th><th>Onde está</th><th>Pertence</th><th>Atualizado</th>
+      <th>Condição</th><th>Onde está</th><th>Pertence</th><th class="num">Valor</th><th>Atualizado</th>
     </tr></thead>
     <tbody>${dados.map(a => `<tr class="linha-clicavel" data-id="${a.id}" ${a.ativo === false ? 'style="opacity:.55"' : ""}>
         <td><input type="checkbox" class="ace-sel" data-id="${a.id}" ${_aceSel.has(a.id) ? "checked" : ""} /></td>
@@ -352,8 +393,9 @@ function renderAcessoriosLista(dados){
         <td>${tagStatus("acessorio", a.condicao)}${a.condicao_motivo && a.local_tipo !== "perdido" ? ` <span class="meta" title="${esc(a.condicao_motivo)}">ⓘ</span>` : ""}</td>
         <td>${tagStatus("acessorio_local", a.local_tipo)} ${esc(aceOnde(a).replace(/^(Pátio|Oficina|Em trânsito|Perdido|Não localizado)/, "").replace(/^ · /, ""))}</td>
         <td>${a.equipamento_padrao_id ? "TAG " + esc(aceEqTag(a.equipamento_padrao_id)) : "—"}</td>
+        <td class="num">${aceValorTxt(a)}</td>
         <td class="meta">${dataBR(a.local_confirmado_em || a.updated_at)}</td>
-      </tr>`).join("") || `<tr><td colspan="11" class="vazio">Nenhuma peça com esses filtros.</td></tr>`}</tbody>
+      </tr>`).join("") || `<tr><td colspan="12" class="vazio">Nenhuma peça com esses filtros.</td></tr>`}</tbody>
   </table></div>`;
 }
 
@@ -370,36 +412,59 @@ async function renderAcessoriosContagem(){
     .sort((a, b) => (a.grupo_contagem || "ZZZ").localeCompare(b.grupo_contagem || "ZZZ", "pt-BR") || a.descricao.localeCompare(b.descricao, "pt-BR", { numeric: true }) || String(a.medida || "").localeCompare(String(b.medida || ""), "pt-BR", { numeric: true }));
   const c = $("ace-contador"); if(c) c.textContent = `${linhas.length} modelos`;
   const cols = ["cadastrados","em_estoque","em_obra","em_manutencao","perdas","sem_marcacao"];
-  const soma = arr => cols.reduce((o, k) => (o[k] = arr.reduce((s, l) => s + Number(l[k] || 0), 0), o), { valor_total: arr.reduce((s, l) => s + Number(l.valor_total || 0), 0) });
+  const soma = arr => cols.reduce((o, k) => (o[k] = arr.reduce((s, l) => s + Number(l[k] || 0), 0), o), { valor_total: arr.reduce((s, l) => s + Number(l.valor_reposicao || 0), 0) });
+  const precoTag = l => !l.preco_referencia ? '<span class="tag ambar" title="modelo sem preço: clique na linha e informe">sem preço</span>' : l.preco_origem === "estimativa" ? '<span class="tag ambar" title="estimado pelo Ø vizinho da planilha de custos">estimado</span>' : l.preco_vencido ? '<span class="tag ambar" title="preço com mais de 12 meses">vencido</span>' : (l.preco_origem === "compra" ? '<span class="tag verde" title="atualizado pela última compra">compra</span>' : "");
   const grupos = new Map();
   linhas.forEach(l => { const g = l.grupo_contagem || "SEM GRUPO"; if(!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(l); });
   const linha = (l) => `<tr class="linha-clicavel" data-modelo="${l.modelo_id}">
       <td>${esc(l.descricao)}</td><td>${esc(l.medida && l.medida !== "-" ? l.medida : "")}</td>
       <td class="num"><strong>${l.cadastrados}</strong></td><td class="num">${l.em_estoque}</td><td class="num">${l.em_obra}</td><td class="num">${l.em_manutencao}</td><td class="num">${l.perdas}</td><td class="num">${l.sem_marcacao}</td>
-      <td class="num">${l.preco_referencia != null ? brl(l.preco_referencia) : '<span class="meta">—</span>'}</td><td class="num">${l.preco_referencia != null ? brl(l.valor_total) : '<span class="meta">—</span>'}</td></tr>`;
+      <td class="num">${l.preco_referencia != null ? brl(l.preco_referencia) : '<span class="meta">—</span>'} ${precoTag(l)}</td><td class="num">${brl(l.valor_reposicao)}</td></tr>`;
   const sub = (g, arr) => { const t = soma(arr); return `<tr style="background:var(--bg-body);font-weight:600;"><td colspan="2">Subtotal ${esc(g)}</td>${cols.map(k => `<td class="num">${t[k]}</td>`).join("")}<td></td><td class="num">${brl(t.valor_total)}</td></tr>`; };
   const tot = soma(linhas);
-  const semPreco = linhas.filter(l => l.preco_referencia == null).length;
+  const semPreco = linhas.filter(l => !l.preco_referencia).length, estim = linhas.filter(l => l.preco_origem === "estimativa").length, venc = linhas.filter(l => l.preco_vencido).length;
+  const sucPreco = _aceSucata[0];
   cont.innerHTML = `
     <div class="meta" style="margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      Contagem por modelo${_aceFamilia ? " · " + esc(ACE_FAMILIA_LBL[_aceFamilia]) : ""}. Em estoque = pátio, oficina ou na máquina (fora de manutenção). Clique na linha para editar descrição, grupo e preço.
-      ${semPreco ? `<span class="tag ambar">${semPreco} modelo(s) sem preço de referência</span>` : ""}
+      <strong style="font-size:14px;color:var(--txt);">Valor de reposição${_aceFamilia ? " · " + esc(ACE_FAMILIA_LBL[_aceFamilia]) : ""}: ${brl(tot.valor_total)}</strong>
+      ${semPreco ? `<span class="tag ambar">${semPreco} modelo(s) sem preço</span>` : ""}${estim ? `<span class="tag ambar">${estim} estimado(s)</span>` : ""}${venc ? `<span class="tag ambar">${venc} vencido(s)</span>` : ""}
+      <span>Sucata: ${sucPreco ? `${brl(sucPreco.preco_kg)}/kg (${String(sucPreco.competencia).slice(5, 7)}/${String(sucPreco.competencia).slice(0, 4)})` : '<span class="tag ambar">sem preço do kg</span>'}</span>
+      ${acePodeEditar() ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-sucata">♻️ Preço da sucata</button>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-ace-xlsx" style="margin-left:auto;">⬇️ Excel</button>
     </div>
+    <p class="meta" style="margin:0 0 8px;">Valor = preço de reposição do modelo × fator da condição (bom estado 100%, precisa/em manutenção 60%, sucata = peso × R$/kg, baixada e perdida zero). Clique na linha para editar descrição, grupo, preço e peso do modelo.</p>
     <div class="tabela-rola"><table>
-      <thead><tr><th>Modelo</th><th>Medida</th><th class="num">Cadastradas</th><th class="num">Em estoque</th><th class="num">Em obra</th><th class="num">Em manut.</th><th class="num">Perdas</th><th class="num">S/M</th><th class="num">Preço unit.</th><th class="num">Total</th></tr></thead>
+      <thead><tr><th>Modelo</th><th>Medida</th><th class="num">Cadastradas</th><th class="num">Em estoque</th><th class="num">Em obra</th><th class="num">Em manut.</th><th class="num">Perdas</th><th class="num">S/M</th><th class="num">Preço reposição</th><th class="num">Valor</th></tr></thead>
       <tbody>${[...grupos.entries()].map(([g, arr]) => `<tr><td colspan="10" style="background:var(--bg-body);"><strong>${esc(g)}</strong></td></tr>` + arr.map(linha).join("") + (arr.length > 1 ? sub(g, arr) : "")).join("") || `<tr><td colspan="10" class="vazio">Nenhum modelo com peças.</td></tr>`}</tbody>
       <tfoot><tr><td colspan="2"><strong>Total geral</strong></td>${cols.map(k => `<td class="num"><strong>${tot[k]}</strong></td>`).join("")}<td></td><td class="num"><strong>${brl(tot.valor_total)}</strong></td></tr></tfoot>
     </table></div>`;
   $("btn-ace-xlsx")?.addEventListener("click", () => aceExportarContagem(linhas, grupos, tot));
+  $("btn-ace-sucata")?.addEventListener("click", abrirPrecoSucata);
+}
+/* ---------- preço da sucata ---------- */
+function abrirPrecoSucata(){
+  if(!acePodeEditar()) return;
+  $("ace-sc-mes").value = hojeISO().slice(0, 7); $("ace-sc-preco").value = _aceSucata[0]?.preco_kg ?? ""; $("ace-sc-obs").value = "";
+  $("ace-sc-hist").innerHTML = _aceSucata.length ? "Últimos: " + _aceSucata.map(s => `${String(s.competencia).slice(5, 7)}/${String(s.competencia).slice(0, 4)} ${brl(s.preco_kg)}/kg`).join(" · ") : "Nenhum preço cadastrado ainda.";
+  $("ace-sucata-modal").style.display = "flex";
+}
+function fecharPrecoSucata(){ $("ace-sucata-modal").style.display = "none"; }
+async function salvarPrecoSucata(){
+  const mes = $("ace-sc-mes").value, preco = Number($("ace-sc-preco").value);
+  if(!mes || !(preco >= 0) || $("ace-sc-preco").value === ""){ aviso("app-aviso", "Informe o mês e o preço por kg.", "erro"); return; }
+  const { error } = await sb.from("sucata_precos").upsert({ competencia: mes + "-01", preco_kg: preco, observacao: $("ace-sc-obs").value.trim() || null }, { onConflict: "competencia" });
+  if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
+  aviso("app-aviso", `Sucata ${mes.slice(5, 7)}/${mes.slice(0, 4)}: ${brl(preco)}/kg.`, "ok");
+  fecharPrecoSucata();
+  await carregarAcessorios(true);
 }
 
 function aceExportarContagem(linhas, grupos, tot){
   if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
-  const cab = ["GRUPO","MODELO","MEDIDA","CADASTRADAS","EM ESTOQUE","EM OBRA","EM MANUTENÇÃO","PERDAS","SEM MARCAÇÃO","PREÇO UNITÁRIO","TOTAL"];
+  const cab = ["GRUPO","MODELO","MEDIDA","CADASTRADAS","EM ESTOQUE","EM OBRA","EM MANUTENÇÃO","PERDAS","SEM MARCAÇÃO","PREÇO REPOSIÇÃO","ORIGEM DO PREÇO","VALOR REPOSIÇÃO"];
   const aoa = [cab];
-  grupos.forEach((arr, g) => arr.forEach(l => aoa.push([g, l.descricao, l.medida || "", +l.cadastrados, +l.em_estoque, +l.em_obra, +l.em_manutencao, +l.perdas, +l.sem_marcacao, l.preco_referencia != null ? +l.preco_referencia : null, l.preco_referencia != null ? +l.valor_total : null])));
-  aoa.push(["TOTAL GERAL","","",tot.cadastrados,tot.em_estoque,tot.em_obra,tot.em_manutencao,tot.perdas,tot.sem_marcacao,null,tot.valor_total]);
+  grupos.forEach((arr, g) => arr.forEach(l => aoa.push([g, l.descricao, l.medida || "", +l.cadastrados, +l.em_estoque, +l.em_obra, +l.em_manutencao, +l.perdas, +l.sem_marcacao, l.preco_referencia != null ? +l.preco_referencia : null, l.preco_origem || "", +l.valor_reposicao])));
+  aoa.push(["TOTAL GERAL","","",tot.cadastrados,tot.em_estoque,tot.em_obra,tot.em_manutencao,tot.perdas,tot.sem_marcacao,null,"",tot.valor_total]);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"] = [{ wch: 28 },{ wch: 46 },{ wch: 8 },{ wch: 12 },{ wch: 11 },{ wch: 9 },{ wch: 14 },{ wch: 8 },{ wch: 13 },{ wch: 15 },{ wch: 16 }];
   const wb = XLSX.utils.book_new();
@@ -521,7 +586,19 @@ function abrirCondicaoAcessorios(ids, cond){
   $("ace-cd-resumo").textContent = aceResumoIds(ids);
   $("ace-cd-cond").value = cond || "bom_estado";
   $("ace-cd-motivo").value = ""; $("ace-cd-data").value = hojeISO();
+  $("ace-cd-foto").value = "";
+  aceCdInfo();
   $("ace-cond-modal").style.display = "flex";
+}
+function aceCdInfo(){
+  const cond = $("ace-cd-cond").value, el = $("ace-cd-valor-info"); if(!el) return;
+  const regs = _aceAcaoIds.map(id => _aceRegistros.find(a => a.id === id)).filter(Boolean);
+  if(cond === "sucata"){
+    const semPeso = regs.filter(a => !(a.peso_kg || a.modelo?.peso_kg)).length, kg = regs.reduce((s, a) => s + Number(a.peso_kg || a.modelo?.peso_kg || 0), 0);
+    const p = _aceSucata[0];
+    el.innerHTML = `Sucata: ${num(kg)} kg${p ? ` × ${brl(p.preco_kg)}/kg = <strong>${brl(kg * p.preco_kg)}</strong>` : " · <span class='tag ambar'>sem preço do kg cadastrado</span>"}${semPeso ? ` · <span class="tag ambar">${semPeso} peça(s) sem peso</span>` : ""}. A peça continua no cadastro até ser baixada.`;
+  } else if(cond === "baixado") el.textContent = "Baixada: sai do cadastro ativo e vale zero. Se for vender como ferro, use \"sucata\".";
+  else el.textContent = "";
 }
 function fecharCondicaoAcessorios(){ $("ace-cond-modal").style.display = "none"; }
 async function salvarCondicaoAcessorios(){
@@ -530,9 +607,87 @@ async function salvarCondicaoAcessorios(){
   const { data, error } = await sb.rpc("acessorios_condicao", { p_ids: _aceAcaoIds, p_condicao: cond, p_motivo: $("ace-cd-motivo").value.trim() || null, p_data: aceDataISOparaTS($("ace-cd-data").value) });
   if(error){ aviso("app-aviso", "Erro ao mudar a condição: " + error.message, "erro"); return; }
   aviso("app-aviso", `${data} peça(s) agora em "${aceLbl("acessorio", cond)}".`, "ok");
-  fecharCondicaoAcessorios();
+  const foto = $("ace-cd-foto").files && $("ace-cd-foto").files[0];
   const ids = _aceAcaoIds.slice(); _aceAcaoIds = [];
+  fecharCondicaoAcessorios();
+  if(foto){
+    const tipo = ["sucata","baixado"].includes(cond) ? "descarte" : ["precisa_manutencao","em_manutencao"].includes(cond) ? "avaria" : "outro";
+    const falhas = await aceEnviarFotos(ids, [foto], tipo, $("ace-cd-motivo").value.trim() || aceLbl("acessorio", cond));
+    if(falhas.length) aviso("app-aviso", "Condição aplicada, mas a foto não subiu: " + falhas[0], "erro");
+  }
   await aceRefetch(ids);
+}
+
+/* ---------- fotos ---------- */
+function aceFotoExt(nome){ return (String(nome || "").split(".").pop() || "").toLowerCase(); }
+async function aceEnviarFotos(ids, arquivos, tipo, legenda){
+  const falhas = [];
+  for(const f of arquivos){
+    const ext = aceFotoExt(f.name) === "jpeg" ? "jpg" : aceFotoExt(f.name);
+    const mime = ACE_FOTO_MIME[ext];
+    if(!mime){ falhas.push(`${f.name}: use JPG, PNG ou WebP (HEIC do iPhone precisa ser convertido).`); continue; }
+    if(f.size > 10 * 1024 * 1024){ falhas.push(`${f.name}: acima de 10 MB.`); continue; }
+    const corpo = f.type === mime ? f : new Blob([f], { type: mime });
+    const base = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    for(const id of ids){
+      const caminho = `${id}/${base}`;
+      const up = await sb.storage.from(ACE_FOTO_BUCKET).upload(caminho, corpo, { cacheControl: "3600", contentType: mime, upsert: false });
+      if(up.error){ falhas.push(`${f.name}: ${up.error.message}`); continue; }
+      const capa = !(_aceFotosN[id] > 0) && tipo === "identificacao";
+      const ins = await sb.from("acessorio_fotos").insert({ acessorio_id: id, storage_path: caminho, legenda: legenda || null, tipo, capa, mime_type: mime, tamanho_bytes: f.size });
+      if(ins.error){ await sb.storage.from(ACE_FOTO_BUCKET).remove([caminho]); falhas.push(`${f.name}: ${ins.error.message}`); continue; }
+      _aceFotosN[id] = (_aceFotosN[id] || 0) + 1;
+    }
+  }
+  return falhas;
+}
+async function aceFotosUrls(paths){
+  const faltam = paths.filter(p => !_aceFotoUrl[p]);
+  if(faltam.length){
+    const { data } = await sb.storage.from(ACE_FOTO_BUCKET).createSignedUrls(faltam, 3600);
+    (data || []).forEach(d => { if(d.signedUrl && d.path) _aceFotoUrl[d.path] = d.signedUrl; });
+  }
+  return paths.map(p => _aceFotoUrl[p] || "");
+}
+async function aceRenderFotos(a){
+  const c = $("ace-fotos"), capa = $("ace-capa"); if(!c) return;
+  const { data, error } = await sb.from("acessorio_fotos").select("id,storage_path,legenda,tipo,capa,created_at").eq("acessorio_id", a.id).order("capa", { ascending: false }).order("created_at", { ascending: false });
+  if(_aceAtual?.id !== a.id) return;
+  if(error){ c.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
+  const fotos = data || [];
+  _aceFotosN[a.id] = fotos.length;
+  if(!fotos.length){ c.innerHTML = `<p class="vazio">Sem fotos. Adicione uma foto de identificação; em avaria ou descarte, registre a foto junto com a mudança de condição.</p>`; if(capa) capa.style.display = "none"; return; }
+  const urls = await aceFotosUrls(fotos.map(f => f.storage_path));
+  if(_aceAtual?.id !== a.id) return;
+  const pode = acePodeEditar();
+  const capaFoto = fotos.find(f => f.capa) || fotos[0];
+  if(capa){ capa.src = urls[fotos.indexOf(capaFoto)] || ""; capa.style.display = capa.src ? "" : "none"; capa.title = capaFoto.legenda || ACE_FOTO_TIPO_LBL[capaFoto.tipo] || ""; }
+  c.innerHTML = fotos.map((f, i) => `<div class="ace-foto${f.capa ? " capa" : ""}">
+      <a href="${esc(urls[i])}" target="_blank" rel="noopener"><img src="${esc(urls[i])}" alt="${esc(f.legenda || "")}" loading="lazy" /></a>
+      <div class="ace-foto-rod"><span><span class="tag ${f.tipo === "descarte" ? "vermelho" : f.tipo === "avaria" ? "ambar" : "cinza"}">${esc(ACE_FOTO_TIPO_LBL[f.tipo] || f.tipo)}</span>${f.capa ? ' <span class="tag azul">capa</span>' : ""} <span class="meta">${dataBR(String(f.created_at).slice(0, 10))}</span></span>
+        ${f.legenda ? `<span>${esc(f.legenda)}</span>` : ""}
+        ${pode ? `<span class="acoes">${f.capa ? "" : `<button type="button" class="btn-sec btn-sm" data-ft-capa="${f.id}">★ capa</button>`}<button type="button" class="btn-sec btn-sm" data-ft-del="${f.id}" data-path="${esc(f.storage_path)}" style="color:var(--perigo);">✕</button></span>` : ""}
+      </div></div>`).join("");
+  c.querySelectorAll("[data-ft-capa]").forEach(b => b.addEventListener("click", async () => {
+    await sb.from("acessorio_fotos").update({ capa: false }).eq("acessorio_id", a.id);
+    const { error } = await sb.from("acessorio_fotos").update({ capa: true }).eq("id", b.dataset.ftCapa);
+    if(error){ aviso("app-aviso", "Não foi possível definir a capa: " + error.message, "erro"); return; }
+    aceRenderFotos(a);
+  }));
+  c.querySelectorAll("[data-ft-del]").forEach(b => b.addEventListener("click", async () => {
+    if(!confirm("Excluir esta foto?")) return;
+    const { error } = await sb.from("acessorio_fotos").delete().eq("id", b.dataset.ftDel);
+    if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
+    await sb.storage.from(ACE_FOTO_BUCKET).remove([b.dataset.path]);
+    aceRenderFotos(a);
+  }));
+}
+async function aceEnviarFotosDaFicha(){
+  const a = _aceAtual; const inp = $("ace-ft-arquivos"); if(!a?.id || !inp.files?.length) return;
+  const falhas = await aceEnviarFotos([a.id], [...inp.files], $("ace-ft-tipo").value, $("ace-ft-legenda").value.trim());
+  inp.value = ""; $("ace-ft-legenda").value = "";
+  if(falhas.length) aviso("app-aviso", "Algumas fotos não subiram: " + falhas.join(" · "), "erro"); else aviso("app-aviso", "Foto(s) adicionada(s).", "ok");
+  aceRenderFotos(a);
 }
 
 function abrirReparoAcessorios(ids){
@@ -595,6 +750,8 @@ function abrirModeloAcessorio(modeloId, pre, depois){
   $("ace-md-medida").value = m?.medida || pre?.medida || "";
   $("ace-md-grupo").value = m?.grupo_contagem || "";
   $("ace-md-preco").value = m?.preco_referencia ?? "";
+  $("ace-md-peso").value = m?.peso_kg ?? "";
+  const inf = $("ace-md-preco-info"); if(inf) inf.textContent = m?.preco_referencia ? `origem: ${m.preco_origem || "manual"}${m.preco_atualizado_em ? " · " + dataBR(m.preco_atualizado_em) : ""}` : "";
   $("ace-md-ativo").checked = m ? m.ativo !== false : true;
   $("ace-modelo-modal").style.display = "flex";
 }
@@ -609,9 +766,12 @@ async function salvarModeloAcessorio(){
   const reg = {
     familia: $("ace-md-familia").value, tipo: $("ace-md-tipo").value, descricao: $("ace-md-desc").value.trim(),
     medida: $("ace-md-medida").value.trim() || null, grupo_contagem: $("ace-md-grupo").value.trim().toUpperCase() || null,
-    preco_referencia: $("ace-md-preco").value === "" ? null : Number($("ace-md-preco").value), ativo: $("ace-md-ativo").checked
+    preco_referencia: $("ace-md-preco").value === "" ? null : Number($("ace-md-preco").value), ativo: $("ace-md-ativo").checked,
+    peso_kg: $("ace-md-peso").value === "" ? null : Number($("ace-md-peso").value)
   };
   if(!reg.descricao){ aviso("app-aviso", "Informe a descrição do modelo.", "erro"); return; }
+  const antes = _aceMdEditId ? _aceModelos.find(x => x.id === _aceMdEditId) : null;
+  if(reg.preco_referencia != null && Number(antes?.preco_referencia) !== reg.preco_referencia){ reg.preco_origem = "manual"; reg.preco_atualizado_em = hojeISO(); }
   const r = _aceMdEditId
     ? await sb.from("acessorio_modelos").update(reg).eq("id", _aceMdEditId).select().single()
     : await sb.from("acessorio_modelos").insert(reg).select().single();
@@ -620,8 +780,9 @@ async function salvarModeloAcessorio(){
   if(i >= 0) _aceModelos[i] = r.data; else _aceModelos.push(r.data);
   _aceModelos.sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR", { numeric: true }));
   // peças já ligadas a esse modelo mostram a descrição nova
-  _aceRegistros.forEach(a => { if(a.modelo_id === r.data.id) a.modelo = { descricao: r.data.descricao, medida: r.data.medida, grupo_contagem: r.data.grupo_contagem, preco_referencia: r.data.preco_referencia }; });
+  _aceRegistros.forEach(a => { if(a.modelo_id === r.data.id) a.modelo = { descricao: r.data.descricao, medida: r.data.medida, grupo_contagem: r.data.grupo_contagem, preco_referencia: r.data.preco_referencia, peso_kg: r.data.peso_kg, preco_origem: r.data.preco_origem, preco_atualizado_em: r.data.preco_atualizado_em }; });
   _aceContagem = null;
+  Object.assign(_aceValor, await aceFetchValor(_aceRegistros.filter(a => a.modelo_id === r.data.id).map(a => a.id)));
   aviso("app-aviso", "Modelo salvo.", "ok");
   fecharModeloAcessorio();
   acePreencherSelectsFixos();
@@ -701,7 +862,11 @@ function abrirFichaAcessorio(a){
   $("ace-chip-onde").textContent = a.id ? aceOnde(a) : "Pátio";
   $("ace-chip-pertence").textContent = a.equipamento_padrao_id ? "TAG " + aceEqTag(a.equipamento_padrao_id) : "—";
   $("ace-chip-cond").innerHTML = tagStatus("acessorio", a.condicao);
+  $("ace-chip-valor").innerHTML = a.id ? aceValorTxt(a) : "—";
   atualizarStatusbarAcessorio(a.condicao);
+  const capa = $("ace-capa"); if(capa){ capa.style.display = "none"; capa.removeAttribute("src"); }
+  $("ace-fotos").innerHTML = `<p class="vazio">${novo ? "Salve a peça para adicionar fotos." : "Carregando…"}</p>`;
+  if(!novo) aceRenderFotos(a);
 
   // smart-buttons e abas filhas
   const setSb = (id, n) => { const b = $(id); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
@@ -792,7 +957,7 @@ const ACE_STAGES = ["sem_avaliacao","sem_marcacao","bom_estado","precisa_manuten
 function atualizarStatusbarAcessorio(st){
   document.querySelectorAll("#ace-statusbar .stage").forEach(el => {
     el.classList.remove("atual","passada","cancelada");
-    if(el.dataset.status === st) el.classList.add(st === "baixado" ? "cancelada" : "atual");
+    if(el.dataset.status === st) el.classList.add(st === "baixado" || st === "sucata" ? "cancelada" : "atual");
   });
 }
 function ativarTabAcessorio(nome){
@@ -898,6 +1063,11 @@ function ligarAcessorios(){
 
   // ficha
   $("btn-ace-voltar")?.addEventListener("click", mostrarPainelAcessorios);
+  $("btn-ace-ft-enviar")?.addEventListener("click", () => $("ace-ft-arquivos").click());
+  $("ace-ft-arquivos")?.addEventListener("change", aceEnviarFotosDaFicha);
+  $("ace-cd-cond")?.addEventListener("change", aceCdInfo);
+  $("btn-ace-sc-fechar")?.addEventListener("click", fecharPrecoSucata);
+  $("btn-ace-sc-salvar")?.addEventListener("click", () => comBotaoTravado("btn-ace-sc-salvar", salvarPrecoSucata));
   $("btn-ace-salvar")?.addEventListener("click", () => comBotaoTravado("btn-ace-salvar", salvarAcessorio));
   $("btn-ace-excluir")?.addEventListener("click", excluirAcessorio);
   $("btn-ace-mover")?.addEventListener("click", () => _aceAtual?.id && abrirMoverAcessorios([_aceAtual.id], {}));
