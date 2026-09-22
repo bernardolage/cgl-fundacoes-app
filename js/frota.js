@@ -45,9 +45,19 @@ async function carregarFrota(force){
     frotaPreencherSelects();
     _frotaDesl = { chave: null, dados: [] };
   }
-  if(!$("frota-f-mes").value) $("frota-f-mes").value = frotaMesAtual();
+  // Mês inicial: o atual só se tiver lançamento; senão o último mês com deslocamento (a planilha foi
+  // importada até jul/2026 e a tela abria em setembro vazio — parecia que nada tinha subido).
+  if(!$("frota-f-mes").value){
+    if(_frotaUltimaData === undefined){
+      const { data } = await sb.from("deslocamentos_caminhao").select("data").order("data", { ascending: false }).limit(1);
+      _frotaUltimaData = data && data[0] ? data[0].data : null;
+    }
+    const ultimoMes = _frotaUltimaData ? String(_frotaUltimaData).slice(0, 7) : null;
+    $("frota-f-mes").value = (ultimoMes && ultimoMes < frotaMesAtual()) ? ultimoMes : frotaMesAtual();
+  }
   renderFrota();
 }
+let _frotaUltimaData;   // undefined = ainda não consultado; null = nenhum deslocamento
 
 function frotaPreencherSelects(){
   const opt = (lista, rot) => lista.map(v => `<option value="${v.id}">${esc(rot(v))}</option>`).join("");
@@ -148,7 +158,10 @@ async function renderFrotaDesloc(){
 
   cont.innerHTML = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">${resumo("Por caminhão", porCam)}${resumo("Por obra atendida", porObra)}</div>
-    <div class="meta" style="margin:0 0 6px;display:flex;align-items:center;gap:8px;">${linhas.length} deslocamento(s)${mes ? " em " + esc(mes) : " nos últimos 12 meses"}
+    <div class="meta" style="margin:0 0 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${linhas.length} deslocamento(s)${mes ? " em " + esc(mes.slice(5, 7) + "/" + mes.slice(0, 4)) : " nos últimos 12 meses"}
+      ${_frotaUltimaData ? `· último lançamento em <strong>${dataBR(_frotaUltimaData)}</strong>` : ""}${_frotaUltimaData && String(_frotaUltimaData).slice(0, 7) < frotaMesAtual() ? ` <span class="tag ambar" title="as viagens depois dessa data ainda não foram lançadas no sistema">sem lançamentos depois disso</span>` : ""}
+      ${mes && mes !== frotaMesAtual() ? `<button type="button" class="btn-sec btn-sm" id="btn-frota-mes-atual">Mês atual</button>` : ""}
+      <button type="button" class="btn-sec btn-sm" id="btn-frota-12m">Últimos 12 meses</button>
       <button type="button" class="btn-sec btn-sm" id="btn-frota-csv" style="margin-left:auto;">⬇️ CSV</button></div>
     <div class="tabela-rola"><table>
       <thead><tr><th>Data</th><th>Motorista</th><th>Caminhão</th><th>Equipamento atendido</th><th>Obra</th><th class="num">km saída</th><th class="num">km chegada</th><th class="num">km</th><th class="num">R$/km</th><th class="num">Valor</th></tr></thead>
@@ -158,6 +171,8 @@ async function renderFrotaDesloc(){
           <td class="num">${frotaNum(d.km_saida)}</td><td class="num">${frotaNum(d.km_chegada)}</td><td class="num">${frotaNum(d.km_total)}</td><td class="num">${d.valor_km != null ? frotaNum(d.valor_km, 2) : "—"}</td><td class="num">${frotaMoeda(d.valor_total)}</td></tr>`).join("") || `<tr><td colspan="10" class="vazio">Nenhum deslocamento no período.</td></tr>`}</tbody>
       <tfoot><tr><td colspan="7"><strong>Total</strong></td><td class="num"><strong>${frotaNum(tot.km)}</strong></td><td></td><td class="num"><strong>${frotaMoeda(tot.val)}</strong></td></tr></tfoot>
     </table></div>`;
+  $("btn-frota-mes-atual")?.addEventListener("click", () => { $("frota-f-mes").value = frotaMesAtual(); renderFrota(); });
+  $("btn-frota-12m")?.addEventListener("click", () => { $("frota-f-mes").value = ""; renderFrota(); });
   $("btn-frota-csv")?.addEventListener("click", () => {
     const cel = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const csv = ["Data;Motorista;Caminhao;Equipamento;Obra;Km_saida;Km_chegada;Km;Valor_km;Valor"]
