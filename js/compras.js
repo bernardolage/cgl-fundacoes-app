@@ -711,7 +711,7 @@ async function abrirCustoAvulso(pre, depois){
   _cmpAvPre = depois || null;
   await cmpCarregarBase(false);
   $("cmp-av-data").value = hojeISO(); $("cmp-av-cat").value = pre?.categoria || "outro"; $("cmp-av-valor").value = "";
-  $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; $("cmp-av-forn").value = "";
+  $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; $("cmp-av-forn").value = ""; if($("cmp-av-jogo")) $("cmp-av-jogo").value = pre?.acessorio_jogo || "";
   $("cmp-av-desc").value = ""; $("cmp-av-doc").value = ""; if($("cmp-av-venc")) $("cmp-av-venc").value = "";
   $("cmp-av-modal").style.display = "flex";
   setTimeout(() => { if(pre?.equipamento_id && $("cmp-av-equip")) $("cmp-av-equip").value = pre.equipamento_id; if(pre?.obra_id && $("cmp-av-obra")) $("cmp-av-obra").value = pre.obra_id; }, 300);
@@ -719,11 +719,11 @@ async function abrirCustoAvulso(pre, depois){
 function fecharCustoAvulso(){ $("cmp-av-modal").style.display = "none"; }
 async function salvarCustoAvulso(){
   const reg = { data: $("cmp-av-data").value || hojeISO(), categoria: $("cmp-av-cat").value, valor: Number($("cmp-av-valor").value), equipamento_id: $("cmp-av-equip").value || null, obra_id: $("cmp-av-obra").value || null,
-    fornecedor_id: $("cmp-av-forn").value || null, descricao: $("cmp-av-desc").value.trim(), documento: $("cmp-av-doc").value.trim() || null,
-    vencimento: $("cmp-av-venc")?.value || null }; // fase 57: com vencimento vira também título a pagar
+    fornecedor_id: $("cmp-av-forn").value || null, acessorio_jogo: ($("cmp-av-jogo")?.value || "").trim().toUpperCase() || null, descricao: $("cmp-av-desc").value.trim(), documento: $("cmp-av-doc").value.trim() || null,
+    vencimento: $("cmp-av-venc")?.value || null }; // com vencimento vira também título a pagar
   if(!(reg.valor >= 0) || $("cmp-av-valor").value === ""){ aviso("app-aviso", "Informe o valor.", "erro"); return; }
   if(!reg.descricao){ aviso("app-aviso", "Informe a descrição.", "erro"); return; }
-  if(!reg.equipamento_id && !reg.obra_id){ aviso("app-aviso", "Informe a TAG ou a obra.", "erro"); return; }
+  if(!reg.equipamento_id && !reg.obra_id && !reg.acessorio_jogo){ aviso("app-aviso", "Informe a TAG, a obra ou o jogo de acessórios.", "erro"); return; }
   const { error } = await sb.from("custos_avulsos").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message, "erro"); return; }
   aviso("app-aviso", reg.vencimento ? "Custo lançado e título a pagar gerado." : "Custo lançado (sem vencimento: não gera título a pagar).", "ok");
