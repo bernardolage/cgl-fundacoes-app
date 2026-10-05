@@ -289,10 +289,21 @@ async function renderPendenciasContratoObra(contratoId){
   _obrContratoPend = [];
   if(box) box.innerHTML = "";
   if(!contratoId){ atualizarBadgeContratoObra(); return; }
-  const { data, error } = await sb.from("vw_pendencias_contratos")
-    .select("tipo,detalhe,valor_impacto,severidade").eq("contrato_id", contratoId);
+  const [{ data, error }, medPend] = await Promise.all([
+    sb.from("vw_pendencias_contratos").select("tipo,detalhe,valor_impacto,severidade").eq("contrato_id", contratoId),
+    // lote S39 (#26): pendências de medição da obra, clicáveis (a view pode não existir ainda: segue sem elas)
+    obraEditId ? sb.from("vw_medicoes_pendencias").select("medicao_id,numero,tipo,detalhe,valor_impacto,severidade").eq("obra_id", obraEditId)
+               : Promise.resolve({ data: [] })
+  ]);
   if(error){ atualizarBadgeContratoObra(); return; }
-  const pend = (data || []).slice().sort((a,b) => (a.severidade||9) - (b.severidade||9));
+  const medLinhas = (medPend?.error ? [] : (medPend?.data || [])).map(p => ({
+    tipo: p.tipo === "producao_pendente" ? "medicao_producao_pendente" : "medicao_sem_itens",
+    detalhe: `Medição ${p.numero || "?"}: ${p.tipo === "producao_pendente" ? "produção pendente (" + p.detalhe + ")" : p.detalhe}`,
+    valor_impacto: p.valor_impacto, severidade: p.severidade, medicao_id: p.medicao_id
+  }));
+  // a view do contrato já traz a produção pendente sem o id da medição: fica a versão clicável
+  const pend = (data || []).filter(p => !(medLinhas.length && p.tipo === "medicao_producao_pendente"))
+    .concat(medLinhas).sort((a,b) => (a.severidade||9) - (b.severidade||9));
   _obrContratoPend = pend;
   atualizarBadgeContratoObra();
   if(!box) return;
@@ -306,6 +317,7 @@ async function renderPendenciasContratoObra(contratoId){
     let txt = esc(p.detalhe || "");
     if(p.tipo === "saldo_negativo" && p.valor_impacto != null)
       txt += ` <strong>(excede ${brl(p.valor_impacto)} — abra um aditivo)</strong>`;
+    if(p.medicao_id) return `<li class="linha-clicavel" data-med="${esc(p.medicao_id)}" title="Abrir a medição"><span class="tag ${m.cor}">${esc(m.label)}</span> ${txt}</li>`;
     return `<li><span class="tag ${m.cor}">${esc(m.label)}</span> ${txt}</li>`;
   }).join("");
   const grave = pend.some(p => (p.severidade || 9) === 1);
@@ -314,6 +326,10 @@ async function renderPendenciasContratoObra(contratoId){
     <span class="meta">resolva o quanto antes — cada linha some sozinha quando o cadastro é corrigido</span>
     <ul style="margin:6px 0 0;padding-left:18px;">${itens}</ul>
   </div>`;
+  box.querySelectorAll("li[data-med]").forEach(li => li.addEventListener("click", () => {
+    irParaSecao("medicoes");
+    if(typeof abrirMedicao === "function") abrirMedicao(li.dataset.med);
+  }));
 }
 
 /* Badge da aba: ✓ quando há contrato, alerta quando ele ainda não foi assinado */

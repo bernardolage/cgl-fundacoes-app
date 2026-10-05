@@ -280,8 +280,10 @@ async function mudarStatusChamado(novo){
   const c = _chamAberto;
   if(!c || !CHAM_STATUS[novo] || novo === c.status) return;
   const anterior = c.status;
-  const { error } = await sb.from(CHAM_TBL.chamados).update({ status: novo }).eq("id", c.id);
+  // lote S39 (#11 #12): update barrado pela policy volta sem erro e sem linha; sem o select o front não percebia
+  const { data: mudou, error } = await sb.from(CHAM_TBL.chamados).update({ status: novo }).eq("id", c.id).select("id");
   if(error){ aviso("cham-ficha-aviso", "Não foi possível mudar o status: " + error.message, "erro"); return; }
+  if(!mudou?.length){ aviso("cham-ficha-aviso", "Sem permissão para mudar o status deste chamado.", "erro"); return; }
   c.status = novo;
   // trilha: a mudança de status vira um comentário de sistema
   await sb.from(CHAM_TBL.comentarios).insert({ chamado_id: c.id, [CHAM_COL.autor]: usuarioAtual?.id || null,
@@ -299,8 +301,9 @@ async function comentarChamado(resolver){
     texto: resolver && !/^\[resolu/i.test(texto) ? "[resolução] " + texto : texto });
   if(error){ aviso("cham-ficha-aviso", "Não foi possível gravar: " + error.message, "erro"); return; }
   if(resolver && c.status !== "resolvido"){
-    const { error: e2 } = await sb.from(CHAM_TBL.chamados).update({ status: "resolvido" }).eq("id", c.id);
+    const { data: mudou, error: e2 } = await sb.from(CHAM_TBL.chamados).update({ status: "resolvido" }).eq("id", c.id).select("id");
     if(e2){ aviso("cham-ficha-aviso", "Comentário gravado, mas o status não mudou: " + e2.message, "erro"); }
+    else if(!mudou?.length){ aviso("cham-ficha-aviso", "Comentário gravado, mas você não tem permissão para mudar o status deste chamado.", "erro"); }
     else c.status = "resolvido";
   }
   await abrirChamado(c.id);

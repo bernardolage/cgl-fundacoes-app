@@ -798,9 +798,7 @@ async function importarEstacasPDF(){
     });
 
     // Chama Edge Function (extrai body mesmo em erro pra ver mensagem real)
-    const { data, error } = await sb.functions.invoke("extrair-estacas-pdf", {
-      body: { pdf_base64: base64, obra_id: obraEditId }
-    });
+    const { data, error } = await iaInvocarComLimite("extrair-estacas-pdf", { pdf_base64: base64, obra_id: obraEditId });
     if(error){
       // supabase-js esconde o body de erro; tenta lê-lo via ctx.context
       let detalhe = error.message || "";
@@ -815,7 +813,7 @@ async function importarEstacasPDF(){
           }
         }
       } catch(_e) { /* ignora */ }
-      throw new Error(detalhe);
+      throw new Error(detalhe || "Falha ao chamar a leitura por IA (sem resposta da função).");
     }
     if(data && data.error){
       let msg = data.error;
@@ -841,7 +839,7 @@ async function importarEstacasPDF(){
     renderImportPreview(obsCombinadas, data._meta);
     avisoImport(`IA extraiu ${estacas.length} estacas. Revise antes de importar.`, "ok");
   } catch(err){
-    avisoImport("Erro ao extrair: " + err.message,"erro");
+    avisoImport("Erro ao extrair: " + (err?.message || "falha sem mensagem na leitura por IA"),"erro");
   } finally {
     btn.disabled = false;
     btn.textContent = "🤖 Extrair com IA";

@@ -10,6 +10,8 @@ let _depts           = [];
 let _supervisores    = [];
 let _funcDeptFiltro  = null;   // null = todos; uuid = dept + filhos
 let funcEditId       = null;
+// Fase 62: bucket funcionarios-fotos é privado; foto_url guarda o path e a exibição usa URL assinada (1 h)
+let _funcFotoUrls    = {};     // path → { url, t }
 
 const FUNC_STAGES = ["ativo","afastado","ferias","demitido"];
 
@@ -66,10 +68,32 @@ function cnhStatus(validade){
   return "";
 }
 
+/* foto_url antiga (URL pública completa) ou path dentro do bucket → path */
+function funcFotoPath(v){
+  if(!v) return null;
+  const m = String(v).match(/\/funcionarios-fotos\/([^?#]+)/);
+  return m ? decodeURIComponent(m[1]) : String(v);
+}
+const FUNC_FOTO_VALIDADE_MS = 50 * 60 * 1000; // a URL vale 1 h; renova antes
+function funcFotoUrl(v){
+  const c = _funcFotoUrls[funcFotoPath(v)];
+  return c && (Date.now() - c.t) < FUNC_FOTO_VALIDADE_MS ? c.url : null;
+}
+/* Assina em lote (uma chamada) as fotos da lista que ainda não têm URL válida */
+async function funcAssinarFotos(lista){
+  const paths = [...new Set(lista.map(f => funcFotoPath(f.foto_url)).filter(p => p && !funcFotoUrl(p)))];
+  if(!paths.length) return;
+  const { data, error } = await sb.storage.from("funcionarios-fotos").createSignedUrls(paths, 3600);
+  if(error){ console.warn("Fotos de funcionários sem URL assinada:", error.message); return; }
+  const agora = Date.now();
+  (data || []).forEach(d => { if(d.signedUrl && d.path) _funcFotoUrls[d.path] = { url: d.signedUrl, t: agora }; });
+}
+
 function avatarHtml(f, sz=40){
   const style = `width:${sz}px;height:${sz}px;font-size:${Math.round(sz*0.35)}px;flex-shrink:0;`;
-  if(f.foto_url){
-    return `<div class="func-kan-avatar" style="${style}"><img src="${esc(f.foto_url)}" alt="" loading="lazy" /></div>`;
+  const url = funcFotoUrl(f.foto_url);
+  if(url){
+    return `<div class="func-kan-avatar" style="${style}"><img src="${esc(url)}" alt="" loading="lazy" /></div>`;
   }
   return `<div class="func-kan-avatar" style="${style}">${esc(iniciais(f.nome))}</div>`;
 }
@@ -209,6 +233,7 @@ async function carregarFuncionarios(){
     _supervisores.length ? Promise.resolve() : funcCarregarSupervisores(),
   ]);
   _funcs = error ? [] : (data || []);
+  await funcAssinarFotos(_funcs);
   renderFuncionarios();
 }
 
@@ -397,10 +422,17 @@ function abrirFichaFuncVisual(f){
 }
 
 /* ---------- foto ---------- */
-function funcCarregarFoto(url, nome){
+async function funcCarregarFoto(fotoUrl, nome){
   const preview = $("func-foto-preview");
   if(!preview) return;
-  if(url) preview.innerHTML = `<img src="${esc(url)}?t=${Date.now()}" alt="" />`;
+  const path = funcFotoPath(fotoUrl);
+  let url = null;
+  if(path){
+    const { data } = await sb.storage.from("funcionarios-fotos").createSignedUrl(path, 3600);
+    url = data?.signedUrl || null;
+    if(url) _funcFotoUrls[path] = { url, t: Date.now() };
+  }
+  if(url) preview.innerHTML = `<img src="${esc(url)}&t=${Date.now()}" alt="" />`;
   else    preview.innerHTML = `<span>${esc(iniciais(nome))}</span>`;
 }
 
@@ -412,11 +444,12 @@ async function uploadFotoFuncionario(file){
   const { error: upErr } = await sb.storage.from("funcionarios-fotos")
     .upload(path, file, { upsert:true, contentType:file.type });
   if(upErr){ aviso("app-aviso","Erro no upload: "+upErr.message,"erro"); return; }
-  const { data: urlData } = sb.storage.from("funcionarios-fotos").getPublicUrl(path);
+  // Fase 62: grava só o path; a exibição gera URL assinada
   const { error: upd } = await sb.from("funcionarios")
-    .update({ foto_url: urlData.publicUrl }).eq("id", funcEditId);
+    .update({ foto_url: path }).eq("id", funcEditId);
   if(upd){ aviso("app-aviso","Foto salva mas não vinculada: "+upd.message,"erro"); return; }
-  funcCarregarFoto(urlData.publicUrl, $("func-nome").value);
+  delete _funcFotoUrls[path];
+  await funcCarregarFoto(path, $("func-nome").value);
   await carregarFuncionarios();
   aviso("app-aviso","Foto atualizada.","ok");
 }

@@ -213,9 +213,30 @@ async function salvarUsuario(){
   try {
     if(usrEditId){
       const { error } = await sb.from("profiles")
-        .update({ nome, cargo, telefone, ativo })
+        .update({ nome, cargo, telefone })
         .eq("id", usrEditId);
       if(error) throw error;
+      // Fase 62: ativar/desativar passa pela function (ban no login + profiles.ativo)
+      const antes = _usuarios.find(x => x.id === usrEditId);
+      if(antes && (antes.ativo !== false) !== ativo){
+        const { data:{ session } } = await sb.auth.getSession();
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/convidar-usuario`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token || ""}`,
+            "apikey": SUPABASE_KEY
+          },
+          body: JSON.stringify({ acao: ativo ? "reativar" : "desativar", user_id: usrEditId })
+        });
+        const body = await resp.json().catch(()=> ({}));
+        if(!resp.ok){
+          aviso("app-aviso", "Dados salvos, mas não foi possível " + (ativo ? "reativar" : "desativar") + " o usuário: " +
+            (body?.error || `HTTP ${resp.status}`), "erro");
+          await carregarUsuarios();
+          return;
+        }
+      }
       aviso("app-aviso","Usuário atualizado.","ok");
     } else {
       const email = $("usr-email").value.trim().toLowerCase();

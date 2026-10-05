@@ -34,7 +34,9 @@ const CART_PEND_META = {
   valor_provisorio:      { label: "Valor provisório",      curto: "provisório",     cor: "ambar"    },
   quadro_parcial:        { label: "Quadro parcial",        curto: "quadro",         cor: "azul"     },
   composicao_divergente: { label: "Composição divergente", curto: "divergência",    cor: "azul"     },
-  saldo_negativo:        { label: "Saldo negativo — precisa de aditivo", curto: "precisa aditivo", cor: "vermelho" }
+  saldo_negativo:        { label: "Saldo negativo — precisa de aditivo", curto: "precisa aditivo", cor: "vermelho" },
+  medicao_producao_pendente: { label: "Produção pendente", curto: "produção pendente", cor: "ambar" }, // lote S39 (#26)
+  medicao_sem_itens:     { label: "Medição sem itens",     curto: "medição s/ itens", cor: "ambar"  }
 };
 
 /* ---------- Formatação ---------- */

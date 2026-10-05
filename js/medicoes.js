@@ -284,6 +284,21 @@ function abrirFichaMed(med){
 
   atualizarStatusbarMed(med.status);
   ativarTabMed("geral");
+  medAtualizarProducaoPendente(med.id);
+}
+
+/* Lote S39 (chamado #26): NF cadastrada antes da produção. A pendência é calculada na view
+   vw_medicoes_pendencias e some quando os itens do período batem com a NF. */
+async function medAtualizarProducaoPendente(medicaoId){
+  const chip = $("med-ficha-prodpend");
+  if(!chip) return;
+  chip.style.display = "none";
+  if(!medicaoId) return;
+  const { data, error } = await sb.from("vw_medicoes_pendencias")
+    .select("detalhe").eq("medicao_id", medicaoId).eq("tipo", "producao_pendente").maybeSingle();
+  if(error || !data || medEditId !== medicaoId) return; // view ausente, sem pendência ou ficha trocada
+  $("med-ficha-prodpend-txt").textContent = data.detalhe || ""; // "NF R$ X × produzido R$ Y"
+  chip.style.display = "";
 }
 
 /* ============================================================
@@ -902,6 +917,10 @@ async function salvarMedicao(novoStatus){
   aviso("app-aviso","Medição salva com sucesso.","ok");
   await carregarMedicoes();
   await abrirMedicao(medEditId);
+  // lote S39 (#26): quinzenal sem execução no período não bloqueia, só avisa
+  if(reg.tipo_medicao === "quinzenal" && !_medItens.length){
+    aviso("app-aviso","Medição salva. Nenhuma execução no período: a medição fica com a pendência 'produção pendente' até os diários serem lançados.","aviso");
+  }
 }
 
 /* ============================================================

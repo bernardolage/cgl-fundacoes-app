@@ -53,13 +53,15 @@ function rdoPreencherObras(){
 }
 
 async function rdoCarregarAuxiliares(){
-  const [f, e] = await Promise.all([
+  const [f, e, p] = await Promise.all([
     sb.from("funcionarios").select("id,nome,matricula,funcao").eq("ativo",true).order("nome"),
-    sb.from("equipamentos").select("id,codigo,nome,codigo_externo,tipo").eq("ativo",true).order("codigo")
+    sb.from("equipamentos").select("id,codigo,nome,codigo_externo,tipo").eq("ativo",true).order("codigo"),
+    sb.from("profiles").select("id,nome").eq("ativo",true).order("nome")
   ]);
   _rdoFuncs = f.data || [];
   _rdoEquipsCache = e.data || [];
-  preencherSelect($("rdo-responsavel"), _rdoFuncs.map(x=>({id:x.id,nome:x.nome})), "id", "nome", "— não informado —");
+  // chamado #30: rdo.responsavel_id aponta para profiles, não para funcionarios
+  preencherSelect($("rdo-responsavel"), p.data || [], "id", "nome", "— não informado —");
 }
 
 /* ---------- Carga lista ---------- */
@@ -1740,9 +1742,8 @@ async function processarArquivoIA(file, mediaType){
       contexto.estacas = (ests || []).map(e => e.numero).filter(Boolean);
     }
 
-    const { data, error } = await sb.functions.invoke("extrair-rdo-arquivo", {
-      body: { arquivo_base64: arq.base64, media_type: arq.media_type, contexto }
-    });
+    const { data, error } = await iaInvocarComLimite("extrair-rdo-arquivo", { arquivo_base64: arq.base64, media_type: arq.media_type, contexto },
+      "A leitura demorou demais. Envie só as páginas do diário (ou uma foto por dia) e tente de novo.");
     if(error){
       let detalhe = error.message || "";
       try {
@@ -1753,10 +1754,12 @@ async function processarArquivoIA(file, mediaType){
       } catch(_){ /* segue */ }
       throw new Error(detalhe || "Falha ao chamar a leitura por IA.");
     }
+    if(data && data.error) throw new Error(data.error + (data.sugestao ? " 💡 " + data.sugestao : ""));
     await montarPreviewDias(data, _iaOrigem, obraSel);
   } catch(err){
-    aviso("app-aviso", "Leitura por IA: " + err.message, "erro");
-    if($("csv-aviso")) aviso("csv-aviso", "Leitura por IA: " + err.message, "erro"); // o modal cobre o aviso geral
+    const msgErro = "Leitura por IA: " + (err?.message || "falha sem mensagem");
+    aviso("app-aviso", msgErro, "erro");
+    if($("csv-aviso")) aviso("csv-aviso", msgErro, "erro"); // o modal cobre o aviso geral
   } finally {
     if(btn){ btn.disabled = false; btn.textContent = txtBtn; }
   }
@@ -1795,9 +1798,11 @@ async function montarPreviewDias(data, origem, obraSel){
         justificativa: (Array.isArray(d.justificativa) ? d.justificativa : [])
           .map(j => ({ h_inicial: j.h_inicial || null, h_final: j.h_final || null, motivo: (j.motivo || "").trim() || null }))
           .filter(j => j.h_inicial || j.h_final || j.motivo),
-        injecao, responsavel_id: null
+        injecao, responsavel_diario: d.responsavel || null, responsavel_sugerido_id: null
       };
-      ex.responsavel_id = iaSugerirResponsavel(ex);
+      // chamado #30: rdo.responsavel_id aponta para profiles; o funcionário sugerido só pré-seleciona o nome
+      // no select da conferência, e o nome escolhido vai para as observações do RDO
+      ex.responsavel_sugerido_id = iaSugerirResponsavel(ex);
       _iaExtras[d.data] = ex;
       (d.estacas || []).forEach(e => {
         const maq = (e.maquina || d.maquina || "").trim();
@@ -2051,17 +2056,23 @@ function renderConferenciaIA(resp){
     const semCadastro = ex.equipe.filter(m => !m.funcionario_id).length;
     // Responsável: integrantes casados primeiro, depois o restante do cadastro
     const idsEquipe = new Set(ex.equipe.map(m => m.funcionario_id).filter(Boolean));
+    // O valor do select é o nome (vai para as observações); nunca id de funcionário (chamado #30)
+    const respDiario = ex.responsavel_diario || ex.responsavel || null;
+    // O nome do diário que não está no cadastro vence a sugestão da equipe (encarregado/operador)
+    const respForaCadastro = respDiario && !casarFuncionarioPorNome(respDiario) ? respDiario : null;
+    const idSugerido = respForaCadastro ? null : ex.responsavel_sugerido_id;
     const respOpts = '<option value="">— não informado —</option>' +
-      (idsEquipe.size ? `<optgroup label="Equipe do dia">${_rdoFuncs.filter(f => idsEquipe.has(f.id)).map(f => `<option value="${esc(f.id)}"${f.id===ex.responsavel_id?" selected":""}>${esc(f.nome)}${f.funcao ? " · " + esc(f.funcao) : ""}</option>`).join("")}</optgroup>` : "") +
-      `<optgroup label="Outros do cadastro">${_rdoFuncs.filter(f => !idsEquipe.has(f.id)).map(f => `<option value="${esc(f.id)}"${f.id===ex.responsavel_id?" selected":""}>${esc(f.nome)}</option>`).join("")}</optgroup>`;
+      (respForaCadastro ? `<option value="${esc(respForaCadastro)}" selected>${esc(respForaCadastro)} (fora do cadastro)</option>` : "") +
+      (idsEquipe.size ? `<optgroup label="Equipe do dia">${_rdoFuncs.filter(f => idsEquipe.has(f.id)).map(f => `<option value="${esc(f.nome)}"${f.id===idSugerido?" selected":""}>${esc(f.nome)}${f.funcao ? " · " + esc(f.funcao) : ""}</option>`).join("")}</optgroup>` : "") +
+      `<optgroup label="Outros do cadastro">${_rdoFuncs.filter(f => !idsEquipe.has(f.id)).map(f => `<option value="${esc(f.nome)}"${f.id===idSugerido?" selected":""}>${esc(f.nome)}</option>`).join("")}</optgroup>`;
     html += `<div class="ia-dia" data-dia="${esc(dia)}">
       <div class="ia-dia-titulo">📅 ${dataBR(dia)}</div>
       <div class="grade ia-cab">
         <div class="campo"><label>Tempo manhã</label><select data-cab="tempo_manha">${tempoOpts(ex.tempo_manha)}</select></div>
         <div class="campo"><label>Tempo tarde</label><select data-cab="tempo_tarde">${tempoOpts(ex.tempo_tarde)}</select></div>
         <div class="campo"><label>Feriado?</label><label class="meta" style="display:flex;align-items:center;gap:6px;min-height:34px;cursor:pointer;"><input type="checkbox" data-cab="feriado" ${ex.feriado ? "checked" : ""} /> tudo HE 100%</label></div>
-        <div class="campo"><label>Responsável do dia <small class="meta">(operador ou encarregado)</small></label><select data-cab="responsavel_id">${respOpts}</select>
-          ${ex.responsavel ? `<div class="meta">No diário: "${esc(ex.responsavel)}"</div>` : ""}</div>
+        <div class="campo"><label>Responsável do dia <small class="meta">(operador/encarregado, vai para as observações)</small></label><select data-cab="responsavel">${respOpts}</select>
+          ${respDiario ? `<div class="meta">No diário: "${esc(respDiario)}"</div>` : ""}</div>
         <div class="campo largo"><label>Atividades</label><input data-cab="atividades" value="${esc(v(ex.atividades))}" /></div>
         <div class="campo largo"><label>Observações / ocorrências</label><input data-cab="observacoes" value="${esc(v(ex.observacoes))}" /></div>
       </div>
@@ -2590,7 +2601,8 @@ async function confirmarImportCSV(){
 
   // Tipo: pega do select do preview, senão do detectado
   const tipo = $("csv-tipo-select")?.value || _csvTipoDetectado || "helice_continua";
-  const responsavel = $("rdo-responsavel")?.value || null;
+  // chamado #30: responsavel_id tem FK para profiles; o RDO importado fica em nome de quem importou
+  const responsavel = usuarioAtual?.id || null;
 
   // Coleta mapeamentos manuais de máquinas (selects + checkboxes)
   _csvMapaManual = {};
@@ -2650,13 +2662,13 @@ async function confirmarImportCSV(){
         const ex = _iaExtras?.[dia];
         const reg = {
           obra_id, data: dia, tipo_servico: tipo,
-          status: "rascunho", responsavel_id: (ex && ex.responsavel_id) || responsavel,
+          status: "rascunho", responsavel_id: responsavel,
           producao_dia_m: ests.reduce((s,e) => s + (e.profundidade_executada||0), 0),
           ...(ex ? {
             tempo_manha: ex.tempo_manha || null, tempo_tarde: ex.tempo_tarde || null,
             atividades: ex.atividades || null,
             feriado: !!ex.feriado,
-            observacoes: [ex.observacoes, (ex.responsavel && !ex.responsavel_id) ? "Responsável no diário: " + ex.responsavel : null].filter(Boolean).join("\n") || null,
+            observacoes: [ex.observacoes, ex.responsavel ? "Responsável no diário: " + ex.responsavel : null].filter(Boolean).join("\n") || null,
             // chamado #6: boletim sem efetivo = 0 (coluna NOT NULL default 0; null explícito quebrava o insert).
             // Regra da varredura de 16/09: nunca mandar null para coluna NOT NULL com default — ou o valor, ou omitir a chave.
             efetivo_proprio: ex.equipe.length,

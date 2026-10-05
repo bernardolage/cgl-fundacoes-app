@@ -321,6 +321,17 @@ async function comBotaoTravado(btnOuId, fn){
   finally { if(b){ delete b.dataset.travado; b.disabled = false; } }
 }
 
+/* Leitura por IA (edge function) com limite de tempo no cliente (lote S39, chamados #28 #20 #21).
+   A function morre por tempo sem devolver nada em PDF grande; sem o limite o modal ficava parado. */
+const IA_LIMITE_MS = 150000;
+function iaInvocarComLimite(nome, body, msgTempo){
+  let t = null;
+  const tempo = new Promise((_, rej) => {
+    t = setTimeout(() => rej(new Error(msgTempo || "A leitura demorou demais. Exporte só as páginas do quadro de estacas e tente de novo.")), IA_LIMITE_MS);
+  });
+  return Promise.race([sb.functions.invoke(nome, { body }), tempo]).finally(() => clearTimeout(t));
+}
+
 /* Debounce para campos de busca: re-renderizar a lista inteira a cada tecla
    travava nas listas grandes (produtos, estacas). 150 ms é imperceptível. */
 function debounce(fn, ms = 150){
@@ -401,6 +412,7 @@ $("form-login").addEventListener("submit", async (e)=>{
   if(error){
     const m = (error.message||"").toLowerCase();
     if(m.includes("invalid login")) aviso("login-aviso","E-mail ou senha inválidos.","erro");
+    else if(m.includes("banned")) aviso("login-aviso","Seu usuário está desativado. Fale com a diretoria.","erro");
     else aviso("login-aviso","Falha no login: "+(error.message||"erro desconhecido"),"erro");
     return;
   }
@@ -462,13 +474,14 @@ let usuarioAtual = null;
 async function iniciarApp(){
   const { data:{ user } } = await sb.auth.getUser();
   if(!user) return;
-  const { data:perfil } = await sb.from("profiles")
+  const { data:perfil, error:perfilErr } = await sb.from("profiles")
     .select("id,nome,cargo,ativo").eq("id",user.id).single();
 
-  /* bloqueia acesso de usuários desativados */
-  if(perfil && perfil.ativo === false){
+  /* bloqueia acesso de usuários desativados. Fase 62: com o is_ativo() nas policies o
+     desativado não lê nem o próprio perfil (a consulta volta sem linha, PGRST116) */
+  if((perfil && perfil.ativo === false) || (!perfil && perfilErr?.code === "PGRST116")){
     await sb.auth.signOut();
-    aviso("login-aviso","Seu acesso foi desativado. Procure um administrador.","erro");
+    aviso("login-aviso","Seu usuário está desativado. Fale com a diretoria.","erro");
     return;
   }
 

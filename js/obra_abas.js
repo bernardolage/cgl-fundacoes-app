@@ -470,6 +470,7 @@ const DOC_CATEGORIAS = {
   remessa_nf: "Remessa (NF)",
   sondagem: "Sondagem",
   projeto: "Projeto",
+  nfs: "Nota fiscal de serviço",   /* lote S39, chamado #27 */
   outro: "Outro"
 };
 

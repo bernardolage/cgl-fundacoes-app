@@ -545,6 +545,15 @@ function abrirMoverAcessorios(ids, pre){
   $("ace-mover-modal").style.display = "flex";
 }
 function fecharMoverAcessorios(){ $("ace-mover-modal").style.display = "none"; }
+// hotfix 33 (#33): erro técnico (tipo, coluna, permissão do banco) não aparece cru na tela;
+// mensagem de regra levantada pela RPC (P0001, ex.: "Informe a obra.") passa como está
+const ACE_ERROS_TECNICOS = ["42804", "42703", "42883", "42P01", "22P02", "42501"];
+function aceMsgErroMover(error){
+  if(ACE_ERROS_TECNICOS.includes(error.code) || /is of type .* but expression is of type|permission denied/i.test(error.message || "")){
+    return "Não foi possível mover; avise a diretoria (erro técnico registrado).";
+  }
+  return "Não foi possível mover: " + error.message;
+}
 async function salvarMoverAcessorios(){
   const t = $("ace-mv-tipo").value;
   const p = {
@@ -555,8 +564,13 @@ async function salvarMoverAcessorios(){
   if(t === "obra" && !p.p_obra_id){ aviso("app-aviso", "Informe a obra.", "erro"); return; }
   if(t === "equipamento" && !p.p_equipamento_id){ aviso("app-aviso", "Informe o equipamento.", "erro"); return; }
   if(t === "fornecedor" && !p.p_fornecedor_id){ aviso("app-aviso", "Informe o fornecedor.", "erro"); return; }
+  // lote S39 (#19): peça perdida que volta fica com "reencontrada em <data>" no histórico (texto do evento)
+  const regs = _aceAcaoIds.map(id => _aceRegistros.find(a => a.id === id)).filter(Boolean);
+  if(t !== "perdido" && !p.p_obs && regs.length && regs.every(a => a.local_tipo === "perdido")){
+    p.p_obs = "Reencontrada em " + dataBR($("ace-mv-data").value || hojeISO());
+  }
   const { data, error } = await sb.rpc("acessorios_mover", p);
-  if(error){ aviso("app-aviso", "Não foi possível mover: " + error.message, "erro"); return; }
+  if(error){ console.error("acessorios_mover:", error); aviso("app-aviso", aceMsgErroMover(error), "erro"); return; }
   aviso("app-aviso", `${data} peça(s) movida(s) para ${aceLbl("acessorio_local", t).toLowerCase()}.`, "ok");
   fecharMoverAcessorios();
   const ids = _aceAcaoIds.slice(); _aceAcaoIds = [];
@@ -768,6 +782,13 @@ function aceMdPreencherTipos(){
 }
 function fecharModeloAcessorio(){ $("ace-modelo-modal").style.display = "none"; }
 async function salvarModeloAcessorio(){
+  // lote S39 (#25): "1.250,00" num input number vira "" e o preço sumia calado com "Modelo salvo."
+  for(const id of ["ace-md-preco", "ace-md-peso"]){
+    if($(id)?.validity?.badInput){
+      aviso("app-aviso", (id === "ace-md-preco" ? "Preço" : "Peso") + " inválido: digite só o número, sem ponto de milhar (ex.: 1250,00).", "erro");
+      return;
+    }
+  }
   const reg = {
     familia: $("ace-md-familia").value, tipo: $("ace-md-tipo").value, descricao: $("ace-md-desc").value.trim(),
     medida: $("ace-md-medida").value.trim() || null, grupo_contagem: $("ace-md-grupo").value.trim().toUpperCase() || null,

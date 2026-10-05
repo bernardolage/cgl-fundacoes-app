@@ -399,6 +399,13 @@ h4 {
   color: var(--success-text);
   display: block;
 }
+/* aviso não bloqueante: aviso(el, msg, "aviso") — lote S39 (#26) */
+.aviso.aviso {
+  background: var(--aviso-bg);
+  border-left: 4px solid var(--aviso);
+  color: var(--aviso-txt);
+  display: block;
+}
 
 /* ---------- APLICAÇÃO (LAYOUT COM SIDEBAR) ---------- */
 #tela-app {
@@ -2479,6 +2486,9 @@ tr.cart-aberta td { background: var(--info-bg); }
 .dist-aviso.neutro  { background: var(--sup-2);      color: var(--txt-fraco); }
 .dist-aviso ul { margin: var(--esp-1) 0 0; padding-left: 18px; }
 .dist-aviso li { margin-bottom: 2px; }
+/* pendência que abre a medição (lote S39, #26): o fundo da caixa já é --sup-2, então o hover sublinha */
+.dist-aviso li.linha-clicavel { cursor: pointer; border-radius: var(--radius-sm); }
+.dist-aviso li.linha-clicavel:hover { background: var(--sup-3); text-decoration: underline; }
 .dist-aviso .meta { display: block; margin-top: 2px; }
 
 /* ====================================================================
