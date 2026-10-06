@@ -812,6 +812,8 @@ async function salvarModeloAcessorio(){
   aviso("app-aviso", "Modelo salvo.", "ok");
   fecharModeloAcessorio();
   acePreencherSelectsFixos();
+  // lote S40 (#25): a Contagem não era redesenhada e o preço gravado só aparecia ao sair e voltar
+  if(_aceView === "contagem") renderAcessoriosContagem();
   if(_aceMdDepois){ const f = _aceMdDepois; _aceMdDepois = null; f(r.data); }
   else renderAcessorios();
 }

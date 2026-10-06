@@ -2,8 +2,8 @@
    Módulo: Chamados (fase 42 — 10/09/2026)
    Problemas, dúvidas e pedidos de mudança no sistema, abertos pelos
    colaboradores. SEM chat ao vivo: o colaborador abre, a triagem diária
-   (18h, tarefa agendada da sessão de gestão) classifica e a resolução fica
-   registrada no próprio chamado.
+   (18h, rotina /triar-chamados da fase 64, só comenta e classifica) preenche
+   prioridade, esforço e faixa, e a resolução fica registrada no próprio chamado.
 
    Matriz de triagem (decisão do Bernardo): código/restauração = sem validação
    prévia; valor/regra/estrutura/exclusão = validação da diretoria antes.
@@ -34,8 +34,20 @@ const CHAM_STATUS = {
   aberto:               { label: "Aberto",                cor: "vermelho" },
   em_analise:           { label: "Em análise",            cor: "ambar" },
   aguardando_validacao: { label: "Aguardando validação",  cor: "azul" },
+  planejado:            { label: "Planejado",             cor: "azul" },   // fase 64: entrou numa fase/lote/hotfix
+  recusado:             { label: "Recusado",              cor: "cinza" },  // fase 64: duplicado ou fora do escopo
   resolvido:            { label: "Resolvido",             cor: "verde" }
 };
+/* Fase 64 (05/10/2026): backlog. A triagem (/triar-chamados) preenche; a diretoria ajusta na ficha. */
+const CHAM_PRIORIDADE = {
+  1: { label: "P1 · bloqueia operação",    cor: "vermelho" },
+  2: { label: "P2 · erro com contorno",    cor: "ambar" },
+  3: { label: "P3 · melhoria",             cor: "azul" },
+  4: { label: "P4 · dúvida ou cosmético",  cor: "cinza" }
+};
+const CHAM_ESFORCO = { P: "Pequeno", M: "Médio", G: "Grande" };
+const CHAM_FAIXA = { hotfix: "Hotfix", lote: "Lote semanal", decisao: "Decisão da diretoria", resposta: "Só resposta", recusar: "Recusar" };
+const chamFechado = (st) => st === "resolvido" || st === "recusado";
 const CHAM_CATEGORIA = {
   codigo:      { label: "Erro do sistema (código)",             validacao: false, dica: "Correção de código: a triagem corrige direto, sem validação prévia." },
   restauracao: { label: "Dado perdido / restaurar",             validacao: false, dica: "Restauração de dado: feita direto, sem validação prévia." },
@@ -74,6 +86,19 @@ function chamDataHora(iso){
 function chamTag(status){
   const st = CHAM_STATUS[status] || { label: status || "—", cor: "cinza" };
   return `<span class="tag ${st.cor}">${esc(st.label)}</span>`;
+}
+function chamTagPrioridade(p, longo){
+  const o = CHAM_PRIORIDADE[p];
+  if(!o) return '<span class="meta">—</span>';
+  return `<span class="tag ${o.cor}" title="${esc(o.label)}">${esc(longo ? o.label : "P" + p)}</span>`;
+}
+// quem abriu / quem comentou: a rotina de triagem grava sem usuário (origem = 'triagem')
+function chamAutor(id, origem){ return !id && origem === "triagem" ? "Triagem automática" : chamNome(id); }
+// só link http(s) vira <a>; o resto aparece como texto
+function chamLinkPR(url){
+  const u = String(url || "").trim();
+  if(!u) return "—";
+  return /^https?:\/\//i.test(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?github\.com\//i, ""))}</a>` : esc(u);
 }
 function chamModuloLabel(secao){
   if(!secao) return "—";
@@ -121,7 +146,7 @@ function atualizarBadgeChamados(){
   if(!b) return;
   const meus = usuarioAtual ? usuarioAtual.id : null;
   // gestão vê tudo que está aberto; os demais veem os próprios que ainda não foram resolvidos
-  const n = _chamados.filter(c => c.status !== "resolvido" && (chamPodeTriar() || c[CHAM_COL.abertoPor] === meus)).length;
+  const n = _chamados.filter(c => !chamFechado(c.status) && (chamPodeTriar() || c[CHAM_COL.abertoPor] === meus)).length;
   b.textContent = n ? String(n) : "";
 }
 function preencherFiltrosChamados(){
@@ -129,6 +154,12 @@ function preencherFiltrosChamados(){
   if(fs && fs.options.length <= 1){
     fs.innerHTML = `<option value="">Abertos e em andamento</option><option value="todos">Todos</option>` +
       Object.entries(CHAM_STATUS).map(([v, o]) => `<option value="${v}">${esc(o.label)}</option>`).join("");
+  }
+  const fp = $("cham-f-prioridade");
+  if(fp && fp.options.length <= 1){
+    fp.innerHTML = `<option value="">Todas as prioridades</option>` +
+      Object.entries(CHAM_PRIORIDADE).map(([v, o]) => `<option value="${v}">${esc(o.label)}</option>`).join("") +
+      `<option value="sem">Sem prioridade (não triado)</option>`;
   }
   const fc = $("cham-f-categoria");
   if(fc && fc.options.length <= 1){
@@ -150,10 +181,12 @@ function chamadosFiltrados(){
   const fSt   = $("cham-f-status")?.value || "";
   const fCat  = $("cham-f-categoria")?.value || "";
   const fObra = $("cham-f-obra")?.value || "";
+  const fPri  = $("cham-f-prioridade")?.value || "";
   const meus  = $("cham-f-meus")?.checked;
   return _chamados.filter(c => {
-    if(fSt === "") { if(c.status === "resolvido") return false; }
+    if(fSt === "") { if(chamFechado(c.status)) return false; }
     else if(fSt !== "todos" && c.status !== fSt) return false;
+    if(fPri === "sem" ? c.prioridade != null : (fPri && String(c.prioridade) !== fPri)) return false;
     if(fCat && c.categoria !== fCat) return false;
     if(fObra && c.obra_id !== fObra) return false;
     if(meus && usuarioAtual && c[CHAM_COL.abertoPor] !== usuarioAtual.id) return false;
@@ -162,8 +195,10 @@ function chamadosFiltrados(){
       if(!alvo.includes(termo)) return false;
     }
     return true;
-  });
+  // fase 64: prioridade primeiro (sem prioridade por último), depois o mais recente
+  }).sort((a, b) => (a.prioridade ?? 9) - (b.prioridade ?? 9) || String(b[CHAM_COL.criado] || "").localeCompare(String(a[CHAM_COL.criado] || "")));
 }
+let _chamSel = new Set();   // fase 64: chamados marcados para "Planejar na fase…"
 function renderChamados(){
   const cont = $("cham-conteudo");
   if(!cont || !_chamTabelaOk) return;
@@ -173,28 +208,54 @@ function renderChamados(){
   const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   kpi("cham-kpi-aberto", cnt("aberto")); kpi("cham-kpi-analise", cnt("em_analise"));
   kpi("cham-kpi-validacao", cnt("aguardando_validacao")); kpi("cham-kpi-resolvido", cnt("resolvido"));
+  kpi("cham-kpi-p1", _chamados.filter(c => c.prioridade === 1 && ["aberto","em_analise"].includes(c.status)).length);
 
   const lista = chamadosFiltrados();
+  const podeTriar = chamPodeTriar();
+  const idsLista = new Set(lista.map(c => c.id));
+  _chamSel.forEach(id => { if(!idsLista.has(id)) _chamSel.delete(id); });
   if($("cham-contador")) $("cham-contador").textContent = lista.length ? `(${lista.length})` : "";
+  chamAtualizarBarraPlanejar();
   if(!lista.length){
     cont.innerHTML = `<p class="vazio">Nenhum chamado ${_chamados.length ? "com estes filtros" : "aberto ainda"}. Use <strong>💡 Relatar problema ou melhoria</strong> no topo de qualquer tela.</p>`;
     return;
   }
   cont.innerHTML = `<div class="tabela-rola"><table class="cham-lista">
-    <thead><tr><th style="width:60px;">Nº</th><th>Chamado</th><th>Categoria</th><th>Onde</th><th>Aberto por</th><th>Status</th></tr></thead>
+    <thead><tr>${podeTriar ? `<th style="width:28px;"><input type="checkbox" id="cham-sel-todos" title="Marcar todos da lista" ${lista.every(c => _chamSel.has(c.id)) ? "checked" : ""} /></th>` : ""}<th style="width:60px;">Nº</th><th style="width:48px;">Prior.</th><th>Chamado</th><th>Categoria</th><th>Onde</th><th>Aberto por</th><th>Status</th></tr></thead>
     <tbody>${lista.map(c => {
       const cat = CHAM_CATEGORIA[c.categoria] || { label: c.categoria || "—", validacao: false };
       const desc = (c.descricao || "").split("\n")[0];
       return `<tr class="linha-clicavel" data-id="${esc(c.id)}">
+        ${podeTriar ? `<td><input type="checkbox" class="cham-sel" data-id="${esc(c.id)}" ${_chamSel.has(c.id) ? "checked" : ""} aria-label="Marcar #${esc(c.numero ?? "")}" /></td>` : ""}
         <td><strong>${c.numero != null ? "#" + esc(c.numero) : "—"}</strong></td>
+        <td>${chamTagPrioridade(c.prioridade)}</td>
         <td><div class="cham-titulo">${esc(c.titulo || "(sem título)")}</div><div class="cham-desc">${esc(desc.length > 140 ? desc.slice(0, 140) + "…" : desc)}</div></td>
         <td>${esc(cat.label)}${cat.validacao ? ' <span class="tag ambar" title="Exige validação da diretoria antes de executar">validação</span>' : ""}</td>
         <td><div>${esc(chamModuloLabel(c.modulo))}</div><div class="meta">${c.obra_id ? linkObra(c.obra_id) : ""}</div></td>
-        <td><div>${esc(chamNome(c[CHAM_COL.abertoPor]))}</div><div class="meta">${esc(chamDataHora(c[CHAM_COL.criado]))}</div></td>
-        <td>${chamTag(c.status)}</td>
+        <td><div>${esc(chamAutor(c[CHAM_COL.abertoPor], c.origem))}</div><div class="meta">${esc(chamDataHora(c[CHAM_COL.criado]))}</div></td>
+        <td>${chamTag(c.status)}${c.fase ? `<div class="meta">${esc(c.fase)}</div>` : ""}</td>
       </tr>`;
     }).join("")}</tbody></table></div>`;
   if(typeof marcarAcionaveis === "function") marcarAcionaveis(cont);
+}
+/* Fase 64: ação em massa "Planejar na fase…" (só gestão; campo inline, sem prompt) */
+function chamAtualizarBarraPlanejar(){
+  const bar = $("cham-planejar-bar");
+  if(!bar) return;
+  bar.style.display = chamPodeTriar() && _chamSel.size ? "" : "none";
+  const n = $("cham-planejar-n"); if(n) n.textContent = `${_chamSel.size} marcado(s)`;
+}
+async function chamPlanejarSelecionados(){
+  const fase = ($("cham-planejar-fase")?.value || "").trim();
+  if(!_chamSel.size){ aviso("app-aviso", "Marque os chamados na lista.", "erro"); return; }
+  if(!fase){ aviso("app-aviso", "Informe a fase, o lote ou o hotfix (ex.: lote-S41, hotfix-35, 66).", "erro"); $("cham-planejar-fase")?.focus(); return; }
+  const { data, error } = await sb.rpc("chamado_planejar", { p_ids: [..._chamSel], p_fase: fase });
+  if(error){ aviso("app-aviso", "Não foi possível planejar: " + error.message, "erro"); return; }
+  if(!data){ aviso("app-aviso", "Nenhum chamado mudou (já resolvidos ou sem permissão).", "erro"); return; }
+  aviso("app-aviso", `${data} chamado(s) planejado(s) em ${fase}.`, "ok");
+  _chamSel.clear();
+  if($("cham-planejar-fase")) $("cham-planejar-fase").value = "";
+  await carregarChamados(true);
 }
 
 /* ---------- Ficha (drawer) ---------- */
@@ -235,8 +296,9 @@ function renderFichaChamado(erroComentarios){
       <span class="chip">Módulo: <strong>${esc(chamModuloLabel(c.modulo))}</strong></span>
       ${c.obra_id ? `<span class="chip">Obra: <strong>${linkObra(c.obra_id, mapaObras[c.obra_id] || c.obra_id)}</strong></span>` : ""}
       ${c.registro_tipo ? `<span class="chip">Registro: <strong>${esc(c.registro_tipo)}</strong> ${abreRegistro ? `<button type="button" class="btn-sec btn-sm" id="btn-cham-abrir-registro">abrir</button>` : ""}</span>` : ""}
-      <span class="chip">Aberto por <strong>${esc(chamNome(c[CHAM_COL.abertoPor]))}</strong> em ${esc(chamDataHora(c[CHAM_COL.criado]))}</span>
+      <span class="chip">Aberto por <strong>${esc(chamAutor(c[CHAM_COL.abertoPor], c.origem))}</strong> em ${esc(chamDataHora(c[CHAM_COL.criado]))}</span>
     </div>
+    ${chamChipsBacklog(c, podeTriar)}
     <div class="cham-status-bar" id="cham-status-bar">${stages}</div>
     ${cat.dica ? `<p class="nota">${esc(cat.dica)}</p>` : ""}
     <div class="campo largo"><label>Descrição</label><div class="cham-desc" style="font-size:var(--txt-sm);color:var(--txt);">${esc(c.descricao || "—")}</div></div>
@@ -249,10 +311,15 @@ function renderFichaChamado(erroComentarios){
       <button type="button" class="btn-sec btn-sm" id="btn-cham-anexar">📎 Anexar ao chamado</button></div>
     <h4 class="titulo-bloco" style="margin-top:14px;">Andamento (${_chamComentarios.length})</h4>
     ${erroComentarios ? `<p class="vazio">Não foi possível ler os comentários: ${esc(erroComentarios)}</p>` : ""}
-    <div id="cham-comentarios">${_chamComentarios.length ? _chamComentarios.map(k => {
+    <div id="cham-comentarios">${_chamComentarios.length ? _chamComentarios.map((k, i) => {
       const txt = k.texto || "";
       const cls = /^\[status\]/i.test(txt) ? " sistema" : /^\[resolu[cç][aã]o\]/i.test(txt) ? " resolucao" : "";
-      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamNome(k[CHAM_COL.autor]))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div><div style="white-space:pre-wrap;">${esc(txt.replace(/^\[(status|resolu[cç][aã]o)\]\s*/i, ""))}</div></div>`;
+      // fase 64: prefixos da triagem viram tag; o texto da [resposta sugerida] pode ser aprovado pela gestão
+      const pref = txt.match(/^\[(triagem|duplicado de #?\d+|resposta sugerida)\]\s*/i);
+      const corpo = txt.replace(/^\[(status|resolu[cç][aã]o)\]\s*/i, "").replace(/^\[(triagem|duplicado de #?\d+|resposta sugerida)\]\s*/i, "");
+      const sugerida = chamRespostaSugerida(txt);
+      const corpoHtml = esc(corpo).replace(/^\[resposta sugerida\]/im, '<span class="tag verde">resposta sugerida</span>');
+      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${/^resposta/i.test(pref[1]) ? "verde" : /^duplicado/i.test(pref[1]) ? "cinza" : "azul"}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">✅ Aprovar resposta</button>` : ""}</div>`;
     }).join("") : `<p class="vazio">Sem comentários ainda. A triagem diária (18h) registra aqui o andamento.</p>`}</div>
     <div class="campo largo" style="margin-top:10px;"><label>Comentar</label><textarea id="cham-novo-comentario" rows="3" placeholder="${podeTriar ? "Registre a triagem, a decisão ou a resolução. Prefixe com [resolução] para destacar." : "Complemente o chamado (mais detalhes, prints descritos, o que mudou)."}"></textarea></div>
     <div id="cham-ficha-aviso" class="aviso"></div>
@@ -267,6 +334,14 @@ function renderFichaChamado(erroComentarios){
   $("btn-cham-comentar").addEventListener("click", () => comentarChamado(false));
   $("btn-cham-resolver")?.addEventListener("click", () => comentarChamado(true));
   $("btn-cham-abrir-registro")?.addEventListener("click", () => { fecharChamado(); CHAM_ABRIR_REGISTRO[c.registro_tipo](c.registro_id); });
+  // fase 64: chips de backlog salvam um a um; "Aprovar resposta" reaproveita o fluxo de resolver
+  box.querySelectorAll("[data-cham-campo]").forEach(el => el.addEventListener("change", () => comBotaoTravado(el, () => chamSalvarCampo(el.dataset.chamCampo, el.value))));
+  box.querySelectorAll(".btn-cham-aprovar").forEach(b => b.addEventListener("click", () => {
+    const ta = $("cham-novo-comentario");
+    if(!ta) return;
+    ta.value = chamRespostaSugerida(_chamComentarios[Number(b.dataset.idx)]?.texto || "");
+    comBotaoTravado(b, () => comentarChamado(true));
+  }));
   box.querySelectorAll("#cham-status-bar .stage").forEach(el => {
     if(el.getAttribute("aria-disabled") === "true" || el.classList.contains("atual")) return;
     el.addEventListener("click", () => mudarStatusChamado(el.dataset.status));
@@ -275,6 +350,46 @@ function renderFichaChamado(erroComentarios){
 function fecharChamado(){
   $("cham-modal").style.display = "none";
   _chamAberto = null; _chamComentarios = []; _chamAnexos = [];
+}
+/* ---------- Backlog (fase 64): prioridade, esforço, faixa, fase e PR ---------- */
+function chamChipsBacklog(c, podeTriar){
+  if(!podeTriar){
+    if(c.prioridade == null && !c.fase && !c.pr_url) return "";
+    return `<div class="cham-contexto">
+      ${c.prioridade != null ? `<span class="chip">Prioridade: ${chamTagPrioridade(c.prioridade, true)}</span>` : ""}
+      ${c.esforco ? `<span class="chip">Esforço: <strong>${esc(CHAM_ESFORCO[c.esforco] || c.esforco)}</strong></span>` : ""}
+      ${c.faixa ? `<span class="chip">Faixa: <strong>${esc(CHAM_FAIXA[c.faixa] || c.faixa)}</strong></span>` : ""}
+      ${c.fase ? `<span class="chip">Fase: <strong>${esc(c.fase)}</strong></span>` : ""}
+      ${c.pr_url ? `<span class="chip">PR: <strong>${chamLinkPR(c.pr_url)}</strong></span>` : ""}
+    </div>`;
+  }
+  const opts = (mapa, atual) => `<option value="">—</option>` + Object.entries(mapa).map(([v, o]) => `<option value="${esc(v)}"${String(atual ?? "") === v ? " selected" : ""}>${esc(typeof o === "string" ? o : o.label)}</option>`).join("");
+  return `<div class="cham-contexto" id="cham-backlog">
+    <span class="chip">Prioridade <select id="cham-prioridade" data-cham-campo="prioridade" class="btn-sm">${opts(CHAM_PRIORIDADE, c.prioridade)}</select></span>
+    <span class="chip">Esforço <select id="cham-esforco" data-cham-campo="esforco" class="btn-sm">${opts(CHAM_ESFORCO, c.esforco)}</select></span>
+    <span class="chip">Faixa <select id="cham-faixa" data-cham-campo="faixa" class="btn-sm">${opts(CHAM_FAIXA, c.faixa)}</select></span>
+    <span class="chip">Fase <input id="cham-fase" data-cham-campo="fase" value="${esc(c.fase || "")}" placeholder="ex.: lote-S41" size="9" /></span>
+    <span class="chip">PR <input id="cham-pr" data-cham-campo="pr_url" value="${esc(c.pr_url || "")}" placeholder="link do PR" size="18" />${c.pr_url ? " " + chamLinkPR(c.pr_url) : ""}</span>
+    ${c.triado_em ? `<span class="chip meta">Triado em ${esc(chamDataHora(c.triado_em))}</span>` : ""}
+  </div>`;
+}
+async function chamSalvarCampo(campo, valor){
+  const c = _chamAberto;
+  if(!c || !["prioridade","esforco","faixa","fase","pr_url"].includes(campo)) return;
+  let v = String(valor ?? "").trim() || null;
+  if(campo === "prioridade" && v != null) v = Number(v);
+  if(campo === "pr_url" && v && !/^https?:\/\//i.test(v)){ aviso("cham-ficha-aviso", "O PR precisa ser um link (https://…).", "erro"); return; }
+  const { data: mudou, error } = await sb.from(CHAM_TBL.chamados).update({ [campo]: v }).eq("id", c.id).select("id");
+  if(error){ aviso("cham-ficha-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
+  if(!mudou?.length){ aviso("cham-ficha-aviso", "Sem permissão para alterar este chamado.", "erro"); return; }
+  c[campo] = v;
+  aviso("cham-ficha-aviso", "Salvo.", "ok");
+  renderChamados();
+}
+// texto a partir de "[resposta sugerida]" (pode vir no meio do comentário da triagem)
+function chamRespostaSugerida(txt){
+  const m = String(txt || "").match(/\[resposta sugerida\]\s*([\s\S]+)$/i);
+  return m ? m[1].trim() : "";
 }
 async function mudarStatusChamado(novo){
   const c = _chamAberto;
@@ -497,7 +612,7 @@ function ligarChamados(){
   $("btn-chamn-fechar")?.addEventListener("click", fecharNovoChamado);
   $("btn-chamn-criar")?.addEventListener("click", () => comBotaoTravado("btn-chamn-criar", criarChamado));
   $("chamn-categoria")?.addEventListener("change", atualizarNotaCategoriaChamado);
-  ["cham-busca","cham-f-status","cham-f-categoria","cham-f-obra","cham-f-meus"].forEach(id => {
+  ["cham-busca","cham-f-status","cham-f-prioridade","cham-f-categoria","cham-f-obra","cham-f-meus"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "cham-busca" ? "input" : "change", renderChamados);
   });
@@ -505,8 +620,23 @@ function ligarChamados(){
     k.addEventListener("click", () => { const f = $("cham-f-status"); if(f){ f.value = k.dataset.chamStatus; renderChamados(); } });
   });
   $("cham-conteudo")?.addEventListener("click", (e) => {
+    // fase 64: marcar para planejar não abre a ficha
+    const cb = e.target.closest(".cham-sel");
+    if(cb){ cb.checked ? _chamSel.add(cb.dataset.id) : _chamSel.delete(cb.dataset.id); chamAtualizarBarraPlanejar(); return; }
+    if(e.target.id === "cham-sel-todos"){
+      chamadosFiltrados().forEach(c => e.target.checked ? _chamSel.add(c.id) : _chamSel.delete(c.id));
+      renderChamados(); return;
+    }
     const tr = e.target.closest(".linha-clicavel");
     if(tr && tr.dataset.id) abrirChamado(tr.dataset.id);
+  });
+  $("btn-cham-planejar")?.addEventListener("click", () => comBotaoTravado("btn-cham-planejar", chamPlanejarSelecionados));
+  $("cham-planejar-fase")?.addEventListener("keydown", (e) => { if(e.key === "Enter") comBotaoTravado("btn-cham-planejar", chamPlanejarSelecionados); });
+  $("btn-cham-planejar-limpar")?.addEventListener("click", () => { _chamSel.clear(); renderChamados(); });
+  document.querySelector("#sec-chamados .ind-click[data-cham-prioridade]")?.addEventListener("click", () => {
+    const fp = $("cham-f-prioridade"), fs = $("cham-f-status");
+    if(fp) fp.value = "1"; if(fs) fs.value = "";
+    renderChamados();
   });
   // fechar drawers clicando fora
   $("cham-modal")?.addEventListener("click", (e) => { if(e.target.id === "cham-modal") fecharChamado(); });

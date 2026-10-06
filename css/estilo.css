@@ -1341,6 +1341,49 @@ td.num, th.num {
   font-size: 12px;
 }
 
+/* Fase 63: Início como Sala de Comando */
+.dash-topo {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-3);
+  background: linear-gradient(135deg, var(--marca-900) 0%, var(--marca-600) 100%);
+  color: var(--txt-sobre); padding: var(--esp-3) var(--esp-5); border-radius: 8px; margin-bottom: var(--esp-4);
+}
+.dash-topo-titulo { font-size: 18px; font-weight: 600; }
+.dash-topo-sub { font-size: var(--txt-sm); opacity: 0.85; margin-top: 2px; }
+.dash-topo-acoes { display: flex; align-items: center; gap: var(--esp-2); flex-wrap: wrap; }
+.dash-topo .serv-view-btn { padding: 5px 12px; font-size: var(--txt-sm); }
+.dash-faixa { grid-template-columns: repeat(5, 1fr); margin-bottom: var(--esp-4); }
+@media (max-width: 1200px) { .dash-faixa { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 700px)  { .dash-faixa { grid-template-columns: 1fr 1fr; } }
+.dash-faixa .dash-card { padding: var(--esp-3) var(--esp-4); }
+.dash-ajuda {
+  display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px;
+  border-radius: 50%; border: 1px solid var(--borda-forte); color: var(--txt-fraco);
+  font-size: 9px; cursor: help; text-transform: none; margin-left: 2px;
+}
+.dash-origem { background: none; border: 0; padding: 0; margin-top: var(--esp-1); color: var(--marca-600); font-size: var(--txt-xs); cursor: pointer; }
+.dash-origem:hover { text-decoration: underline; }
+.dash-duas-col { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--esp-4); margin-bottom: var(--esp-4); align-items: start; }
+.dash-duas-col-inv { grid-template-columns: 1fr 1.5fr; }
+@media (max-width: 900px) { .dash-duas-col, .dash-duas-col-inv { grid-template-columns: 1fr; } }
+.dash-duas-col h3, .dash-bloco-topo h3 { font-size: var(--txt-md); margin: 0 0 var(--esp-2); }
+.dash-bloco-topo { display: flex; align-items: baseline; justify-content: space-between; gap: var(--esp-2); flex-wrap: wrap; }
+.dash-setor + .dash-setor { margin-top: var(--esp-2); }
+.dash-setor-tit { font-size: var(--txt-xs); color: var(--txt-fraco); text-transform: uppercase; letter-spacing: 0.5px; padding: var(--esp-1) 0; border-bottom: 1px solid var(--borda); }
+.dash-acao-txt { flex: 1; min-width: 0; }
+.dash-acao-txt .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-abas { margin-bottom: var(--esp-4); }
+.dash-abas .odoo-tab { padding: var(--esp-3) 0 0; }
+.dash-tabela { width: 100%; border-collapse: collapse; font-size: var(--txt-sm); }
+.dash-tabela th { text-align: left; background: var(--sup-3); padding: 6px 8px; font-weight: 600; color: var(--txt-sec); white-space: nowrap; }
+.dash-tabela td { padding: 6px 8px; border-bottom: 1px solid var(--borda); vertical-align: top; }
+.dash-tabela .num { text-align: right; white-space: nowrap; }
+.dash-tabela tr.linha-clicavel:hover td { background: var(--sup-2); }
+.dash-barra { height: 4px; background: var(--borda); border-radius: 2px; margin-top: 3px; overflow: hidden; max-width: 140px; }
+.dash-barra > div { height: 100%; background: var(--marca-600); }
+.dash-pin { background: none; border: 0; cursor: pointer; color: var(--txt-fraco); font-size: 15px; line-height: 1; padding: 0; }
+.dash-pin.ativo { color: var(--aviso); }
+.dash-secao-tit { font-size: var(--txt-md); color: var(--txt-fraco); margin: var(--esp-2) 0; text-transform: uppercase; letter-spacing: 0.5px; }
+
 /* Drag & drop em kanbans (genérico) */
 .serv-kan-card[draggable="true"]:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.10); transform: translateY(-1px); }
 .serv-kan-card.kan-dragging { opacity: 0.5; cursor: grabbing; transform: rotate(-1deg); }
@@ -1451,6 +1494,12 @@ td.num, th.num {
 .odoo-contexto .chip strong {
   font-size: 14px; color: var(--marca-900);
 }
+/* Lote S40 (#31): chip de alerta na ficha (ex.: obra sem jornada no RDO) */
+.odoo-contexto .chip.chip-aviso {
+  background: var(--aviso-bg); border: 1px solid var(--aviso); border-radius: 6px; padding: 2px 8px;
+}
+.odoo-contexto .chip.chip-aviso strong { color: var(--aviso-txt); font-size: 13px; }
+.odoo-contexto .chip.chip-aviso a { color: var(--aviso-txt); text-decoration: underline; }
 
 /* Chamado #4: obra clicável em qualquer tela (linkObra em core.js) */
 a.link-obra {

@@ -1,42 +1,428 @@
 /* ====================================================================
-   Dashboard (Home) — visão geral do negócio CGL
+   Início — Sala de Comando (fase 63, 05/10/2026)
+   O Início abre pelo que está errado: faixa do período, "Exige ação hoje",
+   "Minha fila" e abas (frota, obras em execução, operadores, produção).
+   Tudo calculado no banco nas views vw_sc_* (security_invoker: cada cargo
+   vê o que as policies deixam); o front só desenha.
+   Carga em duas ondas: 1) faixa + ações + fila; 2) abas e o resumo antigo.
    ==================================================================== */
 
-let _dashPendNav = [];   // ações de navegação por índice dos itens pendentes
+const DASH_PERIODOS = { hoje: "hoje", "7d": "nos últimos 7 dias", mes: "no mês", mes_ant: "no mês anterior" };
+let _dashPeriodo = "mes";
+try { const p = localStorage.getItem("dash-periodo"); if(DASH_PERIODOS[p]) _dashPeriodo = p; } catch(_e) { /* sem storage: fica no mês */ }
+let _dashProd = [];        // vw_sc_producao_dia do período atual e do anterior
+let _dashFrota = [];       // vw_sc_frota
+let _dashObrasAnd = [];    // vw_sc_obra_andamento
+let _dashAcoes = [];       // vw_sc_acoes
+let _dashFila = [];        // vw_sc_minha_fila
+let _dashFrotaFiltro = "todas";
+let _dashCargaN = 0;       // descarta resposta de carga antiga quando o período muda no meio
+const DASH_NIVEL = {
+  critico:      { label: "Crítico",      cor: "vermelho", ordem: 1 },
+  atencao:      { label: "Atenção",      cor: "ambar",    ordem: 2 },
+  observar:     { label: "Observar",     cor: "azul",     ordem: 3 },
+  conformidade: { label: "Conformidade", cor: "cinza",    ordem: 4 }
+};
+const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", compras: "Compras",
+  mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas" };
+/* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
+   "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
+   As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
+const DASH_SETOR_GESTORES = {
+  obras:       ["engenheiro", "assistente_engenharia", "encarregado"],
+  frota:       ["mecanico", "logistica", "gestor_acessorios"],
+  financeiro:  ["financeiro"],
+  compras:     ["comprador", "almoxarife"],
+  mobilizacao: ["logistica", "engenheiro"],
+  chamados:    [],
+  contratos:   ["comercial"]
+};
+function dashGereSetor(setor){
+  const cargo = usuarioAtual?.cargo;
+  if(["diretor", "admin"].includes(cargo)) return true;
+  return (DASH_SETOR_GESTORES[setor] || []).includes(cargo);
+}
+const DASH_SITUACAO = {
+  produzindo:   { label: "Produzindo hoje",      cor: "verde" },
+  parada:       { label: "Parada",               cor: "ambar" },
+  sem_producao: { label: "Sem produção (30 d)",  cor: "vermelho" },
+  sem_obra:     { label: "Sem obra",             cor: "cinza" }
+};
+
+/* Período escolhido → datas (fuso local) e o período anterior de mesmo tamanho */
+function dashIntervalo(p){
+  const hoje = new Date(hojeISO() + "T12:00:00");
+  const soma = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  let ini = hoje, fim = hoje;
+  if(p === "7d") ini = soma(hoje, -6);
+  else if(p === "mes") ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1, 12);
+  else if(p === "mes_ant"){ ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1, 12); fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0, 12); }
+  const dias = Math.round((fim - ini) / 86400000) + 1;
+  return { ini: dataLocalISO(ini), fim: dataLocalISO(fim), antIni: dataLocalISO(soma(ini, -dias)), antFim: dataLocalISO(soma(ini, -1)), dias };
+}
+
+/* Toda leitura do Início passa por aqui: erro vira mensagem no próprio card, nunca card vazio */
+async function dashLer(fonte, ajustar, alvo){
+  const q = typeof ajustar === "function" ? ajustar(sb.from(fonte)) : sb.from(fonte).select("*");
+  const { data, error } = await q;
+  if(error){
+    console.error("Início:", fonte, error);
+    const el = alvo ? $(alvo) : null;
+    if(el) el.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message || "erro")}).</p>`;
+    return null;
+  }
+  return data || [];
+}
+const dashPodeVerMedido = () => dashEhDiretoria() || (typeof podeVerContasPagar === "function" && podeVerContasPagar());
 
 async function carregarDashboard(){
+  const carga = ++_dashCargaN;
   // Saudação
   const nome = (typeof usuarioAtual !== "undefined" && usuarioAtual?.nome) ? usuarioAtual.nome.split(" ")[0] : "";
-  const greeting = $("dash-saudacao");
-  const hojeEl   = $("dash-data-hoje");
-  if(greeting) greeting.textContent = nome ? `👋 Olá, ${nome} · Visão geral do negócio` : "👋 Visão geral do negócio";
-  if(hojeEl){
-    const hoje = new Date();
-    hojeEl.textContent = hoje.toLocaleDateString("pt-BR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
-  }
-
-  // Bloco financeiro (contratado / medido / a medir / %) só para diretoria
+  if($("dash-saudacao")) $("dash-saudacao").textContent = nome ? `👋 Olá, ${nome} · Sala de Comando` : "👋 Sala de Comando";
+  if($("dash-data-hoje")) $("dash-data-hoje").textContent = new Date().toLocaleDateString("pt-BR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
+  document.querySelectorAll("#dash-periodo [data-periodo]").forEach(b => b.classList.toggle("ativo", b.dataset.periodo === _dashPeriodo));
+  if($("dash-card-medido")) $("dash-card-medido").style.display = dashPodeVerMedido() ? "" : "none";
+  if($("dash-card-custo"))  $("dash-card-custo").style.display  = dashEhDiretoria() ? "" : "none";
   const finEl = $("dash-financeiro");
   if(finEl) finEl.style.display = dashEhDiretoria() ? "" : "none";
 
-  // Roda tudo em paralelo
+  // 1ª onda: o que o usuário olha primeiro
+  const t0 = performance.now();
+  await Promise.all([carregarDashFaixa(carga), dashCarregarAcoes(), dashCarregarFila()]);
+  if(carga !== _dashCargaN) return;
+  console.info(`Início: 1ª onda em ${Math.round(performance.now() - t0)} ms`);
+  if($("dash-atualizado")) $("dash-atualizado").textContent = "atualizado às " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+  // 2ª onda: abas e o resumo do fim da página
   await Promise.all([
-    dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
-    dashEhDiretoria() ? carregarDashIA() : Promise.resolve(),
-    carregarDashOperacional(),
-    carregarDashPendencias(),
+    dashCarregarObrasAndamento(),
     carregarDashGraficoProducao(),
     carregarDashTopObras(),
-    carregarDashAtividade()
+    carregarDashAtividade(),
+    carregarDashOrcamentos(),
+    dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
+    dashEhDiretoria() ? carregarDashIA() : Promise.resolve()
   ]);
+  if(carga !== _dashCargaN) return;
+  renderDashFrota();
+  await renderDashOperadores();
 
   // A posição de estoque (aba antiga, oculta) NÃO carrega mais no boot: eram
   // 9.479 produtos + 9.479 <tr> a cada login (~60% do payload inicial).
   // Passou a carregar sob demanda ao abrir a seção Estoque (core.js, nav).
-
-  // Cliques dos cards de KPI (os painéis ligam os seus ao renderizar)
   ligarCliquesDashboard();
 }
+
+/* ---------- Faixa de indicadores ---------- */
+async function carregarDashFaixa(carga){
+  const iv = dashIntervalo(_dashPeriodo);
+  const [prod, frota, obras, rdos, meds, custos] = await Promise.all([
+    dashLer("vw_sc_producao_dia", q => q.select("obra_id,equipamento_id,data,estacas,metros,operador_id").gte("data", iv.antIni).lte("data", iv.fim), "dash-k-producao-sub"),
+    dashLer("vw_sc_frota", q => q.select("*"), "dash-k-maquinas-sub"),
+    dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-k-obras-sub"),
+    dashLer("rdo", q => q.select("obra_id").gte("data", iv.ini).lte("data", iv.fim), "dash-k-obras-sub"),
+    dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada"]).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),
+    dashEhDiretoria() ? dashLer("vw_custos", q => q.select("valor").gte("data", iv.ini).lte("data", iv.fim), "dash-k-custo-sub") : Promise.resolve([])
+  ]);
+  if(carga !== _dashCargaN) return;
+  _dashProd = prod || []; _dashFrota = frota || []; _dashObrasAnd = obras || [];
+  const set = (id, v) => { const el = $(id); if(el) el.textContent = v; };
+  const vazio = (id, cond) => { const el = $(id); if(el) el.classList.toggle("dash-num-vazio", !!cond); };
+  const quando = DASH_PERIODOS[_dashPeriodo];
+
+  if(prod){
+    const atual = _dashProd.filter(p => p.data >= iv.ini), ant = _dashProd.filter(p => p.data <= iv.antFim);
+    const m = atual.reduce((s, p) => s + Number(p.metros || 0), 0), e = atual.reduce((s, p) => s + Number(p.estacas || 0), 0);
+    const mAnt = ant.reduce((s, p) => s + Number(p.metros || 0), 0);
+    set("dash-k-producao", `${num(m)} m`); vazio("dash-k-producao", !(m > 0));
+    const varia = mAnt > 0 ? Math.round((m - mAnt) / mAnt * 100) : null;
+    set("dash-k-producao-sub", `${e} estaca(s) ${quando} · ${varia == null ? "sem base no período anterior" : (varia >= 0 ? "▲ " : "▼ ") + Math.abs(varia) + "% vs. anterior"}`);
+  }
+  if(frota && prod){
+    const emObra = _dashFrota.filter(f => f.obra_id);
+    const comExec = new Set(_dashProd.filter(p => p.data >= iv.ini && p.equipamento_id).map(p => p.equipamento_id));
+    const ativas = emObra.filter(f => comExec.has(f.equipamento_id)).length;
+    set("dash-k-maquinas", `${ativas} / ${emObra.length}`); vazio("dash-k-maquinas", !ativas);
+    set("dash-k-maquinas-sub", `com execução ${quando} ÷ em obra · ${emObra.length - ativas} sem lançar`);
+  }
+  if(obras && rdos){
+    const ids = new Set(_dashObrasAnd.map(o => o.obra_id));
+    const com = new Set((rdos || []).map(r => r.obra_id).filter(id => ids.has(id))).size;
+    set("dash-k-obras", `${com} / ${ids.size}`); vazio("dash-k-obras", !com);
+    set("dash-k-obras-sub", `com RDO ${quando} ÷ em andamento`);
+  }
+  if(meds && dashPodeVerMedido()){
+    const v = meds.reduce((s, x) => s + (Number(x.valor_final) || Number(x.valor_medido) || 0), 0);
+    set("dash-k-medido", brl(v)); vazio("dash-k-medido", !(v > 0));
+    set("dash-k-medido-sub", `${meds.length} medição(ões) aprovada(s) ou faturada(s) ${quando}`);
+  }
+  if(custos && dashEhDiretoria()){
+    const v = custos.reduce((s, x) => s + Number(x.valor || 0), 0);
+    set("dash-k-custo", brl(v)); vazio("dash-k-custo", !(v > 0));
+    set("dash-k-custo-sub", `${custos.length} lançamento(s) ${quando}`);
+  }
+}
+
+/* ---------- Exige ação hoje ---------- */
+async function dashCarregarAcoes(){
+  const cont = $("dash-acoes");
+  if(!cont) return;
+  const dados = await dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes");
+  if(!dados) return;
+  _dashAcoes = dados.filter(a => dashGereSetor(a.setor))
+    .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
+  const porNivel = {};
+  _dashAcoes.forEach(a => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
+  if($("dash-acoes-cont")) $("dash-acoes-cont").innerHTML = _dashAcoes.length
+    ? Object.entries(DASH_NIVEL).filter(([k]) => porNivel[k]).map(([k, o]) => `<span class="tag ${o.cor}">${porNivel[k]} ${esc(o.label.toLowerCase())}</span>`).join(" ")
+    : "";
+  if(!_dashAcoes.length){ cont.innerHTML = `<p class="vazio">✅ Nada exigindo ação hoje.</p>`; return; }
+  // agrupado por setor, setores na ordem do item mais urgente
+  const setores = [];
+  _dashAcoes.forEach(a => { if(!setores.includes(a.setor)) setores.push(a.setor); });
+  cont.innerHTML = setores.map(s => `<div class="dash-setor">
+      <div class="dash-setor-tit">${esc(DASH_SETOR[s] || s)}</div>
+      ${_dashAcoes.map((a, i) => a.setor !== s ? "" : dashLinhaAcao(a, i, "acao")).join("")}
+    </div>`).join("");
+}
+function dashLinhaAcao(a, i, tipo){
+  const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
+  return `<div class="dash-pendencia-item clicavel" data-${tipo}="${i}" title="Abrir">
+      <span class="tag ${n.cor}">${esc(n.label)}</span>
+      <div class="dash-acao-txt"><strong>${esc(dashTituloAcao(a.titulo))}</strong>${a.quantidade > 1 ? ` <span class="contador">(${a.quantidade})</span>` : ""}
+        ${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
+      <span class="dash-pend-seta">›</span>
+    </div>`;
+}
+// tipos de pendência de contrato vêm como texto sem acento do banco (vw_pendencias_contratos)
+const DASH_TIPO_CONTRATO = { "composicao divergente": "composição divergente", "quadro parcial": "quadro de orçamento lido em parte",
+  "aditivo sem valor": "aditivo sem valor", "valor provisorio": "valor provisório", "sem assinatura": "sem assinatura",
+  "saldo negativo": "saldo negativo (precisa aditivo)", "aditivo pendente": "aditivo pendente" };
+function dashTituloAcao(t){
+  const m = String(t || "").match(/^Contrato: (.+)$/);
+  return m ? "Contrato: " + (DASH_TIPO_CONTRATO[m[1]] || m[1]) : t;
+}
+
+/* ---------- Minha fila ---------- */
+async function dashCarregarFila(){
+  const cont = $("dash-fila");
+  if(!cont) return;
+  const dados = await dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila");
+  if(!dados) return;
+  _dashFila = dados.sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
+  if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
+  cont.innerHTML = _dashFila.length
+    ? _dashFila.map((a, i) => dashLinhaAcao(a, i, "fila")).join("")
+    : `<p class="vazio">Nada esperando por você.</p>`;
+}
+// Compatibilidade: a aba Timeline da obra (obra_abas.js) recarrega "pendências" ao resolver comentário
+function carregarDashPendencias(){ return Promise.all([dashCarregarAcoes(), dashCarregarFila()]); }
+
+/* Uma linha de ação ou da fila → a tela de origem */
+async function dashAbrirAcao(a){
+  if(!a) return;
+  const id = a.registro_id;
+  switch(a.secao){
+    case "obras":
+      if(a.obra_id) dashAbrirObra(a.obra_id, a.setor === "contratos" ? "contrato" : /estaca/i.test(a.titulo) ? "estacas" : /marcado/i.test(a.titulo) ? "timeline" : null);
+      else dashIrObrasAtivas();
+      break;
+    case "equipamentos":
+      if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
+      break;
+    case "medicoes":
+      if(id) dashAbrirMedicao(id); else irParaSecao("medicoes");
+      break;
+    case "mobilizacoes":
+      if(irParaSecao("mobilizacoes") && id && typeof abrirMobilizacao === "function") abrirMobilizacao(id);
+      break;
+    case "chamados":
+      if(irParaSecao("chamados") && id && typeof abrirChamado === "function"){
+        if(typeof carregarChamados === "function") await carregarChamados(true);
+        abrirChamado(id);
+      }
+      break;
+    case "contratos":
+      if(a.setor === "financeiro"){ // títulos a pagar (fase 56)
+        if(irParaSecao("contratos") && typeof capAtivarView === "function"){ _capFiltroVenc = a.nivel === "critico" ? "vencidos" : ""; _capIncluirExp = false; _capFiltroOrigem = ""; capAtivarView("titulos"); }
+      } else if(id) dashAbrirContrato(id);
+      else irParaSecao("contratos");
+      break;
+    case "orcamentos":
+      if(id) dashAbrirOrcamento(id); else irParaSecao("orcamentos");
+      break;
+    case "compras":
+      if(irParaSecao("compras") && /requisi/i.test(a.titulo) && typeof renderCompras === "function"){
+        _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; setTimeout(() => renderCompras(), 400);
+      }
+      break;
+    default:
+      irParaSecao(a.secao);
+  }
+}
+
+/* ---------- Aba Frota ---------- */
+function renderDashFrota(){
+  const cont = $("dash-frota");
+  if(!cont) return;
+  const iv = dashIntervalo(_dashPeriodo);
+  const prodPer = {};
+  _dashProd.filter(p => p.data >= iv.ini && p.equipamento_id).forEach(p => {
+    const o = prodPer[p.equipamento_id] || (prodPer[p.equipamento_id] = { m: 0, e: 0 });
+    o.m += Number(p.metros || 0); o.e += Number(p.estacas || 0);
+  });
+  let lista = _dashFrota.filter(f =>
+    _dashFrotaFiltro === "com" ? !!prodPer[f.equipamento_id] :
+    _dashFrotaFiltro === "sem" ? !prodPer[f.equipamento_id] :
+    _dashFrotaFiltro === "manut" ? f.manut_abertas > 0 : true);
+  const porNome = ($("dash-frota-ordem")?.value || "atencao") === "nome";
+  lista = lista.sort((a, b) => (porNome ? 0 : a.ordem_atencao - b.ordem_atencao) || String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR", { numeric: true }));
+  if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma máquina com este filtro.</p>`; return; }
+  cont.innerHTML = `<div class="tabela-rola"><table class="dash-tabela">
+    <thead><tr><th>Máquina</th><th>Situação</th><th>Obra</th><th>Último lançamento</th><th class="num" title="Intervalo mediano entre estacas: precisa de horário de perfuração nos RDOs">Ritmo</th><th class="num">Período</th><th class="num">Mês</th><th class="num">Horímetro</th><th>Manutenção</th></tr></thead>
+    <tbody>${lista.map(f => {
+      const s = DASH_SITUACAO[f.situacao] || { label: f.situacao, cor: "cinza" };
+      const per = prodPer[f.equipamento_id];
+      return `<tr class="linha-clicavel" data-eqp="${esc(f.equipamento_id)}">
+        <td><strong>${esc(f.codigo || "—")}</strong> <span class="meta">${esc(f.nome || "")}</span></td>
+        <td><span class="tag ${s.cor}">${esc(s.label)}</span>${f.situacao === "parada" && f.dias_sem_lancar != null ? ` <span class="meta">há ${f.dias_sem_lancar} d</span>` : ""}</td>
+        <td>${f.obra_id ? linkObra(f.obra_id, f.obra_codigo || mapaObras[f.obra_id]) : '<span class="meta">—</span>'}</td>
+        <td>${f.ultimo_lancamento ? `${dataBR(f.ultimo_lancamento)} <span class="meta">(${f.dias_sem_lancar} d)</span>` : '<span class="meta">nunca</span>'}</td>
+        <td class="num"><span class="meta">sem horário</span></td>
+        <td class="num">${per ? `${num(per.m)} m · ${per.e} est.` : '<span class="meta">—</span>'}</td>
+        <td class="num">${Number(f.metros_mes) > 0 ? `${num(f.metros_mes)} m · ${f.estacas_mes} est.` : '<span class="meta">—</span>'}</td>
+        <td class="num">${f.horimetro != null ? num(f.horimetro) : '<span class="meta">—</span>'}</td>
+        <td>${f.manut_vencidas ? `<span class="tag vermelho">${f.manut_vencidas} vencida(s)</span> ` : ""}${f.manut_abertas ? `<span class="meta">${f.manut_abertas} aberta(s)</span>` : '<span class="meta">—</span>'}</td>
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+/* ---------- Aba Obras em execução ---------- */
+function dashObrasPin(){ try { return JSON.parse(localStorage.getItem("dash-obras-pin") || "[]"); } catch(_e) { return []; } }
+function dashAlternarPin(id){
+  const p = new Set(dashObrasPin());
+  p.has(id) ? p.delete(id) : p.add(id);
+  try { localStorage.setItem("dash-obras-pin", JSON.stringify([...p])); } catch(_e) { /* sem storage: só nesta sessão não guarda */ }
+  renderDashObrasAndamento();
+}
+async function dashCarregarObrasAndamento(){
+  if(!_dashObrasAnd.length){
+    const d = await dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-obras-and");
+    if(!d) return;
+    _dashObrasAnd = d;
+  }
+  renderDashObrasAndamento();
+}
+function renderDashObrasAndamento(){
+  const cont = $("dash-obras-and");
+  if(!cont) return;
+  const iv = dashIntervalo(_dashPeriodo);
+  const prodPer = {};
+  _dashProd.filter(p => p.data >= iv.ini).forEach(p => { prodPer[p.obra_id] = (prodPer[p.obra_id] || 0) + Number(p.metros || 0); });
+  const pins = new Set(dashObrasPin());
+  const lista = [..._dashObrasAnd].sort((a, b) => (pins.has(b.obra_id) - pins.has(a.obra_id)) || ((a.dias_sem_lancamento ?? 9999) - (b.dias_sem_lancamento ?? 9999)) || String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
+  if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma obra em andamento.</p>`; return; }
+  cont.innerHTML = `<div class="tabela-rola"><table class="dash-tabela">
+    <thead><tr><th style="width:28px;"></th><th>Obra</th><th>Estacas exec. / prev.</th><th class="num">m/dia</th><th class="num">Produção ${esc(DASH_PERIODOS[_dashPeriodo])}</th><th>Previsão de término</th><th>Última atividade</th><th></th></tr></thead>
+    <tbody>${lista.map(o => {
+      const pct = Math.min(100, Number(o.percentual) || 0);
+      const folga = o.folga_dias;
+      return `<tr class="linha-clicavel" data-obra="${esc(o.obra_id)}">
+        <td><button type="button" class="dash-pin${pins.has(o.obra_id) ? " ativo" : ""}" data-pin="${esc(o.obra_id)}" title="${pins.has(o.obra_id) ? "Desafixar" : "Fixar no topo"}">${pins.has(o.obra_id) ? "★" : "☆"}</button></td>
+        <td><strong>${esc(o.codigo || "")}</strong> <span class="meta">${esc((o.nome || "").slice(0, 40))}</span></td>
+        <td>${o.previstas > 0 ? `${o.executadas} / ${o.previstas} <span class="meta">(${num(pct)}%)</span><div class="dash-barra"><div style="width:${pct}%"></div></div>` : '<span class="meta">sem previstas</span>'}${o.refuradas ? ` <span class="meta">· ${o.refuradas} refurada(s)</span>` : ""}</td>
+        <td class="num">${o.m_dia != null && Number(o.m_dia) > 0 ? num(o.m_dia) : '<span class="meta">—</span>'}</td>
+        <td class="num">${prodPer[o.obra_id] ? `${num(prodPer[o.obra_id])} m` : '<span class="meta">—</span>'}</td>
+        <td>${o.previsao_termino ? `${dataBR(o.previsao_termino)}${folga != null ? ` <span class="tag ${folga < 0 ? "vermelho" : "verde"}">${folga < 0 ? Math.abs(folga) + " d atrasada" : folga + " d de folga"}</span>` : ""}` : `<span class="meta" title="Precisa de 3 dias com RDO, ritmo maior que zero e metros faltando">sem dados</span>`}</td>
+        <td>${o.ultimo_rdo ? dataBR(o.ultimo_rdo) : '<span class="meta">sem RDO</span>'}${o.dias_sem_lancamento != null ? ` <span class="meta">(${o.dias_sem_lancamento} d)</span>` : ""}</td>
+        <td>${o.parada ? '<span class="tag ambar">parada</span> ' : ""}${o.pronta_baixa ? '<span class="tag verde">pronta p/ baixa</span> ' : ""}${o.sem_previstas ? '<span class="tag cinza">sem previstas</span>' : ""}</td>
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+/* ---------- Aba Operadores (ranking do período, a partir de vw_sc_producao_dia) ---------- */
+let _dashOperNomes = {};
+async function renderDashOperadores(){
+  const cont = $("dash-operadores");
+  if(!cont) return;
+  const iv = dashIntervalo(_dashPeriodo);
+  const por = {};
+  _dashProd.filter(p => p.data >= iv.ini && p.operador_id).forEach(p => {
+    const o = por[p.operador_id] || (por[p.operador_id] = { m: 0, e: 0, dias: new Set(), maq: {} });
+    o.m += Number(p.metros || 0); o.e += Number(p.estacas || 0); o.dias.add(p.data);
+    if(p.equipamento_id) o.maq[p.equipamento_id] = (o.maq[p.equipamento_id] || 0) + Number(p.metros || 0);
+  });
+  const ids = Object.keys(por);
+  if(!ids.length){ cont.innerHTML = `<p class="vazio">Nenhuma execução com operador ${esc(DASH_PERIODOS[_dashPeriodo])}.</p>`; return; }
+  const faltam = ids.filter(id => !_dashOperNomes[id]);
+  if(faltam.length){
+    const { data } = await sb.from("funcionarios").select("id,nome").in("id", faltam);
+    (data || []).forEach(f => { _dashOperNomes[f.id] = f.nome; });
+  }
+  const codEq = Object.fromEntries(_dashFrota.map(f => [f.equipamento_id, f.codigo]));
+  const linhas = ids.map(id => {
+    const o = por[id];
+    const maq = Object.entries(o.maq).sort((a, b) => b[1] - a[1])[0];
+    return { id, nome: _dashOperNomes[id] || "—", m: o.m, e: o.e, dias: o.dias.size, maq: maq ? (codEq[maq[0]] || "—") : "—" };
+  }).sort((a, b) => b.m - a.m);
+  cont.innerHTML = `<div class="tabela-rola"><table class="dash-tabela">
+    <thead><tr><th>#</th><th>Operador</th><th class="num">Metros</th><th class="num">Estacas</th><th class="num">Dias</th><th class="num">m/dia</th><th>Máquina</th></tr></thead>
+    <tbody>${linhas.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.nome)}</td><td class="num">${num(l.m)}</td><td class="num">${l.e}</td><td class="num">${l.dias}</td><td class="num">${num(l.dias ? l.m / l.dias : 0)}</td><td>${esc(l.maq)}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+/* ---------- Listeners do Início (uma vez, por delegação) ---------- */
+function ligarSalaDeComando(){
+  const sec = $("sec-inicio");
+  if(!sec || sec.dataset.ligado) return;
+  sec.dataset.ligado = "1";
+  $("dash-periodo")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-periodo]");
+    if(!b || b.dataset.periodo === _dashPeriodo) return;
+    _dashPeriodo = b.dataset.periodo;
+    try { localStorage.setItem("dash-periodo", _dashPeriodo); } catch(_e) { /* ok */ }
+    carregarDashboard();
+  });
+  $("btn-dash-recarregar")?.addEventListener("click", () => comBotaoTravado("btn-dash-recarregar", () => { _dashObrasAnd = []; return carregarDashboard(); }));
+  $("dash-acoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-acao]"); if(el) dashAbrirAcao(_dashAcoes[Number(el.dataset.acao)]); });
+  $("dash-fila")?.addEventListener("click", (e) => { const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]); });
+  $("dash-notebook")?.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if(!b) return;
+    document.querySelectorAll("#dash-notebook button").forEach(x => x.classList.toggle("ativo", x === b));
+    document.querySelectorAll("#sec-inicio .dash-abas > .odoo-tab").forEach(t => t.classList.toggle("ativa", t.dataset.tab === b.dataset.tab));
+  });
+  $("dash-frota-filtros")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-filtro]");
+    if(!b) return;
+    _dashFrotaFiltro = b.dataset.filtro;
+    document.querySelectorAll("#dash-frota-filtros [data-filtro]").forEach(x => x.classList.toggle("ativo", x === b));
+    renderDashFrota();
+  });
+  $("dash-frota-ordem")?.addEventListener("change", renderDashFrota);
+  $("dash-frota")?.addEventListener("click", (e) => {
+    if(e.target.closest("a.link-obra")) return; // o link da obra tem handler global
+    const tr = e.target.closest("tr[data-eqp]");
+    if(tr && irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(tr.dataset.eqp);
+  });
+  $("dash-obras-and")?.addEventListener("click", (e) => {
+    const pin = e.target.closest("[data-pin]");
+    if(pin){ e.stopPropagation(); dashAlternarPin(pin.dataset.pin); return; }
+    const tr = e.target.closest("tr[data-obra]");
+    if(tr) dashAbrirObra(tr.dataset.obra);
+  });
+  sec.addEventListener("click", (e) => {
+    const b = e.target.closest(".dash-origem");
+    if(!b) return;
+    const o = b.dataset.origem;
+    if(o === "frota"){ document.querySelector('#dash-notebook button[data-tab="frota"]')?.click(); $("dash-notebook")?.scrollIntoView({ behavior: "smooth" }); }
+    else if(o === "obras") dashIrObrasAtivas();
+    else irParaSecao(o);
+  });
+}
+if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarSalaDeComando);
+else ligarSalaDeComando();
 
 /* ============================================================
    NAVEGAÇÃO CLICÁVEL — cada indicador leva ao seu fluxo
@@ -70,7 +456,7 @@ function dashIrFinanceiro(){
 
 function ligarCliquesDashboard(){
   const liga = (id, fn, dica) => {
-    const el = $(id); const card = el ? el.closest(".dash-card") : null;
+    const el = $(id); const card = el ? el.closest(".dash-card, .card") : null;
     if(card && !card.dataset.clicavel){
       card.dataset.clicavel = "1";
       card.classList.add("clicavel");
@@ -78,7 +464,6 @@ function ligarCliquesDashboard(){
       card.addEventListener("click", fn);
     }
   };
-  liga("dash-obras-ativas", dashIrObrasAtivas, "Ver obras em andamento");
   liga("dash-orc-abertos",  dashIrOrcamentos,  "Ver orçamentos abertos");
   liga("dash-contratado",   dashIrFinanceiro,  "Ver medições / carteira");
   liga("dash-medido",       dashIrFinanceiro,  "Ver medições / carteira");
@@ -111,196 +496,22 @@ async function carregarDashFinanceiro(){
 }
 
 /* ============================================================
-   KPIs OPERACIONAIS — obras / RDOs / estacas / orçamentos
+   ORÇAMENTOS ABERTOS (fim da página; só diretoria e comercial, fase 49)
    ============================================================ */
-async function carregarDashOperacional(){
-  const hoje = new Date();
-  const inicioMes = dataLocalISO(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
-  const fimMes    = dataLocalISO(new Date(hoje.getFullYear(), hoje.getMonth()+1, 0));
-
-  const [
-    { count: cntAtivas },
-    { count: cntConcluidasMes },
-    { data: rdosMes },
-    { data: estacasMes },
-    { count: cntOrcAbertos },
-    { data: orcAbertos }
-  ] = await Promise.all([
-    sb.from("obras").select("id",{count:"exact",head:true}).eq("status","em_andamento"),
-    sb.from("obras").select("id",{count:"exact",head:true})
-      .eq("status","concluida").gte("data_fim_real", inicioMes).lte("data_fim_real", fimMes),
-    sb.from("rdo").select("id,producao_dia_m").gte("data", inicioMes).lte("data", fimMes),
-    // !inner faz o filtro em rdo.data valer para as linhas-pai (sem ele, o PostgREST
-    // devolvia TODAS as execuções e o filtro era só no navegador); lte fecha o mês.
-    sb.from("rdo_execucao_estaca").select("profundidade_executada,volume_concreto_m3,rdo:rdo_id!inner(data)").gte("rdo.data", inicioMes).lte("rdo.data", fimMes),
-    // fase 49: números de orçamento só para diretoria e comercial
-    podeVerComercial() ? sb.from("orcamentos").select("id",{count:"exact",head:true}).in("status",["rascunho","enviado","em_negociacao"]) : Promise.resolve({ count: 0 }),
-    podeVerComercial() ? sb.from("orcamentos").select("valor_total").in("status",["rascunho","enviado","em_negociacao"]) : Promise.resolve({ data: [] })
+async function carregarDashOrcamentos(){
+  const card = $("dash-card-orc");
+  if(card) card.style.display = podeVerComercial() ? "" : "none";
+  if(!podeVerComercial()) return;
+  const [{ count: cntOrcAbertos }, { data: orcAbertos }] = await Promise.all([
+    sb.from("orcamentos").select("id",{count:"exact",head:true}).in("status",["rascunho","enviado","em_negociacao"]),
+    sb.from("orcamentos").select("valor_total").in("status",["rascunho","enviado","em_negociacao"])
   ]);
-  if($("dash-card-orc")) $("dash-card-orc").style.display = podeVerComercial() ? "" : "none";
-
-  // Estado "vazio": zero em cinza (não "quebrado") — ver .dash-num-vazio
-  const kpiNum = (id, v) => { const n = $(id); if(!n) return; n.textContent = v; n.classList.toggle("dash-num-vazio", !(Number(v) > 0)); };
-  kpiNum("dash-obras-ativas", cntAtivas || 0);
-  if($("dash-obras-sub"))    $("dash-obras-sub").textContent = `${cntAtivas||0} em andamento · ${cntConcluidasMes||0} concluída(s) este mês`;
-
-  kpiNum("dash-rdos-mes", (rdosMes||[]).length);
-  const totalProdRDO = (rdosMes||[]).reduce((s,r) => s + (Number(r.producao_dia_m)||0), 0);
-  if($("dash-rdos-sub")) $("dash-rdos-sub").textContent = `${num(totalProdRDO)} m de produção no mês`;
-
-  const execs = (estacasMes||[]).filter(e => e.rdo && e.rdo.data >= inicioMes);
-  const totalEstacas = execs.length;
-  const totalProf    = execs.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
-  const totalConc    = execs.reduce((s,e) => s + (Number(e.volume_concreto_m3)||0), 0);
-  kpiNum("dash-estacas-mes", totalEstacas);
-  if($("dash-estacas-sub")) $("dash-estacas-sub").textContent = `${num(totalProf)} m executados · ${num(totalConc)} m³ concreto`;
-
+  const n = $("dash-orc-abertos");
+  if(n){ n.textContent = cntOrcAbertos || 0; n.classList.toggle("dash-num-vazio", !(cntOrcAbertos > 0)); }
   const valorOrcAbertos = (orcAbertos||[]).reduce((s,o) => s + (Number(o.valor_total)||0), 0);
-  kpiNum("dash-orc-abertos", cntOrcAbertos || 0);
   // Chamado 1 (14/09/2026): cargo financeiro não vê valores agregados no painel — só a contagem
   const semValores = !!(usuarioAtual && usuarioAtual.cargo === "financeiro");
-  if($("dash-orc-sub"))     $("dash-orc-sub").textContent = semValores ? `${cntOrcAbertos || 0} em negociação` : `${brl(valorOrcAbertos)} em pipeline`;
-}
-
-/* ============================================================
-   AÇÕES PENDENTES — execuções órfãs / orçamentos vencendo / medições paradas / contratos
-   ============================================================ */
-async function carregarDashPendencias(){
-  const cont = $("dash-pendencias");
-  if(!cont) return;
-
-  const hoje = new Date();
-  const proximos7  = addDiasISO(7);   // datas em fuso local (ver hojeISO em core.js)
-  const hojeISOstr = hojeISO();
-  const d5atras    = addDiasISO(-5);
-
-  const [
-    { data: orfas },
-    { data: orcVenc },
-    { data: medParadas },
-    { data: comentMarcado }
-  ] = await Promise.all([
-    sb.from("rdo_execucao_estaca").select("id, rdo:rdo_id(obra_id)").is("estaca_id", null),
-    podeVerComercial() ? sb.from("orcamentos").select("id,numero,validade,cliente_id").lte("validade", proximos7).gte("validade", hojeISOstr).in("status",["enviado","em_negociacao"]) : Promise.resolve({ data: [] }), // fase 49
-    sb.from("medicoes").select("id,numero,updated_at,obra_id").eq("status","rascunho").lte("updated_at", d5atras + "T23:59:59"),
-    // comentários de obra em que EU fui marcado como responsável (fase 23)
-    usuarioAtual?.id
-      ? sb.from("obras_comentarios")
-          .select("id,texto,created_at,obra_id,obra:obra_id(codigo,nome)")
-          .eq("responsavel_id", usuarioAtual.id).eq("resolvido", false)
-          .order("created_at")
-      : Promise.resolve({ data: [] })
-  ]);
-
-  // Agrupa órfãs por obra
-  const orfasPorObra = {};
-  (orfas||[]).forEach(o => {
-    if(!o.rdo?.obra_id) return;
-    orfasPorObra[o.rdo.obra_id] = (orfasPorObra[o.rdo.obra_id] || 0) + 1;
-  });
-  const obrasComOrfas = Object.keys(orfasPorObra).length;
-  const totalOrfas    = Object.values(orfasPorObra).reduce((s,n) => s + n, 0);
-
-  const itens = [];
-
-  // Fui marcado como responsável num comentário de obra — vai no topo
-  (comentMarcado || []).forEach(cm => {
-    const dias = Math.floor((hoje - new Date(cm.created_at)) / 86400000);
-    const resumo = (cm.texto || "").length > 90 ? cm.texto.slice(0, 90) + "…" : cm.texto;
-    itens.push({
-      icone: "💬", cor: "var(--marca-600)", bg: "var(--info-bg)",
-      texto: `Você foi marcado na obra <strong>${esc(cm.obra?.codigo || "?")}</strong>${
-        dias > 0 ? ` há ${dias} dia(s)` : ""}: “${esc(resumo)}” — abra a obra → Timeline`,
-      nav: () => dashAbrirObra(cm.obra_id, "timeline")
-    });
-  });
-
-  if(totalOrfas > 0){
-    const idsOrfas = Object.keys(orfasPorObra);
-    itens.push({
-      icone: "🔧", cor: "var(--aviso)", bg: "var(--aviso-bg)",
-      texto: `<strong>${totalOrfas} execuções órfãs</strong> em ${obrasComOrfas} obra(s) — abra a obra → Estacas → 🔍 Conferência`,
-      nav: idsOrfas.length === 1
-        ? () => dashAbrirObra(idsOrfas[0], "estacas")
-        : () => irParaSecao("obras")
-    });
-  }
-  (orcVenc||[]).forEach(o => {
-    // "T00:00:00" força leitura no fuso local (sem isso, "YYYY-MM-DD" é UTC = 21h do dia anterior no BR)
-    const dias = Math.ceil((new Date(String(o.validade).slice(0,10) + "T00:00:00") - hoje) / 86400000);
-    itens.push({
-      icone: "📄", cor: "var(--perigo)", bg: "var(--perigo-bg)",
-      texto: `Orçamento <strong>${esc(o.numero)}</strong> vence em ${dias} dia(s) (${dataBR(o.validade)})`,
-      nav: () => dashAbrirOrcamento(o.id)
-    });
-  });
-  (medParadas||[]).forEach(m => {
-    const dias = Math.ceil((hoje - new Date(m.updated_at)) / 86400000);
-    itens.push({
-      icone: "💰", cor: "var(--marca-600)", bg: "var(--info-bg)",
-      texto: `Medição <strong>${esc(m.numero)}</strong> parada em rascunho há ${dias} dia(s)`,
-      nav: () => dashAbrirMedicao(m.id)
-    });
-  });
-
-  // fase 60: requisições de material aguardando o comprador (só quem opera compras)
-  if(typeof cmpPodeOperar === "function" && cmpPodeOperar()){
-    const { count: nReq } = await sb.from("requisicoes").select("id", { count: "exact", head: true }).eq("status", "pendente");
-    if(nReq) itens.push({
-      icone: "📝", cor: "var(--aviso)", bg: "var(--aviso-bg)",
-      texto: `<strong>${nReq}</strong> requisição(ões) de material aguardando o comprador`,
-      nav: () => { if(irParaSecao("compras")){ _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; setTimeout(() => renderCompras(), 400); } }
-    });
-  }
-
-  // fase 56: títulos a pagar vencidos e ainda não exportados ao Compor 90 (só quem opera Contas a pagar)
-  if(podeVerContasPagar()){
-    const { count: nVenc } = await sb.from("titulos_pagar").select("id", { count: "exact", head: true }).is("exportado_em", null).lt("vencimento", hojeISOstr);
-    if(nVenc) itens.push({
-      icone: "💸", cor: "var(--perigo)", bg: "var(--perigo-bg)",
-      texto: `<strong>${nVenc}</strong> título(s) a pagar vencido(s) sem exportar ao financeiro`,
-      nav: () => { if(irParaSecao("contratos") && typeof capAtivarView === "function"){ _capFiltroVenc = "vencidos"; _capIncluirExp = false; _capFiltroOrigem = ""; capAtivarView("titulos"); } }
-    });
-  }
-
-  // Contratos de fornecedor entrando na janela de aviso (fase 21)
-  // fase 55: o módulo Contratos & Contas a pagar é restrito; o alerta só para quem consegue abrir
-  if(typeof contratosVencendo === "function" && podeVerContasPagar()){
-    const contrVenc = await contratosVencendo();
-    contrVenc.forEach(c => {
-      const dias = diasParaVencer(c);
-      const quando = dias < 0
-        ? `venceu há ${Math.abs(dias)} dia(s)`
-        : dias === 0 ? "vence hoje" : `vence em ${dias} dia(s)`;
-      const forn = mapaFornecedores[c.fornecedor_id] || "fornecedor não informado";
-      const renova = c.renovacao_automatica ? " — renova automaticamente" : "";
-      itens.push({
-        icone: dias < 0 ? "⛔" : "📋",
-        cor: dias < 0 ? "var(--perigo)" : "var(--aviso)",
-        bg:  dias < 0 ? "var(--perigo-bg)" : "var(--aviso-bg)",
-        texto: `Contrato <strong>${esc(c.numero)}</strong> (${esc(forn)}) ${quando} (${dataBR(c.data_fim_prevista)})${renova}`,
-        nav: () => dashAbrirContrato(c.id)
-      });
-    });
-  }
-
-  if(!itens.length){
-    cont.innerHTML = `<p class="vazio" style="font-size:var(--txt-sm);color:var(--sucesso);">✅ Nenhuma pendência. Bom trabalho!</p>`;
-    return;
-  }
-  _dashPendNav = itens.map(it => it.nav || null);
-  cont.innerHTML = itens.map((it, idx) => `
-    <div class="dash-pendencia-item${it.nav ? " clicavel" : ""}" ${it.nav ? `data-idx="${idx}" title="Ir para o registro"` : ""}>
-      <div class="dash-pendencia-icone" style="background:${it.bg};color:${it.cor};">${it.icone}</div>
-      <div style="flex:1;">${it.texto}</div>
-      ${it.nav ? '<span class="dash-pend-seta">›</span>' : ""}
-    </div>`).join("");
-  cont.querySelectorAll(".dash-pendencia-item.clicavel").forEach(el => {
-    el.addEventListener("click", () => {
-      const fn = _dashPendNav[Number(el.dataset.idx)];
-      if(typeof fn === "function") fn();
-    });
-  });
+  if($("dash-orc-sub")) $("dash-orc-sub").textContent = semValores ? `${cntOrcAbertos || 0} em negociação` : `${brl(valorOrcAbertos)} em pipeline`;
 }
 
 /* ============================================================

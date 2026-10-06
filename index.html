@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=9302994" />
+<link rel="stylesheet" href="css/estilo.css?v=5d01ff9" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -188,15 +188,116 @@
 
     <!-- INÍCIO -->
     <section class="secao ativa" id="sec-inicio">
-      <!-- Saudação -->
-      <div style="background:linear-gradient(135deg,var(--marca-900) 0%,var(--marca-600) 100%);color:var(--txt-sobre);padding:18px 22px;border-radius:8px;margin-bottom:18px;">
-        <div style="font-size:18px;font-weight:600;" id="dash-saudacao">Bem-vindo</div>
-        <div style="font-size:var(--txt-sm);opacity:0.85;margin-top:4px;" id="dash-data-hoje">—</div>
+      <!-- Fase 63: Sala de Comando. Ordem: cabeçalho, faixa, exige ação/minha fila, abas, resumo antigo -->
+      <div class="dash-topo">
+        <div>
+          <div class="dash-topo-titulo" id="dash-saudacao">Bem-vindo</div>
+          <div class="dash-topo-sub" id="dash-data-hoje">—</div>
+        </div>
+        <div class="dash-topo-acoes">
+          <div class="serv-views" id="dash-periodo" role="group" aria-label="Período">
+            <button type="button" class="serv-view-btn" data-periodo="hoje">Hoje</button>
+            <button type="button" class="serv-view-btn" data-periodo="7d">7 dias</button>
+            <button type="button" class="serv-view-btn ativo" data-periodo="mes">Mês</button>
+            <button type="button" class="serv-view-btn" data-periodo="mes_ant">Mês anterior</button>
+          </div>
+          <span class="dash-topo-sub" id="dash-atualizado">—</span>
+          <button type="button" class="btn-sec btn-sm" id="btn-dash-recarregar" title="Recarregar a Sala de Comando">🔄</button>
+        </div>
       </div>
 
-      <!-- KPIs Financeiros (4 cards grandes) — só diretoria (dashboard.js mostra) -->
+      <!-- Faixa de indicadores do período -->
+      <div class="dash-cards dash-faixa" id="dash-faixa">
+        <div class="dash-card" id="dash-card-producao">
+          <div class="dash-card-rot">Produção no período <span class="dash-ajuda" title="Soma de profundidade executada e número de estacas (sem refuros) dos RDOs com data no período. Variação contra o período anterior de mesmo tamanho.">?</span></div>
+          <div class="dash-card-num" id="dash-k-producao">—</div>
+          <div class="dash-card-sub" id="dash-k-producao-sub">—</div>
+          <button type="button" class="dash-origem" data-origem="rdo">de onde vem ›</button>
+        </div>
+        <div class="dash-card" id="dash-card-maquinas">
+          <div class="dash-card-rot">Máquinas ativas <span class="dash-ajuda" title="Perfuratrizes e bate-estacas com execução lançada no período ÷ máquinas em obra (localização ou mobilização em obra).">?</span></div>
+          <div class="dash-card-num" id="dash-k-maquinas">—</div>
+          <div class="dash-card-sub" id="dash-k-maquinas-sub">—</div>
+          <button type="button" class="dash-origem" data-origem="frota">de onde vem ›</button>
+        </div>
+        <div class="dash-card" id="dash-card-obras">
+          <div class="dash-card-rot">Obras com atividade <span class="dash-ajuda" title="Obras em andamento com pelo menos um RDO no período ÷ obras em andamento.">?</span></div>
+          <div class="dash-card-num" id="dash-k-obras">—</div>
+          <div class="dash-card-sub" id="dash-k-obras-sub">—</div>
+          <button type="button" class="dash-origem" data-origem="obras">de onde vem ›</button>
+        </div>
+        <div class="dash-card" id="dash-card-medido" style="display:none;">
+          <div class="dash-card-rot">Medido no período <span class="dash-ajuda" title="Valor final das medições aprovadas ou faturadas com data de medição no período.">?</span></div>
+          <div class="dash-card-num" id="dash-k-medido">—</div>
+          <div class="dash-card-sub" id="dash-k-medido-sub">—</div>
+          <button type="button" class="dash-origem" data-origem="medicoes">de onde vem ›</button>
+        </div>
+        <div class="dash-card" id="dash-card-custo" style="display:none;">
+          <div class="dash-card-rot">Custo registrado <span class="dash-ajuda" title="Soma dos custos registrados no período (vw_custos: compras, ordens de serviço, diesel do RDO, contratos e avulsos).">?</span></div>
+          <div class="dash-card-num" id="dash-k-custo">—</div>
+          <div class="dash-card-sub" id="dash-k-custo-sub">—</div>
+          <button type="button" class="dash-origem" data-origem="compras">de onde vem ›</button>
+        </div>
+      </div>
+
+      <!-- Exige ação hoje + Minha fila -->
+      <div class="dash-duas-col">
+        <div class="card compacto">
+          <div class="dash-bloco-topo">
+            <h3>🚨 Exige ação hoje</h3>
+            <span class="contador" id="dash-acoes-cont"></span>
+          </div>
+          <div id="dash-acoes"><p class="vazio">Carregando…</p></div>
+        </div>
+        <div class="card compacto">
+          <div class="dash-bloco-topo"><h3>📥 Minha fila</h3><span class="contador" id="dash-fila-cont"></span></div>
+          <div id="dash-fila"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- Abas: frota, obras em execução, operadores, produção -->
+      <div class="card compacto dash-abas">
+        <div class="odoo-notebook" id="dash-notebook">
+          <button type="button" data-tab="frota" class="ativo">Frota</button>
+          <button type="button" data-tab="obras">Obras em execução</button>
+          <button type="button" data-tab="operadores">Operadores</button>
+          <button type="button" data-tab="producao">Produção</button>
+        </div>
+        <div class="odoo-tab ativa" data-tab="frota">
+          <div class="serv-filtros" id="dash-frota-filtros">
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-filtro="todas">Todas</button>
+              <button type="button" class="serv-view-btn" data-filtro="com">Com produção</button>
+              <button type="button" class="serv-view-btn" data-filtro="sem">Sem produção</button>
+              <button type="button" class="serv-view-btn" data-filtro="manut">Com manutenção</button>
+            </div>
+            <select id="dash-frota-ordem" aria-label="Ordenar frota"><option value="atencao">Atenção primeiro</option><option value="nome">Por código</option></select>
+          </div>
+          <div id="dash-frota"><p class="vazio">Carregando…</p></div>
+        </div>
+        <div class="odoo-tab" data-tab="obras">
+          <div id="dash-obras-and"><p class="vazio">Carregando…</p></div>
+        </div>
+        <div class="odoo-tab" data-tab="operadores">
+          <div id="dash-operadores"><p class="vazio">Carregando…</p></div>
+        </div>
+        <div class="odoo-tab" data-tab="producao">
+          <div class="dash-duas-col dash-duas-col-inv">
+            <div>
+              <h3>📊 Produção 30 dias</h3>
+              <div id="dash-grafico-prod"><p class="vazio">Carregando…</p></div>
+            </div>
+            <div>
+              <h3 id="dash-top-obras-titulo">📈 Top 5 obras</h3>
+              <div id="dash-top-obras"><p class="vazio">Carregando…</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fim da página: resumo financeiro (diretoria), IA, orçamentos e atividade (sem mudança) -->
       <div id="dash-financeiro" style="display:none;">
-      <h3 style="font-size:var(--txt-md);color:var(--txt-fraco);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.5px;">💰 Financeiro</h3>
+      <h3 class="dash-secao-tit">💰 Financeiro</h3>
       <div class="dash-cards">
         <div class="dash-card" style="border-left:4px solid var(--marca-600);">
           <div class="dash-card-rot">Total Contratado</div>
@@ -229,59 +330,17 @@
           <div class="dash-card-sub" id="dash-ia-sub">— leituras</div>
         </div>
       </div>
-
       </div>
 
-      <!-- KPIs Operacionais -->
-      <h3 style="font-size:var(--txt-md);color:var(--txt-fraco);margin:20px 0 8px;text-transform:uppercase;letter-spacing:0.5px;">🏗️ Operacional</h3>
-      <div class="dash-cards">
-        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
-          <div class="dash-card-rot">Obras Ativas</div>
-          <div class="dash-card-num" id="dash-obras-ativas">—</div>
-          <div class="dash-card-sub" id="dash-obras-sub">— em andamento · — concluídas mês</div>
-        </div>
-        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
-          <div class="dash-card-rot">RDOs (mês)</div>
-          <div class="dash-card-num" id="dash-rdos-mes">—</div>
-          <div class="dash-card-sub" id="dash-rdos-sub">— RDOs registrados em maio</div>
-        </div>
-        <div class="dash-card" style="border-left:4px solid var(--marca-600);">
-          <div class="dash-card-rot">Estacas Executadas (mês)</div>
-          <div class="dash-card-num" id="dash-estacas-mes">—</div>
-          <div class="dash-card-sub" id="dash-estacas-sub">— metros · — m³ concreto</div>
-        </div>
-        <div class="dash-card" id="dash-card-orc" style="border-left:4px solid var(--marca-600);">
-          <div class="dash-card-rot">Orçamentos abertos</div>
+      <div class="dash-duas-col dash-duas-col-inv">
+        <div class="card compacto" id="dash-card-orc">
+          <h3>📄 Orçamentos abertos</h3>
           <div class="dash-card-num" id="dash-orc-abertos">—</div>
           <div class="dash-card-sub" id="dash-orc-sub">— em negociação · R$ —</div>
         </div>
-      </div>
-
-      <!-- Linha 2: Ações pendentes + Produção 30 dias -->
-      <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-top:20px;">
-        <!-- Ações Pendentes -->
-        <div class="card compacto">
-          <h3 style="font-size:var(--txt-md);color:var(--perigo);margin:0 0 10px;">🚨 Ações Pendentes</h3>
-          <div id="dash-pendencias"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
-        </div>
-        <!-- Mini gráfico produção 30 dias -->
-        <div class="card compacto">
-          <h3 style="font-size:var(--txt-md);color:var(--marca-600);margin:0 0 10px;">📊 Produção 30 dias</h3>
-          <div id="dash-grafico-prod"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
-        </div>
-      </div>
-
-      <!-- Linha 3: Top 5 obras + Atividade recente -->
-      <div style="display:grid;grid-template-columns:1fr 1.5fr;gap:16px;margin-top:16px;">
-        <!-- Top 5 obras -->
-        <div class="card compacto">
-          <h3 id="dash-top-obras-titulo">📈 Top 5 obras</h3>
-          <div id="dash-top-obras"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
-        </div>
-        <!-- Atividade recente -->
         <div class="card compacto">
           <h3>🕒 Atividade Recente (48h)</h3>
-          <div id="dash-atividade"><p class="vazio" style="font-size:var(--txt-sm);">Carregando...</p></div>
+          <div id="dash-atividade"><p class="vazio">Carregando…</p></div>
         </div>
       </div>
     </section>
@@ -1908,6 +1967,10 @@
                   <option value="refugada">Refurada</option>
                 </select>
                 <select id="est-f-local" style="display:none;"><option value="">Todos os locais</option></select>
+                <select id="est-f-prof" title="Hotfix 15b: estacas executadas com profundidade diferente do projeto além da tolerância">
+                  <option value="">Todas as profundidades</option>
+                  <option value="diferente">Executada ≠ projeto</option>
+                </select>
                 <select id="est-f-tipo">
                   <option value="">Todos os tipos</option>
                 </select>
@@ -2019,7 +2082,7 @@
               </select>
             </div>
             <div class="campo"><label>Diâmetro (mm)</label><input id="est-diametro" type="number" step="0.1" min="0" /></div>
-            <div class="campo"><label>Profundidade (m)</label><input id="est-profundidade" type="number" step="0.01" min="0" /></div>
+            <div class="campo"><label>Profundidade de projeto (m)</label><input id="est-profundidade" type="number" step="0.01" min="0" /><span class="meta" id="est-prof-exec-info"></span></div>
             <div class="campo"><label>Cota topo</label><input id="est-cota-topo" type="number" step="0.01" /></div>
             <div class="campo"><label>Cota ponta</label><input id="est-cota-ponta" type="number" step="0.01" /></div>
             <div class="campo"><label>Volume concreto (m³)</label><input id="est-volume" type="number" step="0.001" min="0" /></div>
@@ -2266,6 +2329,7 @@
             <div class="chip"><span>Status</span><strong id="rdo-ficha-status-chip">—</strong></div>
             <div class="chip"><span>Estacas</span><strong id="rdo-ficha-execs-chip">0</strong></div>
             <div class="chip"><span>Metragem</span><strong id="rdo-ficha-metragem-chip">0 m</strong></div>
+            <div class="chip chip-aviso" id="rdo-ficha-jornada-chip" style="display:none;" title="Lote S40 (#31): a HE é calculada pela jornada padrão da empresa até a obra ter jornada própria"><span>Jornada</span><strong>Obra sem jornada; usando padrão da empresa · <a href="#" id="rdo-ficha-jornada-link">cadastrar em Parâmetros</a></strong></div>
           </div>
 
           <div class="odoo-notebook" id="rdo-notebook">
@@ -2334,9 +2398,9 @@
                       <th>Nº estaca</th>
                       <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante">Ø (mm)</th>
                       <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante">Prof. proj.</th>
-                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante" title="Acumulado da estaca (todos os dias)">Prof. exec.</th>
-                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante" title="Trecho perfurado neste dia — de (m). No raiz vem das camadas de solo do boletim 📋">De (m)</th>
-                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante" title="Trecho perfurado neste dia — até (m)">Até (m)</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante" title="Metros perfurados neste dia (o que a medição soma) = Acum. − De">No dia (m)</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante" title="Onde a estaca estava no começo do dia: o sistema traz o acumulado dos RDOs anteriores desta estaca. No raiz vem das camadas de solo do boletim 📋">De (m)</th>
+                      <th data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante" title="Acumulado da estaca ao fim do dia: o que está no boletim">Acum. (m)</th>
                       <th data-col-tipo="helice_continua,trado_mecanizado,helice_secante">Perf. início</th>
                       <th data-col-tipo="helice_continua,trado_mecanizado,helice_secante">Perf. fim</th>
                       <th data-col-tipo="helice_continua,helice_secante">Concr. início</th>
@@ -2405,7 +2469,7 @@
                 </table>
               </div>
               <p class="nota">
-                💡 Preencha <strong>Entrada/Saída</strong> (e o intervalo real de almoço, se o diário registrar) e o sistema calcula a <strong>HE 100%</strong> pela jornada da obra (Obra › Parâmetros): seg-sex o que passar da jornada; sábado, domingo e feriado o dia inteiro. Regra RH de 11/09/2026: toda HE é 100%; a coluna HE 50% ficou sem uso.
+                💡 Preencha <strong>Entrada/Saída</strong> (e o intervalo real de almoço, se o diário registrar) e o sistema calcula a <strong>HE 100%</strong> pela jornada da obra (Obra › Parâmetros; sem ela, a jornada padrão da empresa: seg-qui 07:00–17:00, sexta 07:00–16:00): seg-sex o que passar da jornada; sábado, domingo e feriado o dia inteiro. Regra RH de 11/09/2026: toda HE é 100%; a coluna HE 50% ficou sem uso.
               </p>
 
               <!-- Abastecimento do dia (fase 46, 16/09/2026): vem do diário preenchido à mão pelo operador -->
@@ -3531,13 +3595,14 @@
     <!-- ============ CHAMADOS (fase 42) ============ -->
     <section class="secao" id="sec-chamados">
       <h2>Chamados</h2>
-      <p class="texto-apoio">Problemas, dúvidas e sugestões de melhoria no sistema. Abra pelo botão <strong>💡 Relatar problema ou melhoria</strong> em qualquer tela (o chamado já sai com módulo, obra e registro) ou por <strong>+ Novo chamado</strong>. Sem chat ao vivo: a triagem acontece todo dia às 18h e a resolução fica registrada no próprio chamado. Correção de código e restauração de dado não passam por validação prévia; mudança de valor, regra, estrutura ou exclusão de dado só com validação da diretoria.</p>
+      <p class="texto-apoio">Problemas, dúvidas e sugestões de melhoria no sistema. Abra pelo botão <strong>💡 Relatar problema ou melhoria</strong> em qualquer tela (o chamado já sai com módulo, obra e registro) ou por <strong>+ Novo chamado</strong>. Sem chat ao vivo: a triagem automática roda de segunda a sexta às 18h, classifica (prioridade, esforço, faixa) e comenta; a correção entra por uma fase, lote ou hotfix e a resolução fica registrada no próprio chamado. Correção de código e restauração de dado não passam por validação prévia; mudança de valor, regra, estrutura ou exclusão de dado só com validação da diretoria.</p>
 
       <div class="indicadores">
         <div class="ind ind-click" data-cham-status="aberto"><div class="num" id="cham-kpi-aberto" style="color:var(--perigo);">—</div><div class="rot">Abertos</div></div>
         <div class="ind ind-click" data-cham-status="em_analise"><div class="num" id="cham-kpi-analise" style="color:var(--aviso-txt);">—</div><div class="rot">Em análise</div></div>
         <div class="ind ind-click" data-cham-status="aguardando_validacao"><div class="num" id="cham-kpi-validacao" style="color:var(--marca-600);">—</div><div class="rot">Aguardando validação</div></div>
         <div class="ind ind-click" data-cham-status="resolvido"><div class="num" id="cham-kpi-resolvido" style="color:var(--sucesso);">—</div><div class="rot">Resolvidos (30 dias)</div></div>
+        <div class="ind ind-click" data-cham-prioridade="1" title="Prioridade 1 (bloqueia operação) aberto ou em análise"><div class="num" id="cham-kpi-p1" style="color:var(--perigo);">—</div><div class="rot">P1 abertos</div></div>
       </div>
 
       <div class="card">
@@ -3549,9 +3614,16 @@
         <div class="serv-filtros">
           <input id="cham-busca" placeholder="Buscar por título, descrição ou número..." />
           <select id="cham-f-status"><option value="">Abertos e em andamento</option></select>
+          <select id="cham-f-prioridade"><option value="">Todas as prioridades</option></select>
           <select id="cham-f-categoria"><option value="">Todas as categorias</option></select>
           <select id="cham-f-obra"><option value="">Todas as obras</option></select>
           <label class="check-inline" style="white-space:nowrap;"><input type="checkbox" id="cham-f-meus" /> Só os meus</label>
+        </div>
+        <div class="serv-filtros" id="cham-planejar-bar" style="display:none;">
+          <strong id="cham-planejar-n">0 marcado(s)</strong>
+          <input id="cham-planejar-fase" placeholder="Planejar na fase… (ex.: lote-S41, hotfix-35, 66)" maxlength="40" />
+          <button type="button" class="btn btn-sm" id="btn-cham-planejar">Planejar</button>
+          <button type="button" class="btn-sec btn-sm" id="btn-cham-planejar-limpar">Desmarcar</button>
         </div>
         <div id="cham-conteudo"><p class="vazio">Carregando…</p></div>
       </div>
@@ -3741,39 +3813,39 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=9302994"></script>
+<script src="js/core.js?v=5d01ff9"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=9302994"></script>
+<script src="js/historico.js?v=5d01ff9"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=9302994"></script>
-<script src="js/fornecedores.js?v=9302994"></script>
-<script src="js/apropriacoes.js?v=9302994"></script>
-<script src="js/funcionarios.js?v=9302994"></script>
-<script src="js/servicos.js?v=9302994"></script>
-<script src="js/produtos.js?v=9302994"></script>
-<script src="js/estoque.js?v=9302994"></script>
-<script src="js/compras.js?v=9302994"></script>
-<script src="js/requisicoes.js?v=9302994"></script>
-<script src="js/orcamentos.js?v=9302994"></script>
-<script src="js/propostas.js?v=9302994"></script>
-<script src="js/contratos.js?v=9302994"></script>
-<script src="js/contas_pagar.js?v=9302994"></script>
-<script src="js/carteira.js?v=9302994"></script>
-<script src="js/obras.js?v=9302994"></script>
-<script src="js/frota.js?v=9302994"></script>
-<script src="js/equipamentos.js?v=9302994"></script>
-<script src="js/acessorios.js?v=9302994"></script>
-<script src="js/mobilizacoes.js?v=9302994"></script>
-<script src="js/estacas.js?v=9302994"></script>
-<script src="js/obra_abas.js?v=9302994"></script>
-<script src="js/medicoes.js?v=9302994"></script>
-<script src="js/movimentacoes.js?v=9302994"></script>
-<script src="js/rdo.js?v=9302994"></script>
-<script src="js/rdo_import_maya.js?v=9302994"></script>
-<script src="js/usuarios.js?v=9302994"></script>
-<script src="js/chamados.js?v=9302994"></script>
-<script src="js/dashboard.js?v=9302994"></script>
+<script src="js/clientes.js?v=5d01ff9"></script>
+<script src="js/fornecedores.js?v=5d01ff9"></script>
+<script src="js/apropriacoes.js?v=5d01ff9"></script>
+<script src="js/funcionarios.js?v=5d01ff9"></script>
+<script src="js/servicos.js?v=5d01ff9"></script>
+<script src="js/produtos.js?v=5d01ff9"></script>
+<script src="js/estoque.js?v=5d01ff9"></script>
+<script src="js/compras.js?v=5d01ff9"></script>
+<script src="js/requisicoes.js?v=5d01ff9"></script>
+<script src="js/orcamentos.js?v=5d01ff9"></script>
+<script src="js/propostas.js?v=5d01ff9"></script>
+<script src="js/contratos.js?v=5d01ff9"></script>
+<script src="js/contas_pagar.js?v=5d01ff9"></script>
+<script src="js/carteira.js?v=5d01ff9"></script>
+<script src="js/obras.js?v=5d01ff9"></script>
+<script src="js/frota.js?v=5d01ff9"></script>
+<script src="js/equipamentos.js?v=5d01ff9"></script>
+<script src="js/acessorios.js?v=5d01ff9"></script>
+<script src="js/mobilizacoes.js?v=5d01ff9"></script>
+<script src="js/estacas.js?v=5d01ff9"></script>
+<script src="js/obra_abas.js?v=5d01ff9"></script>
+<script src="js/medicoes.js?v=5d01ff9"></script>
+<script src="js/movimentacoes.js?v=5d01ff9"></script>
+<script src="js/rdo.js?v=5d01ff9"></script>
+<script src="js/rdo_import_maya.js?v=5d01ff9"></script>
+<script src="js/usuarios.js?v=5d01ff9"></script>
+<script src="js/chamados.js?v=5d01ff9"></script>
+<script src="js/dashboard.js?v=5d01ff9"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=9302994"></script>
+<script src="js/init.js?v=5d01ff9"></script>
 </body>
 </html>

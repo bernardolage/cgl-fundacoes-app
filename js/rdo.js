@@ -226,6 +226,7 @@ async function novoRDO(){
   $("rdo-responsavel").value = "";
   if($("rdo-local")) $("rdo-local").value = "";
   carregarLocaisRDO(null);
+  carregarParamsObraRDO(null); // limpa a jornada/concretagem da ficha anterior e esconde o chip de jornada
   $("rdo-tempo-manha").value = "";
   $("rdo-tempo-tarde").value = "";
   $("rdo-efetivo-proprio").value = 0;
@@ -284,6 +285,9 @@ async function abrirRDO(id){
   _rdoRaizDados  = dadosRaiz.data || null;
   _rdoRaizSolo   = [];
   _rdoAtividades = (ativs.data || []).map(a => ({ h_inicial: a.h_inicial, h_final: a.h_final, motivo: a.motivo }));
+  // fase 46 + correção de 06/10/2026: o abastecimento do dia era lido em abrirFichaRDOVisual, onde `abast` não existe;
+  // o RDO aberto ficava sem abastecimento na tela e salvar apagava o que estava gravado
+  _rdoAbast = (abast.data || []).map(a => ({ ...a }));
 
   // Fase 20+: carrega solo/just por execucao_id
   if(data.tipo_servico === "estaca_raiz"){
@@ -336,7 +340,7 @@ function abrirFichaRDOVisual(rdo){
   ativarTabRDO("cabecalho");
   renderExecucoes();
   renderRdoEquipe();
-  _rdoAbast = (abast.data || []).map(a => ({ ...a }));
+  // (_rdoAbast é carregado em abrirRDO: aqui `abast` não existe e o ReferenceError cortava o fim desta função desde a fase 46)
   renderRdoAbast();
   renderRdoAtividades();
   atualizarVizinhosRDO(rdo);
@@ -476,9 +480,9 @@ function renderExecucoes(){
       <td><input type="text" class="ex-num col-md" value="${esc(e.estaca_numero||"")}" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-diam" step="0.1" min="0" value="${esc(e.diametro_mm ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pproj" step="0.01" min="0" value="${esc(e.profundidade_projeto ?? "")}" style="width:75px;" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" style="width:75px;" title="Acumulado da estaca" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pde" step="0.01" min="0" value="${esc(e.perfuracao_de_m ?? "")}" style="width:62px;" title="Trecho perfurado neste dia — de (m)" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pate" step="0.01" min="0" value="${esc(e.perfuracao_ate_m ?? "")}" style="width:62px;" title="Trecho perfurado neste dia — até (m)" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" data-auto="${esc(e._pexecAuto ?? "")}" style="width:75px;" title="Metros perfurados neste dia (o que a medição soma) = Acum. − De. Pode corrigir à mão" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pde" step="0.01" min="0" value="${esc(e.perfuracao_de_m ?? "")}" style="width:62px;" title="Onde a estaca estava no começo do dia: o sistema traz o acumulado dos RDOs anteriores desta estaca" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pate" step="0.01" min="0" value="${esc(e.perfuracao_ate_m ?? "")}" style="width:62px;" title="Acumulado da estaca ao fim do dia (o que está no boletim)" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perfi col-lg" value="${e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(0,16) : ""}" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perff col-lg" value="${e.perfuracao_fim ? String(e.perfuracao_fim).slice(0,16) : ""}" /></td>
       <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-conci col-lg" value="${e.concretagem_inicio ? String(e.concretagem_inicio).slice(0,16) : ""}" /></td>
@@ -514,6 +518,10 @@ function renderExecucoes(){
   // listeners
   tb.querySelectorAll("tr[data-idx]").forEach(tr => {
     const idx = Number(tr.dataset.idx);
+    // hotfix 15: o operador digita o acumulado; "No dia" = Acum. − De (listener no campo roda antes do da linha)
+    tr.querySelectorAll(".ex-pate, .ex-pde").forEach(inp => inp.addEventListener("input", () => rdoRecalcularNoDia(tr, idx)));
+    tr.querySelector(".ex-pate")?.addEventListener("change", () => rdoPreencherAcumAnterior(tr, idx));
+    tr.querySelector(".ex-num")?.addEventListener("change", () => rdoPreencherAcumAnterior(tr, idx));
     tr.addEventListener("input", () => coletarExecucao(tr, idx));
     tr.addEventListener("change", () => coletarExecucao(tr, idx));
   });
@@ -533,6 +541,48 @@ function renderExecucoes(){
     });
   }
   atualizarChipsExec();
+}
+
+/* Hotfix 15 (decisão de 05/10/2026): no lançamento manual o operador digita o ACUMULADO da estaca
+   (o "até" do boletim). "De" é onde a estaca estava no começo do dia (acumulado dos RDOs anteriores
+   desta estaca na obra, trazido sozinho) e "No dia" = Acum. − De, que é o que a medição soma.
+   "No dia" só é recalculado enquanto a pessoa não digitar outro valor (data-auto). */
+function rdoRecalcularNoDia(tr, idx){
+  const ate = numOrNull(tr.querySelector(".ex-pate")?.value);
+  const de  = numOrNull(tr.querySelector(".ex-pde")?.value);
+  const inPe = tr.querySelector(".ex-pexec");
+  if(ate == null || !inPe) return;
+  const dia = Math.round((ate - (de ?? 0)) * 100) / 100;
+  if(dia < 0) return; // acumulado menor que o anterior: a pessoa confere
+  if(inPe.value === "" || inPe.value === inPe.dataset.auto){
+    inPe.value = dia; inPe.dataset.auto = String(dia);
+    if(_rdoExecucoes[idx]) _rdoExecucoes[idx]._pexecAuto = String(dia);
+  }
+}
+async function rdoAcumAnteriorDaEstaca(numero){
+  const obraId = $("rdo-obra")?.value, data = $("rdo-data")?.value;
+  if(!obraId || !data || !numero) return null;
+  const padrao = String(numero).trim().replace(/[\\%_]/g, "\\$&"); // ilike sem curinga: \, % e _ literais
+  let q = sb.from("rdo_execucao_estaca")
+    .select("perfuracao_ate_m,profundidade_executada,modalidade_execucao,rdo:rdo_id!inner(obra_id,data)")
+    .eq("rdo.obra_id", obraId).lt("rdo.data", data).ilike("estaca_numero", padrao);
+  if(rdoEditId) q = q.neq("rdo_id", rdoEditId);
+  const { data: linhas, error } = await q;
+  if(error) return null;
+  return (linhas || []).filter(l => l.modalidade_execucao !== "refuro")
+    .reduce((m, l) => Math.max(m, Number(l.perfuracao_ate_m) || 0, Number(l.profundidade_executada) || 0), 0);
+}
+async function rdoPreencherAcumAnterior(tr, idx){
+  const inDe = tr.querySelector(".ex-pde");
+  const ate = numOrNull(tr.querySelector(".ex-pate")?.value);
+  const numero = tr.querySelector(".ex-num")?.value.trim();
+  if(!inDe || inDe.value !== "" || ate == null || !numero) return; // só preenche "De" vazio, depois de digitado o acumulado
+  const anterior = await rdoAcumAnteriorDaEstaca(numero);
+  if(anterior == null || inDe.value !== "") return;
+  inDe.value = anterior;
+  inDe.title = anterior > 0 ? `Acumulado dos RDOs anteriores desta estaca: ${num(anterior)} m` : "Primeiro dia desta estaca: começa em 0";
+  rdoRecalcularNoDia(tr, idx);
+  coletarExecucao(tr, idx);
 }
 
 function coletarExecucao(tr, idx){
@@ -775,8 +825,8 @@ function attachBoletimListeners(idx){
 }
 
 /* Trecho do dia (de–até) derivado das camadas de solo do boletim: menor início → De,
-   maior final → Até. O acumulado (Prof. exec.) só é preenchido quando estava vazio ou
-   igual ao "Até" anterior — se a pessoa digitou outro valor, fica como está. */
+   maior final → Acum. "No dia" = Acum. − De (hotfix 15), só quando estava vazio ou ainda era
+   o valor calculado antes — se a pessoa digitou outro valor, fica como está. */
 function sincronizarTrechoDaEstaca(idx){
   const e = _rdoExecucoes[idx];
   if(!e) return;
@@ -784,9 +834,11 @@ function sincronizarTrechoDaEstaca(idx){
   if(!camadas.length) return;
   const de  = camadas.reduce((m, s) => (s.inicio_ml != null && (m == null || s.inicio_ml < m)) ? s.inicio_ml : m, null);
   const ate = camadas.reduce((m, s) => (s.final_ml  != null && (m == null || s.final_ml  > m)) ? s.final_ml  : m, null);
-  const ateAnterior = e.perfuracao_ate_m;
   e.perfuracao_de_m = de; e.perfuracao_ate_m = ate;
-  if(ate != null && (e.profundidade_executada == null || e.profundidade_executada === ateAnterior)) e.profundidade_executada = ate;
+  const noDia = ate != null ? Math.round((ate - (de ?? 0)) * 100) / 100 : null;
+  if(noDia != null && noDia >= 0 && (e.profundidade_executada == null || String(e.profundidade_executada) === String(e._pexecAuto ?? ""))){
+    e.profundidade_executada = noDia; e._pexecAuto = String(noDia);
+  }
   const tr = $("rdo-execs")?.querySelector(`tr[data-idx="${idx}"]`);
   if(tr){
     const set = (cls, v) => { const el = tr.querySelector(cls); if(el) el.value = v ?? ""; };
@@ -817,12 +869,24 @@ function volumeConcretoJS(tipo, diametroMm, profMaxM, qtdSacos, params){
 }
 async function carregarParamsObraRDO(obraId){
   _rdoObraParams = null;
-  if(!obraId) return null;
-  const { data } = await sb.from("obras")
-    .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida")
-    .eq("id", obraId).maybeSingle();
+  if(!obraId){ atualizarChipJornadaRDO(null); return null; }
+  const [{ data }] = await Promise.all([
+    sb.from("obras")
+      .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida")
+      .eq("id", obraId).maybeSingle(),
+    carregarJornadaEmpresa()
+  ]);
   _rdoObraParams = data || null;
+  atualizarChipJornadaRDO(obraId);
   return _rdoObraParams;
+}
+/* Lote S40 (#31): chip amarelo na ficha quando a obra não tem jornada e o cálculo usa a da empresa */
+function atualizarChipJornadaRDO(obraId){
+  const chip = $("rdo-ficha-jornada-chip");
+  if(!chip) return;
+  const j = obraId ? jornadaEfetiva(_rdoObraParams) : null;
+  chip.style.display = j && j.padrao_empresa ? "" : "none";
+  chip.dataset.obraId = obraId || "";
 }
 /* Preenche Vol. m³ das execuções pela parametrização da obra. Só as vazias, a menos
    que a pessoa confirme sobrescrever. Raiz em saco usa o consumo de cimento do boletim. */
@@ -846,7 +910,9 @@ async function calcularConcretoExecucoes(){
       const q = numOrNull(e.consumo_cimento_raiz);
       if(q != null) qtdSacos = un === "kg" ? q / (Number(p.peso_saco_kg ?? 50) || 50) : un === "saco" ? q : null;
     }
-    const prof = Math.max(Number(e.profundidade_executada) || 0, Number(e.perfuracao_ate_m) || 0) || null;
+    // hotfix 15: o volume usa a profundidade acumulada da estaca (até), nunca a metragem do dia;
+    // profundidade_executada só entra na estaca de um dia, sem trecho informado.
+    const prof = numOrNull(e.perfuracao_ate_m) ?? (e.perfuracao_de_m == null ? numOrNull(e.profundidade_executada) : null);
     const v = volumeConcretoJS(tipo, e.diametro_mm, prof, qtdSacos, p);
     if(v == null){ semDados++; return; }
     e.volume_concreto_m3 = v; n++;
@@ -1037,7 +1103,7 @@ function renderRdoEquipe(){
       const obraId = $("rdo-obra")?.value;
       if(obraId && !_rdoObraParams) await carregarParamsObraRDO(obraId);
       const l = _rdoEquipe[idx] || {};
-      const r = calcularHorasEquipe($("rdo-data")?.value, l.hora_entrada, l.hora_saida, _rdoObraParams, l.intervalo_minutos, !!$("rdo-feriado")?.checked);
+      const r = calcularHorasEquipe($("rdo-data")?.value, l.hora_entrada, l.hora_saida, jornadaEfetiva(_rdoObraParams), l.intervalo_minutos, !!$("rdo-feriado")?.checked);
       if(!r) return;
       tr.querySelector(".eq-h100").value = r.horas_100 || "";
       tr.querySelector(".eq-h50").value = "";
@@ -1294,6 +1360,16 @@ async function salvarRDO(novoStatus){
     if(errAtiv){ aviso("app-aviso","Erro ao salvar as atividades do dia: "+errAtiv.message,"erro"); return; }
   }
 
+  // Lote S40 (#31): ao salvar, calcula a HE das linhas com entrada e saída e HE ainda vazia
+  if(_rdoEquipe.some(e => e.hora_entrada && e.hora_saida && e.horas_100 == null)){
+    if(!_rdoObraParams) await carregarParamsObraRDO(obra_id);
+    const jornada = jornadaEfetiva(_rdoObraParams);
+    _rdoEquipe.forEach(e => {
+      if(!(e.hora_entrada && e.hora_saida && e.horas_100 == null)) return;
+      const r = calcularHorasEquipe(dataRDO, e.hora_entrada, e.hora_saida, jornada, e.intervalo_minutos, reg.feriado);
+      if(r){ e.horas_100 = r.horas_100 || null; e.horas_50 = null; }
+    });
+  }
   // Insere equipe do dia (genérico, todos os tipos de RDO)
   const eqLimpa = _rdoEquipe
     .filter(e => e.funcionario_id || (e.nome_avulso && e.nome_avulso.trim()))
@@ -1406,6 +1482,11 @@ function ligarRDO(){
   $("btn-rdo-aplicar-op")?.addEventListener("click", aplicarOperadorEmMassa);
   $("btn-rdo-calc-concreto")?.addEventListener("click", calcularConcretoExecucoes);
   $("rdo-obra")?.addEventListener("change", () => carregarParamsObraRDO($("rdo-obra").value));
+  $("rdo-ficha-jornada-link")?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    const id = $("rdo-ficha-jornada-chip")?.dataset.obraId || $("rdo-obra")?.value;
+    if(id && typeof dashAbrirObra === "function") dashAbrirObra(id, "parametros");
+  });
 
   $("rdo-tipo-servico")?.addEventListener("change", (e) => {
     atualizarVisibilidadeAbasRaiz(e.target.value);
@@ -1812,16 +1893,21 @@ async function montarPreviewDias(data, origem, obraSel){
           .filter(t => t.de != null || t.ate != null || t.solo || t.ferramenta);
         const inj = iaInjecaoDaEstaca(injecao, ref.nomeBase, e.agrupamento);
         const maxAte = iaMaxAte(trechos);
+        // hotfix 15: profundidade_executada = metros perfurados NO DIA (o que a medição soma);
+        // perfuracao_ate_m = acumulado da estaca ao fim do dia (profundidade_acumulada_m da v3.3).
+        // maxAte só vira metragem do dia quando os trechos não têm "de" (estaca de um dia, a partir de 0).
+        const acumulada = numOrNull(e.profundidade_acumulada_m) ?? maxAte;
         registros.push({
           data_dia: d.data,
           obra_csv: d.obra || "",
           estaca_numero: ref.nomeBase,
           agrupamento: (e.agrupamento || "").trim() || null,
           modalidade_execucao: (e.refuro || ref.isRefuro) ? "refuro" : "furo_normal",
-          profundidade_executada: e.profundidade_executada ?? maxAte,
+          profundidade_executada: numOrNull(e.profundidade_executada) ?? iaMetragemDia(trechos) ?? maxAte,
+          profundidade_acumulada_m: acumulada,
           profundidade_projeto: e.profundidade_projeto,
           perfuracao_de_m: numOrNull(e.perfuracao_de_m) ?? iaMinDe(trechos),
-          perfuracao_ate_m: numOrNull(e.perfuracao_ate_m) ?? maxAte,
+          perfuracao_ate_m: acumulada ?? numOrNull(e.perfuracao_ate_m),
           trechos,
           inclinacao: e.inclinacao != null && String(e.inclinacao).trim() ? String(e.inclinacao).trim() : null,
           consumo_cimento_raiz: inj && inj.consumo_cimento != null ? String(inj.consumo_cimento) : null,
@@ -1841,9 +1927,10 @@ async function montarPreviewDias(data, origem, obraSel){
         });
       });
     });
-    if(!registros.length){
-      throw new Error("A IA leu o diário, mas não encontrou linhas de estacas. " + (data?.observacoes || ""));
-    }
+    // Lote S40 (#34): dia sem estaca (mobilização, chuva, manutenção, aguardando frente...) também é
+    // RDO válido. Vira RDO só com cabeçalho, equipe, ocorrências e abastecimento, sem execução.
+    const diasComEstaca = new Set(registros.map(r => r.data_dia));
+    dias.forEach(d => { if(d.data && !diasComEstaca.has(d.data) && _iaExtras[d.data]) _iaExtras[d.data].sem_estacas = true; });
 
     await continuarProcessamentoImport(registros, dias[0].obra || "", origem);
 
@@ -1967,19 +2054,45 @@ function diasImportacao(){
 }
 const iaMinDe  = (ts) => (ts || []).reduce((m, t) => (t.de  != null && (m == null || t.de  < m)) ? t.de  : m, null);
 const iaMaxAte = (ts) => (ts || []).reduce((m, t) => (t.ate != null && (m == null || t.ate > m)) ? t.ate : m, null);
+/* Metragem DO DIA pelos trechos (hotfix 15, mesma regra da extrair-rdo-arquivo v3.3):
+   Σ (ate − de); sem soma, maior ate − menor de; sem trecho com de e ate, null. */
+const iaMetragemDia = (ts) => {
+  const soma = (ts || []).reduce((s, t) => (t.de != null && t.ate != null && t.ate > t.de) ? s + (t.ate - t.de) : s, 0);
+  if(soma > 0) return Math.round(soma * 100) / 100;
+  const de = iaMinDe(ts), ate = iaMaxAte(ts);
+  return (de != null && ate != null && ate > de) ? Math.round((ate - de) * 100) / 100 : null;
+};
 
 /* ---------- Horas da equipe pela jornada da obra (espelha fn_horas_equipe do banco) ----------
    Regra RH (Ju, 11/09/2026) + decisão do Bernardo: toda HE é 100%; seg-qui o que passar da
    jornada da obra (descontada 1h de almoço) é HE; sexta tem jornada própria quando cadastrada
    (16/09/2026); sábado, domingo e feriado: tudo HE 100.
    Intervalo: sem registro = 60 min; registrado = tempo REAL com piso de 30 min.
-   Sem jornada cadastrada → null em dia útil: fica em branco para preencher à mão. */
+   Obra sem jornada → jornada padrão da empresa (empresa_config, lote S40 #31: seg-qui
+   07:00–17:00, sexta 07:00–16:00, intervalo 60 min). */
 let _iaJornadaObra = null;
+let _rdoJornadaEmpresa;          // undefined = não carregada; null = sem empresa_config
+async function carregarJornadaEmpresa(){
+  if(_rdoJornadaEmpresa !== undefined) return _rdoJornadaEmpresa;
+  const { data } = await sb.from("empresa_config")
+    .select("jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida,jornada_intervalo_min")
+    .eq("id", 1).maybeSingle();
+  _rdoJornadaEmpresa = data && data.jornada_entrada && data.jornada_saida ? data : null;
+  return _rdoJornadaEmpresa;
+}
+/* Jornada que vale para o cálculo: a da obra quando cadastrada; senão a da empresa (padrao_empresa=true) */
+function jornadaEfetiva(obra){
+  if(obra && obra.jornada_entrada && obra.jornada_saida) return obra;
+  return _rdoJornadaEmpresa ? { ..._rdoJornadaEmpresa, padrao_empresa: true } : null;
+}
 async function iaCarregarJornadaObra(obraId){
   _iaJornadaObra = null;
   if(!obraId) return null;
-  const { data } = await sb.from("obras").select("jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida").eq("id", obraId).maybeSingle();
-  _iaJornadaObra = data || null;
+  const [{ data }] = await Promise.all([
+    sb.from("obras").select("jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida").eq("id", obraId).maybeSingle(),
+    carregarJornadaEmpresa()
+  ]);
+  _iaJornadaObra = jornadaEfetiva(data);
   return _iaJornadaObra;
 }
 function minutosHHMM(s){ const m = String(s || "").match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
@@ -1999,9 +2112,16 @@ function calcularHorasEquipe(dataISO, entrada, saida, jornada, intervaloMin, fer
   const js = minutosHHMM(usaSexta ? jornada.jornada_sexta_saida   : jornada.jornada_saida);
   if(je == null || js == null) return null;
   let jor = js - je; if(jor < 0) jor += 24 * 60;
-  jor = Math.max(0, jor - 60); // jornada do dia já descontada 1h de almoço (mesma regra do banco)
+  jor = Math.max(0, jor - (Number(jornada.jornada_intervalo_min) || 60)); // jornada do dia já descontado o almoço (1h; mesma regra do banco)
   const normais = Math.min(trab, jor);
   return { horas_normais: h(normais), horas_50: 0, horas_100: h(Math.max(0, trab - normais)) };
+}
+function iaTextoAvisoJornada(){
+  const j = _iaJornadaObra;
+  if(!j) return "⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros) e não há jornada padrão da empresa: as horas extras dos dias úteis ficam em branco até alguém preencher.";
+  const hm = (s) => String(s || "").slice(0, 5);
+  const sexta = j.jornada_sexta_entrada && j.jornada_sexta_saida ? `, sexta ${hm(j.jornada_sexta_entrada)}–${hm(j.jornada_sexta_saida)}` : "";
+  return `⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros): usando o padrão da empresa (seg-qui ${hm(j.jornada_entrada)}–${hm(j.jornada_saida)}${sexta}).`;
 }
 /* Feriado marcado no cabeçalho do dia (preview da IA) */
 function iaDiaFeriado(dia){
@@ -2015,7 +2135,10 @@ function iaRecalcularHorasNoDOM(soVazias){
     bloco.querySelectorAll(".ia-equipe tbody tr").forEach(tr => iaRecalcularHorasLinha(tr, dia, soVazias));
   });
   const aviso_ = document.querySelector(".ia-jornada-aviso");
-  if(aviso_) aviso_.style.display = _iaJornadaObra && _iaJornadaObra.jornada_entrada ? "none" : "";
+  if(aviso_){
+    aviso_.style.display = _iaJornadaObra && !_iaJornadaObra.padrao_empresa ? "none" : "";
+    aviso_.textContent = iaTextoAvisoJornada();
+  }
 }
 function iaRecalcularHorasLinha(tr, dia, soVazias){
   const g = (c) => tr.querySelector(`[data-e="${c}"]`);
@@ -2041,12 +2164,12 @@ function renderConferenciaIA(resp){
   const conf = resp?.confianca || "media";
   const corConf = conf === "alta" ? "var(--sucesso)" : conf === "baixa" ? "var(--perigo)" : "var(--aviso)";
   const duvidas = (resp?.duvidas || []);
-  const temJornada = !!(_iaJornadaObra && _iaJornadaObra.jornada_entrada);
+  const temJornada = !!(_iaJornadaObra && !_iaJornadaObra.padrao_empresa);
   let html = `<div class="ia-conf-topo">
     <div>${resp?.origem_label ? resp.origem_label : `🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"}`} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
       ${resp?.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
     ${duvidas.length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${duvidas.map(esc).join(" · ")}</div>` : ""}
-    <div class="ia-duvidas ia-jornada-aviso" style="${temJornada ? "display:none;" : ""}">⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros): as horas extras da equipe ficam em branco até alguém preencher.</div>
+    <div class="ia-duvidas ia-jornada-aviso" style="${temJornada ? "display:none;" : ""}">${esc(iaTextoAvisoJornada())}</div>
     <div class="meta">Confira e corrija abaixo. O que estiver na tabela é exatamente o que será gravado. Linhas removidas com ✕ não entram. A função da equipe vem do cadastro de funcionários; "Função no dia" só quando o boletim disser outra.</div>
   </div>`;
 
@@ -2090,7 +2213,7 @@ function renderConferenciaIA(resp){
         <button type="button" class="btn-sec btn-sm ia-add-just" style="margin-top:6px;">+ atividade</button>
       </details>
       <div class="tabela-rola"><table class="itens-tabela ia-tabela ia-estacas">
-        <thead><tr><th>Estaca</th><th title="Bloco / anel / pilar">Agrup.</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th title="Acumulado da estaca">Prof. exec.</th><th title="Trecho do turno">De (m)</th><th title="Trecho do turno">Até (m)</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
+        <thead><tr><th>Estaca</th><th title="Bloco / anel / pilar">Agrup.</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th title="Metros perfurados neste dia (o que a medição soma)">No dia (m)</th><th title="Início do trecho perfurado no dia">De (m)</th><th title="Até onde a estaca chegou ao fim do dia: profundidade acumulada">Acum. (m)</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
         <tbody>${ests.map((e, i) => {
           const trechos = e.trechos || [];
           return `<tr data-idx="${i}">
@@ -2099,9 +2222,9 @@ function renderConferenciaIA(resp){
           <td><input type="checkbox" data-c="refuro" ${e.modalidade_execucao === "refuro" ? "checked" : ""} /></td>
           <td><input type="number" step="1" data-c="diametro_mm" value="${v(e.diametro_mm)}" style="width:64px" /></td>
           <td><input type="number" step="0.01" data-c="profundidade_projeto" value="${v(e.profundidade_projeto)}" style="width:70px" /></td>
-          <td><input type="number" step="0.01" data-c="profundidade_executada" value="${v(e.profundidade_executada)}" style="width:70px" /></td>
+          <td><input type="number" step="0.01" data-c="profundidade_executada" value="${v(e.profundidade_executada)}" data-auto="${v(e.profundidade_executada)}" style="width:70px" title="Metros perfurados neste dia" /></td>
           <td><input type="number" step="0.01" data-c="perfuracao_de_m" value="${v(e.perfuracao_de_m)}" style="width:62px" /></td>
-          <td><input type="number" step="0.01" data-c="perfuracao_ate_m" value="${v(e.perfuracao_ate_m)}" style="width:62px" /></td>
+          <td><input type="number" step="0.01" data-c="perfuracao_ate_m" value="${v(e.perfuracao_ate_m ?? e.profundidade_acumulada_m)}" style="width:62px" title="Profundidade acumulada da estaca ao fim do dia" /></td>
           <td><input type="time" data-c="perfuracao_inicio" value="${hh(e.perfuracao_inicio)}" /></td>
           <td><input type="time" data-c="perfuracao_fim" value="${hh(e.perfuracao_fim)}" /></td>
           <td><input type="time" data-c="concretagem_inicio" value="${hh(e.concretagem_inicio)}" /></td>
@@ -2228,7 +2351,7 @@ function renderConferenciaIA(resp){
     });
   });
 
-  // trechos: editar De/Até/Prof. exec. da linha principal conforme os trechos
+  // trechos: editar De/Acum./No dia da linha principal conforme os trechos
   const sincronizarTrechos = (sub) => {
     const idx = sub.dataset.sub;
     const main = sub.parentElement.querySelector(`tr[data-idx="${idx}"]`);
@@ -2237,9 +2360,10 @@ function renderConferenciaIA(resp){
     const de = iaMinDe(ts), ate = iaMaxAte(ts);
     if(!ts.length) return;
     const inDe = main.querySelector('[data-c="perfuracao_de_m"]'), inAte = main.querySelector('[data-c="perfuracao_ate_m"]'), inPe = main.querySelector('[data-c="profundidade_executada"]');
-    const ateAnterior = numOrNull(inAte.value);
     inDe.value = de ?? ""; inAte.value = ate ?? "";
-    if(ate != null && (inPe.value === "" || numOrNull(inPe.value) === ateAnterior)) inPe.value = ate;
+    // hotfix 15: "No dia" acompanha a metragem dos trechos enquanto a pessoa não digitar outro valor
+    const noDia = iaMetragemDia(ts) ?? ate;
+    if(noDia != null && (inPe.value === "" || inPe.value === inPe.dataset.auto)){ inPe.value = noDia; inPe.dataset.auto = String(noDia); }
     sub.querySelector("summary").firstChild.textContent = `⛏️ Trechos de solo / ferramenta (${ts.length})`;
   };
   const ligarTrechos = (sub) => {
@@ -2314,7 +2438,7 @@ function lerConferenciaIA(){
         modalidade_execucao: g("refuro").checked ? "refuro" : "furo_normal",
         diametro_mm: num(g("diametro_mm").value),
         profundidade_projeto: num(g("profundidade_projeto").value),
-        profundidade_executada: num(g("profundidade_executada").value) ?? ate,
+        profundidade_executada: num(g("profundidade_executada").value) ?? iaMetragemDia(trechos) ?? ate,
         perfuracao_de_m: de, perfuracao_ate_m: ate, trechos,
         inclinacao: gs("inclinacao") ? (gs("inclinacao").value.trim() || null) : (base.inclinacao || null),
         consumo_cimento_raiz: gs("consumo_cimento_raiz") ? (gs("consumo_cimento_raiz").value.trim() || null) : (base.consumo_cimento_raiz || null),
@@ -2560,7 +2684,9 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
       obrasArr.map(o => `<option value="${esc(o.id)}" ${_csvObraDetectada && o.id===_csvObraDetectada.id?"selected":""}>${esc(o.nome)}</option>`).join("");
   }
 
-  aviso("app-aviso", `${registros.length} estacas extraídas. Confirme obra e tipo antes de importar.`, "ok");
+  aviso("app-aviso", registros.length
+    ? `${registros.length} estacas extraídas. Confirme obra e tipo antes de importar.`
+    : `${dias.length} dia(s) sem estacas (só ocorrência/equipe). Confirme obra e tipo antes de importar.`, "ok");
 }
 
 function parseCSVLine(linha){
@@ -2622,7 +2748,7 @@ async function confirmarImportCSV(){
     if(!confirm(`Atenção: ${semMatch.length} máquina(s) sem equipamento vinculado (${semMatch.join(", ")}).\nElas serão importadas só com o código texto. Continuar mesmo assim?`)) return;
   }
 
-  if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas como ${TIPO_SERVICO[tipo]?.label || tipo}? Cada dia vira 1 RDO novo.`)) return;
+  if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}? Cada dia vira 1 RDO novo.`)) return;
 
   const btn = $("btn-csv-confirmar");
   btn.disabled = true;

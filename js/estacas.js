@@ -255,9 +255,10 @@ async function carregarEstacasDaObra(obraId){
     renderEstacas();
     return;
   }
+  estCarregarTolerancia(); // hotfix 15b: tolerância do destaque executada × projeto
   const [estsRes, execsRes, equipsRes, obraRes] = await Promise.all([
     sb.from("estacas")
-      .select("id,numero,tipo,status,diametro_mm,profundidade_m,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local")
+      .select("id,numero,tipo,status,diametro_mm,profundidade_m,profundidade_executada_m,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local")
       .eq("obra_id", obraId)
       .order("numero"),
     // !inner + eq no join: filtra por obra NO SERVIDOR (antes baixava a tabela
@@ -413,7 +414,7 @@ function _raizTag(exec){
 async function carregarAcompanhamentoRaiz(){
   if(!obraEditId) return null;
   const { data: execs, error } = await sb.from("rdo_execucao_estaca")
-    .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo:rdo_id!inner(obra_id,data)")
+    .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo:rdo_id!inner(obra_id,data)")
     .eq("rdo.obra_id", obraEditId)
     .order("perfuracao_inicio", { ascending: true });
   if(error){ aviso("app-aviso", "Não foi possível carregar as execuções: " + error.message, "erro"); return null; }
@@ -447,7 +448,10 @@ function _raizLinha(est, execs){
   const num = (v) => (v == null ? null : Number(v));
   const furos = execs.filter(x => (x.modalidade_execucao || "furo_normal") !== "refuro");
   const ultimo = execs.length ? execs[execs.length - 1] : null;
-  const compFinal = furos.length ? Math.max(...furos.map(x => num(x.profundidade_executada) || 0)) : (ultimo ? num(ultimo.profundidade_executada) : null);
+  // hotfix 15: profundidade_executada é a metragem DO DIA e perfuracao_ate_m o acumulado ao fim do dia.
+  // Comp. final = maior acumulado entre os furos (estaca de vários dias); comp. total = soma dos dias, com refuros.
+  const acum = (x) => Math.max(num(x.perfuracao_ate_m) || 0, num(x.profundidade_executada) || 0);
+  const compFinal = furos.length ? Math.max(...furos.map(acum)) : (ultimo ? acum(ultimo) : null);
   const compTotal = execs.reduce((s, x) => s + (num(x.profundidade_executada) || 0), 0);
   const ferr = { revestimento: 0, martelo: 0, tricone: 0, outro: 0 };
   execs.forEach(x => (x._solo || []).forEach(s => {
@@ -497,7 +501,11 @@ async function renderAcompanhamentoRaiz(){
     .filter(e => !termo || `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase().includes(termo));
   if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz para os filtros.</p>`; return; }
 
-  const linhas = lista.map(e => _raizLinha(e, _raizDados.porEstaca.get(e.id) || _raizDados.porEstaca.get("n:" + normalizarNumeroEstacaEstacas(e.numero || "")) || []));
+  const fProf = $("est-f-prof")?.value || "";
+  const linhas = lista.map(e => _raizLinha(e, _raizDados.porEstaca.get(e.id) || _raizDados.porEstaca.get("n:" + normalizarNumeroEstacaEstacas(e.numero || "")) || []))
+    // hotfix 15b: filtro "Executada ≠ projeto" também no acompanhamento raiz
+    .filter(l => fProf !== "diferente" || estProfDiverge({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }));
+  if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz com profundidade executada diferente do projeto.</p>`; return; }
   // ordena por local, bloco, número
   const ord = (a, b) => (a.local.localeCompare(b.local, "pt-BR") || a.bloco.localeCompare(b.bloco, "pt-BR", { numeric: true }) || a.numero.localeCompare(b.numero, "pt-BR", { numeric: true }));
   linhas.sort(ord);
@@ -527,7 +535,7 @@ async function renderAcompanhamentoRaiz(){
     return cab + `<tr class="${stCls}">
       <td>${esc(l.bloco || "—")}</td><td><strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${l.refuros} refuro(s)">🔄${l.refuros}</span>` : ""}</td>
       <td class="num">${f0(l.diametro)}</td><td class="num">${f2(l.estimado)}</td>
-      <td class="num">${f2(l.compFinal)}</td><td class="num">${f2(l.compTotal)}</td><td>${dt(l.dataExec)}</td>
+      <td class="num">${l.compFinal != null ? estCelulaExecutada({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }, f2) : "—"}</td><td class="num">${f2(l.compTotal)}</td><td>${dt(l.dataExec)}</td>
       <td class="num">${l.compFinal != null ? f2(l.revest) : "—"}</td><td class="num">${l.compFinal != null ? f2(l.martelo) : "—"}</td><td class="num">${l.compFinal != null ? f2(l.tricone) : "—"}</td>
       <td>${esc(l.tagExec || "—")}</td>
       <td>${dt(l.dataInj)}</td><td class="num">${l.sacos != null ? f0(l.sacos) : (l.sacosTxt ? esc(l.sacosTxt) : "—")}</td><td class="num">${f2(l.m3)}</td><td>${esc(l.tagInj || "—")}</td>
@@ -576,7 +584,7 @@ function renderEstacas(){
   const exec  = _estacas.filter(e => e.status === "executada").length;
   const metragem = _estacas
     .filter(e => e.status === "executada")
-    .reduce((s, e) => s + (Number(e.profundidade_m) || 0), 0);
+    .reduce((s, e) => s + (Number(e.profundidade_executada_m ?? e.profundidade_m) || 0), 0); // hotfix 15b: executada; sem execução vinculada, o cadastro
   const pct = total ? Math.round((exec / total) * 100) : 0;
   $("est-stat-total").textContent      = total;
   $("est-stat-executadas").textContent = exec;
@@ -607,9 +615,11 @@ function renderEstacas(){
   const fStatus = $("est-f-status")?.value || "";
   const fTipo   = $("est-f-tipo")?.value || "";
   const fLocal  = $("est-f-local")?.value || "";
+  const fProf   = $("est-f-prof")?.value || "";
   const termo   = ($("est-busca")?.value || "").trim().toLowerCase();
   const filtradas = _estacas.filter(e => {
     if(fStatus && e.status !== fStatus) return false;
+    if(fProf === "diferente" && !estProfDiverge(e)) return false;
     if(fTipo && e.tipo !== fTipo) return false;
     if(fLocal && (e.local || "") !== fLocal) return false;
     if(termo){
@@ -645,6 +655,7 @@ function renderEstacas(){
       <td>${esc(ESTACA_TIPOS[e.tipo] || e.tipo || "—")}</td>
       <td class="num">${e.diametro_mm != null ? num(e.diametro_mm) : "—"}</td>
       <td class="num">${e.profundidade_m != null ? num(e.profundidade_m) : "—"}</td>
+      <td class="num">${estCelulaExecutada(e)}</td>
       <td>${dataBR(e.data_execucao)}</td>
       <td><span class="tag ${st.cor}">${esc(st.label)}</span></td>
       <td class="col-acao">
@@ -655,7 +666,8 @@ function renderEstacas(){
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Nº</th><th>Local · bloco</th><th>Tipo</th><th class="num">Ø (mm)</th><th class="num">Prof. (m)</th>
+      <th>Nº</th><th>Local · bloco</th><th>Tipo</th><th class="num">Ø (mm)</th><th class="num" title="Profundidade de projeto: a execução não altera">Projeto (m)</th>
+      <th class="num" title="Profundidade executada (maior &quot;até&quot; das execuções). Destaque quando difere do projeto além da tolerância">Executada (m)</th>
       <th>Execução</th><th>Status</th><th class="col-acao"></th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
@@ -668,6 +680,32 @@ function renderEstacas(){
   });
 }
 
+/* ---------- Profundidade executada × projeto (hotfix 15b, 05/10/2026) ----------
+   profundidade_m é o PROJETO (a execução não altera); profundidade_executada_m vem do gatilho.
+   Diferença além da tolerância da empresa (empresa_config.tolerancia_faixa_prof_m, 0,50 m)
+   é destacada: execução abaixo do projeto costuma ser impenetrável ou rocha. */
+let _estTolProf = 0.5, _estTolCarregada = false;
+async function estCarregarTolerancia(){
+  if(_estTolCarregada) return;
+  const { data } = await sb.from("empresa_config").select("tolerancia_faixa_prof_m").eq("id", 1).maybeSingle();
+  if(data && data.tolerancia_faixa_prof_m != null){ _estTolProf = Number(data.tolerancia_faixa_prof_m); _estTolCarregada = true; }
+}
+function estProfDiferenca(e){
+  // executada 0 = execução lançada sem profundidade (ex.: import do RG 11.1): não é divergência
+  if(!(Number(e.profundidade_executada_m) > 0) || e.profundidade_m == null) return null;
+  return Math.round((Number(e.profundidade_executada_m) - Number(e.profundidade_m)) * 100) / 100;
+}
+function estProfDiverge(e){ const d = estProfDiferenca(e); return d != null && Math.abs(d) > _estTolProf; }
+function estCelulaExecutada(e, fmt){
+  if(!(Number(e.profundidade_executada_m) > 0)) return e.profundidade_executada_m == null ? '<span class="meta">—</span>' : '<span class="meta" title="Execução lançada sem profundidade">0</span>';
+  fmt = fmt || num;
+  const d = estProfDiferenca(e);
+  const tag = estProfDiverge(e)
+    ? ` <span class="tag ${d < 0 ? "ambar" : "azul"}" title="${d < 0 ? "Abaixo do projeto (impenetrável, rocha?)" : "Acima do projeto"}">${d > 0 ? "+" : ""}${num(d)}</span>`
+    : "";
+  return fmt(e.profundidade_executada_m) + tag;
+}
+
 /* ---------- Modal Estaca (nova / editar) ---------- */
 function abrirModalEstaca(id){
   _estacaEdit = id ? _estacas.find(e => e.id === id) : null;
@@ -678,6 +716,13 @@ function abrirModalEstaca(id){
   $("est-status").value         = e.status || "prevista";
   $("est-diametro").value       = e.diametro_mm ?? "";
   $("est-profundidade").value   = e.profundidade_m ?? "";
+  const infoExec = $("est-prof-exec-info");
+  if(infoExec){
+    const d = estProfDiferenca(e);
+    infoExec.textContent = e.profundidade_executada_m != null
+      ? `Executada: ${num(e.profundidade_executada_m)} m${d != null && estProfDiverge(e) ? ` (${d > 0 ? "+" : ""}${num(d)} m do projeto)` : ""}`
+      : "";
+  }
   $("est-cota-topo").value      = e.cota_topo ?? "";
   $("est-cota-ponta").value     = e.cota_ponta ?? "";
   $("est-volume").value         = e.volume_concreto_m3 ?? "";
@@ -798,7 +843,10 @@ async function importarEstacasPDF(){
     });
 
     // Chama Edge Function (extrai body mesmo em erro pra ver mensagem real)
-    const { data, error } = await iaInvocarComLimite("extrair-estacas-pdf", { pdf_base64: base64, obra_id: obraEditId });
+    // lote S40 (#28): PDF com centenas de estacas não termina dentro do limite da function (sem log em
+    // ia_chamadas); até a fase 71 dividir o arquivo no servidor, a orientação é dividir antes de enviar
+    const { data, error } = await iaInvocarComLimite("extrair-estacas-pdf", { pdf_base64: base64, obra_id: obraEditId },
+      "A leitura passou do limite de tempo. Arquivo com muitas estacas (mais de ~150) não cabe numa leitura só: divida o PDF em partes de 3 ou 4 páginas e importe uma de cada vez.");
     if(error){
       // supabase-js esconde o body de erro; tenta lê-lo via ctx.context
       let detalhe = error.message || "";
@@ -2960,7 +3008,7 @@ function ligarEstacas(){
 
   $("est-lote-tipo")?.addEventListener("change", e => alterarTipoEmLote(e.target.value));
   montarSelectsTipoEstaca(); // selects começam com os tipos ativos (a obra acrescenta os legados)
-  ["est-busca","est-f-status","est-f-tipo","est-f-local"].forEach(id => {
+  ["est-busca","est-f-status","est-f-tipo","est-f-local","est-f-prof"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "est-busca" ? "input" : "change", id === "est-busca" ? debounce(renderEstacas) : renderEstacas);
   });
