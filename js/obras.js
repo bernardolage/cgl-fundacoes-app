@@ -11,6 +11,7 @@ let obraEditId    = null; // null = nova; uuid = editando
 let _obrContrato  = null; // contrato do cliente vinculado à obra aberta (fase 21)
 let _obrContratoPend = []; // pendências do contrato da obra aberta (fase 26)
 let _obrPendMap   = {};   // contrato_id -> [pendências] (badge na lista, fase 26)
+let _obrFiltroIds = null; // { ids:Set, rotulo, aba, foco } — lista vinda do "Para regularizar" (fase 75)
 
 /* Etapas do statusbar (ordem do enum obra_status) */
 const OBR_STAGES = ["planejada","em_andamento","paralisada","concluida"];
@@ -76,6 +77,7 @@ function obrFiltradas(){
   const fStatus = $("obr-f-status")?.value || "";
   const fCliente = $("obr-f-cliente")?.value || "";
   return _obrRegistros.filter(o => {
+    if(_obrFiltroIds && !_obrFiltroIds.ids.has(o.id)) return false;
     if(fStatus && o.status !== fStatus) return false;
     if(fCliente && o.cliente_id !== fCliente) return false;
     if(termo){
@@ -103,8 +105,21 @@ function preencherFiltrosObras(){
   }
 }
 
-/* ---------- Render ---------- */
-function renderObras(){
+/* ---------- Render ----------
+   opts (opcional, fase 75): { ids, rotulo, aba, foco } mostra só essas obras, com um chip
+   para limpar; a obra aberta dessa lista já cai na aba e no campo que falta preencher. */
+function renderObras(opts){
+  if(opts && Array.isArray(opts.ids)){
+    _obrFiltroIds = { ids: new Set(opts.ids), rotulo: opts.rotulo || "Filtro", aba: opts.aba || null, foco: opts.foco || null };
+    ["obr-busca", "obr-f-status", "obr-f-cliente"].forEach(id => { const el = $(id); if(el) el.value = ""; });
+  }
+  const chip = $("obr-f-ids");
+  if(chip){
+    chip.style.display = _obrFiltroIds ? "" : "none";
+    chip.innerHTML = _obrFiltroIds
+      ? `<span class="tag azul">${esc(_obrFiltroIds.rotulo)} · ${_obrFiltroIds.ids.size} obra(s)</span> <button type="button" class="btn-sec btn-sm" id="obr-f-ids-limpar" title="Mostrar todas as obras">✕ limpar</button>`
+      : "";
+  }
   preencherFiltrosObras();
   const dados = obrFiltradas();
   const cont = $("obr-contador");
@@ -191,7 +206,7 @@ function novaObra(){
   $("obr-nome").value = "";
   $("obr-cliente").value = "";
   $("obr-status").value = "planejada";
-  $("obr-responsavel").value = "";
+  obrValorResponsavel(null);
   $("obr-inicio").value = "";
   $("obr-fim-prev").value = "";
   $("obr-fim-real").value = "";
@@ -215,6 +230,21 @@ function novaObra(){
   // segue o padrão da CGL (ex.: 7822-2025) e é informado pelo usuário.
 }
 
+/* O select só lista a engenharia ativa (fase 75); responsável antigo de outro cargo ou
+   inativo continua aparecendo, marcado, para não sumir ao salvar a obra. */
+function obrValorResponsavel(id){
+  const sel = $("obr-responsavel");
+  if(!sel) return;
+  sel.querySelectorAll("option[data-fora]").forEach(o => o.remove());
+  if(id && ![...sel.options].some(o => o.value === id)){
+    const o = document.createElement("option");
+    o.value = id; o.dataset.fora = "1";
+    o.textContent = "(fora da engenharia ativa)";
+    sel.appendChild(o);
+  }
+  sel.value = id || "";
+}
+
 async function abrirObra(id){
   const { data, error } = await sb.from("obras").select("*").eq("id", id).single();
   if(error){ aviso("app-aviso","Erro ao abrir obra: "+error.message, "erro"); return; }
@@ -224,7 +254,7 @@ async function abrirObra(id){
   $("obr-nome").value = data.nome || "";
   $("obr-cliente").value = data.cliente_id || "";
   $("obr-status").value = data.status || "planejada";
-  $("obr-responsavel").value = data.responsavel_id || "";
+  obrValorResponsavel(data.responsavel_id);
   $("obr-inicio").value = data.data_inicio || "";
   $("obr-fim-prev").value = data.data_fim_prevista || "";
   $("obr-fim-real").value = data.data_fim_real || "";
@@ -463,6 +493,13 @@ function ativarTabObra(nome){
     t.classList.toggle("ativa", t.dataset.tab === nome);
   });
 }
+/* Foco num campo da ficha da obra (fase 75: "Indicar o engenheiro responsável" e jornada) */
+function obrFocarCampo(id){
+  const el = id ? $(id) : null;
+  if(!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.focus();
+}
 
 /* ---------- Aba Parâmetros (fase 42): jornada e concretagem ----------
    Jornada fica na obra (valor da proposta, editável) e alimenta as horas extras da equipe
@@ -632,9 +669,15 @@ function ligarObras(){
     const el = $(id);
     if(el) el.addEventListener(id === "obr-busca" ? "input" : "change", id === "obr-busca" ? debounce(renderObras) : renderObras);
   });
-  $("obr-conteudo")?.addEventListener("click", (e) => {
+  $("obr-conteudo")?.addEventListener("click", async (e) => {
     const tr = e.target.closest(".linha-clicavel");
-    if(tr && tr.dataset.id) abrirObra(tr.dataset.id);
+    if(!tr || !tr.dataset.id) return;
+    await abrirObra(tr.dataset.id);
+    // fase 75: vindo do "Para regularizar", abre direto onde falta preencher
+    if(_obrFiltroIds?.aba){ ativarTabObra(_obrFiltroIds.aba); obrFocarCampo(_obrFiltroIds.foco); }
+  });
+  $("obr-f-ids")?.addEventListener("click", (e) => {
+    if(e.target.closest("#obr-f-ids-limpar")){ _obrFiltroIds = null; renderObras(); }
   });
 
   $("btn-nova-obra")?.addEventListener("click", novaObra);

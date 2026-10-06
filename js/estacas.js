@@ -258,7 +258,7 @@ async function carregarEstacasDaObra(obraId){
   estCarregarTolerancia(); // hotfix 15b: tolerância do destaque executada × projeto
   const [estsRes, execsRes, equipsRes, obraRes] = await Promise.all([
     sb.from("estacas")
-      .select("id,numero,tipo,status,diametro_mm,profundidade_m,profundidade_executada_m,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local")
+      .select("id,numero,tipo,status,diametro_mm,profundidade_m,profundidade_executada_m,projeto_pendente,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local")
       .eq("obra_id", obraId)
       .order("numero"),
     // !inner + eq no join: filtra por obra NO SERVIDOR (antes baixava a tabela
@@ -498,7 +498,8 @@ async function renderAcompanhamentoRaiz(){
   const lista = _estacas.filter(e => e.tipo === "raiz")
     .filter(e => !fStatus || e.status === fStatus)
     .filter(e => !fLocal || (e.local || "") === fLocal)
-    .filter(e => !termo || `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase().includes(termo));
+    .filter(e => !termo || `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase().includes(termo))
+    .filter(e => estFiltroProfRegularizar(e, $("est-f-prof")?.value || ""));
   if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz para os filtros.</p>`; return; }
 
   const fProf = $("est-f-prof")?.value || "";
@@ -620,6 +621,7 @@ function renderEstacas(){
   const filtradas = _estacas.filter(e => {
     if(fStatus && e.status !== fStatus) return false;
     if(fProf === "diferente" && !estProfDiverge(e)) return false;
+    if(!estFiltroProfRegularizar(e, fProf)) return false;
     if(fTipo && e.tipo !== fTipo) return false;
     if(fLocal && (e.local || "") !== fLocal) return false;
     if(termo){
@@ -696,6 +698,23 @@ function estProfDiferenca(e){
   return Math.round((Number(e.profundidade_executada_m) - Number(e.profundidade_m)) * 100) / 100;
 }
 function estProfDiverge(e){ const d = estProfDiferenca(e); return d != null && Math.abs(d) > _estTolProf; }
+/* Fase 75 ("Para regularizar"): executada sem profundidade lançada e projeto a confirmar.
+   Os outros valores do filtro ("", "diferente") não restringem aqui. */
+function estFiltroProfRegularizar(e, f){
+  if(f === "sem_profundidade") return e.status === "executada" && !(Number(e.profundidade_executada_m) > 0);
+  if(f === "projeto_pendente") return !!e.projeto_pendente;
+  return true;
+}
+/* Chamado pelo Início antes de abrir a obra: o filtro fica no select e a planta (que não
+   filtra por profundidade) volta para a lista. */
+function estDefinirFiltroProf(valor){
+  const sel = $("est-f-prof");
+  if(sel) sel.value = valor || "";
+  if(_estView === "planta"){
+    _estView = "lista";
+    document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === "lista"));
+  }
+}
 function estCelulaExecutada(e, fmt){
   if(!(Number(e.profundidade_executada_m) > 0)) return e.profundidade_executada_m == null ? '<span class="meta">—</span>' : '<span class="meta" title="Execução lançada sem profundidade">0</span>';
   fmt = fmt || num;
@@ -723,6 +742,9 @@ function abrirModalEstaca(id){
       ? `Executada: ${num(e.profundidade_executada_m)} m${d != null && estProfDiverge(e) ? ` (${d > 0 ? "+" : ""}${num(d)} m do projeto)` : ""}`
       : "";
   }
+  const pend = $("est-proj-pend"); // fase 75
+  if(pend) pend.style.display = e.projeto_pendente ? "" : "none";
+  if($("est-proj-confirmado")) $("est-proj-confirmado").checked = false;
   $("est-cota-topo").value      = e.cota_topo ?? "";
   $("est-cota-ponta").value     = e.cota_ponta ?? "";
   $("est-volume").value         = e.volume_concreto_m3 ?? "";
@@ -782,6 +804,10 @@ async function salvarEstaca(){
     coord_y: $("est-coord-y").value !== "" ? Number($("est-coord-y").value) : null,
     observacoes: $("est-obs").value.trim() || null
   };
+  // fase 75: gravar a profundidade de projeto (alterada ou confirmada) tira o "projeto a confirmar"
+  if(_estacaEdit?.projeto_pendente && reg.profundidade_m != null
+     && (reg.profundidade_m !== Number(_estacaEdit.profundidade_m) || $("est-proj-confirmado")?.checked))
+    reg.projeto_pendente = false;
 
   let result;
   if(_estacaEdit && _estacaEdit.id){
@@ -2990,6 +3016,8 @@ function ligarEstacas(){
   $("btn-dxf-ler")?.addEventListener("click", lerArquivoDXF);
   $("btn-est-dxf-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-est-dxf-confirmar", confirmarImportEstacas));
   $("btn-est-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-salvar", salvarEstaca));
+  // fase 75: mexer na profundidade de projeto de uma estaca "projeto a confirmar" já conta como confirmação
+  $("est-profundidade")?.addEventListener("input", () => { const c = $("est-proj-confirmado"); if(c && _estacaEdit?.projeto_pendente) c.checked = true; });
   $("btn-est-cancelar")?.addEventListener("click", fecharModalEstaca);
 
   $("btn-est-extrair")?.addEventListener("click", importarEstacasPDF);

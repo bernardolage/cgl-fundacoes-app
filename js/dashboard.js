@@ -15,6 +15,7 @@ let _dashFrota = [];       // vw_sc_frota
 let _dashObrasAnd = [];    // vw_sc_obra_andamento
 let _dashAcoes = [];       // vw_sc_acoes
 let _dashFila = [];        // vw_sc_minha_fila
+let _dashReg = [];         // vw_sc_regularizar (fase 75)
 let _dashFrotaFiltro = "todas";
 let _dashCargaN = 0;       // descarta resposta de carga antiga quando o período muda no meio
 const DASH_NIVEL = {
@@ -89,7 +90,7 @@ async function carregarDashboard(){
 
   // 1ª onda: o que o usuário olha primeiro
   const t0 = performance.now();
-  await Promise.all([carregarDashFaixa(carga), dashCarregarAcoes(), dashCarregarFila()]);
+  await Promise.all([carregarDashFaixa(carga), dashCarregarAcoes(), dashCarregarFila(), dashCarregarRegularizar()]);
   if(carga !== _dashCargaN) return;
   console.info(`Início: 1ª onda em ${Math.round(performance.now() - t0)} ms`);
   if($("dash-atualizado")) $("dash-atualizado").textContent = "atualizado às " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -217,7 +218,65 @@ async function dashCarregarFila(){
     : `<p class="vazio">Nada esperando por você.</p>`;
 }
 // Compatibilidade: a aba Timeline da obra (obra_abas.js) recarrega "pendências" ao resolver comentário
-function carregarDashPendencias(){ return Promise.all([dashCarregarAcoes(), dashCarregarFila()]); }
+function carregarDashPendencias(){ return Promise.all([dashCarregarAcoes(), dashCarregarFila(), dashCarregarRegularizar()]); }
+
+/* ---------- Para regularizar (fase 75) ----------
+   Cadastro incompleto que o responsável corrige quando tiver tempo. O destino vem do banco
+   (vw_sc_regularizar + responsaveis_servico): o que é seu primeiro, depois o total da
+   diretoria, por último o que você só acompanha (mesmo bloco, com tag). */
+const DASH_REG_PAPEL = {
+  responsavel: { ordem: 1, tag: "" },
+  diretoria:   { ordem: 2, tag: '<span class="tag cinza" title="Total da empresa (diretoria)">todos</span>' },
+  acompanha:   { ordem: 3, tag: '<span class="tag azul" title="O responsável é outra pessoa; você acompanha">acompanha</span>' }
+};
+async function dashCarregarRegularizar(){
+  const cont = $("dash-regularizar");
+  if(!cont) return;
+  const dados = await dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar");
+  if(!dados) return;
+  _dashReg = dados.sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+    || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
+  const n = p => _dashReg.filter(a => a.papel === p).length;
+  if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
+    ? [n("responsavel") && `<span class="tag ambar">${n("responsavel")} seu(s)</span>`,
+       n("diretoria") && `<span class="tag cinza">${n("diretoria")} no total</span>`,
+       n("acompanha") && `<span class="tag azul">${n("acompanha")} acompanha</span>`].filter(Boolean).join(" ")
+    : "";
+  cont.innerHTML = _dashReg.length
+    ? _dashReg.map((a, i) => `<div class="dash-pendencia-item clicavel" data-reg="${i}" title="Abrir a tela para corrigir">
+        <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong> <span class="contador">(${a.quantidade})</span> ${DASH_REG_PAPEL[a.papel]?.tag || ""}
+          ${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
+        <span class="dash-pend-seta">›</span>
+      </div>`).join("")
+    : `<p class="vazio">Nada para regularizar.</p>`;
+}
+/* Uma linha de "Para regularizar" → a tela de origem, já filtrada */
+async function dashAbrirRegularizar(a){
+  if(!a) return;
+  const ids = a.obra_ids || [];
+  // onde corrigir cada pendência de obra: aba e campo da ficha
+  const FICHA = { sem_responsavel: { aba: "geral", foco: "obr-responsavel" },
+                  responsavel_inativo: { aba: "geral", foco: "obr-responsavel" },
+                  sem_jornada:     { aba: "parametros", foco: "obr-jornada-entrada" },
+                  sem_estacas:     { aba: "estacas", foco: null } };
+  if(a.secao === "obras" && FICHA[a.filtro]){
+    const f = FICHA[a.filtro];
+    if(ids.length === 1){ await dashAbrirObra(ids[0], f.aba); obrFocarCampo(f.foco); return; }
+    irParaSecao("obras");
+    if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: f.aba, foco: f.foco });
+  } else if(a.secao === "obras"){ // estacas sem profundidade / projeto a confirmar: uma linha por obra
+    if(typeof estDefinirFiltroProf === "function") estDefinirFiltroProf(a.filtro);
+    if(a.obra_id) await dashAbrirObra(a.obra_id, "estacas");
+  } else if(a.secao === "acessorios"){
+    // o clique no menu carrega e desenha (carregarAcessorios): o filtro vai antes
+    if(typeof renderAcessoriosContagem !== "function") return;
+    _aceFamilia = a.filtro || ""; _aceView = "contagem"; _aceSoSemPreco = true;
+    irParaSecao("acessorios");
+  } else if(a.secao === "equipamentos"){
+    if(typeof renderEquipamentos === "function") _eqpKpi = "sem_cod_ext"; // idem (carregarEquipamentos)
+    if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
+  }
+}
 
 /* Uma linha de ação ou da fila → a tela de origem */
 async function dashAbrirAcao(a){
@@ -387,6 +446,7 @@ function ligarSalaDeComando(){
   $("btn-dash-recarregar")?.addEventListener("click", () => comBotaoTravado("btn-dash-recarregar", () => { _dashObrasAnd = []; return carregarDashboard(); }));
   $("dash-acoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-acao]"); if(el) dashAbrirAcao(_dashAcoes[Number(el.dataset.acao)]); });
   $("dash-fila")?.addEventListener("click", (e) => { const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]); });
+  $("dash-regularizar")?.addEventListener("click", (e) => { const el = e.target.closest("[data-reg]"); if(el) dashAbrirRegularizar(_dashReg[Number(el.dataset.reg)]); });
   $("dash-notebook")?.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-tab]");
     if(!b) return;
@@ -438,6 +498,7 @@ function dashAbrirMedicao(id){ irParaSecao("medicoes"); if(id && typeof abrirMed
 function dashAbrirOrcamento(id){ irParaSecao("orcamentos"); if(id && typeof abrirOrcamento === "function") abrirOrcamento(id); }
 function dashAbrirContrato(id){ irParaSecao("contratos"); if(id && typeof abrirContrato === "function") abrirContrato(id); }
 function dashIrObrasAtivas(){
+  if(typeof _obrFiltroIds !== "undefined") _obrFiltroIds = null; // sai do filtro do "Para regularizar"
   irParaSecao("obras");
   const f = $("obr-f-status");
   if(f){ f.value = "em_andamento"; if(typeof renderObras === "function") renderObras(); }

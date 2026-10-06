@@ -24,6 +24,7 @@ let _aceForns = [];
 let _aceSel = new Set();           // ids selecionados
 let _aceCarregado = false;
 let _aceContagem = null;           // linhas da view (cache)
+let _aceSoSemPreco = false;        // Contagem: só modelos sem preço (fase 75, "Para regularizar")
 let _aceAcaoIds = [];              // alvo da ação em curso (modais)
 let _aceAtual = null;              // registro aberto na ficha
 let acessorioEditId = null;        // null = novo
@@ -403,8 +404,10 @@ function renderAcessoriosLista(dados){
   </table></div>`;
 }
 
-/* ---------- Contagem (CONTAGEM GERAL) ---------- */
-async function renderAcessoriosContagem(){
+/* ---------- Contagem (CONTAGEM GERAL) ----------
+   opts (opcional, fase 75): { semPreco } liga ou desliga o filtro "Sem preço". */
+async function renderAcessoriosContagem(opts){
+  if(opts && typeof opts.semPreco === "boolean") _aceSoSemPreco = opts.semPreco;
   const cont = $("ace-conteudo");
   if(!_aceContagem){
     cont.innerHTML = `<p class="vazio">Calculando contagem…</p>`;
@@ -412,7 +415,7 @@ async function renderAcessoriosContagem(){
     if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
     _aceContagem = data || [];
   }
-  const linhas = _aceContagem.filter(l => (!_aceFamilia || l.familia === _aceFamilia) && Number(l.cadastrados) > 0)
+  const linhas = _aceContagem.filter(l => (!_aceFamilia || l.familia === _aceFamilia) && Number(l.cadastrados) > 0 && (!_aceSoSemPreco || !l.preco_referencia))
     .sort((a, b) => (a.grupo_contagem || "ZZZ").localeCompare(b.grupo_contagem || "ZZZ", "pt-BR") || a.descricao.localeCompare(b.descricao, "pt-BR", { numeric: true }) || String(a.medida || "").localeCompare(String(b.medida || ""), "pt-BR", { numeric: true }));
   const c = $("ace-contador"); if(c) c.textContent = `${linhas.length} modelos`;
   const cols = ["cadastrados","em_estoque","em_obra","em_manutencao","perdas","sem_marcacao"];
@@ -433,6 +436,7 @@ async function renderAcessoriosContagem(){
     <div class="meta" style="margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <strong style="font-size:14px;color:var(--txt);">${verTot ? "Valor de reposição" : "Contagem"}${_aceFamilia ? " · " + esc(ACE_FAMILIA_LBL[_aceFamilia]) : ""}${verTot ? ": " + brl(tot.valor_total) : ""}</strong>
       ${semPreco ? `<span class="tag ambar">${semPreco} modelo(s) sem preço</span>` : ""}${estim ? `<span class="tag ambar">${estim} estimado(s)</span>` : ""}${venc ? `<span class="tag ambar">${venc} vencido(s)</span>` : ""}
+      <label class="check-inline" title="Mostrar só os modelos sem preço de reposição"><input type="checkbox" id="ace-f-sem-preco" ${_aceSoSemPreco ? "checked" : ""} /> só sem preço</label>
       <span>Sucata: ${sucPreco ? `${brl(sucPreco.preco_kg)}/kg (${String(sucPreco.competencia).slice(5, 7)}/${String(sucPreco.competencia).slice(0, 4)})` : '<span class="tag ambar">sem preço do kg</span>'}</span>
       ${acePodeEditar() ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-sucata">♻️ Preço da sucata</button>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-ace-xlsx" style="margin-left:auto;">⬇️ Excel</button>
@@ -444,6 +448,7 @@ async function renderAcessoriosContagem(){
       <tfoot><tr><td colspan="2"><strong>Total geral</strong></td>${cols.map(k => `<td class="num"><strong>${tot[k]}</strong></td>`).join("")}<td></td>${verTot ? `<td class="num"><strong>${brl(tot.valor_total)}</strong></td>` : ""}</tr></tfoot>
     </table></div>`;
   $("btn-ace-xlsx")?.addEventListener("click", () => aceExportarContagem(linhas, grupos, tot, verTot));
+  $("ace-f-sem-preco")?.addEventListener("change", e => renderAcessoriosContagem({ semPreco: e.target.checked }));
   $("btn-ace-sucata")?.addEventListener("click", abrirPrecoSucata);
 }
 /* ---------- preço da sucata ---------- */

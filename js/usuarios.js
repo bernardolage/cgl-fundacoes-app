@@ -34,6 +34,88 @@ async function carregarUsuarios(){
     .order("nome");
   _usuarios = error ? [] : (data || []);
   renderUsuarios();
+  carregarRespServico();
+}
+
+/* ---------- Responsáveis por serviço (fase 75) ----------
+   Tabela responsaveis_servico: destino dos avisos de "Para regularizar" no Início.
+   Leitura para todo usuário ativo; escrita só diretor e admin (is_admin() no banco). */
+const RESP_AREA  = { obras: "Obras e equipamentos", acessorios: "Acessórios" };
+const RESP_TIPO  = { estaca_raiz: "Estaca raiz", helice_continua: "Hélice contínua", helice_secante: "Hélice secante", trado_mecanizado: "Trado mecanizado" };
+const RESP_PAPEL = { gestor: "Gestor (indica o engenheiro de cada obra)", responsavel: "Responsável", acompanha: "Acompanha" };
+const RESP_PAPEIS_AREA = { obras: ["gestor", "acompanha"], acessorios: ["responsavel", "acompanha"] };
+let _respServico = [];
+
+async function carregarRespServico(){
+  const card = $("usr-resp-card");
+  if(!card) return;
+  const pode = ["diretor", "admin"].includes(usuarioAtual?.cargo);
+  card.style.display = pode ? "" : "none";
+  if(!pode) return;
+  const { data, error } = await sb.from("responsaveis_servico")
+    .select("id,area,tipo_servico,profile_id,papel,pessoa:profiles(nome,ativo)");
+  const cont = $("usr-resp-conteudo");
+  if(error){ if(cont) cont.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message)}).</p>`; return; }
+  _respServico = data || [];
+  renderRespServico();
+}
+
+function respPreencherPapel(){
+  const area = $("usr-resp-area")?.value || "obras";
+  const sel = $("usr-resp-papel");
+  if(sel) sel.innerHTML = RESP_PAPEIS_AREA[area].map(p => `<option value="${p}">${esc(RESP_PAPEL[p])}</option>`).join("");
+}
+
+function renderRespServico(){
+  const cont = $("usr-resp-conteudo");
+  if(!cont) return;
+  const pessoa = $("usr-resp-pessoa");
+  if(pessoa) preencherSelect(pessoa, _usuarios.filter(u => u.ativo !== false), "id", "nome", "— pessoa —");
+  if($("usr-resp-papel") && !$("usr-resp-papel").options.length) respPreencherPapel();
+  if($("usr-resp-contador")) $("usr-resp-contador").textContent = `(${_respServico.length})`;
+  const ordArea = Object.keys(RESP_AREA), ordTipo = Object.keys(RESP_TIPO), ordPapel = ["gestor", "responsavel", "acompanha"];
+  const linhas = [..._respServico].sort((a, b) => ordArea.indexOf(a.area) - ordArea.indexOf(b.area)
+    || ordTipo.indexOf(a.tipo_servico) - ordTipo.indexOf(b.tipo_servico) || ordPapel.indexOf(a.papel) - ordPapel.indexOf(b.papel));
+  cont.innerHTML = linhas.length ? `<div class="tabela-rola"><table>
+    <thead><tr><th>Área</th><th>Serviço</th><th>Pessoa</th><th>Papel</th><th class="col-acao"></th></tr></thead>
+    <tbody>${linhas.map(r => `<tr>
+      <td>${esc(RESP_AREA[r.area] || r.area)}</td><td>${esc(RESP_TIPO[r.tipo_servico] || r.tipo_servico)}</td>
+      <td>${esc(r.pessoa?.nome || "—")}${r.pessoa && r.pessoa.ativo === false ? ' <span class="tag cinza">inativo</span>' : ""}</td>
+      <td><select data-resp-papel="${esc(r.id)}" title="Trocar o papel">${(RESP_PAPEIS_AREA[r.area] || []).map(p => `<option value="${p}" ${p === r.papel ? "selected" : ""}>${esc(RESP_PAPEL[p])}</option>`).join("")}</select></td>
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo" data-resp-del="${esc(r.id)}" title="Remover">🗑️</button></td>
+    </tr>`).join("")}</tbody></table></div>`
+    : `<p class="vazio">Nenhum responsável cadastrado: os avisos de cadastro ficam só no total da diretoria.</p>`;
+}
+
+async function salvarRespServico(){
+  const reg = { area: $("usr-resp-area").value, tipo_servico: $("usr-resp-tipo").value,
+                profile_id: $("usr-resp-pessoa").value, papel: $("usr-resp-papel").value };
+  if(!reg.profile_id){ aviso("app-aviso", "Escolha a pessoa.", "erro"); return; }
+  const { error } = await sb.from("responsaveis_servico").insert(reg);
+  if(error){
+    const m = (error.message || "").toLowerCase();
+    aviso("app-aviso", m.includes("duplicate") || m.includes("unique")
+      ? "Essa pessoa já está nesse serviço: troque o papel na própria linha."
+      : "Não foi possível salvar: " + error.message, "erro");
+    return;
+  }
+  aviso("app-aviso", "Responsável adicionado.", "ok");
+  await carregarRespServico();
+}
+
+async function trocarPapelRespServico(id, papel){
+  const { error } = await sb.from("responsaveis_servico").update({ papel }).eq("id", id);
+  if(error) aviso("app-aviso", "Não foi possível trocar o papel: " + error.message, "erro");
+  else aviso("app-aviso", "Papel atualizado.", "ok");
+  await carregarRespServico();
+}
+
+async function excluirRespServico(id){
+  const r = _respServico.find(x => x.id === id);
+  if(!r || !confirm(`Remover ${r.pessoa?.nome || "esta pessoa"} de ${RESP_TIPO[r.tipo_servico]} (${RESP_AREA[r.area]})?`)) return;
+  const { error } = await sb.from("responsaveis_servico").delete().eq("id", id);
+  if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
+  await carregarRespServico();
 }
 
 /* ---------- Filtros ---------- */
@@ -327,6 +409,18 @@ function ligarUsuarios(){
 
   document.querySelectorAll("#usr-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabUsr(b.dataset.tab));
+  });
+
+  // Responsáveis por serviço (fase 75)
+  $("usr-resp-area")?.addEventListener("change", respPreencherPapel);
+  $("btn-usr-resp-add")?.addEventListener("click", () => comBotaoTravado("btn-usr-resp-add", salvarRespServico));
+  $("usr-resp-conteudo")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-resp-del]");
+    if(b) excluirRespServico(b.dataset.respDel);
+  });
+  $("usr-resp-conteudo")?.addEventListener("change", (e) => {
+    const s = e.target.closest("[data-resp-papel]");
+    if(s) trocarPapelRespServico(s.dataset.respPapel, s.value);
   });
 
   const navUsr = document.querySelector('nav button[data-secao="usuarios"]');

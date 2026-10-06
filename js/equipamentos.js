@@ -125,6 +125,7 @@ function eqpFiltradas(){
       case "transito":   if(e.localizacao_tipo !== "em_transito") return false; break;
       case "manutencao": if(e.status !== "em_manutencao" && e.localizacao_tipo !== "fornecedor_manutencao") return false; break;
       case "acessorios": if(!eqpNumAce(e)) return false; break;
+      case "sem_cod_ext": if(!eqpSemCodExt(e)) return false; break;
     }
     if(q){
       const alvo = [e.codigo, e.nome, e.marca, e.modelo, e.numero_serie, e.codigo_externo, EQP_TIPO_LBL[e.tipo], eqpOnde(e)].filter(Boolean).join(" ").toLowerCase();
@@ -152,7 +153,10 @@ function eqpRenderKpis(){
   set("eqp-kpi-transito", at.filter(e => e.localizacao_tipo === "em_transito").length);
   set("eqp-kpi-manut", at.filter(e => e.status === "em_manutencao" || e.localizacao_tipo === "fornecedor_manutencao").length);
   set("eqp-kpi-ace", at.reduce((s, e) => s + eqpNumAce(e), 0));
+  set("eqp-kpi-semext", at.filter(eqpSemCodExt).length);
 }
+/* fase 75: perfuratriz ou bate-estaca sem o código do Geodigitus/Maya ("Para regularizar") */
+function eqpSemCodExt(e){ return ["perfuratriz", "bate_estaca"].includes(e.tipo) && !String(e.codigo_externo || "").trim(); }
 function eqpCardHTML(e){
   const mob = e._mob;
   return `<div class="serv-kan-card eqp-card" data-id="${esc(e.id)}">

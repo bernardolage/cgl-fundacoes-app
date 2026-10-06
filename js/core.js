@@ -279,14 +279,18 @@ async function carregarFornecedoresSelects(){
   if(el) preencherSelect(el, lista, "id", "razao_social", "— selecione —");
 }
 
-/* profiles ativos -> selects de responsável */
+/* profiles ativos -> selects de responsável. O da obra (fase 75) lista só a engenharia:
+   é o engenheiro que o gestor do serviço indica e que recebe o "Para regularizar" da obra. */
+const CARGOS_RESP_OBRA = ["engenheiro", "assistente_engenharia", "diretor"];
 async function carregarResponsaveis(){
-  const { data } = await sb.from("profiles").select("id,nome").eq("ativo",true).order("nome");
+  const { data } = await sb.from("profiles").select("id,nome,cargo").eq("ativo",true).order("nome");
   const lista = data || [];
-  ["orc-responsavel","obr-responsavel","con-responsavel"].forEach(id=>{
+  ["orc-responsavel","con-responsavel"].forEach(id=>{
     const el = $(id);
     if(el) preencherSelect(el, lista, "id", "nome", "— não informado —");
   });
+  const obr = $("obr-responsavel");
+  if(obr) preencherSelect(obr, lista.filter(p => CARGOS_RESP_OBRA.includes(p.cargo)), "id", "nome", "— não informado —");
 }
 
 /* ---------- Sugestão de numeração sequencial ---------- */
