@@ -21,7 +21,7 @@ const EST_TIPO_LBL = { entrada: "Entrada", saida: "Saída", ajuste: "Ajuste", de
 const EST_TIPO_COR = { entrada: "verde", saida: "ambar", ajuste: "azul", devolucao: "verde", transferencia: "cinza" };
 const EST_AJUDA = {
   entrada: "Compra ou recebimento: soma ao estoque e atualiza o custo do produto.",
-  saida: "Consumo ou envio para obra: desconta do estoque. Informe a obra e a TAG quando souber — é o que mostra onde o material foi parar.",
+  saida: "Consumo ou envio para obra: desconta do estoque. Informe a obra, a TAG ou o setor / obra interna: é aí que o custo do material entra.",
   ajuste: "Inventário: informe a quantidade CONTADA; o sistema lança a diferença para o estoque ficar igual à contagem."
 };
 
@@ -34,11 +34,14 @@ function estProdTxt(p){ return p ? `${p.codigo} — ${p.nome}` : "—"; }
 async function carregarEstoque(force){
   if(!$("est-reposicao")) return;
   if(force || !_estCarregado){
-    const [fo, ob, eq] = await Promise.all([
+    const [fo, ob, eq, cc] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").in("status", ["em_andamento","planejada","paralisada"]).order("codigo", { ascending: false }),
-      sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).not("tipo", "in", "(caminhao,veiculo)").order("codigo")
+      sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).not("tipo", "in", "(caminhao,veiculo)").order("codigo"),
+      sb.from("centros_custo").select("id,nome,tipo").eq("ativo", true).order("tipo", { ascending: false }).order("nome")   // fase 76
     ]);
+    const centros = cc.data || [], grp = t => centros.filter(c => c.tipo === t).map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+    if($("est-centro")) $("est-centro").innerHTML = '<option value="">— nenhum —</option>' + `<optgroup label="Setores">${grp("setor")}</optgroup><optgroup label="Obras internas">${grp("obra_interna")}</optgroup>`;
     $("ent-fornecedor").innerHTML = '<option value="">— não informado —</option>' + (fo.data || []).map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}</option>`).join("");
     _estObras = ob.data || []; _estEquips = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
     $("est-obra").innerHTML = '<option value="">— nenhuma —</option>' + _estObras.map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
@@ -109,6 +112,14 @@ function estSelecionarProduto(p){
   const sel = $("ent-produto");
   if(sel){ sel.innerHTML = p ? `<option value="${esc(p.id)}" selected>${esc(estProdTxt(p))}</option>` : ""; }
   estMostrarProdInfo();
+  if(p) estSugerirCentro(p.id);
+}
+/* fase 76: na saída, sugere o setor / obra interna que pediu a última compra do item (editável) */
+async function estSugerirCentro(produtoId){
+  const sel = $("est-centro"); if(!sel || sel.value) return;
+  const { data } = await sb.from("pedido_compra_itens").select("centro_custo_id").eq("produto_id", produtoId).not("centro_custo_id", "is", null).order("created_at", { ascending: false }).limit(1);
+  const c = data && data[0] && data[0].centro_custo_id;
+  if(c && _estProd?.id === produtoId && !sel.value && [...sel.options].some(o => o.value === c)) sel.value = c;
 }
 /* atalho da Reposição: prepara o formulário para o item */
 function estPrepararMovimento(tipo, p){
@@ -139,6 +150,7 @@ async function registrarEntrada(){
     if(qtdInformada > Number(_estProd.estoque_atual || 0) && !confirm(`Saída de ${num(qtdInformada)} com estoque atual ${num(_estProd.estoque_atual || 0)}. O saldo vai ficar negativo. Continuar?`)) return;
     reg.obra_id = $("est-obra").value || null;
     reg.equipamento_id = $("est-equip").value || null;
+    reg.centro_custo_id = $("est-centro")?.value || null;
     reg.custo_unitario = Number(_estProd.custo_ultimo || 0);
   } else { // ajuste: delta = contado - atual
     const delta = qtdInformada - Number(_estProd.estoque_atual || 0);
@@ -151,7 +163,7 @@ async function registrarEntrada(){
   if(error){ aviso("app-aviso", "Não foi possível registrar: " + error.message, "erro"); return; }
   aviso("app-aviso", _estTipo === "entrada" ? "Entrada registrada — estoque e custo atualizados." : _estTipo === "saida" ? "Saída registrada." : "Contagem lançada — estoque ajustado.", "ok");
   ["ent-qtd","ent-custo","ent-doc","est-mov-obs","est-busca-prod"].forEach(id => { const el = $(id); if(el) el.value = ""; });
-  $("est-obra").value = ""; $("est-equip").value = "";
+  $("est-obra").value = ""; $("est-equip").value = ""; if($("est-centro")) $("est-centro").value = "";
   estSelecionarProduto(null);
   if(typeof carregarProdutos === "function") await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();

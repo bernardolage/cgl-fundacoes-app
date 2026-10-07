@@ -20,7 +20,7 @@ const FROTA_TIPO_LBL = { caminhao: "Caminhão", veiculo: "Veículo" };
 const FROTA_STATUS_LBL = { disponivel: "Disponível", em_uso: "Em uso", manutencao: "Manutenção", inativo: "Inativo" };
 
 function frotaPodeEditar(){
-  return ["admin", "diretor", "rh", "logistica", "encarregado", "engenheiro", "mecanico"].includes(usuarioAtual?.cargo);
+  return ["admin", "diretor", "rh", "logistica", "encarregado", "engenheiro", "mecanico", "gestor_frota"].includes(usuarioAtual?.cargo);
 }
 function frotaTag(v){ return v ? `${v.codigo}${v.nome ? " · " + v.nome : ""}` : "—"; }
 function frotaMoeda(v){ return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }

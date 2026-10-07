@@ -24,7 +24,7 @@ const EQP_LOCAL_COR = { base: "verde", obra: "azul", em_transito: "ambar", forne
 const EQP_MOB_ATIVA = ["em_preparacao","em_transito","em_obra"];
 
 function eqpPodeEditar(){
-  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","rh","gestor_acessorios"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","rh","gestor_acessorios","gestor_frota"].includes(usuarioAtual.cargo);
 }
 function eqpLbl(v){ const o = (STATUS.equipamento || {})[v]; return o ? o.label : (v || "—"); }
 function eqpObra(id){ const o = _eqpObraMap[id]; return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
@@ -367,7 +367,7 @@ let _eqpOsId = null;
 const EQP_OS_TIPO = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
 const EQP_OS_STATUS = { agendada: "Agendada", em_andamento: "Em andamento", concluida: "Concluída", cancelada: "Cancelada" };
 function eqpPodeManutencao(){
-  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","gestor_acessorios"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","gestor_acessorios","gestor_frota"].includes(usuarioAtual.cargo);
 }
 function abrirOsManutencao(m){
   if(!_eqpAtual?.id){ aviso("app-aviso", "Salve o equipamento antes de abrir uma OS.", "erro"); return; }

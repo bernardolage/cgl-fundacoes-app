@@ -26,7 +26,7 @@ const REQ_STATUS = {
 const REQ_PRIORIDADE = { normal: "Normal", urgente: "Urgente" };
 
 function reqPodePedir(){
-  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","encarregado","engenheiro","assistente_engenharia","mecanico","operador","logistica","gestor_acessorios","financeiro"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","encarregado","engenheiro","assistente_engenharia","mecanico","operador","logistica","gestor_acessorios","financeiro","gestor_frota"].includes(usuarioAtual.cargo);
 }
 function reqPodeDecidir(){ return typeof cmpPodeOperar === "function" && cmpPodeOperar(); }
 function reqTag(st){ const o = REQ_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }

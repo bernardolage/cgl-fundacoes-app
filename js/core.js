@@ -605,10 +605,16 @@ function ehDiretoria(){ return !!usuarioAtual && usuarioAtual.cargo === "diretor
 function podeVerContasPagar(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador"].includes(usuarioAtual.cargo);
 }
+/* Fase 76: Centros de custo internos (setores e obras internas): quem lê custos de compras e acessórios */
+function podeVerCentrosCusto(){
+  return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "gestor_acessorios", "gestor_frota"].includes(usuarioAtual.cargo);
+}
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
 const SECOES_OCULTAS_POR_CARGO = {
-  rh: ["medicoes", "acessorios", "equipamentos", "obras", "compras", "estoque", "produtos", "fornecedores", "clientes"]
+  rh: ["medicoes", "acessorios", "equipamentos", "obras", "compras", "estoque", "produtos", "fornecedores", "clientes"],
+  // fase 77 (Bernardo, 07/10/2026): gestor de frota cuida de frota, equipamentos, manutenção e compras da frota
+  gestor_frota: ["acessorios", "medicoes"]
 };
 /* Mostra/esconde os itens do menu conforme o cargo. Chamado no login; isolado para poder ser testado. */
 function aplicarMenuPorCargo(perfil){
@@ -637,6 +643,8 @@ function aplicarMenuPorCargo(perfil){
   // Fase 55 (Bernardo, 21/09/2026): Contratos & Contas a pagar só para diretoria, admin, financeiro e comprador
   const navCon = document.querySelector('.sidebar-nav button[data-secao="contratos"]');
   if(navCon) navCon.style.display = podeVerContasPagar() ? "" : "none";
+  const navCcu = document.querySelector('.sidebar-nav button[data-secao="centros"]');
+  if(navCcu) navCcu.style.display = podeVerCentrosCusto() ? "" : "none";
 
   const ocultas = SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || [];
   new Set(Object.values(SECOES_OCULTAS_POR_CARGO).flat()).forEach(s => {

@@ -18,6 +18,8 @@ let _cmpObras = [];
 let _cmpObraMap = {};
 let _cmpEquips = [];
 let _cmpEqMap = {};
+let _cmpCentros = [];             // fase 76: centros de custo internos (setores e obras internas)
+let _cmpCentroMap = {};
 let _cmpAlcada = -1;              // null = sem limite; -1 = sem alçada
 let _cmpCarregado = false;
 let _cmpReqPend = 0;              // fase 60: requisições pendentes (indicador)
@@ -38,31 +40,45 @@ const CMP_STATUS = {
 };
 const CMP_STAGES = ["rascunho","aguardando_aprovacao","aprovado","enviado","parcialmente_recebido","recebido"];
 const CMP_ABERTOS = ["rascunho","aguardando_aprovacao","aprovado","enviado","parcialmente_recebido"];
+// Depois de aprovado, o pedido ou aguarda recebimento ou terminou (06/10/2026). Atraso só conta aqui:
+// rascunho e cotação não têm entrega a atrasar.
+const CMP_AGUARDA_RECEB = ["aprovado","enviado","parcialmente_recebido"];
+function cmpAtrasado(p){ return CMP_AGUARDA_RECEB.includes(p.status) && !!p.previsao_entrega && p.previsao_entrega < hojeISO(); }
 const CMP_CAT_LBL = { peca: "Peça", pneu: "Pneu", combustivel: "Combustível", lubrificante: "Lubrificante", servico_terceiro: "Serviço de terceiro", mao_obra_interna: "Mão de obra interna", frete: "Frete", locacao: "Locação", multa: "Multa", seguro_ipva: "Seguro / IPVA", deslocamento: "Deslocamento", outro: "Outro" };
-const CMP_ORIGEM_LBL = { compra: "Compra direta", estoque: "Saída de estoque", deslocamento: "Deslocamento", manutencao: "Manutenção", reparo: "Reparo caldeiraria", avulso: "Avulso", contrato: "Contrato", combustivel: "Combustível (RDO)" };
+const CMP_ORIGEM_LBL = { compra: "Compra direta", estoque: "Saída de estoque", deslocamento: "Deslocamento", manutencao: "Manutenção", reparo: "Reparo caldeiraria", avulso: "Avulso", contrato: "Contrato", combustivel: "Combustível (RDO)", pedido_externo: "Pedido Odoo" };
+const CMP_CENTRO_TIPO = { setor: "Setor", obra_interna: "Obra interna" };
 
 function cmpPodeOperar(){
-  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","gestor_acessorios","engenheiro","logistica","financeiro","mecanico"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","gestor_acessorios","engenheiro","logistica","financeiro","mecanico","gestor_frota"].includes(usuarioAtual.cargo);
 }
 function cmpForn(id){ const f = _cmpFornMap[id]; return f ? f.razao_social : ""; }
 function cmpObra(id){ const o = _cmpObraMap[id]; return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
 function cmpEq(id){ const e = _cmpEqMap[id]; return e ? e.codigo + (e.nome ? " · " + e.nome : "") : ""; }
+function cmpCentro(id){ const c = _cmpCentroMap[id]; return c ? `${CMP_CENTRO_TIPO[c.tipo] || c.tipo}: ${c.nome}` : ""; }
 function cmpTag(st){ const o = CMP_STATUS[st] || {}; return `<span class="tag ${o.cor || "cinza"}">${esc(o.label || st)}</span>`; }
 function cmpDestinoTxt(it){
   if(it.destino === "obra") return "Obra: " + (cmpObra(it.obra_id) || "?");
   if(it.destino === "equipamento") return "TAG " + (cmpEq(it.equipamento_id) || "?");
-  return "Estoque";
+  if(it.destino === "centro_custo") return cmpCentro(it.centro_custo_id) || "Centro de custo ?";
+  return "Estoque" + (it.centro_custo_id && cmpCentro(it.centro_custo_id) ? " · p/ " + _cmpCentroMap[it.centro_custo_id].nome : "");
 }
-function cmpDestinoValor(it){ return it.destino === "obra" ? "obra:" + (it.obra_id || "") : it.destino === "equipamento" ? "eq:" + (it.equipamento_id || "") : "estoque"; }
+function cmpDestinoValor(it){ return it.destino === "obra" ? "obra:" + (it.obra_id || "") : it.destino === "equipamento" ? "eq:" + (it.equipamento_id || "") : it.destino === "centro_custo" ? "cc:" + (it.centro_custo_id || "") : "estoque"; }
 function cmpDestinoDoValor(v){
-  if(v.startsWith("obra:")) return { destino: "obra", obra_id: v.slice(5) || null, equipamento_id: null };
-  if(v.startsWith("eq:")) return { destino: "equipamento", obra_id: null, equipamento_id: v.slice(3) || null };
-  return { destino: "estoque", obra_id: null, equipamento_id: null };
+  if(v.startsWith("obra:")) return { destino: "obra", obra_id: v.slice(5) || null, equipamento_id: null, centro_custo_id: null };
+  if(v.startsWith("eq:")) return { destino: "equipamento", obra_id: null, equipamento_id: v.slice(3) || null, centro_custo_id: null };
+  if(v.startsWith("cc:")) return { destino: "centro_custo", obra_id: null, equipamento_id: null, centro_custo_id: v.slice(3) || null };
+  return { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null };
+}
+function cmpCentroOptions(ph, soAtivos){
+  const lst = _cmpCentros.filter(c => !soAtivos || c.ativo);
+  const grupo = t => lst.filter(c => c.tipo === t).map(c => `<option value="${esc(c.id)}">${esc(c.nome)}${c.ativo ? "" : " (inativo)"}</option>`).join("");
+  return `<option value="">${ph}</option><optgroup label="Setores">${grupo("setor")}</optgroup><optgroup label="Obras internas">${grupo("obra_interna")}</optgroup>`;
 }
 function cmpDestinoOptions(sel){
   const obras = _cmpObras.map(o => `<option value="obra:${o.id}"${sel === "obra:" + o.id ? " selected" : ""}>Obra: ${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
   const eqs = _cmpEquips.map(e => `<option value="eq:${e.id}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
-  return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Estoque (base)</option><optgroup label="Custo direto na obra">${obras}</optgroup><optgroup label="Custo direto na TAG">${eqs}</optgroup>`;
+  const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${c.id}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
+  return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Estoque (base)</option><optgroup label="Custo direto na obra">${obras}</optgroup><optgroup label="Custo direto na TAG">${eqs}</optgroup><optgroup label="Custo direto no setor / obra interna">${centros}</optgroup>`;
 }
 function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
 function cmpAlcadaTxt(){ return _cmpAlcada === null ? "sem limite" : _cmpAlcada < 0 ? "sem alçada de aprovação" : "até " + brl(_cmpAlcada); }
@@ -73,12 +89,14 @@ function cmpAlcadaTxt(){ return _cmpAlcada === null ? "sem limite" : _cmpAlcada 
 async function cmpCarregarBase(force){
   if(!force && _cmpCarregado) return;
   {
-    const [fo, ob, eq, al] = await Promise.all([
+    const [fo, ob, eq, al, cc] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").not("status", "in", "(cancelada,concluida)").order("codigo", { ascending: false }),
       sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).order("codigo"),
-      sb.rpc("compras_alcada_usuario")
+      sb.rpc("compras_alcada_usuario"),
+      sb.from("centros_custo").select("id,codigo,nome,tipo,ativo").order("tipo", { ascending: false }).order("nome")
     ]);
+    _cmpCentros = cc.data || []; _cmpCentroMap = {}; _cmpCentros.forEach(c => _cmpCentroMap[c.id] = c);
     _cmpForns = fo.data || []; _cmpFornMap = {}; _cmpForns.forEach(f => _cmpFornMap[f.id] = f);
     _cmpObras = ob.data || []; _cmpObraMap = {}; _cmpObras.forEach(o => _cmpObraMap[o.id] = o);
     _cmpEquips = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
@@ -98,13 +116,40 @@ async function carregarCompras(force){
   await cmpFetchPedidos();
   renderCompras();
 }
+/* Fase 65: sem teto de 1000 (os pedidos do Odoo passam disso). Carrega em páginas o período escolhido
+   (padrão: últimos 90 dias); pedido em aberto entra sempre, para os indicadores ficarem certos. */
 async function cmpFetchPedidos(){
-  const [pd, rq] = await Promise.all([
-    sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), itens:pedido_compra_itens(id,descricao,quantidade,quantidade_recebida,obra_id,equipamento_id)").order("created_at", { ascending: false }).limit(1000),
-    sb.from("requisicoes").select("id", { count: "exact", head: true }).eq("status", "pendente")
-  ]);
-  if(pd.error){ aviso("app-aviso", "Erro ao carregar pedidos: " + pd.error.message, "erro"); return; }
-  _cmpPedidos = pd.data || [];
+  const dias = Number($("cmp-f-periodo")?.value || 0);
+  const corte = dias ? dataLocalISO(new Date(Date.now() - dias * 864e5)) : null;
+  // itens vêm numa consulta à parte e são juntados aqui: embutir itens no pedido (junção por pedido sob RLS)
+  // custava ~1 s por página de 1000
+  const rqP = sb.from("requisicoes").select("id", { count: "exact", head: true }).eq("status", "pendente");
+  const todos = [];
+  for(let de = 0; todos.length === de; de += 1000){
+    let q = sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social)")
+      .order("data_pedido", { ascending: false }).order("created_at", { ascending: false }).order("id").range(de, de + 999);
+    if(corte) q = q.or(`data_pedido.gte.${corte},status.in.(${CMP_ABERTOS.join(",")})`);
+    const pg = await q;
+    if(pg.error){ aviso("app-aviso", "Erro ao carregar pedidos: " + pg.error.message, "erro"); return; }
+    todos.push(...(pg.data || []));
+  }
+  const porId = {}; todos.forEach(p => { p.itens = []; porId[p.id] = p; });
+  const ids = todos.map(p => p.id), lotes = [];
+  for(let i = 0; i < ids.length; i += 120) lotes.push(ids.slice(i, i + 120));
+  const res = await Promise.all(lotes.map(async lote => {
+    const out = [];
+    for(let de = 0; out.length === de; de += 1000){
+      const r = await sb.from("pedido_compra_itens").select("id,pedido_id,descricao,quantidade,quantidade_recebida,obra_id,equipamento_id").in("pedido_id", lote).order("id").range(de, de + 999);
+      if(r.error) return r;
+      out.push(...(r.data || []));
+    }
+    return { data: out };
+  }));
+  const erroIt = res.find(r => r.error);
+  if(erroIt){ aviso("app-aviso", "Erro ao carregar itens dos pedidos: " + erroIt.error.message, "erro"); return; }
+  res.forEach(r => r.data.forEach(i => { const p = porId[i.pedido_id]; if(p) p.itens.push(i); }));
+  const rq = await rqP;
+  _cmpPedidos = todos;
   _cmpReqPend = rq.count || 0;
 }
 function cmpPreencherSelectsFixos(){
@@ -115,7 +160,8 @@ function cmpPreencherSelectsFixos(){
   set("cmp-forn", fornOpts("— escolha o fornecedor —")); set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
   set("cmp-obra", obraOpts("— nenhuma —")); set("cmp-f-obra", obraOpts("Obra")); set("cmp-av-obra", obraOpts("— nenhuma —"));
   set("cmp-equip", eqOpts("— nenhuma —")); set("cmp-f-equip", eqOpts("TAG")); set("cmp-av-equip", eqOpts("— nenhuma —"));
-  const fs = $("cmp-f-status"); if(fs) fs.innerHTML = `<option value="">Status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
+  set("cmp-centro", cmpCentroOptions("— nenhum —", true)); set("cmp-av-centro", cmpCentroOptions("— nenhum —", true));
+  const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
   const ac = $("cmp-av-cat"); if(ac) ac.innerHTML = cmpCatOptions("outro");
 }
 
@@ -123,9 +169,9 @@ function cmpPreencherSelectsFixos(){
 function cmpFiltrados(){
   const q = ($("cmp-busca")?.value || "").trim().toLowerCase();
   const fSt = $("cmp-f-status")?.value || "", fF = $("cmp-f-forn")?.value || "", fO = $("cmp-f-obra")?.value || "", fE = $("cmp-f-equip")?.value || "", fM = $("cmp-f-mes")?.value || "";
-  const hoje = hojeISO();
   return _cmpPedidos.filter(p => {
-    if(fSt && p.status !== fSt) return false;
+    if(fSt === "_abertos"){ if(!CMP_ABERTOS.includes(p.status)) return false; }
+    else if(fSt && p.status !== fSt) return false;
     if(!fSt && _cmpKpi === "" && _cmpView === "kanban" && p.status === "cancelado") return false;
     if(fF && p.fornecedor_id !== fF) return false;
     if(fO && p.obra_id !== fO && !(p.itens || []).some(i => i.obra_id === fO)) return false;
@@ -133,24 +179,23 @@ function cmpFiltrados(){
     if(fM && String(p.data_pedido || "").slice(0, 7) !== fM) return false;
     switch(_cmpKpi){
       case "aprovar":   if(p.status !== "aguardando_aprovacao") return false; break;
-      case "entrega":   if(!["enviado","parcialmente_recebido","aprovado"].includes(p.status)) return false; break;
-      case "atrasados": if(!(CMP_ABERTOS.includes(p.status) && p.previsao_entrega && p.previsao_entrega < hoje)) return false; break;
+      case "entrega":   if(!CMP_AGUARDA_RECEB.includes(p.status)) return false; break;
+      case "atrasados": if(!cmpAtrasado(p)) return false; break;
     }
     if(q){
-      const alvo = [p.numero, p.fornecedor?.razao_social, cmpObra(p.obra_id), cmpEq(p.equipamento_id), p.condicao_pagamento, ...(p.itens || []).map(i => i.descricao)].filter(Boolean).join(" ").toLowerCase();
+      const alvo = [p.numero, p.codigo_externo, p.comprador_externo, p.fornecedor?.razao_social, cmpObra(p.obra_id), cmpEq(p.equipamento_id), p.condicao_pagamento, ...(p.itens || []).map(i => i.descricao)].filter(Boolean).join(" ").toLowerCase();
       if(!alvo.includes(q)) return false;
     }
     return true;
   });
 }
 function cmpRenderKpis(){
-  const hoje = hojeISO();
   const ab = _cmpPedidos.filter(p => CMP_ABERTOS.includes(p.status));
   const set = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   set("cmp-kpi-abertos", ab.length);
   set("cmp-kpi-aprovar", ab.filter(p => p.status === "aguardando_aprovacao").length);
-  set("cmp-kpi-entrega", ab.filter(p => ["enviado","parcialmente_recebido"].includes(p.status)).length);
-  set("cmp-kpi-atrasados", ab.filter(p => p.previsao_entrega && p.previsao_entrega < hoje).length);
+  set("cmp-kpi-entrega", ab.filter(p => CMP_AGUARDA_RECEB.includes(p.status)).length);
+  set("cmp-kpi-atrasados", ab.filter(cmpAtrasado).length);
   set("cmp-kpi-valor", brl(ab.reduce((s, p) => s + Number(p.total || 0), 0)));
   set("cmp-kpi-req", _cmpReqPend);
 }
@@ -163,16 +208,17 @@ function renderCompras(){
   if(_cmpView === "recebimentos") return renderRecebimentos();
   if(_cmpView === "requisicoes") return renderRequisicoes(); // fase 60
   const dados = cmpFiltrados();
-  $("cmp-contador").textContent = `${dados.length} de ${_cmpPedidos.length}`;
+  const per = $("cmp-f-periodo");
+  $("cmp-contador").textContent = `${dados.length} de ${_cmpPedidos.length}${per && per.value ? " · " + per.options[per.selectedIndex].text.toLowerCase() + " e abertos" : ""}`;
   if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhum pedido com esses filtros.</p>`; return; }
   if(_cmpView === "lista") renderComprasLista(dados); else renderComprasKanban(dados);
 }
 function cmpCardHTML(p){
-  const hoje = hojeISO(); const atras = CMP_ABERTOS.includes(p.status) && p.previsao_entrega && p.previsao_entrega < hoje;
-  const dest = p.obra_id ? "🏗️ " + esc(cmpObra(p.obra_id)) : p.equipamento_id ? "🚜 TAG " + esc(cmpEq(p.equipamento_id)) : "📦 Estoque";
+  const atras = cmpAtrasado(p);
+  const dest = p.obra_id ? "🏗️ " + esc(cmpObra(p.obra_id)) : p.equipamento_id ? "🚜 TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? "🏢 " + esc(cmpCentro(p.centro_custo_id)) : "📦 Estoque";
   const it = p.itens || [];
   return `<div class="serv-kan-card" data-id="${esc(p.id)}">
-    <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${dataBR(p.data_pedido)}</span></div>
+    <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span></div>
     <div>${esc(p.fornecedor?.razao_social || "— sem fornecedor —")}</div>
     <div class="meta">${dest} · ${it.length} item(ns)</div>
     <div class="meta" style="display:flex;justify-content:space-between;margin-top:4px;"><strong>${brl(p.total)}</strong>${p.previsao_entrega ? `<span class="${atras ? "txt-perigo" : ""}">${atras ? "⚠ " : "📅 "}${dataBR(p.previsao_entrega)}</span>` : ""}</div>
@@ -186,14 +232,13 @@ function renderComprasKanban(dados){
       ${its.map(cmpCardHTML).join("") || `<p class="vazio">—</p>`}</div>`; }).join("")}</div>`;
 }
 function renderComprasLista(dados){
-  const hoje = hojeISO();
   $("cmp-conteudo").innerHTML = `<div class="tabela-rola"><table>
     <thead><tr><th>Número</th><th>Data</th><th>Fornecedor</th><th>Destino</th><th class="num">Itens</th><th class="num">Total</th><th>Previsão</th><th>Status</th><th>Solicitante</th></tr></thead>
     <tbody>${dados.map(p => `<tr class="linha-clicavel" data-id="${esc(p.id)}">
-      <td><strong>${esc(p.numero)}</strong></td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td>
-      <td>${p.obra_id ? linkObra(p.obra_id, cmpObra(p.obra_id)) : p.equipamento_id ? "TAG " + esc(cmpEq(p.equipamento_id)) : "Estoque"}</td>
+      <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td>
+      <td>${p.obra_id ? linkObra(p.obra_id, cmpObra(p.obra_id)) : p.equipamento_id ? "TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? esc(cmpCentro(p.centro_custo_id)) : "Estoque"}</td>
       <td class="num">${(p.itens || []).length}</td><td class="num">${brl(p.total)}</td>
-      <td class="${CMP_ABERTOS.includes(p.status) && p.previsao_entrega && p.previsao_entrega < hoje ? "txt-perigo" : ""}">${dataBR(p.previsao_entrega)}</td>
+      <td class="${cmpAtrasado(p) ? "txt-perigo" : ""}">${dataBR(p.previsao_entrega)}</td>
       <td>${cmpTag(p.status)}</td><td class="meta">${esc(p._solicitante || "")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
@@ -242,7 +287,7 @@ function abrirFichaPedido(p){
   const ed = cmpEditavel();
   $("cmp-forn").value = p.fornecedor_id || ""; $("cmp-data").value = p.data_pedido || hojeISO(); $("cmp-prev").value = p.previsao_entrega || "";
   $("cmp-cond").value = p.condicao_pagamento || ""; $("cmp-local").value = p.local_entrega || "base";
-  $("cmp-obra").value = p.obra_id || ""; $("cmp-equip").value = p.equipamento_id || "";
+  $("cmp-obra").value = p.obra_id || ""; $("cmp-equip").value = p.equipamento_id || ""; $("cmp-centro").value = p.centro_custo_id || "";
   $("cmp-frete").value = p.frete ?? 0; $("cmp-desc").value = p.desconto ?? 0; $("cmp-obs").value = p.observacoes || "";
   $("cmp-ficha").querySelectorAll(".odoo-tab[data-tab=cabecalho] input, .odoo-tab[data-tab=cabecalho] select, .odoo-tab[data-tab=cabecalho] textarea").forEach(el => el.disabled = !ed);
   $("cmp-itens-add").style.display = ed ? "" : "none";
@@ -274,6 +319,9 @@ function cmpAtualizarChips(){
   const p = _cmpAtual; if(!p) return;
   const total = _cmpItens.reduce((s, i) => s + Number(i.quantidade || 0) * Number(i.valor_unitario || 0), 0) + Number($("cmp-frete").value || 0) - Number($("cmp-desc").value || 0);
   $("cmp-chip-num").textContent = p.numero || "(novo)";
+  const chOdoo = $("cmp-chip-odoo");   // fase 65: pedido importado do Odoo
+  if(chOdoo){ const ext = p.codigo_externo_origem === "odoo"; chOdoo.style.display = ext ? "" : "none";
+    if(ext) $("cmp-chip-odoo-txt").textContent = p.codigo_externo + (p.comprador_externo ? " · comprador " + p.comprador_externo : ""); }
   $("cmp-chip-forn").textContent = cmpForn($("cmp-forn").value) || "—";
   const obra = $("cmp-obra").value, eq = $("cmp-equip").value;
   $("cmp-chip-destino").textContent = $("cmp-local").value === "obra" ? "Obra: " + (cmpObra(obra) || "?") : eq ? "TAG " + cmpEq(eq) : obra ? "Estoque · obra " + cmpObra(obra) : "Estoque (base)";
@@ -321,6 +369,8 @@ function cmpDestinoPadrao(){
 }
 function renderItensPedido(){
   const tb = $("cmp-itens"); const ed = cmpEditavel();
+  const comNat = _cmpItens.some(i => i.natureza);   // fase 65: natureza do Odoo
+  const thNat = $("cmp-th-natureza"); if(thNat) thNat.style.display = comNat ? "" : "none";
   if(!_cmpItens.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${ed ? "Adicione produtos do catálogo ou um item livre." : "Sem itens."}</td></tr>`; cmpAtualizarChips(); return; }
   tb.innerHTML = _cmpItens.map((it, idx) => {
     const tot = Number(it.quantidade || 0) * Number(it.valor_unitario || 0);
@@ -331,7 +381,8 @@ function renderItensPedido(){
       <td>${ed ? `<input type="number" step="0.01" min="0" class="cmp-it" data-f="valor_unitario" value="${esc(it.valor_unitario ?? 0)}" style="width:105px;text-align:right;" />` : brl(it.valor_unitario)}</td>
       <td class="num cmp-it-total">${brl(tot)}</td>
       <td>${ed ? `<select class="cmp-it" data-f="categoria_custo">${cmpCatOptions(it.categoria_custo || "peca")}</select>` : esc(CMP_CAT_LBL[it.categoria_custo] || "—")}</td>
-      <td>${ed ? `<select class="cmp-it" data-f="destino" style="max-width:150px;">${cmpDestinoOptions(cmpDestinoValor(it))}</select>` : esc(cmpDestinoTxt(it))}</td>
+      <td>${ed ? `<select class="cmp-it" data-f="destino" style="max-width:150px;">${cmpDestinoOptions(cmpDestinoValor(it))}</select>` : esc(cmpDestinoTxt(it))}${it.destino === "equipamento" && it.obra_id ? `<div class="meta">obra ${esc(cmpObra(it.obra_id))}</div>` : ""}${it.obra_externa || it.centro_custo_externo ? `<div class="meta" title="rateio do Odoo sem cadastro no app">${esc([it.obra_externa, it.centro_custo_externo].filter(Boolean).join(" · "))}</div>` : ""}</td>
+      ${comNat ? `<td class="meta">${esc(it.natureza || "—")}</td>` : ""}
       <td class="num">${it.quantidade_recebida ? num(it.quantidade_recebida) : "—"}</td>
       <td>${ed ? `<button type="button" class="btn-sec btn-sm cmp-it-rem" title="remover">×</button>` : ""}</td>
     </tr>`; }).join("");
@@ -382,6 +433,7 @@ function cmpColetarCabecalho(){
   return {
     fornecedor_id: $("cmp-forn").value || null, data_pedido: $("cmp-data").value || hojeISO(), previsao_entrega: $("cmp-prev").value || null,
     condicao_pagamento: $("cmp-cond").value.trim() || null, local_entrega: $("cmp-local").value, obra_id: $("cmp-obra").value || null, equipamento_id: $("cmp-equip").value || null,
+    centro_custo_id: $("cmp-centro").value || null,
     frete: Number($("cmp-frete").value || 0), desconto: Number($("cmp-desc").value || 0), observacoes: $("cmp-obs").value.trim() || null
   };
 }
@@ -392,7 +444,7 @@ async function salvarPedido(silencioso){
   for(const it of _cmpItens){
     if(!it.descricao || !String(it.descricao).trim()){ aviso("app-aviso", "Há item sem descrição.", "erro"); ativarTabPedido("itens"); return null; }
     if(!(Number(it.quantidade) > 0)){ aviso("app-aviso", `Quantidade inválida em "${it.descricao}".`, "erro"); ativarTabPedido("itens"); return null; }
-    if(it.destino === "obra" && !it.obra_id || it.destino === "equipamento" && !it.equipamento_id){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); ativarTabPedido("itens"); return null; }
+    if(it.destino === "obra" && !it.obra_id || it.destino === "equipamento" && !it.equipamento_id || it.destino === "centro_custo" && !it.centro_custo_id){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); ativarTabPedido("itens"); return null; }
   }
   let id = _cmpEditId;
   if(id){
@@ -408,7 +460,11 @@ async function salvarPedido(silencioso){
   if(_cmpItens.length){
     const { error: eIns } = await sb.from("pedido_compra_itens").insert(_cmpItens.map((it, i) => ({
       pedido_id: id, ordem: i, produto_id: it.produto_id || null, descricao: String(it.descricao).trim(), unidade: it.unidade || "un", quantidade: Number(it.quantidade),
-      valor_unitario: Number(it.valor_unitario || 0), categoria_custo: it.categoria_custo || null, destino: it.destino || "estoque", obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null
+      valor_unitario: Number(it.valor_unitario || 0), categoria_custo: it.categoria_custo || null, destino: it.destino || "estoque", obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null,
+      // fase 76: centro como custo (destino centro_custo) ou, no item para o almoxarifado, como identificação de quem pediu
+      centro_custo_id: it.destino === "centro_custo" ? (it.centro_custo_id || null) : (it.destino || "estoque") === "estoque" ? (dados.centro_custo_id || null) : null,
+      // fase 65: item importado do Odoo guarda o rateio original ao ser regravado
+      natureza: it.natureza || null, centro_custo_externo: it.centro_custo_externo || null, obra_externa: it.obra_externa || null, codigo_externo: it.codigo_externo || null, observacoes: it.observacoes || null
     })));
     if(eIns){ aviso("app-aviso", "Erro ao salvar itens: " + eIns.message, "erro"); return null; }
   }
@@ -466,7 +522,7 @@ function abrirRecebimento(pedido){
       const pend = Number(it.quantidade || 0) - Number(it.quantidade_recebida || 0);
       if(pend <= 0) return;
       _cmpRec.itens.push({ pedido_item_id: it.id, produto_id: it.produto_id, descricao: it.descricao, unidade: it.unidade, pendente: pend, quantidade_nf: pend, valor_unitario_nf: Number(it.valor_unitario || 0),
-        categoria_custo: it.categoria_custo, destino: it.destino, obra_id: it.obra_id, equipamento_id: it.equipamento_id });
+        categoria_custo: it.categoria_custo, destino: it.destino, obra_id: it.obra_id, equipamento_id: it.equipamento_id, centro_custo_id: it.centro_custo_id || null });
     });
   }
   renderItensRecebimento();
@@ -565,8 +621,8 @@ async function confirmarRecebimento(){
   if(!itens.length){ aviso("app-aviso", "Nenhum item com quantidade.", "erro"); return; }
   for(const it of itens){
     if(!it.descricao || !it.descricao.trim()){ aviso("app-aviso", "Há item sem descrição.", "erro"); return; }
-    if(it.destino === "estoque" && !it.produto_id){ aviso("app-aviso", `"${it.descricao}" não tem cadastro: mande para obra ou TAG (custo direto) ou cadastre o produto.`, "erro"); return; }
-    if(it.destino === "obra" && !it.obra_id || it.destino === "equipamento" && !it.equipamento_id){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
+    if(it.destino === "estoque" && !it.produto_id){ aviso("app-aviso", `"${it.descricao}" não tem cadastro: mande para obra, TAG ou setor (custo direto) ou cadastre o produto.`, "erro"); return; }
+    if(it.destino === "obra" && !it.obra_id || it.destino === "equipamento" && !it.equipamento_id || it.destino === "centro_custo" && !it.centro_custo_id){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
     if(it.pendente != null && Number(it.quantidade_nf) > it.pendente * 1.1 && !confirm(`"${it.descricao}": a nota traz ${num(it.quantidade_nf)} e o pedido tem ${num(it.pendente)} pendente. Receber assim mesmo?`)) return;
   }
   const venc = $("cmp-rec-venc").value || null;
@@ -585,6 +641,7 @@ async function confirmarRecebimento(){
     recebimento_id: rec.id, pedido_item_id: it.pedido_item_id || null, produto_id: it.produto_id || null, descricao: it.descricao.trim(), unidade: it.unidade || "un",
     quantidade_nf: Number(it.quantidade_nf), valor_unitario_nf: Number(it.valor_unitario_nf || 0), quantidade_aceita: Number(it.quantidade_nf),
     categoria_custo: it.categoria_custo || null, destino: it.destino || "estoque", obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null,
+    centro_custo_id: it.centro_custo_id || null,
     codigo_fornecedor: it.codigo_fornecedor || null, ean: it.ean || null, ncm: it.ncm || null, cfop: it.cfop || null, casamento: it.casamento || null
   })));
   if(eIt){ await sb.from("recebimentos").delete().eq("id", rec.id); aviso("app-aviso", "Erro nos itens do recebimento: " + eIt.message, "erro"); return; }
@@ -719,19 +776,20 @@ async function abrirCustoAvulso(pre, depois){
   _cmpAvPre = depois || null;
   await cmpCarregarBase(false);
   $("cmp-av-data").value = hojeISO(); $("cmp-av-cat").value = pre?.categoria || "outro"; $("cmp-av-valor").value = "";
-  $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; $("cmp-av-forn").value = ""; if($("cmp-av-jogo")) $("cmp-av-jogo").value = pre?.acessorio_jogo || "";
+  $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; if($("cmp-av-centro")) $("cmp-av-centro").value = pre?.centro_custo_id || ""; $("cmp-av-forn").value = ""; if($("cmp-av-jogo")) $("cmp-av-jogo").value = pre?.acessorio_jogo || "";
   $("cmp-av-desc").value = ""; $("cmp-av-doc").value = ""; if($("cmp-av-venc")) $("cmp-av-venc").value = "";
   $("cmp-av-modal").style.display = "flex";
-  setTimeout(() => { if(pre?.equipamento_id && $("cmp-av-equip")) $("cmp-av-equip").value = pre.equipamento_id; if(pre?.obra_id && $("cmp-av-obra")) $("cmp-av-obra").value = pre.obra_id; }, 300);
+  setTimeout(() => { if(pre?.equipamento_id && $("cmp-av-equip")) $("cmp-av-equip").value = pre.equipamento_id; if(pre?.obra_id && $("cmp-av-obra")) $("cmp-av-obra").value = pre.obra_id; if(pre?.centro_custo_id && $("cmp-av-centro")) $("cmp-av-centro").value = pre.centro_custo_id; }, 300);
 }
 function fecharCustoAvulso(){ $("cmp-av-modal").style.display = "none"; }
 async function salvarCustoAvulso(){
   const reg = { data: $("cmp-av-data").value || hojeISO(), categoria: $("cmp-av-cat").value, valor: Number($("cmp-av-valor").value), equipamento_id: $("cmp-av-equip").value || null, obra_id: $("cmp-av-obra").value || null,
+    centro_custo_id: $("cmp-av-centro")?.value || null,
     fornecedor_id: $("cmp-av-forn").value || null, acessorio_jogo: ($("cmp-av-jogo")?.value || "").trim().toUpperCase() || null, descricao: $("cmp-av-desc").value.trim(), documento: $("cmp-av-doc").value.trim() || null,
     vencimento: $("cmp-av-venc")?.value || null }; // com vencimento vira também título a pagar
   if(!(reg.valor >= 0) || $("cmp-av-valor").value === ""){ aviso("app-aviso", "Informe o valor.", "erro"); return; }
   if(!reg.descricao){ aviso("app-aviso", "Informe a descrição.", "erro"); return; }
-  if(!reg.equipamento_id && !reg.obra_id && !reg.acessorio_jogo){ aviso("app-aviso", "Informe a TAG, a obra ou o jogo de acessórios.", "erro"); return; }
+  if(!reg.equipamento_id && !reg.obra_id && !reg.acessorio_jogo && !reg.centro_custo_id){ aviso("app-aviso", "Informe a TAG, a obra, o setor / obra interna ou o jogo de acessórios.", "erro"); return; }
   const { error } = await sb.from("custos_avulsos").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message, "erro"); return; }
   aviso("app-aviso", reg.vencimento ? "Custo lançado e título a pagar gerado." : "Custo lançado (sem vencimento: não gera título a pagar).", "ok");
@@ -750,6 +808,7 @@ async function custosRender(containerId, filtro, cbTotal){
   let q = sb.from("vw_custos").select("*").order("data", { ascending: false }).limit(2000);
   if(filtro.equipamento_id) q = q.eq("equipamento_id", filtro.equipamento_id);
   if(filtro.obra_id) q = q.eq("obra_id", filtro.obra_id);
+  if(filtro.centro_custo_id) q = q.eq("centro_custo_id", filtro.centro_custo_id);   // fase 76
   const { data, error } = await q;
   if(error){ c.innerHTML = `<p class="vazio">Erro ao carregar custos: ${esc(error.message)}</p>`; return; }
   const linhas = data || [];
@@ -772,14 +831,14 @@ async function custosRender(containerId, filtro, cbTotal){
       <div><div class="mov-ace-sug-grupo-t">Por categoria</div>${Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="custos-linha"><span>${esc(CMP_CAT_LBL[k] || k)}</span><strong>${brl(v)}</strong></div>`).join("")}</div>
       <div><div class="mov-ace-sug-grupo-t">Por mês</div>${meses.map(m => `<div class="custos-linha"><span>${m.slice(5, 7)}/${m.slice(0, 4)}</span><strong>${brl(porMes[m])}</strong></div>`).join("")}</div>
     </div>
-    <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Categoria</th><th>Descrição</th><th>${filtro.equipamento_id ? "Obra" : "TAG"}</th><th>Fornecedor</th><th>Doc.</th><th class="num">Valor</th></tr></thead>
+    <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Categoria</th><th>Descrição</th><th>${filtro.equipamento_id ? "Obra" : filtro.centro_custo_id ? "Obra / TAG" : "TAG"}</th><th>Fornecedor</th><th>Doc.</th><th class="num">Valor</th></tr></thead>
       <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : l.origem === "combustivel" ? "ambar" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}</span></td>
         <td>${esc(CMP_CAT_LBL[l.categoria] || l.categoria)}</td><td>${esc(l.descricao || "")}</td>
-        <td>${filtro.equipamento_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : "—") : esc(nomeEq(l.equipamento_id) || "—")}</td>
+        <td>${filtro.equipamento_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : "—") : filtro.centro_custo_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : esc(nomeEq(l.equipamento_id) || "—")) : esc(nomeEq(l.equipamento_id) || "—")}</td>
         <td>${esc(nomeForn(l.fornecedor_id) || "—")}</td><td class="meta">${esc(l.documento || "")}</td><td class="num">${brl(l.valor)}</td></tr>`).join("")}</tbody></table></div>
     ${linhas.length > 500 ? `<p class="meta">Mostrando 500 de ${linhas.length}. Use o Excel para a lista completa.</p>` : ""}`
-    : `<p class="vazio">Nenhum custo registrado${filtro.equipamento_id ? " para esta TAG" : " para esta obra"}. Os custos nascem do recebimento de compra direta, da saída de estoque, de deslocamentos, manutenções, reparos e lançamentos avulsos.</p>`}`;
-  $(`${containerId}-av`)?.addEventListener("click", () => abrirCustoAvulso({ equipamento_id: filtro.equipamento_id || "", obra_id: filtro.obra_id || "" }, () => custosRender(containerId, filtro, cbTotal)));
+    : `<p class="vazio">Nenhum custo registrado${filtro.equipamento_id ? " para esta TAG" : filtro.centro_custo_id ? " para este centro" : " para esta obra"}. Os custos nascem do recebimento de compra direta, da saída de estoque, de deslocamentos, manutenções, reparos e lançamentos avulsos.</p>`}`;
+  $(`${containerId}-av`)?.addEventListener("click", () => abrirCustoAvulso({ equipamento_id: filtro.equipamento_id || "", obra_id: filtro.obra_id || "", centro_custo_id: filtro.centro_custo_id || "" }, () => custosRender(containerId, filtro, cbTotal)));
   $(`${containerId}-xls`)?.addEventListener("click", () => {
     const rows = linhas.map(l => ({ Data: dataBR(l.data), Origem: CMP_ORIGEM_LBL[l.origem] || l.origem, Categoria: CMP_CAT_LBL[l.categoria] || l.categoria, Descrição: l.descricao || "", TAG: nomeEq(l.equipamento_id), Obra: nomeObra(l.obra_id), Fornecedor: nomeForn(l.fornecedor_id), Documento: l.documento || "", Quantidade: Number(l.quantidade || 0), Valor: Number(l.valor || 0) }));
     if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
@@ -832,6 +891,7 @@ function ligarCompras(){
     _cmpKpi = (_cmpKpi === k) ? "" : k; if(!["kanban","lista"].includes(_cmpView)) _cmpView = "kanban"; renderCompras();
   }));
   ["cmp-f-status","cmp-f-forn","cmp-f-obra","cmp-f-equip","cmp-f-mes"].forEach(id => $(id)?.addEventListener("change", renderCompras));
+  $("cmp-f-periodo")?.addEventListener("change", async () => { $("cmp-conteudo").innerHTML = `<p class="vazio">Carregando compras…</p>`; await cmpFetchPedidos(); renderCompras(); });
   $("cmp-busca")?.addEventListener("input", debounce(renderCompras));
   $("btn-cmp-atualizar")?.addEventListener("click", () => carregarCompras(true));
   $("btn-cmp-novo")?.addEventListener("click", () => novoPedido());

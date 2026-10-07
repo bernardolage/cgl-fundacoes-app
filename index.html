@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=e3c1eeb" />
+<link rel="stylesheet" href="css/estilo.css?v=05f0c1c" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -106,6 +106,10 @@
       <button data-secao="contratos">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><polyline points="9 15 11 17 15 13"></polyline></svg>
         <span>Contratos &amp; Contas a pagar</span>
+      </button>
+      <button data-secao="centros" style="display:none;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+        <span>Centros de custo</span>
       </button>
       <button data-secao="carteira" id="nav-carteira" style="display:none;">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg>
@@ -1014,6 +1018,7 @@
           </div>
           <div class="campo est-so-saida" style="display:none;"><label>Obra atendida</label><select id="est-obra"><option value="">— nenhuma —</option></select></div>
           <div class="campo est-so-saida" style="display:none;"><label>Equipamento (TAG)</label><select id="est-equip"><option value="">— nenhum —</option></select></div>
+          <div class="campo est-so-saida" style="display:none;"><label>Setor / obra interna</label><select id="est-centro"><option value="">— nenhum —</option></select></div>
           <div class="campo"><label>Documento (NF / pedido / requisição)</label><input id="ent-doc" /></div>
           <div class="campo largo"><label>Observações</label><input id="est-mov-obs" placeholder="ex.: montado na TAG 65, obra X" /></div>
         </div>
@@ -1082,8 +1087,8 @@
         <div class="indicadores">
           <div class="ind ind-click" data-kpi=""><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div></div>
           <div class="ind ind-click" data-kpi="aprovar"><div class="num" id="cmp-kpi-aprovar" style="color:var(--marca-600);">—</div><div class="rot">Aguardando aprovação</div></div>
-          <div class="ind ind-click" data-kpi="entrega"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando entrega</div></div>
-          <div class="ind ind-click" data-kpi="atrasados"><div class="num" id="cmp-kpi-atrasados">—</div><div class="rot">Entrega atrasada</div></div>
+          <div class="ind ind-click" data-kpi="entrega"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando recebimento</div></div>
+          <div class="ind ind-click" data-kpi="atrasados"><div class="num" id="cmp-kpi-atrasados">—</div><div class="rot">Recebimento atrasado</div></div>
           <div class="ind"><div class="num" id="cmp-kpi-valor">—</div><div class="rot">Valor em aberto</div></div>
           <div class="ind ind-click" data-kpi="requisicoes"><div class="num" id="cmp-kpi-req" style="color:var(--aviso);">—</div><div class="rot">Requisições pendentes</div></div>
         </div>
@@ -1104,7 +1109,8 @@
           </div>
           <div class="serv-filtros" id="cmp-filtros">
             <input id="cmp-busca" placeholder="Buscar número, fornecedor, obra, TAG, item…" />
-            <select id="cmp-f-status"><option value="">Status</option></select>
+            <select id="cmp-f-status"><option value="_abertos">Abertos</option><option value="">Todos os status</option></select>
+            <select id="cmp-f-periodo" title="período do pedido (os em aberto entram sempre)"><option value="30">Últimos 30 dias</option><option value="90" selected>Últimos 90 dias</option><option value="180">Últimos 180 dias</option><option value="365">Últimos 12 meses</option><option value="">Todo o período</option></select>
             <select id="cmp-f-forn"><option value="">Fornecedor</option></select>
             <select id="cmp-f-obra"><option value="">Obra</option></select>
             <select id="cmp-f-equip"><option value="">TAG</option></select>
@@ -1148,6 +1154,7 @@
             <div class="chip"><span>Total</span><strong id="cmp-chip-total">R$ 0,00</strong></div>
             <div class="chip"><span>Previsão</span><strong id="cmp-chip-prev">—</strong></div>
             <div class="chip"><span>Aprovação</span><strong id="cmp-chip-aprov">—</strong></div>
+            <div class="chip" id="cmp-chip-odoo" style="display:none;"><span>Odoo</span><strong id="cmp-chip-odoo-txt">—</strong></div>
           </div>
 
           <div class="odoo-smart-buttons">
@@ -1174,6 +1181,7 @@
                 <div class="campo"><label>Local de entrega</label><select id="cmp-local"><option value="base">Base Itabira (estoque)</option><option value="obra">Direto na obra (custo direto)</option></select></div>
                 <div class="campo"><label>Obra (destino padrão dos itens)</label><select id="cmp-obra"></select></div>
                 <div class="campo"><label>TAG (destino padrão dos itens)</label><select id="cmp-equip"></select></div>
+                <div class="campo"><label>Setor / obra interna solicitante</label><select id="cmp-centro" title="Identifica quem pediu. Item para o almoxarifado leva este centro só como identificação; o custo entra na saída do estoque."></select></div>
                 <div class="campo"><label>Frete (R$)</label><input type="number" id="cmp-frete" min="0" step="0.01" /></div>
                 <div class="campo"><label>Desconto (R$)</label><input type="number" id="cmp-desc" min="0" step="0.01" /></div>
                 <div class="campo largo"><label>Observações (saem no PDF)</label><textarea id="cmp-obs" rows="2"></textarea></div>
@@ -1186,7 +1194,7 @@
                 <table class="itens-tabela cmp-itens-tabela">
                   <thead><tr>
                     <th>Item</th><th style="width:70px;">Un</th><th style="width:90px;">Qtd</th><th style="width:120px;">Unitário</th><th class="num" style="width:120px;">Total</th>
-                    <th style="width:130px;">Categoria</th><th style="width:150px;">Destino</th><th class="num" style="width:80px;" title="quantidade já recebida">Receb.</th><th class="col-acao"></th>
+                    <th style="width:130px;">Categoria</th><th style="width:150px;">Destino</th><th id="cmp-th-natureza" style="display:none;" title="natureza da despesa no Odoo">Natureza</th><th class="num" style="width:80px;" title="quantidade já recebida">Receb.</th><th class="col-acao"></th>
                   </tr></thead>
                   <tbody id="cmp-itens"></tbody>
                 </table>
@@ -1298,6 +1306,7 @@
             <div class="campo"><label>Valor (R$) *</label><input type="number" id="cmp-av-valor" min="0" step="0.01" /></div>
             <div class="campo"><label>TAG</label><select id="cmp-av-equip"></select></div>
             <div class="campo"><label>Obra</label><select id="cmp-av-obra"></select></div>
+            <div class="campo"><label>Setor / obra interna</label><select id="cmp-av-centro"></select></div>
             <div class="campo"><label>Jogo de acessórios</label><input id="cmp-av-jogo" placeholder="Ex.: CGL-65 (reforma de trado)" /></div>
             <div class="campo"><label>Fornecedor</label><select id="cmp-av-forn"></select></div>
             <div class="campo largo"><label>Descrição *</label><input id="cmp-av-desc" placeholder="ex.: IPVA 2026 · Multa radar BR-381 · Locação de gerador" /></div>
@@ -1561,6 +1570,91 @@
     </section>
 
     <!-- CONTRATOS -->
+    <section class="secao" id="sec-centros">
+      <!-- Fase 76: centros de custo internos (setores e obras internas) -->
+      <div id="ccu-painel">
+        <h2>Centros de custo</h2>
+        <p class="texto-apoio">Setores da empresa e obras internas: o custo que não é de obra de cliente nem de máquina. Cada setor liga-se a um departamento, para ver o custo e a equipe juntos. Compra para o almoxarifado leva o setor só como identificação; o custo entra quando o material sai do estoque.</p>
+        <div class="indicadores">
+          <div class="ind"><div class="num" id="ccu-kpi-setores">—</div><div class="rot">Setores no período</div></div>
+          <div class="ind"><div class="num" id="ccu-kpi-obras">—</div><div class="rot">Obras internas no período</div></div>
+          <div class="ind"><div class="num" id="ccu-kpi-ant">—</div><div class="rot">Período anterior</div></div>
+          <div class="ind"><div class="num" id="ccu-kpi-var">—</div><div class="rot">Variação</div></div>
+        </div>
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Centros <span id="ccu-contador" class="contador"></span></h3>
+            <div class="serv-views" id="ccu-views">
+              <button type="button" class="serv-view-btn ativo" data-view="setor">Setores</button>
+              <button type="button" class="serv-view-btn" data-view="obra_interna">Obras internas</button>
+              <button type="button" class="serv-view-btn" data-view="todos">Todos</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-ccu-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+            <button type="button" class="btn" id="btn-ccu-novo" style="display:none;">+ Novo centro</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="ccu-busca" placeholder="Buscar código, nome, departamento…" />
+            <select id="ccu-periodo" title="período do custo"><option value="mes">Mês atual</option><option value="mes_ant">Mês anterior</option><option value="90" selected>Últimos 90 dias</option><option value="ano">Ano</option></select>
+            <label class="meta"><input type="checkbox" id="ccu-inativos" /> mostrar inativos</label>
+          </div>
+          <div id="ccu-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <div id="ccu-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-ccu-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-ccu-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-ccu-avulso">＋ Custo avulso</button>
+            </div>
+            <div class="actions-right"><strong id="ccu-ficha-titulo">Centro de custo</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="ccu-statusbar" title="Inativo some das listas de lançamento novo; o histórico continua">
+            <div class="stage" data-status="ativo">Ativo</div>
+            <div class="stage" data-status="inativo">Inativo</div>
+          </div>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Tipo</span><strong id="ccu-chip-tipo">—</strong></div>
+            <div class="chip"><span>Departamento</span><strong id="ccu-chip-dep">—</strong></div>
+            <div class="chip"><span>Responsável</span><strong id="ccu-chip-resp">—</strong></div>
+            <div class="chip"><span>Custo</span><strong id="ccu-chip-custo">—</strong></div>
+          </div>
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-ccu-custos" data-goto-tab="custos"><span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">no período</span></button>
+            <button type="button" class="sb-btn" id="sb-ccu-equipe" data-goto-tab="equipe"><span class="sb-num">0</span><span class="sb-icon">👷</span><span class="sb-lbl">equipe</span></button>
+            <button type="button" class="sb-btn" id="sb-ccu-pedidos" data-goto-tab="pedidos"><span class="sb-num">0</span><span class="sb-icon">🛒</span><span class="sb-lbl">itens de pedido</span></button>
+          </div>
+          <div class="odoo-notebook" id="ccu-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="custos">Custos</button>
+            <button type="button" data-tab="equipe">Equipe</button>
+            <button type="button" data-tab="pedidos">Pedidos</button>
+            <button type="button" data-tab="timeline">Timeline</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Código *</label><input id="ccu-codigo" placeholder="ex.: CAL, OI-0011" /></div>
+                <div class="campo largo"><label>Nome *</label><input id="ccu-nome" /></div>
+                <div class="campo"><label>Tipo</label><select id="ccu-tipo"><option value="setor">Setor</option><option value="obra_interna">Obra interna</option></select></div>
+                <div class="campo"><label>Departamento (equipe do setor)</label><select id="ccu-dep"></select></div>
+                <div class="campo"><label>Responsável</label><select id="ccu-resp"><option value="">— ninguém —</option></select></div>
+                <div class="campo largo"><label>Nomes no Odoo <small style="font-weight:400;">(projeto ou centro de custo; um por linha; casa pelo começo do nome)</small></label><textarea id="ccu-odoo" rows="3"></textarea></div>
+                <div class="campo largo"><label>Naturezas do Odoo <small style="font-weight:400;">(repartem o OFICINA do Odoo; um por linha)</small></label><textarea id="ccu-naturezas" rows="2"></textarea></div>
+                <div class="campo largo"><label>Observações</label><textarea id="ccu-obs" rows="2"></textarea></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="custos"><div id="ccu-custos"></div></div>
+            <div class="odoo-tab" data-tab="equipe"><div id="ccu-equipe"></div></div>
+            <div class="odoo-tab" data-tab="pedidos"><div id="ccu-pedidos"></div></div>
+            <div class="odoo-tab" data-tab="timeline"><div id="ccu-chatter"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="secao" id="sec-contratos">
       <h2>Contratos &amp; Contas a pagar</h2>
 
@@ -3849,39 +3943,40 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=e3c1eeb"></script>
+<script src="js/core.js?v=05f0c1c"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=e3c1eeb"></script>
+<script src="js/historico.js?v=05f0c1c"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=e3c1eeb"></script>
-<script src="js/fornecedores.js?v=e3c1eeb"></script>
-<script src="js/apropriacoes.js?v=e3c1eeb"></script>
-<script src="js/funcionarios.js?v=e3c1eeb"></script>
-<script src="js/servicos.js?v=e3c1eeb"></script>
-<script src="js/produtos.js?v=e3c1eeb"></script>
-<script src="js/estoque.js?v=e3c1eeb"></script>
-<script src="js/compras.js?v=e3c1eeb"></script>
-<script src="js/requisicoes.js?v=e3c1eeb"></script>
-<script src="js/orcamentos.js?v=e3c1eeb"></script>
-<script src="js/propostas.js?v=e3c1eeb"></script>
-<script src="js/contratos.js?v=e3c1eeb"></script>
-<script src="js/contas_pagar.js?v=e3c1eeb"></script>
-<script src="js/carteira.js?v=e3c1eeb"></script>
-<script src="js/obras.js?v=e3c1eeb"></script>
-<script src="js/frota.js?v=e3c1eeb"></script>
-<script src="js/equipamentos.js?v=e3c1eeb"></script>
-<script src="js/acessorios.js?v=e3c1eeb"></script>
-<script src="js/mobilizacoes.js?v=e3c1eeb"></script>
-<script src="js/estacas.js?v=e3c1eeb"></script>
-<script src="js/obra_abas.js?v=e3c1eeb"></script>
-<script src="js/medicoes.js?v=e3c1eeb"></script>
-<script src="js/movimentacoes.js?v=e3c1eeb"></script>
-<script src="js/rdo.js?v=e3c1eeb"></script>
-<script src="js/rdo_import_maya.js?v=e3c1eeb"></script>
-<script src="js/usuarios.js?v=e3c1eeb"></script>
-<script src="js/chamados.js?v=e3c1eeb"></script>
-<script src="js/dashboard.js?v=e3c1eeb"></script>
+<script src="js/clientes.js?v=05f0c1c"></script>
+<script src="js/fornecedores.js?v=05f0c1c"></script>
+<script src="js/apropriacoes.js?v=05f0c1c"></script>
+<script src="js/funcionarios.js?v=05f0c1c"></script>
+<script src="js/servicos.js?v=05f0c1c"></script>
+<script src="js/produtos.js?v=05f0c1c"></script>
+<script src="js/estoque.js?v=05f0c1c"></script>
+<script src="js/compras.js?v=05f0c1c"></script>
+<script src="js/requisicoes.js?v=05f0c1c"></script>
+<script src="js/orcamentos.js?v=05f0c1c"></script>
+<script src="js/propostas.js?v=05f0c1c"></script>
+<script src="js/contratos.js?v=05f0c1c"></script>
+<script src="js/contas_pagar.js?v=05f0c1c"></script>
+<script src="js/centros_custo.js?v=05f0c1c"></script>
+<script src="js/carteira.js?v=05f0c1c"></script>
+<script src="js/obras.js?v=05f0c1c"></script>
+<script src="js/frota.js?v=05f0c1c"></script>
+<script src="js/equipamentos.js?v=05f0c1c"></script>
+<script src="js/acessorios.js?v=05f0c1c"></script>
+<script src="js/mobilizacoes.js?v=05f0c1c"></script>
+<script src="js/estacas.js?v=05f0c1c"></script>
+<script src="js/obra_abas.js?v=05f0c1c"></script>
+<script src="js/medicoes.js?v=05f0c1c"></script>
+<script src="js/movimentacoes.js?v=05f0c1c"></script>
+<script src="js/rdo.js?v=05f0c1c"></script>
+<script src="js/rdo_import_maya.js?v=05f0c1c"></script>
+<script src="js/usuarios.js?v=05f0c1c"></script>
+<script src="js/chamados.js?v=05f0c1c"></script>
+<script src="js/dashboard.js?v=05f0c1c"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=e3c1eeb"></script>
+<script src="js/init.js?v=05f0c1c"></script>
 </body>
 </html>

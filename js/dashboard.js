@@ -31,7 +31,7 @@ const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", c
    As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
 const DASH_SETOR_GESTORES = {
   obras:       ["engenheiro", "assistente_engenharia", "encarregado"],
-  frota:       ["mecanico", "logistica", "gestor_acessorios"],
+  frota:       ["mecanico", "logistica", "gestor_acessorios", "gestor_frota"],
   financeiro:  ["financeiro"],
   compras:     ["comprador", "almoxarife"],
   mobilizacao: ["logistica", "engenheiro"],

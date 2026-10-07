@@ -19,6 +19,7 @@ const CARGOS = {
   rh:           "RH (folha e dados sensíveis)",   /* só diretor atribui — trigger proteger_cargo_rh */
   sesmt:        "SESMT",
   logistica:    "Logística",
+  gestor_frota: "Gestor de frota",  /* frota, equipamentos, manutenção/OS, requisições e compras (fase 77) */
   visualizador: "Visualizador"
 };
 
