@@ -51,7 +51,7 @@ const MOB_TRANSICOES = {
 
 function mobSetorDoUsuario(){
   const cargo = usuarioAtual?.cargo;
-  if(!cargo || ["diretor", "admin"].includes(cargo)) return null; // vê todos
+  if(!cargo || ["diretor", "admin", "auditor"].includes(cargo)) return null; // vê todos
   return MOB_CARGO_SETOR[cargo] || null;
 }
 

@@ -399,8 +399,9 @@ h4 {
   color: var(--success-text);
   display: block;
 }
-/* aviso não bloqueante: aviso(el, msg, "aviso") — lote S39 (#26) */
-.aviso.aviso {
+/* aviso não bloqueante: aviso(el, msg, "aviso") — lote S39 (#26). Classe "atencao" (fase 79): ".aviso.aviso"
+   casava com todo .aviso e deixava a faixa amarela vazia visível no topo */
+.aviso.atencao {
   background: var(--aviso-bg);
   border-left: 4px solid var(--aviso);
   color: var(--aviso-txt);
@@ -2789,3 +2790,12 @@ input:disabled, select:disabled, textarea:disabled {
 .ace-foto-rod { padding: 6px 8px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
 .ace-foto-rod .acoes { display: flex; gap: 4px; flex-wrap: wrap; }
 .ace-capa { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; vertical-align: middle; margin-right: 8px; border: 1px solid var(--borda); }
+
+/* ---- Usuário de revisão, cargo auditor (fase 79): só leitura. A RLS barra a gravação; aqui só some o botão ---- */
+.faixa-so-leitura { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 9998; pointer-events: none;
+  padding: 2px 12px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); font-size: 11.5px; font-weight: 600;
+  background: var(--aviso-bg); color: var(--aviso-txt); border: 1px solid var(--aviso); border-top: 0; }
+body.so-leitura .btn[type=submit],
+body.so-leitura .btn-salvar,
+body.so-leitura .btn-novo,
+body.so-leitura .form-acoes .btn:not(#btn-copiar-uninfe) { display: none !important; }

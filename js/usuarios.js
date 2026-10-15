@@ -20,7 +20,8 @@ const CARGOS = {
   sesmt:        "SESMT",
   logistica:    "Logística",
   gestor_frota: "Gestor de frota",  /* frota, equipamentos, manutenção/OS, requisições e compras (fase 77) */
-  visualizador: "Visualizador"
+  visualizador: "Visualizador",
+  auditor:      "Auditor (só leitura)"  /* usuário de revisão: vê o que a diretoria vê, menos dados sensíveis; não grava (fase 79) */
 };
 
 let _usuarios   = [];

@@ -188,8 +188,12 @@ function addDiasISO(n){
 /* mostra um aviso temporário (ok) ou fixo (erro) */
 function aviso(elId, msg, tipo){
   const el = $(elId);
+  // fase 79: o usuário de revisão (auditor) é barrado pela RLS em toda gravação; a mensagem diz isso em vez do erro técnico
+  if(tipo === "erro" && typeof ehSomenteLeitura === "function" && ehSomenteLeitura()
+     && /row-level security|permission denied|42501|sem permiss|não foi possível (salvar|gravar|abrir|mudar|excluir)/i.test(String(msg || "")))
+    msg = "Usuário de revisão não grava.";
   el.textContent = msg;
-  el.className = "aviso " + tipo;
+  el.className = "aviso " + (tipo === "aviso" ? "atencao" : tipo);
   if(tipo === "ok") setTimeout(()=>{ el.className = "aviso"; }, 4000);
 }
 
@@ -700,28 +704,34 @@ const SECOES_COMERCIAIS = ["servicos", "orcamentos"];
 /* Fase 53: Movimentações de Ativos (remessa/retorno de máquinas e acessórios) — diretoria, admin, logística, gestor de acessórios e almoxarife.
    Os demais cargos seguem gerando remessa/retorno pela mobilização, sem precisar da tela. */
 function podeVerMovimentacoes(){
-  return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_acessorios", "almoxarife"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_acessorios", "almoxarife", "auditor"].includes(usuarioAtual.cargo);
 }
 function podeVerComercial(){
-  return !!usuarioAtual && ["diretor", "comercial"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "comercial", "auditor"].includes(usuarioAtual.cargo);
 }
 /* Fase 55: Contratos & Contas a pagar (contratos de fornecedor, títulos a pagar, lançamentos avulsos, exportação
    para o Compor 90). Quem não está aqui vê os valores só como custo, na aba Custos da obra e do equipamento. */
-/* 22/09/2026 (diretoria): somatórios patrimoniais (valor de reposição dos acessórios, FIPE da frota) só para o cargo diretor. */
-function ehDiretoria(){ return !!usuarioAtual && usuarioAtual.cargo === "diretor"; }
+/* 22/09/2026 (diretoria): somatórios patrimoniais (valor de reposição dos acessórios, FIPE da frota) só para o cargo diretor.
+   Fase 79: o auditor (usuário de revisão, só leitura) também vê, para conferir a Sala de Comando inteira. */
+function ehDiretoria(){ return !!usuarioAtual && ["diretor", "auditor"].includes(usuarioAtual.cargo); }
+/* Fase 79 (Bernardo, 15/10/2026): cargo auditor = usuário de revisão. Vê o que a diretoria vê (menos dados sensíveis
+   de funcionário) e não grava nada: a RLS barra; a classe body.so-leitura só esconde os botões de gravação. */
+function ehSomenteLeitura(){ return !!usuarioAtual && usuarioAtual.cargo === "auditor"; }
 function podeVerContasPagar(){
-  return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "auditor"].includes(usuarioAtual.cargo);
 }
 /* Fase 76: Centros de custo internos (setores e obras internas): quem lê custos de compras e acessórios */
 function podeVerCentrosCusto(){
-  return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "gestor_acessorios", "gestor_frota"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "gestor_acessorios", "gestor_frota", "auditor"].includes(usuarioAtual.cargo);
 }
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
 const SECOES_OCULTAS_POR_CARGO = {
   rh: ["medicoes", "acessorios", "equipamentos", "obras", "compras", "estoque", "produtos", "fornecedores", "clientes"],
   // fase 77 (Bernardo, 07/10/2026): gestor de frota cuida de frota, equipamentos, manutenção e compras da frota
-  gestor_frota: ["acessorios", "medicoes"]
+  gestor_frota: ["acessorios", "medicoes"],
+  // fase 79: auditor (usuário de revisão) vê tudo, menos a gestão de logins
+  auditor: ["usuarios"]
 };
 /* Mostra/esconde os itens do menu conforme o cargo. Chamado no login; isolado para poder ser testado. */
 function aplicarMenuPorCargo(perfil){
@@ -736,7 +746,7 @@ function aplicarMenuPorCargo(perfil){
   // Carteira: só cargo diretor (admin ficou de fora em 02/09/2026 a pedido da diretoria;
   // as pendências por contrato continuam visíveis na aba Contrato da Obra para todos)
   const navCart = $("nav-carteira");
-  if(navCart) navCart.style.display = (perfil && perfil.cargo === "diretor") ? "" : "none";
+  if(navCart) navCart.style.display = (perfil && ["diretor", "auditor"].includes(perfil.cargo)) ? "" : "none";
 
   // Fase 49 (Bernardo, 21/09/2026): Catálogo de Serviços e Orçamentos só para diretoria e comercial.
   // Os demais cargos não veem os itens no menu; irParaSecao() também barra atalhos de outras telas.
@@ -753,11 +763,24 @@ function aplicarMenuPorCargo(perfil){
   const navCcu = document.querySelector('.sidebar-nav button[data-secao="centros"]');
   if(navCcu) navCcu.style.display = podeVerCentrosCusto() ? "" : "none";
 
-  const ocultas = SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || [];
-  new Set(Object.values(SECOES_OCULTAS_POR_CARGO).flat()).forEach(s => {
+  // Só esconde: reexibir aqui mostraria "Usuários" (oculto do auditor) a todos os cargos. Sair recarrega a página.
+  (SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || []).forEach(s => {
     const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
-    if(b) b.style.display = ocultas.includes(s) ? "none" : "";
+    if(b) b.style.display = "none";
   });
+
+  // Fase 79: usuário de revisão — faixa no topo e botões de gravação escondidos (body.so-leitura no CSS)
+  const soLeitura = !!perfil && perfil.cargo === "auditor";
+  document.body.classList.toggle("so-leitura", soLeitura);
+  let faixa = $("faixa-so-leitura");
+  if(soLeitura && !faixa){
+    faixa = document.createElement("div");
+    faixa.id = "faixa-so-leitura";
+    faixa.className = "faixa-so-leitura";
+    faixa.textContent = "Modo leitura: usuário de revisão";
+    document.body.prepend(faixa);
+  }
+  if(faixa) faixa.style.display = soLeitura ? "" : "none";
 }
 function irParaSecao(secao){
   const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"]`);

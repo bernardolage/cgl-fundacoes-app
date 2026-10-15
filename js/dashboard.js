@@ -40,7 +40,7 @@ const DASH_SETOR_GESTORES = {
 };
 function dashGereSetor(setor){
   const cargo = usuarioAtual?.cargo;
-  if(["diretor", "admin"].includes(cargo)) return true;
+  if(["diretor", "admin", "auditor"].includes(cargo)) return true; // fase 79: auditor confere a Sala de Comando inteira
   return (DASH_SETOR_GESTORES[setor] || []).includes(cargo);
 }
 const DASH_SITUACAO = {
@@ -504,9 +504,9 @@ function dashIrObrasAtivas(){
   if(f){ f.value = "em_andamento"; if(typeof renderObras === "function") renderObras(); }
 }
 function dashIrOrcamentos(){ irParaSecao("orcamentos"); }
-// Só o cargo diretor vê valores consolidados (contratado, medido, a medir, valor por obra)
+// Só o cargo diretor vê valores consolidados (contratado, medido, a medir, valor por obra); fase 79: e o auditor (só leitura)
 function dashEhDiretoria(){
-  return !!(usuarioAtual && usuarioAtual.cargo === "diretor");
+  return !!(usuarioAtual && ["diretor", "auditor"].includes(usuarioAtual.cargo));
 }
 
 function dashIrFinanceiro(){
