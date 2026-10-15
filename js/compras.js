@@ -852,9 +852,10 @@ async function cmpPdfPedido(){
   const f = _cmpFornMap[p.fornecedor_id] || {};
   const itens = _cmpItens;
   const total = itens.reduce((s, i) => s + Number(i.quantidade || 0) * Number(i.valor_unitario || 0), 0) + Number(p.frete || 0) - Number(p.desconto || 0);
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#111;padding:18mm 16mm;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1B5FA8;padding-bottom:8px;">
-      <div><div style="font-size:20px;font-weight:700;color:#1B5FA8;">CGL Fundações</div><div>Itabira/MG</div></div>
+  // lote S41 (#36): logo oficial e selo ISO pelo helper do core.js; a margem passou do padding para o html2pdf
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#111;">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1B5FA8;padding-bottom:8px;">
+      <div>${pdfCabecalhoHTML("", "Itabira/MG")}</div>
       <div style="text-align:right;"><div style="font-size:16px;font-weight:700;">PEDIDO DE COMPRA ${esc(p.numero)}</div><div>Data: ${dataBR(p.data_pedido)}</div>${p.previsao_entrega ? `<div>Entrega prevista: ${dataBR(p.previsao_entrega)}</div>` : ""}</div>
     </div>
     <table style="width:100%;margin:10px 0;font-size:12px;"><tr>
@@ -869,14 +870,15 @@ async function cmpPdfPedido(){
     </table>
     ${p.observacoes ? `<p style="margin-top:10px;"><strong>Observações:</strong> ${esc(p.observacoes).replace(/\n/g, "<br>")}</p>` : ""}
     <p style="margin-top:14px;font-size:11px;color:#444;">Favor mencionar o número do pedido na nota fiscal. Entregas na base: seg–sex 7h–17h. ${p.aprovador ? "Aprovado por " + esc(p.aprovador.nome) + (p.aprovado_em ? " em " + dataBR(String(p.aprovado_em).slice(0, 10)) : "") + "." : ""}</p>
+    ${pdfRodapeHTML()}
   </div>`;
   const wrap = document.createElement("div"); wrap.innerHTML = html;
   if(typeof html2pdf === "undefined"){
     const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }
-    w.document.write(`<html><head><title>${esc(p.numero)}</title></head><body>${html}</body></html>`); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); return;
+    w.document.write(`<html><head><title>${esc(p.numero)}</title><style>@page { size: A4; margin: 14mm; }</style></head><body>${html}</body></html>`); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); return;
   }
   try {
-    await html2pdf().set({ margin: 0, filename: `Pedido_${p.numero}.pdf`, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" } }).from(wrap).save();
+    await pdfGerar(wrap, { filename: `Pedido_${p.numero}.pdf`, largura: 182, topo: 14 });
   } catch(e){ aviso("app-aviso", "Erro ao gerar o PDF: " + (e.message || e), "erro"); }
 }
 

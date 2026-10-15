@@ -336,6 +336,113 @@ function iaInvocarComLimite(nome, body, msgTempo){
   return Promise.race([sb.functions.invoke(nome, { body }), tempo]).finally(() => clearTimeout(t));
 }
 
+/* ====================== IDENTIDADE VISUAL DOS PDFs (lote S41, chamado #36) ======================
+   Um ponto só para logo e selo ISO 9001 nos três geradores (proposta, medição, pedido de compra).
+   Estilo inline com hex: o PDF é renderizado fora do CSS do app (exceção permitida para PDF).
+   - pdfCabecalhoHTML(titulo, subtitulo): logo oficial (18 mm) e, se houver, título ao lado.
+   - pdfRodapeHTML(): rodapé com o selo para a pré-visualização em HTML e a impressão.
+   - pdfGerar(elemento, opcoes): html2pdf com margem para o rodapé, sem cortar linha
+     (tr, p, li, .nao-quebrar) e com selo + "CGL Fundações · Empresa certificada ISO 9001"
+     carimbados pelo jsPDF em TODA página (html2pdf fatia uma imagem só; rodapé em HTML
+     sairia só na última página). */
+const PDF_LOGO_SRC = "img/logo-cgl.png";
+const PDF_SELO_SRC = "img/selo-iso9001.png";
+const PDF_RODAPE_TEXTO = "CGL Fundações · Empresa certificada ISO 9001";
+const PDF_SELO_MM = 16;
+const PDF_BASE_MIN_MM = 25;   // espaço no pé da página para o selo e o texto
+const PX_POR_MM = 96 / 25.4;
+
+/* Margens [topo, esquerda, base, direita] em mm para uma largura útil pedida.
+   O html2pdf 0.10.1 empurra a linha para a página seguinte usando floor(altura em px) e fatia o
+   canvas com floor(largura do canvas × altura/largura): com medidas quebradas as duas contas
+   divergem ~1,5 px por página e a borda da linha empurrada aparecia no pé da página anterior,
+   crescendo a cada página. Largura e altura úteis em px inteiros (+0,04 px de folga contra o
+   arredondamento) e o canvas com largura fixa fazem as duas contas darem o mesmo número. */
+function pdfMargens(larguraMm, topoMm){
+  const largPx = Math.round(larguraMm * PX_POR_MM);
+  const altPx  = Math.floor((297 - topoMm - PDF_BASE_MIN_MM) * PX_POR_MM);
+  const larg = largPx / PX_POR_MM;
+  const alt  = (altPx + 0.04) / PX_POR_MM;
+  const lado = (210 - larg) / 2;
+  return { margem: [topoMm, lado, 297 - topoMm - alt, lado], largPx };
+}
+
+/* URL absoluta: a pré-visualização abre em about:blank e não resolveria caminho relativo */
+function pdfUrl(caminho){ return new URL(caminho, document.baseURI).href; }
+
+function pdfCabecalhoHTML(titulo = "", subtitulo = ""){
+  const logo = `<img src="${pdfUrl(PDF_LOGO_SRC)}" alt="CGL Fundações" style="display:block;height:18mm;width:18mm;">`;
+  if(!titulo && !subtitulo) return logo;
+  return `<div style="display:flex;align-items:center;justify-content:center;gap:4mm;">${logo}<div style="text-align:left;">
+    ${titulo ? `<div style="font-size:14px;font-weight:700;color:#111;">${esc(titulo)}</div>` : ""}
+    ${subtitulo ? `<div style="font-size:10px;color:#444;margin-top:2px;">${esc(subtitulo)}</div>` : ""}
+  </div></div>`;
+}
+
+function pdfRodapeHTML(){
+  return `<div class="pdf-rodape" style="display:flex;align-items:center;justify-content:space-between;gap:4mm;margin-top:6mm;padding-top:2mm;border-top:1px solid #b4b4b4;font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#555;">
+    <span>${esc(PDF_RODAPE_TEXTO)}</span>
+    <img src="${pdfUrl(PDF_SELO_SRC)}" alt="Selo ISO 9001" style="display:block;height:${PDF_SELO_MM}mm;width:${PDF_SELO_MM}mm;">
+  </div>`;
+}
+
+/* carrega uma imagem da mesma origem; com `lado` devolve PNG reduzido (selo de 1080 px vira ~300 px) */
+const _pdfImgCache = {};
+function pdfCarregarImagem(caminho, lado){
+  const chave = caminho + "|" + (lado || "");
+  if(!_pdfImgCache[chave]){
+    _pdfImgCache[chave] = new Promise((ok, falha) => {
+      const img = new Image();
+      img.onload = () => {
+        if(!lado) return ok(img);
+        const cv = document.createElement("canvas");
+        cv.width = lado; cv.height = lado;
+        cv.getContext("2d").drawImage(img, 0, 0, lado, lado);
+        ok(cv.toDataURL("image/png"));
+      };
+      img.onerror = () => falha(new Error("Imagem não encontrada: " + caminho));
+      img.src = pdfUrl(caminho);
+    }).catch(err => { delete _pdfImgCache[chave]; throw err; });
+  }
+  return _pdfImgCache[chave];
+}
+
+/* selo e texto no pé de cada página do jsPDF */
+function pdfCarimbarRodape(pdf, selo, margem){
+  const larg = pdf.internal.pageSize.getWidth();
+  const alt  = pdf.internal.pageSize.getHeight();
+  const esq = margem[1], dir = margem[3];
+  const xSelo = larg - dir - PDF_SELO_MM, ySelo = alt - 5 - PDF_SELO_MM;
+  const total = pdf.internal.getNumberOfPages();
+  for(let i = 1; i <= total; i++){
+    pdf.setPage(i);
+    pdf.setDrawColor(180); pdf.setLineWidth(0.2);
+    pdf.line(esq, alt - 14, xSelo - 3, alt - 14);
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.setTextColor(85);
+    pdf.text(PDF_RODAPE_TEXTO, esq, alt - 10);
+    if(selo) pdf.addImage(selo, "PNG", xSelo, ySelo, PDF_SELO_MM, PDF_SELO_MM, "selo-iso9001", "FAST");
+  }
+}
+
+/* gera e baixa o PDF; `elemento` é um container temporário (o rodapé HTML dele é retirado).
+   opcoes: filename, largura (mm úteis, padrão 190), topo (mm, padrão 12) */
+async function pdfGerar(elemento, opcoes = {}){
+  if(typeof html2pdf === "undefined") throw new Error("Biblioteca html2pdf não carregada.");
+  const { margem, largPx } = pdfMargens(opcoes.largura || 190, opcoes.topo || 12);
+  /* logo pré-carregado para o html2canvas não fotografar a imagem vazia; sem selo o PDF sai assim mesmo */
+  await pdfCarregarImagem(PDF_LOGO_SRC).catch(() => null);
+  const selo = await pdfCarregarImagem(PDF_SELO_SRC, 300).catch(() => null);
+  elemento.querySelectorAll(".pdf-rodape").forEach(n => n.remove());
+  await html2pdf().set({
+    margin:      margem,
+    filename:    opcoes.filename || "documento.pdf",
+    image:       { type: "jpeg", quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true, letterRendering: true, width: largPx },
+    jsPDF:       { unit: "mm", format: "a4", orientation: "portrait" },
+    pagebreak:   { mode: ["css", "legacy"], avoid: ["tr", "p", "li", ".nao-quebrar"] }
+  }).from(elemento).toPdf().get("pdf").then(pdf => pdfCarimbarRodape(pdf, selo, margem)).save();
+}
+
 /* Debounce para campos de busca: re-renderizar a lista inteira a cada tecla
    travava nas listas grandes (produtos, estacas). 150 ms é imperceptível. */
 function debounce(fn, ms = 150){

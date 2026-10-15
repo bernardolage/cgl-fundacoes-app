@@ -985,16 +985,12 @@ async function gerarPDFMedicao(){
 
     const nomeArq = `Medicao_${(m.numero||"S-N").replace(/[\/\\]/g,"-")}_${(m.obra?.codigo||"obra").replace(/[\/\\]/g,"-")}_${(m.data_medicao||"").replace(/-/g,"")}.pdf`;
 
-    await html2pdf().set({
-      margin:       [12, 12, 12, 12],
-      filename:     nomeArq,
-      image:        { type: "jpeg", quality: 0.95 },
-      html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF:        { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak:    { mode: ["css","legacy"] }
-    }).from(container.firstElementChild).save();
-
-    document.body.removeChild(container);
+    // lote S41 (#36): logo no cabeçalho, selo ISO em toda página e linha de tabela sem corte
+    try {
+      await pdfGerar(container.firstElementChild, { filename: nomeArq, largura: 186 });
+    } finally {
+      document.body.removeChild(container);
+    }
     aviso("app-aviso", `📄 ${nomeArq} gerado com sucesso.`, "ok");
   } catch(err){
     console.error(err);
@@ -1359,8 +1355,7 @@ function headerSGQ(){
         <div style="font-size:18px;font-weight:700;letter-spacing:1.5px;">HÉLICE</div>
       </td>
       <td rowspan="3" style="padding:10px;border:1px solid #000;vertical-align:middle;text-align:center;">
-        <div style="font-size:18px;font-weight:700;letter-spacing:1.5px;color:#1A2E44;">CGL FUNDAÇÕES</div>
-        <div style="font-size:10px;margin-top:4px;color:#444;">RELATÓRIO DE MEDIÇÃO</div>
+        ${pdfCabecalhoHTML("RELATÓRIO DE MEDIÇÃO")}
       </td>
       <td style="padding:5px 8px;border:1px solid #000;"><strong>RG 11.4 — IT 11.3</strong></td>
     </tr>

@@ -23,37 +23,10 @@ const CGL_INFO = {
   site:         "www.cglfundacoes.com.br"
 };
 
-/* Logo da CGL — quando tivermos o arquivo, basta colar o data URL aqui
-   (ex.: "data:image/png;base64,iVBORw0KGgoAAA..."). Enquanto vazio,
-   o cabeçalho usa um SVG de fallback estilizado abaixo. */
-const LOGO_CGL_DATAURL = "";
-
-/* SVG inline de fallback (caso LOGO_CGL_DATAURL esteja vazia).
-   Aproxima a identidade visual: gradiente laranja em forma de prisma com
-   "CGL" sobreposto e "FUNDAÇÕES" embaixo. */
-const LOGO_CGL_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" width="100%" height="100%">
-  <defs>
-    <linearGradient id="lcgl" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%"  stop-color="#fb923c"/>
-      <stop offset="55%" stop-color="#ea580c"/>
-      <stop offset="100%" stop-color="#9a3412"/>
-    </linearGradient>
-  </defs>
-  <polygon points="60,8 95,55 25,55" fill="url(#lcgl)" stroke="#7c2d12" stroke-width="1"/>
-  <polygon points="60,18 82,52 38,52" fill="none" stroke="#fff7ed" stroke-width="0.6"/>
-  <text x="60" y="45" text-anchor="middle" font-family="Arial Black, Arial, sans-serif"
-        font-size="20" font-weight="900" fill="#fff" letter-spacing="1">CGL</text>
-  <text x="60" y="72" text-anchor="middle" font-family="Arial, sans-serif"
-        font-size="9" font-weight="700" fill="#7c2d12" letter-spacing="3">FUNDAÇÕES</text>
-</svg>`;
-
-/* devolve o HTML do logo (imagem real se houver data URL, senão SVG inline) */
+/* Logo oficial (lote S41, chamado #36): img/logo-cgl.png pelo helper único do core.js,
+   o mesmo da medição e do pedido de compra. */
 function obterLogoHTML(){
-  if(LOGO_CGL_DATAURL && LOGO_CGL_DATAURL.startsWith("data:")){
-    return `<img src="${LOGO_CGL_DATAURL}" alt="CGL Fundações" style="max-width:100%;max-height:70px;">`;
-  }
-  return LOGO_CGL_SVG;
+  return pdfCabecalhoHTML();
 }
 
 /* mapa tipo_proposta -> rótulo + código RG */
@@ -137,7 +110,7 @@ const CSS_PROPOSTA = `
   .cab-empresa { width:100%; border-collapse: collapse; margin-bottom: 4px; }
   .cab-empresa td { border: 1px solid #000; padding: 4px; }
   .cab-logo { width: 90px; text-align:center; padding:6px; vertical-align: middle; }
-  .cab-logo svg, .cab-logo img { display:block; margin:0 auto; max-height: 70px; max-width: 80px; }
+  .cab-logo img { display:block; margin:0 auto; max-height: 70px; max-width: 80px; }
   .cab-meio { background: #fff; }
   .cab-meio .sgq { text-align:center; font-size: 8.5pt; padding: 2px; border-bottom: 1px solid #000; }
   .cab-meio .tipo-doc { background: #c0c0c0; padding: 2px 6px; font-size: 8.5pt; }
@@ -243,7 +216,7 @@ function blocoDestinatario(cliente, cidadeEmissao, dataOrcamento, orcamento){
   const o = orcamento || {};
   /* fase 40: contato da proposta (A/c, tel, e-mail) por orçamento; cadastro do cliente é o fallback */
   return `
-    <div class="destinatario">
+    <div class="destinatario nao-quebrar">
       <div class="data-cidade">${esc(cidadeEmissao || "Itabira/MG")}, ${esc(dataPorExtensoBR(dataOrcamento))}</div>
       <div>À</div>
       <div class="cli-nome">${esc(cliente.nome_fantasia || cliente.nome || "—")}</div>
@@ -272,15 +245,15 @@ function blocoNumeroProposta(numero, dataOrcamento, revisao){
 function blocoIntroducao(referenciaObra, tipo){
   const tipoNome = (PROPOSTA_TIPOS[tipo] || PROPOSTA_TIPOS.outro).rotulo;
   return `
-    <div class="par-intro">
+    <div class="par-intro nao-quebrar">
       Proposta contrato para execução de Fundações Especiais por empreitada com emprego de todos
       materiais e apuração através de medições das quantidades por preços unitários, conforme dados
       e condições abaixo:
     </div>
-    <div class="par-ref">
+    <div class="par-ref nao-quebrar">
       <b>Ref:</b> Execução de estacas tipo <b>${esc(tipoNome)}</b> ${esc(referenciaObra || "")}
     </div>
-    <div class="par-intro">${TEXTO_INSTITUCIONAL}</div>`;
+    <div class="par-intro nao-quebrar">${TEXTO_INSTITUCIONAL}</div>`;
 }
 
 /* bloco "CONDIÇÕES GERAIS DA PROPOSTA" com escopo dos serviços.
@@ -301,6 +274,7 @@ function blocoCondicoesGerais(escopo, equipamento, orcamento){
   else if(!temProj)        ressalva = "Proposta sujeita a alteração após análise do projeto de fundações.";
   else if(!temSond)        ressalva = "Proposta sujeita a alteração após análise da sondagem.";
   return `
+    <div class="nao-quebrar">
     <div class="secao-titulo">CONDIÇÕES GERAIS DA PROPOSTA</div>
     <div class="cond-gerais">
       <div>Baseado nas informações fornecidas por V. Sas., previmos executar as estacas conforme discriminado abaixo:</div>
@@ -309,6 +283,7 @@ function blocoCondicoesGerais(escopo, equipamento, orcamento){
       ${equipamento ? `<div><i>Considerado equipamento ${esc(equipamento)}.</i></div>` : ""}
       ${o.local_execucao ? `<div>Local de execução: <b>${esc(o.local_execucao)}</b></div>` : ""}
       ${o.prazo_execucao ? `<div>Prazo de execução previsto: <b>${esc(o.prazo_execucao)}</b></div>` : ""}
+    </div>
     </div>`;
 }
 
@@ -455,19 +430,20 @@ function blocoObservacoesItens(itens){
   };
   return `
     <div class="obs-itens">
-      ${obs.map(i => `<div class="obs">${esc(texto(i))}</div>`).join("")}
+      ${obs.map(i => `<div class="obs nao-quebrar">${esc(texto(i))}</div>`).join("")}
     </div>`;
 }
 
 /* nota de rodapé sobre INSS (mesma em todos os modelos) */
 function blocoNotaINSS(){
-  return `<div class="nota-inss">${NOTA_INSS}</div>`;
+  return `<div class="nota-inss nao-quebrar">${NOTA_INSS}</div>`;
 }
 
 /* bloco do responsável comercial (assinatura) */
 function blocoComercial(responsavel){
   const r = responsavel || {};
   return `
+    <div class="nao-quebrar">
     <div class="bloco-final">
       <div class="ass-linha">${esc(CGL_INFO.razao_social)}</div>
     </div>
@@ -477,13 +453,14 @@ function blocoComercial(responsavel){
       ${r.telefone ? `<div>Cel.: ${esc(r.telefone)}</div>` : ""}
       ${r.email    ? `<div>${esc(r.email)}</div>`         : ""}
       <div>${esc(CGL_INFO.site)}</div>
+    </div>
     </div>`;
 }
 
 /* bloco "De acordo" enxuto (sem mais o quadro de informações de NF) */
 function blocoDeAcordo(){
   return `
-    <div class="nf-dados">
+    <div class="nf-dados nao-quebrar">
       <div class="corpo">
         <div class="de-acordo">De acordo: Em ___/___/____. <span class="linha-preenchimento" style="min-width:50%;"></span></div>
         <div class="assinatura-info">(Assinatura e Carimbo)</div>
@@ -498,7 +475,7 @@ function blocoDeAcordo(){
 /* rodapé com endereço e contatos da CGL */
 function blocoRodapeEmpresa(){
   return `
-    <div class="rodape-empresa">
+    <div class="rodape-empresa nao-quebrar">
       <b>${esc(CGL_INFO.endereco)} &nbsp;&nbsp; FONE: ${esc(CGL_INFO.telefone)}</b><br>
       E-mail: ${esc(CGL_INFO.emails)}<br>
       Site: ${esc(CGL_INFO.site)}
@@ -684,7 +661,7 @@ function blocoClausulas(titulo, itens){
   return `
     <div class="clausulas">
       <div class="secao-titulo">${esc(titulo)}</div>
-      ${itens.map(it => `<div class="item ${it.destaque ? "destaque" : ""}">${esc(it.t)}</div>`).join("")}
+      ${itens.map(it => `<div class="item nao-quebrar ${it.destaque ? "destaque" : ""}">${esc(it.t)}</div>`).join("")}
     </div>`;
 }
 
@@ -721,6 +698,7 @@ function montarHtmlProposta(dados){
     ${blocoComercial(responsavel)}
     ${blocoDeAcordo()}
     ${blocoRodapeEmpresa()}
+    ${pdfRodapeHTML()}
   `;
 
   return `<!DOCTYPE html>
@@ -794,14 +772,8 @@ async function baixarProposta(orcamentoId){
     wrap.innerHTML = html;
     const doc = wrap.querySelector("body") || wrap;
 
-    await html2pdf().set({
-      margin:      [0, 0, 0, 0],
-      filename:    nomeArq,
-      image:       { type: "jpeg", quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF:       { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak:   { mode: ["css", "legacy"] }
-    }).from(doc).save();
+    /* lote S41 (#36): margem interna, sem cortar linha/parágrafo/bloco e selo em toda página */
+    await pdfGerar(doc, { filename: nomeArq });
   } catch(err){
     aviso("app-aviso", err.message || "Erro ao gerar o PDF.", "erro");
   }
