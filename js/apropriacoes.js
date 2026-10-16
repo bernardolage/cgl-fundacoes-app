@@ -1,8 +1,9 @@
 /* ====================================================================
    APROPRIAÇÕES (fase 38 · 08/09/2026) — vista "Apropriações" do módulo Funcionários.
    O SISTEMA calcula a apropriação da folha (substitui a planilha FINANCEIRO – APROPRIAÇÕES):
-   base mensal de cada funcionário = salário contábil + salário particular + benefícios fixos
-   (ficha sensível) + encargos por % (apropriacao_parametros) + lançamentos variáveis do mês
+   base mensal de cada funcionário = salário contábil + salário particular + gratificação e
+   adicionais + benefícios fixos (ficha sensível) + encargos por % sobre salário contábil,
+   gratificação e adicionais (apropriacao_parametros) + lançamentos variáveis do mês
    (folha_lancamentos). O rateio por obra usa os DIAS DE PRESENÇA NO RDO; sem RDO usa a
    alocação vigente; sem nada vai para ADM/PÁTIO. Tudo roda em fn_apropriar_competencia().
    Competência pode ser fechada (fn_fechar_competencia); só diretor reabre.
@@ -13,11 +14,13 @@
 let _aprop = { comp: null, folha: [], custo: [], pres: [], lanc: [], params: [], fech: null, parse: null, res: null };
 
 const APROP_RUBRICA_LBL = {
-  salario_contabil: "Salário contábil", salario_particular: "Salário particular", unimed: "Unimed", unimed_copart: "Unimed copart.", metlife: "MetLife",
+  salario_contabil: "Salário contábil", salario_particular: "Salário particular",
+  gratificacao: "Gratificação", insalubridade: "Insalubridade", periculosidade: "Periculosidade", ajuda_mensal: "Ajuda mensal (238)", unimed: "Unimed", unimed_copart: "Unimed copart.", metlife: "MetLife",
   seguro_vida: "Seguro de vida", vale_transporte: "Vale-transporte", vr: "VR", flash: "Flash", inss: "INSS patronal", irrf: "IRRF", fgts: "FGTS",
   contribuicao_sindical: "Contrib. sindical", consignado: "Consignado", decimo_terceiro_1: "13º 1ª parcela", decimo_terceiro_2: "13º 2ª parcela", ferias: "Férias / provisão", rescisao: "Rescisão", outro: "Outros (HE, prêmio…)",
 };
-const APROP_GRUPO = { salario_contabil: "sal", salario_particular: "sal", decimo_terceiro_1: "sal", decimo_terceiro_2: "sal", ferias: "sal", rescisao: "sal",
+// Grupos iguais aos de vw_custo_mao_obra_por_obra (carga do RH, 16/10: adicionais e gratificação são salário; ajuda mensal é benefício)
+const APROP_GRUPO = { salario_contabil: "sal", salario_particular: "sal", gratificacao: "sal", insalubridade: "sal", periculosidade: "sal", ajuda_mensal: "ben", decimo_terceiro_1: "sal", decimo_terceiro_2: "sal", ferias: "sal", rescisao: "sal",
   unimed: "ben", unimed_copart: "ben", metlife: "ben", seguro_vida: "ben", vale_transporte: "ben", vr: "ben", flash: "ben", outro: "ben",
   inss: "enc", irrf: "enc", fgts: "enc", contribuicao_sindical: "enc", consignado: "enc" };
 const APROP_SENS_BENEF = ["unimed", "metlife", "unimed_copart", "seguro_vida", "vale_transporte", "vr", "flash", "consignado"];

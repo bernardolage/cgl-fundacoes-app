@@ -208,9 +208,11 @@ async function funcSalvarSensivel(funcId){
     funcionario_id: funcId,
     cpf: v("func-cpf"), rg: v("func-rg"), data_nascimento: v("func-nascimento"),
     salario_contabil: $("func-salario")?.value !== "" ? Number($("func-salario").value) : null,
-    banco: v("func-banco"), agencia: v("func-agencia"), operacao: v("func-operacao"), conta: v("func-conta"),
+    banco: v("func-banco"), agencia: v("func-agencia"), operacao: v("func-operacao"), conta: v("func-conta"), chave_pix: v("func-pix"),
     salario_particular: n("func-salario-particular"), unimed: n("func-unimed"), unimed_copart: n("func-unimed-copart"), metlife: n("func-metlife"),
     seguro_vida: n("func-seguro-vida"), vale_transporte: n("func-vt"), vr: n("func-vr"), flash: n("func-flash"), consignado: n("func-consignado"),
+    gratificacao: n("func-gratificacao"), insalubridade: n("func-insalubridade"), periculosidade: n("func-periculosidade"),
+    ajuda_mensal: n("func-ajuda-mensal"), contribuicao_sindical: n("func-contrib-sindical"),
     cep: v("func-cep"), logradouro: v("func-logradouro"), numero: v("func-numero"), complemento: v("func-complemento"),
     bairro: v("func-bairro"), cidade: v("func-cidade"), uf: $("func-uf")?.value || null,
     contato_emergencia_nome: v("func-emerg-nome"), contato_emergencia_tel: v("func-emerg-tel"), contato_emergencia_parentesco: v("func-emerg-parentesco")
@@ -334,7 +336,8 @@ function novoFuncionario(){
     "func-admissao","func-demissao","func-salario","func-email","func-telefone",
     "func-cep","func-logradouro","func-numero","func-complemento","func-bairro",
     "func-cidade","func-obs","func-cnh-validade",
-    "func-emerg-nome","func-emerg-tel","func-emerg-parentesco"
+    "func-emerg-nome","func-emerg-tel","func-emerg-parentesco",
+    "func-pix","func-gratificacao","func-insalubridade","func-periculosidade","func-ajuda-mensal","func-contrib-sindical"
   ].forEach(k => { const el=$(k); if(el) el.value=""; });
   $("func-status").value         = "ativo";
   $("func-tipo-contrato").value  = "clt";
@@ -342,6 +345,8 @@ function novoFuncionario(){
   $("func-supervisor").value     = "";
   $("func-cnh-categoria").value  = "";
   $("func-ativo").checked        = true;
+  // Folha e benefícios (RH): limpa o bloco inteiro, para nada do funcionário aberto antes ir para o novo
+  $("func-folha-rh")?.querySelectorAll("input").forEach(el => { el.value = ""; });
   $("btn-excluir-func").style.display = "none";
   funcCarregarFoto(null, "");
   $("func-docs-lista").innerHTML = "";
@@ -367,7 +372,8 @@ async function abrirFuncionario(id){
   $("func-admissao").value    = (data.data_admissao||"").slice(0,10);
   $("func-demissao").value    = (data.data_demissao||"").slice(0,10);
   $("func-salario").value     = sens.salario_contabil??""  ;
-  [["func-banco","banco"],["func-agencia","agencia"],["func-operacao","operacao"],["func-conta","conta"],["func-salario-particular","salario_particular"],["func-unimed","unimed"],["func-unimed-copart","unimed_copart"],["func-metlife","metlife"],["func-seguro-vida","seguro_vida"],["func-vt","vale_transporte"],["func-vr","vr"],["func-flash","flash"],["func-consignado","consignado"]]
+  [["func-banco","banco"],["func-agencia","agencia"],["func-operacao","operacao"],["func-conta","conta"],["func-salario-particular","salario_particular"],["func-unimed","unimed"],["func-unimed-copart","unimed_copart"],["func-metlife","metlife"],["func-seguro-vida","seguro_vida"],["func-vt","vale_transporte"],["func-vr","vr"],["func-flash","flash"],["func-consignado","consignado"],
+   ["func-pix","chave_pix"],["func-gratificacao","gratificacao"],["func-insalubridade","insalubridade"],["func-periculosidade","periculosidade"],["func-ajuda-mensal","ajuda_mensal"],["func-contrib-sindical","contribuicao_sindical"]]
     .forEach(([id, k]) => { const el = $(id); if(el) el.value = sens[k] ?? ""; });
   $("func-email").value       = data.email||"";
   $("func-telefone").value    = data.telefone||"";

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=afea37c" />
+<link rel="stylesheet" href="css/estilo.css?v=046e79b" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -717,13 +717,14 @@
                 <div class="campo"><label>Data de admissão</label><input id="func-admissao" type="date" /></div>
                 <div class="campo"><label>Data de demissão</label><input id="func-demissao" type="date" /></div>
                 <div class="campo func-sens"><label>Salário contábil (R$)</label><input id="func-salario" type="number" step="0.01" min="0" /></div>
-                <details class="func-sens" style="grid-column:1/-1;">
+                <details id="func-folha-rh" class="func-sens" style="grid-column:1/-1;">
                   <summary style="cursor:pointer;"><strong>Folha e benefícios (RH)</strong> <span class="meta">— base mensal usada na apropriação por obra</span></summary>
                   <div class="grade" style="margin-top:8px;">
                     <div class="campo"><label>Banco</label><input id="func-banco" /></div>
                     <div class="campo"><label>Agência</label><input id="func-agencia" /></div>
                     <div class="campo"><label>Operação</label><input id="func-operacao" /></div>
                     <div class="campo"><label>Conta</label><input id="func-conta" /></div>
+                    <div class="campo"><label>Chave PIX</label><input id="func-pix" /></div>
                     <div class="campo"><label>Salário particular (R$)</label><input id="func-salario-particular" type="number" step="0.01" min="0" /></div>
                     <div class="campo"><label>Unimed (R$/mês)</label><input id="func-unimed" type="number" step="0.01" min="0" /></div>
                     <div class="campo"><label>Unimed coparticipação (R$/mês)</label><input id="func-unimed-copart" type="number" step="0.01" min="0" /></div>
@@ -733,6 +734,11 @@
                     <div class="campo"><label>VR (R$/mês)</label><input id="func-vr" type="number" step="0.01" min="0" /></div>
                     <div class="campo"><label>Flash (R$/mês)</label><input id="func-flash" type="number" step="0.01" min="0" /></div>
                     <div class="campo"><label>Consignado (R$/mês)</label><input id="func-consignado" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Gratificação (R$/mês)</label><input id="func-gratificacao" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Insalubridade (R$/mês)</label><input id="func-insalubridade" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Periculosidade (R$/mês)</label><input id="func-periculosidade" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Ajuda mensal (R$/mês)</label><input id="func-ajuda-mensal" type="number" step="0.01" min="0" /></div>
+                    <div class="campo"><label>Contribuição sindical (R$/mês)</label><input id="func-contrib-sindical" type="number" step="0.01" min="0" /></div>
                   </div>
                 </details>
                 <div class="campo"><label>Supervisor direto</label><select id="func-supervisor"><option value="">— Sem supervisor —</option></select></div>
@@ -4270,42 +4276,42 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=afea37c"></script>
+<script src="js/core.js?v=046e79b"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=afea37c"></script>
+<script src="js/historico.js?v=046e79b"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=afea37c"></script>
-<script src="js/fornecedores.js?v=afea37c"></script>
-<script src="js/apropriacoes.js?v=afea37c"></script>
-<script src="js/funcionarios.js?v=afea37c"></script>
-<script src="js/servicos.js?v=afea37c"></script>
-<script src="js/produtos.js?v=afea37c"></script>
-<script src="js/estoque.js?v=afea37c"></script>
-<script src="js/separacoes.js?v=afea37c"></script>
-<script src="js/compras.js?v=afea37c"></script>
-<script src="js/requisicoes.js?v=afea37c"></script>
-<script src="js/orcamentos.js?v=afea37c"></script>
-<script src="js/propostas.js?v=afea37c"></script>
-<script src="js/contratos.js?v=afea37c"></script>
-<script src="js/contas_pagar.js?v=afea37c"></script>
-<script src="js/centros_custo.js?v=afea37c"></script>
-<script src="js/carteira.js?v=afea37c"></script>
-<script src="js/obras.js?v=afea37c"></script>
-<script src="js/frota.js?v=afea37c"></script>
-<script src="js/equipamentos.js?v=afea37c"></script>
-<script src="js/acessorios.js?v=afea37c"></script>
-<script src="js/reparos.js?v=afea37c"></script>
-<script src="js/mobilizacoes.js?v=afea37c"></script>
-<script src="js/estacas.js?v=afea37c"></script>
-<script src="js/obra_abas.js?v=afea37c"></script>
-<script src="js/medicoes.js?v=afea37c"></script>
-<script src="js/movimentacoes.js?v=afea37c"></script>
-<script src="js/rdo.js?v=afea37c"></script>
-<script src="js/rdo_import_maya.js?v=afea37c"></script>
-<script src="js/usuarios.js?v=afea37c"></script>
-<script src="js/chamados.js?v=afea37c"></script>
-<script src="js/dashboard.js?v=afea37c"></script>
+<script src="js/clientes.js?v=046e79b"></script>
+<script src="js/fornecedores.js?v=046e79b"></script>
+<script src="js/apropriacoes.js?v=046e79b"></script>
+<script src="js/funcionarios.js?v=046e79b"></script>
+<script src="js/servicos.js?v=046e79b"></script>
+<script src="js/produtos.js?v=046e79b"></script>
+<script src="js/estoque.js?v=046e79b"></script>
+<script src="js/separacoes.js?v=046e79b"></script>
+<script src="js/compras.js?v=046e79b"></script>
+<script src="js/requisicoes.js?v=046e79b"></script>
+<script src="js/orcamentos.js?v=046e79b"></script>
+<script src="js/propostas.js?v=046e79b"></script>
+<script src="js/contratos.js?v=046e79b"></script>
+<script src="js/contas_pagar.js?v=046e79b"></script>
+<script src="js/centros_custo.js?v=046e79b"></script>
+<script src="js/carteira.js?v=046e79b"></script>
+<script src="js/obras.js?v=046e79b"></script>
+<script src="js/frota.js?v=046e79b"></script>
+<script src="js/equipamentos.js?v=046e79b"></script>
+<script src="js/acessorios.js?v=046e79b"></script>
+<script src="js/reparos.js?v=046e79b"></script>
+<script src="js/mobilizacoes.js?v=046e79b"></script>
+<script src="js/estacas.js?v=046e79b"></script>
+<script src="js/obra_abas.js?v=046e79b"></script>
+<script src="js/medicoes.js?v=046e79b"></script>
+<script src="js/movimentacoes.js?v=046e79b"></script>
+<script src="js/rdo.js?v=046e79b"></script>
+<script src="js/rdo_import_maya.js?v=046e79b"></script>
+<script src="js/usuarios.js?v=046e79b"></script>
+<script src="js/chamados.js?v=046e79b"></script>
+<script src="js/dashboard.js?v=046e79b"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=afea37c"></script>
+<script src="js/init.js?v=046e79b"></script>
 </body>
 </html>
