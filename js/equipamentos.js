@@ -346,7 +346,7 @@ async function eqpCarregarFilhas(e){
   $("eqp-rep-lista").innerHTML = `<h3 class="titulo-bloco">Reparos de caldeiraria</h3>` + (rep.error ? `<p class="vazio">Erro: ${esc(rep.error.message)}</p>` : !reps.length ? `<p class="vazio">Nenhum reparo aberto para esta TAG.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Abertura</th><th>Status</th><th>Descrição</th><th>Conclusão</th><th class="num">Custo</th></tr></thead>
     <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${repSt[r.status] || "cinza"}">${esc(repLbl[r.status] || r.status)}</span></td>
-      <td>${r.acessorio_id ? "⚙️ " : ""}${esc(r.descricao || "")}</td><td>${dataBR(r.data_conclusao)}</td>
+      <td>${r.acessorio_id ? "⚙️ " : ""}${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_conclusao)}</td>
       <td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td></tr>`).join("")}</tbody></table></div>`);
   const manTipo = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
   const manSt = { agendada: ["Agendada","azul"], em_andamento: ["Em andamento","ambar"], concluida: ["Concluída","verde"], cancelada: ["Cancelada","cinza"] };

@@ -24,6 +24,8 @@ let _mobEquips     = [];      // equipamentos ativos
 let _mobObras      = [];      // obras candidatas a nova mobilização
 let _mobProfiles   = [];      // responsáveis (profiles ativos)
 let _mobKit        = [];      // ids dos acessórios separados para a mobilização aberta (mobilizacoes.acessorios_ids)
+let _mobApoioSel   = { mob: [], mobn: [] };   // fase 80: TAGs de apoio escolhidas na ficha (mob) e na nova mobilização (mobn)
+const MOB_APOIO_TIPOS = ["bomba", "compressor", "gerador"];
 const _mobColapsadas = new Set(["finalizada", "cancelados"]);
 
 const MOB_COLUNAS = [
@@ -258,9 +260,61 @@ function fecharMobilizacao(){
   if(typeof obraEditId !== "undefined" && obraEditId && document.querySelector("#sec-obras.ativa") && typeof carregarEquipamentosDaObra === "function") carregarEquipamentosDaObra(obraEditId);
 }
 
+/* fase 80: onde a TAG está agora (vem do status da mobilização, pelo gatilho) */
+function mobEquipOnde(e){
+  const o = e.localizacao_obra_id ? _mobObras.find(x => x.id === e.localizacao_obra_id) : null;
+  switch(e.localizacao_tipo){
+    case "obra": return "em " + (o ? o.codigo : "obra");
+    case "em_transito": return "em trânsito" + (o ? " → " + o.codigo : "");
+    case "fornecedor_manutencao": return "em manutenção externa";
+    case "cliente": return "no cliente";
+    default: return "na base";
+  }
+}
+/* fase 80: TAGs de apoio por busca (bomba, compressor e gerador; "todos os tipos" para segunda perfuratriz ou
+   caminhão). Cada resultado diz onde a TAG está; a que está em outra obra aparece com aviso, não some. */
+function mobApoioHTML(pref){
+  return `<div id="${pref}-apoio-chips" class="mob-acoes" style="margin:0 0 6px;"></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input id="${pref}-apoio-busca" placeholder="buscar bomba, compressor ou gerador por TAG ou nome…" autocomplete="off" style="flex:1;min-width:220px;" />
+      <label class="check-inline"><input type="checkbox" id="${pref}-apoio-todos" /> todos os tipos</label>
+    </div>
+    <div id="${pref}-apoio-res" class="autocomplete-lista" style="display:none;"></div>`;
+}
+function mobLigarApoio(pref, obraId, principalSelId){
+  const inp = $(`${pref}-apoio-busca`), lista = $(`${pref}-apoio-res`), todos = $(`${pref}-apoio-todos`), chips = $(`${pref}-apoio-chips`);
+  if(!inp || !lista) return;
+  const obraAtual = () => (typeof obraId === "function" ? obraId() : obraId) || null;
+  const renderChips = () => {
+    chips.innerHTML = _mobApoioSel[pref].map(id => { const e = _mobEquips.find(x => x.id === id) || { codigo: "?" };
+      return `<span class="mob-chip">${esc(e.codigo)}${e.nome ? ` <span class="meta">${esc(e.nome)}</span>` : ""} <button type="button" class="btn-rem" data-rem="${esc(id)}" title="tirar do apoio">&times;</button></span>`; }).join("")
+      || `<span class="meta">Nenhuma TAG de apoio.</span>`;
+    chips.querySelectorAll("[data-rem]").forEach(b => b.addEventListener("click", () => { _mobApoioSel[pref] = _mobApoioSel[pref].filter(x => x !== b.dataset.rem); renderChips(); }));
+  };
+  const mostrar = () => {
+    const termo = inp.value.trim().toLowerCase(), principal = $(principalSelId)?.value || null, obra = obraAtual();
+    const cands = _mobEquips.filter(e => e.id !== principal && !_mobApoioSel[pref].includes(e.id)
+      && (todos?.checked || MOB_APOIO_TIPOS.includes(e.tipo))
+      && (!termo || `${e.codigo} ${e.nome || ""} ${e.tipo || ""}`.toLowerCase().includes(termo)));
+    lista.innerHTML = cands.slice(0, 40).map(e => {
+      const outra = ["obra", "em_transito"].includes(e.localizacao_tipo) && e.localizacao_obra_id && e.localizacao_obra_id !== obra;
+      return `<div class="resultado-item" data-id="${esc(e.id)}"><strong>${esc(e.codigo)}</strong> — ${esc(e.nome || "")} <span class="meta">${esc(e.tipo || "")} · ${esc(mobEquipOnde(e))}${e.status ? " · " + esc(e.status) : ""}</span>${outra ? ' <span class="tag ambar">em outra obra</span>' : ""}</div>`;
+    }).join("") || `<div class="resultado-item vazio">Nenhuma TAG${todos?.checked ? "" : " de bomba, compressor ou gerador"} com esse termo.</div>`;
+    lista.style.display = "";
+    lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => {
+      ev.preventDefault(); _mobApoioSel[pref].push(d.dataset.id); inp.value = ""; renderChips(); mostrar();
+    }));
+  };
+  inp.addEventListener("focus", mostrar);
+  inp.addEventListener("input", mostrar);
+  inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 150));
+  todos?.addEventListener("change", () => { if(document.activeElement === inp || lista.style.display !== "none") mostrar(); });
+  renderChips();
+}
+
 function mobEquipOpts(sel, filtro){
   const lista = _mobEquips.filter(filtro || (() => true));
-  return '<option value="">— XX (a definir) —</option>' + lista.map(e => `<option value="${esc(e.id)}"${e.id === sel ? " selected" : ""}>${esc(e.codigo)} — ${esc(e.nome)}${e.localizacao_tipo && e.localizacao_tipo !== "base" ? ` (${esc(e.localizacao_tipo)})` : ""}</option>`).join("");
+  return '<option value="">— XX (a definir) —</option>' + lista.map(e => `<option value="${esc(e.id)}"${e.id === sel ? " selected" : ""}>${esc(e.codigo)} — ${esc(e.nome)} · ${esc(mobEquipOnde(e))}</option>`).join("");
 }
 
 function renderDrawerMob(){
@@ -272,8 +326,7 @@ function renderDrawerMob(){
   const podeEditar = usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica"].includes(usuarioAtual.cargo);
   const porQuem = (id, v) => `<select id="${id}"><option value="">—</option><option value="cgl"${v === "cgl" ? " selected" : ""}>CGL</option><option value="cliente"${v === "cliente" ? " selected" : ""}>Cliente</option></select>`;
   const simNao = (id, v) => `<select id="${id}"><option value="">—</option><option value="true"${v === true ? " selected" : ""}>Sim</option><option value="false"${v === false ? " selected" : ""}>Não</option></select>`;
-  const apoioIds = new Set(m.equipamentos_apoio || []);
-  const apoioOpts = _mobEquips.filter(e => e.id !== m.equipamento_id).map(e => `<label class="check-inline mob-apoio"><input type="checkbox" class="mob-apoio-cb" value="${esc(e.id)}"${apoioIds.has(e.id) ? " checked" : ""} /> ${esc(e.codigo)}</label>`).join("");
+  _mobApoioSel.mob = [...(m.equipamentos_apoio || [])];
   const transicoes = (MOB_TRANSICOES[m.status] || []).map(([st, lbl, cls]) => `<button type="button" class="${cls}" data-mob-status="${st}">${lbl}</button>`).join("");
   const respOpts = (sel) => '<option value="">— responsável —</option>' + _mobProfiles.map(p => `<option value="${esc(p.id)}"${p.id === sel ? " selected" : ""}>${esc(p.nome)}</option>`).join("");
   const porSetor = {};
@@ -318,7 +371,7 @@ function renderDrawerMob(){
         <div class="campo"><label>Saída real</label><input type="date" id="mob-data-saida" value="${esc(m.data_saida_real || "")}" /></div>
         <div class="campo"><label>Chegada real</label><input type="date" id="mob-data-chegada" value="${esc(m.data_chegada_real || "")}" /></div>
         <div class="campo"><label>Desmobilização real</label><input type="date" id="mob-data-desmob" value="${esc(m.data_desmob_real || "")}" /></div>
-        <div class="campo largo"><label>TAGs de apoio (bomba, compressor, gerador)</label><div class="mob-apoio-lista">${apoioOpts}</div></div>
+        <div class="campo largo"><label>TAGs de apoio (bomba, compressor, gerador)</label>${mobApoioHTML("mob")}</div>
       </div>
     </div>
 
@@ -330,8 +383,12 @@ function renderDrawerMob(){
       <button type="button" class="btn-sec btn-sm" id="btn-mob-est-add">+ linha</button>
     </div>
 
-    <div class="mob-sec"><h4>3 · Acessórios <span class="meta">(kit que sai na remessa junto com a TAG)</span></h4>
+    <div class="mob-sec"><h4>3 · Itens da mobilização <span class="meta">(kit de acessórios que sai na remessa + materiais do almoxarifado)</span></h4>
+      <div id="mob-sep" class="mob-card-chips"></div>
+      <div class="meta" style="font-weight:600;margin:6px 0 4px;">Acessórios (kit)</div>
       <div id="mob-kit"><p class="vazio">Carregando peças…</p></div>
+      <div class="meta" style="font-weight:600;margin:12px 0 4px;">Materiais <span style="font-weight:400;">(consumíveis e peças sem marcação; viram itens da separação)</span></div>
+      <div id="mob-materiais"><p class="vazio">Carregando…</p></div>
     </div>
 
     <div class="mob-sec"><h4>4 · Observações técnicas</h4>
@@ -378,7 +435,78 @@ function renderDrawerMob(){
   cont.querySelectorAll(".mob-pend-obs").forEach(i => i.addEventListener("change", () => atualizarPendenciaMob(i.dataset.pend, { observacao: i.value.trim() || null })));
   cont.addEventListener("click", (e) => { if(e.target.classList.contains("mob-est-rem")) e.target.closest("tr").remove(); });
   if(typeof montarHistorico === "function") montarHistorico("mobilizacoes", m.id, "mob-chatter");
+  mobLigarApoio("mob", m.obra_id, "mob-equip");
   mobRenderKit();
+  mobRenderMateriais();   // fase 83
+  mobRenderSeparacao();
+}
+
+/* ---------- Fase 83: materiais da mobilização e separação ----------
+   Além do kit de acessórios, a mobilização pré-configura os materiais do almoxarifado (mobilizacao_materiais).
+   "Gerar separação" cria a lista (kit + materiais) para o almoxarife de plantão; a baixa acontece lá, ao marcar. */
+let _mobMatN = 0;
+function mobMatPodeEditar(){
+  return !!usuarioAtual && !["concluida", "cancelada", "desmobilizada"].includes(_mobAberta?.status)
+    && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica", "almoxarife", "gestor_acessorios", "comprador"].includes(usuarioAtual.cargo);
+}
+async function mobRenderMateriais(){
+  const box = $("mob-materiais"); const m = _mobAberta; if(!box || !m) return;
+  const { data, error } = await sb.from("mobilizacao_materiais").select("id,produto_id,descricao,unidade,quantidade,observacoes,ordem,produto:produtos(codigo,nome,estoque_atual)")
+    .eq("mobilizacao_id", m.id).order("ordem").order("created_at");
+  if(!$("mob-materiais") || _mobAberta !== m) return;
+  if(error){ box.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
+  const its = data || [], pode = mobMatPodeEditar();
+  _mobMatN = its.length;
+  box.innerHTML = `${its.length ? `<div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Item</th><th style="width:60px;">Un</th><th class="num" style="width:90px;">Qtd</th><th>Obs.</th><th class="col-acao"></th></tr></thead>
+      <tbody>${its.map(i => `<tr><td>${i.produto_id ? `${linkProduto(i.produto_id, i.produto?.codigo || "produto")} ${esc(i.produto?.nome || i.descricao)}` : `${esc(i.descricao)} <span class="meta">(item livre)</span>`}${i.produto ? ` <span class="meta">· saldo ${num(i.produto.estoque_atual || 0)}</span>` : ""}</td>
+        <td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td><td class="meta">${esc(i.observacoes || "")}</td>
+        <td class="col-acao">${pode ? `<button type="button" class="btn-rem mob-mat-rem" data-id="${esc(i.id)}" title="tirar">&times;</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<p class="vazio">Nenhum material pré-configurado.</p>`}
+    ${pode ? `<div class="grade" style="margin-top:6px;">
+      <div class="campo largo"><input id="mob-mat-busca" placeholder="+ produto do catálogo (código, código de barras ou nome; Enter adiciona)…" autocomplete="off" /><div id="mob-mat-res" class="autocomplete-lista" style="display:none;"></div></div>
+      <div class="campo"><div style="display:flex;gap:4px;"><input type="number" id="mob-mat-qtd" min="0.001" step="0.001" value="1" style="width:80px;" title="quantidade" /><input id="mob-mat-livre" placeholder="ou item livre" style="flex:1;" /><button type="button" class="btn-sec btn-sm" id="btn-mob-mat-livre">+</button></div></div>
+    </div>` : ""}`;
+  box.querySelectorAll(".mob-mat-rem").forEach(b => b.addEventListener("click", async () => {
+    const { error: e2 } = await sb.from("mobilizacao_materiais").delete().eq("id", b.dataset.id);
+    if(e2){ aviso("app-aviso", "Não foi possível: " + e2.message, "erro"); return; }
+    mobRenderMateriais();
+  }));
+  if(pode && typeof sepLigarBusca === "function") sepLigarBusca($("mob-mat-busca"), $("mob-mat-res"), p => mobMatAdd({ produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un" }));
+  $("btn-mob-mat-livre")?.addEventListener("click", () => { const d = $("mob-mat-livre").value.trim(); if(d) mobMatAdd({ descricao: d, unidade: "un" }); });
+  $("mob-mat-livre")?.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); $("btn-mob-mat-livre")?.click(); } });
+}
+async function mobMatAdd(it){
+  const m = _mobAberta; if(!m) return;
+  const q = Number($("mob-mat-qtd")?.value || 1); if(!(q > 0)){ aviso("app-aviso", "Quantidade inválida.", "erro"); return; }
+  const { error } = await sb.from("mobilizacao_materiais").insert({ mobilizacao_id: m.id, produto_id: it.produto_id || null, descricao: it.descricao, unidade: it.unidade, quantidade: q, ordem: _mobMatN + 1 });
+  if(error){ aviso("app-aviso", "Não foi possível adicionar: " + error.message, "erro"); return; }
+  if($("mob-mat-qtd")) $("mob-mat-qtd").value = 1;
+  if($("mob-mat-livre")) $("mob-mat-livre").value = "";
+  mobRenderMateriais();
+}
+async function mobRenderSeparacao(){
+  const box = $("mob-sep"); const m = _mobAberta; if(!box || !m) return;
+  const { data } = await sb.from("separacoes").select("id,numero,status,responsavel:profiles!separacoes_responsavel_id_fkey(nome),itens:separacao_itens(separado)")
+    .eq("mobilizacao_id", m.id).neq("status", "cancelada").order("created_at", { ascending: false }).limit(1);
+  if(!$("mob-sep") || _mobAberta !== m) return;
+  const s = (data || [])[0];
+  const podePedir = typeof sepPodePedir === "function" && sepPodePedir() && !["concluida", "cancelada", "desmobilizada"].includes(m.status);
+  if(s){
+    const its = s.itens || [], ok = its.filter(i => i.separado).length;
+    const lbl = { aberta: "aberta", em_separacao: "em separação", separada: "separada", entregue: "entregue" }[s.status] || s.status;
+    box.innerHTML = `<a href="#" class="mob-chip ${s.status === "entregue" ? "ok" : "st"}" id="mob-sep-abrir" title="abrir a separação">📦 Separação ${esc(s.numero)}: ${ok} de ${its.length} separado(s) · ${esc(lbl)}${s.responsavel ? " · " + esc(s.responsavel.nome) : " · sem responsável"}</a>`;
+    $("mob-sep-abrir")?.addEventListener("click", e => { e.preventDefault(); fecharMobilizacao(); if(irParaSecao("separacoes") && typeof abrirSeparacao === "function") abrirSeparacao(s.id); });
+  } else {
+    box.innerHTML = podePedir
+      ? `<button type="button" class="btn-sec btn-sm" id="btn-mob-sep-gerar" title="cria a lista de separação (kit + materiais) para o almoxarife de plantão">📦 Gerar separação</button> <span class="meta">o almoxarifado separa e dá a baixa; o status da mobilização não muda</span>`
+      : `<span class="meta">Sem separação gerada.</span>`;
+    $("btn-mob-sep-gerar")?.addEventListener("click", () => comBotaoTravado("btn-mob-sep-gerar", async () => {
+      if(mobKitEditavel() && JSON.stringify([..._mobKit].sort()) !== JSON.stringify([...(m.acessorios_ids || [])].sort())){ aviso("app-aviso", "Salve o kit antes de gerar a separação.", "erro"); return; }
+      const id = typeof sepGerarDeMobilizacao === "function" ? await sepGerarDeMobilizacao(m.id) : null;
+      if(!id) return;
+      aviso("app-aviso", "Separação gerada para o almoxarifado (responsável: almoxarife de plantão; ajuste na ficha da separação).", "ok");
+      mobRenderSeparacao();
+    }));
+  }
 }
 
 /* ---------- Kit de acessórios da mobilização ----------
@@ -401,7 +529,7 @@ function mobKitGruposHTML(pecas, remover){
       <div class="mov-ace-sug-grupo-t">${esc(k)} <span class="meta">${ps.length}</span></div>
       ${ps.map(a => `<div class="mov-ace-sug-item">
         ${remover ? `<button type="button" class="btn-rem mob-kit-rem" data-id="${esc(a.id)}" title="tirar do kit">&times;</button>` : ""}
-        <strong>${esc(a.marcacao)}</strong>${a.jogo ? ` <span class="meta">jogo ${esc(a.jogo)}</span>` : ""}
+        <strong>${linkAcessorio(a.id, a.marcacao)}</strong>${a.jogo ? ` <span class="meta">jogo ${esc(a.jogo)}</span>` : ""}
         ${mobAceCond(a)} <span class="meta">${esc(mobAceOnde(a))}</span>
       </div>`).join("")}
     </div>`).join("");
@@ -434,14 +562,37 @@ async function mobRenderKit(){
     box.querySelectorAll(".mob-kit-rem").forEach(b => b.addEventListener("click", () => { _mobKit = _mobKit.filter(id => id !== b.dataset.id); mobRenderKit(); }));
     mobLigarBuscaKit(cat);
   } else {
-    const naObra = cat.filter(a => a.ativo !== false && a.local_tipo === "obra" && a.local_obra_id === m.obra_id);
-    const emTransito = cat.filter(a => a.ativo !== false && a.local_tipo === "em_transito" && a.local_obra_id === m.obra_id);
+    // fase 80: depois da remessa a mobilização mostra só o kit DELA e o que voltou; a obra inteira fica na aba
+    // "Bens do contrato" da ficha da obra
+    const movIds = [m.movimentacao_remessa_id, m.movimentacao_retorno_id].filter(Boolean);
+    const { data: movs } = movIds.length ? await sb.from("movimentacoes_ativos").select("id,numero,tipo").in("id", movIds) : { data: [] };
+    if(!$("mob-kit") || _mobAberta !== m) return;
+    const num = id => ((movs || []).find(x => x.id === id) || {}).numero || "ver";
+    const sit = a => {
+      if(a.ativo === false || a.local_tipo === "perdido") return ["perdida", "vermelho"];
+      if(a.condicao === "em_manutencao" || a.local_tipo === "fornecedor" || a.local_tipo === "oficina") return ["em reparo", "ambar"];
+      if(a.local_tipo === "obra" && a.local_obra_id === m.obra_id) return ["na obra", "azul"];
+      if(a.local_tipo === "em_transito") return ["em trânsito", "ambar"];
+      if(["patio", "equipamento"].includes(a.local_tipo)) return ["retornou ao pátio", "verde"];
+      return [mobAceOnde(a) || "—", "cinza"];
+    };
+    const cont = {}; kit.forEach(a => { const [l] = sit(a); cont[l] = (cont[l] || 0) + 1; });
     box.innerHTML = `
-      ${kit.length ? `<p class="meta">Kit separado na preparação: ${kit.length} peça(s)${m.movimentacao_remessa_id ? " · foram como itens da remessa" : ""}.</p>` : ""}
-      ${emTransito.length ? `<p class="meta">🚚 ${emTransito.length} peça(s) em trânsito para esta obra.</p>` : ""}
-      <div class="mov-ace-sug-grupo-t">Registradas nesta obra <span class="meta">${naObra.length}</span></div>
-      <div class="mov-ace-sug-lista">${naObra.length ? mobKitGruposHTML(naObra, false) : `<p class="vazio">Nenhuma peça registrada nesta obra.</p>`}</div>
-      ${m.status === "em_obra" ? `<p class="meta">Ao desmobilizar, essas peças entram no retorno para a logística conferir (o que ficar na obra é removido lá).</p>` : ""}`;
+      <p class="meta">Kit desta mobilização: ${kit.length} peça(s)${Object.keys(cont).length ? " · " + Object.entries(cont).map(([l, n]) => `${n} ${l}`).join(" · ") : ""}
+        ${m.movimentacao_remessa_id ? ` · remessa ${linkMovimentacao(m.movimentacao_remessa_id, num(m.movimentacao_remessa_id))}` : ""}
+        ${m.movimentacao_retorno_id ? ` · retorno ${linkMovimentacao(m.movimentacao_retorno_id, num(m.movimentacao_retorno_id))}` : ""}</p>
+      ${kit.length ? `<div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Peça</th><th>Descrição</th><th>Jogo</th><th>Condição</th><th>Situação hoje</th></tr></thead>
+        <tbody>${kit.map(a => { const [l, cor] = sit(a); return `<tr><td><strong>${linkAcessorio(a.id, a.marcacao)}</strong></td><td>${esc(mobAceDescr(a))}</td><td>${esc(a.jogo || "—")}</td><td>${mobAceCond(a)}</td><td><span class="tag ${cor}">${esc(l)}</span> <span class="meta">${esc(mobAceOnde(a))}</span></td></tr>`; }).join("")}</tbody></table></div>`
+        : `<p class="vazio">Nenhuma peça foi separada no kit desta mobilização.</p>`}
+      ${m.status === "em_obra" && kit.length ? `<p class="meta">Ao desmobilizar, as peças do kit que estiverem na obra entram no retorno para a logística conferir (o retorno leva também as demais peças registradas na obra; o que ficar é removido lá).</p>` : ""}
+      <p><a href="#" id="mob-ver-bens">Ver todos os bens desta obra →</a></p>`;
+    $("mob-ver-bens")?.addEventListener("click", async e => {
+      e.preventDefault();
+      const obraId = m.obra_id; fecharMobilizacao();
+      if(!irParaSecao("obras") || typeof abrirObra !== "function") return;
+      await abrirObra(obraId);
+      document.querySelector('#obr-notebook button[data-tab="equipamentos"]')?.click();
+    });
   }
 }
 function mobLigarBuscaKit(cat){
@@ -532,7 +683,7 @@ async function salvarMobilizacao(){
     data_chegada_real: $("mob-data-chegada").value || null,
     data_desmob_real: $("mob-data-desmob").value || null,
     equipamento_id: $("mob-equip").value || null,
-    equipamentos_apoio: [...document.querySelectorAll(".mob-apoio-cb:checked")].map(x => x.value),
+    equipamentos_apoio: [..._mobApoioSel.mob],
     estacas_resumo: lerEstacasResumoMob(),
     concreto_usinado: b("mob-concreto"), martelo: b("mob-martelo"), tricone: b("mob-tricone"), torre_baixa: b("mob-torre"),
     contato_obra_nome: $("mob-contato-nome").value.trim() || null,
@@ -625,7 +776,7 @@ async function mudarStatusMobilizacao(novo, btn){
 }
 async function salvarMobilizacaoSilencioso(){
   if(!_mobAberta || !$("mob-equip")) return;
-  const reg = { equipamento_id: $("mob-equip").value || null, equipamentos_apoio: [...document.querySelectorAll(".mob-apoio-cb:checked")].map(x => x.value),
+  const reg = { equipamento_id: $("mob-equip").value || null, equipamentos_apoio: [..._mobApoioSel.mob],
     data_mobilizacao_prev: $("mob-data-prev").value || null, data_inicio_obra_prev: $("mob-data-inicio").value || null };
   if(mobKitEditavel()) reg.acessorios_ids = _mobKit;
   const { data, error } = await sb.from("mobilizacoes").update(reg).eq("id", _mobAberta.id).select("*").single();
@@ -641,7 +792,7 @@ function abrirNovaMobilizacao(obraIdPre){
     sel.innerHTML = '<option value="">— selecione a obra —</option>' + ativas.map(o => `<option value="${esc(o.id)}"${o.id === obraIdPre ? " selected" : ""}>${esc(o.codigo)} — ${esc(o.nome)}${o.cidade ? ` (${esc(o.cidade)}${o.uf ? "/" + esc(o.uf) : ""})` : ""}</option>`).join("");
   }
   const eq = $("mobn-equip"); if(eq) eq.innerHTML = mobEquipOpts(null);
-  const ap = $("mobn-apoio"); if(ap) ap.innerHTML = _mobEquips.map(e => `<label class="check-inline mob-apoio"><input type="checkbox" class="mobn-apoio-cb" value="${esc(e.id)}" /> ${esc(e.codigo)}</label>`).join("");
+  const ap = $("mobn-apoio"); if(ap){ _mobApoioSel.mobn = []; ap.innerHTML = mobApoioHTML("mobn"); mobLigarApoio("mobn", () => $("mobn-obra")?.value, "mobn-equip"); }
   if($("mobn-data")) $("mobn-data").value = "";
   $("mob-nova-modal").style.display = "flex";
 }
@@ -650,7 +801,7 @@ async function criarMobilizacao(){
   const obra_id = $("mobn-obra")?.value;
   if(!obra_id){ aviso("app-aviso", "Selecione a obra.", "erro"); return; }
   const reg = { obra_id, equipamento_id: $("mobn-equip")?.value || null,
-    equipamentos_apoio: [...document.querySelectorAll(".mobn-apoio-cb:checked")].map(x => x.value),
+    equipamentos_apoio: [..._mobApoioSel.mobn],
     data_mobilizacao_prev: $("mobn-data")?.value || null, status: "prevista" };
   const { data, error } = await sb.from("mobilizacoes").insert(reg).select("id").single();
   if(error){ aviso("app-aviso", "Não foi possível criar: " + (/mobilizacoes_equip_ativa_uq/.test(error.message) ? "esta TAG já está em outra mobilização ativa." : error.message), "erro"); return; }

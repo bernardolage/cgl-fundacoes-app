@@ -1362,9 +1362,6 @@ function headerSGQ(){
     <tr>
       <td style="padding:5px 8px;border:1px solid #000;"><strong>Revisão</strong><br>01 — 03/06/2024</td>
     </tr>
-    <tr>
-      <td style="padding:5px 8px;border:1px solid #000;"><strong>Página</strong><br>1 de 1</td>
-    </tr>
   </table>`;
 }
 

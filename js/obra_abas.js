@@ -13,14 +13,15 @@ async function carregarAbasObra(obraId){
   // Em paralelo, busca as contagens pra smart-buttons.
   // Estacas: contamos APENAS pela tabela `estacas` (literal, sem dedup — BB são nomes legítimos).
   // Execuções órfãs aparecem no badge separado "🔗 Reconciliar".
-  const [eq, med, rdoG, doc, estsTotal, estsExec, mob] = await Promise.all([
+  const [eq, med, rdoG, doc, estsTotal, estsExec, mob, ace] = await Promise.all([
     sb.from("equipamentos").select("id", { count: "exact", head: true }).eq("localizacao_obra_id", obraId).eq("ativo", true),
     sb.from("medicoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("rdo").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("obras_documentos").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("status", "executada"),
-    sb.from("mobilizacoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId).neq("status", "cancelada")
+    sb.from("mobilizacoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId).neq("status", "cancelada"),
+    sb.from("acessorios").select("id", { count: "exact", head: true }).eq("local_obra_id", obraId).eq("local_tipo", "obra").eq("ativo", true)   // fase 80
   ]);
   // Guarda de corrida: outra obra foi aberta enquanto esta carregava → descarta
   if(obraId !== obraEditId) return;
@@ -29,6 +30,7 @@ async function carregarAbasObra(obraId){
     estacas_previstas: estsTotal.count || 0,
     estacas_executadas: estsExec.count || 0,
     equipamentos: eq.count || 0,
+    acessorios: ace.count || 0,
     mobilizacoes: mob.count || 0,
     medicoes: med.count || 0,
     rdos: rdoG.count || 0,
@@ -46,7 +48,7 @@ function atualizarSmartButtons(){
     : "estacas";
   const map = {
     "sb-estacas": [estacasNum, "🔧", estacasLbl],
-    "sb-equipamentos": [c.equipamentos, "🚜", c.mobilizacoes ? `equip. · ${c.mobilizacoes} mobiliz.` : "equip. · mobilização"],
+    "sb-equipamentos": [(c.equipamentos || 0) + (c.acessorios || 0), "🚜", `bens · ${c.equipamentos || 0} TAG${c.equipamentos === 1 ? "" : "s"}`],   // fase 80: TAGs + peças na obra agora
     "sb-rdos": [c.rdos, "📋", "RDOs"],
     "sb-medicoes": [c.medicoes, "💰", "medições"],
     "sb-documentos": [c.documentos, "📎", "documentos"]
@@ -151,41 +153,129 @@ async function carregarEquipamentosDaObra(obraId){
     });
   };
 
-  // ---- bloco 2: equipamentos fisicamente na obra ----
-  if(!data || !data.length){
-    cont.innerHTML = blocoMob + `<p class="vazio">Nenhum equipamento alocado a esta obra.<br>
-      ${podeVerMovimentacoes() ? `<button type="button" class="btn" id="btn-equip-mov-nova" style="margin-top:10px;">+ Registrar movimentação de chegada</button>` : `<small>A alocação vem da mobilização: ao registrar a saída para a obra, a TAG aparece aqui.</small>`}</p>`;
-    ligarMob();
-    $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
-    return;
-  }
-  const linhas = data.map(e => `<tr data-id="${esc(e.id)}">
-    <td><strong>${esc(e.codigo)}</strong></td>
-    <td>${esc(e.nome)}</td>
-    <td>${esc(e.tipo)}</td>
-    <td>${tagStatusEquip(e.status)}</td>
-    <td>${e.localizacao_atualizada_em ? new Date(e.localizacao_atualizada_em).toLocaleDateString("pt-BR") : "—"}</td>
-    <td class="col-acao">
-      ${podeVerMovimentacoes() ? `<button type="button" class="btn-sec btn-sm btn-equip-devolver" data-id="${esc(e.id)}" title="Devolver para base">↩ Devolver</button>` : ""}
-    </td>
-  </tr>`).join("");
-  cont.innerHTML = blocoMob + `
-    <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
-      <h4 style="margin:0;font-size:var(--txt-md);">🚜 ${data.length} equipamento${data.length>1?"s":""} alocado${data.length>1?"s":""} a esta obra</h4>
-      ${podeVerMovimentacoes() ? `<button type="button" class="btn" id="btn-equip-mov-nova">+ Nova movimentação</button>` : ""}
-    </div>
-    <div class="tabela-rola"><table>
-      <thead><tr>
-        <th>TAG</th><th>Nome</th><th>Tipo</th><th>Status</th><th>Desde</th><th class="col-acao"></th>
-      </tr></thead>
-      <tbody>${linhas}</tbody></table></div>
-    <p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin-top:8px;">💡 Localizações são derivadas das Movimentações de Ativos. Para mudar, crie nova movimentação.</p>
-  `;
+  // ---- fase 80: bens do contrato (equipamentos e acessórios que passaram pela obra) ----
+  cont.innerHTML = blocoMob + `<div id="obr-bens-equip"><p class="vazio">Carregando equipamentos do contrato…</p></div>
+    <hr style="border:none;border-top:1px solid var(--borda);margin:14px 0;">
+    <div id="obr-bens-ace"><p class="vazio">Carregando acessórios do contrato…</p></div>`;
   ligarMob();
-  $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
-  cont.querySelectorAll(".btn-equip-devolver").forEach(b => {
-    b.addEventListener("click", () => abrirMovimentacaoPraObra("retorno", b.dataset.id));
-  });
+  _obrBensNaObraAgora = false;
+  await Promise.all([obrRenderBensEquip(obraId, data || []), obrRenderBensAce(obraId)]);
+}
+
+/* ====================================================================
+   BENS DO CONTRATO (fase 80): toda TAG e toda peça que passou pela obra, com período e custo direto.
+   vw_obra_equipamentos_contrato / vw_obra_acessorios_contrato; perdas e reparos vêm de acessorio_eventos.
+   ==================================================================== */
+let _obrBensNaObraAgora = false;
+let _obrBensEquip = [];
+function obrCsv(nome, linhas){
+  if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
+  const cab = Object.keys(linhas[0]);
+  const cel = v => { const t = v == null ? "" : String(v); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const csv = [cab.join(";"), ...linhas.map(l => cab.map(k => cel(l[k])).join(";"))].join("\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `${nome}_${hojeISO()}.csv`; a.click();
+}
+const OBR_EQ_TIPO = { perfuratriz: "Perfuratriz", bomba: "Bomba", compressor: "Compressor", gerador: "Gerador", caminhao: "Caminhão", veiculo: "Veículo" };
+async function obrRenderBensEquip(obraId, naObraLoc){
+  const box = $("obr-bens-equip"); if(!box) return;
+  const { data, error } = await sb.from("vw_obra_equipamentos_contrato").select("*").eq("obra_id", obraId).order("chegada", { ascending: true, nullsFirst: false });
+  if(obraId !== obraEditId || !$("obr-bens-equip")) return;
+  if(error){ box.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
+  _obrBensEquip = data || [];
+  const pode = podeVerMovimentacoes();
+  const render = () => {
+    const lst = _obrBensEquip.filter(r => !_obrBensNaObraAgora || r.na_obra_agora);
+    const diasMaq = lst.reduce((t, r) => t + Number(r.dias_na_obra || 0), 0), custo = lst.reduce((t, r) => t + Number(r.custo_periodo || 0), 0);
+    const metros = lst.reduce((t, r) => t + Number(r.metros_executados || 0), 0);
+    box.innerHTML = `
+      <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
+        <h4 style="margin:0;font-size:var(--txt-md);">🚜 Equipamentos no contrato <span class="contador">${_obrBensEquip.length}</span></h4>
+        <div class="serv-views" id="obr-bens-eq-views">
+          <button type="button" class="serv-view-btn${_obrBensNaObraAgora ? "" : " ativo"}" data-f="todos">Todos</button>
+          <button type="button" class="serv-view-btn${_obrBensNaObraAgora ? " ativo" : ""}" data-f="agora">Na obra agora (${_obrBensEquip.filter(r => r.na_obra_agora).length})</button>
+        </div>
+        <span style="margin-left:auto;"></span>
+        ${_obrBensEquip.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-bens-eq-csv">⬇ Exportar CSV</button>` : ""}
+        ${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-equip-mov-nova">+ Nova movimentação</button>` : ""}
+        ${typeof sepPodePedir === "function" && sepPodePedir() ? `<button type="button" class="btn btn-sm" id="btn-obr-pedir-material" title="Lista de separação para o almoxarifado (fase 83): substitui o pedido pelo WhatsApp">📦 Pedir material ao almoxarifado</button>` : ""}
+      </div>
+      ${lst.length ? `<div class="tabela-rola"><table>
+        <thead><tr><th>TAG</th><th>Tipo</th><th>Chegada</th><th>Saída</th><th class="num">Dias na obra</th><th>Situação</th><th class="num">Custo no período</th><th class="num">Metros (RDO)</th><th>Origem</th><th class="col-acao"></th></tr></thead>
+        <tbody>${lst.map(r => `<tr>
+          <td><strong>${linkEquipamento(r.equipamento_id, r.codigo)}</strong> <span class="meta">${esc(r.nome || "")}</span>${r.principal ? "" : r.origem === "mobilizacao" ? ' <span class="meta">apoio</span>' : ""}</td>
+          <td>${esc(OBR_EQ_TIPO[r.tipo] || r.tipo || "")}</td>
+          <td>${r.chegada ? dataBR(r.chegada) : "—"}${r.origem === "localizacao" && r.chegada ? ' <span class="meta">(desde a localização)</span>' : ""}</td>
+          <td>${r.saida ? dataBR(r.saida) : "—"}</td>
+          <td class="num">${r.dias_na_obra != null ? num(r.dias_na_obra) : "—"}</td>
+          <td>${r.na_obra_agora ? (r.situacao_origem === "em_transito" ? '<span class="tag ambar">em trânsito</span>' : '<span class="tag azul">na obra</span>') : '<span class="tag verde">retornou</span>'}</td>
+          <td class="num">${brl(r.custo_periodo)}</td>
+          <td class="num">${r.metros_executados != null ? num(r.metros_executados) : "—"}</td>
+          <td class="meta">${esc({ mobilizacao: "mobilização", movimentacao: "movimentação", localizacao: "localização" }[r.origem] || r.origem)}</td>
+          <td class="col-acao">${pode && r.na_obra_agora && naObraLoc.some(e => e.id === r.equipamento_id) ? `<button type="button" class="btn-sec btn-sm btn-equip-devolver" data-id="${esc(r.equipamento_id)}" title="Devolver para base">↩ Devolver</button>` : ""}</td>
+        </tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="4"><strong>${lst.length} passagem(ns)</strong></td><td class="num"><strong>${num(diasMaq)}</strong> <span class="meta">dias·máquina</span></td><td></td><td class="num"><strong>${brl(custo)}</strong></td><td class="num">${metros ? num(metros) : ""}</td><td colspan="2"></td></tr></tfoot>
+      </table></div>
+      <p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin-top:6px;">Período: chegada e desmobilização reais da mobilização; sem elas, as datas das movimentações de ativos; sem nenhuma, desde a última atualização da localização. Custo: só o direto (compras, saídas de estoque, manutenções e avulsos com esta obra e esta TAG no período).</p>`
+        : `<p class="vazio">${_obrBensNaObraAgora ? "Nenhum equipamento na obra agora." : "Nenhum equipamento passou por esta obra."}</p>`}`;
+    box.querySelectorAll("#obr-bens-eq-views .serv-view-btn").forEach(b => b.addEventListener("click", () => { _obrBensNaObraAgora = b.dataset.f === "agora"; render(); }));
+    $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
+    $("btn-obr-pedir-material")?.addEventListener("click", () => { if(typeof abrirPedidoMaterial === "function") abrirPedidoMaterial({ obra_id: obraId }); });   // fase 83
+    box.querySelectorAll(".btn-equip-devolver").forEach(b => b.addEventListener("click", () => abrirMovimentacaoPraObra("retorno", b.dataset.id)));
+    $("btn-obr-bens-eq-csv")?.addEventListener("click", () => obrCsv("equipamentos_contrato", _obrBensEquip.map(r => ({
+      TAG: r.codigo, Nome: r.nome || "", Tipo: OBR_EQ_TIPO[r.tipo] || r.tipo || "", Chegada: r.chegada ? dataBR(r.chegada) : "", "Saída": r.saida ? dataBR(r.saida) : "",
+      "Dias na obra": r.dias_na_obra ?? "", "Situação": r.na_obra_agora ? "na obra" : "retornou", "Custo no período": Number(r.custo_periodo || 0).toFixed(2).replace(".", ","),
+      "Metros (RDO)": r.metros_executados != null ? String(r.metros_executados).replace(".", ",") : "", Origem: r.origem, Apoio: r.principal ? "" : "sim" }))));
+  };
+  render();
+}
+async function obrRenderBensAce(obraId){
+  const box = $("obr-bens-ace"); if(!box) return;
+  const lerTudo = async () => { const out = []; for(let de = 0; out.length === de; de += 1000){ const r = await sb.from("vw_obra_acessorios_contrato").select("*").eq("obra_id", obraId).order("marcacao").range(de, de + 999); if(r.error) return r; out.push(...(r.data || [])); } return { data: out }; };
+  const [pas, evs] = await Promise.all([
+    lerTudo(),
+    sb.from("acessorio_eventos").select("id,tipo,data,acessorio_id,observacao,autor_nome,para_descricao,acessorio:acessorios(marcacao,familia)").eq("de_ref_id", obraId).in("tipo", ["perda", "reparo"]).order("data", { ascending: false })
+  ]);
+  if(obraId !== obraEditId || !$("obr-bens-ace")) return;
+  if(pas.error){ box.innerHTML = `<p class="vazio">Erro: ${esc(pas.error.message)}</p>`; return; }
+  const lst = pas.data || [];
+  const modIds = [...new Set(lst.map(r => r.modelo_id).filter(Boolean))];
+  const { data: mods } = modIds.length ? await sb.from("acessorio_modelos").select("id,descricao").in("id", modIds) : { data: [] };
+  if(obraId !== obraEditId || !$("obr-bens-ace")) return;
+  const modDesc = {}; (mods || []).forEach(m => modDesc[m.id] = m.descricao);
+  const famLbl = f => (typeof ACE_FAMILIA_LBL !== "undefined" && ACE_FAMILIA_LBL[f]) || f || "Sem família";
+  const desc = r => modDesc[r.modelo_id] || [(typeof ACE_TIPO_LBL !== "undefined" && ACE_TIPO_LBL[r.tipo]) || r.tipo, r.diametro_mm ? "Ø" + r.diametro_mm : ""].filter(Boolean).join(" ");
+  const agora = lst.filter(r => r.na_obra_agora), transito = lst.filter(r => r.em_transito), passaram = lst.filter(r => r.saida);
+  const perdas = evs.error ? [] : (evs.data || []);
+  // (a) na obra agora, por família → descrição, lista expansível
+  const porFam = {};
+  agora.forEach(r => { const f = famLbl(r.familia); porFam[f] = porFam[f] || {}; const d = desc(r); (porFam[f][d] = porFam[f][d] || []).push(r); });
+  const blocoAgora = Object.keys(porFam).sort().map(f => { const grupos = porFam[f]; const n = Object.values(grupos).reduce((t, g) => t + g.length, 0);
+    return `<details class="obr-bens-fam"><summary><strong>${esc(f)}</strong> <span class="contador">${n}</span> <span class="meta">${Object.keys(grupos).length} modelo(s)</span></summary>
+      <div class="mov-ace-sug-lista">${Object.keys(grupos).sort().map(d => `<div class="mov-ace-sug-grupo"><div class="mov-ace-sug-grupo-t">${esc(d)} <span class="meta">${grupos[d].length}</span></div>
+        ${grupos[d].map(r => `<div class="mov-ace-sug-item"><strong>${linkAcessorio(r.acessorio_id, r.marcacao)}</strong>${r.jogo ? ` <span class="meta">jogo ${esc(r.jogo)}</span>` : ""} <span class="meta">${r.entrada ? "desde " + dataBR(r.entrada) : ""}</span></div>`).join("")}</div>`).join("")}</div></details>`; }).join("");
+  const csvLinha = r => ({ "Peça": r.marcacao, "Família": famLbl(r.familia), "Descrição": desc(r), Jogo: r.jogo || "", Entrada: r.entrada ? dataBR(r.entrada) : "", "Saída": r.saida ? dataBR(r.saida) : "", Dias: r.dias ?? "", "Situação": r.na_obra_agora ? "na obra" : r.em_transito ? "em trânsito" : "saiu" });
+  box.innerHTML = `
+    <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
+      <h4 style="margin:0;font-size:var(--txt-md);">⚙️ Acessórios no contrato</h4>
+      <span class="meta">${agora.length} na obra agora${transito.length ? ` · ${transito.length} em trânsito` : ""} · ${passaram.length} passagem(ns) encerrada(s) · ${perdas.length} perda(s)/reparo(s)</span>
+    </div>
+    <div class="lista-topo compacta" style="border:none;padding:0;"><strong>Na obra agora</strong> <span class="contador">${agora.length}</span>
+      ${agora.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-agora" style="margin-left:auto;">⬇ Exportar CSV</button>` : ""}</div>
+    ${blocoAgora || `<p class="vazio">Nenhuma peça registrada na obra.</p>`}
+    <div class="lista-topo compacta" style="border:none;padding:0;margin-top:12px;"><strong>Passaram pela obra</strong> <span class="contador">${passaram.length}</span>
+      ${passaram.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-pas" style="margin-left:auto;">⬇ Exportar CSV</button>` : ""}</div>
+    ${passaram.length ? `<div class="tabela-rola"><table><thead><tr><th>Peça</th><th>Descrição</th><th>Entrada</th><th>Saída</th><th class="num">Dias</th></tr></thead>
+      <tbody>${passaram.map(r => `<tr><td><strong>${linkAcessorio(r.acessorio_id, r.marcacao)}</strong></td><td>${esc(desc(r))}</td><td>${r.entrada ? dataBR(r.entrada) : "—"}</td><td>${dataBR(r.saida)}</td><td class="num">${r.dias ?? "—"}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="vazio">Nenhuma peça entrou e saiu desta obra pelos registros de localização.</p>`}
+    <div class="lista-topo compacta" style="border:none;padding:0;margin-top:12px;"><strong>Perdas e reparos na obra</strong> <span class="contador">${perdas.length}</span>
+      ${perdas.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-perdas" style="margin-left:auto;">⬇ Exportar CSV</button>` : ""}</div>
+    ${perdas.length ? `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Peça</th><th>Evento</th><th>Para</th><th>Obs.</th><th>Quem</th></tr></thead>
+      <tbody>${perdas.map(e => `<tr><td>${dataBR(String(e.data).slice(0, 10))}</td><td><strong>${linkAcessorio(e.acessorio_id, e.acessorio?.marcacao || "peça")}</strong></td><td><span class="tag ${e.tipo === "perda" ? "vermelho" : "ambar"}">${e.tipo === "perda" ? "perda" : "reparo"}</span></td><td class="meta">${esc(e.para_descricao || "")}</td><td class="meta">${esc(e.observacao || "")}</td><td class="meta">${esc(e.autor_nome || "")}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="vazio">Nenhuma perda ou reparo registrado com origem nesta obra.</p>`}`;
+  $("btn-obr-ace-csv-agora")?.addEventListener("click", () => obrCsv("acessorios_na_obra", agora.map(csvLinha)));
+  $("btn-obr-ace-csv-pas")?.addEventListener("click", () => obrCsv("acessorios_passaram", passaram.map(csvLinha)));
+  $("btn-obr-ace-csv-perdas")?.addEventListener("click", () => obrCsv("acessorios_perdas_reparos", perdas.map(e => ({ Data: dataBR(String(e.data).slice(0, 10)), "Peça": e.acessorio?.marcacao || "", Evento: e.tipo, Para: e.para_descricao || "", Obs: e.observacao || "", Quem: e.autor_nome || "" }))));
 }
 
 function tagStatusEquip(st){

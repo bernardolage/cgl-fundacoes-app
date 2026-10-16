@@ -424,6 +424,7 @@ function pdfCarimbarRodape(pdf, selo, margem){
     pdf.line(esq, alt - 14, xSelo - 3, alt - 14);
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.setTextColor(85);
     pdf.text(PDF_RODAPE_TEXTO, esq, alt - 10);
+    pdf.text(`Página ${i} de ${total}`, esq + pdf.getTextWidth(PDF_RODAPE_TEXTO) + 6, alt - 10);   // lote S42 (L2): vale para os três PDFs
     if(selo) pdf.addImage(selo, "PNG", xSelo, ySelo, PDF_SELO_MM, PDF_SELO_MM, "selo-iso9001", "FAST");
   }
 }
@@ -441,7 +442,8 @@ async function pdfGerar(elemento, opcoes = {}){
     margin:      margem,
     filename:    opcoes.filename || "documento.pdf",
     image:       { type: "jpeg", quality: 0.95 },
-    html2canvas: { scale: 2, useCORS: true, letterRendering: true, width: largPx },
+    // lote S42 (L3): letterRendering desenha letra por letra e embaralhava "NBR-7212 e NBR-12.655" na quebra de linha
+    html2canvas: { scale: 2, useCORS: true, letterRendering: false, width: largPx },
     jsPDF:       { unit: "mm", format: "a4", orientation: "portrait" },
     pagebreak:   { mode: ["css", "legacy"], avoid: ["tr", "p", "li", ".nao-quebrar"] }
   }).from(elemento).toPdf().get("pdf").then(pdf => pdfCarimbarRodape(pdf, selo, margem)).save();
@@ -727,9 +729,9 @@ function podeVerCentrosCusto(){
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
 const SECOES_OCULTAS_POR_CARGO = {
-  rh: ["medicoes", "acessorios", "equipamentos", "obras", "compras", "estoque", "produtos", "fornecedores", "clientes"],
+  rh: ["medicoes", "acessorios", "reparos", "equipamentos", "obras", "compras", "estoque", "separacoes", "produtos", "fornecedores", "clientes"],
   // fase 77 (Bernardo, 07/10/2026): gestor de frota cuida de frota, equipamentos, manutenção e compras da frota
-  gestor_frota: ["acessorios", "medicoes"],
+  gestor_frota: ["acessorios", "reparos", "medicoes"],
   // fase 79: auditor (usuário de revisão) vê tudo, menos a gestão de logins
   auditor: ["usuarios"]
 };
@@ -813,6 +815,41 @@ document.addEventListener("click", (e) => {
   if(typeof fecharModalImportCSV === "function" && $("csv-modal") && $("csv-modal").style.display !== "none") fecharModalImportCSV();
   if(typeof dashAbrirObra === "function") dashAbrirObra(id);
   else { irParaSecao("obras"); if(typeof abrirObra === "function") abrirObra(id); }
+}, true);
+
+/* Fase 80 (pedido do Bernardo, 15/10/2026): peça, TAG, produto e movimentação clicáveis em qualquer
+   tela, no mesmo padrão de linkObra. linkX(id, texto) devolve um <a class="link-cad"> que abre o
+   cadastro; sem id devolve só o texto. Clique tratado em captura, como o da obra. */
+function linkCadastro(tipo, id, texto, titulo){
+  const t = texto != null ? texto : "—";
+  if(!id) return esc(t);
+  return `<a href="#" class="link-cad" data-cad="${esc(tipo)}" data-cad-id="${esc(id)}" title="${esc(titulo)}">${esc(t)}</a>`;
+}
+function linkAcessorio(id, texto){ return linkCadastro("acessorio", id, texto, "Abrir a ficha da peça"); }
+function linkEquipamento(id, texto){ return linkCadastro("equipamento", id, texto, "Abrir a ficha do equipamento"); }
+function linkProduto(id, texto){ return linkCadastro("produto", id, texto, "Abrir o cadastro do produto"); }
+function linkMovimentacao(id, texto){ return linkCadastro("movimentacao", id, texto, "Abrir a movimentação"); }
+function linkReparo(id, texto){ return linkCadastro("reparo", id, texto, "Abrir o reparo"); }   // fase 82
+const LINK_CAD_SECAO = { acessorio: "acessorios", equipamento: "equipamentos", produto: "produtos", movimentacao: "movimentacoes", reparo: "reparos" };
+document.addEventListener("click", async (e) => {
+  const a = e.target && e.target.closest ? e.target.closest("a.link-cad") : null;
+  if(!a) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const tipo = a.dataset.cad, id = a.dataset.cadId;
+  if(!id || !LINK_CAD_SECAO[tipo]) return;
+  if(typeof fecharMobilizacao === "function" && $("mob-modal") && $("mob-modal").style.display !== "none") fecharMobilizacao();
+  if(typeof fecharChamado === "function" && $("cham-modal") && $("cham-modal").style.display !== "none") fecharChamado();
+  if(!irParaSecao(LINK_CAD_SECAO[tipo])) return;
+  if(tipo === "acessorio" && typeof abrirAcessorio === "function"){
+    // a seção carrega o catálogo ao abrir; espera ele chegar (até 20 s)
+    for(let i = 0; i < 80 && !(typeof _aceCarregado !== "undefined" && _aceCarregado); i++) await new Promise(r => setTimeout(r, 250));
+    abrirAcessorio(id);
+  }
+  else if(tipo === "equipamento" && typeof abrirEquipamento === "function") abrirEquipamento(id);
+  else if(tipo === "produto" && typeof abrirProduto === "function") abrirProduto(id);
+  else if(tipo === "movimentacao" && typeof abrirMovimentacao === "function") abrirMovimentacao(id);
+  else if(tipo === "reparo" && typeof abrirReparo === "function") abrirReparo(id);
 }, true);
 
 /* ====================== CARGA GERAL ====================== */

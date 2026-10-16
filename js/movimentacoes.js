@@ -359,7 +359,7 @@ function renderizarItens(){
   }
   tb.innerHTML = itensAtuais.map((it, idx) => `
     <tr>
-      <td>${it.acessorio_id ? "⚙️" : it.equipamento_id ? "🔧" : "📦"} ${esc(it.descricao)}${it.acessorio_id && it._onde ? ` <span class="meta">· ${esc(it._onde)}</span>` : ""}</td>
+      <td>${it.acessorio_id ? "⚙️ " + linkAcessorio(it.acessorio_id, it.descricao) : it.equipamento_id ? "🔧 " + linkEquipamento(it.equipamento_id, it.descricao) : "📦 " + linkProduto(it.produto_id, it.descricao)}${it.acessorio_id && it._onde ? ` <span class="meta">· ${esc(it._onde)}</span>` : ""}</td>
       <td><input type="number" step="0.001" min="0" value="${esc(it.quantidade)}" data-idx="${idx}" data-field="quantidade" class="item-input" style="width:80px;text-align:right;" /></td>
       <td>${esc(it.unidade)}</td>
       <td><input type="number" step="0.01" min="0" value="${esc(it.valor_unitario || 0)}" data-idx="${idx}" data-field="valor_unitario" class="item-input" style="width:110px;text-align:right;" /></td>

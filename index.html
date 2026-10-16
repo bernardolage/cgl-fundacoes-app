@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=96cbae0" />
+<link rel="stylesheet" href="css/estilo.css?v=afea37c" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -96,6 +96,10 @@
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
         <span>Estoque</span>
       </button>
+      <button data-secao="separacoes">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+        <span>Separações</span>
+      </button>
       <button data-secao="compras">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
         <span>Compras</span>
@@ -135,6 +139,10 @@
       <button data-secao="acessorios">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
         <span>Acessórios</span>
+      </button>
+      <button data-secao="reparos">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span>Reparos</span>
       </button>
       <button data-secao="medicoes">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="8" y1="4" x2="8" y2="8"></line><line x1="12" y1="4" x2="12" y2="6"></line><line x1="16" y1="4" x2="16" y2="8"></line><line x1="8" y1="20" x2="8" y2="16"></line><line x1="12" y1="20" x2="12" y2="18"></line><line x1="16" y1="20" x2="16" y2="16"></line></svg>
@@ -909,8 +917,10 @@
               <option value="baixo">Abaixo do mínimo</option>
               <option value="zero">Estoque zero</option>
               <option value="positivo">Estoque > 0</option>
+              <option value="inativos">Inativos</option>
             </select>
           </div>
+          <div id="prod-modo" class="meta" style="margin:0 0 8px;"></div>
           <div id="prod-conteudo"></div>
           <table style="display:none;"><tbody id="tab-produtos"></tbody></table>
         </div>
@@ -994,6 +1004,62 @@
       <h2>Estoque</h2>
       <p class="texto-apoio">Entradas, saídas e ajustes por quantidade, e a lista de reposição dos itens controlados (pontas e caçambas das estacas escavadas, bits, unhas). Peças com marcação ficam em Acessórios.</p>
 
+      <!-- fase 78: saída no balcão (retirante + destino, vários itens) -->
+      <div class="card" id="bal-card" style="display:none;">
+        <div class="lista-topo">
+          <h3>Saída no balcão <span id="bal-contador" class="contador"></span></h3>
+          <span class="meta">material entregue a uma pessoa, com destino; o custo cai na obra, na TAG ou no setor</span>
+        </div>
+        <div class="grade grade-3">
+          <div class="campo"><label>Quem retira *</label>
+            <input id="bal-retirante" placeholder="nome do funcionário (≥ 2 letras)…" autocomplete="off" />
+            <div id="bal-retirante-res" class="autocomplete-lista" style="display:none;"></div>
+          </div>
+          <div class="campo"><label>Destino *</label><select id="bal-destino"><option value="">— obra, TAG ou setor —</option></select></div>
+          <div class="campo"><label>Documento / observação</label><input id="bal-doc" placeholder="ex.: requisição, OS, 'reposição da caixa da 02-HM'" /></div>
+          <div class="campo largo"><label>Item (código, código de barras ou nome; Enter adiciona)</label>
+            <input id="bal-item" placeholder="bipe o código de barras ou digite…" autocomplete="off" />
+            <div id="bal-item-res" class="autocomplete-lista" style="display:none;"></div>
+          </div>
+        </div>
+        <div class="tabela-rola">
+          <table class="itens-tabela est-rep-tabela"><thead><tr><th style="width:110px;">Código</th><th>Item</th><th class="num" style="width:110px;">Saldo</th><th style="width:100px;">Qtd</th><th>Obs.</th><th class="col-acao"></th></tr></thead>
+            <tbody id="bal-itens"><tr><td colspan="6" class="vazio">Nenhum item. Bipe ou busque acima.</td></tr></tbody></table>
+        </div>
+        <div class="form-acoes compacta"><button type="button" class="btn" id="btn-bal-registrar">📤 Registrar saída</button></div>
+        <div class="lista-topo compacta" style="margin-top:10px;"><h3>Saídas de hoje <span id="bal-hoje-contador" class="contador"></span></h3><span class="meta">desfazer vale por 10 minutos</span></div>
+        <div id="bal-hoje"><p class="vazio">—</p></div>
+      </div>
+
+      <!-- fase 83: devolução de obra (o que voltou entra sem digitar de novo) -->
+      <div class="card" id="est-dev-card" style="display:none;">
+        <div class="lista-topo">
+          <h3>Devolução de obra <span id="est-dev-contador" class="contador"></span></h3>
+          <span class="meta">material que voltou da obra: soma ao estoque e o custo sai da obra</span>
+          <button type="button" class="btn-sec btn-sm" id="btn-est-dev-toggle" style="margin-left:auto;">▸ registrar devolução</button>
+        </div>
+        <div id="est-dev-body" style="display:none;">
+          <div class="grade grade-3">
+            <div class="campo"><label>Obra *</label><select id="est-dev-obra"><option value="">— obra —</option></select></div>
+            <div class="campo"><label>Quem trouxe</label>
+              <input id="est-dev-quem" placeholder="nome do funcionário (≥ 2 letras)…" autocomplete="off" />
+              <div id="est-dev-quem-res" class="autocomplete-lista" style="display:none;"></div>
+            </div>
+            <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-est-dev-saidas" title="saídas de estoque para a obra nos últimos 180 dias, menos o que já voltou">📋 Ver o que foi para a obra</button></div>
+            <div class="campo largo"><label>Item (código, código de barras ou nome; Enter adiciona)</label>
+              <input id="est-dev-item" placeholder="bipe o código de barras ou digite…" autocomplete="off" />
+              <div id="est-dev-item-res" class="autocomplete-lista" style="display:none;"></div>
+            </div>
+          </div>
+          <div id="est-dev-saidas" style="display:none;"></div>
+          <div class="tabela-rola">
+            <table class="itens-tabela est-rep-tabela"><thead><tr><th style="width:110px;">Código</th><th>Item</th><th class="num" style="width:110px;">Saldo</th><th style="width:100px;">Qtd</th><th>Obs.</th><th class="col-acao"></th></tr></thead>
+              <tbody id="est-dev-itens"><tr><td colspan="6" class="vazio">Nenhum item.</td></tr></tbody></table>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-est-dev-registrar">📥 Registrar devolução</button></div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="lista-topo">
           <h3>Registrar movimento</h3>
@@ -1051,6 +1117,7 @@
             <button type="button" class="serv-view-btn" data-tipo="entrada">Entradas</button>
             <button type="button" class="serv-view-btn" data-tipo="saida">Saídas</button>
             <button type="button" class="serv-view-btn" data-tipo="ajuste">Ajustes</button>
+            <button type="button" class="serv-view-btn" data-tipo="odoo" title="saldos acertados hoje pela sincronização com o Odoo (fase 81)">Ajustados pelo Odoo hoje</button>
           </div>
         </div>
         <div class="serv-filtros">
@@ -1080,16 +1147,107 @@
     </section>
 
     <!-- ================= COMPRAS (fase 53) ================= -->
+    <!-- fase 83: separações do almoxarifado (lista da mobilização ou pedido da obra; marcar dá a baixa) -->
+    <section class="secao" id="sec-separacoes">
+      <div id="sep-painel">
+        <h2>Separações</h2>
+        <p class="texto-apoio">Lista de separação do almoxarifado: o que a mobilização leva (kit de acessórios e materiais) e o que a obra pede depois. Marcar o item dá a baixa na hora; "Entregar" registra quem levou. Urgência sem lista continua na saída de balcão do Estoque.</p>
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Separações <span id="sep-contador" class="contador"></span></h3>
+            <div class="serv-views" id="sep-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Por status</button>
+            </div>
+            <span class="meta" id="sep-plantao" style="margin-left:auto;"></span>
+            <button type="button" class="btn-sec" id="btn-sep-atualizar">🔄 Atualizar</button>
+            <button type="button" class="btn" id="btn-sep-novo" style="display:none;">+ Pedido da obra</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="sep-busca" placeholder="Buscar nº, obra, TAG, responsável…" />
+            <select id="sep-f-status"><option value="_abertas">Abertas</option><option value="">Todos os status</option><option value="aberta">Aberta</option><option value="em_separacao">Em separação</option><option value="separada">Separada</option><option value="entregue">Entregue</option><option value="cancelada">Cancelada</option></select>
+            <select id="sep-f-origem"><option value="">Origem</option><option value="mobilizacao">Mobilização</option><option value="pedido_obra">Pedido da obra</option></select>
+            <select id="sep-f-resp"><option value="">Responsável</option></select>
+            <select id="sep-f-obra"><option value="">Obra</option></select>
+            <label class="meta" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sep-f-minhas" /> só as minhas</label>
+          </div>
+          <div id="sep-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha da separação (estilo Odoo) -->
+      <div id="sep-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-sep-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-sep-salvar">💾 Salvar</button>
+              <button type="button" class="btn" id="btn-sep-iniciar" title="assume a separação (fica com você se não tiver responsável)">▶ Iniciar separação</button>
+              <button type="button" class="btn btn-sucesso" id="btn-sep-entregar" title="registra quem levou o material">🚚 Entregar</button>
+              <button type="button" class="btn-sec" id="btn-sep-imprimir">🖨️ Imprimir lista</button>
+              <button type="button" class="btn-sec" id="btn-sep-cancelar" style="color:var(--perigo);">✕ Cancelar</button>
+            </div>
+            <div class="actions-right"><strong id="sep-ficha-titulo">Separação</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="sep-statusbar">
+            <div class="stage" data-status="aberta">Aberta</div>
+            <div class="stage" data-status="em_separacao">Em separação</div>
+            <div class="stage" data-status="separada">Separada</div>
+            <div class="stage" data-status="entregue">Entregue</div>
+          </div>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Origem</span><strong id="sep-chip-origem">—</strong></div>
+            <div class="chip"><span>Obra</span><strong id="sep-chip-obra">—</strong></div>
+            <div class="chip"><span>TAG</span><strong id="sep-chip-tag">—</strong></div>
+            <div class="chip"><span>Pedido por</span><strong id="sep-chip-solic">—</strong></div>
+            <div class="chip"><span>Prazo</span><strong id="sep-chip-prazo">—</strong></div>
+            <div class="chip" id="sep-chip-retirante-box" style="display:none;"><span>Levou</span><strong id="sep-chip-retirante">—</strong></div>
+          </div>
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-sep-itens"><span class="sb-num">0</span><span class="sb-icon">📦</span><span class="sb-lbl">itens</span></button>
+            <button type="button" class="sb-btn" id="sb-sep-sep"><span class="sb-num">0</span><span class="sb-icon">✅</span><span class="sb-lbl">separados</span></button>
+          </div>
+          <div class="odoo-body">
+            <div class="grade grade-3" style="margin-top:12px;">
+              <div class="campo"><label>Responsável pela separação</label><select id="sep-resp"></select></div>
+              <div class="campo"><label>Prazo</label><input type="date" id="sep-prazo" /></div>
+              <div class="campo largo"><label>Observações</label><input id="sep-obs" placeholder="ex.: mandar no caminhão de quinta" /></div>
+            </div>
+            <div id="sep-entrega" class="grade grade-3" style="display:none;">
+              <div class="campo largo"><label>Quem levou o material *</label>
+                <input id="sep-retirante" placeholder="nome do funcionário (≥ 2 letras)…" autocomplete="off" />
+                <div id="sep-retirante-res" class="autocomplete-lista" style="display:none;"></div>
+              </div>
+              <div class="campo"><label>&nbsp;</label><button type="button" class="btn btn-sucesso" id="btn-sep-entregar-ok">Confirmar entrega</button> <button type="button" class="btn-sec" id="btn-sep-entregar-nao">voltar</button></div>
+            </div>
+            <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:36px;" title="separado">✔</th><th>Item</th><th style="width:60px;">Un</th><th class="num" style="width:90px;">Pedido</th><th style="width:100px;">Separado</th><th>Baixa</th><th class="col-acao"></th></tr></thead>
+              <tbody id="sep-itens"></tbody></table></div>
+            <div class="grade" id="sep-itens-add" style="margin-top:10px;">
+              <div class="campo largo"><label>+ Produto do catálogo (Enter adiciona)</label>
+                <input id="sep-prod-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+                <div id="sep-prod-res" class="autocomplete-lista" style="display:none;"></div>
+              </div>
+              <div class="campo"><label>Qtd</label><input type="number" id="sep-prod-qtd" min="0.001" step="0.001" value="1" /></div>
+              <div class="campo largo"><label>+ Item livre (sem catálogo)</label><input id="sep-livre-desc" placeholder="descrição; o almoxarife casa com o produto ao separar" /></div>
+              <div class="campo"><label>Qtd / un</label><div style="display:flex;gap:4px;"><input type="number" id="sep-livre-qtd" min="0.001" step="0.001" value="1" style="width:80px;" /><input id="sep-livre-un" value="un" style="width:60px;" /><button type="button" class="btn-sec btn-sm" id="btn-sep-livre-add">+</button></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="secao" id="sec-compras">
       <div id="cmp-painel">
         <h2>Compras</h2>
         <p class="texto-apoio">Pedido de compra com aprovação por alçada e recebimento da nota (entra no estoque ou vira custo direto da obra/TAG). Substitui o Odoo em compras e estoque. Os títulos a pagar gerados pelas notas ficam em Contratos &amp; Contas a pagar.</p>
+        <div id="cmp-odoo-sync" class="meta" style="display:none;margin:0 0 10px;" title="Espelho do Odoo até o corte (fase 81): pedidos, fornecedores, catálogo, preços e saldo de estoque copiados todo dia às 05:30"></div>
 
         <div class="indicadores">
           <div class="ind ind-click" data-kpi=""><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div></div>
           <div class="ind ind-click" data-kpi="aprovar"><div class="num" id="cmp-kpi-aprovar" style="color:var(--marca-600);">—</div><div class="rot">Aguardando aprovação</div></div>
           <div class="ind ind-click" data-kpi="entrega"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando recebimento</div></div>
           <div class="ind ind-click" data-kpi="atrasados"><div class="num" id="cmp-kpi-atrasados">—</div><div class="rot">Recebimento atrasado</div></div>
+          <div class="ind ind-click" data-kpi="receber" title="Pedidos enviados ou parcialmente recebidos esperando o recebimento (fase 78); entre parênteses, os que estão com você"><div class="num" id="cmp-kpi-receber">—</div><div class="rot">Para receber <span id="cmp-kpi-receber-meus"></span></div></div>
           <div class="ind"><div class="num" id="cmp-kpi-valor">—</div><div class="rot">Valor em aberto</div></div>
           <div class="ind ind-click" data-kpi="requisicoes"><div class="num" id="cmp-kpi-req" style="color:var(--aviso);">—</div><div class="rot">Requisições pendentes</div></div>
         </div>
@@ -1105,7 +1263,8 @@
             </div>
             <button type="button" class="btn-sec" id="btn-cmp-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
             <button type="button" class="btn-sec" id="btn-cmp-req-nova" style="display:none;" title="Pedir material ou serviço para o comprador">📝 + Requisição</button>
-            <button type="button" class="btn-sec" id="btn-cmp-receber-avulso" style="display:none;" title="Nota sem pedido (compra direta, emergência, cartão)">📥 Receber NF sem pedido</button>
+            <button type="button" class="btn" id="btn-cmp-compra-direta" style="display:none;" title="Compra já feita, com a nota na mão: pedido, recebimento, estoque e título num passo só (fase 78)">🧾 Compra direta</button>
+            <button type="button" class="btn-sec" id="btn-cmp-receber-avulso" style="display:none;" title="Nota sem pedido (emergência, cartão, NF de contrato)">📥 Receber NF sem pedido</button>
             <button type="button" class="btn" id="btn-cmp-novo" style="display:none;">+ Novo pedido</button>
           </div>
           <div class="serv-filtros" id="cmp-filtros">
@@ -1116,6 +1275,7 @@
             <select id="cmp-f-obra"><option value="">Obra</option></select>
             <select id="cmp-f-equip"><option value="">TAG</option></select>
             <input type="month" id="cmp-f-mes" title="mês do pedido" />
+            <label class="check-inline" title="pedidos para receber em que você é o responsável pelo recebimento"><input type="checkbox" id="cmp-f-meus" /> só os meus para receber</label>
           </div>
           <div id="cmp-conteudo"><p class="vazio">Carregando…</p></div>
         </div>
@@ -1132,6 +1292,7 @@
               <button type="button" class="btn btn-sucesso cmp-acao" id="btn-cmp-aprovar" data-acao="aprovar">👍 Aprovar</button>
               <button type="button" class="btn cmp-acao" id="btn-cmp-enviado" data-acao="enviado">📤 Enviado ao fornecedor</button>
               <button type="button" class="btn cmp-acao" id="btn-cmp-receber" data-acao="receber">📥 Receber NF</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-receber-servico" data-acao="receber_servico" title="Serviço executado: registra com foto ou documento (fase 78)">🧰 Receber serviço</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf" data-acao="pdf">🖨️ PDF do pedido</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-voltar-rascunho" data-acao="rascunho">↩ Voltar a rascunho</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-cancelar" data-acao="cancelar" style="color:var(--perigo);">✕ Cancelar pedido</button>
@@ -1183,6 +1344,7 @@
                 <div class="campo"><label>Obra (destino padrão dos itens)</label><select id="cmp-obra"></select></div>
                 <div class="campo"><label>TAG (destino padrão dos itens)</label><select id="cmp-equip"></select></div>
                 <div class="campo"><label>Setor / obra interna solicitante</label><select id="cmp-centro" title="Identifica quem pediu. Item para o almoxarifado leva este centro só como identificação; o custo entra na saída do estoque."></select></div>
+                <div class="campo"><label>Responsável pelo recebimento</label><select id="cmp-resp-receb" title="Quem registra o recebimento (serviço: com foto ou documento). Padrão: o solicitante. O comprador e a diretoria podem trocar a qualquer momento."></select></div>
                 <div class="campo"><label>Frete (R$)</label><input type="number" id="cmp-frete" min="0" step="0.01" /></div>
                 <div class="campo"><label>Desconto (R$)</label><input type="number" id="cmp-desc" min="0" step="0.01" /></div>
                 <div class="campo largo"><label>Observações (saem no PDF)</label><textarea id="cmp-obs" rows="2"></textarea></div>
@@ -1240,10 +1402,13 @@
             <div class="campo"><label>Parcelas</label><input type="number" id="cmp-rec-parc" min="1" step="1" value="1" /></div>
             <div class="campo"><label>Total da NF (R$)</label><input type="number" id="cmp-rec-total" min="0" step="0.01" placeholder="calcula pelos itens se vazio" /></div>
             <div class="campo largo"><label>Observações</label><input id="cmp-rec-obs" /></div>
+            <div class="campo largo" id="cmp-rec-anexos-campo" style="display:none;"><label>PDF ou foto da nota</label>
+              <input type="file" id="cmp-rec-anexos" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" />
+              <span class="meta">Sem o XML, o número da NF e o PDF ou a foto da nota são obrigatórios. O XML importado já fica guardado no recebimento.</span></div>
           </div>
           <div class="tabela-rola" style="margin-top:8px;">
             <table class="itens-tabela">
-              <thead><tr><th>Item</th><th style="width:70px;">Un</th><th class="num" style="width:90px;" title="pendente no pedido">Pendente</th><th style="width:90px;">Qtd NF</th><th style="width:110px;">Unit. NF</th><th class="num" style="width:110px;">Total</th><th style="width:130px;">Destino</th><th style="width:160px;">Obra / TAG</th><th class="col-acao"></th></tr></thead>
+              <thead><tr><th>Item</th><th style="width:70px;">Un</th><th class="num" style="width:90px;" title="pendente no pedido" id="cmp-rec-th-pend">Pendente</th><th style="width:90px;">Qtd NF</th><th style="width:110px;">Unit. NF</th><th class="num" style="width:110px;">Total</th><th style="width:130px;">Destino</th><th style="width:160px;">Obra / TAG</th><th class="col-acao"></th></tr></thead>
               <tbody id="cmp-rec-itens"></tbody>
             </table>
           </div>
@@ -1257,6 +1422,29 @@
           <div class="form-acoes compacta" style="justify-content:space-between;align-items:center;">
             <strong id="cmp-rec-soma">Total dos itens: R$ 0,00</strong>
             <button type="button" class="btn" id="btn-cmp-rec-confirmar">✅ Confirmar recebimento</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- fase 78: recebimento de serviço com evidência -->
+      <div class="modal-fundo" id="cmp-srv-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:860px;">
+          <div class="modal-topo"><h3 id="cmp-srv-titulo">Receber serviço</h3><button type="button" class="btn-sec" id="btn-cmp-srv-fechar">×</button></div>
+          <p class="meta">Serviço só é recebido com evidência: foto do que foi feito, relatório, ordem de serviço assinada. O custo vai direto para a obra, a TAG ou o setor; nunca para o estoque.</p>
+          <div class="grade grade-3">
+            <div class="campo"><label>Executado em</label><input type="date" id="cmp-srv-data" /></div>
+            <div class="campo"><label>NF / recibo (se houver)</label><input id="cmp-srv-nf" /></div>
+            <div class="campo"><label>Vencimento <small style="font-weight:400;">(gera título a pagar)</small></label><input type="date" id="cmp-srv-venc" /></div>
+            <div class="campo largo"><label>O que foi executado *</label><input id="cmp-srv-desc" placeholder="ex.: usinagem do eixo da mesa rotativa, entregue e testado na 02-HM" /></div>
+            <div class="campo largo"><label>Evidência (foto ou documento) *</label><input type="file" id="cmp-srv-anexos" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" /></div>
+          </div>
+          <div class="tabela-rola" style="margin-top:8px;">
+            <table class="itens-tabela"><thead><tr><th>Serviço</th><th class="num" style="width:90px;">Pendente</th><th style="width:90px;">Qtd</th><th style="width:120px;">Valor (R$)</th><th style="width:240px;">Custo em</th></tr></thead>
+              <tbody id="cmp-srv-itens"></tbody></table>
+          </div>
+          <div class="form-acoes compacta" style="justify-content:space-between;align-items:center;">
+            <strong id="cmp-srv-soma">Total: R$ 0,00</strong>
+            <button type="button" class="btn" id="btn-cmp-srv-confirmar">✅ Receber serviço</button>
           </div>
         </div>
       </div>
@@ -1933,7 +2121,7 @@
             <button type="button" data-tab="parametros" title="Jornada e concretagem (alimentam o RDO)">Parâmetros</button>
             <button type="button" data-tab="contrato">Contrato <span id="obr-con-badge" class="aba-badge"></span></button>
             <button type="button" data-tab="estacas">Estacas</button>
-            <button type="button" data-tab="equipamentos">Mobilização &amp; equipamentos</button>
+            <button type="button" data-tab="equipamentos">Bens do contrato</button>
             <button type="button" data-tab="medicoes">Medições</button>
             <button type="button" data-tab="rdos">RDOs</button>
             <button type="button" data-tab="documentos">Documentos</button>
@@ -2418,6 +2606,7 @@
               <button type="button" class="btn" id="btn-salvar-rdo">💾 Salvar</button>
               <button type="button" class="btn btn-sucesso" id="btn-finalizar-rdo">✅ Finalizar</button>
               <button type="button" class="btn-sec" id="btn-importar-csv">📄 Importar arquivo</button>
+              <button type="button" class="btn-sec" id="btn-rdo-pedir-material" style="display:none;" title="Lista de separação para o almoxarifado (fase 83)">📦 Pedir material</button>
               <button type="button" class="btn-sec acao-perigo" id="btn-excluir-rdo">🗑️ Excluir</button>
             </div>
             <div class="actions-right">
@@ -2701,7 +2890,7 @@
             <div class="campo largo"><label>Obra *</label><select id="mobn-obra"></select></div>
             <div class="campo"><label>TAG principal</label><select id="mobn-equip"></select></div>
             <div class="campo"><label>Mobilização prevista</label><input type="date" id="mobn-data" /></div>
-            <div class="campo largo"><label>TAGs de apoio</label><div class="mob-apoio-lista" id="mobn-apoio"></div></div>
+            <div class="campo largo"><label>TAGs de apoio (bomba, compressor, gerador)</label><div id="mobn-apoio"></div></div>
           </div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-mobn-criar">Criar mobilização</button></div>
         </div>
@@ -3244,6 +3433,123 @@
             <div class="campo"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="ace-md-ativo" checked /> Modelo ativo</label></div>
           </div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-md-salvar">💾 Salvar modelo</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= REPAROS (fase 82) ================= -->
+    <section class="secao" id="sec-reparos">
+      <div id="rep-painel">
+        <h2>Reparos</h2>
+        <p class="texto-apoio">Reparo de acessório ou TAG na oficina: quem trabalhou (início e fim), as peças consumidas (com baixa no estoque) e o custo real que sai disso. Inclui o histórico do Odoo e os reparos da planilha de acessórios.</p>
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Reparos <span id="rep-contador" class="contador"></span></h3>
+            <div class="serv-views" id="rep-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Por status</button>
+            </div>
+            <span class="meta" id="rep-custo-hora" style="margin-left:auto;"></span>
+            <button type="button" class="btn-sec" id="btn-rep-atualizar">🔄 Atualizar</button>
+            <button type="button" class="btn" id="btn-rep-novo" style="display:none;">+ Novo reparo</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="rep-busca" placeholder="Buscar nº, marcação, TAG, descrição, WH/RO…" />
+            <select id="rep-f-status"><option value="_abertos">Abertos</option><option value="">Todos os status</option><option value="aberto">Aberto</option><option value="em_execucao">Em execução</option><option value="concluido">Concluído</option><option value="cancelado">Cancelado</option></select>
+            <select id="rep-f-setor"><option value="">Setor</option><option value="caldeiraria">Caldeiraria</option><option value="usinagem">Usinagem</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="pintura">Pintura</option><option value="externo">Externo</option></select>
+            <select id="rep-f-resp"><option value="">Responsável</option></select>
+            <select id="rep-f-periodo" title="abertura"><option value="90">Últimos 90 dias</option><option value="365" selected>Últimos 12 meses</option><option value="">Todo o período</option></select>
+          </div>
+          <div id="rep-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha do reparo (estilo Odoo) -->
+      <div id="rep-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-rep-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-rep-salvar">💾 Salvar</button>
+              <button type="button" class="btn rep-acao" id="btn-rep-iniciar" data-acao="em_execucao">▶ Iniciar</button>
+              <button type="button" class="btn btn-sucesso rep-acao" id="btn-rep-concluir" data-acao="concluido">✅ Concluir</button>
+              <button type="button" class="btn-sec rep-acao" id="btn-rep-baixa" data-acao="baixa" title="Gera a saída de estoque das peças consumidas que ainda não tiveram baixa">📦 Dar baixa das peças</button>
+              <button type="button" class="btn-sec rep-acao" id="btn-rep-cancelar" data-acao="cancelado" style="color:var(--perigo);">✕ Cancelar</button>
+            </div>
+            <div class="actions-right"><strong id="rep-ficha-titulo">Novo reparo</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="rep-statusbar">
+            <div class="stage" data-status="aberto">Aberto</div>
+            <div class="stage" data-status="em_execucao">Em execução</div>
+            <div class="stage" data-status="concluido">Concluído</div>
+          </div>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="rep-chip-num">—</strong></div>
+            <div class="chip"><span>Peça / TAG</span><strong id="rep-chip-alvo">—</strong></div>
+            <div class="chip"><span>Setor</span><strong id="rep-chip-setor">—</strong></div>
+            <div class="chip"><span>Responsável</span><strong id="rep-chip-resp">—</strong></div>
+            <div class="chip"><span>Dias em reparo</span><strong id="rep-chip-dias">—</strong></div>
+            <div class="chip" id="rep-chip-odoo" style="display:none;"><span>Odoo</span><strong id="rep-chip-odoo-txt">—</strong></div>
+          </div>
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" data-goto-tab="pecas" id="sb-rep-pecas"><span class="sb-num">0</span><span class="sb-icon">🔩</span><span class="sb-lbl">peças</span></button>
+            <button type="button" class="sb-btn" data-goto-tab="horas" id="sb-rep-horas"><span class="sb-num">0</span><span class="sb-icon">⏱️</span><span class="sb-lbl">horas</span></button>
+            <button type="button" class="sb-btn" data-goto-tab="custos" id="sb-rep-custo"><span class="sb-num">R$ 0</span><span class="sb-icon">💰</span><span class="sb-lbl">custo</span></button>
+          </div>
+          <div class="odoo-notebook" id="rep-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="pecas">Peças</button>
+            <button type="button" data-tab="horas">Horas</button>
+            <button type="button" data-tab="custos">Custos</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo largo"><label>Acessório (marcação)</label>
+                  <input id="rep-ace-busca" placeholder="digite a marcação (≥ 2 letras)…" autocomplete="off" />
+                  <div id="rep-ace-res" class="autocomplete-lista" style="display:none;"></div>
+                  <span class="meta" id="rep-ace-info"></span>
+                </div>
+                <div class="campo"><label>TAG</label><select id="rep-equip"></select></div>
+                <div class="campo"><label>Setor</label><select id="rep-setor"><option value="caldeiraria">Caldeiraria</option><option value="usinagem">Usinagem</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="pintura">Pintura</option><option value="externo">Externo</option></select></div>
+                <div class="campo"><label>Tipo de serviço</label><select id="rep-tipo"><option value="recuperacao_estrutural">Recuperação estrutural</option><option value="solda">Solda</option><option value="corte">Corte</option><option value="usinagem">Usinagem</option><option value="pintura">Pintura</option><option value="fabricacao_peca">Fabricação de peça</option><option value="outro">Outro</option></select></div>
+                <div class="campo"><label>Responsável</label><select id="rep-resp"></select></div>
+                <div class="campo largo"><label>Descrição *</label><input id="rep-desc" placeholder="ex.: recuperar dentes e soldar reforço da coroa" /></div>
+                <div class="campo largo"><label>Motivo</label><textarea id="rep-motivo" rows="3" placeholder="o que aconteceu com a peça"></textarea></div>
+                <div class="campo"><label>Abertura</label><input type="date" id="rep-abertura" /></div>
+                <div class="campo"><label>Início</label><input type="date" id="rep-inicio" /></div>
+                <div class="campo"><label>Conclusão</label><input type="date" id="rep-conclusao" /></div>
+                <div class="campo largo"><label>Observações</label><input id="rep-obs" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="pecas">
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Item</th><th style="width:70px;">Un</th><th class="num" style="width:90px;">Qtd</th><th class="num" style="width:110px;">Custo unit.</th><th class="num" style="width:110px;">Total</th><th style="width:100px;">Tipo</th><th style="width:150px;">Baixa</th><th class="col-acao"></th></tr></thead>
+                <tbody id="rep-itens"></tbody></table></div>
+              <div class="grade" id="rep-itens-add" style="margin-top:10px;">
+                <div class="campo largo"><label>+ Peça ou consumível do catálogo</label>
+                  <input id="rep-prod-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+                  <div id="rep-prod-res" class="autocomplete-lista" style="display:none;"></div>
+                </div>
+                <div class="campo"><label>Qtd</label><input type="number" id="rep-prod-qtd" min="0.001" step="0.001" value="1" /></div>
+                <div class="campo"><label>Tipo</label><select id="rep-prod-tipo"><option value="consumo">Consumo (dá baixa)</option><option value="retirada">Retirada da peça</option></select></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="horas">
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Funcionário</th><th>Data</th><th>Início</th><th>Fim</th><th class="num">Horas</th><th>Observação</th><th class="col-acao"></th></tr></thead>
+                <tbody id="rep-horas"></tbody></table></div>
+              <div id="rep-horas-total" class="meta" style="margin:6px 0;"></div>
+              <div class="grade" id="rep-horas-add">
+                <div class="campo largo"><label>Funcionário *</label><select id="rep-h-func"></select></div>
+                <div class="campo"><label>Data</label><input type="date" id="rep-h-data" /></div>
+                <div class="campo"><label>Início</label><input type="time" id="rep-h-inicio" /></div>
+                <div class="campo"><label>Fim</label><input type="time" id="rep-h-fim" /></div>
+                <div class="campo"><label>Horas <small style="font-weight:400;">(sem início/fim)</small></label><input type="number" id="rep-h-horas" min="0" step="0.25" /></div>
+                <div class="campo largo"><label>Observação</label><input id="rep-h-obs" /></div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-rep-h-add">+ Lançar horas</button></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="custos"><div id="rep-custos"></div></div>
+          </div>
         </div>
       </div>
     </section>
@@ -3903,6 +4209,26 @@
         </div>
       </div>
     </div>
+    <!-- fase 83: pedido de material ao almoxarifado (abre da ficha da obra, do RDO e de Separações; fora das seções porque elas se escondem) -->
+    <div class="modal-fundo" id="sep-ped-modal" style="display:none;">
+      <div class="modal-caixa" style="max-width:780px;">
+        <div class="modal-topo"><h3>Pedir material ao almoxarifado</h3><button type="button" class="btn-sec btn-sm" id="btn-sep-ped-fechar">✕</button></div>
+        <p class="meta">Substitui o pedido pelo grupo do WhatsApp: vira uma lista de separação para <strong id="sep-ped-resp">—</strong>, com baixa automática ao separar. Acompanhe em Separações.</p>
+        <div class="grade grade-3">
+          <div class="campo"><label>Obra *</label><select id="sep-ped-obra"></select></div>
+          <div class="campo"><label>TAG</label><select id="sep-ped-equip"></select></div>
+          <div class="campo"><label>Precisa até</label><input type="date" id="sep-ped-prazo" /></div>
+          <div class="campo largo"><label>Observações</label><input id="sep-ped-obs" placeholder="ex.: mandar no caminhão de quinta" /></div>
+          <div class="campo largo"><label>Produto do catálogo (Enter adiciona)</label>
+            <input id="sep-ped-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+            <div id="sep-ped-res" class="autocomplete-lista" style="display:none;"></div>
+          </div>
+          <div class="campo"><label>Item livre (sem catálogo)</label><div style="display:flex;gap:4px;"><input id="sep-ped-livre" placeholder="o que precisa" style="flex:1;" /><button type="button" class="btn-sec btn-sm" id="btn-sep-ped-livre">+</button></div></div>
+        </div>
+        <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Item</th><th style="width:60px;">Un</th><th style="width:100px;">Qtd</th><th class="col-acao"></th></tr></thead><tbody id="sep-ped-itens"></tbody></table></div>
+        <div class="form-acoes compacta"><button type="button" class="btn" id="btn-sep-ped-salvar">📦 Enviar pedido</button></div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -3944,40 +4270,42 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=96cbae0"></script>
+<script src="js/core.js?v=afea37c"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=96cbae0"></script>
+<script src="js/historico.js?v=afea37c"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=96cbae0"></script>
-<script src="js/fornecedores.js?v=96cbae0"></script>
-<script src="js/apropriacoes.js?v=96cbae0"></script>
-<script src="js/funcionarios.js?v=96cbae0"></script>
-<script src="js/servicos.js?v=96cbae0"></script>
-<script src="js/produtos.js?v=96cbae0"></script>
-<script src="js/estoque.js?v=96cbae0"></script>
-<script src="js/compras.js?v=96cbae0"></script>
-<script src="js/requisicoes.js?v=96cbae0"></script>
-<script src="js/orcamentos.js?v=96cbae0"></script>
-<script src="js/propostas.js?v=96cbae0"></script>
-<script src="js/contratos.js?v=96cbae0"></script>
-<script src="js/contas_pagar.js?v=96cbae0"></script>
-<script src="js/centros_custo.js?v=96cbae0"></script>
-<script src="js/carteira.js?v=96cbae0"></script>
-<script src="js/obras.js?v=96cbae0"></script>
-<script src="js/frota.js?v=96cbae0"></script>
-<script src="js/equipamentos.js?v=96cbae0"></script>
-<script src="js/acessorios.js?v=96cbae0"></script>
-<script src="js/mobilizacoes.js?v=96cbae0"></script>
-<script src="js/estacas.js?v=96cbae0"></script>
-<script src="js/obra_abas.js?v=96cbae0"></script>
-<script src="js/medicoes.js?v=96cbae0"></script>
-<script src="js/movimentacoes.js?v=96cbae0"></script>
-<script src="js/rdo.js?v=96cbae0"></script>
-<script src="js/rdo_import_maya.js?v=96cbae0"></script>
-<script src="js/usuarios.js?v=96cbae0"></script>
-<script src="js/chamados.js?v=96cbae0"></script>
-<script src="js/dashboard.js?v=96cbae0"></script>
+<script src="js/clientes.js?v=afea37c"></script>
+<script src="js/fornecedores.js?v=afea37c"></script>
+<script src="js/apropriacoes.js?v=afea37c"></script>
+<script src="js/funcionarios.js?v=afea37c"></script>
+<script src="js/servicos.js?v=afea37c"></script>
+<script src="js/produtos.js?v=afea37c"></script>
+<script src="js/estoque.js?v=afea37c"></script>
+<script src="js/separacoes.js?v=afea37c"></script>
+<script src="js/compras.js?v=afea37c"></script>
+<script src="js/requisicoes.js?v=afea37c"></script>
+<script src="js/orcamentos.js?v=afea37c"></script>
+<script src="js/propostas.js?v=afea37c"></script>
+<script src="js/contratos.js?v=afea37c"></script>
+<script src="js/contas_pagar.js?v=afea37c"></script>
+<script src="js/centros_custo.js?v=afea37c"></script>
+<script src="js/carteira.js?v=afea37c"></script>
+<script src="js/obras.js?v=afea37c"></script>
+<script src="js/frota.js?v=afea37c"></script>
+<script src="js/equipamentos.js?v=afea37c"></script>
+<script src="js/acessorios.js?v=afea37c"></script>
+<script src="js/reparos.js?v=afea37c"></script>
+<script src="js/mobilizacoes.js?v=afea37c"></script>
+<script src="js/estacas.js?v=afea37c"></script>
+<script src="js/obra_abas.js?v=afea37c"></script>
+<script src="js/medicoes.js?v=afea37c"></script>
+<script src="js/movimentacoes.js?v=afea37c"></script>
+<script src="js/rdo.js?v=afea37c"></script>
+<script src="js/rdo_import_maya.js?v=afea37c"></script>
+<script src="js/usuarios.js?v=afea37c"></script>
+<script src="js/chamados.js?v=afea37c"></script>
+<script src="js/dashboard.js?v=afea37c"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=96cbae0"></script>
+<script src="js/init.js?v=afea37c"></script>
 </body>
 </html>

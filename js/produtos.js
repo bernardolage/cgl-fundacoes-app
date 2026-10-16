@@ -8,6 +8,15 @@ let _produtos     = [];
 let _prodView     = "lista";
 let prodEditId    = null;
 let _prodCategorias = {};   // id -> nome
+// lote S42 (L1, Julio): o catálogo tem 11,7 mil produtos e a tela carregava os 2.000 primeiros por nome (tudo depois
+// do "C" sumia). A lista passou a ser uma consulta no servidor: busca por nome, código e código de barras, filtros na
+// consulta, no máximo PROD_PAGINA linhas por vez e contador "N de M" com count exato.
+let _prodTotalAtivos = null;  // M: produtos ativos
+let _prodTotalFiltro = 0;     // N: linhas que a consulta atual acha
+let _prodTodos = false;       // "mostrar todos": sem o corte de saldo, paginado
+let _prodPagina = 0;
+const PROD_PAGINA = 300;
+const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo";
 
 /* ---------- Categorias ---------- */
 async function carregarCategorias(){
@@ -21,37 +30,54 @@ async function carregarCategorias(){
 }
 
 /* ---------- Produtos ---------- */
+function prodTermo(){ return ($("prod-busca")?.value || "").trim().replace(/[%,()]/g, " ").trim(); }
+function prodModoPadrao(){ return !prodTermo() && !($("prod-f-categoria")?.value) && !($("prod-f-estoque")?.value) && !_prodTodos; }
 async function carregarProdutos(){
-  const { data, error } = await sb.from("produtos")
-    .select("id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo")
-    .order("nome").limit(2000);
-  _produtos = error ? [] : (data || []);
-  renderProdutos();
-
-  // Alimenta select da entrada de estoque (compat com modulo estoque)
-  const sel = $("ent-produto");
-  if(sel){
-    sel.innerHTML = `<option value="">selecione...</option>` +
-      _produtos.map(p=>`<option value="${esc(p.id)}">${esc(p.codigo)} — ${esc(p.nome)}</option>`).join("");
+  const termo = prodTermo(), fCat = $("prod-f-categoria")?.value || "", fEst = $("prod-f-estoque")?.value || "";
+  const baixo = fEst === "baixo";
+  let q = sb.from("produtos").select(PROD_COLS, { count: "exact" }).eq("ativo", fEst !== "inativos").order("nome");
+  if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo}`);
+  if(fCat) q = q.eq("categoria_id", fCat);
+  if(fEst === "zero") q = q.lte("estoque_atual", 0);
+  else if(fEst === "positivo") q = q.gt("estoque_atual", 0);
+  else if(baixo) q = q.gt("estoque_minimo", 0);           // o banco não compara duas colunas: traz os que têm mínimo e filtra abaixo
+  else if(prodModoPadrao()) q = q.gt("estoque_atual", 0);  // sem busca nem filtro: os que giram (com saldo)
+  const paginado = _prodTodos && !termo;
+  const de = paginado ? _prodPagina * PROD_PAGINA : 0;
+  q = baixo ? q.limit(1000) : q.range(de, de + PROD_PAGINA - 1);
+  const [res, tot] = await Promise.all([q, _prodTotalAtivos == null ? sb.from("produtos").select("id", { count: "exact", head: true }).eq("ativo", true) : null]);
+  if(tot) _prodTotalAtivos = tot.count || 0;
+  if(res.error){ aviso("app-aviso", "Erro ao carregar produtos: " + res.error.message, "erro"); _produtos = []; _prodTotalFiltro = 0; }
+  else {
+    _produtos = res.data || [];
+    if(baixo) _produtos = _produtos.filter(p => Number(p.estoque_atual) <= Number(p.estoque_minimo));
+    _prodTotalFiltro = baixo ? _produtos.length : (res.count || 0);
   }
+  renderProdutos();
+  // o select escondido da entrada de estoque (#ent-produto) é preenchido por estSelecionarProduto (estoque.js),
+  // que já busca no servidor; não é mais alimentado daqui
 }
 
 /* ---------- Filtros ---------- */
-function prodFiltrados(){
-  const termo = ($("prod-busca")?.value || "").trim().toLowerCase();
-  const fCat = $("prod-f-categoria")?.value || "";
-  const fEst = $("prod-f-estoque")?.value || "";
-  return _produtos.filter(p => {
-    if(fCat && p.categoria_id !== fCat) return false;
-    if(fEst === "baixo" && !(Number(p.estoque_atual) <= Number(p.estoque_minimo))) return false;
-    if(fEst === "zero" && Number(p.estoque_atual) > 0) return false;
-    if(fEst === "positivo" && Number(p.estoque_atual) <= 0) return false;
-    if(termo){
-      const alvo = `${p.codigo||""} ${p.nome||""}`.toLowerCase();
-      if(!alvo.includes(termo)) return false;
-    }
-    return true;
-  });
+/* lote S42: os filtros vão na consulta (carregarProdutos); aqui só o que veio do servidor */
+function prodFiltrados(){ return _produtos; }
+/* linha acima da lista: o modo (com saldo / todos paginado) e a navegação */
+function renderProdModo(){
+  const el = $("prod-modo"); if(!el) return;
+  const termo = prodTermo(), total = _prodTotalFiltro, n = _produtos.length;
+  if(termo || $("prod-f-categoria")?.value || $("prod-f-estoque")?.value){
+    el.innerHTML = total > n ? `Mostrando ${n} de ${num(total)} resultado(s): refine a busca para ver os outros.` : "";
+    return;
+  }
+  const off = 'style="opacity:.5;pointer-events:none;"';
+  if(!_prodTodos){
+    el.innerHTML = `Mostrando os produtos com saldo em estoque. <a href="#" data-prod-modo="todos">Mostrar todos os ${num(_prodTotalAtivos || 0)} ativos (${PROD_PAGINA} por página)</a>`;
+  } else {
+    const paginas = Math.max(1, Math.ceil(total / PROD_PAGINA)), pag = _prodPagina + 1;
+    el.innerHTML = `Todos os produtos ativos · página ${pag} de ${paginas} (${num(_prodPagina * PROD_PAGINA + 1)}–${num(_prodPagina * PROD_PAGINA + n)} de ${num(total)}) ·
+      <a href="#" data-prod-modo="ant" ${pag <= 1 ? off : ""}>‹ anterior</a> · <a href="#" data-prod-modo="prox" ${pag >= paginas ? off : ""}>próxima ›</a> ·
+      <a href="#" data-prod-modo="saldo">só com saldo</a>`;
+  }
 }
 
 function preencherFiltrosProd(){
@@ -75,7 +101,8 @@ function renderProdutos(){
   preencherFiltrosProd();
   const dados = prodFiltrados();
   const cont = $("prod-contador");
-  if(cont) cont.textContent = `${dados.length} de ${_produtos.length}`;
+  if(cont) cont.textContent = `${num(_prodTotalFiltro)} de ${num(_prodTotalAtivos ?? _prodTotalFiltro)}`;   // N da consulta, de M ativos
+  renderProdModo();
   if(_prodView === "kanban") renderProdKanban(dados);
   else                       renderProdLista(dados);
   const legacy = $("tab-produtos");
@@ -295,9 +322,19 @@ function ligarProdutos(){
       renderProdutos();
     });
   });
-  ["prod-busca","prod-f-categoria","prod-f-estoque"].forEach(id => {
-    const el = $(id);
-    if(el) el.addEventListener(id === "prod-busca" ? "input" : "change", renderProdutos);
+  // lote S42: busca e filtros consultam o servidor
+  const recarregar = () => { _prodPagina = 0; carregarProdutos(); };
+  $("prod-busca")?.addEventListener("input", debounce(recarregar, 250));
+  ["prod-f-categoria","prod-f-estoque"].forEach(id => $(id)?.addEventListener("change", recarregar));
+  $("prod-modo")?.addEventListener("click", e => {
+    const a = e.target.closest("[data-prod-modo]"); if(!a) return;
+    e.preventDefault();
+    const m = a.dataset.prodModo;
+    if(m === "todos"){ _prodTodos = true; _prodPagina = 0; }
+    else if(m === "saldo"){ _prodTodos = false; _prodPagina = 0; }
+    else if(m === "ant"){ if(_prodPagina > 0) _prodPagina--; }
+    else if(m === "prox"){ if((_prodPagina + 1) * PROD_PAGINA < _prodTotalFiltro) _prodPagina++; }
+    carregarProdutos();
   });
   $("prod-conteudo")?.addEventListener("click", (e) => {
     const tr = e.target.closest(".linha-clicavel");

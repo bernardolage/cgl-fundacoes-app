@@ -28,6 +28,9 @@ let _cmpEditId = null;
 let _cmpItens = [];               // itens em edição na ficha
 let _cmpRec = null;               // recebimento em montagem no modal
 let _cmpAvPre = null;             // callback após salvar custo avulso
+let _cmpParaReceber = {};         // fase 78: pedido_id -> linha de vw_compras_para_receber
+let _cmpPerfis = [];              // fase 78: usuários ativos (responsável pelo recebimento)
+let _cmpSrv = null;               // fase 78: recebimento de serviço em montagem
 
 const CMP_STATUS = {
   rascunho:              { label: "Rascunho",             cor: "cinza" },
@@ -82,6 +85,37 @@ function cmpDestinoOptions(sel){
 }
 function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
 function cmpAlcadaTxt(){ return _cmpAlcada === null ? "sem limite" : _cmpAlcada < 0 ? "sem alçada de aprovação" : "até " + brl(_cmpAlcada); }
+/* fase 78: item de serviço (recebido com evidência, nunca no estoque); mesma regra de compras_categoria_servico() */
+const CMP_CAT_SERVICO = ["servico_terceiro", "locacao", "frete"];
+const CMP_REC_TIPO = { servico: ["serviço", "azul"], compra_direta: ["compra direta", "verde"] };
+function cmpItemServico(it){ return CMP_CAT_SERVICO.includes(it.categoria_custo); }
+function cmpSrvAtraso(p){ const r = _cmpParaReceber[p.id]; return !!r && r.tem_servico && !r.tem_evidencia && Number(r.dias_desde_envio || 0) > 7; }
+/* anexos do recebimento (bucket privado compras-evidencias, caminho <recebimento>/<arquivo>); MIME pela extensão */
+const CMP_ANEXO_MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic",
+  xml: "application/xml", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", txt: "text/plain" };
+async function cmpEnviarAnexos(recId, files){
+  const out = [];
+  for(const f of files){
+    const ext = (f.name.split(".").pop() || "").toLowerCase(), mime = CMP_ANEXO_MIME[ext];
+    if(!mime){ await cmpRemoverAnexos(out); throw new Error(`"${f.name}": tipo não aceito. Use PDF, foto (JPG, PNG, WEBP, HEIC), Word ou Excel.`); }
+    if(f.size > 20 * 1024 * 1024){ await cmpRemoverAnexos(out); throw new Error(`"${f.name}" passa de 20 MB.`); }
+    const nome = f.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.\-]+/g, "_").slice(-80);
+    const caminho = `${recId}/${Date.now()}_${out.length}_${nome}`;
+    // supabase-js ignora contentType quando o corpo é File: reembala com o MIME da extensão
+    const corpo = f.type === mime ? f : new Blob([f], { type: mime });
+    const { error } = await sb.storage.from("compras-evidencias").upload(caminho, corpo, { cacheControl: "3600", contentType: mime, upsert: false });
+    if(error){ await cmpRemoverAnexos(out); throw new Error(`Falha ao enviar "${f.name}": ${error.message}`); }
+    out.push({ nome: f.name, storage_path: caminho, mime_type: mime, tamanho: f.size });
+  }
+  return out;
+}
+async function cmpRemoverAnexos(lista){ if(lista && lista.length) await sb.storage.from("compras-evidencias").remove(lista.map(a => a.storage_path)); }
+async function cmpAbrirAnexo(caminho, nome){
+  const { data, error } = await sb.storage.from("compras-evidencias").createSignedUrl(caminho, 120, { download: nome || true });
+  if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o anexo" + (error ? ": " + error.message : "."), "erro"); return; }
+  window.open(data.signedUrl, "_blank");
+}
 
 /* ---------- carga ---------- */
 /* Cadastros de apoio (fornecedores, obras, TAGs, alçada): painel, ficha, modal de custo avulso e
@@ -89,13 +123,15 @@ function cmpAlcadaTxt(){ return _cmpAlcada === null ? "sem limite" : _cmpAlcada 
 async function cmpCarregarBase(force){
   if(!force && _cmpCarregado) return;
   {
-    const [fo, ob, eq, al, cc] = await Promise.all([
+    const [fo, ob, eq, al, cc, pf] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").not("status", "in", "(cancelada,concluida)").order("codigo", { ascending: false }),
       sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).order("codigo"),
       sb.rpc("compras_alcada_usuario"),
-      sb.from("centros_custo").select("id,codigo,nome,tipo,ativo").order("tipo", { ascending: false }).order("nome")
+      sb.from("centros_custo").select("id,codigo,nome,tipo,ativo").order("tipo", { ascending: false }).order("nome"),
+      sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome")   // fase 78
     ]);
+    _cmpPerfis = pf.data || [];
     _cmpCentros = cc.data || []; _cmpCentroMap = {}; _cmpCentros.forEach(c => _cmpCentroMap[c.id] = c);
     _cmpForns = fo.data || []; _cmpFornMap = {}; _cmpForns.forEach(f => _cmpFornMap[f.id] = f);
     _cmpObras = ob.data || []; _cmpObraMap = {}; _cmpObras.forEach(o => _cmpObraMap[o.id] = o);
@@ -111,10 +147,34 @@ async function carregarCompras(force){
   if(force || !_cmpCarregado) cont.innerHTML = `<p class="vazio">Carregando compras…</p>`;
   await cmpCarregarBase(force);
   const pode = cmpPodeOperar();
-  ["btn-cmp-novo","btn-cmp-receber-avulso"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
+  ["btn-cmp-novo","btn-cmp-receber-avulso","btn-cmp-compra-direta"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
   if($("btn-cmp-req-nova")) $("btn-cmp-req-nova").style.display = (typeof reqPodePedir === "function" && reqPodePedir()) ? "" : "none"; // fase 60
   await cmpFetchPedidos();
   renderCompras();
+  cmpCarregarSync();   // fase 81
+}
+/* fase 81: última sincronização com o Odoo (scripts/importar-odoo-compras.js sincronizar, todo dia às 05:30).
+   Vermelho com erro, etapa interrompida ou mais de 36 h sem sincronizar. */
+async function cmpCarregarSync(){
+  const el = $("cmp-odoo-sync"); if(!el) return;
+  const { data, error } = await sb.from("odoo_sync").select("etapa,inicio,fim,criados,alterados,erro,resumo").order("inicio", { ascending: false }).limit(12);
+  if(error || !data || !data.length){ el.style.display = "none"; return; }
+  const ult = new Date(data[0].inicio).getTime();
+  const rodada = data.filter(r => ult - new Date(r.inicio).getTime() < 3 * 3600e3);
+  const da = e => rodada.find(r => r.etapa === e);
+  const fimMax = Math.max(...rodada.map(r => r.fim ? new Date(r.fim).getTime() : 0));
+  const comErro = rodada.filter(r => r.erro || (!r.fim && Date.now() - new Date(r.inicio).getTime() > 3600e3));
+  const velha = !fimMax || Date.now() - fimMax > 36 * 3600e3;
+  const quando = new Date(fimMax || ult), hh = quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), dd = quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const partes = [];
+  if(da("pedidos")) partes.push(`${da("pedidos").criados} pedido(s) novo(s)`);
+  if(da("fornecedores")) partes.push(`${da("fornecedores").criados} fornecedor(es) novo(s)`);
+  if(da("catalogo")) partes.push(`${da("catalogo").criados} produto(s) novo(s)`);
+  if(da("estoque")) partes.push(`estoque ajustado em ${da("estoque").criados} item(ns)`);
+  const ruim = velha || comErro.length;
+  el.innerHTML = `<span class="tag ${ruim ? "vermelho" : "verde"}">Odoo</span> ${ruim && velha ? "<strong class=\"txt-perigo\">sem sincronizar desde</strong>" : "sincronizado às"} ${hh} de ${dd}${partes.length ? " · " + esc(partes.join(" · ")) : ""}`
+    + (comErro.length ? ` · <strong class="txt-perigo">erro em ${esc(comErro.map(r => r.etapa).join(", "))}</strong>${comErro[0].erro ? ` <span title="${esc(comErro[0].erro)}">(${esc(String(comErro[0].erro).slice(0, 80))})</span>` : ""}` : "");
+  el.style.display = "";
 }
 /* Fase 65: sem teto de 1000 (os pedidos do Odoo passam disso). Carrega em páginas o período escolhido
    (padrão: últimos 90 dias); pedido em aberto entra sempre, para os indicadores ficarem certos. */
@@ -151,6 +211,10 @@ async function cmpFetchPedidos(){
   const rq = await rqP;
   _cmpPedidos = todos;
   _cmpReqPend = rq.count || 0;
+  // fase 78: o que espera recebimento, por responsável
+  const pr = await sb.from("vw_compras_para_receber").select("pedido_id,responsavel_recebimento_id,responsavel_nome,dias_desde_envio,tem_servico,tem_evidencia");
+  _cmpParaReceber = {}; (pr.data || []).forEach(r => _cmpParaReceber[r.pedido_id] = r);
+  todos.forEach(p => { const r = _cmpParaReceber[p.id]; if(r) p._responsavel = r.responsavel_nome; });
 }
 function cmpPreencherSelectsFixos(){
   const fornOpts = ph => `<option value="">${ph}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
@@ -161,6 +225,7 @@ function cmpPreencherSelectsFixos(){
   set("cmp-obra", obraOpts("— nenhuma —")); set("cmp-f-obra", obraOpts("Obra")); set("cmp-av-obra", obraOpts("— nenhuma —"));
   set("cmp-equip", eqOpts("— nenhuma —")); set("cmp-f-equip", eqOpts("TAG")); set("cmp-av-equip", eqOpts("— nenhuma —"));
   set("cmp-centro", cmpCentroOptions("— nenhum —", true)); set("cmp-av-centro", cmpCentroOptions("— nenhum —", true));
+  set("cmp-resp-receb", `<option value="">— o solicitante —</option>` + _cmpPerfis.map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join(""));
   const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
   const ac = $("cmp-av-cat"); if(ac) ac.innerHTML = cmpCatOptions("outro");
 }
@@ -169,7 +234,9 @@ function cmpPreencherSelectsFixos(){
 function cmpFiltrados(){
   const q = ($("cmp-busca")?.value || "").trim().toLowerCase();
   const fSt = $("cmp-f-status")?.value || "", fF = $("cmp-f-forn")?.value || "", fO = $("cmp-f-obra")?.value || "", fE = $("cmp-f-equip")?.value || "", fM = $("cmp-f-mes")?.value || "";
+  const soMeus = !!$("cmp-f-meus")?.checked, eu = usuarioAtual?.id;
   return _cmpPedidos.filter(p => {
+    if(soMeus && !(_cmpParaReceber[p.id] && _cmpParaReceber[p.id].responsavel_recebimento_id === eu)) return false;   // fase 78
     if(fSt === "_abertos"){ if(!CMP_ABERTOS.includes(p.status)) return false; }
     else if(fSt && p.status !== fSt) return false;
     if(!fSt && _cmpKpi === "" && _cmpView === "kanban" && p.status === "cancelado") return false;
@@ -181,6 +248,7 @@ function cmpFiltrados(){
       case "aprovar":   if(p.status !== "aguardando_aprovacao") return false; break;
       case "entrega":   if(!CMP_AGUARDA_RECEB.includes(p.status)) return false; break;
       case "atrasados": if(!cmpAtrasado(p)) return false; break;
+      case "receber":   if(!_cmpParaReceber[p.id]) return false; break;   // fase 78
     }
     if(q){
       const alvo = [p.numero, p.codigo_externo, p.comprador_externo, p.fornecedor?.razao_social, cmpObra(p.obra_id), cmpEq(p.equipamento_id), p.condicao_pagamento, ...(p.itens || []).map(i => i.descricao)].filter(Boolean).join(" ").toLowerCase();
@@ -198,6 +266,8 @@ function cmpRenderKpis(){
   set("cmp-kpi-atrasados", ab.filter(cmpAtrasado).length);
   set("cmp-kpi-valor", brl(ab.reduce((s, p) => s + Number(p.total || 0), 0)));
   set("cmp-kpi-req", _cmpReqPend);
+  const pr = Object.values(_cmpParaReceber), meus = pr.filter(r => r.responsavel_recebimento_id === usuarioAtual?.id).length;   // fase 78
+  set("cmp-kpi-receber", pr.length); set("cmp-kpi-receber-meus", meus ? `(${meus} seus)` : "");
 }
 function renderCompras(){
   const cont = $("cmp-conteudo"); if(!cont) return;
@@ -217,7 +287,7 @@ function cmpCardHTML(p){
   const atras = cmpAtrasado(p);
   const dest = p.obra_id ? "🏗️ " + esc(cmpObra(p.obra_id)) : p.equipamento_id ? "🚜 TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? "🏢 " + esc(cmpCentro(p.centro_custo_id)) : "📦 Estoque";
   const it = p.itens || [];
-  return `<div class="serv-kan-card" data-id="${esc(p.id)}">
+  return `<div class="serv-kan-card${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
     <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span></div>
     <div>${esc(p.fornecedor?.razao_social || "— sem fornecedor —")}</div>
     <div class="meta">${dest} · ${it.length} item(ns)</div>
@@ -233,26 +303,26 @@ function renderComprasKanban(dados){
 }
 function renderComprasLista(dados){
   $("cmp-conteudo").innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr><th>Número</th><th>Data</th><th>Fornecedor</th><th>Destino</th><th class="num">Itens</th><th class="num">Total</th><th>Previsão</th><th>Status</th><th>Solicitante</th></tr></thead>
-    <tbody>${dados.map(p => `<tr class="linha-clicavel" data-id="${esc(p.id)}">
+    <thead><tr><th>Número</th><th>Data</th><th>Fornecedor</th><th>Destino</th><th class="num">Itens</th><th class="num">Total</th><th>Previsão</th><th>Status</th><th>Para receber com</th></tr></thead>
+    <tbody>${dados.map(p => `<tr class="linha-clicavel${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
       <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td>
       <td>${p.obra_id ? linkObra(p.obra_id, cmpObra(p.obra_id)) : p.equipamento_id ? "TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? esc(cmpCentro(p.centro_custo_id)) : "Estoque"}</td>
       <td class="num">${(p.itens || []).length}</td><td class="num">${brl(p.total)}</td>
       <td class="${cmpAtrasado(p) ? "txt-perigo" : ""}">${dataBR(p.previsao_entrega)}</td>
-      <td>${cmpTag(p.status)}</td><td class="meta">${esc(p._solicitante || "")}</td></tr>`).join("")}</tbody></table></div>`;
+      <td>${cmpTag(p.status)}</td><td class="meta">${esc(p._responsavel || "")}${_cmpParaReceber[p.id]?.tem_servico ? ` <span class="tag ${_cmpParaReceber[p.id].tem_evidencia ? "verde" : "ambar"}">serviço${_cmpParaReceber[p.id].tem_evidencia ? " c/ evidência" : ""}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 /* recebimentos (visão do painel) */
 async function renderRecebimentos(){
   const cont = $("cmp-conteudo");
-  const { data, error } = await sb.from("recebimentos").select("id,status,nf_numero,nf_serie,data_recebimento,total_nf,fornecedor_id,pedido:pedidos_compra(numero),itens:recebimento_itens(id,destino)").order("data_recebimento", { ascending: false }).limit(300);
+  const { data, error } = await sb.from("recebimentos").select("id,status,tipo,nf_numero,nf_serie,data_recebimento,total_nf,fornecedor_id,pedido:pedidos_compra(numero),itens:recebimento_itens(id,destino)").order("data_recebimento", { ascending: false }).limit(300);
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   $("cmp-contador").textContent = `${(data || []).length} recebimento(s)`;
   if(!data?.length){ cont.innerHTML = `<p class="vazio">Nenhum recebimento ainda. Use "Receber NF" no pedido ou "Receber NF sem pedido".</p>`; return; }
   const stTag = s => s === "confirmado" ? '<span class="tag verde">Confirmado</span>' : s === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>';
   cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>NF</th><th>Fornecedor</th><th>Pedido</th><th class="num">Itens</th><th>Destinos</th><th class="num">Total</th><th>Status</th></tr></thead>
     <tbody>${data.map(r => { const it = r.itens || []; const d = [...new Set(it.map(i => i.destino === "estoque" ? "estoque" : "custo direto"))].join(" + ");
-      return `<tr class="linha-clicavel" data-pedido="${esc(r.pedido ? r.pedido.numero : "")}"><td>${dataBR(r.data_recebimento)}</td><td><strong>${esc(r.nf_numero || "—")}</strong>${r.nf_serie ? "/" + esc(r.nf_serie) : ""}</td>
+      return `<tr class="linha-clicavel" data-pedido="${esc(r.pedido ? r.pedido.numero : "")}"><td>${dataBR(r.data_recebimento)}</td><td><strong>${esc(r.nf_numero || "—")}</strong>${r.nf_serie ? "/" + esc(r.nf_serie) : ""}${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${CMP_REC_TIPO[r.tipo][1]}">${CMP_REC_TIPO[r.tipo][0]}</span>` : ""}</td>
       <td>${esc(cmpForn(r.fornecedor_id) || "—")}</td><td>${r.pedido ? esc(r.pedido.numero) : '<span class="meta">sem pedido</span>'}</td><td class="num">${it.length}</td><td class="meta">${esc(d)}</td><td class="num">${brl(r.total_nf)}</td><td>${stTag(r.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
 }
 
@@ -290,6 +360,9 @@ function abrirFichaPedido(p){
   $("cmp-obra").value = p.obra_id || ""; $("cmp-equip").value = p.equipamento_id || ""; $("cmp-centro").value = p.centro_custo_id || "";
   $("cmp-frete").value = p.frete ?? 0; $("cmp-desc").value = p.desconto ?? 0; $("cmp-obs").value = p.observacoes || "";
   $("cmp-ficha").querySelectorAll(".odoo-tab[data-tab=cabecalho] input, .odoo-tab[data-tab=cabecalho] select, .odoo-tab[data-tab=cabecalho] textarea").forEach(el => el.disabled = !ed);
+  // fase 78: responsável pelo recebimento troca a qualquer momento (comprador do pedido e diretoria)
+  $("cmp-resp-receb").value = p.responsavel_recebimento_id || "";
+  $("cmp-resp-receb").disabled = !(ed || cmpPodeTrocarResp());
   $("cmp-itens-add").style.display = ed ? "" : "none";
   $("cmp-alcada-info").textContent = `Sua alçada de aprovação: ${cmpAlcadaTxt()}. Pedido acima da alçada vai para "Aguardando aprovação" e é aprovado por quem tiver alçada.`;
   cmpAtualizarStatusbar(p.status || "rascunho");
@@ -335,6 +408,7 @@ function cmpAtualizarBotoes(){
   const podeAprovar = pode && st === "aguardando_aprovacao" && (_cmpAlcada === null || (_cmpAlcada >= 0 && total <= _cmpAlcada));
   const mostra = { "btn-cmp-salvar": pode && st === "rascunho", "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
     "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": pode && ["aprovado","enviado","parcialmente_recebido"].includes(st),
+    "btn-cmp-receber-servico": cmpPodeReceberServico(),
     "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && ["aguardando_aprovacao","aprovado"].includes(st),
     "btn-cmp-cancelar": pode && !novo && !["recebido","cancelado"].includes(st) };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
@@ -345,7 +419,7 @@ function ativarTabPedido(nome){
 }
 async function cmpCarregarFilhas(id){
   const [rec, tit] = await Promise.all([
-    sb.from("recebimentos").select("id,status,nf_numero,nf_serie,data_recebimento,total_nf,vencimento,parcelas,itens:recebimento_itens(id,descricao,quantidade_aceita,valor_unitario_nf,destino,obra_id,equipamento_id)").eq("pedido_id", id).order("data_recebimento", { ascending: false }),
+    sb.from("recebimentos").select("id,status,tipo,nf_numero,nf_serie,data_recebimento,total_nf,vencimento,parcelas,observacoes,itens:recebimento_itens(id,descricao,quantidade_aceita,valor_unitario_nf,destino,obra_id,equipamento_id,centro_custo_id),anexos:recebimento_anexos(id,nome,storage_path)").eq("pedido_id", id).order("data_recebimento", { ascending: false }),
     sb.from("titulos_pagar").select("*, recebimento:recebimentos!inner(pedido_id)").eq("recebimento.pedido_id", id).order("vencimento")
   ]);
   if(_cmpEditId !== id) return;
@@ -353,9 +427,12 @@ async function cmpCarregarFilhas(id){
   const recs = rec.data || [], tits = tit.data || [];
   setSb("sb-cmp-rec", recs.length); setSb("sb-cmp-tit", tits.length);
   $("cmp-rec-lista").innerHTML = rec.error ? `<p class="vazio">Erro: ${esc(rec.error.message)}</p>` : !recs.length ? `<p class="vazio">Nenhum recebimento. Use "Receber NF" quando a mercadoria chegar.</p>` :
-    recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>NF ${esc(r.nf_numero || "—")}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebida em ${dataBR(r.data_recebimento)}</span></h3>
+    recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${CMP_REC_TIPO[r.tipo][1]}">${CMP_REC_TIPO[r.tipo][0]}</span>` : ""}</h3>
       <span style="margin-left:auto;">${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
-      <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${brl(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table></div>`).join("");
+      <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${brl(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table>
+      ${r.observacoes ? `<p class="meta" style="margin:6px 0 0;">${esc(r.observacoes)}</p>` : ""}
+      ${(r.anexos || []).length ? `<div class="meta" style="margin-top:6px;">📎 ${r.anexos.map(a => `<a href="#" class="cmp-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}">${esc(a.nome)}</a>`).join(" · ")}</div>` : ""}</div>`).join("");
+  $("cmp-rec-lista").querySelectorAll(".cmp-anexo").forEach(a => a.addEventListener("click", e => { e.preventDefault(); cmpAbrirAnexo(a.dataset.path, a.dataset.nome); }));
   $("cmp-tit-lista").innerHTML = !podeVerContasPagar() ? `<p class="vazio">Os títulos deste pedido ficam em Contratos & Contas a pagar; seu perfil não tem acesso a esse módulo.</p>` : tit.error ? `<p class="vazio">Erro: ${esc(tit.error.message)}</p>` : !tits.length ? `<p class="vazio">Nenhum título. Eles nascem no recebimento da NF quando há vencimento informado.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Vencimento</th><th>NF</th><th>Parcela</th><th class="num">Valor</th><th>Exportado ao financeiro</th></tr></thead><tbody>${tits.map(t => `<tr><td><strong>${dataBR(t.vencimento)}</strong></td><td>${esc(t.nf_numero || "—")}</td><td>${t.parcela}/${t.total_parcelas}</td><td class="num">${brl(t.valor)}</td><td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody></table></div>`;
 }
@@ -434,6 +511,7 @@ function cmpColetarCabecalho(){
     fornecedor_id: $("cmp-forn").value || null, data_pedido: $("cmp-data").value || hojeISO(), previsao_entrega: $("cmp-prev").value || null,
     condicao_pagamento: $("cmp-cond").value.trim() || null, local_entrega: $("cmp-local").value, obra_id: $("cmp-obra").value || null, equipamento_id: $("cmp-equip").value || null,
     centro_custo_id: $("cmp-centro").value || null,
+    responsavel_recebimento_id: $("cmp-resp-receb").value || _cmpAtual?.solicitante_id || null,   // fase 78 (pedido novo sem escolha: o gatilho põe o solicitante)
     frete: Number($("cmp-frete").value || 0), desconto: Number($("cmp-desc").value || 0), observacoes: $("cmp-obs").value.trim() || null
   };
 }
@@ -475,6 +553,7 @@ async function salvarPedido(silencioso){
 async function cmpAcao(acao){
   if(acao === "pdf"){ return cmpPdfPedido(); }
   if(acao === "receber"){ return abrirRecebimento(_cmpAtual); }
+  if(acao === "receber_servico"){ return abrirReceberServico(); }   // fase 78
   let id = _cmpEditId;
   try {
     if(acao === "enviar_aprovacao"){
@@ -501,13 +580,20 @@ async function cmpAcao(acao){
 }
 
 /* ---------- recebimento ---------- */
-function abrirRecebimento(pedido){
+function abrirRecebimento(pedido, modo){
   if(!cmpPodeOperar()) return;
   const semPedido = !pedido;
-  _cmpRec = { pedido: pedido || null, itens: [], xml: null, duplicatas: null };
+  const direta = modo === "compra_direta";   // fase 78
+  _cmpRec = { pedido: pedido || null, itens: [], xml: null, duplicatas: null, modo: direta ? "compra_direta" : "nf" };
+  $("cmp-rec-anexos-campo").style.display = direta ? "" : "none"; $("cmp-rec-anexos").value = "";
+  $("cmp-rec-th-pend").textContent = direta ? "Categoria" : "Pendente";
+  $("btn-cmp-rec-confirmar").textContent = direta ? "🧾 Registrar compra" : "✅ Confirmar recebimento";
+  $("cmp-rec-ajuda").textContent = direta
+    ? "Compra já feita, com a nota na mão. Registrar cria o pedido já recebido, dá entrada no estoque (destino base) ou lança o custo direto (obra/TAG/setor) e gera os títulos a pagar. Acima da sua alçada, vai para aprovação."
+    : "Confirmar gera a entrada no estoque (destino base) ou o custo direto (obra/TAG), baixa o pedido e cria os títulos a pagar.";
   $("cmp-rec-xml").value = "";
   $("cmp-rec-xml-info").textContent = "Clique ou arraste o XML aqui. Preenche cabeçalho, duplicatas e itens; casa os produtos por código do fornecedor, EAN e pedido.";
-  $("cmp-rec-titulo").textContent = semPedido ? "Receber NF sem pedido" : `Receber NF — pedido ${pedido.numero}`;
+  $("cmp-rec-titulo").textContent = direta ? "Compra direta (nota na mão)" : semPedido ? "Receber NF sem pedido" : `Receber NF — pedido ${pedido.numero}`;
   $("cmp-rec-forn").value = pedido?.fornecedor_id || ""; $("cmp-rec-forn").disabled = !semPedido;
   if($("cmp-rec-contrato")) $("cmp-rec-contrato").value = "";
   cmpRecPreencherContratos(); // fase 57: NF de contrato recorrente (só sem pedido)
@@ -535,7 +621,7 @@ function fecharRecebimento(){ $("cmp-rec-modal").style.display = "none"; _cmpRec
 let _cmpContratosForn = null;
 async function cmpRecPreencherContratos(){
   const campo = $("cmp-rec-contrato-campo"), sel = $("cmp-rec-contrato"); if(!campo || !sel) return;
-  if(_cmpRec?.pedido){ campo.style.display = "none"; sel.value = ""; return; }
+  if(_cmpRec?.pedido || _cmpRec?.modo === "compra_direta"){ campo.style.display = "none"; sel.value = ""; return; }
   if(_cmpContratosForn === null){
     const { data } = await sb.from("contratos").select("id,numero,descricao,fornecedor_id,categoria").eq("natureza", "fornecedor").in("status", ["vigente","renovado"]).order("numero");
     _cmpContratosForn = data || [];
@@ -554,7 +640,7 @@ function renderItensRecebimento(){
       <td>${it.livre && !it.produto_id ? `<input class="cmp-ri" data-f="descricao" value="${esc(it.descricao || "")}" placeholder="descrição na nota" style="width:100%;" />` : `<strong>${esc(it.descricao)}</strong>`}${it.codigo_fornecedor ? ` <span class="meta">cód. ${esc(it.codigo_fornecedor)}</span>` : ""}${cmpRiBadge(it)}
         ${it.pedido_item_id && it.casamento !== "manual" && it.produto_id ? (it.produto_txt && it.produto_txt !== it.descricao ? `<div class="meta">→ ${esc(it.produto_txt)}</div>` : "") : `<div class="cmp-ri-pick"><input class="cmp-ri-prod" placeholder="casar com produto do catálogo…" value="${esc(it.produto_txt || "")}" autocomplete="off" /><div class="autocomplete-lista" style="display:none;"></div></div>`}</td>
       <td>${esc(it.unidade || "un")}</td>
-      <td class="num">${it.pendente != null ? num(it.pendente) : "—"}</td>
+      <td class="num">${_cmpRec?.modo === "compra_direta" ? `<select class="cmp-ri" data-f="categoria_custo" style="max-width:120px;">${cmpCatOptions(it.categoria_custo || "peca")}</select>` : it.pendente != null ? num(it.pendente) : "—"}</td>
       <td><input type="number" step="0.001" min="0" class="cmp-ri" data-f="quantidade_nf" value="${esc(it.quantidade_nf ?? 0)}" style="width:80px;text-align:right;" /></td>
       <td><input type="number" step="0.0001" min="0" class="cmp-ri" data-f="valor_unitario_nf" value="${esc(it.valor_unitario_nf ?? 0)}" style="width:100px;text-align:right;" /></td>
       <td class="num cmp-ri-total">${brl(Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0))}</td>
@@ -564,7 +650,7 @@ function renderItensRecebimento(){
   tb.querySelectorAll(".cmp-ri").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", e => {
     const tr = e.target.closest("tr"), it = _cmpRec.itens[Number(tr.dataset.idx)], f = e.target.dataset.f;
     if(f === "destino") Object.assign(it, cmpDestinoDoValor(e.target.value));
-    else if(f === "descricao") it.descricao = e.target.value; else it[f] = Number(e.target.value || 0);
+    else if(f === "descricao" || f === "categoria_custo") it[f] = e.target.value; else it[f] = Number(e.target.value || 0);
     tr.querySelector(".cmp-ri-total").textContent = brl(Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0));
     cmpRecSoma();
   }));
@@ -615,6 +701,7 @@ function cmpRecAddItem(p){
 function cmpDestinoPadraoDe(p){ return p.equipamento_id ? "eq:" + p.equipamento_id : (p.local_entrega === "obra" && p.obra_id) ? "obra:" + p.obra_id : "estoque"; }
 async function confirmarRecebimento(){
   const r = _cmpRec; if(!r) return;
+  if(r.modo === "compra_direta") return registrarCompraDireta();   // fase 78
   const forn = $("cmp-rec-forn").value;
   if(!forn){ aviso("app-aviso", "Informe o fornecedor.", "erro"); return; }
   const itens = r.itens.filter(it => Number(it.quantidade_nf) > 0);
@@ -653,6 +740,143 @@ async function confirmarRecebimento(){
   if(typeof carregarProdutos === "function") carregarProdutos();
   await cmpFetchPedidos();
   if(r.pedido?.id) await abrirPedido(r.pedido.id); else renderCompras();
+}
+
+/* ---------- compra direta (fase 78) ----------
+   Mesmo modal do recebimento da NF, em modo "compra_direta": a compra já foi feita e a nota está na mão.
+   Exige o XML, ou o número da NF com o PDF/foto anexado. A RPC compra_direta_registrar cria pedido, itens,
+   recebimento e anexos numa transação e confirma (estoque, custo, títulos) se couber na alçada de quem
+   registra; acima dela, o pedido vai para aprovação e a aprovação confirma o recebimento. */
+function abrirCompraDireta(){
+  if(!cmpPodeOperar()){ aviso("app-aviso", "Seu perfil não opera compras.", "erro"); return; }
+  _cmpItens = [];
+  abrirRecebimento(null, "compra_direta");
+}
+async function registrarCompraDireta(){
+  const r = _cmpRec; if(!r) return;
+  const forn = $("cmp-rec-forn").value;
+  if(!forn){ aviso("app-aviso", "Informe o fornecedor (o XML preenche; emitente novo: \"Cadastrar a partir da NF\").", "erro"); return; }
+  const itens = r.itens.filter(it => Number(it.quantidade_nf) > 0);
+  if(!itens.length){ aviso("app-aviso", "Nenhum item com quantidade.", "erro"); return; }
+  for(const it of itens){
+    if(!it.descricao || !it.descricao.trim()){ aviso("app-aviso", "Há item sem descrição.", "erro"); return; }
+    if(it.destino === "estoque" && !it.produto_id){ aviso("app-aviso", `"${it.descricao}" não tem cadastro: mande para obra, TAG ou setor (custo direto) ou case com um produto.`, "erro"); return; }
+    if(it.destino === "estoque" && cmpItemServico(it)){ aviso("app-aviso", `"${it.descricao}" é serviço: o custo vai para obra, TAG ou setor, não para o estoque.`, "erro"); return; }
+    if(it.destino === "obra" && !it.obra_id || it.destino === "equipamento" && !it.equipamento_id || it.destino === "centro_custo" && !it.centro_custo_id){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
+  }
+  const nf = $("cmp-rec-nf").value.trim(), files = [...($("cmp-rec-anexos")?.files || [])];
+  if(!r.xml && (!nf || !files.length)){ aviso("app-aviso", "Compra direta exige a nota: importe o XML, ou informe o número da NF e anexe o PDF ou a foto. Sem nota, lance como custo avulso.", "erro"); return; }
+  const venc = $("cmp-rec-venc").value || null;
+  const dups = Array.isArray(r.duplicatas) && r.duplicatas.length ? r.duplicatas : null;
+  if(!venc && !dups && !confirm("Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?")) return;
+  const recId = crypto.randomUUID();
+  let anexos = [];
+  try { anexos = await cmpEnviarAnexos(recId, files); } catch(e){ aviso("app-aviso", e.message || String(e), "erro"); return; }
+  const frete = Number($("cmp-rec-frete").value || 0), obs = $("cmp-rec-obs").value.trim() || null;
+  const cab = { fornecedor_id: forn, data_pedido: $("cmp-rec-emissao").value || $("cmp-rec-data").value || hojeISO(), frete, observacoes: obs };
+  const its = itens.map(it => ({ produto_id: it.produto_id || null, descricao: it.descricao.trim(), unidade: it.unidade || "un", quantidade: Number(it.quantidade_nf),
+    valor_unitario: Number(it.valor_unitario_nf || 0), categoria_custo: it.categoria_custo || null, destino: it.destino || "estoque", obra_id: it.obra_id || null,
+    equipamento_id: it.equipamento_id || null, centro_custo_id: it.centro_custo_id || null, codigo_fornecedor: it.codigo_fornecedor || null, ean: it.ean || null,
+    ncm: it.ncm || null, cfop: it.cfop || null, casamento: it.casamento || null }));
+  const rec = { id: recId, nf_numero: nf || null, nf_serie: $("cmp-rec-serie").value.trim() || null, nf_chave: $("cmp-rec-chave").value.replace(/\D/g, "") || null,
+    nf_data_emissao: $("cmp-rec-emissao").value || null, data_recebimento: $("cmp-rec-data").value || hojeISO(), frete, vencimento: venc,
+    parcelas: Math.max(1, Number($("cmp-rec-parc").value || 1)), total_nf: Number($("cmp-rec-total").value || 0), observacoes: obs, duplicatas: dups,
+    xml_texto: r.xml?.texto || null, anexos };
+  const { data, error } = await sb.rpc("compra_direta_registrar", { p_cabecalho: cab, p_itens: its, p_recebimento: rec });
+  if(error){ await cmpRemoverAnexos(anexos); aviso("app-aviso", "Compra não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  if(data?.status === "aguardando_aprovacao")
+    aviso("app-aviso", `Compra registrada acima da sua alçada (${cmpAlcadaTxt()}): o pedido foi para aprovação. Estoque, custo e títulos entram quando quem tem alçada aprovar.`, "ok");
+  else aviso("app-aviso", "Compra direta registrada: pedido recebido, estoque/custos atualizados" + (venc || dups ? " e títulos gerados." : "."), "ok");
+  fecharRecebimento();
+  if(typeof aceInvalidar === "function") aceInvalidar();
+  if(typeof carregarProdutos === "function") carregarProdutos();
+  await cmpFetchPedidos();
+  if(data?.pedido_id) await abrirPedido(data.pedido_id); else renderCompras();
+}
+
+/* ---------- recebimento de serviço com evidência (fase 78) ----------
+   Sem regra de prazo: quem responde pelo recebimento (padrão: o solicitante) registra o que foi executado e
+   anexa a evidência. recebimento_confirmar recusa serviço sem anexo e serviço no estoque. */
+function cmpPodeTrocarResp(){
+  const p = _cmpAtual; if(!p || !cmpPodeOperar() || p.status === "cancelado") return false;
+  return ["admin","diretor","comprador"].includes(usuarioAtual?.cargo) || (!!p.criado_por && p.criado_por === usuarioAtual?.id);
+}
+function cmpServicosPendentes(){ return _cmpItens.filter(i => i.id && cmpItemServico(i) && Number(i.quantidade_recebida || 0) < Number(i.quantidade || 0)); }
+function cmpPodeReceberServico(){
+  const p = _cmpAtual; if(!p?.id || !cmpPodeOperar()) return false;
+  if(!["aprovado","enviado","parcialmente_recebido"].includes(p.status) || !cmpServicosPendentes().length) return false;
+  const eu = usuarioAtual?.id;
+  return eu === p.responsavel_recebimento_id || eu === p.criado_por || ["admin","diretor"].includes(usuarioAtual?.cargo)
+    || _cmpAlcada === null || (_cmpAlcada >= 0 && Number(p.total || 0) <= _cmpAlcada);
+}
+function abrirReceberServico(){
+  const p = _cmpAtual; if(!cmpPodeReceberServico()) return;
+  _cmpSrv = { pedido: p, itens: cmpServicosPendentes().map(i => {
+    const pend = Number(i.quantidade || 0) - Number(i.quantidade_recebida || 0);
+    let d = { destino: i.destino, obra_id: i.obra_id || null, equipamento_id: i.equipamento_id || null, centro_custo_id: i.centro_custo_id || null };
+    if(d.destino === "estoque") d = cmpDestinoDoValor(cmpDestinoPadraoDe(p));
+    return { pedido_item_id: i.id, descricao: i.descricao, unidade: i.unidade || "un", pendente: pend, quantidade: pend,
+      valor: Math.round(pend * Number(i.valor_unitario || 0) * 100) / 100, categoria_custo: i.categoria_custo, ...d };
+  }) };
+  $("cmp-srv-titulo").textContent = `Receber serviço — pedido ${p.numero}`;
+  $("cmp-srv-data").value = hojeISO(); $("cmp-srv-nf").value = ""; $("cmp-srv-desc").value = ""; $("cmp-srv-anexos").value = "";
+  $("cmp-srv-venc").value = "";
+  if(p.condicao_pagamento && /(\d+)\s*dias?/i.test(p.condicao_pagamento)){ const d = new Date(); d.setDate(d.getDate() + Number(RegExp.$1)); $("cmp-srv-venc").value = dataLocalISO(d); }
+  renderServicoItens();
+  $("cmp-srv-modal").style.display = "flex";
+}
+function fecharReceberServico(){ $("cmp-srv-modal").style.display = "none"; _cmpSrv = null; }
+function renderServicoItens(){
+  const tb = $("cmp-srv-itens"); const its = _cmpSrv?.itens || [];
+  tb.innerHTML = its.map((it, i) => `<tr data-i="${i}">
+    <td><strong>${esc(it.descricao)}</strong> <span class="meta">${esc(CMP_CAT_LBL[it.categoria_custo] || "")}</span></td>
+    <td class="num">${num(it.pendente)} <span class="meta">${esc(it.unidade)}</span></td>
+    <td><input type="number" class="cmp-srv-q" step="0.001" min="0" value="${esc(it.quantidade)}" style="width:80px;text-align:right;" /></td>
+    <td><input type="number" class="cmp-srv-v" step="0.01" min="0" value="${esc(it.valor)}" style="width:110px;text-align:right;" /></td>
+    <td><select class="cmp-srv-d" style="max-width:230px;">${cmpDestinoOptions(cmpDestinoValor(it))}</select>${it.destino === "estoque" ? '<div class="meta txt-perigo">escolha obra, TAG ou setor</div>' : ""}</td></tr>`).join("")
+    || `<tr><td colspan="5" class="vazio">Nenhum serviço pendente neste pedido.</td></tr>`;
+  tb.querySelectorAll(".cmp-srv-q").forEach(el => el.addEventListener("input", e => { const it = _cmpSrv.itens[Number(e.target.closest("tr").dataset.i)]; it.quantidade = Number(e.target.value || 0); cmpSrvSoma(); }));
+  tb.querySelectorAll(".cmp-srv-v").forEach(el => el.addEventListener("input", e => { const it = _cmpSrv.itens[Number(e.target.closest("tr").dataset.i)]; it.valor = Number(e.target.value || 0); cmpSrvSoma(); }));
+  tb.querySelectorAll(".cmp-srv-d").forEach(el => el.addEventListener("change", e => { Object.assign(_cmpSrv.itens[Number(e.target.closest("tr").dataset.i)], cmpDestinoDoValor(e.target.value)); renderServicoItens(); }));
+  cmpSrvSoma();
+}
+function cmpSrvSoma(){ $("cmp-srv-soma").textContent = "Total: " + brl((_cmpSrv?.itens || []).filter(i => i.quantidade > 0).reduce((s, i) => s + Number(i.valor || 0), 0)); }
+async function confirmarServico(){
+  const s = _cmpSrv; if(!s) return;
+  const p = s.pedido, desc = $("cmp-srv-desc").value.trim(), files = [...($("cmp-srv-anexos").files || [])];
+  const itens = s.itens.filter(i => Number(i.quantidade) > 0);
+  if(!itens.length){ aviso("app-aviso", "Informe a quantidade recebida de pelo menos um serviço.", "erro"); return; }
+  if(!desc){ aviso("app-aviso", "Descreva o que foi executado.", "erro"); $("cmp-srv-desc").focus(); return; }
+  if(!files.length){ aviso("app-aviso", "Serviço sem evidência não é recebido: anexe a foto ou o documento do que foi executado.", "erro"); return; }
+  for(const it of itens){
+    if(it.destino === "estoque"){ aviso("app-aviso", `"${it.descricao}": serviço não entra no estoque. Escolha a obra, a TAG ou o setor.`, "erro"); return; }
+    if(it.destino === "obra" && !it.obra_id || it.destino === "equipamento" && !it.equipamento_id || it.destino === "centro_custo" && !it.centro_custo_id){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
+    if(Number(it.quantidade) > it.pendente * 1.1 && !confirm(`"${it.descricao}": recebendo ${num(it.quantidade)} e o pedido tem ${num(it.pendente)} pendente. Continuar?`)) return;
+  }
+  const venc = $("cmp-srv-venc").value || null;
+  if(!venc && !confirm("Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?")) return;
+  const recId = crypto.randomUUID();
+  let anexos = [];
+  try { anexos = await cmpEnviarAnexos(recId, files); } catch(e){ aviso("app-aviso", e.message || String(e), "erro"); return; }
+  const total = Math.round(itens.reduce((t, i) => t + Number(i.valor || 0), 0) * 100) / 100;
+  const desfazer = async () => { await sb.from("recebimentos").delete().eq("id", recId); await cmpRemoverAnexos(anexos); };
+  const { error } = await sb.from("recebimentos").insert({ id: recId, pedido_id: p.id, fornecedor_id: p.fornecedor_id, tipo: "servico",
+    nf_numero: $("cmp-srv-nf").value.trim() || null, data_recebimento: $("cmp-srv-data").value || hojeISO(), vencimento: venc, parcelas: 1, total_nf: total, observacoes: desc });
+  if(error){ await cmpRemoverAnexos(anexos); aviso("app-aviso", "Erro ao criar o recebimento: " + error.message, "erro"); return; }
+  const { error: eIt } = await sb.from("recebimento_itens").insert(itens.map(it => ({
+    recebimento_id: recId, pedido_item_id: it.pedido_item_id, descricao: it.descricao, unidade: it.unidade, quantidade_nf: Number(it.quantidade),
+    valor_unitario_nf: Math.round(Number(it.valor || 0) / Number(it.quantidade) * 10000) / 10000, quantidade_aceita: Number(it.quantidade),
+    categoria_custo: it.categoria_custo || null, destino: it.destino, obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null,
+    centro_custo_id: it.destino === "centro_custo" ? it.centro_custo_id : null })));
+  if(eIt){ await desfazer(); aviso("app-aviso", "Erro nos itens do recebimento: " + eIt.message, "erro"); return; }
+  const { error: eAn } = await sb.from("recebimento_anexos").insert(anexos.map(a => ({ recebimento_id: recId, ...a })));
+  if(eAn){ await desfazer(); aviso("app-aviso", "Erro ao registrar a evidência: " + eAn.message, "erro"); return; }
+  const { error: eRpc } = await sb.rpc("recebimento_confirmar", { p_id: recId });
+  if(eRpc){ await desfazer(); aviso("app-aviso", "Serviço não recebido: " + eRpc.message.replace(/^.*?: /, ""), "erro"); return; }
+  aviso("app-aviso", "Serviço recebido com evidência: custo lançado" + (venc ? " e título gerado." : "."), "ok");
+  fecharReceberServico();
+  await cmpFetchPedidos();
+  await abrirPedido(p.id);
 }
 
 /* ---------- XML da NF-e ---------- */
@@ -898,6 +1122,20 @@ function ligarCompras(){
   $("btn-cmp-atualizar")?.addEventListener("click", () => carregarCompras(true));
   $("btn-cmp-novo")?.addEventListener("click", () => novoPedido());
   $("btn-cmp-receber-avulso")?.addEventListener("click", () => { _cmpItens = []; abrirRecebimento(null); });
+  // fase 78: compra direta, receber serviço, responsável pelo recebimento, "só os meus"
+  $("btn-cmp-compra-direta")?.addEventListener("click", abrirCompraDireta);
+  $("cmp-f-meus")?.addEventListener("change", renderCompras);
+  $("btn-cmp-srv-fechar")?.addEventListener("click", fecharReceberServico);
+  $("btn-cmp-srv-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-srv-confirmar", confirmarServico));
+  $("cmp-resp-receb")?.addEventListener("change", async () => {
+    if(!_cmpEditId || cmpEditavel()) return;   // rascunho grava no Salvar
+    const v = $("cmp-resp-receb").value || _cmpAtual?.solicitante_id || null;
+    const { error } = await sb.from("pedidos_compra").update({ responsavel_recebimento_id: v }).eq("id", _cmpEditId);
+    if(error){ aviso("app-aviso", "Não foi possível trocar o responsável: " + error.message, "erro"); return; }
+    if(_cmpAtual) _cmpAtual.responsavel_recebimento_id = v;
+    aviso("app-aviso", "Responsável pelo recebimento atualizado.", "ok");
+    cmpAtualizarBotoes(); await cmpFetchPedidos();
+  });
   $("cmp-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a.link-obra") || e.target.closest("button") || e.target.closest("input,label")) return;
     if(e.target.closest("tr[data-req]")) return; // fase 60: requisições têm o próprio clique

@@ -144,6 +144,7 @@ const CSS_PROPOSTA = `
   .quadro-precos .col-qtd  { width: 9%; text-align:center; }
   .quadro-precos .col-vu   { width: 12%; text-align:right; white-space: nowrap; }
   .quadro-precos .col-vt   { width: 14%; text-align:right; white-space: nowrap; }
+  .sigla { white-space: nowrap; }   /* lote S42 (L3): NBR-7212, NBR-12.655 não quebram no meio */
   .quadro-precos .total-linha td { font-weight: bold; background: #d9d9d9; }
   .obs-itens { margin-top: 8px; }
   .obs-itens .obs { border:1px solid #000; padding: 4px 6px; font-size: 8.5pt; }
@@ -179,7 +180,12 @@ const CSS_PROPOSTA = `
 /* ---------- Blocos reutilizáveis ---------- */
 
 /* cabeçalho institucional com logo, identificação do documento e meta-dados */
-function blocoCabecalho(tipo, codigoModelo, revisao, paginaAtual, paginaTotal){
+/* lote S42 (L3): sigla de norma (NBR-7212, NBR-12.655) fica inteira na mesma linha; recebe texto já escapado */
+function siglasSemQuebra(html){ return String(html || "").replace(/\bNBR-?\s?[\d.]+/g, m => `<span class="sigla">${m}</span>`); }
+
+/* lote S42 (L2): "Página i de N" saiu daqui (era "1 de 1" num PDF de 5 páginas) e vai no carimbo do rodapé de cada
+   página (pdfCarimbarRodape, core.js), que conhece o total */
+function blocoCabecalho(tipo, codigoModelo, revisao){
   const t = PROPOSTA_TIPOS[tipo] || PROPOSTA_TIPOS.outro;
   const codigo = codigoModelo || t.codigo;
   const rev    = revisao || t.revisao_padrao;
@@ -202,8 +208,6 @@ function blocoCabecalho(tipo, codigoModelo, revisao, paginaAtual, paginaTotal){
             <tr><td class="val">${esc(codigo)}</td></tr>
             <tr><td class="lbl">Revisão</td></tr>
             <tr><td class="val">${esc(rev)}</td></tr>
-            <tr><td class="lbl">Página</td></tr>
-            <tr><td class="val">${paginaAtual} de ${paginaTotal}</td></tr>
           </table>
         </td>
       </tr>
@@ -634,7 +638,7 @@ function blocoEncargos(encargos){
     const n = it.r === "NAO"          ? "X" : "";
     const cls = it.destaque ? "destaque" : "";
     return `<tr class="${cls}">
-      <td>${esc(it.d)}</td>
+      <td>${siglasSemQuebra(esc(it.d))}</td>
       <td class="x">${c}</td>
       <td class="x">${g}</td>
       <td class="x">${n}</td>
@@ -682,7 +686,7 @@ function montarHtmlProposta(dados){
   const itensQuadro = [...(itens || []), ...extras];
 
   const corpo = `
-    ${blocoCabecalho(tipo, codigoModelo, revisao, 1, 1)}
+    ${blocoCabecalho(tipo, codigoModelo, revisao)}
     ${blocoDestinatario(cliente, orcamento.cidade_emissao, orcamento.data_orcamento, orcamento)}
     ${blocoNumeroProposta(orcamento.numero, orcamento.data_orcamento, revisao)}
     ${blocoIntroducao(orcamento.referencia_obra || orcamento.descricao, tipo)}

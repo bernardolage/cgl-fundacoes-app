@@ -1503,11 +1503,11 @@ td.num, th.num {
 .odoo-contexto .chip.chip-aviso a { color: var(--aviso-txt); text-decoration: underline; }
 
 /* Chamado #4: obra clicável em qualquer tela (linkObra em core.js) */
-a.link-obra {
+a.link-obra, a.link-cad {
   color: inherit; text-decoration: none; cursor: pointer;
   border-bottom: 1px dotted currentColor;
 }
-a.link-obra:hover, a.link-obra:focus-visible {
+a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus-visible {
   color: var(--marca-600); border-bottom-style: solid;
 }
 
@@ -2678,8 +2678,6 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--sup-2); border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; }
 .mob-sec { border-top: 1px solid var(--borda); padding: 12px 0; }
 .mob-sec h4 { margin: 0 0 8px; font-size: var(--txt-sm); text-transform: uppercase; letter-spacing: .3px; color: var(--txt-sec); }
-.mob-apoio-lista { display: flex; flex-wrap: wrap; gap: 4px 12px; }
-.mob-apoio { font-size: var(--txt-xs); }
 .mob-est-tabela input { font-size: var(--txt-xs); padding: 3px 5px; }
 /* pendências */
 .mob-pend-setor { margin-bottom: 10px; }
@@ -2782,6 +2780,15 @@ input:disabled, select:disabled, textarea:disabled {
 .cmp-ri-pick .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; background: var(--sup-0); }
 .cmp-ri-badge { font-size: 10.5px; padding: 0 6px; border-radius: 8px; margin-left: 4px; }
 
+/* ---- Bens do contrato na ficha da obra (fase 80) ---- */
+.obr-bens-fam { margin: 2px 0; border-bottom: 1px solid var(--borda); }
+.obr-bens-fam summary { cursor: pointer; padding: 6px 0; }
+.obr-bens-fam .mov-ace-sug-lista { padding: 4px 0 8px 16px; }
+
+/* ---- Compras no balcão (fase 78): serviço sem evidência há mais de 7 dias ---- */
+tr.cmp-srv-atraso td { background: var(--aviso-bg); }
+.serv-kan-card.cmp-srv-atraso { border-left: 3px solid var(--aviso); }
+
 /* ---- Acessórios: fotos e valor (fase 55) ---- */
 .ace-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .ace-foto { border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; background: var(--sup-1); }
@@ -2799,3 +2806,9 @@ body.so-leitura .btn[type=submit],
 body.so-leitura .btn-salvar,
 body.so-leitura .btn-novo,
 body.so-leitura .form-acoes .btn:not(#btn-copiar-uninfe) { display: none !important; }
+
+/* ---- Fase 83: separações (item já separado fica verde; "casar" item livre com o catálogo) ---- */
+.sep-ok td { background: var(--sucesso-bg); }
+.sep-ok td:nth-child(2) { color: var(--txt-sec); }
+.sep-casar { margin: 4px 0 0; max-width: 340px; }
+.sep-casar input { font-size: var(--txt-xs); }

@@ -16,6 +16,7 @@ let _dashObrasAnd = [];    // vw_sc_obra_andamento
 let _dashAcoes = [];       // vw_sc_acoes
 let _dashFila = [];        // vw_sc_minha_fila
 let _dashReg = [];         // vw_sc_regularizar (fase 75)
+let _dashObraMat = {};     // vw_sc_obra_material (fase 83): obra_id → separações abertas
 let _dashFrotaFiltro = "todas";
 let _dashCargaN = 0;       // descarta resposta de carga antiga quando o período muda no meio
 const DASH_NIVEL = {
@@ -25,7 +26,7 @@ const DASH_NIVEL = {
   conformidade: { label: "Conformidade", cor: "cinza",    ordem: 4 }
 };
 const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", compras: "Compras",
-  mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas" };
+  mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado" };
 /* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
    "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
    As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
@@ -36,7 +37,8 @@ const DASH_SETOR_GESTORES = {
   compras:     ["comprador", "almoxarife"],
   mobilizacao: ["logistica", "engenheiro"],
   chamados:    [],
-  contratos:   ["comercial"]
+  contratos:   ["comercial"],
+  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios"]   // fase 83: separações
 };
 function dashGereSetor(setor){
   const cargo = usuarioAtual?.cargo;
@@ -169,9 +171,10 @@ async function carregarDashFaixa(carga){
 async function dashCarregarAcoes(){
   const cont = $("dash-acoes");
   if(!cont) return;
-  const dados = await dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes");
+  // fase 83: as separações vêm numa view à parte (vw_sc_acoes_sep) e entram na mesma lista
+  const [dados, sep] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*"))]);
   if(!dados) return;
-  _dashAcoes = dados.filter(a => dashGereSetor(a.setor))
+  _dashAcoes = dados.concat(sep || []).filter(a => dashGereSetor(a.setor))
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
   _dashAcoes.forEach(a => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
@@ -209,9 +212,9 @@ function dashTituloAcao(t){
 async function dashCarregarFila(){
   const cont = $("dash-fila");
   if(!cont) return;
-  const dados = await dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila");
+  const [dados, sep] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*"))]);   // fase 83
   if(!dados) return;
-  _dashFila = dados.sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
+  _dashFila = dados.concat(sep || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
     ? _dashFila.map((a, i) => dashLinhaAcao(a, i, "fila")).join("")
@@ -264,6 +267,9 @@ async function dashAbrirRegularizar(a){
     if(ids.length === 1){ await dashAbrirObra(ids[0], f.aba); obrFocarCampo(f.foco); return; }
     irParaSecao("obras");
     if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: f.aba, foco: f.foco });
+  } else if(a.secao === "obras" && a.filtro === "rdo_sem_dados"){ // lote S42: RDO em branco → aba RDOs da obra
+    if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
+    else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
   } else if(a.secao === "obras"){ // estacas sem profundidade / projeto a confirmar: uma linha por obra
     if(typeof estDefinirFiltroProf === "function") estDefinirFiltroProf(a.filtro);
     if(a.obra_id) await dashAbrirObra(a.obra_id, "estacas");
@@ -316,6 +322,10 @@ async function dashAbrirAcao(a){
         _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; setTimeout(() => renderCompras(), 400);
       }
       break;
+    case "separacoes": // fase 83: uma separação abre a ficha; o grupo abre o painel já filtrado
+      if(typeof _sepPreset !== "undefined") _sepPreset = id ? "" : /vencid/i.test(a.titulo) ? "vencidas" : /sem respons/i.test(a.titulo) ? "sem_resp" : "";
+      if(irParaSecao("separacoes") && id && typeof abrirSeparacao === "function") abrirSeparacao(id);
+      break;
     default:
       irParaSecao(a.secao);
   }
@@ -367,9 +377,10 @@ function dashAlternarPin(id){
 }
 async function dashCarregarObrasAndamento(){
   if(!_dashObrasAnd.length){
-    const d = await dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-obras-and");
+    const [d, mat] = await Promise.all([dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-obras-and"), dashLer("vw_sc_obra_material", q => q.select("*"))]);   // fase 83
     if(!d) return;
     _dashObrasAnd = d;
+    _dashObraMat = {}; (mat || []).forEach(m => { _dashObraMat[m.obra_id] = m; });
   }
   renderDashObrasAndamento();
 }
@@ -395,7 +406,7 @@ function renderDashObrasAndamento(){
         <td class="num">${prodPer[o.obra_id] ? `${num(prodPer[o.obra_id])} m` : '<span class="meta">—</span>'}</td>
         <td>${o.previsao_termino ? `${dataBR(o.previsao_termino)}${folga != null ? ` <span class="tag ${folga < 0 ? "vermelho" : "verde"}">${folga < 0 ? Math.abs(folga) + " d atrasada" : folga + " d de folga"}</span>` : ""}` : `<span class="meta" title="Precisa de 3 dias com RDO, ritmo maior que zero e metros faltando">sem dados</span>`}</td>
         <td>${o.ultimo_rdo ? dataBR(o.ultimo_rdo) : '<span class="meta">sem RDO</span>'}${o.dias_sem_lancamento != null ? ` <span class="meta">(${o.dias_sem_lancamento} d)</span>` : ""}</td>
-        <td>${o.parada ? '<span class="tag ambar">parada</span> ' : ""}${o.pronta_baixa ? '<span class="tag verde">pronta p/ baixa</span> ' : ""}${o.sem_previstas ? '<span class="tag cinza">sem previstas</span>' : ""}</td>
+        <td>${o.parada ? '<span class="tag ambar">parada</span> ' : ""}${o.pronta_baixa ? '<span class="tag verde">pronta p/ baixa</span> ' : ""}${o.sem_previstas ? '<span class="tag cinza">sem previstas</span> ' : ""}${_dashObraMat[o.obra_id] ? `<span class="tag ambar" title="separações abertas no almoxarifado (fase 83)">material pedido (${_dashObraMat[o.obra_id].itens_pendentes})</span>` : ""}</td>
       </tr>`;
     }).join("")}</tbody></table></div>`;
 }

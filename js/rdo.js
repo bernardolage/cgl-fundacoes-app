@@ -25,6 +25,21 @@ let _rdoBoletimAberto = null;
 let _rdoObraParams = null;    // obras.concretagem_tipo_padrao/traco/peso_saco/fator_perda/jornada_* da obra da ficha
 
 const RDO_STAGES = ["rascunho","finalizado"];
+/* lote S42 (L5): texto do diário → equipamento. Aceita o código externo, o código (com ou sem espaço/hífen), o nome
+   e os apelidos TAG-NN, TAG NN, EQP-NN, EQ NN e NN (o número da TAG: equipamentos.codigo começa com "NN-"; com
+   letra, "55B" casa "55B-CM"). Devolve o equipamento ou null; número que serve a mais de uma TAG também devolve null. */
+function rdoCasarMaquina(texto){
+  const t = String(texto || "").trim().toUpperCase(); if(!t) return null;
+  const chaves = [t, t.replace(/\s/g, ""), t.replace(/-/g, "")];
+  const eq = _rdoEquipsCache.find(e => [e.codigo_externo, e.codigo, (e.codigo || "").replace(/\s/g, ""), (e.codigo || "").replace(/-/g, ""), e.nome]
+    .filter(Boolean).some(c => chaves.includes(String(c).toUpperCase())));
+  if(eq) return eq;
+  const m = t.match(/^(?:TAG|EQP|EQ|M[ÁA]Q(?:UINA)?)?[\s\-.:]*(\d{1,3})([A-Z]?)$/);
+  if(!m) return null;
+  const re = new RegExp("^" + m[1] + m[2] + "-");
+  const cands = _rdoEquipsCache.filter(e => re.test(String(e.codigo || "").toUpperCase()));
+  return cands.length === 1 ? cands[0] : null;
+}
 
 const TIPO_SERVICO = {
   helice_continua:   { label: "Hélice contínua", cor: "azul",     icone: "🌀" },
@@ -333,6 +348,9 @@ function abrirFichaRDOVisual(rdo){
   const metragem = _rdoExecucoes.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
   $("rdo-ficha-metragem-chip").textContent = `${num(metragem)} m`;
   $("rdo-ficha-titulo").textContent = rdoEditId ? `RDO ${dataBR(rdo.data)}` : "Novo RDO";
+  // fase 83: pedido de material ao almoxarifado a partir do RDO (encarregado em campo)
+  const bPed = $("btn-rdo-pedir-material");
+  if(bPed) bPed.style.display = rdo.obra_id && typeof sepPodePedir === "function" && sepPodePedir() ? "" : "none";
 
   _rdoBoletimAberto = null;
   atualizarStatusbarRDO(rdo.status);
@@ -1531,6 +1549,9 @@ function ligarRDO(){
       case "btn-csv-confirmar":
         confirmarImportCSV();
         break;
+      case "btn-rdo-pedir-material":   // fase 83
+        if(typeof abrirPedidoMaterial === "function") abrirPedidoMaterial({ obra_id: $("rdo-obra")?.value || null });
+        break;
       case "btn-rdo-anterior":
         navegarRDO("anterior");
         break;
@@ -1855,11 +1876,13 @@ async function montarPreviewDias(data, origem, obraSel){
     }
 
     // Converte para o formato de registros do pipeline (1 registro por estaca por dia)
-    const mapaMaq = {};
-    _rdoEquipsCache.forEach(e => {
-      [e.codigo_externo, e.codigo, (e.codigo||"").replace(/\s/g,""), (e.codigo||"").replace(/-/g,""), e.nome]
-        .filter(Boolean).forEach(c => { const k = c.toUpperCase(); if(!(k in mapaMaq)) mapaMaq[k] = e.id; });
-    });
+    // lote S42 (L5): a máquina casa por rdoCasarMaquina (apelidos TAG-NN etc.); obra com uma única mobilização ativa
+    // empresta a TAG principal ao dia que veio sem máquina no diário
+    let maqSugerida = null;
+    if(obraSel){
+      const { data: mobs } = await sb.from("mobilizacoes").select("equipamento_id").eq("obra_id", obraSel).in("status", ["em_preparacao", "em_transito", "em_obra"]).not("equipamento_id", "is", null);
+      if(mobs && mobs.length === 1) maqSugerida = _rdoEquipsCache.find(e => e.id === mobs[0].equipamento_id) || null;
+    }
     const ts = (dia, hhmm) => hhmm ? `${dia}T${hhmm}:00` : null;
     const registros = [];
     _iaExtras = {};
@@ -1920,8 +1943,8 @@ async function montarPreviewDias(data, origem, obraSel){
           torque: e.torque,
           volume_concreto_m3: e.volume_concreto_m3,
           diametro_mm: e.diametro_mm,
-          maquina_codigo: maq,
-          equipamento_id: mapaMaq[maq.toUpperCase()] || null,
+          maquina_codigo: maq || (maqSugerida ? maqSugerida.codigo : ""),
+          equipamento_id: (rdoCasarMaquina(maq) || (!maq ? maqSugerida : null) || {}).id || null,
           observacoes: e.observacoes || null,
           origem_dados: origem
         });
@@ -2420,7 +2443,7 @@ function lerConferenciaIA(){
       const numero = normalizarNumeroEstaca(g("estaca_numero").value.trim());
       if(!numero) return;
       const maq = g("maquina_codigo").value.trim();
-      const eq = _rdoEquipsCache.find(e => [e.codigo_externo, e.codigo].filter(Boolean).some(c => c.toUpperCase() === maq.toUpperCase()));
+      const eq = rdoCasarMaquina(maq);   // lote S42: apelidos TAG-NN
       // sub-linha (trechos, inclinação, injeção)
       const sub = tr.nextElementSibling && tr.nextElementSibling.classList.contains("ia-sub") ? tr.nextElementSibling : null;
       const gs = (c) => sub ? sub.querySelector(`[data-c="${c}"]`) : null;
@@ -2537,7 +2560,7 @@ function parseCsvGeodigitus(linhas){
     if(!dataStr) continue;
     const dataDia = dataStr.split(" ")[0]; // YYYY-MM-DD
     const maq = partes[idx["MAQUINA"]]?.replace(/^"|"$/g,"").trim() || "";
-    const equipId = mapaMaq[maq.toUpperCase()] || null;
+    const equipId = mapaMaq[maq.toUpperCase()] || (rdoCasarMaquina(maq) || {}).id || null;   // lote S42: apelidos TAG-NN
     const obraCsv = idx["OBRA"] != null ? (partes[idx["OBRA"]]?.replace(/^"|"$/g,"").trim() || "") : "";
     const estacaRaw = partes[idx["ESTACA"]]?.replace(/^"|"$/g,"").trim() || "";
     const refInfoCsv = detectarRefuro(normalizarNumeroEstaca(estacaRaw));

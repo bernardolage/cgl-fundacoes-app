@@ -917,10 +917,12 @@ function abrirFichaAcessorio(a){
 }
 
 async function aceCarregarFilhas(a){
-  const [ev, rep, comp] = await Promise.all([
+  const [ev, rep, comp, mov] = await Promise.all([
     sb.from("acessorio_eventos").select("id,tipo,data,de_local_tipo,de_ref_id,de_descricao,para_local_tipo,para_ref_id,para_descricao,de_condicao,para_condicao,observacao,autor_nome,movimentacao_id,reparo_id").eq("acessorio_id", a.id).order("data", { ascending: false }).limit(300),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,observacoes").eq("acessorio_id", a.id).order("data_abertura", { ascending: false }),
-    sb.from("acessorio_equipamentos").select("equipamento_id").eq("acessorio_id", a.id)
+    sb.from("acessorio_equipamentos").select("equipamento_id").eq("acessorio_id", a.id),
+    // fase 80: remessas e retornos em que a peça foi, com link de volta para a movimentação
+    sb.from("movimentacao_itens").select("movimentacao_id,mov:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_saida,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao)").eq("acessorio_id", a.id)
   ]);
   if(_aceAtual?.id !== a.id) return;
   const setSb = (id, n) => { const b = $(id); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
@@ -929,7 +931,7 @@ async function aceCarregarFilhas(a){
   setSb("sb-ace-compat", compIds.length + (a.equipamento_padrao_id ? 1 : 0));
   setSb("sb-ace-hist", (ev.data || []).length);
   setSb("sb-ace-rep", (rep.data || []).length);
-  aceRenderHistorico(ev.data || [], ev.error);
+  aceRenderHistorico(ev.data || [], ev.error, (mov.data || []).map(m => m.mov).filter(Boolean));
   aceRenderReparos(rep.data || [], rep.error);
 }
 
@@ -941,19 +943,33 @@ function aceRefLabel(tipo, refId, desc){
   else if(tipo === "em_transito" && refId) base += " → " + (aceObra(refId) || aceEqTag(refId) || "");
   return base + (desc ? ` · ${desc}` : "");
 }
-function aceRenderHistorico(evs, err){
+/* fase 80: movimentação de ativos (número, data, origem → destino) com link de volta */
+function aceMovLado(tipo, obraId, desc){
+  if(tipo === "obra" && obraId) return linkObra(obraId, aceObra(obraId) || "obra");
+  return esc({ base: "Base", obra: "Obra", fornecedor_manutencao: "Fornecedor (manutenção)", cliente: "Cliente", em_transito: "Em trânsito" }[tipo] || tipo || "—") + (desc ? " · " + esc(desc) : "");
+}
+function aceMovsHTML(movs){
+  if(!movs || !movs.length) return "";
+  const lst = [...new Map(movs.map(m => [m.id, m])).values()].sort((x, y) => String(y.data_saida || y.data_emissao || "").localeCompare(String(x.data_saida || x.data_emissao || "")));
+  return `<div class="mov-ace-sug-grupo-t">Movimentações de ativos <span class="meta">${lst.length}</span></div>
+    <div class="tabela-rola" style="margin-bottom:10px;"><table><thead><tr><th>Movimentação</th><th>Tipo</th><th>Data</th><th>Origem → destino</th><th>Status</th></tr></thead>
+    <tbody>${lst.map(m => `<tr><td><strong>${linkMovimentacao(m.id, m.numero || "movimentação")}</strong></td><td>${esc(m.tipo || "")}</td><td>${dataBR(m.data_saida || m.data_emissao)}</td>
+      <td>${aceMovLado(m.origem_tipo, m.origem_obra_id, m.origem_descricao)} → ${aceMovLado(m.destino_tipo, m.destino_obra_id, m.destino_descricao)}</td><td class="meta">${esc(m.status || "")}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function aceRenderHistorico(evs, err, movs){
   const c = $("ace-hist-lista");
   if(err){ c.innerHTML = `<p class="vazio">Erro: ${esc(err.message)}</p>`; return; }
-  if(!evs.length){ c.innerHTML = `<p class="vazio">Sem eventos.</p>`; return; }
+  const movById = {}; (movs || []).forEach(m => movById[m.id] = m);
+  if(!evs.length){ c.innerHTML = aceMovsHTML(movs) + `<p class="vazio">Sem eventos.</p>`; return; }
   const icone = { localizacao: "📍", condicao: "🔩", reparo: "🔧", perda: "⚠️", observacao: "📝", importacao: "📥" };
-  c.innerHTML = `<div class="tl-lista">${evs.map(e => {
+  c.innerHTML = aceMovsHTML(movs) + `<div class="tl-lista">${evs.map(e => {
     let txt = "";
     if(e.tipo === "importacao") txt = `Cadastro importado · ${esc(aceRefLabel(e.para_local_tipo, e.para_ref_id, e.para_descricao))}${e.para_condicao ? " · " + esc(aceLbl("acessorio", e.para_condicao)) : ""}`;
     else if(["localizacao","perda","observacao"].includes(e.tipo)) txt = `${e.de_local_tipo ? esc(aceRefLabel(e.de_local_tipo, e.de_ref_id, e.de_descricao)) + " → " : ""}${esc(aceRefLabel(e.para_local_tipo, e.para_ref_id, e.para_descricao))}`;
     else txt = `${esc(aceLbl("acessorio", e.de_condicao))} → ${esc(aceLbl("acessorio", e.para_condicao))}`;
     return `<div class="tl-item"><div class="tl-icone">${icone[e.tipo] || "•"}</div><div class="tl-conteudo">
       <div class="tl-titulo">${esc(ACE_EVENTO_LBL[e.tipo] || e.tipo)} <span class="tl-data meta">${aceQuando(e.data)}</span></div>
-      <div>${txt}</div>${e.observacao ? `<div class="meta">${esc(e.observacao)}</div>` : ""}
+      <div>${txt}</div>${e.observacao ? `<div class="meta">${esc(e.observacao)}</div>` : ""}${e.movimentacao_id ? `<div class="meta">🚚 ${linkMovimentacao(e.movimentacao_id, movById[e.movimentacao_id]?.numero || "ver a movimentação")}</div>` : ""}
       <div class="tl-autor meta">${esc(e.autor_nome || "sistema")}</div></div></div>`;
   }).join("")}</div>`;
 }
@@ -964,7 +980,7 @@ function aceRenderReparos(reps, err){
   c.innerHTML = `<div class="lista-topo"><h3>Reparos de caldeiraria</h3>${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-rep-novo" style="margin-left:auto;">🔧 Abrir reparo</button>` : ""}</div>` +
     (reps.length ? `<div class="tabela-rola"><table><thead><tr><th>Abertura</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Custo</th><th>Obs.</th>${pode ? "<th></th>" : ""}</tr></thead>
     <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${r.status === "concluido" ? "verde" : r.status === "cancelado" ? "cinza" : "ambar"}">${esc(ACE_REPARO_STATUS[r.status] || r.status)}</span></td>
-      <td>${esc(r.descricao || "")}</td><td>${dataBR(r.data_inicio)}</td><td>${dataBR(r.data_conclusao)}</td><td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td>
+      <td>${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_inicio)}</td><td>${dataBR(r.data_conclusao)}</td><td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td>
       <td class="meta">${esc((r.observacoes || "").replace(/^\[import raiz\]\s*/, ""))}</td>
       ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${r.id}" data-st="em_execucao">▶ Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${r.id}" data-st="concluido">✅ Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${r.id}" data-st="cancelado" style="color:var(--perigo);">✖</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum reparo registrado para esta peça.</p>`);
