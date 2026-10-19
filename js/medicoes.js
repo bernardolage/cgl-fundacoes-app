@@ -405,7 +405,7 @@ const medValorEfetivo = (m) => Number(m.valor_final) || Number(m.valor_medido) |
 async function calcularSaldoSinalObra(obraId, excluirMedId){
   if(!obraId) return null;
   const [obraRes, medsRes] = await Promise.all([
-    sb.from("obras").select("*").eq("id", obraId).single(),
+    sb.from("obras").select("*, financeiro:obras_financeiro(valor_contratado)").eq("id", obraId).single(),   // fase 90
     sb.from("medicoes").select("id,numero,tipo_medicao,status,valor_medido,valor_final,subtotal,desconto_sinal,percentual").eq("obra_id", obraId)
   ]);
   if(obraRes.error || medsRes.error) return null;
@@ -416,7 +416,7 @@ async function calcularSaldoSinalObra(obraId, excluirMedId){
   const recebido = sinais.reduce((s, m) => s + medValorEfetivo(m), 0);
   const abatido  = outras.reduce((s, m) => s + (Number(m.desconto_sinal) || 0), 0);
   const medidoBruto = outras.reduce((s, m) => s + (Number(m.subtotal) || medValorEfetivo(m)), 0);
-  const valorContratado = Number(obra.valor_contratado) || 0;
+  const valorContratado = Number(obra.financeiro?.valor_contratado) || 0;   // obras_financeiro (fase 90): nulo para quem não lê financeiro
   return {
     obra, valorContratado, recebido, abatido, saldoSinal: Math.max(0, recebido - abatido),
     medidoBruto, saldoAMedir: Math.max(0, valorContratado - medidoBruto),
@@ -1517,7 +1517,7 @@ function fecharImportBoletimPDF(){
 async function medImpCarregarContextoObra(){
   const st = _medImp; if(!st) return;
   const [obraRes, medsRes, casRes, eqRes, rdoRes] = await Promise.all([
-    sb.from("obras").select("id,codigo,nome,cliente_id,contrato_id,valor_contratado,iss_percentual,cliente:cliente_id(nome),contrato:contrato_id(numero)").eq("id", st.obraId).single(),
+    sb.from("obras").select("id,codigo,nome,cliente_id,contrato_id,iss_percentual,cliente:cliente_id(nome),contrato:contrato_id(numero),financeiro:obras_financeiro(valor_contratado)").eq("id", st.obraId).single(),
     sb.from("medicoes").select("numero,status").eq("obra_id", st.obraId),
     sb.rpc("medicao_precos_cascata", { p_obra_id: st.obraId }),
     sb.from("equipamentos").select("id,codigo").not("codigo", "is", null).limit(500),
@@ -1886,6 +1886,7 @@ async function medImpConfirmar(){
   const naoConf = st.itens.filter(it => !it.removido && !it.conferido).length;
   if(naoConf && !confirm(`${naoConf} item(ns) ainda sem o ✓ de conferido. Gravar a medição aprovada mesmo assim?`)) return;
   const o = st.obra || {};
+  const valorObra = Number(o.financeiro?.valor_contratado) || 0;   // obras_financeiro (fase 90)
   const tipo = $("med-imp-h-tipo")?.value || "quinzenal";
   const dataMed = $("med-imp-h-data")?.value || hojeISO();
   const ini = $("med-imp-h-ini")?.value || null, fim = $("med-imp-h-fim")?.value || null;
@@ -1913,7 +1914,7 @@ async function medImpConfirmar(){
     tipo_medicao: tipo, multiplicador_pct: t.mult,
     status: "aprovada", origem: "importada_pdf", arquivo_origem_url: storagePath, importada_em: new Date().toISOString(),
     data_medicao: dataMed, periodo_inicio: ini, periodo_fim: fim,
-    percentual: (Number(o.valor_contratado) > 0) ? Math.min(999.999, +(t.valorFinal / Number(o.valor_contratado) * 100).toFixed(3)) : 0,
+    percentual: valorObra > 0 ? Math.min(999.999, +(t.valorFinal / valorObra * 100).toFixed(3)) : 0,
     valor_medido: t.valorFinal, subtotal: t.subtotal,
     desconto_sinal: t.descSinal, desconto_descricao: ($("med-imp-h-sinal-obs")?.value || "").trim() || null,
     acrescimo: t.acresc, acrescimo_descricao: ($("med-imp-h-acresc-obs")?.value || "").trim() || null,

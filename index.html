@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="85ed174" />
+<meta name="app-versao" content="12243a3" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=85ed174" />
+<link rel="stylesheet" href="css/estilo.css?v=12243a3" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -2102,7 +2102,7 @@
             <div class="chip"><span>Código</span><strong id="obr-ficha-codigo">—</strong></div>
             <div class="chip"><span>Cliente</span><strong id="obr-ficha-cliente-chip">—</strong></div>
             <div class="chip"><span>Status</span><strong id="obr-ficha-status-chip">—</strong></div>
-            <div class="chip"><span>Valor contratado</span><strong id="obr-ficha-valor-chip">R$ 0,00</strong></div>
+            <div class="chip" id="obr-ficha-valor-chip-box"><span>Valor contratado</span><strong id="obr-ficha-valor-chip">R$ 0,00</strong></div>
             <div class="chip"><span>Cidade</span><strong id="obr-ficha-cidade-chip">—</strong></div>
           </div>
 
@@ -2172,7 +2172,7 @@
                 <div class="campo"><label>Data de início</label><input id="obr-inicio" type="date" /></div>
                 <div class="campo"><label>Fim previsto</label><input id="obr-fim-prev" type="date" /></div>
                 <div class="campo"><label>Fim real</label><input id="obr-fim-real" type="date" /></div>
-                <div class="campo"><label>Valor contratado (R$)</label><input id="obr-valor" type="number" step="0.01" min="0" value="0" /></div>
+                <div class="campo" id="obr-valor-campo"><label>Valor contratado (R$)</label><input id="obr-valor" type="number" step="0.01" min="0" value="0" /></div>
               </div>
             </div>
 
@@ -4621,44 +4621,44 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=85ed174"></script>
+<script src="js/core.js?v=12243a3"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=85ed174"></script>
+<script src="js/historico.js?v=12243a3"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=85ed174"></script>
-<script src="js/fornecedores.js?v=85ed174"></script>
-<script src="js/apropriacoes.js?v=85ed174"></script>
-<script src="js/funcionarios.js?v=85ed174"></script>
-<script src="js/servicos.js?v=85ed174"></script>
-<script src="js/produtos.js?v=85ed174"></script>
-<script src="js/estoque.js?v=85ed174"></script>
-<script src="js/separacoes.js?v=85ed174"></script>
-<script src="js/compras.js?v=85ed174"></script>
-<script src="js/requisicoes.js?v=85ed174"></script>
-<script src="js/orcamentos.js?v=85ed174"></script>
-<script src="js/propostas.js?v=85ed174"></script>
-<script src="js/contratos.js?v=85ed174"></script>
-<script src="js/contas_pagar.js?v=85ed174"></script>
-<script src="js/centros_custo.js?v=85ed174"></script>
-<script src="js/carteira.js?v=85ed174"></script>
-<script src="js/obras.js?v=85ed174"></script>
-<script src="js/frota.js?v=85ed174"></script>
-<script src="js/viagens.js?v=85ed174"></script>
-<script src="js/equipamentos.js?v=85ed174"></script>
-<script src="js/acessorios.js?v=85ed174"></script>
-<script src="js/reparos.js?v=85ed174"></script>
-<script src="js/fabricacao.js?v=85ed174"></script>
-<script src="js/mobilizacoes.js?v=85ed174"></script>
-<script src="js/estacas.js?v=85ed174"></script>
-<script src="js/obra_abas.js?v=85ed174"></script>
-<script src="js/medicoes.js?v=85ed174"></script>
-<script src="js/movimentacoes.js?v=85ed174"></script>
-<script src="js/rdo.js?v=85ed174"></script>
-<script src="js/rdo_import_maya.js?v=85ed174"></script>
-<script src="js/usuarios.js?v=85ed174"></script>
-<script src="js/chamados.js?v=85ed174"></script>
-<script src="js/dashboard.js?v=85ed174"></script>
+<script src="js/clientes.js?v=12243a3"></script>
+<script src="js/fornecedores.js?v=12243a3"></script>
+<script src="js/apropriacoes.js?v=12243a3"></script>
+<script src="js/funcionarios.js?v=12243a3"></script>
+<script src="js/servicos.js?v=12243a3"></script>
+<script src="js/produtos.js?v=12243a3"></script>
+<script src="js/estoque.js?v=12243a3"></script>
+<script src="js/separacoes.js?v=12243a3"></script>
+<script src="js/compras.js?v=12243a3"></script>
+<script src="js/requisicoes.js?v=12243a3"></script>
+<script src="js/orcamentos.js?v=12243a3"></script>
+<script src="js/propostas.js?v=12243a3"></script>
+<script src="js/contratos.js?v=12243a3"></script>
+<script src="js/contas_pagar.js?v=12243a3"></script>
+<script src="js/centros_custo.js?v=12243a3"></script>
+<script src="js/carteira.js?v=12243a3"></script>
+<script src="js/obras.js?v=12243a3"></script>
+<script src="js/frota.js?v=12243a3"></script>
+<script src="js/viagens.js?v=12243a3"></script>
+<script src="js/equipamentos.js?v=12243a3"></script>
+<script src="js/acessorios.js?v=12243a3"></script>
+<script src="js/reparos.js?v=12243a3"></script>
+<script src="js/fabricacao.js?v=12243a3"></script>
+<script src="js/mobilizacoes.js?v=12243a3"></script>
+<script src="js/estacas.js?v=12243a3"></script>
+<script src="js/obra_abas.js?v=12243a3"></script>
+<script src="js/medicoes.js?v=12243a3"></script>
+<script src="js/movimentacoes.js?v=12243a3"></script>
+<script src="js/rdo.js?v=12243a3"></script>
+<script src="js/rdo_import_maya.js?v=12243a3"></script>
+<script src="js/usuarios.js?v=12243a3"></script>
+<script src="js/chamados.js?v=12243a3"></script>
+<script src="js/dashboard.js?v=12243a3"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=85ed174"></script>
+<script src="js/init.js?v=12243a3"></script>
 </body>
 </html>

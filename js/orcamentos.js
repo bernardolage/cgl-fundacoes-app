@@ -842,7 +842,6 @@ async function criarObraDoOrcamento(){
     cliente_id: orc.cliente_id,
     contrato_id: contr.id,
     status: "planejada",
-    valor_contratado: orc.valor_total,
     descricao: `Obra gerada a partir do ${origem}`
   }).select("id").single();
   if(eObra){
@@ -855,7 +854,12 @@ async function criarObraDoOrcamento(){
     return;
   }
 
-  aviso("app-aviso", `🏗️ Obra ${codigo} criada (status: planejada).`, "ok");
+  // 2b) Valor da obra (fase 90): vive em obras_financeiro; a linha nasce zerada pelo gatilho e recebe aqui o valor do orçamento
+  const { error: eFin } = await sb.from("obras_financeiro").upsert({ obra_id: novaObraReg.id, valor_contratado: orc.valor_total });
+
+  aviso("app-aviso", eFin
+    ? `🏗️ Obra ${codigo} criada, mas o valor contratado não pôde ser gravado: ${eFin.message}`
+    : `🏗️ Obra ${codigo} criada (status: planejada).`, eFin ? "erro" : "ok");
   if(typeof carregarObras === "function")     await carregarObras();
   if(typeof carregarContratos === "function") await carregarContratos();
   await carregarAbasOrc(orc);

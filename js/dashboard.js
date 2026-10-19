@@ -39,7 +39,7 @@ const DASH_SETOR_GESTORES = {
   mobilizacao: ["logistica", "engenheiro"],
   chamados:    [],
   contratos:   ["comercial"],
-  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios"],   // fase 83: separações
+  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios", "auxiliar_almoxarifado"],   // fase 83: separações; fase 90: equipe do Julio
   oficina:     ["mecanico", "gestor_acessorios", "logistica", "almoxarife", "engenheiro"]   // fase 84: ordens de fabricação
 };
 function dashGereSetor(setor){
@@ -47,6 +47,10 @@ function dashGereSetor(setor){
   if(["diretor", "admin", "auditor"].includes(cargo)) return true; // fase 79: auditor confere a Sala de Comando inteira
   return (DASH_SETOR_GESTORES[setor] || []).includes(cargo);
 }
+/* Fase 90: o auxiliar de almoxarifado (equipe do Julio) só tem "Exige ação hoje" (setor almoxarifado) e "Minha fila".
+   Faixa do período, "Para regularizar", abas (frota, obras, operadores, produção), financeiro, orçamentos e atividade
+   não aparecem nem são consultados; as views vw_sc_* já filtram por pode_ler_* no banco. */
+function dashSoAlmoxarifado(){ return !!usuarioAtual && usuarioAtual.cargo === "auxiliar_almoxarifado"; }
 const DASH_SITUACAO = {
   produzindo:   { label: "Produzindo hoje",      cor: "verde" },
   parada:       { label: "Parada",               cor: "ambar" },
@@ -91,13 +95,18 @@ async function carregarDashboard(){
   if($("dash-card-custo"))  $("dash-card-custo").style.display  = dashEhDiretoria() ? "" : "none";
   const finEl = $("dash-financeiro");
   if(finEl) finEl.style.display = dashEhDiretoria() ? "" : "none";
+  // fase 90: auxiliar de almoxarifado vê só "Exige ação hoje" e "Minha fila"
+  const soAlmox = dashSoAlmoxarifado();
+  [$("dash-faixa"), $("dash-periodo"), $("dash-regularizar")?.closest(".card"), document.querySelector("#sec-inicio .dash-abas"), $("dash-card-orc")?.closest(".dash-duas-col")]
+    .forEach(el => { if(el) el.style.display = soAlmox ? "none" : ""; });
 
   // 1ª onda: o que o usuário olha primeiro
   const t0 = performance.now();
-  await Promise.all([carregarDashFaixa(carga), dashCarregarAcoes(), dashCarregarFila(), dashCarregarRegularizar()]);
+  await Promise.all([soAlmox ? null : carregarDashFaixa(carga), dashCarregarAcoes(), dashCarregarFila(), soAlmox ? null : dashCarregarRegularizar()]);
   if(carga !== _dashCargaN) return;
   console.info(`Início: 1ª onda em ${Math.round(performance.now() - t0)} ms`);
   if($("dash-atualizado")) $("dash-atualizado").textContent = "atualizado às " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if(soAlmox){ ligarCliquesDashboard(); return; }   // fase 90: sem abas, resumo nem atividade para o auxiliar
 
   // 2ª onda: abas e o resumo do fim da página
   await Promise.all([
@@ -566,14 +575,14 @@ function ligarCliquesDashboard(){
    KPIs FINANCEIROS — contratado / medido / a medir / %
    ============================================================ */
 async function carregarDashFinanceiro(){
-  // Contratado: soma de obras com contrato vinculado + valor_contratado > 0
-  // (Usa obras.valor_contratado direto — mais simples e robusto)
+  // Contratado: soma do valor das obras ativas. Fase 90: o valor vive em obras_financeiro (RLS: só quem lê
+  // financeiro; este bloco já é da diretoria), embutido 1:1 na obra.
   const [{ data: obrasAtivas }, { data: medsAprovadas }] = await Promise.all([
-    sb.from("obras").select("valor_contratado").in("status", ["em_andamento","planejada","paralisada"]),
+    sb.from("obras").select("id,financeiro:obras_financeiro(valor_contratado)").in("status", ["em_andamento","planejada","paralisada"]),
     sb.from("medicoes").select("valor_final,valor_medido").in("status",["aprovada","faturada"])
   ]);
 
-  const contratado = (obrasAtivas||[]).reduce((s,o) => s + (Number(o.valor_contratado)||0), 0);
+  const contratado = (obrasAtivas||[]).reduce((s,o) => s + (Number(o.financeiro?.valor_contratado)||0), 0);   // obras_financeiro
   const medido     = (medsAprovadas||[]).reduce((s,m) => s + (Number(m.valor_final)||Number(m.valor_medido)||0), 0);
   const aMedir     = contratado - medido;
   const pct        = contratado > 0 ? Math.round((medido / contratado) * 100) : 0;
@@ -648,12 +657,19 @@ async function carregarDashTopObras(){
   if(!cont) return;
   const mostraValor = dashEhDiretoria();
   const tit = $("dash-top-obras-titulo");
-  if(tit) tit.textContent = mostraValor ? "📈 Top 5 obras (valor)" : "📈 Top 5 obras";
-  const { data } = await sb.from("obras")
-    .select("id,codigo,nome,valor_contratado,status")
-    .in("status",["em_andamento","planejada","paralisada"])
-    .order("valor_contratado",{ascending:false})
-    .limit(5);
+  if(tit) tit.textContent = mostraValor ? "📈 Top 5 obras (valor)" : "📈 Obras ativas";
+  // Fase 90: o valor vive em obras_financeiro (RLS: só quem lê financeiro). Diretoria: as 5 maiores pelo valor (111
+  // linhas, ordenadas aqui); os demais cargos não leem valor e veem as 5 obras ativas mais recentes, sem ranking.
+  const ATIVAS = ["em_andamento","planejada","paralisada"];
+  let data;
+  if(mostraValor){
+    const r = await sb.from("obras_financeiro").select("valor_contratado,obra:obras(id,codigo,nome,status)");
+    data = (r.data||[]).filter(f => f.obra && ATIVAS.includes(f.obra.status)).map(f => ({ ...f.obra, valor: Number(f.valor_contratado)||0 }))   // linha de obras_financeiro + obra embutida
+      .sort((a,b) => b.valor - a.valor).slice(0, 5);
+  } else {
+    const r = await sb.from("obras").select("id,codigo,nome,status").in("status", ATIVAS).order("codigo",{ascending:false}).limit(5);
+    data = r.data;
+  }
   if(!data || !data.length){
     cont.innerHTML = `<p class="vazio" style="font-size:var(--txt-sm);">Nenhuma obra ativa.</p>`;
     return;
@@ -663,7 +679,7 @@ async function carregarDashTopObras(){
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
         <strong>${i+1}.</strong> ${esc(o.codigo)} <span style="color:var(--txt-sutil);">·</span> ${esc((o.nome||"").slice(0,30))}${(o.nome||"").length>30?"…":""}
       </div>
-      ${mostraValor ? `<strong style="color:var(--sucesso);">${brl(o.valor_contratado)}</strong>` : ""}
+      ${mostraValor ? `<strong style="color:var(--sucesso);">${brl(o.valor)}</strong>` : ""}
     </div>`).join("")}</div>`;
   cont.querySelectorAll(".dash-linha-obra[data-obra-id]").forEach(el => {
     el.addEventListener("click", () => dashAbrirObra(el.dataset.obraId));

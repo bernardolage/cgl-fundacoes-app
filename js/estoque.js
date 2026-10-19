@@ -32,7 +32,8 @@ const EST_AJUDA = {
 
 function estPodeEditar(){
   // fase 78: logistica (Fabrício, dono de Compras e do balcão) também movimenta
-  return !!usuarioAtual && ["admin","diretor","almoxarife","comprador","gestor_acessorios","logistica"].includes(usuarioAtual.cargo);
+  // fase 90: auxiliar de almoxarifado (equipe do Julio) dá baixa, devolve e conta (movimentacoes_estoque_write no banco)
+  return !!usuarioAtual && ["admin","diretor","almoxarife","comprador","gestor_acessorios","logistica","auxiliar_almoxarifado"].includes(usuarioAtual.cargo);
 }
 function estProdTxt(p){ return p ? `${p.codigo} — ${p.nome}` : "—"; }
 /* fase 81: saldo acertado pela sincronização com o Odoo (scripts/importar-odoo-compras.js estoque) */

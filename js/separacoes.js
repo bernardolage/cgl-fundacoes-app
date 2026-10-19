@@ -27,8 +27,8 @@ const SEP_SELECT = "id,numero,origem_tipo,mobilizacao_id,obra_id,equipamento_id,
 const SEP_ITEM_SELECT = "*,produto:produtos(codigo,nome,unidade,estoque_atual,controle_reposicao),acessorio:acessorios(marcacao,tipo,local_tipo,local_obra_id)";
 const SEP_PROD_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,codigo_barras";
 
-/* quem separa e entrega = quem opera compras/estoque (compras_pode_operar() no banco) */
-function sepPodeOperar(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "gestor_acessorios", "engenheiro", "logistica", "financeiro", "mecanico", "gestor_frota"].includes(usuarioAtual.cargo); }
+/* quem separa e entrega = quem opera compras/estoque + auxiliar de almoxarifado (almoxarifado_pode_operar() no banco, fase 90) */
+function sepPodeOperar(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "gestor_acessorios", "engenheiro", "logistica", "financeiro", "mecanico", "gestor_frota", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
 /* quem pede material para a obra (separacoes_pode_pedir() no banco) */
 function sepPodePedir(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "encarregado", "engenheiro", "assistente_engenharia", "mecanico", "operador", "logistica", "gestor_acessorios", "financeiro", "gestor_frota"].includes(usuarioAtual.cargo); }
 function sepTag(st){ const o = SEP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }

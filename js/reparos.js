@@ -25,8 +25,9 @@ const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessor
 
 function repPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios"].includes(usuarioAtual.cargo); }
 /* lote S43 (L10, pedido do Julio em 18/10): o almoxarife lança as peças consumidas e dá a baixa, como no Odoo;
-   status, horas, motivo e o resto da ficha seguem repPodeEditar(). Espelha reparo_itens_write e reparo_consumir_pecas. */
-function repPodeItens(){ return repPodeEditar() || (!!usuarioAtual && usuarioAtual.cargo === "almoxarife"); }
+   status, horas, motivo e o resto da ficha seguem repPodeEditar(). Espelha reparo_itens_write e reparo_consumir_pecas.
+   Fase 90: o auxiliar de almoxarifado (equipe do Julio) faz o mesmo que ele na aba Peças. */
+function repPodeItens(){ return repPodeEditar() || (!!usuarioAtual && ["almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo)); }
 function repTag(st){ const o = REP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
 function repAlvoTxt(r){ return r.acessorio ? r.acessorio.marcacao : r.equipamento ? "TAG " + r.equipamento.codigo : "—"; }
 function repAlvoLink(r){ return r.acessorio_id ? linkAcessorio(r.acessorio_id, r.acessorio?.marcacao || "peça") : r.equipamento_id ? linkEquipamento(r.equipamento_id, "TAG " + (r.equipamento?.codigo || "")) : "—"; }

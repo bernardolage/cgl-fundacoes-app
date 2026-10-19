@@ -24,10 +24,15 @@ const OBR_CON_DOC_CONF = {
   msgSemPai: "Preencha o número do contrato e salve a obra para anexar o contrato assinado."
 };
 
+/* Fase 90 (áudios do Julio, 18/10/2026): o valor contratado saiu de obras e vive em obras_financeiro, que no banco só
+   pode_ler_financeiro() lê. Na lista ele vem como coluna da view (left join) e na ficha como embed `financeiro`; para
+   quem não lê chega nulo e a tela nem desenha coluna, chip ou campo (podeVerValorObra, core.js). */
+function obrValor(o){ return Number((o && (o.financeiro ? o.financeiro.valor_contratado : o.valor_contratado)) || 0); }   // obras_financeiro: embed na ficha, coluna da view na lista
+
 /* ---------- Carga ---------- */
 async function carregarObras(){
   const { data, error } = await sb.from("vw_obras_controle")
-    .select("id,codigo,nome,cliente_id,contrato_id,status,valor_contratado,data_inicio,data_fim_prevista,responsavel_id,cidade,uf")
+    .select("id,codigo,nome,cliente_id,contrato_id,status,valor_contratado,data_inicio,data_fim_prevista,responsavel_id,cidade,uf")   // valor_contratado: coluna da view lida de obras_financeiro (fase 90)
     .order("codigo");
   if(error){
     _obrRegistros = [];
@@ -141,6 +146,7 @@ function renderObrasLista(dados){
     cont.innerHTML = `<p class="vazio">Nenhuma obra encontrada.</p>`;
     return;
   }
+  const comValor = podeVerValorObra();   // fase 90: a coluna de valor só para quem lê financeiro
   const linhas = dados.map(o => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
     <td>${esc(o.codigo)} ${obrPendBadge(o)}</td>
     <td>${esc(o.nome)}</td>
@@ -148,12 +154,12 @@ function renderObrasLista(dados){
     <td>${esc((o.cidade||"") + (o.uf ? "/" + o.uf.toUpperCase() : ""))}</td>
     <td>${dataBR(o.data_inicio)}</td>
     <td>${tagStatus("obra", o.status)}</td>
-    <td class="num">${brl(o.valor_contratado)}</td>
+    ${comValor ? `<td class="num">${brl(obrValor(o))}</td>` : ""}
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
       <th>Código</th><th>Nome</th><th>Cliente</th><th>Cidade/UF</th>
-      <th>Início</th><th>Status</th><th class="num">Valor contratado</th>
+      <th>Início</th><th>Status</th>${comValor ? '<th class="num">Valor contratado</th>' : ""}
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 }
@@ -174,7 +180,7 @@ function renderObrasKanban(dados){
         </div>
         <div class="serv-kan-card-rod">
           <span>${o.cidade ? esc(o.cidade) + "/" + esc((o.uf||"").toUpperCase()) : "—"}</span>
-          <strong>${brl(o.valor_contratado)}</strong>
+          ${podeVerValorObra() ? `<strong>${brl(obrValor(o))}</strong>` : ""}
         </div>
       </div>`).join("");
     return `<div class="serv-kan-col" data-status="${esc(st)}">
@@ -224,7 +230,7 @@ function novaObra(){
   limparAbaContratoObra();
 
   $("btn-excluir-obra").style.display = "none";
-  abrirFichaObra({ codigo: "", nome: "(nova)", status: "planejada", valor_contratado: 0 });
+  abrirFichaObra({ codigo: "", nome: "(nova)", status: "planejada" });
   // Sem sugestão automática de código: sugerirNumeros() contava um <tbody> sempre
   // vazio e propunha "OB-0001" (já usado → erro de UNIQUE). O código da obra
   // segue o padrão da CGL (ex.: 7822-2025) e é informado pelo usuário.
@@ -246,7 +252,8 @@ function obrValorResponsavel(id){
 }
 
 async function abrirObra(id){
-  const { data, error } = await sb.from("obras").select("*").eq("id", id).single();
+  // fase 90: o valor vem de obras_financeiro embutido 1:1 (nulo para quem não lê financeiro)
+  const { data, error } = await sb.from("obras").select("*, financeiro:obras_financeiro(valor_contratado)").eq("id", id).single();
   if(error){ aviso("app-aviso","Erro ao abrir obra: "+error.message, "erro"); return; }
   obraEditId = id;
 
@@ -258,7 +265,7 @@ async function abrirObra(id){
   $("obr-inicio").value = data.data_inicio || "";
   $("obr-fim-prev").value = data.data_fim_prevista || "";
   $("obr-fim-real").value = data.data_fim_real || "";
-  $("obr-valor").value = data.valor_contratado || 0;
+  $("obr-valor").value = obrValor(data);
   $("obr-cep").value = data.cep || "";
   $("obr-logradouro").value = data.logradouro || "";
   $("obr-numero").value = data.numero || "";
@@ -408,7 +415,7 @@ async function salvarContratoDaObra(obra){
     data_assinatura: $("obr-con-assinatura").value || null,
     data_inicio: obra.data_inicio,
     data_fim_prevista: obra.data_fim_prevista,
-    valor_total: obra.valor_contratado || 0,
+    valor_total: (podeVerValorObra() && obra.valor_contratado != null) ? obrValor(obra) : (_obrContrato?.valor_total ?? 0),   // fase 90: só quem gravou obras_financeiro espelha o valor; os demais mantêm o do contrato
     indice_reajuste: ($("obr-con-indice").value || "").trim() || null
   };
 
@@ -438,7 +445,11 @@ function abrirFichaObra(obra){
   $("obr-ficha-codigo").textContent = obra.codigo || "(novo)";
   $("obr-ficha-cliente-chip").textContent = mapaClientes[obra.cliente_id] || "—";
   $("obr-ficha-status-chip").innerHTML = tagStatus("obra", obra.status);
-  $("obr-ficha-valor-chip").textContent = brl(obra.valor_contratado);
+  // fase 90: valor só para quem lê financeiro (obras_financeiro); chip e campo somem para os demais
+  const comValor = podeVerValorObra();
+  $("obr-ficha-valor-chip").textContent = brl(obrValor(obra));
+  if($("obr-ficha-valor-chip-box")) $("obr-ficha-valor-chip-box").style.display = comValor ? "" : "none";
+  if($("obr-valor-campo")) $("obr-valor-campo").style.display = comValor ? "" : "none";
   $("obr-ficha-cidade-chip").textContent = obra.cidade
     ? `${obra.cidade}${obra.uf ? "/" + obra.uf.toUpperCase() : ""}`
     : "—";
@@ -590,7 +601,6 @@ async function salvarObra(novoStatus){
     data_inicio: $("obr-inicio").value || null,
     data_fim_prevista: $("obr-fim-prev").value || null,
     data_fim_real: $("obr-fim-real").value || null,
-    valor_contratado: Number($("obr-valor").value || 0),
     cep: $("obr-cep").value.trim() || null,
     logradouro: $("obr-logradouro").value.trim() || null,
     numero: $("obr-numero").value.trim() || null,
@@ -624,6 +634,16 @@ async function salvarObra(novoStatus){
   $("btn-excluir-obra").style.display = "";
   $("obr-status").value = result.data.status;
 
+  // Fase 90: o valor contratado vive em obras_financeiro (RLS própria: só quem lê financeiro). Grava só quando o
+  // campo está visível; a linha da obra nova já nasceu zerada pelo gatilho trg_obras_financeiro_criar.
+  let msgFim = "Obra salva com sucesso.", tipoFim = "ok";
+  if(podeVerValorObra()){
+    const valor = Number($("obr-valor").value || 0);
+    const { error: eFin } = await sb.from("obras_financeiro").upsert({ obra_id: obraEditId, valor_contratado: valor });
+    if(eFin){ msgFim = "Obra salva, mas o valor contratado não pôde ser gravado: " + eFin.message; tipoFim = "erro"; }
+    else result.data.valor_contratado = valor;   // espelho de obras_financeiro para o contrato do cliente (abaixo)
+  }
+
   // Contrato do cliente (aba Contrato) — espelha os dados da obra recém-salva
   const contratoId = await salvarContratoDaObra(result.data);
   if(contratoId && contratoId !== result.data.contrato_id){
@@ -632,7 +652,7 @@ async function salvarObra(novoStatus){
     if(errVinc) aviso("app-aviso","Contrato gravado, mas não foi possível vinculá-lo à obra: "+errVinc.message,"erro");
   }
 
-  aviso("app-aviso","Obra salva com sucesso.","ok");
+  aviso("app-aviso", msgFim, tipoFim);
   await carregarObras();
   await carregarDashboard();
   if(typeof carregarContratos === "function") await carregarContratos();

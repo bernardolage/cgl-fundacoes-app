@@ -756,6 +756,12 @@ function podeVerContasPagar(){
 function podeVerCentrosCusto(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "gestor_acessorios", "gestor_frota", "auditor"].includes(usuarioAtual.cargo);
 }
+/* Fase 90 (áudios do Julio, 18/10/2026): o valor contratado da obra vive em obras_financeiro, que no banco só
+   pode_ler_financeiro() lê (admin, engenheiro, assistente de engenharia, comercial, financeiro, auditor; diretor por
+   has_role). O front espelha a lista para não desenhar coluna, chip e campo vazios para quem não lê. */
+function podeVerValorObra(){
+  return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo);
+}
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
 const SECOES_OCULTAS_POR_CARGO = {
@@ -763,7 +769,11 @@ const SECOES_OCULTAS_POR_CARGO = {
   // fase 77 (Bernardo, 07/10/2026): gestor de frota cuida de frota, equipamentos, manutenção e compras da frota
   gestor_frota: ["acessorios", "reparos", "fabricacao", "medicoes"],
   // fase 79: auditor (usuário de revisão) vê tudo, menos a gestão de logins
-  auditor: ["usuarios"]
+  auditor: ["usuarios"],
+  // fase 90 (Bernardo, 19/10/2026): auxiliar de almoxarifado = equipe do Julio. Fica só com Início (fila de separação),
+  // Estoque, Separações, Produtos (consulta), Reparos (aba Peças) e Chamados; o resto sai do menu e irParaSecao barra.
+  auxiliar_almoxarifado: ["clientes", "fornecedores", "funcionarios", "servicos", "compras", "orcamentos", "contratos", "centros",
+    "carteira", "obras", "mobilizacoes", "equipamentos", "frota", "acessorios", "fabricacao", "medicoes", "rdo", "usuarios"]
 };
 /* Mostra/esconde os itens do menu conforme o cargo. Chamado no login; isolado para poder ser testado. */
 function aplicarMenuPorCargo(perfil){

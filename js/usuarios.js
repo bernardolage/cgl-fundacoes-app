@@ -21,7 +21,8 @@ const CARGOS = {
   logistica:    "Logística",
   gestor_frota: "Gestor de frota",  /* frota, equipamentos, manutenção/OS, requisições e compras (fase 77) */
   visualizador: "Visualizador",
-  auditor:      "Auditor (só leitura)"  /* usuário de revisão: vê o que a diretoria vê, menos dados sensíveis; não grava (fase 79) */
+  auditor:      "Auditor (só leitura)",  /* usuário de revisão: vê o que a diretoria vê, menos dados sensíveis; não grava (fase 79) */
+  auxiliar_almoxarifado: "Auxiliar de almoxarifado"  /* equipe do Julio: estoque, separações, produtos (consulta) e peças dos reparos; sem obras, compras nem valores (fase 90) */
 };
 
 let _usuarios   = [];
