@@ -12,6 +12,7 @@ let _dashPeriodo = "mes";
 try { const p = localStorage.getItem("dash-periodo"); if(DASH_PERIODOS[p]) _dashPeriodo = p; } catch(_e) { /* sem storage: fica no mês */ }
 let _dashProd = [];        // vw_sc_producao_dia do período atual e do anterior
 let _dashFrota = [];       // vw_sc_frota
+let _dashViagens = [];     // viagens planejadas e em trânsito (fase 89, aba Frota)
 let _dashObrasAnd = [];    // vw_sc_obra_andamento
 let _dashAcoes = [];       // vw_sc_acoes
 let _dashFila = [];        // vw_sc_minha_fila
@@ -26,7 +27,7 @@ const DASH_NIVEL = {
   conformidade: { label: "Conformidade", cor: "cinza",    ordem: 4 }
 };
 const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", compras: "Compras",
-  mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado" };
+  mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado", oficina: "Oficina" };
 /* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
    "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
    As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
@@ -38,7 +39,8 @@ const DASH_SETOR_GESTORES = {
   mobilizacao: ["logistica", "engenheiro"],
   chamados:    [],
   contratos:   ["comercial"],
-  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios"]   // fase 83: separações
+  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios"],   // fase 83: separações
+  oficina:     ["mecanico", "gestor_acessorios", "logistica", "almoxarife", "engenheiro"]   // fase 84: ordens de fabricação
 };
 function dashGereSetor(setor){
   const cargo = usuarioAtual?.cargo;
@@ -120,16 +122,18 @@ async function carregarDashboard(){
 /* ---------- Faixa de indicadores ---------- */
 async function carregarDashFaixa(carga){
   const iv = dashIntervalo(_dashPeriodo);
-  const [prod, frota, obras, rdos, meds, custos] = await Promise.all([
+  const [prod, frota, obras, rdos, meds, custos, viagens] = await Promise.all([
     dashLer("vw_sc_producao_dia", q => q.select("obra_id,equipamento_id,data,estacas,metros,operador_id").gte("data", iv.antIni).lte("data", iv.fim), "dash-k-producao-sub"),
     dashLer("vw_sc_frota", q => q.select("*"), "dash-k-maquinas-sub"),
     dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-k-obras-sub"),
     dashLer("rdo", q => q.select("obra_id").gte("data", iv.ini).lte("data", iv.fim), "dash-k-obras-sub"),
     dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada"]).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),
-    dashEhDiretoria() ? dashLer("vw_custos", q => q.select("valor").gte("data", iv.ini).lte("data", iv.fim), "dash-k-custo-sub") : Promise.resolve([])
+    dashEhDiretoria() ? dashLer("vw_custos", q => q.select("valor").gte("data", iv.ini).lte("data", iv.fim), "dash-k-custo-sub") : Promise.resolve([]),
+    // fase 89: viagens em trânsito agora e planejadas sem caminhão/motorista (aba Frota)
+    dashLer("viagens", q => q.select("id,numero,data,status,finalidade,caminhao_id,funcionario_id,destino_tipo,destino_obra_id,destino_descricao,data_saida,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome)").in("status", ["planejada", "em_transito"]).order("data"))
   ]);
   if(carga !== _dashCargaN) return;
-  _dashProd = prod || []; _dashFrota = frota || []; _dashObrasAnd = obras || [];
+  _dashProd = prod || []; _dashFrota = frota || []; _dashObrasAnd = obras || []; _dashViagens = viagens || [];
   const set = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   const vazio = (id, cond) => { const el = $(id); if(el) el.classList.toggle("dash-num-vazio", !!cond); };
   const quando = DASH_PERIODOS[_dashPeriodo];
@@ -171,10 +175,10 @@ async function carregarDashFaixa(carga){
 async function dashCarregarAcoes(){
   const cont = $("dash-acoes");
   if(!cont) return;
-  // fase 83: as separações vêm numa view à parte (vw_sc_acoes_sep) e entram na mesma lista
-  const [dados, sep] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*"))]);
+  // fase 83: as separações vêm numa view à parte (vw_sc_acoes_sep); fase 84: a fabricação idem (vw_sc_acoes_fab); entram na mesma lista
+  const [dados, sep, fab] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*"))]);
   if(!dados) return;
-  _dashAcoes = dados.concat(sep || []).filter(a => dashGereSetor(a.setor))
+  _dashAcoes = dados.concat(sep || [], fab || []).filter(a => dashGereSetor(a.setor))
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
   _dashAcoes.forEach(a => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
@@ -326,6 +330,10 @@ async function dashAbrirAcao(a){
       if(typeof _sepPreset !== "undefined") _sepPreset = id ? "" : /vencid/i.test(a.titulo) ? "vencidas" : /sem respons/i.test(a.titulo) ? "sem_resp" : "";
       if(irParaSecao("separacoes") && id && typeof abrirSeparacao === "function") abrirSeparacao(id);
       break;
+    case "fabricacao": // fase 84: uma ordem abre a ficha; o grupo abre o painel filtrado em "em produção"
+      if(typeof _fabPreset !== "undefined") _fabPreset = id ? "" : "em_producao";
+      if(irParaSecao("fabricacao") && id && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
+      break;
     default:
       irParaSecao(a.secao);
   }
@@ -347,8 +355,18 @@ function renderDashFrota(){
     _dashFrotaFiltro === "manut" ? f.manut_abertas > 0 : true);
   const porNome = ($("dash-frota-ordem")?.value || "atencao") === "nome";
   lista = lista.sort((a, b) => (porNome ? 0 : a.ordem_atencao - b.ordem_atencao) || String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR", { numeric: true }));
-  if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma máquina com este filtro.</p>`; return; }
-  cont.innerHTML = `<div class="tabela-rola"><table class="dash-tabela">
+  // fase 89: logística — viagens em trânsito agora e planejadas sem caminhão ou motorista a menos de 1 dia da saída
+  const amanha = dataLocalISO(new Date(Date.now() + 86400000));
+  const transito = _dashViagens.filter(v => v.status === "em_transito");
+  const aProgramar = _dashViagens.filter(v => v.status === "planejada" && v.data <= amanha && (!v.caminhao_id || !v.funcionario_id));
+  const vgDest = v => v.destino_obra_id ? linkObra(v.destino_obra_id, v.destino_descricao || mapaObras[v.destino_obra_id] || "obra") : esc(v.destino_descricao || v.destino_tipo || "—");
+  const blocoVg = (transito.length || aProgramar.length) ? `<div class="meta" style="margin:0 0 6px;"><strong>🚚 Logística:</strong> ${transito.length} viagem(ns) em trânsito agora${aProgramar.length ? ` · <span class="txt-perigo">${aProgramar.length} a programar</span> (sem caminhão ou motorista a menos de 1 dia da saída)` : ""}</div>
+    <div class="tabela-rola" style="margin-bottom:12px;"><table class="dash-tabela"><thead><tr><th>Viagem</th><th>Data</th><th>Status</th><th>Caminhão</th><th>Motorista</th><th>Destino</th></tr></thead>
+    <tbody>${aProgramar.concat(transito).map(v => `<tr class="linha-clicavel" data-vg="${esc(v.id)}"><td><strong>${esc(v.numero)}</strong></td><td>${dataBR(v.data)}</td><td>${tagStatus("viagem", v.status)}</td>
+      <td>${v.caminhao ? esc(v.caminhao.codigo) : '<span class="txt-perigo">sem caminhão</span>'}</td><td>${v.funcionario ? esc(v.funcionario.nome) : '<span class="txt-perigo">sem motorista</span>'}</td><td>${vgDest(v)}</td></tr>`).join("")}</tbody></table></div>`
+    : `<p class="meta" style="margin:0 0 8px;">🚚 Logística: nenhuma viagem em trânsito agora.</p>`;
+  if(!lista.length){ cont.innerHTML = blocoVg + `<p class="vazio">Nenhuma máquina com este filtro.</p>`; return; }
+  cont.innerHTML = blocoVg + `<div class="tabela-rola"><table class="dash-tabela">
     <thead><tr><th>Máquina</th><th>Situação</th><th>Obra</th><th>Último lançamento</th><th class="num" title="Intervalo mediano entre estacas: precisa de horário de perfuração nos RDOs">Ritmo</th><th class="num">Período</th><th class="num">Mês</th><th class="num">Horímetro</th><th>Manutenção</th></tr></thead>
     <tbody>${lista.map(f => {
       const s = DASH_SITUACAO[f.situacao] || { label: f.situacao, cor: "cinza" };
@@ -474,6 +492,8 @@ function ligarSalaDeComando(){
   $("dash-frota-ordem")?.addEventListener("change", renderDashFrota);
   $("dash-frota")?.addEventListener("click", (e) => {
     if(e.target.closest("a.link-obra")) return; // o link da obra tem handler global
+    const tv = e.target.closest("tr[data-vg]");   // fase 89: viagem abre a ficha em Logística
+    if(tv){ if(irParaSecao("frota") && typeof abrirViagem === "function") abrirViagem(tv.dataset.vg, null); return; }
     const tr = e.target.closest("tr[data-eqp]");
     if(tr && irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(tr.dataset.eqp);
   });

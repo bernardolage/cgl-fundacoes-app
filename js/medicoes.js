@@ -13,7 +13,7 @@ const MED_STAGES = ["rascunho","enviada","aprovada","faturada"];
 /* ---------- Carga ---------- */
 async function carregarMedicoes(){
   const { data, error } = await sb.from("medicoes")
-    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,obra:obras(codigo,nome)")
+    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,obra:obras(codigo,nome)")
     .order("data_medicao", { ascending: false });
   _medRegistros = error ? [] : (data || []);
   renderMedicoes();
@@ -24,9 +24,11 @@ function medFiltradas(){
   const termo = ($("med-busca")?.value || "").trim().toLowerCase();
   const fStatus = $("med-f-status")?.value || "";
   const fObra = $("med-f-obra")?.value || "";
+  const fOrigem = $("med-f-origem")?.value || ""; // fase 88: "Importadas" (boletim PDF) × digitadas
   return _medRegistros.filter(m => {
     if(fStatus && m.status !== fStatus) return false;
     if(fObra && m.obra_id !== fObra) return false;
+    if(fOrigem && (m.origem || "manual") !== fOrigem) return false;
     if(termo){
       const alvo = `${m.numero||""} ${medObraTxt(m)} ${m.nf_numero||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
@@ -87,7 +89,7 @@ function renderMedLista(dados){
     return;
   }
   const linhas = dados.map(m => `<tr class="linha-clicavel" data-id="${esc(m.id)}">
-    <td>${esc(m.numero)}</td>
+    <td>${esc(m.numero)}${m.origem === "importada_pdf" ? ' <span title="Importada do boletim (PDF), fase 88">📄</span>' : ""}</td>
     <td>${linkObra(m.obra_id, medObraTxt(m))}</td>
     <td>${medPeriodoTxt(m)}</td>
     <td>${num(m.percentual)}%</td>
@@ -218,7 +220,7 @@ async function abrirMedicao(id){
   const [medRes, itensRes] = await Promise.all([
     sb.from("medicoes").select("*").eq("id", id).single(),
     sb.from("medicao_itens")
-      .select("id,ordem,descricao,variante_id,execucao_id,orcamento_item_id,quantidade,unidade,valor_unitario,valor_total,preco_origem,preco_origem_obs")
+      .select("id,ordem,descricao,variante_id,execucao_id,orcamento_item_id,quantidade,unidade,valor_unitario,valor_total,preco_origem,preco_origem_obs,equipamento_id,equipamento_tag,quantidade_lida,valor_unitario_lido,conferido")
       .eq("medicao_id", id).order("ordem")
   ]);
   if(medRes.error){ aviso("app-aviso","Erro ao abrir medição: "+medRes.error.message, "erro"); return; }
@@ -283,6 +285,7 @@ function abrirFichaMed(med){
   $("med-ficha-titulo").textContent = med.numero ? `Medição ${med.numero}` : "Nova medição";
 
   atualizarStatusbarMed(med.status);
+  medAtualizarOrigemFicha(med); // fase 88: chip "Origem" e botão do PDF do boletim importado
   ativarTabMed("geral");
   medAtualizarProducaoPendente(med.id);
 }
@@ -329,9 +332,13 @@ function renderMedItens(){
   tb.innerHTML = _medItens.map((it, idx) => {
     const oi = PRECO_ORIGEM_INFO[it.preco_origem] || PRECO_ORIGEM_INFO.manual;
     const tituloOrigem = it.preco_origem_obs || oi.lbl;
+    // fase 88: item que veio de boletim importado mostra o que o PDF trazia, para comparar com o que ficou
+    const lido = (it.quantidade_lida != null || it.valor_unitario_lido != null)
+      ? `<div class="meta" title="O que o boletim importado (PDF) trazia">PDF: ${it.quantidade_lida != null ? num(it.quantidade_lida) : "—"} × ${it.valor_unitario_lido != null ? brl(it.valor_unitario_lido) : "—"}${it.conferido ? " · ✓ conferido" : ""}${it.equipamento_tag ? " · " + esc(it.equipamento_tag) : ""}</div>`
+      : "";
     return `<tr data-idx="${idx}">
       <td><strong>${idx+1}</strong></td>
-      <td><input type="text" class="mi-desc" value="${esc(it.descricao||"")}" style="min-width:220px;" placeholder="ex.: Estaca Ø400 18-24m" /></td>
+      <td><input type="text" class="mi-desc" value="${esc(it.descricao||"")}" style="min-width:220px;" placeholder="ex.: Estaca Ø400 18-24m" />${lido}</td>
       <td><input type="number" class="mi-qty col-xs" step="0.01" min="0" value="${it.quantidade ?? 0}" /></td>
       <td><input type="text" class="mi-uni" value="${esc(it.unidade||"")}" style="width:50px;" placeholder="m/vb/h" /></td>
       <td><input type="number" class="mi-unit col-sm" step="0.01" min="0" value="${it.valor_unitario ?? 0}" /></td>
@@ -903,7 +910,13 @@ async function salvarMedicao(novoStatus){
           valor_unitario: Number(it.valor_unitario) || 0,
           // valor_total é coluna GENERATED no banco — não enviamos
           preco_origem: it.preco_origem || "manual",
-          preco_origem_obs: it.preco_origem_obs || null
+          preco_origem_obs: it.preco_origem_obs || null,
+          // TAG do boletim e, na fase 88, o que o PDF importado trazia: preservados no delete + insert
+          equipamento_id: it.equipamento_id || null,
+          equipamento_tag: it.equipamento_tag || null,
+          quantidade_lida: it.quantidade_lida ?? null,
+          valor_unitario_lido: it.valor_unitario_lido ?? null,
+          conferido: it.conferido === true
         }));
       if(insertItens.length){
         const { error: errIns } = await sb.from("medicao_itens").insert(insertItens);
@@ -1387,6 +1400,588 @@ async function excluirMedicao(){
   mostrarPainelMed();
 }
 
+/* ====================================================================
+   FASE 88 (19/10/2026, chamado #54) — IMPORTAR BOLETIM DE MEDIÇÃO JÁ EMITIDO (PDF)
+   O PDF é o boletim que a CGL calculou e enviou ao cliente (Maya nas obras de hélice e
+   secante; planilha da CGL nas de raiz e trado). A edge function extrair-medicao-pdf lê e
+   devolve JSON; aqui o usuário confere item a item contra a cascata de preço do app
+   (RPC medicao_precos_cascata: orçamento aprovado > preço do cliente > referência), escolhe
+   por item "usar o lido" (padrão: já foi ao cliente) ou "usar o do app", e confirma. A
+   medição nasce aprovada, origem = 'importada_pdf', com o PDF no bucket obras-documentos
+   (medicoes/<obra>/). Vários PDFs entram em fila e são conferidos um a um.
+   Fora: gerar a medição a partir do RDO; boletim do cliente/fiscalização.
+   ==================================================================== */
+const MED_IMP_MAX_BYTES   = 2 * 1024 * 1024;
+const MED_IMP_MAX_PAGINAS = 10;
+const MED_IMP_CARGOS      = ["diretor", "admin", "financeiro", "engenheiro", "assistente_engenharia"]; // mesma lista da function
+const MED_IMP_UNIDADES_VALIDAS = (typeof UNIDADES !== "undefined" ? UNIDADES : []).concat(["km"]);
+const MED_IMP_UNIDADE_MAPA = {
+  m:"m", ml:"m", metro:"m", metros:"m", "m.l":"m", "m/l":"m", mts:"m",
+  m2:"m2", "m²":"m2", m3:"m3", "m³":"m3",
+  un:"un", und:"un", unid:"un", unidade:"un", unidades:"un", pç:"pc", pc:"pc", peca:"pc", "peça":"pc",
+  vb:"vb", verba:"vb", gl:"vb", global:"vb", cj:"jg", conj:"jg", jg:"jg",
+  kg:"kg", t:"ton", ton:"ton", l:"l", lt:"l", km:"km", sc:"sc", cx:"cx", par:"par", rl:"rl",
+  dia:"diária", dias:"diária", diaria:"diária", "diária":"diária", "diárias":"diária", mes:"mês", "mês":"mês", meses:"mês",
+  h:"un", hs:"un", hr:"un", hrs:"un", hora:"un", horas:"un"   // o enum unidade_medida não tem hora: vira "un" e a tela avisa
+};
+let _medImp = null;          // estado da importação em curso (modal aberto)
+let _medBoletimPath = null;  // caminho do PDF da medição aberta na ficha
+
+function medImpPodeImportar(){ return !!usuarioAtual && MED_IMP_CARGOS.includes(usuarioAtual.cargo); }
+
+function medImpNormalizarUnidade(u){
+  const raw = String(u || "").trim();
+  const chave = raw.toLowerCase().replace(/\s+/g, "").replace(/\.+$/, "");
+  if(!raw) return { valor: "un", aviso: "sem unidade no PDF: gravada como un" };
+  if(MED_IMP_UNIDADES_VALIDAS.includes(chave)) return { valor: chave, aviso: null };
+  const map = MED_IMP_UNIDADE_MAPA[chave];
+  if(map){
+    const perde = /^(h|hs|hr|hrs|hora|horas)$/.test(chave);
+    return { valor: map, aviso: perde ? `unidade "${raw}" não existe no app: gravada como un (a descrição guarda a hora)` : null };
+  }
+  return { valor: "un", aviso: `unidade "${raw}" não existe no app: gravada como un` };
+}
+
+/* Texto sem acento, minúsculo, só letras e dígitos; Ø e "diâmetro" viram "d" para casar "Ø 400" com "D400" */
+function medImpNormalizarTexto(s){
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/ø|diametro|diam\.?|\bdn\b/g, " d ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+const MED_IMP_STOP = new Set(["de","da","do","das","dos","em","mm","com","por","a","e","o","ate","at"]);
+function medImpTokens(s){ return new Set(medImpNormalizarTexto(s).split(" ").filter(t => t.length > 1 && !MED_IMP_STOP.has(t))); }
+/* Casa a descrição lida com a cascata: tokens em comum + números iguais (diâmetro, faixa). A lista já
+   vem na ordem orçamento > cliente > referência, então o empate fica com o primeiro nível. */
+function medImpCasarCascata(descricao){
+  const lista = (_medImp && _medImp.cascata) || [];
+  if(!lista.length || !descricao) return null;
+  const alvoLido = medImpNormalizarTexto(descricao);
+  const a = medImpTokens(descricao);
+  const numsA = alvoLido.match(/\d+/g) || [];
+  let melhor = null, melhorPts = 0;
+  lista.forEach(c => {
+    const texto = c.descricao || c.variante_nome || "";
+    if(!texto) return;
+    const alvo = medImpNormalizarTexto(texto);
+    let pts;
+    if(alvo === alvoLido){
+      pts = 2;
+    } else {
+      const b = medImpTokens(texto);
+      let comum = 0; a.forEach(t => { if(b.has(t)) comum++; });
+      const uniao = new Set([...a, ...b]).size || 1;
+      pts = comum / uniao;
+      const numsB = alvo.match(/\d+/g) || [];
+      if(numsA.length && numsB.length){
+        const iguais = numsA.filter(n => numsB.includes(n)).length;
+        pts += (iguais === numsA.length && iguais === numsB.length) ? 0.3 : (iguais ? 0.1 : -0.3);
+      }
+    }
+    if(pts > melhorPts){ melhor = c; melhorPts = pts; }
+  });
+  return melhorPts >= 0.45 ? melhor : null;
+}
+
+function medImpEstadoInicial(obraId){
+  return { obraId, obra: null, cascata: [], cascataErro: null, numerosExistentes: [], equipamentos: [], tipoServico: null,
+           fila: [], atual: null, resp: null, itens: [], cab: null };
+}
+function medImpLimparAviso(){ const el = $("med-imp-aviso"); if(el){ el.textContent = ""; el.className = "aviso"; } }
+
+async function abrirImportBoletimPDF(obraId){
+  if(!obraId){ aviso("app-aviso", "Salve a obra antes de importar boletins.", "erro"); return; }
+  if(!$("med-imp-modal")) return;
+  _medImp = medImpEstadoInicial(obraId);
+  $("med-imp-fila").innerHTML = "";
+  $("med-imp-conf").style.display = "none"; $("med-imp-conf").innerHTML = "";
+  $("med-imp-acoes").style.display = "none";
+  $("med-imp-arquivo").value = "";
+  medImpLimparAviso();
+  $("med-imp-obra-txt").textContent = mapaObras[obraId] ? `· ${mapaObras[obraId]}` : "";
+  $("med-imp-modal").style.display = "flex";
+  if(!medImpPodeImportar()){
+    aviso("med-imp-aviso", "Seu cargo não importa boletins (diretor, admin, financeiro, engenheiro ou assistente de engenharia).", "erro");
+  } else if(usuarioAtual && ["financeiro", "assistente_engenharia"].includes(usuarioAtual.cargo)){
+    // divergência registrada na fase 88: a function aceita estes cargos, mas medicao_itens_write e o bucket
+    // obras-documentos hoje só aceitam admin, engenheiro e comercial (além do diretor)
+    aviso("med-imp-aviso", "Atenção: seu cargo lê o boletim, mas a gravação dos itens e o anexo do PDF dependem de permissão no banco (hoje: admin, engenheiro e comercial). Se a gravação for recusada, peça ao diretor.", "aviso");
+  }
+  await medImpCarregarContextoObra();
+}
+function fecharImportBoletimPDF(){
+  if(_medImp && _medImp.atual && _medImp.atual.status === "lendo" && !confirm("Há um boletim sendo lido. Fechar mesmo assim?")) return;
+  $("med-imp-modal").style.display = "none";
+  _medImp = null;
+}
+
+/* Obra, medições existentes (não duplicar número), cascata de preço, TAGs e tipo de serviço (pelos RDOs) */
+async function medImpCarregarContextoObra(){
+  const st = _medImp; if(!st) return;
+  const [obraRes, medsRes, casRes, eqRes, rdoRes] = await Promise.all([
+    sb.from("obras").select("id,codigo,nome,cliente_id,contrato_id,valor_contratado,iss_percentual,cliente:cliente_id(nome),contrato:contrato_id(numero)").eq("id", st.obraId).single(),
+    sb.from("medicoes").select("numero,status").eq("obra_id", st.obraId),
+    sb.rpc("medicao_precos_cascata", { p_obra_id: st.obraId }),
+    sb.from("equipamentos").select("id,codigo").not("codigo", "is", null).limit(500),
+    sb.from("rdo").select("tipo_servico").eq("obra_id", st.obraId).not("tipo_servico", "is", null).limit(1)
+  ]);
+  if(_medImp !== st) return; // modal fechado no meio
+  st.obra = obraRes.data || null;
+  st.numerosExistentes = (medsRes.data || []).map(m => String(m.numero || "").trim().toLowerCase());
+  st.cascata = casRes.error ? [] : (casRes.data || []);
+  st.cascataErro = casRes.error ? casRes.error.message : null;
+  st.equipamentos = eqRes.data || [];
+  st.tipoServico = rdoRes.data && rdoRes.data[0] ? rdoRes.data[0].tipo_servico : null;
+}
+
+/* ---- fila de arquivos ---- */
+function medImpAdicionarArquivos(files){
+  if(!_medImp) return;
+  medImpLimparAviso();
+  const erros = [];
+  Array.from(files || []).forEach(f => {
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    if(ext !== "pdf" && f.type !== "application/pdf"){ erros.push(`${f.name}: não é PDF`); return; }
+    if(f.size > MED_IMP_MAX_BYTES){ erros.push(`${f.name}: ${(f.size / 1048576).toFixed(1)} MB (limite 2 MB; exporte só as páginas do boletim)`); return; }
+    _medImp.fila.push({ file: f, nome: f.name, status: "fila", erro: null, medicaoId: null });
+  });
+  if(erros.length) aviso("med-imp-aviso", erros.join(" · "), "erro");
+  medImpRenderFila();
+  if(!_medImp.atual) medImpProcessarProximo();
+}
+function medImpRenderFila(){
+  const ul = $("med-imp-fila"); if(!ul || !_medImp) return;
+  const rot = { fila: "na fila", lendo: "lendo…", conferindo: "em conferência", feito: "gravada", erro: "erro", pulado: "pulado" };
+  ul.innerHTML = _medImp.fila.map(a => `<li class="${(a.status === "lendo" || a.status === "conferindo") ? "atual" : esc(a.status)}" title="${esc(a.erro || "")}">📄 ${esc(a.nome)} · ${rot[a.status] || esc(a.status)}${a.erro ? " · " + esc(a.erro) : ""}</li>`).join("");
+}
+function medImpLerArquivo(file, modo){
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => reject(new Error("Não foi possível ler o PDF."));
+    if(modo === "base64") fr.readAsDataURL(file); else fr.readAsArrayBuffer(file);
+  });
+}
+/* Conta os objetos /Type /Page do PDF (aproximação; PDF com object streams comprimidos devolve 0 e não barra) */
+async function medImpContarPaginas(file){
+  try {
+    const buf = await medImpLerArquivo(file, "buffer");
+    const bin = new TextDecoder("latin1").decode(new Uint8Array(buf));
+    return (bin.match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+  } catch(_){ return 0; }
+}
+async function medImpProcessarProximo(){
+  const st = _medImp; if(!st) return;
+  const prox = st.fila.find(a => a.status === "fila");
+  const cont = $("med-imp-conf");
+  if(!prox){
+    st.atual = null; st.resp = null; st.cab = null; st.itens = [];
+    $("med-imp-acoes").style.display = "none";
+    if(st.fila.length){
+      const feitas = st.fila.filter(a => a.status === "feito").length;
+      cont.style.display = "";
+      cont.innerHTML = `<p class="vazio">Fila concluída: ${feitas} medição(ões) gravada(s) aprovada(s). Escolha outros PDFs ou feche.</p>`;
+    }
+    return;
+  }
+  st.atual = prox; prox.status = "lendo"; medImpRenderFila();
+  cont.style.display = "";
+  cont.innerHTML = `<p class="vazio">🤖 Lendo <strong>${esc(prox.nome)}</strong>… isso leva de 20 a 90 segundos.</p>`;
+  $("med-imp-acoes").style.display = "none";
+  try {
+    const paginas = await medImpContarPaginas(prox.file);
+    if(paginas > MED_IMP_MAX_PAGINAS) throw new Error(`PDF com ${paginas} páginas; o limite é ${MED_IMP_MAX_PAGINAS}. Envie só as páginas do boletim.`);
+    const dataUrl = await medImpLerArquivo(prox.file, "base64");
+    const base64 = String(dataUrl).split(",")[1];
+    const o = st.obra || {};
+    const contexto = {
+      obra_codigo: o.codigo || null, obra_nome: o.nome || null,
+      cliente_nome: o.cliente?.nome || null, contrato_numero: o.contrato?.numero || null,
+      tipo_servico: st.tipoServico,
+      itens_orcamento: st.cascata.filter(c => c.fonte === "orcamento_obra").map(c => c.descricao).filter(Boolean).slice(0, 60),
+      maquinas: st.equipamentos.map(e => e.codigo).filter(Boolean)
+    };
+    const { data, error } = await iaInvocarComLimite("extrair-medicao-pdf", { arquivo_base64: base64, media_type: "application/pdf", contexto },
+      "A leitura demorou demais. Exporte só as páginas do boletim e tente de novo.");
+    if(error){
+      let detalhe = error.message || "";
+      try {
+        if(error.context && typeof error.context.json === "function"){
+          const b = await error.context.json();
+          if(b){ detalhe = b.error || JSON.stringify(b); if(b.sugestao) detalhe += " 💡 " + b.sugestao; }
+        }
+      } catch(_){ /* segue */ }
+      throw new Error(detalhe || "Falha ao chamar a leitura por IA.");
+    }
+    if(data && data.error) throw new Error(data.error + (data.sugestao ? " 💡 " + data.sugestao : ""));
+    if(_medImp !== st) return;
+    if(!data || !Array.isArray(data.itens) || !data.itens.length){
+      throw new Error("A IA não reconheceu um boletim de medição com itens neste arquivo. " + (data?.observacoes || ""));
+    }
+    prox.status = "conferindo"; medImpRenderFila();
+    st.resp = data;
+    medImpMontarConferencia(data, prox);
+  } catch(err){
+    if(_medImp !== st) return;
+    prox.status = "erro"; prox.erro = err?.message || "falha sem mensagem"; medImpRenderFila();
+    aviso("med-imp-aviso", `${prox.nome}: ${prox.erro}`, "erro");
+    cont.innerHTML = `<p class="vazio">${esc(prox.erro)}</p>`;
+    st.atual = null;
+    if(st.fila.some(a => a.status === "fila")) medImpProcessarProximo();
+  }
+}
+function medImpPular(){
+  const st = _medImp; if(!st || !st.atual) return;
+  st.atual.status = "pulado"; st.atual = null; st.cab = null; st.resp = null; st.itens = [];
+  medImpRenderFila();
+  medImpProcessarProximo();
+}
+
+/* ---- conferência ---- */
+function medImpMontarConferencia(resp, arq){
+  const st = _medImp; if(!st) return;
+  const m = resp.medicao || {};
+  const o = st.obra || {};
+  st.itens = (resp.itens || []).map((it, i) => {
+    const uni = medImpNormalizarUnidade(it.unidade);
+    const cas = medImpCasarCascata(it.descricao);
+    const qtd = Number(it.quantidade) || 0;
+    const vuLido = Number(it.valor_unitario) || 0;
+    return {
+      ordem: i + 1, descricao: it.descricao || "", unidade: uni.valor, unidade_lida: it.unidade || "", unidade_aviso: uni.aviso,
+      quantidade: qtd, quantidade_lida: qtd, valor_unitario_lido: vuLido,
+      valor_total_lido: it.valor_total != null ? Number(it.valor_total) : +(qtd * vuLido).toFixed(2),
+      tag: it.tag || m.equipamento || null, cascata: cas, usar: "lido", conferido: false, removido: false
+    };
+  });
+  const sinalV = m.sinal?.valor ?? ((m.sinal?.percentual && m.subtotal) ? +(m.subtotal * m.sinal.percentual / 100).toFixed(2) : 0);
+  const acrescV = (m.acrescimos || []).reduce((s, a) => s + (Number(a.valor) || 0), 0);
+  st.cab = {
+    numero: m.numero || "", tipo_medicao: m.tipo_medicao || "quinzenal",
+    data: m.data || m.periodo_fim || hojeISO(), periodo_inicio: m.periodo_inicio || "", periodo_fim: m.periodo_fim || "",
+    desconto_sinal: +(Number(sinalV) || 0).toFixed(2),
+    desconto_descricao: m.sinal?.descricao || (sinalV ? "Desconto do sinal contratual lido no boletim" : ""),
+    acrescimo: +acrescV.toFixed(2),
+    acrescimo_descricao: (m.acrescimos || []).map(a => a.descricao ? `${a.descricao}${a.valor != null ? " " + brl(a.valor) : ""}` : brl(a.valor)).join(" · "),
+    ret_pct: m.retencao?.percentual ?? "", ret_valor: m.retencao?.valor ?? "", ret_manual: m.retencao?.valor != null && m.retencao?.percentual == null,
+    iss_pct: m.iss?.percentual ?? (o.iss_percentual ?? ""), iss_valor: m.iss?.valor ?? "", iss_manual: m.iss?.valor != null && m.iss?.percentual == null,
+    iss_origem: m.iss?.percentual != null ? "lido no boletim" : (o.iss_percentual != null ? "da obra (o boletim não traz ISS)" : ""),
+    iss_retido: m.iss?.retido_fonte === false ? "false" : "true",
+    valor_final_lido: m.valor_final, subtotal_lido: m.subtotal,
+    obra_ref: m.obra_ref || "", cliente: m.cliente || "", contrato: m.contrato || "",
+    observacoes: m.observacoes || ""
+  };
+  medImpRenderConferencia(resp, arq);
+}
+
+function medImpLinhaItem(it, i){
+  const cas = it.cascata;
+  const oi = cas ? (PRECO_ORIGEM_INFO[cas.fonte] || PRECO_ORIGEM_INFO.manual) : null;
+  const vuApp = cas ? (Number(cas.valor_unitario) || 0) : null;
+  const dif = vuApp != null ? it.valor_unitario_lido - vuApp : null;
+  const difAlta = dif != null && Math.abs(dif) > Math.max(0.01, Math.abs(vuApp) * 0.005);
+  const uniOpts = MED_IMP_UNIDADES_VALIDAS.map(u => `<option value="${esc(u)}"${u === it.unidade ? " selected" : ""}>${esc(u)}</option>`).join("");
+  return `<tr data-idx="${i}" class="${cas ? "" : "sem-app"}">
+    <td>${i + 1}</td>
+    <td><input data-c="descricao" value="${esc(it.descricao)}" style="min-width:240px" />
+        ${it.unidade_aviso ? `<div class="meta" style="color:var(--aviso-txt);">⚠️ ${esc(it.unidade_aviso)}</div>` : ""}
+        ${cas ? `<div class="meta" title="Item do app casado pela descrição">≈ ${esc(cas.descricao || cas.variante_nome || "")}${(cas.fonte === "orcamento_obra" && cas.orcamento_numero) ? ` · orç. ${esc(cas.orcamento_numero)}${cas.orcamento_revisao ? " rev " + esc(cas.orcamento_revisao) : ""}` : ""}</div>` : ""}</td>
+    <td><select data-c="unidade" title="Lido no PDF: ${esc(it.unidade_lida || "—")}">${uniOpts}</select></td>
+    <td class="num"><input type="number" step="0.001" min="0" data-c="quantidade" value="${it.quantidade}" style="width:84px" /></td>
+    <td class="num"><input type="number" step="0.01" min="0" data-c="valor_unitario_lido" value="${it.valor_unitario_lido}" style="width:92px" /></td>
+    <td class="num" title="Total impresso no PDF">${brl(it.valor_total_lido)}</td>
+    <td class="num col-app">${vuApp != null ? brl(vuApp) : "—"}</td>
+    <td class="col-app">${oi ? `<span class="badge-origem" style="background:${oi.bg};color:${oi.cor};">${oi.ic} ${oi.lbl}</span>` : '<span class="meta">sem preço no app</span>'}</td>
+    <td class="num med-imp-dif${difAlta ? " dif-alta" : ""}">${dif != null ? (dif > 0 ? "+" : "") + brl(dif) : "—"}</td>
+    <td style="white-space:nowrap;"><label class="meta"><input type="radio" name="med-imp-usar-${i}" data-c="usar" value="lido"${it.usar === "lido" ? " checked" : ""} /> lido</label><br><label class="meta"><input type="radio" name="med-imp-usar-${i}" data-c="usar" value="app"${it.usar === "app" ? " checked" : ""}${cas ? "" : " disabled"} /> app</label></td>
+    <td><input data-c="tag" value="${esc(it.tag || "")}" style="width:72px" placeholder="HC-66" /></td>
+    <td style="text-align:center;"><input type="checkbox" data-c="conferido"${it.conferido ? " checked" : ""} title="Conferido" /></td>
+    <td class="col-acao"><button type="button" class="btn-rem med-imp-rem" title="não importar esta linha">&times;</button></td>
+  </tr>`;
+}
+
+function medImpRenderConferencia(resp, arq){
+  const st = _medImp; if(!st || !st.cab) return;
+  const c = st.cab, o = st.obra || {};
+  const cont = $("med-imp-conf");
+  const conf = resp.confianca || "media";
+  const corConf = conf === "alta" ? "var(--sucesso)" : conf === "baixa" ? "var(--perigo)" : "var(--aviso)";
+  const leiauteLbl = { maya_helice: "boletim do Maya (hélice/secante)", planilha_cgl: "planilha da CGL (raiz/trado)", outro: "leiaute não reconhecido" }[resp.leiaute] || "—";
+  const refs = [o.codigo, o.contrato?.numero].filter(Boolean).map(medImpNormalizarTexto);
+  const refLida = medImpNormalizarTexto(c.obra_ref);
+  const refOk = !refLida || refs.some(r => r && (refLida.includes(r) || r.includes(refLida)));
+  const dup = c.numero && st.numerosExistentes.includes(String(c.numero).trim().toLowerCase());
+  const tipoOpts = Object.entries({ quinzenal: "Quinzenal", sinal_contratual: "Sinal contratual", final: "Final", avulsa: "Avulsa" })
+    .map(([k, l]) => `<option value="${k}"${k === c.tipo_medicao ? " selected" : ""}>${l}</option>`).join("");
+  const v = (x) => (x == null ? "" : x);
+
+  cont.innerHTML = `<div class="ia-conf-topo">
+    <div>🤖 <strong>Lido por IA</strong> · ${esc(arq.nome)} · ${esc(leiauteLbl)} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
+      ${resp.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
+    ${resp.escaneado ? `<div class="ia-duvidas">⚠️ PDF sem camada de texto (escaneado ou foto): a IA leu como imagem e a precisão cai. Confira cada número.</div>` : ""}
+    ${(resp.duvidas || []).length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${resp.duvidas.map(esc).join(" · ")}</div>` : ""}
+    ${!refOk ? `<div class="ia-duvidas">⚠️ O boletim cita a obra/contrato "${esc(c.obra_ref)}", mas a obra aberta é ${esc(o.codigo || "")}${o.contrato?.numero ? " (contrato " + esc(o.contrato.numero) + ")" : ""}. Confira se é o PDF certo.</div>` : ""}
+    ${st.cascataErro ? `<div class="ia-duvidas">Sem preço do app para comparar: ${esc(st.cascataErro)}</div>` : (!st.cascata.length ? `<div class="meta">Sem preço do app para comparar (obra sem orçamento aprovado, sem preço de cliente e sem referência, ou seu cargo não lê orçamentos e preços).</div>` : "")}
+    <div class="meta">Confira e corrija. Por item, escolha <strong>usar o lido</strong> (padrão: já foi ao cliente) ou <strong>usar o do app</strong> (cascata: orçamento › cliente › referência). Linhas removidas com ✕ não entram. A medição é gravada <strong>aprovada</strong>, com o PDF anexado.</div>
+  </div>
+  <div class="grade med-imp-cab">
+    <div class="campo"><label>Número *</label><input id="med-imp-h-numero" value="${esc(c.numero)}" placeholder="ex.: 03" /></div>
+    <div class="campo"><label>Tipo</label><select id="med-imp-h-tipo">${tipoOpts}</select></div>
+    <div class="campo"><label>Data da medição</label><input id="med-imp-h-data" type="date" value="${esc(c.data)}" /></div>
+    <div class="campo"><label>Período — início</label><input id="med-imp-h-ini" type="date" value="${esc(c.periodo_inicio)}" /></div>
+    <div class="campo"><label>Período — fim</label><input id="med-imp-h-fim" type="date" value="${esc(c.periodo_fim)}" /></div>
+    <div class="campo"><label>Obra / contrato no PDF</label><input value="${esc([c.obra_ref, c.contrato].filter(Boolean).join(" · ") || "—")}" readonly /></div>
+    <div class="campo"><label>Cliente no PDF</label><input value="${esc(c.cliente || "—")}" readonly /></div>
+  </div>
+  <div id="med-imp-dup" class="med-imp-dup" style="${dup ? "" : "display:none;"}">Já existe a medição <strong>${esc(c.numero)}</strong> nesta obra. Altere o número ou pule este arquivo: a importação não duplica.</div>
+  <div class="tabela-rola"><table class="itens-tabela ia-tabela med-imp-tabela">
+    <thead><tr>
+      <th>#</th><th>Descrição</th><th>Un.</th>
+      <th class="num" title="Lido no PDF">Qtd lida</th><th class="num" title="Lido no PDF">Unit. lido</th><th class="num" title="Lido no PDF">Total lido</th>
+      <th class="num" title="Cascata de preço do app: orçamento aprovado › preço do cliente › referência">Unit. app</th><th title="Origem do preço do app">Origem app</th><th class="num" title="Unit. lido − Unit. app">Dif.</th>
+      <th title="Qual unitário fica na medição">Usar</th><th title="TAG da máquina, quando o PDF trouxer">TAG</th><th title="Marque depois de conferir">✓</th><th></th>
+    </tr></thead>
+    <tbody>${st.itens.map((it, i) => medImpLinhaItem(it, i)).join("")}</tbody>
+  </table></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0;">
+    <button type="button" class="btn-sec btn-sm" id="btn-med-imp-conferir-todos">✓ Marcar todos como conferidos</button>
+    <button type="button" class="btn-sec btn-sm" id="btn-med-imp-usar-app" title="Só nos itens que têm preço no app">Usar o do app em todos</button>
+    <button type="button" class="btn-sec btn-sm" id="btn-med-imp-usar-lido">Usar o lido em todos</button>
+  </div>
+  <div class="grade med-imp-cab">
+    <div class="campo"><label>Desconto do sinal (R$)</label><input id="med-imp-h-sinal" type="number" step="0.01" min="0" value="${v(c.desconto_sinal)}" /></div>
+    <div class="campo largo"><label>Descrição do desconto</label><input id="med-imp-h-sinal-obs" value="${esc(c.desconto_descricao)}" /></div>
+    <div class="campo"><label>Acréscimos (R$)</label><input id="med-imp-h-acresc" type="number" step="0.01" min="0" value="${v(c.acrescimo)}" /></div>
+    <div class="campo largo"><label>Descrição dos acréscimos</label><input id="med-imp-h-acresc-obs" value="${esc(c.acrescimo_descricao)}" /></div>
+    <div class="campo"><label>Retenção contratual (%)</label><input id="med-imp-h-ret-pct" type="number" step="0.01" min="0" max="100" value="${v(c.ret_pct)}" /></div>
+    <div class="campo"><label>Valor retido (R$)</label><input id="med-imp-h-ret-valor" type="number" step="0.01" min="0" value="${v(c.ret_valor)}" data-manual="${c.ret_manual ? "1" : "0"}" /></div>
+    <div class="campo"><label>ISS (%) <small class="meta">${esc(c.iss_origem)}</small></label><input id="med-imp-h-iss-pct" type="number" step="0.01" min="0" max="100" value="${v(c.iss_pct)}" /></div>
+    <div class="campo"><label>Valor do ISS (R$)</label><input id="med-imp-h-iss-valor" type="number" step="0.01" min="0" value="${v(c.iss_valor)}" data-manual="${c.iss_manual ? "1" : "0"}" /></div>
+    <div class="campo"><label>ISS retido na fonte?</label><select id="med-imp-h-iss-retido"><option value="true"${c.iss_retido === "true" ? " selected" : ""}>Sim (cliente retém e recolhe)</option><option value="false"${c.iss_retido === "false" ? " selected" : ""}>Não (CGL recolhe)</option></select></div>
+    <div class="campo largo"><label>Observações</label><input id="med-imp-h-obs" value="${esc(c.observacoes)}" /></div>
+  </div>
+  <div class="indicadores med-imp-totais" id="med-imp-totais"></div>`;
+  $("med-imp-acoes").style.display = "";
+
+  cont.querySelectorAll("tbody tr[data-idx]").forEach(tr => {
+    const sync = () => { medImpLerLinha(tr); medImpAtualizarLinha(tr); medImpAtualizarTotais(); };
+    tr.addEventListener("input", sync);
+    tr.addEventListener("change", sync);
+    tr.querySelector(".med-imp-rem")?.addEventListener("click", () => { st.itens[Number(tr.dataset.idx)].removido = true; tr.remove(); medImpAtualizarTotais(); });
+  });
+  $("med-imp-h-numero")?.addEventListener("input", medImpChecarDuplicado);
+  $("med-imp-h-tipo")?.addEventListener("change", medImpAtualizarTotais);
+  ["med-imp-h-sinal", "med-imp-h-acresc", "med-imp-h-ret-pct", "med-imp-h-iss-pct"].forEach(id => $(id)?.addEventListener("input", () => {
+    if(id === "med-imp-h-ret-pct" && $("med-imp-h-ret-valor")) $("med-imp-h-ret-valor").dataset.manual = "0";
+    if(id === "med-imp-h-iss-pct" && $("med-imp-h-iss-valor")) $("med-imp-h-iss-valor").dataset.manual = "0";
+    medImpAtualizarTotais();
+  }));
+  $("med-imp-h-iss-retido")?.addEventListener("change", medImpAtualizarTotais);
+  $("med-imp-h-ret-valor")?.addEventListener("input", () => { $("med-imp-h-ret-valor").dataset.manual = "1"; medImpAtualizarTotais(); });
+  $("med-imp-h-iss-valor")?.addEventListener("input", () => { $("med-imp-h-iss-valor").dataset.manual = "1"; medImpAtualizarTotais(); });
+  $("btn-med-imp-conferir-todos")?.addEventListener("click", () => {
+    cont.querySelectorAll('tbody tr[data-idx] [data-c="conferido"]').forEach(ch => { ch.checked = true; });
+    st.itens.forEach(it => { if(!it.removido) it.conferido = true; });
+  });
+  $("btn-med-imp-usar-app")?.addEventListener("click", () => medImpUsarTodos("app"));
+  $("btn-med-imp-usar-lido")?.addEventListener("click", () => medImpUsarTodos("lido"));
+  medImpAtualizarTotais();
+}
+
+function medImpLerLinha(tr){
+  const it = _medImp?.itens[Number(tr.dataset.idx)]; if(!it) return;
+  it.descricao = tr.querySelector('[data-c="descricao"]').value.trim();
+  it.unidade = tr.querySelector('[data-c="unidade"]').value;
+  it.quantidade = parseFloat(tr.querySelector('[data-c="quantidade"]').value) || 0;
+  it.valor_unitario_lido = parseFloat(tr.querySelector('[data-c="valor_unitario_lido"]').value) || 0;
+  const usar = tr.querySelector('[data-c="usar"]:checked'); it.usar = usar ? usar.value : "lido";
+  it.tag = tr.querySelector('[data-c="tag"]').value.trim() || null;
+  it.conferido = tr.querySelector('[data-c="conferido"]').checked;
+}
+function medImpAtualizarLinha(tr){
+  const it = _medImp?.itens[Number(tr.dataset.idx)]; if(!it) return;
+  const vuApp = it.cascata ? (Number(it.cascata.valor_unitario) || 0) : null;
+  const dif = vuApp != null ? it.valor_unitario_lido - vuApp : null;
+  const difAlta = dif != null && Math.abs(dif) > Math.max(0.01, Math.abs(vuApp) * 0.005);
+  const cel = tr.querySelector(".med-imp-dif");
+  if(cel){ cel.textContent = dif != null ? (dif > 0 ? "+" : "") + brl(dif) : "—"; cel.classList.toggle("dif-alta", difAlta); }
+}
+function medImpUnitarioEscolhido(it){ return (it.usar === "app" && it.cascata) ? (Number(it.cascata.valor_unitario) || 0) : (Number(it.valor_unitario_lido) || 0); }
+function medImpUsarTodos(modo){
+  const st = _medImp; if(!st) return;
+  st.itens.forEach((it, i) => {
+    if(it.removido) return;
+    if(modo === "app" && !it.cascata) return;
+    it.usar = modo;
+    const r = document.querySelector(`input[name="med-imp-usar-${i}"][value="${modo}"]`); if(r) r.checked = true;
+  });
+  medImpAtualizarTotais();
+}
+function medImpChecarDuplicado(){
+  const st = _medImp; if(!st) return false;
+  const n = ($("med-imp-h-numero")?.value || "").trim().toLowerCase();
+  const dup = !!n && st.numerosExistentes.includes(n);
+  const el = $("med-imp-dup");
+  if(el){
+    el.style.display = dup ? "" : "none";
+    if(dup) el.innerHTML = `Já existe a medição <strong>${esc(n)}</strong> nesta obra. Altere o número ou pule este arquivo: a importação não duplica.`;
+  }
+  return dup;
+}
+
+/* Mesma conta de recalcularTotaisMedicao: (subtotal − sinal + acréscimo) × multiplicador; retenção e ISS
+   pelo % a menos que o valor tenha sido digitado; líquido = final − retenção − ISS retido na fonte */
+function medImpCalcular(){
+  const st = _medImp; if(!st || !st.cab) return null;
+  const ativos = st.itens.filter(it => !it.removido);
+  const subtotal = +ativos.reduce((s, it) => s + it.quantidade * medImpUnitarioEscolhido(it), 0).toFixed(2);
+  const tipo = $("med-imp-h-tipo")?.value || "quinzenal";
+  const descSinal = parseFloat($("med-imp-h-sinal")?.value) || 0;
+  const acresc = parseFloat($("med-imp-h-acresc")?.value) || 0;
+  let mult = 100;
+  if(tipo === "sinal_contratual"){
+    const vf = Number(st.cab.valor_final_lido);
+    mult = (vf > 0 && subtotal > 0) ? +(vf / subtotal * 100).toFixed(2) : 30; // o boletim do sinal lista os itens cheios e o sinal (30%) no fim
+    if(!(mult > 0 && mult <= 100)) mult = 30; // leitura inconsistente (sinal maior que os itens): volta ao padrão
+  }
+  const valorFinal = +((subtotal - descSinal + acresc) * mult / 100).toFixed(2);
+  const retPct = parseFloat($("med-imp-h-ret-pct")?.value);
+  const retEl = $("med-imp-h-ret-valor");
+  if(retEl && retEl.dataset.manual !== "1") retEl.value = (isFinite(retPct) && retPct > 0) ? (valorFinal * retPct / 100).toFixed(2) : "";
+  const issPct = parseFloat($("med-imp-h-iss-pct")?.value);
+  const issEl = $("med-imp-h-iss-valor");
+  if(issEl && issEl.dataset.manual !== "1") issEl.value = (isFinite(issPct) && issPct > 0) ? (valorFinal * issPct / 100).toFixed(2) : "";
+  const retV = parseFloat(retEl?.value) || 0;
+  const issV = parseFloat(issEl?.value) || 0;
+  const issRetido = ($("med-imp-h-iss-retido")?.value || "true") !== "false";
+  const liquido = +(valorFinal - retV - (issRetido ? issV : 0)).toFixed(2);
+  return { subtotal, descSinal, acresc, mult, valorFinal, retPct: isFinite(retPct) ? retPct : null, retV, issPct: isFinite(issPct) ? issPct : null, issV, issRetido, liquido, tipo, itens: ativos.length };
+}
+function medImpAtualizarTotais(){
+  const st = _medImp; if(!st || !st.cab) return;
+  const t = medImpCalcular(); if(!t) return;
+  const cont = $("med-imp-totais"); if(!cont) return;
+  const vfLido = Number(st.cab.valor_final_lido);
+  const subLido = st.cab.subtotal_lido != null ? Number(st.cab.subtotal_lido) : null;
+  const difVF = (isFinite(vfLido) && vfLido > 0) ? t.valorFinal - vfLido : null;
+  const difSub = subLido != null ? t.subtotal - subLido : null;
+  const destaque = (d) => (d != null && Math.abs(d) > 0.5) ? ' style="color:var(--aviso-txt);"' : "";
+  cont.innerHTML = `
+    <div class="ind"><div class="num">${brl(t.subtotal)}<small>${t.itens} item(ns)${subLido != null ? ` · PDF ${brl(subLido)}` : ""}</small></div><div class="rot"${destaque(difSub)}>${(difSub != null && Math.abs(difSub) > 0.5) ? `Subtotal · dif. ${brl(difSub)} contra o PDF` : "Subtotal"}</div></div>
+    <div class="ind"><div class="num">${t.descSinal ? "− " + brl(t.descSinal) : "—"}</div><div class="rot">Desconto do sinal</div></div>
+    <div class="ind"><div class="num">${t.acresc ? "+ " + brl(t.acresc) : "—"}</div><div class="rot">Acréscimos</div></div>
+    <div class="ind"><div class="num">${brl(t.valorFinal)}<small>${t.mult !== 100 ? `${num(t.mult)}% do subtotal · ` : ""}${(isFinite(vfLido) && vfLido > 0) ? `PDF ${brl(vfLido)}` : "PDF sem valor final"}</small></div><div class="rot"${destaque(difVF)}>${(difVF != null && Math.abs(difVF) > 0.5) ? `Valor final · dif. ${brl(difVF)} contra o PDF` : "Valor final"}</div></div>
+    <div class="ind"><div class="num">${brl(t.liquido)}<small>− retenção ${brl(t.retV)} − ISS ${t.issRetido ? brl(t.issV) : "não retido"}</small></div><div class="rot">Líquido a receber</div></div>`;
+}
+
+/* ---- confirmar: PDF no bucket, medição aprovada e itens; desfaz tudo se os itens falharem ---- */
+async function medImpConfirmar(){
+  const st = _medImp; if(!st || !st.cab || !st.atual) return;
+  const arq = st.atual;
+  const numero = ($("med-imp-h-numero")?.value || "").trim();
+  if(!numero){ aviso("med-imp-aviso", "Informe o número da medição.", "erro"); $("med-imp-h-numero")?.focus(); return; }
+  if(medImpChecarDuplicado()){ aviso("med-imp-aviso", `Já existe a medição ${numero} nesta obra. Altere o número ou pule o arquivo.`, "erro"); return; }
+  const t = medImpCalcular();
+  if(!t || !t.itens){ aviso("med-imp-aviso", "Nenhum item para gravar.", "erro"); return; }
+  const semDesc = st.itens.filter(it => !it.removido && !it.descricao).length;
+  if(semDesc){ aviso("med-imp-aviso", `${semDesc} item(ns) sem descrição.`, "erro"); return; }
+  const naoConf = st.itens.filter(it => !it.removido && !it.conferido).length;
+  if(naoConf && !confirm(`${naoConf} item(ns) ainda sem o ✓ de conferido. Gravar a medição aprovada mesmo assim?`)) return;
+  const o = st.obra || {};
+  const tipo = $("med-imp-h-tipo")?.value || "quinzenal";
+  const dataMed = $("med-imp-h-data")?.value || hojeISO();
+  const ini = $("med-imp-h-ini")?.value || null, fim = $("med-imp-h-fim")?.value || null;
+  if(tipo !== "sinal_contratual" && (!ini || !fim) && !confirm("Medição sem período (início e fim). Gravar assim mesmo?")) return;
+
+  medImpLimparAviso();
+  // 1) PDF no bucket privado obras-documentos (supabase-js ignora contentType com File: reembala em Blob)
+  let storagePath = null, avisoAnexo = "";
+  const caminho = `medicoes/${st.obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`;
+  try {
+    const corpo = new Blob([arq.file], { type: "application/pdf" });
+    const up = await sb.storage.from("obras-documentos").upload(caminho, corpo, { cacheControl: "3600", contentType: "application/pdf", upsert: false });
+    if(up.error) throw up.error;
+    storagePath = caminho;
+  } catch(e){
+    avisoAnexo = `PDF não anexado (${e.message || e}). Anexe pela aba Documentos da obra.`;
+  }
+
+  // 2) medição aprovada
+  const duvidas = (st.resp?.duvidas || []);
+  const obs = [($("med-imp-h-obs")?.value || "").trim(),
+               `Importada do boletim "${arq.nome}" em ${dataBR(hojeISO())}${duvidas.length ? " · pontos conferidos: " + duvidas.join("; ") : ""}`].filter(Boolean);
+  const reg = {
+    numero, obra_id: st.obraId, contrato_id: o.contrato_id || null,
+    tipo_medicao: tipo, multiplicador_pct: t.mult,
+    status: "aprovada", origem: "importada_pdf", arquivo_origem_url: storagePath, importada_em: new Date().toISOString(),
+    data_medicao: dataMed, periodo_inicio: ini, periodo_fim: fim,
+    percentual: (Number(o.valor_contratado) > 0) ? Math.min(999.999, +(t.valorFinal / Number(o.valor_contratado) * 100).toFixed(3)) : 0,
+    valor_medido: t.valorFinal, subtotal: t.subtotal,
+    desconto_sinal: t.descSinal, desconto_descricao: ($("med-imp-h-sinal-obs")?.value || "").trim() || null,
+    acrescimo: t.acresc, acrescimo_descricao: ($("med-imp-h-acresc-obs")?.value || "").trim() || null,
+    retencao_percentual: t.retPct, retencao_valor: t.retV || null,
+    iss_percentual: t.issPct, iss_valor: t.issV || null, iss_retido_fonte: t.issRetido,
+    observacoes: obs.join("\n") || null
+    // valor_final vem do gatilho trg_medicoes_valor_final
+  };
+  const ins = await sb.from("medicoes").insert(reg).select("id").single();
+  if(ins.error){
+    if(storagePath) await sb.storage.from("obras-documentos").remove([storagePath]);
+    aviso("med-imp-aviso", "Não foi possível gravar a medição: " + ins.error.message, "erro");
+    return;
+  }
+  const medId = ins.data.id;
+
+  // 3) itens: unitário escolhido (lido ou do app) e o que o PDF trazia, para comparar depois
+  const itens = st.itens.filter(it => !it.removido).map((it, i) => {
+    const usaApp = it.usar === "app" && it.cascata;
+    const tagNorm = it.tag ? medImpNormalizarTexto(it.tag).replace(/\s+/g, "") : "";
+    const eq = tagNorm ? st.equipamentos.find(e => medImpNormalizarTexto(e.codigo).replace(/\s+/g, "") === tagNorm) : null;
+    return {
+      medicao_id: medId, ordem: i + 1, descricao: it.descricao,
+      variante_id: it.cascata?.variante_id || null, orcamento_item_id: it.cascata?.orcamento_item_id || null,
+      quantidade: it.quantidade, unidade: MED_IMP_UNIDADES_VALIDAS.includes(it.unidade) ? it.unidade : "un",
+      valor_unitario: medImpUnitarioEscolhido(it),
+      preco_origem: usaApp ? it.cascata.fonte : "manual",
+      preco_origem_obs: usaApp
+        ? `Cascata do app (${(PRECO_ORIGEM_INFO[it.cascata.fonte] || {}).lbl || it.cascata.fonte}); o boletim trazia ${brl(it.valor_unitario_lido)}`
+        : `Lido do boletim importado (PDF)${it.cascata ? "; o app calcularia " + brl(it.cascata.valor_unitario) : ""}`,
+      equipamento_id: eq ? eq.id : null, equipamento_tag: it.tag,
+      quantidade_lida: it.quantidade_lida, valor_unitario_lido: it.valor_unitario_lido, conferido: it.conferido === true
+    };
+  });
+  const insIt = await sb.from("medicao_itens").insert(itens);
+  if(insIt.error){
+    await sb.from("medicoes").delete().eq("id", medId);
+    if(storagePath) await sb.storage.from("obras-documentos").remove([storagePath]);
+    aviso("med-imp-aviso", "Não foi possível gravar os itens (a medição foi desfeita): " + insIt.error.message, "erro");
+    return;
+  }
+
+  arq.status = "feito"; arq.medicaoId = medId;
+  st.numerosExistentes.push(numero.toLowerCase());
+  medImpRenderFila();
+  aviso("med-imp-aviso", `Medição ${numero} gravada aprovada (${brl(t.valorFinal)}).${avisoAnexo ? " " + avisoAnexo : ""}`, avisoAnexo ? "aviso" : "ok");
+  if(_medRegistros.length) carregarMedicoes();
+  if(typeof carregarMedicoesDaObra === "function" && typeof obraEditId !== "undefined" && obraEditId === st.obraId) carregarMedicoesDaObra(st.obraId);
+  st.atual = null; st.cab = null; st.resp = null; st.itens = [];
+  medImpProcessarProximo();
+}
+
+/* ---- ficha: chip de origem e PDF do boletim importado ---- */
+function medAtualizarOrigemFicha(med){
+  const chip = $("med-ficha-origem"), txt = $("med-ficha-origem-txt"), btn = $("btn-med-boletim");
+  _medBoletimPath = (med && med.arquivo_origem_url) ? med.arquivo_origem_url : null;
+  const importada = !!med && med.origem === "importada_pdf";
+  if(chip) chip.style.display = importada ? "" : "none";
+  if(txt) txt.textContent = importada ? `Boletim importado${med.importada_em ? " em " + dataBR(String(med.importada_em).slice(0, 10)) : ""}` : "—";
+  if(btn) btn.style.display = _medBoletimPath ? "" : "none";
+}
+async function medAbrirBoletimImportado(){
+  if(!_medBoletimPath) return;
+  const { data, error } = await sb.storage.from("obras-documentos").createSignedUrl(_medBoletimPath, 120);
+  if(error){ aviso("app-aviso", "Não foi possível abrir o PDF do boletim: " + error.message, "erro"); return; }
+  window.open(data.signedUrl, "_blank");
+}
+
 /* ---------- Listeners ---------- */
 function ligarMedicoes(){
   document.querySelectorAll("#med-painel .serv-view-btn").forEach(b => {
@@ -1397,7 +1992,7 @@ function ligarMedicoes(){
       renderMedicoes();
     });
   });
-  ["med-busca","med-f-status","med-f-obra"].forEach(id => {
+  ["med-busca","med-f-status","med-f-obra","med-f-origem"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "med-busca" ? "input" : "change", id === "med-busca" ? debounce(renderMedicoes) : renderMedicoes);
   });
@@ -1411,6 +2006,20 @@ function ligarMedicoes(){
   $("btn-salvar-med")?.addEventListener("click", () => comBotaoTravado("btn-salvar-med", () => salvarMedicao()));
   $("btn-gerar-pdf-med")?.addEventListener("click", gerarPDFMedicao);
   $("btn-excluir-med")?.addEventListener("click", excluirMedicao);
+  $("btn-med-boletim")?.addEventListener("click", medAbrirBoletimImportado); // fase 88
+
+  // fase 88: modal "Importar boletim (PDF)" — aberto pela aba Medições da obra (obra_abas.js)
+  $("btn-med-imp-fechar")?.addEventListener("click", fecharImportBoletimPDF);
+  $("btn-med-imp-escolher")?.addEventListener("click", () => $("med-imp-arquivo")?.click());
+  $("med-imp-arquivo")?.addEventListener("change", (e) => { medImpAdicionarArquivos(e.target.files); e.target.value = ""; });
+  const zonaImp = $("med-imp-zona");
+  if(zonaImp){
+    ["dragenter","dragover"].forEach(ev => zonaImp.addEventListener(ev, (e) => { e.preventDefault(); zonaImp.classList.add("arrastando"); }));
+    ["dragleave","drop"].forEach(ev => zonaImp.addEventListener(ev, (e) => { e.preventDefault(); zonaImp.classList.remove("arrastando"); }));
+    zonaImp.addEventListener("drop", (e) => medImpAdicionarArquivos(e.dataTransfer?.files));
+  }
+  $("btn-med-imp-pular")?.addEventListener("click", medImpPular);
+  $("btn-med-imp-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-med-imp-confirmar", medImpConfirmar));
 
   // Aba Itens: sugerir, compor sinal e adicionar manual
   $("btn-med-sugerir")?.addEventListener("click", sugerirItensMedicao);

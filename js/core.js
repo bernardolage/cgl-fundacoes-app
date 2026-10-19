@@ -116,6 +116,13 @@ const STATUS = {
     em_transito:  { label:"Em trânsito",    cor:"ambar"    },
     perdido:      { label:"Perdido",        cor:"vermelho" },
     desconhecido: { label:"Não localizado", cor:"cinza"    }
+  },
+  /* Logística (fase 89): viagem de caminhão */
+  viagem: {
+    planejada:   { label:"Planejada",   cor:"cinza"    },
+    em_transito: { label:"Em trânsito", cor:"ambar"    },
+    concluida:   { label:"Concluída",   cor:"verde"    },
+    cancelada:   { label:"Cancelada",   cor:"vermelho" }
   }
 };
 
@@ -318,6 +325,10 @@ function sugerirNumeros(){
 /* Executa fn() com o botão desabilitado até terminar — evita clique duplo em
    Salvar (que duplicava execuções de RDO, entradas de estoque e movimentações).
    Aceita o id do botão ou o elemento. Reentrância é ignorada. */
+/* Fase 86: só um salvar que passou libera a atualização do app (limpa a marca de formulário sujo):
+   botão de gravação (id ou texto), fn resolvida sem exceção e nenhum aviso de erro visível depois dela
+   (validação que avisa e retorna). Gerar PDF, importar, exportar e buscar nunca limpam. */
+const BOTAO_GRAVACAO_RE = /salvar|gravar|confirmar|aprovar|concluir|enviar|registrar|lan[cç]ar|marcar|baixa|receber|entregar/i;
 async function comBotaoTravado(btnOuId, fn){
   const b = typeof btnOuId === "string" ? $(btnOuId) : btnOuId;
   if(b){
@@ -325,8 +336,12 @@ async function comBotaoTravado(btnOuId, fn){
     b.dataset.travado = "1";
     b.disabled = true;
   }
-  try { return await fn(); }
-  finally { if(b){ delete b.dataset.travado; b.disabled = false; } }
+  let passou = false;
+  try { const r = await fn(); passou = true; return r; }
+  finally {
+    if(b){ delete b.dataset.travado; b.disabled = false; }
+    if(passou && b && BOTAO_GRAVACAO_RE.test((b.id || "") + " " + (b.textContent || "")) && !appAvisoComErro()) appLimparSujo();
+  }
 }
 
 /* Leitura por IA (edge function) com limite de tempo no cliente (lote S39, chamados #28 #20 #21).
@@ -581,6 +596,7 @@ $("btn-ver-senha").addEventListener("click", ()=>{
 });
 
 $("btn-sair").addEventListener("click", async ()=>{
+  appLimparSujo();   // fase 86: sair abandona o que estava na tela
   await sb.auth.signOut();
   location.reload();
 });
@@ -614,6 +630,9 @@ async function iniciarApp(){
 
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";
+
+  /* fase 86: a aba passa a conferir versao.json e se atualiza sozinha depois de cada publicação */
+  iniciarVerificacaoVersao();
 
   /* P0 — alertar diretor/admin sem MFA configurado */
   if(ehDiretorOuAdmin) verificarMFAAdmin();
@@ -670,34 +689,45 @@ if (overlay) {
   overlay.addEventListener("click", closeSidebar);
 }
 
-// Navegação entre seções
-document.querySelectorAll(".sidebar-nav button").forEach(b=>{
-  b.addEventListener("click", ()=>{
+// Navegação entre seções. ativarSecao(secao, botao) é o que o clique no menu faz; a fase 89 usa a
+// mesma função para seções SEM item no menu (Movimentações de Ativos virou ficha do documento da viagem).
+function ativarSecao(secao, b){
+  if(b){
     document.querySelectorAll(".sidebar-nav button").forEach(x=>x.classList.remove("ativo"));
     b.classList.add("ativo");
-    document.querySelectorAll(".secao").forEach(s=>s.classList.remove("ativa"));
-    
-    const secId = "sec-" + b.dataset.secao;
-    const secEl = $(secId);
-    if(secEl) secEl.classList.add("ativa");
-    // aviso da tela anterior não deve seguir para a próxima
-    const av = $("app-aviso");
-    if(av){ av.textContent = ""; av.className = "aviso"; }
-    // Carga sob demanda: a posição de estoque (aba legada) só ao abrir a seção
-    if(b.dataset.secao === "estoque" && typeof carregarPosicaoEstoque === "function") carregarPosicaoEstoque();
-    
-    // Atualiza o título no cabeçalho: usa o h2 da seção (nome completo, ex.: "Diário de
-    // Obra (RDO)") e cai no rótulo do menu quando a seção não tem h2
-    const spanText = b.querySelector("span");
-    const h2 = secEl ? secEl.querySelector(":scope > h2:first-child") : null;
-    const titulo = (h2 && h2.textContent.trim()) || (spanText && spanText.textContent.trim());
-    if(titulo && $("app-secao-titulo")) {
-      $("app-secao-titulo").textContent = titulo;
-    }
-    
-    closeSidebar();
-  });
+  }
+  document.querySelectorAll(".secao").forEach(s=>s.classList.remove("ativa"));
+
+  const secId = "sec-" + secao;
+  const secEl = $(secId);
+  if(secEl) secEl.classList.add("ativa");
+  // aviso da tela anterior não deve seguir para a próxima
+  const av = $("app-aviso");
+  if(av){ av.textContent = ""; av.className = "aviso"; }
+  // fase 86: o que estava na seção foi salvo ou abandonado; e trocar de seção também confere se saiu
+  // versão nova (no máximo uma consulta a cada 30 s)
+  appLimparSujo();
+  verificarVersaoApp(30000);
+  // Carga sob demanda: a posição de estoque (aba legada) só ao abrir a seção
+  if(secao === "estoque" && typeof carregarPosicaoEstoque === "function") carregarPosicaoEstoque();
+
+  // Atualiza o título no cabeçalho: usa o h2 da seção (nome completo, ex.: "Diário de
+  // Obra (RDO)") e cai no rótulo do menu quando a seção não tem h2
+  const spanText = b ? b.querySelector("span") : null;
+  const h2 = secEl ? secEl.querySelector(":scope > h2:first-child") : null;
+  const titulo = (h2 && h2.textContent.trim()) || (spanText && spanText.textContent.trim());
+  if(titulo && $("app-secao-titulo")) {
+    $("app-secao-titulo").textContent = titulo;
+  }
+
+  closeSidebar();
+}
+document.querySelectorAll(".sidebar-nav button").forEach(b=>{
+  b.addEventListener("click", ()=> ativarSecao(b.dataset.secao, b));
 });
+/* Seções que existem sem item no menu (fase 89): abrem só por atalho (link, ficha da viagem) e o acesso é
+   decidido pela função de gate. Movimentações de Ativos = ficha do documento (nota/MDF-e) da viagem. */
+const SECOES_SEM_MENU = { movimentacoes: () => podeVerMovimentacoes() };
 
 /* Navega para uma seção via o botão da nav (reusa o handler acima, que
    ativa a seção e o título). Usado pelos atalhos clicáveis do dashboard. */
@@ -729,9 +759,9 @@ function podeVerCentrosCusto(){
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
 const SECOES_OCULTAS_POR_CARGO = {
-  rh: ["medicoes", "acessorios", "reparos", "equipamentos", "obras", "compras", "estoque", "separacoes", "produtos", "fornecedores", "clientes"],
+  rh: ["medicoes", "acessorios", "reparos", "fabricacao", "equipamentos", "obras", "compras", "estoque", "separacoes", "produtos", "fornecedores", "clientes"],
   // fase 77 (Bernardo, 07/10/2026): gestor de frota cuida de frota, equipamentos, manutenção e compras da frota
-  gestor_frota: ["acessorios", "reparos", "medicoes"],
+  gestor_frota: ["acessorios", "reparos", "fabricacao", "medicoes"],
   // fase 79: auditor (usuário de revisão) vê tudo, menos a gestão de logins
   auditor: ["usuarios"]
 };
@@ -756,9 +786,8 @@ function aplicarMenuPorCargo(perfil){
     const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
     if(b) b.style.display = podeVerComercial() ? "" : "none";
   });
-  // Fase 53 (Bernardo, 21/09/2026): Movimentações de Ativos fica no app (base do fluxo de acessórios), mas só no menu de quem opera
-  const navMovAtivos = document.querySelector('.sidebar-nav button[data-secao="movimentacoes"]');
-  if(navMovAtivos) navMovAtivos.style.display = podeVerMovimentacoes() ? "" : "none";
+  // Fase 53 → 89: Movimentações de Ativos saiu do menu (19/10/2026); é a ficha do documento da viagem, aberta de
+  // dentro de Logística, da obra, do equipamento e do acessório. podeVerMovimentacoes() gateia só a ficha (irParaSecao).
   // Fase 55 (Bernardo, 21/09/2026): Contratos & Contas a pagar só para diretoria, admin, financeiro e comprador
   const navCon = document.querySelector('.sidebar-nav button[data-secao="contratos"]');
   if(navCon) navCon.style.display = podeVerContasPagar() ? "" : "none";
@@ -789,6 +818,12 @@ function irParaSecao(secao){
   // item escondido do menu (Usuários, Carteira, Serviços, Orçamentos…) = módulo fora do perfil: não navega por atalho
   if(b && b.style.display === "none"){ aviso("app-aviso", "Seu perfil não tem acesso a este módulo.", "erro"); return false; }
   if(b){ b.click(); return true; }
+  // fase 89: seção sem item no menu (ficha do documento de movimentação) — o gate decide, o item ativo do menu fica
+  if(SECOES_SEM_MENU[secao] && $("sec-" + secao)){
+    if(!SECOES_SEM_MENU[secao]()){ aviso("app-aviso", "Seu perfil não tem acesso a este módulo.", "erro"); return false; }
+    ativarSecao(secao, null);
+    return true;
+  }
   return false;
 }
 
@@ -828,9 +863,11 @@ function linkCadastro(tipo, id, texto, titulo){
 function linkAcessorio(id, texto){ return linkCadastro("acessorio", id, texto, "Abrir a ficha da peça"); }
 function linkEquipamento(id, texto){ return linkCadastro("equipamento", id, texto, "Abrir a ficha do equipamento"); }
 function linkProduto(id, texto){ return linkCadastro("produto", id, texto, "Abrir o cadastro do produto"); }
-function linkMovimentacao(id, texto){ return linkCadastro("movimentacao", id, texto, "Abrir a movimentação"); }
+function linkMovimentacao(id, texto){ return linkCadastro("movimentacao", id, texto, "Abrir a nota (documento da viagem)"); }
 function linkReparo(id, texto){ return linkCadastro("reparo", id, texto, "Abrir o reparo"); }   // fase 82
-const LINK_CAD_SECAO = { acessorio: "acessorios", equipamento: "equipamentos", produto: "produtos", movimentacao: "movimentacoes", reparo: "reparos" };
+function linkFabricacao(id, texto){ return linkCadastro("fabricacao", id, texto, "Abrir a ordem de fabricação"); }   // fase 84
+function linkViagem(id, texto){ return linkCadastro("viagem", id, texto, "Abrir a viagem (Logística)"); }   // fase 89
+const LINK_CAD_SECAO = { acessorio: "acessorios", equipamento: "equipamentos", produto: "produtos", movimentacao: "movimentacoes", reparo: "reparos", fabricacao: "fabricacao", viagem: "frota" };
 document.addEventListener("click", async (e) => {
   const a = e.target && e.target.closest ? e.target.closest("a.link-cad") : null;
   if(!a) return;
@@ -850,7 +887,227 @@ document.addEventListener("click", async (e) => {
   else if(tipo === "produto" && typeof abrirProduto === "function") abrirProduto(id);
   else if(tipo === "movimentacao" && typeof abrirMovimentacao === "function") abrirMovimentacao(id);
   else if(tipo === "reparo" && typeof abrirReparo === "function") abrirReparo(id);
+  else if(tipo === "fabricacao" && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
+  else if(tipo === "viagem" && typeof abrirViagem === "function") abrirViagem(id, null);
 }, true);
+
+/* ====================== ATUALIZAÇÃO AUTOMÁTICA DO APP (fase 86) ======================
+   Pedido do Bernardo em 16/10/2026: depois de cada publicação ninguém pode continuar numa versão
+   antiga. A saída é recarregar a aba, nunca deslogar: o login vive no localStorage e sobrevive ao
+   reload, então ninguém digita senha nem MFA de novo. `scripts/publicar-app.sh` grava `versao.json`
+   ao lado do index.html publicado e carimba a <meta name="app-versao"> com o commit; aqui o app
+   compara os dois.
+   - APP_VERSAO = conteúdo da meta. No repo fonte é "dev" e a verificação não roda.
+   - verificarVersaoApp(): lê versao.json sem cache logo após o login, a cada 5 min, ao voltar para a
+     aba e ao trocar de seção. Falha de rede ou arquivo ausente é ignorada em silêncio.
+   - appAtualizacaoPendente(info): sem modal aberto e sem formulário alterado, faixa no topo e
+     recarga em 5 s (botão "Agora"); com modal ou formulário sujo a faixa fica fixa, sem recarregar,
+     e quando o modal fecha ou o salvar passa (appFormSujo() volta a false) a recarga segue em 5 s.
+     Teto: 30 min pendente e 2 min sem tecla ou clique → recarrega mesmo assim.
+   - appFormSujo(): input/change em input, select ou textarea dentro de <section> ou de modal marca
+     body.dataset.sujo. Limpam a marca: um salvar que passou (comBotaoTravado com botão de gravação,
+     sem exceção e sem aviso de erro na tela), a troca de seção, o Sair e o fechamento de modal/drawer.
+     Busca e filtro (.serv-filtros, .lista-topo, type=search) não contam: não é trabalho perdido.
+   - Na carga: se versao.json já está à frente da meta (o navegador entregou um index.html do cache
+     do Pages, max-age 600), recarrega uma vez com ?v=<versao>; guarda em sessionStorage.
+   - Depois de recarregar por atualização, avisa uma vez "Sistema atualizado em DD/MM HH:MM: …". */
+const APP_VERSAO = (document.querySelector('meta[name="app-versao"]') || {}).content || "dev";
+const APP_VERSAO_INTERVALO_MS = 5 * 60 * 1000;   // consulta periódica
+const APP_VERSAO_TETO_MS      = 30 * 60 * 1000;  // pendente há tanto tempo…
+const APP_VERSAO_INATIVO_MS   = 2 * 60 * 1000;   // …e sem tecla ou clique há tanto: recarrega
+const APP_VERSAO_CONTAGEM_S   = 5;
+let _appVersaoNova = null;          // versao.json da atualização pendente
+let _appVersaoPendenteDesde = 0;
+let _appVersaoUltimaConsulta = 0;
+let _appVersaoTimerContagem = null;
+let _appVersaoTimerVigia = null;
+let _appVersaoIniciado = false;
+let _appUltimaInteracao = Date.now();
+
+function appVersaoAtiva(){ return APP_VERSAO !== "dev"; }
+
+/* lê o versao.json publicado; null quando não há rede, arquivo ou JSON válido */
+async function lerVersaoPublicada(){
+  try {
+    const r = await fetch("versao.json?ts=" + Date.now(), { cache: "no-store" });
+    if(!r.ok) return null;
+    const info = await r.json();
+    return info && typeof info.versao === "string" && info.versao ? info : null;
+  } catch(_){ return null; }
+}
+
+/* "DD/MM HH:MM" no fuso do navegador a partir do ISO UTC do versao.json */
+function dataHoraBR(iso){
+  const d = iso ? new Date(iso) : null;
+  if(!d || isNaN(d.getTime())) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* sessionStorage pode estar bloqueado (navegação privada): nunca deixar isso derrubar o app */
+function sessaoLer(chave){ try { return sessionStorage.getItem(chave); } catch(_){ return null; } }
+function sessaoGravar(chave, valor){ try { sessionStorage.setItem(chave, valor); } catch(_){} }
+function sessaoApagar(chave){ try { sessionStorage.removeItem(chave); } catch(_){} }
+
+/* ---- formulário alterado e modal aberto ---- */
+const APP_MODAIS = ".modal-fundo, #modal-mfa";
+const APP_SUJO_IGNORAR = ".serv-filtros, .lista-topo, input[type=search]";
+function appModalAberto(){
+  return Array.from(document.querySelectorAll(APP_MODAIS)).some(m => getComputedStyle(m).display !== "none");
+}
+function appFormSujo(){ return document.body.dataset.sujo === "1"; }
+function appMarcarSujo(){ document.body.dataset.sujo = "1"; }
+function appLimparSujo(){ delete document.body.dataset.sujo; }
+/* algum aviso de erro visível (#app-aviso ou o aviso do modal/seção aberta): o salvar não passou */
+function appAvisoComErro(){
+  return Array.from(document.querySelectorAll(".aviso.erro")).some(a => getComputedStyle(a).display !== "none");
+}
+function appPodeRecarregar(){ return !appModalAberto() && !appFormSujo(); }
+
+/* ---- consulta ---- */
+async function verificarVersaoApp(minimoMs){
+  if(!_appVersaoIniciado || !appVersaoAtiva()) return;
+  if(minimoMs && Date.now() - _appVersaoUltimaConsulta < minimoMs) return;
+  _appVersaoUltimaConsulta = Date.now();
+  const info = await lerVersaoPublicada();
+  if(!info || info.versao === APP_VERSAO) return;
+  appAtualizacaoPendente(info);
+}
+
+/* registra que a aba vai recarregar por causa desta versão: evita recarregar em laço enquanto o
+   Pages ainda entrega o index.html velho e deixa o aviso "Sistema atualizado" para a próxima carga */
+function appRegistrarRecarga(info){
+  sessaoGravar("cgl_versao_tentativa", JSON.stringify({ versao: info.versao, em: Date.now() }));
+  sessaoGravar("cgl_versao_avisar", JSON.stringify({ de: APP_VERSAO, info }));
+}
+
+function appAtualizacaoPendente(info){
+  if(_appVersaoNova){ _appVersaoNova = info; return; }   // já tratando: só atualiza o que vai ser mostrado
+  let tentativa = null;
+  try { tentativa = JSON.parse(sessaoLer("cgl_versao_tentativa") || "null"); } catch(_){}
+  // esta aba já recarregou por esta versão há menos de 5 min e o index.html continuou velho (CDN do
+  // Pages propagando): espera a próxima verificação em vez de recarregar de novo
+  if(tentativa && tentativa.versao === info.versao && Date.now() - tentativa.em < APP_VERSAO_INTERVALO_MS) return;
+  _appVersaoNova = info;
+  _appVersaoPendenteDesde = Date.now();
+  appVersaoAvaliar();
+  if(!_appVersaoTimerVigia) _appVersaoTimerVigia = setInterval(appVersaoAvaliar, 1000);
+}
+
+function appVersaoTeto(){
+  const agora = Date.now();
+  return agora - _appVersaoPendenteDesde >= APP_VERSAO_TETO_MS && agora - _appUltimaInteracao >= APP_VERSAO_INATIVO_MS;
+}
+
+/* a cada segundo enquanto houver atualização pendente: conta 5 s ou segura a faixa */
+function appVersaoAvaliar(){
+  if(!_appVersaoNova) return;
+  const livre = appPodeRecarregar() || appVersaoTeto();
+  if(livre){
+    if(!_appVersaoTimerContagem) appVersaoContar();
+  } else {
+    if(_appVersaoTimerContagem){ clearInterval(_appVersaoTimerContagem); _appVersaoTimerContagem = null; }
+    appVersaoFaixa(null);
+  }
+}
+
+function appVersaoContar(){
+  let s = APP_VERSAO_CONTAGEM_S;
+  appVersaoFaixa(s);
+  _appVersaoTimerContagem = setInterval(() => {
+    s--;
+    if(s <= 0){ clearInterval(_appVersaoTimerContagem); _appVersaoTimerContagem = null; appRecarregarAgora(); return; }
+    appVersaoFaixa(s);
+  }, 1000);
+}
+
+/* faixa no topo do viewport (mesmo lugar do banner de MFA); reaproveita .aviso.atencao */
+function appVersaoFaixa(segundos){
+  let f = $("app-faixa-versao");
+  if(!f){
+    f = document.createElement("div");
+    f.id = "app-faixa-versao";
+    f.className = "aviso atencao faixa-versao";
+    f.setAttribute("role", "status");
+    f.innerHTML = '<span id="app-faixa-versao-txt"></span><button type="button" class="btn-sec btn-sm" id="app-faixa-versao-btn">Atualizar</button>';
+    f.querySelector("button").addEventListener("click", appRecarregarAgora);
+    ($("app-viewport") || document.body).prepend(f);
+  }
+  const quando = dataHoraBR(_appVersaoNova && _appVersaoNova.publicado_em);
+  const txt = $("app-faixa-versao-txt"), btn = $("app-faixa-versao-btn");
+  if(segundos != null){
+    txt.textContent = `Nova versão publicada${quando ? " (" + quando + ")" : ""}. Atualizando em ${segundos} s…`;
+    btn.textContent = "Agora";
+  } else {
+    txt.textContent = "Nova versão disponível. Salve o que está fazendo e clique em Atualizar.";
+    btn.textContent = "Atualizar";
+  }
+}
+
+function appRecarregarAgora(){
+  if(_appVersaoNova) appRegistrarRecarga(_appVersaoNova);
+  location.reload();
+}
+
+/* depois de recarregar por atualização: "Sistema atualizado em …" uma vez por versão, no #app-aviso
+   (sem o timeout de aviso(): a mensagem fica até a próxima troca de tela) */
+function avisarVersaoAtualizada(){
+  let reg = null;
+  try { reg = JSON.parse(sessaoLer("cgl_versao_avisar") || "null"); } catch(_){}
+  if(!reg || !reg.info) return;
+  if(APP_VERSAO === reg.de) return;   // ainda na versão velha (cache): o aviso fica para a próxima carga
+  sessaoApagar("cgl_versao_avisar");
+  if(sessaoLer("cgl_versao_avisada") === APP_VERSAO) return;
+  sessaoGravar("cgl_versao_avisada", APP_VERSAO);
+  const el = $("app-aviso");
+  if(!el) return;
+  const quando = dataHoraBR(reg.info.publicado_em);
+  const msg = reg.info.mensagem ? ": " + reg.info.mensagem : "";
+  el.textContent = `Sistema atualizado${quando ? " em " + quando : ""}${msg}.`;
+  el.className = "aviso ok";
+}
+
+/* chamado em iniciarApp(): liga a verificação periódica, o rastro de formulário sujo e de interação */
+function iniciarVerificacaoVersao(){
+  if(_appVersaoIniciado) return;
+  _appVersaoIniciado = true;
+  avisarVersaoAtualizada();
+  if(!appVersaoAtiva()) return;
+
+  ["input", "change"].forEach(ev => document.addEventListener(ev, e => {
+    const el = e.target;
+    if(!el || !el.matches || !el.matches("input, select, textarea")) return;
+    if(!el.closest("section, " + APP_MODAIS)) return;   // login e campos soltos não contam
+    if(el.closest(APP_SUJO_IGNORAR)) return;
+    appMarcarSujo();
+  }, true));
+  ["keydown", "pointerdown"].forEach(ev => document.addEventListener(ev, () => { _appUltimaInteracao = Date.now(); }, { capture: true, passive: true }));
+  // modal/drawer fechou (display volta a none): o que estava nele foi salvo ou abandonado
+  const obs = new MutationObserver(muts => {
+    for(const m of muts){
+      if(m.target.matches && m.target.matches(APP_MODAIS) && getComputedStyle(m.target).display === "none") appLimparSujo();
+    }
+  });
+  document.querySelectorAll(APP_MODAIS).forEach(m => obs.observe(m, { attributes: true, attributeFilter: ["style", "class"] }));
+
+  verificarVersaoApp();
+  setInterval(verificarVersaoApp, APP_VERSAO_INTERVALO_MS);
+  document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") verificarVersaoApp(30000); });
+}
+
+/* Na carga (antes do login): index.html velho vindo do cache com versao.json já novo → recarrega uma
+   vez com ?v=<versao>. Chegada por convite/recuperação fica de fora para não perder o token do hash
+   (a verificação normal cuida depois do login). Roda aqui porque precisa ser o mais cedo possível. */
+(async function verificarVersaoNaCarga(){
+  if(!appVersaoAtiva() || _chegouPorConvite) return;
+  const info = await lerVersaoPublicada();
+  if(!info || info.versao === APP_VERSAO) return;
+  let tentativa = null;
+  try { tentativa = JSON.parse(sessaoLer("cgl_versao_tentativa") || "null"); } catch(_){}
+  if(tentativa && tentativa.versao === info.versao) return;   // já tentou uma vez: sem laço; a verificação periódica segue
+  appRegistrarRecarga(info);
+  location.replace(location.pathname + "?v=" + encodeURIComponent(info.versao) + location.hash);
+})();
 
 /* ====================== CARGA GERAL ====================== */
 async function carregarTudo(){

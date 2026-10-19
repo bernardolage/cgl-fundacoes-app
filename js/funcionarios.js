@@ -74,26 +74,44 @@ function funcFotoPath(v){
   const m = String(v).match(/\/funcionarios-fotos\/([^?#]+)/);
   return m ? decodeURIComponent(m[1]) : String(v);
 }
-const FUNC_FOTO_VALIDADE_MS = 50 * 60 * 1000; // a URL vale 1 h; renova antes
+/* Lote S43 (L6): a URL assinada valia 1 h e a lista redesenhava com link vencido depois de 1 h na mesma tela
+   (12 GET 400 no storage em 16/10). Agora assina por 12 h (bucket privado, URL só na memória da aba), guarda
+   `expira_em` por path, renova quando faltar menos de 5 min e, se a imagem falhar, assina de novo uma vez. */
+const FUNC_FOTO_ASSINA_S = 12 * 3600;
+const FUNC_FOTO_MARGEM_MS = 5 * 60 * 1000;
 function funcFotoUrl(v){
   const c = _funcFotoUrls[funcFotoPath(v)];
-  return c && (Date.now() - c.t) < FUNC_FOTO_VALIDADE_MS ? c.url : null;
+  return c && (c.expira_em - Date.now()) > FUNC_FOTO_MARGEM_MS ? c.url : null;
+}
+function funcFotosVencidas(lista){
+  return (lista || []).some(f => { const p = funcFotoPath(f.foto_url); return p && !funcFotoUrl(p); });
 }
 /* Assina em lote (uma chamada) as fotos da lista que ainda não têm URL válida */
 async function funcAssinarFotos(lista){
   const paths = [...new Set(lista.map(f => funcFotoPath(f.foto_url)).filter(p => p && !funcFotoUrl(p)))];
   if(!paths.length) return;
-  const { data, error } = await sb.storage.from("funcionarios-fotos").createSignedUrls(paths, 3600);
+  const { data, error } = await sb.storage.from("funcionarios-fotos").createSignedUrls(paths, FUNC_FOTO_ASSINA_S);
   if(error){ console.warn("Fotos de funcionários sem URL assinada:", error.message); return; }
-  const agora = Date.now();
-  (data || []).forEach(d => { if(d.signedUrl && d.path) _funcFotoUrls[d.path] = { url: d.signedUrl, t: agora }; });
+  const expira_em = Date.now() + FUNC_FOTO_ASSINA_S * 1000;
+  (data || []).forEach(d => { if(d.signedUrl && d.path) _funcFotoUrls[d.path] = { url: d.signedUrl, expira_em }; });
+}
+/* onerror do avatar: URL vencida ou revogada → assina de novo uma vez; na segunda falha, iniciais */
+async function funcFotoFalhou(img){
+  const path = img.dataset.path, wrap = img.parentElement;
+  const iniciaisTxt = img.dataset.ini || "";
+  if(!path || img.dataset.tentou){ if(wrap) wrap.textContent = iniciaisTxt; return; }
+  img.dataset.tentou = "1";
+  delete _funcFotoUrls[path];
+  await funcAssinarFotos([{ foto_url: path }]);
+  const url = funcFotoUrl(path);
+  if(url) img.src = url; else if(wrap) wrap.textContent = iniciaisTxt;
 }
 
 function avatarHtml(f, sz=40){
   const style = `width:${sz}px;height:${sz}px;font-size:${Math.round(sz*0.35)}px;flex-shrink:0;`;
   const url = funcFotoUrl(f.foto_url);
   if(url){
-    return `<div class="func-kan-avatar" style="${style}"><img src="${esc(url)}" alt="" loading="lazy" /></div>`;
+    return `<div class="func-kan-avatar" style="${style}"><img src="${esc(url)}" alt="" loading="lazy" data-path="${esc(funcFotoPath(f.foto_url))}" data-ini="${esc(iniciais(f.nome))}" onerror="funcFotoFalhou(this)" /></div>`;
   }
   return `<div class="func-kan-avatar" style="${style}">${esc(iniciais(f.nome))}</div>`;
 }
@@ -260,6 +278,11 @@ function funcFiltrados(){
 
 /* ---------- render ---------- */
 function renderFuncionarios(){
+  // lote S43 (L6): URL assinada vencida (ou a menos de 5 min do fim) é renovada antes de redesenhar a lista
+  if(funcFotosVencidas(_funcs)){ funcAssinarFotos(_funcs).then(renderFuncionariosAgora, renderFuncionariosAgora); return; }
+  renderFuncionariosAgora();
+}
+function renderFuncionariosAgora(){
   funcRenderizarSidebarDept();
   const dados = funcFiltrados();
   const cont = $("func-contador");
@@ -434,9 +457,9 @@ async function funcCarregarFoto(fotoUrl, nome){
   const path = funcFotoPath(fotoUrl);
   let url = null;
   if(path){
-    const { data } = await sb.storage.from("funcionarios-fotos").createSignedUrl(path, 3600);
+    const { data } = await sb.storage.from("funcionarios-fotos").createSignedUrl(path, FUNC_FOTO_ASSINA_S);
     url = data?.signedUrl || null;
-    if(url) _funcFotoUrls[path] = { url, t: Date.now() };
+    if(url) _funcFotoUrls[path] = { url, expira_em: Date.now() + FUNC_FOTO_ASSINA_S * 1000 };
   }
   if(url) preview.innerHTML = `<img src="${esc(url)}&t=${Date.now()}" alt="" />`;
   else    preview.innerHTML = `<span>${esc(iniciais(nome))}</span>`;

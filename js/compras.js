@@ -31,6 +31,13 @@ let _cmpAvPre = null;             // callback após salvar custo avulso
 let _cmpParaReceber = {};         // fase 78: pedido_id -> linha de vw_compras_para_receber
 let _cmpPerfis = [];              // fase 78: usuários ativos (responsável pelo recebimento)
 let _cmpSrv = null;               // fase 78: recebimento de serviço em montagem
+let _cmpKpis = null;              // lote S43 (L2): linha de vw_compras_kpis (indicadores numa consulta só)
+let _cmpCarga = 0;                // lote S43: token da carga em andamento (trocar o período cancela a anterior)
+let _cmpCompleto = false;         // lote S43: o resto do período já chegou? (a 1ª carga é abertos + 30 dias)
+let _cmpBuscaItensIds = null;     // lote S43: ids de pedidos cujo item casa com a busca (consulta no servidor, 3+ letras)
+/* colunas que o painel usa (a ficha abre o pedido inteiro em abrirPedido) */
+const CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at";
+const CMP_PRIMEIRA_CARGA_DIAS = 30;
 
 const CMP_STATUS = {
   rascunho:              { label: "Rascunho",             cor: "cinza" },
@@ -144,57 +151,89 @@ async function cmpCarregarBase(force){
 }
 async function carregarCompras(force){
   const cont = $("cmp-conteudo"); if(!cont) return;
-  if(force || !_cmpCarregado) cont.innerHTML = `<p class="vazio">Carregando compras…</p>`;
+  if(force || !_cmpCarregado){ cont.innerHTML = `<p class="vazio">Carregando compras…</p>`; cmpKpisCarregando(true); }
   await cmpCarregarBase(force);
   const pode = cmpPodeOperar();
   ["btn-cmp-novo","btn-cmp-receber-avulso","btn-cmp-compra-direta"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
   if($("btn-cmp-req-nova")) $("btn-cmp-req-nova").style.display = (typeof reqPodePedir === "function" && reqPodePedir()) ? "" : "none"; // fase 60
-  await cmpFetchPedidos();
-  renderCompras();
+  await cmpFetchPedidos();   // lote S43: indicadores pela view, 1ª carga renderizada, resto em segundo plano
   cmpCarregarSync();   // fase 81
 }
+/* lote S43 (L2): enquanto a view não respondeu, os sete indicadores mostram "…" e as visões ficam travadas */
+function cmpKpisCarregando(on){
+  document.querySelectorAll("#cmp-painel .ind").forEach(el => { el.classList.toggle("carregando", on); if(on){ const n = el.querySelector(".num"); if(n) n.textContent = "…"; } });
+  document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.disabled = on);
+}
+async function cmpCarregarKpis(){
+  const { data, error } = await sb.from("vw_compras_kpis").select("*").maybeSingle();
+  if(error) console.warn("vw_compras_kpis:", error.message);
+  _cmpKpis = (!error && data) ? data : null;
+  cmpRenderKpis();
+}
 /* fase 81: última sincronização com o Odoo (scripts/importar-odoo-compras.js sincronizar, todo dia às 05:30).
-   Vermelho com erro, etapa interrompida ou mais de 36 h sem sincronizar. */
+   Lote S43 (L3): lê a ÚLTIMA LINHA POR ETAPA (vw_odoo_sync_ultima) em vez das 12 últimas linhas, que
+   chamavam de rodada tudo até 3 h da última: tentativa antiga já refeita pintava "erro em reparos" e uma
+   rodada manual só de fotos pintava verde com pedidos parados.
+   - "sincronizado às" = fim da última rodada de `pedidos` sem erro;
+   - vermelho quando a última linha de pedidos, fornecedores, catalogo, precos ou estoque falhou (erro, ou
+     começou há mais de 1 h sem terminar) ou quando pedidos não sincroniza há mais de 36 h;
+   - fotos e reparos não contam nem para o verde nem para o vermelho;
+   - idade de estoque não pinta: a rodada manual com --sem-estoque (decisão do Bernardo em 19/10) é de propósito. */
+const CMP_SYNC_ETAPAS = ["pedidos", "fornecedores", "catalogo", "precos", "estoque"];
 async function cmpCarregarSync(){
   const el = $("cmp-odoo-sync"); if(!el) return;
-  const { data, error } = await sb.from("odoo_sync").select("etapa,inicio,fim,criados,alterados,erro,resumo").order("inicio", { ascending: false }).limit(12);
-  if(error || !data || !data.length){ el.style.display = "none"; return; }
-  const ult = new Date(data[0].inicio).getTime();
-  const rodada = data.filter(r => ult - new Date(r.inicio).getTime() < 3 * 3600e3);
-  const da = e => rodada.find(r => r.etapa === e);
-  const fimMax = Math.max(...rodada.map(r => r.fim ? new Date(r.fim).getTime() : 0));
-  const comErro = rodada.filter(r => r.erro || (!r.fim && Date.now() - new Date(r.inicio).getTime() > 3600e3));
-  const velha = !fimMax || Date.now() - fimMax > 36 * 3600e3;
-  const quando = new Date(fimMax || ult), hh = quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), dd = quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const [ult, boa] = await Promise.all([
+    sb.from("vw_odoo_sync_ultima").select("etapa,inicio,fim,criados,alterados,erro").in("etapa", CMP_SYNC_ETAPAS),
+    sb.from("odoo_sync").select("fim").eq("etapa", "pedidos").is("erro", null).not("fim", "is", null).order("fim", { ascending: false }).limit(1).maybeSingle()
+  ]);
+  if(ult.error || !ult.data || !ult.data.length){ el.style.display = "none"; return; }
+  const por = {}; ult.data.forEach(r => por[r.etapa] = r);
+  const falhou = r => !!r.erro || (!r.fim && Date.now() - new Date(r.inicio).getTime() > 3600e3);
+  const comErro = CMP_SYNC_ETAPAS.map(e => por[e]).filter(r => r && falhou(r));
+  const fimBoa = boa.data?.fim ? new Date(boa.data.fim) : null;
+  const velha = !fimBoa || Date.now() - fimBoa.getTime() > 36 * 3600e3;
+  const hh = fimBoa ? fimBoa.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "", dd = fimBoa ? fimBoa.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "";
+  // o que a última rodada boa trouxe: etapas sem erro terminadas até 3 h dela
+  const daRodada = e => { const r = por[e]; return r && !falhou(r) && r.fim && fimBoa && Math.abs(new Date(r.fim).getTime() - fimBoa.getTime()) < 3 * 3600e3 ? r : null; };
   const partes = [];
-  if(da("pedidos")) partes.push(`${da("pedidos").criados} pedido(s) novo(s)`);
-  if(da("fornecedores")) partes.push(`${da("fornecedores").criados} fornecedor(es) novo(s)`);
-  if(da("catalogo")) partes.push(`${da("catalogo").criados} produto(s) novo(s)`);
-  if(da("estoque")) partes.push(`estoque ajustado em ${da("estoque").criados} item(ns)`);
-  const ruim = velha || comErro.length;
-  el.innerHTML = `<span class="tag ${ruim ? "vermelho" : "verde"}">Odoo</span> ${ruim && velha ? "<strong class=\"txt-perigo\">sem sincronizar desde</strong>" : "sincronizado às"} ${hh} de ${dd}${partes.length ? " · " + esc(partes.join(" · ")) : ""}`
-    + (comErro.length ? ` · <strong class="txt-perigo">erro em ${esc(comErro.map(r => r.etapa).join(", "))}</strong>${comErro[0].erro ? ` <span title="${esc(comErro[0].erro)}">(${esc(String(comErro[0].erro).slice(0, 80))})</span>` : ""}` : "");
+  if(daRodada("pedidos")) partes.push(`${daRodada("pedidos").criados} pedido(s) novo(s)`);
+  if(daRodada("fornecedores")) partes.push(`${daRodada("fornecedores").criados} fornecedor(es) novo(s)`);
+  if(daRodada("catalogo")) partes.push(`${daRodada("catalogo").criados} produto(s) novo(s)`);
+  if(daRodada("estoque")) partes.push(`estoque ajustado em ${daRodada("estoque").criados} item(ns)`);
+  const ruim = velha || comErro.length > 0;
+  const motivo = comErro.length
+    ? `<strong class="txt-perigo">erro em ${esc(comErro.map(r => r.etapa).join(", "))}</strong>${comErro[0].erro ? ` <span title="${esc(comErro[0].erro)}">(${esc(String(comErro[0].erro).slice(0, 80))})</span>` : " (interrompida)"}`
+    : `<span title="a tarefa agendada CGL Odoo sync não rodou; até o corte do Odoo a rodada é manual">tarefa parada</span>`;
+  el.innerHTML = `<span class="tag ${ruim ? "vermelho" : "verde"}">Odoo</span> `
+    + (ruim
+      ? `<strong class="txt-perigo">sem sincronizar${fimBoa ? ` desde ${dd} ${hh}` : " (nenhuma rodada de pedidos concluída)"}</strong> · ${motivo}`
+      : `sincronizado às ${hh} de ${dd}`)
+    + (partes.length ? " · " + esc(partes.join(" · ")) : "");
   el.style.display = "";
 }
 /* Fase 65: sem teto de 1000 (os pedidos do Odoo passam disso). Carrega em páginas o período escolhido
-   (padrão: últimos 90 dias); pedido em aberto entra sempre, para os indicadores ficarem certos. */
-async function cmpFetchPedidos(){
-  const dias = Number($("cmp-f-periodo")?.value || 0);
-  const corte = dias ? dataLocalISO(new Date(Date.now() - dias * 864e5)) : null;
-  // itens vêm numa consulta à parte e são juntados aqui: embutir itens no pedido (junção por pedido sob RLS)
-  // custava ~1 s por página de 1000
-  const rqP = sb.from("requisicoes").select("id", { count: "exact", head: true }).eq("status", "pendente");
+   (padrão: últimos 90 dias); pedido em aberto entra sempre, para os indicadores ficarem certos.
+   Lote S43 (L2): a tela abria com "—" por ~10 s porque baixava os 1.215 pedidos inteiros e os 3.380
+   itens antes de qualquer render. Agora: (1) indicadores pela view vw_compras_kpis; (2) 1ª carga =
+   pedidos em aberto + últimos 30 dias, só as colunas do painel, já renderizada; (3) o resto do período
+   chega em segundo plano e completa a lista; (4) itens só dos pedidos em aberto (recebimento parcial e
+   destino por item precisam deles); a busca por descrição de item consulta o servidor (cmpBuscar). */
+async function cmpFetchPaginas(filtro){
   const todos = [];
   for(let de = 0; todos.length === de; de += 1000){
-    let q = sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social)")
+    let q = sb.from("pedidos_compra").select(CMP_COLS + ", fornecedor:fornecedores(razao_social)")
       .order("data_pedido", { ascending: false }).order("created_at", { ascending: false }).order("id").range(de, de + 999);
-    if(corte) q = q.or(`data_pedido.gte.${corte},status.in.(${CMP_ABERTOS.join(",")})`);
+    q = filtro(q);
     const pg = await q;
-    if(pg.error){ aviso("app-aviso", "Erro ao carregar pedidos: " + pg.error.message, "erro"); return; }
+    if(pg.error) return pg;
     todos.push(...(pg.data || []));
   }
-  const porId = {}; todos.forEach(p => { p.itens = []; porId[p.id] = p; });
-  const ids = todos.map(p => p.id), lotes = [];
+  return { data: todos };
+}
+/* itens vêm numa consulta à parte e são juntados aqui: embutir itens no pedido (junção por pedido sob RLS)
+   custava ~1 s por página de 1000 */
+async function cmpFetchItens(ids){
+  const lotes = [];
   for(let i = 0; i < ids.length; i += 120) lotes.push(ids.slice(i, i + 120));
   const res = await Promise.all(lotes.map(async lote => {
     const out = [];
@@ -205,16 +244,67 @@ async function cmpFetchPedidos(){
     }
     return { data: out };
   }));
-  const erroIt = res.find(r => r.error);
-  if(erroIt){ aviso("app-aviso", "Erro ao carregar itens dos pedidos: " + erroIt.error.message, "erro"); return; }
-  res.forEach(r => r.data.forEach(i => { const p = porId[i.pedido_id]; if(p) p.itens.push(i); }));
-  const rq = await rqP;
-  _cmpPedidos = todos;
-  _cmpReqPend = rq.count || 0;
-  // fase 78: o que espera recebimento, por responsável
-  const pr = await sb.from("vw_compras_para_receber").select("pedido_id,responsavel_recebimento_id,responsavel_nome,dias_desde_envio,tem_servico,tem_evidencia");
+  const erro = res.find(r => r.error);
+  return erro || { data: res.flatMap(r => r.data) };
+}
+function cmpOrdenar(lista){
+  const k = p => `${p.data_pedido || ""}|${p.created_at || ""}`;
+  return lista.sort((a, b) => (k(a) < k(b) ? 1 : k(a) > k(b) ? -1 : 0));
+}
+async function cmpFetchPedidos(){
+  const token = ++_cmpCarga;
+  const pKpis = cmpCarregarKpis();
+  const dias = Number($("cmp-f-periodo")?.value || 0);
+  const corte = dias ? dataLocalISO(new Date(Date.now() - dias * 864e5)) : null;
+  const corte1 = dataLocalISO(new Date(Date.now() - CMP_PRIMEIRA_CARGA_DIAS * 864e5));
+  const abertosIn = `status.in.(${CMP_ABERTOS.join(",")})`;
+  _cmpCompleto = false;
+  // 1ª carga: em aberto + últimos 30 dias
+  const prim = await cmpFetchPaginas(q => q.or(`data_pedido.gte.${corte1},${abertosIn}`));
+  if(token !== _cmpCarga) return;
+  if(prim.error){ aviso("app-aviso", "Erro ao carregar pedidos: " + prim.error.message, "erro"); return; }
+  const porId = {}; prim.data.forEach(p => { p.itens = null; porId[p.id] = p; });   // null = itens não carregados
+  const abertos = prim.data.filter(p => CMP_ABERTOS.includes(p.status));
+  const [it, pr] = await Promise.all([
+    cmpFetchItens(abertos.map(p => p.id)),
+    sb.from("vw_compras_para_receber").select("pedido_id,responsavel_recebimento_id,responsavel_nome,dias_desde_envio,tem_servico,tem_evidencia")   // fase 78
+  ]);
+  if(token !== _cmpCarga) return;
+  if(it.error){ aviso("app-aviso", "Erro ao carregar itens dos pedidos: " + it.error.message, "erro"); return; }
+  abertos.forEach(p => { p.itens = []; });
+  it.data.forEach(i => { const p = porId[i.pedido_id]; if(p) p.itens.push(i); });
   _cmpParaReceber = {}; (pr.data || []).forEach(r => _cmpParaReceber[r.pedido_id] = r);
-  todos.forEach(p => { const r = _cmpParaReceber[p.id]; if(r) p._responsavel = r.responsavel_nome; });
+  prim.data.forEach(p => { const r = _cmpParaReceber[p.id]; if(r) p._responsavel = r.responsavel_nome; });
+  _cmpPedidos = cmpOrdenar(prim.data);
+  const temResto = !dias || dias > CMP_PRIMEIRA_CARGA_DIAS;
+  _cmpCompleto = !temResto;
+  renderCompras();
+  document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.disabled = false);
+  await pKpis;
+  // 2ª carga em segundo plano (sem await: quem chamou segue; a lista se completa quando chegar)
+  if(temResto) cmpFetchResto(token, corte, corte1, porId);
+}
+/* o resto do período (fechados antes dos 30 dias), sem itens; mesma paginação */
+async function cmpFetchResto(token, corte, corte1, porId){
+  const resto = await cmpFetchPaginas(q => { q = q.lt("data_pedido", corte1).not("status", "in", `(${CMP_ABERTOS.join(",")})`); return corte ? q.gte("data_pedido", corte) : q; });
+  if(token !== _cmpCarga) return;
+  _cmpCompleto = true;
+  if(resto.error){ aviso("app-aviso", "O restante do período não carregou: " + resto.error.message, "erro"); renderCompras(); return; }
+  resto.data.forEach(p => { if(!porId[p.id]){ p.itens = null; porId[p.id] = p; _cmpPedidos.push(p); } });
+  cmpOrdenar(_cmpPedidos);
+  if(["kanban","lista"].includes(_cmpView)) renderCompras();   // completa a lista; as outras visões não dependem dela
+}
+/* lote S43 (L2): busca com 3+ letras também consulta a descrição dos itens no servidor (os itens dos
+   pedidos fechados não vêm mais na carga) */
+async function cmpBuscar(){
+  const q = ($("cmp-busca")?.value || "").trim();
+  if(q.length < 3){ _cmpBuscaItensIds = null; renderCompras(); return; }
+  renderCompras();   // o que casa na memória aparece já
+  const t = q.replace(/[%,()]/g, " ").trim();
+  const { data } = await sb.from("pedido_compra_itens").select("pedido_id").ilike("descricao", `%${t}%`).limit(2000);
+  if(($("cmp-busca")?.value || "").trim() !== q) return;   // já digitou outra coisa
+  _cmpBuscaItensIds = new Set((data || []).map(i => i.pedido_id));
+  renderCompras();
 }
 function cmpPreencherSelectsFixos(){
   const fornOpts = ph => `<option value="">${ph}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
@@ -228,6 +318,7 @@ function cmpPreencherSelectsFixos(){
   set("cmp-resp-receb", `<option value="">— o solicitante —</option>` + _cmpPerfis.map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join(""));
   const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
   const ac = $("cmp-av-cat"); if(ac) ac.innerHTML = cmpCatOptions("outro");
+  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53)
 }
 
 /* ---------- painel ---------- */
@@ -252,22 +343,33 @@ function cmpFiltrados(){
     }
     if(q){
       const alvo = [p.numero, p.codigo_externo, p.comprador_externo, p.fornecedor?.razao_social, cmpObra(p.obra_id), cmpEq(p.equipamento_id), p.condicao_pagamento, ...(p.itens || []).map(i => i.descricao)].filter(Boolean).join(" ").toLowerCase();
-      if(!alvo.includes(q)) return false;
+      if(!alvo.includes(q) && !(_cmpBuscaItensIds && _cmpBuscaItensIds.has(p.id))) return false;   // lote S43: item casado no servidor
     }
     return true;
   });
 }
+/* lote S43 (L2): os indicadores vêm de vw_compras_kpis (uma linha). Sem a view (erro), conta na memória
+   como antes, mas só depois que o período inteiro chegou; até lá fica "…". */
 function cmpRenderKpis(){
-  const ab = _cmpPedidos.filter(p => CMP_ABERTOS.includes(p.status));
   const set = (id, v) => { const el = $(id); if(el) el.textContent = v; };
-  set("cmp-kpi-abertos", ab.length);
-  set("cmp-kpi-aprovar", ab.filter(p => p.status === "aguardando_aprovacao").length);
-  set("cmp-kpi-entrega", ab.filter(p => CMP_AGUARDA_RECEB.includes(p.status)).length);
-  set("cmp-kpi-atrasados", ab.filter(cmpAtrasado).length);
-  set("cmp-kpi-valor", brl(ab.reduce((s, p) => s + Number(p.total || 0), 0)));
-  set("cmp-kpi-req", _cmpReqPend);
-  const pr = Object.values(_cmpParaReceber), meus = pr.filter(r => r.responsavel_recebimento_id === usuarioAtual?.id).length;   // fase 78
-  set("cmp-kpi-receber", pr.length); set("cmp-kpi-receber-meus", meus ? `(${meus} seus)` : "");
+  const k = _cmpKpis;
+  if(k){
+    set("cmp-kpi-abertos", k.abertos); set("cmp-kpi-aprovar", k.aguardando_aprovacao); set("cmp-kpi-entrega", k.aguardando_entrega);
+    set("cmp-kpi-atrasados", k.atrasados); set("cmp-kpi-valor", brl(k.valor_aberto)); set("cmp-kpi-req", k.requisicoes_pendentes);
+    set("cmp-kpi-receber", k.para_receber); set("cmp-kpi-receber-meus", k.para_receber_meus ? `(${k.para_receber_meus} seus)` : "");
+    _cmpReqPend = Number(k.requisicoes_pendentes || 0);
+  } else if(_cmpCompleto){
+    const ab = _cmpPedidos.filter(p => CMP_ABERTOS.includes(p.status));
+    set("cmp-kpi-abertos", ab.length);
+    set("cmp-kpi-aprovar", ab.filter(p => p.status === "aguardando_aprovacao").length);
+    set("cmp-kpi-entrega", ab.filter(p => CMP_AGUARDA_RECEB.includes(p.status)).length);
+    set("cmp-kpi-atrasados", ab.filter(cmpAtrasado).length);
+    set("cmp-kpi-valor", brl(ab.reduce((s, p) => s + Number(p.total || 0), 0)));
+    set("cmp-kpi-req", _cmpReqPend);
+    const pr = Object.values(_cmpParaReceber), meus = pr.filter(r => r.responsavel_recebimento_id === usuarioAtual?.id).length;   // fase 78
+    set("cmp-kpi-receber", pr.length); set("cmp-kpi-receber-meus", meus ? `(${meus} seus)` : "");
+  } else return;
+  document.querySelectorAll("#cmp-painel .ind").forEach(el => el.classList.remove("carregando"));
 }
 function renderCompras(){
   const cont = $("cmp-conteudo"); if(!cont) return;
@@ -279,18 +381,18 @@ function renderCompras(){
   if(_cmpView === "requisicoes") return renderRequisicoes(); // fase 60
   const dados = cmpFiltrados();
   const per = $("cmp-f-periodo");
-  $("cmp-contador").textContent = `${dados.length} de ${_cmpPedidos.length}${per && per.value ? " · " + per.options[per.selectedIndex].text.toLowerCase() + " e abertos" : ""}`;
+  $("cmp-contador").textContent = `${dados.length} de ${_cmpPedidos.length}${per && per.value ? " · " + per.options[per.selectedIndex].text.toLowerCase() + " e abertos" : ""}${_cmpCompleto ? "" : " · carregando o resto…"}`;
   if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhum pedido com esses filtros.</p>`; return; }
   if(_cmpView === "lista") renderComprasLista(dados); else renderComprasKanban(dados);
 }
 function cmpCardHTML(p){
   const atras = cmpAtrasado(p);
   const dest = p.obra_id ? "🏗️ " + esc(cmpObra(p.obra_id)) : p.equipamento_id ? "🚜 TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? "🏢 " + esc(cmpCentro(p.centro_custo_id)) : "📦 Estoque";
-  const it = p.itens || [];
+  const it = p.itens;   // null = pedido fechado, itens só na ficha (lote S43)
   return `<div class="serv-kan-card${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
     <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span></div>
     <div>${esc(p.fornecedor?.razao_social || "— sem fornecedor —")}</div>
-    <div class="meta">${dest} · ${it.length} item(ns)</div>
+    <div class="meta">${dest}${it ? ` · ${it.length} item(ns)` : ""}</div>
     <div class="meta" style="display:flex;justify-content:space-between;margin-top:4px;"><strong>${brl(p.total)}</strong>${p.previsao_entrega ? `<span class="${atras ? "txt-perigo" : ""}">${atras ? "⚠ " : "📅 "}${dataBR(p.previsao_entrega)}</span>` : ""}</div>
   </div>`;
 }
@@ -307,7 +409,7 @@ function renderComprasLista(dados){
     <tbody>${dados.map(p => `<tr class="linha-clicavel${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
       <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td>
       <td>${p.obra_id ? linkObra(p.obra_id, cmpObra(p.obra_id)) : p.equipamento_id ? "TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? esc(cmpCentro(p.centro_custo_id)) : "Estoque"}</td>
-      <td class="num">${(p.itens || []).length}</td><td class="num">${brl(p.total)}</td>
+      <td class="num">${p.itens ? p.itens.length : "—"}</td><td class="num">${brl(p.total)}</td>
       <td class="${cmpAtrasado(p) ? "txt-perigo" : ""}">${dataBR(p.previsao_entrega)}</td>
       <td>${cmpTag(p.status)}</td><td class="meta">${esc(p._responsavel || "")}${_cmpParaReceber[p.id]?.tem_servico ? ` <span class="tag ${_cmpParaReceber[p.id].tem_evidencia ? "verde" : "ambar"}">serviço${_cmpParaReceber[p.id].tem_evidencia ? " c/ evidência" : ""}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
 }
@@ -360,6 +462,7 @@ function abrirFichaPedido(p){
   $("cmp-obra").value = p.obra_id || ""; $("cmp-equip").value = p.equipamento_id || ""; $("cmp-centro").value = p.centro_custo_id || "";
   $("cmp-frete").value = p.frete ?? 0; $("cmp-desc").value = p.desconto ?? 0; $("cmp-obs").value = p.observacoes || "";
   $("cmp-ficha").querySelectorAll(".odoo-tab[data-tab=cabecalho] input, .odoo-tab[data-tab=cabecalho] select, .odoo-tab[data-tab=cabecalho] textarea").forEach(el => el.disabled = !ed);
+  cmpFornAtualizar("cmp-forn");   // lote S43 (#53): chip do fornecedor acompanha o select
   // fase 78: responsável pelo recebimento troca a qualquer momento (comprador do pedido e diretoria)
   $("cmp-resp-receb").value = p.responsavel_recebimento_id || "";
   $("cmp-resp-receb").disabled = !(ed || cmpPodeTrocarResp());
@@ -505,6 +608,59 @@ function cmpLigarBusca(inpId, listaId, aoEscolher){
   });
 }
 
+/* ---------- fornecedor com busca (lote S43, chamado #53) ----------
+   O <select> com 641 fornecedores continua existindo (escondido, mesmo id e valor): cmpAtualizarChips, a condição
+   de pagamento padrão, salvarPedido, o XML da NF e o custo avulso não mudam. Em cima dele entra um campo de busca
+   (razão social, fantasia ou CNPJ, até 25 resultados, na memória de _cmpForns) que, ao escolher, vira chip com ×.
+   Quem troca o valor do select pelo código chama cmpFornAtualizar(id) para o chip acompanhar.
+   Reaproveitável por Contratos: cmpCampoFornecedor("<id do select>") depois de cmpCarregarBase(). */
+const _cmpFornCampos = {};
+function cmpNorm(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+function cmpFornRotulo(f){ return f ? f.razao_social + (f.nome_fantasia && f.nome_fantasia !== f.razao_social ? ` (${f.nome_fantasia})` : "") : ""; }
+function cmpCampoFornecedor(idSelect){
+  if(_cmpFornCampos[idSelect]) return _cmpFornCampos[idSelect];
+  const sel = $(idSelect); if(!sel) return null;
+  sel.style.display = "none";
+  const wrap = document.createElement("div"); wrap.className = "forn-campo"; wrap.id = idSelect + "-busca-wrap";
+  wrap.innerHTML = `<span class="forn-chip" style="display:none;"><strong></strong><button type="button" class="forn-chip-x" title="trocar o fornecedor">×</button></span>
+    <input class="forn-busca" placeholder="razão social, fantasia ou CNPJ (≥ 2 letras)…" autocomplete="off" />
+    <div class="autocomplete-lista" style="display:none;"></div>`;
+  sel.insertAdjacentElement("afterend", wrap);
+  const chip = wrap.querySelector(".forn-chip"), chipTxt = chip.querySelector("strong"), x = chip.querySelector(".forn-chip-x");
+  const inp = wrap.querySelector(".forn-busca"), lista = wrap.querySelector(".autocomplete-lista");
+  const fechar = () => { lista.style.display = "none"; lista.innerHTML = ""; };
+  function atualizar(){
+    const f = _cmpFornMap[sel.value];
+    const texto = f ? cmpFornRotulo(f) : (sel.value ? (sel.options[sel.selectedIndex]?.text || sel.value) : "");
+    chip.style.display = texto ? "" : "none"; chipTxt.textContent = texto;
+    x.style.display = sel.disabled ? "none" : "";
+    inp.style.display = texto ? "none" : ""; inp.disabled = sel.disabled;
+  }
+  const escolher = id => { sel.value = id || ""; inp.value = ""; fechar(); sel.dispatchEvent(new Event("change", { bubbles: true })); atualizar(); if(!id) inp.focus(); };
+  inp.addEventListener("input", debounce(() => {
+    const t = cmpNorm(inp.value.trim()), dig = t.replace(/\D/g, "");
+    if(t.length < 2){ fechar(); return; }
+    const res = _cmpForns.filter(f => cmpNorm(f.razao_social).includes(t) || cmpNorm(f.nome_fantasia).includes(t)
+      || (dig.length >= 3 && String(f.cpf_cnpj || "").replace(/\D/g, "").includes(dig))).slice(0, 25);
+    lista.innerHTML = res.length
+      ? res.map(f => `<div class="resultado-item" data-id="${esc(f.id)}"><strong>${esc(f.razao_social)}</strong>${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? ` <span class="meta">${esc(f.nome_fantasia)}</span>` : ""}<span class="meta" style="float:right;">${esc([f.cpf_cnpj, f.cidade].filter(Boolean).join(" · "))}</span></div>`).join("")
+      : `<div class="resultado-item vazio">Nenhum fornecedor com esse nome ou CNPJ. Cadastre em Fornecedores.</div>`;
+    lista.style.display = "";
+    lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => { ev.preventDefault(); escolher(d.dataset.id); }));
+  }, 150));
+  inp.addEventListener("keydown", ev => {
+    if(ev.key === "Enter"){ const d = lista.querySelector(".resultado-item[data-id]"); if(d){ ev.preventDefault(); escolher(d.dataset.id); } }
+    if(ev.key === "Escape") fechar();
+  });
+  inp.addEventListener("blur", () => setTimeout(fechar, 150));
+  x.addEventListener("click", () => escolher(""));
+  sel.addEventListener("change", atualizar);
+  _cmpFornCampos[idSelect] = { atualizar };
+  atualizar();
+  return _cmpFornCampos[idSelect];
+}
+function cmpFornAtualizar(idSelect){ const c = _cmpFornCampos[idSelect]; if(c) c.atualizar(); }
+
 /* salvar / ações */
 function cmpColetarCabecalho(){
   return {
@@ -594,7 +750,7 @@ function abrirRecebimento(pedido, modo){
   $("cmp-rec-xml").value = "";
   $("cmp-rec-xml-info").textContent = "Clique ou arraste o XML aqui. Preenche cabeçalho, duplicatas e itens; casa os produtos por código do fornecedor, EAN e pedido.";
   $("cmp-rec-titulo").textContent = direta ? "Compra direta (nota na mão)" : semPedido ? "Receber NF sem pedido" : `Receber NF — pedido ${pedido.numero}`;
-  $("cmp-rec-forn").value = pedido?.fornecedor_id || ""; $("cmp-rec-forn").disabled = !semPedido;
+  $("cmp-rec-forn").value = pedido?.fornecedor_id || ""; $("cmp-rec-forn").disabled = !semPedido; cmpFornAtualizar("cmp-rec-forn");
   if($("cmp-rec-contrato")) $("cmp-rec-contrato").value = "";
   cmpRecPreencherContratos(); // fase 57: NF de contrato recorrente (só sem pedido)
   ["cmp-rec-nf","cmp-rec-chave","cmp-rec-emissao","cmp-rec-frete","cmp-rec-venc","cmp-rec-total","cmp-rec-obs"].forEach(id => $(id).value = "");
@@ -944,7 +1100,7 @@ async function cmpImportarXml(file){
   const avisos = [];
   if(forn){
     if(_cmpRec.pedido && _cmpRec.pedido.fornecedor_id && _cmpRec.pedido.fornecedor_id !== forn.id) avisos.push(`⚠ a nota é de <strong>${esc(forn.razao_social)}</strong>, mas o pedido é de ${esc(cmpForn(_cmpRec.pedido.fornecedor_id))}`);
-    if(!_cmpRec.pedido){ $("cmp-rec-forn").value = forn.id; cmpRecPreencherContratos(); }
+    if(!_cmpRec.pedido){ $("cmp-rec-forn").value = forn.id; cmpFornAtualizar("cmp-rec-forn"); cmpRecPreencherContratos(); }
   }
   // já foi recebida?
   if(nf.chave){ const { data: dupNf } = await sb.from("recebimentos").select("id,status").eq("nf_chave", nf.chave).neq("status", "cancelado").limit(1); if(dupNf?.length) avisos.push(`⚠ <strong>esta chave de acesso já tem um recebimento registrado</strong>. Confira antes de confirmar de novo`); }
@@ -988,7 +1144,7 @@ async function cmpCriarFornecedorDaNf(e){
   if(error){ aviso("app-aviso", "Não foi possível cadastrar o fornecedor: " + error.message, "erro"); return; }
   _cmpForns.push(data); _cmpFornMap[data.id] = data; _cmpForns.sort((a, b) => a.razao_social.localeCompare(b.razao_social));
   cmpPreencherSelectsFixos();
-  if(!_cmpRec?.pedido) $("cmp-rec-forn").value = data.id;
+  if(!_cmpRec?.pedido){ $("cmp-rec-forn").value = data.id; cmpFornAtualizar("cmp-rec-forn"); }
   if(typeof mapaFornecedores === "object" && mapaFornecedores) mapaFornecedores[data.id] = data.razao_social;
   $("btn-cmp-rec-criar-forn")?.closest("span, div")?.querySelector("#btn-cmp-rec-criar-forn")?.remove();
   aviso("app-aviso", `Fornecedor ${data.razao_social} cadastrado.`, "ok");
@@ -1000,7 +1156,7 @@ async function abrirCustoAvulso(pre, depois){
   _cmpAvPre = depois || null;
   await cmpCarregarBase(false);
   $("cmp-av-data").value = hojeISO(); $("cmp-av-cat").value = pre?.categoria || "outro"; $("cmp-av-valor").value = "";
-  $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; if($("cmp-av-centro")) $("cmp-av-centro").value = pre?.centro_custo_id || ""; $("cmp-av-forn").value = ""; if($("cmp-av-jogo")) $("cmp-av-jogo").value = pre?.acessorio_jogo || "";
+  $("cmp-av-equip").value = pre?.equipamento_id || ""; $("cmp-av-obra").value = pre?.obra_id || ""; if($("cmp-av-centro")) $("cmp-av-centro").value = pre?.centro_custo_id || ""; $("cmp-av-forn").value = ""; cmpFornAtualizar("cmp-av-forn"); if($("cmp-av-jogo")) $("cmp-av-jogo").value = pre?.acessorio_jogo || "";
   $("cmp-av-desc").value = ""; $("cmp-av-doc").value = ""; if($("cmp-av-venc")) $("cmp-av-venc").value = "";
   $("cmp-av-modal").style.display = "flex";
   setTimeout(() => { if(pre?.equipamento_id && $("cmp-av-equip")) $("cmp-av-equip").value = pre.equipamento_id; if(pre?.obra_id && $("cmp-av-obra")) $("cmp-av-obra").value = pre.obra_id; if(pre?.centro_custo_id && $("cmp-av-centro")) $("cmp-av-centro").value = pre.centro_custo_id; }, 300);
@@ -1117,8 +1273,8 @@ function ligarCompras(){
     _cmpKpi = (_cmpKpi === k) ? "" : k; if(!["kanban","lista"].includes(_cmpView)) _cmpView = "kanban"; renderCompras();
   }));
   ["cmp-f-status","cmp-f-forn","cmp-f-obra","cmp-f-equip","cmp-f-mes"].forEach(id => $(id)?.addEventListener("change", renderCompras));
-  $("cmp-f-periodo")?.addEventListener("change", async () => { $("cmp-conteudo").innerHTML = `<p class="vazio">Carregando compras…</p>`; await cmpFetchPedidos(); renderCompras(); });
-  $("cmp-busca")?.addEventListener("input", debounce(renderCompras));
+  $("cmp-f-periodo")?.addEventListener("change", async () => { $("cmp-conteudo").innerHTML = `<p class="vazio">Carregando compras…</p>`; await cmpFetchPedidos(); });   // cmpFetchPedidos renderiza
+  $("cmp-busca")?.addEventListener("input", debounce(cmpBuscar, 250));   // lote S43: itens no servidor com 3+ letras
   $("btn-cmp-atualizar")?.addEventListener("click", () => carregarCompras(true));
   $("btn-cmp-novo")?.addEventListener("click", () => novoPedido());
   $("btn-cmp-receber-avulso")?.addEventListener("click", () => { _cmpItens = []; abrirRecebimento(null); });
@@ -1155,6 +1311,7 @@ function ligarCompras(){
     if(f?.prazo_entrega_dias && !$("cmp-prev").value){ const d = new Date(); d.setDate(d.getDate() + Number(f.prazo_entrega_dias)); $("cmp-prev").value = d.toISOString().slice(0, 10); cmpAtualizarChips(); } });
   cmpLigarBusca("cmp-busca-prod", "cmp-res-prod", p => cmpAddItem(p));
   $("btn-cmp-item-livre")?.addEventListener("click", () => cmpAddItem(null));
+  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn"].forEach(cmpCampoFornecedor);   // lote S43 (#53): fornecedor com busca e chip
 
   // recebimento
   $("btn-cmp-rec-fechar")?.addEventListener("click", fecharRecebimento);

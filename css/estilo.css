@@ -2780,6 +2780,15 @@ input:disabled, select:disabled, textarea:disabled {
 .cmp-ri-pick .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; background: var(--sup-0); }
 .cmp-ri-badge { font-size: 10.5px; padding: 0 6px; border-radius: 8px; margin-left: 4px; }
 
+/* ---- Lote S43 (#53): fornecedor com busca (select escondido + campo de busca + chip com ×) ---- */
+.forn-campo { position: relative; }
+.forn-campo .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; background: var(--sup-0); }
+.forn-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 6px 4px 10px;
+  border: 1px solid var(--borda-forte); border-radius: 14px; background: var(--sup-2); font-size: var(--txt-sm); color: var(--txt); }
+.forn-chip strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.forn-chip-x { border: 0; background: transparent; cursor: pointer; color: var(--txt-sec); font-size: 15px; line-height: 1; padding: 0 2px; }
+.forn-chip-x:hover { color: var(--perigo); }
+
 /* ---- Bens do contrato na ficha da obra (fase 80) ---- */
 .obr-bens-fam { margin: 2px 0; border-bottom: 1px solid var(--borda); }
 .obr-bens-fam summary { cursor: pointer; padding: 6px 0; }
@@ -2805,10 +2814,44 @@ tr.cmp-srv-atraso td { background: var(--aviso-bg); }
 body.so-leitura .btn[type=submit],
 body.so-leitura .btn-salvar,
 body.so-leitura .btn-novo,
-body.so-leitura .form-acoes .btn:not(#btn-copiar-uninfe) { display: none !important; }
+body.so-leitura .form-acoes .btn:not(#btn-copiar-uninfe),
+/* lote S43 (L5): ações de gravação do cabeçalho das fichas Odoo (Salvar, Aprovar, Receber, Iniciar, Concluir…) são
+   `type="button" class="btn"` fora de .form-acoes; os `.btn-sec` (PDF, Imprimir, Voltar) continuam. Botões "Salvar"
+   criados pelo JS (btn-exec-salvar, btn-regra-salvar, btn-rep-custo-salvar, btn-mob-kit-salvar, btn-aprop-params)
+   somem pelo id; a senha do próprio usuário (#btn-senha-salvar) fica. */
+body.so-leitura .odoo-actions-header .btn:not(.btn-sec),
+body.so-leitura [id$="-salvar"]:not(#btn-senha-salvar),
+body.so-leitura [id^="btn-salvar-"],
+body.so-leitura #btn-aprop-params { display: none !important; }
+
+/* ---- Lote S43 (L2): indicadores de Compras enquanto vw_compras_kpis não respondeu; visões travadas até a 1ª carga ---- */
+.ind.carregando .num { color: var(--txt-sutil); animation: ind-pulsa 1.2s ease-in-out infinite; }
+@keyframes ind-pulsa { 50% { opacity: .35; } }
+.serv-view-btn:disabled { opacity: .5; cursor: default; }
 
 /* ---- Fase 83: separações (item já separado fica verde; "casar" item livre com o catálogo) ---- */
 .sep-ok td { background: var(--sucesso-bg); }
 .sep-ok td:nth-child(2) { color: var(--txt-sec); }
 .sep-casar { margin: 4px 0 0; max-width: 340px; }
 .sep-casar input { font-size: var(--txt-xs); }
+
+/* ---- Fase 86: faixa "Nova versão publicada" no topo do viewport. A cor vem de .aviso.atencao; aqui só leiaute ---- */
+.faixa-versao.aviso { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--esp-3);
+  flex-shrink: 0; margin: 0; border-radius: 0; padding: var(--esp-2) var(--esp-4); }
+/* ---- Fase 88: importar boletim de medição (PDF) — zona de arrastar, fila e tabela de conferência ---- */
+.med-imp-zona { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; padding: 10px 12px; border: 1px dashed var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-1); }
+.med-imp-zona.arrastando { border-color: var(--marca-600); background: var(--marca-50); }
+.med-imp-fila { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-size: var(--txt-xs); }
+.med-imp-fila:empty { display: none; }
+.med-imp-fila li { padding: 3px 8px; border-radius: 999px; background: var(--sup-3); color: var(--txt-sec); }
+.med-imp-fila li.atual { background: var(--marca-50); color: var(--marca-600); font-weight: 600; }
+.med-imp-fila li.feito { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.med-imp-fila li.erro { background: var(--perigo-bg); color: var(--perigo-txt); }
+.med-imp-fila li.pulado { text-decoration: line-through; }
+.med-imp-cab .campo input[readonly] { background: var(--sup-2); }
+.med-imp-tabela td { vertical-align: middle; }
+.med-imp-tabela td.dif-alta { background: var(--aviso-bg); color: var(--aviso-txt); font-weight: 600; }
+.med-imp-tabela tr.sem-app td.col-app { color: var(--txt-sutil); }
+.med-imp-totais { margin: 10px 0 4px; }
+.med-imp-totais .ind .num small { display: block; font-size: var(--txt-xs); color: var(--txt-fraco); font-weight: 400; }
+.med-imp-dup { background: var(--perigo-bg); color: var(--perigo-txt); border-radius: 4px; padding: 6px 10px; margin: 6px 0; font-size: var(--txt-xs); }

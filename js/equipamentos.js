@@ -286,13 +286,15 @@ function ativarTabEquipamento(nome){
 
 async function eqpCarregarFilhas(e){
   const id = e.id;
-  const [mob, mov, rep, man, comp, cat] = await Promise.all([
+  const [mob, mov, rep, man, comp, cat, vgs] = await Promise.all([
     sb.from("mobilizacoes").select("id,obra_id,status,data_mobilizacao_prev,data_saida_real,data_chegada_real,data_desmob_real,equipamento_id,equipamentos_apoio").or(`equipamento_id.eq.${id},equipamentos_apoio.cs.{${id}}`).order("data_mobilizacao_prev", { ascending: false }),
-    sb.from("movimentacao_itens").select("movimentacao_id,movimentacao:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_recebimento,origem_tipo,origem_descricao,destino_tipo,destino_descricao,destino_obra_id)").eq("equipamento_id", id),
+    // fase 89: a nota traz a viagem que a levou; a TAG também aparece como caminhão ou equipamento atendido da viagem (consulta abaixo)
+    sb.from("movimentacao_itens").select("movimentacao_id,movimentacao:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_recebimento,origem_tipo,origem_descricao,destino_tipo,destino_descricao,destino_obra_id,nf_numero,interna,viagem_id,viagem:viagens(id,numero,data,status,finalidade,caminhao_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)))").eq("equipamento_id", id),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_conclusao,custo_estimado,custo_real,acessorio_id").eq("equipamento_id", id).order("data_abertura", { ascending: false }).limit(200),
     sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id").eq("equipamento_id", id).order("data_prevista", { ascending: false }).limit(200),
     sb.from("acessorio_equipamentos").select("acessorio_id").eq("equipamento_id", id),
-    (typeof aceCatalogo === "function" ? aceCatalogo() : Promise.resolve([])).catch(() => [])
+    (typeof aceCatalogo === "function" ? aceCatalogo() : Promise.resolve([])).catch(() => []),
+    sb.from("viagens").select("id,numero,data,status,finalidade,caminhao_id,equipamento_atendido_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)").or(`caminhao_id.eq.${id},equipamento_atendido_id.eq.${id}`).order("data", { ascending: false }).limit(300)
   ]);
   if(_eqpAtual?.id !== id) return;
   const setSb = (bid, n) => { const b = $(bid); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
@@ -321,18 +323,38 @@ async function eqpCarregarFilhas(e){
       <td><span class="tag ${EQP_MOB_ATIVA.includes(m.status) ? "azul" : m.status === "cancelada" ? "cinza" : "verde"}">${esc(MOB_LBL_SAFE(m.status))}</span></td>
       <td>${dataBR(m.data_mobilizacao_prev)}</td><td>${dataBR(m.data_saida_real)}</td><td>${dataBR(m.data_chegada_real)}</td><td>${dataBR(m.data_desmob_real)}</td></tr>`).join("")}</tbody></table></div>`;
 
-  // movimentações
-  const movs = (mov.data || []).map(i => i.movimentacao).filter(Boolean).sort((a, b) => String(b.data_emissao || "").localeCompare(String(a.data_emissao || "")));
-  setSb("sb-eqp-mov", movs.length);
+  // viagens (fase 89): a TAG como caminhão ou equipamento atendido da viagem, ou como item de uma nota levada por
+  // uma viagem; a nota aparece ao lado. Nota sem viagem (antes da fase 89) continua listada embaixo.
+  const movs = (mov.data || []).map(i => i.movimentacao).filter(Boolean);
+  const viagens = new Map();
+  (vgs.data || []).forEach(v => viagens.set(v.id, { ...v, papel: v.caminhao_id === id ? "caminhão" : "equipamento atendido", notas: [] }));
+  movs.forEach(m => {
+    if(!m.viagem) return;
+    const v = viagens.get(m.viagem.id) || { ...m.viagem, papel: "item da carga", notas: [] };
+    if(!m.interna) v.notas.push(m);
+    viagens.set(v.id, v);
+  });
+  const soltas = movs.filter(m => !m.viagem && !m.interna).sort((a, b) => String(b.data_emissao || "").localeCompare(String(a.data_emissao || "")));
+  const listaVg = [...viagens.values()].sort((a, b) => String(b.data || "").localeCompare(String(a.data || "")));
+  setSb("sb-eqp-mov", listaVg.length + soltas.length);
   const locLbl = (t) => (typeof LOC_TIPOS === "object" && LOC_TIPOS && LOC_TIPOS[t]) || EQP_LOCAL_LBL[t] || t || "";
-  $("eqp-mov-lista").innerHTML = mov.error ? `<p class="vazio">Erro: ${esc(mov.error.message)}</p>` : !movs.length ? `<p class="vazio">Nenhuma movimentação com esta TAG.</p>` :
-    `<div class="tabela-rola"><table><thead><tr><th>Nº</th><th>Tipo</th><th>Status</th><th>Emissão</th><th>Origem</th><th>Destino</th><th>Recebida</th></tr></thead>
-    <tbody>${movs.map(m => `<tr class="linha-clicavel" data-mov="${esc(m.id)}">
+  const ladoVg = (v, lado) => typeof vgLado === "function" ? vgLado(v, lado) : (v[lado + "_descricao"] || locLbl(v[lado + "_tipo"]));
+  const erroLista = mov.error || vgs.error;
+  $("eqp-mov-lista").innerHTML = erroLista ? `<p class="vazio">Erro: ${esc(erroLista.message)}</p>` : !(listaVg.length || soltas.length) ? `<p class="vazio">Nenhuma viagem com esta TAG.</p>` :
+    `${listaVg.length ? `<div class="tabela-rola"><table><thead><tr><th>Viagem</th><th>Data</th><th>Status</th><th>Papel da TAG</th><th>Caminhão</th><th>Origem → destino</th><th>Notas</th><th class="num">km</th></tr></thead>
+    <tbody>${listaVg.map(v => `<tr class="linha-clicavel" data-vg="${esc(v.id)}">
+      <td><strong>${esc(v.numero)}</strong> <span class="meta">${esc((typeof VG_FINALIDADES === "object" && VG_FINALIDADES && VG_FINALIDADES[v.finalidade]) || "")}</span></td><td>${dataBR(v.data)}</td>
+      <td>${tagStatus("viagem", v.status)}</td><td>${esc(v.papel)}</td><td>${esc(v.caminhao?.codigo || "—")}</td>
+      <td>${esc(ladoVg(v, "origem"))} → ${v.destino_obra_id ? linkObra(v.destino_obra_id, ladoVg(v, "destino")) : esc(ladoVg(v, "destino"))}</td>
+      <td>${v.notas.length ? v.notas.map(m => linkMovimentacao(m.id, m.nf_numero ? "NF " + m.nf_numero : m.numero)).join(", ") : '<span class="meta">—</span>'}</td>
+      <td class="num">${v.km_total != null ? num(v.km_total) : "—"}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    ${soltas.length ? `<h3 class="titulo-bloco">Notas sem viagem</h3><div class="tabela-rola"><table><thead><tr><th>Nº</th><th>Tipo</th><th>Status</th><th>Emissão</th><th>Origem</th><th>Destino</th><th>Recebida</th></tr></thead>
+    <tbody>${soltas.map(m => `<tr class="linha-clicavel" data-mov="${esc(m.id)}">
       <td><strong>${esc(m.numero || "—")}</strong></td><td>${esc((typeof MOV_TIPOS === "object" && MOV_TIPOS && MOV_TIPOS[m.tipo]) || m.tipo)}</td>
       <td>${typeof MOV_STATUS === "object" && MOV_STATUS && MOV_STATUS[m.status] ? `<span class="tag ${MOV_STATUS[m.status].cor}">${esc(MOV_STATUS[m.status].label)}</span>` : esc(m.status)}</td>
       <td>${dataBR(m.data_emissao)}</td><td>${esc(m.origem_descricao || locLbl(m.origem_tipo))}</td>
       <td>${m.destino_obra_id ? linkObra(m.destino_obra_id, m.destino_descricao || eqpObra(m.destino_obra_id)) : esc(m.destino_descricao || locLbl(m.destino_tipo))}</td>
-      <td>${dataBR(m.data_recebimento)}</td></tr>`).join("")}</tbody></table></div>`;
+      <td>${dataBR(m.data_recebimento)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
 
   // custos (view unificada, módulo Compras)
   if(typeof custosRender === "function") custosRender("eqp-custos", { equipamento_id: id }, (total) => { const b = $("sb-eqp-custos"); if(b){ b.querySelector(".sb-num").textContent = brl(total).replace(",00", ""); b.classList.toggle("zero", !total); } });
@@ -587,7 +609,12 @@ function ligarEquipamentos(){
   document.querySelectorAll("#eqp-ace-modo .serv-view-btn").forEach(b => b.addEventListener("click", () => { _eqpAceModo = b.dataset.modo; eqpRenderAcessorios(); }));
   $("eqp-ace-lista")?.addEventListener("click", e => { const tr = e.target.closest("tr[data-ace]"); if(tr) eqpAbrirAcessorio(tr.dataset.ace); });
   $("eqp-mob-lista")?.addEventListener("click", e => { if(e.target.closest("a.link-obra")) return; const tr = e.target.closest("tr[data-mob]"); if(tr) eqpAbrirMobilizacao(tr.dataset.mob); });
-  $("eqp-mov-lista")?.addEventListener("click", e => { if(e.target.closest("a.link-obra")) return; const tr = e.target.closest("tr[data-mov]"); if(tr) eqpAbrirMovimentacao(tr.dataset.mov); });
+  $("eqp-mov-lista")?.addEventListener("click", e => {
+    if(e.target.closest("a.link-obra, a.link-cad")) return;
+    const tv = e.target.closest("tr[data-vg]");   // fase 89: linha da viagem abre a ficha em Logística
+    if(tv){ if(irParaSecao("frota") && typeof abrirViagem === "function") abrirViagem(tv.dataset.vg, null); return; }
+    const tr = e.target.closest("tr[data-mov]"); if(tr) eqpAbrirMovimentacao(tr.dataset.mov);
+  });
   // fase 59: OS de manutenção
   $("eqp-man-lista")?.addEventListener("click", e => { if(e.target.closest("button")) return; const tr = e.target.closest("tr[data-os]"); if(tr && eqpPodeManutencao()) abrirOsManutencao(_eqpMans.find(m => m.id === tr.dataset.os) || null); });
   $("btn-eqp-os-fechar")?.addEventListener("click", fecharOsManutencao);

@@ -383,7 +383,8 @@ function renderDrawerMob(){
       <button type="button" class="btn-sec btn-sm" id="btn-mob-est-add">+ linha</button>
     </div>
 
-    <div class="mob-sec"><h4>3 · Itens da mobilização <span class="meta">(kit de acessórios que sai na remessa + materiais do almoxarifado)</span></h4>
+    <div class="mob-sec"><h4>3 · Itens da mobilização <span class="meta">(kit de acessórios que sai na remessa + materiais do almoxarifado; a viagem leva tudo)</span></h4>
+      <div id="mob-viagens" class="mob-card-chips" style="margin-bottom:6px;"><span class="meta">Carregando viagens…</span></div>
       <div id="mob-sep" class="mob-card-chips"></div>
       <div class="meta" style="font-weight:600;margin:6px 0 4px;">Acessórios (kit)</div>
       <div id="mob-kit"><p class="vazio">Carregando peças…</p></div>
@@ -439,6 +440,42 @@ function renderDrawerMob(){
   mobRenderKit();
   mobRenderMateriais();   // fase 83
   mobRenderSeparacao();
+  mobRenderViagens();     // fase 89
+}
+
+/* ---------- Fase 89: viagens da mobilização (ida e volta) ----------
+   Chips "Viagem VG-…" na seção 3 e o botão "Programar viagem" (cria a viagem de ida planejada e abre a ficha
+   em Logística para pôr caminhão, motorista e data). A ficha da viagem volta para esta mobilização. */
+async function mobRenderViagens(){
+  const box = $("mob-viagens"); const m = _mobAberta; if(!box || !m) return;
+  const ids = [m.viagem_ida_id, m.viagem_volta_id].filter(Boolean);
+  const { data } = ids.length ? await sb.from("viagens").select("id,numero,status,data,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome)").in("id", ids) : { data: [] };
+  if(!$("mob-viagens") || _mobAberta !== m) return;
+  const pode = typeof logPodeOperar === "function" ? logPodeOperar() : false;
+  const chip = (id, rot) => {
+    const v = (data || []).find(x => x.id === id); if(!v) return "";
+    const st = (typeof STATUS !== "undefined" && STATUS.viagem && STATUS.viagem[v.status]) || { label: v.status };
+    return `<a href="#" class="mob-chip ${v.status === "concluida" ? "ok" : "st"}" data-vg="${esc(v.id)}" title="abrir a viagem em Logística">🚚 ${rot} ${esc(v.numero)} · ${esc(st.label)} · ${v.caminhao ? esc(v.caminhao.codigo) : "sem caminhão"}${v.funcionario ? " · " + esc(v.funcionario.nome) : ""}</a>`;
+  };
+  const podeProgramar = pode && !m.viagem_ida_id && ["prevista", "em_preparacao"].includes(m.status);
+  box.innerHTML = chip(m.viagem_ida_id, "Viagem de ida") + chip(m.viagem_volta_id, "Viagem de volta")
+    + (podeProgramar ? `<button type="button" class="btn-sec btn-sm" id="btn-mob-programar-viagem" title="cria a viagem de mobilização (planejada) e abre a ficha para pôr caminhão, motorista e data">🚚 Programar viagem</button>` : "")
+    + (!ids.length && !podeProgramar ? `<span class="meta">Sem viagem gerada.</span>` : "");
+  box.querySelectorAll("a[data-vg]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); mobAbrirViagem(a.dataset.vg); }));
+  $("btn-mob-programar-viagem")?.addEventListener("click", () => comBotaoTravado("btn-mob-programar-viagem", async () => {
+    try {
+      await salvarMobilizacaoSilencioso();
+      const vg = await mobGarantirViagem(_mobAberta, "ida");
+      await carregarMobilizacoes(true);
+      mobAbrirViagem(vg.id);
+    } catch(err){ aviso("app-aviso", "Não foi possível programar a viagem: " + err.message, "erro"); }
+  }));
+}
+function mobAbrirViagem(id){
+  const mobId = _mobAberta?.id;
+  fecharMobilizacao();
+  if(!irParaSecao("frota") || typeof abrirViagem !== "function") return;
+  abrirViagem(id, async () => { if(irParaSecao("mobilizacoes")){ await carregarMobilizacoes(false); abrirMobilizacao(mobId); } });
 }
 
 /* ---------- Fase 83: materiais da mobilização e separação ----------
@@ -709,14 +746,61 @@ async function atualizarPendenciaMob(id, campos){
 }
 
 /* ---------- Transições de status ---------- */
-async function criarMovimentacaoMob(tipo, m){
-  // Remessa (base → obra) ao sair; retorno (obra → base) ao desmobilizar. Fica em rascunho para a
-  // logística completar NF/transportadora na tela de Movimentações.
+/* Fase 89: a VIAGEM é o registro central da logística. A mobilização gera a viagem de ida (base → obra) ao
+   iniciar a preparação ou ao sair, e a de volta (obra → base) ao desmobilizar; a nota de remessa/retorno
+   nasce ligada à viagem. A localização da TAG continua vindo do status da mobilização (gatilho da fase 34). */
+const MOB_VG_SELECT = "id,numero,status,data,caminhao_id,funcionario_id,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao";
+async function mobGarantirViagem(m, sentido){
+  const campo = sentido === "ida" ? "viagem_ida_id" : "viagem_volta_id";
+  if(m[campo]){
+    const { data } = await sb.from("viagens").select(MOB_VG_SELECT).eq("id", m[campo]).maybeSingle();
+    if(data) return data;
+  }
+  const obra = _mobObras.find(o => o.id === m.obra_id) || {};
+  const obraTxt = obra.codigo ? `${obra.codigo} — ${obra.nome || ""}`.trim() : null;
+  const reg = sentido === "ida"
+    ? { finalidade: "mobilizacao", status: "planejada", data: m.data_mobilizacao_prev || hojeISO(), origem_tipo: "base", origem_descricao: "Base Itabira",
+        destino_tipo: "obra", destino_obra_id: m.obra_id, destino_descricao: obraTxt, equipamento_atendido_id: m.equipamento_id || null, mobilizacao_id: m.id,
+        observacoes: "Viagem de mobilização gerada pelo quadro de Mobilizações." }
+    : { finalidade: "desmobilizacao", status: "planejada", data: hojeISO(), origem_tipo: "obra", origem_obra_id: m.obra_id, origem_descricao: obraTxt,
+        destino_tipo: "base", destino_descricao: "Base Itabira", equipamento_atendido_id: m.equipamento_id || null, mobilizacao_id: m.id,
+        observacoes: "Viagem de desmobilização gerada pelo quadro de Mobilizações." };
+  const { data, error } = await sb.from("viagens").insert(reg).select(MOB_VG_SELECT).single();
+  if(error) throw new Error("viagem: " + error.message);
+  const { error: e2 } = await sb.from("mobilizacoes").update({ [campo]: data.id }).eq("id", m.id);
+  if(e2) throw new Error("vínculo da viagem: " + e2.message);
+  m[campo] = data.id;
+  if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;
+  return data;
+}
+/* em_transito: a viagem planejada sai (data de saída agora); em_obra: a viagem de ida conclui com a chegada real */
+async function mobViagemStatus(vg, status, dataChegada){
+  if(!vg?.id) return;
+  if(status === "em_transito"){
+    const { error } = await sb.from("viagens").update({ status: "em_transito", data_saida: new Date().toISOString() }).eq("id", vg.id).eq("status", "planejada");
+    if(error) throw new Error("status da viagem: " + error.message);
+  } else if(status === "concluida"){
+    const chegada = dataChegada ? new Date(dataChegada + "T12:00:00").toISOString() : new Date().toISOString();
+    const { error } = await sb.from("viagens").update({ status: "concluida", data_chegada: chegada }).eq("id", vg.id).in("status", ["planejada", "em_transito"]);
+    if(error) throw new Error("status da viagem: " + error.message);
+  }
+  if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;
+}
+async function criarMovimentacaoMob(tipo, m, vg){
+  // Remessa (base → obra) ao sair; retorno (obra → base) ao desmobilizar. Fica em rascunho, ligada à viagem (fase 89),
+  // para a logística completar NF/transportadora na ficha do documento.
   const { data: numero, error: errNum } = await sb.rpc("proximo_numero_movimentacao");
   if(errNum) throw new Error("número da movimentação: " + errNum.message);
+  const obra = _mobObras.find(o => o.id === m.obra_id) || {};
+  const obraTxt = obra.codigo ? `${obra.codigo} — ${obra.nome || ""}`.trim() : null;
+  const obraUf = obra.uf ? String(obra.uf).toLowerCase() : null;
+  const cam = (typeof _frotaVeic !== "undefined" ? _frotaVeic : []).find(x => x.id === vg?.caminhao_id);
+  const mot = (typeof _frotaFuncs !== "undefined" ? _frotaFuncs : []).find(f => f.id === vg?.funcionario_id);
+  const comum = { numero, status: "rascunho", interna: false, viagem_id: vg?.id || null, data_emissao: hojeISO(), frete_por_conta: "proprio",
+    motorista: mot ? mot.nome : null, transp_placa: cam?.placa || null };
   const reg = tipo === "remessa"
-    ? { numero, tipo: "remessa", status: "rascunho", origem_tipo: "base", destino_tipo: "obra", destino_obra_id: m.obra_id, data_emissao: hojeISO(), observacoes: "Gerada pela mobilização (saída para a obra)." }
-    : { numero, tipo: "retorno", status: "rascunho", origem_tipo: "obra", origem_obra_id: m.obra_id, destino_tipo: "base", data_emissao: hojeISO(), observacoes: "Gerada pela mobilização (desmobilização). Conferir os acessórios: remova do retorno o que ficou na obra." };
+    ? { ...comum, tipo: "remessa", origem_tipo: "base", origem_descricao: "Base Itabira", origem_uf: "mg", destino_tipo: "obra", destino_obra_id: m.obra_id, destino_descricao: obraTxt, destino_uf: obraUf, observacoes: "Gerada pela mobilização (saída para a obra)." }
+    : { ...comum, tipo: "retorno", origem_tipo: "obra", origem_obra_id: m.obra_id, origem_descricao: obraTxt, origem_uf: obraUf, destino_tipo: "base", destino_descricao: "Base Itabira", destino_uf: "mg", observacoes: "Gerada pela mobilização (desmobilização). Conferir os acessórios: remova do retorno o que ficou na obra." };
   const { data: mov, error } = await sb.from("movimentacoes_ativos").insert(reg).select("id").single();
   if(error) throw new Error("movimentação: " + error.message);
   const ids = [m.equipamento_id, ...(m.equipamentos_apoio || [])].filter(Boolean);
@@ -741,9 +825,9 @@ async function mudarStatusMobilizacao(novo, btn){
     const equip = $("mob-equip")?.value || m.equipamento_id;
     if(!equip){ aviso("app-aviso", "Defina a TAG principal antes de registrar a saída.", "erro"); $("mob-equip")?.focus(); return; }
     if(abertas && !confirm(`Ainda há ${abertas} pendência(s) aberta(s). Registrar a saída mesmo assim?`)) return;
-    if(!confirm("Registrar saída para a obra? Será gerada uma remessa (rascunho) em Movimentações e a TAG passa a 'em trânsito'.")) return;
+    if(!confirm("Registrar saída para a obra? A viagem de ida passa a 'em trânsito' em Logística com a nota de remessa (rascunho), e a TAG passa a 'em trânsito'.")) return;
   } else if(novo === "desmobilizada"){
-    if(!confirm("Desmobilizar? Será gerado um retorno (rascunho) em Movimentações e a TAG volta para a base.")) return;
+    if(!confirm("Desmobilizar? Será gerada a viagem de volta em Logística com a nota de retorno (rascunho), e a TAG volta para a base.")) return;
   } else if(novo === "cancelada"){
     if(!confirm("Cancelar esta mobilização?")) return;
   } else if(novo === "em_preparacao"){
@@ -756,8 +840,19 @@ async function mudarStatusMobilizacao(novo, btn){
     await salvarMobilizacaoSilencioso();
     const atual = _mobAberta;
     const upd = { status: novo };
-    if(novo === "em_transito")  upd.movimentacao_remessa_id = await criarMovimentacaoMob("remessa", atual);
-    if(novo === "desmobilizada") upd.movimentacao_retorno_id = await criarMovimentacaoMob("retorno", atual);
+    // fase 89: viagem de ida nasce planejada na preparação (ou agora, se ainda não existir) e sai junto com a remessa
+    if(novo === "em_preparacao"){ const vg = await mobGarantirViagem(atual, "ida"); upd.viagem_ida_id = vg.id; }
+    if(novo === "em_transito"){
+      const vg = await mobGarantirViagem(atual, "ida"); upd.viagem_ida_id = vg.id;
+      upd.movimentacao_remessa_id = await criarMovimentacaoMob("remessa", atual, vg);
+      await mobViagemStatus(vg, "em_transito");
+    }
+    if(novo === "em_obra" && atual.viagem_ida_id) await mobViagemStatus({ id: atual.viagem_ida_id }, "concluida", $("mob-data-chegada")?.value || atual.data_chegada_real || null);
+    if(novo === "desmobilizada"){
+      const vg = await mobGarantirViagem(atual, "volta"); upd.viagem_volta_id = vg.id;
+      upd.movimentacao_retorno_id = await criarMovimentacaoMob("retorno", atual, vg);
+      await mobViagemStatus(vg, "em_transito");
+    }
     const { error } = await sb.from("mobilizacoes").update(upd).eq("id", atual.id);
     if(error) throw new Error(/mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa." : error.message);
     // kit saiu na remessa → a pendência "acessórios conferidos e separados" do almoxarifado está cumprida
@@ -768,6 +863,7 @@ async function mudarStatusMobilizacao(novo, btn){
     aviso("app-aviso", `Mobilização: ${MOB_STATUS[novo]}.`, "ok");
     await carregarMobilizacoes(true);
     if(typeof carregarMovimentacoes === "function" && (novo === "em_transito" || novo === "desmobilizada")) carregarMovimentacoes();
+    if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;   // fase 89: painel de Logística recarrega
     await abrirMobilizacao(atual.id);
   } catch(err){
     aviso("app-aviso", "Não foi possível mudar o status: " + err.message, "erro");

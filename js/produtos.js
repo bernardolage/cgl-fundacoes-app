@@ -221,6 +221,32 @@ async function abrirProduto(id){
   $("prod-conferido").checked = data.inventario_conferido === true;
   $("btn-excluir-prod").style.display = "";
   abrirFichaProdVisual(data);
+  prodCarregarFabricacoes(id);
+}
+
+/* fase 84: aba "Fabricações" do produto: ordens em que ele é o produzido e ordens em que entra como componente */
+async function prodCarregarFabricacoes(id){
+  const c = $("prod-fabricacoes"); if(!c) return;
+  c.innerHTML = `<p class="vazio">Carregando…</p>`;
+  const sel = "id,numero,status,descricao,quantidade,quantidade_produzida,unidade,destino,data_abertura,data_conclusao,custo_real";
+  const [prod, comp] = await Promise.all([
+    sb.from("ordens_fabricacao").select(sel).eq("produto_id", id).order("data_abertura", { ascending: false }).limit(200),
+    sb.from("fabricacao_itens").select("id,quantidade_prevista,quantidade_consumida,unidade,custo_unitario,ordem:ordens_fabricacao(" + sel + ")").eq("produto_id", id).limit(300)
+  ]);
+  if(prodEditId !== id) return;
+  const st = s => (typeof fabTag === "function") ? fabTag(s) : esc(s);
+  const lnk = (o) => (typeof linkFabricacao === "function") ? linkFabricacao(o.id, o.numero) : esc(o.numero);
+  const prodRows = (prod.data || []);
+  const compRows = (comp.data || []).filter(i => i.ordem).sort((a, b) => String(b.ordem.data_abertura || "").localeCompare(String(a.ordem.data_abertura || "")));
+  const sb2 = $("sb-prod-fab"); if(sb2){ sb2.querySelector(".sb-num").textContent = prodRows.length + compRows.length; sb2.classList.toggle("zero", !(prodRows.length + compRows.length)); }
+  c.innerHTML = `<h4 style="margin:0 0 6px;">Produzido por ordem de fabricação <span class="contador">${prodRows.length}</span></h4>` +
+    (prodRows.length ? `<div class="tabela-rola"><table><thead><tr><th>Nº</th><th>Abertura</th><th>Descrição</th><th class="num">Qtd</th><th>Destino</th><th class="num">Custo real</th><th>Status</th></tr></thead><tbody>` +
+      prodRows.map(o => `<tr><td>${lnk(o)}</td><td>${dataBR(o.data_abertura)}</td><td>${esc(o.descricao || "")}</td><td class="num">${num(o.quantidade_produzida > 0 ? o.quantidade_produzida : o.quantidade)} ${esc(o.unidade || "")}</td><td>${esc(o.destino || "")}</td><td class="num">${brl(o.custo_real)}</td><td>${st(o.status)}</td></tr>`).join("") + `</tbody></table></div>`
+      : `<p class="vazio">Nenhuma ordem de fabricação produz este item.</p>`) +
+    `<h4 style="margin:14px 0 6px;">Consumido como componente <span class="contador">${compRows.length}</span></h4>` +
+    (compRows.length ? `<div class="tabela-rola"><table><thead><tr><th>Nº</th><th>Abertura</th><th>Ordem</th><th class="num">Previsto</th><th class="num">Consumido</th><th class="num">Custo unit.</th><th>Status</th></tr></thead><tbody>` +
+      compRows.map(i => `<tr><td>${lnk(i.ordem)}</td><td>${dataBR(i.ordem.data_abertura)}</td><td>${esc(i.ordem.descricao || "")}</td><td class="num">${num(i.quantidade_prevista)} ${esc(i.unidade || "")}</td><td class="num">${num(i.quantidade_consumida)}</td><td class="num">${brl(i.custo_unitario)}</td><td>${st(i.ordem.status)}</td></tr>`).join("") + `</tbody></table></div>`
+      : `<p class="vazio">Não entra como componente em nenhuma ordem.</p>`);
 }
 
 function abrirFichaProdVisual(p){

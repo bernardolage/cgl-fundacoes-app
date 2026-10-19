@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="app-versao" content="85ed174" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=046e79b" />
+<link rel="stylesheet" href="css/estilo.css?v=85ed174" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -134,7 +135,7 @@
       </button>
       <button data-secao="frota">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
-        <span>Frota</span>
+        <span>Logística</span>
       </button>
       <button data-secao="acessorios">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
@@ -144,13 +145,13 @@
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         <span>Reparos</span>
       </button>
+      <button data-secao="fabricacao">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+        <span>Fabricação</span>
+      </button>
       <button data-secao="medicoes">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="8" y1="4" x2="8" y2="8"></line><line x1="12" y1="4" x2="12" y2="6"></line><line x1="16" y1="4" x2="16" y2="8"></line><line x1="8" y1="20" x2="8" y2="16"></line><line x1="12" y1="20" x2="12" y2="18"></line><line x1="16" y1="20" x2="16" y2="16"></line></svg>
         <span>Medições</span>
-      </button>
-      <button data-secao="movimentacoes">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
-        <span>Movimentações</span>
       </button>
       <button data-secao="rdo">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
@@ -960,6 +961,7 @@
             <button type="button" data-tab="estoque">Estoque</button>
             <button type="button" data-tab="identificacao">Identificação</button>
             <button type="button" data-tab="observacoes">Observações</button>
+            <button type="button" data-tab="fabricacoes">Fabricações</button>
           </div>
 
           <div class="odoo-body">
@@ -1000,6 +1002,9 @@
                 <div class="campo largo"><label>Descrição / observações</label><textarea id="prod-descricao" rows="6"></textarea></div>
               </div>
             </div>
+
+            <!-- fase 84: ordens de fabricação em que o produto é produzido ou consumido -->
+            <div class="odoo-tab" data-tab="fabricacoes"><div id="prod-fabricacoes"><p class="vazio">Salve o produto para ver as fabricações.</p></div></div>
           </div>
         </div>
       </div>
@@ -2251,6 +2256,7 @@
                 </div>
                 <button type="button" class="btn-sec" id="btn-est-reconciliar" style="margin-left:8px;display:none;">🔍 Conferência <span id="est-reconciliar-badge" style="background:var(--perigo);color:var(--txt-sobre);border-radius:10px;padding:1px 7px;font-size:var(--txt-xs);margin-left:4px;"></span></button>
                 <button type="button" class="btn-sec" id="btn-est-importar">📄 Importar PDF</button>
+                <button type="button" class="btn-sec" id="btn-est-importar-xlsx" title="Projeto sem numeração legível pela IA: preencha o modelo .xlsx (ou cole do Excel) e importe (chamado #55)">📊 Importar planilha</button>
                 <button type="button" class="btn-sec" id="btn-est-importar-dxf">📐 Importar DXF</button>
                 <button type="button" class="btn" id="btn-est-nova">+ Nova</button>
               </div>
@@ -2535,6 +2541,43 @@
             <div class="form-acoes compacta">
               <button type="button" class="btn btn-sucesso" id="btn-est-confirmar-import">✅ Importar todas</button>
           <div id="est-dxf-aviso" class="aviso" role="alert"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Importar planilha (lote S43, chamado #55) -->
+      <div id="est-xlsx-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:920px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
+          <div class="modal-topo">
+            <h3 class="titulo-linha">📊 Importar estacas de planilha</h3>
+            <button type="button" class="btn-sec" id="btn-est-fechar-xlsx">×</button>
+          </div>
+          <p class="texto-apoio">
+            Para projeto sem numeração ou que a IA não leu direito: preencha o modelo (uma estaca por linha) e envie.
+            Colunas: <strong>Nome</strong> (obrigatória), Ø (mm), Prof. projeto (m), Bloco, Local, X, Y — X e Y na unidade do projeto (mm, cm ou m; a prévia confirma).
+            Aceita .xlsx e .csv, ou cole as linhas copiadas do Excel na caixa. A prévia e a gravação são as mesmas do import por PDF.
+          </p>
+          <div class="grade">
+            <div class="campo largo">
+              <label>Arquivo (.xlsx ou .csv)</label>
+              <input id="est-xlsx-file" type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
+            </div>
+            <div class="campo largo">
+              <label>Ou cole aqui as linhas copiadas do Excel (com ou sem cabeçalho)</label>
+              <textarea id="est-xlsx-texto" rows="5" placeholder="Nome&#9;Ø (mm)&#9;Prof. projeto (m)&#9;Bloco&#9;Local&#9;X&#9;Y&#10;E-01&#9;400&#9;12,5&#9;BL-01&#9;&#9;4253940&#9;2553000"></textarea>
+            </div>
+          </div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn-sec" id="btn-est-xlsx-modelo">⬇ Baixar modelo .xlsx</button>
+            <button type="button" class="btn" id="btn-est-xlsx-ler">📋 Ler planilha</button>
+          </div>
+          <div id="est-xlsx-aviso" class="aviso" role="alert"></div>
+          <div id="est-xlsx-preview" class="bloco-preview" style="display:none;">
+            <h4>Preview — revise antes de importar</h4>
+            <div id="est-xlsx-preview-conteudo"></div>
+            <div class="form-acoes compacta">
+              <button type="button" class="btn btn-sucesso" id="btn-est-xlsx-confirmar">✅ Importar todas</button>
             </div>
           </div>
         </div>
@@ -2974,7 +3017,7 @@
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-eqp-ace" data-goto-tab="acessorios"><span class="sb-num">0</span><span class="sb-icon">⚙️</span><span class="sb-lbl">acessórios</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-mob" data-goto-tab="mobilizacoes"><span class="sb-num">0</span><span class="sb-icon">🏗️</span><span class="sb-lbl">mobilizações</span></button>
-            <button type="button" class="sb-btn" id="sb-eqp-mov" data-goto-tab="movimentacoes"><span class="sb-num">0</span><span class="sb-icon">🚚</span><span class="sb-lbl">movimentações</span></button>
+            <button type="button" class="sb-btn" id="sb-eqp-mov" data-goto-tab="movimentacoes"><span class="sb-num">0</span><span class="sb-icon">🚚</span><span class="sb-lbl">viagens</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-rep" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">reparos</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-man" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🛠️</span><span class="sb-lbl">manutenções</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-custos" data-goto-tab="custos"><span class="sb-num">R$ 0</span><span class="sb-icon">💰</span><span class="sb-lbl">custos</span></button>
@@ -2985,7 +3028,7 @@
             <button type="button" data-tab="tecnica">Ficha técnica</button>
             <button type="button" data-tab="acessorios">Acessórios</button>
             <button type="button" data-tab="mobilizacoes">Mobilizações</button>
-            <button type="button" data-tab="movimentacoes">Movimentações</button>
+            <button type="button" data-tab="movimentacoes">Viagens</button>
             <button type="button" data-tab="manutencao">Reparos & manutenções</button>
             <button type="button" data-tab="custos">Custos</button>
             <button type="button" data-tab="timeline">Timeline</button>
@@ -3084,86 +3127,159 @@
     </section>
 
     <section class="secao" id="sec-frota">
-      <h2>Frota</h2>
-      <p class="texto-apoio">Caminhões e veículos com seus deslocamentos — o "KM Caminhões" da planilha RG 8.1. O valor da viagem é km rodado × R$/km do caminhão; o km atual do veículo acompanha a última chegada registrada.</p>
+      <h2>Logística</h2>
 
-      <div class="indicadores">
-        <div class="ind"><div class="num" id="frota-kpi-viagens">—</div><div class="rot">Viagens no período</div></div>
-        <div class="ind"><div class="num" id="frota-kpi-km">—</div><div class="rot">km rodados</div></div>
-        <div class="ind"><div class="num" id="frota-kpi-valor" style="color:var(--marca-600);">—</div><div class="rot">Custo de deslocamento</div></div>
-        <div class="ind"><div class="num" id="frota-kpi-obras">—</div><div class="rot">Obras atendidas</div></div>
-        <div class="ind"><div class="num" id="frota-kpi-caminhoes">—</div><div class="rot">Caminhões ativos</div></div>
-        <div class="ind"><div class="num" id="frota-kpi-veiculos">—</div><div class="rot">Veículos leves</div></div>
+      <!-- ===== Painel (fase 89): viagens, veículos e documentos — js/frota.js ===== -->
+      <div id="frota-painel">
+        <p class="texto-apoio">A viagem é o registro central da logística: caminhão, motorista, origem → destino, km e custo (km rodado × R$/km do caminhão), com os itens transportados, as notas de remessa e retorno e o MDF-e como documentos dela. A mobilização gera a viagem; a localização da máquina continua vindo do status da mobilização. O km atual do veículo acompanha a última chegada registrada.</p>
+
+        <div class="indicadores">
+          <div class="ind"><div class="num" id="frota-kpi-viagens">—</div><div class="rot">Viagens no período</div></div>
+          <div class="ind"><div class="num" id="frota-kpi-km">—</div><div class="rot">km rodados</div></div>
+          <div class="ind"><div class="num" id="frota-kpi-valor" style="color:var(--marca-600);">—</div><div class="rot">Custo das viagens</div></div>
+          <div class="ind ind-click" id="frota-kpi-card-transito" title="Viagens em trânsito agora (clique para filtrar)"><div class="num" id="frota-kpi-transito">—</div><div class="rot">Em trânsito agora</div></div>
+          <div class="ind ind-click" id="frota-kpi-card-notas" title="Notas em rascunho ou emitidas que ainda não estão em nenhuma viagem (clique para ver)"><div class="num" id="frota-kpi-notas">—</div><div class="rot">Notas sem viagem</div></div>
+          <div class="ind"><div class="num" id="frota-kpi-caminhoes">—</div><div class="rot">Caminhões ativos</div></div>
+          <div class="ind"><div class="num" id="frota-kpi-veiculos">—</div><div class="rot">Veículos leves</div></div>
+        </div>
+
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Logística <span id="frota-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="viagens">Viagens</button>
+              <button type="button" class="serv-view-btn" data-view="veiculos">Veículos</button>
+              <button type="button" class="serv-view-btn" data-view="documentos">Documentos</button>
+            </div>
+            <div class="serv-views" id="frota-modos" title="Como ver as viagens">
+              <button type="button" class="serv-view-btn ativo" data-modo="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-modo="kanban">Kanban</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-frota-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+            <button type="button" class="btn" id="btn-frota-nova-viagem">+ Viagem</button>
+            <button type="button" class="btn" id="btn-frota-novo-veic" style="display:none;">+ Veículo</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="frota-busca" placeholder="Buscar número, motorista, obra, TAG, nota..." />
+            <span id="frota-filtros-viagens" style="display:contents;">
+              <input type="month" id="frota-f-mes" title="Competência (vazio = últimos 12 meses). Viagens planejadas e em trânsito aparecem sempre." />
+              <select id="frota-f-caminhao"><option value="">Todos os caminhões</option></select>
+              <select id="frota-f-obra"><option value="">Todas as obras</option></select>
+              <select id="frota-f-finalidade"><option value="">Toda finalidade</option></select>
+              <select id="frota-f-status"><option value="">Todo status</option></select>
+              <label class="check-inline" title="só viagens com nota de remessa ou retorno"><input type="checkbox" id="frota-f-nota" /> com nota</label>
+            </span>
+          </div>
+          <div id="frota-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+
+        <!-- modal: veículo -->
+        <div id="frota-veic-modal" class="modal-fundo" style="display:none;">
+          <div class="modal-caixa" style="max-width:760px;">
+            <div class="modal-topo">
+              <h3 class="titulo-linha" id="fveic-titulo">Veículo</h3>
+              <button type="button" class="btn-sec" id="btn-fveic-fechar">×</button>
+            </div>
+            <div class="grade grade-3">
+              <div class="campo"><label>TAG *</label><input id="fveic-codigo" placeholder="Ex.: 26-CM" /></div>
+              <div class="campo"><label>Tipo</label><select id="fveic-tipo"><option value="caminhao">Caminhão</option><option value="veiculo">Veículo leve</option></select></div>
+              <div class="campo"><label>Status</label><select id="fveic-status"><option value="disponivel">Disponível</option><option value="em_uso">Em uso</option><option value="manutencao">Manutenção</option><option value="inativo">Inativo</option></select></div>
+              <div class="campo largo"><label>Descrição *</label><input id="fveic-nome" placeholder="Ex.: VW 24250" /></div>
+              <div class="campo"><label>Placa</label><input id="fveic-placa" placeholder="ABC1D23" /></div>
+              <div class="campo"><label>km atual</label><input type="number" id="fveic-km" min="0" step="1" /></div>
+              <div class="campo"><label>R$/km</label><input type="number" id="fveic-valor-km" min="0" step="0.01" /></div>
+              <div class="campo"><label>Valor FIPE (R$)</label><input type="number" id="fveic-fipe" min="0" step="0.01" placeholder="ex.: 58900" /></div>
+              <div class="campo"><label>Referência FIPE (mês)</label><input type="month" id="fveic-fipe-ref" /></div>
+              <div class="campo"><label>Código FIPE</label><input id="fveic-fipe-cod" placeholder="ex.: 005340-6" /></div>
+              <div class="campo largo"><label>Observações</label><input id="fveic-obs" /></div>
+              <div class="campo largo"><label class="check-inline"><input type="checkbox" id="fveic-ativo" checked /> Ativo na frota</label></div>
+            </div>
+            <div id="fveic-aviso" class="aviso" role="alert"></div>
+            <div class="form-acoes compacta"><button type="button" class="btn" id="btn-fveic-salvar">💾 Salvar</button></div>
+          </div>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="lista-topo">
-          <h3>Frota</h3>
-          <div class="serv-views">
-            <button type="button" class="serv-view-btn ativo" data-view="desloc">Deslocamentos</button>
-            <button type="button" class="serv-view-btn" data-view="veiculos">Veículos</button>
+      <!-- ===== Ficha da viagem (fase 89, estilo Odoo) — js/viagens.js, prefixo vg- ===== -->
+      <div id="vg-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-vg-voltar">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-vg-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-vg-romaneio" title="Romaneio de carga em PDF: itens, notas e assinaturas do motorista e do recebedor">🖨️ Romaneio</button>
+            </div>
+            <div class="actions-right">
+              <button type="button" class="btn btn-aviso" id="btn-vg-iniciar" title="Registra a saída: a viagem passa a 'em trânsito'">▶ Iniciar viagem</button>
+              <button type="button" class="btn btn-sucesso" id="btn-vg-concluir" title="Fecha km e custo; exige km de chegada maior ou igual ao de saída">✅ Concluir</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-vg-cancelar">✖ Cancelar</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-vg-excluir" title="Só viagem sem nota e sem MDF-e">🗑️ Excluir</button>
+            </div>
           </div>
-          <button type="button" class="btn-sec" id="btn-frota-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
-          <button type="button" class="btn" id="btn-frota-novo-desl">+ Deslocamento</button>
-          <button type="button" class="btn" id="btn-frota-novo-veic" style="display:none;">+ Veículo</button>
-        </div>
-        <div class="serv-filtros">
-          <input id="frota-busca" placeholder="Buscar motorista, obra, TAG..." />
-          <span id="frota-filtros-desl" style="display:contents;">
-            <input type="month" id="frota-f-mes" title="Competência (vazio = últimos 12 meses)" />
-            <select id="frota-f-caminhao"><option value="">Todos os caminhões</option></select>
-          </span>
-        </div>
-        <div id="frota-conteudo"><p class="vazio">Carregando…</p></div>
-      </div>
 
-      <!-- modal: deslocamento -->
-      <div id="frota-desl-modal" class="modal-fundo" style="display:none;">
-        <div style="background:var(--sup-0);max-width:720px;width:95%;border-radius:8px;padding:20px;">
-          <div class="modal-topo">
-            <h3 class="titulo-linha" id="fdesl-titulo">Novo deslocamento</h3>
-            <button type="button" class="btn-sec" id="btn-fdesl-fechar">×</button>
+          <div class="odoo-statusbar" id="vg-statusbar">
+            <div class="stage" data-status="planejada">Planejada</div>
+            <div class="stage" data-status="em_transito">Em trânsito</div>
+            <div class="stage" data-status="concluida">Concluída</div>
           </div>
-          <div class="grade">
-            <div class="campo"><label>Data *</label><input type="date" id="fdesl-data" /></div>
-            <div class="campo"><label>Motorista</label><select id="fdesl-motorista"></select></div>
-            <div class="campo"><label>Caminhão *</label><select id="fdesl-caminhao"></select></div>
-            <div class="campo"><label>Equipamento atendido</label><select id="fdesl-equip"></select></div>
-            <div class="campo largo"><label>Obra atendida</label><select id="fdesl-obra"></select></div>
-            <div class="campo"><label>km saída</label><input type="number" id="fdesl-km-saida" min="0" step="1" /></div>
-            <div class="campo"><label>km chegada</label><input type="number" id="fdesl-km-chegada" min="0" step="1" /></div>
-            <div class="campo"><label>R$/km</label><input type="number" id="fdesl-valor-km" min="0" step="0.01" /></div>
-            <div class="campo largo"><label>Observações</label><input id="fdesl-obs" placeholder="Ex.: mobilização da TAG 09, retorno ao pátio…" /></div>
-          </div>
-          <div class="form-acoes compacta">
-            <button type="button" class="btn-sec" id="btn-fdesl-excluir" style="color:var(--perigo);display:none;">🗑️ Excluir</button>
-            <button type="button" class="btn" id="btn-fdesl-salvar">💾 Salvar</button>
-          </div>
-        </div>
-      </div>
 
-      <!-- modal: veículo -->
-      <div id="frota-veic-modal" class="modal-fundo" style="display:none;">
-        <div class="modal-caixa" style="max-width:760px;">
-          <div class="modal-topo">
-            <h3 class="titulo-linha" id="fveic-titulo">Veículo</h3>
-            <button type="button" class="btn-sec" id="btn-fveic-fechar">×</button>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Viagem</span><strong id="vg-chip-numero">—</strong></div>
+            <div class="chip"><span>Caminhão</span><strong id="vg-chip-caminhao">—</strong></div>
+            <div class="chip"><span>Motorista</span><strong id="vg-chip-motorista">—</strong></div>
+            <div class="chip"><span>Destino</span><strong id="vg-chip-destino">—</strong></div>
+            <div class="chip"><span>Mobilização</span><strong id="vg-chip-mob">—</strong></div>
+            <div class="chip"><span>km</span><strong id="vg-chip-km">—</strong></div>
+            <div class="chip"><span>Custo</span><strong id="vg-chip-custo">—</strong></div>
           </div>
-          <div class="grade grade-3">
-            <div class="campo"><label>TAG *</label><input id="fveic-codigo" placeholder="Ex.: 26-CM" /></div>
-            <div class="campo"><label>Tipo</label><select id="fveic-tipo"><option value="caminhao">Caminhão</option><option value="veiculo">Veículo leve</option></select></div>
-            <div class="campo"><label>Status</label><select id="fveic-status"><option value="disponivel">Disponível</option><option value="em_uso">Em uso</option><option value="manutencao">Manutenção</option><option value="inativo">Inativo</option></select></div>
-            <div class="campo largo"><label>Descrição</label><input id="fveic-nome" placeholder="Ex.: VW 24250" /></div>
-            <div class="campo"><label>Placa</label><input id="fveic-placa" placeholder="ABC1D23" /></div>
-            <div class="campo"><label>km atual</label><input type="number" id="fveic-km" min="0" step="1" /></div>
-            <div class="campo"><label>R$/km</label><input type="number" id="fveic-valor-km" min="0" step="0.01" /></div>
-            <div class="campo"><label>Valor FIPE (R$)</label><input type="number" id="fveic-fipe" min="0" step="0.01" placeholder="ex.: 58900" /></div>
-            <div class="campo"><label>Referência FIPE (mês)</label><input type="month" id="fveic-fipe-ref" /></div>
-            <div class="campo"><label>Código FIPE</label><input id="fveic-fipe-cod" placeholder="ex.: 005340-6" /></div>
-            <div class="campo largo"><label>Observações</label><input id="fveic-obs" /></div>
-            <div class="campo largo"><label class="check-inline"><input type="checkbox" id="fveic-ativo" checked /> Ativo na frota</label></div>
+
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-vg-itens" data-goto-tab="itens"><span class="sb-num">0</span><span class="sb-icon">📦</span><span class="sb-lbl">itens</span></button>
+            <button type="button" class="sb-btn" id="sb-vg-notas" data-goto-tab="documentos"><span class="sb-num">0</span><span class="sb-icon">🧾</span><span class="sb-lbl">notas</span></button>
+            <button type="button" class="sb-btn" id="sb-vg-mdfe" data-goto-tab="documentos"><span class="sb-num">0</span><span class="sb-icon">📑</span><span class="sb-lbl">MDF-e</span></button>
+            <button type="button" class="sb-btn" id="sb-vg-custo" data-goto-tab="custo"><span class="sb-num">—</span><span class="sb-icon">💰</span><span class="sb-lbl">custo</span></button>
           </div>
-          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-fveic-salvar">💾 Salvar</button></div>
+
+          <div class="odoo-notebook" id="vg-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="itens">Itens transportados</button>
+            <button type="button" data-tab="documentos">Documentos</button>
+            <button type="button" data-tab="custo">Custo</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>Data *</label><input type="date" id="vg-data" /></div>
+                <div class="campo"><label>Finalidade</label><select id="vg-finalidade"></select></div>
+                <div class="campo"><label>Caminhão</label><select id="vg-caminhao"></select></div>
+                <div class="campo"><label>Motorista</label><select id="vg-motorista"></select></div>
+                <div class="campo"><label>Equipamento atendido</label><select id="vg-equip"></select></div>
+              </div>
+              <h3 class="titulo-bloco">Origem → destino</h3>
+              <div class="grade">
+                <div class="campo"><label>Origem</label><select id="vg-origem-tipo"></select></div>
+                <div class="campo" id="vg-origem-obra-campo"><label>Obra de origem</label><select id="vg-origem-obra"></select></div>
+                <div class="campo"><label>Descrição da origem</label><input id="vg-origem-desc" placeholder="ex.: Base Itabira" /></div>
+                <div class="campo"><label>Destino</label><select id="vg-destino-tipo"></select></div>
+                <div class="campo" id="vg-destino-obra-campo"><label>Obra de destino</label><select id="vg-destino-obra"></select></div>
+                <div class="campo"><label>Descrição do destino</label><input id="vg-destino-desc" placeholder="ex.: Obra ArcelorMittal Tubarão" /></div>
+              </div>
+              <h3 class="titulo-bloco">Quilometragem e custo</h3>
+              <div class="grade">
+                <div class="campo"><label>km saída</label><input type="number" id="vg-km-saida" min="0" step="1" /></div>
+                <div class="campo"><label>km chegada</label><input type="number" id="vg-km-chegada" min="0" step="1" /></div>
+                <div class="campo"><label>R$/km <span class="meta">(do veículo, editável)</span></label><input type="number" id="vg-valor-km" min="0" step="0.01" /></div>
+                <div class="campo"><label>Saída real</label><input type="datetime-local" id="vg-data-saida" /></div>
+                <div class="campo"><label>Chegada real</label><input type="datetime-local" id="vg-data-chegada" /></div>
+                <div class="campo largo"><label>Observações</label><input id="vg-obs" placeholder="Ex.: mobilização da TAG 09, retorno ao pátio…" /></div>
+              </div>
+              <p class="nota">km rodado e valor da viagem são calculados no banco: (km chegada − km saída) × R$/km. O km atual do caminhão acompanha a maior chegada registrada. Concluir exige km de chegada maior ou igual ao de saída.</p>
+            </div>
+            <div class="odoo-tab" data-tab="itens"><div id="vg-itens"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="documentos"><div id="vg-docs"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="custo"><div id="vg-custo"><p class="vazio">—</p></div></div>
+          </div>
         </div>
       </div>
     </section>
@@ -3261,6 +3377,7 @@
             <div class="chip"><span>Pertence</span><strong id="ace-chip-pertence">—</strong></div>
             <div class="chip"><span>Condição</span><strong id="ace-chip-cond">—</strong></div>
             <div class="chip"><span>Valor de reposição</span><strong id="ace-chip-valor">—</strong></div>
+            <div class="chip" id="ace-chip-fab" style="display:none;" title="Peça fabricada na oficina (fase 84)"><span>Fabricada na</span><strong id="ace-chip-fab-txt">—</strong></div>
           </div>
 
           <div class="odoo-smart-buttons">
@@ -3560,6 +3677,201 @@
       </div>
     </section>
 
+    <!-- FABRICAÇÃO (fase 84): ordem de fabricação com componentes, horas por centro de trabalho e entrada do produzido -->
+    <section class="secao" id="sec-fabricacao">
+      <div id="fab-painel">
+        <h2>Fabricação</h2>
+        <p class="texto-apoio">Ordem de fabricação da oficina: o que vai ser feito e quanto, os componentes consumidos do estoque, as horas por funcionário e centro de trabalho (com hora extra) e o custo real. Concluída, dá entrada no estoque ou cria a peça com marcação em Acessórios. Inclui o histórico do Odoo (WH/MO).</p>
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Ordens de fabricação <span id="fab-contador" class="contador"></span></h3>
+            <div class="serv-views" id="fab-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban">Por status</button>
+            </div>
+            <span style="margin-left:auto;"></span>
+            <button type="button" class="btn-sec" id="btn-fab-centros" title="Centros de trabalho e custo da hora">⚙️ Centros de trabalho</button>
+            <button type="button" class="btn-sec" id="btn-fab-modelos" title="Listas de materiais (o que cada produto consome)">📋 Listas de materiais</button>
+            <button type="button" class="btn-sec" id="btn-fab-atualizar">🔄 Atualizar</button>
+            <button type="button" class="btn" id="btn-fab-novo" style="display:none;">+ Nova ordem</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="fab-busca" placeholder="Buscar nº, produto, descrição, WH/MO…" />
+            <select id="fab-f-status"><option value="_abertas">Abertas</option><option value="">Todos os status</option><option value="rascunho">Rascunho</option><option value="confirmada">Confirmada</option><option value="em_producao">Em produção</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option></select>
+            <select id="fab-f-centro"><option value="">Centro de trabalho</option></select>
+            <select id="fab-f-resp"><option value="">Responsável</option></select>
+            <select id="fab-f-destino"><option value="">Destino</option><option value="estoque">Estoque</option><option value="acessorio">Acessório</option><option value="obra">Obra</option><option value="equipamento">TAG</option><option value="centro_custo">Centro de custo</option></select>
+            <select id="fab-f-periodo" title="abertura"><option value="90">Últimos 90 dias</option><option value="365" selected>Últimos 12 meses</option><option value="">Todo o período</option></select>
+          </div>
+          <div id="fab-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha da ordem (estilo Odoo) -->
+      <div id="fab-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-fab-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-fab-salvar">💾 Salvar</button>
+              <button type="button" class="btn fab-acao" id="btn-fab-confirmar" data-acao="confirmada">✔ Confirmar</button>
+              <button type="button" class="btn fab-acao" id="btn-fab-iniciar" data-acao="em_producao">▶ Iniciar produção</button>
+              <button type="button" class="btn-sec fab-acao" id="btn-fab-aplicar" data-acao="aplicar" title="Preenche os componentes pela lista de materiais, multiplicada pela quantidade da ordem">📋 Aplicar lista</button>
+              <button type="button" class="btn-sec fab-acao" id="btn-fab-consumir" data-acao="consumir" title="Gera a saída de estoque dos componentes ainda sem baixa">📦 Consumir componentes</button>
+              <button type="button" class="btn btn-sucesso fab-acao" id="btn-fab-concluir" data-acao="concluir" title="Fecha com o custo real e dá entrada no que foi produzido">✅ Concluir</button>
+              <button type="button" class="btn-sec fab-acao" id="btn-fab-cancelar" data-acao="cancelada" style="color:var(--perigo);">✕ Cancelar</button>
+            </div>
+            <div class="actions-right"><strong id="fab-ficha-titulo">Nova ordem</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="fab-statusbar">
+            <div class="stage" data-status="rascunho">Rascunho</div>
+            <div class="stage" data-status="confirmada">Confirmada</div>
+            <div class="stage" data-status="em_producao">Em produção</div>
+            <div class="stage" data-status="concluida">Concluída</div>
+          </div>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="fab-chip-num">—</strong></div>
+            <div class="chip"><span>Produto</span><strong id="fab-chip-prod">—</strong></div>
+            <div class="chip"><span>Quantidade</span><strong id="fab-chip-qtd">—</strong></div>
+            <div class="chip"><span>Destino</span><strong id="fab-chip-dest">—</strong></div>
+            <div class="chip"><span>Responsável</span><strong id="fab-chip-resp">—</strong></div>
+            <div class="chip"><span>Dias em produção</span><strong id="fab-chip-dias">—</strong></div>
+            <div class="chip" id="fab-chip-odoo" style="display:none;"><span>Odoo</span><strong id="fab-chip-odoo-txt">—</strong></div>
+          </div>
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" data-goto-tab="componentes" id="sb-fab-comp"><span class="sb-num">0</span><span class="sb-icon">🔩</span><span class="sb-lbl">componentes</span></button>
+            <button type="button" class="sb-btn" data-goto-tab="horas" id="sb-fab-horas"><span class="sb-num">0</span><span class="sb-icon">⏱️</span><span class="sb-lbl">horas</span></button>
+            <button type="button" class="sb-btn" data-goto-tab="custos" id="sb-fab-custo"><span class="sb-num">R$ 0</span><span class="sb-icon">💰</span><span class="sb-lbl">custo</span></button>
+          </div>
+          <div class="odoo-notebook" id="fab-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="componentes">Componentes</button>
+            <button type="button" data-tab="horas">Horas</button>
+            <button type="button" data-tab="custos">Custos</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo largo"><label>Produto produzido (catálogo)</label>
+                  <input id="fab-prod-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+                  <div id="fab-prod-res" class="autocomplete-lista" style="display:none;"></div>
+                  <span class="meta" id="fab-prod-info">Sem produto do catálogo, descreva o que vai ser feito.</span>
+                </div>
+                <div class="campo largo"><label>Descrição</label><input id="fab-desc" placeholder="ex.: 2 pontas de trado Ø300 CZM 4&quot;" /></div>
+                <div class="campo"><label>Quantidade *</label><input type="number" id="fab-qtd" min="0.001" step="0.001" value="1" /></div>
+                <div class="campo"><label>Unidade</label><select id="fab-unidade"></select></div>
+                <div class="campo"><label>Produzido <small style="font-weight:400;">(ao concluir)</small></label><input type="number" id="fab-qtd-prod" min="0" step="0.001" placeholder="= quantidade" /></div>
+                <div class="campo"><label>Destino do que for produzido *</label><select id="fab-destino"><option value="estoque">Estoque (entrada do produto)</option><option value="acessorio">Acessório (peça com marcação)</option><option value="obra">Obra (custo direto)</option><option value="equipamento">TAG / equipamento (custo direto)</option><option value="centro_custo">Centro de custo (custo direto)</option></select></div>
+                <div class="campo" id="fab-c-obra" style="display:none;"><label>Obra *</label><select id="fab-obra"></select></div>
+                <div class="campo" id="fab-c-equip" style="display:none;"><label>TAG *</label><select id="fab-equip"></select></div>
+                <div class="campo" id="fab-c-centro" style="display:none;"><label>Centro de custo *</label><select id="fab-centro"></select></div>
+                <div class="campo largo" id="fab-c-acemod" style="display:none;"><label>Modelo de acessório (o que a peça é)</label><select id="fab-acemod"></select><span class="meta">Ao concluir, cada unidade vira uma peça com marcação, no pátio, em bom estado.</span></div>
+                <div class="campo"><label>Responsável</label><select id="fab-resp"></select></div>
+                <div class="campo"><label>Lista de materiais</label><select id="fab-modelo"></select></div>
+                <div class="campo"><label>Abertura</label><input type="date" id="fab-abertura" /></div>
+                <div class="campo"><label>Início previsto</label><input type="date" id="fab-inicio-prev" /></div>
+                <div class="campo"><label>Início</label><input type="date" id="fab-inicio" /></div>
+                <div class="campo"><label>Conclusão</label><input type="date" id="fab-conclusao" /></div>
+                <div class="campo largo"><label>Observações</label><input id="fab-obs" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="componentes">
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Componente</th><th style="width:60px;">Un</th><th class="num" style="width:90px;">Previsto</th><th class="num" style="width:90px;">Consumido</th><th class="num" style="width:110px;">Custo unit.</th><th class="num" style="width:110px;">Total</th><th style="width:150px;">Baixa</th><th class="col-acao"></th></tr></thead>
+                <tbody id="fab-itens"></tbody></table></div>
+              <div id="fab-itens-total" class="meta" style="margin:6px 0;"></div>
+              <div class="grade" id="fab-itens-add" style="margin-top:10px;">
+                <div class="campo largo"><label>+ Componente do catálogo</label>
+                  <input id="fab-comp-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+                  <div id="fab-comp-res" class="autocomplete-lista" style="display:none;"></div>
+                </div>
+                <div class="campo"><label>Qtd prevista</label><input type="number" id="fab-comp-qtd" min="0.001" step="0.001" value="1" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="horas">
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Funcionário</th><th>Centro de trabalho</th><th>Data</th><th>Início</th><th>Fim</th><th>HE</th><th class="num">Horas</th><th>Observação</th><th class="col-acao"></th></tr></thead>
+                <tbody id="fab-horas"></tbody></table></div>
+              <div id="fab-horas-total" class="meta" style="margin:6px 0;"></div>
+              <div class="grade" id="fab-horas-add">
+                <div class="campo largo"><label>Funcionário *</label><select id="fab-h-func"></select></div>
+                <div class="campo"><label>Centro de trabalho *</label><select id="fab-h-centro"></select></div>
+                <div class="campo"><label>Data</label><input type="date" id="fab-h-data" /></div>
+                <div class="campo"><label>Início</label><input type="time" id="fab-h-inicio" /></div>
+                <div class="campo"><label>Fim</label><input type="time" id="fab-h-fim" /></div>
+                <div class="campo"><label>Horas <small style="font-weight:400;">(sem início/fim)</small></label><input type="number" id="fab-h-horas" min="0" step="0.25" /></div>
+                <div class="campo"><label>Hora extra</label><label class="check-inline"><input type="checkbox" id="fab-h-he" /> HE (custa ×2)</label></div>
+                <div class="campo largo"><label>Observação</label><input id="fab-h-obs" /></div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-fab-h-add">+ Lançar horas</button></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="custos"><div id="fab-custos"></div></div>
+          </div>
+          <div id="fab-chatter" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- modal: concluir com marcações (destino acessório) -->
+      <div id="fab-cc-modal" class="modal-fundo" style="display:none;">
+        <div class="modal-caixa" style="max-width:680px;">
+          <div class="modal-topo"><h3 class="titulo-linha">Concluir: peças com marcação</h3><button type="button" class="btn-sec" id="btn-fab-cc-fechar">×</button></div>
+          <p class="meta" id="fab-cc-resumo"></p>
+          <div class="grade">
+            <div class="campo largo"><label>Modelo de acessório (o que a peça é) *</label><select id="fab-cc-modelo"></select></div>
+          </div>
+          <div class="grade" id="fab-cc-marcacoes"></div>
+          <p class="meta">Sugestão: a próxima marcação da família. Componentes ainda sem baixa saem do estoque ao concluir.</p>
+          <div class="form-acoes compacta"><button type="button" class="btn btn-sucesso" id="btn-fab-cc-ok">✅ Concluir e cadastrar as peças</button></div>
+        </div>
+      </div>
+
+      <!-- modal: centros de trabalho -->
+      <div id="fab-ct-modal" class="modal-fundo" style="display:none;">
+        <div class="modal-caixa" style="max-width:780px;">
+          <div class="modal-topo"><h3 class="titulo-linha">Centros de trabalho</h3><button type="button" class="btn-sec" id="btn-fab-ct-fechar">×</button></div>
+          <p class="meta">Custo da hora (R$/h) de cada centro entra no custo das horas lançadas; hora extra custa ×2. Fica em 0 até a diretoria definir; só diretoria e admin alteram. As ordens abertas recalculam ao salvar.</p>
+          <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Centro</th><th style="width:130px;">Setor</th><th class="num" style="width:130px;">Custo/h (R$)</th><th style="width:70px;">Ativo</th><th class="col-acao"></th></tr></thead><tbody id="fab-ct-lista"></tbody></table></div>
+          <div class="grade" id="fab-ct-novo" style="margin-top:10px;display:none;">
+            <div class="campo largo"><label>Novo centro</label><input id="fab-ct-nome" placeholder="ex.: Fresa nova" /></div>
+            <div class="campo"><label>Setor</label><select id="fab-ct-setor"><option value="usinagem">Usinagem</option><option value="solda">Solda</option><option value="corte">Corte</option><option value="manual">Manual</option><option value="eletrica">Elétrica</option><option value="outro">Outro</option></select></div>
+            <div class="campo"><label>Custo/h</label><input type="number" id="fab-ct-custo" min="0" step="0.01" value="0" /></div>
+            <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-fab-ct-add">+ Adicionar</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- modal: listas de materiais -->
+      <div id="fab-md-modal" class="modal-fundo" style="display:none;">
+        <div class="modal-caixa" style="max-width:900px;">
+          <div class="modal-topo"><h3 class="titulo-linha">Listas de materiais</h3><button type="button" class="btn-sec" id="btn-fab-md-fechar">×</button></div>
+          <p class="meta">O que a quantidade base do produto consome. "Aplicar lista" na ordem preenche os componentes na proporção da quantidade.</p>
+          <div class="grade">
+            <div class="campo largo"><label>Lista</label><select id="fab-md-sel"></select></div>
+            <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-fab-md-nova">+ Nova lista</button></div>
+          </div>
+          <div id="fab-md-form" style="display:none;">
+            <div class="grade">
+              <div class="campo largo"><label>Nome *</label><input id="fab-md-nome" placeholder="ex.: Ponta de trado Ø300 CZM 4&quot;" /></div>
+              <div class="campo largo"><label>Produto produzido</label>
+                <input id="fab-md-prod-busca" placeholder="código ou nome (≥ 2 letras)…" autocomplete="off" />
+                <div id="fab-md-prod-res" class="autocomplete-lista" style="display:none;"></div>
+                <span class="meta" id="fab-md-prod-info"></span>
+              </div>
+              <div class="campo"><label>Para quantas unidades</label><input type="number" id="fab-md-base" min="0.001" step="0.001" value="1" /></div>
+              <div class="campo"><label>Situação</label><label class="check-inline"><input type="checkbox" id="fab-md-ativo" checked /> ativa</label></div>
+              <div class="campo"><label>&nbsp;</label><button type="button" class="btn" id="btn-fab-md-salvar">💾 Salvar lista</button></div>
+            </div>
+            <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Componente</th><th style="width:70px;">Un</th><th class="num" style="width:140px;">Qtd por lista</th><th class="col-acao"></th></tr></thead><tbody id="fab-md-itens"></tbody></table></div>
+            <div class="grade" id="fab-md-add" style="margin-top:10px;">
+              <div class="campo largo"><label>+ Componente do catálogo</label>
+                <input id="fab-md-comp-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+                <div id="fab-md-comp-res" class="autocomplete-lista" style="display:none;"></div>
+              </div>
+              <div class="campo"><label>Qtd por lista</label><input type="number" id="fab-md-comp-qtd" min="0.0001" step="0.0001" value="1" /></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="secao" id="sec-medicoes">
       <h2>Medições</h2>
 
@@ -3578,6 +3890,11 @@
             <input id="med-busca" placeholder="Buscar por número ou obra..." />
             <select id="med-f-status"></select>
             <select id="med-f-obra"></select>
+            <select id="med-f-origem" title="Fase 88: medições importadas do boletim em PDF × digitadas">
+              <option value="">Todas as origens</option>
+              <option value="importada_pdf">Importadas (PDF)</option>
+              <option value="manual">Digitadas</option>
+            </select>
           </div>
           <div id="med-conteudo"></div>
           <table style="display:none;"><tbody id="tab-medicoes"></tbody></table>
@@ -3592,6 +3909,7 @@
               <button type="button" class="btn-sec" id="btn-voltar-med">&larr; Voltar</button>
               <button type="button" class="btn" id="btn-salvar-med">💾 Salvar</button>
               <button type="button" class="btn-sec" id="btn-gerar-pdf-med" title="Gera PDF da medição estilo CGL RG 11.4 (precisa estar salva)">📄 Gerar PDF</button>
+              <button type="button" class="btn-sec" id="btn-med-boletim" style="display:none;" title="Abrir o PDF do boletim importado (fase 88)">📎 Boletim (PDF)</button>
               <button type="button" class="btn-sec acao-perigo" id="btn-excluir-med">🗑️ Excluir</button>
             </div>
             <div class="actions-right">
@@ -3610,6 +3928,7 @@
             <div class="chip"><span>Número</span><strong id="med-ficha-numero">—</strong></div>
             <div class="chip"><span>Obra</span><strong id="med-ficha-obra-chip">—</strong></div>
             <div class="chip"><span>Status</span><strong id="med-ficha-status-chip">—</strong></div>
+            <div class="chip" id="med-ficha-origem" style="display:none;" title="Medição importada do boletim em PDF (fase 88); os itens guardam o que o PDF trazia"><span>Origem</span><strong id="med-ficha-origem-txt">—</strong></div>
             <div class="chip"><span>Subtotal</span><strong id="med-ficha-subtotal-chip">R$ 0,00</strong></div>
             <div class="chip"><span>Valor final</span><strong id="med-ficha-valor-chip">R$ 0,00</strong></div>
             <div class="chip" id="med-ficha-prodpend" style="display:none;" title="A NF não bate com os itens gerados pelos diários do período. Some sozinha quando baterem (lançar os diários e usar ✨ Sugerir do período)."><span>Produção pendente</span><strong id="med-ficha-prodpend-txt"></strong></div>
@@ -3768,6 +4087,7 @@
     <!-- MOVIMENTAÇÕES DE ATIVOS (NF-e / MDF-e) -->
     <section class="secao" id="sec-movimentacoes">
       <h2>Movimentações de Ativos</h2>
+      <p class="texto-apoio">Documento da viagem (fase 89): nota de remessa ou retorno com os itens, dados da NF-e e MDF-e. Abre de dentro da viagem em Logística, da obra, do equipamento e do acessório; a viagem é o registro central.</p>
 
       <!-- ===== Painel (lista / kanban) — padrão Serviços ===== -->
       <div id="mov-painel">
@@ -3841,6 +4161,7 @@
             <div class="chip"><span>Destino</span><strong id="mov-ficha-destino-chip">—</strong></div>
             <div class="chip"><span>NF</span><strong id="mov-ficha-nf-chip">—</strong></div>
             <div class="chip"><span>Total</span><strong id="mov-ficha-total-chip">R$ 0,00</strong></div>
+            <div class="chip"><span>Viagem</span><strong id="mov-ficha-viagem-chip">—</strong></div>
           </div>
 
           <!-- Notebook com abas -->
@@ -4274,44 +4595,70 @@
   </div>
 </div>
 
+<!-- Fase 88 (chamado #54): importar boletim de medição já emitido (PDF). Aberto pela aba Medições da
+     obra; fica fora das seções porque a ficha da obra está em outra <section>. Lógica em js/medicoes.js -->
+<div id="med-imp-modal" class="modal-fundo" style="display:none;">
+  <div class="modal-caixa" style="max-width:1180px;width:96%;">
+    <div class="modal-topo">
+      <h3 class="titulo-linha">📄 Importar boletim de medição (PDF) <span class="meta" id="med-imp-obra-txt"></span></h3>
+      <button type="button" class="btn-sec" id="btn-med-imp-fechar">×</button>
+    </div>
+    <p class="texto-apoio compacto">O PDF é o boletim que a CGL calculou e enviou ao cliente (Maya nas obras de hélice e secante; planilha da CGL nas de raiz e trado). A IA lê número, período, itens e totais; você confere item a item contra a cascata de preço do app (orçamento aprovado › preço do cliente › referência) e confirma. A medição nasce <strong>aprovada</strong>, com o PDF anexado. Até 10 páginas e 2 MB por arquivo; vários arquivos entram em fila e são conferidos um de cada vez. PDF escaneado (sem texto) é lido como imagem e a precisão cai.</p>
+    <div class="med-imp-zona" id="med-imp-zona">
+      <input type="file" id="med-imp-arquivo" accept=".pdf,application/pdf" multiple style="display:none;" />
+      <button type="button" class="btn" id="btn-med-imp-escolher">📎 Escolher PDF(s)</button>
+      <span class="meta">Clique ou arraste um ou mais boletins aqui.</span>
+    </div>
+    <ul id="med-imp-fila" class="med-imp-fila"></ul>
+    <div id="med-imp-aviso" class="aviso"></div>
+    <div id="med-imp-conf" style="display:none;"></div>
+    <div class="form-acoes compacta" id="med-imp-acoes" style="display:none;">
+      <button type="button" class="btn-sec" id="btn-med-imp-pular">Pular este arquivo</button>
+      <button type="button" class="btn btn-sucesso" id="btn-med-imp-confirmar">✅ Confirmar e gravar aprovada</button>
+    </div>
+  </div>
+</div>
+
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=046e79b"></script>
+<script src="js/core.js?v=85ed174"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=046e79b"></script>
+<script src="js/historico.js?v=85ed174"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=046e79b"></script>
-<script src="js/fornecedores.js?v=046e79b"></script>
-<script src="js/apropriacoes.js?v=046e79b"></script>
-<script src="js/funcionarios.js?v=046e79b"></script>
-<script src="js/servicos.js?v=046e79b"></script>
-<script src="js/produtos.js?v=046e79b"></script>
-<script src="js/estoque.js?v=046e79b"></script>
-<script src="js/separacoes.js?v=046e79b"></script>
-<script src="js/compras.js?v=046e79b"></script>
-<script src="js/requisicoes.js?v=046e79b"></script>
-<script src="js/orcamentos.js?v=046e79b"></script>
-<script src="js/propostas.js?v=046e79b"></script>
-<script src="js/contratos.js?v=046e79b"></script>
-<script src="js/contas_pagar.js?v=046e79b"></script>
-<script src="js/centros_custo.js?v=046e79b"></script>
-<script src="js/carteira.js?v=046e79b"></script>
-<script src="js/obras.js?v=046e79b"></script>
-<script src="js/frota.js?v=046e79b"></script>
-<script src="js/equipamentos.js?v=046e79b"></script>
-<script src="js/acessorios.js?v=046e79b"></script>
-<script src="js/reparos.js?v=046e79b"></script>
-<script src="js/mobilizacoes.js?v=046e79b"></script>
-<script src="js/estacas.js?v=046e79b"></script>
-<script src="js/obra_abas.js?v=046e79b"></script>
-<script src="js/medicoes.js?v=046e79b"></script>
-<script src="js/movimentacoes.js?v=046e79b"></script>
-<script src="js/rdo.js?v=046e79b"></script>
-<script src="js/rdo_import_maya.js?v=046e79b"></script>
-<script src="js/usuarios.js?v=046e79b"></script>
-<script src="js/chamados.js?v=046e79b"></script>
-<script src="js/dashboard.js?v=046e79b"></script>
+<script src="js/clientes.js?v=85ed174"></script>
+<script src="js/fornecedores.js?v=85ed174"></script>
+<script src="js/apropriacoes.js?v=85ed174"></script>
+<script src="js/funcionarios.js?v=85ed174"></script>
+<script src="js/servicos.js?v=85ed174"></script>
+<script src="js/produtos.js?v=85ed174"></script>
+<script src="js/estoque.js?v=85ed174"></script>
+<script src="js/separacoes.js?v=85ed174"></script>
+<script src="js/compras.js?v=85ed174"></script>
+<script src="js/requisicoes.js?v=85ed174"></script>
+<script src="js/orcamentos.js?v=85ed174"></script>
+<script src="js/propostas.js?v=85ed174"></script>
+<script src="js/contratos.js?v=85ed174"></script>
+<script src="js/contas_pagar.js?v=85ed174"></script>
+<script src="js/centros_custo.js?v=85ed174"></script>
+<script src="js/carteira.js?v=85ed174"></script>
+<script src="js/obras.js?v=85ed174"></script>
+<script src="js/frota.js?v=85ed174"></script>
+<script src="js/viagens.js?v=85ed174"></script>
+<script src="js/equipamentos.js?v=85ed174"></script>
+<script src="js/acessorios.js?v=85ed174"></script>
+<script src="js/reparos.js?v=85ed174"></script>
+<script src="js/fabricacao.js?v=85ed174"></script>
+<script src="js/mobilizacoes.js?v=85ed174"></script>
+<script src="js/estacas.js?v=85ed174"></script>
+<script src="js/obra_abas.js?v=85ed174"></script>
+<script src="js/medicoes.js?v=85ed174"></script>
+<script src="js/movimentacoes.js?v=85ed174"></script>
+<script src="js/rdo.js?v=85ed174"></script>
+<script src="js/rdo_import_maya.js?v=85ed174"></script>
+<script src="js/usuarios.js?v=85ed174"></script>
+<script src="js/chamados.js?v=85ed174"></script>
+<script src="js/dashboard.js?v=85ed174"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=046e79b"></script>
+<script src="js/init.js?v=85ed174"></script>
 </body>
 </html>

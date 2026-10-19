@@ -60,8 +60,12 @@ async function contratosVencendo(){
 /* ---------- Carga ---------- */
 let _conGerouTitulos = false;
 async function carregarContratos(){
-  // fase 56: completa o horizonte de títulos (3 meses) uma vez por sessão; o pg_cron faz o mesmo todo dia
-  if(!_conGerouTitulos && typeof podeVerContasPagar === "function" && podeVerContasPagar()){
+  // fase 56: completa o horizonte de títulos (3 meses) uma vez por sessão; o pg_cron faz o mesmo todo dia.
+  // Lote S43 (L4): só quem gera títulos no banco (has_role admin/financeiro/comprador + diretor) chama a RPC;
+  // podeVerContasPagar() inclui o auditor desde a fase 79 e a chamada dele voltava 400 no console.
+  const geraTitulos = !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador"].includes(usuarioAtual.cargo)
+    && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+  if(!_conGerouTitulos && geraTitulos){
     _conGerouTitulos = true;
     await sb.rpc("contrato_gerar_titulos");
   }

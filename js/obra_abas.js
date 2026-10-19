@@ -113,10 +113,13 @@ async function carregarEquipamentosDaObra(obraId){
     cont.innerHTML = `<p class="vazio">Salve a obra primeiro.</p>`;
     return;
   }
-  const [eqRes, mobRes, pendRes] = await Promise.all([
+  const [eqRes, mobRes, pendRes, vgRes] = await Promise.all([
     sb.from("vw_equipamentos_localizacao").select("*").eq("localizacao_obra_id", obraId),
     sb.from("vw_mobilizacoes_quadro").select("*").eq("obra_id", obraId).order("data_mobilizacao_prev", { ascending: true, nullsFirst: false }),
-    sb.from("vw_mobilizacao_pendencias_setor").select("*").eq("obra_id", obraId)
+    sb.from("vw_mobilizacao_pendencias_setor").select("*").eq("obra_id", obraId),
+    // fase 89: viagens que atenderam a obra (origem, destino ou obra principal), com as notas de cada uma
+    sb.from("viagens").select("id,numero,data,status,finalidade,km_total,valor_total,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome),notas:movimentacoes_ativos(id,numero,nf_numero,status,interna)")
+      .or(`obra_id.eq.${obraId},origem_obra_id.eq.${obraId},destino_obra_id.eq.${obraId}`).order("data", { ascending: false }).limit(60)
   ]);
   if(obraId !== obraEditId) return; // trocou de obra enquanto carregava
   if(eqRes.error){
@@ -153,11 +156,33 @@ async function carregarEquipamentosDaObra(obraId){
     });
   };
 
+  // ---- fase 89: viagens da obra (a viagem ao lado da nota; o custo já cai na aba Custos por vw_custos) ----
+  const vgs = vgRes.error ? [] : (vgRes.data || []);
+  const vgFin = (typeof VG_FINALIDADES === "object" && VG_FINALIDADES) || {};
+  const blocoViagens = `
+    <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
+      <h4 style="margin:0;font-size:var(--txt-md);">🚚 Viagens desta obra <span class="contador">${vgs.length}</span></h4>
+      <span class="meta">Logística: caminhão, data e as notas (remessa/retorno) de cada viagem. O custo da viagem entra rateado na aba Custos.</span>
+    </div>
+    ${vgRes.error ? `<p class="vazio">Não foi possível ler as viagens: ${esc(vgRes.error.message)}</p>` : vgs.length ? `<div class="tabela-rola"><table>
+      <thead><tr><th>Viagem</th><th>Data</th><th>Status</th><th>Finalidade</th><th>Caminhão</th><th>Motorista</th><th>Notas</th><th class="num">km</th><th class="num">Custo</th></tr></thead>
+      <tbody>${vgs.map(v => `<tr class="linha-clicavel" data-vg="${esc(v.id)}">
+        <td><strong>${esc(v.numero)}</strong></td><td>${dataBR(v.data)}</td><td>${tagStatus("viagem", v.status)}</td><td>${esc(vgFin[v.finalidade] || v.finalidade || "")}</td>
+        <td>${esc(v.caminhao?.codigo || "—")}</td><td>${esc(v.funcionario?.nome || "—")}</td>
+        <td>${(v.notas || []).filter(n => !n.interna).map(n => linkMovimentacao(n.id, n.nf_numero ? "NF " + n.nf_numero : n.numero)).join(", ") || '<span class="meta">—</span>'}</td>
+        <td class="num">${v.km_total != null ? num(v.km_total) : "—"}</td><td class="num">${v.valor_total != null ? brl(v.valor_total) : "—"}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="vazio" style="padding:10px 0;">Nenhuma viagem registrada para esta obra.</p>`}
+    <hr style="border:none;border-top:1px solid var(--borda);margin:14px 0;">`;
+
   // ---- fase 80: bens do contrato (equipamentos e acessórios que passaram pela obra) ----
-  cont.innerHTML = blocoMob + `<div id="obr-bens-equip"><p class="vazio">Carregando equipamentos do contrato…</p></div>
+  cont.innerHTML = blocoMob + blocoViagens + `<div id="obr-bens-equip"><p class="vazio">Carregando equipamentos do contrato…</p></div>
     <hr style="border:none;border-top:1px solid var(--borda);margin:14px 0;">
     <div id="obr-bens-ace"><p class="vazio">Carregando acessórios do contrato…</p></div>`;
   ligarMob();
+  cont.querySelectorAll("tr[data-vg]").forEach(tr => tr.addEventListener("click", e => {
+    if(e.target.closest("a.link-cad, a.link-obra")) return;
+    if(irParaSecao("frota") && typeof abrirViagem === "function") abrirViagem(tr.dataset.vg, null);
+  }));
   _obrBensNaObraAgora = false;
   await Promise.all([obrRenderBensEquip(obraId, data || []), obrRenderBensAce(obraId)]);
 }
@@ -331,7 +356,7 @@ async function carregarMedicoesDaObra(obraId){
   }
   const [{ data, error }, sinal] = await Promise.all([
     sb.from("medicoes")
-      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes")
+      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes,origem")
       .eq("obra_id", obraId)
       .order("data_medicao", { ascending: false }),
     typeof calcularSaldoSinalObra === "function" ? calcularSaldoSinalObra(obraId, null) : Promise.resolve(null)
@@ -372,15 +397,21 @@ async function carregarMedicoesDaObra(obraId){
       <div class="ind"><div class="num">${pctTotal.toFixed(1)}%</div><div class="rot">% medido</div></div>
     </div>`;
 
+  // fase 88 (#54): boletim já emitido (PDF do Maya ou da planilha) entra conferido e nasce aprovado
+  const podeImportar = typeof medImpPodeImportar === "function" && medImpPodeImportar();
+  const btnImportar = podeImportar
+    ? `<button type="button" class="btn-sec" id="btn-medic-importar" title="Lê o PDF do boletim que a CGL enviou ao cliente (Maya ou planilha), você confere contra a cascata de preço e a medição nasce aprovada com o PDF anexado">📄 Importar boletim (PDF)</button>`
+    : "";
   if(!data || !data.length){
     cont.innerHTML = `${stats}<p class="vazio">Nenhuma medição registrada.<br>
-      <button type="button" class="btn" id="btn-medic-nova" style="margin-top:10px;">+ Nova medição</button></p>`;
+      <span style="display:inline-flex;gap:8px;margin-top:10px;">${btnImportar}<button type="button" class="btn" id="btn-medic-nova">+ Nova medição</button></span></p>`;
     $("btn-medic-nova")?.addEventListener("click", abrirMedicaoPraObra);
+    $("btn-medic-importar")?.addEventListener("click", () => abrirImportBoletimPDF(obraId));
     return;
   }
   const tipoLbl = { sinal_contratual: "Sinal", quinzenal: "Quinzenal", final: "Final", avulsa: "Avulsa" };
   const linhas = data.map(m => `<tr class="linha-clicavel" data-id="${esc(m.id)}">
-    <td>${esc(m.numero)}</td>
+    <td>${esc(m.numero)}${m.origem === "importada_pdf" ? ' <span title="Importada do boletim (PDF)">📄</span>' : ""}</td>
     <td>${dataBR(m.data_medicao)}</td>
     <td>${esc(tipoLbl[m.tipo_medicao] || m.tipo_medicao || "—")}</td>
     <td>${num(m.percentual)}%</td>
@@ -391,13 +422,14 @@ async function carregarMedicoesDaObra(obraId){
   cont.innerHTML = `${stats}
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
       <h4 style="margin:0;font-size:var(--txt-md);">Medições da obra</h4>
-      <button type="button" class="btn" id="btn-medic-nova">+ Nova medição</button>
+      <span style="display:inline-flex;gap:8px;">${btnImportar}<button type="button" class="btn" id="btn-medic-nova">+ Nova medição</button></span>
     </div>
     <div class="tabela-rola"><table>
       <thead><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>%</th><th>Status</th><th class="num" title="Abatimento do sinal contratual nesta medição">Sinal abatido</th><th class="num">Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table></div>
   `;
   $("btn-medic-nova")?.addEventListener("click", abrirMedicaoPraObra);
+  $("btn-medic-importar")?.addEventListener("click", () => abrirImportBoletimPDF(obraId));
   cont.querySelectorAll(".linha-clicavel").forEach(tr => {
     tr.addEventListener("click", () => abrirMedicaoExistente(tr.dataset.id));
   });
@@ -768,7 +800,7 @@ async function carregarTimelineDaObra(obraId){
   // Busca tudo em paralelo (incluindo criado_por / enviado_por / alterada_por pra mostrar autoria)
   const [obra, movs, rdos, medicoes, ocorrencias, docs, estacasExec, comentarios, usuariosAtivos] = await Promise.all([
     sb.from("obras").select("created_at,codigo,nome,criado_por").eq("id", obraId).single(),
-    sb.from("movimentacoes_ativos").select("id,numero,tipo,status,data_emissao,destino_descricao,origem_descricao,valor_total_produtos,criado_por").or(`origem_obra_id.eq.${obraId},destino_obra_id.eq.${obraId}`).order("data_emissao", { ascending: false }),
+    sb.from("movimentacoes_ativos").select("id,numero,tipo,status,data_emissao,destino_descricao,origem_descricao,valor_total_produtos,criado_por,interna,viagem:viagens(id,numero,data,caminhao:equipamentos!caminhao_id(codigo))").or(`origem_obra_id.eq.${obraId},destino_obra_id.eq.${obraId}`).order("data_emissao", { ascending: false }),
     sb.from("rdo").select("id,data,tipo_servico,producao_dia_m,status,efetivo_proprio,efetivo_terceiro,criado_por").eq("obra_id", obraId).order("data", { ascending: false }),
     sb.from("medicoes").select("id,numero,data_medicao,valor_medido,status,criado_por").eq("obra_id", obraId).order("data_medicao", { ascending: false }),
     sb.from("ocorrencias").select("id,data,tipo,gravidade,status,descricao").eq("obra_id", obraId).order("data", { ascending: false }),
@@ -837,8 +869,9 @@ async function carregarTimelineDaObra(obraId){
     eventos.push({
       tipo: "movimentacao",
       data: m.data_emissao + "T12:00:00",
-      titulo: `${m.numero} · ${m.tipo} (${lbl})`,
-      meta: `${m.origem_descricao || "?"} → ${m.destino_descricao || "?"}${m.valor_total_produtos ? " · " + brl(m.valor_total_produtos) : ""}`,
+      titulo: `${m.numero} · ${m.interna ? "itens da viagem" : m.tipo} (${lbl})`,
+      // fase 89: a viagem que levou a nota (número, data e caminhão) ao lado
+      meta: `${m.origem_descricao || "?"} → ${m.destino_descricao || "?"}${m.valor_total_produtos ? " · " + brl(m.valor_total_produtos) : ""}${m.viagem ? ` · Viagem ${m.viagem.numero} em ${dataBR(m.viagem.data)}${m.viagem.caminhao ? " (" + m.viagem.caminhao.codigo + ")" : ""}` : ""}`,
       ref_id: m.id,
       autor: nomeDe(m.criado_por)
     });

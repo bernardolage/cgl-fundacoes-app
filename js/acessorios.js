@@ -32,7 +32,7 @@ let _aceMdDepois = null;           // callback após salvar modelo
 let _aceMdEditId = null;
 let _aceValor = {};                // id -> { valor, base, preco_vencido, peso_kg } (vw_acessorios_valor)
 let _aceFotosN = {};               // id -> nº de fotos
-let _aceFotoUrl = {};              // storage_path -> url assinada
+let _aceFotoUrl = {};              // storage_path -> { url, expira_em } (lote S43: assinada por 12 h, renovada a 5 min do fim)
 let _aceSucata = [];               // últimos preços da sucata
 const ACE_FOTO_BUCKET = "acessorios-fotos";
 const ACE_FOTO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
@@ -123,7 +123,7 @@ function aceChaveFamilia(){ return "ace_familia_" + (usuarioAtual?.id || "anon")
 
 /* ---------- carga ---------- */
 async function aceFetchTodos(){
-  const cols = "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia,peso_kg,preco_origem,preco_atualizado_em)";
+  const cols = "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,ordem_fabricacao_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia,peso_kg,preco_origem,preco_atualizado_em)";
   const tudo = []; const passo = 1000;
   for(let de = 0; ; de += passo){
     const { data, error } = await sb.from("acessorios").select(cols).order("marcacao").range(de, de + passo - 1);
@@ -220,7 +220,7 @@ function aceInvalidar(){ _aceCarregado = false; _aceCatalogoEm = 0; }
 /* recarrega só algumas peças (depois de uma ação) e re-renderiza */
 async function aceRefetch(ids){
   if(!ids || !ids.length) return;
-  const cols = "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia)";
+  const cols = "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,ordem_fabricacao_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia)";
   const { data, error } = await sb.from("acessorios").select(cols).in("id", ids);
   if(error){ aviso("app-aviso", "Erro ao atualizar a lista: " + error.message, "erro"); return; }
   (data || []).forEach(n => {
@@ -665,13 +665,29 @@ async function aceEnviarFotos(ids, arquivos, tipo, legenda){
   }
   return falhas;
 }
+/* Lote S43 (L6): mesma regra das fotos de funcionário: URL assinada por 12 h com `expira_em`, renovada quando
+   faltar menos de 5 min; imagem que falhar assina de novo uma vez (aceFotoFalhou) antes do placeholder. */
+const ACE_FOTO_ASSINA_S = 12 * 3600;
+const ACE_FOTO_MARGEM_MS = 5 * 60 * 1000;
+function aceFotoUrlValida(p){ const c = _aceFotoUrl[p]; return c && (c.expira_em - Date.now()) > ACE_FOTO_MARGEM_MS ? c.url : null; }
 async function aceFotosUrls(paths){
-  const faltam = paths.filter(p => !_aceFotoUrl[p]);
+  const faltam = paths.filter(p => !aceFotoUrlValida(p));
   if(faltam.length){
-    const { data } = await sb.storage.from(ACE_FOTO_BUCKET).createSignedUrls(faltam, 3600);
-    (data || []).forEach(d => { if(d.signedUrl && d.path) _aceFotoUrl[d.path] = d.signedUrl; });
+    const { data } = await sb.storage.from(ACE_FOTO_BUCKET).createSignedUrls(faltam, ACE_FOTO_ASSINA_S);
+    const expira_em = Date.now() + ACE_FOTO_ASSINA_S * 1000;
+    (data || []).forEach(d => { if(d.signedUrl && d.path) _aceFotoUrl[d.path] = { url: d.signedUrl, expira_em }; });
   }
-  return paths.map(p => _aceFotoUrl[p] || "");
+  return paths.map(p => aceFotoUrlValida(p) || "");
+}
+async function aceFotoFalhou(img){
+  const path = img.dataset.path;
+  const placeholder = () => { if(img.id === "ace-capa"){ img.style.display = "none"; return; } const d = document.createElement("div"); d.className = "vazio"; d.textContent = "foto indisponível"; img.replaceWith(d); };
+  if(!path || img.dataset.tentou){ placeholder(); return; }
+  img.dataset.tentou = "1";
+  delete _aceFotoUrl[path];
+  const [url] = await aceFotosUrls([path]);
+  if(!url){ placeholder(); return; }
+  img.src = url; const a = img.closest("a"); if(a) a.href = url;
 }
 async function aceRenderFotos(a){
   const c = $("ace-fotos"), capa = $("ace-capa"); if(!c) return;
@@ -685,9 +701,9 @@ async function aceRenderFotos(a){
   if(_aceAtual?.id !== a.id) return;
   const pode = acePodeEditar();
   const capaFoto = fotos.find(f => f.capa) || fotos[0];
-  if(capa){ capa.src = urls[fotos.indexOf(capaFoto)] || ""; capa.style.display = capa.src ? "" : "none"; capa.title = capaFoto.legenda || ACE_FOTO_TIPO_LBL[capaFoto.tipo] || ""; }
+  if(capa){ capa.dataset.path = capaFoto.storage_path; delete capa.dataset.tentou; capa.onerror = () => aceFotoFalhou(capa); capa.src = urls[fotos.indexOf(capaFoto)] || ""; capa.style.display = capa.src ? "" : "none"; capa.title = capaFoto.legenda || ACE_FOTO_TIPO_LBL[capaFoto.tipo] || ""; }
   c.innerHTML = fotos.map((f, i) => `<div class="ace-foto${f.capa ? " capa" : ""}">
-      <a href="${esc(urls[i])}" target="_blank" rel="noopener"><img src="${esc(urls[i])}" alt="${esc(f.legenda || "")}" loading="lazy" /></a>
+      <a href="${esc(urls[i])}" target="_blank" rel="noopener"><img src="${esc(urls[i])}" alt="${esc(f.legenda || "")}" loading="lazy" data-path="${esc(f.storage_path)}" onerror="aceFotoFalhou(this)" /></a>
       <div class="ace-foto-rod"><span><span class="tag ${f.tipo === "descarte" ? "vermelho" : f.tipo === "avaria" ? "ambar" : "cinza"}">${esc(ACE_FOTO_TIPO_LBL[f.tipo] || f.tipo)}</span>${f.capa ? ' <span class="tag azul">capa</span>' : ""} <span class="meta">${dataBR(String(f.created_at).slice(0, 10))}</span></span>
         ${f.legenda ? `<span>${esc(f.legenda)}</span>` : ""}
         ${pode ? `<span class="acoes">${f.capa ? "" : `<button type="button" class="btn-sec btn-sm" data-ft-capa="${f.id}">★ capa</button>`}<button type="button" class="btn-sec btn-sm" data-ft-del="${f.id}" data-path="${esc(f.storage_path)}" style="color:var(--perigo);">✕</button></span>` : ""}
@@ -896,6 +912,7 @@ function abrirFichaAcessorio(a){
   $("ace-chip-pertence").textContent = a.equipamento_padrao_id ? "TAG " + aceEqTag(a.equipamento_padrao_id) : "—";
   $("ace-chip-cond").innerHTML = tagStatus("acessorio", a.condicao);
   $("ace-chip-valor").innerHTML = a.id ? aceValorTxt(a) : "—";
+  aceChipFabricacao(a);
   atualizarStatusbarAcessorio(a.condicao);
   const capa = $("ace-capa"); if(capa){ capa.style.display = "none"; capa.removeAttribute("src"); }
   $("ace-fotos").innerHTML = `<p class="vazio">${novo ? "Salve a peça para adicionar fotos." : "Carregando…"}</p>`;
@@ -916,13 +933,23 @@ function abrirFichaAcessorio(a){
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+/* fase 84: peça que nasceu de uma ordem de fabricação mostra "Fabricada na OF-…" com link para a ordem */
+async function aceChipFabricacao(a){
+  const chip = $("ace-chip-fab"), txt = $("ace-chip-fab-txt"); if(!chip || !txt) return;
+  if(!a.ordem_fabricacao_id){ chip.style.display = "none"; txt.textContent = "—"; return; }
+  chip.style.display = ""; txt.textContent = "…";
+  const { data } = await sb.from("ordens_fabricacao").select("id,numero,data_conclusao").eq("id", a.ordem_fabricacao_id).maybeSingle();
+  if(_aceAtual?.id !== a.id) return;
+  txt.innerHTML = data ? (typeof linkFabricacao === "function" ? linkFabricacao(data.id, data.numero) : esc(data.numero)) + (data.data_conclusao ? ` <span class="meta">${dataBR(data.data_conclusao)}</span>` : "") : "—";
+}
+
 async function aceCarregarFilhas(a){
   const [ev, rep, comp, mov] = await Promise.all([
     sb.from("acessorio_eventos").select("id,tipo,data,de_local_tipo,de_ref_id,de_descricao,para_local_tipo,para_ref_id,para_descricao,de_condicao,para_condicao,observacao,autor_nome,movimentacao_id,reparo_id").eq("acessorio_id", a.id).order("data", { ascending: false }).limit(300),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,observacoes").eq("acessorio_id", a.id).order("data_abertura", { ascending: false }),
     sb.from("acessorio_equipamentos").select("equipamento_id").eq("acessorio_id", a.id),
-    // fase 80: remessas e retornos em que a peça foi, com link de volta para a movimentação
-    sb.from("movimentacao_itens").select("movimentacao_id,mov:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_saida,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao)").eq("acessorio_id", a.id)
+    // fase 80: remessas e retornos em que a peça foi, com link de volta para a movimentação; fase 89: e a viagem que levou cada nota
+    sb.from("movimentacao_itens").select("movimentacao_id,mov:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_saida,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,interna,viagem:viagens(id,numero,data,status,caminhao:equipamentos!caminhao_id(codigo)))").eq("acessorio_id", a.id)
   ]);
   if(_aceAtual?.id !== a.id) return;
   const setSb = (id, n) => { const b = $(id); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
@@ -951,9 +978,11 @@ function aceMovLado(tipo, obraId, desc){
 function aceMovsHTML(movs){
   if(!movs || !movs.length) return "";
   const lst = [...new Map(movs.map(m => [m.id, m])).values()].sort((x, y) => String(y.data_saida || y.data_emissao || "").localeCompare(String(x.data_saida || x.data_emissao || "")));
-  return `<div class="mov-ace-sug-grupo-t">Movimentações de ativos <span class="meta">${lst.length}</span></div>
-    <div class="tabela-rola" style="margin-bottom:10px;"><table><thead><tr><th>Movimentação</th><th>Tipo</th><th>Data</th><th>Origem → destino</th><th>Status</th></tr></thead>
-    <tbody>${lst.map(m => `<tr><td><strong>${linkMovimentacao(m.id, m.numero || "movimentação")}</strong></td><td>${esc(m.tipo || "")}</td><td>${dataBR(m.data_saida || m.data_emissao)}</td>
+  // fase 89: a viagem que levou a nota (ou o documento interno da viagem, quando a peça foi lançada direto nela)
+  const vgTxt = m => m.viagem ? `${typeof linkViagem === "function" ? linkViagem(m.viagem.id, m.viagem.numero) : esc(m.viagem.numero)}${m.viagem.caminhao ? ` <span class="meta">${esc(m.viagem.caminhao.codigo)}</span>` : ""}` : '<span class="meta">—</span>';
+  return `<div class="mov-ace-sug-grupo-t">Viagens e notas <span class="meta">${lst.length}</span></div>
+    <div class="tabela-rola" style="margin-bottom:10px;"><table><thead><tr><th>Viagem</th><th>Nota</th><th>Tipo</th><th>Data</th><th>Origem → destino</th><th>Status</th></tr></thead>
+    <tbody>${lst.map(m => `<tr><td>${vgTxt(m)}</td><td><strong>${m.interna ? '<span class="meta">itens da viagem</span>' : linkMovimentacao(m.id, m.numero || "movimentação")}</strong></td><td>${esc(m.tipo || "")}</td><td>${dataBR(m.viagem?.data || m.data_saida || m.data_emissao)}</td>
       <td>${aceMovLado(m.origem_tipo, m.origem_obra_id, m.origem_descricao)} → ${aceMovLado(m.destino_tipo, m.destino_obra_id, m.destino_descricao)}</td><td class="meta">${esc(m.status || "")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function aceRenderHistorico(evs, err, movs){

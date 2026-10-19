@@ -24,6 +24,9 @@ const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: 
 const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)";
 
 function repPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios"].includes(usuarioAtual.cargo); }
+/* lote S43 (L10, pedido do Julio em 18/10): o almoxarife lança as peças consumidas e dá a baixa, como no Odoo;
+   status, horas, motivo e o resto da ficha seguem repPodeEditar(). Espelha reparo_itens_write e reparo_consumir_pecas. */
+function repPodeItens(){ return repPodeEditar() || (!!usuarioAtual && usuarioAtual.cargo === "almoxarife"); }
 function repTag(st){ const o = REP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
 function repAlvoTxt(r){ return r.acessorio ? r.acessorio.marcacao : r.equipamento ? "TAG " + r.equipamento.codigo : "—"; }
 function repAlvoLink(r){ return r.acessorio_id ? linkAcessorio(r.acessorio_id, r.acessorio?.marcacao || "peça") : r.equipamento_id ? linkEquipamento(r.equipamento_id, "TAG " + (r.equipamento?.codigo || "")) : "—"; }
@@ -174,12 +177,12 @@ function repAtualizarCabecalho(){
   $("rep-chip-odoo").style.display = r.codigo_externo ? "" : "none"; $("rep-chip-odoo-txt").textContent = r.codigo_externo || "";
   const pendBaixa = _repItens.some(i => i.tipo === "consumo" && !i.movimentacao_estoque_id && !i.codigo_externo && i.produto_id);
   const mostra = { "btn-rep-salvar": pode && st !== "cancelado", "btn-rep-iniciar": pode && !novo && st === "aberto", "btn-rep-concluir": pode && !novo && ["aberto", "em_execucao"].includes(st),
-    "btn-rep-cancelar": pode && !novo && ["aberto", "em_execucao"].includes(st), "btn-rep-baixa": pode && !novo && st !== "cancelado" && pendBaixa };
+    "btn-rep-cancelar": pode && !novo && ["aberto", "em_execucao"].includes(st), "btn-rep-baixa": repPodeItens() && !novo && st !== "cancelado" && pendBaixa };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   const sb2 = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n || n === "R$ 0,00"); } };
   sb2("sb-rep-pecas", _repItens.length); sb2("sb-rep-horas", num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0)));
   sb2("sb-rep-custo", brl(r.custo_real || 0));
-  $("rep-itens-add").style.display = pode && !novo && st !== "cancelado" ? "" : "none";
+  $("rep-itens-add").style.display = repPodeItens() && !novo && st !== "cancelado" ? "" : "none";   // lote S43: almoxarife também
   $("rep-horas-add").style.display = pode && !novo && st !== "cancelado" ? "" : "none";
 }
 function repAtivarTab(nome){
@@ -229,7 +232,7 @@ async function repAcao(acao){
 
 /* peças */
 function repRenderItens(){
-  const tb = $("rep-itens"), pode = repPodeEditar() && _repAtual?.status !== "cancelado";
+  const tb = $("rep-itens"), pode = repPodeItens() && _repAtual?.status !== "cancelado";   // lote S43: almoxarife remove item sem baixa
   if(!_repItens.length){ tb.innerHTML = `<tr><td colspan="8" class="vazio">${_repAtual?.id ? "Nenhuma peça lançada." : "Salve o reparo para lançar peças."}</td></tr>`; return; }
   tb.innerHTML = _repItens.map(i => {
     const baixa = i.movimentacao_estoque_id ? '<span class="tag verde">baixada no estoque</span>' : i.codigo_externo ? '<span class="tag cinza">baixa no Odoo</span>'

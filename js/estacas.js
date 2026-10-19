@@ -1122,17 +1122,18 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
    fica atrás do modal e a pessoa não vê o erro ("parecia que não tinha clicado"). */
 function avisoImport(msg, tipo){
   aviso("app-aviso", msg, tipo);
-  const alvo = ($("est-dxf-modal")?.style.display !== "none" && $("est-dxf-modal")?.style.display !== "") ? $("est-dxf-aviso")
-             : ($("est-import-modal")?.style.display !== "none" && $("est-import-modal")?.style.display !== "") ? $("est-import-aviso") : null;
+  const aberto = id => { const m = $(id); return m && m.style.display !== "none" && m.style.display !== ""; };
+  const alvo = aberto("est-dxf-modal") ? $("est-dxf-aviso") : aberto("est-xlsx-modal") ? $("est-xlsx-aviso")
+             : aberto("est-import-modal") ? $("est-import-aviso") : null;
   const el = alvo || $("est-import-aviso");
   if(!el) return;
   el.textContent = msg;
-  el.className = "aviso " + tipo;
+  el.className = "aviso " + (tipo === "aviso" ? "atencao" : tipo);
   if(tipo === "ok") setTimeout(() => { el.className = "aviso"; el.textContent = ""; }, 4000);
   el.scrollIntoView({ block: "nearest" });
 }
 function limparAvisoImport(){
-  ["est-import-aviso","est-dxf-aviso"].forEach(id => { const el = $(id); if(el){ el.textContent = ""; el.className = "aviso"; } });
+  ["est-import-aviso","est-dxf-aviso","est-xlsx-aviso"].forEach(id => { const el = $(id); if(el){ el.textContent = ""; el.className = "aviso"; } });
 }
 
 async function confirmarImportEstacas(){
@@ -1191,6 +1192,7 @@ async function confirmarImportEstacas(){
   _importPreview = [];
   fecharModalImport();
   fecharModalDXF();
+  fecharModalXlsx();
   await carregarEstacasDaObra(obraEditId);
 }
 
@@ -1210,6 +1212,135 @@ function abrirModalImport(){
 function fecharModalImport(){
   $("est-import-modal").style.display = "none";
   _importPreview = [];
+}
+
+/* ====================================================================
+   IMPORTAÇÃO por PLANILHA (lote S43, chamado #55 do Jonathan)
+   Projeto sem numeração, ou que a IA não leu direito, entra por .xlsx/.csv (SheetJS já carregado) ou
+   pelas linhas coladas do Excel. Modelo para baixar. A prévia (renderImportPreview) e a gravação
+   (confirmarImportEstacas: nome único por obra/local/agrupamento, duplicados avisados, unidade das
+   coordenadas confirmada) são as mesmas do import por PDF.
+   ==================================================================== */
+const EST_XLSX_COLUNAS = ["Nome", "Ø (mm)", "Prof. projeto (m)", "Bloco", "Local", "X", "Y"];
+function abrirModalXlsx(){
+  limparAvisoImport();
+  if(!obraEditId){ aviso("app-aviso","Salve a obra antes de importar estacas.","erro"); return; }
+  _importPreview = [];
+  $("est-xlsx-file").value = ""; $("est-xlsx-texto").value = "";
+  $("est-xlsx-preview").style.display = "none";
+  $("est-xlsx-preview-conteudo").innerHTML = "";
+  $("est-xlsx-modal").style.display = "flex";
+}
+function fecharModalXlsx(){
+  const m = $("est-xlsx-modal"); if(!m) return;
+  m.style.display = "none";
+}
+function baixarModeloXlsx(){
+  const aoa = [EST_XLSX_COLUNAS, ["E-01", 400, 12.5, "BL-01", "", "", ""], ["E-02", 400, 12.5, "BL-01", "", "", ""], ["P15", 500, 18, "", "Bloco 2", 4253940, 2553000]];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{ wch: 12 }, { wch: 9 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "ESTACAS");
+  XLSX.writeFile(wb, "modelo-estacas-projeto.xlsx");
+}
+/* cabeçalho → campo da estaca (aceita variações: "Nº", "Estaca", "Diâmetro", "Profundidade", "Anel/Pilar", "Leste/Norte"…) */
+function estXlsxCampoDoCabecalho(h){
+  const t = String(h || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ø/g, "diam").replace(/[^a-z0-9]/g, "");
+  if(!t) return null;
+  if(/^(nome|numero|num|n|no|estaca|estacas|id|identificacao|pilar)$/.test(t) || t.startsWith("nome") || t.startsWith("numero") || t.startsWith("estaca")) return "numero";
+  if(t.includes("diam") || t === "mm" || t.includes("diametro")) return "diametro_mm";
+  if(t.startsWith("prof") || t.startsWith("comp") || t.includes("profundidade")) return "profundidade_m";
+  if(t.includes("bloco") || t.includes("agrup") || t.includes("anel")) return "bloco";
+  if(t.includes("local")) return "local";
+  if(t === "x" || t.includes("leste") || t === "e" || t === "este") return "coord_x";
+  if(t === "y" || t.includes("norte") || t === "n") return "coord_y";
+  if(t.includes("tipo")) return "tipo";
+  if(t.startsWith("obs")) return "observacoes";
+  return null;
+}
+function estXlsxTipo(v){
+  const t = String(v || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  if(!t) return null;
+  if(ESTACA_TIPOS[t]) return t;
+  const k = Object.keys(ESTACA_TIPOS).find(c => ESTACA_TIPOS[c].toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === t);
+  if(k) return k;
+  if(t.includes("helice") && t.includes("secante")) return "secante";
+  if(t.includes("helice")) return "helice_continua";
+  if(t.includes("raiz")) return "raiz";
+  if(t.includes("escav")) return "escavada";
+  return null;
+}
+/* texto colado ou CSV → matriz de células (tab, ponto e vírgula ou vírgula; aspas simples do Excel) */
+function estXlsxLinhasDoTexto(txt){
+  const linhas = String(txt || "").replace(/\r/g, "").split("\n").filter(l => l.trim() !== "");
+  if(!linhas.length) return [];
+  const primeira = linhas[0];
+  const sep = primeira.includes("\t") ? "\t" : (primeira.split(";").length > primeira.split(",").length ? ";" : ",");
+  return linhas.map(l => l.split(sep).map(c => c.trim().replace(/^"(.*)"$/, "$1")));
+}
+/* matriz → _importPreview, no mesmo formato do import por PDF */
+function estXlsxMontarPreview(matriz){
+  const linhas = matriz.filter(r => Array.isArray(r) && r.some(c => String(c ?? "").trim() !== ""));
+  if(!linhas.length) return { erro: "Planilha vazia." };
+  let mapa = linhas[0].map(estXlsxCampoDoCabecalho);
+  const temCabecalho = mapa.includes("numero") || mapa.filter(Boolean).length >= 2;
+  if(!temCabecalho){
+    // sem cabeçalho reconhecido: ordem do modelo (Nome, Ø, Prof., Bloco, Local, X, Y)
+    mapa = ["numero", "diametro_mm", "profundidade_m", "bloco", "local", "coord_x", "coord_y"];
+  }
+  if(!mapa.includes("numero")) return { erro: "Não achei a coluna Nome (ou Nº / Estaca). Use o modelo ou nomeie a primeira coluna como Nome." };
+  const dados = temCabecalho ? linhas.slice(1) : linhas;
+  const itens = [], semNome = [], comR = [];
+  dados.forEach((r, i) => {
+    const e = { numero: "", local: "", bloco: "", tipo: null, diametro_mm: null, profundidade_m: null, coord_x: null, coord_y: null, observacoes: "" };
+    mapa.forEach((campo, j) => {
+      if(!campo || j >= r.length) return;
+      const v = r[j];
+      if(v == null || String(v).trim() === "") return;
+      if(campo === "diametro_mm" || campo === "profundidade_m" || campo === "coord_x" || campo === "coord_y") e[campo] = _numBRImport(v);
+      else if(campo === "tipo") e.tipo = estXlsxTipo(v);
+      else e[campo] = String(v).trim();
+    });
+    if(!e.numero){ semNome.push(i + (temCabecalho ? 2 : 1)); return; }
+    if(/\dR$/i.test(e.numero)) comR.push(e.numero);
+    itens.push(e);
+  });
+  if(!itens.length) return { erro: "Nenhuma linha com Nome preenchido." };
+  const chave = e => `${String(e.local).toUpperCase()}|${String(e.bloco).toUpperCase()}|${normalizarNumeroEstacaEstacas(e.numero)}`;
+  const vistos = new Set(), repetidos = [];
+  itens.forEach(e => { const k = chave(e); if(vistos.has(k)) repetidos.push(e.numero); else vistos.add(k); });
+  const colunas = [...new Set(mapa.filter(Boolean))].map(c => ({ numero: "Nome", diametro_mm: "Ø", profundidade_m: "Prof.", bloco: rotuloAgrupamento(), local: "Local", coord_x: "X", coord_y: "Y", tipo: "Tipo", observacoes: "Obs." }[c]));
+  const avisos = [];
+  if(semNome.length) avisos.push(`${semNome.length} linha(s) sem Nome ignorada(s) (linhas ${semNome.slice(0, 6).join(", ")}${semNome.length > 6 ? "…" : ""})`);
+  if(repetidos.length) avisos.push(`${repetidos.length} nome(s) repetido(s) na planilha (${repetidos.slice(0, 6).join(", ")}${repetidos.length > 6 ? "…" : ""}): só o primeiro entra`);
+  if(comR.length) avisos.push(`${comR.length} nome(s) terminado(s) em R (${comR.slice(0, 6).join(", ")}${comR.length > 6 ? "…" : ""}): refuro não é estaca de projeto; confira ou apague na prévia`);
+  return { itens, colunas, avisos, temCabecalho };
+}
+async function lerPlanilhaEstacas(){
+  if(!obraEditId){ avisoImport("Salve a obra primeiro.","erro"); return; }
+  const file = $("est-xlsx-file").files && $("est-xlsx-file").files[0];
+  const texto = $("est-xlsx-texto").value.trim();
+  if(!file && !texto){ avisoImport("Escolha um arquivo .xlsx/.csv ou cole as linhas do Excel.","erro"); return; }
+  let matriz;
+  try {
+    if(file && /\.(xlsx|xls)$/i.test(file.name)){
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      matriz = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+    } else if(file){
+      matriz = estXlsxLinhasDoTexto(await file.text());
+    } else {
+      matriz = estXlsxLinhasDoTexto(texto);
+    }
+  } catch(err){
+    avisoImport("Não consegui ler o arquivo: " + (err?.message || err), "erro"); return;
+  }
+  const r = estXlsxMontarPreview(matriz);
+  if(r.erro){ avisoImport(r.erro, "erro"); return; }
+  _importPreview = r.itens.map(extrairCoordsDaObservacao);
+  _importUnidade = unidadeSugeridaCoords(_importPreview);
+  _importNomenclatura = null;
+  renderImportPreview("", null, "est-xlsx-preview-conteudo", "est-xlsx-preview");
+  avisoImport(`${_importPreview.length} estaca(s) lida(s)${r.temCabecalho ? "" : " (sem cabeçalho: ordem do modelo)"} · colunas: ${r.colunas.join(", ")}${r.avisos.length ? " · " + r.avisos.join(" · ") : ""}. Revise antes de importar.`, r.avisos.length ? "aviso" : "ok");
 }
 
 /* ====================================================================
@@ -3023,6 +3154,12 @@ function ligarEstacas(){
   $("btn-est-extrair")?.addEventListener("click", importarEstacasPDF);
   $("btn-est-confirmar-import")?.addEventListener("click", () => comBotaoTravado("btn-est-confirmar-import", confirmarImportEstacas));
   $("btn-est-fechar-import")?.addEventListener("click", fecharModalImport);
+  // lote S43 (#55): planilha
+  $("btn-est-importar-xlsx")?.addEventListener("click", abrirModalXlsx);
+  $("btn-est-fechar-xlsx")?.addEventListener("click", fecharModalXlsx);
+  $("btn-est-xlsx-modelo")?.addEventListener("click", baixarModeloXlsx);
+  $("btn-est-xlsx-ler")?.addEventListener("click", () => comBotaoTravado("btn-est-xlsx-ler", lerPlanilhaEstacas));
+  $("btn-est-xlsx-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-est-xlsx-confirmar", confirmarImportEstacas));
 
   // Conferência do Projeto (modal expandido)
   $("btn-est-reconciliar")?.addEventListener("click", abrirModalReconciliacao);

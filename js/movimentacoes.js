@@ -13,6 +13,7 @@ let itensAtuais      = [];            // linhas do grid
 let _movObras        = [];            // obras (para vincular origem/destino e sugerir peças)
 let _movObraMap      = {};            // id -> obra
 let _movAceSug       = [];            // peças sugeridas no painel da aba Itens
+let _movVoltarPara   = null;          // fase 89: "Voltar" devolve para quem abriu a nota (ficha da viagem, Documentos de Logística)
 const MOV_EQ_PRODUCAO = ["perfuratriz","bate_estaca","escavadeira","retroescavadeira","guindaste"]; // TAG que "leva" acessório
 
 const MOV_TIPOS = {
@@ -199,7 +200,7 @@ function novaMovimentacao(){
 
 async function abrirMovimentacao(id){
   const { data: m, error } = await sb.from("movimentacoes_ativos")
-    .select("*").eq("id", id).single();
+    .select("*, viagem:viagens(id,numero,status)").eq("id", id).single();   // fase 89: a nota é documento da viagem
   if(error){ aviso("app-aviso","Erro ao abrir movimentação: "+error.message, "erro"); return; }
   const { data: itens, error: errItens } = await sb.from("movimentacao_itens")
     .select("*").eq("movimentacao_id", id).order("created_at");
@@ -218,6 +219,8 @@ function voltarParaLista(){
   itensAtuais = [];
   $("mov-painel").style.display = "";
   $("mov-ficha").style.display = "none";
+  // fase 89: aberta de dentro da viagem (ou da visão Documentos de Logística) → volta para lá
+  if(_movVoltarPara){ const f = _movVoltarPara; _movVoltarPara = null; f(); }
 }
 
 function mostrarFichaMovimentacao(){
@@ -336,6 +339,9 @@ function atualizarChipsContexto(){
   $("mov-ficha-destino-chip").textContent = m.destino_descricao || LOC_TIPOS[m.destino_tipo] || "—";
   $("mov-ficha-nf-chip").textContent = m.nf_numero ? `${m.nf_numero}/${m.nf_serie || "1"}` : "—";
   $("mov-ficha-total-chip").textContent = brl(m.valor_total_produtos || 0);
+  // fase 89: viagem que leva esta nota (link para a ficha em Logística); nota solta se vincula na visão Documentos
+  const vc = $("mov-ficha-viagem-chip");
+  if(vc) vc.innerHTML = m.viagem ? `${typeof linkViagem === "function" ? linkViagem(m.viagem.id, m.viagem.numero) : esc(m.viagem.numero)}${m.interna ? ' <span class="meta">(itens da viagem)</span>' : ""}` : (m.viagem_id ? "viagem" : '<span class="meta" title="vincule na visão Documentos de Logística">sem viagem</span>');
 }
 
 /* ---------- Notebook (abas internas) ---------- */
