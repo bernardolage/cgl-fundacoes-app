@@ -227,7 +227,18 @@ async function carregarDetalheCarteira(contratoId){
         .select("id,codigo,nome,status,cidade,uf")
         .eq("contrato_id", contratoId).order("codigo")
     ]);
-    det = { aditivos: a.data || [], orcamentos: o.data || [], obras: ob.data || [] };
+    det = { aditivos: a.data || [], orcamentos: o.data || [], obras: ob.data || [], fin: {} };
+    // fase 91: faturado (NF emitida) × recebido por obra, pelo líquido a receber (valor final − retenção − ISS retido)
+    if(det.obras.length){
+      const { data: meds } = await sb.from("medicoes").select("obra_id,status,nf_numero,valor_final,valor_medido,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor")
+        .in("obra_id", det.obras.map(x => x.id)).not("nf_numero", "is", null).in("status", ["aprovada", "faturada", "recebida"]);
+      (meds || []).forEach(m => {
+        const vf = Number(m.valor_final) || Number(m.valor_medido) || 0;
+        const liq = vf - (Number(m.retencao_valor) || 0) - (m.iss_retido_fonte === false ? 0 : (Number(m.iss_valor) || 0));
+        const f = det.fin[m.obra_id] || (det.fin[m.obra_id] = { faturado: 0, recebido: 0 });
+        f.faturado += liq; f.recebido += Math.min(liq, Number(m.recebido_valor) || 0);
+      });
+    }
     _cartDetalhes.set(contratoId, det);
     if(_cartExpandido !== contratoId) return; // usuário já fechou/mudou
   }
@@ -251,6 +262,7 @@ async function carregarDetalheCarteira(contratoId){
   const blocoObras = det.obras.length
     ? det.obras.map(o => `<div class="cart-det-linha">
         <span>${linkObra(o.id, `${o.codigo || "—"} — ${o.nome || ""}`.trim())}${o.cidade ? ` <span class="meta">${esc(o.cidade)}${o.uf ? "/" + esc(o.uf) : ""}</span>` : ""}</span>
+        <span class="meta" title="Fase 91: líquido faturado (NF emitida) × recebido confirmado pelo financeiro">${det.fin && det.fin[o.id] ? `fat. ${brlInt(det.fin[o.id].faturado)} · rec. ${brlInt(det.fin[o.id].recebido)}` : "sem NF"}</span>
         <span>${typeof tagStatus === "function" ? tagStatus("obra", o.status) : esc(o.status || "")}</span>
       </div>`).join("")
     : `<p class="meta">nenhuma obra vinculada a este contrato</p>`;

@@ -253,7 +253,7 @@ function obrValorResponsavel(id){
 
 async function abrirObra(id){
   // fase 90: o valor vem de obras_financeiro embutido 1:1 (nulo para quem não lê financeiro)
-  const { data, error } = await sb.from("obras").select("*, financeiro:obras_financeiro(valor_contratado)").eq("id", id).single();
+  const { data, error } = await sb.from("obras").select("*, financeiro:obras_financeiro(valor_contratado,caucao_percentual,caucao_prazo_dias)").eq("id", id).single();   // fase 91: caução da obra
   if(error){ aviso("app-aviso","Erro ao abrir obra: "+error.message, "erro"); return; }
   obraEditId = id;
 
@@ -450,6 +450,7 @@ function abrirFichaObra(obra){
   $("obr-ficha-valor-chip").textContent = brl(obrValor(obra));
   if($("obr-ficha-valor-chip-box")) $("obr-ficha-valor-chip-box").style.display = comValor ? "" : "none";
   if($("obr-valor-campo")) $("obr-valor-campo").style.display = comValor ? "" : "none";
+  if($("obr-caucao-bloco")) $("obr-caucao-bloco").style.display = comValor ? "" : "none";   // fase 91: caução vive em obras_financeiro
   $("obr-ficha-cidade-chip").textContent = obra.cidade
     ? `${obra.cidade}${obra.uf ? "/" + obra.uf.toUpperCase() : ""}`
     : "—";
@@ -514,14 +515,17 @@ async function obrAtualizarConcluir(obra){
     .order("data_medicao", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).limit(1);
   const m = ult && ult[0];
   const lblMed = m ? ((typeof STATUS === "object" && STATUS.medicao && STATUS.medicao[m.status]) ? STATUS.medicao[m.status].label : m.status) : "";
-  if(m && m.status === "faturada"){
+  // lote S45 (L11, decisão do Bernardo em 19/10) com a fase 91 no ar: a regra final é "última medição faturada E
+  // recebida" = status "recebida" (medicao_recebimentos / fn_medicao_recebimentos_sync marcam a medição quando os
+  // recebimentos cobrem o líquido; ninguém marca recebida à mão).
+  if(m && m.status === "recebida"){
     btn.style.display = "";
-    btn.title = `Última medição ${m.numero || ""} faturada: marca a obra como concluída (só status e data de término; fica registrado quem concluiu)`;
+    btn.title = `Última medição ${m.numero || ""} ${lblMed.toLowerCase()}: marca a obra como concluída (só status e data de término; fica registrado quem concluiu)`;
   } else if(hint){
     hint.style.display = "";
     hint.textContent = m
-      ? `Concluir obra: disponível quando a última medição estiver faturada (hoje: ${m.numero || "—"} · ${lblMed})`
-      : "Concluir obra: disponível quando houver medição faturada";
+      ? `Concluir obra: disponível quando a última medição estiver faturada e recebida (hoje: ${m.numero || "—"} · ${lblMed})`
+      : "Concluir obra: disponível quando houver medição faturada e recebida";
   }
 }
 async function obrConcluirObra(){
@@ -578,6 +582,9 @@ function preencherParametrosObra(d){
   set("obr-conc-peso-saco",      d.peso_saco_kg ?? OBR_PARAM_DEFAULTS.peso_saco_kg);
   set("obr-conc-fator-perda",    d.fator_perda_concreto ?? OBR_PARAM_DEFAULTS.fator_perda_concreto);
   set("obr-sinal-modelo",        d.sinal_abatimento_modelo || "proporcional");
+  // fase 91: caução contratual da obra (obras_financeiro embutido; vazio para quem não lê financeiro ou obra nova)
+  set("obr-caucao-pct",          d.financeiro?.caucao_percentual ?? "");
+  set("obr-caucao-prazo",        d.financeiro?.caucao_prazo_dias ?? "");
   atualizarResumoParametrosObra();
 }
 function lerParametrosObra(){
@@ -686,7 +693,11 @@ async function salvarObra(novoStatus){
   let msgFim = "Obra salva com sucesso.", tipoFim = "ok";
   if(podeVerValorObra()){
     const valor = Number($("obr-valor").value || 0);
-    const { error: eFin } = await sb.from("obras_financeiro").upsert({ obra_id: obraEditId, valor_contratado: valor });
+    // fase 91: % e prazo da caução negociados na obra (vazio = sem % sugerido / prazo padrão da empresa)
+    const cauPct = $("obr-caucao-pct")?.value, cauPrazo = $("obr-caucao-prazo")?.value;
+    const { error: eFin } = await sb.from("obras_financeiro").upsert({ obra_id: obraEditId, valor_contratado: valor,
+      caucao_percentual: cauPct === "" || cauPct == null ? null : Number(cauPct),
+      caucao_prazo_dias: cauPrazo === "" || cauPrazo == null ? null : parseInt(cauPrazo, 10) });
     if(eFin){ msgFim = "Obra salva, mas o valor contratado não pôde ser gravado: " + eFin.message; tipoFim = "erro"; }
     else result.data.valor_contratado = valor;   // espelho de obras_financeiro para o contrato do cliente (abaixo)
   }
@@ -778,7 +789,7 @@ function ligarObras(){
       // lote S44 (L9): o financeiro não grava o formulário inteiro (policy/gatilho barram); só conclui
       if(obrEhFinanceiro()){
         if(novo === "concluida" && $("btn-obr-concluir")?.style.display !== "none") await obrConcluirObra();
-        else aviso("app-aviso", "Seu cargo só marca a obra como concluída, depois do último recebimento (última medição faturada).", "erro");
+        else aviso("app-aviso", "Seu cargo só marca a obra como concluída depois do último recebimento (última medição faturada e recebida; até o controle de recebimentos entrar, faturada).", "erro");
         return;
       }
       await salvarObra(novo);

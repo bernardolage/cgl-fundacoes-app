@@ -8,12 +8,12 @@ let _medRegistros = [];
 let _medView      = "lista";
 let medEditId     = null;
 
-const MED_STAGES = ["rascunho","enviada","aprovada","faturada"];
+const MED_STAGES = ["rascunho","enviada","aprovada","faturada","recebida"];   // fase 91: recebida nasce no banco (recebimentos)
 
 /* ---------- Carga ---------- */
 async function carregarMedicoes(){
   const { data, error } = await sb.from("medicoes")
-    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,obra:obras(codigo,nome)")
+    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,obra:obras(codigo,nome,cliente_id)")   // fase 91: líquido, recebido e cliente (indicadores e visão por cliente)
     .order("data_medicao", { ascending: false });
   _medRegistros = error ? [] : (data || []);
   renderMedicoes();
@@ -25,8 +25,10 @@ function medFiltradas(){
   const fStatus = $("med-f-status")?.value || "";
   const fObra = $("med-f-obra")?.value || "";
   const fOrigem = $("med-f-origem")?.value || ""; // fase 88: "Importadas" (boletim PDF) × digitadas
+  const fReceb = $("med-f-receb")?.value || "";   // fase 91: situação do recebimento da NF
   return _medRegistros.filter(m => {
     if(fStatus && m.status !== fStatus) return false;
+    if(fReceb && !medRecebSituacaoOk(m, fReceb)) return false;
     if(fObra && m.obra_id !== fObra) return false;
     if(fOrigem && (m.origem || "manual") !== fOrigem) return false;
     if(termo){
@@ -55,11 +57,14 @@ function preencherFiltrosMed(){
 /* ---------- Render ---------- */
 function renderMedicoes(){
   preencherFiltrosMed();
+  medAplicarVisao();                                        // fase 91: filtros e "+ Nova" conforme a visão
+  if(_medView === "caucao"){ renderMedCaucao(); return; }   // fase 91: visão Caução (retenções por NF)
   const dados = medFiltradas();
   const cont = $("med-contador");
   if(cont) cont.textContent = `${dados.length} de ${_medRegistros.length}`;
   if(_medView === "kanban") renderMedKanban(dados);
   else                       renderMedLista(dados);
+  medRecebRenderIndicadores();                              // fase 91: A receber / Vencidas / Recebido no mês
 
   // compat com tbody antigo
   const legacy = $("tab-medicoes");
@@ -94,7 +99,7 @@ function renderMedLista(dados){
     <td>${medPeriodoTxt(m)}</td>
     <td>${num(m.percentual)}%</td>
     <td>${tagStatus("medicao", m.status)}</td>
-    <td>${esc(medDocTxt(m))}</td>
+    <td>${esc(medDocTxt(m))}${medRecebMarca(m)}</td>
     <td class="num">${brl(m.valor_medido)}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
@@ -288,6 +293,8 @@ function abrirFichaMed(med){
   medAtualizarOrigemFicha(med); // fase 88: chip "Origem" e botão do PDF do boletim importado
   ativarTabMed("geral");
   medAtualizarProducaoPendente(med.id);
+  medRecebCarregarFicha(med);   // fase 91: aba NF/Recebimento
+  medCauCarregarFicha(med);     // fase 91: aba Caução
 }
 
 /* Lote S39 (chamado #26): NF cadastrada antes da produção. A pendência é calculada na view
@@ -870,8 +877,7 @@ async function salvarMedicao(novoStatus){
     // Retenção contratual / caução (14/09/2026): valor retido pelo cliente nesta medição, a receber depois
     retencao_percentual: $("med-ret-pct")?.value ? Number($("med-ret-pct").value) : null,
     retencao_valor: $("med-ret-valor")?.value ? Number($("med-ret-valor").value) : null,
-    retencao_liberada: $("med-ret-liberada")?.value === "true",
-    retencao_data_liberacao: $("med-ret-data")?.value || null,
+    // fase 91: retencao_liberada / retencao_data_liberacao são espelho da caução (gatilho no banco); não vão mais daqui
     // ISS (financeiro, 16/09/2026)
     iss_percentual: $("med-iss-pct")?.value ? Number($("med-iss-pct").value) : null,
     iss_valor: $("med-iss-valor")?.value ? Number($("med-iss-valor").value) : null,
@@ -1422,7 +1428,7 @@ const MED_IMP_UNIDADE_MAPA = {
   vb:"vb", verba:"vb", gl:"vb", global:"vb", cj:"jg", conj:"jg", jg:"jg",
   kg:"kg", t:"ton", ton:"ton", l:"l", lt:"l", km:"km", sc:"sc", cx:"cx", par:"par", rl:"rl",
   dia:"diária", dias:"diária", diaria:"diária", "diária":"diária", "diárias":"diária", mes:"mês", "mês":"mês", meses:"mês",
-  h:"un", hs:"un", hr:"un", hrs:"un", hora:"un", horas:"un"   // o enum unidade_medida não tem hora: vira "un" e a tela avisa
+  h:"h", hs:"h", hr:"h", hrs:"h", hora:"h", horas:"h"   // lote S45 (L8): "h" entrou no enum unidade_medida (20261020_loteS45_unidade_h); antes virava "un"
 };
 let _medImp = null;          // estado da importação em curso (modal aberto)
 let _medBoletimPath = null;  // caminho do PDF da medição aberta na ficha
@@ -1435,10 +1441,7 @@ function medImpNormalizarUnidade(u){
   if(!raw) return { valor: "un", aviso: "sem unidade no PDF: gravada como un" };
   if(MED_IMP_UNIDADES_VALIDAS.includes(chave)) return { valor: chave, aviso: null };
   const map = MED_IMP_UNIDADE_MAPA[chave];
-  if(map){
-    const perde = /^(h|hs|hr|hrs|hora|horas)$/.test(chave);
-    return { valor: map, aviso: perde ? `unidade "${raw}" não existe no app: gravada como un (a descrição guarda a hora)` : null };
-  }
+  if(map) return { valor: map, aviso: null };
   return { valor: "un", aviso: `unidade "${raw}" não existe no app: gravada como un` };
 }
 
@@ -1957,6 +1960,17 @@ async function medImpConfirmar(){
     return;
   }
 
+  // 4) lote S45 (L8): o mesmo PDF também entra na aba Documentos da obra (categoria boletim_medicao, origem
+  //    medicao_importada; policy obras_doc_boletim_medicao). A medição já está gravada: falha aqui só avisa.
+  if(storagePath){
+    const doc = await sb.from("obras_documentos").insert({
+      obra_id: st.obraId, categoria: "boletim_medicao", nome: arq.nome, descricao: `Boletim da medição ${numero} importado`,
+      storage_path: storagePath, mime_type: "application/pdf", tamanho_bytes: arq.file.size || null,
+      enviado_por: usuarioAtual?.id || null, origem: "medicao_importada"
+    });
+    if(doc.error) avisoAnexo = (avisoAnexo ? avisoAnexo + " " : "") + `O PDF ficou na medição, mas não entrou na aba Documentos da obra (${doc.error.message}).`;
+  }
+
   arq.status = "feito"; arq.medicaoId = medId;
   st.numerosExistentes.push(numero.toLowerCase());
   medImpRenderFila();
@@ -1993,7 +2007,7 @@ function ligarMedicoes(){
       renderMedicoes();
     });
   });
-  ["med-busca","med-f-status","med-f-obra","med-f-origem"].forEach(id => {
+  ["med-busca","med-f-status","med-f-obra","med-f-origem","med-f-receb"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "med-busca" ? "input" : "change", id === "med-busca" ? debounce(renderMedicoes) : renderMedicoes);
   });
@@ -2057,6 +2071,7 @@ function ligarMedicoes(){
   document.querySelectorAll("#med-statusbar .stage").forEach(el => {
     el.addEventListener("click", async () => {
       const novo = el.dataset.status;
+      if(novo === "recebida"){ medRecebIrParaAba(); return; }   // fase 91: "recebida" nasce dos recebimentos confirmados
       if(!medEditId){
         $("med-status").value = novo;
         atualizarStatusbarMed(novo);
@@ -2072,4 +2087,557 @@ if(document.readyState === "loading"){
   document.addEventListener("DOMContentLoaded", ligarMedicoes);
 } else {
   ligarMedicoes();
+}
+
+/* ====================================================================
+   FASE 91 — Caução contratual e recebimentos (20/10/2026)
+   Spec: docs/specs/fase-91-caucao.md. Tudo desta fase fica neste bloco (prefixo med-cau- / med-receb-).
+   - Visão "Caução" no toggle do painel: uma linha por NF com retenção (tabela caucoes, lida pela
+     vw_caucoes), com indicadores, filtros, agrupamento por cliente e exportação para planilha.
+     Inclui o histórico da planilha CAIXA CAUÇÃO (origem planilha): essas linhas abrem numa ficha
+     reduzida (modal), porque não têm medição no app. Caução de medição abre na aba da medição.
+   - Aba "Caução" da ficha da medição: statusbar própria (aberta → parcial → devolvida; baixada),
+     chips e o registro da devolução. O status nasce no gatilho (fn_caucoes_antes); a medição
+     espelha retencao_liberada / retencao_data_liberacao por gatilho.
+   - Aba "NF/Recebimento": lançamentos de medicao_recebimentos; a medição vira "recebida" no banco
+     quando a soma atinge o líquido (valor final − retenção − ISS retido; fase 47).
+   - Indicadores do painel: A receber, Vencidas, Recebido no mês (lista e kanban).
+   - Presets chamados pela Sala de Comando (dashboard.js): medCauAbrirPreset / medRecebAbrirPreset.
+   Quem grava: diretor, admin e financeiro (policies has_role('admin','financeiro')); auditor só lê.
+   ==================================================================== */
+const MED_CAU_STAGES = ["aberta", "parcial", "devolvida"];
+const MED_CAU_STATUS = {
+  aberta:    { label: "Aberta",    cor: "ambar" },
+  parcial:   { label: "Parcial",   cor: "azul"  },
+  devolvida: { label: "Devolvida", cor: "verde" },
+  baixada:   { label: "Baixada",   cor: "cinza" }
+};
+const MED_RECEB_FORMAS = { transferencia: "Transferência", boleto: "Boleto", pix: "Pix", outro: "Outro" };
+let _medCauRegistros = null;   // vw_caucoes (carregada na primeira visão Caução; null = recarregar)
+let _medCauAgrupar   = "nf";   // "nf" | "cliente"
+let _medCauPreset    = null;   // filtro de status pedido pela Sala de Comando antes da carga
+let _medCauFicha     = null;   // caução da medição aberta
+let _medRecebLista   = [];     // recebimentos da medição aberta
+let _medRecebMes     = null;   // { ini, total, n } recebido no mês corrente (indicador)
+
+function medCauPodeOperar(){ return !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
+function medTagCau(st){ const o = MED_CAU_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${o.cor}">${esc(o.label)}</span>`; }
+/* Líquido a receber da medição (fase 47): valor final − retenção contratual − ISS retido na fonte. Igual a medicao_liquido() no banco. */
+function medLiquido(m){
+  const vf = Number(m.valor_final) || Number(m.valor_medido) || 0;
+  const iss = (m.iss_retido_fonte === false) ? 0 : (Number(m.iss_valor) || 0);
+  return Math.round((vf - (Number(m.retencao_valor) || 0) - iss) * 100) / 100;
+}
+function medRecebSaldo(m){ return Math.max(0, Math.round((medLiquido(m) - (Number(m.recebido_valor) || 0)) * 100) / 100); }
+/* Situação do recebimento: sem_nf | a_receber | parcial | vencida | recebida */
+function medRecebSituacao(m){
+  if(m.status === "recebida") return "recebida";
+  if(!m.nf_numero || ["rascunho", "enviada", "rejeitada"].includes(m.status)) return "sem_nf";
+  if(m.nf_vencimento && m.nf_vencimento < hojeISO()) return "vencida";
+  return (Number(m.recebido_valor) || 0) > 0 ? "parcial" : "a_receber";
+}
+function medRecebSituacaoOk(m, f){
+  const s = medRecebSituacao(m);
+  if(f === "a_receber") return ["a_receber", "parcial", "vencida"].includes(s);
+  return s === f;
+}
+function medRecebMarca(m){
+  const s = medRecebSituacao(m);
+  if(s === "recebida") return ` <span class="meta" title="Recebimento completo confirmado pelo financeiro">· recebida${m.recebida_em ? " " + dataBR(m.recebida_em) : ""}</span>`;
+  if(s === "vencida")  return ` <span class="meta txt-perigo" title="NF vencida sem recebimento completo">· vencida</span>`;
+  if(s === "parcial")  return ` <span class="meta" title="Recebida em parte">· parcial</span>`;
+  return "";
+}
+
+/* ---------- visão: filtros e botão "+ Nova" conforme a visão ---------- */
+function medAplicarVisao(){
+  const cau = _medView === "caucao";
+  document.querySelectorAll("#med-painel .serv-filtros").forEach(f => { if(f.id !== "med-cau-filtros") f.style.display = cau ? "none" : ""; });
+  if($("med-cau-filtros")) $("med-cau-filtros").style.display = cau ? "" : "none";
+  if($("btn-nova-medicao")) $("btn-nova-medicao").style.display = cau ? "none" : "";
+  const h3 = document.querySelector("#med-painel .lista-topo h3");
+  if(h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = cau ? "Caução contratual por NF " : "Medições cadastradas ";
+}
+function medAtivarView(view){
+  document.querySelectorAll("#med-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === view));
+  _medView = view;
+  renderMedicoes();
+}
+/* Sala de Comando → visão Caução já filtrada ("vencidas" | "vence30" | "em_aberto") */
+function medCauAbrirPreset(preset){
+  mostrarPainelMed();
+  _medCauPreset = preset || "";
+  if($("med-cau-f-status")) $("med-cau-f-status").value = _medCauPreset;
+  medAtivarView("caucao");
+}
+/* Sala de Comando → lista filtrada pela situação do recebimento ("vencida" | "a_receber") */
+function medRecebAbrirPreset(sit){
+  mostrarPainelMed();
+  if($("med-f-receb")) $("med-f-receb").value = sit || "";
+  medAtivarView("lista");
+}
+function medRecebIrParaAba(){
+  if(!medEditId){ aviso("app-aviso", "Salve a medição primeiro; a medição fica recebida quando o financeiro confirma os recebimentos.", "erro"); return; }
+  ativarTabMed("recebimento");
+  aviso("app-aviso", "\"Recebida\" nasce dos recebimentos confirmados: lance-os nesta aba e a medição muda sozinha quando a soma atingir o líquido.", "aviso");
+}
+
+/* ---------- indicadores: A receber / Vencidas / Recebido no mês (lista e kanban) ---------- */
+async function medRecebRenderIndicadores(){
+  const cont = $("med-indicadores");
+  if(!cont) return;
+  const base = _medRegistros;
+  const aRec = base.filter(m => ["a_receber", "parcial", "vencida"].includes(medRecebSituacao(m)));
+  const venc = base.filter(m => medRecebSituacao(m) === "vencida");
+  const iniMes = hojeISO().slice(0, 7) + "-01";
+  if(!_medRecebMes || _medRecebMes.ini !== iniMes){
+    const { data } = await sb.from("medicao_recebimentos").select("valor").gte("data", iniMes);
+    if(_medView === "caucao") return;   // trocou de visão enquanto carregava
+    _medRecebMes = { ini: iniMes, total: (data || []).reduce((s, r) => s + (Number(r.valor) || 0), 0), n: (data || []).length };
+  }
+  const soma = (lst) => lst.reduce((s, m) => s + medRecebSaldo(m), 0);
+  const fAtivo = $("med-f-receb")?.value || "";
+  cont.style.display = "";
+  cont.innerHTML = `
+    <div class="ind ind-click${fAtivo === "a_receber" ? " ativo" : ""}" data-receb="a_receber" title="Medições com NF emitida e ainda não recebidas, pelo líquido a receber (valor final − retenção − ISS retido) menos o já recebido. Clique para filtrar."><div class="num">${brl(soma(aRec))}</div><div class="rot">A receber · ${aRec.length} NF(s)</div></div>
+    <div class="ind ind-click${fAtivo === "vencida" ? " ativo" : ""}" data-receb="vencida" title="Vencimento da NF já passou e o recebimento não está completo. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(soma(venc))}</div><div class="rot">Vencidas · ${venc.length} NF(s)</div></div>
+    <div class="ind" title="Recebimentos confirmados pelo financeiro no mês corrente (aba NF/Recebimento das medições)"><div class="num" style="color:var(--sucesso);">${brl(_medRecebMes.total)}</div><div class="rot">Recebido no mês · ${_medRecebMes.n} lançamento(s)</div></div>`;
+}
+
+/* ---------- visão Caução ---------- */
+async function medCauCarregar(forcar){
+  if(_medCauRegistros && !forcar) return _medCauRegistros;
+  const { data, error } = await sb.from("vw_caucoes").select("*").order("nf_data", { ascending: false, nullsFirst: false }).limit(5000);
+  if(error){ aviso("app-aviso", "Não foi possível ler as cauções: " + error.message, "erro"); _medCauRegistros = []; return _medCauRegistros; }
+  _medCauRegistros = data || [];
+  return _medCauRegistros;
+}
+const medCauClienteChave = (c) => c.cliente_id || ("nome:" + (c.cliente || "").trim().toUpperCase());
+function medCauPreencherFiltros(){
+  const regs = _medCauRegistros || [];
+  const fill = (id, itens, placeholder) => {
+    const sel = $(id); if(!sel) return;
+    const atual = sel.value;
+    sel.innerHTML = `<option value="">${esc(placeholder)}</option>` + itens.map(i => `<option value="${esc(i.v)}">${esc(i.t)}</option>`).join("");
+    sel.value = atual;
+    if(sel.value !== atual) sel.value = "";
+  };
+  const anos = [...new Set(regs.map(c => c.ano).filter(Boolean))].sort((a, b) => b - a);
+  fill("med-cau-f-ano", anos.map(a => ({ v: String(a), t: String(a) })), "Todos os anos");
+  const clientes = new Map();
+  regs.forEach(c => { const k = medCauClienteChave(c); if(!clientes.has(k)) clientes.set(k, c.cliente || "(sem nome)"); });
+  fill("med-cau-f-cliente", [...clientes.entries()].sort((a, b) => a[1].localeCompare(b[1], "pt-BR")).map(([v, t]) => ({ v, t })), "Todos os clientes");
+  const obras = new Map();
+  regs.forEach(c => { if(c.obra_id && !obras.has(c.obra_id)) obras.set(c.obra_id, `${c.obra_codigo || ""} — ${c.obra_nome || ""}`.trim()); });
+  fill("med-cau-f-obra", [...obras.entries()].sort((a, b) => a[1].localeCompare(b[1], "pt-BR", { numeric: true })).map(([v, t]) => ({ v, t })), "Todas as obras");
+  const bancos = [...new Set(regs.map(c => c.banco).filter(Boolean))].sort();
+  fill("med-cau-f-banco", bancos.map(b => ({ v: b, t: b })), "Todos os bancos");
+  if(_medCauPreset != null){ const st = $("med-cau-f-status"); if(st) st.value = _medCauPreset; _medCauPreset = null; }
+  if($("med-cau-agrupar")) $("med-cau-agrupar").value = _medCauAgrupar;
+}
+function medCauAberta(c){ return ["aberta", "parcial"].includes(c.status); }
+function medCauFiltradas(){
+  const termo = ($("med-cau-busca")?.value || "").trim().toLowerCase();
+  const ano = $("med-cau-f-ano")?.value || "";
+  const st = $("med-cau-f-status")?.value || "";
+  const cli = $("med-cau-f-cliente")?.value || "";
+  const obra = $("med-cau-f-obra")?.value || "";
+  const banco = $("med-cau-f-banco")?.value || "";
+  const hoje = hojeISO(), lim30 = addDiasISO(30);
+  return (_medCauRegistros || []).filter(c => {
+    if(ano && String(c.ano) !== ano) return false;
+    if(st === "em_aberto"){ if(!medCauAberta(c)) return false; }
+    else if(st === "vencidas"){ if(!c.vencida) return false; }
+    else if(st === "vence30"){ if(!(medCauAberta(c) && c.data_prevista && c.data_prevista >= hoje && c.data_prevista <= lim30)) return false; }
+    else if(st && c.status !== st) return false;
+    if(cli && medCauClienteChave(c) !== cli) return false;
+    if(obra && c.obra_id !== obra) return false;
+    if(banco && (c.banco || "") !== banco) return false;
+    if(termo){
+      const alvo = `${c.nf_numero || ""} ${c.cliente || ""} ${c.obra_codigo || ""} ${c.obra_nome || ""} ${c.medicao_numero || ""}`.toLowerCase();
+      if(!alvo.includes(termo)) return false;
+    }
+    return true;
+  });
+}
+async function renderMedCaucao(){
+  const cont = $("med-conteudo");
+  if(!cont) return;
+  if(!_medCauRegistros){
+    cont.innerHTML = `<p class="vazio">Carregando cauções…</p>`;
+    await medCauCarregar();
+    if(_medView !== "caucao") return;
+  }
+  medCauPreencherFiltros();
+  const dados = medCauFiltradas();
+  const contador = $("med-contador");
+  if(contador) contador.textContent = `${dados.length} de ${_medCauRegistros.length} NFs`;
+  medCauRenderIndicadores();
+  if(_medCauAgrupar === "cliente") renderMedCauPorCliente(dados);
+  else renderMedCauLista(dados);
+}
+function medCauRenderIndicadores(){
+  const cont = $("med-indicadores");
+  if(!cont) return;
+  const regs = _medCauRegistros || [];
+  const anoSel = $("med-cau-f-ano")?.value || String(new Date().getFullYear());
+  const retidoAno = regs.filter(c => String(c.ano) === anoSel).reduce((s, c) => s + (Number(c.valor_retido) || 0), 0);
+  const devAno = regs.filter(c => c.data_devolucao && c.data_devolucao.slice(0, 4) === anoSel).reduce((s, c) => s + (Number(c.credito) || 0), 0);
+  const abertas = regs.filter(medCauAberta), vencidas = regs.filter(c => c.vencida);
+  const saldo = (lst) => lst.reduce((s, c) => s + Math.max(0, Number(c.saldo) || 0), 0);
+  const stAtivo = $("med-cau-f-status")?.value || "";
+  cont.style.display = "";
+  cont.innerHTML = `
+    <div class="ind" title="Retenção lançada nas NFs do ano ${esc(anoSel)} (DÉBITO da planilha + medições com retenção)"><div class="num">${brl(retidoAno)}</div><div class="rot">Retido em ${esc(anoSel)} · ${regs.filter(c => String(c.ano) === anoSel).length} NF(s)</div></div>
+    <div class="ind" title="Devolvido pelos clientes em ${esc(anoSel)} (crédito = devolvido + juros − descontos, pela data da devolução)"><div class="num" style="color:var(--sucesso);">${brl(devAno)}</div><div class="rot">Devolvido em ${esc(anoSel)}</div></div>
+    <div class="ind ind-click${stAtivo === "em_aberto" ? " ativo" : ""}" data-cau-st="em_aberto" title="Saldo a receber das cauções abertas e parciais, todos os anos. Clique para filtrar."><div class="num" style="color:var(--aviso);">${brl(saldo(abertas))}</div><div class="rot">Em aberto · ${abertas.length} NF(s) · ${new Set(abertas.map(medCauClienteChave)).size} cliente(s)</div></div>
+    <div class="ind ind-click${stAtivo === "vencidas" ? " ativo" : ""}" data-cau-st="vencidas" title="Previsão de devolução (NF + prazo da obra ou da empresa) já passou. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(saldo(vencidas))}</div><div class="rot">Vencidas · ${vencidas.length} NF(s)</div></div>`;
+}
+function renderMedCauLista(dados){
+  const cont = $("med-conteudo");
+  if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhuma caução com esses filtros.</p>`; return; }
+  const linhas = dados.map(c => `<tr class="linha-clicavel" data-cau="${esc(c.id)}" title="${c.medicao_id ? "Abrir a medição na aba Caução" : "Histórico da planilha (sem medição no app): abrir a ficha da caução"}">
+    <td><strong>${esc(c.nf_numero)}</strong>${c.origem === "planilha" ? ' <span class="meta" title="Importada da planilha CAIXA CAUÇÃO">planilha</span>' : ""}</td>
+    <td>${c.nf_data ? dataBR(c.nf_data) : "—"}</td>
+    <td title="${esc(c.cliente || "")}">${esc(c.cliente || "—")}${c.cliente_id ? "" : ' <span class="meta" title="Cliente sem cadastro no app (nome como veio da planilha)">?</span>'}</td>
+    <td>${c.obra_id ? linkObra(c.obra_id, c.obra_codigo || "obra") : "—"}</td>
+    <td>${esc(c.medicao_numero || "—")}</td>
+    <td class="num">${brl(c.valor_retido)}</td>
+    <td class="num" title="devolvido ${brl(c.valor_devolvido)}${Number(c.juros) ? " + juros " + brl(c.juros) : ""}${Number(c.descontos) ? " − descontos " + brl(c.descontos) : ""}">${brl(c.credito)}</td>
+    <td class="num"><strong>${brl(c.saldo)}</strong></td>
+    <td>${c.data_prevista ? dataBR(c.data_prevista) : "—"}</td>
+    <td class="num">${c.dias_atraso > 0 ? `<span class="txt-perigo" title="dias além da previsão">${c.dias_atraso}</span>` : (medCauAberta(c) && c.dias_em_aberto != null ? `<span class="meta" title="dias desde a NF">${c.dias_em_aberto}</span>` : "—")}</td>
+    <td>${medTagCau(c.status)}${c.banco ? ` <span class="meta">${esc(c.banco)}</span>` : ""}</td>
+  </tr>`).join("");
+  const tot = (f) => dados.reduce((s, c) => s + (Number(f(c)) || 0), 0);
+  cont.innerHTML = `<div class="tabela-rola"><table>
+    <thead><tr>
+      <th>NF</th><th>Data</th><th>Cliente</th><th>Obra</th><th>Medição</th>
+      <th class="num">Retido</th><th class="num" title="devolvido + juros − descontos">Devolvido</th><th class="num">Saldo</th>
+      <th title="NF + prazo da obra (ou 90 dias da empresa)">Previsão</th><th class="num" title="dias de atraso (ou em aberto)">Atraso</th><th>Status</th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+    <tfoot><tr><th colspan="5">${dados.length} NF(s)</th><th class="num">${brl(tot(c => c.valor_retido))}</th><th class="num">${brl(tot(c => c.credito))}</th><th class="num">${brl(tot(c => c.saldo))}</th><th colspan="3"></th></tr></tfoot>
+  </table></div>`;
+}
+/* Saldo por cliente (como a tabela de maiores saldos da spec), com o a receber das NFs ao lado */
+function renderMedCauPorCliente(dados){
+  const cont = $("med-conteudo");
+  if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhuma caução com esses filtros.</p>`; return; }
+  const grupos = new Map();
+  dados.forEach(c => {
+    const k = medCauClienteChave(c);
+    const g = grupos.get(k) || { k, cliente: c.cliente || "(sem nome)", cliente_id: c.cliente_id, nfs: 0, retido: 0, credito: 0, saldo: 0, abertas: 0, vencidas: 0, aRec: 0, venc: 0 };
+    g.nfs++; g.retido += Number(c.valor_retido) || 0; g.credito += Number(c.credito) || 0;
+    if(medCauAberta(c)){ g.abertas++; g.saldo += Math.max(0, Number(c.saldo) || 0); }
+    if(c.vencida) g.vencidas++;
+    grupos.set(k, g);
+  });
+  // a receber e vencido das NFs (medições com NF não recebidas), pelo cliente da obra
+  _medRegistros.forEach(m => {
+    const cid = m.obra && m.obra.cliente_id; if(!cid) return;
+    const s = medRecebSituacao(m); if(!["a_receber", "parcial", "vencida"].includes(s)) return;
+    const g = grupos.get(cid); if(!g) return;
+    const sal = medRecebSaldo(m); g.aRec += sal; if(s === "vencida") g.venc += sal;
+  });
+  const lista = [...grupos.values()].sort((a, b) => b.saldo - a.saldo || b.retido - a.retido);
+  const linhas = lista.map(g => `<tr class="linha-clicavel" data-cau-cli="${esc(g.k)}" title="Ver as NFs deste cliente">
+    <td title="${esc(g.cliente)}">${esc(g.cliente)}${g.cliente_id ? "" : ' <span class="meta" title="Cliente sem cadastro no app">?</span>'}</td>
+    <td class="num">${g.nfs}</td>
+    <td class="num">${brl(g.retido)}</td>
+    <td class="num">${brl(g.credito)}</td>
+    <td class="num"><strong>${brl(g.saldo)}</strong>${g.abertas ? ` <span class="meta">${g.abertas} NF(s)</span>` : ""}</td>
+    <td class="num">${g.vencidas ? `<span class="txt-perigo">${g.vencidas}</span>` : "—"}</td>
+    <td class="num">${g.aRec ? brl(g.aRec) : "—"}</td>
+    <td class="num">${g.venc ? `<span class="txt-perigo">${brl(g.venc)}</span>` : "—"}</td>
+  </tr>`).join("");
+  const tot = (f) => lista.reduce((s, g) => s + f(g), 0);
+  cont.innerHTML = `<div class="tabela-rola"><table>
+    <thead><tr>
+      <th>Cliente</th><th class="num">NFs</th><th class="num">Retido</th><th class="num">Devolvido</th><th class="num" title="saldo das cauções abertas e parciais">Saldo caução</th><th class="num" title="cauções com previsão vencida">Vencidas</th>
+      <th class="num" title="NFs das medições deste cliente ainda não recebidas (líquido − recebido)">A receber (NF)</th><th class="num" title="NFs vencidas sem recebimento completo">Vencido (NF)</th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+    <tfoot><tr><th>${lista.length} cliente(s)</th><th class="num">${tot(g => g.nfs)}</th><th class="num">${brl(tot(g => g.retido))}</th><th class="num">${brl(tot(g => g.credito))}</th><th class="num">${brl(tot(g => g.saldo))}</th><th class="num">${tot(g => g.vencidas) || "—"}</th><th class="num">${brl(tot(g => g.aRec))}</th><th class="num">${brl(tot(g => g.venc))}</th></tr></tfoot>
+  </table></div>`;
+}
+function medCauExportar(){
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
+  const dados = medCauFiltradas();
+  if(!dados.length){ aviso("app-aviso", "Nada para exportar com esses filtros.", "erro"); return; }
+  const aoa = [["Ano", "NF", "Data NF", "Cliente", "Obra", "Medição", "Retido", "Devolvido", "Juros", "Descontos", "Crédito", "Saldo", "Data devolução", "Banco", "Previsão", "Dias de atraso", "Status", "Origem", "Motivo da baixa", "Observações"]]
+    .concat(dados.map(c => [c.ano, c.nf_numero, c.nf_data ? dataBR(c.nf_data) : "", c.cliente || "", c.obra_codigo || "", c.medicao_numero || "",
+      Number(c.valor_retido) || 0, Number(c.valor_devolvido) || 0, Number(c.juros) || 0, Number(c.descontos) || 0, Number(c.credito) || 0, Number(c.saldo) || 0,
+      c.data_devolucao ? dataBR(c.data_devolucao) : "", c.banco || "", c.data_prevista ? dataBR(c.data_prevista) : "", c.dias_atraso || 0,
+      (MED_CAU_STATUS[c.status] || {}).label || c.status, c.origem, c.motivo_baixa || "", c.observacoes || ""]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "CAUÇÃO");
+  XLSX.writeFile(wb, `caucao-${hojeISO()}.xlsx`);
+}
+/* Abre uma caução: de medição → ficha da medição na aba Caução; da planilha → modal com a ficha reduzida */
+async function medCauAbrir(id){
+  const c = (_medCauRegistros || []).find(x => x.id === id);
+  if(!c) return;
+  if(c.medicao_id){ await abrirMedicao(c.medicao_id); ativarTabMed("caucao"); return; }
+  medCauAbrirModal(c);
+}
+
+/* ---------- ficha da caução (aba da medição e modal) ---------- */
+function medCauFormHTML(c, pref){
+  const podeOp = medCauPodeOperar();
+  const idxAtual = MED_CAU_STAGES.indexOf(c.status);
+  const stages = MED_CAU_STAGES.map((s, i) => {
+    let cls = "";
+    if(c.status === "baixada"){ if(s === "devolvida") cls = "cancelada"; }
+    else if(i === idxAtual) cls = "atual";
+    else if(i < idxAtual) cls = "passada";
+    return `<div class="stage ${cls}" title="Status calculado no banco a partir dos valores">${s === "devolvida" && c.status === "baixada" ? "Baixada" : MED_CAU_STATUS[s].label}</div>`;
+  }).join("");
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${lbl}</span><strong>${val}</strong></div>`;
+  return `
+    <div class="odoo-statusbar" style="border:1px solid var(--border-color);border-radius:var(--radius-md);overflow:hidden;">${stages}</div>
+    <div class="odoo-contexto" style="padding:12px 0;">
+      ${chip("NF", `${esc(c.nf_numero)}${c.nf_data ? " · " + dataBR(c.nf_data) : ""}`)}
+      ${chip("Cliente", esc(c.cliente || "—") + (c.cliente_id ? "" : ' <span class="meta">(sem cadastro)</span>'))}
+      ${chip("Obra", c.obra_id ? linkObra(c.obra_id, c.obra_codigo || "obra") : "—")}
+      ${c.medicao_numero ? chip("Medição", esc(c.medicao_numero)) : chip("Origem", "planilha CAIXA CAUÇÃO", "Histórico importado; sem medição no app")}
+      ${chip("Retido", brl(c.valor_retido))}
+      ${chip("Devolvido", brl(c.credito), `devolvido ${brl(c.valor_devolvido)} + juros ${brl(c.juros)} − descontos ${brl(c.descontos)}`)}
+      ${chip("Saldo", `<span class="${Number(c.saldo) > 0.009 ? "txt-perigo" : ""}">${brl(c.saldo)}</span>`)}
+      ${chip("Previsão", c.data_prevista ? dataBR(c.data_prevista) + (c.dias_atraso > 0 ? ` <span class="txt-perigo">(${c.dias_atraso} d de atraso)</span>` : "") : "—", "NF + prazo da obra (ou 90 dias da empresa)")}
+      ${chip("Status", medTagCau(c.status))}
+    </div>
+    <h4 class="titulo-bloco">Devolução</h4>
+    <div class="grade">
+      <div class="campo"><label>Valor devolvido (acumulado, R$)</label><input id="${pref}-devolvido" type="number" step="0.01" min="0" value="${Number(c.valor_devolvido) || 0}" ${podeOp ? "" : "readonly"} title="Soma do que o cliente já devolveu desta NF (devolução parcial: atualize o acumulado)" /></div>
+      <div class="campo"><label>Juros recebidos (R$)</label><input id="${pref}-juros" type="number" step="0.01" min="0" value="${Number(c.juros) || 0}" ${podeOp ? "" : "readonly"} /></div>
+      <div class="campo"><label>Descontos do cliente (R$)</label><input id="${pref}-descontos" type="number" step="0.01" min="0" value="${Number(c.descontos) || 0}" ${podeOp ? "" : "readonly"} title="Alimentação, glosa parcial etc.: reduz o que volta" /></div>
+      <div class="campo"><label>Data da devolução</label><input id="${pref}-data" type="date" value="${esc(c.data_devolucao || "")}" ${podeOp ? "" : "readonly"} /></div>
+      <div class="campo"><label>Banco</label><input id="${pref}-banco" list="med-cau-bancos" value="${esc(c.banco || "")}" placeholder="Itaú, Caixa…" ${podeOp ? "" : "readonly"} /></div>
+      <div class="campo"><label>Previsão de devolução</label><input id="${pref}-prevista" type="date" value="${esc(c.data_prevista || "")}" ${podeOp ? "" : "readonly"} title="Calculada pela NF + prazo; pode ser ajustada quando o cliente negociar outra data" /></div>
+      <div class="campo largo"><label>Observações</label><textarea id="${pref}-obs" rows="2" ${podeOp ? "" : "readonly"}>${esc(c.observacoes || "")}</textarea></div>
+    </div>
+    ${c.motivo_baixa ? `<p class="nota">Baixada: ${esc(c.motivo_baixa)}</p>` : ""}
+    ${podeOp ? `<div class="form-acoes compacta" style="justify-content:flex-start;">
+      <button type="button" class="btn" id="${pref}-salvar">💾 Registrar devolução</button>
+      ${c.status === "baixada"
+        ? `<button type="button" class="btn-sec" id="${pref}-reabrir" title="Volta a cobrar: limpa o motivo da baixa">↩ Reabrir</button>`
+        : `<button type="button" class="btn-sec acao-perigo" id="${pref}-baixar" title="Encerra sem devolução: não é caução, glosa, não precisa cobrar">⛔ Baixar</button>`}
+    </div>` : `<p class="nota">Só o financeiro, o admin e a diretoria registram devolução e baixa.</p>`}
+    <div id="${pref}-chatter" class="historico"></div>`;
+}
+async function medCauSalvar(c, pref, extra){
+  const n = (id) => { const v = $(id)?.value; return v === "" || v == null ? 0 : Number(v); };
+  const reg = {
+    valor_devolvido: n(pref + "-devolvido"), juros: n(pref + "-juros"), descontos: n(pref + "-descontos"),
+    data_devolucao: $(pref + "-data")?.value || null, banco: ($(pref + "-banco")?.value || "").trim() || null,
+    data_prevista: $(pref + "-prevista")?.value || null, observacoes: ($(pref + "-obs")?.value || "").trim() || null,
+    ...(extra || {})
+  };
+  if(reg.valor_devolvido > 0 && !reg.data_devolucao){ aviso("app-aviso", "Informe a data da devolução.", "erro"); return false; }
+  if(reg.valor_devolvido > Number(c.valor_retido) + 0.005 && !confirm(`Devolvido ${brl(reg.valor_devolvido)} acima do retido ${brl(c.valor_retido)}. A diferença não é juros? Gravar assim mesmo?`)) return false;
+  const { error } = await sb.from("caucoes").update(reg).eq("id", c.id);
+  if(error){ aviso("app-aviso", "Não foi possível gravar a caução: " + error.message, "erro"); return false; }
+  aviso("app-aviso", extra && extra.motivo_baixa ? "Caução baixada." : (extra && "motivo_baixa" in extra ? "Caução reaberta." : "Devolução registrada. O status e a medição foram atualizados no banco."), "ok");
+  _medCauRegistros = null;   // a visão Caução relê na próxima vez
+  return true;
+}
+function medCauLigarForm(c, pref, depois){
+  $(pref + "-salvar")?.addEventListener("click", () => comBotaoTravado(pref + "-salvar", async () => { if(await medCauSalvar(c, pref)) await depois(); }));
+  $(pref + "-baixar")?.addEventListener("click", () => comBotaoTravado(pref + "-baixar", async () => {
+    const motivo = prompt("Motivo da baixa (ex.: não é caução, glosa, não precisa cobrar):", c.motivo_baixa || "");
+    if(motivo == null || !motivo.trim()) return;
+    if(await medCauSalvar(c, pref, { motivo_baixa: motivo.trim() })) await depois();
+  }));
+  $(pref + "-reabrir")?.addEventListener("click", () => comBotaoTravado(pref + "-reabrir", async () => { if(await medCauSalvar(c, pref, { motivo_baixa: null })) await depois(); }));
+}
+/* Aba Caução da ficha da medição */
+async function medCauCarregarFicha(med){
+  const cont = $("med-cau-conteudo"), badge = $("med-cau-badge");
+  if(!cont) return;
+  _medCauFicha = null;
+  if(badge) badge.textContent = "";
+  if(typeof ocultarHistorico === "function") ocultarHistorico("med-cau-chatter");
+  if(!med || !med.id){ cont.innerHTML = `<p class="vazio">Salve a medição com o <strong>Nº do documento</strong> e a <strong>retenção contratual</strong> (aba Geral): a caução nasce sozinha e aparece aqui.</p>`; return; }
+  cont.innerHTML = `<p class="vazio">Carregando…</p>`;
+  const { data, error } = await sb.from("vw_caucoes").select("*").eq("medicao_id", med.id).maybeSingle();
+  if(medEditId !== med.id) return;
+  if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler a caução (${esc(error.message)}).</p>`; return; }
+  if(!data){ cont.innerHTML = `<p class="vazio">Sem retenção nesta medição. Informe o <strong>Nº do documento</strong> e a <strong>retenção contratual</strong> na aba Geral e salve: a caução nasce sozinha (status no banco).</p>`; return; }
+  _medCauFicha = data;
+  if(badge) badge.textContent = (MED_CAU_STATUS[data.status] || {}).label || "";
+  cont.innerHTML = medCauFormHTML(data, "med-cau");
+  medCauLigarForm(data, "med-cau", async () => { await carregarMedicoes(); await abrirMedicao(med.id); ativarTabMed("caucao"); });
+  if(typeof montarHistorico === "function") montarHistorico("caucoes", data.id, "med-cau-chatter");
+}
+/* Ficha reduzida (modal) para o histórico da planilha, sem medição no app */
+function medCauAbrirModal(c){
+  const modal = $("med-cau-modal"), cont = $("med-cau-modal-conteudo");
+  if(!modal || !cont) return;
+  if(typeof ocultarHistorico === "function") ocultarHistorico("med-cau-chatter");
+  if($("med-cau-modal-titulo")) $("med-cau-modal-titulo").textContent = `🔒 Caução NF ${c.nf_numero}${c.nf_data ? " · " + dataBR(c.nf_data) : ""}${c.cliente ? " · " + c.cliente : ""}`;
+  cont.innerHTML = medCauFormHTML(c, "med-caum");
+  medCauLigarForm(c, "med-caum", async () => {
+    await medCauCarregar(true);
+    const n = _medCauRegistros.find(x => x.id === c.id);
+    if(n) medCauAbrirModal(n); else medCauFecharModal();
+    renderMedicoes();
+  });
+  modal.style.display = "flex";
+  if(typeof montarHistorico === "function") montarHistorico("caucoes", c.id, "med-caum-chatter");
+}
+function medCauFecharModal(){
+  const m = $("med-cau-modal");
+  if(m) m.style.display = "none";
+  if(typeof ocultarHistorico === "function") ocultarHistorico("med-caum-chatter");
+}
+/* Medição nova: sugere o % de retenção negociado na obra (obras_financeiro.caucao_percentual) quando o campo está vazio */
+async function medCauSugerirPctDaObra(obraId){
+  const el = $("med-ret-pct");
+  if(!el || !obraId || medEditId || el.value !== "") return;
+  const { data } = await sb.from("obras_financeiro").select("caucao_percentual").eq("obra_id", obraId).maybeSingle();
+  if(data && data.caucao_percentual != null && el.value === ""){
+    el.value = data.caucao_percentual;
+    if($("med-ret-valor")) $("med-ret-valor").dataset.manual = "0";
+    recalcularTotaisMedicao();
+  }
+}
+
+/* ---------- aba NF/Recebimento ---------- */
+async function medRecebCarregarFicha(med){
+  const cont = $("med-receb-conteudo"), badge = $("med-receb-badge");
+  if(!cont) return;
+  _medRecebLista = [];
+  if(badge) badge.textContent = "";
+  if(!med || !med.id){ cont.innerHTML = `<p class="vazio">Salve a medição para registrar recebimentos.</p>`; return; }
+  cont.innerHTML = `<p class="vazio">Carregando…</p>`;
+  const { data, error } = await sb.from("medicao_recebimentos")
+    .select("id,data,valor,forma,banco,observacoes,confirmado_por,created_at,quem:confirmado_por(nome)")
+    .eq("medicao_id", med.id).order("data").order("created_at");
+  if(medEditId !== med.id) return;
+  if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler os recebimentos (${esc(error.message)}).</p>`; return; }
+  _medRecebLista = data || [];
+  if(badge) badge.textContent = _medRecebLista.length || "";
+  renderMedRecebFicha(med);
+}
+function renderMedRecebFicha(med){
+  const cont = $("med-receb-conteudo");
+  if(!cont) return;
+  const podeOp = medCauPodeOperar();
+  const liq = medLiquido(med), recebido = _medRecebLista.reduce((s, r) => s + (Number(r.valor) || 0), 0);
+  const saldo = Math.max(0, Math.round((liq - recebido) * 100) / 100);
+  const sit = medRecebSituacao({ ...med, recebido_valor: recebido });
+  const SIT = { sem_nf: ["Sem documento fiscal", "cinza"], a_receber: ["A receber", "ambar"], parcial: ["Recebida em parte", "azul"], vencida: ["Vencida", "vermelho"], recebida: ["Recebida", "verde"] };
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${lbl}</span><strong>${val}</strong></div>`;
+  const temNf = !!med.nf_numero;
+  const linhas = _medRecebLista.map(r => `<tr>
+      <td>${dataBR(r.data)}</td>
+      <td class="num">${brl(r.valor)}</td>
+      <td>${esc(MED_RECEB_FORMAS[r.forma] || r.forma || "—")}</td>
+      <td>${esc(r.banco || "—")}</td>
+      <td>${esc(r.observacoes || "")}</td>
+      <td class="meta">${esc((r.quem && r.quem.nome) || "—")}</td>
+      <td class="col-acao">${podeOp ? `<button type="button" class="btn-sec btn-sm txt-perigo" data-receb-del="${esc(r.id)}" title="Apagar este lançamento (a soma e o status da medição são refeitos no banco)">×</button>` : ""}</td>
+    </tr>`).join("");
+  cont.innerHTML = `
+    <div class="odoo-contexto" style="padding:0 0 12px;">
+      ${chip("Documento", temNf ? esc(medDocTxt(med)) : "—", "Nº do documento fiscal (aba Geral)")}
+      ${chip("Emissão", med.nf_data_emissao ? dataBR(med.nf_data_emissao) : "—")}
+      ${chip("Vencimento", med.nf_vencimento ? dataBR(med.nf_vencimento) + (sit === "vencida" ? ' <span class="txt-perigo">(vencida)</span>' : "") : "—")}
+      ${chip("Valor final", brl(Number(med.valor_final) || Number(med.valor_medido) || 0))}
+      ${chip("Retenção", brl(med.retencao_valor || 0), "Caução que o cliente segura (aba Caução)")}
+      ${chip("ISS retido", med.iss_retido_fonte === false ? "não" : brl(med.iss_valor || 0), "ISS retido na fonte pelo cliente")}
+      ${chip("Líquido a receber", `<span style="color:var(--sucesso-txt);">${brl(liq)}</span>`, "valor final − retenção − ISS retido (fase 47)")}
+      ${chip("Recebido", brl(recebido))}
+      ${chip("Saldo", `<span class="${saldo > 0.009 ? "txt-perigo" : ""}">${brl(saldo)}</span>`)}
+      ${chip("Situação", `<span class="tag ${SIT[sit][1]}">${SIT[sit][0]}</span>`)}
+    </div>
+    <h4 class="titulo-bloco">Recebimentos confirmados <small class="meta">(a medição fica "recebida" sozinha quando a soma atinge o líquido)</small></h4>
+    ${_medRecebLista.length ? `<div class="tabela-rola"><table>
+      <thead><tr><th>Data</th><th class="num">Valor</th><th>Forma</th><th>Banco</th><th>Observações</th><th>Confirmado por</th><th class="col-acao"></th></tr></thead>
+      <tbody>${linhas}</tbody>
+      <tfoot><tr><th>Total</th><th class="num">${brl(recebido)}</th><th colspan="5"></th></tr></tfoot>
+    </table></div>` : `<p class="vazio">Nenhum recebimento confirmado ainda.</p>`}
+    ${podeOp && temNf && !["rascunho", "enviada", "rejeitada"].includes(med.status) ? `
+    <h4 class="titulo-bloco" style="margin-top:14px;">Confirmar recebimento</h4>
+    <div class="grade">
+      <div class="campo"><label>Data</label><input id="med-receb-data" type="date" value="${hojeISO()}" /></div>
+      <div class="campo"><label>Valor (R$)</label><input id="med-receb-valor" type="number" step="0.01" min="0.01" value="${saldo > 0 ? saldo.toFixed(2) : ""}" placeholder="parcial é comum" /></div>
+      <div class="campo"><label>Forma</label><select id="med-receb-forma">${Object.entries(MED_RECEB_FORMAS).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
+      <div class="campo"><label>Banco</label><input id="med-receb-banco" list="med-cau-bancos" placeholder="Itaú, Caixa…" /></div>
+      <div class="campo largo"><label>Observações</label><input id="med-receb-obs" placeholder="ex.: 2ª parcela, desconto de alimentação…" /></div>
+    </div>
+    <div class="form-acoes compacta" style="justify-content:flex-start;">
+      <button type="button" class="btn btn-sucesso" id="btn-med-receb-confirmar">✅ Confirmar recebimento</button>
+    </div>` : (podeOp && !temNf ? `<p class="nota">Informe o documento fiscal na aba Geral para confirmar recebimentos.</p>`
+             : (podeOp ? `<p class="nota">Medição ${esc((STATUS.medicao[med.status] || {}).label || med.status)}: só medição aprovada ou faturada recebe.</p>`
+             : `<p class="nota">Só o financeiro, o admin e a diretoria confirmam recebimentos.</p>`))}`;
+  $("btn-med-receb-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-med-receb-confirmar", () => medRecebConfirmar(med)));
+  cont.querySelectorAll("[data-receb-del]").forEach(b => b.addEventListener("click", () => medRecebApagar(med, b.dataset.recebDel)));
+}
+async function medRecebConfirmar(med){
+  const valor = Number($("med-receb-valor")?.value);
+  const data = $("med-receb-data")?.value;
+  if(!(valor > 0)){ aviso("app-aviso", "Informe o valor recebido.", "erro"); return; }
+  if(!data){ aviso("app-aviso", "Informe a data do recebimento.", "erro"); return; }
+  const saldo = Math.max(0, medLiquido(med) - _medRecebLista.reduce((s, r) => s + (Number(r.valor) || 0), 0));
+  if(valor > saldo + 0.005 && !confirm(`Valor ${brl(valor)} acima do saldo a receber ${brl(saldo)}. Confirmar assim mesmo?`)) return;
+  const reg = { medicao_id: med.id, data, valor, forma: $("med-receb-forma")?.value || "transferencia",
+    banco: ($("med-receb-banco")?.value || "").trim() || null, observacoes: ($("med-receb-obs")?.value || "").trim() || null };
+  const { error } = await sb.from("medicao_recebimentos").insert(reg);
+  if(error){ aviso("app-aviso", "Não foi possível confirmar o recebimento: " + error.message, "erro"); return; }
+  _medRecebMes = null;
+  aviso("app-aviso", "Recebimento confirmado. Soma e status da medição refeitos no banco.", "ok");
+  await carregarMedicoes();
+  await abrirMedicao(med.id);
+  ativarTabMed("recebimento");
+}
+async function medRecebApagar(med, id){
+  const r = _medRecebLista.find(x => x.id === id);
+  if(!r || !confirm(`Apagar o recebimento de ${brl(r.valor)} em ${dataBR(r.data)}?`)) return;
+  const { error } = await sb.from("medicao_recebimentos").delete().eq("id", id);
+  if(error){ aviso("app-aviso", "Não foi possível apagar: " + error.message, "erro"); return; }
+  _medRecebMes = null;
+  await carregarMedicoes();
+  await abrirMedicao(med.id);
+  ativarTabMed("recebimento");
+}
+
+/* ---------- ligações da fase 91 ---------- */
+function ligarMedCaucao(){
+  ["med-cau-busca", "med-cau-f-ano", "med-cau-f-status", "med-cau-f-cliente", "med-cau-f-obra", "med-cau-f-banco", "med-cau-agrupar"].forEach(id => {
+    const el = $(id);
+    if(!el) return;
+    if(id === "med-cau-busca") el.addEventListener("input", debounce(renderMedicoes));
+    else el.addEventListener("change", () => { if(id === "med-cau-agrupar") _medCauAgrupar = el.value; renderMedicoes(); });
+  });
+  $("btn-med-cau-exportar")?.addEventListener("click", medCauExportar);
+  $("btn-med-cau-atualizar")?.addEventListener("click", () => comBotaoTravado("btn-med-cau-atualizar", async () => { await medCauCarregar(true); renderMedicoes(); }));
+  // linhas da visão Caução (data-cau) e do agrupamento por cliente (data-cau-cli); o handler antigo só reage a data-id
+  $("med-conteudo")?.addEventListener("click", (e) => {
+    const r = e.target.closest("[data-cau]");
+    if(r){ medCauAbrir(r.dataset.cau); return; }
+    const g = e.target.closest("[data-cau-cli]");
+    if(g){
+      if($("med-cau-f-cliente")) $("med-cau-f-cliente").value = g.dataset.cauCli;
+      _medCauAgrupar = "nf";
+      renderMedicoes();
+    }
+  });
+  // indicadores clicáveis filtram (clicar de novo limpa)
+  $("med-indicadores")?.addEventListener("click", (e) => {
+    const r = e.target.closest("[data-receb]");
+    if(r){ const f = $("med-f-receb"); if(f){ f.value = f.value === r.dataset.receb ? "" : r.dataset.receb; renderMedicoes(); } return; }
+    const c = e.target.closest("[data-cau-st]");
+    if(c){ const f = $("med-cau-f-status"); if(f){ f.value = f.value === c.dataset.cauSt ? "" : c.dataset.cauSt; renderMedicoes(); } }
+  });
+  $("btn-med-cau-modal-fechar")?.addEventListener("click", medCauFecharModal);
+  $("med-cau-modal")?.addEventListener("click", (e) => { if(e.target === $("med-cau-modal")) medCauFecharModal(); });
+  $("med-obra")?.addEventListener("change", () => medCauSugerirPctDaObra($("med-obra").value));
+}
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", ligarMedCaucao);
+} else {
+  ligarMedCaucao();
 }

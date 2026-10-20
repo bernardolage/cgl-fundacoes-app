@@ -379,7 +379,7 @@ async function alterarTipoEmLote(tipo){
     if(error){ aviso("app-aviso", "Erro ao alterar tipo: " + error.message, "erro"); if(sel) sel.value = ""; return; }
   }
   if(sel) sel.value = "";
-  aviso("app-aviso", `${alvo.length} estaca(s) agora são ${rot}.`, "sucesso");
+  aviso("app-aviso", `${alvo.length} estaca(s) agora são ${rot}.`, "ok");
   await carregarEstacasDaObra(obraEditId);
 }
 
@@ -936,8 +936,20 @@ async function importarEstacasPDF(){
   }
 }
 
+/* lote S45 (L6): o tipo que a prévia mostra é o que grava. Estaca sem tipo no arquivo (IA, planilha) herda o tipo
+   mais usado nas estacas já cadastradas da obra; obra sem estaca cadastrada → "outro". Antes o select mostrava
+   "Hélice contínua" (1ª opção, nada selecionado) e a gravação escrevia "outro". */
+function tipoPadraoImportEstacas(){
+  const cont = {};
+  (_estacas || []).forEach(e => { if(e.tipo && e.tipo !== "outro") cont[e.tipo] = (cont[e.tipo] || 0) + 1; });
+  const top = Object.entries(cont).sort((a, b) => b[1] - a[1])[0];
+  return top ? top[0] : "outro";
+}
 function renderImportPreview(observacoes, meta, contId = "est-import-preview-conteudo", wrapId = "est-import-preview"){
   if($(wrapId)) $(wrapId).style.display = "";
+  const tipoPadrao = tipoPadraoImportEstacas();
+  _importPreview.forEach(e => { if(!e.tipo){ e.tipo = tipoPadrao; e._tipoHerdado = true; } });   // lote S45 (L6)
+  const herdados = _importPreview.filter(e => e._tipoHerdado).length;
   const temCoord = _importPreview.some(e => e.coord_x != null || e.coord_y != null);
   // Unidade das coordenadas: detectada (IA/heurística) e confirmada pela pessoa; vale para a obra inteira
   let blocoUnidade = "";
@@ -957,14 +969,15 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   // Conta quantas precisam de cada campo
   const semDiam = _importPreview.filter(e => e.diametro_mm == null).length;
   const semProf = _importPreview.filter(e => e.profundidade_m == null).length;
-  const semTipo = _importPreview.filter(e => !e.tipo || e.tipo === "outro").length;
-  const alerta = (semDiam || semProf || semTipo)
+  const semTipo = _importPreview.filter(e => e.tipo === "outro").length;
+  const alerta = (semDiam || semProf || semTipo || herdados)
     ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-sm);">
         ⚠️ A IA não extraiu tudo:
         ${semDiam ? `<strong>${semDiam}</strong> sem diâmetro · ` : ""}
         ${semProf ? `<strong>${semProf}</strong> sem profundidade · ` : ""}
-        ${semTipo ? `<strong>${semTipo}</strong> sem tipo definido` : ""}
-        — use a barra abaixo pra aplicar valores em lote.
+        ${herdados ? `<strong>${herdados}</strong> sem tipo no arquivo → <strong>${esc(ESTACA_TIPOS[tipoPadrao] || tipoPadrao)}</strong> (${tipoPadrao === "outro" ? "a obra ainda não tem estaca cadastrada" : "tipo mais usado nesta obra"}) · ` : ""}
+        ${semTipo ? `<strong>${semTipo}</strong> com tipo "Outro"` : ""}
+        — o tipo mostrado é o que vai ser gravado; use a barra abaixo pra aplicar valores em lote.
       </div>` : "";
 
   const COLUNAS_LBL = {
@@ -1079,6 +1092,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
       let v = e.target.value;
       if(field === "diametro_mm" || field === "profundidade_m" || field === "coord_x" || field === "coord_y") v = v !== "" ? Number(v) : null;
       _importPreview[idx][field] = v;
+      if(field === "tipo") delete _importPreview[idx]._tipoHerdado;   // lote S45 (L6): escolhido à mão deixa de contar como herdado
     });
   });
   $(contId).querySelectorAll(".prev-del").forEach(b => {
@@ -1139,8 +1153,11 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
 function avisoImport(msg, tipo){
   aviso("app-aviso", msg, tipo);
   const aberto = id => { const m = $(id); return m && m.style.display !== "none" && m.style.display !== ""; };
+  // lote S45 (L6): cada modal tem o seu aviso — est-pdf-aviso no PDF, est-dxf-aviso no DXF, est-xlsx-aviso na planilha;
+  // est-import-aviso é o do modal de reconciliação (fallback). Antes o est-dxf-aviso estava dentro do modal do PDF e
+  // o erro do DXF aparecia num modal fechado.
   const alvo = aberto("est-dxf-modal") ? $("est-dxf-aviso") : aberto("est-xlsx-modal") ? $("est-xlsx-aviso")
-             : aberto("est-import-modal") ? $("est-import-aviso") : null;
+             : aberto("est-import-modal") ? $("est-pdf-aviso") : null;
   const el = alvo || $("est-import-aviso");
   if(!el) return;
   el.textContent = msg;
@@ -1149,7 +1166,7 @@ function avisoImport(msg, tipo){
   el.scrollIntoView({ block: "nearest" });
 }
 function limparAvisoImport(){
-  ["est-import-aviso","est-dxf-aviso","est-xlsx-aviso"].forEach(id => { const el = $(id); if(el){ el.textContent = ""; el.className = "aviso"; } });
+  ["est-import-aviso","est-pdf-aviso","est-dxf-aviso","est-xlsx-aviso"].forEach(id => { const el = $(id); if(el){ el.textContent = ""; el.className = "aviso"; } });
 }
 
 async function confirmarImportEstacas(){

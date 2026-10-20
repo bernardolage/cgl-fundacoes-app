@@ -136,7 +136,7 @@ async function carregarDashFaixa(carga){
     dashLer("vw_sc_frota", q => q.select("*"), "dash-k-maquinas-sub"),
     dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-k-obras-sub"),
     dashLer("rdo", q => q.select("obra_id").gte("data", iv.ini).lte("data", iv.fim), "dash-k-obras-sub"),
-    dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada"]).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),
+    dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada","recebida"]).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),   // fase 91: recebida conta como medida
     dashEhDiretoria() ? dashLer("vw_custos", q => q.select("valor").gte("data", iv.ini).lte("data", iv.fim), "dash-k-custo-sub") : Promise.resolve([]),
     // fase 89: viagens em trânsito agora e planejadas sem caminhão/motorista (aba Frota)
     dashLer("viagens", q => q.select("id,numero,data,status,finalidade,caminhao_id,funcionario_id,destino_tipo,destino_obra_id,destino_descricao,data_saida,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome)").in("status", ["planejada", "em_transito"]).order("data"))
@@ -185,9 +185,10 @@ async function dashCarregarAcoes(){
   const cont = $("dash-acoes");
   if(!cont) return;
   // fase 83: as separações vêm numa view à parte (vw_sc_acoes_sep); fase 84: a fabricação idem (vw_sc_acoes_fab); entram na mesma lista
-  const [dados, sep, fab] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*"))]);
+  // fase 91: caução vencida / a vencer e NF vencida sem recebimento (setor financeiro) em vw_sc_acoes_fin
+  const [dados, sep, fab, fin] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*"))]);
   if(!dados) return;
-  _dashAcoes = dados.concat(sep || [], fab || []).filter(a => dashGereSetor(a.setor))
+  _dashAcoes = dados.concat(sep || [], fab || [], fin || []).filter(a => dashGereSetor(a.setor))
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
   _dashAcoes.forEach(a => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
@@ -248,9 +249,10 @@ const DASH_REG_PAPEL = {
 async function dashCarregarRegularizar(){
   const cont = $("dash-regularizar");
   if(!cont) return;
-  const dados = await dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar");
+  // fase 91: cauções com previsão de devolução vencida (financeiro) em vw_sc_regularizar_fin, mesmas colunas
+  const [dados, fin] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*"))]);
   if(!dados) return;
-  _dashReg = dados.sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   const n = p => _dashReg.filter(a => a.papel === p).length;
   if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
@@ -294,6 +296,8 @@ async function dashAbrirRegularizar(a){
   } else if(a.secao === "equipamentos"){
     if(typeof renderEquipamentos === "function") _eqpKpi = "sem_cod_ext"; // idem (carregarEquipamentos)
     if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
+  } else if(a.secao === "medicoes" && a.filtro === "caucao_vencida"){ // fase 91: visão Caução filtrada nas vencidas
+    if(irParaSecao("medicoes") && typeof medCauAbrirPreset === "function") medCauAbrirPreset("vencidas");
   }
 }
 
@@ -310,7 +314,10 @@ async function dashAbrirAcao(a){
       if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
       break;
     case "medicoes":
-      if(id) dashAbrirMedicao(id); else irParaSecao("medicoes");
+      // fase 91: linhas do financeiro abrem a visão Caução ou a lista filtrada em "vencidas" (o título diz qual)
+      if(/cau[çc][ãa]o/i.test(a.titulo) && typeof medCauAbrirPreset === "function"){ if(irParaSecao("medicoes")) medCauAbrirPreset(/vencid/i.test(a.titulo) ? "vencidas" : "vence30"); }
+      else if(/sem recebimento/i.test(a.titulo) && !id && typeof medRecebAbrirPreset === "function"){ if(irParaSecao("medicoes")) medRecebAbrirPreset("vencida"); }
+      else if(id) dashAbrirMedicao(id); else irParaSecao("medicoes");
       break;
     case "mobilizacoes":
       if(irParaSecao("mobilizacoes") && id && typeof abrirMobilizacao === "function") abrirMobilizacao(id);
@@ -579,7 +586,7 @@ async function carregarDashFinanceiro(){
   // financeiro; este bloco já é da diretoria), embutido 1:1 na obra.
   const [{ data: obrasAtivas }, { data: medsAprovadas }] = await Promise.all([
     sb.from("obras").select("id,financeiro:obras_financeiro(valor_contratado)").in("status", ["em_andamento","planejada","paralisada"]),
-    sb.from("medicoes").select("valor_final,valor_medido").in("status",["aprovada","faturada"])
+    sb.from("medicoes").select("valor_final,valor_medido").in("status",["aprovada","faturada","recebida"])   // fase 91
   ]);
 
   const contratado = (obrasAtivas||[]).reduce((s,o) => s + (Number(o.financeiro?.valor_contratado)||0), 0);   // obras_financeiro

@@ -647,8 +647,12 @@ async function carregarDocumentosDaObra(obraId){
     const linhas = docs.map(d => {
       const isImg = (d.mime_type||"").startsWith("image/");
       const tamKB = d.tamanho_bytes ? (d.tamanho_bytes/1024).toFixed(0) + " KB" : "—";
+      // lote S45 (L8): o boletim importado (origem medicao_importada) aponta para o mesmo PDF da medição
+      // (medicoes.arquivo_origem_url): sem 🗑️ aqui, senão a medição ficaria sem o arquivo.
+      const boletim = d.origem === "medicao_importada";
       const origemBadge = d.origem === "movimentacao_ativa"
-        ? '<span class="tag azul" style="font-size:var(--txt-xs);">auto</span>' : "";
+        ? '<span class="tag azul" style="font-size:var(--txt-xs);">auto</span>'
+        : boletim ? '<span class="tag azul" style="font-size:var(--txt-xs);" title="PDF da medição importada; abre também pela ficha da medição">boletim</span>' : "";
       return `<tr>
         <td>${isImg ? '🖼️' : '📄'} ${esc(d.nome)} ${origemBadge}</td>
         <td>${esc(d.descricao||"—")}</td>
@@ -656,7 +660,7 @@ async function carregarDocumentosDaObra(obraId){
         <td>${new Date(d.created_at).toLocaleDateString("pt-BR")}</td>
         <td class="col-acao">
           <button type="button" class="btn-sec btn-sm btn-doc-baixar" data-path="${esc(d.storage_path)}" data-nome="${esc(d.nome)}" title="Baixar">⬇️</button>
-          <button type="button" class="btn-sec btn-sm btn-doc-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="Excluir">🗑️</button>
+          ${boletim ? "" : `<button type="button" class="btn-sec btn-sm btn-doc-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="Excluir">🗑️</button>`}
         </td>
       </tr>`;
     }).join("");

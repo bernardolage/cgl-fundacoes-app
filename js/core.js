@@ -80,7 +80,7 @@ let mapaObras = {};
 
 /* ---------- Constantes ---------- */
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
-const UNIDADES = ["un","pc","cx","kg","g","ton","m","m2","m3","l","ml","sc","par","rl","jg","vb","diária","mês"]; // vb/diária/mês: fase 40 (proposta RG 11.8)
+const UNIDADES = ["un","pc","cx","kg","g","ton","m","m2","m3","l","ml","sc","par","rl","jg","vb","diária","mês","h"]; // vb/diária/mês: fase 40 (proposta RG 11.8); h: lote S45 (L8), migration 20261020_loteS45_unidade_h
 
 /* Status de cada etapa do fluxo comercial: rótulo amigável + cor da tag */
 const STATUS = {
@@ -115,6 +115,7 @@ const STATUS = {
     enviada:   { label:"Enviada",   cor:"azul"     },
     aprovada:  { label:"Aprovada",  cor:"verde"    },
     faturada:  { label:"Faturada",  cor:"verde"    },
+    recebida:  { label:"Recebida",  cor:"verde"    },   // fase 91: recebimentos confirmados atingiram o líquido (gatilho)
     rejeitada: { label:"Rejeitada", cor:"vermelho" }
   },
   rdo: {
@@ -1482,26 +1483,13 @@ async function verificarMFAAdmin(){
     document.getElementById("mfa-aviso-banner")?.remove();
     const banner = document.createElement("div");
     banner.id = "mfa-aviso-banner";
+    // lote S45 (L4): estilo na classe .aviso-mfa (css/estilo.css), com tokens da paleta; antes era hex inline
     banner.innerHTML = `
-      <div style="
-        z-index:9999;
-        background:#7a2a1a; color:var(--txt-sobre); font-size:var(--txt-md);
-        padding:10px 16px; display:flex; align-items:center; gap:12px;
-        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-        box-shadow:0 2px 8px rgba(0,0,0,0.3);
-      ">
+      <div class="aviso-mfa">
         <strong>⚠ Segurança:</strong>
         Sua conta de administrador não tem autenticação em dois fatores (MFA) configurada.
-        <button onclick="abrirModalMFA()" style="
-          background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.5);
-          color:var(--txt-sobre); padding:4px 14px; cursor:pointer; border-radius:3px;
-          font-size:var(--txt-sm); font-weight:600; white-space:nowrap;
-        ">Configurar agora</button>
-        <button onclick="document.getElementById('mfa-aviso-banner').remove()" style="
-          background:rgba(255,255,255,0.15); border:none;
-          color:var(--txt-sobre); padding:4px 10px; cursor:pointer; border-radius:2px;
-          font-size:var(--txt-sm); white-space:nowrap;
-        ">Fechar</button>
+        <button type="button" class="aviso-mfa-btn" onclick="abrirModalMFA()">Configurar agora</button>
+        <button type="button" class="aviso-mfa-btn aviso-mfa-fechar" onclick="document.getElementById('mfa-aviso-banner').remove()">Fechar</button>
       </div>`;
     // Dentro do viewport (coluna flex de altura fixa): o banner ocupa espaço e o <main> encolhe.
     // Antes ia no <body>, empurrava a tela inteira para baixo e escondia o rodapé da sidebar.

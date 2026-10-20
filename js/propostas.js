@@ -296,7 +296,8 @@ function itensVirtuais(orcamento, itens){
       _virtual:       true
     });
   }
-  if(orcamento.cgl_fornece_hospedagem && Number(orcamento.hospedagem_valor_mensal || 0) > 0 && !temItem(/hosped|aliment/i)){
+  // lote S45 (L10): o item "Alimentação no canteiro" (VRB.ALC) não substitui a hospedagem; só um item de hospedagem suprime o virtual
+  if(orcamento.cgl_fornece_hospedagem && Number(orcamento.hospedagem_valor_mensal || 0) > 0 && !temItem(/hosped/i)){
     extras.push({
       descricao:      "Hospedagem e alimentação externa (fornecidas pela CGL)",
       quantidade:     1,

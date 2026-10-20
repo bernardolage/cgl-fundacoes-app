@@ -23,7 +23,9 @@ const REP_STAGES = ["aberto", "em_execucao", "concluido"];
 const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: "Mecânica", eletrica: "Elétrica", pintura: "Pintura", externo: "Externo" };
 const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)";
 
-function repPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios"].includes(usuarioAtual.cargo); }
+/* lote S45 (L7): `logistica` registra reparo como registra fabricação (fabPodeEditar / fabricacao_pode_operar);
+   espelha reparos_caldeiraria_write, reparo_horas_write e reparo_itens_write da migration 20261020_loteS45_hoje_br. */
+function repPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "logistica"].includes(usuarioAtual.cargo); }
 /* lote S43 (L10, pedido do Julio em 18/10): o almoxarife lança as peças consumidas e dá a baixa, como no Odoo;
    status, horas, motivo e o resto da ficha seguem repPodeEditar(). Espelha reparo_itens_write e reparo_consumir_pecas.
    Fase 90: o auxiliar de almoxarifado (equipe do Julio) faz o mesmo que ele na aba Peças. */

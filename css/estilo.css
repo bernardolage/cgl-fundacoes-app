@@ -2822,6 +2822,13 @@ body.so-leitura .form-acoes .btn:not(#btn-copiar-uninfe),
 body.so-leitura .odoo-actions-header .btn:not(.btn-sec),
 body.so-leitura [id$="-salvar"]:not(#btn-senha-salvar),
 body.so-leitura [id^="btn-salvar-"],
+/* lote S45 (L1): "🗑️ Excluir", "✗ Cancelar" e "✗ Refugar" das fichas (`btn-sec acao-perigo`), os 🗑️/× das linhas
+   (`button.txt-perigo`: documentos da obra, itens, estacas) e todo botão "+ Novo/Nova" das abas e painéis — o id
+   sempre tem "-nov" (btn-nova-obra, btn-medic-nova, btn-frota-novo-veic, btn-orc-nova-revisao…). Só <button>: os
+   inputs e divs com "nov" no id (senha-nova, cham-anexo-novo, fab-ct-novo) ficam. PDFs e Imprimir (`btn-sec`) continuam. */
+body.so-leitura .acao-perigo,
+body.so-leitura button.txt-perigo,
+body.so-leitura button[id*="-nov"],
 body.so-leitura #btn-aprop-params { display: none !important; }
 
 /* ---- Lote S43 (L2): indicadores de Compras enquanto vw_compras_kpis não respondeu; visões travadas até a 1ª carga ---- */
@@ -2861,3 +2868,12 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .med-imp-totais { margin: 10px 0 4px; }
 .med-imp-totais .ind .num small { display: block; font-size: var(--txt-xs); color: var(--txt-fraco); font-weight: 400; }
 .med-imp-dup { background: var(--perigo-bg); color: var(--perigo-txt); border-radius: 4px; padding: 6px 10px; margin: 6px 0; font-size: var(--txt-xs); }
+
+/* ---- Lote S45 (L4): banner "MFA não configurado" para diretor/admin (core.js verificarMFAAdmin). Antes era estilo
+   inline com hex; agora tokens da paleta: fundo no vermelho escuro de texto, botões translúcidos sobre ele. ---- */
+.aviso-mfa { z-index: 9999; background: var(--perigo-txt); color: var(--txt-sobre); font-size: var(--txt-md);
+  padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; box-shadow: var(--shadow-md); }
+.aviso-mfa-btn { background: color-mix(in srgb, var(--txt-sobre) 25%, transparent); border: 1px solid color-mix(in srgb, var(--txt-sobre) 50%, transparent);
+  color: var(--txt-sobre); padding: 4px 14px; cursor: pointer; border-radius: var(--radius-sm); font-size: var(--txt-sm); font-weight: 600; white-space: nowrap; }
+.aviso-mfa-btn:hover { background: color-mix(in srgb, var(--txt-sobre) 35%, transparent); }
+.aviso-mfa-fechar { background: color-mix(in srgb, var(--txt-sobre) 15%, transparent); border: 0; padding: 4px 10px; font-weight: 400; }

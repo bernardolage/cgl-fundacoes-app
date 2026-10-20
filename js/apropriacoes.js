@@ -168,14 +168,14 @@ async function apropCalcular(){
   const { data, error } = await sb.rpc("fn_apropriar_competencia", { p_comp: _aprop.comp });
   if(error){ aviso("app-aviso", "Erro ao apropriar: " + error.message, "erro"); return; }
   _aprop.res = data;
-  aviso("app-aviso", `Apropriação de ${apropCompLabel(_aprop.comp)} calculada: ${data.funcionarios} funcionários, ${apropMoeda(data.total)}.`, "sucesso");
+  aviso("app-aviso", `Apropriação de ${apropCompLabel(_aprop.comp)} calculada: ${data.funcionarios} funcionários, ${apropMoeda(data.total)}.`, "ok");
   await renderFuncAprop();
 }
 async function apropFechar(reabrir){
   if(!reabrir && !confirm(`Fechar a competência ${apropCompLabel(_aprop.comp)}? Depois disso só a diretoria reabre.`)) return;
   const { error } = await sb.rpc("fn_fechar_competencia", { p_comp: _aprop.comp, p_reabrir: !!reabrir });
   if(error){ aviso("app-aviso", "Erro: " + error.message, "erro"); return; }
-  aviso("app-aviso", reabrir ? "Competência reaberta." : "Competência fechada.", "sucesso");
+  aviso("app-aviso", reabrir ? "Competência reaberta." : "Competência fechada.", "ok");
   await renderFuncAprop();
 }
 async function apropLancar(){
@@ -183,14 +183,14 @@ async function apropLancar(){
   if(!reg.funcionario_id || !reg.valor){ aviso("app-aviso", "Informe funcionário e valor.", "erro"); return; }
   const { error } = await sb.from("folha_lancamentos").insert(reg);
   if(error){ aviso("app-aviso", "Erro: " + error.message, "erro"); return; }
-  aviso("app-aviso", "Lançamento gravado. Recalcule a apropriação para refletir.", "sucesso");
+  aviso("app-aviso", "Lançamento gravado. Recalcule a apropriação para refletir.", "ok");
   await renderFuncAprop();
 }
 async function apropSalvarParams(){
   const regs = [...document.querySelectorAll(".aprop-param")].map(i => ({ chave: i.dataset.chave, valor: Number(i.value) || 0, updated_at: new Date().toISOString() }));
   const { error } = await sb.from("apropriacao_parametros").upsert(regs, { onConflict: "chave" });
   if(error){ aviso("app-aviso", "Erro: " + error.message, "erro"); return; }
-  aviso("app-aviso", "Parâmetros salvos. Recalcule a apropriação para aplicar.", "sucesso");
+  aviso("app-aviso", "Parâmetros salvos. Recalcule a apropriação para aplicar.", "ok");
 }
 
 /* ---------- carga inicial: leitura da planilha antiga (só ficha sensível) ---------- */
@@ -262,7 +262,7 @@ async function apropConfirmarFicha(){
     const { error } = await sb.from("funcionarios_sensiveis").upsert(regs.slice(i, i + 200), { onConflict: "funcionario_id" });
     if(error){ aviso("app-aviso", "Erro ao gravar fichas: " + error.message, "erro"); return; }
   }
-  aviso("app-aviso", `${regs.length} fichas atualizadas. Agora clique em "Calcular apropriação".`, "sucesso");
+  aviso("app-aviso", `${regs.length} fichas atualizadas. Agora clique em "Calcular apropriação".`, "ok");
   _aprop.parse = null;
   await renderFuncAprop();
 }

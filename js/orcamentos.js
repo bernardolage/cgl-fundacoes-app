@@ -88,6 +88,9 @@ function orcNumeroCasa(numero, termo){
 /* Fase 40: itens que não podem faltar em cada modelo de proposta (pedido do comercial).
    qtd 0 sai como "-" na proposta (igual à RG 11.8). `var` fixa a variante; sem `var`,
    entra a primeira variante que passa no filtro do Modelo (tipo de obra, porte, faixa). */
+// lote S45 (L10, decisão do Bernardo em 19/10): alimentação no canteiro (VRB.ALC.SERV, variante ALC-MES, migration
+// 20261020_loteS45_alimentacao_canteiro) entra como item de preço quando o adicional "CGL fornece alimentação" está
+// marcado, como diesel e hospedagem; a linha de encargos da proposta (S44, L7) continua.
 const ITENS_PADRAO_ORC = {
   helice: [
     { serv: "MOB.HC.SERV", qtd: 1 },
@@ -95,6 +98,7 @@ const ITENS_PADRAO_ORC = {
     { serv: "DIA.FM.HC.SERV" },
     { serv: "INS.DI.SERV", var: "INS-DI-HC" },
     { serv: "VRB.ALH.SERV" },
+    { serv: "VRB.ALC.SERV" },
     { serv: "LOC.BO.SERV", var: "LOC-BO-MOB" },
     { serv: "LOC.BO.SERV", var: "LOC-BO-DIA" }
   ],
@@ -104,6 +108,7 @@ const ITENS_PADRAO_ORC = {
     { serv: "DIA.FM.RZ.SERV" },
     { serv: "INS.DI.SERV", var: "INS-DI-RZ" },
     { serv: "VRB.ALH.SERV" },
+    { serv: "VRB.ALC.SERV" },
     { serv: "EXEC.RZ.INJ.SERV" }
   ],
   trado: [
@@ -111,7 +116,8 @@ const ITENS_PADRAO_ORC = {
     { serv: "DIA.MDP.SERV" },
     { serv: "DIA.FM.ESC.SERV" },
     { serv: "INS.DI.SERV", var: "INS-DI-HC" },
-    { serv: "VRB.ALH.SERV" }
+    { serv: "VRB.ALH.SERV" },
+    { serv: "VRB.ALC.SERV" }
   ],
   outro: []
 };
@@ -216,6 +222,7 @@ function _servicoVisivelOrc(s, tipoProp, f){
   const cod = String(s.codigo || "");
   if(f && cod.startsWith("INS.DI") && f.cglDiesel === false) return false;
   if(f && cod.startsWith("VRB.ALH") && f.cglHosp === false) return false;
+  if(f && cod.startsWith("VRB.ALC") && f.cglAlim === false) return false;   // lote S45 (L10): alimentação no canteiro
   if(!tipoProp || tipoProp === "outro" || !s.eixo) return true;
   if(s.eixo === tipoProp) return true;
   if(tipoProp === "secante" && s.eixo === "helice") return true; // secante usa mobilização/locação/fat. mínimo de hélice
@@ -289,6 +296,7 @@ function atualizarFiltroCatalogoOrc(){
     tipoProp: $("orc-tipo-proposta")?.value || "helice",
     cglDiesel: !!$("orc-cgl-diesel")?.checked,      // chamado #11
     cglHosp:   !!$("orc-cgl-hospedagem")?.checked,  // chamado #11
+    cglAlim:   !!$("orc-cgl-alimentacao")?.checked, // lote S45 (L10)
     tipoObra: $("orc-tipo-obra")?.value || "convencional",
     porte:    $("orc-porte")?.value || "",
     faixa:    $("orc-faixa")?.value || ""
@@ -338,9 +346,9 @@ function atualizarFiltroCatalogoOrc(){
    Não duplica: compara pela variante e (sem `var`) pelo serviço. */
 function carregarItensPadraoOrc(silencioso){
   const tipo  = $("orc-tipo-proposta")?.value || "helice";
-  // Chamado #11: diesel e hospedagem só entram como padrão quando a CGL fornece (aba Adicionais CGL)
-  const cglDiesel = !!$("orc-cgl-diesel")?.checked, cglHosp = !!$("orc-cgl-hospedagem")?.checked;
-  const lista = (ITENS_PADRAO_ORC[tipo] || []).filter(d => !(d.serv.startsWith("INS.DI") && !cglDiesel) && !(d.serv.startsWith("VRB.ALH") && !cglHosp));
+  // Chamado #11: diesel e hospedagem só entram como padrão quando a CGL fornece (aba Adicionais CGL); S45 (L10): alimentação idem
+  const cglDiesel = !!$("orc-cgl-diesel")?.checked, cglHosp = !!$("orc-cgl-hospedagem")?.checked, cglAlim = !!$("orc-cgl-alimentacao")?.checked;
+  const lista = (ITENS_PADRAO_ORC[tipo] || []).filter(d => !(d.serv.startsWith("INS.DI") && !cglDiesel) && !(d.serv.startsWith("VRB.ALH") && !cglHosp) && !(d.serv.startsWith("VRB.ALC") && !cglAlim));
   if(!lista.length || !_orcServicos.length) return 0;
   const presentes = new Set([...document.querySelectorAll("#orc-itens .it-cat")].map(s => s.value).filter(Boolean));
   const servPresentes = new Set([...presentes].map(id => _orcVarById[id]?.servico_id).filter(Boolean));
@@ -935,6 +943,10 @@ async function criarObraDoOrcamento(){
   if(!nome) return;
 
   const origem = `orçamento ${orc.numero} Rev${orc.numero_revisao || "00"}`;
+  // lote S45 (L9, decisão do Bernardo em 19/10): o valor contratado é o total COM ISS (o ISS por dentro está somado no
+  // quadro de preços da proposta); orcamentos.valor_total continua sem ISS. Vai para obras_financeiro e para o contrato
+  // do cliente (obras.js espelha o valor da obra no contrato a cada Salvar). Obras antigas: migration loteS45_valor_contratado_iss.
+  const valorContratado = Math.round(orcTotalComIss(orc) * 100) / 100;
 
   // 1) Contrato do cliente (fica sob a aba Contrato da obra)
   const { data: contr, error: eContr } = await sb.from("contratos").insert({
@@ -943,7 +955,7 @@ async function criarObraDoOrcamento(){
     cliente_id: orc.cliente_id,
     descricao: `Contrato baseado no ${origem}`,
     status: "em_elaboracao",
-    valor_total: orc.valor_total,
+    valor_total: valorContratado,
     natureza: "cliente",
     categoria: "empreitada",
     usa_template_cliente: false,
@@ -976,8 +988,8 @@ async function criarObraDoOrcamento(){
     return;
   }
 
-  // 2b) Valor da obra (fase 90): vive em obras_financeiro; a linha nasce zerada pelo gatilho e recebe aqui o valor do orçamento
-  const { error: eFin } = await sb.from("obras_financeiro").upsert({ obra_id: novaObraReg.id, valor_contratado: orc.valor_total });
+  // 2b) Valor da obra (fase 90): vive em obras_financeiro; a linha nasce zerada pelo gatilho e recebe aqui o total com ISS (S45, L9)
+  const { error: eFin } = await sb.from("obras_financeiro").upsert({ obra_id: novaObraReg.id, valor_contratado: valorContratado });
 
   aviso("app-aviso", eFin
     ? `🏗️ Obra ${codigo} criada, mas o valor contratado não pôde ser gravado: ${eFin.message}`
@@ -1268,8 +1280,8 @@ function ligarOrcamentos(){
 
   // Filtro do catálogo (aba Modelo → aba Itens) e validade derivada
   ["orc-tipo-proposta","orc-tipo-obra","orc-porte","orc-faixa"].forEach(id => $(id)?.addEventListener("change", atualizarFiltroCatalogoOrc));
-  // Chamado #11: marcar "CGL fornece diesel/hospedagem" libera o serviço na aba Itens e já o acrescenta como item padrão
-  ["orc-cgl-diesel","orc-cgl-hospedagem"].forEach(id => $(id)?.addEventListener("change", (ev) => { atualizarFiltroCatalogoOrc(); if(ev.target.checked) carregarItensPadraoOrc(true); }));
+  // Chamado #11: marcar "CGL fornece diesel/hospedagem" libera o serviço na aba Itens e já o acrescenta como item padrão; S45 (L10): alimentação idem
+  ["orc-cgl-diesel","orc-cgl-hospedagem","orc-cgl-alimentacao"].forEach(id => $(id)?.addEventListener("change", (ev) => { atualizarFiltroCatalogoOrc(); if(ev.target.checked) carregarItensPadraoOrc(true); }));
   // Chamado #12: prazo e forma de pagamento regeneram o texto padrão (que continua editável)
   ["orc-prazo-pagamento","orc-pagamento-forma"].forEach(id => $(id)?.addEventListener("change", () => {
     if(typeof textoPagamentoPadrao === "function" && $("orc-pagamento")) $("orc-pagamento").value = textoPagamentoPadrao($("orc-prazo-pagamento")?.value, $("orc-pagamento-forma")?.value);

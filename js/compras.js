@@ -152,11 +152,16 @@ async function cmpCarregarBase(force){
 async function carregarCompras(force){
   const cont = $("cmp-conteudo"); if(!cont) return;
   if(force || !_cmpCarregado){ cont.innerHTML = `<p class="vazio">Carregando compras…</p>`; cmpKpisCarregando(true); }
+  // lote S45 (L2): os indicadores (vw_compras_kpis, uma linha) saem já, em paralelo com os cadastros de apoio; antes só
+  // eram pedidos depois de cmpCarregarBase (641 fornecedores, obras, TAGs, perfis…) e chegavam em ~3,8 s em vez de < 1 s.
+  // Não dependem do período: a troca de período (cmpFetchPedidos) não os refaz; "Atualizar" (force) sim.
+  const pKpis = cmpCarregarKpis();
   await cmpCarregarBase(force);
   const pode = cmpPodeOperar();
   ["btn-cmp-novo","btn-cmp-receber-avulso","btn-cmp-compra-direta"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
   if($("btn-cmp-req-nova")) $("btn-cmp-req-nova").style.display = (typeof reqPodePedir === "function" && reqPodePedir()) ? "" : "none"; // fase 60
-  await cmpFetchPedidos();   // lote S43: indicadores pela view, 1ª carga renderizada, resto em segundo plano
+  await cmpFetchPedidos();   // lote S43: 1ª carga renderizada, resto em segundo plano
+  await pKpis;
   cmpCarregarSync();   // fase 81
 }
 /* lote S43 (L2): enquanto a view não respondeu, os sete indicadores mostram "…" e as visões ficam travadas */
@@ -253,7 +258,6 @@ function cmpOrdenar(lista){
 }
 async function cmpFetchPedidos(){
   const token = ++_cmpCarga;
-  const pKpis = cmpCarregarKpis();
   const dias = Number($("cmp-f-periodo")?.value || 0);
   const corte = dias ? dataLocalISO(new Date(Date.now() - dias * 864e5)) : null;
   const corte1 = dataLocalISO(new Date(Date.now() - CMP_PRIMEIRA_CARGA_DIAS * 864e5));
@@ -280,7 +284,6 @@ async function cmpFetchPedidos(){
   _cmpCompleto = !temResto;
   renderCompras();
   document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.disabled = false);
-  await pKpis;
   // 2ª carga em segundo plano (sem await: quem chamou segue; a lista se completa quando chegar)
   if(temResto) cmpFetchResto(token, corte, corte1, porId);
 }
@@ -318,7 +321,7 @@ function cmpPreencherSelectsFixos(){
   set("cmp-resp-receb", `<option value="">— o solicitante —</option>` + _cmpPerfis.map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join(""));
   const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
   const ac = $("cmp-av-cat"); if(ac) ac.innerHTML = cmpCatOptions("outro");
-  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53)
+  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-f-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53); S45: filtro do painel
 }
 
 /* ---------- painel ---------- */
@@ -613,17 +616,18 @@ function cmpLigarBusca(inpId, listaId, aoEscolher){
    de pagamento padrão, salvarPedido, o XML da NF e o custo avulso não mudam. Em cima dele entra um campo de busca
    (razão social, fantasia ou CNPJ, até 25 resultados, na memória de _cmpForns) que, ao escolher, vira chip com ×.
    Quem troca o valor do select pelo código chama cmpFornAtualizar(id) para o chip acompanhar.
-   Reaproveitável por Contratos: cmpCampoFornecedor("<id do select>") depois de cmpCarregarBase(). */
+   Reaproveitável por Contratos: cmpCampoFornecedor("<id do select>") depois de cmpCarregarBase().
+   Lote S45 (L2): o filtro do painel (cmp-f-forn) usa o mesmo campo, com placeholder curto (2º parâmetro). */
 const _cmpFornCampos = {};
 function cmpNorm(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 function cmpFornRotulo(f){ return f ? f.razao_social + (f.nome_fantasia && f.nome_fantasia !== f.razao_social ? ` (${f.nome_fantasia})` : "") : ""; }
-function cmpCampoFornecedor(idSelect){
+function cmpCampoFornecedor(idSelect, placeholder){
   if(_cmpFornCampos[idSelect]) return _cmpFornCampos[idSelect];
   const sel = $(idSelect); if(!sel) return null;
   sel.style.display = "none";
   const wrap = document.createElement("div"); wrap.className = "forn-campo"; wrap.id = idSelect + "-busca-wrap";
   wrap.innerHTML = `<span class="forn-chip" style="display:none;"><strong></strong><button type="button" class="forn-chip-x" title="trocar o fornecedor">×</button></span>
-    <input class="forn-busca" placeholder="razão social, fantasia ou CNPJ (≥ 2 letras)…" autocomplete="off" />
+    <input class="forn-busca" placeholder="${esc(placeholder || "razão social, fantasia ou CNPJ (≥ 2 letras)…")}" autocomplete="off" />
     <div class="autocomplete-lista" style="display:none;"></div>`;
   sel.insertAdjacentElement("afterend", wrap);
   const chip = wrap.querySelector(".forn-chip"), chipTxt = chip.querySelector("strong"), x = chip.querySelector(".forn-chip-x");
@@ -1311,7 +1315,8 @@ function ligarCompras(){
     if(f?.prazo_entrega_dias && !$("cmp-prev").value){ const d = new Date(); d.setDate(d.getDate() + Number(f.prazo_entrega_dias)); $("cmp-prev").value = d.toISOString().slice(0, 10); cmpAtualizarChips(); } });
   cmpLigarBusca("cmp-busca-prod", "cmp-res-prod", p => cmpAddItem(p));
   $("btn-cmp-item-livre")?.addEventListener("click", () => cmpAddItem(null));
-  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn"].forEach(cmpCampoFornecedor);   // lote S43 (#53): fornecedor com busca e chip
+  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn"].forEach(id => cmpCampoFornecedor(id));   // lote S43 (#53): fornecedor com busca e chip
+  cmpCampoFornecedor("cmp-f-forn", "Fornecedor (nome ou CNPJ)…");   // lote S45 (L2): o filtro do painel deixa de ser um select com 641 opções
 
   // recebimento
   $("btn-cmp-rec-fechar")?.addEventListener("click", fecharRecebimento);

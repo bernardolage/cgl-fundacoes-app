@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="1b793c2" />
+<meta name="app-versao" content="26618f8" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=1b793c2" />
+<link rel="stylesheet" href="css/estilo.css?v=26618f8" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -1728,7 +1728,7 @@
                 </div>
                 <div class="campo"><label>Hospedagem — R$/mês</label><input id="orc-hosp-valor" type="number" min="0" step="0.01" placeholder="0,00" /></div>
                 <div class="campo largo">
-                  <label class="check-inline"><input type="checkbox" id="orc-cgl-alimentacao" /> CGL fornece alimentação dentro do canteiro (muda a linha "Alimentação dentro do canteiro de obras" da matriz de encargos para CGL)</label>
+                  <label class="check-inline"><input type="checkbox" id="orc-cgl-alimentacao" /> CGL fornece alimentação dentro do canteiro (libera o serviço na aba Itens, entra como item padrão "Alimentação no canteiro (03 funcionários por HC)" e muda a linha da matriz de encargos para CGL)</label>
                 </div>
               </div>
             </div>
@@ -2214,6 +2214,14 @@
                   </select></div>
               </div>
               <p class="nota" id="obr-param-resumo"></p>
+              <!-- fase 91: caução contratual da obra (vive em obras_financeiro, só para quem lê financeiro) -->
+              <div id="obr-caucao-bloco">
+                <h4 class="titulo-bloco" style="margin-top:16px;">Caução contratual <small class="meta">(retenção que o cliente segura das NFs: sugestão para as medições e prazo de devolução)</small></h4>
+                <div class="grade">
+                  <div class="campo"><label>Retenção contratual (%)</label><input id="obr-caucao-pct" type="number" step="0.01" min="0" max="100" placeholder="ex.: 5" title="Percentual negociado na obra; a medição nova desta obra sugere este valor" /></div>
+                  <div class="campo"><label>Prazo de devolução (dias da NF)</label><input id="obr-caucao-prazo" type="number" step="1" min="1" max="3650" placeholder="padrão da empresa: 90" title="Em branco = prazo padrão da empresa (90 dias da NF). Define a previsão de devolução de cada caução da obra" /></div>
+                </div>
+              </div>
             </div>
 
             <!-- Aba Contrato (contrato do cliente; vive na obra desde a fase 21) -->
@@ -2548,9 +2556,9 @@
             <div id="est-import-preview-conteudo"></div>
             <div class="form-acoes compacta">
               <button type="button" class="btn btn-sucesso" id="btn-est-confirmar-import">✅ Importar todas</button>
-          <div id="est-dxf-aviso" class="aviso" role="alert"></div>
             </div>
           </div>
+          <div id="est-pdf-aviso" class="aviso" role="alert"></div><!-- lote S45 (L6): aviso deste modal (antes o est-dxf-aviso estava aqui) -->
         </div>
       </div>
 
@@ -2612,6 +2620,7 @@
           <div class="form-acoes compacta">
             <button type="button" class="btn" id="btn-dxf-ler">📂 Ler arquivo</button>
           </div>
+          <div id="est-dxf-aviso" class="aviso" role="alert"></div><!-- lote S45 (L6): aviso do DXF no modal do DXF -->
           <div id="est-dxf-config" style="display:none;"></div>
           <div id="est-dxf-preview" class="bloco-preview" style="display:none;">
             <h4>Preview — revise antes de importar</h4>
@@ -3891,6 +3900,7 @@
             <div class="serv-views">
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
+              <button type="button" class="serv-view-btn" data-view="caucao" title="Fase 91: retenções contratuais (caução) por NF, devoluções e saldo por cliente">Caução</button>
             </div>
             <button type="button" class="btn" id="btn-nova-medicao">+ Nova</button>
           </div>
@@ -3903,7 +3913,40 @@
               <option value="importada_pdf">Importadas (PDF)</option>
               <option value="manual">Digitadas</option>
             </select>
+            <select id="med-f-receb" title="Fase 91: situação do recebimento da NF (líquido a receber = valor final − retenção − ISS retido)">
+              <option value="">Qualquer recebimento</option>
+              <option value="a_receber">A receber (NF emitida, não recebida)</option>
+              <option value="vencida">Vencidas (vencimento passou)</option>
+              <option value="parcial">Recebidas em parte</option>
+              <option value="recebida">Recebidas</option>
+            </select>
           </div>
+          <!-- fase 91: filtros da visão Caução (uma linha por NF com retenção; histórico da planilha CAIXA CAUÇÃO incluído) -->
+          <div class="serv-filtros" id="med-cau-filtros" style="display:none;">
+            <input id="med-cau-busca" placeholder="Buscar por NF, cliente ou obra..." />
+            <select id="med-cau-f-ano"></select>
+            <select id="med-cau-f-status">
+              <option value="">Todos os status</option>
+              <option value="em_aberto">Em aberto (aberta + parcial)</option>
+              <option value="vencidas">Vencidas (previsão passou)</option>
+              <option value="vence30">Vencem em 30 dias</option>
+              <option value="aberta">Aberta</option>
+              <option value="parcial">Parcial</option>
+              <option value="devolvida">Devolvida</option>
+              <option value="baixada">Baixada</option>
+            </select>
+            <select id="med-cau-f-cliente"></select>
+            <select id="med-cau-f-obra"></select>
+            <select id="med-cau-f-banco"></select>
+            <select id="med-cau-agrupar" title="Uma linha por NF ou o saldo por cliente (com o a receber das NFs ao lado)">
+              <option value="nf">Por NF</option>
+              <option value="cliente">Por cliente</option>
+            </select>
+            <button type="button" class="btn-sec" id="btn-med-cau-exportar" title="Exporta a lista filtrada para planilha (.xlsx), para a conferência do financeiro">⬇️ Planilha</button>
+            <button type="button" class="btn-sec" id="btn-med-cau-atualizar" title="Relê as cauções do banco">↻</button>
+          </div>
+          <!-- fase 91: indicadores (A receber / Vencidas / Recebido no mês na lista e no kanban; retido, devolvido, em aberto e vencidas na visão Caução) -->
+          <div class="indicadores" id="med-indicadores" style="display:none;"></div>
           <div id="med-conteudo"></div>
           <table style="display:none;"><tbody id="tab-medicoes"></tbody></table>
         </div>
@@ -3930,6 +3973,7 @@
             <div class="stage" data-status="enviada">Enviada</div>
             <div class="stage" data-status="aprovada">Aprovada</div>
             <div class="stage" data-status="faturada">Faturada</div>
+            <div class="stage" data-status="recebida" title="Fase 91: nasce no banco quando os recebimentos confirmados atingem o líquido a receber (aba NF/Recebimento)">Recebida</div>
           </div>
 
           <div class="odoo-contexto">
@@ -3947,6 +3991,8 @@
             <button type="button" data-tab="itens">📊 Itens <span id="med-itens-badge" class="conf-badge"></span></button>
             <button type="button" data-tab="detalhes">🔧 Detalhes Execução <span id="med-detalhes-badge" class="conf-badge"></span></button>
             <button type="button" data-tab="resumo">💰 Resumo</button>
+            <button type="button" data-tab="recebimento" title="Fase 91: recebimentos confirmados pelo financeiro e líquido a receber">💵 NF/Recebimento <span id="med-receb-badge" class="conf-badge"></span></button>
+            <button type="button" data-tab="caucao" title="Fase 91: retenção contratual (caução) desta NF e a devolução">🔒 Caução <span id="med-cau-badge" class="conf-badge"></span></button>
             <button type="button" data-tab="descricao">📝 Obs.</button>
           </div>
 
@@ -3975,8 +4021,8 @@
                 <div class="campo"><label>Valor do documento (se ≠ medição)</label><input id="med-nf-valor" type="number" step="0.01" /></div>
                 <div class="campo"><label>Retenção contratual (%)</label><input id="med-ret-pct" type="number" step="0.01" min="0" max="100" placeholder="ex.: 5" title="Caução / retenção técnica que o cliente segura de cada medição (liberada 30–120 dias após o fim da obra)" /></div>
                 <div class="campo"><label>Valor retido (R$)</label><input id="med-ret-valor" type="number" step="0.01" min="0" title="Calculado pelo % sobre o valor final; pode ser ajustado à mão" /></div>
-                <div class="campo"><label>Retenção liberada?</label><select id="med-ret-liberada"><option value="false">Não (a receber)</option><option value="true">Sim</option></select></div>
-                <div class="campo"><label>Data da liberação</label><input id="med-ret-data" type="date" /></div>
+                <div class="campo"><label>Retenção liberada? <small style="font-weight:400;color:var(--txt-fraco);">(espelho da aba Caução)</small></label><select id="med-ret-liberada" disabled title="Fase 91: preenchido pela devolução registrada na aba Caução"><option value="false">Não (a receber)</option><option value="true">Sim</option></select></div>
+                <div class="campo"><label>Data da liberação</label><input id="med-ret-data" type="date" readonly title="Fase 91: data da devolução registrada na aba Caução" style="background:var(--sup-2);" /></div>
                 <div class="campo"><label>ISS (%)</label><input id="med-iss-pct" type="number" step="0.01" min="0" max="100" placeholder="ex.: 5" title="ISS por dentro: valor = valor final × %. Pedido do financeiro, 16/09/2026" /></div>
                 <div class="campo"><label>ISS retido na fonte?</label><select id="med-iss-retido"><option value="true">Sim (cliente retém e recolhe)</option><option value="false">Não (CGL recolhe)</option></select></div>
                 <div class="campo"><label>Valor do ISS (R$)</label><input id="med-iss-valor" type="number" step="0.01" min="0" title="Calculado pelo %; pode ser ajustado à mão" /></div>
@@ -4078,6 +4124,16 @@
                 <strong>Fórmula:</strong> Valor final = (Subtotal − Desconto sinal + Acréscimo) × (Multiplicador / 100)<br>
                 <strong>Auto-calculado:</strong> subtotal vem dos itens; o multiplicador só aparece quando tipo = <em>Sinal Contratual</em> (default 30%). Demais tipos usam 100%.
               </div>
+            </div>
+
+            <!-- 💵 NF/Recebimento (fase 91): lançamentos confirmados pelo financeiro; a medição fica "recebida" no banco quando a soma atinge o líquido -->
+            <div class="odoo-tab" data-tab="recebimento">
+              <div id="med-receb-conteudo"><p class="vazio">Salve a medição para registrar recebimentos.</p></div>
+            </div>
+
+            <!-- 🔒 Caução (fase 91): retenção contratual desta NF, previsão e devolução; status nasce no banco -->
+            <div class="odoo-tab" data-tab="caucao">
+              <div id="med-cau-conteudo"><p class="vazio">Salve a medição com o documento fiscal e a retenção para a caução nascer aqui.</p></div>
             </div>
 
             <!-- 📝 Obs. -->
@@ -4649,46 +4705,58 @@
   </div>
 </div>
 
+<!-- fase 91: ficha reduzida da caução do histórico da planilha (sem medição no app). Caução de medição abre na aba da medição. -->
+<div id="med-cau-modal" class="modal-fundo" style="display:none;">
+  <div class="modal-caixa" style="max-width:900px;">
+    <div class="modal-topo">
+      <h3 class="titulo-linha" id="med-cau-modal-titulo">🔒 Caução</h3>
+      <button type="button" class="btn-sec" id="btn-med-cau-modal-fechar">×</button>
+    </div>
+    <div id="med-cau-modal-conteudo"></div>
+  </div>
+</div>
+<datalist id="med-cau-bancos"><option value="Itaú"></option><option value="Caixa"></option><option value="Banco do Brasil"></option><option value="Bradesco"></option><option value="Santander"></option><option value="Sicoob"></option></datalist>
+
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=1b793c2"></script>
+<script src="js/core.js?v=26618f8"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=1b793c2"></script>
+<script src="js/historico.js?v=26618f8"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=1b793c2"></script>
-<script src="js/fornecedores.js?v=1b793c2"></script>
-<script src="js/apropriacoes.js?v=1b793c2"></script>
-<script src="js/funcionarios.js?v=1b793c2"></script>
-<script src="js/servicos.js?v=1b793c2"></script>
-<script src="js/produtos.js?v=1b793c2"></script>
-<script src="js/estoque.js?v=1b793c2"></script>
-<script src="js/separacoes.js?v=1b793c2"></script>
-<script src="js/compras.js?v=1b793c2"></script>
-<script src="js/requisicoes.js?v=1b793c2"></script>
-<script src="js/orcamentos.js?v=1b793c2"></script>
-<script src="js/propostas.js?v=1b793c2"></script>
-<script src="js/contratos.js?v=1b793c2"></script>
-<script src="js/contas_pagar.js?v=1b793c2"></script>
-<script src="js/centros_custo.js?v=1b793c2"></script>
-<script src="js/carteira.js?v=1b793c2"></script>
-<script src="js/obras.js?v=1b793c2"></script>
-<script src="js/frota.js?v=1b793c2"></script>
-<script src="js/viagens.js?v=1b793c2"></script>
-<script src="js/equipamentos.js?v=1b793c2"></script>
-<script src="js/acessorios.js?v=1b793c2"></script>
-<script src="js/reparos.js?v=1b793c2"></script>
-<script src="js/fabricacao.js?v=1b793c2"></script>
-<script src="js/mobilizacoes.js?v=1b793c2"></script>
-<script src="js/estacas.js?v=1b793c2"></script>
-<script src="js/obra_abas.js?v=1b793c2"></script>
-<script src="js/medicoes.js?v=1b793c2"></script>
-<script src="js/movimentacoes.js?v=1b793c2"></script>
-<script src="js/rdo.js?v=1b793c2"></script>
-<script src="js/rdo_import_maya.js?v=1b793c2"></script>
-<script src="js/usuarios.js?v=1b793c2"></script>
-<script src="js/chamados.js?v=1b793c2"></script>
-<script src="js/dashboard.js?v=1b793c2"></script>
+<script src="js/clientes.js?v=26618f8"></script>
+<script src="js/fornecedores.js?v=26618f8"></script>
+<script src="js/apropriacoes.js?v=26618f8"></script>
+<script src="js/funcionarios.js?v=26618f8"></script>
+<script src="js/servicos.js?v=26618f8"></script>
+<script src="js/produtos.js?v=26618f8"></script>
+<script src="js/estoque.js?v=26618f8"></script>
+<script src="js/separacoes.js?v=26618f8"></script>
+<script src="js/compras.js?v=26618f8"></script>
+<script src="js/requisicoes.js?v=26618f8"></script>
+<script src="js/orcamentos.js?v=26618f8"></script>
+<script src="js/propostas.js?v=26618f8"></script>
+<script src="js/contratos.js?v=26618f8"></script>
+<script src="js/contas_pagar.js?v=26618f8"></script>
+<script src="js/centros_custo.js?v=26618f8"></script>
+<script src="js/carteira.js?v=26618f8"></script>
+<script src="js/obras.js?v=26618f8"></script>
+<script src="js/frota.js?v=26618f8"></script>
+<script src="js/viagens.js?v=26618f8"></script>
+<script src="js/equipamentos.js?v=26618f8"></script>
+<script src="js/acessorios.js?v=26618f8"></script>
+<script src="js/reparos.js?v=26618f8"></script>
+<script src="js/fabricacao.js?v=26618f8"></script>
+<script src="js/mobilizacoes.js?v=26618f8"></script>
+<script src="js/estacas.js?v=26618f8"></script>
+<script src="js/obra_abas.js?v=26618f8"></script>
+<script src="js/medicoes.js?v=26618f8"></script>
+<script src="js/movimentacoes.js?v=26618f8"></script>
+<script src="js/rdo.js?v=26618f8"></script>
+<script src="js/rdo_import_maya.js?v=26618f8"></script>
+<script src="js/usuarios.js?v=26618f8"></script>
+<script src="js/chamados.js?v=26618f8"></script>
+<script src="js/dashboard.js?v=26618f8"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=1b793c2"></script>
+<script src="js/init.js?v=26618f8"></script>
 </body>
 </html>
