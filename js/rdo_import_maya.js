@@ -164,10 +164,12 @@ function mayaParaDias(abas){
     const tipo = String(mayaCampo(o, "ocorrencia") || "").trim();
     const paralisado = /^s/i.test(mayaCampo(o, "paralisado"));
     const cliente = /^s/i.test(mayaCampo(o, "em razao", "razao"));
-    const cab = [tipo ? `Ocorrência: ${tipo}` : null, paralisado ? "Paralisado: sim" : null, cliente ? "Em razão do cliente: sim" : null,
+    // fase 94 (#77): a ocorrência leva a máquina no texto, porque o dia vira um diário por máquina e as
+    // observações do dia ficam no diário da máquina principal
+    const maq = String(mayaCampo(o, "maquina") || "").trim() || null;
+    const cab = [maq ? `Máquina ${maq}` : null, tipo ? `Ocorrência: ${tipo}` : null, paralisado ? "Paralisado: sim" : null, cliente ? "Em razão do cliente: sim" : null,
       periodo.ini ? `Período ${periodo.ini}–${periodo.fim}` : null].filter(Boolean).join(" · ");
     d._ocorr.push((cab ? `[${cab}] ` : "") + desc);
-    const maq = String(mayaCampo(o, "maquina") || "").trim() || null;
     if(maq && !d.maquina) d.maquina = maq;
     addOperador(d, mayaCampo(o, "operador"), periodo);
     if(!d.responsavel && mayaCampo(o, "operador")) d.responsavel = String(mayaCampo(o, "operador")).trim();

@@ -25,8 +25,22 @@ const TIPO_CONTRATO_META = {
 
 const DOC_TIPO_LABEL = {
   aso:"ASO", nr35:"NR-35", nr18:"NR-18", nr10:"NR-10",
-  nr33:"NR-33", cipa:"CIPA", cnh:"CNH", crea:"CREA", cau:"CAU", outro:"Outro"
+  nr33:"NR-33", cipa:"CIPA", cnh:"CNH", crea:"CREA", cau:"CAU", outro:"Outro",
+  // fase 93a: PDFs de admissão gerados pelo app (js/rh_documentos.js); ficam no bloco próprio da aba Documentos
+  admissao_ficha:"Ficha cadastral (RG 5.17)", admissao_contrato:"Documentos admissionais (RG 5.4)",
+  admissao_contrato_ajudante:"Documentos admissionais — ajudante (RG 5.5)", admissao_prorrogacao:"Prorrogação de experiência (RG 5.6)",
+  admissao_contrato_trabalho:"Contrato de trabalho (RG 5.7)"
 };
+/* fase 93a: campos sensíveis novos da ficha de registro — id do input → coluna de funcionarios_sensiveis */
+const FUNC_SENS_CAMPOS_93A = [
+  ["func-pis","pis"],["func-rg-orgao","rg_orgao_emissor"],["func-ctps","ctps"],["func-ctps-serie","ctps_serie"],
+  ["func-titulo-eleitor","titulo_eleitor"],["func-zona","zona_eleitoral"],["func-secao","secao_eleitoral"],["func-reservista","reservista"],
+  ["func-sexo","sexo"],["func-estado-civil","estado_civil"],["func-conjuge","conjuge"],["func-naturalidade","naturalidade"],
+  ["func-nacionalidade","nacionalidade"],["func-raca-cor","raca_cor"],["func-grau-instrucao","grau_instrucao"],["func-nome-mae","nome_mae"],
+  ["func-nome-pai","nome_pai"],["func-dependentes","dependentes"],["func-horario-trabalho","horario_trabalho"],["func-intervalo","intervalo"],
+  ["func-forma-pagamento","forma_pagamento"],["func-estr-chegada","estrangeiro_chegada_brasil"]
+];
+const FUNC_SENS_BOOL_93A = [["func-estr-casado","estrangeiro_casado_brasileira"],["func-estr-naturalizado","estrangeiro_naturalizado"],["func-estr-filhos","estrangeiro_filhos_brasileiros"]];
 
 /* ---------- utilitários ---------- */
 function iniciais(nome){
@@ -233,8 +247,12 @@ async function funcSalvarSensivel(funcId){
     ajuda_mensal: n("func-ajuda-mensal"), contribuicao_sindical: n("func-contrib-sindical"),
     cep: v("func-cep"), logradouro: v("func-logradouro"), numero: v("func-numero"), complemento: v("func-complemento"),
     bairro: v("func-bairro"), cidade: v("func-cidade"), uf: $("func-uf")?.value || null,
-    contato_emergencia_nome: v("func-emerg-nome"), contato_emergencia_tel: v("func-emerg-tel"), contato_emergencia_parentesco: v("func-emerg-parentesco")
+    contato_emergencia_nome: v("func-emerg-nome"), contato_emergencia_tel: v("func-emerg-tel"), contato_emergencia_parentesco: v("func-emerg-parentesco"),
+    horas_semanais: n("func-horas-semanais")
   };
+  // fase 93a: ficha de registro (texto) e estrangeiro (sim/não/—)
+  FUNC_SENS_CAMPOS_93A.forEach(([id, k]) => { reg[k] = v(id); });
+  FUNC_SENS_BOOL_93A.forEach(([id, k]) => { const x = $(id)?.value ?? ""; reg[k] = x === "" ? null : x === "true"; });
   const { error } = await sb.from("funcionarios_sensiveis").upsert(reg, { onConflict: "funcionario_id" });
   return error;
 }
@@ -245,6 +263,7 @@ async function carregarFuncionarios(){
   // Estado de origem (logística) usa a mesma lista de UF do endereço
   if($("func-estado-origem") && $("func-uf") && !$("func-estado-origem").options.length) $("func-estado-origem").innerHTML = $("func-uf").innerHTML;
   funcAplicarVisibilidadeSensivel();
+  if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 93b: aba Acesso só rh/admin/diretor
   const [{ data, error }] = await Promise.all([
     sb.from("funcionarios")
       .select("id,nome,matricula,funcao,data_admissao,status,ativo,telefone,foto_url,departamento_id,tipo_contrato,cnh_validade,categoria_operacional,especialidade,coringa,avaliacao")
@@ -292,6 +311,7 @@ function renderFuncionariosAgora(){
   else if(_funcView==="logistica") renderFuncLogistica();
   else if(_funcView==="he"){ funcPreencherCompetencias(); renderFuncHE(); }
   else if(_funcView==="aprop") renderFuncAprop();
+  else if(_funcView==="promocoes") renderFuncPromocoes();   // fase 93a: plano de cargos
   else                     renderFuncLista(dados);
 }
 
@@ -349,6 +369,7 @@ function renderFuncKanban(dados){
 function mostrarPainelFunc(){
   $("func-painel").style.display = "";
   $("func-ficha").style.display = "none";
+  if($("func-adm")) $("func-adm").style.display = "none";   // fase 93a: admissão em etapas
   funcEditId = null;
 }
 
@@ -370,6 +391,10 @@ function novoFuncionario(){
   $("func-ativo").checked        = true;
   // Folha e benefícios (RH): limpa o bloco inteiro, para nada do funcionário aberto antes ir para o novo
   $("func-folha-rh")?.querySelectorAll("input").forEach(el => { el.value = ""; });
+  // fase 93a: dados civis e jornada (RH) idem; aba Funções e PDFs de admissão vazios até salvar
+  ["func-civil-rh", "func-jornada-rh"].forEach(id => $(id)?.querySelectorAll("input, select").forEach(el => { el.value = ""; }));
+  $("func-funcoes-lista").innerHTML = ""; $("func-funcoes-prox").innerHTML = ""; $("func-ff-form").style.display = "none";
+  if($("func-rh-docs")) $("func-rh-docs").innerHTML = "";
   $("btn-excluir-func").style.display = "none";
   funcCarregarFoto(null, "");
   $("func-docs-lista").innerHTML = "";
@@ -417,6 +442,11 @@ async function abrirFuncionario(id){
   $("func-emerg-nome").value     = sens.contato_emergencia_nome||"";
   $("func-emerg-tel").value      = sens.contato_emergencia_tel||"";
   $("func-emerg-parentesco").value = sens.contato_emergencia_parentesco||"";
+  // fase 93a: ficha de registro, jornada e estrangeiro
+  FUNC_SENS_CAMPOS_93A.forEach(([id, k]) => { const el = $(id); if(el) el.value = (sens[k] ?? "").toString().slice(0, k === "estrangeiro_chegada_brasil" ? 10 : undefined); });
+  FUNC_SENS_BOOL_93A.forEach(([id, k]) => { const el = $(id); if(el) el.value = sens[k] == null ? "" : String(sens[k]); });
+  if($("func-horas-semanais")) $("func-horas-semanais").value = sens.horas_semanais ?? "";
+  $("func-ff-form").style.display = "none"; $("func-funcoes-lista").innerHTML = ""; $("func-funcoes-prox").innerHTML = "";
   // logística (Planejamento Logística / RG 8.1)
   if($("func-estado-origem")) $("func-estado-origem").value = data.estado_origem||"";
   if($("func-categoria"))     $("func-categoria").value     = data.categoria_operacional||"";
@@ -436,6 +466,7 @@ async function abrirFuncionario(id){
 
 function abrirFichaFuncVisual(f){
   $("func-painel").style.display = "none";
+  if($("func-adm")) $("func-adm").style.display = "none";   // fase 93a
   $("func-ficha").style.display  = "";
 
   $("func-ficha-nome").textContent      = f.nome||"(novo)";
@@ -489,7 +520,9 @@ async function carregarDocsFuncionario(){
   const { data, error } = await sb.from("funcionario_documentos")
     .select("*").eq("funcionario_id",funcEditId).order("validade");
   if(error){ $("func-docs-lista").innerHTML=`<p class="vazio">Erro ao carregar.</p>`; return; }
-  const docs = data||[];
+  // fase 93a: os PDFs de admissão (admissao_*) têm bloco próprio (js/rh_documentos.js); a lista geral fica com os demais
+  const docs = (data||[]).filter(d => !/^admissao_/.test(String(d.tipo || "")));
+  if(typeof rhdCarregar === "function") rhdCarregar(funcEditId);
 
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const em90 = new Date(hoje); em90.setDate(em90.getDate()+90);
@@ -736,8 +769,27 @@ function ligarFuncionarios(){
     b.addEventListener("click", () => {
       ativarTabFunc(b.dataset.tab);
       if(b.dataset.tab==="documentos" && funcEditId) carregarDocsFuncionario();
+      if(b.dataset.tab==="funcoes" && funcEditId) funcCarregarFuncoes(funcEditId);   // fase 93a
     });
   });
+
+  // fase 93a: aba Funções (histórico + plano de cargos) e admissão em etapas
+  $("btn-func-ff-novo")?.addEventListener("click", () => {
+    if(!funcEditId){ aviso("func-funcoes-aviso", "Salve o funcionário primeiro.", "aviso"); return; }
+    $("func-ff-funcao").value = ""; $("func-ff-data").value = hojeISO(); $("func-ff-motivo").value = "promocao_plano"; $("func-ff-obs").value = "";
+    $("func-ff-form").style.display = ""; $("func-ff-funcao").focus();
+  });
+  $("btn-func-ff-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-ff-salvar", funcSalvarFuncao));
+  $("btn-func-ff-cancelar")?.addEventListener("click", () => { $("func-ff-form").style.display = "none"; });
+  $("btn-admitir-func")?.addEventListener("click", funcAdmAbrir);
+  $("btn-adm-voltar")?.addEventListener("click", () => { if(confirm("Sair da admissão? O que foi digitado se perde.")) mostrarPainelFunc(); });
+  $("btn-adm-anterior")?.addEventListener("click", () => funcAdmIr(_admEtapa - 1));
+  $("btn-adm-proximo")?.addEventListener("click", () => funcAdmIr(_admEtapa + 1));
+  $("btn-adm-concluir")?.addEventListener("click", () => comBotaoTravado("btn-adm-concluir", funcAdmConcluir));
+  document.querySelectorAll("#adm-etapas .stage").forEach(el => el.addEventListener("click", () => funcAdmIr(Number(el.dataset.etapa))));
+  ["adm-data", "adm-prazo", "adm-prorrogacao"].forEach(id => $(id)?.addEventListener("change", () => funcAdmCalcVencimentos(true)));
+  $("adm-salario")?.addEventListener("input", () => { if($("adm-salario-extenso")) $("adm-salario-extenso").value = $("adm-salario").value !== "" && typeof rhExtenso === "function" ? rhExtenso($("adm-salario").value) : ""; });
+  $("adm-funcao")?.addEventListener("change", funcAdmSugerirModelo);
 
   document.querySelectorAll("#func-statusbar .stage").forEach(el => {
     el.addEventListener("click", async () => {
@@ -885,4 +937,495 @@ async function renderFuncHE(){
     const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `horas-extras-${comp}.csv`;
     document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);
   });
+}
+
+/* ====================================================================
+   Fase 93a (chamados #69 e #70): aba FUN\u00c7\u00d5ES da ficha (hist\u00f3rico de fun\u00e7\u00e3o +
+   pr\u00f3xima mudan\u00e7a pelo plano de cargos), vista FUN\u00c7\u00d5ES do painel
+   (vw_rh_promocoes com sem\u00e1foro) e ADMISS\u00c3O EM ETAPAS (dados pessoais \u2192
+   documentos \u2192 contrato \u2192 benef\u00edcios), que grava funcionarios +
+   funcionarios_sensiveis + admissoes e gera os PDFs (js/rh_documentos.js).
+   ==================================================================== */
+const FUNC_FF_MOTIVO = { admissao: "Admiss\u00e3o", promocao_plano: "Promo\u00e7\u00e3o pelo plano", mudanca: "Mudan\u00e7a de fun\u00e7\u00e3o", correcao: "Corre\u00e7\u00e3o" };
+let _funcPlano = null;                               // plano_cargos (cache da sess\u00e3o)
+let _funcPromo = { dados: null, filtro: "todas" };   // vista Fun\u00e7\u00f5es: todas | 60dias | vencidas | no_prazo
+let _admEtapa  = 1;
+
+async function funcCarregarPlano(){
+  if(_funcPlano) return _funcPlano;
+  const { data, error } = await sb.from("plano_cargos").select("*").eq("ativo", true).order("grupo").order("meses");
+  _funcPlano = error ? [] : (data || []);
+  funcPreencherDatalistFuncoes();
+  return _funcPlano;
+}
+/* sugest\u00f5es de fun\u00e7\u00e3o: as do plano de cargos + as j\u00e1 usadas no cadastro */
+function funcPreencherDatalistFuncoes(){
+  const dl = $("func-funcoes-datalist"); if(!dl) return;
+  const nomes = new Set();
+  (_funcPlano || []).forEach(p => { nomes.add(p.funcao_origem); nomes.add(p.funcao_destino); });
+  _funcs.forEach(f => { if(f.funcao) nomes.add(f.funcao); });
+  dl.innerHTML = [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR")).map(n => `<option value="${esc(n)}"></option>`).join("");
+}
+function funcPromoTag(p){
+  if(!p) return "";
+  if(p.semaforo === "vencida") return `<span class="tag vermelho">vencida h\u00e1 ${-p.dias_restantes} d</span>`;
+  if(p.semaforo === "proxima") return `<span class="tag ambar">em ${p.dias_restantes} d</span>`;
+  return `<span class="tag verde">em ${p.dias_restantes} d</span>`;
+}
+
+/* ---------- aba Fun\u00e7\u00f5es ---------- */
+async function funcCarregarFuncoes(id){
+  const cont = $("func-funcoes-lista"); if(!cont) return;
+  cont.innerHTML = `<p class="vazio">Carregando\u2026</p>`;
+  const vePlano = funcVeSensivel() || (usuarioAtual && ["admin", "auditor"].includes(usuarioAtual.cargo));
+  const [hist, prom] = await Promise.all([
+    sb.from("funcionario_funcoes").select("*").eq("funcionario_id", id).order("data_inicio", { ascending: false }),
+    vePlano ? sb.from("vw_rh_promocoes").select("*").eq("funcionario_id", id).maybeSingle() : Promise.resolve({ data: null }),
+    funcCarregarPlano()
+  ]);
+  if(funcEditId !== id) return;
+  if(hist.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(hist.error.message)}</p>`; return; }
+  const linhas = hist.data || [];
+  $("func-funcoes-cont").textContent = linhas.length ? `${linhas.length}` : "";
+  const p = prom?.data || null;
+  $("func-funcoes-prox").innerHTML = p
+    ? `Pr\u00f3xima mudan\u00e7a pelo plano de cargos: <strong>${esc(p.proxima_funcao)}</strong> prevista para <strong>${dataBR(p.data_prevista)}</strong> ${funcPromoTag(p)}
+       <span class="meta">(${esc(p.funcao)} desde ${dataBR(p.funcao_desde)} \u00b7 regra de ${p.meses} meses${p.criterio ? " \u00b7 " + esc(p.criterio) : ""})</span>`
+    : (vePlano ? `<span class="meta">Fun\u00e7\u00e3o atual fora do plano de cargos: sem mudan\u00e7a prevista.</span>` : "");
+  const podeApagar = funcVeSensivel() && !ehSomenteLeitura();
+  cont.innerHTML = linhas.length
+    ? `<div class="tabela-rola"><table class="func-docs-table">
+        <thead><tr><th>Fun\u00e7\u00e3o</th><th>In\u00edcio</th><th>Fim</th><th>Motivo</th><th>Observa\u00e7\u00f5es</th><th></th></tr></thead>
+        <tbody>${linhas.map(l => `<tr>
+          <td><strong>${esc(l.funcao)}</strong>${!l.data_fim ? ' <span class="tag verde">atual</span>' : ""}</td>
+          <td>${dataBR(l.data_inicio)}</td><td>${l.data_fim ? dataBR(l.data_fim) : "\u2014"}</td>
+          <td>${esc(FUNC_FF_MOTIVO[l.motivo] || l.motivo)}</td><td class="meta">${esc(l.observacoes || "")}</td>
+          <td>${podeApagar ? `<button type="button" class="btn-sec btn-sm func-ff-del" data-id="${esc(l.id)}" title="Apagar este registro (a fun\u00e7\u00e3o da ficha passa a ser a linha anterior)">Excluir</button>` : ""}</td>
+        </tr>`).join("")}</tbody></table></div>`
+    : `<p class="vazio">Sem hist\u00f3rico de fun\u00e7\u00e3o.</p>`;
+  cont.querySelectorAll(".func-ff-del").forEach(b => b.addEventListener("click", () => funcExcluirFuncao(b.dataset.id)));
+}
+async function funcSalvarFuncao(){
+  if(!funcEditId) return;
+  const funcao = $("func-ff-funcao").value.trim(), data = $("func-ff-data").value;
+  if(!funcao || !data){ aviso("func-funcoes-aviso", "Informe a fun\u00e7\u00e3o e a data.", "erro"); return; }
+  const reg = { funcionario_id: funcEditId, funcao, data_inicio: data, motivo: $("func-ff-motivo").value, observacoes: $("func-ff-obs").value.trim() || null };
+  const { error } = await sb.from("funcionario_funcoes").insert(reg);
+  if(error){
+    aviso("func-funcoes-aviso", /unique|duplic/i.test(error.message) ? "J\u00e1 existe um registro de fun\u00e7\u00e3o nesta data para este funcion\u00e1rio." : "Erro: " + error.message, "erro");
+    return;
+  }
+  $("func-ff-form").style.display = "none";
+  aviso("func-funcoes-aviso", "Mudan\u00e7a de fun\u00e7\u00e3o registrada.", "ok");
+  await funcAtualizarFuncaoEspelho();
+}
+async function funcExcluirFuncao(id){
+  if(!confirm("Apagar este registro do hist\u00f3rico de fun\u00e7\u00e3o?")) return;
+  const { error } = await sb.from("funcionario_funcoes").delete().eq("id", id);
+  if(error){ aviso("func-funcoes-aviso", "Erro ao apagar: " + error.message, "erro"); return; }
+  await funcAtualizarFuncaoEspelho();
+}
+/* a fun\u00e7\u00e3o da ficha \u00e9 espelho da \u00faltima linha do hist\u00f3rico (gatilho): rel\u00ea o cadastro e os chips */
+async function funcAtualizarFuncaoEspelho(){
+  await funcCarregarFuncoes(funcEditId);
+  const { data: f } = await sb.from("funcionarios").select("funcao").eq("id", funcEditId).single();
+  if(f){
+    $("func-funcao").value = f.funcao || "";
+    $("func-ficha-funcao-chip").textContent = f.funcao || "\u2014";
+    const x = _funcs.find(y => y.id === funcEditId); if(x) x.funcao = f.funcao;
+  }
+  _funcPromo.dados = null;
+}
+
+/* ---------- vista Fun\u00e7\u00f5es do painel (plano de cargos) ---------- */
+const FUNC_PROMO_FILTROS = { todas: "todas", vencidas: "vencidas", "60dias": "em 60 dias", no_prazo: "no prazo" };
+async function renderFuncPromocoes(){
+  const cont = $("func-conteudo"); if(!cont) return;
+  if(!_funcPromo.dados){
+    cont.innerHTML = `<p class="vazio">Carregando plano de cargos\u2026</p>`;
+    const { data, error } = await sb.from("vw_rh_promocoes").select("*").order("data_prevista");
+    if(error){ cont.innerHTML = `<p class="vazio">Erro ao carregar: ${esc(error.message)}</p>`; return; }
+    _funcPromo.dados = data || [];
+    if(_funcView !== "promocoes") return;
+  }
+  const termo = ($("func-busca")?.value || "").trim().toLowerCase();
+  const f = _funcPromo.filtro;
+  const todos = _funcPromo.dados;
+  const lista = todos
+    .filter(p => f === "todas" || (f === "vencidas" && p.semaforo === "vencida") || (f === "60dias" && p.semaforo === "proxima") || (f === "no_prazo" && p.semaforo === "no_prazo"))
+    .filter(p => !termo || `${p.nome} ${p.matricula || ""} ${p.funcao} ${p.proxima_funcao}`.toLowerCase().includes(termo));
+  const n = (s) => todos.filter(p => p.semaforo === s).length;
+  const btn = (k, cls, txt) => `<button type="button" class="tag ${cls} func-promo-f" data-f="${k}" style="cursor:pointer;border:${f === k ? "2px solid var(--txt)" : "2px solid transparent"};">${txt}</button>`;
+  cont.innerHTML = `<div class="meta" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <span><strong>${todos.length}</strong> no plano de cargos</span>
+      ${btn("vencidas", "vermelho", n("vencida") + " vencidas")} ${btn("60dias", "ambar", n("proxima") + " em 60 dias")} ${btn("no_prazo", "verde", n("no_prazo") + " no prazo")} ${btn("todas", "cinza", "todas")}
+      <span>data prevista = in\u00edcio da fun\u00e7\u00e3o atual + meses da regra \u00b7 clique na linha para abrir a aba Fun\u00e7\u00f5es</span>
+      <button type="button" class="btn-sec btn-sm" id="btn-func-promo-csv">\u2b07\ufe0f CSV</button>
+    </div>
+    <div class="tabela-rola"><table>
+      <thead><tr><th>Nome</th><th>Matr\u00edcula</th><th>Fun\u00e7\u00e3o atual</th><th>Desde</th><th>Pr\u00f3xima fun\u00e7\u00e3o</th><th>Prevista</th><th>Situa\u00e7\u00e3o</th><th>Regra</th></tr></thead>
+      <tbody>${lista.map(p => `<tr class="linha-clicavel func-promo-row" data-id="${esc(p.funcionario_id)}">
+        <td><strong>${esc(p.nome)}</strong></td><td>${esc(p.matricula || "\u2014")}</td><td>${esc(p.funcao)}</td><td>${dataBR(p.funcao_desde)}</td>
+        <td>${esc(p.proxima_funcao)}</td><td>${dataBR(p.data_prevista)}</td><td>${funcPromoTag(p)}</td><td class="meta">${p.meses} meses \u00b7 ${esc(p.grupo)}</td>
+      </tr>`).join("") || `<tr><td colspan="8" class="vazio">Ningu\u00e9m para o filtro.</td></tr>`}</tbody>
+    </table></div>
+    <p class="meta">A data de in\u00edcio da fun\u00e7\u00e3o veio da data de admiss\u00e3o na carga inicial: quem j\u00e1 mudou de fun\u00e7\u00e3o precisa da data real registrada na aba Fun\u00e7\u00f5es (motivo "Corre\u00e7\u00e3o").</p>`;
+  cont.querySelectorAll(".func-promo-f").forEach(b => b.addEventListener("click", () => { _funcPromo.filtro = b.dataset.f; renderFuncPromocoes(); }));
+  cont.querySelectorAll(".func-promo-row").forEach(tr => tr.addEventListener("click", async () => { await abrirFuncionario(tr.dataset.id); ativarTabFunc("funcoes"); funcCarregarFuncoes(tr.dataset.id); }));
+  $("btn-func-promo-csv")?.addEventListener("click", () => {
+    const cel = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = ["Nome;Matricula;Funcao_atual;Desde;Proxima_funcao;Prevista;Dias_restantes;Situacao"]
+      .concat(lista.map(p => [p.nome, p.matricula, p.funcao, p.funcao_desde, p.proxima_funcao, p.data_prevista, p.dias_restantes, p.semaforo].map(cel).join(";"))).join("\n");
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `plano-de-cargos-${hojeISO()}.csv`;
+    document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);
+  });
+}
+/* Sala de Comando \u2192 vista Fun\u00e7\u00f5es j\u00e1 filtrada (vencidas | 60dias) */
+function funcAbrirPromocoes(preset){
+  _funcView = "promocoes"; _funcPromo.filtro = preset || "todas"; _funcPromo.dados = null;
+  document.querySelectorAll("#func-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === "promocoes"));
+  mostrarPainelFunc();
+  renderFuncionarios();
+}
+
+/* ---------- admiss\u00e3o em etapas ---------- */
+const ADM_PADROES = { "adm-nacionalidade": "Brasileira", "adm-banco": "Ita\u00fa", "adm-prazo": "45", "adm-prorrogacao": "45",
+  "adm-horario": "de 7:00 \u00e0s 17:00 (seg a quin) 7:00 \u00e0s 16:00 (sex)", "adm-intervalo": "(uma) hora", "adm-horas-semanais": "44",
+  "adm-forma-pagamento": "Mensalista", "adm-tipo-contrato": "clt", "adm-tipo-documento": "padrao" };
+function funcAdmAbrir(){
+  if(!funcVeSensivel()){ aviso("app-aviso", "Admiss\u00e3o: s\u00f3 RH e diretoria.", "erro"); return; }
+  document.querySelectorAll("#func-adm input, #func-adm select").forEach(el => { if(el.type === "checkbox") el.checked = true; else el.value = ""; });
+  if($("adm-uf") && $("func-uf")) $("adm-uf").innerHTML = $("func-uf").innerHTML;
+  if($("adm-departamento") && $("func-departamento")) $("adm-departamento").innerHTML = $("func-departamento").innerHTML;
+  Object.entries(ADM_PADROES).forEach(([id, v]) => { if($(id)) $(id).value = v; });
+  $("adm-data").value = hojeISO();
+  funcCarregarPlano();
+  funcAdmCalcVencimentos(true);
+  $("func-painel").style.display = "none"; $("func-ficha").style.display = "none"; $("func-adm").style.display = "";
+  funcEditId = null;
+  funcAdmMostrar(1);
+}
+function funcAdmIr(n){
+  if(n < 1 || n > 4) return;
+  if(n > _admEtapa){
+    for(let e = _admEtapa; e < n; e++){
+      const erro = funcAdmValidar(e);
+      if(erro){ funcAdmMostrar(e); aviso("adm-aviso", erro, "erro"); return; }
+    }
+  }
+  funcAdmMostrar(n);
+}
+function funcAdmMostrar(n){
+  _admEtapa = n;
+  document.querySelectorAll("#adm-etapas .stage").forEach(el => { const e = Number(el.dataset.etapa); el.classList.toggle("atual", e === n); el.classList.toggle("passada", e < n); });
+  document.querySelectorAll("#func-adm .odoo-tab").forEach(t => t.classList.toggle("ativa", Number(t.dataset.etapa) === n));
+  $("btn-adm-anterior").style.display = n > 1 ? "" : "none";
+  $("btn-adm-proximo").style.display  = n < 4 ? "" : "none";
+  $("btn-adm-concluir").style.display = n === 4 ? "" : "none";
+  $("adm-aviso").className = "aviso"; $("adm-aviso").textContent = "";
+  if(n === 4) funcAdmResumo();
+}
+function funcAdmValidar(e){
+  const v = (id) => ($(id)?.value || "").trim();
+  if(e === 1){
+    if(!v("adm-nome")) return "Informe o nome completo.";
+    if(v("adm-cpf").replace(/\D/g, "").length !== 11) return "O CPF precisa ter 11 d\u00edgitos.";
+  }
+  if(e === 3){
+    if(!v("adm-funcao")) return "Informe a fun\u00e7\u00e3o.";
+    if(!v("adm-data")) return "Informe a data de admiss\u00e3o.";
+    if(v("adm-salario") === "") return "Informe o sal\u00e1rio.";
+  }
+  return null;
+}
+/* decis\u00e3o 2: experi\u00eancia 45 + 45; 1\u00ba vencimento = admiss\u00e3o + prazo \u2212 1 (o dia da admiss\u00e3o conta); 2\u00ba = 1\u00ba + prorroga\u00e7\u00e3o */
+function funcAdmCalcVencimentos(forcar){
+  const d = $("adm-data")?.value; if(!d) return;
+  const prazo = Number($("adm-prazo").value || 0), pror = Number($("adm-prorrogacao").value || 0);
+  const soma = (iso, dias) => dataLocalISO(new Date(new Date(iso + "T00:00:00").getTime() + dias * 864e5));
+  if(forcar || !$("adm-venc1").value) $("adm-venc1").value = prazo > 0 ? soma(d, prazo - 1) : "";
+  if(forcar || !$("adm-venc2").value) $("adm-venc2").value = (prazo > 0 && pror > 0 && $("adm-venc1").value) ? soma($("adm-venc1").value, pror) : "";
+}
+function funcAdmSugerirModelo(){
+  const f = funcNormalizarNome($("adm-funcao").value);
+  if(/AJUDANTE|SOLDADOR/.test(f)) $("adm-tipo-documento").value = "ajudante_soldador";
+}
+function funcAdmResumo(){
+  const v = (id) => esc(($(id)?.value || "").trim() || "\u2014");
+  const sal = $("adm-salario").value;
+  const item = (r, val) => `<div><span class="meta">${r}</span><br><strong>${val}</strong></div>`;
+  $("adm-resumo").innerHTML = `<strong>Resumo da admiss\u00e3o</strong>
+    <div class="grade" style="margin-top:8px;">
+      ${item("Nome", v("adm-nome"))}${item("Fun\u00e7\u00e3o", v("adm-funcao"))}${item("Admiss\u00e3o", dataBR($("adm-data").value) || "\u2014")}
+      ${item("Sal\u00e1rio", sal !== "" ? brl(Number(sal)) : "\u2014")}${item("Experi\u00eancia", `${v("adm-prazo")} + ${v("adm-prorrogacao")} dias`)}
+      ${item("1\u00ba / 2\u00ba vencimento", `${dataBR($("adm-venc1").value) || "\u2014"} / ${dataBR($("adm-venc2").value) || "\u2014"}`)}
+      ${item("Modelo de contrato", esc($("adm-tipo-documento").selectedOptions[0]?.textContent || ""))}
+      ${item("Departamento", esc($("adm-departamento").selectedOptions[0]?.textContent || "\u2014"))}
+      ${item("Vale-transporte", esc($("adm-vt-opta").selectedOptions[0]?.textContent || "\u2014"))}
+    </div>
+    <p class="meta" style="margin-top:8px;">Ao concluir: cadastro do funcion\u00e1rio, dados sens\u00edveis, registro da admiss\u00e3o${$("adm-gerar-docs").checked ? " e PDFs (ficha cadastral + contrato)" : ""}. Depois, na aba Documentos, "Enviar para assinatura" manda cada PDF \u00e0 D4Sign.</p>`;
+}
+async function funcAdmConcluir(){
+  for(let e = 1; e <= 3; e++){ const erro = funcAdmValidar(e); if(erro){ funcAdmMostrar(e); aviso("adm-aviso", erro, "erro"); return; } }
+  const v = (id) => ($(id)?.value ?? "").toString().trim() || null;
+  const n = (id) => ($(id)?.value ?? "") === "" ? null : Number($(id).value);
+  const b = (id) => { const x = $(id)?.value ?? ""; return x === "" ? null : x === "true"; };
+  const nome = v("adm-nome"), cpf = ($("adm-cpf").value || "").replace(/\D/g, "");
+  // hom\u00f4nimo: a mesma regra da ficha (nome igual s\u00f3 com CPF diferente)
+  for(const f of _funcs.filter(f => funcNormalizarNome(f.nome) === funcNormalizarNome(nome))){
+    const s = await funcCarregarSensivel(f.id); const c = String(s?.cpf || "").replace(/\D/g, "");
+    if(!c){ aviso("adm-aviso", `J\u00e1 existe funcion\u00e1rio com este nome (${f.nome}) sem CPF no cadastro. Preencha o CPF dele primeiro.`, "erro"); return; }
+    if(c === cpf){ aviso("adm-aviso", `${f.nome} j\u00e1 est\u00e1 cadastrado com este CPF. Abra o cadastro dele em vez de admitir de novo.`, "erro"); return; }
+  }
+  const funcionario = {
+    nome, matricula: v("adm-matricula"), funcao: v("adm-funcao"), status: "ativo", ativo: true, data_admissao: v("adm-data"),
+    email: v("adm-email"), telefone: v("adm-telefone"), tipo_contrato: v("adm-tipo-contrato") || "clt", departamento_id: v("adm-departamento"),
+    cnh_categoria: v("adm-cnh-categoria"), cnh_validade: v("adm-cnh-validade"), categoria_operacional: v("adm-categoria"),
+    especialidade: v("adm-especialidade"), observacoes: v("adm-obs")
+  };
+  const r1 = await sb.from("funcionarios").insert(funcionario).select().single();
+  if(r1.error){ aviso("adm-aviso", /matricula/i.test(r1.error.message) ? "Matr\u00edcula j\u00e1 em uso." : "Erro ao cadastrar: " + r1.error.message, "erro"); return; }
+  const id = r1.data.id;
+  const sens = {
+    funcionario_id: id, cpf, rg: v("adm-rg"), rg_orgao_emissor: v("adm-rg-orgao"), data_nascimento: v("adm-nascimento"), sexo: v("adm-sexo"),
+    estado_civil: v("adm-estado-civil"), conjuge: v("adm-conjuge"), naturalidade: v("adm-naturalidade"), nacionalidade: v("adm-nacionalidade"),
+    raca_cor: v("adm-raca-cor"), grau_instrucao: v("adm-grau-instrucao"), nome_mae: v("adm-nome-mae"), nome_pai: v("adm-nome-pai"), dependentes: v("adm-dependentes"),
+    contato_emergencia_nome: v("adm-emerg-nome"), contato_emergencia_tel: v("adm-emerg-tel"), contato_emergencia_parentesco: v("adm-emerg-parentesco"),
+    ctps: v("adm-ctps"), ctps_serie: v("adm-ctps-serie"), pis: v("adm-pis"), titulo_eleitor: v("adm-titulo-eleitor"), zona_eleitoral: v("adm-zona"), secao_eleitoral: v("adm-secao"), reservista: v("adm-reservista"),
+    cep: v("adm-cep"), logradouro: v("adm-logradouro"), numero: v("adm-numero"), complemento: v("adm-complemento"), bairro: v("adm-bairro"), cidade: v("adm-cidade"), uf: $("adm-uf").value || null,
+    banco: v("adm-banco"), agencia: v("adm-agencia"), operacao: v("adm-operacao"), conta: v("adm-conta"), chave_pix: v("adm-pix"),
+    salario_contabil: n("adm-salario"), horario_trabalho: v("adm-horario"), intervalo: v("adm-intervalo"), horas_semanais: n("adm-horas-semanais"), forma_pagamento: v("adm-forma-pagamento")
+  };
+  const r2 = await sb.from("funcionarios_sensiveis").upsert(sens, { onConflict: "funcionario_id" });
+  if(r2.error){
+    aviso("app-aviso", /cpf/i.test(r2.error.message) ? "J\u00e1 existe um funcion\u00e1rio com este CPF (o cadastro ficou sem os dados sens\u00edveis)." : "Funcion\u00e1rio criado, mas os dados sens\u00edveis n\u00e3o foram gravados: " + r2.error.message, "erro");
+    await carregarFuncionarios(); await abrirFuncionario(id); return;
+  }
+  const adm = {
+    funcionario_id: id, data_admissao: v("adm-data"), funcao: v("adm-funcao"), cbo: v("adm-cbo"), salario: n("adm-salario"),
+    prazo_experiencia_dias: n("adm-prazo") ?? 45, prorrogacao_dias: n("adm-prorrogacao") ?? 45, vencimento_1: v("adm-venc1"), vencimento_2: v("adm-venc2"),
+    periculosidade: v("adm-periculosidade"), insalubridade: v("adm-insalubridade"), vale_transporte_cartao: v("adm-vt-cartao"), vale_transporte_opta: b("adm-vt-opta"),
+    unimed_cartao: v("adm-unimed-cartao"), auxilio_saude: v("adm-auxilio-saude"), obra_equipamento_inicial: v("adm-obra-equip"),
+    tipo_documento: v("adm-tipo-documento") || "padrao", status: "rascunho", observacoes: v("adm-obs")
+  };
+  const r3 = await sb.from("admissoes").insert(adm).select().single();
+  if(r3.error){
+    aviso("app-aviso", "Funcion\u00e1rio criado, mas a admiss\u00e3o n\u00e3o foi registrada: " + r3.error.message, "erro");
+    await carregarFuncionarios(); await abrirFuncionario(id); return;
+  }
+  _funcLog = null; _funcPromo.dados = null;
+  await carregarFuncionarios();
+  await abrirFuncionario(id);
+  ativarTabFunc("documentos");
+  if($("adm-gerar-docs").checked && typeof rhdGerarAdmissao === "function"){
+    try {
+      aviso("app-aviso", "Admiss\u00e3o registrada. Gerando a ficha cadastral e o contrato\u2026", "aviso");
+      await rhdGerarAdmissao(id, r3.data);
+      await carregarDocsFuncionario();
+      aviso("app-aviso", "Admiss\u00e3o conclu\u00edda: funcion\u00e1rio cadastrado e PDFs gerados na aba Documentos.", "ok");
+    } catch(e){
+      aviso("app-aviso", "Admiss\u00e3o registrada, mas os PDFs n\u00e3o sa\u00edram: " + (e.message || e) + ". Gere pela aba Documentos.", "erro");
+    }
+  } else {
+    aviso("app-aviso", "Admiss\u00e3o registrada. Gere os PDFs na aba Documentos.", "ok");
+  }
+
+}
+
+/* ====================================================================
+   Fase 93b (20/10/2026): aba ACESSO — login do funcionário criado pelo RH, com o CPF como usuário.
+   Decisão 6 do Bernardo (19/10): operadores, encarregados, ajudantes, soldadores e mecânicos entram no app
+   para lançar horas de viagem, assinar documentos e, depois, contribuir no RDO. A Jucirlene (rh), além de
+   admin e diretor, cria o login aqui: a edge function convidar-usuario (ações *_login_funcionario) lê o CPF
+   em funcionarios_sensiveis com service_role, cria o usuário no Auth com o e-mail técnico
+   <cpf>@funcionarios.cglfundacoes.com.br e a senha digitada, e grava profiles.login_cpf / senha_provisoria /
+   funcionario_id. O CPF nunca passa por aqui: a tela diz "login: CPF do funcionário" e só. Cargo pela função
+   do cadastro (tabela CARGO_POR_FUNCAO na function) ou escolhido no select. Desativar o funcionário (status
+   Demitido, data de demissão ou inativo) desativa o login por gatilho no banco.
+   Bloco independente do resto do arquivo: só a linha de plumbing em carregarFuncionarios() o chama.
+   ==================================================================== */
+const FUNC_ACESSO_CARGOS = { operador: "Operador", encarregado: "Encarregado", mecanico: "Mecânico" };
+let _funcAcesso = { funcionarioId: null, perfil: null, modo: null };   // modo: null | "senha" (formulário de nova senha aberto)
+
+function funcAcessoPodeVer(){ return !!usuarioAtual && ["diretor", "admin", "rh"].includes(usuarioAtual.cargo); }
+function funcAcessoPodeOperar(){ return funcAcessoPodeVer() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
+function funcAcessoAplicarVisibilidade(){
+  const b = document.querySelector('#func-notebook button[data-tab="acesso"]');
+  if(b) b.style.display = funcAcessoPodeVer() ? "" : "none";
+}
+
+async function funcAcessoCarregar(){
+  const cont = $("func-acesso-conteudo");
+  if(!cont) return;
+  if(!funcAcessoPodeVer()){ cont.innerHTML = `<p class="vazio">Só RH, administração e diretoria cuidam do login do funcionário.</p>`; return; }
+  if(!funcEditId){ cont.innerHTML = `<p class="vazio">Salve o funcionário primeiro; depois crie o login aqui.</p>`; return; }
+  if(_funcAcesso.funcionarioId !== funcEditId) _funcAcesso = { funcionarioId: funcEditId, perfil: null, modo: null };
+  cont.innerHTML = `<p class="vazio">Carregando…</p>`;
+  const { data, error } = await sb.from("profiles")
+    .select("id,nome,cargo,ativo,login_cpf,senha_provisoria,created_at")
+    .eq("funcionario_id", funcEditId).maybeSingle();
+  if(error){
+    // 42703: a migration da 93b ainda não está no banco
+    cont.innerHTML = `<p class="vazio">${esc(error.code === "42703" ? "O login por CPF ainda não está liberado neste banco (migration da fase 93b pendente)." : "Não foi possível ler o login: " + error.message)}</p>`;
+    return;
+  }
+  _funcAcesso.perfil = data || null;
+  renderFuncAcesso();
+}
+
+function funcAcessoSenhaHtml(idSufixo, rotuloBotao, idBotao){
+  return `<div class="grade">
+      <div class="campo"><label>Senha (mín. 8 caracteres) *</label>
+        <div class="senha-wrap"><input type="password" id="func-acesso-senha${idSufixo}" autocomplete="new-password" />
+          <button type="button" class="ver-senha" data-ver-senha="func-acesso-senha${idSufixo}">mostrar</button></div></div>
+      <div class="campo"><label>Confirmar senha *</label><input type="password" id="func-acesso-senha2${idSufixo}" autocomplete="new-password" /></div>
+    </div>
+    <p class="meta bloco">A senha é provisória: no primeiro acesso o sistema obriga a troca. Repasse ao funcionário junto com a orientação "entre com o CPF, só números". A senha não fica guardada aqui.</p>
+    <div class="form-acoes compacta"><button type="button" class="btn" id="${idBotao}">${rotuloBotao}</button>${_funcAcesso.modo === "senha" ? ' <button type="button" class="btn-sec" id="btn-func-acesso-cancelar">Cancelar</button>' : ""}</div>`;
+}
+
+function renderFuncAcesso(){
+  const cont = $("func-acesso-conteudo");
+  if(!cont) return;
+  const p = _funcAcesso.perfil;
+  const opera = funcAcessoPodeOperar();
+  const funcAtivo = ($("func-status")?.value || "ativo") !== "demitido" && !$("func-demissao")?.value && ($("func-ativo")?.checked !== false);
+  if(!p){
+    const selCargo = `<div class="campo"><label>Cargo no sistema</label>
+        <select id="func-acesso-cargo"><option value="">Automático pela função (${esc($("func-funcao")?.value || "—")})</option>
+          ${Object.entries(FUNC_ACESSO_CARGOS).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>`;
+    cont.innerHTML = `<div class="meta bloco" style="margin-bottom:12px;"><span class="tag cinza">Sem login</span> Este funcionário ainda não entra no sistema.</div>
+      ${!funcAtivo ? `<p class="vazio">Funcionário inativo ou demitido não recebe login.</p>` : !opera ? `<p class="vazio">Usuário de revisão não cria login.</p>` : `
+      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais. Operadores e ajudantes entram como <em>Operador</em>, encarregados como <em>Encarregado</em>, soldadores e mecânicos como <em>Mecânico</em>; outra função pede o cargo aqui.</p>
+      <div class="grade">${selCargo}</div>
+      ${funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar")}`}`;
+    return;
+  }
+  const situacao = p.ativo === false ? `<span class="tag vermelho">Login desativado</span>`
+    : p.senha_provisoria ? `<span class="tag ambar">Senha provisória</span> <span class="tag verde">Login ativo</span>`
+    : `<span class="tag verde">Login ativo</span>`;
+  cont.innerHTML = `<div class="odoo-contexto" style="margin:0 0 12px;">
+      <div class="chip"><span>Situação</span><strong>${situacao}</strong></div>
+      <div class="chip"><span>Login</span><strong>CPF do funcionário</strong></div>
+      <div class="chip"><span>Cargo</span><strong>${esc(FUNC_ACESSO_CARGOS[p.cargo] || (typeof CARGOS !== "undefined" && CARGOS[p.cargo]) || p.cargo || "—")}</strong></div>
+      <div class="chip"><span>Criado em</span><strong>${p.created_at ? dataBR(p.created_at.slice(0, 10)) : "—"}</strong></div>
+    </div>
+    <p class="meta bloco" style="margin-bottom:12px;">${p.ativo === false
+      ? "O funcionário não consegue entrar. Reativar libera o acesso de novo (com a senha de antes ou uma nova)."
+      : p.senha_provisoria ? "Ele ainda não trocou a senha definida pelo RH: no primeiro acesso o sistema obriga a troca."
+      : "Senha já trocada pelo funcionário. Sem a senha, defina uma nova aqui e repasse."}</p>
+    ${!opera ? "" : _funcAcesso.modo === "senha"
+      ? funcAcessoSenhaHtml("-nova", p.ativo === false ? "✅ Reativar com esta senha" : "🔑 Definir nova senha", p.ativo === false ? "btn-func-acesso-reativar-senha" : "btn-func-acesso-nova-senha-ok")
+      : `<div class="form-acoes compacta">
+          ${p.ativo === false
+            ? `<button type="button" class="btn" id="btn-func-acesso-reativar" ${funcAtivo ? "" : 'disabled title="Reative o cadastro do funcionário antes"'}>✅ Reativar login</button>
+               <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha" ${funcAtivo ? "" : "disabled"}>🔑 Reativar com nova senha</button>`
+            : `<button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha">🔑 Nova senha</button>
+               <button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo);">⛔ Desativar login</button>`}
+        </div>`}`;
+}
+
+/* chama a edge function convidar-usuario (mesmo caminho da tela Usuários); erro vira exceção com a mensagem da function */
+async function funcAcessoChamar(payload){
+  const { data:{ session } } = await sb.auth.getSession();
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/convidar-usuario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token || ""}`, "apikey": SUPABASE_KEY },
+    body: JSON.stringify(Object.assign({ funcionario_id: funcEditId }, payload))
+  });
+  const body = await resp.json().catch(() => ({}));
+  if(!resp.ok){ const e = new Error(body?.error || `Falha na function (HTTP ${resp.status})`); e.body = body; throw e; }
+  return body;
+}
+
+/* lê e valida o par de senhas do formulário; devolve a senha ou null (com aviso) */
+function funcAcessoLerSenha(sufixo){
+  const s1 = $(`func-acesso-senha${sufixo}`)?.value || "", s2 = $(`func-acesso-senha2${sufixo}`)?.value || "";
+  if(s1.length < 8){ aviso("func-acesso-aviso", "A senha precisa de pelo menos 8 caracteres.", "erro"); return null; }
+  if(s1 !== s2){ aviso("func-acesso-aviso", "As senhas não conferem.", "erro"); return null; }
+  if(/^\d+$/.test(s1) && s1.length === 11){ aviso("func-acesso-aviso", "A senha não pode ser só os 11 dígitos de um CPF.", "erro"); return null; }
+  return s1;
+}
+
+async function funcAcessoCriar(){
+  if(!funcAcessoPodeOperar() || !funcEditId) return;
+  const senha = funcAcessoLerSenha("");
+  if(!senha) return;
+  const cargo = $("func-acesso-cargo")?.value || "";
+  try {
+    const r = await funcAcessoChamar({ acao: "criar_login_funcionario", senha, cargo: cargo || undefined });
+    aviso("func-acesso-aviso", `Login criado como ${FUNC_ACESSO_CARGOS[r.cargo] || r.cargo}. Repasse ao funcionário: entrar com o CPF (só números) e a senha que você digitou; o sistema pede a troca no primeiro acesso.`, "ok");
+  } catch(err){
+    if(err.body?.cargo_indefinido) aviso("func-acesso-aviso", err.message + " Escolha em \"Cargo no sistema\".", "erro");
+    else aviso("func-acesso-aviso", err.message, "erro");
+    return;
+  }
+  _funcAcesso.modo = null;
+  await funcAcessoCarregar();
+}
+
+async function funcAcessoNovaSenha(){
+  if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
+  const senha = funcAcessoLerSenha("-nova");
+  if(!senha) return;
+  if(!confirm("Definir a nova senha? A senha atual deixa de valer e o funcionário sai do sistema em todos os aparelhos.")) return;
+  try {
+    await funcAcessoChamar({ acao: "nova_senha_funcionario", senha });
+    aviso("func-acesso-aviso", "Nova senha definida (provisória: ele troca no primeiro acesso). Repasse ao funcionário.", "ok");
+  } catch(err){ aviso("func-acesso-aviso", err.message, "erro"); return; }
+  _funcAcesso.modo = null;
+  await funcAcessoCarregar();
+}
+
+async function funcAcessoDesativar(){
+  if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
+  if(!confirm(`Desativar o login de ${$("func-nome")?.value || "este funcionário"}? Ele sai do sistema agora e não entra mais até ser reativado. O cadastro do funcionário não muda.`)) return;
+  try {
+    await funcAcessoChamar({ acao: "desativar_login_funcionario" });
+    aviso("func-acesso-aviso", "Login desativado.", "ok");
+  } catch(err){ aviso("func-acesso-aviso", err.message, "erro"); return; }
+  await funcAcessoCarregar();
+}
+
+async function funcAcessoReativar(comSenha){
+  if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
+  let senha = null;
+  if(comSenha){ senha = funcAcessoLerSenha("-nova"); if(!senha) return; }
+  try {
+    await funcAcessoChamar(senha ? { acao: "reativar_login_funcionario", senha } : { acao: "reativar_login_funcionario" });
+    aviso("func-acesso-aviso", senha ? "Login reativado com a nova senha (provisória). Repasse ao funcionário." : "Login reativado; a senha é a mesma de antes.", "ok");
+  } catch(err){ aviso("func-acesso-aviso", err.message, "erro"); return; }
+  _funcAcesso.modo = null;
+  await funcAcessoCarregar();
+}
+
+function ligarFuncAcesso(){
+  // a aba carrega a cada clique (o funcionário aberto pode ter mudado); nada muda em abrirFuncionario()
+  document.querySelector('#func-notebook button[data-tab="acesso"]')?.addEventListener("click", () => {
+    const av = $("func-acesso-aviso"); if(av){ av.textContent = ""; av.className = "aviso"; }
+    _funcAcesso.modo = null;
+    funcAcessoCarregar();
+  });
+  $("func-acesso-conteudo")?.addEventListener("click", (e) => {
+    const ver = e.target.closest("[data-ver-senha]");
+    if(ver){ const inp = $(ver.dataset.verSenha); if(inp){ const oculto = inp.type === "password"; inp.type = oculto ? "text" : "password"; ver.textContent = oculto ? "ocultar" : "mostrar"; } return; }
+    const b = e.target.closest("button[id]");
+    if(!b) return;
+    switch(b.id){
+      case "btn-func-acesso-criar":          comBotaoTravado(b, funcAcessoCriar); break;
+      case "btn-func-acesso-abrir-senha":    _funcAcesso.modo = "senha"; renderFuncAcesso(); $("func-acesso-senha-nova")?.focus(); break;
+      case "btn-func-acesso-cancelar":       _funcAcesso.modo = null; renderFuncAcesso(); break;
+      case "btn-func-acesso-nova-senha-ok":  comBotaoTravado(b, funcAcessoNovaSenha); break;
+      case "btn-func-acesso-desativar":      comBotaoTravado(b, funcAcessoDesativar); break;
+      case "btn-func-acesso-reativar":       comBotaoTravado(b, () => funcAcessoReativar(false)); break;
+      case "btn-func-acesso-reativar-senha": comBotaoTravado(b, () => funcAcessoReativar(true)); break;
+    }
+  });
+}
+
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", ligarFuncAcesso);
+} else {
+  ligarFuncAcesso();
 }

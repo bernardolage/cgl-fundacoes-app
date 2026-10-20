@@ -25,6 +25,40 @@ let _rdoBoletimAberto = null;
 let _rdoObraParams = null;    // obras.concretagem_tipo_padrao/traco/peso_saco/fator_perda/jornada_* da obra da ficha
 
 const RDO_STAGES = ["rascunho","finalizado"];
+
+/* fase 94 (#75): etapa final reconhecida. Espelho de fn_rdo_exec_etapa_final: quem GRAVA etapa_final é o gatilho
+   trg_rdo_exec_antes no banco; aqui só se mostra, na grade e na prévia de importação, o que vai acontecer ao salvar.
+   metragem (no dia ou acumulado) → "metragem"; senão, nome de estaca + palavra de empresa_config.rdo_palavras_etapa_final
+   na observação → injeção/concretagem/argamassado pela raiz da palavra. Sem etapa, a linha fica vinculada à estaca
+   mas não muda o status dela (locação, marcação, descida de armação). */
+const RDO_ETAPA_LBL = { metragem: "metragem", injecao: "injeção", concretagem: "concretagem", argamassado: "argamassado", outra: "outra etapa" };
+const RDO_PALAVRAS_PADRAO = ["injeção", "injetada", "concretagem", "concretada", "argamassado", "argamassa"];
+let _rdoPalavrasEtapa = null;   // null = ainda não lidas do banco
+function rdoSemAcento(s){ return String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+async function rdoCarregarPalavrasEtapa(){
+  if(_rdoPalavrasEtapa) return _rdoPalavrasEtapa;
+  const { data } = await sb.from("empresa_config").select("rdo_palavras_etapa_final").eq("id", 1).maybeSingle();
+  const lista = data && Array.isArray(data.rdo_palavras_etapa_final) ? data.rdo_palavras_etapa_final.filter(Boolean) : [];
+  _rdoPalavrasEtapa = lista.length ? lista : RDO_PALAVRAS_PADRAO;
+  return _rdoPalavrasEtapa;
+}
+function rdoEtapaFinal(e){
+  if((Number(e.profundidade_executada) || 0) > 0 || (Number(e.perfuracao_ate_m) || 0) > 0) return "metragem";
+  if(!String(e.estaca_numero || "").trim() || !String(e.observacoes || "").trim()) return null;
+  const obs = rdoSemAcento(e.observacoes);
+  for(const p0 of (_rdoPalavrasEtapa || RDO_PALAVRAS_PADRAO)){
+    const p = rdoSemAcento(p0).trim();
+    if(p && obs.includes(p)) return /inje/.test(p) ? "injecao" : /concret/.test(p) ? "concretagem" : /argamass/.test(p) ? "argamassado" : "outra";
+  }
+  return null;
+}
+function rdoEtapaHTML(e){
+  const et = rdoEtapaFinal(e);
+  if(!et) return `<span class="meta" title="Sem metragem e sem palavra de etapa final na observação: a linha fica ligada à estaca, mas não muda o status dela">—</span>`;
+  const porObs = et !== "metragem";
+  return `<span class="tag ${porObs ? "ambar" : "verde"}" title="${porObs ? "Reconhecida pela observação: a estaca conta como executada neste dia (fica duas semanas em Para regularizar para conferência)" : "Há metragem: a estaca conta como executada"}">${esc(RDO_ETAPA_LBL[et] || et)}</span>`;
+}
+
 /* lote S42 (L5): texto do diário → equipamento. Aceita o código externo, o código (com ou sem espaço/hífen), o nome
    e os apelidos TAG-NN, TAG NN, EQP-NN, EQ NN e NN (o número da TAG: equipamentos.codigo começa com "NN-"; com
    letra, "55B" casa "55B-CM"). Devolve o equipamento ou null; número que serve a mais de uma TAG também devolve null. */
@@ -70,13 +104,22 @@ function rdoPreencherObras(){
 async function rdoCarregarAuxiliares(){
   const [f, e, p] = await Promise.all([
     sb.from("funcionarios").select("id,nome,matricula,funcao").eq("ativo",true).order("nome"),
-    sb.from("equipamentos").select("id,codigo,nome,codigo_externo,tipo").eq("ativo",true).order("codigo"),
+    sb.from("equipamentos").select("id,codigo,nome,codigo_externo,tipo,horimetro").eq("ativo",true).order("codigo"),   // fase 92: horímetro atual no bloco de abastecimento
     sb.from("profiles").select("id,nome").eq("ativo",true).order("nome")
   ]);
   _rdoFuncs = f.data || [];
   _rdoEquipsCache = e.data || [];
   // chamado #30: rdo.responsavel_id aponta para profiles, não para funcionarios
   preencherSelect($("rdo-responsavel"), p.data || [], "id", "nome", "— não informado —");
+  // fase 94 (#77): máquina do diário no cabeçalho e filtro por máquina na lista (perfuratriz e bate-estaca primeiro)
+  const ehPerf = (q) => ["perfuratriz", "bate_estaca"].includes(q.tipo) ? 0 : 1;
+  const maqs = [..._rdoEquipsCache].sort((a, b) => ehPerf(a) - ehPerf(b) || String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR", { numeric: true }));
+  const optMaq = maqs.map(q => `<option value="${esc(q.id)}">${esc(q.codigo || "")}${q.nome ? " — " + esc(q.nome) : ""}</option>`).join("");
+  const selEq = $("rdo-equipamento");
+  if(selEq){ const v = selEq.value; selEq.innerHTML = '<option value="">— sem máquina (equipe de apoio) —</option>' + optMaq; selEq.value = v; }
+  const selF = $("rdo-f-maquina");
+  if(selF){ const v = selF.value; selF.innerHTML = '<option value="">Todas as máquinas</option><option value="sem">Sem máquina</option>' + optMaq; selF.value = v; }
+  rdoCarregarPalavrasEtapa();
 }
 
 /* ---------- Carga lista ---------- */
@@ -105,12 +148,14 @@ function rdoFiltrados(){
   const fObra  = $("rdo-f-obra")?.value || "";
   const fStat  = $("rdo-f-status")?.value || "";
   const fTipo  = $("rdo-f-tipo")?.value || "";
+  const fMaq   = $("rdo-f-maquina")?.value || "";   // fase 94: "" todas · "sem" diário sem máquina · uuid
   return _rdos.filter(r => {
     if(fObra && r.obra_id !== fObra) return false;
     if(fStat && r.status !== fStat) return false;
     if(fTipo && r.tipo_servico !== fTipo) return false;
+    if(fMaq === "sem" ? r.equipamento_id : (fMaq && r.equipamento_id !== fMaq)) return false;
     if(!termo) return true;
-    const alvo = `${mapaObras[r.obra_id]||""} ${dataBR(r.data)} ${(TIPO_SERVICO[r.tipo_servico]||{}).label||""}`.toLowerCase();
+    const alvo = `${mapaObras[r.obra_id]||""} ${dataBR(r.data)} ${(TIPO_SERVICO[r.tipo_servico]||{}).label||""} ${r.maquina || ""}`.toLowerCase();
     return alvo.includes(termo);
   });
 }
@@ -139,6 +184,7 @@ function renderRDOLista(dados){
       <td>${dataBR(r.data)}</td>
       <td>${linkObra(r.obra_id)}</td>
       <td>${t.icone} ${esc(t.label)}</td>
+      <td>${rdoCelulaMaquina(r)}</td>
       <td>${r.qtd_estacas_executadas || 0}</td>
       <td class="num">${num(r.metragem_total)} m</td>
       <td class="num">${num(r.concreto_total_m3)} m³</td>
@@ -147,7 +193,7 @@ function renderRDOLista(dados){
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Data</th><th>Obra</th><th>Tipo</th><th>Estacas</th>
+      <th>Data</th><th>Obra</th><th>Tipo</th><th title="Fase 94: um diário por máquina">Máquina</th><th>Estacas</th>
       <th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
@@ -237,6 +283,7 @@ async function novoRDO(){
   $("rdo-data").value = hojeISO();
   if($("rdo-feriado")) $("rdo-feriado").checked = false;
   $("rdo-tipo-servico").value = "helice_continua";
+  if($("rdo-equipamento")) $("rdo-equipamento").value = "";   // fase 94
   $("rdo-status").value = "rascunho";
   $("rdo-responsavel").value = "";
   if($("rdo-local")) $("rdo-local").value = "";
@@ -282,6 +329,7 @@ async function abrirRDO(id){
   $("rdo-data").value             = (data.data||"").slice(0,10);
   if($("rdo-feriado")) $("rdo-feriado").checked = !!data.feriado;
   $("rdo-tipo-servico").value     = data.tipo_servico || "helice_continua";
+  if($("rdo-equipamento")) $("rdo-equipamento").value = data.equipamento_id || "";   // fase 94
   $("rdo-status").value           = data.status || "rascunho";
   $("rdo-responsavel").value      = data.responsavel_id || "";
   if($("rdo-local")) $("rdo-local").value = data.local || "";
@@ -347,7 +395,9 @@ function abrirFichaRDOVisual(rdo){
   $("rdo-ficha-execs-chip").textContent = _rdoExecucoes.length;
   const metragem = _rdoExecucoes.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
   $("rdo-ficha-metragem-chip").textContent = `${num(metragem)} m`;
-  $("rdo-ficha-titulo").textContent = rdoEditId ? `RDO ${dataBR(rdo.data)}` : "Novo RDO";
+  const maqTit = rdo.equipamento_id ? (_rdoEquipsCache.find(q => q.id === rdo.equipamento_id) || {}).codigo : null;
+  $("rdo-ficha-titulo").textContent = rdoEditId ? `RDO ${dataBR(rdo.data)}${maqTit ? " · " + maqTit : ""}` : "Novo RDO";
+  rdoAtualizarChipMaquina(rdo.equipamento_id || null);   // fase 94: chip da máquina, aviso e botão "Dividir por máquina"
   // fase 83: pedido de material ao almoxarifado a partir do RDO (encarregado em campo)
   const bPed = $("btn-rdo-pedir-material");
   if(bPed) bPed.style.display = rdo.obra_id && typeof sepPodePedir === "function" && sepPodePedir() ? "" : "none";
@@ -380,11 +430,9 @@ async function atualizarVizinhosRDO(rdo){
   }
 
   // Busca todos os RDOs da mesma obra+tipo ordenados por data
-  const { data, error } = await sb.from("rdo")
-    .select("id,data")
-    .eq("obra_id", rdo.obra_id)
-    .eq("tipo_servico", rdo.tipo_servico)
-    .order("data", { ascending: true });
+  let q = sb.from("rdo").select("id,data").eq("obra_id", rdo.obra_id).eq("tipo_servico", rdo.tipo_servico);
+  q = rdo.equipamento_id ? q.eq("equipamento_id", rdo.equipamento_id) : q.is("equipamento_id", null);   // fase 94: anterior/próximo da mesma máquina
+  const { data, error } = await q.order("data", { ascending: true });
   if(error || !data){
     btnAnt.style.display = "none";
     btnProx.style.display = "none";
@@ -484,7 +532,7 @@ function renderExecucoes(){
   }
 
   if(!_rdoExecucoes.length){
-    tb.innerHTML = `<tr><td colspan="16" class="vazio">Nenhuma estaca registrada. Adicione manualmente ou importe um CSV.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="17" class="vazio">Nenhuma estaca registrada. Adicione manualmente ou importe um CSV.</td></tr>`;
     return;
   }
   const eqOpts = '<option value="">—</option>' +
@@ -511,6 +559,7 @@ function renderExecucoes(){
       <td><input type="text" class="ex-maq col-xs" value="${esc(e.maquina_codigo||"")}" placeholder="ou texto" /></td>
       <td><select class="ex-operador" style="min-width:140px;">${opOpts}</select></td>
       <td><input type="text" class="ex-obs" value="${esc(e.observacoes||"")}" style="min-width:140px;" /></td>
+      <td class="ex-etapa">${rdoEtapaHTML(e)}</td>
       <td data-col-tipo="estaca_raiz"><button type="button" class="btn-sec btn-sm btn-boletim-toggle" data-idx="${idx}" style="${bltStyle}" title="Boletim desta estaca">📋</button></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-ex-rem txt-perigo" data-idx="${idx}">×</button></td>
     </tr>`;
@@ -622,6 +671,8 @@ function coletarExecucao(tr, idx){
   e.operador_id         = tr.querySelector(".ex-operador")?.value || null;
   e.observacoes         = tr.querySelector(".ex-obs")?.value.trim() || null;
   _rdoExecucoes[idx] = e;
+  const tdEt = tr.querySelector(".ex-etapa");   // fase 94: etapa final prevista para a linha
+  if(tdEt) tdEt.innerHTML = rdoEtapaHTML(e);
   atualizarChipsExec();
 }
 
@@ -1066,7 +1117,7 @@ function renderRdoEquipe(){
   const tb = $("rdo-equipe-tbody");
   if(!tb) return;
   if(!_rdoEquipe.length){
-    tb.innerHTML = `<tr><td colspan="11" class="vazio">Nenhum integrante. Use "+ integrante" ou "📥 Importar equipe".</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="12" class="vazio">Nenhum integrante. Use "+ integrante" ou "📥 Importar equipe".</td></tr>`;
     return;
   }
   const optFunc = '<option value="">— do cadastro —</option>' +
@@ -1074,7 +1125,9 @@ function renderRdoEquipe(){
   const optFuncao = '<option value="">—</option>' +
     RDO_FUNCOES.map(o=>`<option value="${o.v}">${o.l}</option>`).join("");
 
-  tb.innerHTML = _rdoEquipe.map((e, idx) => `<tr data-idx="${idx}">
+  // fase 93c: linha já liberada para a folha (rdo_equipe.liberado_em) fica travada: o banco recusa alterar ou apagar e o
+  // salvar do RDO pula essas linhas (delete só do que não foi liberado). Estorno em "Horas e alocação".
+  tb.innerHTML = _rdoEquipe.map((e, idx) => `<tr data-idx="${idx}"${e.liberado_em ? ' class="eq-liberada" title="Horas liberadas para a folha em ' + esc(dataBR(String(e.liberado_em).slice(0, 10))) + ': estorne em Horas e alocação para alterar"' : ""}>
     <td><strong>${idx+1}</strong></td>
     <td><select class="eq-func">${optFunc}</select></td>
     <td><input type="text" class="eq-nome" placeholder="terceiro sem cadastro" value="${esc(e.nome_avulso||"")}" style="min-width:140px;" /></td>
@@ -1084,8 +1137,9 @@ function renderRdoEquipe(){
     <td><input type="number" class="eq-interv" step="5" min="0" max="240" value="${e.intervalo_minutos ?? ""}" style="width:60px;" placeholder="60" title="Intervalo real de almoço (min). Vazio = 60; piso 30" /></td>
     <td><input type="number" class="eq-h50" step="0.5" min="0" value="${e.horas_50 ?? ""}" style="width:60px;" /></td>
     <td><input type="number" class="eq-h100" step="0.5" min="0" value="${e.horas_100 ?? ""}" style="width:60px;" /></td>
+    <td><input type="number" class="eq-hnot" step="0.25" min="0" max="24" value="${e.horas_noturnas ?? ""}" style="width:60px;" title="Horas entre 22h e 5h, calculadas da entrada e saída (com virada de dia). Digite para corrigir à mão${e.horas_noturnas_manual ? " · corrigida à mão" : ""}" /></td>
     <td><input type="text" class="eq-obs" value="${esc(e.observacoes||"")}" style="min-width:120px;" /></td>
-    <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-eq-rem txt-perigo" data-idx="${idx}">×</button></td>
+    <td class="col-acao">${e.liberado_em ? '<span title="Liberada para a folha">🔒</span>' : `<button type="button" class="btn-sec btn-sm btn-eq-rem txt-perigo" data-idx="${idx}">×</button>`}</td>
   </tr>`).join("");
 
   // Aplica valores de select (que não funcionam via innerHTML value)
@@ -1094,6 +1148,7 @@ function renderRdoEquipe(){
     if(!tr) return;
     if(e.funcionario_id) tr.querySelector(".eq-func").value = e.funcionario_id;
     if(e.funcao_no_dia)  tr.querySelector(".eq-funcao").value = e.funcao_no_dia;
+    if(e.liberado_em) tr.querySelectorAll("input,select").forEach(i => { if(!i.classList.contains("eq-obs")) i.disabled = true; });
   });
 
   // Listener único: sincroniza qualquer mudança pro array
@@ -1110,21 +1165,30 @@ function renderRdoEquipe(){
         intervalo_minutos: tr.querySelector(".eq-interv").value === "" ? null : Number(tr.querySelector(".eq-interv").value),
         horas_50:       parseFloat(tr.querySelector(".eq-h50").value)  || null,
         horas_100:      parseFloat(tr.querySelector(".eq-h100").value) || null,
+        horas_noturnas: tr.querySelector(".eq-hnot").value === "" ? null : (parseFloat(tr.querySelector(".eq-hnot").value) || 0),   // fase 93c
         observacoes:    tr.querySelector(".eq-obs").value.trim() || null,
         ordem:          idx
       };
     };
     tr.addEventListener("input", sync);
     tr.addEventListener("change", sync);
-    // Entrada/saída/intervalo → HE 100 calculada pela jornada da obra (regra RH 11/09/2026); a pessoa pode ajustar depois
+    // Noturnas digitadas à mão valem (horas_noturnas_manual): o gatilho do banco não recalcula
+    tr.querySelector(".eq-hnot")?.addEventListener("input", () => { _rdoEquipe[idx] = { ..._rdoEquipe[idx], horas_noturnas_manual: true }; });
+    // Entrada/saída/intervalo → HE 100 calculada pela jornada da obra (regra RH 11/09/2026); a pessoa pode ajustar depois.
+    // Fase 93c: noturnas (22h–5h, com virada de dia) recalculadas junto, salvo quando corrigidas à mão
     [".eq-entrada", ".eq-saida", ".eq-interv"].forEach(cls => tr.querySelector(cls)?.addEventListener("change", async () => {
       const obraId = $("rdo-obra")?.value;
       if(obraId && !_rdoObraParams) await carregarParamsObraRDO(obraId);
       const l = _rdoEquipe[idx] || {};
+      if(!l.horas_noturnas_manual){
+        const n = calcularHorasNoturnas(l.hora_entrada, l.hora_saida);
+        tr.querySelector(".eq-hnot").value = n == null ? "" : n;
+      }
       const r = calcularHorasEquipe($("rdo-data")?.value, l.hora_entrada, l.hora_saida, jornadaEfetiva(_rdoObraParams), l.intervalo_minutos, !!$("rdo-feriado")?.checked);
-      if(!r) return;
-      tr.querySelector(".eq-h100").value = r.horas_100 || "";
-      tr.querySelector(".eq-h50").value = "";
+      if(r){
+        tr.querySelector(".eq-h100").value = r.horas_100 || "";
+        tr.querySelector(".eq-h50").value = "";
+      }
       sync();
     }));
   });
@@ -1148,7 +1212,7 @@ function renderRdoAbast(){
     <td><select class="ab-maq">${optMaq}</select>${a.maquina_codigo && !a.equipamento_id ? `<div class="meta">no diário: ${esc(a.maquina_codigo)}</div>` : ""}</td>
     <td><select class="ab-comb">${optComb}</select></td>
     <td><input type="number" class="ab-qtd" step="0.01" min="0" value="${a.quantidade ?? ""}" style="width:90px;" /></td>
-    <td><input type="number" class="ab-hor" step="0.1" min="0" value="${a.horimetro ?? ""}" style="width:100px;" /></td>
+    <td><input type="number" class="ab-hor" step="0.1" min="0" value="${a.horimetro ?? ""}" style="width:100px;" /><div class="meta ab-hor-atual"></div></td>
     <td><input type="text" class="ab-obs" value="${esc(a.observacao || "")}" style="min-width:140px;" /></td>
     <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-ab-rem txt-perigo" data-idx="${idx}">×</button></td>
   </tr>`).join("");
@@ -1168,11 +1232,30 @@ function renderRdoAbast(){
         quantidade: tr.querySelector(".ab-qtd").value === "" ? null : Number(tr.querySelector(".ab-qtd").value),
         horimetro:  tr.querySelector(".ab-hor").value === "" ? null : Number(tr.querySelector(".ab-hor").value),
         observacao: tr.querySelector(".ab-obs").value.trim() || null };
+      rdoAbastAvisoHorimetro(tr);
     };
     tr.addEventListener("input", sync);
     tr.addEventListener("change", sync);
+    rdoAbastAvisoHorimetro(tr);
   });
   tb.querySelectorAll(".btn-ab-rem").forEach(b => b.addEventListener("click", () => { _rdoAbast.splice(Number(b.dataset.idx), 1); renderRdoAbast(); }));
+}
+/* Fase 92 (decisão 7): o horímetro do abastecimento atualiza a máquina (gatilho em rdo_abastecimento). O operador vê o
+   horímetro atual da TAG embaixo do campo e um aviso quando digita um número menor — erro de digitação é corrigido aqui,
+   antes de salvar; o banco nunca retrocede sozinho. */
+function rdoAbastAvisoHorimetro(tr){
+  const info = tr.querySelector(".ab-hor-atual"); if(!info) return;
+  const eqId = tr.querySelector(".ab-maq")?.value || null;
+  const eq = eqId ? _rdoEquipsCache.find(e => e.id === eqId) : null;
+  const atual = eq && eq.horimetro != null ? Number(eq.horimetro) : null;
+  const digitado = tr.querySelector(".ab-hor")?.value;
+  if(atual == null){ info.textContent = eq ? "sem horímetro na máquina" : ""; info.className = "meta ab-hor-atual"; return; }
+  if(digitado !== "" && Number(digitado) < atual){
+    info.innerHTML = `<span class="tag ambar" title="O horímetro da máquina não volta para trás: confira o diário">menor que o atual (${esc(num(atual))} h)</span>`;
+  } else {
+    info.textContent = `atual: ${num(atual)} h`;
+    info.className = "meta ab-hor-atual";
+  }
 }
 function adicionarRdoAbast(){
   _rdoAbast.push({ combustivel: "diesel" });
@@ -1234,6 +1317,7 @@ async function salvarRDO(novoStatus){
     obra_id,
     data:             dataRDO,
     tipo_servico:     tipo,
+    equipamento_id:   $("rdo-equipamento")?.value || null,   // fase 94 (#77): um diário por máquina
     status:           novoStatus || $("rdo-status").value || "rascunho",
     responsavel_id:   $("rdo-responsavel").value || null,
     local:            $("rdo-local")?.value.trim() || null,
@@ -1253,7 +1337,7 @@ async function salvarRDO(novoStatus){
     if(error){
       const m = (error.message||"").toLowerCase();
       if(m.includes("duplicate"))
-        aviso("app-aviso","Já existe um RDO pra esta obra nesta data.","erro");
+        aviso("app-aviso","Já existe um diário desta máquina (ou sem máquina) nesta obra, data e tipo de serviço. Abra o existente pela lista ou troque a máquina.","erro");
       else
         aviso("app-aviso","Erro ao salvar: "+error.message,"erro");
       return;
@@ -1264,7 +1348,8 @@ async function salvarRDO(novoStatus){
     // antigo não pode ficar órfão).
     const dels = [
       ["rdo_execucao_estaca",   sb.from("rdo_execucao_estaca").delete().eq("rdo_id", rdoEditId)],
-      ["rdo_equipe",            sb.from("rdo_equipe").delete().eq("rdo_id", rdoEditId)],
+      // fase 93c: linha liberada para a folha fica (o banco recusaria o delete); o insert abaixo também a pula
+      ["rdo_equipe",            sb.from("rdo_equipe").delete().eq("rdo_id", rdoEditId).is("liberado_em", null)],
       ["rdo_abastecimento",     sb.from("rdo_abastecimento").delete().eq("rdo_id", rdoEditId)],
       ["rdo_raiz_solo",         sb.from("rdo_raiz_solo").delete().eq("rdo_id", rdoEditId)],
       ["rdo_raiz_justificativa",sb.from("rdo_raiz_justificativa").delete().eq("rdo_id", rdoEditId)],
@@ -1282,7 +1367,7 @@ async function salvarRDO(novoStatus){
     if(error){
       const m = (error.message||"").toLowerCase();
       if(m.includes("duplicate"))
-        aviso("app-aviso","Já existe um RDO pra esta obra nesta data.","erro");
+        aviso("app-aviso","Já existe um diário desta máquina (ou sem máquina) nesta obra, data e tipo de serviço. Abra o existente pela lista ou troque a máquina.","erro");
       else
         aviso("app-aviso","Erro ao salvar: "+error.message,"erro");
       return;
@@ -1300,6 +1385,7 @@ async function salvarRDO(novoStatus){
         rdo_id: savedId,
         estaca_id: e.estaca_id || null,
         estaca_numero: e.estaca_numero,
+        estaca_numero_corrigido: e.estaca_numero_corrigido || null,   // fase 94: vínculo com nome diferente do campo
         diametro_mm: e.diametro_mm,
         profundidade_projeto: e.profundidade_projeto,
         profundidade_executada: e.profundidade_executada,
@@ -1311,7 +1397,7 @@ async function salvarRDO(novoStatus){
         concretagem_fim: e.concretagem_fim || null,
         torque: e.torque,
         volume_concreto_m3: e.volume_concreto_m3,
-        equipamento_id: e.equipamento_id || null,
+        equipamento_id: e.equipamento_id || reg.equipamento_id || null,   // fase 94: linha sem máquina herda a do diário
         maquina_codigo: e.maquina_codigo || null,
         operador_id: e.operador_id || null,
         observacoes: e.observacoes || null,
@@ -1388,9 +1474,10 @@ async function salvarRDO(novoStatus){
       if(r){ e.horas_100 = r.horas_100 || null; e.horas_50 = null; }
     });
   }
-  // Insere equipe do dia (genérico, todos os tipos de RDO)
+  // Insere equipe do dia (genérico, todos os tipos de RDO). Fase 93c: linha já liberada para a folha não é
+  // reinserida (ficou no banco); noturnas vão só quando corrigidas à mão, senão o gatilho calcula (22h–5h)
   const eqLimpa = _rdoEquipe
-    .filter(e => e.funcionario_id || (e.nome_avulso && e.nome_avulso.trim()))
+    .filter(e => !e.liberado_em && (e.funcionario_id || (e.nome_avulso && e.nome_avulso.trim())))
     .map((e,i) => ({
       rdo_id:         savedId,
       funcionario_id: e.funcionario_id || null,
@@ -1401,6 +1488,8 @@ async function salvarRDO(novoStatus){
       intervalo_minutos: e.intervalo_minutos ?? null,
       horas_50:       e.horas_50 || null,
       horas_100:      e.horas_100 || null,
+      horas_noturnas: e.horas_noturnas_manual ? (e.horas_noturnas ?? 0) : (e.hora_entrada && e.hora_saida ? null : (e.horas_noturnas ?? null)),
+      horas_noturnas_manual: !!e.horas_noturnas_manual,
       observacoes:    e.observacoes || null,
       ordem:          i + 1
     }));
@@ -1440,6 +1529,38 @@ async function salvarRDO(novoStatus){
   await abrirRDO(savedId);
 }
 
+/* fase 94 (#77): chip da máquina do diário, aviso de "sem máquina" e botão "Dividir por máquina" */
+function rdoCelulaMaquina(r){
+  return r.equipamento_id
+    ? esc(r.maquina || (_rdoEquipsCache.find(q => q.id === r.equipamento_id) || {}).codigo || "?")
+    : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho (entra em Para regularizar)">sem máquina</span>';
+}
+function rdoAtualizarChipMaquina(eqId){
+  const chip = $("rdo-ficha-maquina-chip");
+  if(chip){
+    const q = eqId ? _rdoEquipsCache.find(x => x.id === eqId) : null;
+    chip.classList.toggle("chip-aviso", !eqId);
+    chip.querySelector("strong").textContent = q ? `${q.codigo}${q.nome ? " — " + q.nome : ""}` : (eqId ? "máquina inativa" : "sem máquina · informe no cabeçalho");
+  }
+  const av = $("rdo-equipamento-aviso");
+  if(av) av.textContent = eqId ? "" : "Diário sem máquina entra em \"Para regularizar\" do responsável da obra até alguém informar.";
+  const maqs = new Set(_rdoExecucoes.map(e => e.equipamento_id).filter(Boolean));
+  const b = $("btn-rdo-dividir");
+  if(b) b.style.display = rdoEditId && maqs.size > 1 && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) ? "" : "none";
+}
+async function rdoDividirPorMaquina(){
+  if(!rdoEditId) return;
+  const maqs = [...new Set(_rdoExecucoes.map(e => e.equipamento_id).filter(Boolean))]
+    .map(id => (_rdoEquipsCache.find(q => q.id === id) || {}).codigo || "?");
+  if(maqs.length < 2){ aviso("app-aviso", "Este diário tem execuções de uma máquina só.", "erro"); return; }
+  if(!confirm(`Dividir este diário em um por máquina (${maqs.join(", ")})?\nAs execuções de cada máquina vão para o diário dela; equipe, abastecimento, observações e atividades ficam no diário da máquina principal. Alterações não salvas desta tela são perdidas.`)) return;
+  const { data, error } = await sb.rpc("rdo_dividir_por_maquina", { p_rdo: rdoEditId });
+  if(error){ aviso("app-aviso", "Não foi possível dividir: " + error.message, "erro"); return; }
+  aviso("app-aviso", `${Number(data) || 0} diário(s) criado(s). Abra cada um pela lista para conferir.`, "ok");
+  await carregarRDO();
+  await abrirRDO(rdoEditId);
+}
+
 async function excluirRDO(){
   if(!rdoEditId) return;
   if(!confirm("Excluir este RDO? Esta ação não pode ser desfeita.")) return;
@@ -1460,7 +1581,7 @@ function ligarRDO(){
       renderRDO();
     });
   });
-  ["rdo-busca","rdo-f-obra","rdo-f-status","rdo-f-tipo"].forEach(id => {
+  ["rdo-busca","rdo-f-obra","rdo-f-status","rdo-f-tipo","rdo-f-maquina"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "rdo-busca" ? "input" : "change", renderRDO);
   });
@@ -1500,6 +1621,7 @@ function ligarRDO(){
   $("btn-rdo-aplicar-op")?.addEventListener("click", aplicarOperadorEmMassa);
   $("btn-rdo-calc-concreto")?.addEventListener("click", calcularConcretoExecucoes);
   $("rdo-obra")?.addEventListener("change", () => carregarParamsObraRDO($("rdo-obra").value));
+  $("rdo-equipamento")?.addEventListener("change", () => rdoAtualizarChipMaquina($("rdo-equipamento").value || null));   // fase 94
   $("rdo-ficha-jornada-link")?.addEventListener("click", (ev) => {
     ev.preventDefault();
     const id = $("rdo-ficha-jornada-chip")?.dataset.obraId || $("rdo-obra")?.value;
@@ -1552,6 +1674,9 @@ function ligarRDO(){
       case "btn-rdo-pedir-material":   // fase 83
         if(typeof abrirPedidoMaterial === "function") abrirPedidoMaterial({ obra_id: $("rdo-obra")?.value || null });
         break;
+      case "btn-rdo-dividir":   // fase 94 (#77)
+        rdoDividirPorMaquina();
+        break;
       case "btn-rdo-anterior":
         navegarRDO("anterior");
         break;
@@ -1588,6 +1713,7 @@ function abrirModalImportCSV(){
   _csvObraDetectada = null;
   _csvTipoDetectado = null;
   _iaExtras = null; _iaOrigem = null;
+  _csvMaqSugerida = null;   // fase 94
   $("csv-modal").style.display = "flex";
 }
 
@@ -1883,6 +2009,7 @@ async function montarPreviewDias(data, origem, obraSel){
       const { data: mobs } = await sb.from("mobilizacoes").select("equipamento_id").eq("obra_id", obraSel).in("status", ["em_preparacao", "em_transito", "em_obra"]).not("equipamento_id", "is", null);
       if(mobs && mobs.length === 1) maqSugerida = _rdoEquipsCache.find(e => e.id === mobs[0].equipamento_id) || null;
     }
+    _csvMaqSugerida = maqSugerida;   // fase 94: oferecida na prévia para as linhas que ficarem sem máquina
     const ts = (dia, hhmm) => hhmm ? `${dia}T${hhmm}:00` : null;
     const registros = [];
     _iaExtras = {};
@@ -2075,6 +2202,40 @@ function diasImportacao(){
   Object.entries(_iaExtras || {}).forEach(([d, ex]) => { if(ex && ex.sem_estacas) s.add(d); });
   return [...s].sort();
 }
+
+/* fase 94 (#77): a importação grava um diário por dia E máquina. A máquina da linha é o equipamento casado
+   (código externo, TAG, apelido), o escolhido no bloco "máquinas sem cadastro" ou, para as linhas que ficarem sem,
+   o select "csv-maq-sem" da prévia (pré-selecionado com a única mobilização ativa da obra). Linha sem nada vai para
+   o diário sem máquina do dia, que entra em "Para regularizar". */
+let _csvMaqSugerida = null;
+function rdoMaqDaLinhaImport(r){
+  if(r.equipamento_id) return r.equipamento_id;
+  if(r.maquina_codigo && _csvMapaManual[r.maquina_codigo]) return _csvMapaManual[r.maquina_codigo];
+  const sel = $("csv-maq-sem");
+  return (sel && sel.value) || null;
+}
+// -> [{ dia, eq (uuid ou null), linhas:[registros] }], um por dia e máquina; dia só com ocorrência vira grupo sem linhas
+function rdoDiariosImport(){
+  const out = [];
+  diasImportacao().forEach(dia => {
+    const grupos = {};
+    (_csvParsed[dia] || []).forEach(r => {
+      const eq = rdoMaqDaLinhaImport(r);
+      (grupos[eq || ""] = grupos[eq || ""] || { dia, eq, linhas: [] }).linhas.push(r);
+    });
+    if(!Object.keys(grupos).length) grupos[""] = { dia, eq: null, linhas: [] };
+    Object.values(grupos).forEach(g => out.push(g));
+  });
+  return out;
+}
+// "🚜 55-HC 8 · 🚜 60-HC 4 · ⚠️ 2 sem máquina" para o título do dia na prévia
+function rdoResumoMaquinasDia(dia){
+  const grupos = rdoDiariosImport().filter(g => g.dia === dia && g.linhas.length);
+  if(!grupos.length) return "";
+  return grupos.map(g => g.eq
+      ? `🚜 ${esc((_rdoEquipsCache.find(q => q.id === g.eq) || {}).codigo || "?")} ${g.linhas.length}`
+      : `<span style="color:var(--aviso-txt);">⚠️ ${g.linhas.length} sem máquina</span>`).join(" · ");
+}
 const iaMinDe  = (ts) => (ts || []).reduce((m, t) => (t.de  != null && (m == null || t.de  < m)) ? t.de  : m, null);
 const iaMaxAte = (ts) => (ts || []).reduce((m, t) => (t.ate != null && (m == null || t.ate > m)) ? t.ate : m, null);
 /* Metragem DO DIA pelos trechos (hotfix 15, mesma regra da extrair-rdo-arquivo v3.3):
@@ -2119,6 +2280,17 @@ async function iaCarregarJornadaObra(obraId){
   return _iaJornadaObra;
 }
 function minutosHHMM(s){ const m = String(s || "").match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+/* Fase 93c: horas entre 22h e 5h de um turno (espelho de rh_horas_noturnas no banco). Saída menor ou igual à entrada
+   é no dia seguinte; saída igual à entrada vale 0. 20h→6h = 7; 7h→17h = 0; 22h→2h = 4. Em quartos de hora. */
+function calcularHorasNoturnas(entrada, saida){
+  const e = minutosHHMM(entrada), s0 = minutosHHMM(saida);
+  if(e == null || s0 == null) return null;
+  if(s0 === e) return 0;
+  const s = s0 > e ? s0 : s0 + 1440;
+  const janelas = [[0, 300], [1320, 1740], [2760, 3180]];
+  const min = janelas.reduce((t, [ini, fim]) => t + Math.max(0, Math.min(s, fim) - Math.max(e, ini)), 0);
+  return Math.round(min / 60 * 4) / 4;
+}
 function calcularHorasEquipe(dataISO, entrada, saida, jornada, intervaloMin, feriado){
   const e = minutosHHMM(entrada), sd = minutosHHMM(saida);
   if(e == null || sd == null) return null;
@@ -2211,8 +2383,9 @@ function renderConferenciaIA(resp){
       (respForaCadastro ? `<option value="${esc(respForaCadastro)}" selected>${esc(respForaCadastro)} (fora do cadastro)</option>` : "") +
       (idsEquipe.size ? `<optgroup label="Equipe do dia">${_rdoFuncs.filter(f => idsEquipe.has(f.id)).map(f => `<option value="${esc(f.nome)}"${f.id===idSugerido?" selected":""}>${esc(f.nome)}${f.funcao ? " · " + esc(f.funcao) : ""}</option>`).join("")}</optgroup>` : "") +
       `<optgroup label="Outros do cadastro">${_rdoFuncs.filter(f => !idsEquipe.has(f.id)).map(f => `<option value="${esc(f.nome)}"${f.id===idSugerido?" selected":""}>${esc(f.nome)}</option>`).join("")}</optgroup>`;
+    const maqDia = rdoResumoMaquinasDia(dia);   // fase 94: um diário por máquina
     html += `<div class="ia-dia" data-dia="${esc(dia)}">
-      <div class="ia-dia-titulo">📅 ${dataBR(dia)}</div>
+      <div class="ia-dia-titulo">📅 ${dataBR(dia)}${maqDia ? ` <span class="meta csv-maq-dia" data-dia="${esc(dia)}" style="font-weight:400;">· ${maqDia}</span>` : ""}</div>
       <div class="grade ia-cab">
         <div class="campo"><label>Tempo manhã</label><select data-cab="tempo_manha">${tempoOpts(ex.tempo_manha)}</select></div>
         <div class="campo"><label>Tempo tarde</label><select data-cab="tempo_tarde">${tempoOpts(ex.tempo_tarde)}</select></div>
@@ -2236,7 +2409,7 @@ function renderConferenciaIA(resp){
         <button type="button" class="btn-sec btn-sm ia-add-just" style="margin-top:6px;">+ atividade</button>
       </details>
       <div class="tabela-rola"><table class="itens-tabela ia-tabela ia-estacas">
-        <thead><tr><th>Estaca</th><th title="Bloco / anel / pilar">Agrup.</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th title="Metros perfurados neste dia (o que a medição soma)">No dia (m)</th><th title="Início do trecho perfurado no dia">De (m)</th><th title="Até onde a estaca chegou ao fim do dia: profundidade acumulada">Acum. (m)</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th></th></tr></thead>
+        <thead><tr><th>Estaca</th><th title="Bloco / anel / pilar">Agrup.</th><th>Refuro</th><th>Ø mm</th><th>Prof. proj.</th><th title="Metros perfurados neste dia (o que a medição soma)">No dia (m)</th><th title="Início do trecho perfurado no dia">De (m)</th><th title="Até onde a estaca chegou ao fim do dia: profundidade acumulada">Acum. (m)</th><th>Perf. início</th><th>Perf. fim</th><th>Conc. início</th><th>Conc. fim</th><th>Concreto m³</th><th>Torque</th><th>Máquina</th><th>Obs.</th><th title="Fase 94: por que a estaca conta como executada neste dia (metragem, ou injeção/concretagem/argamassado na observação). Vazio = não muda o status da estaca">Etapa</th><th></th></tr></thead>
         <tbody>${ests.map((e, i) => {
           const trechos = e.trechos || [];
           return `<tr data-idx="${i}">
@@ -2256,9 +2429,10 @@ function renderConferenciaIA(resp){
           <td><input type="number" step="0.1" data-c="torque" value="${v(e.torque)}" style="width:60px" /></td>
           <td><input data-c="maquina_codigo" value="${esc(v(e.maquina_codigo))}" style="width:80px" /></td>
           <td><input data-c="observacoes" value="${esc(v(e.observacoes))}" style="width:140px" /></td>
+          <td class="ia-etapa">${rdoEtapaHTML(e)}</td>
           <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="não importar esta linha">&times;</button></td>
         </tr>
-        <tr class="ia-sub" data-sub="${i}"><td colspan="17">
+        <tr class="ia-sub" data-sub="${i}"><td colspan="18">
           <details class="ia-trechos" ${trechos.length ? "open" : ""}>
             <summary>⛏️ Trechos de solo / ferramenta (${trechos.length})${e.inclinacao ? ` · inclinação ${esc(e.inclinacao)}` : ""}${(e.consumo_cimento_raiz || e.pressao_injecao_kgcm2 != null) ? ` · injeção: cimento ${esc(v(e.consumo_cimento_raiz))} · areia ${esc(v(e.consumo_areia_raiz))} · ${esc(v(e.pressao_injecao_kgcm2))} kg/cm²` : ""}</summary>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:4px 0;">
@@ -2311,6 +2485,14 @@ function renderConferenciaIA(resp){
     </div>`;
   });
   cont.insertAdjacentHTML("beforeend", html);
+
+  // fase 94: a etapa da linha acompanha o que a pessoa digita (metragem ou observação)
+  cont.querySelectorAll("table.ia-estacas > tbody > tr[data-idx]").forEach(tr => tr.addEventListener("input", () => {
+    const g = (c) => tr.querySelector(`[data-c="${c}"]`);
+    const td = tr.querySelector(".ia-etapa");
+    if(td) td.innerHTML = rdoEtapaHTML({ estaca_numero: g("estaca_numero")?.value, observacoes: g("observacoes")?.value,
+      profundidade_executada: g("profundidade_executada")?.value, perfuracao_ate_m: g("perfuracao_ate_m")?.value });
+  }));
 
   // selects (valor via innerHTML não funciona): funcionário casado por linha
   cont.querySelectorAll(".ia-dia").forEach(bloco => {
@@ -2725,16 +2907,24 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     : "📄 <strong>Formato detectado:</strong> Geodigitus (CSV)";
   const blocoFormato = `<div style="background:#eef2f6;border-left:3px solid var(--txt-fraco);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-xs);color:#495057;">${fmtLbl}</div>`;
 
+  // fase 94 (#77): um diário por dia e máquina; linhas sem máquina identificada avisam e podem receber uma máquina aqui
+  const semMaq = registros.filter(r => !r.equipamento_id && !(r.maquina_codigo && _csvMaquinasSemMatch.includes(r.maquina_codigo))).length;
+  const blocoSemMaq = semMaq ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
+      ⚠️ <strong>${semMaq} linha${semMaq>1?"s":""} sem máquina identificada</strong> — vão para o diário sem máquina do dia (que entra em "Para regularizar"), a menos que você escolha a máquina:
+      <select id="csv-maq-sem" style="width:100%;margin-top:6px;"><option value="">— deixar sem máquina —</option>${_rdoEquipsCache.map(e => `<option value="${esc(e.id)}"${_csvMaqSugerida && _csvMaqSugerida.id === e.id ? " selected" : ""}>${esc(e.codigo)} — ${esc(e.nome)}</option>`).join("")}</select>
+      ${_csvMaqSugerida ? `<div class="meta">Sugerida: ${esc(_csvMaqSugerida.codigo)} (única mobilização ativa da obra).</div>` : ""}
+    </div>` : "";
+  const nDiarios = rdoDiariosImport().length;
   // lote S44 (L5, #78): sugestões de vínculo estaca do arquivo ↔ cadastro entram aqui (rdoRenderSugestoesEstacas)
-  let html = blocoFormato + blocoObra + blocoTipo + blocoMaq + `<div id="csv-sugestoes"></div>` + `<div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
-    📊 <strong>${totalEstacas}</strong> estacas em <strong>${dias.length}</strong> dia${dias.length>1?"s":""} — vão gerar ${dias.length} RDO${dias.length>1?"s":""} novo${dias.length>1?"s":""}.
+  let html = blocoFormato + blocoObra + blocoTipo + blocoMaq + blocoSemMaq + `<div id="csv-sugestoes"></div>` + `<div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
+    📊 <strong>${totalEstacas}</strong> estacas em <strong>${dias.length}</strong> dia${dias.length>1?"s":""} — vão gerar <strong id="csv-n-diarios">${nDiarios}</strong> diário${nDiarios>1?"s":""} (um por dia e máquina).
     Total metragem: <strong>${num(registros.reduce((s,r) => s + (r.profundidade_executada||0), 0))} m</strong>.
     Total concreto: <strong>${num(registros.reduce((s,r) => s + (r.volume_concreto_m3||0), 0))} m³</strong>.
   </div>`;
   dias.forEach(d => {
     const ests = porDia[d] || []; // dia só com ocorrência (planilha do Maya) não tem estacas
     html += `<div style="margin-bottom:8px;border:1px solid var(--borda-forte);border-radius:4px;padding:8px 10px;">
-      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length ? `${ests.length} estaca${ests.length>1?"s":""}` : "sem estacas (só ocorrência/equipe)"}</div>
+      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length ? `${ests.length} estaca${ests.length>1?"s":""}` : "sem estacas (só ocorrência/equipe)"} <span class="meta csv-maq-dia" data-dia="${esc(d)}" style="font-weight:400;">${ests.length ? "· " + rdoResumoMaquinasDia(d) : ""}</span></div>
       <div class="meta">${ests.map(e=>esc(e.estaca_numero)).slice(0,10).join(", ")}${ests.length>10?` +${ests.length-10}`:""}</div>
     </div>`;
   });
@@ -2750,6 +2940,12 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
       obrasArr.map(o => `<option value="${esc(o.id)}" ${_csvObraDetectada && o.id===_csvObraDetectada.id?"selected":""}>${esc(o.nome)}</option>`).join("");
     selObra.addEventListener("change", () => rdoRenderSugestoesEstacas(selObra.value));   // lote S44 (L5)
   }
+  // fase 94: trocar a máquina das linhas sem máquina refaz a contagem de diários e o resumo por dia
+  $("csv-maq-sem")?.addEventListener("change", () => {
+    const n = rdoDiariosImport().length;
+    if($("csv-n-diarios")) $("csv-n-diarios").textContent = n;
+    document.querySelectorAll(".csv-maq-dia").forEach(el => { const r = rdoResumoMaquinasDia(el.dataset.dia); el.innerHTML = r ? "· " + r : ""; });
+  });
   // lote S44 (L5, #78): sugestões de vínculo para a obra já conhecida (o import por IA refaz ao pré-selecionar a obra da ficha)
   rdoRenderSugestoesEstacas(selObra ? selObra.value : (_csvObraDetectada && _csvObraDetectada.casamento === "exato" ? _csvObraDetectada.id : null));
 
@@ -2817,7 +3013,10 @@ async function confirmarImportCSV(){
     if(!confirm(`Atenção: ${semMatch.length} máquina(s) sem equipamento vinculado (${semMatch.join(", ")}).\nElas serão importadas só com o código texto. Continuar mesmo assim?`)) return;
   }
 
-  if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}? Cada dia vira 1 RDO novo.`)) return;
+  // fase 94 (#77): um diário por dia e máquina (as máquinas resolvidas acima entram na chave)
+  const gruposPrev = rdoDiariosImport();
+  const semMaqPrev = gruposPrev.filter(g => !g.eq && g.linhas.length).length;
+  if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}?\n${gruposPrev.length} diário(s), um por dia e máquina${semMaqPrev ? ` — ${semMaqPrev} sem máquina (vão para "Para regularizar")` : ""}.`)) return;
 
   const btn = $("btn-csv-confirmar");
   btn.disabled = true;
@@ -2846,21 +3045,32 @@ async function confirmarImportCSV(){
     const estsObra = estacasObra || [];
     const sugAceitas = rdoSugestoesAceitas();   // lote S44 (L5, #78): só as sugestões marcadas na prévia viram vínculo
     const dias = diasImportacao();
-    let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0;
-    for(const dia of dias){
-      const ests = _csvParsed[dia] || [];
-      // Upsert do RDO (cria se não existe)
-      const { data: rdoExist } = await sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", dia).maybeSingle();
+    // fase 94 (#77): um diário por dia e máquina. Equipe, observações, atividades e abastecimento sem máquina
+    // ficam no diário "principal" do dia (a máquina com mais linhas; sem máquina só se não houver outra).
+    const grupos = rdoDiariosImport();
+    const principalDoDia = {};
+    grupos.forEach(g => {
+      const atual = principalDoDia[g.dia];
+      if(!atual || g.linhas.length > atual.n || (g.linhas.length === atual.n && g.eq && !atual.eq)) principalDoDia[g.dia] = { k: g.eq || "", eq: g.eq, n: g.linhas.length };
+    });
+    let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0, totalSemMaq = 0;
+    for(const g of grupos){
+      const dia = g.dia, ests = g.linhas, eqId = g.eq;
+      const ehPrincipal = (principalDoDia[dia] || {}).k === (eqId || "");
+      // Upsert do RDO (cria se não existe): chave obra + data + tipo + máquina
+      let qEx = sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", dia).eq("tipo_servico", tipo);
+      qEx = eqId ? qEx.eq("equipamento_id", eqId) : qEx.is("equipamento_id", null);
+      const { data: rdoExist } = await qEx.maybeSingle();
       let rdoId;
       if(rdoExist){
         rdoId = rdoExist.id;
       } else {
         const ex = _iaExtras?.[dia];
         const reg = {
-          obra_id, data: dia, tipo_servico: tipo,
+          obra_id, data: dia, tipo_servico: tipo, equipamento_id: eqId,
           status: "rascunho", responsavel_id: responsavel,
           producao_dia_m: ests.reduce((s,e) => s + (e.profundidade_executada||0), 0),
-          ...(ex ? {
+          ...(ex && ehPrincipal ? {
             tempo_manha: ex.tempo_manha || null, tempo_tarde: ex.tempo_tarde || null,
             atividades: ex.atividades || null,
             feriado: !!ex.feriado,
@@ -2875,6 +3085,7 @@ async function confirmarImportCSV(){
         if(error){ throw new Error(`Dia ${dia}: ${error.message}`); }
         rdoId = novo.id;
         totalRdos++;
+        if(!eqId && ests.length) totalSemMaq++;
       }
       // Insere execuções (aplicando mapa manual de máquinas)
       const exs = ests.map(e => {
@@ -2903,7 +3114,7 @@ async function confirmarImportCSV(){
           concretagem_fim: e.concretagem_fim,
           torque: e.torque,
           volume_concreto_m3: e.volume_concreto_m3,
-          equipamento_id: equipId,
+          equipamento_id: equipId || eqId,   // fase 94: a linha herda a máquina do diário
           maquina_codigo: e.maquina_codigo,
           observacoes: e.observacoes,
           modalidade_execucao: e.modalidade_execucao || "furo_normal",
@@ -2932,7 +3143,7 @@ async function confirmarImportCSV(){
       // Atividades hora a hora lidas pela IA (chamado #5) → rdo_raiz_justificativa (execucao_id nulo).
       // Só em RDO criado agora, pela mesma razão da equipe (não duplicar num RDO existente).
       const justIA = _iaExtras?.[dia]?.justificativa || [];
-      if(justIA.length && !rdoExist){
+      if(justIA.length && !rdoExist && ehPrincipal){
         const linhasJ = justIA.map((j, i) => ({ rdo_id: rdoId, execucao_id: null, ordem: i + 1,
           h_inicial: j.h_inicial || null, h_final: j.h_final || null, motivo: j.motivo || null }));
         const { error: errJ } = await sb.from("rdo_raiz_justificativa").insert(linhasJ);
@@ -2942,7 +3153,7 @@ async function confirmarImportCSV(){
       // Equipe lida pela IA (só em RDO criado agora, para não duplicar num RDO existente).
       // Casada com o cadastro: funcionario_id quando há correspondência; senão nome_avulso.
       const eqIA = _iaExtras?.[dia]?.equipe || [];
-      if(eqIA.length && !rdoExist){
+      if(eqIA.length && !rdoExist && ehPrincipal){
         const linhas = eqIA.map((p, i) => ({ rdo_id: rdoId,
           funcionario_id: p.funcionario_id || null,
           nome_avulso: p.funcionario_id ? null : p.nome,
@@ -2953,12 +3164,16 @@ async function confirmarImportCSV(){
         if(errEq) console.warn("Equipe de " + dia + " não gravada:", errEq.message);
       }
       // Abastecimento lido da planilha do Maya (só em RDO criado agora)
-      const abIA = _iaExtras?.[dia]?.abastecimentos || [];
+      // fase 94: cada abastecimento vai para o diário da sua máquina; sem máquina (ou máquina sem diário no dia) → principal
+      const maqAbast = (a) => { const cod = String(a.maquina || "").trim(); return (rdoCasarMaquina(cod) || {}).id || (cod && _csvMapaManual[cod]) || null; };
+      const abIA = (_iaExtras?.[dia]?.abastecimentos || []).filter(a => {
+        const eqA = maqAbast(a);
+        if(eqA) return eqA === eqId || (ehPrincipal && !grupos.some(x => x.dia === dia && x.eq === eqA));
+        return ehPrincipal;
+      });
       if(abIA.length && !rdoExist){
         const linhasAb = abIA.map((a, i) => {
-          const cod = String(a.maquina || "").toUpperCase();
-          const eq = cod ? _rdoEquipsCache.find(e => [e.codigo_externo, e.codigo].filter(Boolean).some(c => c.toUpperCase() === cod)) : null;
-          return { rdo_id: rdoId, equipamento_id: eq ? eq.id : ((a.maquina && _csvMapaManual[a.maquina]) || null), maquina_codigo: a.maquina || null,
+          return { rdo_id: rdoId, equipamento_id: maqAbast(a) || eqId || null, maquina_codigo: a.maquina || null,
             combustivel: a.combustivel || "diesel", quantidade: a.quantidade ?? null, unidade: a.unidade || "L", horimetro: a.horimetro ?? null,
             observacao: a.observacao || null, ordem: i + 1 };
         });
@@ -2966,7 +3181,7 @@ async function confirmarImportCSV(){
         if(errAb) console.warn("Abastecimento de " + dia + " não gravado:", errAb.message);
       }
     }
-    aviso("app-aviso", `✅ Importado: ${totalRdos} RDOs novos, ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.`, "ok");
+    aviso("app-aviso", `✅ Importado: ${totalRdos} diário(s) novo(s) em ${dias.length} dia(s), ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.${totalSemMaq ? ` ⚠️ ${totalSemMaq} diário(s) sem máquina — informe a máquina no cabeçalho (Para regularizar).` : ""}`, "ok");
     fecharModalImportCSV();
     await carregarRDO();
   } catch(err){

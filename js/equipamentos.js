@@ -291,7 +291,7 @@ async function eqpCarregarFilhas(e){
     // fase 89: a nota traz a viagem que a levou; a TAG também aparece como caminhão ou equipamento atendido da viagem (consulta abaixo)
     sb.from("movimentacao_itens").select("movimentacao_id,movimentacao:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_recebimento,origem_tipo,origem_descricao,destino_tipo,destino_descricao,destino_obra_id,nf_numero,interna,viagem_id,viagem:viagens(id,numero,data,status,finalidade,caminhao_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)))").eq("equipamento_id", id),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_conclusao,custo_estimado,custo_real,acessorio_id").eq("equipamento_id", id).order("data_abertura", { ascending: false }).limit(200),
-    sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id").eq("equipamento_id", id).order("data_prevista", { ascending: false }).limit(200),
+    sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,custo_real,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id,codigo_externo").eq("equipamento_id", id).order("data_prevista", { ascending: false }).limit(200),
     sb.from("acessorio_equipamentos").select("acessorio_id").eq("equipamento_id", id),
     (typeof aceCatalogo === "function" ? aceCatalogo() : Promise.resolve([])).catch(() => []),
     sb.from("viagens").select("id,numero,data,status,finalidade,caminhao_id,equipamento_atendido_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)").or(`caminhao_id.eq.${id},equipamento_atendido_id.eq.${id}`).order("data", { ascending: false }).limit(300)
@@ -371,16 +371,22 @@ async function eqpCarregarFilhas(e){
       <td>${r.acessorio_id ? "⚙️ " : ""}${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_conclusao)}</td>
       <td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td></tr>`).join("")}</tbody></table></div>`);
   const manTipo = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
-  const manSt = { agendada: ["Agendada","azul"], em_andamento: ["Em andamento","ambar"], concluida: ["Concluída","verde"], cancelada: ["Cancelada","cinza"] };
+  const manSt = { agendada: ["Aberta","azul"], em_andamento: ["Em execução","ambar"], concluida: ["Concluída","verde"], cancelada: ["Cancelada","cinza"] };
   const podeOs = eqpPodeManutencao();
+  // fase 92: a OS tem ficha própria no módulo Manutenção (atividades, mão de obra, peças, checklist); aqui fica a lista com link
   $("eqp-man-lista").innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Ordens de serviço (manutenção)</h3>${podeOs ? `<button type="button" class="btn btn-sm" id="btn-eqp-os-nova" style="margin-left:auto;">+ Nova OS</button>` : ""}</div>
-    <p class="meta">Preventiva, corretiva ou preditiva. O custo aqui é o serviço externo; peças aplicadas entram pela saída de estoque para a TAG. OS concluída com horímetro atualiza o horímetro da máquina.</p>` + (man.error ? `<p class="vazio">Erro: ${esc(man.error.message)}</p>` : !mans.length ? `<p class="vazio">Nenhuma OS registrada para esta TAG.</p>` :
+    <p class="meta">Preventiva, corretiva ou preditiva, com atividades, mão de obra e peças (baixa no estoque) na ficha da OS em Manutenção. OS concluída com horímetro/km atualiza a máquina.</p>` + (man.error ? `<p class="vazio">Erro: ${esc(man.error.message)}</p>` : !mans.length ? `<p class="vazio">Nenhuma OS registrada para esta TAG.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>OS</th><th>Prevista</th><th>Tipo</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Horímetro</th><th class="num">Custo</th></tr></thead>
-    <tbody>${mans.map(m => `<tr class="${podeOs ? "linha-clicavel" : ""}" data-os="${esc(m.id)}"><td><strong>${esc(m.numero || "—")}</strong></td><td>${dataBR(m.data_prevista)}</td><td>${esc(manTipo[m.tipo] || m.tipo)}</td>
+    <tbody>${mans.map(m => `<tr data-os="${esc(m.id)}"><td><strong>${linkManutencao(m.id, m.numero || "OS")}</strong>${m.codigo_externo ? ` <span class="meta">${esc(m.codigo_externo)}</span>` : ""}</td><td>${dataBR(m.data_prevista)}</td><td>${esc(manTipo[m.tipo] || m.tipo)}</td>
       <td><span class="tag ${(manSt[m.status] || [])[1] || "cinza"}">${esc((manSt[m.status] || [])[0] || m.status)}</span></td>
       <td>${esc(m.descricao || "")}</td><td>${dataBR(m.data_inicio)}</td><td>${dataBR(m.data_conclusao)}</td>
-      <td class="num">${m.horimetro_km != null ? num(m.horimetro_km) : "—"}</td><td class="num">${m.custo != null ? brl(m.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>`);
-  $("btn-eqp-os-nova")?.addEventListener("click", () => abrirOsManutencao(null));
+      <td class="num">${m.horimetro_km != null ? num(m.horimetro_km) : "—"}</td><td class="num">${m.custo_real != null ? brl(m.custo_real) : m.custo != null ? brl(m.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>`);
+  $("btn-eqp-os-nova")?.addEventListener("click", () => {
+    if(typeof manNovaOS === "function" && irParaSecao("manutencao")) manNovaOS({ equipamento_id: e.id });
+    else abrirOsManutencao(null);
+  });
+  // fase 92: plano preventivo (semáforo) e leituras de horímetro/km da TAG
+  if(typeof manRenderResumoEquipamento === "function") manRenderResumoEquipamento(e, "eqp-man-plano");
 }
 
 /* ---------- Fase 59: OS de manutenção (tabela manutencoes, sem tela até aqui) ---------- */
@@ -388,8 +394,9 @@ let _eqpMans = [];
 let _eqpOsId = null;
 const EQP_OS_TIPO = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
 const EQP_OS_STATUS = { agendada: "Agendada", em_andamento: "Em andamento", concluida: "Concluída", cancelada: "Cancelada" };
+/* fase 92: espelha manutencao_pode_operar() (admin, engenheiro, mecânico, gestor_frota, logística, gestor_manutencao; diretor por has_role) */
 function eqpPodeManutencao(){
-  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","gestor_acessorios","gestor_frota"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","gestor_frota","logistica","gestor_manutencao"].includes(usuarioAtual.cargo);
 }
 function abrirOsManutencao(m){
   if(!_eqpAtual?.id){ aviso("app-aviso", "Salve o equipamento antes de abrir uma OS.", "erro"); return; }
@@ -616,7 +623,13 @@ function ligarEquipamentos(){
     const tr = e.target.closest("tr[data-mov]"); if(tr) eqpAbrirMovimentacao(tr.dataset.mov);
   });
   // fase 59: OS de manutenção
-  $("eqp-man-lista")?.addEventListener("click", e => { if(e.target.closest("button")) return; const tr = e.target.closest("tr[data-os]"); if(tr && eqpPodeManutencao()) abrirOsManutencao(_eqpMans.find(m => m.id === tr.dataset.os) || null); });
+  // fase 92: a linha abre a ficha da OS em Manutenção (o modal da fase 59 fica só como reserva, sem o módulo carregado)
+  $("eqp-man-lista")?.addEventListener("click", e => {
+    if(e.target.closest("button") || e.target.closest("a")) return;
+    const tr = e.target.closest("tr[data-os]"); if(!tr) return;
+    if(typeof abrirManutencao === "function"){ if(irParaSecao("manutencao")) abrirManutencao(tr.dataset.os); }
+    else if(eqpPodeManutencao()) abrirOsManutencao(_eqpMans.find(m => m.id === tr.dataset.os) || null);
+  });
   $("btn-eqp-os-fechar")?.addEventListener("click", fecharOsManutencao);
   $("btn-eqp-os-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-os-salvar", salvarOsManutencao));
 }

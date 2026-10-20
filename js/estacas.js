@@ -742,7 +742,7 @@ function estCelulaExecutada(e, fmt){
 }
 
 /* ---------- Modal Estaca (nova / editar) ---------- */
-function abrirModalEstaca(id){
+function abrirModalEstaca(id, aba){
   _estacaEdit = id ? _estacas.find(e => e.id === id) : null;
   const e = _estacaEdit || {};
   $("est-modal-titulo").textContent = id ? `Estaca ${e.numero}` : "Nova estaca";
@@ -772,6 +772,12 @@ function abrirModalEstaca(id){
   $("est-coord-y").value        = e.coord_y ?? "";
   $("est-obs").value            = e.observacoes || "";
   preencherSelectMaquinasEstaca("est-equipamento", e.equipamento_id);
+  // fase 94 (#81): aba Histórico só em estaca existente; abre direto nela quando pedido (planta → 📜 Histórico)
+  const tabH = $("est-tab-historico");
+  if(tabH) tabH.style.display = id ? "" : "none";
+  ativarTabEstacaModal(aba === "historico" && id ? "historico" : "dados");
+  if(id) esthCarregar(id);
+  else { _esthLinhas = []; _esthEstaca = null; const bd = $("est-hist-badge"); if(bd) bd.textContent = ""; }
   $("est-modal").style.display = "flex";
 }
 
@@ -3169,6 +3175,448 @@ async function confirmarReconciliacao(){
 }
 
 /* ---------- Listeners ---------- */
+/* ====================================================================
+   FASE 94 (#80) — ABA "VINCULAR ESTACAS" DA FICHA DA OBRA (prefixo estv-)
+   Execuções do campo sem estaca_id (órfãs) ou "a revisar" (vinculadas a um nome diferente do do campo sem
+   estaca_numero_corrigido, isto é, casadas antes da fase 94) × estacas do projeto. Sugestão pela chave do lote S44
+   (estNormalizarNome) com a confiança do que precisou mudar (estvConfianca); vincular, desvincular, "é estaca nova
+   do campo" (projeto_pendente = true) e trocar prefixo em lote passam pelas RPCs rdo_exec_vincular_estaca e
+   estaca_criar_do_campo, que gravam registros_log na execução e na estaca. Estaca já medida (estacas_medidas) pede
+   confirmação. Usuário de revisão vê a lista sem botões. Teste: scripts/testar-normalizar-estaca.js.
+   ==================================================================== */
+let _estvExecs = [];          // execuções da obra com o rdo (data, máquina)
+let _estvEstacas = [];        // estacas do projeto
+let _estvMedidas = new Set(); // ids de estacas já medidas (estacas_medidas)
+let _estvFiltro = "orfas";    // orfas | revisar | todas
+let _estvObra = null;
+const ESTV_CONF = {
+  igual:         { lbl: "igual",             nivel: "alta" },
+  virgula:       { lbl: "só vírgula/espaço", nivel: "alta" },
+  prefixo:       { lbl: "só prefixo",        nivel: "alta" },
+  zeros:         { lbl: "só zeros",          nivel: "alta" },
+  prefixo_zeros: { lbl: "prefixo e zeros",   nivel: "media" },
+  parecida:      { lbl: "parecida",          nivel: "baixa" }
+};
+const ESTV_NIVEL = { alta: 0, media: 1, baixa: 2 };
+
+/* Confiança da sugestão entre o nome do campo e o do projeto (tabela do chamado #78): igual · só vírgula/espaço ·
+   só prefixo (T1.85 → E1.85) · só zeros (081 → 81) · prefixo e zeros (P081 → E81) · parecida (mesmos dígitos,
+   scoreSimilaridade ≥ 0,6) · null. BB1.1 × B1.1 → null (prefixo de duas letras é outra estaca, 26/05/2026). */
+function estvConfianca(campo, projeto){
+  const a = normalizarNumeroEstacaEstacas(campo), b = normalizarNumeroEstacaEstacas(projeto);
+  if(!a || !b) return null;
+  if(a === b) return "igual";
+  const bb = (s) => /^BB(?=\d)|_BB$/.test(s);
+  if(bb(a) !== bb(b)) return null;
+  const limpa = (s) => s.replace(/\s+/g, "").replace(/,/g, ".");
+  if(limpa(a) === limpa(b)) return "virgula";
+  const ka = estNormalizarNome(a), kb = estNormalizarNome(b);
+  if(ka && ka === kb){
+    const semPref = (s) => limpa(s).replace(/^[A-Z](?=[\d.])/, "");
+    const semZeros = (s) => limpa(s).replace(/^0+(?=\d)/, "");
+    return semPref(a) === semPref(b) ? "prefixo" : semZeros(a) === semZeros(b) ? "zeros" : "prefixo_zeros";
+  }
+  return scoreSimilaridade(a, b) >= 0.6 ? "parecida" : null;
+}
+function estvNorm(s){ return normalizarNumeroEstacaEstacas(s || ""); }
+function estvMaquina(x){
+  const id = x.equipamento_id || (x.rdo && x.rdo.equipamento_id);
+  const q = id ? _equipamentosCache.find(e => e.id === id) : null;
+  return q ? q.codigo : (x.maquina_codigo || "—");
+}
+function estvEstacaDe(x){ return x.estaca_id ? _estvEstacas.find(p => p.id === x.estaca_id) : null; }
+function estvARevisar(x){
+  const p = estvEstacaDe(x);
+  return !!(p && !x.estaca_numero_corrigido && estvNorm(x.estaca_numero) !== estvNorm(p.numero));
+}
+/* Até 6 sugestões para uma órfã: confiança maior primeiro, depois estaca ainda sem execução, depois o número */
+function estvSugestoes(x, comExec){
+  return _estvEstacas
+    .map(p => ({ p, conf: estvConfianca(x.estaca_numero, p.numero) }))
+    .filter(s => s.conf)
+    .sort((s1, s2) => ESTV_NIVEL[ESTV_CONF[s1.conf].nivel] - ESTV_NIVEL[ESTV_CONF[s2.conf].nivel]
+      || (comExec.has(s1.p.id) ? 1 : 0) - (comExec.has(s2.p.id) ? 1 : 0)
+      || String(s1.p.numero).localeCompare(String(s2.p.numero), "pt-BR", { numeric: true }))
+    .slice(0, 6);
+}
+// melhor sugestão quando é de alta confiança e a única de alta (é o que o lote "✨" vincula sem perguntar estaca a estaca)
+function estvSugestaoAltaUnica(x, comExec){
+  const sugs = estvSugestoes(x, comExec);
+  const top = sugs[0];
+  return top && ESTV_CONF[top.conf].nivel === "alta" && !sugs.some((s, i) => i > 0 && ESTV_CONF[s.conf].nivel === "alta") ? top.p : null;
+}
+
+async function estvCarregar(obraId){
+  const cont = $("estv-conteudo");
+  if(!cont) return;
+  if(!obraId){ cont.innerHTML = `<p class="vazio">Salve a obra primeiro.</p>`; return; }
+  _estvObra = obraId;
+  cont.innerHTML = `<p class="vazio">Carregando...</p>`;
+  const [execsRes, estsRes, medRes, eqRes] = await Promise.all([
+    sb.from("rdo_execucao_estaca")
+      .select("id,estaca_id,estaca_numero,estaca_numero_corrigido,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,rdo:rdo_id!inner(id,obra_id,data,equipamento_id)")
+      .eq("rdo.obra_id", obraId).limit(5000),
+    sb.from("estacas").select("id,numero,bloco,local,status,profundidade_m,diametro_mm,projeto_pendente").eq("obra_id", obraId).order("numero").limit(5000),
+    sb.rpc("estacas_medidas", { p_obra: obraId }),
+    _equipamentosCache.length ? Promise.resolve({ data: _equipamentosCache }) : sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo")
+  ]);
+  if(obraId !== obraEditId) return; // outra obra aberta no meio
+  if(execsRes.error || estsRes.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc((execsRes.error || estsRes.error).message)}</p>`; return; }
+  if(!_equipamentosCache.length && eqRes.data) _equipamentosCache = eqRes.data;
+  _estvExecs = (execsRes.data || []).filter(x => x.rdo && x.rdo.obra_id === obraId);
+  _estvEstacas = estsRes.data || [];
+  _estvMedidas = new Set(medRes.error ? [] : (medRes.data || []));
+  estvRender();
+}
+
+function estvRender(){
+  const cont = $("estv-conteudo");
+  if(!cont) return;
+  const ro = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+  const execs = [..._estvExecs].sort((a, b) => String(a.rdo.data).localeCompare(String(b.rdo.data))
+    || String(a.estaca_numero).localeCompare(String(b.estaca_numero), "pt-BR", { numeric: true }));
+  const comExec = new Set(execs.map(x => x.estaca_id).filter(Boolean));
+  const orfas = execs.filter(x => !x.estaca_id);
+  const revisar = execs.filter(estvARevisar);
+  const semExec = _estvEstacas.filter(p => !comExec.has(p.id));
+  const lista = _estvFiltro === "orfas" ? orfas : _estvFiltro === "revisar" ? revisar : execs;
+  const altas = orfas.filter(x => estvSugestaoAltaUnica(x, comExec)).length;
+
+  const ind = `<div class="indicadores" style="margin-bottom:12px;">
+    <div class="ind"><div class="num">${_estvEstacas.length}</div><div class="rot">Estacas do projeto</div></div>
+    <div class="ind"><div class="num">${execs.length}</div><div class="rot">Execuções do campo</div></div>
+    <div class="ind"><div class="num">${execs.length - orfas.length}</div><div class="rot">Vinculadas</div></div>
+    <div class="ind"><div class="num"${orfas.length ? ' style="color:var(--perigo);"' : ""}>${orfas.length}</div><div class="rot">Sem par (órfãs)</div></div>
+    <div class="ind"><div class="num"${revisar.length ? ' style="color:var(--aviso-txt);"' : ""}>${revisar.length}</div><div class="rot">A revisar</div></div>
+    <div class="ind"><div class="num">${semExec.length}</div><div class="rot">Projeto sem execução</div></div>
+  </div>`;
+  const topo = `<div class="lista-topo" style="border:none;padding:0;margin-bottom:8px;">
+    <h4 class="titulo-linha" style="font-size:var(--txt-md);">Execuções do campo × estacas do projeto <span class="contador">${lista.length}</span></h4>
+    <div class="serv-views">
+      <button type="button" class="serv-view-btn${_estvFiltro === "orfas" ? " ativo" : ""}" data-estv-filtro="orfas">Sem vínculo (${orfas.length})</button>
+      <button type="button" class="serv-view-btn${_estvFiltro === "revisar" ? " ativo" : ""}" data-estv-filtro="revisar" title="Vinculadas a um nome diferente do campo antes da fase 94, sem correção registrada">A revisar (${revisar.length})</button>
+      <button type="button" class="serv-view-btn${_estvFiltro === "todas" ? " ativo" : ""}" data-estv-filtro="todas">Todas (${execs.length})</button>
+    </div>
+    ${!ro && altas ? `<button type="button" class="btn-sec btn-sm" id="btn-estv-lote-alta" title="Vincula de uma vez as órfãs cuja melhor sugestão é de alta confiança (igual, só prefixo, só vírgula ou só zeros) e única">✨ Vincular ${altas} sugestão(ões) de alta confiança</button>` : ""}
+  </div>
+  ${!ro && orfas.length ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:var(--txt-sm);">
+    <span style="color:var(--txt-sec);">Corrigir prefixo em lote:</span>
+    <label class="meta">do campo <input id="estv-pref-de" style="width:56px;" placeholder="T" /></label>
+    <label class="meta">para o projeto <input id="estv-pref-para" style="width:56px;" placeholder="E" /></label>
+    <button type="button" class="btn-sec btn-sm" id="btn-estv-prefixo">Aplicar às órfãs</button>
+    <span class="meta">Ex.: T1.85 → E1.85 em todas as órfãs que começam com T e têm par exato no projeto. O nome do campo não muda; o do projeto fica em "nome corrigido".</span>
+  </div>` : ""}`;
+
+  if(!lista.length){
+    cont.innerHTML = ind + topo + `<p class="vazio">${_estvFiltro === "orfas" ? "🎉 Todas as execuções do campo têm estaca do projeto." : _estvFiltro === "revisar" ? "Nenhum vínculo a revisar." : "Nenhuma execução de RDO nesta obra."}</p>`;
+    estvLigar(cont);
+    return;
+  }
+  const preSel = {};
+  const linhas = lista.map(x => {
+    const p = estvEstacaDe(x);
+    const medida = p && _estvMedidas.has(p.id);
+    const metr = Number(x.profundidade_executada) || 0, acum = Number(x.perfuracao_ate_m) || 0;
+    const etapa = x.etapa_final
+      ? `<span class="tag ${x.etapa_final === "metragem" ? "verde" : "ambar"}">${esc((typeof RDO_ETAPA_LBL !== "undefined" && RDO_ETAPA_LBL[x.etapa_final]) || x.etapa_final)}</span>`
+      : '<span class="meta" title="Sem metragem nem etapa final: não muda o status da estaca">—</span>';
+    let colVinculo;
+    if(p){
+      const conf = estvConfianca(x.estaca_numero, p.numero);
+      colVinculo = `<strong>${esc(p.numero)}</strong>${p.local || p.bloco ? ` <span class="meta">· ${esc([p.local, p.bloco].filter(Boolean).join(" · "))}</span>` : ""}
+        ${x.estaca_numero_corrigido ? `<span class="rec-badge rec-badge-alta" title="Nome corrigido registrado (${esc(x.estaca_numero)} → ${esc(x.estaca_numero_corrigido)})">corrigido</span>`
+          : estvARevisar(x) ? `<span class="rec-badge rec-badge-media" title="Vinculada a um nome diferente do campo antes da fase 94">a revisar · ${esc(conf ? ESTV_CONF[conf].lbl : "nome diferente")}</span>` : ""}
+        ${medida ? `<span class="tag azul" title="Há medição cobrindo esta estaca">medida</span>` : ""}`;
+    } else {
+      const sugs = estvSugestoes(x, comExec);
+      const top = sugs[0];
+      const alta = estvSugestaoAltaUnica(x, comExec);
+      if(alta) preSel[x.id] = alta.id;
+      const opts = sugs.map(s => `<option value="${esc(s.p.id)}">${esc(s.p.numero)} — ${esc(ESTV_CONF[s.conf].lbl)}${comExec.has(s.p.id) ? " ⚠ já tem execução" : ""}${_estvMedidas.has(s.p.id) ? " · medida" : ""}</option>`).join("");
+      colVinculo = ro
+        ? (top ? `<span class="meta">sugestão: ${esc(top.p.numero)} (${esc(ESTV_CONF[top.conf].lbl)})</span>` : `<span class="meta">sem sugestão</span>`)
+        : `<div style="display:flex;gap:6px;align-items:center;">
+          <select class="estv-sel" data-exec="${esc(x.id)}" style="flex:1;min-width:0;">
+            <option value="">— escolher —</option>
+            ${opts ? `<optgroup label="Sugestões">${opts}</optgroup>` : ""}
+            <option value="__outra">outra estaca do projeto…</option>
+          </select>
+          ${top ? `<span class="rec-badge rec-badge-${ESTV_CONF[top.conf].nivel}" title="Confiança da melhor sugestão">${esc(ESTV_CONF[top.conf].lbl)}</span>` : `<span class="rec-badge rec-badge-zero">sem par</span>`}
+        </div>`;
+    }
+    const acoes = ro ? "" : (p
+      ? `<button type="button" class="btn-sec btn-sm estv-desv" data-exec="${esc(x.id)}" title="Tira o vínculo com ${esc(p.numero)} (fica registrado)">⨯ Desvincular</button>`
+      : `<button type="button" class="btn btn-sm estv-vinc" data-exec="${esc(x.id)}" style="background:var(--sucesso);" title="Vincula à estaca escolhida">✓ Vincular</button>
+         <button type="button" class="btn-sec btn-sm estv-nova" data-exec="${esc(x.id)}" title="Cria '${esc(x.estaca_numero)}' no cadastro da obra como estaca nova do campo (projeto a confirmar) e vincula">+ Nova do campo</button>`);
+    return `<tr data-exec="${esc(x.id)}">
+      <td><strong>${esc(x.estaca_numero)}</strong>${x.modalidade_execucao === "refuro" ? ' <span class="tag cinza">refuro</span>' : ""}</td>
+      <td>${dataBR(x.rdo.data)}</td>
+      <td>${esc(estvMaquina(x))}</td>
+      <td class="num">${metr ? num(metr) + " m" : "—"}${acum ? ` <span class="meta">(até ${num(acum)})</span>` : ""}</td>
+      <td>${etapa}</td>
+      <td>${colVinculo}</td>
+      <td class="col-acao" style="white-space:nowrap;text-align:right;">${acoes}</td>
+    </tr>`;
+  }).join("");
+  cont.innerHTML = ind + topo + `<div class="tabela-rola"><table>
+    <thead><tr><th>Nome no campo</th><th>Data</th><th>Máquina</th><th class="num">Metragem</th><th title="Etapa final reconhecida (fase 94)">Etapa</th><th>Estaca do projeto · sugestão</th><th class="col-acao"></th></tr></thead>
+    <tbody>${linhas}</tbody></table></div>`;
+  Object.entries(preSel).forEach(([execId, estId]) => { const s = cont.querySelector(`.estv-sel[data-exec="${execId}"]`); if(s) s.value = estId; });
+  estvLigar(cont);
+}
+
+function estvLigar(cont){
+  cont.querySelectorAll("[data-estv-filtro]").forEach(b => b.addEventListener("click", () => { _estvFiltro = b.dataset.estvFiltro; estvRender(); }));
+  cont.querySelectorAll(".estv-sel").forEach(sel => sel.addEventListener("change", () => {
+    if(sel.value !== "__outra") return;
+    const nome = prompt("Nº da estaca do projeto (como está no cadastro):");
+    sel.value = "";
+    if(!nome) return;
+    const cands = _estvEstacas.filter(p => estvNorm(p.numero) === estvNorm(nome));
+    if(cands.length !== 1){ aviso("app-aviso", cands.length ? `"${nome}" existe em mais de um local/bloco nesta obra.` : `Não há estaca "${nome}" nesta obra.`, "erro"); return; }
+    const opt = document.createElement("option");
+    opt.value = cands[0].id; opt.textContent = `${cands[0].numero} — escolhida`;
+    sel.appendChild(opt); sel.value = cands[0].id;
+  }));
+  cont.querySelectorAll(".estv-vinc").forEach(b => b.addEventListener("click", () => {
+    const sel = cont.querySelector(`.estv-sel[data-exec="${b.dataset.exec}"]`);
+    if(!sel || !sel.value){ aviso("app-aviso", "Escolha a estaca do projeto antes de vincular.", "erro"); return; }
+    estvVincular(b.dataset.exec, sel.value, "vinculo_estaca");
+  }));
+  cont.querySelectorAll(".estv-desv").forEach(b => b.addEventListener("click", () => estvVincular(b.dataset.exec, null, null)));
+  cont.querySelectorAll(".estv-nova").forEach(b => b.addEventListener("click", () => estvNovaDoCampo(b.dataset.exec)));
+  $("btn-estv-lote-alta")?.addEventListener("click", estvVincularSugestoesAltas);
+  $("btn-estv-prefixo")?.addEventListener("click", estvTrocarPrefixo);
+}
+async function estvDepois(){
+  await estvCarregar(_estvObra);
+  if(typeof carregarEstacasDaObra === "function" && obraEditId) carregarEstacasDaObra(obraEditId);
+  if(typeof carregarAbasObra === "function" && obraEditId) carregarAbasObra(obraEditId);
+}
+async function estvVincular(execId, estacaId, motivo){
+  const x = _estvExecs.find(e => e.id === execId);
+  const alvo = estacaId ? _estvEstacas.find(p => p.id === estacaId) : null;
+  const atual = x ? estvEstacaDe(x) : null;
+  const medida = (alvo && _estvMedidas.has(alvo.id)) || (atual && _estvMedidas.has(atual.id));
+  if(medida && !confirm(`A estaca ${(alvo || atual).numero} já entrou em medição. ${estacaId ? "Vincular" : "Desvincular"} mesmo assim? Fica registrado no histórico.`)) return;
+  if(!estacaId && !medida && !confirm(`Tirar o vínculo da execução "${x ? x.estaca_numero : ""}"${atual ? " com " + atual.numero : ""}?`)) return;
+  const { error } = await sb.rpc("rdo_exec_vincular_estaca", { p_exec: execId, p_estaca: estacaId || null, p_motivo: motivo || null });
+  if(error){ aviso("app-aviso", "Não foi possível " + (estacaId ? "vincular" : "desvincular") + ": " + error.message, "erro"); return; }
+  aviso("app-aviso", estacaId ? `Execução vinculada a ${alvo ? alvo.numero : "estaca"}.` : "Vínculo removido.", "ok");
+  await estvDepois();
+}
+async function estvNovaDoCampo(execId){
+  const x = _estvExecs.find(e => e.id === execId);
+  if(!x) return;
+  if(!confirm(`Criar a estaca "${x.estaca_numero}" no cadastro desta obra como estaca nova do campo (profundidade de projeto a confirmar) e vincular esta execução?`)) return;
+  const { error } = await sb.rpc("estaca_criar_do_campo", { p_exec: execId });
+  if(error){ aviso("app-aviso", "Não foi possível criar: " + error.message, "erro"); return; }
+  aviso("app-aviso", `Estaca ${x.estaca_numero} criada (projeto a confirmar) e vinculada.`, "ok");
+  await estvDepois();
+}
+async function estvVincularLote(pares, descricao){
+  const medidas = pares.filter(pr => _estvMedidas.has(pr.p.id)).length;
+  if(!confirm(`${descricao}${medidas ? `\n${medidas} delas apontam estacas já medidas.` : ""}\nCada vínculo fica em registros_log como correção em lote.`)) return;
+  let n = 0;
+  for(const pr of pares){
+    const { error } = await sb.rpc("rdo_exec_vincular_estaca", { p_exec: pr.x.id, p_estaca: pr.p.id, p_motivo: "correcao_lote" });
+    if(error){ aviso("app-aviso", `Parou em ${pr.x.estaca_numero}: ${error.message}`, "erro"); break; }
+    n++;
+  }
+  aviso("app-aviso", `${n} execução(ões) vinculada(s).`, "ok");
+  await estvDepois();
+}
+async function estvVincularSugestoesAltas(){
+  const comExec = new Set(_estvExecs.map(x => x.estaca_id).filter(Boolean));
+  const pares = _estvExecs.filter(x => !x.estaca_id).map(x => ({ x, p: estvSugestaoAltaUnica(x, comExec) })).filter(pr => pr.p);
+  if(!pares.length){ aviso("app-aviso", "Nenhuma órfã com sugestão única de alta confiança.", "erro"); return; }
+  await estvVincularLote(pares, `Vincular ${pares.length} execução(ões) à sugestão de alta confiança (igual, só prefixo, só vírgula ou só zeros)? Ex.: ${pares[0].x.estaca_numero} → ${pares[0].p.numero}.`);
+}
+async function estvTrocarPrefixo(){
+  const de = estvNorm($("estv-pref-de")?.value), para = estvNorm($("estv-pref-para")?.value);
+  if(!de){ aviso("app-aviso", "Informe o prefixo do campo (ex.: T).", "erro"); return; }
+  const pares = [];
+  _estvExecs.filter(x => !x.estaca_id && estvNorm(x.estaca_numero).startsWith(de)).forEach(x => {
+    const alvo = estvNorm(para + estvNorm(x.estaca_numero).slice(de.length));
+    const cands = _estvEstacas.filter(p => estvNorm(p.numero) === alvo);
+    if(cands.length === 1) pares.push({ x, p: cands[0] });
+  });
+  if(!pares.length){ aviso("app-aviso", `Nenhuma órfã começando com "${de}" tem par exato "${para || "(sem prefixo)"}…" no projeto.`, "erro"); return; }
+  await estvVincularLote(pares, `Trocar o prefixo "${de}" por "${para}" em ${pares.length} execução(ões) e vincular (ex.: ${pares[0].x.estaca_numero} → ${pares[0].p.numero})?`);
+}
+
+/* ====================================================================
+   FASE 94 (#81) — HISTÓRICO POR ESTACA (prefixo esth-), aba "Histórico" da ficha da estaca
+   Lê vw_estaca_historico (execuções, trechos de solo/ferramental e medições que cobrem a estaca). Metros por
+   ferramental: pelos trechos quando o boletim raiz detalha, senão pelo ferramental da execução. Exporta PDF
+   (html2pdf, estilo inline) e planilha (SheetJS). Aberta da lista (✏️) e da planta (execução → 📜 Histórico).
+   ==================================================================== */
+let _esthLinhas = [];
+let _esthEstaca = null;
+const ESTH_FERR = { coroa: "Coroa", tricone: "Tricone", martelo_fundo: "Martelo de fundo", revestimento: "Revestimento", trado: "Trado / hélice", outro: "Outro", nao_informado: "Não informado" };
+const ESTH_ETAPA = { metragem: "Perfuração (metragem)", injecao: "Injeção", concretagem: "Concretagem", argamassado: "Argamassado", outra: "Outra etapa", sem_etapa: "Sem etapa (locação, armação, limpeza)" };
+const ESTH_TIPO_ORD = { execucao: 0, trecho: 1, medicao: 2 };
+const ESTH_VINC = { execucao: "item aponta a execução", tag: "TAG da máquina no boletim", periodo: "período cobre a execução" };
+
+function ativarTabEstacaModal(nome){
+  document.querySelectorAll("#est-modal-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.estTab === nome));
+  document.querySelectorAll("#est-modal .odoo-tab[data-est-tab]").forEach(t => t.classList.toggle("ativa", t.dataset.estTab === nome));
+}
+function esthHora(ts){ return ts ? String(ts).slice(11, 16) : ""; }
+function esthEtapaLbl(et){ return (typeof RDO_ETAPA_LBL !== "undefined" && RDO_ETAPA_LBL[et]) || et || ""; }
+async function esthCarregar(estacaId){
+  _esthEstaca = _estacas.find(e => e.id === estacaId) || _esthEstaca;
+  const cont = $("esth-conteudo");
+  if(cont) cont.innerHTML = `<p class="vazio">Carregando...</p>`;
+  const { data, error } = await sb.from("vw_estaca_historico").select("*").eq("estaca_id", estacaId).limit(2000);
+  if(error){ if(cont) cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
+  // dia, execução (medição do dia por último), execução antes dos seus trechos, trechos por "de"
+  _esthLinhas = (data || []).sort((a, b) => String(a.data || "").localeCompare(String(b.data || ""))
+    || (a.tipo === "medicao" ? 1 : 0) - (b.tipo === "medicao" ? 1 : 0)
+    || String(a.perfuracao_inicio || "").localeCompare(String(b.perfuracao_inicio || ""))
+    || String(a.execucao_id || "").localeCompare(String(b.execucao_id || ""))
+    || ESTH_TIPO_ORD[a.tipo] - ESTH_TIPO_ORD[b.tipo]
+    || (Number(a.de_m) || 0) - (Number(b.de_m) || 0));
+  const bd = $("est-hist-badge");
+  if(bd) bd.textContent = _esthLinhas.filter(l => l.tipo === "execucao").length || "";
+  esthRender();
+}
+function esthTotais(linhas){
+  const execs = linhas.filter(l => l.tipo === "execucao"), trechos = linhas.filter(l => l.tipo === "trecho"), meds = linhas.filter(l => l.tipo === "medicao");
+  const porFerr = {}, porEtapa = {};
+  execs.forEach(x => {
+    const ts = trechos.filter(t => t.execucao_id === x.execucao_id && t.metragem_m != null);
+    if(ts.length) ts.forEach(t => { const k = t.ferramental || "nao_informado"; porFerr[k] = (porFerr[k] || 0) + Number(t.metragem_m); });
+    else if(Number(x.metragem_m) > 0){ const k = x.ferramental || "nao_informado"; porFerr[k] = (porFerr[k] || 0) + Number(x.metragem_m); }
+    const et = x.etapa || "sem_etapa";
+    porEtapa[et] = porEtapa[et] || { n: 0, m: 0 };
+    porEtapa[et].n++; porEtapa[et].m += Number(x.metragem_m) || 0;
+  });
+  return {
+    execs, trechos, meds, porFerr, porEtapa,
+    metros: execs.filter(x => x.modalidade !== "refuro").reduce((s, x) => s + (Number(x.metragem_m) || 0), 0),
+    dias: new Set(execs.map(x => x.data)).size,
+    acum: execs.reduce((m, x) => Math.max(m, Number(x.ate_m) || 0), 0),
+    refuros: execs.filter(x => x.modalidade === "refuro").length
+  };
+}
+function esthConsumos(l){
+  return [l.pressao_injecao_kgcm2 != null ? `${num(l.pressao_injecao_kgcm2)} kg/cm²` : "",
+    l.consumo_cimento_raiz ? `cimento ${l.consumo_cimento_raiz} ${l.consumo_cimento_unidade || ""}`.trim() : "",
+    l.consumo_areia_raiz ? `areia ${l.consumo_areia_raiz} ${l.consumo_areia_unidade || ""}`.trim() : "",
+    l.volume_concreto_m3 != null ? `${num(l.volume_concreto_m3)} m³` : "",
+    l.torque != null ? `torque ${num(l.torque)}` : ""].filter(Boolean).join(" · ");
+}
+function esthRender(){
+  const cont = $("esth-conteudo");
+  if(!cont) return;
+  const e = _esthEstaca || {};
+  if(!_esthLinhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma execução de RDO vinculada a esta estaca ainda.</p>`; return; }
+  const t = esthTotais(_esthLinhas);
+  const ind = `<div class="indicadores" style="margin-bottom:12px;">
+    <div class="ind"><div class="num">${t.dias}</div><div class="rot">Dias de trabalho</div></div>
+    <div class="ind"><div class="num">${t.execs.length}</div><div class="rot">Execuções${t.refuros ? ` (${t.refuros} refuro)` : ""}</div></div>
+    <div class="ind"><div class="num">${num(t.metros)} m</div><div class="rot">Metros perfurados</div></div>
+    <div class="ind"><div class="num">${t.acum ? num(t.acum) + " m" : "—"}</div><div class="rot">Profundidade atingida${e.profundidade_m != null ? ` · projeto ${num(e.profundidade_m)} m` : ""}</div></div>
+  </div>`;
+  const linhas = _esthLinhas.filter(l => l.tipo !== "medicao").map(l => {
+    if(l.tipo === "trecho") return `<tr class="meta"><td></td><td colspan="3">⛏️ trecho ${l.de_m != null ? num(l.de_m) : "?"}–${l.ate_m != null ? num(l.ate_m) : "?"} m</td><td class="num">${l.metragem_m != null ? num(l.metragem_m) : ""}</td><td>${esc(ESTH_FERR[l.ferramental] || l.identificacao_acessorios || "—")}</td><td colspan="2">${esc(l.observacoes || "")}</td></tr>`;
+    const horas = [l.perfuracao_inicio ? `perf. ${esthHora(l.perfuracao_inicio)}${l.perfuracao_fim ? "–" + esthHora(l.perfuracao_fim) : ""}` : "",
+      l.concretagem_inicio ? `conc. ${esthHora(l.concretagem_inicio)}${l.concretagem_fim ? "–" + esthHora(l.concretagem_fim) : ""}` : ""].filter(Boolean).join(" · ");
+    return `<tr>
+      <td>${dataBR(l.data)}${horas ? `<div class="meta">${esc(horas)}</div>` : ""}</td>
+      <td>${esc(l.maquina || "—")}</td>
+      <td>${esc(l.operador || "—")}</td>
+      <td>${l.etapa ? `<span class="tag ${l.etapa === "metragem" ? "verde" : "ambar"}">${esc(esthEtapaLbl(l.etapa))}</span>` : '<span class="meta">—</span>'}${l.modalidade === "refuro" ? ' <span class="tag cinza">refuro</span>' : ""}</td>
+      <td class="num">${l.de_m != null || l.ate_m != null ? `${l.de_m != null ? num(l.de_m) : "?"}–${l.ate_m != null ? num(l.ate_m) : "?"}` : ""}${l.metragem_m != null ? `<div class="meta">${num(l.metragem_m)} m no dia</div>` : ""}</td>
+      <td>${esc(ESTH_FERR[l.ferramental] || l.identificacao_acessorios || "—")}</td>
+      <td class="meta">${esc(esthConsumos(l))}</td>
+      <td class="meta">${esc(l.observacoes || "")}${l.estaca_numero_corrigido ? `<div>campo: ${esc(l.nome_campo || "")} → ${esc(l.estaca_numero_corrigido)}</div>` : ""}</td>
+    </tr>`;
+  }).join("");
+  const tabFerr = Object.entries(t.porFerr).sort((a, b) => b[1] - a[1]).map(([k, m]) => `<tr><td>${esc(ESTH_FERR[k] || k)}</td><td class="num">${num(m)} m</td></tr>`).join("");
+  const tabEtapa = Object.entries(t.porEtapa).map(([k, v]) => `<tr><td>${esc(ESTH_ETAPA[k] || k)}</td><td class="num">${v.n}</td><td class="num">${v.m ? num(v.m) + " m" : "—"}</td></tr>`).join("");
+  const meds = t.meds.length
+    ? t.meds.map(m => `<tr><td>${esc(m.medicao_numero || "—")}</td><td>${dataBR(m.data)}</td><td>${m.periodo_inicio ? `${dataBR(m.periodo_inicio)} – ${dataBR(m.periodo_fim)}` : ""}</td><td>${tagStatus("medicao", m.medicao_status)}</td><td class="meta">${esc(ESTH_VINC[m.vinculo_medicao] || m.vinculo_medicao || "")}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="vazio">Nenhuma medição cobre as execuções desta estaca (ou o seu perfil não lê medições).</td></tr>`;
+  cont.innerHTML = ind + `<div class="tabela-rola" style="max-height:38vh;overflow-y:auto;"><table class="itens-tabela">
+    <thead><tr><th>Data · horas</th><th>Máquina</th><th>Operador</th><th>Etapa</th><th class="num">De–até (m)</th><th>Ferramental</th><th>Pressão · consumos</th><th>Observação</th></tr></thead>
+    <tbody>${linhas}</tbody></table></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+      <div><h4 class="titulo-linha" style="margin-bottom:4px;">Metros por ferramental</h4><table class="itens-tabela"><tbody>${tabFerr || '<tr><td class="vazio">Sem ferramental informado nas execuções</td></tr>'}</tbody></table></div>
+      <div><h4 class="titulo-linha" style="margin-bottom:4px;">Execuções por etapa</h4><table class="itens-tabela"><thead><tr><th>Etapa</th><th class="num">Dias</th><th class="num">Metros</th></tr></thead><tbody>${tabEtapa}</tbody></table></div>
+    </div>
+    <h4 class="titulo-linha" style="margin:12px 0 4px;">Medições que cobrem a estaca</h4>
+    <table class="itens-tabela"><thead><tr><th>Nº</th><th>Data</th><th>Período</th><th>Status</th><th>Vínculo</th></tr></thead><tbody>${meds}</tbody></table>`;
+}
+function esthNomeArquivo(ext){
+  const e = _esthEstaca || {};
+  const obra = (typeof mapaObras !== "undefined" && obraEditId && mapaObras[obraEditId]) || "";
+  const limpo = (s) => String(s || "").replace(/[^\w.-]+/g, "_");
+  return `estaca-${limpo(e.numero)}${obra ? "-" + limpo(obra).slice(0, 30) : ""}.${ext}`;
+}
+/* PDF: estilo inline com hex, como os outros geradores (roda fora do CSS do app) */
+function esthExportarPDF(){
+  if(!_esthLinhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
+  if(typeof html2pdf === "undefined"){ aviso("app-aviso", "Biblioteca de PDF não carregou. Recarregue a página.", "erro"); return; }
+  const e = _esthEstaca || {}, t = esthTotais(_esthLinhas);
+  const obra = (typeof mapaObras !== "undefined" && obraEditId && mapaObras[obraEditId]) || "";
+  const td = 'style="padding:3px 5px;border:1px solid #000;font-size:9px;vertical-align:top;"';
+  const tdn = 'style="padding:3px 5px;border:1px solid #000;font-size:9px;vertical-align:top;text-align:right;"';
+  const th = 'style="padding:4px 5px;border:1px solid #000;font-size:9px;background:#e8e8e8;text-align:left;"';
+  const linhas = _esthLinhas.filter(l => l.tipo !== "medicao").map(l => l.tipo === "trecho"
+    ? `<tr><td ${td}></td><td ${td} colspan="3">trecho ${l.de_m != null ? num(l.de_m) : "?"}–${l.ate_m != null ? num(l.ate_m) : "?"} m</td><td ${tdn}>${l.metragem_m != null ? num(l.metragem_m) : ""}</td><td ${td}>${esc(ESTH_FERR[l.ferramental] || l.identificacao_acessorios || "")}</td><td ${td}>${esc(l.observacoes || "")}</td></tr>`
+    : `<tr><td ${td}>${dataBR(l.data)}${l.perfuracao_inicio ? "<br>" + esthHora(l.perfuracao_inicio) + (l.perfuracao_fim ? "–" + esthHora(l.perfuracao_fim) : "") : ""}</td><td ${td}>${esc(l.maquina || "")}</td><td ${td}>${esc(l.operador || "")}</td><td ${td}>${esc(esthEtapaLbl(l.etapa))}${l.modalidade === "refuro" ? " (refuro)" : ""}</td><td ${tdn}>${l.de_m != null || l.ate_m != null ? `${l.de_m != null ? num(l.de_m) : "?"}–${l.ate_m != null ? num(l.ate_m) : "?"}` : ""}${l.metragem_m != null ? `<br>${num(l.metragem_m)} m` : ""}</td><td ${td}>${esc(ESTH_FERR[l.ferramental] || l.identificacao_acessorios || "")}</td><td ${td}>${esc(esthConsumos(l))}${l.observacoes ? "<br>" + esc(l.observacoes) : ""}</td></tr>`).join("");
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#000;padding:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px;">
+      <div><div style="font-size:15px;font-weight:700;">Histórico da estaca ${esc(e.numero || "")}</div>
+        <div style="font-size:10px;">${esc(obra)}${e.local ? " · " + esc(e.local) : ""}${e.bloco ? " · bloco " + esc(e.bloco) : ""}${e.diametro_mm ? " · Ø " + num(e.diametro_mm) + " mm" : ""}${e.profundidade_m != null ? " · projeto " + num(e.profundidade_m) + " m" : ""}</div></div>
+      <div style="font-size:9px;text-align:right;">CGL Fundações · emitido em ${dataBR(hojeISO())}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:8px;"><tr>
+      <td ${td}><b>Dias de trabalho</b><br>${t.dias}</td><td ${td}><b>Execuções</b><br>${t.execs.length}${t.refuros ? " (" + t.refuros + " refuro)" : ""}</td><td ${td}><b>Metros perfurados</b><br>${num(t.metros)} m</td><td ${td}><b>Profundidade atingida</b><br>${t.acum ? num(t.acum) + " m" : "—"}</td><td ${td}><b>Status</b><br>${esc((ESTACA_STATUS[e.status] || {}).label || e.status || "")}</td>
+    </tr></table>
+    <table style="width:100%;border-collapse:collapse;"><thead><tr><th ${th}>Data · horas</th><th ${th}>Máquina</th><th ${th}>Operador</th><th ${th}>Etapa</th><th ${th}>De–até (m)</th><th ${th}>Ferramental</th><th ${th}>Pressão · consumos · observação</th></tr></thead><tbody>${linhas}</tbody></table>
+    <div style="display:flex;gap:12px;margin-top:10px;">
+      <table style="border-collapse:collapse;flex:1;"><thead><tr><th ${th} colspan="2">Metros por ferramental</th></tr></thead><tbody>${Object.entries(t.porFerr).sort((a, b) => b[1] - a[1]).map(([k, m]) => `<tr><td ${td}>${esc(ESTH_FERR[k] || k)}</td><td ${tdn}>${num(m)} m</td></tr>`).join("") || `<tr><td ${td} colspan="2">Sem ferramental informado</td></tr>`}</tbody></table>
+      <table style="border-collapse:collapse;flex:1;"><thead><tr><th ${th}>Etapa</th><th ${th}>Dias</th><th ${th}>Metros</th></tr></thead><tbody>${Object.entries(t.porEtapa).map(([k, v]) => `<tr><td ${td}>${esc(ESTH_ETAPA[k] || k)}</td><td ${tdn}>${v.n}</td><td ${tdn}>${v.m ? num(v.m) + " m" : "—"}</td></tr>`).join("")}</tbody></table>
+    </div>
+    ${t.meds.length ? `<table style="width:100%;border-collapse:collapse;margin-top:10px;"><thead><tr><th ${th}>Medição</th><th ${th}>Data</th><th ${th}>Período</th><th ${th}>Status</th><th ${th}>Vínculo</th></tr></thead><tbody>${t.meds.map(m => `<tr><td ${td}>${esc(m.medicao_numero || "")}</td><td ${td}>${dataBR(m.data)}</td><td ${td}>${m.periodo_inicio ? dataBR(m.periodo_inicio) + " – " + dataBR(m.periodo_fim) : ""}</td><td ${td}>${esc(m.medicao_status || "")}</td><td ${td}>${esc(ESTH_VINC[m.vinculo_medicao] || "")}</td></tr>`).join("")}</tbody></table>` : ""}
+  </div>`;
+  const el = document.createElement("div");
+  el.style.cssText = "position:fixed;left:-10000px;top:0;width:1100px;";
+  el.innerHTML = html;
+  document.body.appendChild(el);
+  html2pdf().set({ margin: 8, filename: esthNomeArquivo("pdf"), image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2 }, jsPDF: { unit: "mm", format: "a4", orientation: "landscape" } })
+    .from(el).save().then(() => el.remove()).catch(err => { el.remove(); aviso("app-aviso", "Não foi possível gerar o PDF: " + (err && err.message ? err.message : err), "erro"); });
+}
+function esthExportarXlsx(){
+  if(!_esthLinhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilhas não carregou. Recarregue a página.", "erro"); return; }
+  const t = esthTotais(_esthLinhas);
+  const linhas = _esthLinhas.map(l => ({
+    "Tipo": l.tipo, "Data": l.data ? dataBR(l.data) : "", "Perf. início": esthHora(l.perfuracao_inicio), "Perf. fim": esthHora(l.perfuracao_fim),
+    "Conc. início": esthHora(l.concretagem_inicio), "Conc. fim": esthHora(l.concretagem_fim), "Máquina": l.maquina || "", "Operador": l.operador || "",
+    "Etapa": esthEtapaLbl(l.etapa), "Modalidade": l.modalidade || "", "De (m)": l.de_m, "Até (m)": l.ate_m, "Metragem (m)": l.metragem_m,
+    "Ferramental": ESTH_FERR[l.ferramental] || l.ferramental || "", "Acessórios (texto)": l.identificacao_acessorios || "",
+    "Pressão (kg/cm²)": l.pressao_injecao_kgcm2, "Cimento": l.consumo_cimento_raiz || "", "Un. cimento": l.consumo_cimento_unidade || "",
+    "Areia": l.consumo_areia_raiz || "", "Un. areia": l.consumo_areia_unidade || "", "Concreto (m³)": l.volume_concreto_m3, "Torque": l.torque,
+    "Inclinação": l.inclinacao || "", "Observação": l.observacoes || "", "Nome no campo": l.nome_campo || "", "Nome corrigido": l.estaca_numero_corrigido || "",
+    "Medição": l.medicao_numero || "", "Status medição": l.medicao_status || "", "Vínculo medição": ESTH_VINC[l.vinculo_medicao] || "",
+    "Período início": l.periodo_inicio ? dataBR(l.periodo_inicio) : "", "Período fim": l.periodo_fim ? dataBR(l.periodo_fim) : ""
+  }));
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const totais = [
+    ...Object.entries(t.porFerr).map(([k, m]) => ({ "Grupo": "Ferramental", "Chave": ESTH_FERR[k] || k, "Dias": "", "Metros": r2(m) })),
+    ...Object.entries(t.porEtapa).map(([k, v]) => ({ "Grupo": "Etapa", "Chave": ESTH_ETAPA[k] || k, "Dias": v.n, "Metros": r2(v.m) })),
+    { "Grupo": "Total", "Chave": "Metros perfurados (sem refuro)", "Dias": t.dias, "Metros": r2(t.metros) }
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas), "Histórico");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(totais), "Totais");
+  XLSX.writeFile(wb, esthNomeArquivo("xlsx"));
+}
+
 function ligarEstacas(){
   $("btn-est-nova")?.addEventListener("click", () => {
     if(!obraEditId){ aviso("app-aviso","Salve a obra antes de adicionar estacas.","erro"); return; }
@@ -3183,6 +3631,12 @@ function ligarEstacas(){
   // fase 75: mexer na profundidade de projeto de uma estaca "projeto a confirmar" já conta como confirmação
   $("est-profundidade")?.addEventListener("input", () => { const c = $("est-proj-confirmado"); if(c && _estacaEdit?.projeto_pendente) c.checked = true; });
   $("btn-est-cancelar")?.addEventListener("click", fecharModalEstaca);
+  // fase 94 (#81): abas da ficha da estaca, histórico e exportações; planta → modal de execução → 📜 Histórico
+  document.querySelectorAll("#est-modal-notebook button").forEach(b => b.addEventListener("click", () => ativarTabEstacaModal(b.dataset.estTab)));
+  $("btn-est-fechar-hist")?.addEventListener("click", fecharModalEstaca);
+  $("btn-esth-pdf")?.addEventListener("click", esthExportarPDF);
+  $("btn-esth-xlsx")?.addEventListener("click", esthExportarXlsx);
+  $("btn-exec-historico")?.addEventListener("click", () => { const id = _estExecId; fecharModalExecucao(); if(id) abrirModalEstaca(id, "historico"); });
 
   $("btn-est-extrair")?.addEventListener("click", importarEstacasPDF);
   $("btn-est-confirmar-import")?.addEventListener("click", () => comBotaoTravado("btn-est-confirmar-import", confirmarImportEstacas));

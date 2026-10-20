@@ -2109,6 +2109,10 @@ a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus
 /* Linha da lista de contratos: destaque de vencimento */
 tr.con-vencendo td { background: var(--aviso-bg); }
 tr.con-vencido td  { background: var(--perigo-bg); }
+/* Fase 93c: linha da equipe do RDO já liberada para a folha (travada, 🔒) e grupos em "Horas e alocação" */
+tr.eq-liberada td  { background: var(--sucesso-bg); }
+tr.rhh-grupo td    { background: var(--sup-3); border-top: 2px solid var(--borda-forte); }
+tr.rhh-liberada td { color: var(--txt-sec); }
 .con-dias-tag {
   display: inline-block;
   margin-left: 6px;

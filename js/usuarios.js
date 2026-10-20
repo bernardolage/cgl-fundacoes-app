@@ -22,7 +22,8 @@ const CARGOS = {
   gestor_frota: "Gestor de frota",  /* frota, equipamentos, manutenção/OS, requisições e compras (fase 77) */
   visualizador: "Visualizador",
   auditor:      "Auditor (só leitura)",  /* usuário de revisão: vê o que a diretoria vê, menos dados sensíveis; não grava (fase 79) */
-  auxiliar_almoxarifado: "Auxiliar de almoxarifado"  /* equipe do Julio: estoque, separações, produtos (consulta) e peças dos reparos; sem obras, compras nem valores (fase 90) */
+  auxiliar_almoxarifado: "Auxiliar de almoxarifado",  /* equipe do Julio: estoque, separações, produtos (consulta) e peças dos reparos; sem obras, compras nem valores (fase 90) */
+  gestor_manutencao: "Gestor de manutenção"  /* Bruno: OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar (fase 92) */
 };
 
 let _usuarios   = [];
@@ -32,13 +33,18 @@ let usrEditEmail = null;
 
 /* ---------- Carga ---------- */
 async function carregarUsuarios(){
-  const { data, error } = await sb.from("profiles")
-    .select("id,nome,email,cargo,telefone,ativo,created_at")
+  // fase 93b: login_cpf e senha_provisoria; se a migration da 93b ainda não estiver no banco (42703), lê sem elas
+  let { data, error } = await sb.from("profiles")
+    .select("id,nome,email,cargo,telefone,ativo,created_at,login_cpf,senha_provisoria")
     .order("nome");
+  if(error && error.code === "42703"){
+    ({ data, error } = await sb.from("profiles").select("id,nome,email,cargo,telefone,ativo,created_at").order("nome"));
+  }
   _usuarios = error ? [] : (data || []);
   renderUsuarios();
   carregarRespServico();
   carregarPoliticaSessaoCard();
+  carregarPalavrasEtapaCard();   // fase 94
 }
 
 /* ---------- Responsáveis por serviço (fase 75) ----------
@@ -168,6 +174,29 @@ async function salvarPoliticaSessao(){
   if(typeof carregarPoliticaSessao === "function") await carregarPoliticaSessao();
 }
 
+/* ---------- fase 94 (#75): palavras que marcam a estaca como executada pela observação do RDO ----------
+   empresa_config.rdo_palavras_etapa_final, só diretor e admin (empresa_config_admin_write). O gatilho do banco
+   (fn_rdo_exec_etapa_final) usa a lista na ordem; o front espelha em rdoEtapaFinal (js/rdo.js). */
+async function carregarPalavrasEtapaCard(){
+  const card = $("usr-rdo-card");
+  if(!card) return;
+  const pode = ["diretor", "admin"].includes(usuarioAtual?.cargo);
+  card.style.display = pode ? "" : "none";
+  if(!pode) return;
+  const { data, error } = await sb.from("empresa_config").select("rdo_palavras_etapa_final").eq("id", 1).maybeSingle();
+  if(error){ aviso("app-aviso", "Não foi possível ler as palavras de etapa final: " + error.message, "erro"); return; }
+  $("usr-rdo-palavras").value = (data?.rdo_palavras_etapa_final || []).join(", ");
+}
+async function salvarPalavrasEtapa(){
+  const lista = [...new Set($("usr-rdo-palavras").value.split(/[,;\n]/).map(s => s.trim().toLowerCase()).filter(Boolean))];
+  if(!lista.length){ aviso("app-aviso", "Informe ao menos uma palavra (ex.: injeção, concretagem, argamassado).", "erro"); return; }
+  const { error } = await sb.from("empresa_config").update({ rdo_palavras_etapa_final: lista, updated_at: new Date().toISOString() }).eq("id", 1);
+  if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
+  if(typeof _rdoPalavrasEtapa !== "undefined") _rdoPalavrasEtapa = null;   // a grade do RDO relê na próxima abertura
+  $("usr-rdo-palavras").value = lista.join(", ");
+  aviso("app-aviso", "Palavras salvas. Valem para as execuções gravadas a partir de agora.", "ok");
+}
+
 async function encerrarSessoesUsr(){
   if(!usrEditId) return;
   const u = _usuarios.find(x => x.id === usrEditId);
@@ -192,6 +221,16 @@ async function encerrarTodasSessoes(){
   await carregarPoliticaSessaoCard();
 }
 
+/* ---------- Login por CPF (fase 93b) ----------
+   Perfil criado pelo RH na aba Acesso da ficha do funcionário: o usuário entra com o CPF e profiles.email guarda
+   só uma máscara (<uuid>@funcionarios.cglfundacoes.com.br). A tela nunca mostra e-mail para esses perfis — diz
+   "login: CPF" —, não oferece "Resetar senha" (sem caixa postal; a nova senha sai da ficha do funcionário) e o
+   campo E-mail da ficha fica só informativo. */
+function usrLoginRotulo(u){
+  if(u?.login_cpf) return `<span class="tag azul" title="Criado pelo RH na ficha do funcionário; entra com o CPF">login: CPF</span>${u.senha_provisoria ? ' <span class="tag ambar" title="Ainda não trocou a senha definida pelo RH">senha provisória</span>' : ""}`;
+  return esc(u?.email || "—");
+}
+
 /* ---------- Filtros ---------- */
 function usrFiltrados(){
   const termo = ($("usr-busca")?.value || "").trim().toLowerCase();
@@ -202,7 +241,7 @@ function usrFiltrados(){
     if(fAtivo === "ativos" && u.ativo === false) return false;
     if(fAtivo === "inativos" && u.ativo !== false) return false;
     if(termo){
-      const alvo = `${u.nome||""} ${u.email||""} ${CARGOS[u.cargo]||u.cargo||""}`.toLowerCase();
+      const alvo = `${u.nome||""} ${u.login_cpf ? "login cpf" : (u.email||"")} ${CARGOS[u.cargo]||u.cargo||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -238,14 +277,14 @@ function renderUsrLista(dados){
   }
   const linhas = dados.map(u => `<tr class="linha-clicavel" data-id="${esc(u.id)}">
     <td>${esc(u.nome||"—")}</td>
-    <td>${esc(u.email||"—")}</td>
+    <td>${usrLoginRotulo(u)}</td>
     <td>${esc(CARGOS[u.cargo] || u.cargo || "—")}</td>
     <td>${esc(u.telefone||"—")}</td>
     <td>${tagSituacao(u.ativo)}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Nome</th><th>E-mail</th><th>Cargo</th><th>Telefone</th><th>Situação</th>
+      <th>Nome</th><th>E-mail / login</th><th>Cargo</th><th>Telefone</th><th>Situação</th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 }
@@ -267,7 +306,7 @@ function renderUsrKanban(dados){
       <div class="serv-kan-card linha-clicavel" data-id="${esc(u.id)}">
         <div class="serv-kan-card-nome">${esc(u.nome || "—")}</div>
         <div class="serv-kan-card-meta">
-          <span class="meta">${esc(u.email || "—")}</span>
+          <span class="meta">${usrLoginRotulo(u)}</span>
         </div>
         <div class="serv-kan-card-rod">
           <span>${esc(u.telefone || "")}</span>
@@ -318,14 +357,15 @@ function abrirUsuario(id){
   const u = _usuarios.find(x => x.id === id);
   if(!u){ aviso("app-aviso","Usuário não encontrado.","erro"); return; }
   usrEditId = id;
-  usrEditEmail = u.email;
-  $("usr-email").value     = u.email || "";
+  // fase 93b: login por CPF não tem e-mail de verdade; a senha nova sai da aba Acesso da ficha do funcionário
+  usrEditEmail = u.login_cpf ? null : u.email;
+  $("usr-email").value     = u.login_cpf ? "login: CPF (criado pelo RH na ficha do funcionário)" : (u.email || "");
   $("usr-email").disabled  = true;
   $("usr-nome-input").value= u.nome || "";
   $("usr-cargo").value     = u.cargo || "visualizador";
   $("usr-telefone").value  = u.telefone || "";
   $("usr-ativo").checked   = u.ativo !== false;
-  $("btn-reset-senha-usr").style.display = "";
+  $("btn-reset-senha-usr").style.display = u.login_cpf ? "none" : "";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "";   // fase 87
   $("btn-salvar-usr").textContent = "💾 Salvar alterações";
   abrirFichaUsrVisual(u);
@@ -337,7 +377,7 @@ function abrirFichaUsrVisual(u){
 
   $("usr-ficha-nome").textContent = u.nome || "(novo)";
   $("usr-ficha-cargo-chip").textContent = CARGOS[u.cargo] || u.cargo || "—";
-  $("usr-ficha-email-chip").textContent = u.email || "—";
+  $("usr-ficha-email-chip").innerHTML   = usrLoginRotulo(u);   // fase 93b: "login: CPF" no lugar do e-mail técnico
   $("usr-ficha-tel-chip").textContent = u.telefone || "—";
   $("usr-ficha-ativo-chip").innerHTML = (u.ativo === false)
     ? '<span class="tag vermelho">Inativo</span>'
@@ -502,6 +542,7 @@ function ligarUsuarios(){
   // Política de sessão (fase 87)
   $("btn-encerrar-sessoes-usr")?.addEventListener("click", () => comBotaoTravado("btn-encerrar-sessoes-usr", encerrarSessoesUsr));
   $("btn-usr-sessao-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessao-salvar", salvarPoliticaSessao));
+  $("btn-usr-rdo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-salvar", salvarPalavrasEtapa));   // fase 94
   $("btn-usr-sessoes-todas")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessoes-todas", encerrarTodasSessoes));
 
   const navUsr = document.querySelector('nav button[data-secao="usuarios"]');

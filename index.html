@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="26618f8" />
+<meta name="app-versao" content="ff3e17e" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=26618f8" />
+<link rel="stylesheet" href="css/estilo.css?v=ff3e17e" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -27,8 +27,9 @@
     <div id="login-aviso" class="aviso"></div>
     <form id="form-login">
       <div class="campo">
-        <label>E-mail</label>
-        <input type="email" id="login-email" required autocomplete="username" placeholder="seu@email.com" />
+        <!-- fase 93b: funcionário entra com o CPF (só números); o app monta o e-mail técnico por trás -->
+        <label>E-mail ou CPF</label>
+        <input type="text" id="login-email" required autocomplete="username" placeholder="seu@email.com ou CPF (só números)" />
       </div>
       <div class="campo">
         <label>Senha</label>
@@ -135,6 +136,10 @@
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         <span>Equipamentos</span>
       </button>
+      <button data-secao="manutencao">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+        <span>Manutenção</span>
+      </button>
       <button data-secao="frota">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
         <span>Logística</span>
@@ -158,6 +163,16 @@
       <button data-secao="rdo">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
         <span>Diário de Obra</span>
+      </button>
+      <!-- fase 93c: horas do RDO a liberar, fechamento do mês e alocação por obra (RH, engenharia, encarregado, logística) -->
+      <button data-secao="rhh" id="nav-rhh" style="display:none;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <span>Horas e alocação</span>
+      </button>
+      <!-- fase 93c: o próprio funcionário lança as horas de viagem (celular) -->
+      <button data-secao="rhv" id="nav-rhv">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M5 17h14v-5l-2-5H7l-2 5z"></path><circle cx="7.5" cy="17.5" r="1.5"></circle><circle cx="16.5" cy="17.5" r="1.5"></circle><path d="M12 7V4"></path></svg>
+        <span>Minhas horas de viagem</span>
       </button>
       <button data-secao="chamados" id="nav-chamados">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -613,7 +628,9 @@
               <button type="button" class="serv-view-btn" data-view="logistica" title="Onde cada um está, TAG, próxima baixada">Logística</button>
               <button type="button" class="serv-view-btn" data-view="he" title="Horas por colaborador e obra a partir dos RDOs">Horas extras</button>
               <button type="button" class="serv-view-btn func-sens" data-view="aprop" title="Apropriação da folha por obra calculada pelo sistema (dias de RDO × custo mensal da ficha)">Apropriações</button>
+              <button type="button" class="serv-view-btn func-sens" data-view="promocoes" title="Plano de cargos: próxima mudança de função prevista por funcionário (fase 93a)">Funções</button>
             </div>
+            <button type="button" class="btn-sec func-sens" id="btn-admitir-func" title="Admissão em etapas: dados pessoais → documentos → contrato → benefícios; gera a ficha e os contratos em PDF" style="margin-left:8px;">📋 Admitir</button>
             <button type="button" class="btn" id="btn-novo-funcionario">+ Novo</button>
           </div>
           <div class="serv-filtros">
@@ -683,10 +700,13 @@
           <div class="odoo-notebook" id="func-notebook">
             <button type="button" data-tab="pessoais" class="ativo">Dados pessoais</button>
             <button type="button" data-tab="profissional">Profissional</button>
+            <button type="button" data-tab="funcoes" title="Histórico de função e próxima mudança pelo plano de cargos (fase 93a)">Funções</button>
             <button type="button" data-tab="documentos">Documentos</button>
             <button type="button" data-tab="emergencia">Emergência</button>
             <button type="button" data-tab="endereco">Endereço</button>
             <button type="button" data-tab="observacoes">Observações</button>
+            <!-- fase 93b: login do funcionário (CPF) criado pelo RH; só rh, admin e diretor veem (funcAcessoAplicarVisibilidade) -->
+            <button type="button" data-tab="acesso" style="display:none;">Acesso</button>
           </div>
 
           <div class="odoo-body">
@@ -698,6 +718,35 @@
                 <div class="campo func-sens"><label>RG</label><input id="func-rg" /></div>
                 <div class="campo func-sens"><label>Data de nascimento</label><input id="func-nascimento" type="date" /></div>
                 <p class="meta" id="func-sens-aviso" style="display:none;grid-column:1/-1;">🔒 CPF, RG, nascimento, salário, endereço e contato de emergência são visíveis só para diretoria e RH.</p>
+                <!-- fase 93a: o que a ficha de registro (RG 5.17) pede; vive em funcionarios_sensiveis -->
+                <details id="func-civil-rh" class="func-sens" style="grid-column:1/-1;">
+                  <summary style="cursor:pointer;"><strong>Documentos e dados civis (RH)</strong> <span class="meta">— ficha de registro e contratos de admissão</span></summary>
+                  <div class="grade" style="margin-top:8px;">
+                    <div class="campo"><label>Órgão emissor do RG</label><input id="func-rg-orgao" placeholder="ex.: SSP/MG" /></div>
+                    <div class="campo"><label>PIS</label><input id="func-pis" /></div>
+                    <div class="campo"><label>CTPS</label><input id="func-ctps" /></div>
+                    <div class="campo"><label>Série da CTPS</label><input id="func-ctps-serie" placeholder="ex.: 0030/MG" /></div>
+                    <div class="campo"><label>Título de eleitor</label><input id="func-titulo-eleitor" /></div>
+                    <div class="campo"><label>Zona eleitoral</label><input id="func-zona" /></div>
+                    <div class="campo"><label>Seção eleitoral</label><input id="func-secao" /></div>
+                    <div class="campo"><label>Certificado de reservista</label><input id="func-reservista" /></div>
+                    <div class="campo"><label>Sexo</label><select id="func-sexo"><option value="">—</option><option value="M">Masculino</option><option value="F">Feminino</option></select></div>
+                    <div class="campo"><label>Estado civil</label><select id="func-estado-civil"><option value="">—</option><option>Solteiro(a)</option><option>Casado(a)</option><option>União estável</option><option>Divorciado(a)</option><option>Separado(a)</option><option>Viúvo(a)</option></select></div>
+                    <div class="campo"><label>Nome do cônjuge</label><input id="func-conjuge" /></div>
+                    <div class="campo"><label>Naturalidade</label><input id="func-naturalidade" placeholder="cidade/UF" /></div>
+                    <div class="campo"><label>Nacionalidade</label><input id="func-nacionalidade" placeholder="Brasileira" /></div>
+                    <div class="campo"><label>Raça/cor</label><select id="func-raca-cor"><option value="">—</option><option>Amarela</option><option>Branca</option><option>Indígena</option><option>Parda</option><option>Preta</option></select></div>
+                    <div class="campo"><label>Grau de instrução</label><select id="func-grau-instrucao"><option value="">—</option><option>Analfabeto</option><option>Ensino Fundamental incompleto</option><option>Ensino Fundamental</option><option>Ensino Médio incompleto</option><option>Ensino Médio</option><option>Técnico</option><option>Superior incompleto</option><option>Superior</option><option>Pós-graduação</option></select></div>
+                    <div class="campo"><label>Nome da mãe</label><input id="func-nome-mae" /></div>
+                    <div class="campo"><label>Nome do pai</label><input id="func-nome-pai" /></div>
+                    <div class="campo"><label>Dependentes</label><input id="func-dependentes" placeholder="ex.: 2 (filhos)" /></div>
+                    <div class="campo" style="grid-column:1/-1;padding-top:6px;border-top:1px solid var(--borda);"><label style="font-weight:700;color:var(--marca-900);">Estrangeiro (só se for o caso)</label></div>
+                    <div class="campo"><label>Data que chegou ao Brasil</label><input id="func-estr-chegada" type="date" /></div>
+                    <div class="campo"><label>Casado com brasileira?</label><select id="func-estr-casado"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+                    <div class="campo"><label>É naturalizado?</label><select id="func-estr-naturalizado"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+                    <div class="campo"><label>Filhos brasileiros?</label><select id="func-estr-filhos"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+                  </div>
+                </details>
               </div>
             </div>
 
@@ -744,6 +793,16 @@
                     <div class="campo"><label>Contribuição sindical (R$/mês)</label><input id="func-contrib-sindical" type="number" step="0.01" min="0" /></div>
                   </div>
                 </details>
+                <!-- fase 93a: jornada e forma de pagamento como saem no contrato de experiência (RG 5.4) -->
+                <details id="func-jornada-rh" class="func-sens" style="grid-column:1/-1;">
+                  <summary style="cursor:pointer;"><strong>Jornada e pagamento (RH)</strong> <span class="meta">— texto que entra nos contratos</span></summary>
+                  <div class="grade" style="margin-top:8px;">
+                    <div class="campo largo"><label>Horário de trabalho</label><input id="func-horario-trabalho" placeholder="de 7:00 às 17:00 (seg a quin) 7:00 às 16:00 (sex)" /></div>
+                    <div class="campo"><label>Intervalo</label><input id="func-intervalo" placeholder="(uma) hora" /></div>
+                    <div class="campo"><label>Horas semanais</label><input id="func-horas-semanais" type="number" step="0.5" min="0" placeholder="44" /></div>
+                    <div class="campo"><label>Forma de pagamento</label><input id="func-forma-pagamento" placeholder="ex.: Mensalista" /></div>
+                  </div>
+                </details>
                 <div class="campo"><label>Supervisor direto</label><select id="func-supervisor"><option value="">— Sem supervisor —</option></select></div>
                 <div class="campo"><label>E-mail</label><input id="func-email" type="email" /></div>
                 <div class="campo"><label>Telefone</label><input id="func-telefone" /></div>
@@ -775,8 +834,42 @@
               </div>
             </div>
 
+            <!-- TAB FUNÇÕES (fase 93a: histórico de função + plano de cargos) -->
+            <div class="odoo-tab" data-tab="funcoes">
+              <div class="lista-topo compacta">
+                <h3>Histórico de função <span id="func-funcoes-cont" class="contador"></span></h3>
+                <button type="button" class="btn-sec func-sens" id="btn-func-ff-novo">+ Registrar mudança de função</button>
+              </div>
+              <div id="func-funcoes-prox" class="meta bloco" style="margin-bottom:8px;"></div>
+              <div id="func-funcoes-aviso" class="aviso" style="margin-bottom:8px;"></div>
+              <div id="func-ff-form" class="func-doc-inline-form" style="display:none;">
+                <div class="grade">
+                  <div class="campo"><label>Nova função *</label><input id="func-ff-funcao" list="func-funcoes-datalist" placeholder="ex.: Operador de Máquinas Pleno" /></div>
+                  <div class="campo"><label>A partir de *</label><input id="func-ff-data" type="date" /></div>
+                  <div class="campo"><label>Motivo</label>
+                    <select id="func-ff-motivo">
+                      <option value="promocao_plano">Promoção pelo plano de cargos</option>
+                      <option value="mudanca">Mudança de função</option>
+                      <option value="correcao">Correção (data ou função registrada errada)</option>
+                      <option value="admissao">Admissão</option>
+                    </select>
+                  </div>
+                  <div class="campo largo"><label>Observações</label><input id="func-ff-obs" placeholder="ex.: avaliação de desempenho de 10/2026" /></div>
+                </div>
+                <div class="form-acoes compacta">
+                  <button type="button" class="btn" id="btn-func-ff-salvar">Salvar</button>
+                  <button type="button" class="btn-sec" id="btn-func-ff-cancelar">Cancelar</button>
+                </div>
+              </div>
+              <div id="func-funcoes-lista"></div>
+              <datalist id="func-funcoes-datalist"></datalist>
+              <p class="meta">A função da ficha é espelho da última linha deste histórico. A data prevista da próxima mudança sai do plano de cargos (início da função atual + meses da regra); se a função atual começou em outra data, registre uma correção com a data certa.</p>
+            </div>
+
             <!-- TAB DOCUMENTOS -->
             <div class="odoo-tab" data-tab="documentos">
+              <!-- fase 93a: PDFs de admissão gerados pelo app (só RH/diretoria; js/rh_documentos.js) -->
+              <div id="func-rh-docs" class="func-sens" style="margin-bottom:16px;"></div>
               <div style="margin-bottom:12px;">
                 <button type="button" class="btn-sec" id="btn-add-doc-func">+ Adicionar documento</button>
               </div>
@@ -838,6 +931,136 @@
               <div class="grade">
                 <div class="campo largo"><label>Observações</label><textarea id="func-obs" rows="6"></textarea></div>
               </div>
+            </div>
+
+            <!-- TAB ACESSO (fase 93b): login por CPF criado pelo RH; conteúdo em js/funcionarios.js (bloco Acesso) -->
+            <div class="odoo-tab" data-tab="acesso">
+              <div id="func-acesso-aviso" class="aviso" style="margin-bottom:8px;"></div>
+              <div id="func-acesso-conteudo"><p class="vazio">—</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admissão em etapas (fase 93a, chamado #69): dados pessoais → documentos → contrato → benefícios.
+           Só RH/diretoria (botão "Admitir" tem classe func-sens). Grava funcionarios + funcionarios_sensiveis + admissoes
+           e abre a ficha na aba Documentos para gerar os PDFs. Prefixo adm-. -->
+      <div id="func-adm" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-adm-voltar">&larr; Painel</button>
+              <button type="button" class="btn-sec" id="btn-adm-anterior" style="display:none;">‹ Anterior</button>
+              <button type="button" class="btn" id="btn-adm-proximo">Próximo ›</button>
+              <button type="button" class="btn btn-sucesso" id="btn-adm-concluir" style="display:none;">✅ Concluir admissão</button>
+            </div>
+            <div class="actions-right"><strong>Admissão de funcionário</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="adm-etapas">
+            <div class="stage atual" data-etapa="1">1. Dados pessoais</div>
+            <div class="stage" data-etapa="2">2. Documentos e endereço</div>
+            <div class="stage" data-etapa="3">3. Contrato</div>
+            <div class="stage" data-etapa="4">4. Benefícios e conclusão</div>
+          </div>
+          <div id="adm-aviso" class="aviso" style="margin:8px 0;"></div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-etapa="1">
+              <div class="grade">
+                <div class="campo largo"><label>Nome completo *</label><input id="adm-nome" required /></div>
+                <div class="campo"><label>CPF *</label><input id="adm-cpf" placeholder="só números" /></div>
+                <div class="campo"><label>RG</label><input id="adm-rg" /></div>
+                <div class="campo"><label>Órgão emissor</label><input id="adm-rg-orgao" placeholder="ex.: SSP/MG" /></div>
+                <div class="campo"><label>Data de nascimento</label><input id="adm-nascimento" type="date" /></div>
+                <div class="campo"><label>Sexo</label><select id="adm-sexo"><option value="">—</option><option value="M">Masculino</option><option value="F">Feminino</option></select></div>
+                <div class="campo"><label>Estado civil</label><select id="adm-estado-civil"><option value="">—</option><option>Solteiro(a)</option><option>Casado(a)</option><option>União estável</option><option>Divorciado(a)</option><option>Separado(a)</option><option>Viúvo(a)</option></select></div>
+                <div class="campo"><label>Nome do cônjuge</label><input id="adm-conjuge" /></div>
+                <div class="campo"><label>Naturalidade</label><input id="adm-naturalidade" placeholder="cidade/UF" /></div>
+                <div class="campo"><label>Nacionalidade</label><input id="adm-nacionalidade" value="Brasileira" /></div>
+                <div class="campo"><label>Raça/cor</label><select id="adm-raca-cor"><option value="">—</option><option>Amarela</option><option>Branca</option><option>Indígena</option><option>Parda</option><option>Preta</option></select></div>
+                <div class="campo"><label>Grau de instrução</label><select id="adm-grau-instrucao"><option value="">—</option><option>Analfabeto</option><option>Ensino Fundamental incompleto</option><option>Ensino Fundamental</option><option>Ensino Médio incompleto</option><option>Ensino Médio</option><option>Técnico</option><option>Superior incompleto</option><option>Superior</option><option>Pós-graduação</option></select></div>
+                <div class="campo"><label>Nome da mãe</label><input id="adm-nome-mae" /></div>
+                <div class="campo"><label>Nome do pai</label><input id="adm-nome-pai" /></div>
+                <div class="campo"><label>Dependentes</label><input id="adm-dependentes" placeholder="ex.: 2 (filhos)" /></div>
+                <div class="campo"><label>Celular</label><input id="adm-telefone" /></div>
+                <div class="campo"><label>E-mail</label><input id="adm-email" type="email" placeholder="usado na assinatura eletrônica" /></div>
+                <div class="campo"><label>Contato de emergência</label><input id="adm-emerg-nome" placeholder="nome" /></div>
+                <div class="campo"><label>Telefone do contato</label><input id="adm-emerg-tel" /></div>
+                <div class="campo"><label>Parentesco</label><input id="adm-emerg-parentesco" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-etapa="2">
+              <div class="grade">
+                <div class="campo" style="grid-column:1/-1;"><label style="font-weight:700;color:var(--marca-900);">Documentos</label></div>
+                <div class="campo"><label>CTPS</label><input id="adm-ctps" /></div>
+                <div class="campo"><label>Série da CTPS</label><input id="adm-ctps-serie" placeholder="ex.: 0030/MG" /></div>
+                <div class="campo"><label>PIS</label><input id="adm-pis" /></div>
+                <div class="campo"><label>Título de eleitor</label><input id="adm-titulo-eleitor" /></div>
+                <div class="campo"><label>Zona</label><input id="adm-zona" /></div>
+                <div class="campo"><label>Seção</label><input id="adm-secao" /></div>
+                <div class="campo"><label>Certificado de reservista</label><input id="adm-reservista" /></div>
+                <div class="campo"><label>Categoria da CNH</label><select id="adm-cnh-categoria"><option value="">Não possui</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option><option value="AB">AB</option><option value="AC">AC</option><option value="AD">AD</option><option value="AE">AE</option></select></div>
+                <div class="campo"><label>Validade da CNH</label><input id="adm-cnh-validade" type="date" /></div>
+                <div class="campo" style="grid-column:1/-1;padding-top:6px;border-top:1px solid var(--borda);"><label style="font-weight:700;color:var(--marca-900);">Endereço</label></div>
+                <div class="campo"><label>CEP</label><input id="adm-cep" /></div>
+                <div class="campo largo"><label>Logradouro</label><input id="adm-logradouro" /></div>
+                <div class="campo"><label>Número</label><input id="adm-numero" /></div>
+                <div class="campo"><label>Complemento</label><input id="adm-complemento" /></div>
+                <div class="campo"><label>Bairro</label><input id="adm-bairro" /></div>
+                <div class="campo"><label>Cidade</label><input id="adm-cidade" /></div>
+                <div class="campo"><label>UF</label><select id="adm-uf"></select></div>
+                <div class="campo" style="grid-column:1/-1;padding-top:6px;border-top:1px solid var(--borda);"><label style="font-weight:700;color:var(--marca-900);">Conta bancária (Itaú)</label></div>
+                <div class="campo"><label>Banco</label><input id="adm-banco" value="Itaú" /></div>
+                <div class="campo"><label>Agência</label><input id="adm-agencia" /></div>
+                <div class="campo"><label>Operação</label><input id="adm-operacao" placeholder="ex.: C/C" /></div>
+                <div class="campo"><label>Conta</label><input id="adm-conta" /></div>
+                <div class="campo"><label>Chave PIX</label><input id="adm-pix" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-etapa="3">
+              <div class="grade">
+                <div class="campo"><label>Matrícula</label><input id="adm-matricula" /></div>
+                <div class="campo"><label>Função *</label><input id="adm-funcao" list="func-funcoes-datalist" placeholder="ex.: Ajudante de Equipamento I" /></div>
+                <div class="campo"><label>CBO</label><input id="adm-cbo" /></div>
+                <div class="campo"><label>Departamento</label><select id="adm-departamento"></select></div>
+                <div class="campo"><label>Tipo de contrato</label><select id="adm-tipo-contrato"><option value="clt">CLT</option><option value="pj">PJ</option><option value="estagiario">Estagiário</option><option value="autonomo">Autônomo</option><option value="terceirizado">Terceirizado</option></select></div>
+                <div class="campo"><label>Categoria operacional</label><select id="adm-categoria"><option value="">—</option><option value="ajudante">Ajudante</option><option value="operador">Operador</option><option value="bombista">Bombista</option><option value="motorista">Motorista</option><option value="encarregado">Encarregado</option><option value="adm">Administrativo</option><option value="oficina">Oficina</option><option value="outro">Outro</option></select></div>
+                <div class="campo"><label>Especialidade (frente)</label><select id="adm-especialidade"><option value="">—</option><option value="helice">Hélice</option><option value="raiz">Raiz</option><option value="secante">Secante</option><option value="trado">Trado</option><option value="munck">Munck</option></select></div>
+                <div class="campo"><label>Obra / equipamento inicial</label><input id="adm-obra-equip" placeholder="como na RG 4.3" /></div>
+                <div class="campo" style="grid-column:1/-1;padding-top:6px;border-top:1px solid var(--borda);"><label style="font-weight:700;color:var(--marca-900);">Contrato de experiência</label></div>
+                <div class="campo"><label>Data de admissão *</label><input id="adm-data" type="date" /></div>
+                <div class="campo"><label>Salário (R$) *</label><input id="adm-salario" type="number" step="0.01" min="0" /></div>
+                <div class="campo largo"><label>Salário por extenso</label><input id="adm-salario-extenso" readonly tabindex="-1" style="background:var(--sup-2);" /></div>
+                <div class="campo"><label>Prazo de experiência (dias)</label><input id="adm-prazo" type="number" min="0" max="90" value="45" /></div>
+                <div class="campo"><label>Prorrogação (dias)</label><input id="adm-prorrogacao" type="number" min="0" max="90" value="45" /></div>
+                <div class="campo"><label>1º vencimento</label><input id="adm-venc1" type="date" /></div>
+                <div class="campo"><label>2º vencimento</label><input id="adm-venc2" type="date" /></div>
+                <div class="campo"><label>Modelo de contrato</label>
+                  <select id="adm-tipo-documento">
+                    <option value="padrao">Padrão — RG 5.4</option>
+                    <option value="ajudante_soldador">Ajudante / soldador — RG 5.5 (cláusula de progressão)</option>
+                    <option value="retorno_12_meses">Retorno depois de 12 meses — RG 5.7</option>
+                  </select>
+                </div>
+                <div class="campo largo"><label>Horário de trabalho</label><input id="adm-horario" value="de 7:00 às 17:00 (seg a quin) 7:00 às 16:00 (sex)" /></div>
+                <div class="campo"><label>Intervalo</label><input id="adm-intervalo" value="(uma) hora" /></div>
+                <div class="campo"><label>Horas semanais</label><input id="adm-horas-semanais" type="number" step="0.5" min="0" value="44" /></div>
+                <div class="campo"><label>Forma de pagamento</label><input id="adm-forma-pagamento" value="Mensalista" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-etapa="4">
+              <div class="grade">
+                <div class="campo"><label>Periculosidade</label><input id="adm-periculosidade" placeholder="ex.: 30 %" /></div>
+                <div class="campo"><label>Insalubridade</label><input id="adm-insalubridade" placeholder="ex.: 20 %" /></div>
+                <div class="campo"><label>Vale-transporte (cláusula do contrato)</label>
+                  <select id="adm-vt-opta"><option value="">Não informado</option><option value="true">Pretende utilizar (desconto de 6 %)</option><option value="false">Não pretende utilizar</option></select>
+                </div>
+                <div class="campo"><label>Cartão vale-transporte</label><input id="adm-vt-cartao" /></div>
+                <div class="campo"><label>Cartão Unimed</label><input id="adm-unimed-cartao" /></div>
+                <div class="campo"><label>Auxílio saúde</label><input id="adm-auxilio-saude" /></div>
+                <div class="campo largo"><label>Observações</label><input id="adm-obs" /></div>
+                <div class="campo largo"><label class="check-inline"><input type="checkbox" id="adm-gerar-docs" checked /> Gerar a ficha cadastral e o contrato em PDF ao concluir</label></div>
+              </div>
+              <div id="adm-resumo" class="card compacto" style="margin-top:12px;"></div>
             </div>
           </div>
         </div>
@@ -2140,6 +2363,7 @@
             <button type="button" data-tab="parametros" title="Jornada e concretagem (alimentam o RDO)">Parâmetros</button>
             <button type="button" data-tab="contrato">Contrato <span id="obr-con-badge" class="aba-badge"></span></button>
             <button type="button" data-tab="estacas">Estacas</button>
+            <button type="button" data-tab="vincular" title="Fase 94 (#80): execuções do campo sem par no projeto — vincular, criar estaca nova do campo ou corrigir prefixo em lote">Vincular estacas <span id="obr-estv-badge" class="aba-badge"></span></button>
             <button type="button" data-tab="equipamentos">Bens do contrato</button>
             <button type="button" data-tab="medicoes">Medições</button>
             <button type="button" data-tab="rdos">RDOs</button>
@@ -2193,6 +2417,7 @@
                 <div class="campo"><label>Sexta-feira — entrada <small style="font-weight:400;color:var(--txt-fraco);">(se diferente)</small></label><input id="obr-jornada-sex-entrada" type="time" /></div>
                 <div class="campo"><label>Sexta-feira — saída</label><input id="obr-jornada-sex-saida" type="time" title="Sábado não tem jornada: todo o trabalhado no sábado é HE 100%" /></div>
                 <div class="campo"><label>ISS do município (%)</label><input id="obr-iss-pct" type="number" step="0.01" min="0" max="100" value="5" title="Alíquota de ISS da cidade da obra. Toda NF tem ISS; as medições desta obra herdam este valor (financeiro, 16/09/2026)" /></div>
+                <div class="campo"><label>CNO <small style="font-weight:400;color:var(--txt-fraco);">(Cadastro Nacional de Obras do cliente)</small></label><input id="obr-cno" maxlength="20" placeholder="00.000.00000/00" title="CNO do cliente para esta obra. Vai na alocação mensal de cada funcionário que o RH manda ao contador (fase 93c, #73)" /></div>
               </div>
               <h4 class="titulo-bloco" style="margin-top:16px;">Concretagem <small class="meta">(cálculo automático do volume no RDO)</small></h4>
               <div class="grade">
@@ -2354,6 +2579,11 @@
               <div id="obr-medic-conteudo"><p class="vazio">Carregando...</p></div>
             </div>
 
+            <!-- Aba Vincular estacas (fase 94, #80): execuções do campo × estacas do projeto -->
+            <div class="odoo-tab" data-tab="vincular">
+              <div id="estv-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
             <!-- Aba RDOs -->
             <div class="odoo-tab" data-tab="rdos">
               <div id="obr-rdo-conteudo"><p class="vazio">Carregando...</p></div>
@@ -2388,7 +2618,13 @@
       <!-- Modal: Estaca (nova / editar) -->
       <div id="est-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:680px;width:90%;max-height:85vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
-          <h3 id="est-modal-titulo" style="margin:0 0 14px;">Nova estaca</h3>
+          <h3 id="est-modal-titulo" style="margin:0 0 10px;">Nova estaca</h3>
+          <!-- fase 94 (#81): ficha da estaca com abas; Histórico lê vw_estaca_historico -->
+          <div class="odoo-notebook" id="est-modal-notebook">
+            <button type="button" data-est-tab="dados" class="ativo">Dados</button>
+            <button type="button" data-est-tab="historico" id="est-tab-historico" style="display:none;" title="Todas as execuções da estaca (data, máquina, operador, etapa, de–até, ferramental), totais e medições">Histórico <span id="est-hist-badge" class="aba-badge"></span></button>
+          </div>
+          <div class="odoo-tab ativa" data-est-tab="dados" style="padding:12px 0 0;">
           <div class="grade">
             <div class="campo"><label>Nº da estaca *</label><input id="est-numero" placeholder="ex.: E-01" /></div>
             <div class="campo"><label>Tipo</label>
@@ -2424,6 +2660,16 @@
             <button type="button" class="btn" id="btn-est-salvar">💾 Salvar</button>
             <button type="button" class="btn-sec" id="btn-est-cancelar">Cancelar</button>
           </div>
+          </div>
+          <div class="odoo-tab" data-est-tab="historico" style="padding:12px 0 0;">
+            <div class="lista-topo compacta" style="border:none;">
+              <h4 class="titulo-linha">Linha do tempo da estaca</h4>
+              <button type="button" class="btn-sec btn-sm" id="btn-esth-pdf" title="PDF com as execuções, totais por ferramental e etapa e medições">📄 Exportar PDF</button>
+              <button type="button" class="btn-sec btn-sm" id="btn-esth-xlsx" title="Planilha .xlsx com as mesmas linhas">📊 Planilha</button>
+            </div>
+            <div id="esth-conteudo"><p class="vazio">Carregando...</p></div>
+            <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-est-fechar-hist">Fechar</button></div>
+          </div>
         </div>
       </div>
 
@@ -2435,7 +2681,10 @@
               <div style="font-size:var(--txt-xs);color:var(--txt-fraco);text-transform:uppercase;letter-spacing:.4px;">Estaca</div>
               <h3 id="exec-titulo" style="margin:2px 0 0;font-size:18px;">—</h3>
             </div>
-            <button type="button" class="btn-sec" id="btn-exec-fechar">×</button>
+            <div style="display:flex;gap:6px;">
+              <button type="button" class="btn-sec btn-sm" id="btn-exec-historico" title="Fase 94 (#81): linha do tempo da estaca — execuções, ferramental, metros e medições">📜 Histórico</button>
+              <button type="button" class="btn-sec" id="btn-exec-fechar">×</button>
+            </div>
           </div>
           <div id="exec-resumo" style="background:var(--sup-2);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:var(--txt-sm);color:var(--txt-sec);"></div>
 
@@ -2654,6 +2903,7 @@
             <input id="rdo-busca" placeholder="Buscar por obra, data, tipo..." />
             <select id="rdo-f-obra"></select>
             <select id="rdo-f-tipo"></select>
+            <select id="rdo-f-maquina" title="Fase 94: um diário por máquina"></select>
             <select id="rdo-f-status"></select>
           </div>
           <div id="rdo-conteudo"></div>
@@ -2673,6 +2923,7 @@
               <button type="button" class="btn btn-sucesso" id="btn-finalizar-rdo">✅ Finalizar</button>
               <button type="button" class="btn-sec" id="btn-importar-csv">📄 Importar arquivo</button>
               <button type="button" class="btn-sec" id="btn-rdo-pedir-material" style="display:none;" title="Lista de separação para o almoxarifado (fase 83)">📦 Pedir material</button>
+              <button type="button" class="btn-sec" id="btn-rdo-dividir" style="display:none;" title="Fase 94 (#77): este diário tem execuções de mais de uma máquina; separa um diário por máquina (equipe e abastecimento ficam no da máquina principal)">✂️ Dividir por máquina</button>
               <button type="button" class="btn-sec acao-perigo" id="btn-excluir-rdo">🗑️ Excluir</button>
             </div>
             <div class="actions-right">
@@ -2693,6 +2944,7 @@
             <div class="chip"><span>Status</span><strong id="rdo-ficha-status-chip">—</strong></div>
             <div class="chip"><span>Estacas</span><strong id="rdo-ficha-execs-chip">0</strong></div>
             <div class="chip"><span>Metragem</span><strong id="rdo-ficha-metragem-chip">0 m</strong></div>
+            <div class="chip" id="rdo-ficha-maquina-chip" title="Fase 94: um diário por máquina na mesma obra e data"><span>Máquina</span><strong>—</strong></div>
             <div class="chip chip-aviso" id="rdo-ficha-jornada-chip" style="display:none;" title="Lote S40 (#31): a HE é calculada pela jornada padrão da empresa até a obra ter jornada própria"><span>Jornada</span><strong>Obra sem jornada; usando padrão da empresa · <a href="#" id="rdo-ficha-jornada-link">cadastrar em Parâmetros</a></strong></div>
           </div>
 
@@ -2713,6 +2965,7 @@
                 <div class="campo"><label>Data *</label><input id="rdo-data" type="date" required /></div>
                 <div class="campo"><label>Feriado?</label><label class="meta" style="display:flex;align-items:center;gap:6px;min-height:34px;cursor:pointer;" title="Regra RH 11/09/2026: em feriado, sábado e domingo toda hora trabalhada é HE 100%"><input type="checkbox" id="rdo-feriado" /> Dia de feriado (tudo HE 100%)</label></div>
                 <div class="campo"><label>Tipo de serviço *</label><select id="rdo-tipo-servico" required></select></div>
+                <div class="campo"><label>Máquina</label><select id="rdo-equipamento" title="Fase 94 (#77): cada máquina tem o seu diário na mesma obra e data. Sem máquina (equipe de apoio) o diário entra em Para regularizar até alguém informar."></select><span class="meta" id="rdo-equipamento-aviso"></span></div>
                 <div class="campo"><label>Status</label><select id="rdo-status"></select></div>
                 <div class="campo"><label>Responsável</label><select id="rdo-responsavel"><option value="">— não informado —</option></select></div>
                 <div class="campo"><label>Local / frente</label><input id="rdo-local" list="rdo-local-lista" placeholder="ex.: PONTILHÃO 17C (locais da obra)" /><datalist id="rdo-local-lista"></datalist></div>
@@ -2775,6 +3028,7 @@
                       <th>Máq. txt</th>
                       <th title="Operador da execução — vem da aba Equipe">👷 Operador</th>
                       <th>Obs.</th>
+                      <th title="Fase 94 (#75): por que a estaca conta como executada neste dia — metragem, ou injeção/concretagem/argamassado citados na observação. Vazio = a linha não muda o status da estaca (locação, marcação, armação). Confirmado pelo banco ao salvar.">Etapa</th>
                       <th data-col-tipo="estaca_raiz" style="width:40px;" title="Boletim por estaca">📋</th>
                       <th class="col-acao"></th>
                     </tr>
@@ -2825,6 +3079,7 @@
                       <th title="Intervalo de almoço REAL (min). Vazio = 60 min padrão; piso de 30 min no cálculo">Interv. (min)</th>
                       <th title="Sem uso desde 11/09/2026 (regra RH): toda hora extra é paga a 100%">HE 50%<br><small style="font-weight:400;color:var(--txt-fraco);">(sem uso)</small></th>
                       <th title="Horas extras 100%: seg-sex o que passar da jornada da obra; sábado, domingo e feriado o dia inteiro">HE 100%</th>
+                      <th title="Horas trabalhadas entre 22h e 5h (fase 93c). Calculadas da entrada e saída, com virada de dia; corrija à mão se o diário disser outra coisa">Noturnas</th>
                       <th>Obs.</th>
                       <th class="col-acao"></th>
                     </tr>
@@ -2833,7 +3088,7 @@
                 </table>
               </div>
               <p class="nota">
-                💡 Preencha <strong>Entrada/Saída</strong> (e o intervalo real de almoço, se o diário registrar) e o sistema calcula a <strong>HE 100%</strong> pela jornada da obra (Obra › Parâmetros; sem ela, a jornada padrão da empresa: seg-qui 07:00–17:00, sexta 07:00–16:00): seg-sex o que passar da jornada; sábado, domingo e feriado o dia inteiro. Regra RH de 11/09/2026: toda HE é 100%; a coluna HE 50% ficou sem uso.
+                💡 Preencha <strong>Entrada/Saída</strong> (e o intervalo real de almoço, se o diário registrar) e o sistema calcula a <strong>HE 100%</strong> pela jornada da obra (Obra › Parâmetros; sem ela, a jornada padrão da empresa: seg-qui 07:00–17:00, sexta 07:00–16:00): seg-sex o que passar da jornada; sábado, domingo e feriado o dia inteiro. Regra RH de 11/09/2026: toda HE é 100%; a coluna HE 50% ficou sem uso. Saída antes da entrada é turno da noite (vira o dia) e as <strong>Noturnas</strong> (22h–5h) saem sozinhas. Linha com 🔒 já foi liberada para a folha em <strong>Horas e alocação</strong> e não muda aqui.
               </p>
 
               <!-- Abastecimento do dia (fase 46, 16/09/2026): vem do diário preenchido à mão pelo operador -->
@@ -3114,7 +3369,7 @@
 
             <div class="odoo-tab" data-tab="mobilizacoes"><div id="eqp-mob-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="movimentacoes"><div id="eqp-mov-lista"><p class="vazio">—</p></div></div>
-            <div class="odoo-tab" data-tab="manutencao"><div id="eqp-rep-lista"><p class="vazio">—</p></div><div id="eqp-man-lista" style="margin-top:16px;"></div></div>
+            <div class="odoo-tab" data-tab="manutencao"><div id="eqp-man-plano"></div><div id="eqp-man-lista" style="margin-top:16px;"></div><div id="eqp-rep-lista" style="margin-top:16px;"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="custos"><div id="eqp-custos"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="timeline"><div id="eqp-chatter"></div></div>
           </div>
@@ -3139,6 +3394,253 @@
             <div class="campo largo"><label>Observações</label><textarea id="eqp-os-obs" rows="2"></textarea></div>
           </div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-eqp-os-salvar">💾 Salvar OS</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MANUTENÇÃO (fase 92): OS completa, preventivas (RG 3.0.3), planos (RG 3.14) e checklist de mobilização (RG 3.12) -->
+    <section class="secao" id="sec-manutencao">
+      <div id="man-painel">
+        <h2>Manutenção</h2>
+        <p class="texto-apoio">Ordens de serviço das máquinas, caminhões e veículos (atividades, mão de obra, peças com baixa no estoque), plano preventivo de cada TAG com o semáforo pelo horímetro/km que o RDO e as viagens informam, e o checklist antes de mobilizar. Reparos de acessórios continuam em Reparos.</p>
+        <div class="indicadores" id="man-indicadores">
+          <div class="ind ind-click" data-kpi="abertas"><div class="num" id="man-kpi-abertas">—</div><div class="rot">OS abertas</div></div>
+          <div class="ind ind-click" data-kpi="atrasadas"><div class="num" id="man-kpi-atrasadas" style="color:var(--perigo);">—</div><div class="rot">OS atrasadas</div></div>
+          <div class="ind ind-click" data-kpi="concluidas_mes"><div class="num" id="man-kpi-concluidas">—</div><div class="rot">Concluídas no mês</div></div>
+          <div class="ind"><div class="num" id="man-kpi-custo">—</div><div class="rot">Custo no mês</div></div>
+          <div class="ind ind-click" data-kpi="prev_critico"><div class="num" id="man-kpi-critico" style="color:var(--perigo);">—</div><div class="rot">Preventivas vencidas</div></div>
+          <div class="ind ind-click" data-kpi="prev_atencao"><div class="num" id="man-kpi-atencao" style="color:var(--aviso);">—</div><div class="rot">Preventivas em atenção</div></div>
+        </div>
+        <div class="card">
+          <div class="lista-topo">
+            <h3 id="man-titulo-lista">Ordens de serviço <span id="man-contador" class="contador"></span></h3>
+            <div class="serv-views" id="man-views">
+              <button type="button" class="serv-view-btn ativo" data-view="os">OS</button>
+              <button type="button" class="serv-view-btn" data-view="preventivas">Preventivas</button>
+              <button type="button" class="serv-view-btn" data-view="planos">Planos</button>
+              <button type="button" class="serv-view-btn" data-view="checklists">Checklists</button>
+            </div>
+            <span class="meta" id="man-custo-hora" style="margin-left:auto;"></span>
+            <button type="button" class="btn-sec" id="btn-man-atualizar">🔄 Atualizar</button>
+            <button type="button" class="btn" id="btn-man-nova-os" style="display:none;">+ Nova OS</button>
+            <button type="button" class="btn" id="btn-man-novo-plano" style="display:none;">+ Novo plano</button>
+            <button type="button" class="btn" id="btn-man-novo-check" style="display:none;">+ Checklist</button>
+          </div>
+          <div class="serv-filtros" id="man-filtros-os">
+            <input id="man-busca" placeholder="Buscar nº, TAG, descrição, nº da planilha…" />
+            <select id="man-f-tag"><option value="">TAG</option></select>
+            <select id="man-f-tipo"><option value="">Tipo</option><option value="preventiva">Preventiva</option><option value="corretiva">Corretiva</option><option value="preditiva">Preditiva</option></select>
+            <select id="man-f-setor"><option value="">Setor</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="solda">Solda</option><option value="eletronica">Eletrônica</option><option value="lubrificacao">Lubrificação</option><option value="pintura">Pintura</option><option value="externo">Externo</option><option value="outros">Outros</option></select>
+            <select id="man-f-status"><option value="_abertas">Abertas</option><option value="_atrasadas">Atrasadas</option><option value="">Todos os status</option><option value="agendada">Aberta</option><option value="em_andamento">Em execução</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option></select>
+            <select id="man-f-resp"><option value="">Responsável</option></select>
+            <select id="man-f-periodo" title="data prevista ou de abertura"><option value="90">Últimos 90 dias</option><option value="365" selected>Últimos 12 meses</option><option value="">Todo o período</option></select>
+            <select id="man-f-visao"><option value="lista">Lista</option><option value="kanban">Por status</option></select>
+          </div>
+          <div class="serv-filtros" id="man-filtros-prev" style="display:none;">
+            <input id="man-prev-busca" placeholder="Buscar TAG ou descrição…" />
+            <select id="man-f-semaforo"><option value="">Todos os semáforos</option><option value="critico">Crítico (vencido)</option><option value="atencao">Atenção</option><option value="ok">OK</option><option value="sem_base">Sem base</option><option value="_sem_plano">TAG sem plano</option></select>
+            <select id="man-f-tipo-eq"><option value="">Tipo de equipamento</option></select>
+          </div>
+          <div class="serv-filtros" id="man-filtros-planos" style="display:none;">
+            <select id="man-plano-tag"><option value="">— escolha a TAG —</option></select>
+            <span class="meta" id="man-plano-info"></span>
+          </div>
+          <div class="serv-filtros" id="man-filtros-check" style="display:none;">
+            <input id="man-check-busca" placeholder="Buscar TAG ou obra…" />
+            <select id="man-f-check-res"><option value="">Todos os resultados</option><option value="_pendente">Em preenchimento</option><option value="aprovado">Aprovado</option><option value="com_pendencias">Com pendências</option><option value="reprovado">Reprovado</option></select>
+          </div>
+          <div id="man-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha da OS (estilo Odoo) -->
+      <div id="man-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-man-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-man-salvar">💾 Salvar</button>
+              <button type="button" class="btn man-acao" id="btn-man-iniciar" data-acao="em_andamento">▶ Iniciar</button>
+              <button type="button" class="btn btn-sucesso man-acao" id="btn-man-concluir" data-acao="concluida">✅ Concluir</button>
+              <button type="button" class="btn-sec man-acao" id="btn-man-baixa" data-acao="baixa" title="Gera a saída de estoque das peças consumidas que ainda não tiveram baixa">📦 Dar baixa das peças</button>
+              <button type="button" class="btn-sec" id="btn-man-imprimir" title="Imprime a OS no leiaute do modelo da manutenção">🖨️ Imprimir OS</button>
+              <button type="button" class="btn-sec man-acao" id="btn-man-reabrir" data-acao="em_andamento">↩ Reabrir</button>
+              <button type="button" class="btn-sec man-acao acao-perigo" id="btn-man-cancelar" data-acao="cancelada" style="color:var(--perigo);">✕ Cancelar</button>
+            </div>
+            <div class="actions-right"><strong id="man-ficha-titulo">Nova OS</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="man-statusbar">
+            <div class="stage" data-status="agendada">Aberta</div>
+            <div class="stage" data-status="em_andamento">Em execução</div>
+            <div class="stage" data-status="concluida">Concluída</div>
+          </div>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="man-chip-num">—</strong></div>
+            <div class="chip"><span>TAG</span><strong id="man-chip-tag">—</strong></div>
+            <div class="chip"><span>Tipo</span><strong id="man-chip-tipo">—</strong></div>
+            <div class="chip"><span>Setor</span><strong id="man-chip-setor">—</strong></div>
+            <div class="chip"><span>Horímetro / km</span><strong id="man-chip-hor">—</strong></div>
+            <div class="chip"><span>Responsável</span><strong id="man-chip-resp">—</strong></div>
+            <div class="chip"><span>Dias em aberto</span><strong id="man-chip-dias">—</strong></div>
+            <div class="chip" id="man-chip-origem" style="display:none;"><span>Planilha</span><strong id="man-chip-origem-txt">—</strong></div>
+          </div>
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-man-equip"><span class="sb-num">—</span><span class="sb-icon">🚜</span><span class="sb-lbl">equipamento</span></button>
+            <button type="button" class="sb-btn" data-goto-tab="atividades" id="sb-man-ativ"><span class="sb-num">0</span><span class="sb-icon">📋</span><span class="sb-lbl">atividades</span></button>
+            <button type="button" class="sb-btn" data-goto-tab="atividades" id="sb-man-plano"><span class="sb-num">0</span><span class="sb-icon">🗓️</span><span class="sb-lbl">itens do plano</span></button>
+            <button type="button" class="sb-btn" data-goto-tab="checklist" id="sb-man-check"><span class="sb-num">0</span><span class="sb-icon">✅</span><span class="sb-lbl">checklist</span></button>
+            <button type="button" class="sb-btn" data-goto-tab="materiais" id="sb-man-custo"><span class="sb-num">R$ 0</span><span class="sb-icon">💰</span><span class="sb-lbl">custo</span></button>
+          </div>
+          <div class="odoo-notebook" id="man-notebook">
+            <button type="button" data-tab="geral" class="ativo">Geral</button>
+            <button type="button" data-tab="atividades">Atividades</button>
+            <button type="button" data-tab="horas">Mão de obra</button>
+            <button type="button" data-tab="materiais">Materiais</button>
+            <button type="button" data-tab="checklist">Checklist</button>
+            <button type="button" data-tab="anexos">Anexos</button>
+            <button type="button" data-tab="obs">Observações</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="geral">
+              <div class="grade">
+                <div class="campo"><label>TAG *</label><select id="man-equip"></select></div>
+                <div class="campo"><label>Tipo</label><select id="man-tipo"><option value="corretiva">Corretiva</option><option value="preventiva">Preventiva</option><option value="preditiva">Preditiva</option></select></div>
+                <div class="campo"><label>Setor</label><select id="man-setor"><option value="">—</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="solda">Solda</option><option value="eletronica">Eletrônica</option><option value="lubrificacao">Lubrificação</option><option value="pintura">Pintura</option><option value="externo">Externo (terceiros)</option><option value="outros">Outros</option></select></div>
+                <div class="campo"><label>Prioridade</label><select id="man-prioridade"><option value="">—</option><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
+                <div class="campo largo"><label>Serviço / descrição *</label><input id="man-desc" placeholder="ex.: preventiva 500 h · troca de mangueiras do pull-down · motor não parte" /></div>
+                <div class="campo"><label>Responsável</label><select id="man-resp"></select></div>
+                <div class="campo"><label>Local</label><input id="man-local" placeholder="Pátio CGL, obra, oficina do fornecedor…" /></div>
+                <div class="campo"><label>Prevista para</label><input type="date" id="man-prev" /></div>
+                <div class="campo"><label>Início</label><input type="date" id="man-ini" /></div>
+                <div class="campo"><label>Conclusão</label><input type="date" id="man-fim" /></div>
+                <div class="campo"><label>Horímetro (h)</label><input type="number" id="man-hor" step="0.1" min="0" /><span class="meta" id="man-hor-atual"></span></div>
+                <div class="campo"><label>km</label><input type="number" id="man-km" step="1" min="0" /><span class="meta" id="man-km-atual"></span></div>
+                <div class="campo"><label>Fornecedor (serviço externo)</label><select id="man-forn"><option value="">— interno / sem fornecedor —</option></select></div>
+                <div class="campo"><label>Custo do serviço externo (R$)</label><input type="number" id="man-custo" step="0.01" min="0" placeholder="entra no custo da TAG quando concluída" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="atividades">
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:36px;">#</th><th style="width:120px;">Setor</th><th>Atividade</th><th style="width:130px;">Situação</th><th style="width:180px;">Executante</th><th style="width:90px;">Início</th><th style="width:90px;">Fim</th><th>Observação</th><th class="col-acao"></th></tr></thead>
+                <tbody id="man-ativs"></tbody></table></div>
+              <div class="grade" id="man-ativ-add" style="margin-top:10px;">
+                <div class="campo"><label>Setor</label><select id="man-a-setor"><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="solda">Solda</option><option value="eletronica">Eletrônica</option><option value="lubrificacao">Lubrificação</option><option value="pintura">Pintura</option><option value="externo">Externo</option><option value="outros">Outros</option></select></div>
+                <div class="campo largo"><label>+ Atividade</label><input id="man-a-texto" placeholder="ex.: TROCAR FILTRO SEPARADOR" /></div>
+                <div class="campo"><label>Do plano da TAG</label><select id="man-a-plano"><option value="">— item do plano —</option></select></div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-man-a-add">+ Adicionar</button></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="horas">
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Funcionário</th><th>Data</th><th>Início</th><th>Fim</th><th class="num">Horas</th><th>Observação</th><th class="col-acao"></th></tr></thead>
+                <tbody id="man-horas"></tbody></table></div>
+              <div id="man-horas-total" class="meta" style="margin:6px 0;"></div>
+              <div class="grade" id="man-horas-add">
+                <div class="campo largo"><label>Funcionário *</label><select id="man-h-func"></select></div>
+                <div class="campo"><label>Data</label><input type="date" id="man-h-data" /></div>
+                <div class="campo"><label>Início</label><input type="time" id="man-h-inicio" /></div>
+                <div class="campo"><label>Fim</label><input type="time" id="man-h-fim" /></div>
+                <div class="campo"><label>Horas <small style="font-weight:400;">(sem início/fim)</small></label><input type="number" id="man-h-horas" min="0" step="0.25" /></div>
+                <div class="campo largo"><label>Observação</label><input id="man-h-obs" /></div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-man-h-add">+ Lançar horas</button></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="materiais">
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Item</th><th style="width:70px;">Un</th><th class="num" style="width:90px;">Qtd</th><th class="num" style="width:110px;">Custo unit.</th><th class="num" style="width:110px;">Total</th><th style="width:100px;">Tipo</th><th style="width:150px;">Baixa</th><th class="col-acao"></th></tr></thead>
+                <tbody id="man-mats"></tbody></table></div>
+              <div class="grade" id="man-mats-add" style="margin-top:10px;">
+                <div class="campo largo"><label>+ Peça ou consumível do catálogo</label>
+                  <input id="man-prod-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+                  <div id="man-prod-res" class="autocomplete-lista" style="display:none;"></div>
+                </div>
+                <div class="campo"><label>Qtd</label><input type="number" id="man-prod-qtd" min="0.001" step="0.001" value="1" /></div>
+                <div class="campo"><label>Tipo</label><select id="man-prod-tipo"><option value="consumo">Consumo (dá baixa)</option><option value="retirada">Retirada da máquina</option></select></div>
+                <div class="campo largo"><label>Ou material sem cadastro (só texto, não baixa estoque)</label><input id="man-mat-texto" placeholder="descrição · código da peça" /></div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-man-mat-texto">+ Adicionar texto</button></div>
+              </div>
+              <div id="man-custos" style="margin-top:14px;"></div>
+            </div>
+            <div class="odoo-tab" data-tab="checklist"><div id="man-check-os"></div></div>
+            <div class="odoo-tab" data-tab="anexos">
+              <div id="man-anexos-add" class="grade">
+                <div class="campo largo"><label>+ Foto ou documento (JPG, PNG, WebP, PDF, planilha; até 20 MB)</label><input type="file" id="man-anexo-arq" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.xlsx,.xls,.csv,.txt,.docx,.doc" /></div>
+                <div class="campo largo"><label>Legenda</label><input id="man-anexo-legenda" placeholder="opcional" /></div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-man-anexo-enviar">⬆ Enviar</button></div>
+              </div>
+              <div id="man-anexos"></div>
+            </div>
+            <div class="odoo-tab" data-tab="obs">
+              <div class="grade"><div class="campo largo"><label>Observações</label><textarea id="man-obs" rows="3"></textarea></div></div>
+              <div id="man-chatter"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- item do plano (novo / editar) com o kit de peças -->
+      <div class="modal-fundo" id="man-item-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:820px;">
+          <div class="modal-topo"><h3 id="man-item-titulo">Item do plano</h3><button type="button" class="btn-sec" id="btn-man-item-fechar">×</button></div>
+          <div class="grade grade-3">
+            <div class="campo largo"><label>Componente *</label><input id="man-i-comp" placeholder="ex.: ÓLEO MOTOR E FILTRO DO MOTOR" /></div>
+            <div class="campo"><label>Operação</label><select id="man-i-op"><option value="trocar">Trocar</option><option value="inspecionar">Inspecionar</option><option value="verificar">Verificar</option><option value="limpar">Limpar</option><option value="lubrificar">Lubrificar</option><option value="amostra">Obter amostra</option><option value="outros">Outros</option></select></div>
+            <div class="campo largo"><label>Descrição da operação <small style="font-weight:400;">(como na RG 3.14)</small></label><input id="man-i-opdesc" placeholder="ex.: LIMPEZA E APERTO DO FIXADOR" /></div>
+            <div class="campo"><label>Setor</label><select id="man-i-setor"><option value="">—</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="solda">Solda</option><option value="eletronica">Eletrônica</option><option value="lubrificacao">Lubrificação</option><option value="pintura">Pintura</option><option value="outros">Outros</option></select></div>
+            <div class="campo"><label>Unidade *</label><select id="man-i-unid"><option value="h">Horas (horímetro)</option><option value="km">Quilômetros</option><option value="dias">Dias</option></select></div>
+            <div class="campo"><label>Periodicidade *</label><input type="number" id="man-i-per" min="1" step="1" placeholder="250" /></div>
+            <div class="campo"><label>Última execução <small id="man-i-ult-lbl" style="font-weight:400;">(h)</small></label><input id="man-i-ult" type="number" step="0.1" min="0" placeholder="horímetro da última troca" /></div>
+            <div class="campo"><label>Última execução (data)</label><input type="date" id="man-i-ult-data" /></div>
+            <div class="campo"><label>Ordem</label><input type="number" id="man-i-ordem" min="0" step="1" /></div>
+            <div class="campo largo"><label>Observação</label><input id="man-i-obs" /></div>
+          </div>
+          <div id="man-i-mats-bloco" style="margin-top:10px;">
+            <div class="mov-ace-sug-grupo-t">Kit de peças do item</div>
+            <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Peça</th><th>Código</th><th class="num" style="width:80px;">Qtd</th><th>Catálogo</th><th class="col-acao"></th></tr></thead><tbody id="man-i-mats"></tbody></table></div>
+            <div class="grade" style="margin-top:8px;">
+              <div class="campo largo"><label>+ Do catálogo</label><input id="man-i-prod-busca" placeholder="código ou nome (≥ 2 letras)…" autocomplete="off" /><div id="man-i-prod-res" class="autocomplete-lista" style="display:none;"></div></div>
+              <div class="campo"><label>Ou descrição</label><input id="man-i-mat-desc" placeholder="FILTRO SEPARADOR" /></div>
+              <div class="campo"><label>Código da peça</label><input id="man-i-mat-cod" placeholder="P551425" /></div>
+              <div class="campo"><label>Qtd</label><input type="number" id="man-i-mat-qtd" min="0.001" step="0.001" value="1" /></div>
+              <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-man-i-mat-add">+ Adicionar</button></div>
+            </div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-man-item-salvar">💾 Salvar item</button></div>
+        </div>
+      </div>
+
+      <!-- novo plano para uma TAG -->
+      <div class="modal-fundo" id="man-plano-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:640px;">
+          <div class="modal-topo"><h3>Novo plano de manutenção</h3><button type="button" class="btn-sec" id="btn-man-plano-fechar">×</button></div>
+          <div class="grade">
+            <div class="campo largo"><label>TAG *</label><select id="man-p-tag"></select></div>
+            <div class="campo largo"><label>Começar a partir de</label><select id="man-p-copiar"><option value="">— plano vazio —</option></select></div>
+            <div class="campo"><label>Engenheiro responsável</label><input id="man-p-eng" placeholder="nome e CREA" /></div>
+            <div class="campo"><label>Revisão</label><input id="man-p-rev" placeholder="01 - 20/10/2026" /></div>
+            <div class="campo"><label>Responsável no sistema</label><select id="man-p-resp"></select></div>
+            <div class="campo largo"><label>Observações</label><input id="man-p-obs" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-man-plano-salvar">💾 Criar plano</button></div>
+        </div>
+      </div>
+
+      <!-- checklist (novo e preenchimento) -->
+      <div class="modal-fundo" id="man-check-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:900px;">
+          <div class="modal-topo"><h3 id="man-check-titulo">Checklist de mobilização</h3><button type="button" class="btn-sec" id="btn-man-check-fechar">×</button></div>
+          <div id="man-check-corpo"></div>
+        </div>
+      </div>
+
+      <!-- ajuste manual de horímetro / km -->
+      <div class="modal-fundo" id="man-leitura-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:520px;">
+          <div class="modal-topo"><h3 id="man-leitura-titulo">Ajustar horímetro / km</h3><button type="button" class="btn-sec" id="btn-man-leitura-fechar">×</button></div>
+          <p class="meta">O sistema só sobe o horímetro e o km sozinho (RDO, OS, checklist, viagem). Para corrigir um erro de digitação ou a troca do horímetro, informe o valor certo e o motivo: fica registrado como leitura manual.</p>
+          <div class="grade">
+            <div class="campo"><label>Horímetro (h)</label><input type="number" id="man-l-hor" step="0.1" min="0" /></div>
+            <div class="campo"><label>km</label><input type="number" id="man-l-km" step="1" min="0" /></div>
+            <div class="campo largo"><label>Motivo *</label><input id="man-l-motivo" placeholder="ex.: operador digitou 15.821 em vez de 1.582 no RDO de 19/10" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-man-leitura-salvar">💾 Registrar ajuste</button></div>
         </div>
       </div>
     </section>
@@ -4398,6 +4900,88 @@
       </div>
     </section>
 
+    <!-- ============ HORAS E ALOCAÇÃO (fase 93c) — js/rh_horas.js, prefixo rhh- ============ -->
+    <section class="secao" id="sec-rhh">
+      <h2>Horas e alocação</h2>
+      <div id="rhh-painel">
+        <p class="texto-apoio">As horas da equipe saem do Diário de Obra (entrada e saída de cada um; a HE 100 % e as noturnas de 22h às 5h são calculadas) e as horas de viagem são lançadas pelo próprio funcionário. O <strong>engenheiro responsável da obra ou o gestor do serviço</strong> libera por quinzena; só o que está liberado entra no fechamento do mês e em <strong>Lançar na folha</strong> (RH, com MFA). A <strong>alocação por obra</strong> mostra onde cada um esteve no mês, com o CNO do cliente, para a mobilização conferir e o RH exportar.</p>
+
+        <div class="indicadores">
+          <div class="ind"><div class="num" id="rhh-kpi-linhas">—</div><div class="rot">Lançamentos no período</div></div>
+          <div class="ind"><div class="num" id="rhh-kpi-he">—</div><div class="rot">HE 100 % (h)</div></div>
+          <div class="ind"><div class="num" id="rhh-kpi-not">—</div><div class="rot">Noturnas (h)</div></div>
+          <div class="ind"><div class="num" id="rhh-kpi-viag">—</div><div class="rot">Viagem (h)</div></div>
+          <div class="ind ind-click" id="rhh-kpi-card-pend" title="Lançamentos do período ainda sem liberação (clique para filtrar)"><div class="num" id="rhh-kpi-pend" style="color:var(--aviso-txt);">—</div><div class="rot">Aguardando liberação</div></div>
+        </div>
+
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Horas <span id="rhh-contador" class="contador"></span></h3>
+            <div class="serv-views">
+              <button type="button" class="serv-view-btn ativo" data-view="liberar">A liberar</button>
+              <button type="button" class="serv-view-btn" data-view="fechamento">Fechamento do mês</button>
+              <button type="button" class="serv-view-btn" data-view="alocacao">Alocação por obra</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-rhh-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-rhh-xlsx" title="Exporta o que está na tela">📊 Exportar .xlsx</button>
+            <button type="button" class="btn" id="btn-rhh-liberar" title="Libera para a folha as linhas selecionadas (engenheiro responsável da obra, gestor do serviço ou diretoria)">✅ Liberar selecionadas</button>
+            <button type="button" class="btn-sec" id="btn-rhh-estornar" title="Desfaz a liberação das linhas selecionadas">↩ Estornar</button>
+            <button type="button" class="btn-sec" id="btn-rhh-materializar" style="display:none;" title="Recalcula a alocação do mês a partir dos diários (mantém o que já foi conferido)">🔄 Recalcular alocação</button>
+            <button type="button" class="btn" id="btn-rhh-conferir" style="display:none;" title="Marca as linhas selecionadas como conferidas pela mobilização/engenharia">✅ Conferir selecionadas</button>
+            <button type="button" class="btn-sec" id="btn-rhh-desconferir" style="display:none;">↩ Desfazer conferência</button>
+            <button type="button" class="btn" id="btn-rhh-folha" style="display:none;" title="Grava em folha_lancamentos as rubricas HE 100 %, adicional noturno e horas de viagem da competência (só horas liberadas; substitui o que este botão gerou antes). Exige MFA">💰 Lançar na folha</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="rhh-busca" placeholder="Buscar funcionário, matrícula, função, obra..." />
+            <input type="month" id="rhh-f-mes" title="Competência" />
+            <select id="rhh-f-quinzena" title="Quinzena"><option value="">Mês inteiro</option><option value="1">1ª quinzena (1 a 15)</option><option value="2">2ª quinzena (16 ao fim)</option><option value="60">Últimos 60 dias</option></select>
+            <select id="rhh-f-obra"><option value="">Todas as obras</option></select>
+            <select id="rhh-f-situacao"><option value="">Pendentes e liberadas</option><option value="pendente">Só pendentes</option><option value="liberada">Só liberadas</option></select>
+            <label class="check-inline" title="Esconde as linhas que só têm horas normais"><input type="checkbox" id="rhh-f-extras" /> só com HE, noturnas ou viagem</label>
+          </div>
+          <div id="rhh-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MINHAS HORAS DE VIAGEM (fase 93c) — js/rh_horas.js, prefixo rhv- ============ -->
+    <section class="secao" id="sec-rhv">
+      <h2>Minhas horas de viagem</h2>
+      <div id="rhv-painel">
+        <p class="texto-apoio compacto">Lance aqui cada deslocamento entre a base e a obra (ou entre obras): data, de onde, para onde, saída e chegada. O engenheiro da obra libera e o RH fecha o mês. Viagem em equipe continua no diário.</p>
+
+        <div class="card" id="rhv-form-card">
+          <div class="lista-topo compacta"><h3 class="titulo-linha" id="rhv-form-titulo">Nova viagem</h3></div>
+          <div class="grade">
+            <div class="campo" id="rhv-func-campo" style="display:none;"><label>Funcionário *</label><select id="rhv-func"></select></div>
+            <div class="campo"><label>Data *</label><input type="date" id="rhv-data" /></div>
+            <div class="campo"><label>Saída *</label><input type="time" id="rhv-saida" /></div>
+            <div class="campo"><label>Chegada *</label><input type="time" id="rhv-chegada" /></div>
+            <div class="campo"><label>De onde</label><input id="rhv-origem" placeholder="ex.: Base Itabira" /></div>
+            <div class="campo"><label>Obra de destino</label><select id="rhv-obra"></select></div>
+            <div class="campo"><label>Para onde</label><input id="rhv-destino" placeholder="ex.: Obra ArcelorMittal ou Base Itabira" /></div>
+            <div class="campo"><label>Veículo</label><select id="rhv-veiculo"></select></div>
+            <div class="campo"><label>Como viajou</label><select id="rhv-sozinho"><option value="true">Sozinho</option><option value="false">Em equipe</option></select></div>
+            <div class="campo largo"><label>Observação</label><input id="rhv-obs" placeholder="ex.: busquei peça na oficina antes de subir" /></div>
+          </div>
+          <div id="rhv-aviso" class="aviso" role="alert"></div>
+          <div class="form-acoes compacta">
+            <span class="meta" id="rhv-horas-prev" style="margin-right:auto;align-self:center;"></span>
+            <button type="button" class="btn-sec" id="btn-rhv-limpar">Limpar</button>
+            <button type="button" class="btn" id="btn-rhv-salvar">💾 Salvar</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Viagens lançadas <span id="rhv-contador" class="contador"></span></h3>
+            <input type="month" id="rhv-f-mes" title="Mês" style="margin-left:auto;" />
+          </div>
+          <div id="rhv-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+    </section>
+
     <!-- USUÁRIOS (acesso apenas para admin) -->
     <!-- ============ CHAMADOS (fase 42) ============ -->
     <section class="secao" id="sec-chamados">
@@ -4532,6 +5116,17 @@
             <button type="button" class="btn" id="btn-usr-sessao-salvar">💾 Salvar política</button>
           </div>
         </div>
+        <!-- fase 94 (#75): palavras que marcam a estaca como executada pela observação do RDO (empresa_config, só admin) -->
+        <div class="card" id="usr-rdo-card" style="display:none;">
+          <div class="lista-topo"><h3>Execução reconhecida pela observação do RDO</h3></div>
+          <p class="texto-apoio">Uma linha de execução sem metragem conta como estaca executada quando o nome da estaca está preenchido e a observação cita uma destas palavras (injeção, concretagem, argamassado e variações). Locação, marcação e descida de armação sozinhas não contam. A raiz da palavra define a etapa gravada: inje → injeção, concret → concretagem, argamass → argamassado. Nas duas primeiras semanas cada reconhecimento aparece em "Para regularizar" do engenheiro, para conferir falso positivo.</p>
+          <div class="grade">
+            <div class="campo largo"><label>Palavras (separadas por vírgula)</label><input id="usr-rdo-palavras" placeholder="injeção, injetada, concretagem, concretada, argamassado, argamassa" /></div>
+          </div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn" id="btn-usr-rdo-salvar">💾 Salvar palavras</button>
+          </div>
+        </div>
       </div>
 
       <!-- Ficha -->
@@ -4580,13 +5175,38 @@
     <!-- ===== Modal: definir senha (chegada por convite/recuperação) ===== -->
     <div id="senha-modal" class="modal-fundo" style="display:none;">
       <div class="modal-caixa" style="max-width:420px;">
-        <h3 class="titulo-linha" style="margin-bottom:8px;">🔐 Defina sua senha</h3>
-        <p class="texto-apoio">Você entrou por um link de convite ou recuperação. Escolha a senha que usará nos próximos acessos.</p>
+        <h3 class="titulo-linha" style="margin-bottom:8px;" id="senha-modal-titulo">🔐 Defina sua senha</h3>
+        <!-- fase 93b: o mesmo modal serve à senha provisória do login por CPF (texto trocado em exigirTrocaSenhaProvisoria) -->
+        <p class="texto-apoio" id="senha-modal-texto">Você entrou por um link de convite ou recuperação. Escolha a senha que usará nos próximos acessos.</p>
         <div class="campo"><label>Nova senha (mín. 8 caracteres)</label><input id="senha-nova" type="password" autocomplete="new-password" /></div>
         <div class="campo"><label>Confirmar senha</label><input id="senha-confirma" type="password" autocomplete="new-password" /></div>
         <div id="senha-modal-aviso" class="aviso"></div>
         <div class="form-acoes compacta">
           <button type="button" class="btn" id="btn-senha-salvar">Salvar senha</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Modal: enviar documento de admissão para assinatura (D4Sign) — fase 93a, js/rh_documentos.js ===== -->
+    <div id="rhd-modal" class="modal-fundo" style="display:none;">
+      <div class="modal-caixa">
+        <h3 class="titulo-linha" style="margin-bottom:14px;">✍️ Enviar para assinatura (D4Sign)</h3>
+        <p class="texto-apoio">O PDF <strong id="rhd-doc-nome">—</strong> vai para a D4Sign e os signatários recebem o link por e-mail.
+           Quando todos assinarem, o PDF assinado volta sozinho para o arquivo do funcionário.</p>
+        <div class="grade">
+          <div class="campo"><label>Funcionário — nome</label><input id="rhd-nome-1" /></div>
+          <div class="campo"><label>Funcionário — e-mail *</label><input id="rhd-email-1" type="email" /></div>
+          <div class="campo"><label>CGL — quem assina</label><input id="rhd-nome-2" /></div>
+          <div class="campo"><label>CGL — e-mail</label><input id="rhd-email-2" type="email" /></div>
+          <div class="campo largo"><label>Mensagem do e-mail (opcional)</label>
+            <input id="rhd-mensagem" placeholder="ex.: Segue o contrato de experiência para assinatura." />
+          </div>
+        </div>
+        <p class="nota" id="rhd-cota-nota"></p>
+        <div id="rhd-modal-aviso" class="aviso"></div>
+        <div class="form-acoes compacta">
+          <button type="button" class="btn" id="btn-rhd-enviar">✍️ Enviar</button>
+          <button type="button" class="btn-sec" id="btn-rhd-cancelar">Cancelar</button>
         </div>
       </div>
     </div>
@@ -4719,44 +5339,47 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=26618f8"></script>
+<script src="js/core.js?v=ff3e17e"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=26618f8"></script>
+<script src="js/historico.js?v=ff3e17e"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=26618f8"></script>
-<script src="js/fornecedores.js?v=26618f8"></script>
-<script src="js/apropriacoes.js?v=26618f8"></script>
-<script src="js/funcionarios.js?v=26618f8"></script>
-<script src="js/servicos.js?v=26618f8"></script>
-<script src="js/produtos.js?v=26618f8"></script>
-<script src="js/estoque.js?v=26618f8"></script>
-<script src="js/separacoes.js?v=26618f8"></script>
-<script src="js/compras.js?v=26618f8"></script>
-<script src="js/requisicoes.js?v=26618f8"></script>
-<script src="js/orcamentos.js?v=26618f8"></script>
-<script src="js/propostas.js?v=26618f8"></script>
-<script src="js/contratos.js?v=26618f8"></script>
-<script src="js/contas_pagar.js?v=26618f8"></script>
-<script src="js/centros_custo.js?v=26618f8"></script>
-<script src="js/carteira.js?v=26618f8"></script>
-<script src="js/obras.js?v=26618f8"></script>
-<script src="js/frota.js?v=26618f8"></script>
-<script src="js/viagens.js?v=26618f8"></script>
-<script src="js/equipamentos.js?v=26618f8"></script>
-<script src="js/acessorios.js?v=26618f8"></script>
-<script src="js/reparos.js?v=26618f8"></script>
-<script src="js/fabricacao.js?v=26618f8"></script>
-<script src="js/mobilizacoes.js?v=26618f8"></script>
-<script src="js/estacas.js?v=26618f8"></script>
-<script src="js/obra_abas.js?v=26618f8"></script>
-<script src="js/medicoes.js?v=26618f8"></script>
-<script src="js/movimentacoes.js?v=26618f8"></script>
-<script src="js/rdo.js?v=26618f8"></script>
-<script src="js/rdo_import_maya.js?v=26618f8"></script>
-<script src="js/usuarios.js?v=26618f8"></script>
-<script src="js/chamados.js?v=26618f8"></script>
-<script src="js/dashboard.js?v=26618f8"></script>
+<script src="js/clientes.js?v=ff3e17e"></script>
+<script src="js/fornecedores.js?v=ff3e17e"></script>
+<script src="js/apropriacoes.js?v=ff3e17e"></script>
+<script src="js/funcionarios.js?v=ff3e17e"></script>
+<script src="js/rh_documentos.js?v=ff3e17e"></script>
+<script src="js/servicos.js?v=ff3e17e"></script>
+<script src="js/produtos.js?v=ff3e17e"></script>
+<script src="js/estoque.js?v=ff3e17e"></script>
+<script src="js/separacoes.js?v=ff3e17e"></script>
+<script src="js/compras.js?v=ff3e17e"></script>
+<script src="js/requisicoes.js?v=ff3e17e"></script>
+<script src="js/orcamentos.js?v=ff3e17e"></script>
+<script src="js/propostas.js?v=ff3e17e"></script>
+<script src="js/contratos.js?v=ff3e17e"></script>
+<script src="js/contas_pagar.js?v=ff3e17e"></script>
+<script src="js/centros_custo.js?v=ff3e17e"></script>
+<script src="js/carteira.js?v=ff3e17e"></script>
+<script src="js/obras.js?v=ff3e17e"></script>
+<script src="js/frota.js?v=ff3e17e"></script>
+<script src="js/viagens.js?v=ff3e17e"></script>
+<script src="js/equipamentos.js?v=ff3e17e"></script>
+<script src="js/acessorios.js?v=ff3e17e"></script>
+<script src="js/reparos.js?v=ff3e17e"></script>
+<script src="js/manutencao.js?v=ff3e17e"></script>
+<script src="js/fabricacao.js?v=ff3e17e"></script>
+<script src="js/mobilizacoes.js?v=ff3e17e"></script>
+<script src="js/estacas.js?v=ff3e17e"></script>
+<script src="js/obra_abas.js?v=ff3e17e"></script>
+<script src="js/medicoes.js?v=ff3e17e"></script>
+<script src="js/movimentacoes.js?v=ff3e17e"></script>
+<script src="js/rdo.js?v=ff3e17e"></script>
+<script src="js/rdo_import_maya.js?v=ff3e17e"></script>
+<script src="js/usuarios.js?v=ff3e17e"></script>
+<script src="js/chamados.js?v=ff3e17e"></script>
+<script src="js/dashboard.js?v=ff3e17e"></script>
+<script src="js/rh_horas.js?v=ff3e17e"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=26618f8"></script>
+<script src="js/init.js?v=ff3e17e"></script>
 </body>
 </html>

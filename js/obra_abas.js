@@ -6,6 +6,8 @@
    ==================================================================== */
 
 let _obrAbasContagens = { estacas: 0, equipamentos: 0, mobilizacoes: 0, rdos: 0, raiz: 0, medicoes: 0, documentos: 0 };
+let _obrRdoFiltroMaq = "";   // fase 94 (#77): filtro de máquina da aba RDOs ("" todas · "sem" sem máquina · uuid); o Início define "sem"
+let _obrRdoFiltroObra = null; // obra a que o filtro pertence: trocar de obra zera o filtro (salvo o preset do Início para a mesma obra)
 
 /* ---------- Despachante: carrega tudo quando a obra abre ---------- */
 async function carregarAbasObra(obraId){
@@ -13,7 +15,7 @@ async function carregarAbasObra(obraId){
   // Em paralelo, busca as contagens pra smart-buttons.
   // Estacas: contamos APENAS pela tabela `estacas` (literal, sem dedup — BB são nomes legítimos).
   // Execuções órfãs aparecem no badge separado "🔗 Reconciliar".
-  const [eq, med, rdoG, doc, estsTotal, estsExec, mob, ace] = await Promise.all([
+  const [eq, med, rdoG, doc, estsTotal, estsExec, mob, ace, orf] = await Promise.all([
     sb.from("equipamentos").select("id", { count: "exact", head: true }).eq("localizacao_obra_id", obraId).eq("ativo", true),
     sb.from("medicoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("rdo").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
@@ -21,10 +23,13 @@ async function carregarAbasObra(obraId){
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("status", "executada"),
     sb.from("mobilizacoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId).neq("status", "cancelada"),
-    sb.from("acessorios").select("id", { count: "exact", head: true }).eq("local_obra_id", obraId).eq("local_tipo", "obra").eq("ativo", true)   // fase 80
+    sb.from("acessorios").select("id", { count: "exact", head: true }).eq("local_obra_id", obraId).eq("local_tipo", "obra").eq("ativo", true),   // fase 80
+    sb.from("rdo_execucao_estaca").select("id, rdo:rdo_id!inner(obra_id)", { count: "exact", head: true }).is("estaca_id", null).eq("rdo.obra_id", obraId)   // fase 94: execuções do campo sem par
   ]);
   // Guarda de corrida: outra obra foi aberta enquanto esta carregava → descarta
   if(obraId !== obraEditId) return;
+  const bdV = $("obr-estv-badge");   // fase 94 (#80): badge da aba "Vincular estacas"
+  if(bdV){ bdV.textContent = orf.count || ""; bdV.classList.toggle("alerta", !!orf.count); }
   _obrAbasContagens = {
     estacas: estsTotal.count || 0,
     estacas_previstas: estsTotal.count || 0,
@@ -474,7 +479,7 @@ async function carregarRDOsDaObra(obraId){
     sb.from("rdo_execucao_estaca").select("rdo_id, estaca_id, rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)
   ]);
   if(resumoRes.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(resumoRes.error.message)}</p>`; return; }
-  const data = resumoRes.data;
+  const todos = resumoRes.data || [];
 
   // Mapa rdo_id -> { total, vinculadas }
   const vincPorRdo = {};
@@ -492,30 +497,50 @@ async function carregarRDOsDaObra(obraId){
     helice_secante: "🛡️ Hélice secante"
   };
 
+  // fase 94 (#77): um diário por máquina — filtro por máquina, coluna Máquina e aviso dos diários sem máquina
+  if(_obrRdoFiltroObra !== obraId){ _obrRdoFiltroMaq = ""; _obrRdoFiltroObra = obraId; }
+  const maquinas = [...new Map(todos.filter(r => r.equipamento_id).map(r => [r.equipamento_id, r.maquina || "?"])).entries()]
+    .sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR", { numeric: true }));
+  const semMaq = todos.filter(r => !r.equipamento_id).length;
+  if(_obrRdoFiltroMaq && _obrRdoFiltroMaq !== "sem" && !maquinas.some(([id]) => id === _obrRdoFiltroMaq)) _obrRdoFiltroMaq = "";
+  const data = todos.filter(r => _obrRdoFiltroMaq === "sem" ? !r.equipamento_id : (!_obrRdoFiltroMaq || r.equipamento_id === _obrRdoFiltroMaq));
+
   const header = `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
-      <h4 style="margin:0;font-size:var(--txt-md);">RDOs registrados</h4>
+      <h4 style="margin:0;font-size:var(--txt-md);">RDOs registrados <span class="contador">${data.length} de ${todos.length}</span></h4>
+      <select id="obr-rdo-f-maq" title="Fase 94: um diário por máquina na mesma data" style="max-width:220px;">
+        <option value="">Todas as máquinas</option>
+        <option value="sem"${_obrRdoFiltroMaq === "sem" ? " selected" : ""}>Sem máquina${semMaq ? ` (${semMaq})` : ""}</option>
+        ${maquinas.map(([id, cod]) => `<option value="${esc(id)}"${_obrRdoFiltroMaq === id ? " selected" : ""}>${esc(cod)}</option>`).join("")}
+      </select>
       <button type="button" class="btn" id="btn-rdo-novo">+ Novo RDO</button>
-    </div>`;
+    </div>
+    ${semMaq ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-sm);">
+      ⚠️ <strong>${semMaq} diário${semMaq > 1 ? "s" : ""} sem máquina</strong> — abra cada um e informe a máquina no cabeçalho; até lá ficam em "Para regularizar" do responsável da obra. Diário com execuções de duas máquinas tem o botão "Dividir por máquina".
+    </div>` : ""}`;
+  const ligarFiltroMaq = () => $("obr-rdo-f-maq")?.addEventListener("change", (ev) => { _obrRdoFiltroMaq = ev.target.value; carregarRDOsDaObra(obraId); });
 
   if(!data || !data.length){
-    cont.innerHTML = `${header}<p class="vazio">Nenhum RDO registrado.</p>`;
+    cont.innerHTML = `${header}<p class="vazio">${todos.length ? "Nenhum RDO para esta máquina." : "Nenhum RDO registrado."}</p>`;
     $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
+    ligarFiltroMaq();
     return;
   }
 
-  // Mini-gráfico de produção (últimos 30 dias)
-  const ultimos = data.slice(0, 30).reverse();
-  const maxProd = Math.max(...ultimos.map(r => Number(r.metragem_total) || 0), 1);
-  const barras = ultimos.map(r => {
-    const h = Math.round(((Number(r.metragem_total) || 0) / maxProd) * 60);
-    return `<div title="${dataBR(r.data)}: ${num(r.metragem_total)} m" style="display:inline-block;width:14px;height:60px;vertical-align:bottom;margin:0 1px;">
+  // Mini-gráfico de produção (últimos 30 dias). Fase 94: soma a obra no dia (todas as máquinas), o "Resumo diário"
+  const porDia = {};
+  todos.forEach(r => { porDia[r.data] = (porDia[r.data] || 0) + (Number(r.metragem_total) || 0); });
+  const ultimos = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).slice(-30);
+  const maxProd = Math.max(...ultimos.map(([, m]) => m), 1);
+  const barras = ultimos.map(([d, m]) => {
+    const h = Math.round((m / maxProd) * 60);
+    return `<div title="${dataBR(d)}: ${num(m)} m" style="display:inline-block;width:14px;height:60px;vertical-align:bottom;margin:0 1px;">
       <div style="background:var(--marca-600);width:100%;height:${h}px;margin-top:${60-h}px;border-radius:2px 2px 0 0;"></div>
     </div>`;
   }).join("");
   const grafico = `
     <div style="background:var(--sup-2);border-radius:6px;padding:12px;margin-bottom:14px;">
-      <div style="font-size:var(--txt-sm);color:var(--txt-sec);margin-bottom:6px;font-weight:600;">📊 Metragem diária — últimos ${ultimos.length} RDOs</div>
+      <div style="font-size:var(--txt-sm);color:var(--txt-sec);margin-bottom:6px;font-weight:600;">📊 Metragem diária da obra — últimos ${ultimos.length} dias (todas as máquinas)</div>
       <div style="display:flex;align-items:flex-end;height:62px;overflow-x:auto;">${barras}</div>
     </div>`;
 
@@ -530,6 +555,7 @@ async function carregarRDOsDaObra(obraId){
       : `${orf} execução(ões) sem vínculo (órfãs)`;
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
       <td>${dataBR(r.data)}</td>
+      <td>${r.equipamento_id ? esc(r.maquina || "?") : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho">sem máquina</span>'}</td>
       <td>${esc(lblsTipo[r.tipo_servico] || r.tipo_servico)}</td>
       <td>${r.qtd_estacas_executadas || 0}</td>
       <td title="${tituloVinc}" style="color:${corVinc};font-weight:600;">
@@ -544,13 +570,14 @@ async function carregarRDOsDaObra(obraId){
   cont.innerHTML = `${header}${grafico}
     <div class="tabela-rola"><table>
       <thead><tr>
-        <th>Data</th><th>Tipo de serviço</th><th>Estacas</th>
+        <th>Data</th><th title="Fase 94: um diário por máquina">Máquina</th><th>Tipo de serviço</th><th>Estacas</th>
         <th title="Execuções vinculadas a estacas cadastradas / total de execuções">Vinculadas</th>
         <th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th>
       </tr></thead>
       <tbody>${linhas}</tbody></table></div>`;
 
   $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
+  ligarFiltroMaq();
   cont.querySelectorAll(".linha-clicavel").forEach(tr => {
     tr.addEventListener("click", () => abrirRdoExistente(tr.dataset.id));
   });
@@ -1142,6 +1169,7 @@ function ligarAbasObra(){
       if(tab === "equipamentos") carregarEquipamentosDaObra(obraEditId);
       else if(tab === "medicoes") carregarMedicoesDaObra(obraEditId);
       else if(tab === "rdos") carregarRDOsDaObra(obraEditId);
+      else if(tab === "vincular" && typeof estvCarregar === "function") estvCarregar(obraEditId);   // fase 94 (#80)
       else if(tab === "documentos") carregarDocumentosDaObra(obraEditId);
       else if(tab === "timeline") carregarTimelineDaObra(obraEditId);
       else if(tab === "custos" && typeof custosRender === "function") custosRender("obr-custos", { obra_id: obraEditId });

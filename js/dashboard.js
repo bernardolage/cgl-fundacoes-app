@@ -27,7 +27,8 @@ const DASH_NIVEL = {
   conformidade: { label: "Conformidade", cor: "cinza",    ordem: 4 }
 };
 const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", compras: "Compras",
-  mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado", oficina: "Oficina" };
+  mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado", oficina: "Oficina", manutencao: "Manutenção",
+  rh: "RH" };   // fase 93a: plano de cargos (vw_sc_regularizar_rh)
 /* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
    "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
    As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
@@ -40,7 +41,9 @@ const DASH_SETOR_GESTORES = {
   chamados:    [],
   contratos:   ["comercial"],
   almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios", "auxiliar_almoxarifado"],   // fase 83: separações; fase 90: equipe do Julio
-  oficina:     ["mecanico", "gestor_acessorios", "logistica", "almoxarife", "engenheiro"]   // fase 84: ordens de fabricação
+  oficina:     ["mecanico", "gestor_acessorios", "logistica", "almoxarife", "engenheiro"],   // fase 84: ordens de fabricação
+  manutencao:  ["gestor_manutencao", "mecanico", "engenheiro", "gestor_frota", "logistica"],   // fase 92: preventivas vencidas e checklist de mobilização
+  rh:          ["rh"]   // fase 93a: mudanças de função do plano de cargos
 };
 function dashGereSetor(setor){
   const cargo = usuarioAtual?.cargo;
@@ -186,9 +189,10 @@ async function dashCarregarAcoes(){
   if(!cont) return;
   // fase 83: as separações vêm numa view à parte (vw_sc_acoes_sep); fase 84: a fabricação idem (vw_sc_acoes_fab); entram na mesma lista
   // fase 91: caução vencida / a vencer e NF vencida sem recebimento (setor financeiro) em vw_sc_acoes_fin
-  const [dados, sep, fab, fin] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*"))]);
+  // fase 92: preventiva vencida/vencendo e mobilização sem checklist aprovado (setor manutenção) em vw_sc_acoes_man
+  const [dados, sep, fab, fin, man] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*"))]);
   if(!dados) return;
-  _dashAcoes = dados.concat(sep || [], fab || [], fin || []).filter(a => dashGereSetor(a.setor))
+  _dashAcoes = dados.concat(sep || [], fab || [], fin || [], man || []).filter(a => dashGereSetor(a.setor))
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
   _dashAcoes.forEach(a => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
@@ -250,9 +254,10 @@ async function dashCarregarRegularizar(){
   const cont = $("dash-regularizar");
   if(!cont) return;
   // fase 91: cauções com previsão de devolução vencida (financeiro) em vw_sc_regularizar_fin, mesmas colunas
-  const [dados, fin] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*"))]);
+  // fase 92: OS atrasadas e leitura parada (vw_sc_regularizar_man); fase 93a: plano de cargos (vw_sc_regularizar_rh); fase 93c: horas a liberar há 15+ dias (vw_sc_regularizar_rhh); mesmas colunas
+  const [dados, fin, man, rh, rhh] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*"))]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   const n = p => _dashReg.filter(a => a.papel === p).length;
   if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
@@ -285,6 +290,14 @@ async function dashAbrirRegularizar(a){
   } else if(a.secao === "obras" && a.filtro === "rdo_sem_dados"){ // lote S42: RDO em branco → aba RDOs da obra
     if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
     else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
+  } else if(a.secao === "obras" && a.filtro === "rdo_sem_equipamento"){ // fase 94 (#77): diário sem máquina → aba RDOs da obra filtrada em "sem máquina"
+    if(typeof _obrRdoFiltroMaq !== "undefined"){ _obrRdoFiltroMaq = "sem"; _obrRdoFiltroObra = a.obra_id || null; }
+    if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
+    else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
+  } else if(a.secao === "obras" && a.filtro === "estaca_por_observacao"){ // fase 94 (#75): um só → abre o RDO; vários → aba RDOs da obra
+    if(a.registro_id && irParaSecao("rdo") && typeof abrirRDO === "function") abrirRDO(a.registro_id);
+    else if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
+    else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
   } else if(a.secao === "obras"){ // estacas sem profundidade / projeto a confirmar: uma linha por obra
     if(typeof estDefinirFiltroProf === "function") estDefinirFiltroProf(a.filtro);
     if(a.obra_id) await dashAbrirObra(a.obra_id, "estacas");
@@ -293,11 +306,22 @@ async function dashAbrirRegularizar(a){
     if(typeof renderAcessoriosContagem !== "function") return;
     _aceFamilia = a.filtro || ""; _aceView = "contagem"; _aceSoSemPreco = true;
     irParaSecao("acessorios");
+  } else if(a.secao === "equipamentos" && a.filtro === "leitura_parada"){ // fase 92: máquina em obra sem leitura de horímetro
+    if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
   } else if(a.secao === "equipamentos"){
     if(typeof renderEquipamentos === "function") _eqpKpi = "sem_cod_ext"; // idem (carregarEquipamentos)
     if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
   } else if(a.secao === "medicoes" && a.filtro === "caucao_vencida"){ // fase 91: visão Caução filtrada nas vencidas
     if(irParaSecao("medicoes") && typeof medCauAbrirPreset === "function") medCauAbrirPreset("vencidas");
+  } else if(a.secao === "manutencao"){ // fase 92: OS atrasadas → visão OS filtrada; uma só abre a ficha
+    if(!irParaSecao("manutencao")) return;
+    if(a.registro_id && typeof abrirManutencao === "function") abrirManutencao(a.registro_id);
+    else if(typeof manAbrirPreset === "function") manAbrirPreset("os_atrasadas");
+  } else if(a.secao === "funcionarios" && /^promocao_/.test(a.filtro || "")){ // fase 93a: visão Funções (plano de cargos) filtrada
+    if(irParaSecao("funcionarios") && typeof funcAbrirPromocoes === "function") funcAbrirPromocoes(a.filtro === "promocao_vencida" ? "vencidas" : "60dias");
+  } else if(a.secao === "rhh"){ // fase 93c: "Horas e alocação" › A liberar, só pendentes, nas obras do aviso
+    if(typeof rhhAbrirPreset === "function") rhhAbrirPreset({ obraIds: ids, pendentes: true });
+    irParaSecao("rhh");
   }
 }
 
@@ -349,6 +373,10 @@ async function dashAbrirAcao(a){
     case "fabricacao": // fase 84: uma ordem abre a ficha; o grupo abre o painel filtrado em "em produção"
       if(typeof _fabPreset !== "undefined") _fabPreset = id ? "" : "em_producao";
       if(irParaSecao("fabricacao") && id && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
+      break;
+    case "manutencao": // fase 92: preventiva vencida/vencendo → visão Preventivas (uma TAG abre o plano dela)
+      if(!irParaSecao("manutencao")) break;
+      if(typeof manAbrirPreset === "function") manAbrirPreset(a.nivel === "critico" ? "preventivas_critico" : "preventivas_atencao", a.equipamento_id || null);
       break;
     default:
       irParaSecao(a.secao);

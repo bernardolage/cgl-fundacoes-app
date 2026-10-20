@@ -423,7 +423,11 @@ function renderDrawerMob(){
       ${pendHTML}
     </div>
 
-    <div class="mob-sec"><h4>8 · Conversa</h4><div id="mob-chatter"></div></div>
+    <div class="mob-sec"><h4>8 · Checklist do equipamento <span class="meta">(RG 3.12 — antes de mobilizar; só avisa, não bloqueia)</span></h4>
+      <div id="mob-checklist"><p class="vazio">Carregando…</p></div>
+    </div>
+
+    <div class="mob-sec"><h4>9 · Conversa</h4><div id="mob-chatter"></div></div>
   `;
 
   $("btn-mob-fechar")?.addEventListener("click", fecharMobilizacao);
@@ -441,6 +445,7 @@ function renderDrawerMob(){
   mobRenderMateriais();   // fase 83
   mobRenderSeparacao();
   mobRenderViagens();     // fase 89
+  if(typeof manRenderChecklistMob === "function") manRenderChecklistMob(m, "mob-checklist");   // fase 92
 }
 
 /* ---------- Fase 89: viagens da mobilização (ida e volta) ----------

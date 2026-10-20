@@ -569,6 +569,23 @@ function iniciarAcessibilidade(){
 
 
 /* ====================== AUTENTICAÇÃO ====================== */
+/* Fase 93b: funcionário entra com o CPF. O usuário dele no Auth tem o e-mail técnico
+   <cpf só dígitos>@funcionarios.cglfundacoes.com.br (domínio interno, sem caixa postal), criado pelo RH na aba
+   Acesso da ficha do funcionário. O campo "E-mail ou CPF" aceita os dois: só dígitos (com ou sem pontos e traço),
+   11 deles, vira o e-mail técnico aqui; qualquer outra coisa segue como e-mail. O e-mail técnico nunca vai para a
+   tela: fica nesta função e em `_loginCpfDigitos` (para recusar senha igual ao CPF). */
+const LOGIN_CPF_DOMINIO = "funcionarios.cglfundacoes.com.br";
+let _loginCpfDigitos = null;
+function loginPareceCpf(v){
+  const s = String(v || "").trim();
+  return /^[\d.\-\s]+$/.test(s) && s.replace(/\D/g, "").length === 11;
+}
+function loginParaEmail(v){
+  const s = String(v || "").trim();
+  return loginPareceCpf(s) ? s.replace(/\D/g, "") + "@" + LOGIN_CPF_DOMINIO : s;
+}
+function emailEhLoginCpf(email){ return String(email || "").toLowerCase().endsWith("@" + LOGIN_CPF_DOMINIO); }
+
 $("form-login").addEventListener("submit", async (e)=>{
   e.preventDefault();
   const btn = $("btn-entrar");
@@ -577,13 +594,13 @@ $("form-login").addEventListener("submit", async (e)=>{
   // antes do signIn, que é quem grava a sessão. O prazo da empresa é aplicado depois do login.
   if($("login-lembrar") && $("login-lembrar").checked) lembrarGravar(POL_SESSAO_PADRAO.lembrar_dias); else lembrarApagar();
   const { error } = await sb.auth.signInWithPassword({
-    email: $("login-email").value.trim(),
+    email: loginParaEmail($("login-email").value),   // fase 93b: CPF vira o e-mail técnico
     password: $("login-senha").value
   });
   btn.disabled = false; btn.textContent = "Entrar";
   if(error){
     const m = (error.message||"").toLowerCase();
-    if(m.includes("invalid login")) aviso("login-aviso","E-mail ou senha inválidos.","erro");
+    if(m.includes("invalid login")) aviso("login-aviso", loginPareceCpf($("login-email").value) ? "CPF ou senha inválidos. Sem a senha, peça uma nova ao RH." : "E-mail ou senha inválidos.","erro");
     else if(m.includes("banned")) aviso("login-aviso","Seu usuário está desativado. Fale com a diretoria.","erro");
     else aviso("login-aviso","Falha no login: "+(error.message||"erro desconhecido"),"erro");
     return;
@@ -604,6 +621,11 @@ $("form-login").addEventListener("submit", async (e)=>{
    o botão trava por 60s após cada envio. */
 $("btn-esqueci-senha")?.addEventListener("click", async ()=>{
   const email = $("login-email").value.trim().toLowerCase();
+  // fase 93b: login por CPF não tem caixa postal; a senha nova vem do RH (aba Acesso da ficha do funcionário)
+  if(loginPareceCpf(email) || emailEhLoginCpf(email)){
+    aviso("login-aviso","Quem entra com o CPF não redefine a senha por e-mail: peça uma nova senha ao RH.","aviso");
+    return;
+  }
   if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
     aviso("login-aviso","Digite seu e-mail no campo acima e clique de novo em \"Esqueci minha senha\".","erro");
     $("login-email").focus();
@@ -649,8 +671,13 @@ let usuarioAtual = null;
 async function iniciarApp(){
   const { data:{ user } } = await sb.auth.getUser();
   if(!user) return;
-  const { data:perfil, error:perfilErr } = await sb.from("profiles")
-    .select("id,nome,cargo,ativo").eq("id",user.id).single();
+  // fase 93b: login_cpf e senha_provisoria entram na leitura; se a migration da 93b ainda não estiver no banco
+  // (42703: coluna não existe), lê sem elas para ninguém ficar sem perfil
+  let { data:perfil, error:perfilErr } = await sb.from("profiles")
+    .select("id,nome,cargo,ativo,login_cpf,senha_provisoria").eq("id",user.id).single();
+  if(perfilErr && perfilErr.code === "42703"){
+    ({ data:perfil, error:perfilErr } = await sb.from("profiles").select("id,nome,cargo,ativo").eq("id",user.id).single());
+  }
 
   /* bloqueia acesso de usuários desativados. Fase 62: com o is_ativo() nas policies o
      desativado não lê nem o próprio perfil (a consulta volta sem linha, PGRST116) */
@@ -660,8 +687,11 @@ async function iniciarApp(){
     return;
   }
 
-  usuarioAtual = perfil || { id:user.id, nome:user.email, cargo:null, ativo:true };
-  const nome = perfil ? (perfil.nome + " · " + perfil.cargo) : user.email;
+  // fase 93b: o e-mail técnico do login por CPF não aparece na tela (carrega o CPF)
+  _loginCpfDigitos = emailEhLoginCpf(user.email) ? String(user.email).split("@")[0] : null;
+  const rotuloSemPerfil = _loginCpfDigitos ? "Funcionário" : user.email;
+  usuarioAtual = perfil || { id:user.id, nome:rotuloSemPerfil, cargo:null, ativo:true };
+  const nome = perfil ? (perfil.nome + " · " + perfil.cargo) : rotuloSemPerfil;
   $("usr-nome").textContent = nome;
 
   /* Cargos de gestão: diretor tem acesso total (has_role() no banco
@@ -684,8 +714,10 @@ async function iniciarApp(){
   /* P0 — alertar diretor/admin sem MFA configurado (quando o cargo não está na lista do obrigatório) */
   if(ehDiretorOuAdmin && !mfaObrigatorio) verificarMFAAdmin();
 
+  /* fase 93b: senha definida pelo RH é provisória — troca obrigatória antes de qualquer outra coisa */
+  if(perfil?.senha_provisoria && !mfaObrigatorio) await exigirTrocaSenhaProvisoria();
   /* Chegou por link de convite ou recuperação: definir a senha agora */
-  if(_chegouPorConvite) abrirDefinirSenha();
+  else if(_chegouPorConvite) abrirDefinirSenha();
 
   await carregarTudo();
 }
@@ -696,20 +728,48 @@ function abrirDefinirSenha(){
   if(m) m.style.display = "flex";
 }
 
+/* Fase 93b: a senha que o RH digitou na aba Acesso é provisória (profiles.senha_provisoria). O mesmo modal
+   do convite abre em modo obrigatório: sem fechar, menu travado (body.senha-provisoria, conferido em
+   ativarSecao) e o resto do app só carrega depois que a senha nova é gravada e a RPC
+   rh_login_marcar_senha_trocada() zera a flag. Senha igual ao CPF é recusada. */
+let _senhaProvisoriaResolver = null;
+function exigirTrocaSenhaProvisoria(){
+  return new Promise((resolve) => {
+    _senhaProvisoriaResolver = resolve;
+    document.body.classList.add("senha-provisoria");
+    if($("senha-modal-titulo")) $("senha-modal-titulo").textContent = "🔐 Troque sua senha";
+    if($("senha-modal-texto")) $("senha-modal-texto").textContent =
+      "Sua senha foi definida pelo RH e vale só para este primeiro acesso. Escolha agora a senha que usará daqui em diante (mínimo 8 caracteres).";
+    abrirDefinirSenha();
+    $("senha-nova")?.focus();
+  });
+}
+
 $("btn-senha-salvar")?.addEventListener("click", async ()=>{
   const s1 = $("senha-nova").value;
   const s2 = $("senha-confirma").value;
   if(s1.length < 8){ aviso("senha-modal-aviso","A senha precisa de pelo menos 8 caracteres.","erro"); return; }
   if(s1 !== s2){ aviso("senha-modal-aviso","As senhas não conferem.","erro"); return; }
+  if(_loginCpfDigitos && s1.replace(/\D/g, "") === _loginCpfDigitos){ aviso("senha-modal-aviso","A senha não pode ser o seu CPF.","erro"); return; }
   const btn = $("btn-senha-salvar");
   btn.disabled = true; btn.textContent = "Salvando...";
   const { error } = await sb.auth.updateUser({ password: s1 });
   btn.disabled = false; btn.textContent = "Salvar senha";
   if(error){
-    aviso("senha-modal-aviso","Não foi possível salvar: "+(error.message||"erro"),"erro");
+    const m = (error.message || "").toLowerCase();
+    aviso("senha-modal-aviso", m.includes("different from the old") || m.includes("same password")
+      ? "Escolha uma senha diferente da que o RH definiu." : "Não foi possível salvar: "+(error.message||"erro"),"erro");
     return;
   }
+  $("senha-nova").value = ""; $("senha-confirma").value = "";
   $("senha-modal").style.display = "none";
+  if(_senhaProvisoriaResolver){   // fase 93b: zera a flag e libera o app
+    const { error: rpcErr } = await sb.rpc("rh_login_marcar_senha_trocada");
+    if(rpcErr) console.warn("rh_login_marcar_senha_trocada:", rpcErr.message);
+    if(usuarioAtual) usuarioAtual.senha_provisoria = false;
+    document.body.classList.remove("senha-provisoria");
+    const r = _senhaProvisoriaResolver; _senhaProvisoriaResolver = null; r();
+  }
   aviso("app-aviso","🔐 Senha definida. Use-a nos próximos acessos.","ok");
 });
 
@@ -740,6 +800,7 @@ if (overlay) {
 // mesma função para seções SEM item no menu (Movimentações de Ativos virou ficha do documento da viagem).
 function ativarSecao(secao, b){
   if(document.body.classList.contains("mfa-obrigatorio")) return;   // fase 87: menu travado até concluir o MFA
+  if(document.body.classList.contains("senha-provisoria")) return;  // fase 93b: idem até trocar a senha provisória
   if(b){
     document.querySelectorAll(".sidebar-nav button").forEach(x=>x.classList.remove("ativo"));
     b.classList.add("ativo");
@@ -810,6 +871,13 @@ function podeVerCentrosCusto(){
 function podeVerValorObra(){
   return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
+/* Fase 93c: "Horas e alocação" (horas do RDO a liberar, fechamento do mês, alocação por obra). Quem libera é o
+   engenheiro responsável da obra ou o gestor do serviço (rh_horas_liberar() no banco); encarregado só vê; RH fecha o
+   mês e lança na folha; logística confere a alocação. Espelha rh_pode_ler_horas() do banco, menos gestor de frota.
+   "Minhas horas de viagem" (sec-rhv) é de todos. */
+function podeVerHorasRH(){
+  return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado", "rh", "logistica", "auditor"].includes(usuarioAtual.cargo);
+}
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
 const SECOES_OCULTAS_POR_CARGO = {
@@ -821,7 +889,10 @@ const SECOES_OCULTAS_POR_CARGO = {
   // fase 90 (Bernardo, 19/10/2026): auxiliar de almoxarifado = equipe do Julio. Fica só com Início (fila de separação),
   // Estoque, Separações, Produtos (consulta), Reparos (aba Peças) e Chamados; o resto sai do menu e irParaSecao barra.
   auxiliar_almoxarifado: ["clientes", "fornecedores", "funcionarios", "servicos", "compras", "orcamentos", "contratos", "centros",
-    "carteira", "obras", "mobilizacoes", "equipamentos", "frota", "acessorios", "fabricacao", "medicoes", "rdo", "usuarios"]
+    "carteira", "obras", "mobilizacoes", "equipamentos", "frota", "acessorios", "fabricacao", "medicoes", "rdo", "usuarios", "rhh"],
+  // fase 92 (Bernardo, 19/10/2026, decisão 1): gestor da manutenção (Bruno) cuida de OS, planos, checklists, equipamentos, frota
+  // e das compras do setor; obras, medições e contas a pagar (podeVerContasPagar) ficam fora
+  gestor_manutencao: ["obras", "medicoes"]
 };
 /* Mostra/esconde os itens do menu conforme o cargo. Chamado no login; isolado para poder ser testado. */
 function aplicarMenuPorCargo(perfil){
@@ -851,6 +922,9 @@ function aplicarMenuPorCargo(perfil){
   if(navCon) navCon.style.display = podeVerContasPagar() ? "" : "none";
   const navCcu = document.querySelector('.sidebar-nav button[data-secao="centros"]');
   if(navCcu) navCcu.style.display = podeVerCentrosCusto() ? "" : "none";
+  // Fase 93c: "Horas e alocação" só para quem libera, confere ou fecha horas (lista em podeVerHorasRH)
+  const navRhh = $("nav-rhh");
+  if(navRhh) navRhh.style.display = podeVerHorasRH() ? "" : "none";
 
   // Só esconde: reexibir aqui mostraria "Usuários" (oculto do auditor) a todos os cargos. Sair recarrega a página.
   (SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || []).forEach(s => {
@@ -925,7 +999,8 @@ function linkMovimentacao(id, texto){ return linkCadastro("movimentacao", id, te
 function linkReparo(id, texto){ return linkCadastro("reparo", id, texto, "Abrir o reparo"); }   // fase 82
 function linkFabricacao(id, texto){ return linkCadastro("fabricacao", id, texto, "Abrir a ordem de fabricação"); }   // fase 84
 function linkViagem(id, texto){ return linkCadastro("viagem", id, texto, "Abrir a viagem (Logística)"); }   // fase 89
-const LINK_CAD_SECAO = { acessorio: "acessorios", equipamento: "equipamentos", produto: "produtos", movimentacao: "movimentacoes", reparo: "reparos", fabricacao: "fabricacao", viagem: "frota" };
+function linkManutencao(id, texto){ return linkCadastro("manutencao", id, texto, "Abrir a OS de manutenção"); }   // fase 92
+const LINK_CAD_SECAO = { acessorio: "acessorios", equipamento: "equipamentos", produto: "produtos", movimentacao: "movimentacoes", reparo: "reparos", fabricacao: "fabricacao", viagem: "frota", manutencao: "manutencao" };
 document.addEventListener("click", async (e) => {
   const a = e.target && e.target.closest ? e.target.closest("a.link-cad") : null;
   if(!a) return;
@@ -947,6 +1022,7 @@ document.addEventListener("click", async (e) => {
   else if(tipo === "reparo" && typeof abrirReparo === "function") abrirReparo(id);
   else if(tipo === "fabricacao" && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
   else if(tipo === "viagem" && typeof abrirViagem === "function") abrirViagem(id, null);
+  else if(tipo === "manutencao" && typeof abrirManutencao === "function") abrirManutencao(id);   // fase 92
 }, true);
 
 /* ====================== ATUALIZAÇÃO AUTOMÁTICA DO APP (fase 86) ======================
