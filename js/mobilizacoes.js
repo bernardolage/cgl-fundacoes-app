@@ -50,6 +50,12 @@ const MOB_TRANSICOES = {
   em_obra:       [["desmobilizada", "↩ Desmobilizar (gera retorno)", "btn"]],
   desmobilizada: [], cancelada: []
 };
+/* fase 95: quem cria e edita a mobilização (dados, kit e status). Espelha mobilizacoes_write +
+   mobilizacoes_insert_acessorios/mobilizacoes_update_acessorios no banco; lá has_role() já cobre diretor, aqui a
+   lista precisa trazê-lo. Quem está fora vê a ficha sem "Salvar", sem botões de status e sem "+ Nova mobilização". */
+const MOB_CARGOS_EDITAM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica", "gestor_acessorios"];
+const MOB_MSG_SEM_PERMISSAO = "Seu cargo não pode alterar esta mobilização.";
+function mobPodeEditar(){ return !!usuarioAtual && MOB_CARGOS_EDITAM.includes(usuarioAtual.cargo); }
 
 function mobSetorDoUsuario(){
   const cargo = usuarioAtual?.cargo;
@@ -114,6 +120,8 @@ function renderMobilizacoes(){
   const minhas = _mobPendSetor.filter(p => !p.concluida && (!mobSetorDoUsuario() || p.setor === mobSetorDoUsuario())).length;
   kp("mob-kpi-minhas", minhas);
   const badge = $("mob-minhas-badge"); if(badge) badge.textContent = minhas || "";
+  // fase 95: "+ Nova mobilização" só para quem cria (mobilizacoes_write / mobilizacoes_insert_acessorios no banco)
+  const bn = $("btn-mob-nova"); if(bn) bn.style.display = mobPodeEditar() ? "" : "none";
 
   document.querySelectorAll("#sec-mobilizacoes .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _mobView));
   if(_mobView === "pendencias") renderMinhasPendenciasMob(); else renderQuadroMob();
@@ -168,7 +176,7 @@ function renderQuadroMob(){
   if(!cont) return;
   const dados = mobFiltrados();
   if(!_mobCards.length){
-    cont.innerHTML = `<p class="vazio">Nenhuma mobilização ainda. Clique em <strong>+ Nova mobilização</strong> ou importe os cards do Trello.</p>`;
+    cont.innerHTML = `<p class="vazio">Nenhuma mobilização ainda.${mobPodeEditar() ? " Clique em <strong>+ Nova mobilização</strong> ou importe os cards do Trello." : ""}</p>`;
     return;
   }
   const porCol = {};
@@ -323,11 +331,13 @@ function renderDrawerMob(){
   if(!cont || !m) return;
   const col = MOB_COLUNAS.find(x => x.k === c.coluna) || {};
   const est = Array.isArray(m.estacas_resumo) ? m.estacas_resumo : [];
-  const podeEditar = usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica"].includes(usuarioAtual.cargo);
+  const podeEditar = mobPodeEditar();   // fase 95: lista única (MOB_CARGOS_EDITAM), vale para "Salvar alterações" e para os botões de status
   const porQuem = (id, v) => `<select id="${id}"><option value="">—</option><option value="cgl"${v === "cgl" ? " selected" : ""}>CGL</option><option value="cliente"${v === "cliente" ? " selected" : ""}>Cliente</option></select>`;
   const simNao = (id, v) => `<select id="${id}"><option value="">—</option><option value="true"${v === true ? " selected" : ""}>Sim</option><option value="false"${v === false ? " selected" : ""}>Não</option></select>`;
   _mobApoioSel.mob = [...(m.equipamentos_apoio || [])];
-  const transicoes = (MOB_TRANSICOES[m.status] || []).map(([st, lbl, cls]) => `<button type="button" class="${cls}" data-mob-status="${st}">${lbl}</button>`).join("");
+  // fase 95: quem não grava em mobilizacoes vê o status e "Sem ações de status disponíveis" (antes os botões apareciam para
+  // todo cargo: quem grava em viagens/movimentacoes_ativos criava a remessa e o UPDATE da mobilização voltava 0 linhas)
+  const transicoes = podeEditar ? (MOB_TRANSICOES[m.status] || []).map(([st, lbl, cls]) => `<button type="button" class="${cls}" data-mob-status="${st}">${lbl}</button>`).join("") : "";
   const respOpts = (sel) => '<option value="">— responsável —</option>' + _mobProfiles.map(p => `<option value="${esc(p.id)}"${p.id === sel ? " selected" : ""}>${esc(p.nome)}</option>`).join("");
   const porSetor = {};
   _mobPendAberta.forEach(p => (porSetor[p.setor] = porSetor[p.setor] || []).push(p));
@@ -462,7 +472,8 @@ async function mobRenderViagens(){
     const st = (typeof STATUS !== "undefined" && STATUS.viagem && STATUS.viagem[v.status]) || { label: v.status };
     return `<a href="#" class="mob-chip ${v.status === "concluida" ? "ok" : "st"}" data-vg="${esc(v.id)}" title="abrir a viagem em Logística">🚚 ${rot} ${esc(v.numero)} · ${esc(st.label)} · ${v.caminhao ? esc(v.caminhao.codigo) : "sem caminhão"}${v.funcionario ? " · " + esc(v.funcionario.nome) : ""}</a>`;
   };
-  const podeProgramar = pode && !m.viagem_ida_id && ["prevista", "em_preparacao"].includes(m.status);
+  // fase 95: além de operar a viagem, precisa gravar o vínculo em mobilizacoes (senão a viagem nasce órfã)
+  const podeProgramar = pode && mobPodeEditar() && !m.viagem_ida_id && ["prevista", "em_preparacao"].includes(m.status);
   box.innerHTML = chip(m.viagem_ida_id, "Viagem de ida") + chip(m.viagem_volta_id, "Viagem de volta")
     + (podeProgramar ? `<button type="button" class="btn-sec btn-sm" id="btn-mob-programar-viagem" title="cria a viagem de mobilização (planejada) e abre a ficha para pôr caminhão, motorista e data">🚚 Programar viagem</button>` : "")
     + (!ids.length && !podeProgramar ? `<span class="meta">Sem viagem gerada.</span>` : "");
@@ -688,8 +699,10 @@ async function mobSugerirKit(){
 }
 async function mobSalvarKit(){
   if(!_mobAberta) return;
-  const { error } = await sb.from("mobilizacoes").update({ acessorios_ids: _mobKit }).eq("id", _mobAberta.id);
+  // fase 95: .select("id") — sem ele o RLS devolve 0 linhas sem erro e a tela dizia "Kit salvo" sem ter gravado
+  const { data, error } = await sb.from("mobilizacoes").update({ acessorios_ids: _mobKit }).eq("id", _mobAberta.id).select("id");
   if(error){ aviso("app-aviso", "Não foi possível salvar o kit: " + error.message, "erro"); return; }
+  if(!data?.length){ aviso("app-aviso", "Não foi possível salvar o kit: " + MOB_MSG_SEM_PERMISSAO, "erro"); return; }
   _mobAberta.acessorios_ids = [..._mobKit];
   aviso("app-aviso", `Kit salvo: ${_mobKit.length} peça(s).`, "ok");
 }
@@ -734,11 +747,12 @@ async function salvarMobilizacao(){
     observacoes: $("mob-obs").value.trim() || null
   };
   if(mobKitEditavel()) reg.acessorios_ids = _mobKit;
-  const { error } = await sb.from("mobilizacoes").update(reg).eq("id", _mobAberta.id);
+  const { data, error } = await sb.from("mobilizacoes").update(reg).eq("id", _mobAberta.id).select("id");
   if(error){
     const msg = /mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa (em preparação, em trânsito ou em obra)." : error.message;
     aviso("app-aviso", "Não foi possível salvar: " + msg, "erro"); return;
   }
+  if(!data?.length){ aviso("app-aviso", "Não foi possível salvar: " + MOB_MSG_SEM_PERMISSAO, "erro"); return; }   // fase 95: RLS barrou (0 linhas, sem erro)
   aviso("app-aviso", "Mobilização salva.", "ok");
   await carregarMobilizacoes(true);
   await abrirMobilizacao(_mobAberta.id);
@@ -772,8 +786,9 @@ async function mobGarantirViagem(m, sentido){
         observacoes: "Viagem de desmobilização gerada pelo quadro de Mobilizações." };
   const { data, error } = await sb.from("viagens").insert(reg).select(MOB_VG_SELECT).single();
   if(error) throw new Error("viagem: " + error.message);
-  const { error: e2 } = await sb.from("mobilizacoes").update({ [campo]: data.id }).eq("id", m.id);
+  const { data: vinc, error: e2 } = await sb.from("mobilizacoes").update({ [campo]: data.id }).eq("id", m.id).select("id");
   if(e2) throw new Error("vínculo da viagem: " + e2.message);
+  if(!vinc?.length) throw new Error("vínculo da viagem: " + MOB_MSG_SEM_PERMISSAO);   // fase 95: RLS barrou (0 linhas, sem erro)
   m[campo] = data.id;
   if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;
   return data;
@@ -825,6 +840,9 @@ async function criarMovimentacaoMob(tipo, m, vg){
 
 async function mudarStatusMobilizacao(novo, btn){
   const m = _mobAberta; if(!m) return;
+  // fase 95: confere o cargo ANTES de criar viagem e movimentação; se o UPDATE de mobilizacoes fosse barrado depois,
+  // sobrava movimentação órfã e a mobilização parada em "em preparação"
+  if(!mobPodeEditar()){ aviso("app-aviso", MOB_MSG_SEM_PERMISSAO, "erro"); return; }
   const abertas = _mobPendAberta.filter(p => !p.concluida).length;
   if(novo === "em_transito"){
     const equip = $("mob-equip")?.value || m.equipamento_id;
@@ -858,8 +876,9 @@ async function mudarStatusMobilizacao(novo, btn){
       upd.movimentacao_retorno_id = await criarMovimentacaoMob("retorno", atual, vg);
       await mobViagemStatus(vg, "em_transito");
     }
-    const { error } = await sb.from("mobilizacoes").update(upd).eq("id", atual.id);
+    const { data: gravou, error } = await sb.from("mobilizacoes").update(upd).eq("id", atual.id).select("id");
     if(error) throw new Error(/mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa." : error.message);
+    if(!gravou?.length) throw new Error(MOB_MSG_SEM_PERMISSAO);   // fase 95: RLS barrou (0 linhas, sem erro)
     // kit saiu na remessa → a pendência "acessórios conferidos e separados" do almoxarifado está cumprida
     if(novo === "em_transito" && (atual.acessorios_ids || []).length){
       const p = _mobPendAberta.find(x => !x.concluida && x.setor === "almoxarifado" && /acess/i.test(x.titulo || ""));
@@ -880,9 +899,10 @@ async function salvarMobilizacaoSilencioso(){
   const reg = { equipamento_id: $("mob-equip").value || null, equipamentos_apoio: [..._mobApoioSel.mob],
     data_mobilizacao_prev: $("mob-data-prev").value || null, data_inicio_obra_prev: $("mob-data-inicio").value || null };
   if(mobKitEditavel()) reg.acessorios_ids = _mobKit;
-  const { data, error } = await sb.from("mobilizacoes").update(reg).eq("id", _mobAberta.id).select("*").single();
+  const { data, error } = await sb.from("mobilizacoes").update(reg).eq("id", _mobAberta.id).select("*");
   if(error) throw new Error(/mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa." : error.message);
-  _mobAberta = data;
+  if(!data?.length) throw new Error(MOB_MSG_SEM_PERMISSAO);   // fase 95: RLS barrou (0 linhas, sem erro); o .single() antigo dava um erro técnico
+  _mobAberta = data[0];
 }
 
 /* ---------- Nova mobilização ---------- */
@@ -899,6 +919,7 @@ function abrirNovaMobilizacao(obraIdPre){
 }
 function fecharNovaMobilizacao(){ $("mob-nova-modal").style.display = "none"; }
 async function criarMobilizacao(){
+  if(!mobPodeEditar()){ aviso("app-aviso", "Seu cargo não pode criar mobilização.", "erro"); return; }   // fase 95
   const obra_id = $("mobn-obra")?.value;
   if(!obra_id){ aviso("app-aviso", "Selecione a obra.", "erro"); return; }
   const reg = { obra_id, equipamento_id: $("mobn-equip")?.value || null,

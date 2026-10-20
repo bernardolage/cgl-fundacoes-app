@@ -140,7 +140,7 @@ async function carregarEquipamentosDaObra(obraId){
   const blocoMob = `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
       <h4 style="margin:0;font-size:var(--txt-md);">🚚 ${mobs.length ? `${mobs.length} mobilizaç${mobs.length > 1 ? "ões" : "ão"} desta obra` : "Mobilização"}</h4>
-      <button type="button" class="btn-sec" id="btn-obr-mob-nova">+ Nova mobilização</button>
+      ${(typeof mobPodeEditar === "function" && mobPodeEditar()) ? `<button type="button" class="btn-sec" id="btn-obr-mob-nova">+ Nova mobilização</button>` : ""}
     </div>
     ${mobRes.error ? `<p class="vazio">Não foi possível ler as mobilizações: ${esc(mobRes.error.message)}</p>`
       : (cardsMob || `<p class="vazio" style="padding:10px 0;">Nenhuma mobilização cadastrada para esta obra. A mobilização acompanha preparação, saída, chegada e as pendências de cada setor.</p>`)}

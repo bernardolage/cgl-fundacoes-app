@@ -925,6 +925,10 @@ function aplicarMenuPorCargo(perfil){
   // Fase 93c: "Horas e alocação" só para quem libera, confere ou fecha horas (lista em podeVerHorasRH)
   const navRhh = $("nav-rhh");
   if(navRhh) navRhh.style.display = podeVerHorasRH() ? "" : "none";
+  // Fase 95: criar mobilização (botão do quadro e "Criar mobilização" da aba Contrato da obra) só para quem grava em
+  // mobilizacoes (MOB_CARGOS_EDITAM em js/mobilizacoes.js, que já está carregado quando o login chama esta função)
+  const podeMob = typeof MOB_CARGOS_EDITAM !== "undefined" && !!perfil && MOB_CARGOS_EDITAM.includes(perfil.cargo);
+  ["btn-mob-nova", "btn-obr-criar-mob"].forEach(id => { const b = $(id); if(b) b.style.display = podeMob ? "" : "none"; });
 
   // Só esconde: reexibir aqui mostraria "Usuários" (oculto do auditor) a todos os cargos. Sair recarrega a página.
   (SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || []).forEach(s => {
