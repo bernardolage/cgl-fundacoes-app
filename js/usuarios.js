@@ -38,6 +38,7 @@ async function carregarUsuarios(){
   _usuarios = error ? [] : (data || []);
   renderUsuarios();
   carregarRespServico();
+  carregarPoliticaSessaoCard();
 }
 
 /* ---------- Responsáveis por serviço (fase 75) ----------
@@ -119,6 +120,76 @@ async function excluirRespServico(id){
   const { error } = await sb.from("responsaveis_servico").delete().eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
   await carregarRespServico();
+}
+
+/* ---------- Política de sessão (fase 87) ----------
+   Card no painel, só diretor e admin (empresa_config_admin_write no banco). Os prazos valem para quem
+   entrar ou recarregar depois de salvos (e para esta aba, na hora). "Encerrar todas" é só da diretoria:
+   duas confirmações e motivo; a RPC apaga auth.sessions (menos a sessão de quem clicou) e registra em
+   registros_log. "Encerrar sessões" de um usuário fica na ficha, ao lado de Resetar senha. */
+async function carregarPoliticaSessaoCard(){
+  const card = $("usr-sessao-card");
+  if(!card) return;
+  const pode = ["diretor", "admin"].includes(usuarioAtual?.cargo);
+  card.style.display = pode ? "" : "none";
+  if(!pode) return;
+  const { data, error } = await sb.from("empresa_config")
+    .select("sessao_inatividade_min,sessao_maxima_h,sessao_lembrar_dias,sessao_mfa_cargos,sessoes_revogadas_em")
+    .eq("id", 1).maybeSingle();
+  if(error || !data){ aviso("app-aviso", "Não foi possível ler a política de sessão" + (error ? ": " + error.message : "."), "erro"); return; }
+  $("usr-sessao-inatividade").value = data.sessao_inatividade_min ?? 240;
+  $("usr-sessao-maxima").value      = data.sessao_maxima_h ?? 12;
+  $("usr-sessao-lembrar").value     = data.sessao_lembrar_dias ?? 7;
+  const marcados = new Set(data.sessao_mfa_cargos || []);
+  $("usr-sessao-mfa-cargos").innerHTML = Object.entries(CARGOS)
+    .map(([v, l]) => `<label class="check-inline"><input type="checkbox" data-mfa-cargo="${esc(v)}" ${marcados.has(v) ? "checked" : ""} /> ${esc(l)}</label>`).join("");
+  $("usr-sessao-revogadas").textContent = data.sessoes_revogadas_em
+    ? "Última vez que todas as sessões foram encerradas: " + new Date(data.sessoes_revogadas_em).toLocaleString("pt-BR") : "";
+  $("btn-usr-sessoes-todas").style.display = usuarioAtual?.cargo === "diretor" ? "" : "none";
+}
+
+async function salvarPoliticaSessao(){
+  const n = (id, min, max) => { const v = Number($(id).value); return Number.isInteger(v) && v >= min && v <= max ? v : null; };
+  const reg = {
+    sessao_inatividade_min: n("usr-sessao-inatividade", 1, 1440),
+    sessao_maxima_h:        n("usr-sessao-maxima", 1, 168),
+    sessao_lembrar_dias:    n("usr-sessao-lembrar", 1, 90),
+    sessao_mfa_cargos:      Array.from(document.querySelectorAll("#usr-sessao-mfa-cargos input:checked")).map(i => i.dataset.mfaCargo),
+    updated_at: new Date().toISOString()
+  };
+  if(reg.sessao_inatividade_min == null || reg.sessao_maxima_h == null || reg.sessao_lembrar_dias == null){
+    aviso("app-aviso", "Prazos inválidos: inatividade de 1 a 1440 min, sessão máxima de 1 a 168 h, manter conectado de 1 a 90 dias.", "erro");
+    return;
+  }
+  if(!reg.sessao_mfa_cargos.includes("diretor") && !confirm("Diretor fora da lista de MFA obrigatório. Tem certeza?")) return;
+  const { error } = await sb.from("empresa_config").update(reg).eq("id", 1);
+  if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Política de sessão salva. Vale para quem entrar ou recarregar a partir de agora (e já nesta aba).", "ok");
+  if(typeof carregarPoliticaSessao === "function") await carregarPoliticaSessao();
+}
+
+async function encerrarSessoesUsr(){
+  if(!usrEditId) return;
+  const u = _usuarios.find(x => x.id === usrEditId);
+  const nome = u?.nome || "este usuário";
+  if(!confirm(`Encerrar as sessões abertas de ${nome}? Ele sai do sistema em todos os aparelhos e precisa entrar de novo.`)) return;
+  const { data, error } = await sb.rpc("sessoes_encerrar_usuario", { p_user: usrEditId, p_motivo: "ficha do usuário" });
+  if(error){ aviso("app-aviso", "Não foi possível encerrar as sessões: " + error.message, "erro"); return; }
+  const n = Number(data) || 0;
+  aviso("app-aviso", n ? `${n} sessão(ões) de ${nome} encerrada(s). As abas abertas saem em até 5 min.` : `${nome} não tinha sessão aberta.`, "ok");
+}
+
+async function encerrarTodasSessoes(){
+  if(usuarioAtual?.cargo !== "diretor"){ aviso("app-aviso", "Só a diretoria encerra todas as sessões.", "erro"); return; }
+  const motivo = prompt("Encerrar TODAS as sessões (todos os usuários, em todos os aparelhos). Esta é a emergência da diretoria.\n\nMotivo (fica no histórico):");
+  if(motivo === null) return;
+  if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo.", "erro"); return; }
+  const conf = prompt("Segunda confirmação: digite ENCERRAR para derrubar todo mundo (a sua sessão nesta aba continua).");
+  if((conf || "").trim().toUpperCase() !== "ENCERRAR"){ aviso("app-aviso", "Cancelado: a confirmação não foi digitada.", "aviso"); return; }
+  const { data, error } = await sb.rpc("sessoes_encerrar_todas", { p_motivo: motivo.trim() });
+  if(error){ aviso("app-aviso", "Não foi possível encerrar as sessões: " + error.message, "erro"); return; }
+  aviso("app-aviso", `${Number(data) || 0} sessão(ões) encerrada(s). Quem estava com o app aberto sai em até 5 min; quem entrar agora entra normalmente.`, "ok");
+  await carregarPoliticaSessaoCard();
 }
 
 /* ---------- Filtros ---------- */
@@ -237,6 +308,7 @@ function novoUsuario(){
   $("usr-telefone").value = "";
   $("usr-ativo").checked = true;
   $("btn-reset-senha-usr").style.display = "none";
+  if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "none";
   $("btn-salvar-usr").textContent = "📨 Enviar convite";
   abrirFichaUsrVisual({ nome: "(novo)", cargo: "visualizador", ativo: true });
 }
@@ -254,6 +326,7 @@ function abrirUsuario(id){
   $("usr-telefone").value  = u.telefone || "";
   $("usr-ativo").checked   = u.ativo !== false;
   $("btn-reset-senha-usr").style.display = "";
+  if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "";   // fase 87
   $("btn-salvar-usr").textContent = "💾 Salvar alterações";
   abrirFichaUsrVisual(u);
 }
@@ -425,6 +498,11 @@ function ligarUsuarios(){
     const s = e.target.closest("[data-resp-papel]");
     if(s) trocarPapelRespServico(s.dataset.respPapel, s.value);
   });
+
+  // Política de sessão (fase 87)
+  $("btn-encerrar-sessoes-usr")?.addEventListener("click", () => comBotaoTravado("btn-encerrar-sessoes-usr", encerrarSessoesUsr));
+  $("btn-usr-sessao-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessao-salvar", salvarPoliticaSessao));
+  $("btn-usr-sessoes-todas")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessoes-todas", encerrarTodasSessoes));
 
   const navUsr = document.querySelector('nav button[data-secao="usuarios"]');
   if(navUsr) navUsr.addEventListener("click", mostrarPainelUsr);

@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="12243a3" />
+<meta name="app-versao" content="1b793c2" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=12243a3" />
+<link rel="stylesheet" href="css/estilo.css?v=1b793c2" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -37,6 +37,8 @@
           <button type="button" class="ver-senha" id="btn-ver-senha">mostrar</button>
         </div>
       </div>
+      <!-- fase 87: sem marcar, a sessão vale só para esta janela (sessionStorage); marcado, fica no computador pelo prazo da empresa -->
+      <label class="check-inline login-lembrar" title="Mantém o acesso ao fechar o navegador, pelo prazo definido pela empresa (padrão 7 dias). Sem marcar, a sessão vale só para esta janela."><input type="checkbox" id="login-lembrar" /> Manter conectado neste computador</label>
       <button type="submit" class="btn" id="btn-entrar">Entrar no Sistema</button>
       <button type="button" class="link-esqueci" id="btn-esqueci-senha">Esqueci minha senha</button>
     </form>
@@ -1538,6 +1540,7 @@
             <select id="orc-f-status"></select>
             <select id="orc-f-cliente"></select>
             <select id="orc-f-porte" title="Porte do equipamento considerado (aba Modelo)"></select>
+            <select id="orc-f-metodo" title="Método: tipo da proposta ou serviço dos itens (orçamento misto aparece em cada método)"></select>
           </div>
           <div id="orc-conteudo"></div>
           <table style="display:none;"><tbody id="tab-orcamentos"></tbody></table>
@@ -1573,7 +1576,7 @@
             <div class="chip"><span>Cliente</span><strong id="orc-ficha-cliente-chip">—</strong></div>
             <div class="chip"><span>Status</span><strong id="orc-ficha-status-chip">—</strong></div>
             <div class="chip"><span>Validade</span><strong id="orc-ficha-validade-chip">—</strong></div>
-            <div class="chip"><span>Valor</span><strong id="orc-ficha-valor-chip">R$ 0,00</strong></div>
+            <div class="chip" title="Total da proposta com ISS por dentro; o valor sem ISS está na aba Itens"><span>Valor c/ ISS</span><strong id="orc-ficha-valor-chip">R$ 0,00</strong></div>
           </div>
 
           <!-- Smart-buttons (Odoo style): mostram o que orçamento está sustentando -->
@@ -1614,7 +1617,7 @@
           <div class="odoo-body">
             <div class="odoo-tab ativa" data-tab="geral">
               <div class="grade">
-                <div class="campo"><label>Número *</label><input id="orc-numero" required placeholder="ex.: ORC-0001" /></div>
+                <div class="campo"><label>Número *</label><input id="orc-numero" required placeholder="ex.: 8832 (o ano entra sozinho: 8832/2026)" title="Número da proposta na sequência da CGL. Sem o ano, o sistema acrescenta /AAAA ao salvar; com o ano, fica como digitado." /></div>
                 <div class="campo"><label>Cliente *</label><select id="orc-cliente" required></select></div>
                 <div class="campo"><label>Status</label><select id="orc-status"></select></div>
                 <div class="campo"><label>Data do orçamento</label><input id="orc-data" type="date" /></div>
@@ -1652,7 +1655,7 @@
                 <button type="button" class="btn-sec" id="btn-add-item">+ adicionar item</button>
                 <button type="button" class="btn-sec" id="btn-orc-itens-padrao" title="Adiciona os itens que não podem faltar no modelo (mob/desmob, mudança de frente, fat. mínimo, diesel, alimentação/hospedagem, bomba ou injeção) — quantidade 0 sai como “-” na proposta">⟳ Itens padrão do modelo</button>
               </div>
-              <div class="itens-total">Valor total: <span id="orc-total">R$ 0,00</span></div>
+              <div class="itens-total">Valor total (sem ISS): <span id="orc-total">R$ 0,00</span></div>
               <div class="itens-total orc-iss-linha">ISS <span id="orc-iss-lbl">5% por dentro</span>: <span id="orc-iss-valor">R$ 0,00</span> &nbsp;·&nbsp; Total da proposta (com ISS): <span id="orc-total-iss">R$ 0,00</span></div>
             </div>
 
@@ -1724,6 +1727,9 @@
                   <label class="check-inline"><input type="checkbox" id="orc-cgl-hospedagem" /> CGL fornece hospedagem (libera o serviço na aba Itens, entra como item padrão e muda a matriz de encargos)</label>
                 </div>
                 <div class="campo"><label>Hospedagem — R$/mês</label><input id="orc-hosp-valor" type="number" min="0" step="0.01" placeholder="0,00" /></div>
+                <div class="campo largo">
+                  <label class="check-inline"><input type="checkbox" id="orc-cgl-alimentacao" /> CGL fornece alimentação dentro do canteiro (muda a linha "Alimentação dentro do canteiro de obras" da matriz de encargos para CGL)</label>
+                </div>
               </div>
             </div>
 
@@ -2085,6 +2091,8 @@
               <button type="button" class="btn-sec" id="btn-voltar-obra">&larr; Voltar</button>
               <button type="button" class="btn" id="btn-salvar-obra">💾 Salvar</button>
               <button type="button" class="btn-sec acao-perigo" id="btn-excluir-obra">🗑️ Excluir</button>
+              <button type="button" class="btn" id="btn-obr-concluir" style="display:none;" title="Financeiro: marca a obra como concluída depois do último recebimento">✅ Concluir obra</button>
+              <span id="obr-concluir-hint" class="meta" style="display:none;"></span>
             </div>
             <div class="actions-right">
               <strong id="obr-ficha-titulo" class="ficha-titulo">Nova obra</strong>
@@ -4449,6 +4457,25 @@
           </div>
           <div id="usr-resp-conteudo"></div>
         </div>
+
+        <!-- Política de sessão (fase 87): prazos e cargos com MFA obrigatório; "Encerrar todas" é a emergência da diretoria -->
+        <div class="card" id="usr-sessao-card" style="display:none;">
+          <div class="lista-topo">
+            <h3>Política de sessão</h3>
+            <button type="button" class="btn-sec txt-perigo" id="btn-usr-sessoes-todas" style="display:none;" title="Emergência: derruba todas as sessões abertas, menos a sua nesta aba">⛔ Encerrar todas as sessões</button>
+          </div>
+          <p class="texto-apoio">A sessão vale só para a janela aberta (fechou o navegador, saiu), salvo "Manter conectado neste computador" marcado no login. Depois do tempo parado ou do tempo máximo o app sai sozinho, com aviso 5 min antes; o usuário de revisão fica fora desses dois prazos. Os cargos marcados só entram com autenticação em dois fatores, e os dados sensíveis de funcionário e a folha só abrem em sessão com MFA.</p>
+          <div class="grade">
+            <div class="campo"><label>Inatividade (min)</label><input type="number" id="usr-sessao-inatividade" min="1" max="1440" /></div>
+            <div class="campo"><label>Sessão máxima (h)</label><input type="number" id="usr-sessao-maxima" min="1" max="168" /></div>
+            <div class="campo"><label>"Manter conectado" (dias)</label><input type="number" id="usr-sessao-lembrar" min="1" max="90" /></div>
+            <div class="campo largo"><label>Cargos com MFA obrigatório</label><div id="usr-sessao-mfa-cargos" class="usr-sessao-cargos"></div></div>
+          </div>
+          <div class="form-acoes compacta">
+            <span class="meta" id="usr-sessao-revogadas"></span>
+            <button type="button" class="btn" id="btn-usr-sessao-salvar">💾 Salvar política</button>
+          </div>
+        </div>
       </div>
 
       <!-- Ficha -->
@@ -4459,6 +4486,7 @@
               <button type="button" class="btn-sec" id="btn-voltar-usr">&larr; Voltar</button>
               <button type="button" class="btn" id="btn-salvar-usr">📨 Enviar convite</button>
               <button type="button" class="btn-sec" id="btn-reset-senha-usr" style="display:none;">🔑 Resetar senha</button>
+              <button type="button" class="btn-sec" id="btn-encerrar-sessoes-usr" style="display:none;" title="Derruba as sessões abertas deste usuário (celular, outros computadores); ele precisa entrar de novo">⛔ Encerrar sessões</button>
             </div>
             <div class="actions-right">
               <strong id="usr-ficha-titulo" class="ficha-titulo">Convidar usuário</strong>
@@ -4569,6 +4597,8 @@
       Escaneie o QR code com <strong>Google Authenticator</strong>, <strong>Authy</strong> ou similar.
       Depois, digite o código de 6 dígitos gerado para confirmar.
     </p>
+    <!-- fase 87: cargo em sessao_mfa_cargos sem MFA entra aqui em modo obrigatório -->
+    <div id="mfa-obrig-texto" class="aviso atencao" style="display:none;">Seu cargo exige autenticação em dois fatores. Configure agora para continuar: o menu fica travado até concluir. Sem o aplicativo autenticador à mão, use "Sair".</div>
     <div id="mfa-qr-area" style="text-align:center; padding:8px 0 20px; min-height:60px;"></div>
     <div id="mfa-secret-area" style="display:none; background:var(--sup-2); border-radius:4px;
          padding:10px 14px; font-size:var(--txt-sm); margin-bottom:16px; word-break:break-all;
@@ -4621,44 +4651,44 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=12243a3"></script>
+<script src="js/core.js?v=1b793c2"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=12243a3"></script>
+<script src="js/historico.js?v=1b793c2"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=12243a3"></script>
-<script src="js/fornecedores.js?v=12243a3"></script>
-<script src="js/apropriacoes.js?v=12243a3"></script>
-<script src="js/funcionarios.js?v=12243a3"></script>
-<script src="js/servicos.js?v=12243a3"></script>
-<script src="js/produtos.js?v=12243a3"></script>
-<script src="js/estoque.js?v=12243a3"></script>
-<script src="js/separacoes.js?v=12243a3"></script>
-<script src="js/compras.js?v=12243a3"></script>
-<script src="js/requisicoes.js?v=12243a3"></script>
-<script src="js/orcamentos.js?v=12243a3"></script>
-<script src="js/propostas.js?v=12243a3"></script>
-<script src="js/contratos.js?v=12243a3"></script>
-<script src="js/contas_pagar.js?v=12243a3"></script>
-<script src="js/centros_custo.js?v=12243a3"></script>
-<script src="js/carteira.js?v=12243a3"></script>
-<script src="js/obras.js?v=12243a3"></script>
-<script src="js/frota.js?v=12243a3"></script>
-<script src="js/viagens.js?v=12243a3"></script>
-<script src="js/equipamentos.js?v=12243a3"></script>
-<script src="js/acessorios.js?v=12243a3"></script>
-<script src="js/reparos.js?v=12243a3"></script>
-<script src="js/fabricacao.js?v=12243a3"></script>
-<script src="js/mobilizacoes.js?v=12243a3"></script>
-<script src="js/estacas.js?v=12243a3"></script>
-<script src="js/obra_abas.js?v=12243a3"></script>
-<script src="js/medicoes.js?v=12243a3"></script>
-<script src="js/movimentacoes.js?v=12243a3"></script>
-<script src="js/rdo.js?v=12243a3"></script>
-<script src="js/rdo_import_maya.js?v=12243a3"></script>
-<script src="js/usuarios.js?v=12243a3"></script>
-<script src="js/chamados.js?v=12243a3"></script>
-<script src="js/dashboard.js?v=12243a3"></script>
+<script src="js/clientes.js?v=1b793c2"></script>
+<script src="js/fornecedores.js?v=1b793c2"></script>
+<script src="js/apropriacoes.js?v=1b793c2"></script>
+<script src="js/funcionarios.js?v=1b793c2"></script>
+<script src="js/servicos.js?v=1b793c2"></script>
+<script src="js/produtos.js?v=1b793c2"></script>
+<script src="js/estoque.js?v=1b793c2"></script>
+<script src="js/separacoes.js?v=1b793c2"></script>
+<script src="js/compras.js?v=1b793c2"></script>
+<script src="js/requisicoes.js?v=1b793c2"></script>
+<script src="js/orcamentos.js?v=1b793c2"></script>
+<script src="js/propostas.js?v=1b793c2"></script>
+<script src="js/contratos.js?v=1b793c2"></script>
+<script src="js/contas_pagar.js?v=1b793c2"></script>
+<script src="js/centros_custo.js?v=1b793c2"></script>
+<script src="js/carteira.js?v=1b793c2"></script>
+<script src="js/obras.js?v=1b793c2"></script>
+<script src="js/frota.js?v=1b793c2"></script>
+<script src="js/viagens.js?v=1b793c2"></script>
+<script src="js/equipamentos.js?v=1b793c2"></script>
+<script src="js/acessorios.js?v=1b793c2"></script>
+<script src="js/reparos.js?v=1b793c2"></script>
+<script src="js/fabricacao.js?v=1b793c2"></script>
+<script src="js/mobilizacoes.js?v=1b793c2"></script>
+<script src="js/estacas.js?v=1b793c2"></script>
+<script src="js/obra_abas.js?v=1b793c2"></script>
+<script src="js/medicoes.js?v=1b793c2"></script>
+<script src="js/movimentacoes.js?v=1b793c2"></script>
+<script src="js/rdo.js?v=1b793c2"></script>
+<script src="js/rdo_import_maya.js?v=1b793c2"></script>
+<script src="js/usuarios.js?v=1b793c2"></script>
+<script src="js/chamados.js?v=1b793c2"></script>
+<script src="js/dashboard.js?v=1b793c2"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=12243a3"></script>
+<script src="js/init.js?v=1b793c2"></script>
 </body>
 </html>

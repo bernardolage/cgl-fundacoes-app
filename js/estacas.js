@@ -145,6 +145,20 @@ function normalizarNumeroEstacaEstacas(s){
   return String(s).toUpperCase().trim().replace(/\s+/g, " ");
 }
 
+/* lote S44 (L5, chamado #78, Isaque): chave de SUGESTÃO entre o nome do campo e o do projeto.
+   Tira o prefixo de uma letra (T, E, P…), vírgula vira ponto e os zeros à esquerda da parte
+   numérica saem: T1.85 = E1.85 = 1,85 → "1.85"; P081 = E81 = 081 → "81"; T85 = E85 = 85 → "85".
+   Prefixo de duas letras ou mais fica (BB1.1 continua "BB1.1" e NÃO casa com B1.1 → "1.1";
+   regra de 26/05/2026). Serve só para sugerir: o nome original não é renomeado e a vinculação
+   é confirmada pela pessoa. Usada no import do RDO (js/rdo.js) e na reconciliação de órfãs. */
+function estNormalizarNome(s){
+  let t = String(s || "").toUpperCase().replace(/\s+/g, "").replace(/,/g, ".");
+  if(!t) return "";
+  t = t.replace(/^[A-Z](?=[\d.])/, "");          // uma letra de prefixo: T1.85 → 1.85, P081 → 081
+  t = t.replace(/^0+(?=\d)/, "");               // zeros à esquerda da parte numérica: 081 → 81 (1.05 fica 1.05)
+  return t;
+}
+
 /* Reduz a string a apenas dígitos (pra comparar "B66" vs "B6.6" → ambos viram "66") */
 // ---- Coordenadas/cotas vindas como texto no import (IA v4 escrevia
 // "Coordenadas N=2553,000 E=4253,940. CAE=99,350m, CPE=87,300m" em observacoes).
@@ -187,6 +201,8 @@ function scoreSimilaridade(csvNome, projNome){
   const a = String(csvNome||"").toUpperCase();
   const b = String(projNome||"").toUpperCase();
   if(a === b) return 1;
+  // lote S44 (#78): mesmo nome sem prefixo/zeros (T1.85 ≈ E1.85, P081 ≈ E81) vale mais que "mesmos dígitos"
+  if(estNormalizarNome(a) && estNormalizarNome(a) === estNormalizarNome(b)) return 0.97;
   const da = soDigitos(a);
   const db = soDigitos(b);
   if(!da || !db) return 0;

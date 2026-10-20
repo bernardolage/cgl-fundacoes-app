@@ -85,17 +85,8 @@ function dataPorExtensoBR(iso){
   return `${p[2]} ${meses[Number(p[1])-1]} de ${p[0]}`;
 }
 
-/* "2026-07-01" -> "2026" */
-function anoDe(iso){
-  if(!iso) return new Date().getFullYear();
-  return String(iso).slice(0,4);
-}
-
-/* "ORC-0007" -> "0007" (extrai dígitos para mostrar como "NNNN / AAAA") */
-function numeroLimpo(s){
-  const m = String(s||"").match(/\d+/g);
-  return m ? m.join("").padStart(4,"0") : "0000";
-}
+/* Número e ano da proposta: orcNumeroPartes / orcNumeroExibicao (js/orcamentos.js, lote S44 #66).
+   Antes `numeroLimpo` juntava todos os dígitos e "8827/2026" saía "88272026 / 2026". */
 
 /* ---------- CSS embutido para impressão A4 ---------- */
 const CSS_PROPOSTA = `
@@ -236,11 +227,9 @@ function blocoDestinatario(cliente, cidadeEmissao, dataOrcamento, orcamento){
 
 /* faixa central com o número da proposta */
 function blocoNumeroProposta(numero, dataOrcamento, revisao){
-  const num = numeroLimpo(numero);
-  const ano = anoDe(dataOrcamento);
   return `
     <div class="numero-proposta">
-      PROPOSTA CONTRATO: <span class="num">${num} / ${ano}</span>
+      PROPOSTA CONTRATO: <span class="num">${esc(orcNumeroExibicao(numero, dataOrcamento))}</span>
       <span class="rev">REV: ${esc(revisao || "")}</span>
     </div>`;
 }
@@ -326,8 +315,7 @@ function itensVirtuais(orcamento, itens){
 function calcularTotaisProposta(itens, orcamento){
   const subtotal = (itens || []).reduce((s, it) => s + Number(it.quantidade || 0) * Number(it.valor_unitario || 0), 0);
   const p  = Number((orcamento && orcamento.iss_percentual) || 0);
-  const pd = !orcamento || orcamento.iss_por_dentro !== false;
-  const iss = (pd && p > 0 && p < 100) ? subtotal * (p / (100 - p)) : 0;
+  const iss = orcIssSobre(subtotal, orcamento);   // lote S44 (L8): mesma conta da ficha e da lista (js/orcamentos.js)
   const pTxt = String(p).replace(".", ",").replace(/,0+$/, "");
   const rotulo = iss > 0 ? `ISS ${pTxt}% ( Mão de obra Calculo por dentro)` : "";
   return { subtotal, iss, total: subtotal + iss, rotulo };
@@ -524,7 +512,11 @@ function encargosHelice(flags){
     { d: "Vigilância e Proteção dos Equipamentos, ferramentas e utensílios alocados na obra.", r: "CONTRATANTE" },
     { d: "Fornecimento água, energia elétrica (ponto trifásico 220 v para atender um motor de 10 cv), iluminação, instalações sanitárias, condições mínimas segurança para nossos colaboradores conforme NR-18.", r: "CONTRATANTE" },
     { d: "Hospedagem (limite de 2 pessoas por quarto) e alimentação externa (café da manhã, almoço e jantar) à obra para colaboradores.", r: f.cgl_fornece_hospedagem ? "CGL" : "CONTRATANTE", destaque: true },
-    { d: "Alimentação dentro do canteiro de obras para colaboradores. (03 funcionários por HC)", r: "CONTRATANTE", destaque: true },
+    // lote S44 (L7, #62, decisão do Bernardo em 19/10): com o adicional de alimentação marcado no orçamento a
+    // responsabilidade passa para a CGL e o texto acompanha; sem ele, como sempre foi
+    f.cgl_fornece_alimentacao
+      ? { d: "Alimentação dentro do canteiro de obras para colaboradores, por conta da CGL (03 funcionários por HC)", r: "CGL", destaque: true }
+      : { d: "Alimentação dentro do canteiro de obras para colaboradores. (03 funcionários por HC)", r: "CONTRATANTE", destaque: true },
     { d: "Fornecimento de combustível para os equipamentos (diesel S10) (100 a 150 Litros por HC)", r: f.cgl_fornece_diesel ? "CGL" : "CONTRATANTE", destaque: true },
     { d: "O fornecimento e a disponibilização de kit(s) de mitigação ambiental, incluindo materiais para contenção de eventuais vazamentos de óleo, combustíveis, graxas ou outros agentes.", r: "CONTRATANTE" },
     { d: "Fornecimento de projetos, sondagens, licenças e/ou autorização pública ou particular, necessárias à execução do serviço.", r: "CONTRATANTE" },
@@ -767,7 +759,8 @@ async function baixarProposta(orcamentoId){
   try {
     const dados = await carregarDadosProposta(orcamentoId);
     const html  = montarHtmlProposta(dados);
-    const num   = numeroLimpo(dados.orcamento.numero) + "_" + anoDe(dados.orcamento.data_orcamento);
+    const pNum  = orcNumeroPartes(dados.orcamento.numero, dados.orcamento.data_orcamento);
+    const num   = `${pNum.num || "0000"}_${pNum.ano}`.replace(/[^\w.-]+/g, "_");
     const tipo  = (PROPOSTA_TIPOS[dados.orcamento.tipo_proposta] || PROPOSTA_TIPOS.outro).rotulo;
     const nomeArq = `Proposta_${tipo}_${num}.pdf`;
 

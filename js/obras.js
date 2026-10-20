@@ -456,6 +456,7 @@ function abrirFichaObra(obra){
   $("obr-ficha-titulo").textContent = obra.codigo ? `${obra.codigo} — ${obra.nome}` : "Nova obra";
 
   atualizarStatusbarObra(obra.status);
+  obrAtualizarConcluir(obra);   // lote S44 (L9): "Concluir obra" para o financeiro
   ativarTabObra("geral");
   // Aba Contrato: badge + anexos + assinatura do contrato vinculado
   atualizarBadgeContratoObra();
@@ -494,6 +495,52 @@ function atualizarStatusbarObra(st){
       el.classList.add("passada");
     }
   });
+}
+
+/* lote S44 (L9, chamado #67, decisão do Bernardo em 19/10): o financeiro marca a obra como concluída
+   depois do último recebimento. O botão "Concluir obra" só aparece para o cargo `financeiro` (diretor,
+   admin, engenharia e comercial mudam o status pela statusbar), com a obra em andamento e a última
+   medição faturada. A gravação manda só status e data_fim_real: a policy `obras_concluir_financeiro`
+   e o gatilho `trg_obras_concluir_financeiro` barram qualquer outro campo, e `trg_obras_log_status`
+   registra quem concluiu e quando em registros_log (linha do tempo da obra). */
+function obrEhFinanceiro(){ return !!usuarioAtual && usuarioAtual.cargo === "financeiro"; }
+async function obrAtualizarConcluir(obra){
+  const btn = $("btn-obr-concluir"), hint = $("obr-concluir-hint");
+  if(!btn) return;
+  btn.style.display = "none";
+  if(hint){ hint.style.display = "none"; hint.textContent = ""; }
+  if(!obrEhFinanceiro() || !obraEditId || !obra || obra.status !== "em_andamento") return;
+  const { data: ult } = await sb.from("medicoes").select("numero,status").eq("obra_id", obraEditId)
+    .order("data_medicao", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).limit(1);
+  const m = ult && ult[0];
+  const lblMed = m ? ((typeof STATUS === "object" && STATUS.medicao && STATUS.medicao[m.status]) ? STATUS.medicao[m.status].label : m.status) : "";
+  if(m && m.status === "faturada"){
+    btn.style.display = "";
+    btn.title = `Última medição ${m.numero || ""} faturada: marca a obra como concluída (só status e data de término; fica registrado quem concluiu)`;
+  } else if(hint){
+    hint.style.display = "";
+    hint.textContent = m
+      ? `Concluir obra: disponível quando a última medição estiver faturada (hoje: ${m.numero || "—"} · ${lblMed})`
+      : "Concluir obra: disponível quando houver medição faturada";
+  }
+}
+async function obrConcluirObra(){
+  if(!obraEditId) return;
+  const fim = $("obr-fim-real").value || hojeISO();
+  if(!confirm(`Marcar a obra como concluída em ${dataBR(fim)}?\n\nO financeiro só altera o status e a data de término; fica registrado quem concluiu e quando.`)) return;
+  const { data, error } = await sb.from("obras").update({ status: "concluida", data_fim_real: fim })
+    .eq("id", obraEditId).select("id,status,data_fim_real").maybeSingle();
+  if(error || !data){
+    aviso("app-aviso", "Não foi possível concluir a obra: " + (error ? error.message : "a obra não está em andamento ou o seu cargo não conclui obra."), "erro");
+    return;
+  }
+  $("obr-status").value = "concluida";
+  $("obr-fim-real").value = data.data_fim_real || fim;
+  $("obr-ficha-status-chip").innerHTML = tagStatus("obra", "concluida");
+  atualizarStatusbarObra("concluida");
+  obrAtualizarConcluir({ status: "concluida" });
+  aviso("app-aviso", "Obra marcada como concluída.", "ok");
+  if(typeof carregarObras === "function") carregarObras();
 }
 
 function ativarTabObra(nome){
@@ -704,6 +751,7 @@ function ligarObras(){
   $("btn-voltar-obra")?.addEventListener("click", mostrarPainelObra);
   $("btn-salvar-obra")?.addEventListener("click", () => comBotaoTravado("btn-salvar-obra", () => salvarObra()));
   $("btn-excluir-obra")?.addEventListener("click", excluirObra);
+  $("btn-obr-concluir")?.addEventListener("click", () => comBotaoTravado("btn-obr-concluir", obrConcluirObra));   // lote S44 (L9)
 
   // Notebook
   document.querySelectorAll("#obr-notebook button").forEach(b => {
@@ -727,6 +775,12 @@ function ligarObras(){
         return;
       }
       if(novo === $("obr-status").value) return;
+      // lote S44 (L9): o financeiro não grava o formulário inteiro (policy/gatilho barram); só conclui
+      if(obrEhFinanceiro()){
+        if(novo === "concluida" && $("btn-obr-concluir")?.style.display !== "none") await obrConcluirObra();
+        else aviso("app-aviso", "Seu cargo só marca a obra como concluída, depois do último recebimento (última medição faturada).", "erro");
+        return;
+      }
       await salvarObra(novo);
     });
   });

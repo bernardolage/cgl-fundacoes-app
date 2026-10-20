@@ -8,7 +8,43 @@
 /* ---------- Conexão Supabase ---------- */
 const SUPABASE_URL = "https://xiirduialyewpqkwsfxx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_uef7GgPhtV5SSp-281PtNA_fD3ajHN4";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* Fase 87 (política de sessão, decisão do Bernardo em 16/10/2026): a sessão do Supabase vive no
+   sessionStorage, então vale só para a janela aberta (fechou o navegador, saiu). Com "Manter conectado
+   neste computador" marcado no login ela vai para o localStorage pelo prazo de
+   empresa_config.sessao_lembrar_dias (flag cgl_lembrar, com validade). Sessão antiga deixada no
+   localStorage sem a flag (anterior a esta fase) é apagada na primeira carga: todo mundo entra de novo
+   uma vez. Storage bloqueado (navegação privada) nunca derruba o app. */
+const SESSAO_LEMBRAR_CHAVE = "cgl_lembrar";
+function lembrarLer(){
+  try {
+    const r = JSON.parse(localStorage.getItem(SESSAO_LEMBRAR_CHAVE) || "null");
+    if(r && r.ate && Date.now() < r.ate) return r;
+    if(r) localStorage.removeItem(SESSAO_LEMBRAR_CHAVE);   // venceu
+  } catch(_){}
+  return null;
+}
+function lembrarAtivo(){ return !!lembrarLer(); }
+function lembrarGravar(dias, desde){
+  try {
+    const d = Number(dias) > 0 ? Number(dias) : 7;
+    const ini = desde || Date.now();
+    localStorage.setItem(SESSAO_LEMBRAR_CHAVE, JSON.stringify({ desde: ini, ate: ini + d * 86400000 }));
+  } catch(_){}
+}
+function lembrarApagar(){ try { localStorage.removeItem(SESSAO_LEMBRAR_CHAVE); } catch(_){} }
+const sessaoStorage = {
+  getItem(k){
+    try {
+      if(lembrarAtivo()) return localStorage.getItem(k);
+      if(localStorage.getItem(k) != null) localStorage.removeItem(k);   // sessão antiga sem "manter conectado": encerra uma vez
+      return sessionStorage.getItem(k);
+    } catch(_){ return null; }
+  },
+  setItem(k, v){ try { (lembrarAtivo() ? localStorage : sessionStorage).setItem(k, v); } catch(_){} },
+  removeItem(k){ try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch(_){} }
+};
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storage: sessaoStorage } });
 
 /* Captura o hash da URL ANTES de o client consumi-lo: é ele que diz se
    o usuário chegou por um link de convite ou de recuperação de senha
@@ -536,6 +572,9 @@ $("form-login").addEventListener("submit", async (e)=>{
   e.preventDefault();
   const btn = $("btn-entrar");
   btn.disabled = true; btn.textContent = "Entrando...";
+  // fase 87: "Manter conectado neste computador" decide onde a sessão vai viver; tem que estar gravado
+  // antes do signIn, que é quem grava a sessão. O prazo da empresa é aplicado depois do login.
+  if($("login-lembrar") && $("login-lembrar").checked) lembrarGravar(POL_SESSAO_PADRAO.lembrar_dias); else lembrarApagar();
   const { error } = await sb.auth.signInWithPassword({
     email: $("login-email").value.trim(),
     password: $("login-senha").value
@@ -597,6 +636,8 @@ $("btn-ver-senha").addEventListener("click", ()=>{
 
 $("btn-sair").addEventListener("click", async ()=>{
   appLimparSujo();   // fase 86: sair abandona o que estava na tela
+  _polSaindo = true; // fase 87: saída voluntária, sem aviso de "sessão encerrada" na tela de login
+  polSessaoLimpar(); // fase 87: esquece "manter conectado" e os marcos da sessão
   await sb.auth.signOut();
   location.reload();
 });
@@ -634,8 +675,13 @@ async function iniciarApp(){
   /* fase 86: a aba passa a conferir versao.json e se atualiza sozinha depois de cada publicação */
   iniciarVerificacaoVersao();
 
-  /* P0 — alertar diretor/admin sem MFA configurado */
-  if(ehDiretorOuAdmin) verificarMFAAdmin();
+  /* fase 87: prazos da empresa, vigia de inatividade / sessão máxima / revogação e MFA obrigatório por cargo */
+  await carregarPoliticaSessao();
+  if(!iniciarPoliticaSessao()) return;   // um prazo já tinha estourado ao abrir: saiu para o login
+  const mfaObrigatorio = await exigirMFAObrigatorio(perfil);
+
+  /* P0 — alertar diretor/admin sem MFA configurado (quando o cargo não está na lista do obrigatório) */
+  if(ehDiretorOuAdmin && !mfaObrigatorio) verificarMFAAdmin();
 
   /* Chegou por link de convite ou recuperação: definir a senha agora */
   if(_chegouPorConvite) abrirDefinirSenha();
@@ -692,6 +738,7 @@ if (overlay) {
 // Navegação entre seções. ativarSecao(secao, botao) é o que o clique no menu faz; a fase 89 usa a
 // mesma função para seções SEM item no menu (Movimentações de Ativos virou ficha do documento da viagem).
 function ativarSecao(secao, b){
+  if(document.body.classList.contains("mfa-obrigatorio")) return;   // fase 87: menu travado até concluir o MFA
   if(b){
     document.querySelectorAll(".sidebar-nav button").forEach(x=>x.classList.remove("ativo"));
     b.classList.add("ativo");
@@ -903,8 +950,9 @@ document.addEventListener("click", async (e) => {
 
 /* ====================== ATUALIZAÇÃO AUTOMÁTICA DO APP (fase 86) ======================
    Pedido do Bernardo em 16/10/2026: depois de cada publicação ninguém pode continuar numa versão
-   antiga. A saída é recarregar a aba, nunca deslogar: o login vive no localStorage e sobrevive ao
-   reload, então ninguém digita senha nem MFA de novo. `scripts/publicar-app.sh` grava `versao.json`
+   antiga. A saída é recarregar a aba, nunca deslogar: o login vive no storage do navegador (fase 87:
+   sessionStorage, ou localStorage com "manter conectado") e sobrevive ao reload, então ninguém digita
+   senha nem MFA de novo. `scripts/publicar-app.sh` grava `versao.json`
    ao lado do index.html publicado e carimba a <meta name="app-versao"> com o commit; aqui o app
    compara os dois.
    - APP_VERSAO = conteúdo da meta. No repo fonte é "dev" e a verificação não roda.
@@ -976,9 +1024,11 @@ function appPodeRecarregar(){ return !appModalAberto() && !appFormSujo(); }
 
 /* ---- consulta ---- */
 async function verificarVersaoApp(minimoMs){
-  if(!_appVersaoIniciado || !appVersaoAtiva()) return;
+  if(!_appVersaoIniciado) return;
   if(minimoMs && Date.now() - _appVersaoUltimaConsulta < minimoMs) return;
   _appVersaoUltimaConsulta = Date.now();
+  verificarSessaoRevogada();   // fase 87: na mesma cadência, confere se a sessão foi encerrada pela diretoria
+  if(!appVersaoAtiva()) return;
   const info = await lerVersaoPublicada();
   if(!info || info.versao === APP_VERSAO) return;
   appAtualizacaoPendente(info);
@@ -1117,6 +1167,191 @@ function iniciarVerificacaoVersao(){
   if(tentativa && tentativa.versao === info.versao) return;   // já tentou uma vez: sem laço; a verificação periódica segue
   appRegistrarRecarga(info);
   location.replace(location.pathname + "?v=" + encodeURIComponent(info.versao) + location.hash);
+})();
+
+/* ====================== POLÍTICA DE SESSÃO (fase 87) ======================
+   Decisão do Bernardo em 16/10/2026: ninguém fica logado por acaso. Prazos em empresa_config (mudam
+   em Usuários → Política de sessão, sem código): sessao_inatividade_min (240), sessao_maxima_h (12),
+   sessao_lembrar_dias (7) e sessao_mfa_cargos ({diretor,admin,rh,financeiro}).
+   - Inatividade: keydown, pointerdown, touchstart, scroll e a volta para a aba marcam atividade
+     (cgl_ultima_atividade no mesmo storage da sessão: compartilhado entre abas quando é localStorage).
+     Vigia a cada 60 s; faltando 5 min, faixa "Sua sessão encerra em N min por inatividade [Continuar]";
+     no limite, signOut local e tela de login com o motivo.
+   - Sessão máxima: cgl_login_em gravado no primeiro SIGNED_IN; faltando 5 min, faixa (sem Continuar:
+     não dá para estender); no limite, sai. Formulário com alteração não salva (appFormSujo) só muda o
+     texto da faixa: a saída acontece mesmo assim (a regra é de segurança).
+   - Ao abrir o app (inclusive com "manter conectado"), os dois prazos são conferidos antes de qualquer
+     coisa: estourou, volta ao login.
+   - Auditor (usuário de revisão) fica fora da inatividade e do limite; entra na revogação.
+   - Revogação: sessao_ok(login_em) a cada 5 min junto com a verificação da fase 86 (e aqui a cada
+     5 ticks quando o app roda em "dev"); falso → sai com "Sessões encerradas pela diretoria".
+   - SIGNED_OUT vindo do Supabase com o app aberto (refresh recusado porque a sessão foi apagada,
+     Time-box ou Inactivity do painel, saída em outra aba) → volta ao login com aviso.
+   - MFA obrigatório: cargo em sessao_mfa_cargos sem aal2 → modal de cadastro em modo obrigatório
+     ("Sair" no lugar de Cancelar) e menu travado (body.mfa-obrigatorio) até concluir. Quem já tem MFA
+     passa pelo desafio no login (fluxo da fase 24).
+   O servidor reforça (painel do Supabase: JWT 10 min, Time-box 12 h, Inactivity 4 h). */
+const POL_SESSAO_PADRAO = { inatividade_min: 240, maxima_h: 12, lembrar_dias: 7, mfa_cargos: ["diretor", "admin", "rh", "financeiro"] };
+const POL_TICK_MS = 60 * 1000;
+const POL_AVISO_MS = 5 * 60 * 1000;
+const POL_REVOGACAO_TICKS = 5;
+const POL_MOTIVOS = {
+  inatividade: "Sessão encerrada por inatividade. Entre de novo.",
+  maxima:      "Sua sessão atingiu o tempo máximo. Entre de novo.",
+  revogada:    "Sessões encerradas pela diretoria. Entre de novo.",
+  encerrada:   "Sua sessão foi encerrada. Entre de novo.",
+  mfa:         "Seu cargo exige autenticação em dois fatores. Entre de novo e conclua o cadastro do MFA."
+};
+let polSessao = Object.assign({}, POL_SESSAO_PADRAO);
+let _polTimer = null, _polTicks = 0, _polSaindo = false, _polUltimaGravacao = 0;
+
+function polStore(){ return lembrarAtivo() ? localStorage : sessionStorage; }
+function polLer(chave){ try { return polStore().getItem(chave); } catch(_){ return null; } }
+function polGravar(chave, valor){ try { polStore().setItem(chave, valor); } catch(_){} }
+function polApagar(chave){ try { localStorage.removeItem(chave); sessionStorage.removeItem(chave); } catch(_){} }
+function polSessaoLimpar(){ polApagar("cgl_login_em"); polApagar("cgl_ultima_atividade"); lembrarApagar(); }
+function polIsento(){ return ehSomenteLeitura(); }
+
+/* prazos da empresa; sem leitura (rede, RLS) ficam os padrões */
+async function carregarPoliticaSessao(){
+  try {
+    const { data } = await sb.from("empresa_config")
+      .select("sessao_inatividade_min,sessao_maxima_h,sessao_lembrar_dias,sessao_mfa_cargos").eq("id", 1).maybeSingle();
+    if(data){
+      polSessao = {
+        inatividade_min: Number(data.sessao_inatividade_min) || POL_SESSAO_PADRAO.inatividade_min,
+        maxima_h:        Number(data.sessao_maxima_h)        || POL_SESSAO_PADRAO.maxima_h,
+        lembrar_dias:    Number(data.sessao_lembrar_dias)    || POL_SESSAO_PADRAO.lembrar_dias,
+        mfa_cargos:      Array.isArray(data.sessao_mfa_cargos) ? data.sessao_mfa_cargos : POL_SESSAO_PADRAO.mfa_cargos
+      };
+    }
+  } catch(_){}
+  // "manter conectado" foi gravado no login com o prazo padrão; agora vale o prazo da empresa, contado do login
+  const lembrar = lembrarLer();
+  if(lembrar) lembrarGravar(polSessao.lembrar_dias, lembrar.desde);
+}
+
+function polMarcarAtividade(forcar){
+  const agora = Date.now();
+  if(!forcar && agora - _polUltimaGravacao < 5000) return;   // sem gravar a cada tecla
+  _polUltimaGravacao = agora;
+  polGravar("cgl_ultima_atividade", String(agora));
+}
+
+/* chamado em iniciarApp(). Devolve false quando um prazo já tinha estourado ao abrir (saiu para o login). */
+function iniciarPoliticaSessao(){
+  if(!polLer("cgl_login_em")) polGravar("cgl_login_em", String(Date.now()));
+  if(polVigiar(true) === false) return false;
+  polMarcarAtividade(true);
+  if(_polTimer) return true;
+  ["keydown", "pointerdown", "touchstart", "scroll"].forEach(ev =>
+    document.addEventListener(ev, () => polMarcarAtividade(false), { capture: true, passive: true }));
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState !== "visible") return;
+    if(polVigiar(false) === false) return;   // estourou enquanto a aba estava escondida
+    polMarcarAtividade(true);
+  });
+  _polTimer = setInterval(() => polVigiar(false), POL_TICK_MS);
+  return true;
+}
+
+/* a cada 60 s (e ao abrir, e ao voltar para a aba). Devolve false quando saiu. */
+function polVigiar(naAbertura){
+  if(!usuarioAtual || _polSaindo) return true;
+  if(!naAbertura){
+    _polTicks++;
+    // em produção a verificação da fase 86 já chama a cada 5 min; em "dev" ela não roda
+    if(_polTicks % POL_REVOGACAO_TICKS === 0 && !appVersaoAtiva()) verificarSessaoRevogada();
+  }
+  if(polIsento()) return true;
+  const agora = Date.now();
+  const ultima  = Number(polLer("cgl_ultima_atividade")) || agora;
+  const loginEm = Number(polLer("cgl_login_em")) || agora;
+  const limiteInat = ultima + polSessao.inatividade_min * 60000;
+  const limiteMax  = loginEm + polSessao.maxima_h * 3600000;
+  if(agora >= limiteInat){ sairPorPolitica("inatividade"); return false; }
+  if(agora >= limiteMax){ sairPorPolitica("maxima"); return false; }
+  const proximo = Math.min(limiteInat, limiteMax);
+  if(proximo - agora <= POL_AVISO_MS) polFaixa(proximo === limiteInat ? "inatividade" : "maxima", proximo - agora);
+  else polFaixaFechar();
+  return true;
+}
+
+/* faixa no topo do viewport: mesmo lugar e mesma classe da faixa de versão (fase 86) */
+function polFaixa(motivo, restaMs){
+  let f = $("app-faixa-sessao");
+  if(!f){
+    f = document.createElement("div");
+    f.id = "app-faixa-sessao";
+    f.className = "aviso atencao faixa-versao";
+    f.setAttribute("role", "status");
+    f.innerHTML = '<span id="app-faixa-sessao-txt"></span><button type="button" class="btn-sec btn-sm" id="app-faixa-sessao-btn">Continuar</button>';
+    f.querySelector("button").addEventListener("click", () => { polMarcarAtividade(true); polFaixaFechar(); });
+    ($("app-viewport") || document.body).prepend(f);
+  }
+  const min = Math.max(1, Math.ceil(restaMs / 60000));
+  const sujo = appFormSujo() ? " Você tem alterações não salvas: salve agora." : "";
+  const txt = $("app-faixa-sessao-txt"), btn = $("app-faixa-sessao-btn");
+  if(motivo === "inatividade"){
+    txt.textContent = `Sua sessão encerra em ${min} min por inatividade.${sujo}`;
+    btn.style.display = "";
+  } else {
+    txt.textContent = `Sua sessão atinge o limite de ${polSessao.maxima_h} h em ${min} min e será encerrada.${sujo}`;
+    btn.style.display = "none";
+  }
+  f.style.display = "";
+}
+function polFaixaFechar(){ const f = $("app-faixa-sessao"); if(f) f.style.display = "none"; }
+
+/* sai desta janela (signOut local: as outras janelas e aparelhos têm o próprio prazo) e volta ao login
+   com o motivo. chamarSignOut = false quando o Supabase já avisou SIGNED_OUT. */
+async function sairPorPolitica(motivo, chamarSignOut){
+  if(_polSaindo) return;
+  _polSaindo = true;
+  appLimparSujo();
+  sessaoGravar("cgl_saida_motivo", motivo);
+  polSessaoLimpar();
+  if(chamarSignOut !== false){ try { await sb.auth.signOut({ scope: "local" }); } catch(_){} }
+  location.reload();
+}
+
+/* sessao_ok(): falso quando a sessão foi encerrada (por usuário ou geral) ou o usuário foi desativado */
+async function verificarSessaoRevogada(){
+  if(!usuarioAtual || _polSaindo) return;
+  try {
+    const loginEm = Number(polLer("cgl_login_em")) || null;
+    const { data, error } = await sb.rpc("sessao_ok", { p_login_em: loginEm ? new Date(loginEm).toISOString() : null });
+    if(error) return;   // rede ou erro: não derruba ninguém por isso
+    if(data === false) sairPorPolitica("revogada");
+  } catch(_){}
+}
+
+/* cargo em sessao_mfa_cargos sem aal2 → cadastro obrigatório. Devolve true quando travou a tela. */
+async function exigirMFAObrigatorio(perfil){
+  if(!perfil || !(polSessao.mfa_cargos || []).includes(perfil.cargo)) return false;
+  let nivel = null;
+  try { const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); nivel = data || null; } catch(_){ return false; }
+  if(!nivel || nivel.currentLevel === "aal2") return false;
+  if(nivel.nextLevel === "aal2"){   // tem fator verificado mas entrou sem o desafio (não deveria): sai e pede de novo
+    sairPorPolitica("mfa");
+    return true;
+  }
+  abrirModalMFA(true);
+  return true;
+}
+
+/* marcos da sessão e saída avisada pelo Supabase */
+sb.auth.onAuthStateChange((evento, sessao) => {
+  if(evento === "SIGNED_IN" && sessao && !polLer("cgl_login_em")) polGravar("cgl_login_em", String(Date.now()));
+  if(evento === "SIGNED_OUT" && usuarioAtual && !_polSaindo) sairPorPolitica("encerrada", false);
+});
+
+/* na carga: a tela de login mostra por que a sessão anterior acabou */
+(function avisarSaidaAnterior(){
+  const m = sessaoLer("cgl_saida_motivo");
+  if(!m) return;
+  sessaoApagar("cgl_saida_motivo");
+  if($("login-aviso")) aviso("login-aviso", POL_MOTIVOS[m] || POL_MOTIVOS.encerrada, "aviso");
 })();
 
 /* ====================== CARGA GERAL ====================== */
@@ -1309,10 +1544,15 @@ async function confirmarDesafioMFALogin(){
 
 /* ====================== MFA — ENROLAMENTO (admin) ====================== */
 let _mfaFactorId = null;
+let _mfaObrigatorio = false;   // fase 87: cargo em sessao_mfa_cargos sem MFA cadastrado
 
-async function abrirModalMFA(){
+async function abrirModalMFA(obrigatorio){
   const modal = $("modal-mfa");
   if(!modal) return;
+  _mfaObrigatorio = obrigatorio === true;
+  document.body.classList.toggle("mfa-obrigatorio", _mfaObrigatorio);
+  if($("mfa-obrig-texto")) $("mfa-obrig-texto").style.display = _mfaObrigatorio ? "" : "none";
+  if($("btn-mfa-cancelar")) $("btn-mfa-cancelar").textContent = _mfaObrigatorio ? "Sair" : "Cancelar";
   modal.style.display = "flex";
   const qrArea = $("mfa-qr-area");
   qrArea.innerHTML = '<p style="font-size:var(--txt-md);color:var(--txt-sutil);">Gerando QR code…</p>';
@@ -1363,6 +1603,8 @@ async function verificarCodigoMFA(){
     $("mfa-aviso-banner")?.remove();
     aviso("app-aviso","✅ MFA ativado! Sua conta agora está protegida com dois fatores.","ok");
     _mfaFactorId = null;
+    _mfaObrigatorio = false;                               // fase 87: a sessão agora é aal2; menu liberado
+    document.body.classList.remove("mfa-obrigatorio");
   } catch(err){
     aviso("mfa-modal-aviso", err.message || "Código inválido. Tente novamente.","erro");
     btn.disabled = false;
@@ -1384,6 +1626,7 @@ $("mfa-desafio-codigo")?.addEventListener("keydown", e => {
 
 $("btn-mfa-verificar")?.addEventListener("click", verificarCodigoMFA);
 $("btn-mfa-cancelar")?.addEventListener("click", () => {
+  if(_mfaObrigatorio){ sairPorPolitica("mfa"); return; }   // fase 87: sem cadastrar não entra; "Sair" volta ao login
   $("modal-mfa").style.display = "none";
   _mfaFactorId = null;
 });

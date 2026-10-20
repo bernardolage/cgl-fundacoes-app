@@ -2838,6 +2838,12 @@ body.so-leitura #btn-aprop-params { display: none !important; }
 /* ---- Fase 86: faixa "Nova versão publicada" no topo do viewport. A cor vem de .aviso.atencao; aqui só leiaute ---- */
 .faixa-versao.aviso { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--esp-3);
   flex-shrink: 0; margin: 0; border-radius: 0; padding: var(--esp-2) var(--esp-4); }
+/* ---- Fase 87: política de sessão. A faixa de inatividade reusa .faixa-versao; aqui só o login, o card e o MFA obrigatório ---- */
+.login-lembrar { display: flex; margin: -6px 0 14px; font-size: var(--txt-sm); color: var(--txt-sec); }
+.usr-sessao-cargos { display: flex; flex-wrap: wrap; gap: 0 var(--esp-4); }
+.usr-sessao-cargos .check-inline { padding: 4px 0; font-size: var(--txt-sm); }
+/* o modal de MFA já cobre a tela; menu e conteúdo ficam inertes também para o teclado */
+body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport main { pointer-events: none; opacity: .6; }
 /* ---- Fase 88: importar boletim de medição (PDF) — zona de arrastar, fila e tabela de conferência ---- */
 .med-imp-zona { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; padding: 10px 12px; border: 1px dashed var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-1); }
 .med-imp-zona.arrastando { border-color: var(--marca-600); background: var(--marca-50); }

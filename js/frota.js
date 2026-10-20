@@ -347,7 +347,8 @@ function abrirVeiculo(id){
   _frotaVeicEditId = id || null;
   const v = id ? _frotaVeic.find(x => x.id === id) : null;
   $("fveic-titulo").textContent = v ? `Veículo ${v.codigo}` : "Novo veículo";
-  $("fveic-codigo").value = v?.codigo || ""; $("fveic-codigo").disabled = !!v;
+  // lote S44 (L1, #59): a TAG pode ser corrigida depois de criada (viagens, documentos e custos seguem pelo id)
+  $("fveic-codigo").value = v?.codigo || ""; $("fveic-codigo").disabled = false;
   $("fveic-tipo").value = v?.tipo || "caminhao";
   $("fveic-nome").value = v?.nome || "";
   $("fveic-placa").value = v?.placa || "";
@@ -377,11 +378,15 @@ async function salvarVeiculo(){
   const codigo = $("fveic-codigo").value.trim().toUpperCase();
   const nome = $("fveic-nome").value.trim();
   const placa = frotaSoAlfaNum($("fveic-placa").value) || null;
-  if(!_frotaVeicEditId && !codigo){ frotaAvisoVeic("Informe a TAG (ex.: 26-CM).", "erro"); $("fveic-codigo").focus(); return; }
+  if(!codigo){ frotaAvisoVeic("Informe a TAG (ex.: 26-CM).", "erro"); $("fveic-codigo").focus(); return; }
   if(!nome){ frotaAvisoVeic("Informe a descrição do veículo (ex.: VW 24250).", "erro"); $("fveic-nome").focus(); return; }
-  if(!_frotaVeicEditId){
-    const dupTag = [..._frotaVeic, ..._frotaEquipOutros].find(e => String(e.codigo || "").toUpperCase() === codigo);
-    if(dupTag){ frotaAvisoVeic(`Já existe a TAG ${codigo} (${dupTag.nome || FROTA_TIPO_LBL[dupTag.tipo] || dupTag.tipo}). Escolha outra.`, "erro"); $("fveic-codigo").focus(); return; }
+  // lote S44 (L1, #59): a TAG também é editável; a unicidade (equipamentos.codigo) vale contra todos os
+  // equipamentos (caminhões, veículos, perfuratrizes…), menos o próprio registro
+  const atual = _frotaVeicEditId ? _frotaVeic.find(x => x.id === _frotaVeicEditId) : null;
+  const tagMudou = !atual || String(atual.codigo || "").toUpperCase() !== codigo;
+  if(tagMudou){
+    const dupTag = [..._frotaVeic, ..._frotaEquipOutros].find(e => e.id !== _frotaVeicEditId && String(e.codigo || "").toUpperCase() === codigo);
+    if(dupTag){ frotaAvisoVeic(`A TAG ${codigo} já é usada por ${dupTag.nome || FROTA_TIPO_LBL[dupTag.tipo] || dupTag.tipo}${dupTag.placa ? " · " + dupTag.placa : ""}. Escolha outra.`, "erro"); $("fveic-codigo").focus(); return; }
   }
   if(placa){
     const dupPlaca = _frotaVeic.find(v => v.id !== _frotaVeicEditId && frotaSoAlfaNum(v.placa) === placa);
@@ -396,11 +401,11 @@ async function salvarVeiculo(){
     status: $("fveic-status").value, ativo: $("fveic-ativo").checked, observacoes: $("fveic-obs").value.trim() || null,
   };
   let r;
-  if(_frotaVeicEditId) r = await sb.from("equipamentos").update(reg).eq("id", _frotaVeicEditId);
+  if(_frotaVeicEditId) r = await sb.from("equipamentos").update(tagMudou ? { ...reg, codigo } : reg).eq("id", _frotaVeicEditId);
   else r = await sb.from("equipamentos").insert({ ...reg, codigo, localizacao_tipo: "base" });
   if(r.error){
     // 23505 = chave duplicada (TAG já usada por equipamento que não estava na lista); 23502 = coluna obrigatória vazia
-    const msg = r.error.code === "23505" ? `Já existe a TAG ${codigo}. Escolha outra.`
+    const msg = r.error.code === "23505" ? `A TAG ${codigo} já é usada por outro equipamento. Escolha outra.`
       : r.error.code === "23502" ? "Faltou um campo obrigatório (TAG ou descrição)."
       : r.error.message;
     frotaAvisoVeic("Erro ao salvar veículo: " + msg, "erro"); return;

@@ -1959,7 +1959,7 @@ async function montarPreviewDias(data, origem, obraSel){
 
     // Obra: se a ficha já tinha obra escolhida e a detecção não foi exata, pré-seleciona
     const selObra = $("csv-obra-select");
-    if(selObra && obraSel && !selObra.value) selObra.value = obraSel;
+    if(selObra && obraSel && !selObra.value){ selObra.value = obraSel; rdoRenderSugestoesEstacas(obraSel); }   // lote S44 (L5): sugestões para a obra da ficha
     // Tipo: o que a IA leu, se veio
     const tipoIA = dias.find(d => d.tipo_servico)?.tipo_servico;
     if(tipoIA && $("csv-tipo-select")) $("csv-tipo-select").value = tipoIA;
@@ -2507,6 +2507,48 @@ function lerConferenciaIA(){
   _csvMaquinasSemMatch = maqs.filter(m => !regs.find(r => r.maquina_codigo === m && r.equipamento_id));
 }
 
+/* lote S44 (L5, chamado #78, Isaque): sugestão de vínculo entre a estaca do arquivo e a cadastrada quando o
+   nome só difere em prefixo, vírgula ou zeros à esquerda (T1.85 → E1.85, P081 → E81; chave em
+   estNormalizarNome, js/estacas.js). Só sugere: a pessoa marca o que aceita; nome exato continua
+   vinculando sozinho (resolverEstacaImport); mais de uma candidata = sem sugestão; BB1.1 ≠ B1.1 segue. */
+let _csvSugestoes = {};   // nome no arquivo (normalizado) -> { id, numero } da estaca sugerida
+async function rdoRenderSugestoesEstacas(obraId){
+  const box = $("csv-sugestoes");
+  _csvSugestoes = {};
+  if(!box) return;
+  box.innerHTML = "";
+  if(!obraId || !_csvParsed || typeof estNormalizarNome !== "function") return;
+  const { data: ests } = await sb.from("estacas").select("id,numero,bloco").eq("obra_id", obraId).limit(5000);
+  const lista = ests || [];
+  if(!lista.length) return;
+  const exatos = new Set(lista.map(e => normalizarNumeroEstaca(e.numero || "")));
+  const porChave = {};
+  lista.forEach(e => { const k = estNormalizarNome(e.numero); if(k) (porChave[k] = porChave[k] || []).push(e); });
+  const nomes = [...new Set(Object.values(_csvParsed).flat().map(r => normalizarNumeroEstaca(r.estaca_numero || "")).filter(Boolean))];
+  const linhas = [], ambiguas = [];
+  nomes.forEach(n => {
+    if(exatos.has(n)) return;
+    const cands = porChave[estNormalizarNome(n)] || [];
+    if(cands.length === 1){ _csvSugestoes[n] = { id: cands[0].id, numero: cands[0].numero }; linhas.push([n, cands[0]]); }
+    else if(cands.length > 1) ambiguas.push([n, cands]);
+  });
+  if(!linhas.length && !ambiguas.length) return;
+  box.innerHTML = `<div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
+    💡 <strong>${linhas.length} estaca${linhas.length === 1 ? "" : "s"} do arquivo sem cadastro exato</strong> <span class="badge-alterado">sugestão</span>
+    <div class="meta">O nome do arquivo fica como está; marque para vincular a execução à estaca cadastrada (prefixo, vírgula e zeros à esquerda ignorados; BB1.1 e B1.1 continuam estacas diferentes).</div>
+    ${linhas.length ? `<table class="itens-tabela" style="margin-top:6px;"><thead><tr><th>No arquivo</th><th>No cadastro</th><th>Vincular</th></tr></thead><tbody>${linhas.map(([n, e]) => `<tr><td><code>${esc(n)}</code></td><td><strong>${esc(e.numero)}</strong>${e.bloco ? ` <span class="meta">· ${esc(e.bloco)}</span>` : ""}</td><td><input type="checkbox" data-sug="${esc(n)}" /></td></tr>`).join("")}</tbody></table>
+    <label class="meta" style="display:inline-flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer;"><input type="checkbox" id="csv-sug-todas" /> marcar todas</label>` : ""}
+    ${ambiguas.length ? `<div class="meta" style="margin-top:6px;">⚠️ Sem sugestão (mais de uma estaca possível): ${ambiguas.map(([n, c]) => `<code>${esc(n)}</code> → ${c.map(e => esc(e.numero)).join(" / ")}`).join(" · ")}</div>` : ""}
+  </div>`;
+  $("csv-sug-todas")?.addEventListener("change", ev => box.querySelectorAll("input[data-sug]").forEach(cb => { cb.checked = ev.target.checked; }));
+}
+// sugestões marcadas na prévia: nome no arquivo -> estaca_id
+function rdoSugestoesAceitas(){
+  const out = {};
+  document.querySelectorAll("#csv-sugestoes input[data-sug]:checked").forEach(cb => { const s = _csvSugestoes[cb.dataset.sug]; if(s) out[cb.dataset.sug] = s.id; });
+  return out;
+}
+
 /* Vínculo estaca ↔ cadastro no import: número normalizado + agrupamento (bloco) quando
    o boletim trouxer. A trigger do banco só desempata por local; com bloco resolvido aqui
    ela recebe estaca_id pronto. Ambíguo (mesmo número em vários blocos, sem agrupamento) → null. */
@@ -2683,7 +2725,8 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     : "📄 <strong>Formato detectado:</strong> Geodigitus (CSV)";
   const blocoFormato = `<div style="background:#eef2f6;border-left:3px solid var(--txt-fraco);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-xs);color:#495057;">${fmtLbl}</div>`;
 
-  let html = blocoFormato + blocoObra + blocoTipo + blocoMaq + `<div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
+  // lote S44 (L5, #78): sugestões de vínculo estaca do arquivo ↔ cadastro entram aqui (rdoRenderSugestoesEstacas)
+  let html = blocoFormato + blocoObra + blocoTipo + blocoMaq + `<div id="csv-sugestoes"></div>` + `<div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
     📊 <strong>${totalEstacas}</strong> estacas em <strong>${dias.length}</strong> dia${dias.length>1?"s":""} — vão gerar ${dias.length} RDO${dias.length>1?"s":""} novo${dias.length>1?"s":""}.
     Total metragem: <strong>${num(registros.reduce((s,r) => s + (r.profundidade_executada||0), 0))} m</strong>.
     Total concreto: <strong>${num(registros.reduce((s,r) => s + (r.volume_concreto_m3||0), 0))} m³</strong>.
@@ -2705,7 +2748,10 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
       .sort((a,b) => a.nome.localeCompare(b.nome, "pt-BR"));
     selObra.innerHTML = `<option value="">— selecione —</option>` +
       obrasArr.map(o => `<option value="${esc(o.id)}" ${_csvObraDetectada && o.id===_csvObraDetectada.id?"selected":""}>${esc(o.nome)}</option>`).join("");
+    selObra.addEventListener("change", () => rdoRenderSugestoesEstacas(selObra.value));   // lote S44 (L5)
   }
+  // lote S44 (L5, #78): sugestões de vínculo para a obra já conhecida (o import por IA refaz ao pré-selecionar a obra da ficha)
+  rdoRenderSugestoesEstacas(selObra ? selObra.value : (_csvObraDetectada && _csvObraDetectada.casamento === "exato" ? _csvObraDetectada.id : null));
 
   aviso("app-aviso", registros.length
     ? `${registros.length} estacas extraídas. Confirme obra e tipo antes de importar.`
@@ -2798,6 +2844,7 @@ async function confirmarImportCSV(){
     // Estacas cadastradas na obra: vínculo por número + agrupamento (bloco) feito aqui
     const { data: estacasObra } = await sb.from("estacas").select("id,numero,bloco,local").eq("obra_id", obra_id).limit(5000);
     const estsObra = estacasObra || [];
+    const sugAceitas = rdoSugestoesAceitas();   // lote S44 (L5, #78): só as sugestões marcadas na prévia viram vínculo
     const dias = diasImportacao();
     let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0;
     for(const dia of dias){
@@ -2837,7 +2884,7 @@ async function confirmarImportCSV(){
         }
         return {
           rdo_id: rdoId,
-          estaca_id: resolverEstacaImport(estsObra, e.estaca_numero, e.agrupamento),
+          estaca_id: resolverEstacaImport(estsObra, e.estaca_numero, e.agrupamento) || sugAceitas[normalizarNumeroEstaca(e.estaca_numero || "")] || null,
           estaca_numero: e.estaca_numero,
           diametro_mm: e.diametro_mm,
           profundidade_projeto: e.profundidade_projeto,

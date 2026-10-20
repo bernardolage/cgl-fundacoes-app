@@ -22,12 +22,68 @@ let _orcPrecos      = {};
 let _orcServAgrupado = {};  // chamado #2: servico_id -> true quando as variantes ativas têm o mesmo preço (1 opção só)
 
 let _orcServicos  = [];   // serviços ativos com o "eixo" (helice/raiz/trado/secante/null=comum)
-let _orcVariantes = [];   // variantes ativas com tipo_obra, porte, faixa_prof e unidade própria
+let _orcServById  = {};   // servico_id -> serviço (lote S44)
+let _orcVariantes = [];   // variantes ativas com tipo_obra, porte, faixa_prof, unidade própria e eixo pelo nome (lote S44)
+let _orcMetodos   = {};   // lote S44 (L3, #63): orcamento_id -> Set de eixos dos itens (orçamento misto filtra por cada método)
 let _orcCatFiltro = { tipoProp: "helice", tipoObra: "convencional", porte: "", faixa: "" };
 
 const ORC_PORTE_LBL = { pequeno: "Pequeno porte", medio: "Médio porte", grande: "Grande porte" };
 const ORC_FAIXA_LBL = { ate18: "até 18 m", "18a24": "18 a 24 m", "24a30": "24 a 30 m", mais30: "> 30 m" };
 const ORC_TIPO_LBL  = { helice: "Hélice", trado: "Trado", raiz: "Raiz", secante: "Secante", outro: "Outro" };
+// lote S44 (L3, #63): filtro "Método" do painel (terminologia da UI: Hélice contínua, Hélice secante, Estaca raiz, Trado)
+const ORC_METODO_LBL = { helice: "Hélice contínua", secante: "Hélice secante", raiz: "Estaca raiz", trado: "Trado" };
+
+/* lote S44 (L4, #66): o número do orçamento é "NNNN/AAAA". O ano é reconhecido no que foi digitado
+   ("8832/2026", "6114-2025", "7526-2025-E2", "4599-2023-A") e só entra quando não está lá; a proposta
+   e o nome do PDF mostram "NNNN / AAAA" uma vez só (antes "8827/2026" virava "88272026 / 2026"); a
+   busca do painel casa com e sem o ano. Um token "20xx" sozinho é número, não ano. */
+function orcNumeroPartes(numero, dataOrcamento){
+  const bruto  = String(numero || "").trim().toUpperCase().replace(/^ORC[-\s_]*/, "");
+  const tokens = bruto.split(/[\/\-\s_]+/).filter(Boolean);
+  let ano = null;
+  if(tokens.length > 1){
+    const i = tokens.findIndex(t => /^(19|20)\d{2}$/.test(t));
+    if(i >= 0) ano = tokens.splice(i, 1)[0];
+  }
+  const anoData = dataOrcamento ? String(dataOrcamento).slice(0, 4) : String(new Date().getFullYear());
+  return { num: tokens.join("-"), ano: ano || anoData, temAno: !!ano, bruto };
+}
+// "8832 / 2026" (proposta); número vazio vira "0000 / AAAA" como antes
+function orcNumeroExibicao(numero, dataOrcamento){
+  const p = orcNumeroPartes(numero, dataOrcamento);
+  return `${p.num || "0000"} / ${p.ano}`;
+}
+// gravação: acrescenta "/AAAA" (ano da data do orçamento) só quando o número digitado não tem ano
+function orcNumeroNormalizado(numero, dataOrcamento){
+  const p = orcNumeroPartes(numero, dataOrcamento);
+  if(!p.bruto) return "";
+  return p.temAno ? String(numero).trim() : `${p.num}/${p.ano}`;
+}
+/* lote S44 (L8, #65, decisão do Bernardo em 19/10): o ISS "por dentro" é calculado num ponto só, usado pela
+   ficha, pela lista, pelo kanban e pela proposta (js/propostas.js): iss = subtotal × p/(100−p), como na RG 11.8;
+   `iss_por_dentro` desmarcado = ISS não compõe o total (chamado #18). `valor_total` no banco continua sem ISS
+   (é o que vai para obras_financeiro e para a medição); o que muda é o valor exibido. */
+function orcIssSobre(subtotal, o){
+  const p  = Number((o && o.iss_percentual) ?? 0);
+  const pd = !o || o.iss_por_dentro !== false;
+  return (pd && p > 0 && p < 100) ? Number(subtotal || 0) * (p / (100 - p)) : 0;
+}
+function orcTotalComIss(o){
+  const sub = Number((o && o.valor_total) || 0);
+  return sub + orcIssSobre(sub, o);
+}
+
+// busca do painel: "8832", "8832/2026", "8832 2026" e "2026" acham "8832/2026"
+function orcNumeroCasa(numero, termo){
+  const t = String(termo || "").trim().toLowerCase();
+  if(!t) return true;
+  const n = String(numero || "").toLowerCase();
+  if(n.includes(t)) return true;
+  const pn = orcNumeroPartes(numero), pt = orcNumeroPartes(termo);
+  if(!pn.num || !pt.num) return false;
+  if(pt.temAno && pt.ano !== pn.ano) return false;
+  return pn.num.toLowerCase().includes(pt.num.toLowerCase());
+}
 
 /* Fase 40: itens que não podem faltar em cada modelo de proposta (pedido do comercial).
    qtd 0 sai como "-" na proposta (igual à RG 11.8). `var` fixa a variante; sem `var`,
@@ -96,7 +152,11 @@ async function prepararCatalogoOrc(){
   };
   _orcServicos  = (srv.data || []).filter(s => s.ativo !== false)
                     .map(s => ({ ...s, eixo: _eixoServicoOrc(caminho(s.categoria_id) + " " + s.nome, s.tipo_estaca) }));
-  _orcVariantes = (vrt.data || []).filter(v => v.ativo !== false);
+  // lote S44 (L2, #61): a variante também ganha eixo pelo nome ("Diária Equipe Raiz", "Diesel para
+  // equipamento Raiz"): serviço genérico com variantes por método só mostra as do método da proposta
+  _orcVariantes = (vrt.data || []).filter(v => v.ativo !== false).map(v => ({ ...v, eixo: _eixoServicoOrc(v.nome, null) }));
+  _orcServById  = {};
+  _orcServicos.forEach(s => { _orcServById[s.id] = s; });
 
   _orcVarById = {};
   _orcServUnidade = {};
@@ -166,9 +226,17 @@ function _servicoVisivelOrc(s, tipoProp, f){
 // Cada critério só é aplicado se sobrar alguma variante — serviço sem variante do tipo/porte/faixa
 // escolhido mostra todas (ex.: Mão de Obra Extra só tem industrial). Variante sem porte/faixa
 // (nulo) vale para qualquer.
+// lote S44 (L2, #61): eixos de variante aceitos por tipo de proposta. Secante e trado usam a variante de
+// hélice quando não têm a própria (mesma família de equipamento: "Diária Equipe Hélice", "Diesel p/ Hélice").
+const ORC_EIXOS_VARIANTE = { helice: ["helice"], secante: ["secante", "helice"], trado: ["trado", "helice"], raiz: ["raiz"] };
 function _variantesFiltradasOrc(s, f){
   let vars = _orcVariantes.filter(v => v.servico_id === s.id);
   if(!vars.length || !f) return vars;
+  if(f.tipoProp && f.tipoProp !== "outro"){
+    // variante de outro método nunca aparece (estrito): "Diária Equipe Raiz" some do orçamento de hélice
+    const ok = ORC_EIXOS_VARIANTE[f.tipoProp] || [f.tipoProp];
+    vars = vars.filter(v => !v.eixo || ok.includes(v.eixo));
+  }
   if(f.tipoObra){
     const d = vars.filter(v => v.tipo_obra === f.tipoObra || v.tipo_obra === "especial");
     if(d.length) vars = d;
@@ -325,10 +393,21 @@ async function carregarOrcamentos(){
   if(Object.keys(_orcVarById).length === 0){
     try { await prepararCatalogoOrc(); } catch(_){ /* segue */ }
   }
-  const { data, error } = await sb.from("orcamentos")
-    .select("id,numero,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade")
-    .order("data_orcamento",{ ascending:false });
+  const [{ data, error }, itensEixo] = await Promise.all([
+    sb.from("orcamentos")
+      .select("id,numero,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade,iss_percentual,iss_por_dentro")
+      .order("data_orcamento",{ ascending:false }),
+    orcBuscarItensEixo()
+  ]);
   _orcamentos = error ? [] : (data || []);
+  // lote S44 (L3, #63): métodos de cada orçamento = tipo da proposta + eixo dos serviços dos itens
+  // (orçamento misto aparece em cada método que tiver)
+  _orcMetodos = {};
+  itensEixo.forEach(it => {
+    const eixo = _orcEixoVariante(it.variante_id);
+    if(!eixo) return;
+    (_orcMetodos[it.orcamento_id] = _orcMetodos[it.orcamento_id] || new Set()).add(eixo);
+  });
   renderOrcamentos();
 
   // Select de orçamento de origem na aba Contrato da obra (fase 21)
@@ -342,19 +421,49 @@ async function carregarOrcamentos(){
   }
 }
 
+/* lote S44 (L3): itens com variante de todos os orçamentos, em páginas de 1000 (limite do PostgREST) */
+async function orcBuscarItensEixo(){
+  const out = [], passo = 1000;
+  for(let de = 0; ; de += passo){
+    const { data, error } = await sb.from("orcamento_itens").select("orcamento_id,variante_id")
+      .not("variante_id", "is", null).order("id").range(de, de + passo - 1);
+    if(error || !data || !data.length) break;
+    out.push(...data);
+    if(data.length < passo) break;
+  }
+  return out;
+}
+// eixo de uma variante: o dela (pelo nome) ou o do serviço
+function _orcEixoVariante(vid){
+  const v = _orcVarById[vid];
+  if(!v) return null;
+  if(v.eixo) return v.eixo;
+  const s = _orcServById[v.servico_id];
+  return s ? (s.eixo || null) : null;
+}
+// o orçamento "tem" o método quando é o tipo da proposta ou algum item é daquele eixo
+function orcTemMetodo(o, metodo){
+  if(!metodo) return true;
+  if(o.tipo_proposta === metodo) return true;
+  const m = _orcMetodos[o.id];
+  return !!(m && m.has(metodo));
+}
+
 /* ---------- Filtros ---------- */
 function orcFiltrados(){
   const termo = ($("orc-busca")?.value || "").trim().toLowerCase();
   const fStat  = $("orc-f-status")?.value || "";
   const fCli   = $("orc-f-cliente")?.value || "";
   const fPorte = $("orc-f-porte")?.value || "";
+  const fMet   = $("orc-f-metodo")?.value || "";
   return _orcamentos.filter(o => {
     if(fStat && o.status !== fStat) return false;
     if(fCli && o.cliente_id !== fCli) return false;
     if(fPorte && (o.porte_equipamento || "") !== fPorte) return false;
+    if(fMet && !orcTemMetodo(o, fMet)) return false;
     if(termo){
       const cli = (mapaClientes[o.cliente_id] || "").toLowerCase();
-      if(!((o.numero||"").toLowerCase().includes(termo) || cli.includes(termo))) return false;
+      if(!(orcNumeroCasa(o.numero, termo) || cli.includes(termo))) return false;   // lote S44 (L4): com e sem o ano
     }
     return true;
   });
@@ -370,6 +479,11 @@ function preencherFiltrosOrc(){
     selPorte.innerHTML = `<option value="">Todos os portes</option>` +
       Object.entries(ORC_PORTE_LBL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
   }
+  const selMet = $("orc-f-metodo");   // lote S44 (L3, #63)
+  if(selMet && !selMet.options.length){
+    selMet.innerHTML = `<option value="">Todos os métodos</option>` +
+      Object.entries(ORC_METODO_LBL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  }
   const selCli = $("orc-f-cliente");
   if(selCli){
     const atual = selCli.value; // preserva a seleção (o render roda a cada tecla)
@@ -383,7 +497,11 @@ function preencherFiltrosOrc(){
 /* ---------- Render ---------- */
 // "Hélice · Grande porte · 24 a 30 m" (o que estiver preenchido)
 function _orcTipoPorteTxt(o){
-  return [ORC_TIPO_LBL[o.tipo_proposta] || "", ORC_PORTE_LBL[o.porte_equipamento], ORC_FAIXA_LBL[o.faixa_profundidade]]
+  // lote S44 (L3): orçamento misto mostra os outros métodos dos itens ("Hélice · … · + Raiz");
+  // o apoio de hélice em secante e trado não conta como outro método
+  const apoio = ORC_EIXOS_VARIANTE[o.tipo_proposta] || [o.tipo_proposta];
+  const extras = [...(_orcMetodos[o.id] || [])].filter(m => !apoio.includes(m)).map(m => "+ " + (ORC_TIPO_LBL[m] || m));
+  return [ORC_TIPO_LBL[o.tipo_proposta] || "", ORC_PORTE_LBL[o.porte_equipamento], ORC_FAIXA_LBL[o.faixa_profundidade], ...extras]
     .filter(Boolean).join(" · ") || "—";
 }
 
@@ -412,11 +530,11 @@ function renderOrcLista(dados){
     <td>${dataBR(o.data_orcamento)}</td>
     <td>${dataBR(o.validade)}</td>
     <td>${tagStatus("orcamento", o.status)}</td>
-    <td class="num">${brl(o.valor_total)}</td>
+    <td class="num" title="Total da proposta, com ISS por dentro (sem ISS: ${brl(o.valor_total)})">${brl(orcTotalComIss(o))}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Número</th><th>Cliente</th><th>Tipo · Porte</th><th>Data</th><th>Validade</th><th>Status</th><th class="num">Valor</th>
+      <th>Número</th><th>Cliente</th><th>Tipo · Porte</th><th>Data</th><th>Validade</th><th>Status</th><th class="num" title="Total da proposta com ISS por dentro (lote S44, #65)">Valor c/ ISS</th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 }
@@ -435,8 +553,8 @@ function renderOrcKanban(dados){
           <span class="meta">${dataBR(o.data_orcamento)}${o.validade ? " · val " + dataBR(o.validade) : ""} · ${esc(_orcTipoPorteTxt(o))}</span>
         </div>
         <div class="serv-kan-card-rod">
-          <span></span>
-          <strong>${brl(o.valor_total)}</strong>
+          <span class="meta">c/ ISS</span>
+          <strong title="Total da proposta com ISS (sem ISS: ${brl(o.valor_total)})">${brl(orcTotalComIss(o))}</strong>
         </div>
       </div>`).join("");
     return `<div class="serv-kan-col" data-status="${esc(st)}">
@@ -469,9 +587,9 @@ function novoOrcamento(){
   $("orc-itens").innerHTML = "";
   $("orc-status").value = "rascunho";
   $("orc-data").value = hojeISO();
-  // próximo número pelo maior sufixo existente (contagem colidia após exclusões)
-  const maxN = _orcamentos.reduce((m, o) => { const mm = String(o.numero || "").match(/([0-9]+)$/); return mm ? Math.max(m, Number(mm[1])) : m; }, 0);
-  $("orc-numero").value = "ORC-" + String(maxN + 1).padStart(4,"0");
+  // lote S44 (L4): sugestão = maior número da sequência da CGL + 1, com o ano atual ("8833/2026"); continua editável
+  const maxN = _orcamentos.reduce((m, o) => { const n = parseInt(orcNumeroPartes(o.numero, o.data_orcamento).num, 10); return Number.isFinite(n) ? Math.max(m, n) : m; }, 0);
+  $("orc-numero").value = maxN ? `${maxN + 1}/${new Date().getFullYear()}` : "";
   // Fase 40: responsável = quem está logado (continua editável)
   const selResp = $("orc-responsavel");
   if(selResp && typeof usuarioAtual !== "undefined" && usuarioAtual && [...selResp.options].some(o => o.value === usuarioAtual.id)){
@@ -489,6 +607,7 @@ function novoOrcamento(){
   $("orc-cgl-diesel").checked   = false;
   $("orc-diesel-preco").value   = 8.34;
   $("orc-cgl-hospedagem").checked = false;
+  if($("orc-cgl-alimentacao")) $("orc-cgl-alimentacao").checked = false;   // lote S44 (L7, #62)
   // Fase 40: condição de pagamento já vem com o texto padrão do modelo (edita-se na negociação)
   if($("orc-prazo-pagamento")) $("orc-prazo-pagamento").value = "15";
   if($("orc-pagamento-forma")) $("orc-pagamento-forma").value = "deposito";
@@ -536,6 +655,7 @@ async function abrirOrcamento(id){
   $("orc-diesel-preco").value      = o.diesel_preco_litro != null ? o.diesel_preco_litro : 8.34;
   $("orc-cgl-hospedagem").checked  = o.cgl_fornece_hospedagem === true;
   $("orc-hosp-valor").value        = o.hospedagem_valor_mensal != null ? o.hospedagem_valor_mensal : "";
+  if($("orc-cgl-alimentacao")) $("orc-cgl-alimentacao").checked = o.cgl_fornece_alimentacao === true;   // lote S44 (L7, #62)
 
   $("orc-itens").innerHTML = "";
   const { data:itens, error: errItens } = await sb.from("orcamento_itens")
@@ -573,7 +693,7 @@ function abrirFichaOrcVisual(o){
   if($("orc-ficha-revisao-chip")) $("orc-ficha-revisao-chip").textContent = `Rev ${o.numero_revisao || "00"}`;
   $("orc-ficha-cliente-chip").textContent = mapaClientes[o.cliente_id] || "—";
   $("orc-ficha-status-chip").innerHTML = tagStatus("orcamento", o.status);
-  $("orc-ficha-valor-chip").textContent = brl(o.valor_total || 0);
+  $("orc-ficha-valor-chip").textContent = brl(orcTotalComIss(o));   // lote S44 (L8): total com ISS, igual ao da proposta
   if($("orc-ficha-validade-chip")) $("orc-ficha-validade-chip").textContent = dataBR(o.validade);
   $("orc-ficha-titulo").textContent = orcEditId ? `Orçamento ${o.numero} · Rev ${o.numero_revisao||"00"}` : "Novo orçamento";
 
@@ -625,7 +745,7 @@ async function carregarAbasOrc(o){
   // Em paralelo: revisões (mesmo número) + contratos + obras + medições que usam preços daqui
   const [revRes, contrRes, medRes] = await Promise.all([
     sb.from("orcamentos")
-      .select("id,numero_revisao,status,valor_total,data_orcamento,updated_at")
+      .select("id,numero_revisao,status,valor_total,iss_percentual,iss_por_dentro,data_orcamento,updated_at")
       .eq("numero", o.numero)
       .order("updated_at", { ascending: false }),
     sb.from("contratos")
@@ -691,13 +811,13 @@ function renderizarRevisoesOrc(revs, atual){
     return `<tr class="${ehAtual ? "" : "linha-clicavel"}" data-id="${esc(r.id)}" style="${ehAtual ? "background:var(--info-bg);" : ""}">
       <td><strong>Rev ${esc(r.numero_revisao||"00")}</strong> ${ehAtual ? '<span class="badge-alterado" style="background:var(--marca-600);color:var(--txt-sobre);border-color:var(--marca-600);">ATUAL</span>' : ""}</td>
       <td>${tagStatus("orcamento", r.status)}</td>
-      <td class="num">${brl(r.valor_total||0)}</td>
+      <td class="num" title="sem ISS: ${brl(r.valor_total||0)}">${brl(orcTotalComIss(r))}</td>
       <td>${dataBR(r.data_orcamento)}</td>
       <td>${new Date(r.updated_at).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}</td>
     </tr>`;
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr><th>Revisão</th><th>Status</th><th class="num">Valor</th><th>Data</th><th>Atualizado em</th></tr></thead>
+    <thead><tr><th>Revisão</th><th>Status</th><th class="num">Valor c/ ISS</th><th>Data</th><th>Atualizado em</th></tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
   cont.querySelectorAll(".linha-clicavel").forEach(tr => {
     tr.addEventListener("click", () => abrirOrcamento(tr.dataset.id));
@@ -805,7 +925,9 @@ async function criarObraDoOrcamento(){
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   if(orc.status !== "aprovado"){ aviso("app-aviso","Status precisa ser 'aprovado' pra criar a obra.","erro"); return; }
 
-  const sugCodigo = orc.numero.replace(/^ORC-/i, "OB-");
+  // lote S44 (L4): código da obra no padrão da CGL ("8832-2026"), a partir do número do orçamento
+  const pNum = orcNumeroPartes(orc.numero, orc.data_orcamento);
+  const sugCodigo = pNum.num ? `${pNum.num}-${pNum.ano}` : orc.numero.replace(/^ORC-/i, "OB-");
   const codigo = prompt(`Código da obra (sugestão: ${sugCodigo}):`, sugCodigo);
   if(!codigo) return;
   const sugNome = `${mapaClientes[orc.cliente_id] || "Obra"} — ${orc.numero}`;
@@ -976,14 +1098,15 @@ function recalcularOrc(){
   });
   const totalEl = $("orc-total");
   if(totalEl) totalEl.textContent = brl(soma);
-  const chip = $("orc-ficha-valor-chip");
-  if(chip) chip.textContent = brl(soma);
   // Fase 40: ISS da proposta (por dentro = soma × p/(100-p), como na RG 11.8)
   // Chamado #18 (Thales, 21/09/2026): checkbox desmarcado = ISS NÃO compõe o somatório
   // (antes desmarcado virava "por fora" e continuava somando).
+  // lote S44 (L8): conta única em orcIssSobre; o chip da ficha mostra o total com ISS, igual ao da proposta
   const p  = Number($("orc-iss-perc")?.value || 0);
   const pd = !!$("orc-iss-pdentro")?.checked;
-  const iss = (pd && p > 0 && p < 100) ? soma * (p / (100 - p)) : 0;
+  const iss = orcIssSobre(soma, { iss_percentual: p, iss_por_dentro: pd });
+  const chip = $("orc-ficha-valor-chip");
+  if(chip) chip.textContent = brl(soma + iss);
   if($("orc-iss-lbl"))   $("orc-iss-lbl").textContent   = pd ? `${p}% por dentro` : "não incluído";
   if($("orc-iss-valor")) $("orc-iss-valor").textContent = brl(iss);
   if($("orc-total-iss")) $("orc-total-iss").textContent = brl(soma + iss);
@@ -1019,8 +1142,13 @@ async function salvarOrcamento(novoStatus){
   const tipoProp = $("orc-tipo-proposta").value || "helice";
   const codigosRG = { helice:"RG 11.8", trado:"RG 11.9", raiz:"RG 11.10", secante:"RG 11.11", outro:"RG 11.0" };
 
+  // lote S44 (L4, #66): "8832" vira "8832/2026" (ano da data do orçamento); "8832/2026" fica como está
+  const numero = orcNumeroNormalizado($("orc-numero").value, $("orc-data").value);
+  if(!numero){ aviso("app-aviso","Informe o número do orçamento.","erro"); ativarTabOrc("geral"); $("orc-numero").focus(); return; }
+  $("orc-numero").value = numero;
+
   const reg = {
-    numero:         $("orc-numero").value.trim(),
+    numero,
     cliente_id,
     descricao:      $("orc-descricao").value.trim() || null,
     status:         novoStatus || $("orc-status").value,
@@ -1056,19 +1184,30 @@ async function salvarOrcamento(novoStatus){
     cgl_fornece_diesel:         $("orc-cgl-diesel").checked,
     diesel_preco_litro:         Number($("orc-diesel-preco").value || 8.34),
     cgl_fornece_hospedagem:     $("orc-cgl-hospedagem").checked,
-    hospedagem_valor_mensal:    $("orc-hosp-valor").value ? Number($("orc-hosp-valor").value) : null
+    hospedagem_valor_mensal:    $("orc-hosp-valor").value ? Number($("orc-hosp-valor").value) : null,
+    cgl_fornece_alimentacao:    !!$("orc-cgl-alimentacao")?.checked   // lote S44 (L7, #62): migration 20261020_loteS44_orcamento_alimentacao
   };
 
   let orcId = orcEditId;
+  // lote S44 (L7): enquanto a migration 20261020_loteS44_orcamento_alimentacao não estiver aplicada, grava o
+  // resto e avisa no console (mesmo padrão de obras.sinal_abatimento_modelo), em vez de perder o orçamento
+  const gravarOrc = (r) => orcEditId
+    ? sb.from("orcamentos").update(r).eq("id", orcEditId)
+    : sb.from("orcamentos").insert(r).select("id").single();
+  let res = await gravarOrc(reg);
+  let semAlimentacao = false;
+  if(res.error && /cgl_fornece_alimentacao/i.test(res.error.message || "")){
+    const { cgl_fornece_alimentacao, ...semColuna } = reg;
+    res = await gravarOrc(semColuna);
+    semAlimentacao = true;
+  }
+  if(res.error){ aviso("app-aviso","Não foi possível salvar o orçamento: "+res.error.message,"erro"); return; }
+  if(semAlimentacao) console.warn("orcamentos.cgl_fornece_alimentacao ainda não existe no banco — adicional de alimentação não gravado (aplicar a migration do lote S44).");
   if(orcEditId){
-    const { error } = await sb.from("orcamentos").update(reg).eq("id", orcEditId);
-    if(error){ aviso("app-aviso","Não foi possível salvar o orçamento: "+error.message,"erro"); return; }
     const { error: errDel } = await sb.from("orcamento_itens").delete().eq("orcamento_id", orcEditId);
     if(errDel){ aviso("app-aviso","Erro ao substituir os itens: "+errDel.message+". Nada foi reinserido — tente salvar de novo.","erro"); return; }
   } else {
-    const { data:novo, error } = await sb.from("orcamentos").insert(reg).select("id").single();
-    if(error){ aviso("app-aviso","Não foi possível salvar o orçamento: "+error.message,"erro"); return; }
-    orcId = novo.id;
+    orcId = res.data.id;
     orcEditId = orcId;
   }
 
@@ -1112,7 +1251,7 @@ function ligarOrcamentos(){
       renderOrcamentos();
     });
   });
-  ["orc-busca","orc-f-status","orc-f-cliente","orc-f-porte"].forEach(id => {
+  ["orc-busca","orc-f-status","orc-f-cliente","orc-f-porte","orc-f-metodo"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "orc-busca" ? "input" : "change", id === "orc-busca" ? debounce(renderOrcamentos) : renderOrcamentos);
   });
