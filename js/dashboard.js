@@ -136,7 +136,7 @@ async function carregarDashFaixa(carga){
   const iv = dashIntervalo(_dashPeriodo);
   const [prod, frota, obras, rdos, meds, custos, viagens] = await Promise.all([
     dashLer("vw_sc_producao_dia", q => q.select("obra_id,equipamento_id,data,estacas,metros,operador_id").gte("data", iv.antIni).lte("data", iv.fim), "dash-k-producao-sub"),
-    dashLer("vw_sc_frota", q => q.select("*"), "dash-k-maquinas-sub"),
+    dashLer("vw_sc_frota", q => q.select("*"), "dash-frota-lista"),
     dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-k-obras-sub"),
     dashLer("rdo", q => q.select("obra_id").gte("data", iv.ini).lte("data", iv.fim), "dash-k-obras-sub"),
     dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada","recebida"]).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),   // fase 91: recebida conta como medida
@@ -158,13 +158,8 @@ async function carregarDashFaixa(carga){
     const varia = mAnt > 0 ? Math.round((m - mAnt) / mAnt * 100) : null;
     set("dash-k-producao-sub", `${e} estaca(s) ${quando} · ${varia == null ? "sem base no período anterior" : (varia >= 0 ? "▲ " : "▼ ") + Math.abs(varia) + "% vs. anterior"}`);
   }
-  if(frota && prod){
-    const emObra = _dashFrota.filter(f => f.obra_id);
-    const comExec = new Set(_dashProd.filter(p => p.data >= iv.ini && p.equipamento_id).map(p => p.equipamento_id));
-    const ativas = emObra.filter(f => comExec.has(f.equipamento_id)).length;
-    set("dash-k-maquinas", `${ativas} / ${emObra.length}`); vazio("dash-k-maquinas", !ativas);
-    set("dash-k-maquinas-sub", `com execução ${quando} ÷ em obra · ${emObra.length - ativas} sem lançar`);
-  }
+  // 20/10/2026 (Bernardo): o card "Máquinas ativas" (máquinas com execução ÷ em obra) saiu do Início — era a métrica de
+  // cobrança por máquina do Maya e não diz nada para a CGL. A frota continua na lista "Frota" abaixo (_dashFrota).
   if(obras && rdos){
     const ids = new Set(_dashObrasAnd.map(o => o.obra_id));
     const com = new Set((rdos || []).map(r => r.obra_id).filter(id => ids.has(id))).size;
