@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="d6dbbe1" />
+<meta name="app-versao" content="7f3304d" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=d6dbbe1" />
+<link rel="stylesheet" href="css/estilo.css?v=7f3304d" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -123,6 +123,11 @@
       <button data-secao="carteira" id="nav-carteira" style="display:none;">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg>
         <span>Carteira</span>
+      </button>
+      <!-- fase 97: Patrimônio (avaliação de mercado dos bens) só diretor e auditor; nasce escondido (podeVerPatrimonio em core.js) -->
+      <button data-secao="patrimonio" id="nav-patrimonio" style="display:none;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 21h18"></path><path d="M5 21V10l7-5 7 5v11"></path><path d="M9 21v-6h6v6"></path></svg>
+        <span>Patrimônio</span>
       </button>
       <button data-secao="obras">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="9" y1="22" x2="9" y2="16"></line><line x1="15" y1="22" x2="15" y2="16"></line><line x1="9" y1="16" x2="15" y2="16"></line><path d="M9 6h6M9 10h6M9 14h6"></path></svg>
@@ -256,6 +261,11 @@
           <div class="dash-card-num" id="dash-k-medido">—</div>
           <div class="dash-card-sub" id="dash-k-medido-sub">—</div>
           <button type="button" class="dash-origem" data-origem="medicoes">de onde vem ›</button>
+        </div>
+        <div class="dash-card" id="dash-card-receber" style="display:none;">
+          <div class="dash-card-rot">A receber <span class="dash-ajuda" title="Medições com NF emitida e ainda não recebidas (líquido a receber − já recebido) + saldo das vendas de bens em andamento ou atrasadas (fase 96). Entre parênteses, o que já venceu.">?</span></div>
+          <div class="dash-card-num" id="dash-k-receber">—</div>
+          <div class="dash-card-sub" id="dash-k-receber-sub">—</div>
         </div>
         <div class="dash-card" id="dash-card-custo" style="display:none;">
           <div class="dash-card-rot">Custo registrado <span class="dash-ajuda" title="Soma dos custos registrados no período (vw_custos: compras, ordens de serviço, diesel do RDO, contratos e avulsos).">?</span></div>
@@ -2271,6 +2281,12 @@
         </div>
         <div id="cart-conteudo"><p class="vazio">Carregando carteira…</p></div>
       </div>
+
+      <!-- fase 96: bens vendidos no ano (js/vendas_bens.js › vbRenderCarteira) -->
+      <div class="card" style="display:none;">
+        <div class="lista-topo compacta"><h3>Bens vendidos no ano <span class="contador" id="cart-vb-ano"></span></h3></div>
+        <div id="cart-vendas-bens"><p class="vazio">Carregando…</p></div>
+      </div>
     </section>
 
     <!-- OBRAS -->
@@ -3219,7 +3235,7 @@
         <h2>Equipamentos</h2>
         <p class="texto-apoio">Máquinas de produção (perfuratrizes, bate-estacas, bombas, compressores, geradores) com ficha técnica, onde estão, mobilizações, remessas e os acessórios de cada uma. Caminhões e veículos ficam na Frota.</p>
 
-        <div class="indicadores">
+        <div class="indicadores" id="eqp-indicadores">
           <div class="ind ind-click" data-kpi=""><div class="num" id="eqp-kpi-total">—</div><div class="rot">Ativos</div></div>
           <div class="ind ind-click" data-kpi="obra"><div class="num" id="eqp-kpi-obra">—</div><div class="rot">Em obra</div></div>
           <div class="ind ind-click" data-kpi="base"><div class="num" id="eqp-kpi-base">—</div><div class="rot">Na base</div></div>
@@ -3228,13 +3244,16 @@
           <div class="ind ind-click" data-kpi="acessorios"><div class="num" id="eqp-kpi-ace">—</div><div class="rot">Acessórios nas máquinas</div></div>
           <div class="ind ind-click" data-kpi="sem_cod_ext" title="Perfuratrizes e bate-estacas sem o código do Geodigitus/Maya"><div class="num" id="eqp-kpi-semext">—</div><div class="rot">Sem código externo</div></div>
         </div>
+        <!-- fase 96: indicadores da visão Vendas (js/vendas_bens.js) -->
+        <div class="indicadores" id="vb-indicadores" style="display:none;"></div>
 
         <div class="card">
           <div class="lista-topo">
-            <h3>Máquinas <span id="eqp-contador" class="contador"></span></h3>
+            <h3><span id="eqp-painel-titulo">Máquinas</span> <span id="eqp-contador" class="contador"></span></h3>
             <div class="serv-views" id="eqp-views">
               <button type="button" class="serv-view-btn ativo" data-view="kanban">Por status</button>
               <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="vendas" id="eqp-view-vendas" title="Fase 96: equipamentos e veículos vendidos, parcelas e saldo a receber">Vendas</button>
             </div>
             <button type="button" class="btn-sec" id="btn-eqp-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
             <button type="button" class="btn" id="btn-eqp-novo" style="display:none;">+ Novo equipamento</button>
@@ -3246,6 +3265,14 @@
             <select id="eqp-f-local"><option value="">Onde está</option></select>
             <select id="eqp-f-obra"><option value="">Obra</option></select>
             <label class="check-inline"><input type="checkbox" id="eqp-f-inativos" /> mostrar inativos</label>
+          </div>
+          <div class="serv-filtros" id="vb-filtros" style="display:none;">
+            <input id="vb-busca" placeholder="Buscar venda, TAG, placa, comprador, NF…" />
+            <select id="vb-f-ano"><option value="">Todos os anos</option></select>
+            <select id="vb-f-status"><option value="">Status</option></select>
+            <select id="vb-f-comprador"><option value="">Todos os compradores</option></select>
+            <select id="vb-f-pend"><option value="">Pendência</option></select>
+            <button type="button" class="btn-sec" id="btn-vb-exportar" title="Vendas filtradas e as parcelas delas">⬇️ Exportar .xlsx</button>
           </div>
           <div id="eqp-conteudo"><p class="vazio">Carregando…</p></div>
         </div>
@@ -3260,6 +3287,7 @@
               <button type="button" class="btn" id="btn-eqp-salvar">💾 Salvar</button>
               <button type="button" class="btn-sec eqp-so-existente" id="btn-eqp-remessa" title="Abre uma remessa em Movimentações com esta TAG na carga">🚚 Nova remessa</button>
               <button type="button" class="btn-sec eqp-so-existente" id="btn-eqp-acessorios" title="Abre o módulo Acessórios filtrado por esta TAG">⚙️ Ver acessórios</button>
+              <button type="button" class="btn-sec" id="btn-eqp-vender" style="display:none;" title="Fase 96: registrar a venda do bem (comprador, valor, parcelas, contrato); o bem sai do cadastro operacional">💰 Registrar venda</button>
             </div>
             <div class="actions-right"><strong id="eqp-ficha-titulo">Novo equipamento</strong></div>
           </div>
@@ -3269,7 +3297,9 @@
             <div class="stage" data-status="em_uso">Em uso</div>
             <div class="stage" data-status="em_manutencao">Em manutenção</div>
             <div class="stage" data-status="inativo">Inativo</div>
+            <div class="stage" data-status="vendido" title="Fase 96: nasce do registro da venda (clique para registrar)">Vendido</div>
           </div>
+          <p class="nota" id="eqp-nota-vendido" style="display:none;"></p>
 
           <div class="odoo-contexto">
             <div class="chip"><span>TAG</span><strong id="eqp-chip-tag">—</strong></div>
@@ -3297,6 +3327,7 @@
             <button type="button" data-tab="movimentacoes">Viagens</button>
             <button type="button" data-tab="manutencao">Reparos & manutenções</button>
             <button type="button" data-tab="custos">Custos</button>
+            <button type="button" data-tab="venda" title="Fase 96: venda do bem, parcelas, saldo e contrato">Venda</button>
             <button type="button" data-tab="timeline">Timeline</button>
           </div>
 
@@ -3365,6 +3396,7 @@
             <div class="odoo-tab" data-tab="movimentacoes"><div id="eqp-mov-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="manutencao"><div id="eqp-man-plano"></div><div id="eqp-man-lista" style="margin-top:16px;"></div><div id="eqp-rep-lista" style="margin-top:16px;"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="custos"><div id="eqp-custos"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="venda"><div id="eqp-venda"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="timeline"><div id="eqp-chatter"></div></div>
           </div>
         </div>
@@ -3391,6 +3423,90 @@
         </div>
       </div>
     </section>
+
+    <!-- VENDA DE BENS (fase 96, js/vendas_bens.js, prefixo vb-): modais fora das seções, porque abrem da ficha do
+         equipamento, da Logística (veículo), da Sala de Comando e da Carteira. A ordem importa: o da venda do veículo
+         vem antes, para os de registrar e de parcela abrirem por cima dele. -->
+    <div id="vb-ficha-modal" class="modal-fundo" style="display:none;">
+      <div class="modal-caixa" style="max-width:1120px;width:96%;">
+        <div class="modal-topo">
+          <h3 class="titulo-linha" id="vb-ficha-titulo">💰 Venda</h3>
+          <button type="button" class="btn-sec" id="btn-vb-ficha-fechar">×</button>
+        </div>
+        <div id="vb-ficha-conteudo"><p class="vazio">—</p></div>
+      </div>
+    </div>
+    <div id="vb-modal" class="modal-fundo" style="display:none;">
+      <div class="modal-caixa" style="max-width:880px;">
+        <div class="modal-topo">
+          <h3 class="titulo-linha" id="vb-titulo">💰 Registrar venda</h3>
+          <button type="button" class="btn-sec" id="btn-vb-fechar">×</button>
+        </div>
+        <p class="meta" id="vb-bem-txt"></p>
+        <h4 class="titulo-bloco">Comprador</h4>
+        <div class="grade grade-3">
+          <div class="campo largo"><label>Cliente da casa (opcional)</label><select id="vb-cliente"></select></div>
+          <div class="campo largo"><label>Nome / razão social *</label><input id="vb-comprador-nome" placeholder="a maioria dos compradores não é cliente da casa" /></div>
+          <div class="campo"><label>CPF / CNPJ</label><input id="vb-comprador-doc" /></div>
+          <div class="campo largo"><label>Contato (telefone, e-mail)</label><input id="vb-comprador-contato" /></div>
+        </div>
+        <h4 class="titulo-bloco">Venda e plano de recebimento</h4>
+        <div class="grade grade-3">
+          <div class="campo"><label>Data da venda *</label><input type="date" id="vb-data" /></div>
+          <div class="campo"><label>Valor da venda (R$) *</label><input type="number" id="vb-valor" min="0" step="0.01" /></div>
+          <div class="campo"><label>Entrada (R$)</label><input type="number" id="vb-entrada" min="0" step="0.01" placeholder="vence na data da venda" /></div>
+          <div class="campo"><label>Forma</label><select id="vb-forma"><option value="a_vista">À vista</option><option value="parcelado">Parcelado</option></select></div>
+          <div class="campo vb-so-parc"><label>Nº de parcelas *</label><input type="number" id="vb-n" min="1" max="240" step="1" /></div>
+          <div class="campo"><label id="vb-venc-lbl">1º vencimento *</label><input type="date" id="vb-venc" /></div>
+          <div class="campo vb-so-parc"><label>Periodicidade</label><select id="vb-period"></select></div>
+          <div class="campo vb-so-pers"><label>A cada (dias) *</label><input type="number" id="vb-intervalo" min="1" max="366" step="1" /></div>
+          <div class="campo"><label title="Só quando o contrato prevê; vazio = nada é calculado">Juros de mora (% ao mês, pelo contrato)</label><input type="number" id="vb-juros" min="0" step="0.001" /></div>
+          <div class="campo"><label title="Só quando o contrato prevê; vazio = nada é calculado">Multa por atraso (%, pelo contrato)</label><input type="number" id="vb-multa" min="0" step="0.001" /></div>
+          <div class="campo"><label>NF nº</label><input id="vb-nf" placeholder="emitida no UniNFe" /></div>
+          <div class="campo"><label>Data da NF</label><input type="date" id="vb-nf-data" /></div>
+        </div>
+        <p class="meta" id="vb-previa"></p>
+        <div id="vb-bloco-veic" style="display:none;">
+          <h4 class="titulo-bloco">Transferência do veículo</h4>
+          <div class="grade grade-3">
+            <div class="campo"><label>Comunicação de venda ao Detran em</label><input type="date" id="vb-comunic" /></div>
+            <div class="campo"><label>CRV / ATPV-e entregue ao comprador em</label><input type="date" id="vb-crv" /></div>
+          </div>
+        </div>
+        <div class="grade">
+          <div class="campo largo" id="vb-contrato-campo"><label>Contrato assinado (PDF ou foto)</label><input type="file" id="vb-contrato" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" /></div>
+          <div class="campo largo"><label>Observações</label><textarea id="vb-obs" rows="2" placeholder="ex.: comissão, condições do contrato, quem negociou"></textarea></div>
+          <div class="campo largo" id="vb-ja-recebidas-campo"><label class="check-inline"><input type="checkbox" id="vb-ja-recebidas" /> Venda antiga: a entrada e as parcelas vencidas até hoje já foram recebidas (ficam confirmadas na data do vencimento)</label></div>
+        </div>
+        <div id="vb-aviso" class="aviso" role="alert"></div>
+        <div class="form-acoes compacta"><button type="button" class="btn" id="btn-vb-salvar">💰 Registrar venda</button></div>
+      </div>
+    </div>
+    <div id="vb-parc-modal" class="modal-fundo" style="display:none;">
+      <div class="modal-caixa" style="max-width:680px;">
+        <div class="modal-topo">
+          <h3 class="titulo-linha" id="vb-parc-titulo">Parcela</h3>
+          <button type="button" class="btn-sec" id="btn-vb-parc-fechar">×</button>
+        </div>
+        <p class="meta" id="vb-parc-info"></p>
+        <div class="grade grade-3" id="vb-parc-receb">
+          <div class="campo"><label>Recebido em</label><input type="date" id="vb-pr-data" /></div>
+          <div class="campo"><label>Valor recebido (R$)</label><input type="number" id="vb-pr-valor" min="0" step="0.01" /></div>
+          <div class="campo"><label>Juros / multa a mais (R$)</label><input type="number" id="vb-pr-encargos" min="0" step="0.01" /></div>
+          <div class="campo"><label>Forma</label><select id="vb-pr-forma"></select></div>
+          <div class="campo"><label>Banco</label><input id="vb-pr-banco" list="med-cau-bancos" placeholder="Itaú, Caixa…" /></div>
+          <div class="campo largo"><label>Observação</label><input id="vb-pr-obs" /></div>
+        </div>
+        <div class="grade grade-3" id="vb-parc-edit" style="display:none;">
+          <div class="campo"><label>Descrição</label><input id="vb-pe-desc" placeholder="ex.: Parcela 3/24, reforço" /></div>
+          <div class="campo"><label>Vencimento *</label><input type="date" id="vb-pe-venc" /></div>
+          <div class="campo"><label>Valor (R$) *</label><input type="number" id="vb-pe-valor" min="0.01" step="0.01" /></div>
+          <div class="campo largo"><label>Observação</label><input id="vb-pe-obs" /></div>
+        </div>
+        <div id="vb-parc-aviso" class="aviso" role="alert"></div>
+        <div class="form-acoes compacta"><button type="button" class="btn" id="btn-vb-parc-salvar">💾 Salvar</button></div>
+      </div>
+    </div>
 
     <!-- MANUTENÇÃO (fase 92): OS completa, preventivas (RG 3.0.3), planos (RG 3.14) e checklist de mobilização (RG 3.12) -->
     <section class="secao" id="sec-manutencao">
@@ -3708,7 +3824,10 @@
               <div class="campo largo"><label class="check-inline"><input type="checkbox" id="fveic-ativo" checked /> Ativo na frota</label></div>
             </div>
             <div id="fveic-aviso" class="aviso" role="alert"></div>
-            <div class="form-acoes compacta"><button type="button" class="btn" id="btn-fveic-salvar">💾 Salvar</button></div>
+            <div class="form-acoes compacta">
+              <button type="button" class="btn-sec" id="btn-fveic-vender" style="display:none;margin-right:auto;" title="Fase 96: registrar a venda do veículo (comprador, valor, parcelas, contrato, comunicação de venda); ele sai da frota">💰 Registrar venda</button>
+              <button type="button" class="btn" id="btn-fveic-salvar">💾 Salvar</button>
+            </div>
           </div>
         </div>
       </div>
@@ -4976,6 +5095,120 @@
       </div>
     </section>
 
+    <!-- ============ PATRIMÔNIO (fase 97) — js/patrimonio.js, prefixo pat-; só diretor e auditor, sessão com MFA ============ -->
+    <section class="secao" id="sec-patrimonio">
+      <h2>Patrimônio</h2>
+      <div id="pat-painel">
+        <p class="texto-apoio compacto">Valor de mercado dos bens próprios na opinião da diretoria, por ano de referência. Os bens vêm dos cadastros de Equipamentos, Logística e Acessórios (este módulo não cadastra nem retira máquina, veículo ou acessório); imóveis, usina e grupos globais nascem aqui. Veículo sem avaliação vale a FIPE do cadastro.</p>
+        <div class="indicadores">
+          <div class="ind"><div class="num" id="pat-kpi-total">—</div><div class="rot" id="pat-kpi-total-rot">Patrimônio</div></div>
+          <div class="ind"><div class="num" id="pat-kpi-var">—</div><div class="rot" id="pat-kpi-var-rot">Contra o ano anterior</div></div>
+          <div class="ind ind-click" id="pat-kpi-sem-card" title="Ver só os bens sem valor no ano"><div class="num" id="pat-kpi-sem" style="color:var(--perigo);">—</div><div class="rot" id="pat-kpi-sem-rot">Sem valor</div></div>
+          <div class="ind"><div class="num" id="pat-kpi-bens">—</div><div class="rot">Bens próprios ativos</div></div>
+        </div>
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Bens e avaliação <span id="pat-contador" class="contador"></span></h3>
+            <div class="serv-views" id="pat-views">
+              <button type="button" class="serv-view-btn ativo" data-view="avaliacao">Avaliação</button>
+              <button type="button" class="serv-view-btn" data-view="vendas" title="Vendas de bens: abre a visão Vendas de Equipamentos (fase 96)">Vendas</button>
+              <button type="button" class="serv-view-btn" data-view="resumo">Resumo</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-pat-exportar" style="margin-left:auto;" title="Planilha do ano escolhido, no leiaute da AVALIAÇÃO DOS EQUIPAMENTOS (todos os grupos, sem filtro)">⬇️ Exportar .xlsx</button>
+            <button type="button" class="btn btn-novo" id="btn-pat-novo" style="display:none;" title="Imóvel da empresa ou em permuta, usina ou grupo global (o que não existe em outro módulo)">+ Novo bem</button>
+          </div>
+          <div class="serv-filtros" id="pat-filtros">
+            <input id="pat-busca" placeholder="Buscar por TAG, descrição, série, placa ou modelo..." />
+            <select id="pat-f-ano" title="Ano de referência da avaliação"></select>
+            <select id="pat-f-grupo"></select>
+            <label class="check-inline" id="pat-f-sem-rot"><input type="checkbox" id="pat-f-sem" /> só sem valor</label>
+          </div>
+          <div id="pat-conteudo"><p class="vazio">Abra o menu para carregar o patrimônio.</p></div>
+        </div>
+      </div>
+
+      <!-- Ficha do bem: avaliação do ano, histórico, cadastro do bem avulso e titularidade do equipamento -->
+      <div id="pat-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-voltar-pat">&larr; Voltar</button>
+              <button type="button" class="btn" id="btn-salvar-pat">💾 Salvar</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-pat-excluir-aval" style="display:none;">🗑️ Excluir avaliação do ano</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-pat-retirar" style="display:none;" title="O bem sai da avaliação e do total; o histórico fica">Retirar do patrimônio</button>
+              <span id="pat-ficha-link" class="meta"></span>
+            </div>
+            <div class="actions-right">
+              <strong id="pat-ficha-titulo" class="ficha-titulo">Bem</strong>
+            </div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>Grupo</span><strong id="pat-ficha-grupo">—</strong></div>
+            <div class="chip"><span>TAG</span><strong id="pat-ficha-tag">—</strong></div>
+            <div class="chip"><span>Estado</span><strong id="pat-ficha-estado">—</strong></div>
+            <div class="chip"><span id="pat-ficha-vigente-rot">Valor vigente</span><strong id="pat-ficha-vigente">—</strong></div>
+            <div class="chip"><span>Base</span><strong id="pat-ficha-base">—</strong></div>
+            <div class="chip" title="Custo histórico do cadastro; não entra no total"><span>Aquisição</span><strong id="pat-ficha-aquisicao">—</strong></div>
+            <div class="chip" id="pat-ficha-fipe-box" style="display:none;"><span>FIPE</span><strong id="pat-ficha-fipe">—</strong></div>
+          </div>
+
+          <div class="odoo-notebook" id="pat-notebook">
+            <button type="button" data-tab="avaliacao" class="ativo">Avaliação</button>
+            <button type="button" data-tab="historico">Histórico</button>
+            <button type="button" data-tab="bem" id="pat-tab-bem-btn" style="display:none;">Cadastro do bem</button>
+            <button type="button" data-tab="titularidade" id="pat-tab-tit-btn" style="display:none;">Titularidade</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="avaliacao">
+              <div class="grade">
+                <div class="campo"><label>Ano de referência</label><input id="pat-aval-ano" type="number" step="1" min="2000" max="2100" /></div>
+                <div class="campo"><label>Valor de mercado (R$)</label><input id="pat-aval-valor" type="number" step="0.01" min="0" placeholder="vazio = não mexe" /></div>
+                <div class="campo"><label>Base do valor</label><select id="pat-aval-base">
+                  <option value="mercado">Mercado (opinião da diretoria)</option><option value="fipe">FIPE</option><option value="laudo">Laudo</option><option value="aquisicao">Aquisição</option>
+                </select></div>
+                <div class="campo largo"><label>Observações da avaliação</label><input id="pat-aval-obs" placeholder="estado, motivo do valor, laudo…" /></div>
+              </div>
+              <p class="meta" id="pat-aval-info"></p>
+            </div>
+            <div class="odoo-tab" data-tab="historico"><div id="pat-historico"></div></div>
+            <div class="odoo-tab" data-tab="bem">
+              <div class="grade">
+                <div class="campo largo"><label>Nome do bem *</label><input id="pat-bem-nome" placeholder="ex.: Galpão oficina" /></div>
+                <div class="campo"><label>Grupo</label><select id="pat-bem-grupo">
+                  <option value="imovel">Imóveis e instalações</option><option value="usina">Usina fotovoltaica</option>
+                  <option value="acessorios_raiz">Acessórios das raízes</option><option value="ferramentas">Ferramentas do almoxarifado</option>
+                  <option value="motores_pecas">Motores e peças de reposição</option><option value="ferramentaria">Ferramentaria (torno, solda, ponte rolante)</option>
+                  <option value="outro">Outros bens</option>
+                </select></div>
+                <div class="campo"><label>Titularidade (imóvel)</label><select id="pat-bem-tit">
+                  <option value="">—</option><option value="empresa">Em nome da empresa</option><option value="permuta">Em processo de permuta</option>
+                </select></div>
+                <div class="campo"><label>Matrícula</label><input id="pat-bem-matricula" /></div>
+                <div class="campo"><label>Processo da permuta</label><input id="pat-bem-processo" /></div>
+                <div class="campo"><label>Unidade</label><select id="pat-bem-unidade"><option value="m2">m²</option><option value="vb">VB (verba)</option></select></div>
+                <div class="campo"><label>Quantidade</label><input id="pat-bem-qtd" type="number" step="0.01" min="0.01" /></div>
+                <div class="campo"><label>Valor unitário de referência (R$)</label><input id="pat-bem-unit" type="number" step="0.01" min="0" /></div>
+                <div class="campo largo"><label>Observações</label><input id="pat-bem-obs" /></div>
+              </div>
+              <p class="meta">Imóvel em nome de sócio não entra no patrimônio. O valor que conta é a avaliação do ano (aba Avaliação); quantidade × unitário é a referência da planilha.</p>
+            </div>
+            <div class="odoo-tab" data-tab="titularidade">
+              <div class="grade">
+                <div class="campo"><label>Titularidade</label><select id="pat-tit-valor">
+                  <option value="propria">Própria (patrimônio da CGL)</option><option value="locada">Locada</option><option value="terceiro">De terceiro</option>
+                </select></div>
+                <div class="campo largo"><label>Motivo *</label><input id="pat-tit-motivo" placeholder="dono, contrato de locação, consórcio…" /></div>
+              </div>
+              <div class="form-acoes compacta"><button type="button" class="btn" id="btn-pat-tit-gravar">Gravar titularidade</button></div>
+              <p class="meta">Bem locado ou de terceiro sai da avaliação, do total e da lista "sem valor", mas segue normal na operação (mobilização, RDO, manutenção). Para voltar a próprio, use a lista "Fora do patrimônio" no Resumo.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- USUÁRIOS (acesso apenas para admin) -->
     <!-- ============ CHAMADOS (fase 42) ============ -->
     <section class="secao" id="sec-chamados">
@@ -5333,47 +5566,49 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=d6dbbe1"></script>
+<script src="js/core.js?v=7f3304d"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=d6dbbe1"></script>
+<script src="js/historico.js?v=7f3304d"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=d6dbbe1"></script>
-<script src="js/fornecedores.js?v=d6dbbe1"></script>
-<script src="js/apropriacoes.js?v=d6dbbe1"></script>
-<script src="js/funcionarios.js?v=d6dbbe1"></script>
-<script src="js/rh_documentos.js?v=d6dbbe1"></script>
-<script src="js/servicos.js?v=d6dbbe1"></script>
-<script src="js/produtos.js?v=d6dbbe1"></script>
-<script src="js/estoque.js?v=d6dbbe1"></script>
-<script src="js/separacoes.js?v=d6dbbe1"></script>
-<script src="js/compras.js?v=d6dbbe1"></script>
-<script src="js/requisicoes.js?v=d6dbbe1"></script>
-<script src="js/orcamentos.js?v=d6dbbe1"></script>
-<script src="js/propostas.js?v=d6dbbe1"></script>
-<script src="js/contratos.js?v=d6dbbe1"></script>
-<script src="js/contas_pagar.js?v=d6dbbe1"></script>
-<script src="js/centros_custo.js?v=d6dbbe1"></script>
-<script src="js/carteira.js?v=d6dbbe1"></script>
-<script src="js/obras.js?v=d6dbbe1"></script>
-<script src="js/frota.js?v=d6dbbe1"></script>
-<script src="js/viagens.js?v=d6dbbe1"></script>
-<script src="js/equipamentos.js?v=d6dbbe1"></script>
-<script src="js/acessorios.js?v=d6dbbe1"></script>
-<script src="js/reparos.js?v=d6dbbe1"></script>
-<script src="js/manutencao.js?v=d6dbbe1"></script>
-<script src="js/fabricacao.js?v=d6dbbe1"></script>
-<script src="js/mobilizacoes.js?v=d6dbbe1"></script>
-<script src="js/estacas.js?v=d6dbbe1"></script>
-<script src="js/obra_abas.js?v=d6dbbe1"></script>
-<script src="js/medicoes.js?v=d6dbbe1"></script>
-<script src="js/movimentacoes.js?v=d6dbbe1"></script>
-<script src="js/rdo.js?v=d6dbbe1"></script>
-<script src="js/rdo_import_maya.js?v=d6dbbe1"></script>
-<script src="js/usuarios.js?v=d6dbbe1"></script>
-<script src="js/chamados.js?v=d6dbbe1"></script>
-<script src="js/dashboard.js?v=d6dbbe1"></script>
-<script src="js/rh_horas.js?v=d6dbbe1"></script>
+<script src="js/clientes.js?v=7f3304d"></script>
+<script src="js/fornecedores.js?v=7f3304d"></script>
+<script src="js/apropriacoes.js?v=7f3304d"></script>
+<script src="js/funcionarios.js?v=7f3304d"></script>
+<script src="js/rh_documentos.js?v=7f3304d"></script>
+<script src="js/servicos.js?v=7f3304d"></script>
+<script src="js/produtos.js?v=7f3304d"></script>
+<script src="js/estoque.js?v=7f3304d"></script>
+<script src="js/separacoes.js?v=7f3304d"></script>
+<script src="js/compras.js?v=7f3304d"></script>
+<script src="js/requisicoes.js?v=7f3304d"></script>
+<script src="js/orcamentos.js?v=7f3304d"></script>
+<script src="js/propostas.js?v=7f3304d"></script>
+<script src="js/contratos.js?v=7f3304d"></script>
+<script src="js/contas_pagar.js?v=7f3304d"></script>
+<script src="js/centros_custo.js?v=7f3304d"></script>
+<script src="js/carteira.js?v=7f3304d"></script>
+<script src="js/obras.js?v=7f3304d"></script>
+<script src="js/frota.js?v=7f3304d"></script>
+<script src="js/viagens.js?v=7f3304d"></script>
+<script src="js/equipamentos.js?v=7f3304d"></script>
+<script src="js/vendas_bens.js?v=7f3304d"></script>
+<script src="js/acessorios.js?v=7f3304d"></script>
+<script src="js/reparos.js?v=7f3304d"></script>
+<script src="js/manutencao.js?v=7f3304d"></script>
+<script src="js/fabricacao.js?v=7f3304d"></script>
+<script src="js/mobilizacoes.js?v=7f3304d"></script>
+<script src="js/estacas.js?v=7f3304d"></script>
+<script src="js/obra_abas.js?v=7f3304d"></script>
+<script src="js/medicoes.js?v=7f3304d"></script>
+<script src="js/movimentacoes.js?v=7f3304d"></script>
+<script src="js/rdo.js?v=7f3304d"></script>
+<script src="js/rdo_import_maya.js?v=7f3304d"></script>
+<script src="js/usuarios.js?v=7f3304d"></script>
+<script src="js/chamados.js?v=7f3304d"></script>
+<script src="js/dashboard.js?v=7f3304d"></script>
+<script src="js/rh_horas.js?v=7f3304d"></script>
+<script src="js/patrimonio.js?v=7f3304d"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=d6dbbe1"></script>
+<script src="js/init.js?v=7f3304d"></script>
 </body>
 </html>

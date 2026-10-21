@@ -23,7 +23,7 @@ let _frotaVeicEditId = null;
 let _frotaUltimaData;                // undefined = ainda não consultado; null = nenhuma viagem
 
 const FROTA_TIPO_LBL = { caminhao: "Caminhão", veiculo: "Veículo" };
-const FROTA_STATUS_LBL = { disponivel: "Disponível", em_uso: "Em uso", manutencao: "Manutenção", inativo: "Inativo" };
+const FROTA_STATUS_LBL = { disponivel: "Disponível", em_uso: "Em uso", manutencao: "Manutenção", em_manutencao: "Manutenção", inativo: "Inativo", vendido: "Vendido" };
 const VG_STAGES = ["planejada", "em_transito", "concluida"];
 const VG_FINALIDADES = { mobilizacao: "Mobilização", desmobilizacao: "Desmobilização", apoio: "Apoio à obra", entrega_material: "Entrega de material", manutencao: "Manutenção", outro: "Outro" };
 const VG_LOC = { base: "Base CGL", obra: "Obra", cliente: "Cliente", fornecedor_manutencao: "Fornecedor / manutenção" };
@@ -62,7 +62,7 @@ async function carregarFrota(force){
   if(force || !_frotaVeic.length){
     cont.innerHTML = `<p class="vazio">Carregando logística…</p>`;
     const [eq, fu, ob, ns] = await Promise.all([
-      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,km,valor_km,valor_fipe,fipe_referencia,fipe_codigo,status,ativo,localizacao_tipo,localizacao_descricao,localizacao_obra_id,observacoes").order("codigo"),
+      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,km,valor_km,valor_fipe,fipe_referencia,fipe_codigo,status,ativo,localizacao_tipo,localizacao_descricao,localizacao_obra_id,observacoes,venda_id,baixa_em,valor_aquisicao").order("codigo"),
       sb.from("funcionarios").select("id,nome,funcao").eq("ativo", true).order("nome"),
       sb.from("obras").select("id,codigo,nome,status,uf").not("status", "in", "(cancelada)").order("codigo", { ascending: false }),
       sb.from("movimentacoes_ativos").select("id", { count: "exact", head: true }).is("viagem_id", null).eq("interna", false).in("status", ["rascunho", "emitida", "em_transito"])
@@ -130,8 +130,10 @@ function frotaOndeEsta(v){
 function renderFrotaVeiculos(){
   const cont = $("frota-conteudo");
   const termo = ($("frota-busca")?.value || "").trim().toLowerCase();
-  const lista = _frotaVeic.filter(v => !termo || `${v.codigo} ${v.nome || ""} ${v.placa || ""}`.toLowerCase().includes(termo));
-  const c = $("frota-contador"); if(c) c.textContent = `${lista.length} de ${_frotaVeic.length}`;
+  // fase 96: veículo vendido sai da lista operacional (continua em _frotaVeic para as viagens antigas acharem o caminhão)
+  const vendidos = _frotaVeic.filter(v => v.status === "vendido");
+  const lista = _frotaVeic.filter(v => v.status !== "vendido" && (!termo || `${v.codigo} ${v.nome || ""} ${v.placa || ""}`.toLowerCase().includes(termo)));
+  const c = $("frota-contador"); if(c) c.textContent = `${lista.length} de ${_frotaVeic.length - vendidos.length}`;
   const ativos = _frotaVeic.filter(v => v.ativo !== false);
   const comFipe = ativos.filter(v => v.valor_fipe != null);
   const totalFipe = comFipe.reduce((s, v) => s + Number(v.valor_fipe || 0), 0);
@@ -144,7 +146,9 @@ function renderFrotaVeiculos(){
         <td class="num">${v.km != null ? frotaNum(v.km) : "—"}</td><td class="num">${v.valor_km != null ? frotaNum(v.valor_km, 2) : "—"}</td>
         <td class="num">${v.valor_fipe != null ? frotaMoeda(v.valor_fipe) + fipeRef(v) : '<span class="tag ambar" title="sem valor FIPE">—</span>'}</td>
         <td>${esc(frotaOndeEsta(v))}</td><td>${FROTA_STATUS_LBL[v.status] || esc(v.status || "")}</td></tr>`).join("") || `<tr><td colspan="9" class="vazio">Nenhum veículo cadastrado.</td></tr>`}</tbody>
-  </table></div>`;
+  </table></div>
+  ${vendidos.length ? `<p class="meta" style="margin:8px 0 0;">${vendidos.length} veículo(s) vendido(s) fora da lista: ${vendidos.map(v => esc(v.codigo)).join(", ")}. ${typeof vbAbrirPainel === "function" ? `<a href="#" id="frota-vendidos-ver">Ver em Equipamentos › Vendas</a>` : ""}</p>` : ""}`;
+  $("frota-vendidos-ver")?.addEventListener("click", (e) => { e.preventDefault(); vbAbrirPainel({ busca: "" }); });
 }
 
 /* ---------- visão Viagens ---------- */
@@ -360,6 +364,9 @@ function abrirVeiculo(id){
   $("fveic-status").value = v?.status || "disponivel";
   $("fveic-ativo").checked = v ? v.ativo !== false : true;
   $("fveic-obs").value = v?.observacoes || "";
+  // fase 96: venda do veículo (js/vendas_bens.js); vendido não chega aqui (sai da lista)
+  const bVend = $("btn-fveic-vender");
+  if(bVend) bVend.style.display = (v && v.status !== "vendido" && typeof vbPodeRegistrar === "function" && vbPodeRegistrar(v)) ? "" : "none";
   $("frota-veic-modal").style.display = "flex";
 }
 function fecharVeiculo(){ $("frota-veic-modal").style.display = "none"; _frotaVeicEditId = null; }
@@ -443,6 +450,12 @@ function ligarFrota(){
   });
   $("btn-fveic-fechar")?.addEventListener("click", fecharVeiculo);
   $("btn-fveic-salvar")?.addEventListener("click", () => comBotaoTravado("btn-fveic-salvar", salvarVeiculo));
+  $("btn-fveic-vender")?.addEventListener("click", () => {   // fase 96
+    const v = _frotaVeic.find(x => x.id === _frotaVeicEditId);
+    if(!v || typeof vbAbrirRegistro !== "function") return;
+    fecharVeiculo();
+    vbAbrirRegistro(v, null);
+  });
   document.querySelector('nav button[data-secao="frota"]')?.addEventListener("click", () => carregarFrota(false));
 }
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarFrota); else ligarFrota();

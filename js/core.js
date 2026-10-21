@@ -133,7 +133,8 @@ const STATUS = {
     disponivel:     { label:"Disponível",     cor:"verde"    },
     em_uso:         { label:"Em uso",         cor:"azul"     },
     em_manutencao:  { label:"Em manutenção",  cor:"ambar"    },
-    inativo:        { label:"Inativo",        cor:"cinza"    }
+    inativo:        { label:"Inativo",        cor:"cinza"    },
+    vendido:        { label:"Vendido",        cor:"cinza"    }   // fase 96: nasce do registro da venda (js/vendas_bens.js)
   },
   acessorio: {
     sem_avaliacao:      { label:"Sem avaliação",      cor:"cinza"    },
@@ -878,6 +879,12 @@ function podeVerValorObra(){
 function podeVerHorasRH(){
   return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado", "rh", "logistica", "auditor"].includes(usuarioAtual.cargo);
 }
+/* Fase 97 (Bernardo, 20/10/2026, decisão 2): Patrimônio (valor de mercado dos bens) só para diretor e auditor; ADMIN
+   NÃO VÊ. Espelha pode_ler_patrimonio() do banco, que ainda exige a sessão com MFA (aal2). */
+function podeVerPatrimonio(perfil){
+  const p = perfil || usuarioAtual;
+  return !!p && ["diretor", "auditor"].includes(p.cargo);
+}
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
 const SECOES_OCULTAS_POR_CARGO = {
@@ -894,6 +901,11 @@ const SECOES_OCULTAS_POR_CARGO = {
   // e das compras do setor; obras, medições e contas a pagar (podeVerContasPagar) ficam fora
   gestor_manutencao: ["obras", "medicoes"]
 };
+/* Fase 97: Patrimônio sai do menu de todo cargo que não é diretor nem auditor (admin incluído). O item também nasce
+   escondido no index.html e só aplicarMenuPorCargo o mostra (podeVerPatrimonio), então cargo novo fica sem ele. */
+["admin", "engenheiro", "assistente_engenharia", "comercial", "financeiro", "comprador", "almoxarife", "auxiliar_almoxarifado",
+ "gestor_acessorios", "gestor_frota", "gestor_manutencao", "mecanico", "encarregado", "operador", "rh", "sesmt", "logistica",
+ "visualizador"].forEach(c => { (SECOES_OCULTAS_POR_CARGO[c] = SECOES_OCULTAS_POR_CARGO[c] || []).push("patrimonio"); });
 /* Mostra/esconde os itens do menu conforme o cargo. Chamado no login; isolado para poder ser testado. */
 function aplicarMenuPorCargo(perfil){
   const ehDiretorOuAdmin = !!perfil && ["diretor","admin"].includes(perfil.cargo);
@@ -925,6 +937,9 @@ function aplicarMenuPorCargo(perfil){
   // Fase 93c: "Horas e alocação" só para quem libera, confere ou fecha horas (lista em podeVerHorasRH)
   const navRhh = $("nav-rhh");
   if(navRhh) navRhh.style.display = podeVerHorasRH() ? "" : "none";
+  // Fase 97: Patrimônio só diretor e auditor (admin não); a lista de ocultas abaixo reforça para os demais cargos
+  const navPat = $("nav-patrimonio");
+  if(navPat) navPat.style.display = podeVerPatrimonio(perfil) ? "" : "none";
   // Fase 95: criar mobilização (botão do quadro e "Criar mobilização" da aba Contrato da obra) só para quem grava em
   // mobilizacoes (MOB_CARGOS_EDITAM em js/mobilizacoes.js, que já está carregado quando o login chama esta função)
   const podeMob = typeof MOB_CARGOS_EDITAM !== "undefined" && !!perfil && MOB_CARGOS_EDITAM.includes(perfil.cargo);

@@ -1,9 +1,11 @@
 /* ====================================================================
    Módulo: Equipamentos (fase 50 — plano de acessórios §4.1)
    Máquinas de produção: tipo not in (caminhao, veiculo) — esses são da Frota.
-   Painel (kanban por status / lista) + ficha Odoo (Geral · Ficha técnica ·
-   Acessórios por Ø · Mobilizações · Movimentações · Reparos & manutenções · Timeline).
+   Painel (kanban por status / lista / Vendas) + ficha Odoo (Geral · Ficha técnica ·
+   Acessórios por Ø · Mobilizações · Movimentações · Reparos & manutenções · Custos · Venda · Timeline).
    Localização vem do trigger de movimentação; aqui só se corrige o cadastro.
+   Fase 96: venda do bem (botão "Registrar venda", etapa Vendido, aba Venda, visão Vendas) em js/vendas_bens.js;
+   bem vendido sai do kanban/lista e a ficha fica só para consulta.
    ==================================================================== */
 
 let _eqpView = "kanban";
@@ -19,8 +21,11 @@ let _eqpAceCache = { id: null, na: [], pertence: [], compat: [] };
 
 const EQP_TIPOS = ["perfuratriz","bate_estaca","escavadeira","retroescavadeira","guindaste","compressor","gerador","bomba","ferramenta","outro"];
 const EQP_TIPO_LBL = { perfuratriz: "Perfuratriz", bate_estaca: "Bate-estaca", escavadeira: "Escavadeira", retroescavadeira: "Retroescavadeira", guindaste: "Guindaste", compressor: "Compressor", gerador: "Gerador", bomba: "Bomba", ferramenta: "Ferramenta", outro: "Outro" };
-const EQP_LOCAL_LBL = { base: "Base", obra: "Obra", em_transito: "Em trânsito", fornecedor_manutencao: "Fornecedor / manutenção", cliente: "Cliente" };
-const EQP_LOCAL_COR = { base: "verde", obra: "azul", em_transito: "ambar", fornecedor_manutencao: "ambar", cliente: "azul" };
+const EQP_LOCAL_LBL = { base: "Base", obra: "Obra", em_transito: "Em trânsito", fornecedor_manutencao: "Fornecedor / manutenção", cliente: "Cliente", vendido: "Vendido" };
+const EQP_LOCAL_COR = { base: "verde", obra: "azul", em_transito: "ambar", fornecedor_manutencao: "ambar", cliente: "azul", vendido: "cinza" };
+/* fase 96: bem vendido (status e localização "vendido", nascidos do registro da venda) sai das visões operacionais
+   (kanban, lista, filtros, KPIs) e fica só na visão Vendas e na própria ficha, para consulta */
+const EQP_FORA_OPERACAO = ["vendido"];
 const EQP_MOB_ATIVA = ["em_preparacao","em_transito","em_obra"];
 
 function eqpPodeEditar(){
@@ -35,6 +40,7 @@ function eqpOnde(e){
     case "em_transito": return "Em trânsito" + (e.localizacao_obra_id ? " → " + eqpObra(e.localizacao_obra_id) : "") + d;
     case "fornecedor_manutencao": return "Fornecedor / manutenção" + d;
     case "cliente":     return "Cliente" + d;
+    case "vendido":     return "Vendido" + (e.baixa_em ? " em " + dataBR(e.baixa_em) : "");   // fase 96
     default:            return "Base" + d;
   }
 }
@@ -83,7 +89,6 @@ async function carregarEquipamentos(force){
       return;
     }
   }
-  const bn = $("btn-eqp-novo"); if(bn) bn.style.display = eqpPodeEditar() ? "" : "none";
   eqpPreencherFiltros();
   renderEquipamentos();
 }
@@ -96,9 +101,9 @@ function eqpPreencherSelectsFixos(){
   const lo = $("eqp-local-obra");
   if(lo) preencherSelect(lo, _eqpObras.map(o => ({ id: o.id, txt: `${o.codigo} — ${o.nome}` })), "id", "txt", "— obra —");
   const fs = $("eqp-f-status");
-  if(fs) fs.innerHTML = `<option value="">Status</option>` + Object.entries(STATUS.equipamento || {}).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
+  if(fs) fs.innerHTML = `<option value="">Status</option>` + Object.entries(STATUS.equipamento || {}).filter(([k]) => !EQP_FORA_OPERACAO.includes(k)).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
   const fl = $("eqp-f-local");
-  if(fl) fl.innerHTML = `<option value="">Onde está</option>` + Object.entries(EQP_LOCAL_LBL).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  if(fl) fl.innerHTML = `<option value="">Onde está</option>` + Object.entries(EQP_LOCAL_LBL).filter(([k]) => !EQP_FORA_OPERACAO.includes(k)).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
 }
 function eqpPreencherFiltros(){
   const keep = (sel, itens, ph) => { if(!sel) return; const v = sel.value; sel.innerHTML = `<option value="">${ph}</option>` + itens.map(i => `<option value="${esc(i.v)}">${esc(i.t)}</option>`).join(""); sel.value = v; };
@@ -114,6 +119,7 @@ function eqpFiltradas(){
   const fTipo = $("eqp-f-tipo")?.value || "", fSt = $("eqp-f-status")?.value || "", fLoc = $("eqp-f-local")?.value || "", fObra = $("eqp-f-obra")?.value || "";
   const inativos = !!$("eqp-f-inativos")?.checked;
   return _eqpRegistros.filter(e => {
+    if(EQP_FORA_OPERACAO.includes(e.status)) return false;   // fase 96: vendidos só na visão Vendas
     if(!inativos && e.ativo === false) return false;
     if(fTipo && e.tipo !== fTipo) return false;
     if(fSt && e.status !== fSt) return false;
@@ -136,11 +142,18 @@ function eqpFiltradas(){
 }
 function renderEquipamentos(){
   const cont = $("eqp-conteudo"); if(!cont) return;
-  eqpRenderKpis();
+  // fase 96: visão Vendas (js/vendas_bens.js) troca indicadores, filtros e título do painel
+  if(_eqpView === "vendas" && typeof vbRenderPainel !== "function") _eqpView = "kanban";
+  const ehVendas = _eqpView === "vendas";
+  [["eqp-indicadores", !ehVendas], ["eqp-filtros", !ehVendas], ["vb-indicadores", ehVendas], ["vb-filtros", ehVendas]].forEach(([id, ver]) => { const el = $(id); if(el) el.style.display = ver ? "" : "none"; });
+  const tit = $("eqp-painel-titulo"); if(tit) tit.textContent = ehVendas ? "Vendas de bens" : "Máquinas";
+  const bn = $("btn-eqp-novo"); if(bn) bn.style.display = (!ehVendas && eqpPodeEditar()) ? "" : "none";
   document.querySelectorAll("#eqp-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _eqpView));
+  if(ehVendas){ vbRenderPainel(); return; }
+  eqpRenderKpis();
   document.querySelectorAll("#eqp-painel .ind[data-kpi]").forEach(el => el.classList.toggle("ativo", el.dataset.kpi === _eqpKpi));
   const dados = eqpFiltradas();
-  $("eqp-contador").textContent = `${dados.length} de ${_eqpRegistros.filter(e => e.ativo !== false).length}`;
+  $("eqp-contador").textContent = `${dados.length} de ${_eqpRegistros.filter(e => e.ativo !== false && !EQP_FORA_OPERACAO.includes(e.status)).length}`;
   if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhum equipamento com esses filtros.</p>`; return; }
   if(_eqpView === "lista") renderEquipamentosLista(dados); else renderEquipamentosKanban(dados);
 }
@@ -172,7 +185,7 @@ function eqpCardHTML(e){
 }
 function MOB_LBL_SAFE(st){ return (typeof MOB_STATUS === "object" && MOB_STATUS && MOB_STATUS[st]) || st || ""; }
 function renderEquipamentosKanban(dados){
-  const cols = Object.keys(STATUS.equipamento || {});
+  const cols = Object.keys(STATUS.equipamento || {}).filter(st => !EQP_FORA_OPERACAO.includes(st));
   $("eqp-conteudo").innerHTML = `<div class="serv-kanban">${cols.map(st => {
     const its = dados.filter(e => (e.status || "disponivel") === st);
     return `<div class="serv-kan-col" data-status="${st}">
@@ -228,8 +241,17 @@ function abrirFichaEquipamento(e){
   $("eqp-painel").style.display = "none";
   $("eqp-ficha").style.display = "";
   $("eqp-ficha-titulo").textContent = novo ? "Novo equipamento" : eqpTag(e);
-  document.querySelectorAll("#eqp-ficha .eqp-so-existente").forEach(b => b.style.display = novo ? "none" : "");
-  const pode = eqpPodeEditar();
+  // fase 96: bem vendido fica só para consulta (o estado volta só cancelando a venda, na aba Venda)
+  const vendido = e.status === "vendido" || !!e.venda_id;
+  document.querySelectorAll("#eqp-ficha .eqp-so-existente").forEach(b => b.style.display = (novo || vendido) ? "none" : "");
+  const pode = eqpPodeEditar() && !vendido;
+  const bVend = $("btn-eqp-vender");
+  if(bVend) bVend.style.display = (!novo && !vendido && typeof vbPodeRegistrar === "function" && vbPodeRegistrar(e)) ? "" : "none";
+  const notaV = $("eqp-nota-vendido");
+  if(notaV){
+    notaV.style.display = vendido ? "" : "none";
+    notaV.textContent = vendido ? `Bem vendido${e.baixa_em ? " em " + dataBR(e.baixa_em) : ""}: cadastro só para consulta. OS, custos, viagens, mobilizações e RDOs continuam nas abas; a venda (comprador, parcelas, saldo) fica na aba Venda.` : "";
+  }
   $("btn-eqp-salvar").style.display = pode ? "" : "none";
   $("eqp-ficha").querySelectorAll("input,select,textarea").forEach(el => el.disabled = !pode);
   $("eqp-codigo").disabled = !pode || !novo;
@@ -268,6 +290,9 @@ function abrirFichaEquipamento(e){
   $("eqp-man-lista").innerHTML = "";
 
   if(!novo) eqpCarregarFilhas(e);
+  // fase 96: aba Venda (js/vendas_bens.js)
+  const vCont = $("eqp-venda");
+  if(vCont){ if(novo || typeof vbRenderAba !== "function") vCont.innerHTML = `<p class="vazio">—</p>`; else vbRenderAba(e, "eqp-venda"); }
   if(!novo && typeof montarHistorico === "function") montarHistorico("equipamentos", e.id, "eqp-chatter");
   else if(typeof ocultarHistorico === "function") ocultarHistorico("eqp-chatter");
   ativarTabEquipamento("geral");
@@ -490,6 +515,7 @@ function eqpRenderAcessorios(){
 /* ---------- salvar ---------- */
 async function salvarEquipamento(){
   if(!eqpPodeEditar()) return;
+  if(_eqpAtual && (_eqpAtual.status === "vendido" || _eqpAtual.venda_id)){ aviso("app-aviso", "Bem vendido: o cadastro fica só para consulta.", "erro"); return; }   // fase 96
   const n = v => v === "" ? null : Number(v);
   const localTipo = $("eqp-local-tipo").value;
   const reg = {
@@ -528,8 +554,12 @@ async function salvarEquipamento(){
   await abrirEquipamento(id);
 }
 async function eqpMudarStatus(novo){
-  if(!_eqpEditId || !eqpPodeEditar()) return;
+  if(!_eqpEditId) return;
   if(novo === (_eqpAtual.status || "disponivel")) return;
+  // fase 96: "Vendido" nasce do registro da venda (modal); sair de vendido só cancelando a venda
+  if(_eqpAtual.status === "vendido" || _eqpAtual.venda_id){ aviso("app-aviso", `${_eqpAtual.codigo} foi vendido. Para devolvê-lo ao cadastro, cancele a venda na aba Venda.`, "erro"); ativarTabEquipamento("venda"); return; }
+  if(novo === "vendido"){ if(typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); return; }
+  if(!eqpPodeEditar()) return;
   const lbl = eqpLbl(novo);
   if(novo === "inativo" && !confirm(`Marcar ${_eqpAtual.codigo} como INATIVO? A TAG some das listas de mobilização e remessa.`)) return;
   const { error } = await sb.from("equipamentos").update({ status: novo }).eq("id", _eqpEditId);
@@ -609,6 +639,7 @@ function ligarEquipamentos(){
   $("btn-eqp-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-salvar", salvarEquipamento));
   $("btn-eqp-remessa")?.addEventListener("click", eqpNovaRemessa);
   $("btn-eqp-acessorios")?.addEventListener("click", eqpVerAcessorios);
+  $("btn-eqp-vender")?.addEventListener("click", () => { if(_eqpAtual && typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); });   // fase 96
   $("eqp-local-tipo")?.addEventListener("change", eqpToggleLocalObra);
   document.querySelectorAll("#eqp-notebook button").forEach(b => b.addEventListener("click", () => ativarTabEquipamento(b.dataset.tab)));
   document.querySelectorAll("#eqp-ficha .sb-btn[data-goto-tab]").forEach(b => b.addEventListener("click", () => ativarTabEquipamento(b.dataset.gotoTab)));

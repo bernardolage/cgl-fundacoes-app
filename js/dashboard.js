@@ -86,6 +86,8 @@ async function dashLer(fonte, ajustar, alvo){
   return data || [];
 }
 const dashPodeVerMedido = () => dashEhDiretoria() || (typeof podeVerContasPagar === "function" && podeVerContasPagar());
+/* fase 96: KPI "A receber" (medições + vendas de bens) — quem gere o setor financeiro: diretor, admin, financeiro e auditor */
+const dashPodeVerReceber = () => !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 
 async function carregarDashboard(){
   const carga = ++_dashCargaN;
@@ -96,6 +98,7 @@ async function carregarDashboard(){
   document.querySelectorAll("#dash-periodo [data-periodo]").forEach(b => b.classList.toggle("ativo", b.dataset.periodo === _dashPeriodo));
   if($("dash-card-medido")) $("dash-card-medido").style.display = dashPodeVerMedido() ? "" : "none";
   if($("dash-card-custo"))  $("dash-card-custo").style.display  = dashEhDiretoria() ? "" : "none";
+  if($("dash-card-receber")) $("dash-card-receber").style.display = dashPodeVerReceber() ? "" : "none";   // fase 96
   const finEl = $("dash-financeiro");
   if(finEl) finEl.style.display = dashEhDiretoria() ? "" : "none";
   // fase 90: auxiliar de almoxarifado vê só "Exige ação hoje" e "Minha fila"
@@ -134,7 +137,8 @@ async function carregarDashboard(){
 /* ---------- Faixa de indicadores ---------- */
 async function carregarDashFaixa(carga){
   const iv = dashIntervalo(_dashPeriodo);
-  const [prod, frota, obras, rdos, meds, custos, viagens] = await Promise.all([
+  const verReceber = dashPodeVerReceber();
+  const [prod, frota, obras, rdos, meds, custos, viagens, recMed, recVendas] = await Promise.all([
     dashLer("vw_sc_producao_dia", q => q.select("obra_id,equipamento_id,data,estacas,metros,operador_id").gte("data", iv.antIni).lte("data", iv.fim), "dash-k-producao-sub"),
     dashLer("vw_sc_frota", q => q.select("*"), "dash-frota-lista"),
     dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-k-obras-sub"),
@@ -142,7 +146,10 @@ async function carregarDashFaixa(carga){
     dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada","recebida"]).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),   // fase 91: recebida conta como medida
     dashEhDiretoria() ? dashLer("vw_custos", q => q.select("valor").gte("data", iv.ini).lte("data", iv.fim), "dash-k-custo-sub") : Promise.resolve([]),
     // fase 89: viagens em trânsito agora e planejadas sem caminhão/motorista (aba Frota)
-    dashLer("viagens", q => q.select("id,numero,data,status,finalidade,caminhao_id,funcionario_id,destino_tipo,destino_obra_id,destino_descricao,data_saida,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome)").in("status", ["planejada", "em_transito"]).order("data"))
+    dashLer("viagens", q => q.select("id,numero,data,status,finalidade,caminhao_id,funcionario_id,destino_tipo,destino_obra_id,destino_descricao,data_saida,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome)").in("status", ["planejada", "em_transito"]).order("data")),
+    // fase 96: "A receber" = NFs de medição não recebidas (mesma regra da fase 91) + saldo das vendas de bens
+    verReceber ? dashLer("medicoes", q => q.select("valor_final,valor_medido,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,nf_numero,nf_vencimento,status").in("status", ["aprovada", "faturada"]).not("nf_numero", "is", null), "dash-k-receber-sub") : Promise.resolve(null),
+    verReceber && typeof vbResumoAReceber === "function" ? vbResumoAReceber() : Promise.resolve(null)
   ]);
   if(carga !== _dashCargaN) return;
   _dashProd = prod || []; _dashFrota = frota || []; _dashObrasAnd = obras || []; _dashViagens = viagens || [];
@@ -175,6 +182,20 @@ async function carregarDashFaixa(carga){
     const v = custos.reduce((s, x) => s + Number(x.valor || 0), 0);
     set("dash-k-custo", brl(v)); vazio("dash-k-custo", !(v > 0));
     set("dash-k-custo-sub", `${custos.length} lançamento(s) ${quando}`);
+  }
+  // fase 96: A receber (não depende do período: é o saldo de hoje), em duas linhas no detalhe
+  if(verReceber && recMed){
+    const hoje = hojeISO();
+    const liq = (m) => typeof medLiquido === "function" ? medLiquido(m) : (Number(m.valor_final) || Number(m.valor_medido) || 0) - (Number(m.retencao_valor) || 0) - (m.iss_retido_fonte === false ? 0 : (Number(m.iss_valor) || 0));
+    const nfs = recMed.filter(m => String(m.nf_numero || "").trim()).map(m => ({ saldo: Math.max(0, Math.round((liq(m) - (Number(m.recebido_valor) || 0)) * 100) / 100), venc: !!m.nf_vencimento && m.nf_vencimento < hoje })).filter(m => m.saldo > 0.009);
+    const medTot = nfs.reduce((s, m) => s + m.saldo, 0), medVenc = nfs.filter(m => m.venc).reduce((s, m) => s + m.saldo, 0);
+    const vb = recVendas && !recVendas.erro ? recVendas : { total: 0, vencido: 0, n: 0 };
+    const total = medTot + vb.total;
+    set("dash-k-receber", brl(total)); vazio("dash-k-receber", !(total > 0));
+    const sub = $("dash-k-receber-sub");
+    if(sub) sub.innerHTML = `<a href="#" data-dash-receber="medicoes" title="Medições › NFs a receber">Medições ${brl(medTot)}</a> · ${nfs.length} NF(s)${medVenc > 0.009 ? ` <span class="txt-perigo">(${brl(medVenc)} vencido)</span>` : ""}<br>`
+      + (recVendas?.erro ? `<span class="meta">Vendas de bens: não foi possível ler</span>`
+        : `<a href="#" data-dash-receber="vendas" title="Equipamentos › Vendas em aberto">Vendas de bens ${brl(vb.total)}</a> · ${vb.n} venda(s)${vb.vencido > 0.009 ? ` <span class="txt-perigo">(${brl(vb.vencido)} vencido)</span>` : ""}`);
   }
 }
 
@@ -301,6 +322,10 @@ async function dashAbrirRegularizar(a){
     if(typeof renderAcessoriosContagem !== "function") return;
     _aceFamilia = a.filtro || ""; _aceView = "contagem"; _aceSoSemPreco = true;
     irParaSecao("acessorios");
+  } else if(a.secao === "equipamentos" && /^(venda_|veiculo_sem_transferencia|bem_vendido_)/.test(a.filtro || "")){ // fase 96: uma venda abre a aba Venda; várias, a visão Vendas filtrada
+    const PEND = { venda_sem_contrato: "sem_contrato", veiculo_sem_transferencia: "sem_transferencia", bem_vendido_sem_valor_aquisicao: "sem_valor_aquisicao" };
+    if(a.registro_id && typeof vbAbrirVendaPorId === "function") vbAbrirVendaPorId(a.registro_id);
+    else if(typeof vbAbrirPainel === "function") vbAbrirPainel({ pend: PEND[a.filtro] || "", status: a.filtro === "venda_incompleta" ? "abertas" : "" });
   } else if(a.secao === "equipamentos" && a.filtro === "leitura_parada"){ // fase 92: máquina em obra sem leitura de horímetro
     if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
   } else if(a.secao === "equipamentos"){
@@ -330,6 +355,12 @@ async function dashAbrirAcao(a){
       else dashIrObrasAtivas();
       break;
     case "equipamentos":
+      // fase 96: parcela de venda de bem vencida / a vencer → a venda (uma só) ou a visão Vendas filtrada
+      if(a.setor === "financeiro" && /venda/i.test(a.titulo || "") && typeof vbAbrirPainel === "function"){
+        if(id && typeof vbAbrirVendaPorId === "function") vbAbrirVendaPorId(id);
+        else vbAbrirPainel({ status: a.nivel === "critico" ? "atrasada" : "abertas" });
+        break;
+      }
       if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
       break;
     case "medicoes":
@@ -543,6 +574,14 @@ function ligarSalaDeComando(){
     if(tr) dashAbrirObra(tr.dataset.obra);
   });
   sec.addEventListener("click", (e) => {
+    // fase 96: as duas linhas do KPI "A receber"
+    const r = e.target.closest("[data-dash-receber]");
+    if(r){
+      e.preventDefault();
+      if(r.dataset.dashReceber === "vendas"){ if(typeof vbAbrirPainel === "function") vbAbrirPainel({ status: "abertas" }); }
+      else if(irParaSecao("medicoes") && typeof medRecebAbrirPreset === "function") medRecebAbrirPreset("a_receber");
+      return;
+    }
     const b = e.target.closest(".dash-origem");
     if(!b) return;
     const o = b.dataset.origem;

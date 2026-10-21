@@ -82,6 +82,8 @@ async function carregarCarteira(forcar){
   _cartDetalhes.clear();
   preencherFiltroTipoPend();
   renderCarteira();
+  // fase 96: bloco "Bens vendidos no ano" (quantidade, valor, recebido, saldo, resultado contra a aquisição)
+  if(typeof vbRenderCarteira === "function") vbRenderCarteira("cart-vendas-bens");
 }
 
 function preencherFiltroTipoPend(){

@@ -2881,3 +2881,22 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
   color: var(--txt-sobre); padding: 4px 14px; cursor: pointer; border-radius: var(--radius-sm); font-size: var(--txt-sm); font-weight: 600; white-space: nowrap; }
 .aviso-mfa-btn:hover { background: color-mix(in srgb, var(--txt-sobre) 35%, transparent); }
 .aviso-mfa-fechar { background: color-mix(in srgb, var(--txt-sobre) 15%, transparent); border: 0; padding: 4px 10px; font-weight: 400; }
+
+/* ---- Fase 97: Patrimônio (js/patrimonio.js). Tabela por grupo da planilha de avaliação, densidade de ERP. ---- */
+.pat-tabela td { vertical-align: top; }
+.pat-tabela td:first-child { white-space: nowrap; }
+.pat-tabela tr.pat-grupo td { background: var(--sup-3); border-top: 2px solid var(--borda-forte); }
+.pat-tabela tr.pat-sem-valor td { background: var(--aviso-bg); }
+.pat-tabela tfoot td { background: var(--sup-2); border-top: 2px solid var(--borda-forte); }
+.pat-tabela td.pat-editavel { cursor: text; }
+.pat-tabela td.pat-editavel:hover { outline: 1px dashed var(--marca-600); outline-offset: -3px; }
+.pat-valor-input { width: 140px; text-align: right; }
+.pat-resumo-cards { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--esp-3); margin-bottom: var(--esp-4); }
+.pat-resumo-cards .ind { padding: var(--esp-3); }
+.pat-resumo-cards .ind .num { font-size: 20px; }
+.pat-resumo-cards .ind .meta { margin-top: 4px; }
+.pat-mfa { background: var(--sup-2); border: 1px solid var(--borda); border-radius: var(--radius-md); padding: var(--esp-4); max-width: 640px; }
+.pat-mfa-linha { display: flex; gap: var(--esp-2); align-items: center; margin-top: var(--esp-2); }
+.pat-mfa-linha input { width: 120px; letter-spacing: 3px; text-align: center; }
+.pat-log { list-style: none; margin: 0; padding: 0; font-size: var(--txt-sm); }
+.pat-log li { padding: 4px 0; border-bottom: 1px solid var(--borda); }
