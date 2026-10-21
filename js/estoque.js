@@ -1,6 +1,7 @@
 /* ====================================================================
    Módulo: Estoque por quantidade (fase 51 — plano de acessórios §4.6)
    - Registrar movimento: entrada (compra), saída (consumo em obra/TAG), ajuste (inventário).
+     Fase 100 (#97): a saída ficou só na "Saída de material" (balcão, com quem retira; obrigatório para EPI).
      O gatilho aplicar_movimentacao_estoque atualiza produtos.estoque_atual / custo_ultimo.
    - Reposição: só SKUs com controle_reposicao (atual · mínimo · ideal · a comprar) + lista de compra.
    - Últimos movimentos.
@@ -25,8 +26,7 @@ let _balHoje = [];                 // saídas de hoje
 const EST_TIPO_LBL = { entrada: "Entrada", saida: "Saída", ajuste: "Ajuste", devolucao: "Devolução", transferencia: "Transferência" };
 const EST_TIPO_COR = { entrada: "verde", saida: "ambar", ajuste: "azul", devolucao: "verde", transferencia: "cinza" };
 const EST_AJUDA = {
-  entrada: "Compra ou recebimento: soma ao estoque e atualiza o custo do produto.",
-  saida: "Consumo ou envio para obra: desconta do estoque. Informe a obra, a TAG ou o setor / obra interna: é aí que o custo do material entra.",
+  entrada: "Compra ou recebimento: soma ao estoque e atualiza o custo do produto. Saída é no quadro \"Saída de material\", acima.",
   ajuste: "Inventário: informe a quantidade CONTADA; o sistema lança a diferença para o estoque ficar igual à contagem."
 };
 
@@ -53,13 +53,10 @@ async function carregarEstoque(force){
       sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).not("tipo", "in", "(caminhao,veiculo)").order("codigo"),
       sb.from("centros_custo").select("id,nome,tipo").eq("ativo", true).order("tipo", { ascending: false }).order("nome")   // fase 76
     ]);
-    const centros = cc.data || [], grp = t => centros.filter(c => c.tipo === t).map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
-    _estCentros = centros;
-    if($("est-centro")) $("est-centro").innerHTML = '<option value="">— nenhum —</option>' + `<optgroup label="Setores">${grp("setor")}</optgroup><optgroup label="Obras internas">${grp("obra_interna")}</optgroup>`;
+    _estCentros = cc.data || [];
     $("ent-fornecedor").innerHTML = '<option value="">— não informado —</option>' + (fo.data || []).map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}</option>`).join("");
     _estObras = ob.data || []; _estEquips = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
-    $("est-obra").innerHTML = '<option value="">— nenhuma —</option>' + _estObras.map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
-    $("est-equip").innerHTML = '<option value="">— nenhum —</option>' + _estEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
+    // fase 100 (#97): obra / TAG / setor da saída ficam só no destino da "Saída de material"
     balPreencherDestino();
     _estCarregado = true;
   }
@@ -68,13 +65,19 @@ async function carregarEstoque(force){
   if($("bal-card")) $("bal-card").style.display = pode ? "" : "none";
   if($("est-dev-card")) $("est-dev-card").style.display = pode ? "" : "none";   // fase 83
   estAplicarTipo();
+  // fase 100: relatório de EPI por colaborador e por obra (js/epi.js), só para quem vê
+  if(typeof epiAplicarVisibilidade === "function"){ epiAplicarVisibilidade(); if(podeVerEpi()) epiRenderRelatorio("epi-conteudo"); }
   await Promise.all([carregarReposicao(), carregarUltimasEntradas(), pode ? carregarSaidasHoje() : null]);
 }
 
 /* ---------- Saída no balcão (fase 78) ----------
    Material entregue a uma pessoa (retirante, de funcionarios) com destino obra, TAG ou setor / obra interna.
    Vários itens numa transação (RPC estoque_saida_registrar); o banco só recusa saldo insuficiente em item com
-   controle de reposição (o saldo herdado do Odoo não é confiável). Desfazer em 10 min = devolução com estorno_de. */
+   controle de reposição (o saldo herdado do Odoo não é confiável). Desfazer em 10 min = devolução com estorno_de.
+   Fase 100 (#97): é a tela única de saída ("Registrar movimento" ficou só com entrada e inventário). Quem retira
+   é obrigatório só quando a lista tem EPI (produtos.categoria_custo = epi; decisão 1 do Bernardo) e vai para
+   movimentacoes_estoque.funcionario_id; com EPI e retirante, a assinatura do recebimento abre em seguida
+   (js/epi.js). */
 function balPreencherDestino(){
   const sel = $("bal-destino"); if(!sel) return;
   const obras = _estObras.filter(o => o.status === "em_andamento");
@@ -116,7 +119,8 @@ function balLigarRetirante(){
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 200));
 }
 function semAcentoBal(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
-const BAL_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,custo_ultimo,codigo_barras";
+const BAL_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,custo_ultimo,codigo_barras,categoria_custo";
+function balEhEpi(p){ return !!p && p.categoria_custo === "epi"; }   // fase 100
 async function balBuscar(termo){
   const t = termo.replace(/[%,()]/g, " ").trim(); if(t.length < 2) return [];
   const { data } = await sb.from("produtos").select(BAL_COLS).eq("ativo", true)
@@ -144,6 +148,7 @@ function balAddItem(p){
   if(ja) ja.quantidade = Number(ja.quantidade || 0) + 1; else _balItens.push({ p, quantidade: 1, observacoes: "" });
   const inp = $("bal-item"); inp.value = ""; $("bal-item-res").style.display = "none"; inp.focus();
   renderBalItens();
+  estSugerirCentro(p.id);   // fase 76 → 100: destino vazio recebe o setor da última compra do item
 }
 function renderBalItens(){
   const tb = $("bal-itens"); if(!tb) return;
@@ -151,7 +156,7 @@ function renderBalItens(){
   if(!_balItens.length){ tb.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum item. Bipe ou busque acima.</td></tr>`; return; }
   tb.innerHTML = _balItens.map((it, i) => { const saldo = Number(it.p.estoque_atual || 0), falta = Number(it.quantidade || 0) > saldo;
     return `<tr data-i="${i}" class="${falta && it.p.controle_reposicao ? "est-rep-critico" : ""}">
-      <td><strong>${esc(it.p.codigo)}</strong></td><td>${esc(it.p.nome)}</td>
+      <td><strong>${esc(it.p.codigo)}</strong></td><td>${esc(it.p.nome)}${balEhEpi(it.p) ? ' <span class="tag azul" title="EPI: exige quem retira e entra na ficha de EPI do colaborador">EPI</span>' : it.p.categoria_custo === "uniforme" ? ' <span class="tag cinza">uniforme</span>' : ""}</td>
       <td class="num">${num(saldo)} <span class="meta">${esc(it.p.unidade || "un")}</span>${falta ? `<div class="meta ${it.p.controle_reposicao ? "txt-perigo" : ""}">${it.p.controle_reposicao ? "saldo insuficiente" : "vai ficar negativo"}</div>` : ""}</td>
       <td><input type="number" class="bal-q" step="0.001" min="0.001" value="${esc(it.quantidade)}" style="width:86px;text-align:right;" /></td>
       <td><input class="bal-o" value="${esc(it.observacoes || "")}" placeholder="opcional" style="width:100%;" /></td>
@@ -162,33 +167,46 @@ function renderBalItens(){
 }
 async function registrarSaidaBalcao(){
   if(!estPodeEditar()){ aviso("app-aviso", "Seu perfil não movimenta estoque.", "erro"); return; }
-  if(!_balRetirante){ aviso("app-aviso", "Escolha quem está retirando o material.", "erro"); $("bal-retirante").focus(); return; }
+  // fase 100: quem retira só é obrigatório com EPI na lista (o banco confere de novo)
+  const epis = _balItens.filter(i => balEhEpi(i.p));
+  if(!_balRetirante && $("bal-retirante").value.trim()){ aviso("app-aviso", "Escolha quem retira na lista de nomes (ou apague o campo).", "erro"); $("bal-retirante").focus(); return; }
+  if(!_balRetirante && epis.length){ aviso("app-aviso", `Informe quem retira: ${epis.map(i => i.p.codigo).join(", ")} ${epis.length > 1 ? "são EPI" : "é EPI"} e a entrega vai para a ficha de EPI do colaborador.`, "erro"); $("bal-retirante").focus(); return; }
   const dv = $("bal-destino").value;
   if(!dv){ aviso("app-aviso", "Escolha o destino: obra, TAG ou setor.", "erro"); $("bal-destino").focus(); return; }
   if(!_balItens.length){ aviso("app-aviso", "Adicione pelo menos um item.", "erro"); $("bal-item").focus(); return; }
   if(_balItens.some(i => !(Number(i.quantidade) > 0))){ aviso("app-aviso", "Há item sem quantidade.", "erro"); return; }
   const destino = dv.startsWith("obra:") ? { obra_id: dv.slice(5) } : dv.startsWith("eq:") ? { equipamento_id: dv.slice(3) } : { centro_custo_id: dv.slice(3) };
+  const itens = _balItens.slice(), retirante = _balRetirante;
   const { data, error } = await sb.rpc("estoque_saida_registrar", {
-    p_retirante_id: _balRetirante.id, p_destino: destino,
-    p_itens: _balItens.map(i => ({ produto_id: i.p.id, quantidade: Number(i.quantidade), observacoes: i.observacoes || null })),
+    p_retirante_id: retirante ? retirante.id : null, p_destino: destino,
+    p_itens: itens.map(i => ({ produto_id: i.p.id, quantidade: Number(i.quantidade), observacoes: i.observacoes || null })),
     p_documento: $("bal-doc").value.trim() || null
   });
   if(error){ aviso("app-aviso", "Saída não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
-  const n = (data || []).length;
-  aviso("app-aviso", `Saída registrada: ${n} item(ns) para ${_balRetirante.nome} · ${$("bal-destino").selectedOptions[0]?.textContent || ""}.`, "ok");
+  const ids = data || [], n = ids.length;
+  aviso("app-aviso", `Saída registrada: ${n} item(ns)${retirante ? " para " + retirante.nome : ""} · ${$("bal-destino").selectedOptions[0]?.textContent || ""}.`, "ok");
   _balItens = []; _balRetirante = null; $("bal-retirante").value = ""; $("bal-doc").value = ""; $("bal-destino").value = "";
   renderBalItens();
+  // fase 100: EPI entregue a uma pessoa → assinatura do recebimento na tela (o RPC devolve os ids na ordem dos itens)
+  const assinar = retirante ? itens.map((it, k) => ({ it, id: ids[k] })).filter(x => x.id && balEhEpi(x.it.p)) : [];
+  if(assinar.length && typeof epiAbrirAssinatura === "function"){
+    epiAbrirAssinatura({ funcionarioId: retirante.id, funcionarioNome: retirante.nome,
+      itens: assinar.map(x => ({ id: x.id, descricao: `${num(x.it.quantidade)} ${x.it.p.unidade || "un"} · ${x.it.p.codigo} — ${x.it.p.nome}` })),
+      aoConcluir: () => carregarSaidasHoje() });
+  }
   if(typeof carregarProdutos === "function") carregarProdutos();
   await Promise.all([carregarSaidasHoje(), carregarReposicao(), carregarUltimasEntradas()]);
 }
 async function carregarSaidasHoje(){
   const cont = $("bal-hoje"); if(!cont) return;
   const desde = new Date(hojeISO() + "T00:00:00").toISOString();
-  const [sa, es] = await Promise.all([
-    sb.from("movimentacoes_estoque").select("id,quantidade,custo_unitario,obra_id,equipamento_id,centro_custo_id,documento,observacoes,created_at,registrado_por,produto:produtos(codigo,nome,unidade),retirante:funcionarios!movimentacoes_estoque_responsavel_id_fkey(nome)")
-      .eq("tipo", "saida").gte("created_at", desde).order("created_at", { ascending: false }).limit(300),
+  const COLS = "id,quantidade,custo_unitario,obra_id,equipamento_id,centro_custo_id,documento,observacoes,created_at,registrado_por,produto:produtos(codigo,nome,unidade,categoria_custo),retirante:funcionarios!movimentacoes_estoque_responsavel_id_fkey(nome)";
+  const saidas = cols => sb.from("movimentacoes_estoque").select(cols).eq("tipo", "saida").gte("created_at", desde).order("created_at", { ascending: false }).limit(300);
+  let [sa, es] = await Promise.all([
+    saidas(COLS + ",funcionario_id,assinatura_em"),   // fase 100: quem recebeu e assinatura do EPI
     sb.from("movimentacoes_estoque").select("estorno_de").not("estorno_de", "is", null).gte("created_at", desde)
   ]);
+  if(sa.error && ["42703", "PGRST204"].includes(sa.error.code)) sa = await saidas(COLS);   // migration da fase 100 ainda não aplicada
   if(sa.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(sa.error.message)}</p>`; return; }
   const estornadas = new Set((es.data || []).map(e => e.estorno_de));
   _balHoje = (sa.data || []).map(m => ({ ...m, estornada: estornadas.has(m.id) }));
@@ -200,16 +218,28 @@ function renderSaidasHoje(){
   $("bal-hoje-contador").textContent = _balHoje.length ? `${valendo.length} · ${brl(valendo.reduce((s, m) => s + Number(m.quantidade || 0) * Number(m.custo_unitario || 0), 0))}` : "";
   if(!_balHoje.length){ cont.innerHTML = `<p class="vazio">Nenhuma saída hoje.</p>`; return; }
   const admin = !!usuarioAtual && ["admin","diretor"].includes(usuarioAtual.cargo);
+  // fase 100: EPI entregue a uma pessoa sem assinatura ainda → botão "assinar" (a mesma tela de assinatura do balcão)
+  const assinaTag = m => (m.estornada || m.produto?.categoria_custo !== "epi" || !m.funcionario_id) ? ""
+    : m.assinatura_em ? ' <span class="tag verde" title="recebimento assinado">assinado</span>'
+    : ` <button type="button" class="btn-sec btn-sm bal-assinar" data-id="${esc(m.id)}" title="colher a assinatura do recebimento">✍ assinar</button>`;
   cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Hora</th><th>Retirante</th><th>Item</th><th class="num">Qtd</th><th class="num">Custo</th><th>Destino</th><th>Documento / obs.</th><th></th></tr></thead>
     <tbody>${_balHoje.map(m => { const d = new Date(m.created_at), min = (Date.now() - d.getTime()) / 60000;
       const podeDesfazer = !m.estornada && min < 10 && (m.registrado_por === usuarioAtual?.id || admin);
       return `<tr${m.estornada ? ' class="meta" style="text-decoration:line-through;"' : ""}>
         <td>${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</td><td>${esc(m.retirante?.nome || "—")}</td>
-        <td>${esc(m.produto ? m.produto.codigo + " — " + m.produto.nome : "—")}</td>
+        <td>${esc(m.produto ? m.produto.codigo + " — " + m.produto.nome : "—")}${m.produto?.categoria_custo === "epi" ? ' <span class="tag azul">EPI</span>' : ""}${assinaTag(m)}</td>
         <td class="num">${num(Math.abs(m.quantidade || 0))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${brl(Math.abs(Number(m.quantidade || 0)) * Number(m.custo_unitario || 0))}</td>
         <td>${esc(balDestinoTxt(m))}</td><td class="meta">${esc([m.documento, m.observacoes].filter(Boolean).join(" · "))}</td>
         <td>${m.estornada ? '<span class="tag cinza">desfeita</span>' : podeDesfazer ? `<button type="button" class="btn-sec btn-sm bal-desfazer" data-id="${esc(m.id)}" title="desfazer (até 10 min)">↩ Desfazer</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
+  cont.querySelectorAll(".bal-assinar").forEach(b => b.addEventListener("click", () => {
+    const m = _balHoje.find(x => x.id === b.dataset.id); if(!m || typeof epiAbrirAssinatura !== "function") return;
+    // junta as entregas de EPI do mesmo colaborador ainda sem assinatura (uma assinatura para o lote do dia)
+    const lote = _balHoje.filter(x => !x.estornada && x.funcionario_id === m.funcionario_id && x.produto?.categoria_custo === "epi" && !x.assinatura_em);
+    epiAbrirAssinatura({ funcionarioId: m.funcionario_id, funcionarioNome: m.retirante?.nome,
+      itens: lote.map(x => ({ id: x.id, descricao: `${num(Math.abs(x.quantidade || 0))} ${x.produto?.unidade || ""} · ${x.produto?.codigo} — ${x.produto?.nome}` })),
+      aoConcluir: () => carregarSaidasHoje() });
+  }));
   cont.querySelectorAll(".bal-desfazer").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, async () => {
     if(!confirm("Desfazer esta saída? O material volta ao estoque e o custo sai do destino.")) return;
     const { error } = await sb.rpc("estoque_saida_desfazer", { p_id: b.dataset.id });
@@ -335,9 +365,8 @@ function estAplicarTipo(){
   document.querySelectorAll("#est-tipos .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.tipo === _estTipo));
   $("est-tipo-ajuda").textContent = EST_AJUDA[_estTipo] || "";
   document.querySelectorAll(".est-so-entrada").forEach(el => el.style.display = _estTipo === "entrada" ? "" : "none");
-  document.querySelectorAll(".est-so-saida").forEach(el => el.style.display = _estTipo === "saida" ? "" : "none");
   $("est-qtd-label").textContent = _estTipo === "ajuste" ? "Quantidade contada *" : "Quantidade *";
-  $("btn-registrar-entrada").textContent = _estTipo === "entrada" ? "💾 Registrar entrada" : _estTipo === "saida" ? "💾 Registrar saída" : "💾 Lançar contagem";
+  $("btn-registrar-entrada").textContent = _estTipo === "entrada" ? "💾 Registrar entrada" : "💾 Lançar contagem";
   estMostrarProdInfo();
 }
 function estMostrarProdInfo(){
@@ -383,17 +412,22 @@ function estSelecionarProduto(p){
   const sel = $("ent-produto");
   if(sel){ sel.innerHTML = p ? `<option value="${esc(p.id)}" selected>${esc(estProdTxt(p))}</option>` : ""; }
   estMostrarProdInfo();
-  if(p) estSugerirCentro(p.id);
 }
-/* fase 76: na saída, sugere o setor / obra interna que pediu a última compra do item (editável) */
+/* fase 76 → 100: na saída, sugere o setor / obra interna que pediu a última compra do item (editável); desde a fase
+   100 vale para o destino da "Saída de material", quando ainda está vazio */
 async function estSugerirCentro(produtoId){
-  const sel = $("est-centro"); if(!sel || sel.value) return;
+  const sel = $("bal-destino"); if(!sel || sel.value) return;
   const { data } = await sb.from("pedido_compra_itens").select("centro_custo_id").eq("produto_id", produtoId).not("centro_custo_id", "is", null).order("created_at", { ascending: false }).limit(1);
   const c = data && data[0] && data[0].centro_custo_id;
-  if(c && _estProd?.id === produtoId && !sel.value && [...sel.options].some(o => o.value === c)) sel.value = c;
+  if(c && !sel.value && [...sel.options].some(o => o.value === "cc:" + c)) sel.value = "cc:" + c;
 }
-/* atalho da Reposição: prepara o formulário para o item */
+/* atalho da Reposição: prepara o formulário para o item; saída vai para a "Saída de material" (fase 100, #97) */
 function estPrepararMovimento(tipo, p){
+  if(tipo === "saida"){
+    balAddItem(p);
+    $("bal-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   _estTipo = tipo; estAplicarTipo();
   $("est-busca-prod").value = estProdTxt(p); estSelecionarProduto(p);
   $("ent-qtd").value = tipo === "ajuste" ? (p.estoque_atual ?? "") : "";
@@ -416,14 +450,7 @@ async function registrarEntrada(){
     reg.custo_unitario = Number($("ent-custo").value);
     if(!(reg.custo_unitario >= 0) || $("ent-custo").value === ""){ aviso("app-aviso", "Informe o custo unitário.", "erro"); return; }
     reg.fornecedor_id = $("ent-fornecedor").value || null;
-  } else if(_estTipo === "saida"){
-    if(qtdInformada <= 0){ aviso("app-aviso", "Informe a quantidade.", "erro"); return; }
-    if(qtdInformada > Number(_estProd.estoque_atual || 0) && !confirm(`Saída de ${num(qtdInformada)} com estoque atual ${num(_estProd.estoque_atual || 0)}. O saldo vai ficar negativo. Continuar?`)) return;
-    reg.obra_id = $("est-obra").value || null;
-    reg.equipamento_id = $("est-equip").value || null;
-    reg.centro_custo_id = $("est-centro")?.value || null;
-    reg.custo_unitario = Number(_estProd.custo_ultimo || 0);
-  } else { // ajuste: delta = contado - atual
+  } else { // ajuste: delta = contado - atual (fase 100: saída só pela "Saída de material")
     const delta = qtdInformada - Number(_estProd.estoque_atual || 0);
     if(delta === 0){ aviso("app-aviso", "A contagem é igual ao estoque atual. Nada a lançar.", "ok"); return; }
     reg.quantidade = delta;
@@ -432,9 +459,8 @@ async function registrarEntrada(){
   }
   const { error } = await sb.from("movimentacoes_estoque").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível registrar: " + error.message, "erro"); return; }
-  aviso("app-aviso", _estTipo === "entrada" ? "Entrada registrada — estoque e custo atualizados." : _estTipo === "saida" ? "Saída registrada." : "Contagem lançada — estoque ajustado.", "ok");
+  aviso("app-aviso", _estTipo === "entrada" ? "Entrada registrada — estoque e custo atualizados." : "Contagem lançada — estoque ajustado.", "ok");
   ["ent-qtd","ent-custo","ent-doc","est-mov-obs","est-busca-prod"].forEach(id => { const el = $(id); if(el) el.value = ""; });
-  $("est-obra").value = ""; $("est-equip").value = ""; if($("est-centro")) $("est-centro").value = "";
   estSelecionarProduto(null);
   if(typeof carregarProdutos === "function") await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
@@ -465,7 +491,7 @@ function estSituacao(p){
 async function carregarReposicao(){
   const cont = $("est-reposicao"); if(!cont) return;
   const { data, error } = await sb.from("produtos")
-    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,localizacao,odoo_saldo_em")
+    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,localizacao,odoo_saldo_em,codigo_barras,categoria_custo")
     .eq("controle_reposicao", true).eq("ativo", true).order("nome");
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   _estRep = data || [];

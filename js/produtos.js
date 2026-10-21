@@ -189,8 +189,24 @@ function mostrarPainelProd(){
   prodEditId = null;
 }
 
+/* Fase 100 (#100): categoria de custo do produto (EPI e Uniforme entram na ficha de EPI do colaborador), CA e troca
+   do EPI. As colunas ca / epi_validade_dias só existem depois da migration 20261021_fase100b: até lá os dois campos
+   ficam escondidos e não vão no salvar (_prodTemEpi vem do select("*") da ficha aberta). */
+let _prodTemEpi = false;
+function prodPreencherCatCusto(valor){
+  const sel = $("prod-cat-custo"); if(!sel) return;
+  const lbl = typeof CMP_CAT_LBL === "object" ? CMP_CAT_LBL : {};
+  sel.innerHTML = `<option value="">— não definida —</option>` + Object.entries(lbl).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  sel.value = valor || "";
+}
+function prodAplicarCamposEpi(){
+  document.querySelectorAll("#prod-ficha .prod-epi").forEach(el => { el.style.display = _prodTemEpi ? "" : "none"; });
+}
+
 function novoProduto(){
   prodEditId = null;
+  prodPreencherCatCusto(""); if($("prod-ca")) $("prod-ca").value = ""; if($("prod-epi-validade")) $("prod-epi-validade").value = "";
+  prodAplicarCamposEpi();
   ["prod-codigo","prod-nome","prod-codbarras","prod-refext","prod-localizacao","prod-descricao"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
   $("prod-categoria").value = "";
@@ -219,6 +235,12 @@ async function abrirProduto(id){
   $("prod-localizacao").value = data.localizacao || "";
   $("prod-descricao").value   = data.descricao || "";
   $("prod-conferido").checked = data.inventario_conferido === true;
+  // fase 100: categoria de custo, CA e troca do EPI
+  _prodTemEpi = Object.prototype.hasOwnProperty.call(data, "ca");
+  prodPreencherCatCusto(data.categoria_custo);
+  if($("prod-ca")) $("prod-ca").value = data.ca || "";
+  if($("prod-epi-validade")) $("prod-epi-validade").value = data.epi_validade_dias ?? "";
+  prodAplicarCamposEpi();
   $("btn-excluir-prod").style.display = "";
   abrirFichaProdVisual(data);
   prodCarregarFabricacoes(id);
@@ -297,6 +319,16 @@ async function salvarProduto(){
     descricao:     $("prod-descricao").value.trim() || null,
     inventario_conferido: $("prod-conferido").checked
   };
+  // fase 100: categoria de custo sempre (coluna da fase 53); CA e troca só com a migration da fase 100 aplicada
+  if($("prod-cat-custo")) reg.categoria_custo = $("prod-cat-custo").value || null;
+  if(_prodTemEpi){
+    reg.ca = ($("prod-ca")?.value || "").trim() || null;
+    const val = $("prod-epi-validade")?.value || "";
+    reg.epi_validade_dias = val === "" ? null : Math.round(Number(val));
+    if(reg.epi_validade_dias != null && !(reg.epi_validade_dias >= 1 && reg.epi_validade_dias <= 3650)){
+      aviso("app-aviso", "Troca do EPI: entre 1 e 3650 dias (ou vazio).", "erro"); ativarTabProd("geral"); return;
+    }
+  }
   let result;
   if(prodEditId){
     result = await sb.from("produtos").update(reg).eq("id", prodEditId).select().single();

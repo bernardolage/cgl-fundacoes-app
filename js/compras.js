@@ -54,7 +54,9 @@ const CMP_ABERTOS = ["rascunho","aguardando_aprovacao","aprovado","enviado","par
 // rascunho e cotação não têm entrega a atrasar.
 const CMP_AGUARDA_RECEB = ["aprovado","enviado","parcialmente_recebido"];
 function cmpAtrasado(p){ return CMP_AGUARDA_RECEB.includes(p.status) && !!p.previsao_entrega && p.previsao_entrega < hojeISO(); }
-const CMP_CAT_LBL = { peca: "Peça", pneu: "Pneu", combustivel: "Combustível", lubrificante: "Lubrificante", servico_terceiro: "Serviço de terceiro", mao_obra_interna: "Mão de obra interna", frete: "Frete", locacao: "Locação", multa: "Multa", seguro_ipva: "Seguro / IPVA", deslocamento: "Deslocamento", outro: "Outro" };
+const CMP_CAT_LBL = { peca: "Peça", pneu: "Pneu", combustivel: "Combustível", lubrificante: "Lubrificante", servico_terceiro: "Serviço de terceiro", mao_obra_interna: "Mão de obra interna", frete: "Frete", locacao: "Locação", multa: "Multa", seguro_ipva: "Seguro / IPVA", deslocamento: "Deslocamento",
+  epi: "EPI", uniforme: "Uniforme",   // fase 100 (#100): valores novos do enum categoria_custo (migration 20261021_fase100a)
+  outro: "Outro" };
 const CMP_ORIGEM_LBL = { compra: "Compra direta", estoque: "Saída de estoque", deslocamento: "Deslocamento", manutencao: "Manutenção", reparo: "Reparo caldeiraria", avulso: "Avulso", contrato: "Contrato", combustivel: "Combustível (RDO)", pedido_externo: "Pedido Odoo" };
 const CMP_CENTRO_TIPO = { setor: "Setor", obra_interna: "Obra interna" };
 

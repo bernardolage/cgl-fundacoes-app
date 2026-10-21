@@ -264,6 +264,7 @@ async function carregarFuncionarios(){
   if($("func-estado-origem") && $("func-uf") && !$("func-estado-origem").options.length) $("func-estado-origem").innerHTML = $("func-uf").innerHTML;
   funcAplicarVisibilidadeSensivel();
   if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 93b: aba Acesso só rh/admin/diretor
+  if(typeof epiAplicarVisibilidade === "function") epiAplicarVisibilidade();                 // fase 100: visão e aba EPI
   const [{ data, error }] = await Promise.all([
     sb.from("funcionarios")
       .select("id,nome,matricula,funcao,data_admissao,status,ativo,telefone,foto_url,departamento_id,tipo_contrato,cnh_validade,categoria_operacional,especialidade,coringa,avaliacao")
@@ -312,6 +313,7 @@ function renderFuncionariosAgora(){
   else if(_funcView==="he"){ funcPreencherCompetencias(); renderFuncHE(); }
   else if(_funcView==="aprop") renderFuncAprop();
   else if(_funcView==="promocoes") renderFuncPromocoes();   // fase 93a: plano de cargos
+  else if(_funcView==="epi" && typeof epiRenderRelatorio === "function") epiRenderRelatorio("func-conteudo");   // fase 100: EPI por colaborador
   else                     renderFuncLista(dados);
 }
 
@@ -479,6 +481,8 @@ function abrirFichaFuncVisual(f){
 
   atualizarStatusbarFunc(f.status);
   ativarTabFunc("pessoais");
+  if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 100: almoxarife vê a aba Acesso só no setor dele
+  if(typeof epiAplicarVisibilidadeFicha === "function") epiAplicarVisibilidadeFicha();       // fase 100: aba EPI (js/epi.js)
 }
 
 /* ---------- foto ---------- */
@@ -1245,10 +1249,27 @@ async function funcAdmConcluir(){
    Demitido, data de demissão ou inativo) desativa o login por gatilho no banco.
    Bloco independente do resto do arquivo: só a linha de plumbing em carregarFuncionarios() o chama.
    ==================================================================== */
-const FUNC_ACESSO_CARGOS = { operador: "Operador", encarregado: "Encarregado", mecanico: "Mecânico" };
+const FUNC_ACESSO_CARGOS = { operador: "Operador", encarregado: "Encarregado", mecanico: "Mecânico", auxiliar_almoxarifado: "Auxiliar de almoxarifado" };
 let _funcAcesso = { funcionarioId: null, perfil: null, modo: null };   // modo: null | "senha" (formulário de nova senha aberto)
 
-function funcAcessoPodeVer(){ return !!usuarioAtual && ["diretor", "admin", "rh"].includes(usuarioAtual.cargo); }
+/* Fase 100 (chamado #102): o almoxarife (Julio) cria o login da equipe dele, só no funcionário de departamento
+   "Almoxarif…" (o próprio ou o pai), com o cargo travado em Auxiliar de almoxarifado; cria e redefine a senha,
+   não desativa nem reativa (RH e administração). A function convidar-usuario confere tudo de novo. */
+function funcAcessoEhAlmox(){ return !!usuarioAtual && usuarioAtual.cargo === "almoxarife"; }
+function funcAcessoNoSetorAlmox(){
+  const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  let d = (_depts || []).find(x => x.id === ($("func-departamento")?.value || ""));
+  for(let nivel = 0; d && nivel < 2; nivel++){
+    if(/ALMOXARIF/.test(norm(d.nome))) return true;
+    d = d.parent_id ? _depts.find(x => x.id === d.parent_id) : null;
+  }
+  return false;
+}
+function funcAcessoPodeVer(){
+  if(!usuarioAtual) return false;
+  if(["diretor", "admin", "rh"].includes(usuarioAtual.cargo)) return true;
+  return funcAcessoEhAlmox() && !!funcEditId && funcAcessoNoSetorAlmox();
+}
 function funcAcessoPodeOperar(){ return funcAcessoPodeVer() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
 function funcAcessoAplicarVisibilidade(){
   const b = document.querySelector('#func-notebook button[data-tab="acesso"]');
@@ -1258,7 +1279,7 @@ function funcAcessoAplicarVisibilidade(){
 async function funcAcessoCarregar(){
   const cont = $("func-acesso-conteudo");
   if(!cont) return;
-  if(!funcAcessoPodeVer()){ cont.innerHTML = `<p class="vazio">Só RH, administração e diretoria cuidam do login do funcionário.</p>`; return; }
+  if(!funcAcessoPodeVer()){ cont.innerHTML = `<p class="vazio">Só RH, administração e diretoria cuidam do login do funcionário (o almoxarife, da equipe do almoxarifado).</p>`; return; }
   if(!funcEditId){ cont.innerHTML = `<p class="vazio">Salve o funcionário primeiro; depois crie o login aqui.</p>`; return; }
   if(_funcAcesso.funcionarioId !== funcEditId) _funcAcesso = { funcionarioId: funcEditId, perfil: null, modo: null };
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
@@ -1291,17 +1312,23 @@ function renderFuncAcesso(){
   const p = _funcAcesso.perfil;
   const opera = funcAcessoPodeOperar();
   const funcAtivo = ($("func-status")?.value || "ativo") !== "demitido" && !$("func-demissao")?.value && ($("func-ativo")?.checked !== false);
+  const almox = funcAcessoEhAlmox();
   if(!p){
-    const selCargo = `<div class="campo"><label>Cargo no sistema</label>
+    const selCargo = almox
+      ? `<div class="campo"><label>Cargo no sistema</label><input value="Auxiliar de almoxarifado" disabled />
+          <div class="meta">Compras, fornecedores e outros cargos: a administração troca depois, na tela Usuários.</div></div>`
+      : `<div class="campo"><label>Cargo no sistema</label>
         <select id="func-acesso-cargo"><option value="">Automático pela função (${esc($("func-funcao")?.value || "—")})</option>
           ${Object.entries(FUNC_ACESSO_CARGOS).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>`;
     cont.innerHTML = `<div class="meta bloco" style="margin-bottom:12px;"><span class="tag cinza">Sem login</span> Este funcionário ainda não entra no sistema.</div>
       ${!funcAtivo ? `<p class="vazio">Funcionário inativo ou demitido não recebe login.</p>` : !opera ? `<p class="vazio">Usuário de revisão não cria login.</p>` : `
-      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais. Operadores e ajudantes entram como <em>Operador</em>, encarregados como <em>Encarregado</em>, soldadores e mecânicos como <em>Mecânico</em>; outra função pede o cargo aqui.</p>
+      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${almox ? " (pelo RH)" : ""}. ${almox ? "A equipe do almoxarifado entra como <em>Auxiliar de almoxarifado</em>." : "Operadores e ajudantes entram como <em>Operador</em>, encarregados como <em>Encarregado</em>, soldadores e mecânicos como <em>Mecânico</em>, o pessoal do almoxarifado como <em>Auxiliar de almoxarifado</em>; outra função pede o cargo aqui."}</p>
       <div class="grade">${selCargo}</div>
       ${funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar")}`}`;
     return;
   }
+  // fase 100: o almoxarife só mexe em login de auxiliar de almoxarifado e não desativa/reativa
+  const operaEste = opera && (!almox || p.cargo === "auxiliar_almoxarifado");
   const situacao = p.ativo === false ? `<span class="tag vermelho">Login desativado</span>`
     : p.senha_provisoria ? `<span class="tag ambar">Senha provisória</span> <span class="tag verde">Login ativo</span>`
     : `<span class="tag verde">Login ativo</span>`;
@@ -1313,16 +1340,16 @@ function renderFuncAcesso(){
     </div>
     <p class="meta bloco" style="margin-bottom:12px;">${p.ativo === false
       ? "O funcionário não consegue entrar. Reativar libera o acesso de novo (com a senha de antes ou uma nova)."
-      : p.senha_provisoria ? "Ele ainda não trocou a senha definida pelo RH: no primeiro acesso o sistema obriga a troca."
-      : "Senha já trocada pelo funcionário. Sem a senha, defina uma nova aqui e repasse."}</p>
-    ${!opera ? "" : _funcAcesso.modo === "senha"
+      : p.senha_provisoria ? "Ele ainda não trocou a senha provisória: no primeiro acesso o sistema obriga a troca."
+      : "Senha já trocada pelo funcionário. Sem a senha, defina uma nova aqui e repasse."}${almox && !operaEste ? " Este login não é de auxiliar de almoxarifado: quem cuida dele é o RH ou a administração." : ""}</p>
+    ${!operaEste ? "" : almox && p.ativo === false ? `<p class="vazio">Login desativado: reativar fica com o RH ou a administração.</p>` : _funcAcesso.modo === "senha"
       ? funcAcessoSenhaHtml("-nova", p.ativo === false ? "✅ Reativar com esta senha" : "🔑 Definir nova senha", p.ativo === false ? "btn-func-acesso-reativar-senha" : "btn-func-acesso-nova-senha-ok")
       : `<div class="form-acoes compacta">
           ${p.ativo === false
             ? `<button type="button" class="btn" id="btn-func-acesso-reativar" ${funcAtivo ? "" : 'disabled title="Reative o cadastro do funcionário antes"'}>✅ Reativar login</button>
                <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha" ${funcAtivo ? "" : "disabled"}>🔑 Reativar com nova senha</button>`
             : `<button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha">🔑 Nova senha</button>
-               <button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo);">⛔ Desativar login</button>`}
+               ${almox ? "" : '<button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo);">⛔ Desativar login</button>'}`}
         </div>`}`;
 }
 
@@ -1352,7 +1379,7 @@ async function funcAcessoCriar(){
   if(!funcAcessoPodeOperar() || !funcEditId) return;
   const senha = funcAcessoLerSenha("");
   if(!senha) return;
-  const cargo = $("func-acesso-cargo")?.value || "";
+  const cargo = funcAcessoEhAlmox() ? "auxiliar_almoxarifado" : ($("func-acesso-cargo")?.value || "");   // fase 100: cargo travado para o almoxarife
   try {
     const r = await funcAcessoChamar({ acao: "criar_login_funcionario", senha, cargo: cargo || undefined });
     aviso("func-acesso-aviso", `Login criado como ${FUNC_ACESSO_CARGOS[r.cargo] || r.cargo}. Repasse ao funcionário: entrar com o CPF (só números) e a senha que você digitou; o sistema pede a troca no primeiro acesso.`, "ok");

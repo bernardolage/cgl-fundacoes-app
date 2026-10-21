@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="ba6670d" />
+<meta name="app-versao" content="5a626a3" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=ba6670d" />
+<link rel="stylesheet" href="css/estilo.css?v=5a626a3" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -306,6 +306,15 @@
           <span class="contador" id="dash-seg-cont"></span>
         </div>
         <div id="dash-seguranca"><p class="vazio">Carregando…</p></div>
+      </div>
+
+      <!-- EPI (fase 100): gasto do mês, trocas vencidas, saídas sem pessoa e sem assinatura. SESMT, almoxarife, RH e diretoria (vw_sc_epi) -->
+      <div class="card compacto" id="dash-epi-card" style="display:none;">
+        <div class="dash-bloco-topo">
+          <h3>🦺 EPI</h3>
+          <button type="button" class="dash-origem" id="btn-dash-epi-abrir">abrir relatório ›</button>
+        </div>
+        <div id="dash-epi"><p class="vazio">Carregando…</p></div>
       </div>
 
       <!-- Abas: frota, obras em execução, operadores, produção -->
@@ -659,6 +668,8 @@
               <button type="button" class="serv-view-btn" data-view="he" title="Horas por colaborador e obra a partir dos RDOs">Horas extras</button>
               <button type="button" class="serv-view-btn func-sens" data-view="aprop" title="Apropriação da folha por obra calculada pelo sistema (dias de RDO × custo mensal da ficha)">Apropriações</button>
               <button type="button" class="serv-view-btn func-sens" data-view="promocoes" title="Plano de cargos: próxima mudança de função prevista por funcionário (fase 93a)">Funções</button>
+              <!-- fase 100: relatório de EPI por colaborador e por obra (js/epi.js); almoxarifado, SESMT, RH e diretoria -->
+              <button type="button" class="serv-view-btn" data-view="epi" style="display:none;" title="Gasto de EPI e uniforme por colaborador, por obra e por item; trocas vencidas (fase 100)">EPI</button>
             </div>
             <button type="button" class="btn-sec func-sens" id="btn-admitir-func" title="Admissão em etapas: dados pessoais → documentos → contrato → benefícios; gera a ficha e os contratos em PDF" style="margin-left:8px;">📋 Admitir</button>
             <button type="button" class="btn" id="btn-novo-funcionario">+ Novo</button>
@@ -737,6 +748,8 @@
             <button type="button" data-tab="observacoes">Observações</button>
             <!-- fase 93b: login do funcionário (CPF) criado pelo RH; só rh, admin e diretor veem (funcAcessoAplicarVisibilidade) -->
             <button type="button" data-tab="acesso" style="display:none;">Acesso</button>
+            <!-- fase 100: ficha de EPI (NR-6) do colaborador; almoxarifado, SESMT, RH e diretoria (epiAplicarVisibilidadeFicha) -->
+            <button type="button" data-tab="epi" style="display:none;">EPI</button>
           </div>
 
           <div class="odoo-body">
@@ -967,6 +980,12 @@
             <div class="odoo-tab" data-tab="acesso">
               <div id="func-acesso-aviso" class="aviso" style="margin-bottom:8px;"></div>
               <div id="func-acesso-conteudo"><p class="vazio">—</p></div>
+            </div>
+
+            <!-- TAB EPI (fase 100): entregas de EPI e uniforme, CA, assinatura, troca prevista, devolução e PDF; conteúdo em js/epi.js -->
+            <div class="odoo-tab" data-tab="epi">
+              <div id="func-epi-aviso" class="aviso" style="margin-bottom:8px;"></div>
+              <div id="func-epi-conteudo"><p class="vazio">—</p></div>
             </div>
           </div>
         </div>
@@ -1229,6 +1248,10 @@
                   <select id="prod-categoria"><option value="">— sem categoria —</option></select>
                 </div>
                 <div class="campo"><label>Unidade</label><select id="prod-unidade"></select></div>
+                <!-- fase 100 (#100): categoria de custo (EPI e Uniforme entram na ficha de EPI do colaborador), CA e troca do EPI -->
+                <div class="campo"><label>Categoria de custo <span class="meta">(sugestão na compra)</span></label><select id="prod-cat-custo"><option value="">— não definida —</option></select></div>
+                <div class="campo prod-epi"><label>CA do EPI</label><input id="prod-ca" placeholder="nº do certificado de aprovação" /></div>
+                <div class="campo prod-epi"><label>Troca a cada (dias)</label><input id="prod-epi-validade" type="number" min="1" max="3650" step="1" placeholder="vazio = sem troca prevista" /></div>
               </div>
             </div>
 
@@ -1270,14 +1293,15 @@
       <h2>Estoque</h2>
       <p class="texto-apoio">Entradas, saídas e ajustes por quantidade, e a lista de reposição dos itens controlados (pontas e caçambas das estacas escavadas, bits, unhas). Peças com marcação ficam em Acessórios.</p>
 
-      <!-- fase 78: saída no balcão (retirante + destino, vários itens) -->
+      <!-- fase 78: saída no balcão (retirante + destino, vários itens); fase 100 (#97): é a tela única de saída —
+           "Quem retira" obrigatório só quando há EPI na lista; com EPI, a assinatura do recebimento abre em seguida -->
       <div class="card" id="bal-card" style="display:none;">
         <div class="lista-topo">
-          <h3>Saída no balcão <span id="bal-contador" class="contador"></span></h3>
-          <span class="meta">material entregue a uma pessoa, com destino; o custo cai na obra, na TAG ou no setor</span>
+          <h3>Saída de material <span id="bal-contador" class="contador"></span></h3>
+          <span class="meta">balcão ou envio para obra: o custo cai na obra, na TAG ou no setor; EPI vai para a ficha de quem retira</span>
         </div>
         <div class="grade grade-3">
-          <div class="campo"><label>Quem retira *</label>
+          <div class="campo"><label>Quem retira <span class="meta">(obrigatório para EPI)</span></label>
             <input id="bal-retirante" placeholder="nome do funcionário (≥ 2 letras)…" autocomplete="off" />
             <div id="bal-retirante-res" class="autocomplete-lista" style="display:none;"></div>
           </div>
@@ -1326,12 +1350,12 @@
         </div>
       </div>
 
+      <!-- fase 100 (#97): a saída saiu daqui e ficou só em "Saída de material" (uma tela, com quem retira) -->
       <div class="card">
         <div class="lista-topo">
-          <h3>Registrar movimento</h3>
+          <h3>Entrada e inventário</h3>
           <div class="serv-views" id="est-tipos">
             <button type="button" class="serv-view-btn ativo" data-tipo="entrada">Entrada</button>
-            <button type="button" class="serv-view-btn" data-tipo="saida">Saída</button>
             <button type="button" class="serv-view-btn" data-tipo="ajuste">Ajuste / inventário</button>
           </div>
         </div>
@@ -1349,15 +1373,21 @@
             <button type="button" class="link-mini" id="btn-novo-forn">+ novo</button></label>
             <select id="ent-fornecedor"><option value="">— não informado —</option></select>
           </div>
-          <div class="campo est-so-saida" style="display:none;"><label>Obra atendida</label><select id="est-obra"><option value="">— nenhuma —</option></select></div>
-          <div class="campo est-so-saida" style="display:none;"><label>Equipamento (TAG)</label><select id="est-equip"><option value="">— nenhum —</option></select></div>
-          <div class="campo est-so-saida" style="display:none;"><label>Setor / obra interna</label><select id="est-centro"><option value="">— nenhum —</option></select></div>
           <div class="campo"><label>Documento (NF / pedido / requisição)</label><input id="ent-doc" /></div>
           <div class="campo largo"><label>Observações</label><input id="est-mov-obs" placeholder="ex.: montado na TAG 65, obra X" /></div>
         </div>
         <div class="form-acoes">
           <button type="button" class="btn" id="btn-registrar-entrada">💾 Registrar</button>
         </div>
+      </div>
+
+      <!-- fase 100: EPI por colaborador e por obra (js/epi.js); almoxarife, SESMT, RH e diretoria (epiAplicarVisibilidade) -->
+      <div class="card" id="epi-card" style="display:none;">
+        <div class="lista-topo">
+          <h3>🦺 EPI por colaborador e por obra</h3>
+          <span class="meta">gasto por pessoa por mês, por obra e por item; trocas vencidas; saídas sem pessoa; conferência das categorias</span>
+        </div>
+        <div id="epi-conteudo"><p class="vazio">—</p></div>
       </div>
 
       <div class="card" id="est-reposicao-card">
@@ -5634,49 +5664,50 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=ba6670d"></script>
+<script src="js/core.js?v=5a626a3"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=ba6670d"></script>
+<script src="js/historico.js?v=5a626a3"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=ba6670d"></script>
-<script src="js/fornecedores.js?v=ba6670d"></script>
-<script src="js/apropriacoes.js?v=ba6670d"></script>
-<script src="js/funcionarios.js?v=ba6670d"></script>
-<script src="js/rh_documentos.js?v=ba6670d"></script>
-<script src="js/servicos.js?v=ba6670d"></script>
-<script src="js/produtos.js?v=ba6670d"></script>
-<script src="js/estoque.js?v=ba6670d"></script>
-<script src="js/separacoes.js?v=ba6670d"></script>
-<script src="js/compras.js?v=ba6670d"></script>
-<script src="js/requisicoes.js?v=ba6670d"></script>
-<script src="js/orcamentos.js?v=ba6670d"></script>
-<script src="js/propostas.js?v=ba6670d"></script>
-<script src="js/contratos.js?v=ba6670d"></script>
-<script src="js/contas_pagar.js?v=ba6670d"></script>
-<script src="js/centros_custo.js?v=ba6670d"></script>
-<script src="js/carteira.js?v=ba6670d"></script>
-<script src="js/obras.js?v=ba6670d"></script>
-<script src="js/frota.js?v=ba6670d"></script>
-<script src="js/viagens.js?v=ba6670d"></script>
-<script src="js/equipamentos.js?v=ba6670d"></script>
-<script src="js/vendas_bens.js?v=ba6670d"></script>
-<script src="js/acessorios.js?v=ba6670d"></script>
-<script src="js/reparos.js?v=ba6670d"></script>
-<script src="js/manutencao.js?v=ba6670d"></script>
-<script src="js/fabricacao.js?v=ba6670d"></script>
-<script src="js/mobilizacoes.js?v=ba6670d"></script>
-<script src="js/estacas.js?v=ba6670d"></script>
-<script src="js/obra_abas.js?v=ba6670d"></script>
-<script src="js/medicoes.js?v=ba6670d"></script>
-<script src="js/movimentacoes.js?v=ba6670d"></script>
-<script src="js/rdo.js?v=ba6670d"></script>
-<script src="js/rdo_import_maya.js?v=ba6670d"></script>
-<script src="js/usuarios.js?v=ba6670d"></script>
-<script src="js/chamados.js?v=ba6670d"></script>
-<script src="js/dashboard.js?v=ba6670d"></script>
-<script src="js/rh_horas.js?v=ba6670d"></script>
-<script src="js/patrimonio.js?v=ba6670d"></script>
+<script src="js/clientes.js?v=5a626a3"></script>
+<script src="js/fornecedores.js?v=5a626a3"></script>
+<script src="js/apropriacoes.js?v=5a626a3"></script>
+<script src="js/funcionarios.js?v=5a626a3"></script>
+<script src="js/rh_documentos.js?v=5a626a3"></script>
+<script src="js/servicos.js?v=5a626a3"></script>
+<script src="js/produtos.js?v=5a626a3"></script>
+<script src="js/estoque.js?v=5a626a3"></script>
+<script src="js/separacoes.js?v=5a626a3"></script>
+<script src="js/epi.js?v=5a626a3"></script>
+<script src="js/compras.js?v=5a626a3"></script>
+<script src="js/requisicoes.js?v=5a626a3"></script>
+<script src="js/orcamentos.js?v=5a626a3"></script>
+<script src="js/propostas.js?v=5a626a3"></script>
+<script src="js/contratos.js?v=5a626a3"></script>
+<script src="js/contas_pagar.js?v=5a626a3"></script>
+<script src="js/centros_custo.js?v=5a626a3"></script>
+<script src="js/carteira.js?v=5a626a3"></script>
+<script src="js/obras.js?v=5a626a3"></script>
+<script src="js/frota.js?v=5a626a3"></script>
+<script src="js/viagens.js?v=5a626a3"></script>
+<script src="js/equipamentos.js?v=5a626a3"></script>
+<script src="js/vendas_bens.js?v=5a626a3"></script>
+<script src="js/acessorios.js?v=5a626a3"></script>
+<script src="js/reparos.js?v=5a626a3"></script>
+<script src="js/manutencao.js?v=5a626a3"></script>
+<script src="js/fabricacao.js?v=5a626a3"></script>
+<script src="js/mobilizacoes.js?v=5a626a3"></script>
+<script src="js/estacas.js?v=5a626a3"></script>
+<script src="js/obra_abas.js?v=5a626a3"></script>
+<script src="js/medicoes.js?v=5a626a3"></script>
+<script src="js/movimentacoes.js?v=5a626a3"></script>
+<script src="js/rdo.js?v=5a626a3"></script>
+<script src="js/rdo_import_maya.js?v=5a626a3"></script>
+<script src="js/usuarios.js?v=5a626a3"></script>
+<script src="js/chamados.js?v=5a626a3"></script>
+<script src="js/dashboard.js?v=5a626a3"></script>
+<script src="js/rh_horas.js?v=5a626a3"></script>
+<script src="js/patrimonio.js?v=5a626a3"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=ba6670d"></script>
+<script src="js/init.js?v=5a626a3"></script>
 </body>
 </html>

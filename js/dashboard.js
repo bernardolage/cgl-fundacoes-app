@@ -28,7 +28,8 @@ const DASH_NIVEL = {
 };
 const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", compras: "Compras",
   mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado", oficina: "Oficina", manutencao: "Manutenção",
-  rh: "RH" };   // fase 93a: plano de cargos (vw_sc_regularizar_rh)
+  rh: "RH",   // fase 93a: plano de cargos (vw_sc_regularizar_rh)
+  sesmt: "SESMT" };   // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt)
 /* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
    "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
    As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
@@ -43,7 +44,8 @@ const DASH_SETOR_GESTORES = {
   almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios", "auxiliar_almoxarifado"],   // fase 83: separações; fase 90: equipe do Julio
   oficina:     ["mecanico", "gestor_acessorios", "logistica", "almoxarife", "engenheiro"],   // fase 84: ordens de fabricação
   manutencao:  ["gestor_manutencao", "mecanico", "engenheiro", "gestor_frota", "logistica"],   // fase 92: preventivas vencidas e checklist de mobilização
-  rh:          ["rh"]   // fase 93a: mudanças de função do plano de cargos
+  rh:          ["rh"],   // fase 93a: mudanças de função do plano de cargos
+  sesmt:       ["sesmt", "almoxarife", "rh"]   // fase 100: EPI por colaborador
 };
 function dashGereSetor(setor){
   const cargo = usuarioAtual?.cargo;
@@ -93,6 +95,8 @@ const dashPodeVerMedido = () => podeVerKpiFinanceiro(() => dashEhDiretoria() || 
 const dashPodeVerReceber = () => podeVerKpiFinanceiro(() => !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo));
 /* fase 99b: card Segurança (vw_sc_seguranca) — diretor, admin e auditor; o banco devolve vazio aos demais */
 const dashPodeVerSeguranca = () => !!usuarioAtual && ["diretor", "admin", "auditor"].includes(usuarioAtual.cargo);
+/* fase 100: card EPI (vw_sc_epi) — SESMT, almoxarife, RH e diretoria (podeVerEpi em js/epi.js = pode_ver_epi() no banco) */
+const dashPodeVerEpi = () => typeof podeVerEpi === "function" && podeVerEpi();
 
 async function carregarDashboard(){
   const carga = ++_dashCargaN;
@@ -105,6 +109,7 @@ async function carregarDashboard(){
   if($("dash-card-custo"))  $("dash-card-custo").style.display  = dashEhDiretoria() ? "" : "none";
   if($("dash-card-receber")) $("dash-card-receber").style.display = dashPodeVerReceber() ? "" : "none";   // fase 96
   if($("dash-seguranca-card")) $("dash-seguranca-card").style.display = dashPodeVerSeguranca() ? "" : "none";   // fase 99b
+  if($("dash-epi-card")) $("dash-epi-card").style.display = dashPodeVerEpi() ? "" : "none";   // fase 100
   const finEl = $("dash-financeiro");
   if(finEl) finEl.style.display = dashEhDiretoria() ? "" : "none";
   // fase 90: auxiliar de almoxarifado vê só "Exige ação hoje" e "Minha fila"
@@ -128,6 +133,7 @@ async function carregarDashboard(){
     carregarDashAtividade(),
     carregarDashOrcamentos(),
     dashPodeVerSeguranca() ? dashCarregarSeguranca() : Promise.resolve(),   // fase 99b
+    dashPodeVerEpi() ? dashCarregarEpi() : Promise.resolve(),               // fase 100
     dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
     dashEhDiretoria() ? carregarDashIA() : Promise.resolve()
   ]);
@@ -278,9 +284,11 @@ async function dashCarregarRegularizar(){
   if(!cont) return;
   // fase 91: cauções com previsão de devolução vencida (financeiro) em vw_sc_regularizar_fin, mesmas colunas
   // fase 92: OS atrasadas e leitura parada (vw_sc_regularizar_man); fase 93a: plano de cargos (vw_sc_regularizar_rh); fase 93c: horas a liberar há 15+ dias (vw_sc_regularizar_rhh); mesmas colunas
-  const [dados, fin, man, rh, rhh] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*"))]);
+  // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt; só quem vê EPI consulta)
+  const [dados, fin, man, rh, rhh, sesmt] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+    dashPodeVerEpi() ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   const n = p => _dashReg.filter(a => a.papel === p).length;
   if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
@@ -341,6 +349,34 @@ async function dashCarregarSeguranca(){
     </div>`;
   }).join("");
 }
+/* ---------- EPI (fase 100) ----------
+   vw_sc_epi (uma linha, security_invoker, só para pode_ver_epi()): gasto do mês e do anterior, entregas, pessoas,
+   trocas vencidas, saídas de EPI sem pessoa e entregas sem assinatura. Sem a migration o card some, sem erro. */
+async function dashCarregarEpi(){
+  const card = $("dash-epi-card"), cont = $("dash-epi");
+  if(!card || !cont) return;
+  const btn = $("btn-dash-epi-abrir");
+  if(btn && !btn.dataset.ligado){ btn.dataset.ligado = "1"; btn.addEventListener("click", () => { if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio("pessoa"); }); }
+  const { data, error } = await sb.from("vw_sc_epi").select("*");
+  if(error){
+    if(error.code === "42P01" || error.code === "PGRST205"){ card.style.display = "none"; return; }   // migration da fase 100 pendente
+    cont.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message || "erro")}).</p>`;
+    return;
+  }
+  const k = (data || [])[0];
+  if(!k){ card.style.display = "none"; return; }
+  const ant = Number(k.gasto_mes_anterior || 0), mes = Number(k.gasto_mes || 0);
+  const item = (rot, valor, sub, visao, cor) => `<div class="dash-card${visao ? " clicavel" : ""}"${visao ? ` data-epi-visao="${visao}" title="Abrir no relatório de EPI"` : ""}>
+      <div class="dash-card-rot">${esc(rot)}</div><div class="dash-card-num">${cor ? `<span class="tag ${cor}">${valor}</span>` : valor}</div><div class="dash-card-sub">${sub}</div></div>`;
+  cont.innerHTML = `<div class="dash-epi-grade">
+      ${item("Gasto no mês", brl(mes), ant ? `mês anterior ${brl(ant)}` : "sem gasto no mês anterior", "pessoa")}
+      ${item("Entregas no mês", String(k.entregas_mes || 0), `${k.pessoas_mes || 0} colaborador(es)`, "pessoa")}
+      ${item("Trocas vencidas", String(k.trocas_vencidas || 0), "EPI além da validade, sem troca", "vencidas", k.trocas_vencidas ? "vermelho" : "")}
+      ${item("Saídas de EPI sem pessoa", String(k.sem_pessoa || 0), "desde o início do controle", "sem_pessoa", k.sem_pessoa ? "ambar" : "")}
+      ${item("Sem assinatura", String(k.sem_assinatura || 0), "entregas de EPI a assinar", null, k.sem_assinatura ? "ambar" : "")}
+    </div>`;
+  cont.querySelectorAll("[data-epi-visao]").forEach(el => el.addEventListener("click", () => { if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio(el.dataset.epiVisao); }));
+}
 async function dashAbrirSeguranca(a){
   if(!a || !a.usuario_id || !irParaSecao("usuarios") || typeof abrirUsuario !== "function") return;
   if(typeof _usuarios !== "undefined" && !_usuarios.some(u => u.id === a.usuario_id) && typeof carregarUsuarios === "function") await carregarUsuarios();
@@ -399,6 +435,9 @@ async function dashAbrirRegularizar(a){
     else if(typeof manAbrirPreset === "function") manAbrirPreset("os_atrasadas");
   } else if(a.secao === "funcionarios" && /^promocao_/.test(a.filtro || "")){ // fase 93a: visão Funções (plano de cargos) filtrada
     if(irParaSecao("funcionarios") && typeof funcAbrirPromocoes === "function") funcAbrirPromocoes(a.filtro === "promocao_vencida" ? "vencidas" : "60dias");
+  } else if(a.secao === "estoque" && /^epi_/.test(a.filtro || "")){ // fase 100: relatório de EPI; troca vencida de uma pessoa só abre a ficha de EPI dela
+    if(a.filtro === "epi_vencida" && a.registro_id && typeof epiAbrirFichaFuncionario === "function") epiAbrirFichaFuncionario(a.registro_id);
+    else if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio(a.filtro === "epi_vencida" ? "vencidas" : "sem_pessoa");
   } else if(a.secao === "rhh"){ // fase 93c: "Horas e alocação" › A liberar, só pendentes, nas obras do aviso
     if(typeof rhhAbrirPreset === "function") rhhAbrirPreset({ obraIds: ids, pendentes: true });
     irParaSecao("rhh");
