@@ -2738,6 +2738,24 @@ input:disabled, select:disabled, textarea:disabled {
 /* ---------- fase 48: anexos do chamado ---------- */
 .cham-anexo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
 .cham-anexo-novo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: var(--txt-xs); }
+/* Lote S47: bloco "Esperando: X · até dd/mm" com a pergunta e os botões de aprovar / reabrir / perguntar */
+.cham-espera { border-left: 3px solid var(--aviso); background: var(--aviso-bg); border-radius: 0 4px 4px 0; padding: 8px 12px; margin: 10px 0; font-size: var(--txt-sm); }
+.cham-espera.vencido { border-left-color: var(--perigo); background: var(--perigo-bg); }
+.cham-espera textarea { width: 100%; box-sizing: border-box; margin-top: 6px; }
+.cham-espera .form-acoes { margin-top: 6px; align-items: center; }
+.cham-espera-perg { margin-top: 4px; white-space: pre-wrap; }
+.cham-perguntar { border-left-color: var(--marca-600); background: var(--sup-2); }
+.cham-perguntar summary { cursor: pointer; font-weight: 600; }
+.cham-perguntar .grade { margin-top: 8px; }
+.dash-fila-acoes { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+/* Lote S47 (#112): cabeçalho de tabela que ordena (ordenarTabela em core.js) */
+th.th-ordena { cursor: pointer; user-select: none; white-space: nowrap; }
+th.th-ordena:hover { color: var(--marca-700); }
+th.th-ordena::after { content: "↕"; margin-left: 4px; color: var(--txt-sutil); font-size: var(--txt-xs); }
+th.th-ordena[aria-sort="ascending"]::after { content: "▲"; color: var(--marca-600); }
+th.th-ordena[aria-sort="descending"]::after { content: "▼"; color: var(--marca-600); }
+/* Lote S47 (#111): linha de grupo da concorrência na lista de orçamentos */
+tr.orc-grupo-conc td { background: var(--sup-3); font-weight: 600; color: var(--txt-sec); font-size: var(--txt-sm); }
 
 /* ---- Movimentações: acessórios na carga (fase 49) ---- */
 .autocomplete-lista .resultado-item.ja { opacity: .55; }

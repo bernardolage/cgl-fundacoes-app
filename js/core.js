@@ -512,6 +512,65 @@ function debounce(fn, ms = 150){
   };
 }
 
+/* Lote S47 (#112): ordenação pelo cabeçalho, para reaproveitar em qualquer lista.
+   colunas: { chave: { valor: (linha) => número | texto | data ISO, tipo: "num" | "texto" | "data", dirInicial?: "asc"|"desc" } }
+   estado:  { chave: "orc-ordem" (sessionStorage: vale para a janela aberta), padrao: { col, dir } }
+   Uso:  const ord = ordenarTabela(colunas, estado);
+         lista = ord.aplicar(lista);                    // cópia ordenada (vazio sempre por último; empate mantém a ordem)
+         `<thead><tr>${ord.th("cliente", "Cliente")}…`  // <th> com seta (aria-sort) e data-ordena
+         ord.ligar(container, render);                  // clique/Enter no cabeçalho alterna asc ↔ desc e chama render() */
+function ordenarTabela(colunas, estado){
+  const chave = estado && estado.chave ? estado.chave : null;
+  const dirOk = (d) => d === "desc" ? "desc" : "asc";
+  let atual = { col: estado?.padrao?.col || null, dir: dirOk(estado?.padrao?.dir) };
+  if(chave){
+    try { const s = JSON.parse(sessionStorage.getItem(chave) || "null"); if(s && colunas[s.col]) atual = { col: s.col, dir: dirOk(s.dir) }; }
+    catch(_e){ /* sessionStorage bloqueado ou valor velho: fica o padrão */ }
+  }
+  const vazio = (v) => v == null || v === "" || (typeof v === "number" && !Number.isFinite(v));
+  const comparar = (a, b, tipo) => {
+    if(tipo === "num") return Number(a) - Number(b);
+    if(tipo === "data") return String(a).localeCompare(String(b));
+    return String(a).localeCompare(String(b), "pt-BR", { numeric: true, sensitivity: "base" });
+  };
+  const api = {
+    get estado(){ return { ...atual }; },
+    aplicar(lista){
+      const c = atual.col && colunas[atual.col];
+      if(!c) return (lista || []).slice();
+      const m = atual.dir === "desc" ? -1 : 1;
+      return (lista || []).map((x, i) => ({ x, i, v: c.valor(x) })).sort((p, q) => {
+        const ep = vazio(p.v), eq = vazio(q.v);
+        if(ep || eq) return ep && eq ? p.i - q.i : ep ? 1 : -1;
+        return (comparar(p.v, q.v, c.tipo || "texto") * m) || p.i - q.i;
+      }).map(o => o.x);
+    },
+    th(col, rotulo, extra){
+      const s = atual.col === col ? (atual.dir === "desc" ? "descending" : "ascending") : "none";
+      const cls = extra && extra.cls ? " " + extra.cls : "";
+      const tit = extra && extra.title ? extra.title + " · " : "";
+      return `<th class="th-ordena${cls}" data-ordena="${esc(col)}" aria-sort="${s}" tabindex="0" title="${esc(tit)}Clique para ordenar (de novo inverte)">${esc(rotulo)}</th>`;
+    },
+    alternar(col){
+      if(!colunas[col]) return;
+      atual = atual.col === col ? { col, dir: atual.dir === "asc" ? "desc" : "asc" } : { col, dir: dirOk(colunas[col].dirInicial) };
+      if(chave){ try { sessionStorage.setItem(chave, JSON.stringify(atual)); } catch(_e){ /* ok */ } }
+    },
+    ligar(container, aoMudar){
+      const el = typeof container === "string" ? $(container) : container;
+      if(!el || el.dataset.ordenaLigado) return;
+      el.dataset.ordenaLigado = "1";
+      const vai = (th) => { api.alternar(th.dataset.ordena); if(typeof aoMudar === "function") aoMudar(); };
+      el.addEventListener("click", (e) => { const th = e.target.closest("th[data-ordena]"); if(th && el.contains(th)) vai(th); });
+      el.addEventListener("keydown", (e) => {
+        const th = e.target.closest && e.target.closest("th[data-ordena]");
+        if(th && (e.key === "Enter" || e.key === " ")){ e.preventDefault(); vai(th); }
+      });
+    }
+  };
+  return api;
+}
+
 /* ====================== ACESSIBILIDADE (Onda 3) ======================
    Um único inicializador cobre o app inteiro sem tocar nos templates:
    1. <label> sem `for` dentro de .campo passa a apontar para o campo seguinte

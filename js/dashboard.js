@@ -264,8 +264,31 @@ async function dashCarregarFila(){
   _dashFila = dados.concat(sep || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
-    ? _dashFila.map((a, i) => dashLinhaAcao(a, i, "fila")).join("")
+    ? _dashFila.map((a, i) => dashChamadoEsperando(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
     : `<p class="vazio">Nada esperando por você.</p>`;
+}
+/* Lote S47: chamado esperando a minha resposta (ramo 41 de vw_sc_minha_fila) mostra a pergunta e, quando há
+   resposta sugerida, aprova com um clique (RPC chamado_aprovar, que aplica o status sugerido). */
+const dashChamadoEsperando = (a) => !!a && a.secao === "chamados" && Number(a.ordem) === 41 && !!a.registro_id;
+function dashLinhaFilaChamado(a, i){
+  const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
+  const sugerida = /^Resposta sugerida:/.test(a.detalhe || "") && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+  return `<div class="dash-pendencia-item clicavel" data-fila="${i}" title="Abrir o chamado">
+      <span class="tag ${n.cor}">${esc(n.label)}</span>
+      <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
+      <span class="dash-fila-acoes">
+        ${sugerida ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-aprovar="${i}" title="Envia a resposta sugerida em seu nome">✅ Aprovar</button>` : ""}
+        <button type="button" class="btn-sec btn-sm" data-fila-abrir="${i}">Abrir</button>
+      </span>
+    </div>`;
+}
+async function dashAprovarChamadoFila(btn, a){
+  if(!a || !a.registro_id) return;
+  const { data, error } = await sb.rpc("chamado_aprovar", { p_id: a.registro_id, p_texto: null });
+  if(error){ aviso("app-aviso", "Não foi possível aprovar: " + error.message, "erro"); return; }
+  aviso("app-aviso", `${a.titulo.replace(/ espera a sua resposta.*$/, "")}: resposta enviada (${data === "resolvido" ? "resolvido" : data === "recusado" ? "recusado" : "em análise"}).`, "ok");
+  await dashCarregarFila();
+  if(typeof carregarChamados === "function" && typeof _chamCarregado !== "undefined" && _chamCarregado) carregarChamados(true);
 }
 // Compatibilidade: a aba Timeline da obra (obra_abas.js) recarrega "pendências" ao resolver comentário
 function carregarDashPendencias(){ return Promise.all([dashCarregarAcoes(), dashCarregarFila(), dashCarregarRegularizar()]); }
@@ -438,6 +461,12 @@ async function dashAbrirRegularizar(a){
   } else if(a.secao === "estoque" && /^epi_/.test(a.filtro || "")){ // fase 100: relatório de EPI; troca vencida de uma pessoa só abre a ficha de EPI dela
     if(a.filtro === "epi_vencida" && a.registro_id && typeof epiAbrirFichaFuncionario === "function") epiAbrirFichaFuncionario(a.registro_id);
     else if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio(a.filtro === "epi_vencida" ? "vencidas" : "sem_pessoa");
+  } else if(a.secao === "chamados"){ // lote S47: pergunta de chamado sem resposta no prazo; uma só abre a ficha
+    if(!irParaSecao("chamados") || typeof carregarChamados !== "function") return;
+    await carregarChamados(true);
+    if(a.registro_id && typeof abrirChamado === "function"){ abrirChamado(a.registro_id); return; }
+    const f = $("cham-f-status");
+    if(f && [...f.options].some(o => o.value === "atrasados")){ f.value = "atrasados"; if(typeof renderChamados === "function") renderChamados(); }
   } else if(a.secao === "rhh"){ // fase 93c: "Horas e alocação" › A liberar, só pendentes, nas obras do aviso
     if(typeof rhhAbrirPreset === "function") rhhAbrirPreset({ obraIds: ids, pendentes: true });
     irParaSecao("rhh");
@@ -644,7 +673,12 @@ function ligarSalaDeComando(){
   });
   $("btn-dash-recarregar")?.addEventListener("click", () => comBotaoTravado("btn-dash-recarregar", () => { _dashObrasAnd = []; return carregarDashboard(); }));
   $("dash-acoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-acao]"); if(el) dashAbrirAcao(_dashAcoes[Number(el.dataset.acao)]); });
-  $("dash-fila")?.addEventListener("click", (e) => { const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]); });
+  $("dash-fila")?.addEventListener("click", (e) => {
+    // lote S47: "Aprovar" inline não abre a ficha
+    const ap = e.target.closest("[data-fila-aprovar]");
+    if(ap){ e.stopPropagation(); comBotaoTravado(ap, () => dashAprovarChamadoFila(ap, _dashFila[Number(ap.dataset.filaAprovar)])); return; }
+    const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]);
+  });
   $("dash-regularizar")?.addEventListener("click", (e) => { const el = e.target.closest("[data-reg]"); if(el) dashAbrirRegularizar(_dashReg[Number(el.dataset.reg)]); });
   $("dash-seguranca")?.addEventListener("click", (e) => { const el = e.target.closest(".clicavel[data-seg]"); if(el) dashAbrirSeguranca(_dashSeg[Number(el.dataset.seg)]); });   // fase 99b
   $("dash-notebook")?.addEventListener("click", (e) => {

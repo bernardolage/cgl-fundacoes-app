@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="f741f77" />
+<meta name="app-versao" content="b79dc24" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=f741f77" />
+<link rel="stylesheet" href="css/estilo.css?v=b79dc24" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -1824,6 +1824,7 @@
             <select id="orc-f-cliente"></select>
             <select id="orc-f-porte" title="Porte do equipamento considerado (aba Modelo)"></select>
             <select id="orc-f-metodo" title="Método: tipo da proposta ou serviço dos itens (orçamento misto aparece em cada método)"></select>
+            <select id="orc-f-conc" style="display:none;" title="Concorrência: propostas de várias construtoras para a mesma obra do cliente final (agrupa na lista)"></select>
           </div>
           <div id="orc-conteudo"></div>
           <table style="display:none;"><tbody id="tab-orcamentos"></tbody></table>
@@ -1944,6 +1945,11 @@
 
             <div class="odoo-tab" data-tab="proposta">
               <div class="grade">
+                <div class="campo largo" style="display:none;"><label for="orc-concorrencia">Concorrência / empreendimento do cliente final</label>
+                  <input id="orc-concorrencia" list="orc-conc-lista" maxlength="160" autocomplete="off" placeholder="ex.: Vale – Ramal João Paulo – Itabira/MG (escolha uma já usada para trazer os dados comuns)" />
+                  <datalist id="orc-conc-lista"></datalist>
+                  <span class="orc-filtro-dica">Junta as propostas feitas a várias construtoras para a mesma obra; cada proposta continua com o seu número.</span>
+                </div>
                 <div class="campo"><label>Tipo de proposta *</label>
                   <select id="orc-tipo-proposta">
                     <option value="helice">HÉLICE (RG 11.8)</option>
@@ -5314,7 +5320,7 @@
       <div class="indicadores">
         <div class="ind ind-click" data-cham-status="aberto"><div class="num" id="cham-kpi-aberto" style="color:var(--perigo);">—</div><div class="rot">Abertos</div></div>
         <div class="ind ind-click" data-cham-status="em_analise"><div class="num" id="cham-kpi-analise" style="color:var(--aviso-txt);">—</div><div class="rot">Em análise</div></div>
-        <div class="ind ind-click" data-cham-status="aguardando_validacao"><div class="num" id="cham-kpi-validacao" style="color:var(--marca-600);">—</div><div class="rot">Aguardando validação</div></div>
+        <div class="ind ind-click" data-cham-status="minha_resposta" title="Chamados esperando a sua resposta (lote S47)"><div class="num" id="cham-kpi-validacao" style="color:var(--marca-600);">—</div><div class="rot">Esperando minha resposta</div></div>
         <div class="ind ind-click" data-cham-status="resolvido"><div class="num" id="cham-kpi-resolvido" style="color:var(--sucesso);">—</div><div class="rot">Resolvidos (30 dias)</div></div>
         <div class="ind ind-click" data-cham-prioridade="1" title="Prioridade 1 (bloqueia operação) aberto ou em análise"><div class="num" id="cham-kpi-p1" style="color:var(--perigo);">—</div><div class="rot">P1 abertos</div></div>
       </div>
@@ -5664,50 +5670,50 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=f741f77"></script>
+<script src="js/core.js?v=b79dc24"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=f741f77"></script>
+<script src="js/historico.js?v=b79dc24"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=f741f77"></script>
-<script src="js/fornecedores.js?v=f741f77"></script>
-<script src="js/apropriacoes.js?v=f741f77"></script>
-<script src="js/funcionarios.js?v=f741f77"></script>
-<script src="js/rh_documentos.js?v=f741f77"></script>
-<script src="js/servicos.js?v=f741f77"></script>
-<script src="js/produtos.js?v=f741f77"></script>
-<script src="js/estoque.js?v=f741f77"></script>
-<script src="js/separacoes.js?v=f741f77"></script>
-<script src="js/epi.js?v=f741f77"></script>
-<script src="js/compras.js?v=f741f77"></script>
-<script src="js/requisicoes.js?v=f741f77"></script>
-<script src="js/orcamentos.js?v=f741f77"></script>
-<script src="js/propostas.js?v=f741f77"></script>
-<script src="js/contratos.js?v=f741f77"></script>
-<script src="js/contas_pagar.js?v=f741f77"></script>
-<script src="js/centros_custo.js?v=f741f77"></script>
-<script src="js/carteira.js?v=f741f77"></script>
-<script src="js/obras.js?v=f741f77"></script>
-<script src="js/frota.js?v=f741f77"></script>
-<script src="js/viagens.js?v=f741f77"></script>
-<script src="js/equipamentos.js?v=f741f77"></script>
-<script src="js/vendas_bens.js?v=f741f77"></script>
-<script src="js/acessorios.js?v=f741f77"></script>
-<script src="js/reparos.js?v=f741f77"></script>
-<script src="js/manutencao.js?v=f741f77"></script>
-<script src="js/fabricacao.js?v=f741f77"></script>
-<script src="js/mobilizacoes.js?v=f741f77"></script>
-<script src="js/estacas.js?v=f741f77"></script>
-<script src="js/obra_abas.js?v=f741f77"></script>
-<script src="js/medicoes.js?v=f741f77"></script>
-<script src="js/movimentacoes.js?v=f741f77"></script>
-<script src="js/rdo.js?v=f741f77"></script>
-<script src="js/rdo_import_maya.js?v=f741f77"></script>
-<script src="js/usuarios.js?v=f741f77"></script>
-<script src="js/chamados.js?v=f741f77"></script>
-<script src="js/dashboard.js?v=f741f77"></script>
-<script src="js/rh_horas.js?v=f741f77"></script>
-<script src="js/patrimonio.js?v=f741f77"></script>
+<script src="js/clientes.js?v=b79dc24"></script>
+<script src="js/fornecedores.js?v=b79dc24"></script>
+<script src="js/apropriacoes.js?v=b79dc24"></script>
+<script src="js/funcionarios.js?v=b79dc24"></script>
+<script src="js/rh_documentos.js?v=b79dc24"></script>
+<script src="js/servicos.js?v=b79dc24"></script>
+<script src="js/produtos.js?v=b79dc24"></script>
+<script src="js/estoque.js?v=b79dc24"></script>
+<script src="js/separacoes.js?v=b79dc24"></script>
+<script src="js/epi.js?v=b79dc24"></script>
+<script src="js/compras.js?v=b79dc24"></script>
+<script src="js/requisicoes.js?v=b79dc24"></script>
+<script src="js/orcamentos.js?v=b79dc24"></script>
+<script src="js/propostas.js?v=b79dc24"></script>
+<script src="js/contratos.js?v=b79dc24"></script>
+<script src="js/contas_pagar.js?v=b79dc24"></script>
+<script src="js/centros_custo.js?v=b79dc24"></script>
+<script src="js/carteira.js?v=b79dc24"></script>
+<script src="js/obras.js?v=b79dc24"></script>
+<script src="js/frota.js?v=b79dc24"></script>
+<script src="js/viagens.js?v=b79dc24"></script>
+<script src="js/equipamentos.js?v=b79dc24"></script>
+<script src="js/vendas_bens.js?v=b79dc24"></script>
+<script src="js/acessorios.js?v=b79dc24"></script>
+<script src="js/reparos.js?v=b79dc24"></script>
+<script src="js/manutencao.js?v=b79dc24"></script>
+<script src="js/fabricacao.js?v=b79dc24"></script>
+<script src="js/mobilizacoes.js?v=b79dc24"></script>
+<script src="js/estacas.js?v=b79dc24"></script>
+<script src="js/obra_abas.js?v=b79dc24"></script>
+<script src="js/medicoes.js?v=b79dc24"></script>
+<script src="js/movimentacoes.js?v=b79dc24"></script>
+<script src="js/rdo.js?v=b79dc24"></script>
+<script src="js/rdo_import_maya.js?v=b79dc24"></script>
+<script src="js/usuarios.js?v=b79dc24"></script>
+<script src="js/chamados.js?v=b79dc24"></script>
+<script src="js/dashboard.js?v=b79dc24"></script>
+<script src="js/rh_horas.js?v=b79dc24"></script>
+<script src="js/patrimonio.js?v=b79dc24"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=f741f77"></script>
+<script src="js/init.js?v=b79dc24"></script>
 </body>
 </html>

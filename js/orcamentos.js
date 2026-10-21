@@ -401,13 +401,14 @@ async function carregarOrcamentos(){
   if(Object.keys(_orcVarById).length === 0){
     try { await prepararCatalogoOrc(); } catch(_){ /* segue */ }
   }
-  const [{ data, error }, itensEixo] = await Promise.all([
-    sb.from("orcamentos")
-      .select("id,numero,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade,iss_percentual,iss_por_dentro")
-      .order("data_orcamento",{ ascending:false }),
-    orcBuscarItensEixo()
-  ]);
+  const COLS = "id,numero,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade,iss_percentual,iss_por_dentro";
+  const ler = (cols) => sb.from("orcamentos").select(cols).order("data_orcamento",{ ascending:false });
+  let [{ data, error }, itensEixo] = await Promise.all([ler(COLS + ",concorrencia"), orcBuscarItensEixo()]);
+  // lote S47 (#111): antes da migration 20261022_loteS47 a coluna não existe; lê sem ela e o campo fica escondido
+  if(error && /concorrencia/i.test(error.message || "")) ({ data, error } = await ler(COLS));
+  else if(!error) _orcTemConcorrencia = true;
   _orcamentos = error ? [] : (data || []);
+  orcAtualizarConcorrencias();
   // lote S44 (L3, #63): métodos de cada orçamento = tipo da proposta + eixo dos serviços dos itens
   // (orçamento misto aparece em cada método que tiver)
   _orcMetodos = {};
@@ -457,6 +458,68 @@ function orcTemMetodo(o, metodo){
   return !!(m && m.has(metodo));
 }
 
+/* ---------- Lote S47 (#111): concorrência ----------
+   orcamentos.concorrencia = empreendimento do cliente final (ex.: "Vale – Ramal João Paulo – Itabira/MG"). Várias
+   construtoras pedem proposta para a mesma obra: cada uma tem a sua proposta e o seu número; a concorrência só junta.
+   Campo na aba Modelo com as já usadas (datalist); ao escolher uma existente, os campos comuns vazios do Modelo vêm
+   da proposta mais recente dela. Filtro e agrupamento no painel ("3 propostas · 1 aprovada"). */
+let _orcTemConcorrencia = false;
+let _orcConcorrencias = [];   // [{ nome, propostas, aprovadas }] por nome (sem diferença de maiúsculas)
+const ORC_CONC_AGRUPAR = "__agrupar";
+const orcConcChave = (s) => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
+function orcAtualizarConcorrencias(){
+  const mapa = {};
+  _orcamentos.forEach(o => {
+    const k = orcConcChave(o.concorrencia);
+    if(!k) return;
+    const g = mapa[k] || (mapa[k] = { nome: String(o.concorrencia).trim(), numeros: new Set(), aprov: new Set() });
+    g.numeros.add(o.numero || o.id);   // revisões do mesmo número contam como uma proposta
+    if(o.status === "aprovado") g.aprov.add(o.numero || o.id);
+  });
+  _orcConcorrencias = Object.values(mapa).map(g => ({ nome: g.nome, propostas: g.numeros.size, aprovadas: g.aprov.size }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  const dl = $("orc-conc-lista");
+  if(dl) dl.innerHTML = _orcConcorrencias.map(c => `<option value="${esc(c.nome)}"></option>`).join("");
+  const campo = $("orc-concorrencia")?.closest(".campo");
+  if(campo) campo.style.display = _orcTemConcorrencia ? "" : "none";
+  const fc = $("orc-f-conc");
+  if(fc) fc.style.display = _orcTemConcorrencia ? "" : "none";
+}
+const orcConcResumo = (g) => `${g.propostas} proposta${g.propostas === 1 ? "" : "s"} · ${g.aprovadas} aprovada${g.aprovadas === 1 ? "" : "s"}`;
+// escolheu uma concorrência já usada: grafia dela e campos comuns vazios da proposta mais recente
+async function orcAoEscolherConcorrencia(){
+  const el = $("orc-concorrencia");
+  if(!el || !_orcTemConcorrencia) return;
+  const k = orcConcChave(el.value);
+  const g = _orcConcorrencias.find(c => orcConcChave(c.nome) === k);
+  if(!k || !g) return;
+  el.value = g.nome;
+  const base = _orcamentos.filter(o => orcConcChave(o.concorrencia) === k && o.id !== orcEditId)
+    .sort((a, b) => String(b.data_orcamento || "").localeCompare(String(a.data_orcamento || "")))[0];
+  if(!base) return;
+  const { data: o } = await sb.from("orcamentos")
+    .select("referencia_obra,escopo_servicos,equipamento_considerado,prazo_execucao,local_execucao").eq("id", base.id).maybeSingle();
+  if(!o) return;
+  const preencher = (id, val) => { const c = $(id); if(c && !String(c.value || "").trim() && val) c.value = val; };
+  preencher("orc-ref-obra", o.referencia_obra);
+  preencher("orc-escopo", o.escopo_servicos);
+  preencher("orc-equipamento", o.equipamento_considerado);
+  preencher("orc-prazo", o.prazo_execucao);
+  preencher("orc-local", o.local_execucao);
+}
+
+/* ---------- Lote S47 (#112): ordenação pelo cabeçalho (ordenarTabela, core.js) ---------- */
+const _orcOrdem = ordenarTabela({
+  numero:   { tipo: "num",   valor: o => { const p = orcNumeroPartes(o.numero, o.data_orcamento); const n = parseInt(p.num, 10); return Number.isFinite(n) ? Number(p.ano) * 1e6 + n : null; } },
+  cliente:  { tipo: "texto", valor: o => mapaClientes[o.cliente_id] || "" },
+  tipo:     { tipo: "texto", valor: o => { const t = _orcTipoPorteTxt(o); return t === "—" ? "" : t; } },
+  data:     { tipo: "data",  valor: o => o.data_orcamento || "", dirInicial: "desc" },
+  validade: { tipo: "data",  valor: o => o.validade || "" },
+  status:   { tipo: "texto", valor: o => (STATUS.orcamento && STATUS.orcamento[o.status] ? STATUS.orcamento[o.status].label : o.status) || "" },
+  valor:    { tipo: "num",   valor: o => orcTotalComIss(o), dirInicial: "desc" },
+  concorrencia: { tipo: "texto", valor: o => o.concorrencia || "" }
+}, { chave: "orc-ordem" });
+
 /* ---------- Filtros ---------- */
 function orcFiltrados(){
   const termo = ($("orc-busca")?.value || "").trim().toLowerCase();
@@ -464,14 +527,17 @@ function orcFiltrados(){
   const fCli   = $("orc-f-cliente")?.value || "";
   const fPorte = $("orc-f-porte")?.value || "";
   const fMet   = $("orc-f-metodo")?.value || "";
+  const fConc  = $("orc-f-conc")?.value || "";   // lote S47 (#111)
   return _orcamentos.filter(o => {
     if(fStat && o.status !== fStat) return false;
     if(fCli && o.cliente_id !== fCli) return false;
     if(fPorte && (o.porte_equipamento || "") !== fPorte) return false;
     if(fMet && !orcTemMetodo(o, fMet)) return false;
+    if(fConc && fConc !== ORC_CONC_AGRUPAR && orcConcChave(o.concorrencia) !== fConc) return false;
     if(termo){
       const cli = (mapaClientes[o.cliente_id] || "").toLowerCase();
-      if(!(orcNumeroCasa(o.numero, termo) || cli.includes(termo))) return false;   // lote S44 (L4): com e sem o ano
+      // lote S44 (L4): com e sem o ano; lote S47: a busca também acha pela concorrência
+      if(!(orcNumeroCasa(o.numero, termo) || cli.includes(termo) || orcConcChave(o.concorrencia).includes(termo))) return false;
     }
     return true;
   });
@@ -491,6 +557,13 @@ function preencherFiltrosOrc(){
   if(selMet && !selMet.options.length){
     selMet.innerHTML = `<option value="">Todos os métodos</option>` +
       Object.entries(ORC_METODO_LBL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  }
+  const selConc = $("orc-f-conc");   // lote S47 (#111): agrupar ou escolher uma concorrência
+  if(selConc){
+    const atual = selConc.value;
+    selConc.innerHTML = `<option value="">Todas as concorrências</option><option value="${ORC_CONC_AGRUPAR}">Agrupar por concorrência</option>` +
+      _orcConcorrencias.map(c => `<option value="${esc(orcConcChave(c.nome))}">${esc(c.nome)} (${esc(orcConcResumo(c))})</option>`).join("");
+    selConc.value = [...selConc.options].some(o => o.value === atual) ? atual : "";
   }
   const selCli = $("orc-f-cliente");
   if(selCli){
@@ -531,20 +604,42 @@ function renderOrcLista(dados){
     cont.innerHTML = `<p class="vazio">Nenhum orçamento encontrado.</p>`;
     return;
   }
-  const linhas = dados.map(o => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
+  const comConc = _orcTemConcorrencia;   // lote S47 (#111): coluna Concorrência depois da migration
+  const nCols = comConc ? 8 : 7;
+  const linha = (o) => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
     <td>${esc(o.numero)}</td>
     <td>${esc(mapaClientes[o.cliente_id]||"—")}</td>
+    ${comConc ? `<td>${o.concorrencia ? esc(o.concorrencia) : '<span class="meta">—</span>'}</td>` : ""}
     <td>${esc(_orcTipoPorteTxt(o))}</td>
     <td>${dataBR(o.data_orcamento)}</td>
     <td>${dataBR(o.validade)}</td>
     <td>${tagStatus("orcamento", o.status)}</td>
     <td class="num" title="Total da proposta, com ISS por dentro (sem ISS: ${brl(o.valor_total)})">${brl(orcTotalComIss(o))}</td>
-  </tr>`).join("");
+  </tr>`;
+  // lote S47 (#112): ordenação pelo cabeçalho; (#111) agrupada quando o filtro pede uma concorrência ou o agrupamento
+  const ordenados = _orcOrdem.aplicar(dados);
+  const fConc = $("orc-f-conc")?.value || "";
+  let corpo;
+  if(comConc && fConc){
+    const grupos = new Map();
+    ordenados.forEach(o => {
+      const k = orcConcChave(o.concorrencia);
+      if(!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(o);
+    });
+    const chaves = [...grupos.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b, "pt-BR"));
+    corpo = chaves.map(k => {
+      const g = _orcConcorrencias.find(c => orcConcChave(c.nome) === k);
+      const rot = k ? `${esc(g ? g.nome : grupos.get(k)[0].concorrencia)} · ${esc(g ? orcConcResumo(g) : "")}` : "Sem concorrência";
+      return `<tr class="orc-grupo-conc"><td colspan="${nCols}">${rot}</td></tr>` + grupos.get(k).map(linha).join("");
+    }).join("");
+  } else corpo = ordenados.map(linha).join("");
+  const th = (col, rot, extra) => _orcOrdem.th(col, rot, extra);
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Número</th><th>Cliente</th><th>Tipo · Porte</th><th>Data</th><th>Validade</th><th>Status</th><th class="num" title="Total da proposta com ISS por dentro (lote S44, #65)">Valor c/ ISS</th>
+      ${th("numero", "Número")}${th("cliente", "Cliente")}${comConc ? th("concorrencia", "Concorrência") : ""}${th("tipo", "Tipo · Porte")}${th("data", "Data")}${th("validade", "Validade")}${th("status", "Status")}${th("valor", "Valor c/ ISS", { cls: "num", title: "Total da proposta com ISS por dentro (lote S44, #65)" })}
     </tr></thead>
-    <tbody>${linhas}</tbody></table></div>`;
+    <tbody>${corpo}</tbody></table></div>`;
 }
 
 function renderOrcKanban(dados){
@@ -559,6 +654,7 @@ function renderOrcKanban(dados){
         <div class="serv-kan-card-nome">${esc(o.numero)} · ${esc(mapaClientes[o.cliente_id]||"—")}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">${dataBR(o.data_orcamento)}${o.validade ? " · val " + dataBR(o.validade) : ""} · ${esc(_orcTipoPorteTxt(o))}</span>
+          ${o.concorrencia ? `<span class="meta" title="Concorrência (lote S47, #111)">🏗️ ${esc(o.concorrencia)}</span>` : ""}
         </div>
         <div class="serv-kan-card-rod">
           <span class="meta">c/ ISS</span>
@@ -590,7 +686,7 @@ function novoOrcamento(){
   // limpa form
   ["orc-numero","orc-cliente","orc-descricao","orc-validade","orc-responsavel","orc-obs",
    "orc-ref-obra","orc-escopo","orc-equipamento","orc-pagamento","orc-prazo","orc-local",
-   "orc-hosp-valor","orc-porte","orc-faixa","orc-contato-nome","orc-contato-tel","orc-contato-email"]
+   "orc-hosp-valor","orc-porte","orc-faixa","orc-contato-nome","orc-contato-tel","orc-contato-email","orc-concorrencia"]
     .forEach(k => { const el = $(k); if(el) el.value = ""; });
   $("orc-itens").innerHTML = "";
   $("orc-status").value = "rascunho";
@@ -659,6 +755,7 @@ async function abrirOrcamento(id){
   $("orc-pagamento").value       = o.condicoes_pagamento || (typeof textoPagamentoPadrao === "function" ? textoPagamentoPadrao(o.prazo_pagamento_dias, o.pagamento_forma) : "");
   $("orc-prazo").value           = o.prazo_execucao || "";
   $("orc-local").value           = o.local_execucao || "";
+  if($("orc-concorrencia")) $("orc-concorrencia").value = o.concorrencia || "";   // lote S47 (#111)
   $("orc-cgl-diesel").checked      = o.cgl_fornece_diesel === true;
   $("orc-diesel-preco").value      = o.diesel_preco_litro != null ? o.diesel_preco_litro : 8.34;
   $("orc-cgl-hospedagem").checked  = o.cgl_fornece_hospedagem === true;
@@ -1199,6 +1296,8 @@ async function salvarOrcamento(novoStatus){
     hospedagem_valor_mensal:    $("orc-hosp-valor").value ? Number($("orc-hosp-valor").value) : null,
     cgl_fornece_alimentacao:    !!$("orc-cgl-alimentacao")?.checked   // lote S44 (L7, #62): migration 20261020_loteS44_orcamento_alimentacao
   };
+  // lote S47 (#111): só grava a concorrência quando a coluna existe (migration 20261022_loteS47)
+  if(_orcTemConcorrencia) reg.concorrencia = ($("orc-concorrencia")?.value || "").trim().replace(/\s+/g, " ") || null;
 
   let orcId = orcEditId;
   // lote S44 (L7): enquanto a migration 20261020_loteS44_orcamento_alimentacao não estiver aplicada, grava o
@@ -1273,6 +1372,10 @@ function ligarOrcamentos(){
   });
 
   $("btn-novo-orcamento")?.addEventListener("click", novoOrcamento);
+  // lote S47: #112 cabeçalho ordena (estado na sessão); #111 concorrência no filtro e no Modelo
+  _orcOrdem.ligar("orc-conteudo", renderOrcamentos);
+  $("orc-f-conc")?.addEventListener("change", renderOrcamentos);
+  $("orc-concorrencia")?.addEventListener("change", orcAoEscolherConcorrencia);
   $("btn-voltar-orc")?.addEventListener("click", mostrarPainelOrc);
   $("btn-salvar-orc")?.addEventListener("click", () => comBotaoTravado("btn-salvar-orc", () => salvarOrcamento()));
   $("btn-excluir-orc")?.addEventListener("click", excluirOrcamento);

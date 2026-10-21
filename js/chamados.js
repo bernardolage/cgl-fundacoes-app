@@ -33,7 +33,7 @@ const CHAM_COL = { criado: "criado_em", atualizado: "atualizado_em", autor: "aut
 const CHAM_STATUS = {
   aberto:               { label: "Aberto",                cor: "vermelho" },
   em_analise:           { label: "Em análise",            cor: "ambar" },
-  aguardando_validacao: { label: "Aguardando validação",  cor: "azul" },
+  aguardando_validacao: { label: "Esperando resposta",    cor: "azul" },   // lote S47: sempre com destinatário e prazo
   planejado:            { label: "Planejado",             cor: "azul" },   // fase 64: entrou numa fase/lote/hotfix
   recusado:             { label: "Recusado",              cor: "cinza" },  // fase 64: duplicado ou fora do escopo
   resolvido:            { label: "Resolvido",             cor: "verde" }
@@ -76,6 +76,50 @@ let _chamAnexos = [];        // fase 48: anexos do chamado aberto
 let _chamContexto  = null;   // contexto capturado ao clicar em "Relatar problema ou melhoria"
 
 const chamPodeTriar = () => !!(usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo));
+
+/* ---------- Lote S47 (21/10/2026): quem responde, até quando, aprovar e reabrir ----------
+   aguardando_de: 'autor' | 'diretoria' | 'usuario' (+ aguardando_de_id); aguardando_ate (5 dias úteis);
+   aguardando_sugere (status que "Aprovar e enviar" aplica); resolvido_em (o autor reabre por 7 dias).
+   Antes da migration 20261022_loteS47 as colunas não vêm no select("*"): chamTemEspera() devolve false e a
+   ficha segue o fluxo antigo. */
+const CHAM_REABRIR_DIAS = 7;
+const CHAM_SUGERE = { em_analise: "Em análise", resolvido: "Resolvido", recusado: "Recusado" };
+const chamTemEspera = (c) => !!c && Object.prototype.hasOwnProperty.call(c, "aguardando_de");
+const chamEuId = () => usuarioAtual ? usuarioAtual.id : null;
+function chamEsperaMinha(c){
+  if(!c || c.status !== "aguardando_validacao" || !chamTemEspera(c) || !usuarioAtual) return false;
+  if(c.aguardando_de === "diretoria") return chamPodeTriar();
+  if(c.aguardando_de === "autor") return c[CHAM_COL.abertoPor] === chamEuId();
+  return c.aguardando_de === "usuario" && c.aguardando_de_id === chamEuId();
+}
+// "Bernardo", "Diretoria", "você"
+function chamEsperaQuem(c){
+  if(!c || !c.aguardando_de) return "—";
+  if(chamEsperaMinha(c)) return "você";
+  if(c.aguardando_de === "diretoria") return "Diretoria";
+  if(c.aguardando_de === "autor") return chamAutor(c[CHAM_COL.abertoPor], c.origem) + " (autor)";
+  return chamNome(c.aguardando_de_id);
+}
+const chamPrazoVencido = (c) => !!(c && c.status === "aguardando_validacao" && c.aguardando_ate && c.aguardando_ate < hojeISO());
+function chamEsperaTxt(c){
+  return `Esperando: ${chamEsperaQuem(c)}${c.aguardando_ate ? " · até " + dataBR(c.aguardando_ate).slice(0, 5) : ""}`;
+}
+// resolvido há menos de 7 dias (o autor ainda pode reabrir)
+function chamResolvidoRecente(c){
+  if(!c || c.status !== "resolvido" || !c.resolvido_em) return false;
+  return Date.now() - new Date(c.resolvido_em).getTime() < CHAM_REABRIR_DIAS * 86400000;
+}
+const chamSomenteLeitura = () => typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+// a última pergunta ou resposta sugerida do chamado aberto (o que a pessoa esperada precisa ler)
+function chamPerguntaAtual(){
+  for(let i = _chamComentarios.length - 1; i >= 0; i--){
+    const t = _chamComentarios[i].texto || "";
+    if(/\[resposta sugerida\]/i.test(t)) return { sugerida: true, texto: chamRespostaSugerida(t) };
+    const m = t.match(/\[pergunta\]\s*([\s\S]+)$/i);
+    if(m) return { sugerida: false, texto: m[1].replace(/\s*\[sugere:[^\]]*\]/gi, "").trim() };
+  }
+  return null;
+}
 const chamNome = (id) => id ? (_chamPerfis[id] || (usuarioAtual && usuarioAtual.id === id ? usuarioAtual.nome : null) || "—") : "—";
 function chamDataHora(iso){
   if(!iso) return "—";
@@ -130,7 +174,7 @@ async function carregarChamados(silencioso){
   _chamTabelaOk = true;
   _chamados = data || [];
   _chamCarregado = true;
-  await carregarPerfisChamados(_chamados.map(c => c[CHAM_COL.abertoPor]));
+  await carregarPerfisChamados(_chamados.flatMap(c => [c[CHAM_COL.abertoPor], c.aguardando_de_id]));   // lote S47: quem responde
   preencherFiltrosChamados();
   renderChamados();
   atualizarBadgeChamados();
@@ -152,7 +196,11 @@ function atualizarBadgeChamados(){
 function preencherFiltrosChamados(){
   const fs = $("cham-f-status");
   if(fs && fs.options.length <= 1){
+    // lote S47: atalhos "esperando a minha resposta", "prazo vencido" e "resolvidos nos últimos 7 dias"
     fs.innerHTML = `<option value="">Abertos e em andamento</option><option value="todos">Todos</option>` +
+      `<option value="minha_resposta">Esperando minha resposta</option>` +
+      (chamPodeTriar() ? `<option value="atrasados">Esperando resposta, prazo vencido</option>` : "") +
+      `<option value="resolvidos7">Resolvidos nos últimos 7 dias</option>` +
       Object.entries(CHAM_STATUS).map(([v, o]) => `<option value="${v}">${esc(o.label)}</option>`).join("");
   }
   const fp = $("cham-f-prioridade");
@@ -185,6 +233,9 @@ function chamadosFiltrados(){
   const meus  = $("cham-f-meus")?.checked;
   return _chamados.filter(c => {
     if(fSt === "") { if(chamFechado(c.status)) return false; }
+    else if(fSt === "minha_resposta"){ if(!chamEsperaMinha(c)) return false; }   // lote S47
+    else if(fSt === "atrasados"){ if(!chamPrazoVencido(c)) return false; }
+    else if(fSt === "resolvidos7"){ if(!chamResolvidoRecente(c)) return false; }
     else if(fSt !== "todos" && c.status !== fSt) return false;
     if(fPri === "sem" ? c.prioridade != null : (fPri && String(c.prioridade) !== fPri)) return false;
     if(fCat && c.categoria !== fCat) return false;
@@ -204,10 +255,12 @@ function renderChamados(){
   if(!cont || !_chamTabelaOk) return;
   // KPIs
   const limite30 = Date.now() - 30 * 86400000;
-  const cnt = (st) => _chamados.filter(c => c.status === st && (st !== "resolvido" || new Date(c[CHAM_COL.atualizado] || c[CHAM_COL.criado]).getTime() >= limite30)).length;
+  const cnt = (st) => _chamados.filter(c => c.status === st && (st !== "resolvido" || new Date(c.resolvido_em || c[CHAM_COL.atualizado] || c[CHAM_COL.criado]).getTime() >= limite30)).length;
   const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   kpi("cham-kpi-aberto", cnt("aberto")); kpi("cham-kpi-analise", cnt("em_analise"));
-  kpi("cham-kpi-validacao", cnt("aguardando_validacao")); kpi("cham-kpi-resolvido", cnt("resolvido"));
+  // lote S47: conta só o que espera o usuário logado (antes da migration, o total esperando)
+  kpi("cham-kpi-validacao", _chamados.some(chamTemEspera) ? _chamados.filter(chamEsperaMinha).length : cnt("aguardando_validacao"));
+  kpi("cham-kpi-resolvido", cnt("resolvido"));
   kpi("cham-kpi-p1", _chamados.filter(c => c.prioridade === 1 && ["aberto","em_analise"].includes(c.status)).length);
 
   const lista = chamadosFiltrados();
@@ -233,7 +286,7 @@ function renderChamados(){
         <td>${esc(cat.label)}${cat.validacao ? ' <span class="tag ambar" title="Exige validação da diretoria antes de executar">validação</span>' : ""}</td>
         <td><div>${esc(chamModuloLabel(c.modulo))}</div><div class="meta">${c.obra_id ? linkObra(c.obra_id) : ""}</div></td>
         <td><div>${esc(chamAutor(c[CHAM_COL.abertoPor], c.origem))}</div><div class="meta">${esc(chamDataHora(c[CHAM_COL.criado]))}</div></td>
-        <td>${chamTag(c.status)}${c.fase ? `<div class="meta">${esc(c.fase)}</div>` : ""}</td>
+        <td>${chamTag(c.status)}${c.status === "aguardando_validacao" && c.aguardando_de ? `<div class="meta${chamPrazoVencido(c) ? " txt-perigo" : ""}">${esc(chamEsperaTxt(c))}</div>` : ""}${c.fase ? `<div class="meta">${esc(c.fase)}</div>` : ""}</td>
       </tr>`;
     }).join("")}</tbody></table></div>`;
   if(typeof marcarAcionaveis === "function") marcarAcionaveis(cont);
@@ -292,6 +345,9 @@ function renderFichaChamado(erroComentarios){
     </div>
     <div class="cham-contexto">
       <span class="chip">Status: ${chamTag(c.status)}</span>
+      ${c.status === "aguardando_validacao" && c.aguardando_de ? `<span class="chip${chamPrazoVencido(c) ? " txt-perigo" : ""}"><strong>${esc(chamEsperaTxt(c))}</strong>${chamPrazoVencido(c) ? " · prazo vencido" : ""}</span>` : ""}
+      ${c.status === "resolvido" && c.resolvido_em ? `<span class="chip">Resolvido em <strong>${esc(chamDataHora(c.resolvido_em))}</strong></span>` : ""}
+      ${c.reaberto_n ? `<span class="chip">Reaberto <strong>${esc(c.reaberto_n)}×</strong></span>` : ""}
       <span class="chip">Categoria: <strong>${esc(cat.label)}</strong>${cat.validacao ? " · exige validação" : ""}</span>
       <span class="chip">Módulo: <strong>${esc(chamModuloLabel(c.modulo))}</strong></span>
       ${c.obra_id ? `<span class="chip">Obra: <strong>${linkObra(c.obra_id, mapaObras[c.obra_id] || c.obra_id)}</strong></span>` : ""}
@@ -300,6 +356,7 @@ function renderFichaChamado(erroComentarios){
     </div>
     ${chamChipsBacklog(c, podeTriar)}
     <div class="cham-status-bar" id="cham-status-bar">${stages}</div>
+    ${chamBlocoEspera(c, ehAutor, podeTriar)}
     ${cat.dica ? `<p class="nota">${esc(cat.dica)}</p>` : ""}
     <div class="campo largo"><label>Descrição</label><div class="cham-desc" style="font-size:var(--txt-sm);color:var(--txt);">${esc(c.descricao || "—")}</div></div>
     <h4 class="titulo-bloco" style="margin-top:14px;">📎 Anexos (${_chamAnexos.length})</h4>
@@ -315,11 +372,16 @@ function renderFichaChamado(erroComentarios){
       const txt = k.texto || "";
       const cls = /^\[status\]/i.test(txt) ? " sistema" : /^\[resolu[cç][aã]o\]/i.test(txt) ? " resolucao" : "";
       // fase 64: prefixos da triagem viram tag; o texto da [resposta sugerida] pode ser aprovado pela gestão
-      const pref = txt.match(/^\[(triagem|duplicado de #?\d+|resposta sugerida)\]\s*/i);
-      const corpo = txt.replace(/^\[(status|resolu[cç][aã]o)\]\s*/i, "").replace(/^\[(triagem|duplicado de #?\d+|resposta sugerida)\]\s*/i, "");
+      // lote S47: [pergunta], [reaberto] e [decisão] também viram tag; "[sugere: x]" vira "ao aprovar: X"
+      const PREF_RE = /^\[(triagem|duplicado de #?\d+|resposta sugerida|pergunta|reaberto|decis[aã]o)\]\s*/i;
+      const pref = txt.match(PREF_RE);
+      const corpo = txt.replace(/^\[(status|resolu[cç][aã]o)\]\s*/i, "").replace(PREF_RE, "");
       const sugerida = chamRespostaSugerida(txt);
-      const corpoHtml = esc(corpo).replace(/^\[resposta sugerida\]/im, '<span class="tag verde">resposta sugerida</span>');
-      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${/^resposta/i.test(pref[1]) ? "verde" : /^duplicado/i.test(pref[1]) ? "cinza" : "azul"}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">✅ Aprovar resposta</button>` : ""}</div>`;
+      const corpoHtml = esc(corpo).replace(/^\[resposta sugerida\]/im, '<span class="tag verde">resposta sugerida</span>')
+        .replace(/\[sugere:\s*([a-z_]+)\]/gi, (_m, st) => `<span class="tag cinza">ao aprovar: ${esc(CHAM_SUGERE[st.toLowerCase()] || st)}</span>`);
+      const corPref = (p) => /^resposta/i.test(p) ? "verde" : /^duplicado/i.test(p) ? "cinza" : /^(pergunta|reaberto)/i.test(p) ? "ambar" : "azul";
+      // o botão antigo "Aprovar resposta" só existe antes da migration do lote S47 (depois, o bloco "Esperando" aprova)
+      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${corPref(pref[1])}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) && !chamTemEspera(c) && !chamSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">✅ Aprovar resposta</button>` : ""}</div>`;
     }).join("") : `<p class="vazio">Sem comentários ainda. A triagem diária (18h) registra aqui o andamento.</p>`}</div>
     <div class="campo largo" style="margin-top:10px;"><label>Comentar</label><textarea id="cham-novo-comentario" rows="3" placeholder="${podeTriar ? "Registre a triagem, a decisão ou a resolução. Prefixe com [resolução] para destacar." : "Complemente o chamado (mais detalhes, prints descritos, o que mudou)."}"></textarea></div>
     <div id="cham-ficha-aviso" class="aviso"></div>
@@ -344,8 +406,140 @@ function renderFichaChamado(erroComentarios){
   }));
   box.querySelectorAll("#cham-status-bar .stage").forEach(el => {
     if(el.getAttribute("aria-disabled") === "true" || el.classList.contains("atual")) return;
+    // lote S47: "Esperando resposta" exige destinatário e prazo → abre o "Perguntar a…" em vez de mudar direto
+    if(el.dataset.status === "aguardando_validacao" && chamTemEspera(c)){
+      el.addEventListener("click", () => { const d = $("cham-perguntar"); if(d){ d.open = true; $("cham-perg-texto")?.focus(); } });
+      return;
+    }
     el.addEventListener("click", () => mudarStatusChamado(el.dataset.status));
   });
+  // lote S47: aprovar / editar / responder, reabrir e perguntar
+  $("btn-cham-aprovar-enviar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, () => chamAprovarEspera(false)));
+  $("btn-cham-aprovar-editar")?.addEventListener("click", () => {
+    const w = $("cham-aprovar-edicao"); if(!w) return;
+    w.style.display = ""; $("cham-aprovar-texto")?.focus();
+  });
+  $("btn-cham-aprovar-editado")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, () => chamAprovarEspera(true)));
+  $("btn-cham-reabrir")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, chamReabrirChamado));
+  $("btn-cham-perguntar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, chamPerguntarChamado));
+  $("cham-perg-de")?.addEventListener("change", chamAtualizarPerguntarUsuario);
+}
+/* Lote S47: bloco abaixo da statusbar.
+   - Esperando resposta: quem é, até quando, a pergunta; para quem está esperado, "Aprovar e enviar" / "Editar"
+     (com resposta sugerida) ou "Responder e enviar" (sem resposta sugerida). Ao enviar, aplica o status sugerido.
+   - Resolvido há menos de 7 dias: o autor vê "Não resolveu" (reabre com comentário obrigatório).
+   - Diretoria: "Perguntar a…" (autor, diretoria ou um usuário; texto; status ao aprovar). */
+function chamBlocoEspera(c, ehAutor, podeTriar){
+  if(!chamTemEspera(c)) return "";
+  const leitura = chamSomenteLeitura();
+  let html = "";
+  if(c.status === "aguardando_validacao"){
+    const perg = chamPerguntaAtual();
+    const minha = chamEsperaMinha(c) && !leitura;
+    const vai = CHAM_SUGERE[c.aguardando_sugere || "em_analise"] || "Em análise";
+    html += `<div class="cham-espera${chamPrazoVencido(c) ? " vencido" : ""}">
+      <div><strong>${esc(chamEsperaTxt(c))}</strong>${chamPrazoVencido(c) ? ' <span class="tag vermelho">prazo vencido</span>' : ""}</div>
+      ${perg ? `<div class="cham-espera-perg"><span class="tag ${perg.sugerida ? "verde" : "ambar"}">${perg.sugerida ? "resposta sugerida" : "pergunta"}</span> ${esc(perg.texto)}</div>` : `<div class="meta">Sem pergunta registrada: veja o andamento abaixo.</div>`}
+      ${minha ? (perg && perg.sugerida ? `
+        <div class="form-acoes compacta">
+          <button type="button" class="btn btn-sucesso" id="btn-cham-aprovar-enviar" title="Envia a resposta sugerida em seu nome e muda o chamado para ${esc(vai)}">✅ Aprovar e enviar</button>
+          <button type="button" class="btn-sec" id="btn-cham-aprovar-editar">✏️ Editar</button>
+          <span class="meta">Ao enviar, o chamado vai para <strong>${esc(vai)}</strong>.</span>
+        </div>
+        <div id="cham-aprovar-edicao" style="display:none;">
+          <textarea id="cham-aprovar-texto" rows="4">${esc(perg.texto)}</textarea>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cham-aprovar-editado">Enviar resposta editada</button></div>
+        </div>` : `
+        <div id="cham-aprovar-edicao">
+          <textarea id="cham-aprovar-texto" rows="3" placeholder="Sua resposta (anexe o arquivo pedido em 📎 Anexos, se for o caso)"></textarea>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cham-aprovar-editado">Responder e enviar</button>
+            <span class="meta">Ao enviar, o chamado vai para <strong>${esc(vai)}</strong>.</span></div>
+        </div>`) : ""}
+    </div>`;
+  }
+  if(ehAutor && !leitura && chamResolvidoRecente(c)){
+    const ate = new Date(new Date(c.resolvido_em).getTime() + CHAM_REABRIR_DIAS * 86400000);
+    html += `<div class="cham-espera">
+      <div><strong>Confira a correção.</strong> Se não ficou certo, você pode reabrir até ${esc(ate.toLocaleDateString("pt-BR"))}.</div>
+      <textarea id="cham-reabrir-texto" rows="2" placeholder="O que continua errado? (obrigatório)"></textarea>
+      <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-cham-reabrir">↩️ Não resolveu</button></div>
+    </div>`;
+  }
+  if(podeTriar && !leitura && !chamFechado(c.status)){
+    const autorNome = c[CHAM_COL.abertoPor] ? chamNome(c[CHAM_COL.abertoPor]) : null;
+    html += `<details class="cham-espera cham-perguntar" id="cham-perguntar">
+      <summary>❓ Perguntar a…</summary>
+      <div class="grade">
+        <div class="campo"><label for="cham-perg-de">Quem responde</label>
+          <select id="cham-perg-de">
+            ${autorNome ? `<option value="autor">Autor (${esc(autorNome)})</option>` : ""}
+            <option value="diretoria">Diretoria</option>
+            <option value="usuario">Outra pessoa…</option>
+          </select></div>
+        <div class="campo" id="cham-perg-usuario-campo" style="display:none;"><label for="cham-perg-usuario">Pessoa</label>
+          <select id="cham-perg-usuario"><option value="">Carregando…</option></select></div>
+        <div class="campo"><label for="cham-perg-sugere">Ao aprovar, vai para</label>
+          <select id="cham-perg-sugere">${Object.entries(CHAM_SUGERE).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
+        <div class="campo largo"><label for="cham-perg-texto">Pergunta ou resposta sugerida</label>
+          <textarea id="cham-perg-texto" rows="3" placeholder="Pergunta: o que falta para seguir. Para uma resposta pronta que a pessoa só aprova, comece com [resposta sugerida]."></textarea></div>
+      </div>
+      <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cham-perguntar">Perguntar</button>
+        <span class="meta">Prazo: 5 dias úteis. Entra na Minha fila de quem responde.</span></div>
+    </details>`;
+  }
+  return html;
+}
+let _chamUsuariosAtivos = null;
+async function chamAtualizarPerguntarUsuario(){
+  const usar = $("cham-perg-de")?.value === "usuario";
+  const campo = $("cham-perg-usuario-campo");
+  if(campo) campo.style.display = usar ? "" : "none";
+  if(!usar || _chamUsuariosAtivos) return;
+  const { data, error } = await sb.from("profiles").select("id,nome").eq("ativo", true).order("nome");
+  _chamUsuariosAtivos = error ? [] : (data || []);
+  _chamUsuariosAtivos.forEach(p => { _chamPerfis[p.id] = p.nome; });
+  const sel = $("cham-perg-usuario");
+  if(sel) sel.innerHTML = `<option value="">— escolha —</option>` + _chamUsuariosAtivos.map(p => `<option value="${esc(p.id)}">${esc(p.nome || "—")}</option>`).join("");
+}
+async function chamDepoisDaRpc(id){
+  await carregarChamados(true);
+  await abrirChamado(id);
+  if(typeof dashCarregarFila === "function") dashCarregarFila();
+}
+async function chamAprovarEspera(editado){
+  const c = _chamAberto;
+  if(!c) return;
+  const texto = editado ? ($("cham-aprovar-texto")?.value || "").trim() : null;
+  if(editado && !texto){ aviso("cham-ficha-aviso", "Escreva a resposta.", "erro"); return; }
+  const { data, error } = await sb.rpc("chamado_aprovar", { p_id: c.id, p_texto: texto });
+  if(error){ aviso("cham-ficha-aviso", "Não foi possível enviar: " + error.message, "erro"); return; }
+  await chamDepoisDaRpc(c.id);
+  aviso("cham-ficha-aviso", `Resposta enviada. Chamado em ${CHAM_STATUS[data]?.label || data}.`, "ok");
+}
+async function chamReabrirChamado(){
+  const c = _chamAberto;
+  const texto = ($("cham-reabrir-texto")?.value || "").trim();
+  if(!c) return;
+  if(!texto){ aviso("cham-ficha-aviso", "Diga o que não ficou certo para reabrir.", "erro"); $("cham-reabrir-texto")?.focus(); return; }
+  const { error } = await sb.rpc("chamado_reabrir", { p_id: c.id, p_texto: texto });
+  if(error){ aviso("cham-ficha-aviso", "Não foi possível reabrir: " + error.message, "erro"); return; }
+  await chamDepoisDaRpc(c.id);
+  aviso("cham-ficha-aviso", "Chamado reaberto. A triagem olha de novo.", "ok");
+}
+async function chamPerguntarChamado(){
+  const c = _chamAberto;
+  if(!c) return;
+  const de = $("cham-perg-de")?.value || "";
+  const deId = de === "usuario" ? ($("cham-perg-usuario")?.value || "") : "";
+  const texto = ($("cham-perg-texto")?.value || "").trim();
+  if(de === "usuario" && !deId){ aviso("cham-ficha-aviso", "Escolha a pessoa que responde.", "erro"); return; }
+  if(!texto){ aviso("cham-ficha-aviso", "Escreva a pergunta.", "erro"); $("cham-perg-texto")?.focus(); return; }
+  const { data, error } = await sb.rpc("chamado_perguntar", { p_id: c.id, p_de: de, p_de_id: deId || null, p_texto: texto,
+    p_sugestao_status: $("cham-perg-sugere")?.value || null });
+  if(error){ aviso("cham-ficha-aviso", "Não foi possível perguntar: " + error.message, "erro"); return; }
+  await chamDepoisDaRpc(c.id);
+  aviso("cham-ficha-aviso", data === "aguardando_validacao" ? "Pergunta registrada. Prazo de 5 dias úteis."
+    : `Chamado aberto pela diretoria: a recomendação vale como decidida (${CHAM_STATUS[data]?.label || data}).`, "ok");
 }
 function fecharChamado(){
   $("cham-modal").style.display = "none";
@@ -389,7 +583,7 @@ async function chamSalvarCampo(campo, valor){
 // texto a partir de "[resposta sugerida]" (pode vir no meio do comentário da triagem)
 function chamRespostaSugerida(txt){
   const m = String(txt || "").match(/\[resposta sugerida\]\s*([\s\S]+)$/i);
-  return m ? m[1].trim() : "";
+  return m ? m[1].replace(/\s*\[sugere:[^\]]*\]/gi, "").trim() : "";   // lote S47: "[sugere: x]" não vai na resposta
 }
 async function mudarStatusChamado(novo){
   const c = _chamAberto;
@@ -617,7 +811,14 @@ function ligarChamados(){
     if(el) el.addEventListener(id === "cham-busca" ? "input" : "change", renderChamados);
   });
   document.querySelectorAll("#sec-chamados .ind-click[data-cham-status]").forEach(k => {
-    k.addEventListener("click", () => { const f = $("cham-f-status"); if(f){ f.value = k.dataset.chamStatus; renderChamados(); } });
+    k.addEventListener("click", () => {
+      const f = $("cham-f-status");
+      if(!f) return;
+      // lote S47: antes da migration não há destinatário; "esperando minha resposta" cai no status puro
+      const v = k.dataset.chamStatus;
+      f.value = v === "minha_resposta" && !_chamados.some(chamTemEspera) ? "aguardando_validacao" : v;
+      renderChamados();
+    });
   });
   $("cham-conteudo")?.addEventListener("click", (e) => {
     // fase 64: marcar para planejar não abre a ficha
