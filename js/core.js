@@ -1854,7 +1854,8 @@ $("btn-mfa-depois")?.addEventListener("click", mfaAdiar);
    Decisão 4 do Bernardo (21/10/2026): ler o valor do que se lança (medição, obra: pode_ler_financeiro(), espelhado
    em podeVerValorObra) é diferente de ver os SOMATÓRIOS financeiros. Os somatórios (Sala de Comando: "Medido no
    período" e "A receber"; Medições: indicadores A receber / Vencidas / Recebido no mês e os da visão Caução;
-   Equipamentos › Vendas: indicadores; Carteira: KPIs em R$) passam a admin, financeiro e auditor, diretor sempre:
+   Equipamentos › Vendas: indicadores; Carteira: KPIs em R$) passam a financeiro e auditor, diretor sempre (o admin
+   saiu em 21/10/2026 a pedido do Bernardo: somatório financeiro é só da diretoria e do financeiro):
    espelha pode_ver_kpi_financeiro() do banco. Engenheiro, assistente e comercial continuam vendo o valor de cada
    medição e obra.
    KPI_FIN_RESTRITO = false desliga a regra nova: cada tela volta à regra que tinha antes (o argumento). */
@@ -1864,5 +1865,5 @@ function podeVerKpiFinanceiro(regraAnterior){
     if(typeof regraAnterior === "function") return !!regraAnterior();
     return typeof podeVerValorObra === "function" && podeVerValorObra();
   }
-  return !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }

@@ -88,11 +88,11 @@ async function dashLer(fonte, ajustar, alvo){
   return data || [];
 }
 /* fase 99b (decisão 4): "Medido no período" e "A receber" são somatórios financeiros: podeVerKpiFinanceiro() (core.js) =
-   diretor, admin, financeiro e auditor. O argumento é a regra anterior, que volta se KPI_FIN_RESTRITO = false
+   diretor, financeiro e auditor (o admin saiu em 21/10/2026). O argumento é a regra anterior, que volta se KPI_FIN_RESTRITO = false
    (Medido: diretoria + quem vê contas a pagar, inclusive o comprador; A receber: a mesma lista de hoje). */
 const dashPodeVerMedido = () => podeVerKpiFinanceiro(() => dashEhDiretoria() || (typeof podeVerContasPagar === "function" && podeVerContasPagar()));
-/* fase 96: KPI "A receber" (medições + vendas de bens) — quem gere o setor financeiro: diretor, admin, financeiro e auditor */
-const dashPodeVerReceber = () => podeVerKpiFinanceiro(() => !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo));
+/* fase 96: KPI "A receber" (medições + vendas de bens) — diretoria e financeiro (admin saiu em 21/10/2026; auditor lê o que a diretoria lê) */
+const dashPodeVerReceber = () => podeVerKpiFinanceiro(() => !!usuarioAtual && ["diretor", "financeiro", "auditor"].includes(usuarioAtual.cargo));
 /* fase 99b: card Segurança (vw_sc_seguranca) — diretor, admin e auditor; o banco devolve vazio aos demais */
 const dashPodeVerSeguranca = () => !!usuarioAtual && ["diretor", "admin", "auditor"].includes(usuarioAtual.cargo);
 /* fase 100: card EPI (vw_sc_epi) — SESMT, almoxarife, RH e diretoria (podeVerEpi em js/epi.js = pode_ver_epi() no banco) */
