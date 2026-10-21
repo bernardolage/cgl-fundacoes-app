@@ -719,6 +719,7 @@ function estProfDiverge(e){ const d = estProfDiferenca(e); return d != null && M
 function estFiltroProfRegularizar(e, f){
   if(f === "sem_profundidade") return e.status === "executada" && !(Number(e.profundidade_executada_m) > 0);
   if(f === "projeto_pendente") return !!e.projeto_pendente;
+  if(f === "sem_diametro") return !(Number(e.diametro_mm) > 0) && e.status !== "refugada"; // lote S46 (#96)
   return true;
 }
 /* Chamado pelo Início antes de abrir a obra: o filtro fica no select e a planta (que não
@@ -1215,6 +1216,15 @@ async function confirmarImportEstacas(){
   }
   if(repetidos.length && !confirm(`${repetidos.length} estaca(s) já existem no mesmo local/${rotuloAgrupamento().toLowerCase()} e serão ignoradas (${repetidos.slice(0,8).map(r => [r.bloco, r.numero].filter(Boolean).join(" ")).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?`)) return;
   regs.length = 0; novos.forEach(r => regs.push(r));
+
+  // lote S46 (#96): estaca sem Ø na lista recebe o Ø do serviço da obra (único por tipo) ou o informado aqui
+  const semDiam = regs.filter(r => !(Number(r.diametro_mm) > 0));
+  for(const tipo of [...new Set(semDiam.map(r => r.tipo))]){
+    const doTipo = semDiam.filter(r => r.tipo === tipo);
+    const d = await estDiametroPadrao(tipo === "outro" ? null : tipo, `${doTipo.length} estaca(s) da lista (o mesmo Ø para todas)`);
+    if(d === undefined) return;
+    if(d != null) doTipo.forEach(r => { r.diametro_mm = d; });
+  }
 
   // Unidade das coordenadas escolhida no preview → obra (a planta converte para metros a partir dela)
   const unSel = $("import-unidade")?.value || _importUnidade;
@@ -2400,7 +2410,7 @@ async function abrirModalReconciliacao(){
   // Busca tudo em paralelo
   const [orfasRes, estsRes, todasExecsRes] = await Promise.all([
     sb.from("rdo_execucao_estaca")
-      .select("id, estaca_numero, perfuracao_inicio, profundidade_executada, equipamento_id, rdo:rdo_id(obra_id)")
+      .select("id, estaca_numero, diametro_mm, perfuracao_inicio, profundidade_executada, equipamento_id, rdo:rdo_id(obra_id)")
       .is("estaca_id", null),
     sb.from("estacas")
       .select("id, numero, bloco, local, tipo, diametro_mm, profundidade_m, status, data_execucao, observacoes")
@@ -2649,6 +2659,22 @@ async function vincularIndividual(orfaId){
   if(typeof carregarEstacasDaObra === "function") await carregarEstacasDaObra(obraEditId);
 }
 
+/* lote S46 (#96): o Ø precifica a estaca. Ø do serviço da obra (itens do orçamento, pela RPC obra_diametros_servico,
+   filtrados pelo tipo) quando é único; senão pergunta. Devolve número, null (gravar sem Ø) ou undefined (cancelou). */
+async function estDiametroPadrao(tipo, rotulo){
+  const { data, error } = await sb.rpc("obra_diametros_servico", { p_obra: obraEditId, p_tipo: tipo || null });
+  const diams = error ? [] : (data || []).map(Number).filter(d => d > 0);
+  if(diams.length === 1) return diams[0];
+  const resp = prompt(`${rotulo} sem diâmetro. O Ø precifica a estaca na medição: informe o Ø em mm` +
+    (diams.length ? ` (serviço da obra: ${diams.join(", ")})` : "") +
+    `.\nDeixe em branco para gravar sem Ø (a obra fica em "Para regularizar"); Cancelar não grava.`, "");
+  if(resp === null) return undefined;
+  if(String(resp).trim() === "") return null;
+  const d = Number(String(resp).replace(",", "."));
+  if(!(d > 0)){ aviso("app-aviso", "Diâmetro inválido: informe em mm (ex.: 400).", "erro"); return undefined; }
+  return d;
+}
+
 async function criarPrevistaDaOrfa(orfaId, numero, profundidade){
   if(!obraEditId) return;
   const nomeNorm = normalizarNumeroEstacaEstacas(numero);
@@ -2665,9 +2691,13 @@ async function criarPrevistaDaOrfa(orfaId, numero, profundidade){
   if(existente){
     estacaId = existente.id;
   } else {
+    const orfa = _recOrfas.find(o => o.id === orfaId) || {};
+    const diam = Number(orfa.diametro_mm) > 0 ? Number(orfa.diametro_mm) : await estDiametroPadrao("helice_continua", `Estaca ${nomeNorm}`);
+    if(diam === undefined) return;
     const reg = {
       obra_id: obraEditId,
       numero: nomeNorm,
+      diametro_mm: diam,
       tipo: "helice_continua",  // default razoável; user ajusta depois
       status: "prevista",
       profundidade_m: profundidade ? Number(profundidade) : null,
@@ -2694,6 +2724,14 @@ async function criarTodasPrevistasFaltantes(){
   if(!_recOrfas.length){ aviso("app-aviso","Sem órfãs.","erro"); return; }
   if(!confirm(`Criar ${_recOrfas.length} estacas previstas a partir das execuções e vincular todas? Tipo default: hélice contínua.`)) return;
 
+  // lote S46 (#96): órfã sem Ø recebe o do serviço da obra (único) ou o informado uma vez para todas
+  let diamPadrao = null;
+  const semDiam = _recOrfas.filter(o => !(Number(o.diametro_mm) > 0));
+  if(semDiam.length){
+    diamPadrao = await estDiametroPadrao("helice_continua", `${semDiam.length} execução(ões)`);
+    if(diamPadrao === undefined) return;
+  }
+
   const btn = $("btn-est-rec-criar-todas");
   if(btn){ btn.disabled = true; btn.textContent = "Criando..."; }
 
@@ -2715,6 +2753,7 @@ async function criarTodasPrevistasFaltantes(){
         numero: nomeNorm,
         tipo: "helice_continua",
         status: "prevista",
+        diametro_mm: Number(o.diametro_mm) > 0 ? Number(o.diametro_mm) : diamPadrao,
         profundidade_m: o.profundidade_executada ? Number(o.profundidade_executada) : null,
         observacoes: "Criada automaticamente a partir de execução CSV"
       }).select("id").single();

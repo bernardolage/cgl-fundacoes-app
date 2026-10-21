@@ -246,6 +246,11 @@ function mostrarFichaMovimentacao(){
   $("mov-transp-nome").value = m.transp_nome || "";
   $("mov-transp-cnpj").value = m.transp_cnpj || "";
   $("mov-transp-placa").value = m.transp_placa || m.placa_veiculo || "";
+  $("mov-transp-ie").value = m.transp_ie || "";               // lote S46 (#88): dados completos da transportadora
+  $("mov-transp-endereco").value = m.transp_endereco || "";
+  $("mov-transp-municipio").value = m.transp_municipio || "";
+  $("mov-transp-uf").value = m.transp_uf || "";
+  if($("mov-transp-busca")) $("mov-transp-busca").value = "";
   $("mov-motorista").value = m.motorista || "";
   $("mov-nf-numero").value = m.nf_numero || "";
   $("mov-nf-serie").value = m.nf_serie || "1";
@@ -271,6 +276,66 @@ function mostrarFichaMovimentacao(){
   atualizarBotoesAcao();
   // sempre abre na primeira aba
   ativarTab("cabecalho");
+}
+
+/* lote S46 (#88): transportadora pelo cadastro de fornecedores (razão social, fantasia ou CNPJ), no molde do
+   cmpCampoFornecedor do S45. Escolher preenche razão social, CNPJ, IE e endereço; digitar direto nos campos continua
+   valendo. Fornecedor escolhido sem categoria passa a "transportadora" (policy fornecedores_write: logística, gestor de
+   acessórios, almoxarife, comprador e admin gravam; sem permissão, só preenche). */
+let _movForns = null;
+const movNorm = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+async function movFornecedores(){
+  if(_movForns) return _movForns;
+  const { data, error } = await sb.from("fornecedores")
+    .select("id,razao_social,nome_fantasia,cpf_cnpj,inscricao_estadual,logradouro,numero,complemento,bairro,cidade,uf,categoria")
+    .eq("ativo", true).order("razao_social").limit(5000);
+  if(error){ aviso("app-aviso", "Não foi possível ler os fornecedores: " + error.message, "erro"); return []; }
+  _movForns = data || [];
+  return _movForns;
+}
+async function movTranspEscolher(f){
+  $("mov-transp-nome").value = f.razao_social || f.nome_fantasia || "";
+  $("mov-transp-cnpj").value = f.cpf_cnpj || "";
+  $("mov-transp-ie").value = f.inscricao_estadual || "";
+  $("mov-transp-endereco").value = [[f.logradouro, f.numero].filter(Boolean).join(", "), f.complemento, f.bairro].filter(Boolean).join(" · ");
+  $("mov-transp-municipio").value = f.cidade || "";
+  $("mov-transp-uf").value = String(f.uf || "").toLowerCase();
+  $("mov-transp-busca").value = "";
+  if(!String(f.categoria || "").trim()){
+    const { data, error } = await sb.from("fornecedores").update({ categoria: "transportadora" }).eq("id", f.id).is("categoria", null).select("id");
+    if(!error && (data || []).length) f.categoria = "transportadora";
+  }
+}
+function ligarBuscaTransportadora(){
+  const ufSel = $("mov-transp-uf");
+  if(ufSel && !ufSel.options.length) ufSel.innerHTML = `<option value="">—</option>` + UFS.map(u => `<option value="${u.toLowerCase()}">${u}</option>`).join("");
+  const inp = $("mov-transp-busca"), lista = $("mov-transp-lista");
+  if(!inp || !lista || inp.dataset.ligado) return;
+  inp.dataset.ligado = "1";
+  const fechar = () => { lista.style.display = "none"; lista.innerHTML = ""; };
+  let achados = [];
+  inp.addEventListener("input", debounce(async () => {
+    const t = movNorm(inp.value.trim()), dig = t.replace(/\D/g, "");
+    if(t.length < 2){ fechar(); return; }
+    const forns = await movFornecedores();
+    const ehTransp = (f) => movNorm(f.categoria).includes("transport") ? 0 : 1;   // transportadoras primeiro
+    achados = forns.filter(f => movNorm(f.razao_social).includes(t) || movNorm(f.nome_fantasia).includes(t)
+      || (dig.length >= 3 && String(f.cpf_cnpj || "").replace(/\D/g, "").includes(dig)))
+      .sort((a, b) => ehTransp(a) - ehTransp(b)).slice(0, 25);
+    lista.innerHTML = achados.length
+      ? achados.map(f => `<div class="resultado-item" data-id="${esc(f.id)}"><strong>${esc(f.razao_social)}</strong>${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? ` <span class="meta">${esc(f.nome_fantasia)}</span>` : ""}<span class="meta" style="float:right;">${esc([f.cpf_cnpj, f.cidade, f.categoria].filter(Boolean).join(" · "))}</span></div>`).join("")
+      : `<div class="resultado-item vazio">Nenhum fornecedor com esse nome ou CNPJ. Preencha os campos abaixo ou cadastre em Fornecedores.</div>`;
+    lista.style.display = "";
+    lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => {
+      ev.preventDefault(); fechar();
+      const f = achados.find(x => x.id === d.dataset.id); if(f) movTranspEscolher(f);
+    }));
+  }, 150));
+  inp.addEventListener("keydown", ev => {
+    if(ev.key === "Enter"){ ev.preventDefault(); if(achados[0] && lista.style.display !== "none"){ fechar(); movTranspEscolher(achados[0]); } }
+    if(ev.key === "Escape") fechar();
+  });
+  inp.addEventListener("blur", () => setTimeout(fechar, 150));
 }
 
 function toggleTransportadorVisivel(){
@@ -653,6 +718,10 @@ function coletarDadosForm(){
     frete_por_conta: $("mov-frete").value,
     transp_nome: $("mov-transp-nome").value.trim() || null,
     transp_cnpj: $("mov-transp-cnpj").value.trim() || null,
+    transp_ie: $("mov-transp-ie").value.trim() || null,                 // lote S46 (#88)
+    transp_endereco: $("mov-transp-endereco").value.trim() || null,
+    transp_municipio: $("mov-transp-municipio").value.trim() || null,
+    transp_uf: $("mov-transp-uf").value || null,
     transp_placa: $("mov-transp-placa").value.trim() || null,
     motorista: $("mov-motorista").value.trim() || null,
     nf_numero: $("mov-nf-numero").value.trim() || null,
@@ -769,6 +838,8 @@ function gerarBlocoUniNFe(){
   if(m.frete_por_conta === "terceiro"){
     linhas.push(`Nome: ${m.transp_nome || "—"}`);
     linhas.push(`CNPJ: ${m.transp_cnpj || "—"}`);
+    if(m.transp_ie) linhas.push(`IE: ${m.transp_ie}`);
+    if(m.transp_endereco || m.transp_municipio) linhas.push(`Endereço: ${[m.transp_endereco, [m.transp_municipio, (m.transp_uf || "").toUpperCase()].filter(Boolean).join("/")].filter(Boolean).join(" · ")}`);
   }
   linhas.push(`Placa: ${m.transp_placa || "—"}`);
   linhas.push(`Motorista: ${m.motorista || "—"}`);
@@ -872,6 +943,7 @@ function ligarFichaMovimentacao(){
   $("btn-nova-movimentacao")?.addEventListener("click", novaMovimentacao);
   $("btn-voltar-mov")?.addEventListener("click", voltarParaLista);
   $("mov-frete")?.addEventListener("change", toggleTransportadorVisivel);
+  ligarBuscaTransportadora();   // lote S46 (#88)
   $("mov-origem-tipo")?.addEventListener("change", toggleObraCampos);
   $("mov-destino-tipo")?.addEventListener("change", toggleObraCampos);
   $("mov-origem-obra")?.addEventListener("change", () => movObraEscolhida("origem"));

@@ -271,8 +271,11 @@ function acePreencherFiltros(){
   };
   const tipos = [...new Set(base.map(a => a.tipo))].sort((a, b) => (ACE_TIPO_LBL[a] || a).localeCompare(ACE_TIPO_LBL[b] || b, "pt-BR"));
   setOpts("ace-f-tipo", "Todos os tipos", tipos.map(t => [t, ACE_TIPO_LBL[t] || t]));
-  const medidas = [...new Set(base.map(aceMedida).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
-  setOpts("ace-f-medida", "Ø / medida", medidas.map(m => [m, m]));
+  // lote S46 (#87): filtro pelo Ø externo (diametro_mm) das peças do segmento; a medida continua na busca livre
+  const diams = [...new Set(base.map(a => Number(a.diametro_mm)).filter(d => d > 0))].sort((a, b) => a - b);
+  const pares = diams.map(d => [String(d), `Ø ${d}`]);
+  if(base.some(a => !(Number(a.diametro_mm) > 0))) pares.push(["sem", "sem Ø"]);
+  setOpts("ace-f-medida", "Ø externo", pares);
   const acopls = [...new Set(base.map(a => a.acoplamento).filter(Boolean))];
   setOpts("ace-f-acopl", "Acoplamento", acopls.map(a => [a, ACE_ACOPL_LBL[a] || a]));
   const fa = $("ace-f-acopl"); if(fa) fa.style.display = acopls.length ? "" : "none";
@@ -293,7 +296,7 @@ function aceFiltradas(){
   return aceDaFamilia().filter(a => {
     if(a.ativo === false && fC !== "baixado") return false;
     if(fT && a.tipo !== fT) return false;
-    if(fM && aceMedida(a) !== fM) return false;
+    if(fM === "sem" ? Number(a.diametro_mm) > 0 : (fM && String(Number(a.diametro_mm)) !== fM)) return false;   // lote S46 (#87): Ø externo
     if(fA && a.acoplamento !== fA) return false;
     if(fC && a.condicao !== fC) return false;
     if(fL && a.local_tipo !== fL) return false;
@@ -307,7 +310,7 @@ function aceFiltradas(){
     if(_aceKpi === "perdido"    && a.local_tipo !== "perdido") return false;
     if(_aceKpi === "atencao"    && !(["precisa_manutencao","sem_marcacao"].includes(a.condicao) || a.local_tipo === "desconhecido")) return false;
     if(termo){
-      const txt = `${a.marcacao} ${a.jogo || ""} ${aceDescr(a)} ${a.numero_serie || ""} ${a.detalhe || ""} ${aceOnde(a)}`.toLowerCase();
+      const txt = `${a.marcacao} ${a.jogo || ""} ${aceDescr(a)} ${aceMedida(a)} ${a.numero_serie || ""} ${a.detalhe || ""} ${aceOnde(a)}`.toLowerCase();
       if(!txt.includes(termo)) return false;
     }
     return true;

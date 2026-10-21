@@ -19,6 +19,7 @@ let _frotaObras = [];                // obras não canceladas (origem/destino, f
 let _frotaViagens = { chave: null, dados: [] };
 let _frotaDocs = null;               // visão Documentos: { notas, mdfes, abertas }
 let _frotaNotasSemViagem = null;     // indicador "notas sem viagem"
+let _frotaTipoFiltro = "";           // lote S46 (#95): cartão Caminhões ativos / Veículos leves filtra a lista (caminhao | veiculo)
 let _frotaVeicEditId = null;
 let _frotaUltimaData;                // undefined = ainda não consultado; null = nenhuma viagem
 
@@ -119,6 +120,17 @@ function frotaKpisFixos(){
   frotaKpi("frota-kpi-caminhoes", _frotaVeic.filter(v => v.tipo === "caminhao" && v.ativo !== false).length);
   frotaKpi("frota-kpi-veiculos", _frotaVeic.filter(v => v.tipo === "veiculo" && v.ativo !== false).length);
   frotaKpi("frota-kpi-notas", _frotaNotasSemViagem == null ? "—" : _frotaNotasSemViagem);
+  // lote S46 (#95): cartão do filtro em uso fica marcado (como os de Compras)
+  $("frota-kpi-card-caminhoes")?.classList.toggle("ativo", _frotaView === "veiculos" && _frotaTipoFiltro === "caminhao");
+  $("frota-kpi-card-veiculos")?.classList.toggle("ativo", _frotaView === "veiculos" && _frotaTipoFiltro === "veiculo");
+  $("frota-kpi-card-notas")?.classList.toggle("ativo", _frotaView === "documentos");
+}
+/* lote S46 (#95): clicar no cartão filtra a lista de veículos pelo tipo (ativos); clicar de novo limpa */
+function frotaFiltrarTipo(tipo){
+  const limpar = _frotaView === "veiculos" && _frotaTipoFiltro === tipo;
+  _frotaTipoFiltro = limpar ? "" : tipo;
+  _frotaView = "veiculos";
+  renderFrota();
 }
 
 function frotaOndeEsta(v){
@@ -132,7 +144,8 @@ function renderFrotaVeiculos(){
   const termo = ($("frota-busca")?.value || "").trim().toLowerCase();
   // fase 96: veículo vendido sai da lista operacional (continua em _frotaVeic para as viagens antigas acharem o caminhão)
   const vendidos = _frotaVeic.filter(v => v.status === "vendido");
-  const lista = _frotaVeic.filter(v => v.status !== "vendido" && (!termo || `${v.codigo} ${v.nome || ""} ${v.placa || ""}`.toLowerCase().includes(termo)));
+  const lista = _frotaVeic.filter(v => v.status !== "vendido" && (!termo || `${v.codigo} ${v.nome || ""} ${v.placa || ""}`.toLowerCase().includes(termo))
+    && (!_frotaTipoFiltro || (v.tipo === _frotaTipoFiltro && v.ativo !== false)));   // lote S46 (#95): cartão clicado
   const c = $("frota-contador"); if(c) c.textContent = `${lista.length} de ${_frotaVeic.length - vendidos.length}`;
   const ativos = _frotaVeic.filter(v => v.ativo !== false);
   const comFipe = ativos.filter(v => v.valor_fipe != null);
@@ -434,7 +447,7 @@ function mostrarPainelFrota(recarregar){
 
 /* ---------- ligação ---------- */
 function ligarFrota(){
-  document.querySelectorAll("#sec-frota .serv-view-btn[data-view]").forEach(b => b.addEventListener("click", () => { _frotaView = b.dataset.view; renderFrota(); }));
+  document.querySelectorAll("#sec-frota .serv-view-btn[data-view]").forEach(b => b.addEventListener("click", () => { _frotaView = b.dataset.view; _frotaTipoFiltro = ""; renderFrota(); }));
   document.querySelectorAll("#frota-modos .serv-view-btn").forEach(b => b.addEventListener("click", () => { _frotaModo = b.dataset.modo; renderFrota(); }));
   ["frota-f-mes", "frota-f-caminhao", "frota-f-obra", "frota-f-finalidade", "frota-f-status", "frota-f-nota"].forEach(id => $(id)?.addEventListener("change", renderFrota));
   $("frota-busca")?.addEventListener("input", debounce(renderFrota));
@@ -442,7 +455,9 @@ function ligarFrota(){
   $("btn-frota-nova-viagem")?.addEventListener("click", () => { if(typeof novaViagem === "function") novaViagem(); });
   $("btn-frota-novo-veic")?.addEventListener("click", () => abrirVeiculo(null));
   $("frota-kpi-card-transito")?.addEventListener("click", () => { _frotaView = "viagens"; const s = $("frota-f-status"); if(s) s.value = s.value === "em_transito" ? "" : "em_transito"; renderFrota(); });
-  $("frota-kpi-card-notas")?.addEventListener("click", () => { _frotaView = "documentos"; renderFrota(); });
+  $("frota-kpi-card-notas")?.addEventListener("click", () => { _frotaView = _frotaView === "documentos" ? "viagens" : "documentos"; _frotaTipoFiltro = ""; renderFrota(); });   // lote S46 (#95): de novo volta
+  $("frota-kpi-card-caminhoes")?.addEventListener("click", () => frotaFiltrarTipo("caminhao"));
+  $("frota-kpi-card-veiculos")?.addEventListener("click", () => frotaFiltrarTipo("veiculo"));
   $("frota-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a.link-cad, a.link-obra, select, button")) return;
     const tv = e.target.closest("[data-vg]"); if(tv){ if(typeof abrirViagem === "function") abrirViagem(tv.dataset.vg, null); return; }

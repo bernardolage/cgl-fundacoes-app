@@ -147,6 +147,9 @@ function vbFiltradas(lista){
 }
 function vbRenderIndicadores(lista){
   const el = $("vb-indicadores"); if(!el) return;
+  // fase 99b (decisão 4): Vendido / A receber / Vencido são somatórios financeiros: só quem vê KPI (diretor, admin,
+  // financeiro, auditor); quem lê o valor de cada venda (engenharia, comercial, gestor de frota) segue vendo na lista
+  if(typeof podeVerKpiFinanceiro === "function" && !podeVerKpiFinanceiro(() => true)){ el.innerHTML = ""; el.style.display = "none"; return; }
   const anoSel = $("vb-f-ano")?.value;
   const ano = /^\d{4}$/.test(anoSel || "") ? Number(anoSel) : new Date().getFullYear();
   const vivas = lista.filter(v => v.status !== "cancelada");

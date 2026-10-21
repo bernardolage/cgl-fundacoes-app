@@ -672,6 +672,9 @@ let usuarioAtual = null;
 async function iniciarApp(){
   const { data:{ user } } = await sb.auth.getUser();
   if(!user) return;
+  /* fase 99b: sessão restaurada (manter conectado, recarga da aba) de quem tem fator verificado mas não fez o
+     desafio nesta sessão: pede o código antes de entrar, para qualquer cargo (antes só o login por senha pedia) */
+  if(await mfaPrecisaDesafio()){ $("tela-app").style.display = "none"; $("tela-login").style.display = ""; mostrarDesafioMFALogin(); return; }
   // fase 93b: login_cpf e senha_provisoria entram na leitura; se a migration da 93b ainda não estiver no banco
   // (42703: coluna não existe), lê sem elas para ninguém ficar sem perfil
   let { data:perfil, error:perfilErr } = await sb.from("profiles")
@@ -871,6 +874,11 @@ function podeVerCentrosCusto(){
    has_role). O front espelha a lista para não desenhar coluna, chip e campo vazios para quem não lê. */
 function podeVerValorObra(){
   return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo);
+}
+/* Fase 98: permutas (obra paga em imóvel: teto, crédito, saldo, documentos). Espelha pode_ler_permutas() do banco:
+   sem engenharia nem comercial, ao contrário de podeVerValorObra(). */
+function podeVerPermutas(){
+  return !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
 /* Fase 93c: "Horas e alocação" (horas do RDO a liberar, fechamento do mês, alocação por obra). Quem libera é o
    engenheiro responsável da obra ou o gestor do serviço (rh_horas_liberar() no banco); encarregado só vê; RH fecha o
@@ -1422,7 +1430,12 @@ async function verificarSessaoRevogada(){
   } catch(_){}
 }
 
-/* cargo em sessao_mfa_cargos sem aal2 → cadastro obrigatório. Devolve true quando travou a tela. */
+/* cargo em sessao_mfa_cargos sem aal2 → cadastro obrigatório. Devolve true quando o MFA foi exigido (a tela ficou
+   travada até cadastrar, ou o usuário adiou dentro da carência e viu a faixa).
+   Fase 99b: o cadastro acontece ANTES de entrar (iniciarApp espera esta promessa para carregar os dados) e há
+   carência de empresa_config.mfa_carencia_dias (7) contada do primeiro login exigido (RPC mfa_carencia_status):
+   dentro dela, "Depois" uma vez por dia e faixa com os dias restantes; vencida, não entra sem cadastrar. Sem a RPC
+   (migration não aplicada) fica a regra da fase 87, sem carência. */
 async function exigirMFAObrigatorio(perfil){
   if(!perfil || !(polSessao.mfa_cargos || []).includes(perfil.cargo)) return false;
   let nivel = null;
@@ -1432,8 +1445,7 @@ async function exigirMFAObrigatorio(perfil){
     sairPorPolitica("mfa");
     return true;
   }
-  abrirModalMFA(true);
-  return true;
+  return await mfaExigirComCarencia(perfil);   // fase 99b (fim do arquivo)
 }
 
 /* marcos da sessão e saída avisada pelo Supabase */
@@ -1688,6 +1700,7 @@ async function verificarCodigoMFA(){
     _mfaFactorId = null;
     _mfaObrigatorio = false;                               // fase 87: a sessão agora é aal2; menu liberado
     document.body.classList.remove("mfa-obrigatorio");
+    mfaLiberarEntrada();                                   // fase 99b: iniciarApp segue e carrega os dados
   } catch(err){
     aviso("mfa-modal-aviso", err.message || "Código inválido. Tente novamente.","erro");
     btn.disabled = false;
@@ -1720,3 +1733,136 @@ $("btn-mfa-mostrar-codigo")?.addEventListener("click", () => {
 $("mfa-codigo-input")?.addEventListener("keydown", e => {
   if(e.key === "Enter") verificarCodigoMFA();
 });
+
+/* ====================== FASE 99b — MFA NO LOGIN COM CARÊNCIA (21/10/2026) ======================
+   Decisão 3 do Bernardo (spec docs/specs/fase-99-seguranca-owasp.md): MFA obrigatório no login para os cargos de
+   empresa_config.sessao_mfa_cargos (diretor, admin, rh, financeiro), com carência de mfa_carencia_dias (7).
+   - iniciarApp espera exigirMFAObrigatorio(): o cadastro (QR + código) acontece antes de carregar os dados.
+   - A carência conta do primeiro login em que o MFA foi exigido (RPC mfa_carencia_status, tabela mfa_carencias).
+     Dentro dela o modal oferece "Depois (N dias)" uma vez por dia (localStorage cgl_mfa_adiado_<id> = hoje);
+     nos outros logins do mesmo dia entra direto, com a faixa vermelha contando os dias. Vencida: sem "Depois",
+     só cadastrar ou sair.
+   - Quem já tem fator passa pelo desafio no login por senha e, desde esta fase, também ao reabrir a aba com a
+     sessão guardada ("manter conectado"): mfaPrecisaDesafio() no começo de iniciarApp.
+   - Operador, encarregado e mecânico (login por CPF) não estão na lista: nada muda para eles. */
+let _mfaLiberarResolver = null;   // promessa em que iniciarApp espera o cadastro ou o "Depois"
+let _mfaCarencia = null;          // retorno de mfa_carencia_status() deste login
+
+async function mfaPrecisaDesafio(){
+  try {
+    const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    return !!data && data.nextLevel === "aal2" && data.currentLevel !== "aal2";
+  } catch(_){ return false; }
+}
+
+/* null quando a RPC não existe ou falhou: vale a regra da fase 87 (sem carência) */
+async function mfaLerCarencia(){
+  try {
+    const { data, error } = await sb.rpc("mfa_carencia_status");
+    return error || !data ? null : data;
+  } catch(_){ return null; }
+}
+
+function mfaChaveAdiado(){ return "cgl_mfa_adiado_" + (usuarioAtual?.id || ""); }
+function mfaAdiadoHoje(){ try { return localStorage.getItem(mfaChaveAdiado()) === hojeISO(); } catch(_){ return false; } }
+function mfaMarcarAdiado(){ try { localStorage.setItem(mfaChaveAdiado(), hojeISO()); } catch(_){} }
+function mfaPrazoTxt(car){
+  if(!car?.prazo) return "";
+  const d = new Date(car.prazo);
+  return isNaN(d) ? "" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+function mfaDiasTxt(n){ return `${n} dia${n === 1 ? "" : "s"}`; }
+
+async function mfaExigirComCarencia(perfil){
+  const car = await mfaLerCarencia();
+  _mfaCarencia = car;
+  if(car && car.exige === false) return false;                   // a lista do banco não inclui o cargo
+  if(car && car.tem_fator){ sairPorPolitica("mfa"); return true; } // fator cadastrado em outra aba: entra de novo com o desafio
+  const emCarencia = !!car && car.vencida === false && Number(car.dias_restantes) > 0;
+  if(emCarencia && mfaAdiadoHoje()){ mfaFaixaCarencia(car); return true; }
+  return new Promise(resolve => {
+    _mfaLiberarResolver = resolve;
+    abrirModalMFA(true);
+    mfaAjustarModal(car, emCarencia);
+  });
+}
+
+function mfaAjustarModal(car, emCarencia){
+  const txt = $("mfa-obrig-texto"), dep = $("btn-mfa-depois");
+  const n = Number(car?.dias_restantes) || 0;
+  if(txt){
+    if(txt.dataset.padrao == null) txt.dataset.padrao = txt.textContent;
+    txt.textContent = emCarencia
+      ? `Seu cargo exige autenticação em dois fatores. Você pode adiar por mais ${mfaDiasTxt(n)} (até ${mfaPrazoTxt(car)}); depois disso o sistema só abre com o MFA cadastrado.`
+      : (car?.vencida
+        ? `O prazo para cadastrar a autenticação em dois fatores venceu em ${mfaPrazoTxt(car)}. Configure agora para entrar; sem o aplicativo autenticador à mão, use "Sair".`
+        : txt.dataset.padrao);
+  }
+  if(dep){
+    dep.style.display = emCarencia ? "" : "none";
+    dep.textContent = `Depois (${mfaDiasTxt(n)})`;
+  }
+}
+
+/* "Depois": fecha o modal, libera o menu e deixa entrar; amanhã o modal volta */
+function mfaAdiar(){
+  mfaMarcarAdiado();
+  $("modal-mfa").style.display = "none";
+  _mfaFactorId = null;
+  _mfaObrigatorio = false;
+  document.body.classList.remove("mfa-obrigatorio");
+  mfaFaixaCarencia(_mfaCarencia);
+  const f = _mfaLiberarResolver; _mfaLiberarResolver = null;
+  if(f) f(true);
+}
+
+/* chamada por verificarCodigoMFA() quando o fator foi ativado */
+function mfaLiberarEntrada(){
+  const dep = $("btn-mfa-depois");
+  if(dep) dep.style.display = "none";
+  const f = _mfaLiberarResolver; _mfaLiberarResolver = null;
+  if(f) f(true);
+}
+
+/* faixa da carência: mesmo lugar e mesma classe do banner de MFA do admin (id mfa-aviso-banner, que
+   verificarCodigoMFA já remove ao concluir) */
+function mfaFaixaCarencia(car){
+  document.getElementById("mfa-aviso-banner")?.remove();
+  const n = Number(car?.dias_restantes) || 0;
+  const banner = document.createElement("div");
+  banner.id = "mfa-aviso-banner";
+  const box = document.createElement("div");
+  box.className = "aviso-mfa";
+  const forte = document.createElement("strong");
+  forte.textContent = "⚠ Segurança:";
+  box.append(forte, ` Seu cargo exige autenticação em dois fatores (MFA). Falta${n === 1 ? "" : "m"} ${mfaDiasTxt(n)} para cadastrar`
+    + (mfaPrazoTxt(car) ? ` (até ${mfaPrazoTxt(car)})` : "") + "; depois disso o sistema só abre com o MFA. ");
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "aviso-mfa-btn"; btn.textContent = "Configurar agora";
+  btn.addEventListener("click", () => abrirModalMFA());
+  const fechar = document.createElement("button");
+  fechar.type = "button"; fechar.className = "aviso-mfa-btn aviso-mfa-fechar"; fechar.textContent = "Fechar";
+  fechar.addEventListener("click", () => banner.remove());
+  box.append(btn, " ", fechar);
+  banner.append(box);
+  ($("app-viewport") || document.body).prepend(banner);
+}
+
+$("btn-mfa-depois")?.addEventListener("click", mfaAdiar);
+
+/* ====================== FASE 99b — KPIs FINANCEIROS POR CARGO ======================
+   Decisão 4 do Bernardo (21/10/2026): ler o valor do que se lança (medição, obra: pode_ler_financeiro(), espelhado
+   em podeVerValorObra) é diferente de ver os SOMATÓRIOS financeiros. Os somatórios (Sala de Comando: "Medido no
+   período" e "A receber"; Medições: indicadores A receber / Vencidas / Recebido no mês e os da visão Caução;
+   Equipamentos › Vendas: indicadores; Carteira: KPIs em R$) passam a admin, financeiro e auditor, diretor sempre:
+   espelha pode_ver_kpi_financeiro() do banco. Engenheiro, assistente e comercial continuam vendo o valor de cada
+   medição e obra.
+   KPI_FIN_RESTRITO = false desliga a regra nova: cada tela volta à regra que tinha antes (o argumento). */
+const KPI_FIN_RESTRITO = true;
+function podeVerKpiFinanceiro(regraAnterior){
+  if(!KPI_FIN_RESTRITO){
+    if(typeof regraAnterior === "function") return !!regraAnterior();
+    return typeof podeVerValorObra === "function" && podeVerValorObra();
+  }
+  return !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo);
+}

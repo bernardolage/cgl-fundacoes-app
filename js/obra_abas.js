@@ -42,6 +42,7 @@ async function carregarAbasObra(obraId){
     documentos: doc.count || 0
   };
   atualizarSmartButtons();
+  if(typeof obrPmCarregar === "function") obrPmCarregar(obraId);   // fase 98: bloco Permuta da aba Contrato
 }
 
 function atualizarSmartButtons(){
@@ -361,7 +362,7 @@ async function carregarMedicoesDaObra(obraId){
   }
   const [{ data, error }, sinal] = await Promise.all([
     sb.from("medicoes")
-      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes,origem")
+      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes,origem,nf_numero,doc_tipo")   // lote S46 (#104): NF/RR
       .eq("obra_id", obraId)
       .order("data_medicao", { ascending: false }),
     typeof calcularSaldoSinalObra === "function" ? calcularSaldoSinalObra(obraId, null) : Promise.resolve(null)
@@ -421,6 +422,7 @@ async function carregarMedicoesDaObra(obraId){
     <td>${esc(tipoLbl[m.tipo_medicao] || m.tipo_medicao || "—")}</td>
     <td>${num(m.percentual)}%</td>
     <td>${tagStatus("medicao", m.status)}</td>
+    <td>${esc(typeof medDocTxt === "function" ? medDocTxt(m) : (m.nf_numero || "—"))}</td>
     <td class="num">${Number(m.desconto_sinal) ? "− " + brl(m.desconto_sinal) : "—"}</td>
     <td class="num">${brl(valorEfetivo(m))}</td>
   </tr>`).join("");
@@ -430,7 +432,7 @@ async function carregarMedicoesDaObra(obraId){
       <span style="display:inline-flex;gap:8px;">${btnImportar}<button type="button" class="btn" id="btn-medic-nova">+ Nova medição</button></span>
     </div>
     <div class="tabela-rola"><table>
-      <thead><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>%</th><th>Status</th><th class="num" title="Abatimento do sinal contratual nesta medição">Sinal abatido</th><th class="num">Valor</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>%</th><th>Status</th><th title="Documento fiscal da medição (aba Geral)">NF/RR</th><th class="num" title="Abatimento do sinal contratual nesta medição">Sinal abatido</th><th class="num">Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table></div>
   `;
   $("btn-medic-nova")?.addEventListener("click", abrirMedicaoPraObra);
@@ -1190,4 +1192,98 @@ if(document.readyState === "loading"){
   document.addEventListener("DOMContentLoaded", ligarAbasObra);
 } else {
   ligarAbasObra();
+}
+
+/* ====================================================================
+   FASE 98 — bloco "Permuta" da aba Contrato (21/10/2026)
+   Obra paga em imóvel: a permuta ligada (permuta_contratos), o % desta obra (próprio ou o padrão da
+   permuta), o teto, o crédito, o saldo do imóvel e o prazo (vw_permutas). Quem lê: podeVerPermutas();
+   quem grava (ligar, mudar o %, desligar): diretor, admin, financeiro. A ficha da permuta fica em
+   Medições › Permutas (medPmAbrirPorId, js/medicoes.js).
+   ==================================================================== */
+async function obrPmCarregar(obraId){
+  const box = $("obr-pm-bloco");
+  if(!box) return;
+  if(!obraId || typeof podeVerPermutas !== "function" || !podeVerPermutas()){ box.style.display = "none"; box.innerHTML = ""; return; }
+  box.style.display = "";
+  box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4><p class="vazio">Carregando…</p>`;
+  const { data: pc, error } = await sb.from("permuta_contratos").select("id,permuta_id,contrato_numero,percentual").eq("obra_id", obraId).maybeSingle();
+  if(obraId !== obraEditId) return;
+  if(error){ box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4><p class="vazio">Não foi possível ler a permuta (${esc(error.message)}).</p>`; return; }
+  const podeOp = !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+  if(!pc){
+    let opts = "";
+    if(podeOp){
+      const { data: lista } = await sb.from("vw_permutas").select("id,numero,cliente_nome,percentual_padrao,status").order("numero");
+      if(obraId !== obraEditId) return;
+      opts = (lista || []).filter(p => p.status !== "quitada").map(p => `<option value="${esc(p.id)}" data-pct="${p.percentual_padrao ?? ""}">${esc(p.numero)} · ${esc(p.cliente_nome || "")}${p.percentual_padrao != null ? " · " + num(p.percentual_padrao) + "%" : ""}</option>`).join("");
+    }
+    box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4>
+      <p class="meta">Obra sem permuta: as medições são recebidas em dinheiro.</p>
+      ${podeOp ? `<div class="grade">
+        <div class="campo largo"><label>Permuta</label><select id="obr-pm-permuta"><option value="">— escolher —</option>${opts}</select></div>
+        <div class="campo"><label>% da medição em permuta</label><input id="obr-pm-pct" type="number" step="0.01" min="0" max="100" placeholder="vazio = padrão" /></div>
+      </div>
+      <div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn-sec" id="btn-obr-pm-ligar">🔗 Ligar a obra à permuta</button>
+        <span class="meta">Permuta nova: Medições › Permutas › + Nova permuta.</span></div>` : ""}`;
+    $("btn-obr-pm-ligar")?.addEventListener("click", () => comBotaoTravado("btn-obr-pm-ligar", () => obrPmLigar(obraId)));
+    return;
+  }
+  const { data: p } = await sb.from("vw_permutas").select("*").eq("id", pc.permuta_id).maybeSingle();
+  if(obraId !== obraEditId) return;
+  if(!p){ box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4><p class="vazio">Permuta ligada não encontrada.</p>`; return; }
+  const pct = pc.percentual ?? p.percentual_padrao;
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${lbl}</span><strong>${val}</strong></div>`;
+  const ST = { a_formalizar: ["A formalizar", "cinza"], em_execucao: ["Em execução", "azul"], quitada: ["Quitada", "verde"], excedida: ["Excedida", "vermelho"], vencida: ["Vencida", "vermelho"] };
+  const st = ST[p.status] || [p.status, "cinza"];
+  box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4>
+    <div class="odoo-contexto" style="padding:0 0 10px;">
+      ${chip("Permuta", `<a href="#" id="obr-pm-abrir" title="Abrir a ficha da permuta (Medições › Permutas)">${esc(p.numero)}</a>`)}
+      ${chip("Cliente", esc(p.cliente_nome || p.cliente || "—"))}
+      ${chip("Imóvel", esc(p.imovel_descricao ? (p.imovel_descricao.length > 40 ? p.imovel_descricao.slice(0, 40) + "…" : p.imovel_descricao) : "—") + (p.imovel_identificado ? "" : ' <span class="txt-aviso">(a identificar)</span>'), p.imovel_descricao || "")}
+      ${chip("% desta obra", pct != null ? num(pct) + "%" + (pc.percentual == null ? ' <span class="meta">(padrão)</span>' : "") : "—", "Parte de cada medição paga com o imóvel; a medição herda na criação")}
+      ${chip("Teto", p.valor_imovel != null ? brl(p.valor_imovel) : "—")}
+      ${chip("Crédito", brl(p.credito), `medições do app ${brl(p.credito_app)} + histórico ${brl(p.credito_historico)}`)}
+      ${chip("Saldo do imóvel", `<span class="${Number(p.saldo) < -1 ? "txt-perigo" : ""}">${p.saldo != null ? brl(p.saldo) : "—"}</span>`)}
+      ${p.executar_ate ? chip("Executar até", dataBR(p.executar_ate)) : ""}
+      ${chip("Instrumento", esc(p.instrumento_tipo || "—") + (p.instrumento_assinado ? "" : ' <span class="txt-perigo">(sem assinatura)</span>'))}
+      ${chip("Status", `<span class="tag ${st[1]}">${esc(st[0])}</span>`)}
+    </div>
+    ${podeOp ? `<div class="form-acoes compacta" style="justify-content:flex-start;">
+      <button type="button" class="btn-sec" id="btn-obr-pm-pct" title="% das medições novas desta obra (as já lançadas mudam na própria medição)">% desta obra</button>
+      <button type="button" class="btn-sec acao-perigo" id="btn-obr-pm-desligar" title="A obra deixa de gerar crédito; medições já lançadas mantêm o % gravado">Desligar</button>
+    </div>` : ""}`;
+  $("obr-pm-abrir")?.addEventListener("click", (e) => { e.preventDefault(); if(typeof medPmAbrirPorId === "function") medPmAbrirPorId(p.id); });
+  $("btn-obr-pm-pct")?.addEventListener("click", () => obrPmMudarPct(obraId, pc, p));
+  $("btn-obr-pm-desligar")?.addEventListener("click", () => obrPmDesligar(obraId, pc, p));
+}
+async function obrPmLigar(obraId){
+  const permuta_id = $("obr-pm-permuta")?.value;
+  if(!permuta_id){ aviso("app-aviso", "Escolha a permuta.", "erro"); return; }
+  const v = $("obr-pm-pct")?.value;
+  const percentual = v === "" || v == null ? null : Number(v);
+  if(percentual != null && !(percentual >= 0 && percentual <= 100)){ aviso("app-aviso", "% entre 0 e 100.", "erro"); return; }
+  const contrato_numero = (typeof _obrContrato !== "undefined" && _obrContrato && _obrContrato.numero) || String(mapaObras[obraId] || "obra").split(" — ")[0];
+  const { error } = await sb.from("permuta_contratos").insert({ permuta_id, obra_id: obraId, contrato_numero, percentual });
+  if(error){ aviso("app-aviso", "Não foi possível ligar: " + error.message, "erro"); return; }
+  const opt = $("obr-pm-permuta")?.selectedOptions?.[0];
+  const pctEf = percentual ?? (opt && opt.dataset.pct !== "" ? Number(opt.dataset.pct) : null);
+  if(pctEf != null && typeof medPmAplicarPctNasMedicoes === "function") await medPmAplicarPctNasMedicoes(obraId, pctEf);
+  aviso("app-aviso", "Obra ligada à permuta. As medições novas herdam o %.", "ok");
+  await obrPmCarregar(obraId);
+}
+async function obrPmMudarPct(obraId, pc, p){
+  const v = prompt(`% de cada medição desta obra paga em permuta (vazio = padrão da permuta, ${p.percentual_padrao != null ? num(p.percentual_padrao) + "%" : "sem padrão"}). Vale para as medições novas.`, pc.percentual ?? "");
+  if(v === null) return;
+  const pct = v.trim() === "" ? null : Number(v.replace(",", "."));
+  if(pct != null && !(pct >= 0 && pct <= 100)){ aviso("app-aviso", "% entre 0 e 100.", "erro"); return; }
+  const { error } = await sb.from("permuta_contratos").update({ percentual: pct }).eq("id", pc.id);
+  if(error){ aviso("app-aviso", "Não foi possível mudar o %: " + error.message, "erro"); return; }
+  await obrPmCarregar(obraId);
+}
+async function obrPmDesligar(obraId, pc, p){
+  if(!confirm(`Desligar esta obra da permuta ${p.numero}? As medições novas deixam de gerar crédito; as já lançadas mantêm o % gravado.`)) return;
+  const { error } = await sb.from("permuta_contratos").delete().eq("id", pc.id);
+  if(error){ aviso("app-aviso", "Não foi possível desligar: " + error.message, "erro"); return; }
+  await obrPmCarregar(obraId);
 }

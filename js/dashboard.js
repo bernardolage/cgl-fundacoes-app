@@ -85,9 +85,14 @@ async function dashLer(fonte, ajustar, alvo){
   }
   return data || [];
 }
-const dashPodeVerMedido = () => dashEhDiretoria() || (typeof podeVerContasPagar === "function" && podeVerContasPagar());
+/* fase 99b (decisão 4): "Medido no período" e "A receber" são somatórios financeiros: podeVerKpiFinanceiro() (core.js) =
+   diretor, admin, financeiro e auditor. O argumento é a regra anterior, que volta se KPI_FIN_RESTRITO = false
+   (Medido: diretoria + quem vê contas a pagar, inclusive o comprador; A receber: a mesma lista de hoje). */
+const dashPodeVerMedido = () => podeVerKpiFinanceiro(() => dashEhDiretoria() || (typeof podeVerContasPagar === "function" && podeVerContasPagar()));
 /* fase 96: KPI "A receber" (medições + vendas de bens) — quem gere o setor financeiro: diretor, admin, financeiro e auditor */
-const dashPodeVerReceber = () => !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo);
+const dashPodeVerReceber = () => podeVerKpiFinanceiro(() => !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo));
+/* fase 99b: card Segurança (vw_sc_seguranca) — diretor, admin e auditor; o banco devolve vazio aos demais */
+const dashPodeVerSeguranca = () => !!usuarioAtual && ["diretor", "admin", "auditor"].includes(usuarioAtual.cargo);
 
 async function carregarDashboard(){
   const carga = ++_dashCargaN;
@@ -99,6 +104,7 @@ async function carregarDashboard(){
   if($("dash-card-medido")) $("dash-card-medido").style.display = dashPodeVerMedido() ? "" : "none";
   if($("dash-card-custo"))  $("dash-card-custo").style.display  = dashEhDiretoria() ? "" : "none";
   if($("dash-card-receber")) $("dash-card-receber").style.display = dashPodeVerReceber() ? "" : "none";   // fase 96
+  if($("dash-seguranca-card")) $("dash-seguranca-card").style.display = dashPodeVerSeguranca() ? "" : "none";   // fase 99b
   const finEl = $("dash-financeiro");
   if(finEl) finEl.style.display = dashEhDiretoria() ? "" : "none";
   // fase 90: auxiliar de almoxarifado vê só "Exige ação hoje" e "Minha fila"
@@ -121,6 +127,7 @@ async function carregarDashboard(){
     carregarDashTopObras(),
     carregarDashAtividade(),
     carregarDashOrcamentos(),
+    dashPodeVerSeguranca() ? dashCarregarSeguranca() : Promise.resolve(),   // fase 99b
     dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
     dashEhDiretoria() ? carregarDashIA() : Promise.resolve()
   ]);
@@ -289,6 +296,57 @@ async function dashCarregarRegularizar(){
       </div>`).join("")
     : `<p class="vazio">Nada para regularizar.</p>`;
 }
+/* ---------- Segurança (fase 99b) ----------
+   vw_sc_seguranca (security_invoker sobre seguranca_alertas(), que só devolve linhas a diretor, admin e auditor):
+   usuários sem MFA em cargo que exige (com o prazo da carência), convites não aceitos há 7+ dias, trocas de cargo
+   e sessões encerradas à força nos últimos 30 dias, leituras de ficha sensível acima do limite por dia, webhook
+   recusado nas últimas 24 h. Sem a migration aplicada (view inexistente) o card some, sem erro na tela. */
+const DASH_SEG_TIPO = {
+  sem_mfa:            "Sem MFA",
+  convite_pendente:   "Convite pendente",
+  troca_cargo:        "Troca de cargo",
+  leitura_sensivel:   "Leitura de dado sensível",
+  sessoes_encerradas: "Sessões encerradas",
+  webhook_recusado:   "Webhook recusado"
+};
+let _dashSeg = [];
+async function dashCarregarSeguranca(){
+  const card = $("dash-seguranca-card"), cont = $("dash-seguranca");
+  if(!card || !cont) return;
+  const { data, error } = await sb.from("vw_sc_seguranca").select("*");
+  if(error){
+    // 42P01 / PGRST205: a migration da fase 99b ainda não foi aplicada
+    if(error.code === "42P01" || error.code === "PGRST205"){ card.style.display = "none"; return; }
+    cont.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message || "erro")}).</p>`;
+    return;
+  }
+  _dashSeg = (data || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem
+    || String(b.quando || "").localeCompare(String(a.quando || "")));
+  const porTipo = {};
+  _dashSeg.forEach(a => { porTipo[a.tipo] = (porTipo[a.tipo] || 0) + 1; });
+  if($("dash-seg-cont")) $("dash-seg-cont").innerHTML = Object.keys(DASH_SEG_TIPO).filter(t => porTipo[t])
+    .map(t => `<span class="tag ${t === "sem_mfa" || t === "leitura_sensivel" ? "ambar" : "cinza"}">${porTipo[t]} ${esc(DASH_SEG_TIPO[t].toLowerCase())}</span>`).join(" ");
+  if(!_dashSeg.length){ cont.innerHTML = `<p class="vazio">✅ Nenhum alerta de segurança.</p>`; return; }
+  cont.innerHTML = _dashSeg.map((a, i) => {
+    const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
+    const cargo = a.cargo ? ((typeof CARGOS === "object" && CARGOS[a.cargo]) || a.cargo) : "";
+    const quem = [a.nome, cargo].filter(Boolean).join(" · ");
+    const clic = !!a.usuario_id && ["sem_mfa", "convite_pendente", "troca_cargo", "sessoes_encerradas"].includes(a.tipo);
+    const quando = a.quando ? new Date(a.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+    return `<div class="dash-pendencia-item${clic ? " clicavel" : ""}" data-seg="${i}"${clic ? ' title="Abrir em Usuários"' : ""}>
+      <span class="tag ${n.cor}">${esc(n.label)}</span>
+      <div class="dash-acao-txt"><strong>${esc(DASH_SEG_TIPO[a.tipo] || a.tipo)}</strong>${quem ? ` · ${esc(quem)}` : ""}
+        <div class="meta">${esc(a.detalhe || "")}${quando ? ` · ${esc(quando)}` : ""}</div></div>
+      ${clic ? '<span class="dash-pend-seta">›</span>' : ""}
+    </div>`;
+  }).join("");
+}
+async function dashAbrirSeguranca(a){
+  if(!a || !a.usuario_id || !irParaSecao("usuarios") || typeof abrirUsuario !== "function") return;
+  if(typeof _usuarios !== "undefined" && !_usuarios.some(u => u.id === a.usuario_id) && typeof carregarUsuarios === "function") await carregarUsuarios();
+  abrirUsuario(a.usuario_id);
+}
+
 /* Uma linha de "Para regularizar" → a tela de origem, já filtrada */
 async function dashAbrirRegularizar(a){
   if(!a) return;
@@ -331,6 +389,8 @@ async function dashAbrirRegularizar(a){
   } else if(a.secao === "equipamentos"){
     if(typeof renderEquipamentos === "function") _eqpKpi = "sem_cod_ext"; // idem (carregarEquipamentos)
     if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
+  } else if(a.secao === "medicoes" && /^permuta_/.test(a.filtro || "")){ // fase 98: visão Permutas filtrada; uma só abre a ficha
+    if(irParaSecao("medicoes") && typeof medPmAbrirPreset === "function") medPmAbrirPreset(a.registro_id, a.filtro);
   } else if(a.secao === "medicoes" && a.filtro === "caucao_vencida"){ // fase 91: visão Caução filtrada nas vencidas
     if(irParaSecao("medicoes") && typeof medCauAbrirPreset === "function") medCauAbrirPreset("vencidas");
   } else if(a.secao === "manutencao"){ // fase 92: OS atrasadas → visão OS filtrada; uma só abre a ficha
@@ -365,7 +425,8 @@ async function dashAbrirAcao(a){
       break;
     case "medicoes":
       // fase 91: linhas do financeiro abrem a visão Caução ou a lista filtrada em "vencidas" (o título diz qual)
-      if(/cau[çc][ãa]o/i.test(a.titulo) && typeof medCauAbrirPreset === "function"){ if(irParaSecao("medicoes")) medCauAbrirPreset(/vencid/i.test(a.titulo) ? "vencidas" : "vence30"); }
+      if(/permuta/i.test(a.titulo || "") && typeof medPmAbrirPreset === "function"){ if(irParaSecao("medicoes")) medPmAbrirPreset(id, a.nivel === "atencao" ? "prazo_90_dias" : ""); }   // fase 98
+      else if(/cau[çc][ãa]o/i.test(a.titulo) && typeof medCauAbrirPreset === "function"){ if(irParaSecao("medicoes")) medCauAbrirPreset(/vencid/i.test(a.titulo) ? "vencidas" : "vence30"); }
       else if(/sem recebimento/i.test(a.titulo) && !id && typeof medRecebAbrirPreset === "function"){ if(irParaSecao("medicoes")) medRecebAbrirPreset("vencida"); }
       else if(id) dashAbrirMedicao(id); else irParaSecao("medicoes");
       break;
@@ -546,6 +607,7 @@ function ligarSalaDeComando(){
   $("dash-acoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-acao]"); if(el) dashAbrirAcao(_dashAcoes[Number(el.dataset.acao)]); });
   $("dash-fila")?.addEventListener("click", (e) => { const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]); });
   $("dash-regularizar")?.addEventListener("click", (e) => { const el = e.target.closest("[data-reg]"); if(el) dashAbrirRegularizar(_dashReg[Number(el.dataset.reg)]); });
+  $("dash-seguranca")?.addEventListener("click", (e) => { const el = e.target.closest(".clicavel[data-seg]"); if(el) dashAbrirSeguranca(_dashSeg[Number(el.dataset.seg)]); });   // fase 99b
   $("dash-notebook")?.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-tab]");
     if(!b) return;

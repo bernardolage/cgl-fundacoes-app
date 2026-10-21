@@ -13,7 +13,7 @@ const MED_STAGES = ["rascunho","enviada","aprovada","faturada","recebida"];   //
 /* ---------- Carga ---------- */
 async function carregarMedicoes(){
   const { data, error } = await sb.from("medicoes")
-    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,obra:obras(codigo,nome,cliente_id)")   // fase 91: líquido, recebido e cliente (indicadores e visão por cliente)
+    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,permuta_percentual,permuta_valor,obra:obras(codigo,nome,cliente_id)")   // fase 91: líquido, recebido e cliente (indicadores e visão por cliente); fase 98: permuta
     .order("data_medicao", { ascending: false });
   _medRegistros = error ? [] : (data || []);
   renderMedicoes();
@@ -59,6 +59,7 @@ function renderMedicoes(){
   preencherFiltrosMed();
   medAplicarVisao();                                        // fase 91: filtros e "+ Nova" conforme a visão
   if(_medView === "caucao"){ renderMedCaucao(); return; }   // fase 91: visão Caução (retenções por NF)
+  if(_medView === "permutas"){ renderMedPermutas(); return; }   // fase 98: visão Permutas (imóvel, crédito, saldo)
   const dados = medFiltradas();
   const cont = $("med-contador");
   if(cont) cont.textContent = `${dados.length} de ${_medRegistros.length}`;
@@ -99,7 +100,7 @@ function renderMedLista(dados){
     <td>${medPeriodoTxt(m)}</td>
     <td>${num(m.percentual)}%</td>
     <td>${tagStatus("medicao", m.status)}</td>
-    <td>${esc(medDocTxt(m))}${medRecebMarca(m)}</td>
+    <td>${esc(medDocTxt(m))}${medRecebMarca(m)}${typeof medPmMarca === "function" ? medPmMarca(m) : ""}</td>
     <td class="num">${brl(m.valor_medido)}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
@@ -146,6 +147,7 @@ function mostrarPainelMed(){
   $("med-painel").style.display = "";
   $("med-ficha").style.display = "none";
   medEditId = null;
+  if($("med-pm-ficha")) $("med-pm-ficha").style.display = "none";   // fase 98: ficha da permuta
 }
 
 /* Cache dos itens da medição aberta (variante_id, descricao, qty, unidade, unitário, total, origem) */
@@ -295,6 +297,7 @@ function abrirFichaMed(med){
   medAtualizarProducaoPendente(med.id);
   medRecebCarregarFicha(med);   // fase 91: aba NF/Recebimento
   medCauCarregarFicha(med);     // fase 91: aba Caução
+  if(typeof medPmCarregarFicha === "function") medPmCarregarFicha(med);   // fase 98: % e crédito de permuta (aba Geral)
 }
 
 /* Lote S39 (chamado #26): NF cadastrada antes da produção. A pendência é calculada na view
@@ -532,6 +535,7 @@ function recalcularTotaisMedicao(){
   }
   if($("med-ficha-subtotal-chip")) $("med-ficha-subtotal-chip").textContent = brl(subtotal);
   if($("med-ficha-valor-chip"))    $("med-ficha-valor-chip").textContent = brl(valorFinal);
+  if(typeof medPmRecalcular === "function") medPmRecalcular(valorFinal);   // fase 98: crédito de permuta = % × valor final
 }
 
 function adicionarItemMedicaoManual(){
@@ -885,6 +889,7 @@ async function salvarMedicao(novoStatus){
     observacoes: $("med-obs").value.trim() || null
     // valor_final é recalculado por trigger no banco
   };
+  if(typeof medPmLerCampos === "function") Object.assign(reg, medPmLerCampos());   // fase 98: só financeiro/admin/diretor mandam a permuta
   let result;
   if(medEditId){
     result = await sb.from("medicoes").update(reg).eq("id", medEditId).select().single();
@@ -1720,6 +1725,7 @@ function medImpRenderConferencia(resp, arq){
     <div>🤖 <strong>Lido por IA</strong> · ${esc(arq.nome)} · ${esc(leiauteLbl)} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
       ${resp.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
     ${resp.escaneado ? `<div class="ia-duvidas">⚠️ PDF sem camada de texto (escaneado ou foto): a IA leu como imagem e a precisão cai. Confira cada número.</div>` : ""}
+    ${resp.aviso ? `<div class="ia-duvidas">⚠️ ${esc(resp.aviso)}: itens e totais foram lidos, as estacas executadas deste boletim não. Confira os itens.</div>` : ""}
     ${(resp.duvidas || []).length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${resp.duvidas.map(esc).join(" · ")}</div>` : ""}
     ${!refOk ? `<div class="ia-duvidas">⚠️ O boletim cita a obra/contrato "${esc(c.obra_ref)}", mas a obra aberta é ${esc(o.codigo || "")}${o.contrato?.numero ? " (contrato " + esc(o.contrato.numero) + ")" : ""}. Confira se é o PDF certo.</div>` : ""}
     ${st.cascataErro ? `<div class="ia-duvidas">Sem preço do app para comparar: ${esc(st.cascataErro)}</div>` : (!st.cascata.length ? `<div class="meta">Sem preço do app para comparar (obra sem orçamento aprovado, sem preço de cliente e sem referência, ou seu cargo não lê orçamentos e preços).</div>` : "")}
@@ -1909,7 +1915,7 @@ async function medImpConfirmar(){
   }
 
   // 2) medição aprovada
-  const duvidas = (st.resp?.duvidas || []);
+  const duvidas = [...(st.resp?.aviso ? [st.resp.aviso] : []), ...(st.resp?.duvidas || [])];   // lote S46 (#105): aviso da v1.3 vai para as observações
   const obs = [($("med-imp-h-obs")?.value || "").trim(),
                `Importada do boletim "${arq.nome}" em ${dataBR(hojeISO())}${duvidas.length ? " · pontos conferidos: " + duvidas.join("; ") : ""}`].filter(Boolean);
   const reg = {
@@ -2157,6 +2163,14 @@ function medAplicarVisao(){
   if($("btn-nova-medicao")) $("btn-nova-medicao").style.display = cau ? "none" : "";
   const h3 = document.querySelector("#med-painel .lista-topo h3");
   if(h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = cau ? "Caução contratual por NF " : "Medições cadastradas ";
+  // fase 98: visão Permutas esconde os filtros das medições e da caução e mostra os seus
+  const pm = _medView === "permutas";
+  const btnPm = document.querySelector('#med-painel .serv-view-btn[data-view="permutas"]');
+  if(btnPm) btnPm.style.display = (typeof podeVerPermutas === "function" && podeVerPermutas()) ? "" : "none";
+  if(pm) document.querySelectorAll("#med-painel .serv-filtros").forEach(f => { if(f.id !== "med-pm-filtros") f.style.display = "none"; });
+  if($("med-pm-filtros")) $("med-pm-filtros").style.display = pm ? "" : "none";
+  if(pm && $("btn-nova-medicao")) $("btn-nova-medicao").style.display = "none";
+  if(pm && h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = "Permutas: obras pagas em imóvel ";
 }
 function medAtivarView(view){
   document.querySelectorAll("#med-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === view));
@@ -2186,13 +2200,16 @@ function medRecebIrParaAba(){
 async function medRecebRenderIndicadores(){
   const cont = $("med-indicadores");
   if(!cont) return;
+  // fase 99b (decisão 4): somatórios financeiros só para quem vê KPI (diretor, admin, financeiro, auditor); o engenheiro
+  // e o comercial seguem vendo o valor de cada medição na lista e na ficha
+  if(typeof podeVerKpiFinanceiro === "function" && !podeVerKpiFinanceiro(() => true)){ cont.style.display = "none"; cont.innerHTML = ""; return; }
   const base = _medRegistros;
   const aRec = base.filter(m => ["a_receber", "parcial", "vencida"].includes(medRecebSituacao(m)));
   const venc = base.filter(m => medRecebSituacao(m) === "vencida");
   const iniMes = hojeISO().slice(0, 7) + "-01";
   if(!_medRecebMes || _medRecebMes.ini !== iniMes){
     const { data } = await sb.from("medicao_recebimentos").select("valor").gte("data", iniMes);
-    if(_medView === "caucao") return;   // trocou de visão enquanto carregava
+    if(_medView === "caucao" || _medView === "permutas") return;   // trocou de visão enquanto carregava
     _medRecebMes = { ini: iniMes, total: (data || []).reduce((s, r) => s + (Number(r.valor) || 0), 0), n: (data || []).length };
   }
   const soma = (lst) => lst.reduce((s, m) => s + medRecebSaldo(m), 0);
@@ -2279,6 +2296,8 @@ async function renderMedCaucao(){
 function medCauRenderIndicadores(){
   const cont = $("med-indicadores");
   if(!cont) return;
+  // fase 99b (decisão 4): totais da caução só para quem vê KPI financeiro
+  if(typeof podeVerKpiFinanceiro === "function" && !podeVerKpiFinanceiro(() => true)){ cont.style.display = "none"; cont.innerHTML = ""; return; }
   const regs = _medCauRegistros || [];
   const anoSel = $("med-cau-f-ano")?.value || String(new Date().getFullYear());
   const retidoAno = regs.filter(c => String(c.ano) === anoSel).reduce((s, c) => s + (Number(c.valor_retido) || 0), 0);
@@ -2534,11 +2553,11 @@ function renderMedRecebFicha(med){
   const linhas = _medRecebLista.map(r => `<tr>
       <td>${dataBR(r.data)}</td>
       <td class="num">${brl(r.valor)}</td>
-      <td>${esc(MED_RECEB_FORMAS[r.forma] || r.forma || "—")}</td>
+      <td>${r.forma === "permuta" ? '<span class="tag ambar" title="Fase 98: crédito do imóvel em permuta, gerado pela medição (muda pelo % de permuta na aba Geral)">Permuta</span>' : esc(MED_RECEB_FORMAS[r.forma] || r.forma || "—")}</td>
       <td>${esc(r.banco || "—")}</td>
       <td>${esc(r.observacoes || "")}</td>
       <td class="meta">${esc((r.quem && r.quem.nome) || "—")}</td>
-      <td class="col-acao">${podeOp ? `<button type="button" class="btn-sec btn-sm txt-perigo" data-receb-del="${esc(r.id)}" title="Apagar este lançamento (a soma e o status da medição são refeitos no banco)">×</button>` : ""}</td>
+      <td class="col-acao">${podeOp && r.forma !== "permuta" ? `<button type="button" class="btn-sec btn-sm txt-perigo" data-receb-del="${esc(r.id)}" title="Apagar este lançamento (a soma e o status da medição são refeitos no banco)">×</button>` : ""}</td>
     </tr>`).join("");
   cont.innerHTML = `
     <div class="odoo-contexto" style="padding:0 0 12px;">
@@ -2640,4 +2659,679 @@ if(document.readyState === "loading"){
   document.addEventListener("DOMContentLoaded", ligarMedCaucao);
 } else {
   ligarMedCaucao();
+}
+
+/* ====================================================================
+   FASE 98 — Permutas: obras pagas em imóvel (21/10/2026)
+   Spec: docs/specs/fase-98-permutas.md. Tudo desta fase fica neste bloco (prefixo med-pm- / pm-).
+   - Visão "Permutas" no toggle do painel (irmã da Caução): uma linha por permuta (vw_permutas) com
+     cliente, imóvel, teto, crédito (medições do app + histórico da planilha), saldo, %, prazo e pendências.
+   - Ficha da permuta no padrão Odoo (statusbar pelo status do dia, chips, smart-buttons, abas Geral,
+     Lançamentos, Contratos, Documentos e Pendências) em #med-pm-ficha.
+   - Medição: "% permuta" e "crédito de permuta" ao lado do líquido (aba Geral). O crédito vira um
+     recebimento forma = 'permuta' no banco quando a medição é aprovada/faturada (gatilho); a parte em
+     dinheiro segue a aba NF/Recebimento (fase 91). Chip "permuta NN%" na lista.
+   - Funções usadas por outros módulos (só se existirem): medPmAbrirPreset (Sala de Comando),
+     medPmAbrirPorId (aba Contrato da obra), pmPatCarregar / pmPatChip (Patrimônio).
+   Quem lê: podeVerPermutas() (diretor, admin, financeiro, auditor; = pode_ler_permutas() no banco).
+   Quem grava: diretor, admin e financeiro; auditor só lê.
+   ==================================================================== */
+const MED_PM_STATUS = {
+  a_formalizar: { label: "A formalizar", cor: "cinza"    },
+  em_execucao:  { label: "Em execução",  cor: "azul"     },
+  quitada:      { label: "Quitada",      cor: "verde"    },
+  excedida:     { label: "Excedida",     cor: "vermelho" },
+  vencida:      { label: "Vencida",      cor: "vermelho" }
+};
+const MED_PM_STAGES = ["a_formalizar", "em_execucao", "quitada"];
+const MED_PM_SENTIDO = { recebemos_imovel: "Recebemos o imóvel", invertida: "Invertida (pagamos imóvel com serviço)" };
+const MED_PM_PEND_ROT = {
+  credito_excedente: "crédito acima do imóvel", prazo_vencido: "prazo vencido", prazo_90_dias: "prazo em 90 dias",
+  termo_nao_assinado: "sem assinatura", imovel_nao_identificado: "imóvel não identificado", sem_documento: "sem PDF",
+  nf_a_emitir: "NF a emitir"
+};
+const MED_PM_BUCKET = "permutas";
+const MED_PM_MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" };
+let _medPmRegistros = null;   // vw_permutas (null = recarregar)
+let _medPmPend      = [];     // vw_permuta_pendencias
+let _medPmSemPermuta = [];    // histórico sem permuta definida (Marca Brasil)
+let _medPmFicha     = null;   // permuta aberta (linha da vw_permutas)
+let _medPmLanc      = [];     // lançamentos da permuta aberta
+let _medPmContratos = [];     // permuta_contratos da permuta aberta
+let _medPmPreset    = null;   // { id, filtro } pedido pela Sala de Comando antes da carga
+let _medPmPatMapa   = null;   // patrimonio_bem_id → permuta (Patrimônio)
+
+function medPmPodeVer(){ return typeof podeVerPermutas === "function" ? podeVerPermutas() : (!!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo)); }
+function medPmPodeOperar(){ return !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
+function medTagPm(st){ const o = MED_PM_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${o.cor}">${esc(o.label)}</span>`; }
+const medPmNum = (v) => (v === "" || v == null) ? null : Number(v);
+function medPmPrazoTxt(p){
+  if(!p.executar_ate) return "—";
+  const d = Number(p.dias_prazo);
+  const extra = !isFinite(d) ? "" : (d < 0 ? ` <span class="txt-perigo">(${-d} d atrás)</span>` : (d <= 90 ? ` <span class="txt-aviso" title="prazo em até 90 dias">(${d} d)</span>` : ` <span class="meta">(${d} d)</span>`));
+  return dataBR(p.executar_ate) + extra;
+}
+
+/* ---------- carga ---------- */
+async function medPmCarregar(forcar){
+  if(_medPmRegistros && !forcar) return _medPmRegistros;
+  const [rp, rpe, rsp] = await Promise.all([
+    sb.from("vw_permutas").select("*").order("numero"),
+    sb.from("vw_permuta_pendencias").select("*"),
+    sb.from("vw_permuta_lancamentos").select("cliente,contrato_numero,credito,valor_medicao").is("permuta_id", null)
+  ]);
+  const erro = [rp, rpe, rsp].find(r => r.error);
+  if(erro){ aviso("app-aviso", "Não foi possível ler as permutas: " + erro.error.message, "erro"); _medPmRegistros = []; _medPmPend = []; _medPmSemPermuta = []; return _medPmRegistros; }
+  _medPmRegistros = rp.data || [];
+  _medPmPend = rpe.data || [];
+  _medPmSemPermuta = rsp.data || [];
+  return _medPmRegistros;
+}
+function medPmPendDe(id){ return _medPmPend.filter(x => x.permuta_id === id); }
+
+/* ---------- visão Permutas ---------- */
+function medPmFiltradas(){
+  const termo = ($("med-pm-busca")?.value || "").trim().toLowerCase();
+  const st = $("med-pm-f-status")?.value || "";
+  const pend = $("med-pm-f-pend")?.value || "";
+  return (_medPmRegistros || []).filter(p => {
+    if(st && p.status !== st) return false;
+    if(pend && !medPmPendDe(p.id).some(x => x.tipo === pend)) return false;
+    if(termo){
+      const alvo = `${p.numero || ""} ${p.cliente || ""} ${p.cliente_nome || ""} ${p.imovel_descricao || ""} ${p.instrumento_tipo || ""}`.toLowerCase();
+      if(!alvo.includes(termo)) return false;
+    }
+    return true;
+  });
+}
+async function renderMedPermutas(){
+  const cont = $("med-conteudo");
+  if(!cont) return;
+  if(!medPmPodeVer()){ cont.innerHTML = `<p class="vazio">Permutas: só diretoria, admin, financeiro e auditor.</p>`; return; }
+  if(!_medPmRegistros){
+    cont.innerHTML = `<p class="vazio">Carregando permutas…</p>`;
+    await medPmCarregar();
+    if(_medView !== "permutas") return;
+  }
+  if(_medPmPreset){
+    const pr = _medPmPreset; _medPmPreset = null;
+    if(pr.filtro && $("med-pm-f-pend")) $("med-pm-f-pend").value = pr.filtro;
+    if(pr.id && _medPmRegistros.some(p => p.id === pr.id)){ medPmAbrir(pr.id); return; }
+  }
+  if($("btn-med-pm-nova")) $("btn-med-pm-nova").style.display = medPmPodeOperar() ? "" : "none";
+  const dados = medPmFiltradas();
+  const contador = $("med-contador");
+  if(contador) contador.textContent = `${dados.length} de ${_medPmRegistros.length} permutas`;
+  medPmRenderIndicadores();
+  if(!dados.length && !_medPmSemPermuta.length){ cont.innerHTML = `<p class="vazio">Nenhuma permuta com esses filtros.</p>`; return; }
+  const linhas = dados.map(p => {
+    const pend = medPmPendDe(p.id);
+    const pendTxt = [...new Set(pend.map(x => MED_PM_PEND_ROT[x.tipo] || x.tipo))];
+    const critico = pend.some(x => x.nivel === "critico");
+    return `<tr class="linha-clicavel" data-pm="${esc(p.id)}" title="Abrir a ficha da permuta">
+      <td><strong>${esc(p.numero)}</strong></td>
+      <td title="${esc(p.cliente || "")}">${esc(p.cliente_nome || p.cliente || "—")}${p.sentido === "invertida" ? ' <span class="tag ambar" title="Permuta invertida: a CGL (ou a holding) compra o imóvel e paga parte do preço em serviços">invertida</span>' : ""}</td>
+      <td title="${esc(p.imovel_descricao || "")}">${esc(p.imovel_descricao ? (p.imovel_descricao.length > 60 ? p.imovel_descricao.slice(0, 60) + "…" : p.imovel_descricao) : "—")}${p.imovel_identificado ? "" : ' <span class="meta txt-aviso">(a identificar)</span>'}</td>
+      <td class="num">${p.percentual_padrao != null ? num(p.percentual_padrao) + "%" : "—"}</td>
+      <td class="num">${p.valor_imovel != null ? brl(p.valor_imovel) : "—"}</td>
+      <td class="num" title="medições do app ${brl(p.credito_app)} + histórico ${brl(p.credito_historico)}${Number(p.credito_previsto) ? " · previsto (medições ainda não aprovadas) " + brl(p.credito_previsto) : ""}">${brl(p.credito)}</td>
+      <td class="num"><strong class="${Number(p.saldo) < -1 ? "txt-perigo" : ""}">${p.saldo != null ? brl(p.saldo) : "—"}</strong></td>
+      <td class="num">${p.pct_concluido != null ? num(p.pct_concluido) + "%" : "—"}</td>
+      <td>${medPmPrazoTxt(p)}</td>
+      <td>${medTagPm(p.status)}</td>
+      <td>${pendTxt.length ? `<span class="${critico ? "txt-perigo" : "meta"}" title="${esc(pend.map(x => x.titulo).join("\n"))}">${esc(pendTxt.join(", "))}</span>` : '<span class="meta">—</span>'}</td>
+    </tr>`;
+  }).join("");
+  const tot = (f) => dados.reduce((s, p) => s + (Number(f(p)) || 0), 0);
+  // histórico executado em permuta sem imóvel definido (Marca Brasil): fica visível para não sumir do saldo
+  const semG = new Map();
+  _medPmSemPermuta.forEach(l => { const k = l.cliente || "(sem cliente)"; const g = semG.get(k) || { n: 0, cred: 0, contratos: new Set() }; g.n++; g.cred += Number(l.credito) || 0; if(l.contrato_numero) g.contratos.add(l.contrato_numero); semG.set(k, g); });
+  const semLinhas = [...semG.entries()].map(([cli, g]) => `<tr>
+      <td class="meta">—</td><td>${esc(cli)}</td>
+      <td colspan="3" class="meta">Histórico em permuta sem imóvel definido · ${g.n} lançamento(s) · ${esc([...g.contratos].join(", "))}</td>
+      <td class="num">${brl(g.cred)}</td><td colspan="4"></td><td><span class="txt-aviso">revisar: sem permuta</span></td></tr>`).join("");
+  cont.innerHTML = `<div class="tabela-rola"><table>
+    <thead><tr>
+      <th>Nº</th><th>Cliente</th><th>Imóvel</th><th class="num" title="% padrão da medição pago em permuta">%</th>
+      <th class="num" title="Valor do imóvel (teto da permuta)">Teto</th><th class="num" title="Medições do app (aprovadas, faturadas, recebidas) + histórico da planilha">Crédito</th>
+      <th class="num" title="Teto − crédito (negativo = crédito acima do imóvel)">Saldo</th><th class="num">%&nbsp;concl.</th><th>Prazo</th><th>Status</th><th>Pendências</th>
+    </tr></thead>
+    <tbody>${linhas}${semLinhas}</tbody>
+    <tfoot><tr><th colspan="4">${dados.length} permuta(s)</th><th class="num">${brl(tot(p => p.valor_imovel))}</th><th class="num">${brl(tot(p => p.credito))}</th><th class="num">${brl(tot(p => p.saldo))}</th><th colspan="4"></th></tr></tfoot>
+  </table></div>`;
+}
+function medPmRenderIndicadores(){
+  const cont = $("med-indicadores");
+  if(!cont) return;
+  const regs = _medPmRegistros || [];
+  const abertas = regs.filter(p => !["quitada", "excedida"].includes(p.status));
+  const saldo = abertas.reduce((s, p) => s + Math.max(0, Number(p.saldo) || 0), 0);
+  const exced = regs.reduce((s, p) => s + (Number(p.excedente) || 0), 0);
+  const prazo = regs.filter(p => p.executar_ate && Number(p.dias_prazo) <= 90 && !["quitada", "excedida"].includes(p.status));
+  const nfs = _medPmPend.filter(x => x.tipo === "nf_a_emitir");
+  const pAtivo = $("med-pm-f-pend")?.value || "";
+  cont.style.display = "";
+  cont.innerHTML = `
+    <div class="ind" title="Soma dos tetos das permutas (valor dos imóveis ou parte do preço paga em serviços)"><div class="num">${brl(regs.reduce((s, p) => s + (Number(p.valor_imovel) || 0), 0))}</div><div class="rot">Imóveis · ${regs.length} permuta(s)</div></div>
+    <div class="ind" title="Crédito de serviços gerado: medições do app aprovadas/faturadas/recebidas + histórico da planilha"><div class="num" style="color:var(--sucesso);">${brl(regs.reduce((s, p) => s + (Number(p.credito) || 0), 0))}</div><div class="rot">Crédito gerado</div></div>
+    <div class="ind" title="Teto − crédito das permutas ainda não quitadas"><div class="num" style="color:var(--aviso);">${brl(saldo)}</div><div class="rot">Saldo a executar · ${abertas.length} permuta(s)</div></div>
+    <div class="ind ind-click${pAtivo === "credito_excedente" ? " ativo" : ""}" data-pm-pend="credito_excedente" title="Crédito acima do valor do imóvel: negociar o acerto. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(exced)}</div><div class="rot">Excedente</div></div>
+    <div class="ind ind-click${pAtivo === "prazo_90_dias" ? " ativo" : ""}" data-pm-pend="prazo_90_dias" title="Prazo para executar vencido ou em até 90 dias. Clique para filtrar."><div class="num">${prazo.length}</div><div class="rot">Prazo em 90 dias</div></div>
+    <div class="ind ind-click${pAtivo === "nf_a_emitir" ? " ativo" : ""}" data-pm-pend="nf_a_emitir" title="Medições e lançamentos com crédito de permuta sem NF. Clique para filtrar."><div class="num">${nfs.length}</div><div class="rot">NF a emitir · ${brl(nfs.reduce((s, x) => s + (Number(x.valor) || 0), 0))}</div></div>`;
+}
+function medPmExportar(){
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
+  const dados = medPmFiltradas();
+  if(!dados.length){ aviso("app-aviso", "Nada para exportar com esses filtros.", "erro"); return; }
+  const aoa = [["Nº", "Cliente", "Imóvel", "Sentido", "Instrumento", "Assinado", "% padrão", "Teto", "Crédito app", "Crédito histórico", "Crédito", "Saldo", "% concluído", "Executar até", "Status", "Pendências"]]
+    .concat(dados.map(p => [p.numero, p.cliente_nome || p.cliente || "", p.imovel_descricao || "", MED_PM_SENTIDO[p.sentido] || p.sentido, p.instrumento_tipo || "", p.instrumento_assinado ? "sim" : "não",
+      p.percentual_padrao != null ? Number(p.percentual_padrao) : "", Number(p.valor_imovel) || 0, Number(p.credito_app) || 0, Number(p.credito_historico) || 0, Number(p.credito) || 0,
+      p.saldo != null ? Number(p.saldo) : "", p.pct_concluido != null ? Number(p.pct_concluido) : "", p.executar_ate ? dataBR(p.executar_ate) : "",
+      (MED_PM_STATUS[p.status] || {}).label || p.status, medPmPendDe(p.id).map(x => x.titulo).join("; ")]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "PERMUTAS");
+  XLSX.writeFile(wb, `permutas-${hojeISO()}.xlsx`);
+}
+
+/* ---------- ficha da permuta ---------- */
+function medPmMostrarFicha(){
+  if($("med-painel")) $("med-painel").style.display = "none";
+  if($("med-ficha")) $("med-ficha").style.display = "none";
+  if($("med-pm-ficha")) $("med-pm-ficha").style.display = "";
+}
+function medPmVoltar(){
+  if(typeof ocultarHistorico === "function") ocultarHistorico("med-pm-chatter");
+  _medPmFicha = null;
+  if($("med-pm-ficha")) $("med-pm-ficha").style.display = "none";
+  if($("med-painel")) $("med-painel").style.display = "";
+  if($("med-ficha")) $("med-ficha").style.display = "none";
+  medAtivarView("permutas");
+}
+async function medPmAbrir(id, aba){
+  if(!medPmPodeVer()) return;
+  if(!_medPmRegistros || !_medPmRegistros.some(p => p.id === id)) await medPmCarregar(true);
+  const p = (_medPmRegistros || []).find(x => x.id === id);
+  if(!p){ aviso("app-aviso", "Permuta não encontrada (ou sem permissão para ler).", "erro"); return; }
+  _medPmFicha = p;
+  medPmMostrarFicha();
+  const box = $("med-pm-ficha");
+  box.innerHTML = `<div class="odoo-sheet"><p class="vazio">Carregando ${esc(p.numero)}…</p></div>`;
+  const [rl, rc] = await Promise.all([
+    sb.from("vw_permuta_lancamentos").select("*").eq("permuta_id", id).order("data", { ascending: true, nullsFirst: true }),
+    sb.from("permuta_contratos").select("id,obra_id,contrato_numero,obra_descricao,percentual,observacoes,obra:obras(codigo,nome)").eq("permuta_id", id).order("contrato_numero")
+  ]);
+  if(!_medPmFicha || _medPmFicha.id !== id) return;
+  _medPmLanc = rl.error ? [] : (rl.data || []);
+  _medPmContratos = rc.error ? [] : (rc.data || []);
+  medPmRenderFicha(aba || "geral");
+}
+/* Atalho para outros módulos (aba Contrato da obra): vai para Medições › Permutas e abre a ficha */
+async function medPmAbrirPorId(id){
+  if(typeof irParaSecao === "function" && !irParaSecao("medicoes")) return;
+  mostrarPainelMed();
+  document.querySelectorAll("#med-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === "permutas"));
+  _medView = "permutas";
+  await medPmAbrir(id);
+}
+/* Sala de Comando → visão Permutas (registro_id = uma permuta abre a ficha; filtro = pendência) */
+function medPmAbrirPreset(id, filtro){
+  mostrarPainelMed();
+  const MAP = { permuta_termo: "termo_nao_assinado", permuta_imovel: "imovel_nao_identificado", permuta_nf: "nf_a_emitir" };
+  _medPmPreset = { id: id || null, filtro: MAP[filtro] || filtro || "" };
+  _medPmRegistros = null;
+  medAtivarView("permutas");
+}
+
+function medPmRenderFicha(aba){
+  const p = _medPmFicha, box = $("med-pm-ficha");
+  if(!p || !box) return;
+  const podeOp = medPmPodeOperar();
+  const pend = medPmPendDe(p.id);
+  const lateral = ["excedida", "vencida"].includes(p.status);
+  const idx = MED_PM_STAGES.indexOf(p.status);
+  const stages = MED_PM_STAGES.map((s, i) => {
+    let cls = "";
+    if(lateral){ if(s !== "quitada" || p.status === "excedida") cls = "passada"; }
+    else if(i === idx) cls = "atual";
+    else if(i < idx) cls = "passada";
+    return `<div class="stage ${cls}" title="Status calculado no banco: crédito × teto, prazo, assinatura e imóvel">${esc(MED_PM_STATUS[s].label)}</div>`;
+  }).join("") + (lateral ? `<div class="stage atual cancelada" title="${p.status === "excedida" ? "Crédito acima do valor do imóvel" : "Prazo para executar passou com saldo"}">${esc(MED_PM_STATUS[p.status].label)}</div>` : "");
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${lbl}</span><strong>${val}</strong></div>`;
+  const nMed = _medPmLanc.filter(l => l.origem === "medicao").length, nHist = _medPmLanc.filter(l => l.origem === "historico").length;
+  const sb_ = (id, n, ic, lbl, tab) => `<button type="button" class="sb-btn" data-pm-tab="${tab}" id="${id}"><span class="sb-num">${n}</span><span class="sb-icon">${ic}</span><span class="sb-lbl">${lbl}</span></button>`;
+  const abas = [["geral", "📋 Geral"], ["lancamentos", `📊 Lançamentos <span class="conf-badge">${_medPmLanc.length || ""}</span>`], ["contratos", `📑 Contratos <span class="conf-badge">${_medPmContratos.length || ""}</span>`],
+    ["documentos", "📎 Documentos"], ["pendencias", `⚠️ Pendências <span class="conf-badge">${pend.length || ""}</span>`]];
+  box.innerHTML = `<div class="odoo-sheet">
+    <div class="odoo-actions-header">
+      <div class="actions-left">
+        <button type="button" class="btn-sec" id="btn-med-pm-voltar">&larr; Voltar</button>
+        ${podeOp ? `<button type="button" class="btn" id="btn-med-pm-salvar">💾 Salvar</button>` : ""}
+        ${podeOp && !_medPmLanc.length && !_medPmContratos.length ? `<button type="button" class="btn-sec acao-perigo" id="btn-med-pm-excluir" title="Só permuta sem contratos nem lançamentos">🗑️ Excluir</button>` : ""}
+      </div>
+      <div class="actions-right"><strong class="ficha-titulo">Permuta ${esc(p.numero)}</strong></div>
+    </div>
+    <div class="odoo-statusbar">${stages}</div>
+    <div class="odoo-contexto">
+      ${chip("Cliente", esc(p.cliente_nome || p.cliente || "—"), p.cliente || "")}
+      ${chip("Imóvel", esc(p.imovel_descricao ? (p.imovel_descricao.length > 48 ? p.imovel_descricao.slice(0, 48) + "…" : p.imovel_descricao) : "—") + (p.imovel_identificado ? "" : ' <span class="txt-aviso">(a identificar)</span>'), p.imovel_descricao || "")}
+      ${chip("Sentido", esc(p.sentido === "invertida" ? "Invertida" : "Recebemos o imóvel"), MED_PM_SENTIDO[p.sentido])}
+      ${chip("Instrumento", esc(p.instrumento_tipo || "—") + (p.instrumento_assinado ? "" : ' <span class="txt-perigo">(sem assinatura)</span>'), p.instrumento_data ? "Data " + dataBR(p.instrumento_data) : "")}
+      ${chip("Teto", p.valor_imovel != null ? brl(p.valor_imovel) : "—", p.valor_imovel_total ? "Preço cheio do imóvel " + brl(p.valor_imovel_total) : "Valor do imóvel")}
+      ${chip("Crédito", brl(p.credito), `medições do app ${brl(p.credito_app)} + histórico ${brl(p.credito_historico)}`)}
+      ${chip("Saldo", `<span class="${Number(p.saldo) < -1 ? "txt-perigo" : ""}">${p.saldo != null ? brl(p.saldo) : "—"}</span>`, "Teto − crédito")}
+      ${chip("Concluído", p.pct_concluido != null ? num(p.pct_concluido) + "%" : "—")}
+      ${chip("Prazo", medPmPrazoTxt(p), "Executar até")}
+      ${chip("Status", medTagPm(p.status))}
+    </div>
+    <div class="odoo-smart-buttons">
+      ${sb_("sb-med-pm-contratos", _medPmContratos.length, "📑", "contratos", "contratos")}
+      ${sb_("sb-med-pm-medicoes", nMed, "📊", "medições do app", "lancamentos")}
+      ${sb_("sb-med-pm-historico", nHist, "🗂️", "histórico", "lancamentos")}
+      ${sb_("sb-med-pm-pend", pend.length, "⚠️", "pendências", "pendencias")}
+    </div>
+    <div class="odoo-notebook" id="med-pm-notebook">${abas.map(([t, l]) => `<button type="button" data-tab="${t}">${l}</button>`).join("")}</div>
+    <div class="odoo-body">
+      <div class="odoo-tab" data-tab="geral">${medPmGeralHTML(p, podeOp)}</div>
+      <div class="odoo-tab" data-tab="lancamentos">${medPmLancHTML(p, podeOp)}</div>
+      <div class="odoo-tab" data-tab="contratos">${medPmContratosHTML(p, podeOp)}</div>
+      <div class="odoo-tab" data-tab="documentos"><div id="med-pm-docs"><p class="vazio">Carregando documentos…</p></div></div>
+      <div class="odoo-tab" data-tab="pendencias">${medPmPendHTML(pend)}</div>
+    </div>
+    <div id="med-pm-chatter" class="historico"></div>
+  </div>`;
+  medPmLigarFicha(p, podeOp);
+  medPmAtivarTab(aba || "geral");
+  medPmCarregarDocs(p, podeOp);
+  if(typeof montarHistorico === "function") montarHistorico("permutas", p.id, "med-pm-chatter");
+}
+function medPmAtivarTab(nome){
+  document.querySelectorAll("#med-pm-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.tab === nome));
+  document.querySelectorAll("#med-pm-ficha .odoo-tab").forEach(t => t.classList.toggle("ativa", t.dataset.tab === nome));
+}
+function medPmGeralHTML(p, podeOp){
+  const ro = podeOp ? "" : "disabled";
+  const cli = Object.entries(mapaClientes || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR"));
+  const sel = (id, opts, v) => `<select id="${id}" ${ro}>${opts.map(([k, l]) => `<option value="${esc(k)}"${String(v ?? "") === String(k) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  return `<div class="grade">
+      <div class="campo"><label>Cliente (como o financeiro chama) *</label><input id="med-pm-cliente-nome" value="${esc(p.cliente_nome || "")}" ${ro} placeholder="ex.: SAGA" /></div>
+      <div class="campo"><label>Cliente no cadastro</label>${sel("med-pm-cliente", [["", "— sem cadastro —"]].concat(cli), p.cliente_id || "")}</div>
+      <div class="campo"><label>Sentido</label>${sel("med-pm-sentido", Object.entries(MED_PM_SENTIDO), p.sentido)}</div>
+      <div class="campo"><label>% padrão da medição em permuta</label><input id="med-pm-pct-padrao" type="number" step="0.01" min="0" max="100" value="${p.percentual_padrao ?? ""}" ${ro} title="Herdado pelas medições novas das obras ligadas (o contrato pode ter o seu)" /></div>
+      <div class="campo largo"><label>Imóvel</label><input id="med-pm-imovel" value="${esc(p.imovel_descricao || "")}" ${ro} placeholder="unidade, empreendimento, endereço" /></div>
+      <div class="campo"><label>Imóvel identificado?</label>${sel("med-pm-identificado", [["true", "Sim"], ["false", "Não (a identificar)"]], String(!!p.imovel_identificado))}</div>
+      <div class="campo"><label>Teto da permuta (R$)</label><input id="med-pm-teto" type="number" step="0.01" min="0" value="${p.valor_imovel ?? ""}" ${ro} title="Valor do imóvel, ou a parte do preço paga em serviços (invertida)" /></div>
+      <div class="campo"><label>Preço cheio do imóvel (R$)</label><input id="med-pm-total" type="number" step="0.01" min="0" value="${p.valor_imovel_total ?? ""}" ${ro} title="Só quando a permuta cobre parte do preço (ex.: Katz)" /></div>
+      <div class="campo"><label>Executar até</label><input id="med-pm-prazo" type="date" value="${esc(p.executar_ate || "")}" ${ro} /></div>
+      <div class="campo largo"><label>Instrumento</label><input id="med-pm-instr" value="${esc(p.instrumento_tipo || "")}" ${ro} placeholder="contrato de adesão, SCP, CPCV, contrato da obra…" /></div>
+      <div class="campo"><label>Data do instrumento</label><input id="med-pm-instr-data" type="date" value="${esc(p.instrumento_data || "")}" ${ro} /></div>
+      <div class="campo"><label>Instrumento assinado?</label>${sel("med-pm-assinado", [["true", "Sim"], ["false", "Não"]], String(!!p.instrumento_assinado))}</div>
+      <div class="campo largo"><label>Observações</label><textarea id="med-pm-obs" rows="3" ${ro}>${esc(p.observacoes || "")}</textarea></div>
+    </div>
+    ${p.patrimonio_bem_id ? `<p class="nota">Imóvel no Patrimônio (titularidade "permuta"). Quando a permuta quitar, a diretoria passa a titularidade para "empresa" na ficha do bem.</p>` : (p.sentido === "invertida" ? `<p class="nota">Permuta invertida: o imóvel não entra no patrimônio da CGL Fundações (decisão da fase 98).</p>` : "")}
+    ${podeOp ? "" : `<p class="nota">Só o financeiro, o admin e a diretoria alteram a permuta.</p>`}`;
+}
+function medPmLancHTML(p, podeOp){
+  const linhas = _medPmLanc.map(l => `<tr${l.origem === "medicao" ? ` class="linha-clicavel" data-pm-med="${esc(l.medicao_id)}" title="Abrir a medição"` : ""}>
+      <td>${l.origem === "medicao" ? '<span class="tag azul">App</span>' : '<span class="tag cinza" title="Histórico da planilha consolidada">Histórico</span>'}</td>
+      <td>${esc(l.contrato_numero || "—")}</td>
+      <td>${l.obra_id ? linkObra(l.obra_id, l.obra_codigo || "obra") : esc(l.obra_descricao || "—")}</td>
+      <td>${esc(l.medicao || "—")}</td>
+      <td class="meta">${esc(l.periodo || (l.data ? dataBR(l.data) : "—"))}</td>
+      <td class="num">${l.valor_medicao != null ? brl(l.valor_medicao) : "—"}</td>
+      <td class="num">${l.percentual != null ? num(l.percentual) + "%" : "—"}</td>
+      <td class="num"><strong>${brl(l.credito)}</strong>${l.credito_manual ? ' <span class="meta" title="Crédito fixado à mão pelo financeiro">✎</span>' : ""}</td>
+      <td>${esc(l.nf_numero || "—")}</td>
+      <td>${l.origem === "medicao" ? tagStatus("medicao", l.status) + (l.conta ? "" : ' <span class="meta" title="Só entra no crédito quando aprovada">previsto</span>') : `<span class="meta" title="${esc(l.termo || "")}">${esc(l.termo ? (l.termo.length > 24 ? l.termo.slice(0, 24) + "…" : l.termo) : "—")}</span>`}</td>
+      <td class="col-acao">${podeOp && l.origem === "historico" ? `<button type="button" class="btn-sec btn-sm txt-perigo" data-pm-lanc-del="${esc(l.id)}" title="Apagar este lançamento histórico">×</button>` : ""}</td>
+    </tr>`).join("");
+  const conta = _medPmLanc.filter(l => l.conta);
+  const tot = (f, lst) => lst.reduce((s, l) => s + (Number(f(l)) || 0), 0);
+  return `${_medPmLanc.length ? `<div class="tabela-rola"><table>
+      <thead><tr><th>Origem</th><th>Contrato</th><th>Obra</th><th>Medição</th><th>Período</th><th class="num">Valor</th><th class="num">%</th><th class="num">Crédito</th><th>NF</th><th>Status / termo</th><th class="col-acao"></th></tr></thead>
+      <tbody>${linhas}</tbody>
+      <tfoot><tr><th colspan="5">${_medPmLanc.length} lançamento(s) · ${conta.length} no crédito</th><th class="num">${brl(tot(l => l.valor_medicao, conta))}</th><th></th><th class="num">${brl(tot(l => l.credito, conta))}</th><th colspan="3"></th></tr></tfoot>
+    </table></div>` : `<p class="vazio">Nenhum lançamento. As medições das obras ligadas (aba Contratos) entram aqui sozinhas.</p>`}
+    ${podeOp ? `<h4 class="titulo-bloco" style="margin-top:14px;">Lançamento histórico <small class="meta">(medição sem obra no app; as do app nascem da medição)</small></h4>
+    <div class="grade">
+      <div class="campo"><label>Contrato</label><input id="med-pm-l-contrato" placeholder="ex.: 4421/2023" /></div>
+      <div class="campo"><label>Obra (texto)</label><input id="med-pm-l-obra" /></div>
+      <div class="campo"><label>Medição</label><input id="med-pm-l-medicao" placeholder="ex.: 1, Única" /></div>
+      <div class="campo"><label>Data de referência</label><input id="med-pm-l-data" type="date" /></div>
+      <div class="campo"><label>Valor da medição (R$)</label><input id="med-pm-l-valor" type="number" step="0.01" min="0" /></div>
+      <div class="campo"><label>Crédito de permuta (R$)</label><input id="med-pm-l-credito" type="number" step="0.01" min="0" /></div>
+      <div class="campo"><label>NF</label><input id="med-pm-l-nf" /></div>
+      <div class="campo largo"><label>Autorização / termo</label><input id="med-pm-l-termo" placeholder="termo assinado, e-mail…" /></div>
+    </div>
+    <div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn-sec" id="btn-med-pm-l-add">+ Lançar</button></div>` : ""}`;
+}
+function medPmContratosHTML(p, podeOp){
+  const linhas = _medPmContratos.map(c => `<tr>
+      <td><strong>${esc(c.contrato_numero)}</strong></td>
+      <td>${c.obra_id ? linkObra(c.obra_id, c.obra ? `${c.obra.codigo} — ${c.obra.nome || ""}` : "obra") : `<span class="meta">sem obra no app${c.obra_descricao ? " · " + esc(c.obra_descricao) : ""}</span>`}</td>
+      <td class="num">${c.percentual != null ? num(c.percentual) + "%" : `<span class="meta">${p.percentual_padrao != null ? num(p.percentual_padrao) + "% (padrão)" : "—"}</span>`}</td>
+      <td class="meta">${esc(c.observacoes || "")}</td>
+      <td class="col-acao">${podeOp ? `<button type="button" class="btn-sec btn-sm" data-pm-ctr-pct="${esc(c.id)}" title="Mudar o % deste contrato">%</button> <button type="button" class="btn-sec btn-sm txt-perigo" data-pm-ctr-del="${esc(c.id)}" title="Desligar o contrato da permuta (as medições já lançadas mantêm o % gravado)">×</button>` : ""}</td>
+    </tr>`).join("");
+  const obrasLivres = Object.entries(mapaObras || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR", { numeric: true }));
+  return `${_medPmContratos.length ? `<div class="tabela-rola"><table>
+      <thead><tr><th>Contrato</th><th>Obra</th><th class="num">% em permuta</th><th>Observações</th><th class="col-acao"></th></tr></thead>
+      <tbody>${linhas}</tbody></table></div>` : `<p class="vazio">Nenhum contrato ligado.</p>`}
+    ${podeOp ? `<h4 class="titulo-bloco" style="margin-top:14px;">Ligar contrato</h4>
+    <div class="grade">
+      <div class="campo largo"><label>Obra do app</label><select id="med-pm-c-obra"><option value="">— contrato antigo, sem obra no app —</option>${obrasLivres.map(([id, t]) => `<option value="${esc(id)}">${esc(t)}</option>`).join("")}</select></div>
+      <div class="campo"><label>Nº do contrato *</label><input id="med-pm-c-numero" placeholder="ex.: 8290/2026" /></div>
+      <div class="campo"><label>% em permuta</label><input id="med-pm-c-pct" type="number" step="0.01" min="0" max="100" placeholder="vazio = padrão" /></div>
+    </div>
+    <div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn-sec" id="btn-med-pm-c-add">+ Ligar</button>
+      <span class="meta">As medições já lançadas da obra sem % recebem o % na hora (o crédito e o recebimento nascem no banco).</span></div>` : ""}`;
+}
+function medPmPendHTML(pend){
+  if(!pend.length) return `<p class="vazio">Sem pendências.</p>`;
+  const cor = { critico: "vermelho", atencao: "ambar", observar: "cinza" };
+  return `<div class="tabela-rola"><table>
+    <thead><tr><th>Nível</th><th>Pendência</th><th>Detalhe</th><th class="num">Valor</th></tr></thead>
+    <tbody>${pend.map(x => `<tr><td><span class="tag ${cor[x.nivel] || "cinza"}">${esc(x.nivel === "critico" ? "Crítico" : x.nivel === "atencao" ? "Atenção" : "Observar")}</span></td>
+      <td>${esc(x.titulo)}</td><td class="meta">${esc(x.detalhe || "")}</td><td class="num">${x.valor != null ? brl(x.valor) : "—"}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+}
+function medPmLigarFicha(p, podeOp){
+  $("btn-med-pm-voltar")?.addEventListener("click", medPmVoltar);
+  document.querySelectorAll("#med-pm-notebook button").forEach(b => b.addEventListener("click", () => medPmAtivarTab(b.dataset.tab)));
+  document.querySelectorAll("#med-pm-ficha [data-pm-tab]").forEach(b => b.addEventListener("click", () => medPmAtivarTab(b.dataset.pmTab)));
+  document.querySelectorAll("#med-pm-ficha [data-pm-med]").forEach(tr => tr.addEventListener("click", (e) => {
+    if(e.target.closest("a, button")) return;
+    if(tr.dataset.pmMed){ $("med-pm-ficha").style.display = "none"; abrirMedicao(tr.dataset.pmMed); }
+  }));
+  if(!podeOp) return;
+  $("btn-med-pm-salvar")?.addEventListener("click", () => comBotaoTravado("btn-med-pm-salvar", () => medPmSalvar(p)));
+  $("btn-med-pm-excluir")?.addEventListener("click", () => comBotaoTravado("btn-med-pm-excluir", () => medPmExcluir(p)));
+  $("btn-med-pm-l-add")?.addEventListener("click", () => comBotaoTravado("btn-med-pm-l-add", () => medPmLancar(p)));
+  document.querySelectorAll("#med-pm-ficha [data-pm-lanc-del]").forEach(b => b.addEventListener("click", () => medPmApagarLanc(p, b.dataset.pmLancDel)));
+  $("btn-med-pm-c-add")?.addEventListener("click", () => comBotaoTravado("btn-med-pm-c-add", () => medPmLigarContrato(p)));
+  $("med-pm-c-obra")?.addEventListener("change", () => {
+    const t = (mapaObras || {})[$("med-pm-c-obra").value] || "";
+    if(t && $("med-pm-c-numero") && !$("med-pm-c-numero").value) $("med-pm-c-numero").value = String(t).split(" — ")[0];
+  });
+  document.querySelectorAll("#med-pm-ficha [data-pm-ctr-del]").forEach(b => b.addEventListener("click", () => medPmDesligarContrato(p, b.dataset.pmCtrDel)));
+  document.querySelectorAll("#med-pm-ficha [data-pm-ctr-pct]").forEach(b => b.addEventListener("click", () => medPmPctContrato(p, b.dataset.pmCtrPct)));
+}
+async function medPmRecarregar(p, aba){ _medPmRegistros = null; await medPmCarregar(true); await medPmAbrir(p.id, aba); }
+
+/* Nova permuta: grava o mínimo e abre a ficha para completar */
+async function medPmNova(){
+  if(!medPmPodeOperar()) return;
+  const nome = prompt("Cliente da permuta (como o financeiro chama, ex.: SAGA):");
+  if(nome == null || !nome.trim()) return;
+  const { data, error } = await sb.from("permutas").insert({ cliente_nome: nome.trim(), numero: "", instrumento_assinado: false }).select("id").single();
+  if(error){ aviso("app-aviso", "Não foi possível criar a permuta: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Permuta criada. Complete o imóvel, o teto e os contratos.", "ok");
+  _medPmRegistros = null;
+  await medPmCarregar(true);
+  await medPmAbrir(data.id);
+}
+async function medPmSalvar(p){
+  const reg = {
+    cliente_nome: ($("med-pm-cliente-nome")?.value || "").trim(),
+    cliente_id: $("med-pm-cliente")?.value || null,
+    sentido: $("med-pm-sentido")?.value || "recebemos_imovel",
+    percentual_padrao: medPmNum($("med-pm-pct-padrao")?.value),
+    imovel_descricao: ($("med-pm-imovel")?.value || "").trim() || null,
+    imovel_identificado: $("med-pm-identificado")?.value === "true",
+    valor_imovel: medPmNum($("med-pm-teto")?.value),
+    valor_imovel_total: medPmNum($("med-pm-total")?.value),
+    executar_ate: $("med-pm-prazo")?.value || null,
+    instrumento_tipo: ($("med-pm-instr")?.value || "").trim() || null,
+    instrumento_data: $("med-pm-instr-data")?.value || null,
+    instrumento_assinado: $("med-pm-assinado")?.value === "true",
+    observacoes: ($("med-pm-obs")?.value || "").trim() || null
+  };
+  if(!reg.cliente_nome){ aviso("app-aviso", "Informe o cliente da permuta.", "erro"); return; }
+  if(reg.percentual_padrao != null && (reg.percentual_padrao < 0 || reg.percentual_padrao > 100)){ aviso("app-aviso", "% padrão entre 0 e 100.", "erro"); return; }
+  const { error } = await sb.from("permutas").update(reg).eq("id", p.id);
+  if(error){ aviso("app-aviso", "Não foi possível salvar a permuta: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Permuta salva. O status é recalculado no banco.", "ok");
+  await medPmRecarregar(p, "geral");
+}
+async function medPmExcluir(p){
+  if(!confirm(`Excluir a permuta ${p.numero}? Só vale para lançamento errado (sem contratos nem lançamentos).`)) return;
+  const { error } = await sb.from("permutas").delete().eq("id", p.id);
+  if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
+  aviso("app-aviso", `Permuta ${p.numero} excluída.`, "ok");
+  _medPmRegistros = null;
+  medPmVoltar();
+}
+async function medPmLancar(p){
+  const credito = medPmNum($("med-pm-l-credito")?.value);
+  if(!(credito >= 0) || credito == null){ aviso("app-aviso", "Informe o crédito de permuta do lançamento (0 quando foi só em NF).", "erro"); return; }
+  const reg = {
+    permuta_id: p.id, cliente_id: p.cliente_id || null, origem: "manual",
+    contrato_numero: ($("med-pm-l-contrato")?.value || "").trim() || null,
+    obra_descricao: ($("med-pm-l-obra")?.value || "").trim() || null,
+    medicao: ($("med-pm-l-medicao")?.value || "").trim() || null,
+    data: $("med-pm-l-data")?.value || null,
+    valor_medicao: medPmNum($("med-pm-l-valor")?.value),
+    credito,
+    nf_numero: ($("med-pm-l-nf")?.value || "").trim() || null,
+    termo: ($("med-pm-l-termo")?.value || "").trim() || null
+  };
+  const { error } = await sb.from("permuta_lancamentos").insert(reg);
+  if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Lançamento histórico gravado.", "ok");
+  await medPmRecarregar(p, "lancamentos");
+}
+async function medPmApagarLanc(p, id){
+  const l = _medPmLanc.find(x => x.id === id);
+  if(!l || !confirm(`Apagar o lançamento histórico de ${brl(l.credito)} (${l.contrato_numero || "sem contrato"} · ${l.medicao || "—"})?`)) return;
+  const { error } = await sb.from("permuta_lancamentos").delete().eq("id", id);
+  if(error){ aviso("app-aviso", "Não foi possível apagar: " + error.message, "erro"); return; }
+  await medPmRecarregar(p, "lancamentos");
+}
+async function medPmLigarContrato(p){
+  const obra_id = $("med-pm-c-obra")?.value || null;
+  const contrato_numero = ($("med-pm-c-numero")?.value || "").trim();
+  const percentual = medPmNum($("med-pm-c-pct")?.value);
+  if(!contrato_numero){ aviso("app-aviso", "Informe o número do contrato.", "erro"); return; }
+  if(percentual != null && (percentual < 0 || percentual > 100)){ aviso("app-aviso", "% entre 0 e 100.", "erro"); return; }
+  const { error } = await sb.from("permuta_contratos").insert({ permuta_id: p.id, obra_id, contrato_numero, percentual });
+  if(error){ aviso("app-aviso", "Não foi possível ligar o contrato: " + (/permuta_contratos_obra_uk|duplicate/i.test(error.message) ? "esta obra já está em outra permuta (ou o contrato já foi ligado)." : error.message), "erro"); return; }
+  await medPmAplicarPctNasMedicoes(obra_id, percentual ?? p.percentual_padrao);
+  aviso("app-aviso", "Contrato ligado.", "ok");
+  await medPmRecarregar(p, "contratos");
+}
+/* Medições já lançadas da obra, sem %: recebem o % (o gatilho calcula o crédito e grava o recebimento em permuta) */
+async function medPmAplicarPctNasMedicoes(obraId, pct){
+  if(!obraId || pct == null) return;
+  const { data } = await sb.from("medicoes").select("id").eq("obra_id", obraId).is("permuta_percentual", null);
+  if(!data || !data.length) return;
+  if(!confirm(`A obra tem ${data.length} medição(ões) sem % de permuta. Aplicar ${num(pct)}% a elas agora? (o crédito e o recebimento em permuta nascem no banco)`)) return;
+  const { error } = await sb.from("medicoes").update({ permuta_percentual: pct }).eq("obra_id", obraId).is("permuta_percentual", null);
+  if(error) aviso("app-aviso", "Contrato ligado, mas o % não foi aplicado às medições: " + error.message, "erro");
+}
+async function medPmDesligarContrato(p, id){
+  const c = _medPmContratos.find(x => x.id === id);
+  if(!c || !confirm(`Desligar o contrato ${c.contrato_numero} da permuta? As medições já lançadas mantêm o % gravado (mude na medição, se for o caso).`)) return;
+  const { error } = await sb.from("permuta_contratos").delete().eq("id", id);
+  if(error){ aviso("app-aviso", "Não foi possível desligar: " + error.message, "erro"); return; }
+  await medPmRecarregar(p, "contratos");
+}
+async function medPmPctContrato(p, id){
+  const c = _medPmContratos.find(x => x.id === id);
+  if(!c) return;
+  const v = prompt(`% em permuta do contrato ${c.contrato_numero} (vazio = padrão da permuta). Vale para as medições novas; as já lançadas mudam na própria medição.`, c.percentual ?? "");
+  if(v === null) return;
+  const pct = v.trim() === "" ? null : Number(v.replace(",", "."));
+  if(pct != null && !(pct >= 0 && pct <= 100)){ aviso("app-aviso", "% entre 0 e 100.", "erro"); return; }
+  const { error } = await sb.from("permuta_contratos").update({ percentual: pct }).eq("id", id);
+  if(error){ aviso("app-aviso", "Não foi possível mudar o %: " + error.message, "erro"); return; }
+  await medPmRecarregar(p, "contratos");
+}
+
+/* ---------- documentos (bucket privado permutas: <permuta_id>/<carimbo>-<nome>) ---------- */
+async function medPmCarregarDocs(p, podeOp){
+  const box = $("med-pm-docs");
+  if(!box) return;
+  const { data, error } = await sb.storage.from(MED_PM_BUCKET).list(p.id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+  if(!_medPmFicha || _medPmFicha.id !== p.id) return;
+  const arqs = error ? [] : (data || []).filter(f => f.name && !f.name.startsWith("."));
+  const linhas = arqs.map(f => {
+    const caminho = `${p.id}/${f.name}`, principal = caminho === p.documento_path;
+    return `<tr>
+      <td>${principal ? '<span class="tag verde" title="Instrumento da permuta">instrumento</span> ' : ""}<a href="#" data-pm-doc="${esc(caminho)}">${esc(f.name.replace(/^\d+-/, ""))}</a></td>
+      <td class="meta">${f.created_at ? dataBR(String(f.created_at).slice(0, 10)) : "—"}</td>
+      <td class="col-acao">${podeOp && !principal ? `<button type="button" class="btn-sec btn-sm" data-pm-doc-principal="${esc(caminho)}" title="Marcar como o instrumento da permuta">★</button>` : ""}</td>
+    </tr>`;
+  }).join("");
+  box.innerHTML = `${error ? `<p class="vazio">Não foi possível listar os documentos (${esc(error.message)}).</p>` : (arqs.length ? `<div class="tabela-rola"><table>
+      <thead><tr><th>Arquivo</th><th>Enviado em</th><th class="col-acao"></th></tr></thead><tbody>${linhas}</tbody></table></div>` : `<p class="vazio">Nenhum documento. Anexe o instrumento (contrato de adesão, SCP, CPCV, termo) em PDF.</p>`)}
+    ${podeOp ? `<div class="form-acoes compacta" style="justify-content:flex-start;margin-top:10px;">
+      <input type="file" id="med-pm-doc-arquivo" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" />
+      <button type="button" class="btn-sec" id="btn-med-pm-doc-enviar">📎 Anexar documento</button>
+      <span class="meta">PDF, JPG ou PNG até 20 MB. O primeiro documento vira o instrumento da permuta.</span></div>` : ""}`;
+  box.querySelectorAll("[data-pm-doc]").forEach(a => a.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const r = await sb.storage.from(MED_PM_BUCKET).createSignedUrl(a.dataset.pmDoc, 120);
+    if(r.error || !r.data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir: " + (r.error?.message || "sem link"), "erro"); return; }
+    window.open(r.data.signedUrl, "_blank", "noopener");
+  }));
+  box.querySelectorAll("[data-pm-doc-principal]").forEach(b => b.addEventListener("click", async () => {
+    const { error: e2 } = await sb.from("permutas").update({ documento_path: b.dataset.pmDocPrincipal }).eq("id", p.id);
+    if(e2){ aviso("app-aviso", "Não foi possível marcar: " + e2.message, "erro"); return; }
+    await medPmRecarregar(p, "documentos");
+  }));
+  $("btn-med-pm-doc-enviar")?.addEventListener("click", () => $("med-pm-doc-arquivo")?.click());
+  $("med-pm-doc-arquivo")?.addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if(!file) return;
+    try { await medPmEnviarDoc(p, file); aviso("app-aviso", "Documento anexado.", "ok"); await medPmRecarregar(p, "documentos"); }
+    catch(err){ aviso("app-aviso", "Não foi possível anexar: " + (err.message || err), "erro"); }
+  });
+}
+/* supabase-js ignora contentType quando o corpo é File: o MIME vem da extensão e o arquivo é reembalado em Blob */
+async function medPmEnviarDoc(p, file){
+  const ext = String(file.name || "").split(".").pop().toLowerCase();
+  const mime = MED_PM_MIME[ext];
+  if(!mime) throw new Error("envie PDF, JPG ou PNG");
+  if(file.size > 20 * 1024 * 1024) throw new Error("arquivo acima de 20 MB");
+  const nome = String(file.name).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.\-]+/g, "_").slice(-80);
+  const caminho = `${p.id}/${Date.now()}-${nome}`;
+  const up = await sb.storage.from(MED_PM_BUCKET).upload(caminho, new Blob([file], { type: mime }), { cacheControl: "3600", contentType: mime, upsert: false });
+  if(up.error) throw up.error;
+  if(!p.documento_path){
+    const { error } = await sb.from("permutas").update({ documento_path: caminho }).eq("id", p.id);
+    if(error) throw error;
+  }
+}
+
+/* ---------- medição: % e crédito de permuta (aba Geral, ao lado do líquido) ---------- */
+function medPmMarca(m){
+  const pct = Number(m.permuta_percentual) || 0, val = Number(m.permuta_valor) || 0;
+  if(!(pct > 0 || val > 0)) return "";
+  return ` <span class="tag ambar" title="Em permuta: crédito ${brl(val)} abatido no imóvel (fase 98)">permuta${pct ? " " + num(pct) + "%" : ""}</span>`;
+}
+function medPmCarregarFicha(med){
+  const cP = $("campo-med-pm-pct"), cV = $("campo-med-pm-valor");
+  const ver = medPmPodeVer();
+  if(cP) cP.style.display = ver ? "" : "none";
+  if(cV) cV.style.display = ver ? "" : "none";
+  if(!ver) return;
+  const pode = medPmPodeOperar();
+  const iP = $("med-pm-pct"), iV = $("med-pm-valor");
+  if(iP){ iP.value = med && med.permuta_percentual != null ? med.permuta_percentual : ""; iP.readOnly = !pode; }
+  if(iV){
+    iV.value = med && med.permuta_valor != null ? Number(med.permuta_valor).toFixed(2) : "";
+    iV.dataset.manual = med && med.permuta_valor_manual ? "1" : "0";
+    iV.readOnly = !pode;
+    iV.title = med && med.permuta_valor_manual ? "Fixado à mão pelo financeiro (apague para voltar ao cálculo % × valor final)" : "Calculado: % de permuta × valor final. Digitar fixa o valor à mão.";
+  }
+}
+function medPmRecalcular(valorFinal){
+  const iP = $("med-pm-pct"), iV = $("med-pm-valor");
+  if(!iP || !iV || iV.dataset.manual === "1") return;
+  const pct = parseFloat(iP.value);
+  iV.value = (isFinite(pct) && pct > 0) ? (Number(valorFinal || 0) * pct / 100).toFixed(2) : "";
+}
+/* Campos que vão no salvarMedicao: só para quem pode (o banco recusa os outros) */
+function medPmLerCampos(){
+  if(!medPmPodeVer() || !medPmPodeOperar()) return {};
+  const iP = $("med-pm-pct"), iV = $("med-pm-valor");
+  if(!iP || !iV) return {};
+  const pct = iP.value === "" ? null : Number(iP.value);
+  const manual = iV.dataset.manual === "1" && iV.value !== "";
+  const out = {};
+  if(medEditId || pct != null) out.permuta_percentual = pct;   // medição nova sem %: o banco herda o da obra
+  out.permuta_valor_manual = manual;
+  if(manual) out.permuta_valor = Number(iV.value);
+  return out;
+}
+/* Medição nova: sugere o % da permuta da obra (permuta_contratos) quando o campo está vazio */
+async function medPmSugerirPctDaObra(obraId){
+  const iP = $("med-pm-pct");
+  if(!iP || !obraId || medEditId || iP.value !== "" || !medPmPodeVer()) return;
+  const { data } = await sb.from("permuta_contratos").select("percentual,permuta:permutas(percentual_padrao,numero)").eq("obra_id", obraId).maybeSingle();
+  if(!data) return;
+  const pct = data.percentual ?? (data.permuta && data.permuta.percentual_padrao);
+  if(pct != null && iP.value === ""){
+    iP.value = pct;
+    if($("med-pm-valor")) $("med-pm-valor").dataset.manual = "0";
+    recalcularTotaisMedicao();
+    aviso("app-aviso", `Obra em permuta (${data.permuta ? data.permuta.numero : ""}): ${num(pct)}% de cada medição vira crédito do imóvel.`, "aviso");
+  }
+}
+
+/* ---------- Patrimônio (fase 97): saldo a executar do imóvel em permuta ---------- */
+async function pmPatCarregar(){
+  _medPmPatMapa = new Map();
+  if(!medPmPodeVer()) return;
+  const { data, error } = await sb.from("vw_permutas").select("id,numero,patrimonio_bem_id,saldo,credito,valor_imovel,status").not("patrimonio_bem_id", "is", null);
+  if(error) return;
+  (data || []).forEach(p => _medPmPatMapa.set(p.patrimonio_bem_id, p));
+}
+function pmPatChip(bemId){
+  const p = _medPmPatMapa && _medPmPatMapa.get(bemId);
+  if(!p) return "";
+  if(p.status === "quitada" || p.status === "excedida")
+    return `<div class="meta" title="Permuta ${esc(p.numero)} quitada: passar a titularidade para Empresa">${esc(p.numero)} · ${p.status === "excedida" ? "crédito acima do imóvel" : "quitada"}</div>`;
+  return `<div class="meta" title="Permuta ${esc(p.numero)}: teto ${brl(p.valor_imovel)}, crédito ${brl(p.credito)}">${esc(p.numero)} · saldo a executar ${brl(p.saldo)}</div>`;
+}
+
+/* ---------- ligações da fase 98 ---------- */
+function ligarMedPermutas(){
+  const btnV = document.querySelector('#med-painel .serv-view-btn[data-view="permutas"]');
+  const mostrarBotao = () => { if(btnV) btnV.style.display = medPmPodeVer() ? "" : "none"; };
+  mostrarBotao();
+  document.querySelector('nav button[data-secao="medicoes"]')?.addEventListener("click", () => {
+    mostrarBotao();
+    if($("med-pm-ficha") && $("med-pm-ficha").style.display !== "none") medPmVoltar();
+  });
+  ["med-pm-busca", "med-pm-f-status", "med-pm-f-pend"].forEach(id => {
+    const el = $(id);
+    if(!el) return;
+    el.addEventListener(id === "med-pm-busca" ? "input" : "change", id === "med-pm-busca" ? debounce(renderMedicoes) : renderMedicoes);
+  });
+  $("btn-med-pm-nova")?.addEventListener("click", () => comBotaoTravado("btn-med-pm-nova", medPmNova));
+  $("btn-med-pm-exportar")?.addEventListener("click", medPmExportar);
+  $("btn-med-pm-atualizar")?.addEventListener("click", () => comBotaoTravado("btn-med-pm-atualizar", async () => { await medPmCarregar(true); renderMedicoes(); }));
+  $("med-conteudo")?.addEventListener("click", (e) => {
+    if(_medView !== "permutas") return;
+    if(e.target.closest("a, button")) return;
+    const r = e.target.closest("[data-pm]");
+    if(r) medPmAbrir(r.dataset.pm);
+  });
+  $("med-indicadores")?.addEventListener("click", (e) => {
+    const c = e.target.closest("[data-pm-pend]");
+    if(!c) return;
+    const f = $("med-pm-f-pend");
+    if(f){ f.value = f.value === c.dataset.pmPend ? "" : c.dataset.pmPend; renderMedicoes(); }
+  });
+  // medição: % recalcula o crédito; digitar o crédito fixa à mão; apagar volta ao automático
+  $("med-pm-pct")?.addEventListener("input", () => { if($("med-pm-valor")) $("med-pm-valor").dataset.manual = "0"; recalcularTotaisMedicao(); });
+  $("med-pm-valor")?.addEventListener("input", () => { const v = $("med-pm-valor"); v.dataset.manual = v.value === "" ? "0" : "1"; if(v.value === "") recalcularTotaisMedicao(); });
+  $("med-obra")?.addEventListener("change", () => medPmSugerirPctDaObra($("med-obra").value));
+}
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", ligarMedPermutas);
+} else {
+  ligarMedPermutas();
 }

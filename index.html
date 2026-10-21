@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="7f3304d" />
+<meta name="app-versao" content="ba6670d" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=7f3304d" />
+<link rel="stylesheet" href="css/estilo.css?v=ba6670d" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -299,6 +299,15 @@
         <div id="dash-regularizar"><p class="vazio">Carregando…</p></div>
       </div>
 
+      <!-- Segurança (fase 99b): sem MFA, convites pendentes, trocas de cargo, leitura em massa de dado sensível, sessões encerradas, webhook recusado. Diretor, admin e auditor (vw_sc_seguranca) -->
+      <div class="card compacto" id="dash-seguranca-card" style="display:none;">
+        <div class="dash-bloco-topo">
+          <h3>🔐 Segurança</h3>
+          <span class="contador" id="dash-seg-cont"></span>
+        </div>
+        <div id="dash-seguranca"><p class="vazio">Carregando…</p></div>
+      </div>
+
       <!-- Abas: frota, obras em execução, operadores, produção -->
       <div class="card compacto dash-abas">
         <div class="odoo-notebook" id="dash-notebook">
@@ -556,6 +565,15 @@
             <button type="button" class="sb-btn" id="sb-forn-contratos" data-goto-tab="contratos">
               <span class="sb-num">0</span><span class="sb-icon">📋</span><span class="sb-lbl">contratos</span>
             </button>
+            <button type="button" class="sb-btn" id="sb-forn-pedidos" data-goto-tab="pedidos">
+              <span class="sb-num">0</span><span class="sb-icon">🛒</span><span class="sb-lbl">pedidos</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-forn-notas" data-goto-tab="notas">
+              <span class="sb-num">0</span><span class="sb-icon">🧾</span><span class="sb-lbl">notas</span>
+            </button>
+            <button type="button" class="sb-btn" id="sb-forn-titulos" data-goto-tab="notas" style="display:none;">
+              <span class="sb-num">0</span><span class="sb-icon">💳</span><span class="sb-lbl">títulos</span>
+            </button>
           </div>
 
           <div class="odoo-notebook" id="forn-notebook">
@@ -563,6 +581,8 @@
             <button type="button" data-tab="endereco">Endereço</button>
             <button type="button" data-tab="contato">Contato</button>
             <button type="button" data-tab="contratos">Contratos</button>
+            <button type="button" data-tab="pedidos">Pedidos de compra</button>
+            <button type="button" data-tab="notas">Notas e títulos</button>
             <button type="button" data-tab="observacoes">Observações</button>
             <button type="button" data-tab="historico">Histórico</button>
           </div>
@@ -603,6 +623,12 @@
             </div>
             <div class="odoo-tab" data-tab="contratos">
               <div id="forn-contratos-conteudo"></div>
+            </div>
+            <div class="odoo-tab" data-tab="pedidos">
+              <div id="forn-pedidos-conteudo"></div>
+            </div>
+            <div class="odoo-tab" data-tab="notas">
+              <div id="forn-notas-conteudo"></div>
             </div>
             <div class="odoo-tab" data-tab="observacoes">
               <div class="grade">
@@ -2486,6 +2512,8 @@
               <h4 class="sub-titulo">📎 Contrato assinado e aditivos</h4>
               <div id="obr-con-assinatura-bloco"></div>
               <div id="obr-con-doc-conteudo"></div>
+              <!-- fase 98: obra paga em imóvel (percentual, permuta vinculada, saldo do imóvel); só quem lê permutas -->
+              <div id="obr-pm-bloco" style="display:none;"></div>
             </div>
 
             <!-- Aba Estacas -->
@@ -2528,6 +2556,7 @@
                   <option value="diferente">Executada ≠ projeto</option>
                   <option value="sem_profundidade">Sem profundidade</option>
                   <option value="projeto_pendente">Projeto a confirmar</option>
+                  <option value="sem_diametro">Sem diâmetro</option>
                 </select>
                 <select id="est-f-tipo">
                   <option value="">Todos os tipos</option>
@@ -3768,8 +3797,8 @@
           <div class="ind"><div class="num" id="frota-kpi-valor" style="color:var(--marca-600);">—</div><div class="rot">Custo das viagens</div></div>
           <div class="ind ind-click" id="frota-kpi-card-transito" title="Viagens em trânsito agora (clique para filtrar)"><div class="num" id="frota-kpi-transito">—</div><div class="rot">Em trânsito agora</div></div>
           <div class="ind ind-click" id="frota-kpi-card-notas" title="Notas em rascunho ou emitidas que ainda não estão em nenhuma viagem (clique para ver)"><div class="num" id="frota-kpi-notas">—</div><div class="rot">Notas sem viagem</div></div>
-          <div class="ind"><div class="num" id="frota-kpi-caminhoes">—</div><div class="rot">Caminhões ativos</div></div>
-          <div class="ind"><div class="num" id="frota-kpi-veiculos">—</div><div class="rot">Veículos leves</div></div>
+          <div class="ind ind-click" id="frota-kpi-card-caminhoes" title="Clique para ver só os caminhões ativos (de novo, todos)"><div class="num" id="frota-kpi-caminhoes">—</div><div class="rot">Caminhões ativos</div></div>
+          <div class="ind ind-click" id="frota-kpi-card-veiculos" title="Clique para ver só os veículos leves ativos (de novo, todos)"><div class="num" id="frota-kpi-veiculos">—</div><div class="rot">Veículos leves</div></div>
         </div>
 
         <div class="card">
@@ -3954,7 +3983,7 @@
           <div class="serv-filtros" id="ace-filtros">
             <input id="ace-busca" placeholder="Buscar marcação, jogo, modelo, nº de série…" />
             <select id="ace-f-tipo"><option value="">Todos os tipos</option></select>
-            <select id="ace-f-medida"><option value="">Ø / medida</option></select>
+            <select id="ace-f-medida" title="Ø externo da peça (a medida continua valendo na busca)"><option value="">Ø externo</option></select>
             <select id="ace-f-acopl"><option value="">Acoplamento</option></select>
             <select id="ace-f-condicao"><option value="">Condição</option></select>
             <select id="ace-f-local"><option value="">Onde está</option></select>
@@ -4516,6 +4545,7 @@
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
               <button type="button" class="serv-view-btn" data-view="caucao" title="Fase 91: retenções contratuais (caução) por NF, devoluções e saldo por cliente">Caução</button>
+              <button type="button" class="serv-view-btn" data-view="permutas" style="display:none;" title="Fase 98: obras pagas em imóvel — teto, crédito por medição, saldo do imóvel e prazo">Permutas</button>
             </div>
             <button type="button" class="btn" id="btn-nova-medicao">+ Nova</button>
           </div>
@@ -4560,12 +4590,40 @@
             <button type="button" class="btn-sec" id="btn-med-cau-exportar" title="Exporta a lista filtrada para planilha (.xlsx), para a conferência do financeiro">⬇️ Planilha</button>
             <button type="button" class="btn-sec" id="btn-med-cau-atualizar" title="Relê as cauções do banco">↻</button>
           </div>
+          <!-- fase 98: filtros da visão Permutas (uma linha por permuta: imóvel, teto, crédito, saldo, prazo) -->
+          <div class="serv-filtros" id="med-pm-filtros" style="display:none;">
+            <input id="med-pm-busca" placeholder="Buscar por número, cliente ou imóvel..." />
+            <select id="med-pm-f-status">
+              <option value="">Todos os status</option>
+              <option value="a_formalizar">A formalizar</option>
+              <option value="em_execucao">Em execução</option>
+              <option value="quitada">Quitada</option>
+              <option value="excedida">Excedida</option>
+              <option value="vencida">Vencida</option>
+            </select>
+            <select id="med-pm-f-pend">
+              <option value="">Qualquer pendência</option>
+              <option value="credito_excedente">Crédito acima do imóvel</option>
+              <option value="prazo_vencido">Prazo vencido</option>
+              <option value="prazo_90_dias">Prazo em 90 dias</option>
+              <option value="termo_nao_assinado">Sem assinatura</option>
+              <option value="imovel_nao_identificado">Imóvel não identificado</option>
+              <option value="nf_a_emitir">NF a emitir</option>
+              <option value="sem_documento">Instrumento sem PDF</option>
+            </select>
+            <button type="button" class="btn" id="btn-med-pm-nova" style="display:none;">+ Nova permuta</button>
+            <button type="button" class="btn-sec" id="btn-med-pm-exportar" title="Exporta a lista filtrada para planilha (.xlsx)">⬇️ Planilha</button>
+            <button type="button" class="btn-sec" id="btn-med-pm-atualizar" title="Relê as permutas do banco">↻</button>
+          </div>
           <!-- fase 91: indicadores (A receber / Vencidas / Recebido no mês na lista e no kanban; retido, devolvido, em aberto e vencidas na visão Caução) -->
           <div class="indicadores" id="med-indicadores" style="display:none;"></div>
           <div id="med-conteudo"></div>
           <table style="display:none;"><tbody id="tab-medicoes"></tbody></table>
         </div>
       </div>
+
+      <!-- fase 98: ficha da permuta (statusbar, chips, smart-buttons e abas desenhados por js/medicoes.js) -->
+      <div id="med-pm-ficha" style="display:none;"></div>
 
       <!-- Ficha -->
       <div id="med-ficha" style="display:none;">
@@ -4642,6 +4700,9 @@
                 <div class="campo"><label>ISS retido na fonte?</label><select id="med-iss-retido"><option value="true">Sim (cliente retém e recolhe)</option><option value="false">Não (CGL recolhe)</option></select></div>
                 <div class="campo"><label>Valor do ISS (R$)</label><input id="med-iss-valor" type="number" step="0.01" min="0" title="Calculado pelo %; pode ser ajustado à mão" /></div>
                 <div class="campo"><label>Líquido a receber (R$)</label><input id="med-liquido" type="number" step="0.01" readonly title="Valor final − retenção contratual − ISS retido na fonte" style="background:var(--sucesso-bg);font-weight:700;color:var(--sucesso-txt);" /></div>
+                <!-- fase 98: obra paga em imóvel — o crédito vira recebimento "permuta" quando a medição é aprovada/faturada -->
+                <div class="campo" id="campo-med-pm-pct" style="display:none;"><label>% permuta</label><input id="med-pm-pct" type="number" step="0.01" min="0" max="100" placeholder="obra sem permuta" title="Fase 98: parte da medição paga com o imóvel em permuta (herda da obra). Só financeiro e diretoria alteram." /></div>
+                <div class="campo" id="campo-med-pm-valor" style="display:none;"><label>Crédito de permuta (R$)</label><input id="med-pm-valor" type="number" step="0.01" min="0" title="Fase 98: % × valor final; digitar fixa o valor à mão. Entra como recebimento em permuta; o resto segue em dinheiro (aba NF/Recebimento)." /></div>
               </div>
             </div>
 
@@ -4967,8 +5028,13 @@
               <div id="bloco-transportador" style="display:none;">
                 <h3 class="titulo-bloco">Dados da transportadora (frete terceiro)</h3>
                 <div class="grade">
+                  <div class="campo largo forn-campo"><label>Buscar no cadastro de fornecedores</label><input id="mov-transp-busca" placeholder="razão social, fantasia ou CNPJ (≥ 2 letras)…" autocomplete="off" /><div id="mov-transp-lista" class="autocomplete-lista" style="display:none;"></div></div>
                   <div class="campo largo"><label>Nome / Razão social</label><input id="mov-transp-nome" /></div>
                   <div class="campo"><label>CNPJ</label><input id="mov-transp-cnpj" /></div>
+                  <div class="campo"><label>Inscrição estadual</label><input id="mov-transp-ie" /></div>
+                  <div class="campo largo"><label>Endereço</label><input id="mov-transp-endereco" /></div>
+                  <div class="campo"><label>Município</label><input id="mov-transp-municipio" /></div>
+                  <div class="campo"><label>UF</label><select id="mov-transp-uf"></select></div>
                 </div>
               </div>
             </div>
@@ -5524,6 +5590,8 @@
     <div style="display:flex; gap:10px;">
       <button type="button" class="btn" id="btn-mfa-verificar" style="flex:1;">✅ Verificar e ativar</button>
       <button type="button" class="btn-sec" id="btn-mfa-cancelar">Cancelar</button>
+      <!-- fase 99b: dentro da carência (empresa_config.mfa_carencia_dias), adiar uma vez por dia -->
+      <button type="button" class="btn-sec" id="btn-mfa-depois" style="display:none;">Depois</button>
     </div>
   </div>
 </div>
@@ -5566,49 +5634,49 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=7f3304d"></script>
+<script src="js/core.js?v=ba6670d"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=7f3304d"></script>
+<script src="js/historico.js?v=ba6670d"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=7f3304d"></script>
-<script src="js/fornecedores.js?v=7f3304d"></script>
-<script src="js/apropriacoes.js?v=7f3304d"></script>
-<script src="js/funcionarios.js?v=7f3304d"></script>
-<script src="js/rh_documentos.js?v=7f3304d"></script>
-<script src="js/servicos.js?v=7f3304d"></script>
-<script src="js/produtos.js?v=7f3304d"></script>
-<script src="js/estoque.js?v=7f3304d"></script>
-<script src="js/separacoes.js?v=7f3304d"></script>
-<script src="js/compras.js?v=7f3304d"></script>
-<script src="js/requisicoes.js?v=7f3304d"></script>
-<script src="js/orcamentos.js?v=7f3304d"></script>
-<script src="js/propostas.js?v=7f3304d"></script>
-<script src="js/contratos.js?v=7f3304d"></script>
-<script src="js/contas_pagar.js?v=7f3304d"></script>
-<script src="js/centros_custo.js?v=7f3304d"></script>
-<script src="js/carteira.js?v=7f3304d"></script>
-<script src="js/obras.js?v=7f3304d"></script>
-<script src="js/frota.js?v=7f3304d"></script>
-<script src="js/viagens.js?v=7f3304d"></script>
-<script src="js/equipamentos.js?v=7f3304d"></script>
-<script src="js/vendas_bens.js?v=7f3304d"></script>
-<script src="js/acessorios.js?v=7f3304d"></script>
-<script src="js/reparos.js?v=7f3304d"></script>
-<script src="js/manutencao.js?v=7f3304d"></script>
-<script src="js/fabricacao.js?v=7f3304d"></script>
-<script src="js/mobilizacoes.js?v=7f3304d"></script>
-<script src="js/estacas.js?v=7f3304d"></script>
-<script src="js/obra_abas.js?v=7f3304d"></script>
-<script src="js/medicoes.js?v=7f3304d"></script>
-<script src="js/movimentacoes.js?v=7f3304d"></script>
-<script src="js/rdo.js?v=7f3304d"></script>
-<script src="js/rdo_import_maya.js?v=7f3304d"></script>
-<script src="js/usuarios.js?v=7f3304d"></script>
-<script src="js/chamados.js?v=7f3304d"></script>
-<script src="js/dashboard.js?v=7f3304d"></script>
-<script src="js/rh_horas.js?v=7f3304d"></script>
-<script src="js/patrimonio.js?v=7f3304d"></script>
+<script src="js/clientes.js?v=ba6670d"></script>
+<script src="js/fornecedores.js?v=ba6670d"></script>
+<script src="js/apropriacoes.js?v=ba6670d"></script>
+<script src="js/funcionarios.js?v=ba6670d"></script>
+<script src="js/rh_documentos.js?v=ba6670d"></script>
+<script src="js/servicos.js?v=ba6670d"></script>
+<script src="js/produtos.js?v=ba6670d"></script>
+<script src="js/estoque.js?v=ba6670d"></script>
+<script src="js/separacoes.js?v=ba6670d"></script>
+<script src="js/compras.js?v=ba6670d"></script>
+<script src="js/requisicoes.js?v=ba6670d"></script>
+<script src="js/orcamentos.js?v=ba6670d"></script>
+<script src="js/propostas.js?v=ba6670d"></script>
+<script src="js/contratos.js?v=ba6670d"></script>
+<script src="js/contas_pagar.js?v=ba6670d"></script>
+<script src="js/centros_custo.js?v=ba6670d"></script>
+<script src="js/carteira.js?v=ba6670d"></script>
+<script src="js/obras.js?v=ba6670d"></script>
+<script src="js/frota.js?v=ba6670d"></script>
+<script src="js/viagens.js?v=ba6670d"></script>
+<script src="js/equipamentos.js?v=ba6670d"></script>
+<script src="js/vendas_bens.js?v=ba6670d"></script>
+<script src="js/acessorios.js?v=ba6670d"></script>
+<script src="js/reparos.js?v=ba6670d"></script>
+<script src="js/manutencao.js?v=ba6670d"></script>
+<script src="js/fabricacao.js?v=ba6670d"></script>
+<script src="js/mobilizacoes.js?v=ba6670d"></script>
+<script src="js/estacas.js?v=ba6670d"></script>
+<script src="js/obra_abas.js?v=ba6670d"></script>
+<script src="js/medicoes.js?v=ba6670d"></script>
+<script src="js/movimentacoes.js?v=ba6670d"></script>
+<script src="js/rdo.js?v=ba6670d"></script>
+<script src="js/rdo_import_maya.js?v=ba6670d"></script>
+<script src="js/usuarios.js?v=ba6670d"></script>
+<script src="js/chamados.js?v=ba6670d"></script>
+<script src="js/dashboard.js?v=ba6670d"></script>
+<script src="js/rh_horas.js?v=ba6670d"></script>
+<script src="js/patrimonio.js?v=ba6670d"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=7f3304d"></script>
+<script src="js/init.js?v=ba6670d"></script>
 </body>
 </html>

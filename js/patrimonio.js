@@ -109,7 +109,9 @@ function patVariacaoTexto(r){
 function patEstadoHtml(b){
   if(b.bem_tipo === "equipamento") return tagStatus("equipamento", b.status);
   if(b.bem_tipo === "acessorio") return String(b.status || "").split(",").map(s => s.trim()).filter(Boolean).map(s => tagStatus("acessorio", s)).join(" ") || "—";
-  return b.titularidade_bem ? `<span class="tag ${b.titularidade_bem === "permuta" ? "ambar" : "verde"}">${esc(b.titularidade_bem === "permuta" ? "Permuta" : "Empresa")}</span>` : "—";
+  const tag = b.titularidade_bem ? `<span class="tag ${b.titularidade_bem === "permuta" ? "ambar" : "verde"}">${esc(b.titularidade_bem === "permuta" ? "Permuta" : "Empresa")}</span>` : "—";
+  // fase 98: imóvel em permuta mostra a permuta e o saldo a executar (vw_permutas, carregada por medicoes.js)
+  return tag + (b.titularidade_bem === "permuta" && typeof pmPatChip === "function" ? pmPatChip(b.bem_id) : "");
 }
 function patSerieTexto(b){
   if(b.bem_tipo === "bem") return [b.numero_serie ? "Matrícula " + b.numero_serie : "", b.placa ? "Processo " + b.placa : ""].filter(Boolean).join(" · ");
@@ -206,6 +208,8 @@ async function carregarPatrimonio(){
   _patCarregado = true;
   preencherFiltrosPatrimonio();
   renderPatrimonio();
+  // fase 98: saldo a executar dos imóveis em permuta (só se o módulo de permutas estiver carregado)
+  if(typeof pmPatCarregar === "function") pmPatCarregar().then(() => { if(_patView === "avaliacao") renderPatrimonio(); }).catch(() => {});
 }
 
 /* ---------- Filtros ---------- */

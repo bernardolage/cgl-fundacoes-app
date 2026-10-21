@@ -174,6 +174,9 @@ function abrirFichaFornVisual(f){
 
   ativarTabForn("geral");
   carregarContratosDoFornecedor(fornEditId);
+  _fornPag = { pedidos: 0, notas: 0, titulos: 0 };   // lote S46 (#106)
+  carregarPedidosDoFornecedor(fornEditId);
+  carregarNotasDoFornecedor(fornEditId);
 }
 
 /* ====================================================================
@@ -234,6 +237,124 @@ async function carregarContratosDoFornecedor(fornecedorId){
       }, 120);
     });
   });
+}
+
+/* ====================================================================
+   ABAS PEDIDOS DE COMPRA e NOTAS E TÍTULOS (lote S46, #106) — no molde da aba Contratos.
+   Leitura pela RLS (pedidos e notas: pode_ler_compras(); títulos: pode_ler_contas_pagar()); valores só para
+   podeVerContasPagar(). Paginação de 100 em 100; a linha abre a ficha do pedido em Compras.
+   ==================================================================== */
+const FORN_PAG = 100;
+let _fornPag = { pedidos: 0, notas: 0, titulos: 0 };
+function fornSmartButton(id, n){
+  const el = $(id); if(!el) return;
+  el.querySelector(".sb-num").textContent = n || 0;
+  el.classList.toggle("zero", !n);
+}
+function fornPaginacao(chave, total){
+  if(total <= FORN_PAG) return "";
+  const p = _fornPag[chave], de = p * FORN_PAG + 1, ate = Math.min(total, (p + 1) * FORN_PAG);
+  return `<div class="meta" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;">
+    <button type="button" class="btn-sec btn-sm" data-forn-pag="${chave}" data-dir="-1" ${p === 0 ? "disabled" : ""}>‹ anteriores</button>
+    <span>${de}–${ate} de ${total}</span>
+    <button type="button" class="btn-sec btn-sm" data-forn-pag="${chave}" data-dir="1" ${ate >= total ? "disabled" : ""}>próximos ›</button></div>`;
+}
+function fornLigarPaginacao(cont, recarregar){
+  cont.querySelectorAll("[data-forn-pag]").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.fornPag; _fornPag[k] = Math.max(0, _fornPag[k] + Number(b.dataset.dir)); recarregar();
+  }));
+}
+function fornAbrirPedido(id){
+  if(id && irParaSecao("compras") && typeof abrirPedido === "function") setTimeout(() => abrirPedido(id), 300);
+}
+function fornLigarLinksPedido(cont){
+  cont.querySelectorAll("[data-pedido-id]").forEach(el => el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); fornAbrirPedido(el.dataset.pedidoId); }));
+}
+const fornPedidoLink = (id, numero) => id ? `<a href="#" data-pedido-id="${esc(id)}">${esc(numero || "pedido")}</a>` : "—";
+
+async function carregarPedidosDoFornecedor(fornecedorId){
+  const cont = $("forn-pedidos-conteudo");
+  if(!cont) return;
+  if(!fornecedorId){ cont.innerHTML = `<p class="vazio">Salve o fornecedor primeiro.</p>`; fornSmartButton("sb-forn-pedidos", 0); return; }
+  const verValor = typeof podeVerContasPagar === "function" && podeVerContasPagar();
+  const ini = _fornPag.pedidos * FORN_PAG;
+  const { data, error, count } = await sb.from("pedidos_compra")
+    .select("id,numero,status,data_pedido,previsao_entrega,total,obra:obras(codigo)", { count: "exact" })
+    .eq("fornecedor_id", fornecedorId)
+    .order("data_pedido", { ascending: false, nullsFirst: false }).order("numero", { ascending: false })
+    .range(ini, ini + FORN_PAG - 1);
+  if(fornEditId !== fornecedorId) return;   // trocou de fornecedor enquanto carregava
+  if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; fornSmartButton("sb-forn-pedidos", 0); return; }
+  fornSmartButton("sb-forn-pedidos", count || 0);
+  if(!data || !data.length){ cont.innerHTML = `<p class="vazio">Nenhum pedido de compra deste fornecedor.</p>`; return; }
+  const tag = (st) => typeof cmpTag === "function" ? cmpTag(st) : esc(st || "—");
+  const linhas = data.map(p => `<tr class="linha-clicavel" data-id="${esc(p.id)}">
+    <td><strong>${esc(p.numero)}</strong></td>
+    <td>${dataBR(p.data_pedido)}</td>
+    <td>${tag(p.status)}</td>
+    <td>${esc(p.obra?.codigo || "—")}</td>
+    <td>${dataBR(p.previsao_entrega)}</td>
+    ${verValor ? `<td class="num">${brl(p.total)}</td>` : ""}
+  </tr>`).join("");
+  cont.innerHTML = `<div class="tabela-rola"><table>
+    <thead><tr><th>Número</th><th>Data</th><th>Status</th><th>Obra</th><th>Previsão de entrega</th>${verValor ? '<th class="num">Total</th>' : ""}</tr></thead>
+    <tbody>${linhas}</tbody></table></div>${fornPaginacao("pedidos", count || 0)}`;
+  cont.querySelectorAll("tr.linha-clicavel").forEach(tr => tr.addEventListener("click", () => fornAbrirPedido(tr.dataset.id)));
+  fornLigarPaginacao(cont, () => carregarPedidosDoFornecedor(fornecedorId));
+}
+
+async function carregarNotasDoFornecedor(fornecedorId){
+  const cont = $("forn-notas-conteudo");
+  if(!cont) return;
+  const verValor = typeof podeVerContasPagar === "function" && podeVerContasPagar();
+  const sbTit = $("sb-forn-titulos"); if(sbTit) sbTit.style.display = verValor ? "" : "none";
+  if(!fornecedorId){ cont.innerHTML = `<p class="vazio">Salve o fornecedor primeiro.</p>`; fornSmartButton("sb-forn-notas", 0); fornSmartButton("sb-forn-titulos", 0); return; }
+  const iniN = _fornPag.notas * FORN_PAG, iniT = _fornPag.titulos * FORN_PAG;
+  const [rn, rt] = await Promise.all([
+    sb.from("recebimentos")
+      .select("id,pedido_id,nf_numero,nf_serie,nf_data_emissao,data_recebimento,total_nf,status,pedido:pedidos_compra(numero),contrato:contratos(numero)", { count: "exact" })
+      .eq("fornecedor_id", fornecedorId)
+      .order("nf_data_emissao", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false })
+      .range(iniN, iniN + FORN_PAG - 1),
+    verValor
+      ? sb.from("titulos_pagar")
+          .select("id,nf_numero,parcela,total_parcelas,valor,vencimento,exportado_em,origem,recebimento:recebimentos(pedido_id,pedido:pedidos_compra(numero)),contrato:contratos(numero)", { count: "exact" })
+          .eq("fornecedor_id", fornecedorId)
+          .order("vencimento", { ascending: false, nullsFirst: false })
+          .range(iniT, iniT + FORN_PAG - 1)
+      : Promise.resolve({ data: [], count: 0, error: null })
+  ]);
+  if(fornEditId !== fornecedorId) return;
+  fornSmartButton("sb-forn-notas", rn.error ? 0 : (rn.count || 0));
+  fornSmartButton("sb-forn-titulos", rt.error ? 0 : (rt.count || 0));
+  const docPedido = (x) => x.pedido_id ? fornPedidoLink(x.pedido_id, x.pedido?.numero) : (x.contrato?.numero ? `contrato ${esc(x.contrato.numero)}` : "—");
+  const STATUS_REC = { rascunho: "Rascunho", confirmado: "Confirmada", cancelado: "Cancelada" };
+  let html = `<h4 class="titulo-bloco" style="margin-top:0;">Notas fiscais recebidas (${rn.count || 0})</h4>`;
+  if(rn.error) html += `<p class="vazio">Erro: ${esc(rn.error.message)}</p>`;
+  else if(!(rn.data || []).length) html += `<p class="vazio">Nenhuma nota fiscal recebida deste fornecedor.</p>`;
+  else html += `<div class="tabela-rola"><table>
+    <thead><tr><th>NF</th><th>Emissão</th><th>Recebida em</th><th>Pedido / contrato</th><th>Status</th>${verValor ? '<th class="num">Valor da NF</th>' : ""}</tr></thead>
+    <tbody>${rn.data.map(r => `<tr>
+      <td><strong>${esc(r.nf_numero || "—")}</strong>${r.nf_serie ? ` <span class="meta">série ${esc(r.nf_serie)}</span>` : ""}</td>
+      <td>${dataBR(r.nf_data_emissao)}</td><td>${dataBR(r.data_recebimento)}</td>
+      <td>${docPedido(r)}</td><td>${esc(STATUS_REC[r.status] || r.status || "—")}</td>
+      ${verValor ? `<td class="num">${brl(r.total_nf)}</td>` : ""}</tr>`).join("")}</tbody></table></div>${fornPaginacao("notas", rn.count || 0)}`;
+  if(verValor){
+    const docTit = (t) => t.recebimento?.pedido_id ? fornPedidoLink(t.recebimento.pedido_id, t.recebimento.pedido?.numero) : (t.contrato?.numero ? `contrato ${esc(t.contrato.numero)}` : esc(t.origem || "—"));
+    html += `<h4 class="titulo-bloco">Títulos a pagar (${rt.count || 0})</h4>`;
+    if(rt.error) html += `<p class="vazio">Erro: ${esc(rt.error.message)}</p>`;
+    else if(!(rt.data || []).length) html += `<p class="vazio">Nenhum título deste fornecedor.</p>`;
+    else html += `<div class="tabela-rola"><table>
+      <thead><tr><th>NF</th><th>Parcela</th><th>Vencimento</th><th>Origem</th><th>Exportado</th><th class="num">Valor</th></tr></thead>
+      <tbody>${rt.data.map(t => `<tr>
+        <td>${esc(t.nf_numero || "—")}</td><td>${t.parcela ? `${t.parcela}/${t.total_parcelas || "?"}` : "—"}</td>
+        <td>${dataBR(t.vencimento)}</td><td>${docTit(t)}</td>
+        <td>${t.exportado_em ? dataBR(String(t.exportado_em).slice(0, 10)) : '<span class="tag ambar">a exportar</span>'}</td>
+        <td class="num">${brl(t.valor)}</td></tr>`).join("")}</tbody></table></div>${fornPaginacao("titulos", rt.count || 0)}`;
+  }
+  cont.innerHTML = html;
+  fornLigarLinksPedido(cont);
+  fornLigarPaginacao(cont, () => carregarNotasDoFornecedor(fornecedorId));
 }
 
 function ativarTabForn(nome){
@@ -331,6 +452,9 @@ function ligarFornecedores(){
     b.addEventListener("click", () => ativarTabForn(b.dataset.tab));
   });
   $("sb-forn-contratos")?.addEventListener("click", () => ativarTabForn("contratos"));
+  $("sb-forn-pedidos")?.addEventListener("click", () => ativarTabForn("pedidos"));     // lote S46 (#106)
+  $("sb-forn-notas")?.addEventListener("click", () => ativarTabForn("notas"));
+  $("sb-forn-titulos")?.addEventListener("click", () => ativarTabForn("notas"));
 
   const navForn = document.querySelector('nav button[data-secao="fornecedores"]');
   if(navForn) navForn.addEventListener("click", mostrarPainelForn);

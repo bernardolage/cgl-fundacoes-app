@@ -1304,6 +1304,44 @@ async function importarEquipeCadastrada(){
   aviso("app-aviso", `+${novos.length} integrante(s) importado(s) da equipe "${eq.nome}".`, "ok");
 }
 
+/* lote S46 (#96): o Ø precifica a estaca. Diâmetros do serviço da obra (itens do orçamento, filtrados pelo tipo de
+   estaca) pela RPC obra_diametros_servico; sem a RPC ou sem orçamento, lista vazia. */
+const RDO_TIPO_ESTACA = { estaca_raiz: "raiz", helice_secante: "secante", trado_mecanizado: "escavada", helice_continua: "helice_continua" };
+async function rdoDiametrosServico(obraId, tipoServico){
+  if(!obraId) return [];
+  const { data, error } = await sb.rpc("obra_diametros_servico", { p_obra: obraId, p_tipo: RDO_TIPO_ESTACA[tipoServico] || null });
+  return error ? [] : (data || []).map(Number).filter(d => d > 0);
+}
+/* Antes de gravar: execução sem Ø herda o da estaca cadastrada, senão o Ø único do serviço, senão pergunta.
+   Devolve false se o usuário cancelar (não grava). Em branco grava sem Ø (vai para "Para regularizar"). */
+async function rdoGarantirDiametros(obraId, tipoServico, execs){
+  const falta = () => execs.filter(e => e.estaca_numero && e.modalidade_execucao !== "refuro" && !(Number(e.diametro_mm) > 0));
+  if(!falta().length) return true;
+  const { data: ests } = await sb.from("estacas").select("id,numero,diametro_mm").eq("obra_id", obraId).limit(5000);
+  const porId = new Map((ests || []).map(s => [s.id, s]));
+  const porNum = new Map();
+  (ests || []).forEach(s => { const k = normalizarNumeroEstaca(s.numero || ""); porNum.set(k, porNum.has(k) ? null : s); }); // número repetido em locais diferentes: não adivinha
+  falta().forEach(e => {
+    const s = (e.estaca_id && porId.get(e.estaca_id)) || porNum.get(normalizarNumeroEstaca(e.estaca_numero));
+    if(s && Number(s.diametro_mm) > 0) e.diametro_mm = Number(s.diametro_mm);
+  });
+  if(!falta().length) return true;
+  const diams = await rdoDiametrosServico(obraId, tipoServico);
+  if(diams.length === 1){ falta().forEach(e => { e.diametro_mm = diams[0]; }); return true; }
+  const lista = falta().map(e => e.estaca_numero);
+  const resp = prompt(`${lista.length} estaca(s) sem diâmetro: ${lista.slice(0, 12).join(", ")}${lista.length > 12 ? "…" : ""}.\n` +
+    `O Ø precifica a estaca na medição. Informe o Ø em mm para elas` +
+    (diams.length ? ` (serviço da obra: ${diams.join(", ")})` : "") +
+    `.\nDeixe em branco para gravar sem Ø (a obra fica em "Para regularizar"); Cancelar não grava.`, "");
+  if(resp === null) return false;
+  const d = Number(String(resp).replace(",", "."));
+  if(String(resp).trim() !== ""){
+    if(!(d > 0)){ aviso("app-aviso", "Diâmetro inválido: informe em mm (ex.: 400).", "erro"); return false; }
+    falta().forEach(e => { e.diametro_mm = d; });
+  }
+  return true;
+}
+
 /* ---------- Salvar / excluir ---------- */
 async function salvarRDO(novoStatus){
   const obra_id = $("rdo-obra").value;
@@ -1312,6 +1350,8 @@ async function salvarRDO(novoStatus){
   if(!dataRDO){ aviso("app-aviso","Informe a data.","erro"); ativarTabRDO("cabecalho"); return; }
 
   const tipo = $("rdo-tipo-servico").value;
+  // lote S46 (#96): execução sem Ø herda o da estaca/serviço ou o usuário informa antes de gravar
+  if(!(await rdoGarantirDiametros(obra_id, tipo, _rdoExecucoes))){ ativarTabRDO("execucoes"); return; }
 
   const reg = {
     obra_id,
@@ -3043,6 +3083,9 @@ async function confirmarImportCSV(){
     // Estacas cadastradas na obra: vínculo por número + agrupamento (bloco) feito aqui
     const { data: estacasObra } = await sb.from("estacas").select("id,numero,bloco,local").eq("obra_id", obra_id).limit(5000);
     const estsObra = estacasObra || [];
+    // lote S46 (#96): execução importada sem Ø recebe o Ø do serviço da obra quando ele é único
+    const diamsServ = await rdoDiametrosServico(obra_id, tipo);
+    const diamUnico = diamsServ.length === 1 ? diamsServ[0] : null;
     const sugAceitas = rdoSugestoesAceitas();   // lote S44 (L5, #78): só as sugestões marcadas na prévia viram vínculo
     const dias = diasImportacao();
     // fase 94 (#77): um diário por dia e máquina. Equipe, observações, atividades e abastecimento sem máquina
@@ -3097,7 +3140,7 @@ async function confirmarImportCSV(){
           rdo_id: rdoId,
           estaca_id: resolverEstacaImport(estsObra, e.estaca_numero, e.agrupamento) || sugAceitas[normalizarNumeroEstaca(e.estaca_numero || "")] || null,
           estaca_numero: e.estaca_numero,
-          diametro_mm: e.diametro_mm,
+          diametro_mm: Number(e.diametro_mm) > 0 ? e.diametro_mm : diamUnico,
           profundidade_projeto: e.profundidade_projeto,
           profundidade_executada: e.profundidade_executada,
           perfuracao_de_m: e.perfuracao_de_m ?? null,

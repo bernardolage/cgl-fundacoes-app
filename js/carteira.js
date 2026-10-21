@@ -156,9 +156,11 @@ function renderCartKpis(){
     if(exato != null) el.title = exato;
   };
   kpi("cart-kpi-qtd",      String(vis.length));
-  kpi("cart-kpi-vigente",  brlCompacto(vigente),            brl(vigente));
-  kpi("cart-kpi-assinada", brlCompacto(assinada),           brl(assinada));
-  kpi("cart-kpi-sem",      brlCompacto(vigente - assinada), brl(vigente - assinada));
+  // fase 99b (decisão 4): totais em R$ só para quem vê KPI financeiro (a Carteira já é só diretor e auditor; defesa extra)
+  const kpiFin = typeof podeVerKpiFinanceiro !== "function" || podeVerKpiFinanceiro(() => true);
+  kpi("cart-kpi-vigente",  kpiFin ? brlCompacto(vigente) : "—",            kpiFin ? brl(vigente) : "");
+  kpi("cart-kpi-assinada", kpiFin ? brlCompacto(assinada) : "—",           kpiFin ? brl(assinada) : "");
+  kpi("cart-kpi-sem",      kpiFin ? brlCompacto(vigente - assinada) : "—", kpiFin ? brl(vigente - assinada) : "");
   kpi("cart-kpi-pend",     String(_cartPendencias.length));
   const rot = $("cart-kpi-pend-rot");
   if(rot) rot.textContent = aditPend > 0
