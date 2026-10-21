@@ -35,7 +35,7 @@ let usrEditEmail = null;
 async function carregarUsuarios(){
   // fase 93b: login_cpf e senha_provisoria; se a migration da 93b ainda não estiver no banco (42703), lê sem elas
   let { data, error } = await sb.from("profiles")
-    .select("id,nome,email,cargo,telefone,ativo,created_at,login_cpf,senha_provisoria")
+    .select("id,nome,email,cargo,telefone,ativo,created_at,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate")
     .order("nome");
   if(error && error.code === "42703"){
     ({ data, error } = await sb.from("profiles").select("id,nome,email,cargo,telefone,ativo,created_at").order("nome"));
@@ -346,6 +346,7 @@ function novoUsuario(){
   $("usr-cargo").value = "visualizador";
   $("usr-telefone").value = "";
   $("usr-ativo").checked = true;
+  if($("usr-extra-orc")){ $("usr-extra-orc").checked = false; $("usr-extra-ate").value = ""; }   // hotfix 113
   $("btn-reset-senha-usr").style.display = "none";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "none";
   $("btn-salvar-usr").textContent = "📨 Enviar convite";
@@ -365,6 +366,10 @@ function abrirUsuario(id){
   $("usr-cargo").value     = u.cargo || "visualizador";
   $("usr-telefone").value  = u.telefone || "";
   $("usr-ativo").checked   = u.ativo !== false;
+  if($("usr-extra-orc")){   // hotfix 113: módulo extra com validade
+    $("usr-extra-orc").checked = Array.isArray(u.modulos_extras) && u.modulos_extras.includes("orcamentos");
+    $("usr-extra-ate").value = u.modulos_extras_ate ? String(u.modulos_extras_ate).slice(0, 10) : "";
+  }
   $("btn-reset-senha-usr").style.display = u.login_cpf ? "none" : "";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "";   // fase 87
   $("btn-salvar-usr").textContent = "💾 Salvar alterações";
@@ -410,8 +415,11 @@ async function salvarUsuario(){
 
   try {
     if(usrEditId){
+      // hotfix 113: módulos extras (só diretoria/admin; o banco confere no gatilho)
+      const extras = $("usr-extra-orc")?.checked ? ["orcamentos"] : [];
+      const extrasAte = extras.length ? ($("usr-extra-ate")?.value || null) : null;
       const { error } = await sb.from("profiles")
-        .update({ nome, cargo, telefone })
+        .update({ nome, cargo, telefone, modulos_extras: extras, modulos_extras_ate: extrasAte })
         .eq("id", usrEditId);
       if(error) throw error;
       // Fase 62: ativar/desativar passa pela function (ban no login + profiles.ativo)

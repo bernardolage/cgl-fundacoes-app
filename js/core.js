@@ -739,7 +739,7 @@ async function iniciarApp(){
   let { data:perfil, error:perfilErr } = await sb.from("profiles")
     .select("id,nome,cargo,ativo,login_cpf,senha_provisoria").eq("id",user.id).single();
   if(perfilErr && perfilErr.code === "42703"){
-    ({ data:perfil, error:perfilErr } = await sb.from("profiles").select("id,nome,cargo,ativo").eq("id",user.id).single());
+    ({ data:perfil, error:perfilErr } = await sb.from("profiles").select("id,nome,cargo,ativo,modulos_extras,modulos_extras_ate").eq("id",user.id).single());
   }
 
   /* bloqueia acesso de usuários desativados. Fase 62: com o is_ativo() nas policies o
@@ -913,6 +913,15 @@ function podeVerMovimentacoes(){
 function podeVerComercial(){
   return !!usuarioAtual && ["diretor", "comercial", "auditor"].includes(usuarioAtual.cargo);
 }
+/* Hotfix 113 (21/10/2026): módulo liberado além do cargo, por usuário e com validade (profiles.modulos_extras /
+   modulos_extras_ate; só diretoria/admin gravam, tela Usuários). Espelha tem_modulo_extra() do banco. Hoje só
+   "orcamentos" (o Frederico Vaz apoia o Thales nas férias dele). Serviços continua só comercial/diretoria. */
+function temModuloExtra(modulo){
+  if(!usuarioAtual || !Array.isArray(usuarioAtual.modulos_extras) || !usuarioAtual.modulos_extras.includes(modulo)) return false;
+  const ate = usuarioAtual.modulos_extras_ate;
+  return !ate || String(ate).slice(0, 10) >= (typeof hojeISO === "function" ? hojeISO() : new Date().toISOString().slice(0, 10));
+}
+function podeVerOrcamentos(){ return podeVerComercial() || temModuloExtra("orcamentos"); }
 /* Fase 55: Contratos & Contas a pagar (contratos de fornecedor, títulos a pagar, lançamentos avulsos, exportação
    para o Compor 90). Quem não está aqui vê os valores só como custo, na aba Custos da obra e do equipamento. */
 /* 22/09/2026 (diretoria): somatórios patrimoniais (valor de reposição dos acessórios, FIPE da frota) só para o cargo diretor.
@@ -992,7 +1001,7 @@ function aplicarMenuPorCargo(perfil){
   // Os demais cargos não veem os itens no menu; irParaSecao() também barra atalhos de outras telas.
   SECOES_COMERCIAIS.forEach(s => {
     const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
-    if(b) b.style.display = podeVerComercial() ? "" : "none";
+    if(b) b.style.display = (s === "orcamentos" ? podeVerOrcamentos() : podeVerComercial()) ? "" : "none";   // hotfix 113: Orçamentos também por módulo extra
   });
   // Fase 53 → 89: Movimentações de Ativos saiu do menu (19/10/2026); é a ficha do documento da viagem, aberta de
   // dentro de Logística, da obra, do equipamento e do acessório. podeVerMovimentacoes() gateia só a ficha (irParaSecao).

@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="b79dc24" />
+<meta name="app-versao" content="2aa2789" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=b79dc24" />
+<link rel="stylesheet" href="css/estilo.css?v=2aa2789" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -5495,6 +5495,11 @@
                 <div class="campo"><label>Situação</label>
                   <label class="check-inline"><input type="checkbox" id="usr-ativo" /> Usuário ativo</label>
                 </div>
+                <!-- hotfix 113: módulo liberado além do cargo, com validade (só diretoria/admin gravam) -->
+                <div class="campo"><label>Acesso extra</label>
+                  <label class="check-inline"><input type="checkbox" id="usr-extra-orc" /> Orçamentos (além do cargo)</label>
+                </div>
+                <div class="campo"><label>Acesso extra válido até</label><input id="usr-extra-ate" type="date" title="Vazio = sem prazo" /></div>
               </div>
             </div>
           </div>
@@ -5670,50 +5675,50 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=b79dc24"></script>
+<script src="js/core.js?v=2aa2789"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=b79dc24"></script>
+<script src="js/historico.js?v=2aa2789"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=b79dc24"></script>
-<script src="js/fornecedores.js?v=b79dc24"></script>
-<script src="js/apropriacoes.js?v=b79dc24"></script>
-<script src="js/funcionarios.js?v=b79dc24"></script>
-<script src="js/rh_documentos.js?v=b79dc24"></script>
-<script src="js/servicos.js?v=b79dc24"></script>
-<script src="js/produtos.js?v=b79dc24"></script>
-<script src="js/estoque.js?v=b79dc24"></script>
-<script src="js/separacoes.js?v=b79dc24"></script>
-<script src="js/epi.js?v=b79dc24"></script>
-<script src="js/compras.js?v=b79dc24"></script>
-<script src="js/requisicoes.js?v=b79dc24"></script>
-<script src="js/orcamentos.js?v=b79dc24"></script>
-<script src="js/propostas.js?v=b79dc24"></script>
-<script src="js/contratos.js?v=b79dc24"></script>
-<script src="js/contas_pagar.js?v=b79dc24"></script>
-<script src="js/centros_custo.js?v=b79dc24"></script>
-<script src="js/carteira.js?v=b79dc24"></script>
-<script src="js/obras.js?v=b79dc24"></script>
-<script src="js/frota.js?v=b79dc24"></script>
-<script src="js/viagens.js?v=b79dc24"></script>
-<script src="js/equipamentos.js?v=b79dc24"></script>
-<script src="js/vendas_bens.js?v=b79dc24"></script>
-<script src="js/acessorios.js?v=b79dc24"></script>
-<script src="js/reparos.js?v=b79dc24"></script>
-<script src="js/manutencao.js?v=b79dc24"></script>
-<script src="js/fabricacao.js?v=b79dc24"></script>
-<script src="js/mobilizacoes.js?v=b79dc24"></script>
-<script src="js/estacas.js?v=b79dc24"></script>
-<script src="js/obra_abas.js?v=b79dc24"></script>
-<script src="js/medicoes.js?v=b79dc24"></script>
-<script src="js/movimentacoes.js?v=b79dc24"></script>
-<script src="js/rdo.js?v=b79dc24"></script>
-<script src="js/rdo_import_maya.js?v=b79dc24"></script>
-<script src="js/usuarios.js?v=b79dc24"></script>
-<script src="js/chamados.js?v=b79dc24"></script>
-<script src="js/dashboard.js?v=b79dc24"></script>
-<script src="js/rh_horas.js?v=b79dc24"></script>
-<script src="js/patrimonio.js?v=b79dc24"></script>
+<script src="js/clientes.js?v=2aa2789"></script>
+<script src="js/fornecedores.js?v=2aa2789"></script>
+<script src="js/apropriacoes.js?v=2aa2789"></script>
+<script src="js/funcionarios.js?v=2aa2789"></script>
+<script src="js/rh_documentos.js?v=2aa2789"></script>
+<script src="js/servicos.js?v=2aa2789"></script>
+<script src="js/produtos.js?v=2aa2789"></script>
+<script src="js/estoque.js?v=2aa2789"></script>
+<script src="js/separacoes.js?v=2aa2789"></script>
+<script src="js/epi.js?v=2aa2789"></script>
+<script src="js/compras.js?v=2aa2789"></script>
+<script src="js/requisicoes.js?v=2aa2789"></script>
+<script src="js/orcamentos.js?v=2aa2789"></script>
+<script src="js/propostas.js?v=2aa2789"></script>
+<script src="js/contratos.js?v=2aa2789"></script>
+<script src="js/contas_pagar.js?v=2aa2789"></script>
+<script src="js/centros_custo.js?v=2aa2789"></script>
+<script src="js/carteira.js?v=2aa2789"></script>
+<script src="js/obras.js?v=2aa2789"></script>
+<script src="js/frota.js?v=2aa2789"></script>
+<script src="js/viagens.js?v=2aa2789"></script>
+<script src="js/equipamentos.js?v=2aa2789"></script>
+<script src="js/vendas_bens.js?v=2aa2789"></script>
+<script src="js/acessorios.js?v=2aa2789"></script>
+<script src="js/reparos.js?v=2aa2789"></script>
+<script src="js/manutencao.js?v=2aa2789"></script>
+<script src="js/fabricacao.js?v=2aa2789"></script>
+<script src="js/mobilizacoes.js?v=2aa2789"></script>
+<script src="js/estacas.js?v=2aa2789"></script>
+<script src="js/obra_abas.js?v=2aa2789"></script>
+<script src="js/medicoes.js?v=2aa2789"></script>
+<script src="js/movimentacoes.js?v=2aa2789"></script>
+<script src="js/rdo.js?v=2aa2789"></script>
+<script src="js/rdo_import_maya.js?v=2aa2789"></script>
+<script src="js/usuarios.js?v=2aa2789"></script>
+<script src="js/chamados.js?v=2aa2789"></script>
+<script src="js/dashboard.js?v=2aa2789"></script>
+<script src="js/rh_horas.js?v=2aa2789"></script>
+<script src="js/patrimonio.js?v=2aa2789"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=b79dc24"></script>
+<script src="js/init.js?v=2aa2789"></script>
 </body>
 </html>

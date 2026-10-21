@@ -805,8 +805,8 @@ async function carregarDashFinanceiro(){
    ============================================================ */
 async function carregarDashOrcamentos(){
   const card = $("dash-card-orc");
-  if(card) card.style.display = podeVerComercial() ? "" : "none";
-  if(!podeVerComercial()) return;
+  if(card) card.style.display = podeVerOrcamentos() ? "" : "none";   // hotfix 113: comercial ou módulo extra
+  if(!podeVerOrcamentos()) return;
   const [{ count: cntOrcAbertos }, { data: orcAbertos }] = await Promise.all([
     sb.from("orcamentos").select("id",{count:"exact",head:true}).in("status",["rascunho","enviado","em_negociacao"]),
     sb.from("orcamentos").select("valor_total").in("status",["rascunho","enviado","em_negociacao"])
