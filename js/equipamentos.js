@@ -132,6 +132,7 @@ function eqpFiltradas(){
       case "manutencao": if(e.status !== "em_manutencao" && e.localizacao_tipo !== "fornecedor_manutencao") return false; break;
       case "acessorios": if(!eqpNumAce(e)) return false; break;
       case "sem_cod_ext": if(!eqpSemCodExt(e)) return false; break;
+      case "sem_ncm":    if(!eqpSemNcm(e)) return false; break;   // fase 105a
     }
     if(q){
       const alvo = [e.codigo, e.nome, e.marca, e.modelo, e.numero_serie, e.codigo_externo, EQP_TIPO_LBL[e.tipo], eqpOnde(e)].filter(Boolean).join(" ").toLowerCase();
@@ -167,9 +168,15 @@ function eqpRenderKpis(){
   set("eqp-kpi-manut", at.filter(e => e.status === "em_manutencao" || e.localizacao_tipo === "fornecedor_manutencao").length);
   set("eqp-kpi-ace", at.reduce((s, e) => s + eqpNumAce(e), 0));
   set("eqp-kpi-semext", at.filter(eqpSemCodExt).length);
+  // fase 105a: o indicador só aparece com a coluna ncm no banco (select("*") traz a chave)
+  const temNcm = _eqpRegistros.length > 0 && Object.prototype.hasOwnProperty.call(_eqpRegistros[0], "ncm");
+  const box = $("eqp-kpi-semncm-box"); if(box) box.style.display = temNcm ? "" : "none";
+  if(temNcm) set("eqp-kpi-semncm", _eqpRegistros.filter(eqpSemNcm).length);
 }
 /* fase 75: perfuratriz ou bate-estaca sem o código do Geodigitus/Maya ("Para regularizar") */
 function eqpSemCodExt(e){ return ["perfuratriz", "bate_estaca"].includes(e.tipo) && !String(e.codigo_externo || "").trim(); }
+/* fase 105a: máquina em mobilização ativa sem NCM (a NF-e de remessa exige; mesma regra do "Para regularizar") */
+function eqpSemNcm(e){ return !!e._mob && Object.prototype.hasOwnProperty.call(e, "ncm") && !String(e.ncm || "").trim(); }
 function eqpCardHTML(e){
   const mob = e._mob;
   return `<div class="serv-kan-card eqp-card" data-id="${esc(e.id)}">
@@ -272,6 +279,7 @@ function abrirFichaEquipamento(e){
   $("eqp-encaixe").value = e.encaixe_trado || ""; $("eqp-acopl").value = e.acoplamento_trado || "";
   $("eqp-diam-max").value = e.diametro_max_mm ?? ""; $("eqp-prof-max").value = e.profundidade_max_m ?? "";
   $("eqp-pino").value = e.pino_trado_mm ?? ""; $("eqp-obs-ace").value = e.obs_acessorios || "";
+  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("eqp", "equipamento", e, pode);   // fase 105a: aba Fiscal (NCM)
 
   // chips
   $("eqp-chip-tag").textContent = e.codigo || "—";
@@ -585,6 +593,10 @@ async function salvarEquipamento(){
   };
   if(!reg.nome){ aviso("app-aviso", "Informe o nome do equipamento.", "erro"); $("eqp-nome").focus(); return; }
   if(reg.localizacao_tipo === "obra" && !reg.localizacao_obra_id){ aviso("app-aviso", "Escolha a obra em que a máquina está.", "erro"); return; }
+  // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
+  const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("eqp") : null;
+  if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabEquipamento("fiscal"); return; }
+  if(fis) Object.assign(reg, fis);
   const atual = _eqpAtual || {};
   const mudouLocal = _eqpEditId && (atual.localizacao_tipo !== reg.localizacao_tipo || (atual.localizacao_obra_id || null) !== reg.localizacao_obra_id || (atual.localizacao_descricao || null) !== reg.localizacao_descricao);
   if(mudouLocal) reg.localizacao_atualizada_em = new Date().toISOString();

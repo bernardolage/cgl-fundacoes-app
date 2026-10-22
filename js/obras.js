@@ -224,6 +224,7 @@ function novaObra(){
   $("obr-bairro").value = "";
   $("obr-cidade").value = "";
   $("obr-uf").value = "";
+  obrPreencherIbge({});   // fase 105a
   $("obr-descricao").value = "";
   $("obr-obs").value = "";
   preencherParametrosObra({});
@@ -234,6 +235,21 @@ function novaObra(){
   // Sem sugestão automática de código: sugerirNumeros() contava um <tbody> sempre
   // vazio e propunha "OB-0001" (já usado → erro de UNIQUE). O código da obra
   // segue o padrão da CGL (ex.: 7822-2025) e é informado pelo usuário.
+}
+
+/* Fase 105a: código IBGE do município da obra (local da prestação da NFS-e), preenchido pelo CEP (fiscalLigarCep em
+   js/fiscal.js). obras.codigo_ibge só existe depois da migration da fase 105a: até lá o campo fica desligado e não vai
+   no salvar (_obrTemIbge vem do select("*") da ficha; obra nova pergunta ao banco). */
+let _obrTemIbge = false;
+async function obrPreencherIbge(d){
+  const el = $("obr-ibge");
+  if(!el) return;
+  el.value = d.codigo_ibge || "";
+  const st = $("obr-cep-status"); if(st) st.textContent = "";
+  const cep = $("obr-cep"); if(cep) cep.dataset.ultimo = String(d.cep || "").replace(/\D/g, "");
+  _obrTemIbge = Object.prototype.hasOwnProperty.call(d, "codigo_ibge") || (typeof fiscalColunaExiste === "function" && await fiscalColunaExiste("obras", "codigo_ibge"));
+  el.disabled = !_obrTemIbge;
+  const av = $("obr-ibge-aviso"); if(av) av.style.display = _obrTemIbge ? "none" : "";
 }
 
 /* O select só lista a engenharia ativa (fase 75); responsável antigo de outro cargo ou
@@ -273,6 +289,7 @@ async function abrirObra(id){
   $("obr-bairro").value = data.bairro || "";
   $("obr-cidade").value = data.cidade || "";
   $("obr-uf").value = data.uf || "";
+  obrPreencherIbge(data);   // fase 105a
   $("obr-descricao").value = data.descricao || "";
   $("obr-obs").value = data.observacoes || "";
   preencherParametrosObra(data);
@@ -668,6 +685,11 @@ async function salvarObra(novoStatus){
     observacoes: $("obr-obs").value.trim() || null,
     ...lerParametrosObra()
   };
+  // fase 105a: município da prestação (só com a coluna no banco)
+  if(_obrTemIbge){
+    reg.codigo_ibge = ($("obr-ibge")?.value || "").replace(/\D/g, "") || null;
+    if(reg.codigo_ibge && reg.codigo_ibge.length !== 7){ aviso("app-aviso", "Código IBGE do município tem 7 dígitos (busque pelo CEP).", "erro"); ativarTabObra("endereco"); return; }
+  }
 
   const gravar = (r) => obraEditId
     ? sb.from("obras").update(r).eq("id", obraEditId).select().single()
@@ -770,6 +792,9 @@ function ligarObras(){
   document.querySelectorAll("#obr-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabObra(b.dataset.tab));
   });
+  // fase 105a: CEP → endereço, cidade, UF e código IBGE do município (ViaCEP)
+  if(typeof fiscalLigarCep === "function") fiscalLigarCep({ cep: "obr-cep", botao: "btn-obr-cep", status: "obr-cep-status",
+    logradouro: "obr-logradouro", bairro: "obr-bairro", cidade: "obr-cidade", uf: "obr-uf", ibge: "obr-ibge" });
   // Aba Parâmetros: resumo ao vivo da jornada/concretagem
   ["obr-jornada-entrada","obr-jornada-saida","obr-jornada-sab-entrada","obr-jornada-sab-saida",
    "obr-conc-tipo","obr-conc-fornecedor","obr-conc-traco","obr-conc-peso-saco","obr-conc-fator-perda","obr-sinal-modelo"].forEach(id => {

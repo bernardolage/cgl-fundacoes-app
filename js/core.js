@@ -962,6 +962,11 @@ function podeVerPatrimonio(perfil){
   const p = perfil || usuarioAtual;
   return !!p && ["diretor", "auditor"].includes(p.cargo);
 }
+/* Fase 105 (Bernardo, 22/10/2026, decisão 6): emitem e cancelam NF-e de remessa e NFS-e, e editam os dados fiscais da
+   empresa, o gestor de acessórios, o financeiro e a logística; ADMIN FORA. Espelha fiscal_pode_emitir() do banco. */
+function podeEmitirFiscal(){
+  return !!usuarioAtual && ["diretor", "gestor_acessorios", "financeiro", "logistica"].includes(usuarioAtual.cargo);
+}
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
 const SECOES_OCULTAS_POR_CARGO = {

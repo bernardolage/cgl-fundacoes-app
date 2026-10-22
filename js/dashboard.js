@@ -414,7 +414,8 @@ async function dashAbrirRegularizar(a){
   const FICHA = { sem_responsavel: { aba: "geral", foco: "obr-responsavel" },
                   responsavel_inativo: { aba: "geral", foco: "obr-responsavel" },
                   sem_jornada:     { aba: "parametros", foco: "obr-jornada-entrada" },
-                  sem_estacas:     { aba: "estacas", foco: null } };
+                  sem_estacas:     { aba: "estacas", foco: null },
+                  obra_sem_ibge:   { aba: "endereco", foco: "obr-cep" } };   // fase 105a: o CEP preenche o IBGE
   if(a.secao === "obras" && FICHA[a.filtro]){
     const f = FICHA[a.filtro];
     if(ids.length === 1){ await dashAbrirObra(ids[0], f.aba); obrFocarCampo(f.foco); return; }
@@ -434,6 +435,17 @@ async function dashAbrirRegularizar(a){
   } else if(a.secao === "obras"){ // estacas sem profundidade / projeto a confirmar: uma linha por obra
     if(typeof estDefinirFiltroProf === "function") estDefinirFiltroProf(a.filtro);
     if(a.obra_id) await dashAbrirObra(a.obra_id, "estacas");
+  } else if(a.secao === "clientes" && a.filtro === "cliente_sem_fiscal"){ // fase 105a: um cliente → ficha na aba Fiscal; vários → visão Pendências fiscais
+    if(typeof cliAbrirPendenciasFiscais === "function") await cliAbrirPendenciasFiscais(a.registro_id || null);
+  } else if(a.filtro === "maquina_sem_ncm" || a.filtro === "acessorio_sem_ncm"){ // fase 105a: um item → ficha na aba Fiscal; vários → Pendências fiscais (Clientes)
+    if(!a.registro_id){ if(typeof cliAbrirPendenciasFiscais === "function") await cliAbrirPendenciasFiscais(null); return; }
+    if(a.filtro === "maquina_sem_ncm"){
+      if(irParaSecao("equipamentos") && typeof abrirEquipamento === "function"){ await abrirEquipamento(a.registro_id); if(typeof ativarTabEquipamento === "function") ativarTabEquipamento("fiscal"); }
+    } else if(irParaSecao("acessorios") && typeof abrirAcessorio === "function"){
+      for(let i = 0; i < 80 && !(typeof _aceCarregado !== "undefined" && _aceCarregado); i++) await new Promise(r => setTimeout(r, 250));
+      abrirAcessorio(a.registro_id);
+      if(typeof ativarTabAcessorio === "function") ativarTabAcessorio("fiscal");
+    }
   } else if(a.secao === "acessorios"){
     // o clique no menu carrega e desenha (carregarAcessorios): o filtro vai antes
     if(typeof renderAcessoriosContagem !== "function") return;

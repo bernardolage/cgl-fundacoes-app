@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="56d590b" />
+<meta name="app-versao" content="d335ee3" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=56d590b" />
+<link rel="stylesheet" href="css/estilo.css?v=d335ee3" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -419,6 +419,7 @@
             <div class="serv-views">
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban (por UF)</button>
+              <button type="button" class="serv-view-btn" data-view="fiscal" title="Fase 105a: o que a nota fiscal exige dos clientes de obra em andamento, das obras e das máquinas em mobilização, e os dados fiscais da empresa">Pendências fiscais</button>
             </div>
             <button type="button" class="btn" id="btn-novo-cliente">+ Novo</button>
           </div>
@@ -438,6 +439,8 @@
           <div id="cli-conteudo"></div>
           <table style="display:none;"><tbody id="tab-clientes"></tbody></table>
         </div>
+        <!-- fase 105a: dados fiscais da empresa na visão Pendências fiscais (gestor de acessórios, financeiro e logística não veem Usuários) -->
+        <div class="card" id="cli-fiscal-empresa-card" style="display:none;"><div id="cli-fe"></div></div>
       </div>
 
       <!-- Ficha -->
@@ -466,6 +469,7 @@
           <div class="odoo-notebook" id="cli-notebook">
             <button type="button" data-tab="geral" class="ativo">Geral</button>
             <button type="button" data-tab="endereco">Endereço</button>
+            <button type="button" data-tab="fiscal" title="Fase 105a: o que a nota fiscal exige do cliente">Fiscal <span id="cli-fiscal-badge" class="aba-badge" title="Itens que faltam para a nota"></span></button>
             <button type="button" data-tab="contato">Contato</button>
             <button type="button" data-tab="observacoes">Observações</button>
             <button type="button" data-tab="historico">Histórico</button>
@@ -479,8 +483,7 @@
                 </div>
                 <div class="campo"><label>Nome / Razão social *</label><input id="cli-nome" required /></div>
                 <div class="campo"><label>Nome fantasia</label><input id="cli-fantasia" /></div>
-                <div class="campo"><label>CPF / CNPJ</label><input id="cli-doc" /></div>
-                <div class="campo"><label>Inscrição estadual</label><input id="cli-ie" /></div>
+                <div class="campo"><label>CPF / CNPJ</label><input id="cli-doc" placeholder="00.000.000/0000-00" /><span class="meta" id="cli-doc-status"></span></div>
                 <div class="campo"><label>Situação</label>
                   <label class="check-inline"><input type="checkbox" id="cli-ativo" /> Cliente ativo</label>
                 </div>
@@ -488,14 +491,34 @@
             </div>
             <div class="odoo-tab" data-tab="endereco">
               <div class="grade">
-                <div class="campo"><label>CEP</label><input id="cli-cep" /></div>
+                <div class="campo"><label>CEP</label>
+                  <div style="display:flex;gap:6px;"><input id="cli-cep" style="flex:1;" placeholder="00000-000" /><button type="button" class="btn-sec btn-sm" id="btn-cli-cep" title="Preenche endereço, cidade, UF e código IBGE pela ViaCEP">🔎 Buscar</button></div>
+                  <span class="meta" id="cli-cep-status"></span></div>
                 <div class="campo"><label>Logradouro</label><input id="cli-logradouro" /></div>
                 <div class="campo"><label>Número</label><input id="cli-numero" /></div>
                 <div class="campo"><label>Complemento</label><input id="cli-complemento" /></div>
                 <div class="campo"><label>Bairro</label><input id="cli-bairro" /></div>
                 <div class="campo"><label>Cidade</label><input id="cli-cidade" /></div>
                 <div class="campo"><label>UF</label><select id="cli-uf"></select></div>
+                <div class="campo cli-fiscal-novo"><label>Código IBGE do município</label><input id="cli-ibge" maxlength="7" placeholder="preenchido pelo CEP" title="7 dígitos; a nota fiscal identifica o município por ele" /></div>
               </div>
+            </div>
+            <!-- fase 105a: o que a NF-e e a NFS-e exigem do cliente (CEP e IBGE ficam na aba Endereço) -->
+            <div class="odoo-tab" data-tab="fiscal">
+              <p class="texto-apoio compacto">O que a nota fiscal (NF-e de remessa e NFS-e da medição) exige do cliente. CEP e código IBGE ficam na aba Endereço.</p>
+              <div id="cli-fiscal-situacao"></div>
+              <div class="grade">
+                <div class="campo cli-fiscal-novo"><label>Indicador da IE</label>
+                  <select id="cli-ind-ie">
+                    <option value="">— não informado —</option>
+                    <option value="contribuinte">Contribuinte do ICMS (tem IE)</option>
+                    <option value="isento">Contribuinte isento de inscrição</option>
+                    <option value="nao_contribuinte">Não contribuinte (pessoa física, órgão sem IE)</option>
+                  </select></div>
+                <div class="campo"><label>Inscrição estadual</label><input id="cli-ie" /></div>
+                <div class="campo largo cli-fiscal-novo"><label>E-mail para a nota fiscal</label><input id="cli-email-nf" placeholder="vazio = e-mail do cadastro; vários separados por vírgula" /></div>
+              </div>
+              <p class="meta" id="cli-fiscal-aviso" style="display:none;">Indicador da IE, código IBGE e e-mail da nota chegam com a atualização do banco da fase 105a.</p>
             </div>
             <div class="odoo-tab" data-tab="contato">
               <div class="grade">
@@ -1234,6 +1257,7 @@
             <button type="button" data-tab="geral" class="ativo">Geral</button>
             <button type="button" data-tab="estoque">Estoque</button>
             <button type="button" data-tab="identificacao">Identificação</button>
+            <button type="button" data-tab="fiscal" title="Fase 105a: NCM, unidade e valor da NF-e de remessa">Fiscal</button>
             <button type="button" data-tab="observacoes">Observações</button>
             <button type="button" data-tab="fabricacoes">Fabricações</button>
           </div>
@@ -1274,6 +1298,9 @@
                 <div class="campo"><label>Referência externa</label><input id="prod-refext" placeholder="ex.: família Odoo" /></div>
               </div>
             </div>
+
+            <!-- fase 105a: NCM, unidade comercial e valor da NF-e de remessa (js/fiscal_ncm.js); sugerido = último custo -->
+            <div class="odoo-tab" data-tab="fiscal"><div id="prod-fiscal"></div></div>
 
             <div class="odoo-tab" data-tab="observacoes">
               <div class="grade">
@@ -2481,14 +2508,19 @@
             <!-- Aba Endereço -->
             <div class="odoo-tab" data-tab="endereco">
               <div class="grade">
-                <div class="campo"><label>CEP</label><input id="obr-cep" /></div>
+                <div class="campo"><label>CEP</label>
+                  <div style="display:flex;gap:6px;"><input id="obr-cep" style="flex:1;" placeholder="00000-000" /><button type="button" class="btn-sec btn-sm" id="btn-obr-cep" title="Preenche endereço, cidade, UF e código IBGE pela ViaCEP">🔎 Buscar</button></div>
+                  <span class="meta" id="obr-cep-status"></span></div>
                 <div class="campo"><label>Logradouro</label><input id="obr-logradouro" /></div>
                 <div class="campo"><label>Número</label><input id="obr-numero" /></div>
                 <div class="campo"><label>Complemento</label><input id="obr-complemento" /></div>
                 <div class="campo"><label>Bairro</label><input id="obr-bairro" /></div>
                 <div class="campo"><label>Cidade</label><input id="obr-cidade" /></div>
                 <div class="campo"><label>UF</label><select id="obr-uf"></select></div>
+                <!-- fase 105a: município da prestação da NFS-e da medição -->
+                <div class="campo"><label>Código IBGE do município</label><input id="obr-ibge" maxlength="7" placeholder="preenchido pelo CEP" title="7 dígitos: local da prestação na NFS-e da medição" /></div>
               </div>
+              <p class="meta" id="obr-ibge-aviso" style="display:none;">O código IBGE da obra chega com a atualização do banco da fase 105a.</p>
             </div>
 
             <!-- Aba Datas & valor -->
@@ -3337,6 +3369,8 @@
           <div class="ind ind-click" data-kpi="manutencao"><div class="num" id="eqp-kpi-manut" style="color:var(--marca-600);">—</div><div class="rot">Em manutenção</div></div>
           <div class="ind ind-click" data-kpi="acessorios"><div class="num" id="eqp-kpi-ace">—</div><div class="rot">Acessórios nas máquinas</div></div>
           <div class="ind ind-click" data-kpi="sem_cod_ext" title="Perfuratrizes e bate-estacas sem o código do Geodigitus/Maya"><div class="num" id="eqp-kpi-semext">—</div><div class="rot">Sem código externo</div></div>
+          <!-- fase 105a: a NF-e de remessa exige NCM; aparece depois da migration (coluna equipamentos.ncm) -->
+          <div class="ind ind-click" data-kpi="sem_ncm" id="eqp-kpi-semncm-box" style="display:none;" title="Máquinas em mobilização ativa (em preparação, em trânsito ou em obra) sem NCM: a remessa exige"><div class="num" id="eqp-kpi-semncm">—</div><div class="rot">Em mobilização sem NCM</div></div>
         </div>
         <!-- fase 96: indicadores da visão Vendas (js/vendas_bens.js) -->
         <div class="indicadores" id="vb-indicadores" style="display:none;"></div>
@@ -3418,6 +3452,7 @@
           <div class="odoo-notebook" id="eqp-notebook">
             <button type="button" data-tab="geral" class="ativo">Geral</button>
             <button type="button" data-tab="tecnica">Ficha técnica</button>
+            <button type="button" data-tab="fiscal" title="Fase 105a: NCM, unidade e valor da NF-e de remessa">Fiscal</button>
             <button type="button" data-tab="acessorios">Acessórios</button>
             <button type="button" data-tab="mobilizacoes">Mobilizações</button>
             <button type="button" data-tab="rdos" title="Fase 101 (#85): histórico de RDOs desta máquina, com obra e produção">RDOs</button>
@@ -3475,6 +3510,8 @@
                 <div class="campo largo"><label>Observações sobre acessórios</label><textarea id="eqp-obs-ace" rows="3" placeholder="Ex.: usa caixa redutora X; ponta chinesa só com adaptador…"></textarea></div>
               </div>
             </div>
+            <!-- fase 105a: NCM, unidade comercial e valor da NF-e de remessa (js/fiscal_ncm.js) -->
+            <div class="odoo-tab" data-tab="fiscal"><div id="eqp-fiscal"></div></div>
 
             <div class="odoo-tab" data-tab="acessorios">
               <div class="lista-topo">
@@ -4120,6 +4157,7 @@
 
           <div class="odoo-notebook" id="ace-notebook">
             <button type="button" data-tab="dados" class="ativo">Dados técnicos</button>
+            <button type="button" data-tab="fiscal" title="Fase 105a: NCM, unidade e valor da NF-e de remessa">Fiscal</button>
             <button type="button" data-tab="jogo">Jogo</button>
             <button type="button" data-tab="historico">Histórico</button>
             <button type="button" data-tab="reparos">Reparos</button>
@@ -4155,6 +4193,8 @@
               </div>
               <p class="meta" id="ace-local-atual" style="margin-top:10px;"></p>
             </div>
+            <!-- fase 105a: NCM, unidade comercial e valor da NF-e de remessa (js/fiscal_ncm.js); sugerido = preço de referência do modelo -->
+            <div class="odoo-tab" data-tab="fiscal"><div id="ace-fiscal"></div></div>
             <div class="odoo-tab" data-tab="jogo">
               <div class="lista-topo"><h3>Peças do mesmo jogo</h3><button type="button" class="btn-sec btn-sm" id="btn-ace-mover-jogo" style="margin-left:auto;">📍 Mover o jogo inteiro</button></div>
               <div id="ace-jogo-lista"><p class="vazio">—</p></div>
@@ -5498,6 +5538,9 @@
             <button type="button" class="btn" id="btn-usr-rdo-solo-salvar">💾 Salvar classificações</button>
           </div>
         </div>
+        <!-- fase 105a: dados fiscais da empresa (empresa_config.fiscal_*). Grava quem passa em fiscal_pode_emitir() (diretor aqui;
+             gestor de acessórios, financeiro e logística pela visão Pendências fiscais de Clientes); o admin só consulta -->
+        <div class="card" id="usr-fiscal-card" style="display:none;"><div id="usr-fe"></div></div>
       </div>
 
       <!-- Ficha -->
@@ -5717,50 +5760,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=56d590b"></script>
+<script src="js/core.js?v=d335ee3"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=56d590b"></script>
+<script src="js/historico.js?v=d335ee3"></script>
+<!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
+<script src="js/fiscal.js?v=d335ee3"></script>
+<script src="js/fiscal_ncm.js?v=d335ee3"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=56d590b"></script>
-<script src="js/fornecedores.js?v=56d590b"></script>
-<script src="js/apropriacoes.js?v=56d590b"></script>
-<script src="js/funcionarios.js?v=56d590b"></script>
-<script src="js/rh_documentos.js?v=56d590b"></script>
-<script src="js/servicos.js?v=56d590b"></script>
-<script src="js/produtos.js?v=56d590b"></script>
-<script src="js/estoque.js?v=56d590b"></script>
-<script src="js/separacoes.js?v=56d590b"></script>
-<script src="js/epi.js?v=56d590b"></script>
-<script src="js/compras.js?v=56d590b"></script>
-<script src="js/requisicoes.js?v=56d590b"></script>
-<script src="js/orcamentos.js?v=56d590b"></script>
-<script src="js/propostas.js?v=56d590b"></script>
-<script src="js/contratos.js?v=56d590b"></script>
-<script src="js/contas_pagar.js?v=56d590b"></script>
-<script src="js/centros_custo.js?v=56d590b"></script>
-<script src="js/carteira.js?v=56d590b"></script>
-<script src="js/obras.js?v=56d590b"></script>
-<script src="js/frota.js?v=56d590b"></script>
-<script src="js/viagens.js?v=56d590b"></script>
-<script src="js/equipamentos.js?v=56d590b"></script>
-<script src="js/vendas_bens.js?v=56d590b"></script>
-<script src="js/acessorios.js?v=56d590b"></script>
-<script src="js/reparos.js?v=56d590b"></script>
-<script src="js/manutencao.js?v=56d590b"></script>
-<script src="js/fabricacao.js?v=56d590b"></script>
-<script src="js/mobilizacoes.js?v=56d590b"></script>
-<script src="js/estacas.js?v=56d590b"></script>
-<script src="js/obra_abas.js?v=56d590b"></script>
-<script src="js/medicoes.js?v=56d590b"></script>
-<script src="js/movimentacoes.js?v=56d590b"></script>
-<script src="js/rdo.js?v=56d590b"></script>
-<script src="js/rdo_import_maya.js?v=56d590b"></script>
-<script src="js/usuarios.js?v=56d590b"></script>
-<script src="js/chamados.js?v=56d590b"></script>
-<script src="js/dashboard.js?v=56d590b"></script>
-<script src="js/rh_horas.js?v=56d590b"></script>
-<script src="js/patrimonio.js?v=56d590b"></script>
+<script src="js/clientes.js?v=d335ee3"></script>
+<script src="js/fornecedores.js?v=d335ee3"></script>
+<script src="js/apropriacoes.js?v=d335ee3"></script>
+<script src="js/funcionarios.js?v=d335ee3"></script>
+<script src="js/rh_documentos.js?v=d335ee3"></script>
+<script src="js/servicos.js?v=d335ee3"></script>
+<script src="js/produtos.js?v=d335ee3"></script>
+<script src="js/estoque.js?v=d335ee3"></script>
+<script src="js/separacoes.js?v=d335ee3"></script>
+<script src="js/epi.js?v=d335ee3"></script>
+<script src="js/compras.js?v=d335ee3"></script>
+<script src="js/requisicoes.js?v=d335ee3"></script>
+<script src="js/orcamentos.js?v=d335ee3"></script>
+<script src="js/propostas.js?v=d335ee3"></script>
+<script src="js/contratos.js?v=d335ee3"></script>
+<script src="js/contas_pagar.js?v=d335ee3"></script>
+<script src="js/centros_custo.js?v=d335ee3"></script>
+<script src="js/carteira.js?v=d335ee3"></script>
+<script src="js/obras.js?v=d335ee3"></script>
+<script src="js/frota.js?v=d335ee3"></script>
+<script src="js/viagens.js?v=d335ee3"></script>
+<script src="js/equipamentos.js?v=d335ee3"></script>
+<script src="js/vendas_bens.js?v=d335ee3"></script>
+<script src="js/acessorios.js?v=d335ee3"></script>
+<script src="js/reparos.js?v=d335ee3"></script>
+<script src="js/manutencao.js?v=d335ee3"></script>
+<script src="js/fabricacao.js?v=d335ee3"></script>
+<script src="js/mobilizacoes.js?v=d335ee3"></script>
+<script src="js/estacas.js?v=d335ee3"></script>
+<script src="js/obra_abas.js?v=d335ee3"></script>
+<script src="js/medicoes.js?v=d335ee3"></script>
+<script src="js/movimentacoes.js?v=d335ee3"></script>
+<script src="js/rdo.js?v=d335ee3"></script>
+<script src="js/rdo_import_maya.js?v=d335ee3"></script>
+<script src="js/usuarios.js?v=d335ee3"></script>
+<script src="js/chamados.js?v=d335ee3"></script>
+<script src="js/dashboard.js?v=d335ee3"></script>
+<script src="js/rh_horas.js?v=d335ee3"></script>
+<script src="js/patrimonio.js?v=d335ee3"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=56d590b"></script>
+<script src="js/init.js?v=d335ee3"></script>
 </body>
 </html>

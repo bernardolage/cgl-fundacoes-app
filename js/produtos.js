@@ -216,6 +216,7 @@ function novoProduto(){
   $("prod-reposicao").checked = false;
   $("prod-conferido").checked = true;
   $("btn-excluir-prod").style.display = "none";
+  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });   // fase 105a
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
 }
 
@@ -241,6 +242,7 @@ async function abrirProduto(id){
   if($("prod-ca")) $("prod-ca").value = data.ca || "";
   if($("prod-epi-validade")) $("prod-epi-validade").value = data.epi_validade_dias ?? "";
   prodAplicarCamposEpi();
+  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", data);   // fase 105a: aba Fiscal (NCM)
   $("btn-excluir-prod").style.display = "";
   abrirFichaProdVisual(data);
   prodCarregarFabricacoes(id);
@@ -329,6 +331,10 @@ async function salvarProduto(){
       aviso("app-aviso", "Troca do EPI: entre 1 e 3650 dias (ou vazio).", "erro"); ativarTabProd("geral"); return;
     }
   }
+  // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
+  const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("prod") : null;
+  if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabProd("fiscal"); return; }
+  if(fis) Object.assign(reg, fis);
   let result;
   if(prodEditId){
     result = await sb.from("produtos").update(reg).eq("id", prodEditId).select().single();

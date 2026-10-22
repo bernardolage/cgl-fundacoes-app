@@ -45,6 +45,18 @@ async function carregarUsuarios(){
   carregarRespServico();
   carregarPoliticaSessaoCard();
   carregarPalavrasEtapaCard();   // fase 94
+  carregarFiscalEmpresaCard();   // fase 105a
+}
+
+/* ---------- Dados fiscais da empresa (fase 105a) ----------
+   Mesmo bloco da visão "Pendências fiscais" de Clientes (js/fiscal.js). Aqui aparece para quem vê Usuários (diretor e
+   admin); grava só o diretor (podeEmitirFiscal / fiscal_pode_emitir: admin fora, decisão 6 do Bernardo). */
+function carregarFiscalEmpresaCard(){
+  const card = $("usr-fiscal-card");
+  if(!card || typeof fiscalEmpresaRender !== "function") return;
+  const pode = ["diretor", "admin"].includes(usuarioAtual?.cargo);
+  card.style.display = pode ? "" : "none";
+  if(pode) fiscalEmpresaRender("usr-fe");
 }
 
 /* ---------- Responsáveis por serviço (fase 75) ----------

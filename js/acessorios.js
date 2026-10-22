@@ -918,6 +918,7 @@ function abrirFichaAcessorio(a){
   $("ace-padrao").value = a.equipamento_padrao_id || "";
   $("ace-ativo").checked = a.ativo !== false;
   $("ace-obs").value = a.observacoes || "";
+  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("ace", "acessorio", a, pode);   // fase 105a: aba Fiscal (NCM lido à parte)
   [...$("ace-compat").options].forEach(o => o.selected = false);
   $("ace-local-atual").innerHTML = novo
     ? "A peça nova entra no <strong>pátio</strong>. Depois de salvar, use <em>Mover</em> para colocá-la onde está."
@@ -1092,6 +1093,10 @@ async function salvarAcessorio(){
   };
   if(!reg.marcacao){ aviso("app-aviso", "Informe a marcação da peça.", "erro"); $("ace-marcacao").focus(); return; }
   if(!reg.tipo){ aviso("app-aviso", "Informe o tipo.", "erro"); return; }
+  // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
+  const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("ace") : null;
+  if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabAcessorio("fiscal"); return; }
+  if(fis) Object.assign(reg, fis);
   const dup = _aceRegistros.find(a => a.familia === reg.familia && a.marcacao === reg.marcacao && a.id !== acessorioEditId);
   if(dup){ aviso("app-aviso", `Já existe a marcação ${reg.marcacao} em ${ACE_FAMILIA_LBL[reg.familia]}.`, "erro"); return; }
   let id = acessorioEditId;
