@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="902c666" />
+<meta name="app-versao" content="65065f4" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=902c666" />
+<link rel="stylesheet" href="css/estilo.css?v=65065f4" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -1946,7 +1946,7 @@
             <div class="odoo-tab ativa" data-tab="geral">
               <div class="grade">
                 <div class="campo"><label>Número *</label><input id="orc-numero" required placeholder="ex.: 8832 (o ano entra sozinho: 8832/2026)" title="Número da proposta na sequência da CGL. Sem o ano, o sistema acrescenta /AAAA ao salvar; com o ano, fica como digitado." /></div>
-                <div class="campo"><label>Cliente *</label><select id="orc-cliente" required></select></div>
+                <div class="campo"><label for="orc-cliente">Cliente *</label><div class="it-cat-wrap"><select id="orc-cliente" required></select><button type="button" class="btn-sec btn-sm" id="btn-orc-novo-cliente" style="display:none;" title="Cadastrar cliente novo sem sair do orçamento" aria-label="Cadastrar cliente novo">+ Novo</button></div></div>
                 <div class="campo"><label>Status</label><select id="orc-status"></select></div>
                 <div class="campo"><label>Data do orçamento</label><input id="orc-data" type="date" /></div>
                 <div class="campo"><label>Validade (data · = data + dias do Modelo)</label><input id="orc-validade" type="date" /></div>
@@ -2104,6 +2104,25 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- lote S49 (#140): cliente novo sem sair do orçamento (comercial, diretoria e módulo extra de Orçamentos) -->
+      <div class="modal-fundo" id="orc-cli-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:640px;">
+          <div class="modal-topo"><h3>Novo cliente</h3><button type="button" class="btn-sec" id="btn-orc-cli-fechar">×</button></div>
+          <p class="meta">Cadastro rápido para usar neste orçamento. Endereço completo e dados fiscais ficam na ficha do cliente (menu Clientes).</p>
+          <div class="grade grade-3">
+            <div class="campo"><label for="orc-cli-tipo">Tipo</label><select id="orc-cli-tipo"><option value="juridica">Pessoa Jurídica</option><option value="fisica">Pessoa Física</option></select></div>
+            <div class="campo largo"><label for="orc-cli-nome">Nome / Razão social *</label><input id="orc-cli-nome" maxlength="200" /></div>
+            <div class="campo"><label for="orc-cli-doc">CPF / CNPJ</label><input id="orc-cli-doc" placeholder="00.000.000/0000-00" /></div>
+            <div class="campo"><label for="orc-cli-contato">Pessoa de contato</label><input id="orc-cli-contato" /></div>
+            <div class="campo"><label for="orc-cli-tel">Telefone</label><input id="orc-cli-tel" /></div>
+            <div class="campo"><label for="orc-cli-email">E-mail</label><input id="orc-cli-email" type="email" /></div>
+            <div class="campo"><label for="orc-cli-cidade">Cidade</label><input id="orc-cli-cidade" /></div>
+            <div class="campo"><label for="orc-cli-uf">UF</label><select id="orc-cli-uf"></select></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-orc-cli-salvar">💾 Cadastrar e usar no orçamento</button></div>
         </div>
       </div>
     </section>
@@ -5865,53 +5884,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=902c666"></script>
+<script src="js/core.js?v=65065f4"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=902c666"></script>
+<script src="js/historico.js?v=65065f4"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=902c666"></script>
-<script src="js/fiscal_ncm.js?v=902c666"></script>
+<script src="js/fiscal.js?v=65065f4"></script>
+<script src="js/fiscal_ncm.js?v=65065f4"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=902c666"></script>
-<script src="js/fornecedores.js?v=902c666"></script>
-<script src="js/apropriacoes.js?v=902c666"></script>
-<script src="js/funcionarios.js?v=902c666"></script>
-<script src="js/rh_documentos.js?v=902c666"></script>
-<script src="js/servicos.js?v=902c666"></script>
-<script src="js/produtos.js?v=902c666"></script>
-<script src="js/estoque.js?v=902c666"></script>
-<script src="js/separacoes.js?v=902c666"></script>
-<script src="js/epi.js?v=902c666"></script>
-<script src="js/compras.js?v=902c666"></script>
-<script src="js/requisicoes.js?v=902c666"></script>
-<script src="js/orcamentos.js?v=902c666"></script>
-<script src="js/propostas.js?v=902c666"></script>
-<script src="js/contratos.js?v=902c666"></script>
-<script src="js/contas_pagar.js?v=902c666"></script>
-<script src="js/centros_custo.js?v=902c666"></script>
-<script src="js/carteira.js?v=902c666"></script>
-<script src="js/obras.js?v=902c666"></script>
-<script src="js/frota.js?v=902c666"></script>
-<script src="js/viagens.js?v=902c666"></script>
-<script src="js/equipamentos.js?v=902c666"></script>
-<script src="js/vendas_bens.js?v=902c666"></script>
-<script src="js/acessorios.js?v=902c666"></script>
-<script src="js/reparos.js?v=902c666"></script>
-<script src="js/manutencao.js?v=902c666"></script>
-<script src="js/fabricacao.js?v=902c666"></script>
-<script src="js/mobilizacoes.js?v=902c666"></script>
-<script src="js/estacas.js?v=902c666"></script>
-<script src="js/obra_abas.js?v=902c666"></script>
-<script src="js/medicoes.js?v=902c666"></script>
-<script src="js/movimentacoes.js?v=902c666"></script>
-<script src="js/rdo.js?v=902c666"></script>
-<script src="js/rdo_import_maya.js?v=902c666"></script>
-<script src="js/usuarios.js?v=902c666"></script>
-<script src="js/chamados.js?v=902c666"></script>
-<script src="js/dashboard.js?v=902c666"></script>
-<script src="js/rh_horas.js?v=902c666"></script>
-<script src="js/patrimonio.js?v=902c666"></script>
+<script src="js/clientes.js?v=65065f4"></script>
+<script src="js/fornecedores.js?v=65065f4"></script>
+<script src="js/apropriacoes.js?v=65065f4"></script>
+<script src="js/funcionarios.js?v=65065f4"></script>
+<script src="js/rh_documentos.js?v=65065f4"></script>
+<script src="js/servicos.js?v=65065f4"></script>
+<script src="js/produtos.js?v=65065f4"></script>
+<script src="js/estoque.js?v=65065f4"></script>
+<script src="js/separacoes.js?v=65065f4"></script>
+<script src="js/epi.js?v=65065f4"></script>
+<script src="js/compras.js?v=65065f4"></script>
+<script src="js/requisicoes.js?v=65065f4"></script>
+<script src="js/orcamentos.js?v=65065f4"></script>
+<script src="js/propostas.js?v=65065f4"></script>
+<script src="js/contratos.js?v=65065f4"></script>
+<script src="js/contas_pagar.js?v=65065f4"></script>
+<script src="js/centros_custo.js?v=65065f4"></script>
+<script src="js/carteira.js?v=65065f4"></script>
+<script src="js/obras.js?v=65065f4"></script>
+<script src="js/frota.js?v=65065f4"></script>
+<script src="js/viagens.js?v=65065f4"></script>
+<script src="js/equipamentos.js?v=65065f4"></script>
+<script src="js/vendas_bens.js?v=65065f4"></script>
+<script src="js/acessorios.js?v=65065f4"></script>
+<script src="js/reparos.js?v=65065f4"></script>
+<script src="js/manutencao.js?v=65065f4"></script>
+<script src="js/fabricacao.js?v=65065f4"></script>
+<script src="js/mobilizacoes.js?v=65065f4"></script>
+<script src="js/estacas.js?v=65065f4"></script>
+<script src="js/obra_abas.js?v=65065f4"></script>
+<script src="js/medicoes.js?v=65065f4"></script>
+<script src="js/movimentacoes.js?v=65065f4"></script>
+<script src="js/rdo.js?v=65065f4"></script>
+<script src="js/rdo_import_maya.js?v=65065f4"></script>
+<script src="js/usuarios.js?v=65065f4"></script>
+<script src="js/chamados.js?v=65065f4"></script>
+<script src="js/dashboard.js?v=65065f4"></script>
+<script src="js/rh_horas.js?v=65065f4"></script>
+<script src="js/patrimonio.js?v=65065f4"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=902c666"></script>
+<script src="js/init.js?v=65065f4"></script>
 </body>
 </html>

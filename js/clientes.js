@@ -19,6 +19,23 @@ let _cliFiscalTodos = false;  // visão Pendências fiscais: mostrar também os 
 
 const CLI_IND_IE = { contribuinte: "Contribuinte", isento: "Isento", nao_contribuinte: "Não contribuinte" };
 
+/* Lote S49 (#140): quem cadastra e edita cliente. Espelha as policies de clientes: clientes_write (admin, comercial,
+   financeiro; diretor por has_role) e as do módulo extra de Orçamentos (hotfix 113: insere e edita, não exclui).
+   Os demais cargos veem a lista e a ficha sem os botões de gravar. */
+function cliPodeEditar(){
+  if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return false;
+  return ["diretor", "admin", "comercial", "financeiro"].includes(usuarioAtual.cargo)
+      || (typeof temModuloExtra === "function" && temModuloExtra("orcamentos"));
+}
+function cliPodeExcluir(){
+  return !!usuarioAtual && ["diretor", "admin", "comercial", "financeiro"].includes(usuarioAtual.cargo);
+}
+function cliAplicarPermissoes(){
+  const novo = $("btn-novo-cliente"); if(novo) novo.style.display = cliPodeEditar() ? "" : "none";
+  const salvar = $("btn-salvar-cli"); if(salvar) salvar.style.display = cliPodeEditar() ? "" : "none";
+  const excl = $("btn-excluir-cli"); if(excl) excl.style.display = cliEditId && cliPodeExcluir() ? "" : "none";
+}
+
 /* ---------- Carga ---------- */
 async function carregarClientes(){
   // select("*"): as colunas fiscais (fase 105a) vêm quando existirem, sem quebrar antes da migration
@@ -50,6 +67,7 @@ function cliFiltrados(){
 function renderClientes(){
   const card = $("cli-fiscal-empresa-card");
   if(card) card.style.display = _cliView === "fiscal" ? "" : "none";
+  cliAplicarPermissoes();   // lote S49 (#140)
   if(_cliView === "fiscal"){ renderCliFiscal(); return; }
   const dados = cliFiltrados();
   const cont = $("cli-contador");
@@ -242,7 +260,7 @@ function novoCliente(){
   $("cli-ativo").checked = true;
   if($("cli-cep-status")) $("cli-cep-status").textContent = "";
   if($("cli-cep")) delete $("cli-cep").dataset.ultimo;
-  $("btn-excluir-cli").style.display = "none";
+  cliAplicarPermissoes();   // lote S49 (#140): sem Excluir no cliente novo
   cliAplicarCamposFiscais();
   abrirFichaCliVisual({ nome: "(novo)", tipo_pessoa: "juridica", ativo: true });
   if(typeof ocultarHistorico === "function") ocultarHistorico("cli-historico");
@@ -278,7 +296,7 @@ async function abrirCliente(id, aba){
   if($("cli-cep-status")) $("cli-cep-status").textContent = "";
   if($("cli-cep")) $("cli-cep").dataset.ultimo = String(data.cep || "").replace(/\D/g, "");
   cliAplicarCamposFiscais();
-  $("btn-excluir-cli").style.display = "";
+  cliAplicarPermissoes();   // lote S49 (#140): Salvar/Excluir conforme o cargo e o módulo extra
   abrirFichaCliVisual(data);
   if(aba) ativarTabCli(aba);
   if(typeof montarHistorico === "function") montarHistorico("clientes", id, "cli-historico");
@@ -390,7 +408,7 @@ async function salvarCliente(){
     return;
   }
   cliEditId = result.data.id;
-  $("btn-excluir-cli").style.display = "";
+  cliAplicarPermissoes();
   aviso("app-aviso","Cliente salvo.","ok");
   _cliFiscal = null;   // a visão Pendências fiscais relê
   await carregarClientes();

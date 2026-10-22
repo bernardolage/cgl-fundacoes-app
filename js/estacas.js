@@ -3317,6 +3317,7 @@ function estvSugestoes(x, comExec){
 // melhor sugestão quando é de alta confiança e a única de alta (é o que o lote "✨" vincula sem perguntar estaca a estaca).
 // lote S48 (#80): nome repetido em outro local/bloco (E07 da TRAVESSIA 01 e da 07) nunca é pré-selecionado.
 function estvSugestaoAltaUnica(x, comExec){
+  if(x.desvinculo_manual) return null;   // lote S49 (#130): desvinculada à mão não volta sozinha (nem pelo lote ✨)
   const sugs = estvSugestoes(x, comExec);
   const top = sugs[0];
   if(!top || ESTV_CONF[top.conf].nivel !== "alta" || sugs.some((s, i) => i > 0 && ESTV_CONF[s.conf].nivel === "alta")) return null;
@@ -3330,10 +3331,15 @@ async function estvCarregar(obraId){
   if(obraId !== _estvObra) _estvFiltroLocal = "";   // lote S48 (#80): o filtro de local vale para a obra aberta
   _estvObra = obraId;
   cont.innerHTML = `<p class="vazio">Carregando...</p>`;
+  // lote S49 (#130): desvinculo_manual só existe depois da migration 20261022_loteS49_vincular_estacas; sem ela, lê sem a coluna
+  const COLS_EXEC = "id,estaca_id,estaca_numero,estaca_numero_corrigido,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,rdo:rdo_id!inner(id,obra_id,data,equipamento_id)";
+  const lerExecs = async () => {
+    const ler = (cols) => sb.from("rdo_execucao_estaca").select(cols).eq("rdo.obra_id", obraId).limit(5000);
+    const r = await ler(COLS_EXEC + ",desvinculo_manual");
+    return r.error && /desvinculo_manual/i.test(r.error.message || "") ? ler(COLS_EXEC) : r;
+  };
   const [execsRes, estsRes, medRes, eqRes] = await Promise.all([
-    sb.from("rdo_execucao_estaca")
-      .select("id,estaca_id,estaca_numero,estaca_numero_corrigido,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,rdo:rdo_id!inner(id,obra_id,data,equipamento_id)")
-      .eq("rdo.obra_id", obraId).limit(5000),
+    lerExecs(),
     sb.from("estacas").select("id,numero,bloco,local,status,profundidade_m,diametro_mm,projeto_pendente").eq("obra_id", obraId).order("numero").limit(5000),
     sb.rpc("estacas_medidas", { p_obra: obraId }),
     _equipamentosCache.length ? Promise.resolve({ data: _equipamentosCache }) : sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo")
@@ -3347,6 +3353,11 @@ async function estvCarregar(obraId){
   estvRender();
 }
 
+// lote S48 (#80): "E07 — TRAVESSIA 01"; lote S49: também na troca direta
+function estvRotulo(p){ return `${p.numero}${estvLocalTxt(p) ? " — " + estvLocalTxt(p) : ""}`; }
+function estvOpcaoSug(s, comExec){
+  return `<option value="${esc(s.p.id)}">${esc(estvRotulo(s.p))} · ${esc(ESTV_CONF[s.conf].lbl)}${s.mesma ? " · ★ mesma travessia" : ""}${comExec.has(s.p.id) ? " ⚠ já tem execução" : ""}${_estvMedidas.has(s.p.id) ? " · medida" : ""}</option>`;
+}
 function estvRender(){
   const cont = $("estv-conteudo");
   if(!cont) return;
@@ -3416,25 +3427,29 @@ function estvRender(){
       const top = sugs[0];
       const alta = estvSugestaoAltaUnica(x, comExec);
       if(alta) preSel[x.id] = alta.id;
-      // lote S48 (#80): "E07 — TRAVESSIA 01"; mesmo nome em outro local/bloco fica sem pré-seleção e marcado em amarelo
-      const rotulo = (p) => `${p.numero}${estvLocalTxt(p) ? " — " + estvLocalTxt(p) : ""}`;
+      // lote S48 (#80): mesmo nome em outro local/bloco fica sem pré-seleção e marcado em amarelo
+      const rotulo = estvRotulo;
       if(top && estvEmpate(top.p) && sugs.some((s, i) => i > 0 && estNormalizarNome(s.p.numero) === estNormalizarNome(top.p.numero))) empates.add(x.id);
-      const opts = sugs.map(s => `<option value="${esc(s.p.id)}">${esc(rotulo(s.p))} · ${esc(ESTV_CONF[s.conf].lbl)}${s.mesma ? " · ★ mesma travessia" : ""}${comExec.has(s.p.id) ? " ⚠ já tem execução" : ""}${_estvMedidas.has(s.p.id) ? " · medida" : ""}</option>`).join("");
+      const opts = sugs.map(s => estvOpcaoSug(s, comExec)).join("");
       const seloTrav = top && top.mesma ? ` <span class="rec-badge rec-badge-alta" title="O local/bloco da estaca do projeto tem o mesmo número do nome do campo (T1.07 → travessia 1)">mesma travessia</span>` : "";
       const seloEmpate = empates.has(x.id) ? ` <span class="rec-badge rec-badge-media" title="Há estaca com o mesmo nome em outro local/bloco: confira a travessia antes de vincular">mesmo nome em outro local</span>` : "";
+      // lote S49 (#130): desvinculada à mão não é religada pelo nome nem pré-selecionada
+      const seloDesv = x.desvinculo_manual ? ` <span class="rec-badge rec-badge-media" title="Desvinculada à mão: não volta sozinha pelo nome, nem pela sugestão pré-selecionada, nem pelo lote ✨">desvinculada</span>` : "";
       colVinculo = ro
-        ? (top ? `<span class="meta">sugestão: ${esc(rotulo(top.p))} (${esc(ESTV_CONF[top.conf].lbl)})</span>${seloTrav}${seloEmpate}` : `<span class="meta">sem sugestão</span>`)
+        ? (top ? `<span class="meta">sugestão: ${esc(rotulo(top.p))} (${esc(ESTV_CONF[top.conf].lbl)})</span>${seloTrav}${seloEmpate}${seloDesv}` : `<span class="meta">sem sugestão</span>${seloDesv}`)
         : `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
           <select class="estv-sel" data-exec="${esc(x.id)}" style="flex:1;min-width:0;">
             <option value="">— escolher —</option>
             ${opts ? `<optgroup label="Sugestões">${opts}</optgroup>` : ""}
             <option value="__outra">outra estaca do projeto…</option>
           </select>
-          ${top ? `<span class="rec-badge rec-badge-${ESTV_CONF[top.conf].nivel}" title="Confiança da melhor sugestão">${esc(ESTV_CONF[top.conf].lbl)}</span>` : `<span class="rec-badge rec-badge-zero">sem par</span>`}${seloTrav}${seloEmpate}
+          ${top ? `<span class="rec-badge rec-badge-${ESTV_CONF[top.conf].nivel}" title="Confiança da melhor sugestão">${esc(ESTV_CONF[top.conf].lbl)}</span>` : `<span class="rec-badge rec-badge-zero">sem par</span>`}${seloTrav}${seloEmpate}${seloDesv}
         </div>`;
     }
+    // lote S49 (#130): vinculada ganha "Trocar" (troca direta, sem desvincular antes)
     const acoes = ro ? "" : (p
-      ? `<button type="button" class="btn-sec btn-sm estv-desv" data-exec="${esc(x.id)}" title="Tira o vínculo com ${esc(p.numero)} (fica registrado)">⨯ Desvincular</button>`
+      ? `<button type="button" class="btn-sec btn-sm estv-trocar" data-exec="${esc(x.id)}" title="Troca a estaca do projeto desta execução sem desvincular antes (fica registrado)">⇄ Trocar</button>
+         <button type="button" class="btn-sec btn-sm estv-desv" data-exec="${esc(x.id)}" title="Tira o vínculo com ${esc(p.numero)}: a execução volta para Sem vínculo e não é religada sozinha (fica registrado)">⨯ Desvincular</button>`
       : `<button type="button" class="btn btn-sm estv-vinc" data-exec="${esc(x.id)}" style="background:var(--sucesso);" title="Vincula à estaca escolhida">✓ Vincular</button>
          <button type="button" class="btn-sec btn-sm estv-nova" data-exec="${esc(x.id)}" title="Cria '${esc(x.estaca_numero)}' no cadastro da obra como estaca nova do campo (projeto a confirmar) e vincula">+ Nova do campo</button>`);
     return `<tr data-exec="${esc(x.id)}"${empates.has(x.id) ? ' style="background:var(--aviso-bg);"' : ""}>
@@ -3443,7 +3458,7 @@ function estvRender(){
       <td>${esc(estvMaquina(x))}</td>
       <td class="num">${metr ? num(metr) + " m" : "—"}${acum ? ` <span class="meta">(até ${num(acum)})</span>` : ""}</td>
       <td>${etapa}</td>
-      <td>${colVinculo}</td>
+      <td class="estv-col-vinc">${colVinculo}</td>
       <td class="col-acao" style="white-space:nowrap;text-align:right;">${acoes}</td>
     </tr>`;
   }).join("");
@@ -3454,9 +3469,9 @@ function estvRender(){
   estvLigar(cont);
 }
 
-function estvLigar(cont){
-  cont.querySelectorAll("[data-estv-filtro]").forEach(b => b.addEventListener("click", () => { _estvFiltro = b.dataset.estvFiltro; estvRender(); }));
-  cont.querySelectorAll(".estv-sel").forEach(sel => sel.addEventListener("change", () => {
+// "outra estaca do projeto…" no select de vínculo (órfã) e no de troca (lote S49)
+function estvLigarSelOutra(sel){
+  sel.addEventListener("change", () => {
     if(sel.value !== "__outra") return;
     const nome = prompt("Nº da estaca do projeto (como está no cadastro):");
     sel.value = "";
@@ -3466,13 +3481,47 @@ function estvLigar(cont){
     const opt = document.createElement("option");
     opt.value = cands[0].id; opt.textContent = `${cands[0].numero} — escolhida`;
     sel.appendChild(opt); sel.value = cands[0].id;
-  }));
+  });
+}
+/* lote S49 (#130): troca direta. A linha vinculada vira um select com as sugestões (sem a estaca atual) e "✓ Trocar";
+   a RPC grava a troca (tipo troca_estaca) e refaz o status da estaca antiga. */
+function estvAbrirTroca(execId){
+  const cont = $("estv-conteudo");
+  const tr = cont && cont.querySelector(`tr[data-exec="${execId}"]`);
+  const x = _estvExecs.find(e => e.id === execId);
+  if(!tr || !x) return;
+  const atual = estvEstacaDe(x);
+  const comExec = new Set(_estvExecs.map(e => e.estaca_id).filter(Boolean));
+  const opts = estvSugestoes(x, comExec).filter(s => s.p.id !== x.estaca_id).map(s => estvOpcaoSug(s, comExec)).join("");
+  const td = tr.querySelector(".estv-col-vinc"), tdAc = tr.querySelector(".col-acao");
+  td.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <span class="meta">${esc(atual ? estvRotulo(atual) : "")} →</span>
+      <select class="estv-sel-troca" data-exec="${esc(x.id)}" style="flex:1;min-width:0;" aria-label="Nova estaca do projeto">
+        <option value="">— nova estaca do projeto —</option>
+        ${opts ? `<optgroup label="Sugestões">${opts}</optgroup>` : ""}
+        <option value="__outra">outra estaca do projeto…</option>
+      </select></div>`;
+  tdAc.innerHTML = `<button type="button" class="btn btn-sm estv-trocar-ok" style="background:var(--sucesso);" title="Grava a troca">✓ Trocar</button>
+    <button type="button" class="btn-sec btn-sm estv-trocar-cancelar">Cancelar</button>`;
+  const sel = td.querySelector(".estv-sel-troca");
+  estvLigarSelOutra(sel);
+  sel.focus();
+  tdAc.querySelector(".estv-trocar-cancelar").addEventListener("click", estvRender);
+  tdAc.querySelector(".estv-trocar-ok").addEventListener("click", () => {
+    if(!sel.value){ aviso("app-aviso", "Escolha a nova estaca do projeto.", "erro"); return; }
+    estvVincular(x.id, sel.value, "troca_estaca");
+  });
+}
+function estvLigar(cont){
+  cont.querySelectorAll("[data-estv-filtro]").forEach(b => b.addEventListener("click", () => { _estvFiltro = b.dataset.estvFiltro; estvRender(); }));
+  cont.querySelectorAll(".estv-sel").forEach(estvLigarSelOutra);
   cont.querySelectorAll(".estv-vinc").forEach(b => b.addEventListener("click", () => {
     const sel = cont.querySelector(`.estv-sel[data-exec="${b.dataset.exec}"]`);
     if(!sel || !sel.value){ aviso("app-aviso", "Escolha a estaca do projeto antes de vincular.", "erro"); return; }
     estvVincular(b.dataset.exec, sel.value, "vinculo_estaca");
   }));
   cont.querySelectorAll(".estv-desv").forEach(b => b.addEventListener("click", () => estvVincular(b.dataset.exec, null, null)));
+  cont.querySelectorAll(".estv-trocar").forEach(b => b.addEventListener("click", () => estvAbrirTroca(b.dataset.exec)));   // lote S49 (#130)
   cont.querySelectorAll(".estv-nova").forEach(b => b.addEventListener("click", () => estvNovaDoCampo(b.dataset.exec)));
   $("btn-estv-lote-alta")?.addEventListener("click", estvVincularSugestoesAltas);
   $("btn-estv-prefixo")?.addEventListener("click", estvTrocarPrefixo);
@@ -3483,16 +3532,38 @@ async function estvDepois(){
   if(typeof carregarEstacasDaObra === "function" && obraEditId) carregarEstacasDaObra(obraEditId);
   if(typeof carregarAbasObra === "function" && obraEditId) carregarAbasObra(obraEditId);
 }
+/* lote S49 (#130): o mesmo nome do campo em outros dias com o mesmo vínculo (ou também sem vínculo) — o chamado pede
+   corrigir "todos os registros correspondentes de uma vez, com confirmação" */
+function estvIrmas(x){
+  const nome = estvNorm(x.estaca_numero);
+  return _estvExecs.filter(o => o.id !== x.id && estvNorm(o.estaca_numero) === nome && (o.estaca_id || null) === (x.estaca_id || null));
+}
 async function estvVincular(execId, estacaId, motivo){
   const x = _estvExecs.find(e => e.id === execId);
+  if(!x) return;
   const alvo = estacaId ? _estvEstacas.find(p => p.id === estacaId) : null;
-  const atual = x ? estvEstacaDe(x) : null;
+  const atual = estvEstacaDe(x);
+  const troca = !!(atual && estacaId && atual.id !== estacaId);   // lote S49 (#130): troca direta
+  const verbo = troca ? "Trocar" : estacaId ? "Vincular" : "Desvincular";
   const medida = (alvo && _estvMedidas.has(alvo.id)) || (atual && _estvMedidas.has(atual.id));
-  if(medida && !confirm(`A estaca ${(alvo || atual).numero} já entrou em medição. ${estacaId ? "Vincular" : "Desvincular"} mesmo assim? Fica registrado no histórico.`)) return;
-  if(!estacaId && !medida && !confirm(`Tirar o vínculo da execução "${x ? x.estaca_numero : ""}"${atual ? " com " + atual.numero : ""}?`)) return;
-  const { error } = await sb.rpc("rdo_exec_vincular_estaca", { p_exec: execId, p_estaca: estacaId || null, p_motivo: motivo || null });
-  if(error){ aviso("app-aviso", "Não foi possível " + (estacaId ? "vincular" : "desvincular") + ": " + error.message, "erro"); return; }
-  aviso("app-aviso", estacaId ? `Execução vinculada a ${alvo ? alvo.numero : "estaca"}.` : "Vínculo removido.", "ok");
+  if(medida && !confirm(`A estaca ${(alvo || atual).numero} já entrou em medição. ${verbo} mesmo assim? Fica registrado no histórico.`)) return;
+  if(!medida && !estacaId && !confirm(`Tirar o vínculo da execução "${x.estaca_numero}"${atual ? " com " + atual.numero : ""}? Ela volta para "Sem vínculo" e não é religada sozinha pelo nome.`)) return;
+  if(!medida && troca && !confirm(`Trocar o vínculo da execução "${x.estaca_numero}" (${dataBR(x.rdo.data)}): ${atual.numero} → ${alvo ? alvo.numero : "estaca escolhida"}?`)) return;
+  const irmas = estvIrmas(x);
+  let lista = [x];
+  if(irmas.length && confirm(`"${x.estaca_numero}" aparece em mais ${irmas.length} dia(s) ${atual ? "vinculada a " + atual.numero : "sem vínculo"} (${irmas.map(i => dataBR(i.rdo.data)).join(", ")}). ${verbo} esses também?\n\nOK = todos os ${irmas.length + 1} dias · Cancelar = só ${dataBR(x.rdo.data)}`)) lista = lista.concat(irmas);
+  let n = 0;
+  for(const e of lista){
+    const { error } = await sb.rpc("rdo_exec_vincular_estaca", { p_exec: e.id, p_estaca: estacaId || null, p_motivo: motivo || null });
+    if(error){ aviso("app-aviso", `Não foi possível ${verbo.toLowerCase()} ${e.estaca_numero} (${dataBR(e.rdo.data)}): ${error.message}`, "erro"); break; }
+    n++;
+  }
+  if(n){
+    const qtd = n > 1 ? `${n} execuções` : "Execução";
+    aviso("app-aviso", troca ? `${qtd} trocada(s) de ${atual.numero} para ${alvo ? alvo.numero : "a estaca escolhida"}.`
+      : estacaId ? `${qtd} vinculada(s) a ${alvo ? alvo.numero : "estaca"}.`
+      : `Vínculo removido (${n > 1 ? n + " execuções" : "1 execução"}): está em "Sem vínculo" para vincular de novo.`, "ok");
+  }
   await estvDepois();
 }
 async function estvNovaDoCampo(execId){

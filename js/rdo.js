@@ -1563,6 +1563,7 @@ async function salvarRDO(novoStatus){
   const execsParaSalvar = _rdoExecucoes.filter(e => e.estaca_numero);
   let insertedExecs = null;
   if(execsParaSalvar.length){
+    const temColDesv = execsParaSalvar.some(e => Object.prototype.hasOwnProperty.call(e, "desvinculo_manual"));   // lote S49 (#130)
     const insertExecs = execsParaSalvar.map(e => {
       const base = {
         rdo_id: savedId,
@@ -1601,6 +1602,10 @@ async function salvarRDO(novoStatus){
           ...rdoCamposInjecao(e)   // fase 101 (#99): m³ injetado e água
         });
       }
+      // lote S49 (#130): regravar o RDO não religa pelo nome a execução desvinculada à mão. A coluna só vem do banco
+      // depois da migration 20261022_loteS49_vincular_estacas; o insert em lote manda a mesma chave em todas as linhas
+      // (chave ausente vira null e a coluna é not null), então só entra quando alguma linha lida do banco a trouxe.
+      if(temColDesv) base.desvinculo_manual = e.desvinculo_manual === true && !e.estaca_id;
       return base;
     });
     const { data: ids, error: errExec } = await sb.from("rdo_execucao_estaca").insert(insertExecs).select("id");

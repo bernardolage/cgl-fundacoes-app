@@ -500,9 +500,29 @@ function renderComprasKanban(dados){
     return `<div class="serv-kan-col" data-status="${st}"><div class="serv-kan-col-head">${cmpTag(st)} <span class="contador">${its.length}</span>${its.length ? ` <span class="meta">${brl(its.reduce((s, p) => s + Number(p.total || 0), 0))}</span>` : ""}</div>
       ${its.map(cmpCardHTML).join("") || `<p class="vazio">—</p>`}</div>`; }).join("")}</div>`;
 }
+/* lote S49 (#132, Fabrício): a lista de pedidos ordena pelo cabeçalho (ordenarTabela do core.js, o mesmo da lista de
+   Orçamentos do lote S47): clicar ordena, clicar de novo inverte, e a escolha fica na sessão (sessionStorage
+   "cmp-ordem"). Padrão: data mais recente primeiro, como a carga. Status segue a ordem das etapas (rascunho →
+   aguardando aprovação → … → recebido; cancelado no fim), o que agrupa os pedidos de cada status. */
+const CMP_ORDEM_STATUS = CMP_STAGES.concat(["cancelado"]);
+function cmpDestinoTxt(p){
+  return p.obra_id ? cmpObra(p.obra_id) : p.equipamento_id ? "TAG " + cmpEq(p.equipamento_id)
+    : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? cmpCentro(p.centro_custo_id) : "Estoque";
+}
+const _cmpOrdem = ordenarTabela({
+  numero:     { tipo: "texto", valor: p => p.numero || "" },
+  data:       { tipo: "data",  valor: p => p.data_pedido || "", dirInicial: "desc" },
+  fornecedor: { tipo: "texto", valor: p => p.fornecedor?.razao_social || "" },
+  destino:    { tipo: "texto", valor: p => cmpDestinoTxt(p) },
+  total:      { tipo: "num",   valor: p => Number(p.total || 0), dirInicial: "desc" },
+  previsao:   { tipo: "data",  valor: p => p.previsao_entrega || "" },
+  status:     { tipo: "num",   valor: p => { const i = CMP_ORDEM_STATUS.indexOf(p.status); return i < 0 ? CMP_ORDEM_STATUS.length : i; } }
+}, { chave: "cmp-ordem", padrao: { col: "data", dir: "desc" } });
 function renderComprasLista(dados){
+  dados = _cmpOrdem.aplicar(dados);
+  const th = (col, rot, extra) => _cmpOrdem.th(col, rot, extra);
   $("cmp-conteudo").innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr><th>Número</th><th>Data</th><th>Fornecedor</th><th>Destino</th><th class="num">Itens</th><th class="num">Total</th><th>Previsão</th><th>Status</th><th>Para receber com</th></tr></thead>
+    <thead><tr>${th("numero", "Número")}${th("data", "Data")}${th("fornecedor", "Fornecedor")}${th("destino", "Destino")}<th class="num">Itens</th>${th("total", "Total", { cls: "num" })}${th("previsao", "Previsão")}${th("status", "Status")}<th>Para receber com</th></tr></thead>
     <tbody>${dados.map(p => `<tr class="linha-clicavel${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
       <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td>
       <td>${p.obra_id ? linkObra(p.obra_id, cmpObra(p.obra_id)) : p.equipamento_id ? "TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? esc(cmpCentro(p.centro_custo_id)) : "Estoque"}</td>
@@ -1391,6 +1411,7 @@ function ligarCompras(){
     aviso("app-aviso", "Responsável pelo recebimento atualizado.", "ok");
     cmpAtualizarBotoes(); await cmpFetchPedidos();
   });
+  _cmpOrdem.ligar("cmp-conteudo", renderCompras);   // lote S49 (#132): cabeçalho da lista ordena
   $("cmp-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a.link-obra") || e.target.closest("button") || e.target.closest("input,label")) return;
     if(e.target.closest("tr[data-req]")) return; // fase 60: requisições têm o próprio clique
