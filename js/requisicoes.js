@@ -25,8 +25,9 @@ const REQ_STATUS = {
 };
 const REQ_PRIORIDADE = { normal: "Normal", urgente: "Urgente" };
 
+/* = policy requisicoes_write; lote S48 (#123): + gestor_manutencao (a fase 92c já o pôs no banco) */
 function reqPodePedir(){
-  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","encarregado","engenheiro","assistente_engenharia","mecanico","operador","logistica","gestor_acessorios","financeiro","gestor_frota"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","encarregado","engenheiro","assistente_engenharia","mecanico","operador","logistica","gestor_acessorios","financeiro","gestor_frota","gestor_manutencao"].includes(usuarioAtual.cargo);
 }
 function reqPodeDecidir(){ return typeof cmpPodeOperar === "function" && cmpPodeOperar(); }
 function reqTag(st){ const o = REQ_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }

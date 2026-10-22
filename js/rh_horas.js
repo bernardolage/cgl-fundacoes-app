@@ -18,6 +18,7 @@ let _rhhViagens = [];       // horas_viagem do período
 let _rhhMes = [];           // vw_rh_horas_mes da competência
 let _rhhAloc = [];          // vw_rh_alocacao_mes da competência
 let _rhhPendMes = 0;        // linhas do RDO do mês ainda sem liberação (aviso no fechamento)
+let _rhhCnoDoc = {};        // lote S48 (#122): obra_id → { storage_path, nome } do PDF do CNO mais recente (vw_obra_cno_documento)
 let _rhhPodeLiberar = {};   // obra_id → boolean (rh_horas_liberar no banco)
 let _rhhSel = new Set();    // "e:<id>" (rdo_equipe) · "v:<id>" (horas_viagem) · "a:<alocacao_id ou func|obra>"
 let _rhhPreset = null;      // vindo da Sala de Comando (rhhAbrirPreset)
@@ -35,6 +36,39 @@ function rhhHz(n){ return Number(n || 0).toLocaleString("pt-BR", { minimumFracti
 function rhhHHMM(t){ return t ? String(t).slice(0, 5) : ""; }
 function rhhMesAtual(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function rhhObraTxt(id, cod, nome){ return cod ? `${cod}${nome ? " — " + nome : ""}` : (id ? (mapaObras?.[id] || "obra") : "sem obra"); }
+
+/* lote S48 (#122): PDF do CNO anexado em Obra › Documentos (categoria cno). A view só expõe essa categoria; sem a
+   migration 20261022_loteS48_b (view ausente) o mapa fica vazio e a tag continua só com o número de obras.cno. */
+async function rhhCarregarCno(obraIds){
+  _rhhCnoDoc = {};
+  const ids = [...new Set((obraIds || []).filter(Boolean))];
+  if(!ids.length) return;
+  for(let i = 0; i < ids.length; i += 150){
+    const { data, error } = await sb.from("vw_obra_cno_documento").select("obra_id,storage_path,nome").in("obra_id", ids.slice(i, i + 150));
+    if(error){ console.warn("vw_obra_cno_documento:", error.message); return; }
+    (data || []).forEach(d => { _rhhCnoDoc[d.obra_id] = d; });
+  }
+}
+/* tag do CNO: com PDF = link que abre o documento; sem PDF = o número (título "sem PDF anexado"); sem os dois = "sem CNO" */
+function rhhCnoHTML(obraId, cno, forte){
+  if(!obraId) return "—";
+  const doc = _rhhCnoDoc[obraId];
+  const num = cno ? (forte ? `<strong>${esc(cno)}</strong>` : esc(cno)) : "";
+  if(doc) return `<a href="#" class="tag azul rhh-cno" data-obra="${esc(obraId)}" title="Abrir o PDF do CNO (${esc(doc.nome || "documento")})">📄 ${cno ? esc(cno) : "CNO (PDF)"}</a>`;
+  if(cno) return `<span title="sem PDF anexado: anexe em Obra › Documentos, categoria CNO">${num}</span>`;
+  return '<span class="tag ambar" title="Obra sem CNO: preencha o número em Obra › Parâmetros e anexe o PDF em Obra › Documentos (categoria CNO)">sem CNO</span>';
+}
+async function rhhAbrirCno(obraId){
+  const doc = _rhhCnoDoc[obraId]; if(!doc) return;
+  const { data, error } = await sb.storage.from("obras-documentos").createSignedUrl(doc.storage_path, 120);
+  if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o CNO" + (error ? ": " + error.message : "."), "erro"); return; }
+  const a = document.createElement("a");
+  a.href = data.signedUrl; a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function rhhLigarCno(cont){
+  cont.querySelectorAll(".rhh-cno").forEach(a => a.addEventListener("click", e => { e.preventDefault(); rhhAbrirCno(a.dataset.obra); }));
+}
 
 /* Período dos filtros: mês + quinzena (ou últimos 60 dias). Devolve { ini, fim, mesIni } em ISO. */
 function rhhPeriodo(){
@@ -310,6 +344,7 @@ async function rhhCarregarFechamento(){
     })()
   ]);
   _rhhMes = mes; _rhhPendMes = pend;
+  await rhhCarregarCno(mes.map(r => r.obra_id));   // lote S48 (#122)
   renderRhhFechamento();
 }
 
@@ -335,11 +370,12 @@ function renderRhhFechamento(){
   linhas.forEach(r => {
     const primeiro = r.funcionario_id !== ultimo; ultimo = r.funcionario_id;
     html += `<tr><td>${primeiro ? `<strong>${esc(r.funcionario)}</strong>` : ""}</td><td class="meta">${primeiro ? esc(r.matricula || "") : ""}</td><td class="meta">${primeiro ? esc(r.funcao || "") : ""}</td>
-      <td>${linkObra(r.obra_id, rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome))}</td><td>${r.cno ? esc(r.cno) : (r.obra_id ? '<span class="tag ambar" title="Obra sem CNO: preencha em Obra › Parâmetros">sem CNO</span>' : "—")}</td>
+      <td>${linkObra(r.obra_id, rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome))}</td><td>${rhhCnoHTML(r.obra_id, r.cno, false)}</td>
       <td class="num">${r.dias || "—"}</td><td class="num">${rhhH(r.horas_normais)}</td><td class="num">${rhhH(r.horas_100)}</td><td class="num">${rhhH(r.horas_noturnas)}</td><td class="num">${rhhH(r.horas_viagem)}</td></tr>`;
   });
   html += `</tbody><tfoot><tr><th colspan="5">Total · ${new Set(linhas.map(r => r.funcionario_id)).size} funcionário(s)</th><th class="num">${soma("dias") || "—"}</th><th class="num">${rhhHz(soma("horas_normais"))}</th><th class="num">${rhhHz(soma("horas_100"))}</th><th class="num">${rhhHz(soma("horas_noturnas"))}</th><th class="num">${rhhHz(soma("horas_viagem"))}</th></tr></tfoot></table></div>`;
   cont.innerHTML = html;
+  rhhLigarCno(cont);
 }
 
 /* "Lançar na folha": rh_lancar_horas_folha(competência) grava he_100, adicional_noturno e horas_viagem em folha_lancamentos
@@ -367,6 +403,7 @@ async function rhhCarregarAlocacao(){
   const { mesIni } = rhhPeriodo();
   const obraId = $("rhh-f-obra")?.value || "";
   _rhhAloc = await rhhLerTudo("vw_rh_alocacao_mes", q => { let x = q.select("*").eq("competencia", mesIni).order("obra_codigo").order("funcionario"); if(obraId) x = x.eq("obra_id", obraId); return x; });
+  await rhhCarregarCno(_rhhAloc.map(r => r.obra_id));   // lote S48 (#122)
   renderRhhAlocacao();
 }
 
@@ -406,7 +443,7 @@ function renderRhhAlocacao(){
     const g = ls[0];
     html += `<tr class="rhh-grupo"><td>${podeConferir ? `<input type="checkbox" class="rhh-sel-grupo" data-fid="${esc(oid)}" title="Selecionar a obra inteira" />` : ""}</td>
       <td colspan="8"><strong>${linkObra(g.obra_id, rhhObraTxt(g.obra_id, g.obra_codigo, g.obra_nome))}</strong>
-        · CNO ${g.cno ? `<strong>${esc(g.cno)}</strong>` : '<span class="tag ambar" title="Preencha em Obra › Parâmetros">sem CNO</span>'}
+        · CNO ${rhhCnoHTML(g.obra_id, g.cno, true)}
         <span class="meta">· ${ls.length} funcionário(s), ${ls.filter(r => r.conferido_em).length} conferido(s)</span></td></tr>`;
     ls.forEach(r => {
       const k = rhhAlocKey(r);
@@ -420,6 +457,7 @@ function renderRhhAlocacao(){
   }
   html += `</tbody></table></div>`;
   cont.innerHTML = html;
+  rhhLigarCno(cont);   // lote S48 (#122)
   cont.querySelectorAll(".rhh-sel").forEach(cb => cb.addEventListener("change", () => { if(cb.checked) _rhhSel.add(cb.dataset.k); else _rhhSel.delete(cb.dataset.k); rhhAtualizarBotoes(); }));
   cont.querySelectorAll(".rhh-sel-grupo").forEach(cb => cb.addEventListener("change", () => {
     cont.querySelectorAll(`.rhh-sel[data-fid="${cb.dataset.fid}"]`).forEach(x => { x.checked = cb.checked; if(cb.checked) _rhhSel.add(x.dataset.k); else _rhhSel.delete(x.dataset.k); });

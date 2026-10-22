@@ -3237,6 +3237,29 @@ const ESTV_CONF = {
   parecida:      { lbl: "parecida",          nivel: "baixa" }
 };
 const ESTV_NIVEL = { alta: 0, media: 1, baixa: 2 };
+let _estvFiltroLocal = "";    // lote S48 (#80): filtro de local/bloco nas sugestões ("" = todos)
+
+/* lote S48 (#80, reaberto pelo Isaque): travessia/bloco no nome do campo — "T1.07" = travessia 1, estaca 07;
+   "T7.03" = travessia 7, estaca 03 (uma ou duas letras opcionais, número, ponto ou vírgula, número). */
+function estvGrupo(nome){
+  const t = String(nome || "").toUpperCase().replace(/\s+/g, "").replace(/,/g, ".");
+  const m = t.match(/^[A-Z]{0,2}(\d{1,3})\.(\d+[A-Z]?)$/);
+  return m ? { g: parseInt(m[1], 10), resto: m[2] } : null;
+}
+/* números do local/bloco da estaca do projeto: "TRAVESSIA 01" → 1, "T1" → 1, "BL1" → 1 */
+function estvLocalNums(p){
+  const s = `${(p && p.local) || ""} ${(p && p.bloco) || ""}`;
+  return new Set((s.match(/\d+/g) || []).map(n => parseInt(n, 10)));
+}
+function estvLocalTxt(p){ return [p.local, p.bloco].filter(Boolean).join(" · "); }
+/* mesmo nome (chave de sugestão) em outra estaca do projeto, em outro local/bloco: nunca pré-selecionar */
+function estvEmpate(p){
+  const k = estNormalizarNome(p.numero);
+  return !!k && _estvEstacas.some(q => q.id !== p.id && estNormalizarNome(q.numero) === k);
+}
+/* ordem da travessia: mesma travessia e mesmo número (T1.07 → E07 da TRAVESSIA 01) · mesmo número em outra travessia ·
+   mesma travessia com outro número · o resto */
+function estvRankTravessia(s){ return s.mesma && s.mesmoNum ? 0 : s.mesmoNum ? 1 : s.mesma ? 2 : 3; }
 
 /* Confiança da sugestão entre o nome do campo e o do projeto (tabela do chamado #78): igual · só vírgula/espaço ·
    só prefixo (T1.85 → E1.85) · só zeros (081 → 81) · prefixo e zeros (P081 → E81) · parecida (mesmos dígitos,
@@ -3268,27 +3291,43 @@ function estvARevisar(x){
   const p = estvEstacaDe(x);
   return !!(p && !x.estaca_numero_corrigido && estvNorm(x.estaca_numero) !== estvNorm(p.numero));
 }
-/* Até 6 sugestões para uma órfã: confiança maior primeiro, depois estaca ainda sem execução, depois o número */
+/* Até 8 sugestões para uma órfã: confiança alta primeiro; depois a travessia do nome do campo (lote S48, #80:
+   T1.07 → "E07 — TRAVESSIA 01" no topo, "E07 — TRAVESSIA 07" logo abaixo); depois o resto da confiança, estaca ainda
+   sem execução e o número. Com o filtro de local/bloco, só as estacas daquele local. */
 function estvSugestoes(x, comExec){
+  const g = estvGrupo(x.estaca_numero);
+  const chaveResto = g ? estNormalizarNome(g.resto) : "";
   return _estvEstacas
-    .map(p => ({ p, conf: estvConfianca(x.estaca_numero, p.numero) }))
+    .filter(p => !_estvFiltroLocal || estvLocalTxt(p) === _estvFiltroLocal)
+    .map(p => {
+      let conf = estvConfianca(x.estaca_numero, p.numero);
+      const mesmoNum = !!chaveResto && estNormalizarNome(p.numero) === chaveResto;
+      if(!conf && mesmoNum) conf = "parecida";
+      return { p, conf, mesmoNum, mesma: !!g && estvLocalNums(p).has(g.g) };
+    })
     .filter(s => s.conf)
-    .sort((s1, s2) => ESTV_NIVEL[ESTV_CONF[s1.conf].nivel] - ESTV_NIVEL[ESTV_CONF[s2.conf].nivel]
+    .sort((s1, s2) => (ESTV_CONF[s1.conf].nivel === "alta" ? 0 : 1) - (ESTV_CONF[s2.conf].nivel === "alta" ? 0 : 1)
+      || estvRankTravessia(s1) - estvRankTravessia(s2)
+      || ESTV_NIVEL[ESTV_CONF[s1.conf].nivel] - ESTV_NIVEL[ESTV_CONF[s2.conf].nivel]
       || (comExec.has(s1.p.id) ? 1 : 0) - (comExec.has(s2.p.id) ? 1 : 0)
-      || String(s1.p.numero).localeCompare(String(s2.p.numero), "pt-BR", { numeric: true }))
-    .slice(0, 6);
+      || String(s1.p.numero).localeCompare(String(s2.p.numero), "pt-BR", { numeric: true })
+      || estvLocalTxt(s1.p).localeCompare(estvLocalTxt(s2.p), "pt-BR", { numeric: true }))
+    .slice(0, 8);
 }
-// melhor sugestão quando é de alta confiança e a única de alta (é o que o lote "✨" vincula sem perguntar estaca a estaca)
+// melhor sugestão quando é de alta confiança e a única de alta (é o que o lote "✨" vincula sem perguntar estaca a estaca).
+// lote S48 (#80): nome repetido em outro local/bloco (E07 da TRAVESSIA 01 e da 07) nunca é pré-selecionado.
 function estvSugestaoAltaUnica(x, comExec){
   const sugs = estvSugestoes(x, comExec);
   const top = sugs[0];
-  return top && ESTV_CONF[top.conf].nivel === "alta" && !sugs.some((s, i) => i > 0 && ESTV_CONF[s.conf].nivel === "alta") ? top.p : null;
+  if(!top || ESTV_CONF[top.conf].nivel !== "alta" || sugs.some((s, i) => i > 0 && ESTV_CONF[s.conf].nivel === "alta")) return null;
+  return estvEmpate(top.p) ? null : top.p;
 }
 
 async function estvCarregar(obraId){
   const cont = $("estv-conteudo");
   if(!cont) return;
   if(!obraId){ cont.innerHTML = `<p class="vazio">Salve a obra primeiro.</p>`; return; }
+  if(obraId !== _estvObra) _estvFiltroLocal = "";   // lote S48 (#80): o filtro de local vale para a obra aberta
   _estvObra = obraId;
   cont.innerHTML = `<p class="vazio">Carregando...</p>`;
   const [execsRes, estsRes, medRes, eqRes] = await Promise.all([
@@ -3320,6 +3359,9 @@ function estvRender(){
   const semExec = _estvEstacas.filter(p => !comExec.has(p.id));
   const lista = _estvFiltro === "orfas" ? orfas : _estvFiltro === "revisar" ? revisar : execs;
   const altas = orfas.filter(x => estvSugestaoAltaUnica(x, comExec)).length;
+  // lote S48 (#80): locais/blocos do projeto para o filtro das sugestões
+  const locais = [...new Set(_estvEstacas.map(estvLocalTxt).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  if(_estvFiltroLocal && !locais.includes(_estvFiltroLocal)) _estvFiltroLocal = "";
 
   const ind = `<div class="indicadores" style="margin-bottom:12px;">
     <div class="ind"><div class="num">${_estvEstacas.length}</div><div class="rot">Estacas do projeto</div></div>
@@ -3336,7 +3378,9 @@ function estvRender(){
       <button type="button" class="serv-view-btn${_estvFiltro === "revisar" ? " ativo" : ""}" data-estv-filtro="revisar" title="Vinculadas a um nome diferente do campo antes da fase 94, sem correção registrada">A revisar (${revisar.length})</button>
       <button type="button" class="serv-view-btn${_estvFiltro === "todas" ? " ativo" : ""}" data-estv-filtro="todas">Todas (${execs.length})</button>
     </div>
-    ${!ro && altas ? `<button type="button" class="btn-sec btn-sm" id="btn-estv-lote-alta" title="Vincula de uma vez as órfãs cuja melhor sugestão é de alta confiança (igual, só prefixo, só vírgula ou só zeros) e única">✨ Vincular ${altas} sugestão(ões) de alta confiança</button>` : ""}
+    ${locais.length > 1 ? `<select id="estv-f-local" title="Mostra nas sugestões só as estacas do projeto deste local/bloco (travessia, bloco, setor)">
+      <option value="">Local / bloco: todos</option>${locais.map(l => `<option value="${esc(l)}"${l === _estvFiltroLocal ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>` : ""}
+    ${!ro && altas ? `<button type="button" class="btn-sec btn-sm" id="btn-estv-lote-alta" title="Vincula de uma vez as órfãs cuja melhor sugestão é de alta confiança (igual, só prefixo, só vírgula ou só zeros), única e sem o mesmo nome em outro local/bloco">✨ Vincular ${altas} sugestão(ões) de alta confiança</button>` : ""}
   </div>
   ${!ro && orfas.length ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:var(--txt-sm);">
     <span style="color:var(--txt-sec);">Corrigir prefixo em lote:</span>
@@ -3352,6 +3396,7 @@ function estvRender(){
     return;
   }
   const preSel = {};
+  const empates = new Set();   // lote S48 (#80): execuções cuja melhor sugestão tem o mesmo nome em outro local
   const linhas = lista.map(x => {
     const p = estvEstacaDe(x);
     const medida = p && _estvMedidas.has(p.id);
@@ -3371,23 +3416,28 @@ function estvRender(){
       const top = sugs[0];
       const alta = estvSugestaoAltaUnica(x, comExec);
       if(alta) preSel[x.id] = alta.id;
-      const opts = sugs.map(s => `<option value="${esc(s.p.id)}">${esc(s.p.numero)} — ${esc(ESTV_CONF[s.conf].lbl)}${comExec.has(s.p.id) ? " ⚠ já tem execução" : ""}${_estvMedidas.has(s.p.id) ? " · medida" : ""}</option>`).join("");
+      // lote S48 (#80): "E07 — TRAVESSIA 01"; mesmo nome em outro local/bloco fica sem pré-seleção e marcado em amarelo
+      const rotulo = (p) => `${p.numero}${estvLocalTxt(p) ? " — " + estvLocalTxt(p) : ""}`;
+      if(top && estvEmpate(top.p) && sugs.some((s, i) => i > 0 && estNormalizarNome(s.p.numero) === estNormalizarNome(top.p.numero))) empates.add(x.id);
+      const opts = sugs.map(s => `<option value="${esc(s.p.id)}">${esc(rotulo(s.p))} · ${esc(ESTV_CONF[s.conf].lbl)}${s.mesma ? " · ★ mesma travessia" : ""}${comExec.has(s.p.id) ? " ⚠ já tem execução" : ""}${_estvMedidas.has(s.p.id) ? " · medida" : ""}</option>`).join("");
+      const seloTrav = top && top.mesma ? ` <span class="rec-badge rec-badge-alta" title="O local/bloco da estaca do projeto tem o mesmo número do nome do campo (T1.07 → travessia 1)">mesma travessia</span>` : "";
+      const seloEmpate = empates.has(x.id) ? ` <span class="rec-badge rec-badge-media" title="Há estaca com o mesmo nome em outro local/bloco: confira a travessia antes de vincular">mesmo nome em outro local</span>` : "";
       colVinculo = ro
-        ? (top ? `<span class="meta">sugestão: ${esc(top.p.numero)} (${esc(ESTV_CONF[top.conf].lbl)})</span>` : `<span class="meta">sem sugestão</span>`)
-        : `<div style="display:flex;gap:6px;align-items:center;">
+        ? (top ? `<span class="meta">sugestão: ${esc(rotulo(top.p))} (${esc(ESTV_CONF[top.conf].lbl)})</span>${seloTrav}${seloEmpate}` : `<span class="meta">sem sugestão</span>`)
+        : `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
           <select class="estv-sel" data-exec="${esc(x.id)}" style="flex:1;min-width:0;">
             <option value="">— escolher —</option>
             ${opts ? `<optgroup label="Sugestões">${opts}</optgroup>` : ""}
             <option value="__outra">outra estaca do projeto…</option>
           </select>
-          ${top ? `<span class="rec-badge rec-badge-${ESTV_CONF[top.conf].nivel}" title="Confiança da melhor sugestão">${esc(ESTV_CONF[top.conf].lbl)}</span>` : `<span class="rec-badge rec-badge-zero">sem par</span>`}
+          ${top ? `<span class="rec-badge rec-badge-${ESTV_CONF[top.conf].nivel}" title="Confiança da melhor sugestão">${esc(ESTV_CONF[top.conf].lbl)}</span>` : `<span class="rec-badge rec-badge-zero">sem par</span>`}${seloTrav}${seloEmpate}
         </div>`;
     }
     const acoes = ro ? "" : (p
       ? `<button type="button" class="btn-sec btn-sm estv-desv" data-exec="${esc(x.id)}" title="Tira o vínculo com ${esc(p.numero)} (fica registrado)">⨯ Desvincular</button>`
       : `<button type="button" class="btn btn-sm estv-vinc" data-exec="${esc(x.id)}" style="background:var(--sucesso);" title="Vincula à estaca escolhida">✓ Vincular</button>
          <button type="button" class="btn-sec btn-sm estv-nova" data-exec="${esc(x.id)}" title="Cria '${esc(x.estaca_numero)}' no cadastro da obra como estaca nova do campo (projeto a confirmar) e vincula">+ Nova do campo</button>`);
-    return `<tr data-exec="${esc(x.id)}">
+    return `<tr data-exec="${esc(x.id)}"${empates.has(x.id) ? ' style="background:var(--aviso-bg);"' : ""}>
       <td><strong>${esc(x.estaca_numero)}</strong>${x.modalidade_execucao === "refuro" ? ' <span class="tag cinza">refuro</span>' : ""}</td>
       <td>${dataBR(x.rdo.data)}</td>
       <td>${esc(estvMaquina(x))}</td>
@@ -3426,6 +3476,7 @@ function estvLigar(cont){
   cont.querySelectorAll(".estv-nova").forEach(b => b.addEventListener("click", () => estvNovaDoCampo(b.dataset.exec)));
   $("btn-estv-lote-alta")?.addEventListener("click", estvVincularSugestoesAltas);
   $("btn-estv-prefixo")?.addEventListener("click", estvTrocarPrefixo);
+  $("estv-f-local")?.addEventListener("change", e => { _estvFiltroLocal = e.target.value; estvRender(); });   // lote S48 (#80)
 }
 async function estvDepois(){
   await estvCarregar(_estvObra);

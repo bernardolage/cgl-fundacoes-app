@@ -60,8 +60,9 @@ const CMP_CAT_LBL = { peca: "Peça", pneu: "Pneu", combustivel: "Combustível", 
 const CMP_ORIGEM_LBL = { compra: "Compra direta", estoque: "Saída de estoque", deslocamento: "Deslocamento", manutencao: "Manutenção", reparo: "Reparo caldeiraria", avulso: "Avulso", contrato: "Contrato", combustivel: "Combustível (RDO)", pedido_externo: "Pedido Odoo" };
 const CMP_CENTRO_TIPO = { setor: "Setor", obra_interna: "Obra interna" };
 
+/* = compras_pode_operar() no banco; lote S48 (#123): + gestor_manutencao (o Bruno; a fase 92c já o pôs no banco) */
 function cmpPodeOperar(){
-  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","gestor_acessorios","engenheiro","logistica","financeiro","mecanico","gestor_frota"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","gestor_acessorios","engenheiro","logistica","financeiro","mecanico","gestor_frota","gestor_manutencao"].includes(usuarioAtual.cargo);
 }
 function cmpForn(id){ const f = _cmpFornMap[id]; return f ? f.razao_social : ""; }
 function cmpObra(id){ const o = _cmpObraMap[id]; return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
@@ -124,6 +125,97 @@ async function cmpAbrirAnexo(caminho, nome){
   const { data, error } = await sb.storage.from("compras-evidencias").createSignedUrl(caminho, 120, { download: nome || true });
   if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o anexo" + (error ? ": " + error.message : "."), "erro"); return; }
   window.open(data.signedUrl, "_blank");
+}
+
+/* ---------- anexos do pedido (lote S48, chamado #117) ----------
+   Tabela pedido_compra_anexos + bucket compras-evidencias (pedidos/<pedido>/<arquivo>). Escrita = cmpPodeOperar();
+   boleto, NF e fatura só para quem lê contas a pagar (pode_ler_contas_pagar() no banco: admin, financeiro, comprador,
+   auditor e diretor), que também são os únicos que enviam esses tipos. A linha entra antes do arquivo: o arquivo do
+   pedido só abre para quem enxerga a linha (policy do storage), então upload sem linha viraria arquivo órfão. */
+const CMP_ANX_TIPO = { boleto: ["Boleto", "ambar"], nf: ["Nota fiscal", "azul"], fatura: ["Fatura", "ambar"], orcamento: ["Orçamento", "verde"], outro: ["Outro", "cinza"] };
+const CMP_ANX_FINANCEIRO = ["boleto", "nf", "fatura"];
+let _cmpAnexos = [];
+function cmpPodeAnexoFinanceiro(){ return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "auditor"].includes(usuarioAtual.cargo); }
+function cmpAnxPodeExcluir(a){ return !!usuarioAtual && (["diretor", "admin"].includes(usuarioAtual.cargo) || (a.enviado_por === usuarioAtual.id && cmpPodeOperar())); }
+function cmpAnxPreparar(novo){
+  const pode = cmpPodeOperar() && !novo && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+  $("cmp-anx-envio").style.display = pode ? "" : "none";
+  const fin = cmpPodeAnexoFinanceiro();
+  $("cmp-anx-tipo").innerHTML = Object.entries(CMP_ANX_TIPO).filter(([k]) => fin || !CMP_ANX_FINANCEIRO.includes(k))
+    .map(([k, v]) => `<option value="${k}"${k === (fin ? "boleto" : "orcamento") ? " selected" : ""}>${esc(v[0])}</option>`).join("");
+  $("cmp-anx-regra").textContent = fin ? "Boleto, nota fiscal e fatura ficam visíveis só para quem acessa Contas a pagar; orçamento e outro, para quem acessa Compras."
+    : "Seu perfil anexa orçamento e outros documentos. Boleto, nota fiscal e fatura são do comprador e do financeiro.";
+  $("cmp-anx-arquivo").value = "";
+  _cmpAnexos = [];
+  $("cmp-anx-lista").innerHTML = `<p class="vazio">${novo ? "Salve o pedido para anexar documentos." : "Carregando…"}</p>`;
+}
+async function cmpCarregarAnexosPedido(id){
+  const { data, error } = await sb.from("pedido_compra_anexos").select("id,tipo,nome,storage_path,mime_type,tamanho,enviado_por,created_at,enviado:profiles(nome)").eq("pedido_id", id).order("created_at", { ascending: false });
+  if(_cmpEditId !== id) return;
+  const b = $("sb-cmp-anexos");
+  if(error){
+    // antes da migration 20261022_loteS48_b a tabela não existe: a aba avisa e o resto da ficha segue normal
+    console.warn("pedido_compra_anexos:", error.message);
+    _cmpAnexos = [];
+    if(b){ b.querySelector(".sb-num").textContent = 0; b.classList.add("zero"); }
+    $("cmp-anx-envio").style.display = "none";
+    $("cmp-anx-lista").innerHTML = `<p class="vazio">Anexos do pedido ainda não disponíveis.</p>`;
+    return;
+  }
+  _cmpAnexos = data || [];
+  if(b){ b.querySelector(".sb-num").textContent = _cmpAnexos.length; b.classList.toggle("zero", !_cmpAnexos.length); }
+  cmpRenderAnexosPedido();
+}
+function cmpRenderAnexosPedido(){
+  const cont = $("cmp-anx-lista"); if(!cont) return;
+  if(!_cmpAnexos.length){ cont.innerHTML = `<p class="vazio">Nenhum anexo${cmpPodeAnexoFinanceiro() ? "" : " visível para o seu perfil"}.</p>`; return; }
+  cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Tipo</th><th>Arquivo</th><th>Tamanho</th><th>Enviado por</th><th>Em</th><th class="col-acao"></th></tr></thead><tbody>${
+    _cmpAnexos.map(a => { const t = CMP_ANX_TIPO[a.tipo] || [a.tipo, "cinza"]; return `<tr data-id="${esc(a.id)}">
+      <td><span class="tag ${t[1]}">${esc(t[0])}</span></td>
+      <td>${(a.mime_type || "").startsWith("image/") ? "🖼️" : "📄"} ${esc(a.nome)}</td>
+      <td class="meta">${a.tamanho ? Math.max(1, Math.round(Number(a.tamanho) / 1024)) + " KB" : "—"}</td>
+      <td class="meta">${esc(a.enviado?.nome || "—")}</td>
+      <td class="meta">${dataBR(String(a.created_at || "").slice(0, 10))}</td>
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm cmp-anx-baixar" title="Baixar">⬇️</button>${cmpAnxPodeExcluir(a) ? ` <button type="button" class="btn-sec btn-sm txt-perigo cmp-anx-excluir" title="Excluir">🗑️</button>` : ""}</td></tr>`; }).join("")
+  }</tbody></table></div>`;
+  cont.querySelectorAll(".cmp-anx-baixar").forEach(b => b.addEventListener("click", () => { const a = _cmpAnexos.find(x => x.id === b.closest("tr").dataset.id); if(a) cmpAbrirAnexo(a.storage_path, a.nome); }));
+  cont.querySelectorAll(".cmp-anx-excluir").forEach(b => b.addEventListener("click", () => cmpExcluirAnexoPedido(b.closest("tr").dataset.id)));
+}
+async function cmpEnviarAnexosPedido(){
+  const pedidoId = _cmpEditId; if(!pedidoId || !cmpPodeOperar()) return;
+  const files = [...($("cmp-anx-arquivo").files || [])];
+  if(!files.length){ aviso("app-aviso", "Escolha o arquivo.", "erro"); return; }
+  const tipo = $("cmp-anx-tipo").value || "outro";
+  if(CMP_ANX_FINANCEIRO.includes(tipo) && !cmpPodeAnexoFinanceiro()){ aviso("app-aviso", "Boleto, nota fiscal e fatura são anexados pelo comprador ou pelo financeiro.", "erro"); return; }
+  let n = 0;
+  for(const [i, f] of files.entries()){
+    const ext = (f.name.split(".").pop() || "").toLowerCase(), mime = CMP_ANEXO_MIME[ext];
+    if(!mime){ aviso("app-aviso", `"${f.name}": tipo não aceito. Use PDF, foto (JPG, PNG, WEBP, HEIC), XML, Word ou Excel.`, "erro"); break; }
+    if(f.size > 20 * 1024 * 1024){ aviso("app-aviso", `"${f.name}" passa de 20 MB.`, "erro"); break; }
+    const nome = f.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.\-]+/g, "_").slice(-80);
+    const caminho = `pedidos/${pedidoId}/${Date.now()}_${i}_${nome}`;
+    const { data: lin, error: eIns } = await sb.from("pedido_compra_anexos")
+      .insert({ pedido_id: pedidoId, tipo, nome: f.name, storage_path: caminho, mime_type: mime, tamanho: f.size, enviado_por: usuarioAtual.id }).select("id").single();
+    if(eIns){ aviso("app-aviso", `Não foi possível anexar "${f.name}": ${eIns.message}`, "erro"); break; }
+    // supabase-js ignora contentType quando o corpo é File: reembala com o MIME da extensão
+    const corpo = f.type === mime ? f : new Blob([f], { type: mime });
+    const { error: eUp } = await sb.storage.from("compras-evidencias").upload(caminho, corpo, { cacheControl: "3600", contentType: mime, upsert: false });
+    if(eUp){ await sb.from("pedido_compra_anexos").delete().eq("id", lin.id); aviso("app-aviso", `Falha ao enviar "${f.name}": ${eUp.message}`, "erro"); break; }
+    n++;
+  }
+  if(n){ aviso("app-aviso", `${n} anexo(s) enviado(s).`, "ok"); $("cmp-anx-arquivo").value = ""; }
+  await cmpCarregarAnexosPedido(pedidoId);
+}
+async function cmpExcluirAnexoPedido(id){
+  const a = _cmpAnexos.find(x => x.id === id); if(!a || !cmpAnxPodeExcluir(a)) return;
+  if(!confirm(`Excluir o anexo "${a.nome}"?`)) return;
+  // arquivo antes da linha: depois de apagar a linha o arquivo do pedido deixa de ser visível (e não sairia do bucket)
+  const { error: eSt } = await sb.storage.from("compras-evidencias").remove([a.storage_path]);
+  if(eSt){ aviso("app-aviso", "Não foi possível excluir o arquivo: " + eSt.message, "erro"); return; }
+  const { error } = await sb.from("pedido_compra_anexos").delete().eq("id", id);
+  if(error){ aviso("app-aviso", "Arquivo removido, mas o registro não: " + error.message, "erro"); }
+  else aviso("app-aviso", "Anexo excluído.", "ok");
+  await cmpCarregarAnexosPedido(_cmpEditId);
 }
 
 /* ---------- carga ---------- */
@@ -478,10 +570,11 @@ function abrirFichaPedido(p){
   cmpAtualizarBotoes();
   renderItensPedido();
   const setSb = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); } };
-  setSb("sb-cmp-itens", _cmpItens.length); setSb("sb-cmp-rec", 0); setSb("sb-cmp-tit", 0);
+  setSb("sb-cmp-itens", _cmpItens.length); setSb("sb-cmp-rec", 0); setSb("sb-cmp-tit", 0); setSb("sb-cmp-anexos", 0);
   $("cmp-rec-lista").innerHTML = `<p class="vazio">${novo ? "Salve o pedido para receber." : "Carregando…"}</p>`;
   $("cmp-tit-lista").innerHTML = `<p class="vazio">—</p>`;
-  if(!novo) cmpCarregarFilhas(p.id);
+  cmpAnxPreparar(novo);   // lote S48 (#117)
+  if(!novo){ cmpCarregarFilhas(p.id); cmpCarregarAnexosPedido(p.id); }
   if(!novo && typeof montarHistorico === "function") montarHistorico("pedidos_compra", p.id, "cmp-chatter");
   else if(typeof ocultarHistorico === "function") ocultarHistorico("cmp-chatter");
   ativarTabPedido(novo ? "cabecalho" : (_cmpItens.length ? "itens" : "cabecalho"));
@@ -1311,6 +1404,7 @@ function ligarCompras(){
   document.querySelectorAll("#cmp-ficha .cmp-acao").forEach(b => b.addEventListener("click", () => comBotaoTravado(b.id, () => cmpAcao(b.dataset.acao))));
   document.querySelectorAll("#cmp-notebook button").forEach(b => b.addEventListener("click", () => ativarTabPedido(b.dataset.tab)));
   document.querySelectorAll("#cmp-ficha .sb-btn[data-goto-tab]").forEach(b => b.addEventListener("click", () => ativarTabPedido(b.dataset.gotoTab)));
+  $("btn-cmp-anx-enviar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-anx-enviar", cmpEnviarAnexosPedido));   // lote S48 (#117)
   ["cmp-forn","cmp-local","cmp-obra","cmp-equip","cmp-prev"].forEach(id => $(id)?.addEventListener("change", cmpAtualizarChips));
   ["cmp-frete","cmp-desc"].forEach(id => $(id)?.addEventListener("input", cmpAtualizarChips));
   $("cmp-forn")?.addEventListener("change", () => { const f = _cmpFornMap[$("cmp-forn").value]; if(f?.condicao_pagamento_padrao && !$("cmp-cond").value) $("cmp-cond").value = f.condicao_pagamento_padrao;

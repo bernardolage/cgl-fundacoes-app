@@ -276,6 +276,16 @@ function acePreencherFiltros(){
   const pares = diams.map(d => [String(d), `Ø ${d}`]);
   if(base.some(a => !(Number(a.diametro_mm) > 0))) pares.push(["sem", "sem Ø"]);
   setOpts("ace-f-medida", "Ø externo", pares);
+  // lote S48 (#126): filtro pelo detalhe (Mola, Unha, Bits…). Texto livre: "MOLA" e "Mola" viram a mesma opção (chave sem
+  // acento, minúscula, sem espaço duplo); o rótulo é a grafia mais usada, com a inicial maiúscula.
+  const detCont = new Map();
+  base.forEach(a => { const k = aceDetalheChave(a.detalhe); if(!k) return;
+    const g = detCont.get(k) || new Map(); const t = aceDetalheTexto(a.detalhe); g.set(t, (g.get(t) || 0) + 1); detCont.set(k, g); });
+  const detPares = [...detCont.entries()].map(([k, g]) => { const t = [...g.entries()].sort((x, y) => y[1] - x[1])[0][0]; return [k, t.charAt(0).toUpperCase() + t.slice(1)]; })
+    .sort((x, y) => x[1].localeCompare(y[1], "pt-BR", { numeric: true }));
+  if(detPares.length && base.some(a => !aceDetalheChave(a.detalhe))) detPares.push(["sem", "sem detalhe"]);
+  setOpts("ace-f-detalhe", "Detalhe", detPares);
+  const fd = $("ace-f-detalhe"); if(fd) fd.style.display = detPares.length ? "" : "none";
   const acopls = [...new Set(base.map(a => a.acoplamento).filter(Boolean))];
   setOpts("ace-f-acopl", "Acoplamento", acopls.map(a => [a, ACE_ACOPL_LBL[a] || a]));
   const fa = $("ace-f-acopl"); if(fa) fa.style.display = acopls.length ? "" : "none";
@@ -288,15 +298,21 @@ function acePreencherFiltros(){
   const fj = $("ace-f-jogo"); if(fj) fj.style.display = jogos.length ? "" : "none";
 }
 
+/* lote S48 (#126): detalhe é texto livre; a chave junta grafias ("MOLA", "Mola", " mola ") e o texto tira espaço duplo */
+function aceDetalheTexto(s){ return String(s || "").replace(/\s+/g, " ").trim(); }
+function aceDetalheChave(s){ return aceDetalheTexto(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+
 function aceFiltradas(){
   const termo = ($("ace-busca")?.value || "").trim().toLowerCase();
   const fT = $("ace-f-tipo")?.value || "", fM = $("ace-f-medida")?.value || "", fA = $("ace-f-acopl")?.value || "";
+  const fD = $("ace-f-detalhe")?.value || "";
   const fC = $("ace-f-condicao")?.value || "", fL = $("ace-f-local")?.value || "", fE = $("ace-f-equip")?.value || "";
   const fO = $("ace-f-obra")?.value || "", fJ = $("ace-f-jogo")?.value || "";
   return aceDaFamilia().filter(a => {
     if(a.ativo === false && fC !== "baixado") return false;
     if(fT && a.tipo !== fT) return false;
     if(fM === "sem" ? Number(a.diametro_mm) > 0 : (fM && String(Number(a.diametro_mm)) !== fM)) return false;   // lote S46 (#87): Ø externo
+    if(fD && (fD === "sem" ? !!aceDetalheChave(a.detalhe) : aceDetalheChave(a.detalhe) !== fD)) return false;   // lote S48 (#126)
     if(fA && a.acoplamento !== fA) return false;
     if(fC && a.condicao !== fC) return false;
     if(fL && a.local_tipo !== fL) return false;
@@ -1119,7 +1135,7 @@ function ligarAcessorios(){
     acePreencherFiltros(); renderAcessorios();
   }));
   document.querySelectorAll("#ace-painel .ind[data-kpi]").forEach(el => el.addEventListener("click", () => { _aceKpi = (_aceKpi === el.dataset.kpi) ? "" : el.dataset.kpi; if(_aceView === "contagem") _aceView = "kanban"; renderAcessorios(); }));
-  ["ace-f-tipo","ace-f-medida","ace-f-acopl","ace-f-condicao","ace-f-local","ace-f-equip","ace-f-obra","ace-f-jogo"].forEach(id => $(id)?.addEventListener("change", () => { _aceFoco = null; renderAcessorios(); }));
+  ["ace-f-tipo","ace-f-medida","ace-f-detalhe","ace-f-acopl","ace-f-condicao","ace-f-local","ace-f-equip","ace-f-obra","ace-f-jogo"].forEach(id => $(id)?.addEventListener("change", () => { _aceFoco = null; renderAcessorios(); }));
   $("ace-busca")?.addEventListener("input", debounce(() => { _aceFoco = null; renderAcessorios(); }));
   $("btn-ace-atualizar")?.addEventListener("click", () => carregarAcessorios(true));
   $("btn-ace-nova")?.addEventListener("click", novoAcessorio);

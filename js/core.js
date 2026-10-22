@@ -385,10 +385,11 @@ async function comBotaoTravado(btnOuId, fn){
 /* Leitura por IA (edge function) com limite de tempo no cliente (lote S39, chamados #28 #20 #21).
    A function morre por tempo sem devolver nada em PDF grande; sem o limite o modal ficava parado. */
 const IA_LIMITE_MS = 150000;
-function iaInvocarComLimite(nome, body, msgTempo){
+/* lote S48 (#128): limiteMs opcional — a leitura de RDO (extrair-rdo-arquivo v3.6, até 32.000 tokens de saída) espera mais */
+function iaInvocarComLimite(nome, body, msgTempo, limiteMs){
   let t = null;
   const tempo = new Promise((_, rej) => {
-    t = setTimeout(() => rej(new Error(msgTempo || "A leitura demorou demais. Exporte só as páginas do quadro de estacas e tente de novo.")), IA_LIMITE_MS);
+    t = setTimeout(() => rej(new Error(msgTempo || "A leitura demorou demais. Exporte só as páginas do quadro de estacas e tente de novo.")), limiteMs || IA_LIMITE_MS);
   });
   return Promise.race([sb.functions.invoke(nome, { body }), tempo]).finally(() => clearTimeout(t));
 }

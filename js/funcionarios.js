@@ -273,6 +273,7 @@ async function carregarFuncionarios(){
     _supervisores.length ? Promise.resolve() : funcCarregarSupervisores(),
   ]);
   _funcs = error ? [] : (data || []);
+  funcPreencherDatalistFuncoes();   // lote S48 (#115): o campo Função da ficha sugere as funções existentes
   await funcAssinarFotos(_funcs);
   renderFuncionarios();
 }
@@ -644,6 +645,21 @@ function ativarTabFunc(nome){
 function funcNormalizarNome(s){
   return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().toUpperCase();
 }
+/* lote S48 (#115): fun\u00e7\u00e3o padronizada ao salvar \u2014 sem acento, espa\u00e7os simples, iniciais mai\u00fasculas, conectores
+   (de, da, do, das, dos, e, em) min\u00fasculos, numeral romano e sigla curta em mai\u00fasculas ("Operador de Maquinas Junior",
+   "Ajudante de Equipamentos II", "PJ"). Mesma regra da carga 20261022_loteS48_b (docs/cargas/funcoes-padronizadas-2026-10.md). */
+const FUNC_CONECTORES = new Set(["de", "da", "do", "das", "dos", "e", "em"]);
+function funcPadronizarFuncao(s){
+  const t = String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+  if(!t) return "";
+  return t.split(" ").map((w, i) => {
+    const lw = w.toLowerCase();
+    if(i > 0 && FUNC_CONECTORES.has(lw)) return lw;
+    if(/^(i|ii|iii|iv|v|vi|vii|viii|ix|x)$/i.test(w)) return w.toUpperCase();
+    if(w.length <= 3 && w === w.toUpperCase() && /[A-Z]/.test(w)) return w;
+    return lw.charAt(0).toUpperCase() + lw.slice(1);
+  }).join(" ");
+}
 async function funcBloqueiaHomonimo(nome){
   const n = funcNormalizarNome(nome);
   if(!n) return null;
@@ -674,7 +690,7 @@ async function salvarFuncionario(novoStatus){
   const reg = {
     nome:            $("func-nome").value.trim(),
     matricula:       $("func-matricula").value.trim()||null,
-    funcao:          $("func-funcao").value.trim(),
+    funcao:          funcPadronizarFuncao($("func-funcao").value),   // lote S48 (#115)
     status:          novoStatus||$("func-status").value||"ativo",
     data_admissao:   $("func-admissao").value||null,
     data_demissao:   $("func-demissao").value||null,
@@ -965,9 +981,11 @@ async function funcCarregarPlano(){
 /* sugest\u00f5es de fun\u00e7\u00e3o: as do plano de cargos + as j\u00e1 usadas no cadastro */
 function funcPreencherDatalistFuncoes(){
   const dl = $("func-funcoes-datalist"); if(!dl) return;
+  // lote S48 (#115): só a grafia padronizada entra na lista, para não nascer variante nova
   const nomes = new Set();
-  (_funcPlano || []).forEach(p => { nomes.add(p.funcao_origem); nomes.add(p.funcao_destino); });
-  _funcs.forEach(f => { if(f.funcao) nomes.add(f.funcao); });
+  const add = (n) => { const p = funcPadronizarFuncao(n); if(p) nomes.add(p); };
+  (_funcPlano || []).forEach(p => { add(p.funcao_origem); add(p.funcao_destino); });
+  _funcs.forEach(f => add(f.funcao));
   dl.innerHTML = [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR")).map(n => `<option value="${esc(n)}"></option>`).join("");
 }
 function funcPromoTag(p){
@@ -1011,7 +1029,7 @@ async function funcCarregarFuncoes(id){
 }
 async function funcSalvarFuncao(){
   if(!funcEditId) return;
-  const funcao = $("func-ff-funcao").value.trim(), data = $("func-ff-data").value;
+  const funcao = funcPadronizarFuncao($("func-ff-funcao").value), data = $("func-ff-data").value;   // lote S48 (#115)
   if(!funcao || !data){ aviso("func-funcoes-aviso", "Informe a fun\u00e7\u00e3o e a data.", "erro"); return; }
   const reg = { funcionario_id: funcEditId, funcao, data_inicio: data, motivo: $("func-ff-motivo").value, observacoes: $("func-ff-obs").value.trim() || null };
   const { error } = await sb.from("funcionario_funcoes").insert(reg);
@@ -1183,7 +1201,7 @@ async function funcAdmConcluir(){
     if(c === cpf){ aviso("adm-aviso", `${f.nome} j\u00e1 est\u00e1 cadastrado com este CPF. Abra o cadastro dele em vez de admitir de novo.`, "erro"); return; }
   }
   const funcionario = {
-    nome, matricula: v("adm-matricula"), funcao: v("adm-funcao"), status: "ativo", ativo: true, data_admissao: v("adm-data"),
+    nome, matricula: v("adm-matricula"), funcao: funcPadronizarFuncao(v("adm-funcao")) || null, status: "ativo", ativo: true, data_admissao: v("adm-data"),
     email: v("adm-email"), telefone: v("adm-telefone"), tipo_contrato: v("adm-tipo-contrato") || "clt", departamento_id: v("adm-departamento"),
     cnh_categoria: v("adm-cnh-categoria"), cnh_validade: v("adm-cnh-validade"), categoria_operacional: v("adm-categoria"),
     especialidade: v("adm-especialidade"), observacoes: v("adm-obs")
@@ -1207,7 +1225,7 @@ async function funcAdmConcluir(){
     await carregarFuncionarios(); await abrirFuncionario(id); return;
   }
   const adm = {
-    funcionario_id: id, data_admissao: v("adm-data"), funcao: v("adm-funcao"), cbo: v("adm-cbo"), salario: n("adm-salario"),
+    funcionario_id: id, data_admissao: v("adm-data"), funcao: funcPadronizarFuncao(v("adm-funcao")) || null, cbo: v("adm-cbo"), salario: n("adm-salario"),
     prazo_experiencia_dias: n("adm-prazo") ?? 45, prorrogacao_dias: n("adm-prorrogacao") ?? 45, vencimento_1: v("adm-venc1"), vencimento_2: v("adm-venc2"),
     periculosidade: v("adm-periculosidade"), insalubridade: v("adm-insalubridade"), vale_transporte_cartao: v("adm-vt-cartao"), vale_transporte_opta: b("adm-vt-opta"),
     unimed_cartao: v("adm-unimed-cartao"), auxilio_saude: v("adm-auxilio-saude"), obra_equipamento_inicial: v("adm-obra-equip"),

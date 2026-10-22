@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="5afc53a" />
+<meta name="app-versao" content="56d590b" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=5afc53a" />
+<link rel="stylesheet" href="css/estilo.css?v=56d590b" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -797,7 +797,7 @@
             <div class="odoo-tab" data-tab="profissional">
               <div class="grade">
                 <div class="campo"><label>Matrícula</label><input id="func-matricula" placeholder="ex.: 0001" /></div>
-                <div class="campo"><label>Função *</label><input id="func-funcao" required placeholder="ex.: Operador de perfuratriz" /></div>
+                <div class="campo"><label>Função *</label><input id="func-funcao" required list="func-funcoes-datalist" autocomplete="off" placeholder="ex.: Operador de Maquinas Pleno" title="Escolha uma função da lista; ao salvar ela fica sem acento e com as iniciais maiúsculas" /></div>
                 <div class="campo"><label>Departamento</label><select id="func-departamento"></select></div>
                 <div class="campo"><label>Tipo de contrato</label>
                   <select id="func-tipo-contrato">
@@ -1498,6 +1498,7 @@
             <div class="chip"><span>Pedido por</span><strong id="sep-chip-solic">—</strong></div>
             <div class="chip"><span>Prazo</span><strong id="sep-chip-prazo">—</strong></div>
             <div class="chip" id="sep-chip-retirante-box" style="display:none;"><span>Levou</span><strong id="sep-chip-retirante">—</strong></div>
+            <div class="chip" id="sep-chip-total-box" style="display:none;" title="Soma de quantidade × custo do produto no momento da separação"><span>Valor total</span><strong id="sep-chip-total">—</strong></div>
           </div>
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-sep-itens"><span class="sb-num">0</span><span class="sb-icon">📦</span><span class="sb-lbl">itens</span></button>
@@ -1516,8 +1517,9 @@
               </div>
               <div class="campo"><label>&nbsp;</label><button type="button" class="btn btn-sucesso" id="btn-sep-entregar-ok">Confirmar entrega</button> <button type="button" class="btn-sec" id="btn-sep-entregar-nao">voltar</button></div>
             </div>
-            <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:36px;" title="separado">✔</th><th>Item</th><th style="width:60px;">Un</th><th class="num" style="width:90px;">Pedido</th><th style="width:100px;">Separado</th><th>Baixa</th><th class="col-acao"></th></tr></thead>
+            <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:36px;" title="separado">✔</th><th>Item</th><th style="width:60px;">Un</th><th class="num" style="width:90px;">Pedido</th><th style="width:100px;">Separado</th><th id="sep-th-destino" style="display:none;" title="Para onde vai o custo do item (lote S48): o da separação ou outra obra, TAG ou setor">Destino</th><th id="sep-th-valor" class="num" style="width:110px;display:none;">Valor</th><th>Baixa</th><th class="col-acao"></th></tr></thead>
               <tbody id="sep-itens"></tbody></table></div>
+            <div id="sep-resumo-destino"></div>
             <div class="grade" id="sep-itens-add" style="margin-top:10px;">
               <div class="campo largo"><label>+ Produto do catálogo (Enter adiciona)</label>
                 <input id="sep-prod-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
@@ -1619,6 +1621,7 @@
             <button type="button" class="sb-btn" id="sb-cmp-itens" data-goto-tab="itens"><span class="sb-num">0</span><span class="sb-icon">📦</span><span class="sb-lbl">itens</span></button>
             <button type="button" class="sb-btn" id="sb-cmp-rec" data-goto-tab="recebimentos"><span class="sb-num">0</span><span class="sb-icon">📥</span><span class="sb-lbl">recebimentos</span></button>
             <button type="button" class="sb-btn" id="sb-cmp-tit" data-goto-tab="financeiro"><span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">títulos</span></button>
+            <button type="button" class="sb-btn" id="sb-cmp-anexos" data-goto-tab="anexos"><span class="sb-num">0</span><span class="sb-icon">📎</span><span class="sb-lbl">anexos</span></button>
           </div>
 
           <div class="odoo-notebook" id="cmp-notebook">
@@ -1626,6 +1629,7 @@
             <button type="button" data-tab="itens">Itens</button>
             <button type="button" data-tab="recebimentos">Recebimentos</button>
             <button type="button" data-tab="financeiro">Financeiro</button>
+            <button type="button" data-tab="anexos">Anexos</button>
             <button type="button" data-tab="timeline">Timeline</button>
           </div>
 
@@ -1669,6 +1673,19 @@
 
             <div class="odoo-tab" data-tab="recebimentos"><div id="cmp-rec-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="financeiro"><p class="ajuda-campo">Títulos gerados pelas notas deste pedido, só para consulta. A exportação para o Compor 90 é feita em Contratos &amp; Contas a pagar.</p><div id="cmp-tit-lista"><p class="vazio">—</p></div></div>
+            <!-- lote S48 (#117): boleto, NF, fatura e orçamento do pedido (bucket compras-evidencias, pedidos/<pedido>/…) -->
+            <div class="odoo-tab" data-tab="anexos">
+              <div class="card compacto" id="cmp-anx-envio" style="margin-bottom:14px;">
+                <h4 style="margin:0 0 8px;font-size:var(--txt-md);">📤 Anexar ao pedido</h4>
+                <div class="grade">
+                  <div class="campo"><label>Tipo</label><select id="cmp-anx-tipo"></select></div>
+                  <div class="campo largo"><label>Arquivo(s) — PDF, foto, Word ou Excel, até 20 MB cada</label><input id="cmp-anx-arquivo" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.xml,.doc,.docx,.xls,.xlsx,.txt" /></div>
+                </div>
+                <div class="form-acoes"><button type="button" class="btn" id="btn-cmp-anx-enviar">📤 Enviar</button></div>
+                <p class="meta" id="cmp-anx-regra"></p>
+              </div>
+              <div id="cmp-anx-lista"><p class="vazio">—</p></div>
+            </div>
             <div class="odoo-tab" data-tab="timeline"><div id="cmp-chatter"></div></div>
           </div>
         </div>
@@ -4036,6 +4053,7 @@
             <input id="ace-busca" placeholder="Buscar marcação, jogo, modelo, nº de série…" />
             <select id="ace-f-tipo"><option value="">Todos os tipos</option></select>
             <select id="ace-f-medida" title="Ø externo da peça (a medida continua valendo na busca)"><option value="">Ø externo</option></select>
+            <select id="ace-f-detalhe" title="Detalhe da peça (mola, unha, bits…)"><option value="">Detalhe</option></select>
             <select id="ace-f-acopl"><option value="">Acoplamento</option></select>
             <select id="ace-f-condicao"><option value="">Condição</option></select>
             <select id="ace-f-local"><option value="">Onde está</option></select>
@@ -5699,50 +5717,50 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=5afc53a"></script>
+<script src="js/core.js?v=56d590b"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=5afc53a"></script>
+<script src="js/historico.js?v=56d590b"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=5afc53a"></script>
-<script src="js/fornecedores.js?v=5afc53a"></script>
-<script src="js/apropriacoes.js?v=5afc53a"></script>
-<script src="js/funcionarios.js?v=5afc53a"></script>
-<script src="js/rh_documentos.js?v=5afc53a"></script>
-<script src="js/servicos.js?v=5afc53a"></script>
-<script src="js/produtos.js?v=5afc53a"></script>
-<script src="js/estoque.js?v=5afc53a"></script>
-<script src="js/separacoes.js?v=5afc53a"></script>
-<script src="js/epi.js?v=5afc53a"></script>
-<script src="js/compras.js?v=5afc53a"></script>
-<script src="js/requisicoes.js?v=5afc53a"></script>
-<script src="js/orcamentos.js?v=5afc53a"></script>
-<script src="js/propostas.js?v=5afc53a"></script>
-<script src="js/contratos.js?v=5afc53a"></script>
-<script src="js/contas_pagar.js?v=5afc53a"></script>
-<script src="js/centros_custo.js?v=5afc53a"></script>
-<script src="js/carteira.js?v=5afc53a"></script>
-<script src="js/obras.js?v=5afc53a"></script>
-<script src="js/frota.js?v=5afc53a"></script>
-<script src="js/viagens.js?v=5afc53a"></script>
-<script src="js/equipamentos.js?v=5afc53a"></script>
-<script src="js/vendas_bens.js?v=5afc53a"></script>
-<script src="js/acessorios.js?v=5afc53a"></script>
-<script src="js/reparos.js?v=5afc53a"></script>
-<script src="js/manutencao.js?v=5afc53a"></script>
-<script src="js/fabricacao.js?v=5afc53a"></script>
-<script src="js/mobilizacoes.js?v=5afc53a"></script>
-<script src="js/estacas.js?v=5afc53a"></script>
-<script src="js/obra_abas.js?v=5afc53a"></script>
-<script src="js/medicoes.js?v=5afc53a"></script>
-<script src="js/movimentacoes.js?v=5afc53a"></script>
-<script src="js/rdo.js?v=5afc53a"></script>
-<script src="js/rdo_import_maya.js?v=5afc53a"></script>
-<script src="js/usuarios.js?v=5afc53a"></script>
-<script src="js/chamados.js?v=5afc53a"></script>
-<script src="js/dashboard.js?v=5afc53a"></script>
-<script src="js/rh_horas.js?v=5afc53a"></script>
-<script src="js/patrimonio.js?v=5afc53a"></script>
+<script src="js/clientes.js?v=56d590b"></script>
+<script src="js/fornecedores.js?v=56d590b"></script>
+<script src="js/apropriacoes.js?v=56d590b"></script>
+<script src="js/funcionarios.js?v=56d590b"></script>
+<script src="js/rh_documentos.js?v=56d590b"></script>
+<script src="js/servicos.js?v=56d590b"></script>
+<script src="js/produtos.js?v=56d590b"></script>
+<script src="js/estoque.js?v=56d590b"></script>
+<script src="js/separacoes.js?v=56d590b"></script>
+<script src="js/epi.js?v=56d590b"></script>
+<script src="js/compras.js?v=56d590b"></script>
+<script src="js/requisicoes.js?v=56d590b"></script>
+<script src="js/orcamentos.js?v=56d590b"></script>
+<script src="js/propostas.js?v=56d590b"></script>
+<script src="js/contratos.js?v=56d590b"></script>
+<script src="js/contas_pagar.js?v=56d590b"></script>
+<script src="js/centros_custo.js?v=56d590b"></script>
+<script src="js/carteira.js?v=56d590b"></script>
+<script src="js/obras.js?v=56d590b"></script>
+<script src="js/frota.js?v=56d590b"></script>
+<script src="js/viagens.js?v=56d590b"></script>
+<script src="js/equipamentos.js?v=56d590b"></script>
+<script src="js/vendas_bens.js?v=56d590b"></script>
+<script src="js/acessorios.js?v=56d590b"></script>
+<script src="js/reparos.js?v=56d590b"></script>
+<script src="js/manutencao.js?v=56d590b"></script>
+<script src="js/fabricacao.js?v=56d590b"></script>
+<script src="js/mobilizacoes.js?v=56d590b"></script>
+<script src="js/estacas.js?v=56d590b"></script>
+<script src="js/obra_abas.js?v=56d590b"></script>
+<script src="js/medicoes.js?v=56d590b"></script>
+<script src="js/movimentacoes.js?v=56d590b"></script>
+<script src="js/rdo.js?v=56d590b"></script>
+<script src="js/rdo_import_maya.js?v=56d590b"></script>
+<script src="js/usuarios.js?v=56d590b"></script>
+<script src="js/chamados.js?v=56d590b"></script>
+<script src="js/dashboard.js?v=56d590b"></script>
+<script src="js/rh_horas.js?v=56d590b"></script>
+<script src="js/patrimonio.js?v=56d590b"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=5afc53a"></script>
+<script src="js/init.js?v=56d590b"></script>
 </body>
 </html>

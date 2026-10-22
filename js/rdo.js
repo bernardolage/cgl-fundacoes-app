@@ -2181,8 +2181,10 @@ async function processarArquivoIA(file, mediaType){
       contexto.estacas = (ests || []).map(e => e.numero).filter(Boolean);
     }
 
+    // lote S48 (#128): a v3.6 lê até 32.000 tokens de saída (PDF de muitos dias leva mais de 150 s): espera até 400 s,
+    // o teto de parede das edge functions no plano pago do Supabase
     const { data, error } = await iaInvocarComLimite("extrair-rdo-arquivo", { arquivo_base64: arq.base64, media_type: arq.media_type, contexto },
-      "A leitura demorou demais. Envie só as páginas do diário (ou uma foto por dia) e tente de novo.");
+      "A leitura demorou demais. Envie até ~6 dias do diário por vez (ou uma foto por dia) e tente de novo.", 400000);
     if(error){
       let detalhe = error.message || "";
       try {
@@ -2195,6 +2197,11 @@ async function processarArquivoIA(file, mediaType){
     }
     if(data && data.error) throw new Error(data.error + (data.sugestao ? " 💡 " + data.sugestao : ""));
     await montarPreviewDias(data, _iaOrigem, obraSel);
+    // lote S48 (#128): leitura cortada por tamanho — a prévia fica com os dias completos e o aviso diz até onde chegou
+    if(data && data.parcial){
+      const msgParcial = `⚠️ Leitura parcial: ${data.dias_lidos || 0} dia(s) lido(s); o resto do documento ficou de fora. ${data.sugestao || "Envie o restante separado, até ~6 dias por vez."}`;
+      if($("csv-aviso")) aviso("csv-aviso", msgParcial, "aviso"); else aviso("app-aviso", msgParcial, "aviso");
+    }
   } catch(err){
     const msgErro = "Leitura por IA: " + (err?.message || "falha sem mensagem");
     aviso("app-aviso", msgErro, "erro");

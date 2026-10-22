@@ -18,19 +18,21 @@ let _sepPreset = "";             // filtro vindo da Sala de Comando: "vencidas" 
 let _sepRetirante = null;        // funcionário escolhido na entrega
 let _sepPed = null;              // modal "pedido da obra": { itens: [{ produto, descricao, unidade, quantidade }] }
 let _sepPlantao = null;          // empresa_config.almoxarife_padrao_id
+let _sepCentros = [];            // lote S48 (#107): centros de custo (setor / obra interna) para o destino do item
 
 const SEP_STATUS = { aberta: ["Aberta", "azul"], em_separacao: ["Em separação", "ambar"], separada: ["Separada", "verde"], entregue: ["Entregue", "cinza"], cancelada: ["Cancelada", "cinza"] };
 const SEP_STAGES = ["aberta", "em_separacao", "separada", "entregue"];
 const SEP_ORIGEM = { mobilizacao: "Mobilização", pedido_obra: "Pedido da obra" };
-const SEP_SELECT = "id,numero,origem_tipo,mobilizacao_id,obra_id,equipamento_id,solicitante_id,responsavel_id,prazo,status,retirante_funcionario_id,entregue_em,observacoes,created_at,"
+// lote S48 (#107): "*" traz valor_total quando a migration 20261022_loteS48_b estiver aplicada (sem ela, a tela segue sem valor)
+const SEP_SELECT = "*,"
   + "solicitante:profiles!separacoes_solicitante_id_fkey(nome),responsavel:profiles!separacoes_responsavel_id_fkey(nome),retirante:funcionarios(nome),itens:separacao_itens(id,separado)";
 const SEP_ITEM_SELECT = "*,produto:produtos(codigo,nome,unidade,estoque_atual,controle_reposicao),acessorio:acessorios(marcacao,tipo,local_tipo,local_obra_id)";
 const SEP_PROD_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,codigo_barras";
 
 /* quem separa e entrega = quem opera compras/estoque + auxiliar de almoxarifado (almoxarifado_pode_operar() no banco, fase 90) */
 function sepPodeOperar(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "gestor_acessorios", "engenheiro", "logistica", "financeiro", "mecanico", "gestor_frota", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
-/* quem pede material para a obra (separacoes_pode_pedir() no banco) */
-function sepPodePedir(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "encarregado", "engenheiro", "assistente_engenharia", "mecanico", "operador", "logistica", "gestor_acessorios", "financeiro", "gestor_frota"].includes(usuarioAtual.cargo); }
+/* quem pede material para a obra (separacoes_pode_pedir() no banco); lote S48 (#124): + gestor_manutencao */
+function sepPodePedir(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "encarregado", "engenheiro", "assistente_engenharia", "mecanico", "operador", "logistica", "gestor_acessorios", "financeiro", "gestor_frota", "gestor_manutencao"].includes(usuarioAtual.cargo); }
 function sepTag(st){ const o = SEP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
 function sepObra(id){ const o = _sepObras.find(x => x.id === id); return o ? o.codigo : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
 function sepObraNome(id){ const o = _sepObras.find(x => x.id === id); return o ? o.nome : ""; }
@@ -44,16 +46,78 @@ function sepMinha(s){ return !!usuarioAtual && (s.responsavel_id === usuarioAtua
 function sepPodeEditar(s){ return !!s && (sepPodeOperar() || (!!usuarioAtual && s.solicitante_id === usuarioAtual.id && s.status === "aberta")); }
 function sepSemAcento(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 
+/* ---------- lote S48 (#107): valor total e destino por item ----------
+   separacao_itens.obra_id / equipamento_id / centro_custo_id (um deles; os três nulos = herda obra e TAG da separação) e
+   custo_unitario (custo do produto ao entrar na lista; o da saída ao marcar); separacoes.valor_total por gatilho. A saída
+   de estoque grava o destino do item e vw_custos mostra cada parte no seu destino. Peça de acessório vai sempre para a
+   obra/TAG da separação. Valor só para quem vê contas a pagar ou a diretoria (o auxiliar de almoxarifado não vê). */
+function sepPodeVerValor(){
+  return (typeof podeVerContasPagar === "function" && podeVerContasPagar()) || (typeof ehDiretoria === "function" && ehDiretoria());
+}
+function sepTemDestino(){ return !_sepItens.length || Object.prototype.hasOwnProperty.call(_sepItens[0], "centro_custo_id"); }
+function sepCentro(id){ const c = _sepCentros.find(x => x.id === id); return c ? c.nome : ""; }
+function sepItemTemDestino(i){ return !!(i.obra_id || i.equipamento_id || i.centro_custo_id); }
+function sepDestinoValor(i){ return i.obra_id ? "obra:" + i.obra_id : i.equipamento_id ? "eq:" + i.equipamento_id : i.centro_custo_id ? "cc:" + i.centro_custo_id : ""; }
+function sepDestinoDoValor(v){
+  return { obra_id: v.startsWith("obra:") ? v.slice(5) : null, equipamento_id: v.startsWith("eq:") ? v.slice(3) : null, centro_custo_id: v.startsWith("cc:") ? v.slice(3) : null };
+}
+function sepDestinoSeparacao(s){ return [s.obra_id ? "obra " + (sepObra(s.obra_id) || "?") : "", s.equipamento_id ? "TAG " + (sepEq(s.equipamento_id) || "?") : ""].filter(Boolean).join(" · ") || "—"; }
+function sepDestinoTxt(i, s){
+  if(i.obra_id) return "Obra " + (sepObra(i.obra_id) || "?");
+  if(i.equipamento_id) return "TAG " + (sepEq(i.equipamento_id) || "?");
+  if(i.centro_custo_id) return "Setor: " + (sepCentro(i.centro_custo_id) || "?");
+  return "da separação (" + sepDestinoSeparacao(s) + ")";
+}
+function sepItemValor(i){
+  const q = i.separado ? Number(i.quantidade_separada || 0) : Number(i.quantidade_pedida || 0);
+  return Math.round(q * Number(i.custo_unitario || 0) * 100) / 100;
+}
+function sepDestinoOptions(i, s){
+  const sel = sepDestinoValor(i);
+  const ob = _sepObras.filter(o => ["em_andamento", "planejada", "paralisada"].includes(o.status) || sel === "obra:" + o.id)
+    .map(o => `<option value="obra:${esc(o.id)}"${sel === "obra:" + o.id ? " selected" : ""}>Obra ${esc(o.codigo)} — ${esc(o.nome || "")}</option>`).join("");
+  const eq = _sepEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)}${e.nome ? " — " + esc(e.nome) : ""}</option>`).join("");
+  const cc = _sepCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(c.nome)}</option>`).join("");
+  return `<option value=""${sel ? "" : " selected"}>da separação (${esc(sepDestinoSeparacao(s))})</option>`
+    + (ob ? `<optgroup label="Outra obra">${ob}</optgroup>` : "") + (eq ? `<optgroup label="TAG">${eq}</optgroup>` : "")
+    + (cc ? `<optgroup label="Setor / obra interna">${cc}</optgroup>` : "");
+}
+async function sepMudarDestino(itemId, valor){
+  const { error } = await sb.from("separacao_itens").update(sepDestinoDoValor(valor || "")).eq("id", itemId);
+  if(error){ aviso("app-aviso", "Destino não alterado: " + error.message, "erro"); }
+  await abrirSeparacao(_sepAtual.id);
+}
+/* rodapé da ficha: quanto vai para cada destino (valor só para quem vê) */
+function sepRenderResumoDestino(){
+  const el = $("sep-resumo-destino"); if(!el) return;
+  const s = _sepAtual;
+  if(!s || !sepTemDestino() || !_sepItens.length){ el.innerHTML = ""; return; }
+  const valor = sepPodeVerValor();
+  const grupos = new Map();
+  _sepItens.forEach(i => {
+    const k = i.acessorio_id ? "" : sepDestinoValor(i);
+    const g = grupos.get(k) || { txt: i.acessorio_id ? sepDestinoTxt({}, s) : sepDestinoTxt(i, s), n: 0, v: 0 };
+    g.n++; g.v += sepItemValor(i); grupos.set(k, g);
+  });
+  if(grupos.size < 2 && !valor){ el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="card compacto" style="margin-top:12px;"><h4 style="margin:0 0 6px;font-size:var(--txt-md);">Por destino</h4>
+    <table><thead><tr><th>Destino</th><th class="num">Itens</th>${valor ? '<th class="num">Valor</th>' : ""}</tr></thead><tbody>
+    ${[...grupos.values()].map(g => `<tr><td>${esc(g.txt)}</td><td class="num">${g.n}</td>${valor ? `<td class="num">${brl(g.v)}</td>` : ""}</tr>`).join("")}
+    </tbody>${valor ? `<tfoot><tr><th>Total</th><th class="num">${_sepItens.length}</th><th class="num">${brl(Number(s.valor_total ?? [...grupos.values()].reduce((t, g) => t + g.v, 0)))}</th></tr></tfoot>` : ""}</table></div>`;
+}
+
 /* ---------- carga ---------- */
 async function sepCarregarBase(force){
   if(_sepCarregado && !force) return;
-  const [ob, eq, pf, fu, cfg] = await Promise.all([
+  const [ob, eq, pf, fu, cfg, cc] = await Promise.all([
     sb.from("obras").select("id,codigo,nome,status").order("codigo", { ascending: false }),
     sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo"),
     sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),
     sb.from("funcionarios").select("id,nome,funcao,matricula").eq("ativo", true).order("nome"),
-    sb.from("empresa_config").select("almoxarife_padrao_id").eq("id", 1).maybeSingle()
+    sb.from("empresa_config").select("almoxarife_padrao_id").eq("id", 1).maybeSingle(),
+    sb.from("centros_custo").select("id,nome,tipo,ativo").order("nome")   // lote S48 (#107): destino do item
   ]);
+  _sepCentros = cc.data || [];
   _sepObras = ob.data || [];
   _sepEquips = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
   _sepPerfis = pf.data || []; _sepFuncs = fu.data || []; _sepPlantao = cfg.data?.almoxarife_padrao_id || null;
@@ -117,6 +181,7 @@ function renderSeparacoes(){
   const cont = $("sep-conteudo"); if(!cont) return;
   document.querySelectorAll("#sep-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _sepView));
   const dados = sepFiltrados();
+  const verValor = sepPodeVerValor() && _sepLista.some(s => s.valor_total != null);   // lote S48 (#107)
   $("sep-contador").textContent = `${dados.length} de ${_sepLista.length}`;
   const preset = _sepPreset ? `<p class="meta">Filtro da Sala de Comando: <strong>${_sepPreset === "vencidas" ? "prazo vencido" : "sem responsável"}</strong> · <a href="#" id="sep-preset-off">limpar</a></p>` : "";
   if(!dados.length){
@@ -129,17 +194,18 @@ function renderSeparacoes(){
           <div class="serv-kan-card-nome"><strong>${esc(s.numero)}</strong> <span class="meta">${esc(SEP_ORIGEM[s.origem_tipo] || "")}</span></div>
           <div>${esc(sepObra(s.obra_id) || "—")}${s.equipamento_id ? ` · TAG ${esc(sepEq(s.equipamento_id))}` : ""}</div>
           <div class="meta">${p.ok} de ${p.n} separado(s)${s.responsavel ? " · " + esc(s.responsavel.nome) : " · sem responsável"}</div>
+          ${verValor && s.valor_total != null ? `<div class="meta">valor ${brl(s.valor_total)}</div>` : ""}
           ${s.prazo ? `<div class="meta">prazo ${dataBR(s.prazo)}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}</div>` : ""}
         </div>`; }).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
     cont.innerHTML = preset + `<div class="tabela-rola"><table>
-      <thead><tr><th>Nº</th><th>Criada</th><th>Origem</th><th>Obra</th><th>TAG</th><th>Pedido por</th><th>Responsável</th><th>Prazo</th><th class="num">Itens</th><th>Status</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Criada</th><th>Origem</th><th>Obra</th><th>TAG</th><th>Pedido por</th><th>Responsável</th><th>Prazo</th><th class="num">Itens</th>${verValor ? '<th class="num">Valor</th>' : ""}<th>Status</th></tr></thead>
       <tbody>${dados.map(s => { const p = sepProgresso(s); return `<tr class="linha-clicavel" data-id="${esc(s.id)}">
         <td><strong>${esc(s.numero)}</strong></td><td>${dataBR(s.created_at)}</td><td>${esc(SEP_ORIGEM[s.origem_tipo] || s.origem_tipo)}</td>
         <td>${linkObra(s.obra_id, sepObra(s.obra_id) || "—")}</td><td>${s.equipamento_id ? linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id)) : '<span class="meta">—</span>'}</td>
         <td class="meta">${esc(s.solicitante?.nome || "—")}</td><td>${s.responsavel ? esc(s.responsavel.nome) : '<span class="tag ambar">sem responsável</span>'}</td>
         <td>${s.prazo ? dataBR(s.prazo) : "—"}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}</td>
-        <td class="num">${p.ok} / ${p.n}</td><td>${sepTag(s.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
+        <td class="num">${p.ok} / ${p.n}</td>${verValor ? `<td class="num">${s.valor_total != null ? brl(s.valor_total) : "—"}</td>` : ""}<td>${sepTag(s.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
   }
   $("sep-preset-off")?.addEventListener("click", e => { e.preventDefault(); _sepPreset = ""; renderSeparacoes(); });
   cont.querySelectorAll("[data-id]").forEach(el => el.addEventListener("click", () => abrirSeparacao(el.dataset.id)));
@@ -178,6 +244,9 @@ function sepAtualizarCabecalho(){
   $("sep-chip-prazo").innerHTML = s.prazo ? `${dataBR(s.prazo)}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}` : "—";
   $("sep-chip-retirante-box").style.display = s.retirante ? "" : "none";
   $("sep-chip-retirante").textContent = s.retirante ? `${s.retirante.nome}${s.entregue_em ? " · " + dataBR(s.entregue_em) : ""}` : "—";
+  // lote S48 (#107): valor total (gatilho no banco) para quem vê valor
+  const verTotal = sepPodeVerValor() && s.valor_total != null;
+  if($("sep-chip-total-box")){ $("sep-chip-total-box").style.display = verTotal ? "" : "none"; if(verTotal) $("sep-chip-total").textContent = brl(s.valor_total); }
   const sbn = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n); } };
   sbn("sb-sep-itens", _sepItens.length); sbn("sb-sep-sep", ok);
   const mostra = { "btn-sep-salvar": pode && !fim, "btn-sep-iniciar": opera && st === "aberta", "btn-sep-entregar": opera && st === "separada",
@@ -205,15 +274,29 @@ function sepBaixaTxt(i){
 function sepRenderItens(){
   const tb = $("sep-itens"); if(!tb) return;
   const s = _sepAtual, pode = sepPodeEditar(s), opera = sepPodeOperar(), fim = ["entregue", "cancelada"].includes(s.status);
-  if(!_sepItens.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">Nenhum item. Adicione abaixo.</td></tr>`; return; }
+  // lote S48 (#107): colunas Destino e Valor (sem a migration, os itens não trazem as colunas novas e elas somem)
+  const comDestino = sepTemDestino(), verValor = comDestino && sepPodeVerValor();
+  if($("sep-th-destino")) $("sep-th-destino").style.display = comDestino ? "" : "none";
+  if($("sep-th-valor")) $("sep-th-valor").style.display = verValor ? "" : "none";
+  sepRenderResumoDestino();
+  if(!_sepItens.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">Nenhum item. Adicione abaixo.</td></tr>`; return; }
+  const colDestino = (i) => {
+    if(!comDestino) return "";
+    if(i.acessorio_id) return `<td class="meta" title="Peça de acessório vai para a obra/TAG da separação">${esc(sepDestinoSeparacao(s))}</td>`;
+    if(pode && !fim && !i.separado) return `<td><select class="sep-destino" style="max-width:220px;" title="Para onde vai o custo deste item (padrão: o da separação)">${sepDestinoOptions(i, s)}</select></td>`;
+    return `<td class="${sepItemTemDestino(i) ? "" : "meta"}">${esc(sepDestinoTxt(i, s))}</td>`;
+  };
+  const colValor = (i) => !verValor ? "" : `<td class="num" title="${i.custo_unitario != null ? "custo unitário " + brl(i.custo_unitario) : "sem custo"}">${i.produto_id ? brl(sepItemValor(i)) : "—"}</td>`;
   tb.innerHTML = _sepItens.map(i => `<tr data-id="${esc(i.id)}" class="${i.separado ? "sep-ok" : ""}">
     <td><input type="checkbox" class="sep-marca" ${i.separado ? "checked" : ""} ${opera && !fim ? "" : "disabled"} title="${i.separado ? "desmarcar estorna a baixa" : "marcar dá a baixa na hora"}" /></td>
     <td>${sepItemNome(i)}${!i.produto_id && !i.acessorio_id && opera && !fim ? `<div class="campo sep-casar"><input class="sep-casar-busca" placeholder="casar com produto do catálogo…" autocomplete="off" /><div class="autocomplete-lista sep-casar-res" style="display:none;"></div></div>` : ""}${i.observacoes ? `<div class="meta">${esc(i.observacoes)}</div>` : ""}</td>
     <td>${esc(i.unidade || "un")}</td>
     <td class="num">${num(i.quantidade_pedida)}</td>
     <td>${i.separado ? num(i.quantidade_separada) : i.acessorio_id ? "1" : `<input type="number" class="sep-qtd" value="${esc(i.quantidade_pedida)}" min="0.001" step="0.001" style="width:86px;text-align:right;" ${opera && !fim ? "" : "disabled"} title="quantidade que vai sair ao marcar" />`}</td>
+    ${colDestino(i)}${colValor(i)}
     <td>${sepBaixaTxt(i)}</td>
     <td class="col-acao">${!i.separado && pode && !fim ? `<button type="button" class="btn-sec btn-sm sep-rem" title="tirar da lista">×</button>` : ""}</td></tr>`).join("");
+  tb.querySelectorAll(".sep-destino").forEach(sel => sel.addEventListener("change", () => sepMudarDestino(sel.closest("tr").dataset.id, sel.value)));   // lote S48 (#107)
   tb.querySelectorAll(".sep-marca").forEach(cb => cb.addEventListener("change", () => sepMarcar(cb.closest("tr").dataset.id, cb)));
   tb.querySelectorAll(".sep-rem").forEach(b => b.addEventListener("click", () => sepRemoverItem(b.closest("tr").dataset.id)));
   tb.querySelectorAll(".sep-casar-busca").forEach(inp => sepLigarBusca(inp, inp.nextElementSibling, p => sepCasarItem(inp.closest("tr").dataset.id, p)));
@@ -322,7 +405,7 @@ async function sepImprimir(){
   const s = _sepAtual; if(!s) return;
   const td = "border:1px solid;padding:4px;";
   const linhas = _sepItens.map((i, n) => `<tr><td style="${td}text-align:center;">${i.separado ? "☑" : "☐"}</td><td style="${td}text-align:center;">${n + 1}</td>
-    <td style="${td}">${esc(i.acessorio ? i.acessorio.marcacao + " · " : "")}${esc(i.produto ? i.produto.codigo + " — " + i.produto.nome : i.descricao)}${i.observacoes ? `<br><small>${esc(i.observacoes)}</small>` : ""}</td>
+    <td style="${td}">${esc(i.acessorio ? i.acessorio.marcacao + " · " : "")}${esc(i.produto ? i.produto.codigo + " — " + i.produto.nome : i.descricao)}${i.observacoes ? `<br><small>${esc(i.observacoes)}</small>` : ""}${sepItemTemDestino(i) ? `<br><small>destino: ${esc(sepDestinoTxt(i, s))}</small>` : ""}</td>
     <td style="${td}text-align:right;">${num(i.quantidade_pedida)} ${esc(i.unidade || "un")}</td><td style="${td}width:70px;"></td></tr>`).join("");
   const html = `<div style="font-family:'Open Sans',Arial,sans-serif;font-size:11px;">
     ${typeof pdfCabecalhoHTML === "function" ? pdfCabecalhoHTML("Lista de separação", s.numero) : `<h2>Lista de separação ${esc(s.numero)}</h2>`}
