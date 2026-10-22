@@ -737,9 +737,9 @@ async function iniciarApp(){
   // fase 93b: login_cpf e senha_provisoria entram na leitura; se a migration da 93b ainda não estiver no banco
   // (42703: coluna não existe), lê sem elas para ninguém ficar sem perfil
   let { data:perfil, error:perfilErr } = await sb.from("profiles")
-    .select("id,nome,cargo,ativo,login_cpf,senha_provisoria").eq("id",user.id).single();
+    .select("id,nome,cargo,ativo,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate").eq("id",user.id).single();   // hotfix 113: módulos extras
   if(perfilErr && perfilErr.code === "42703"){
-    ({ data:perfil, error:perfilErr } = await sb.from("profiles").select("id,nome,cargo,ativo,modulos_extras,modulos_extras_ate").eq("id",user.id).single());
+    ({ data:perfil, error:perfilErr } = await sb.from("profiles").select("id,nome,cargo,ativo").eq("id",user.id).single());
   }
 
   /* bloqueia acesso de usuários desativados. Fase 62: com o is_ativo() nas policies o
