@@ -16,6 +16,9 @@
      da empresa ganha sede, CST/CSOSN, CFOPs, texto legal, IBS/CBS, o certificado A1 (arquivo e senha vão direto para a
      function e nunca ficam no banco, em log ou no console) e o registro do webhook. Sem a migration da 105b os campos
      novos ficam desligados (fiscalColunaExiste).
+   - Fase 105c (NFS-e da medição): o bloco da empresa ganha os parâmetros da NFS-e (códigos de tributação nacional e
+     municipal do ISS, NBS, leiaute nfsen|nfse, Ambiente Nacional, natureza do modelo municipal, optante do Simples, texto
+     padrão da discriminação, municípios liberados e IBS/CBS da NFS-e). A emissão fica em js/medicoes.js (prefixo med-nfse-).
    ==================================================================== */
 
 /* ---------- CPF / CNPJ ---------- */
@@ -123,6 +126,7 @@ function fiscalLigarCep(ids){
 const FISCAL_REGIMES = { simples_nacional: "Simples Nacional", lucro_presumido: "Lucro presumido", lucro_real: "Lucro real" };
 const FISCAL_EMPRESA_COLS = "fiscal_cnpj,fiscal_razao_social,fiscal_ie,fiscal_im,fiscal_regime_tributario,fiscal_cnae,fiscal_codigo_servico,fiscal_item_lc116,fiscal_iss_aliquota,fiscal_nfe_serie,fiscal_nfe_proximo_numero,fiscal_nfse_serie,fiscal_nfse_proximo_numero,fiscal_ambiente,fiscal_contador_email";
 const FISCAL_EMPRESA_COLS_105B = "fiscal_uf,fiscal_codigo_municipio,fiscal_cst_icms_remessa,fiscal_cst_pis_cofins_remessa,fiscal_cst_pis_cofins_retorno,fiscal_texto_legal_remessa,fiscal_cfop_remessa_dentro_uf,fiscal_cfop_remessa_fora_uf,fiscal_cfop_retorno_dentro_uf,fiscal_cfop_retorno_fora_uf,fiscal_ibs_cbs_cst_remessa,fiscal_ibs_cbs_cclass_remessa,fiscal_certificado_validade,fiscal_certificado_enviado_em,fiscal_focus_webhook_registrado_em,fiscal_focus_webhook_ambiente";
+const FISCAL_EMPRESA_COLS_105C = "fiscal_codigo_tributacao_nacional_iss,fiscal_codigo_tributacao_municipal_iss,fiscal_codigo_nbs,fiscal_nfse_natureza_operacao,fiscal_optante_simples,fiscal_nfse_modelo,fiscal_nfse_ambiente_nacional,fiscal_nfse_texto_discriminacao,fiscal_nfse_municipios_liberados,fiscal_nfse_ibs_cbs_cst,fiscal_nfse_ibs_cbs_cclass";
 const _fiscalEmpresa = {};   // por prefixo: último registro lido
 /* o que falta para a primeira emissão (a 105b confere de novo antes de emitir) */
 function fiscalEmpresaPendencias(e){
@@ -133,18 +137,23 @@ function fiscalEmpresaPendencias(e){
     vazio(e.fiscal_im) && "IM", vazio(e.fiscal_regime_tributario) && "regime", vazio(e.fiscal_cnae) && "CNAE",
     vazio(e.fiscal_codigo_servico) && "código de serviço", vazio(e.fiscal_iss_aliquota) && "ISS",
     (vazio(e.fiscal_nfe_serie) || vazio(e.fiscal_nfe_proximo_numero)) && "série/número da NF-e",
-    (vazio(e.fiscal_nfse_serie) || vazio(e.fiscal_nfse_proximo_numero)) && "série/número da NFS-e",
+    // fase 105c: a série e o número da DPS da NFS-e ficam com a Focus (painel dela); o par da 105a deixa de ser pendência
+    !("fiscal_nfse_modelo" in e) && (vazio(e.fiscal_nfse_serie) || vazio(e.fiscal_nfse_proximo_numero)) && "série/número da NFS-e",
     // fase 105b (só quando as colunas existem)
     ("fiscal_cst_icms_remessa" in e) && vazio(e.fiscal_cst_icms_remessa) && "CST/CSOSN da remessa",
     ("fiscal_codigo_municipio" in e) && (vazio(e.fiscal_uf) || vazio(e.fiscal_codigo_municipio)) && "UF/município da sede",
-    ("fiscal_certificado_validade" in e) && vazio(e.fiscal_certificado_validade) && "certificado A1"
+    ("fiscal_certificado_validade" in e) && vazio(e.fiscal_certificado_validade) && "certificado A1",
+    // fase 105c (só quando as colunas existem)
+    ("fiscal_nfse_modelo" in e) && e.fiscal_nfse_modelo !== "nfse" && vazio(e.fiscal_codigo_tributacao_nacional_iss) && "código nacional do ISS",
+    ("fiscal_nfse_modelo" in e) && e.fiscal_nfse_modelo !== "nfse" && e.fiscal_nfse_ambiente_nacional !== true && vazio(e.fiscal_codigo_tributacao_municipal_iss) && "código municipal do ISS"
   ].filter(Boolean);
 }
 async function fiscalEmpresaRender(pref){
   const box = $(pref);
   if(!box) return;
   const tem105b = await fiscalColunaExiste("empresa_config", "fiscal_cfop_remessa_dentro_uf");
-  const { data, error } = await sb.from("empresa_config").select(FISCAL_EMPRESA_COLS + (tem105b ? "," + FISCAL_EMPRESA_COLS_105B : "")).eq("id", 1).maybeSingle();
+  const tem105c = tem105b && await fiscalColunaExiste("empresa_config", "fiscal_nfse_modelo");
+  const { data, error } = await sb.from("empresa_config").select(FISCAL_EMPRESA_COLS + (tem105b ? "," + FISCAL_EMPRESA_COLS_105B : "") + (tem105c ? "," + FISCAL_EMPRESA_COLS_105C : "")).eq("id", 1).maybeSingle();
   if(error){
     const semColuna = error.code === "42703" || /fiscal_/i.test(error.message || "");
     box.innerHTML = `<div class="lista-topo"><h3>Dados fiscais da empresa</h3></div>
@@ -182,6 +191,7 @@ async function fiscalEmpresaRender(pref){
       <div class="campo largo"><label>E-mail do contador</label><input id="${id("contador")}" type="email" value="${v(e.fiscal_contador_email)}" /></div>
     </div>
     ${tem105b ? fiscalEmpresaHtml105b(pref, e) : ""}
+    ${tem105c ? fiscalEmpresaHtml105c(pref, e) : ""}
     <div class="form-acoes compacta">
       <button type="button" class="btn" id="${id("salvar")}"${pode ? "" : ' style="display:none;"'}>💾 Salvar dados fiscais</button>
     </div>
@@ -248,6 +258,72 @@ function fiscalEmpresaValores105b(pref){
   return erros.length ? { erro: erros.join("; ") } : reg;
 }
 
+/* ---------- Fase 105c: NFS-e da medição (campos da empresa) ---------- */
+const FISCAL_NFSE_NATUREZAS = [["1", "1 — tributação no município"], ["2", "2 — tributação fora do município"], ["3", "3 — isenção"],
+  ["4", "4 — imune"], ["5", "5 — suspensa por decisão judicial"], ["6", "6 — suspensa por procedimento administrativo"]];
+function fiscalEmpresaHtml105c(pref, e){
+  const id = s => `${pref}-${s}`;
+  const v = x => esc(x == null ? "" : x);
+  const modelo = e.fiscal_nfse_modelo === "nfse" ? "nfse" : "nfsen";
+  const ambNac = e.fiscal_nfse_ambiente_nacional === true;
+  const opt = e.fiscal_optante_simples === true ? "true" : e.fiscal_optante_simples === false ? "false" : "";
+  const munis = Array.isArray(e.fiscal_nfse_municipios_liberados) ? e.fiscal_nfse_municipios_liberados.join(", ") : "";
+  return `<h3 class="titulo-bloco">NFS-e da medição (fase 105c)</h3>
+    <p class="nota">Itabira (sede) emite pelo provedor Pronim no leiaute nacional, sem o Ambiente Nacional: leiaute "padrão nacional" e Ambiente Nacional "não". Os códigos o contador confirma (lista nacional, anexo B da NFS-e nacional; tabela de Itabira). Inscrição municipal e item da LC 116 ficam nos campos de cima.</p>
+    <div class="grade">
+      <div class="campo"><label>Leiaute da NFS-e</label><select id="${id("nfse-modelo")}">
+        <option value="nfsen" ${modelo === "nfsen" ? "selected" : ""}>Padrão nacional (v2/nfsen)</option>
+        <option value="nfse" ${modelo === "nfse" ? "selected" : ""}>Provedor municipal (v2/nfse)</option></select></div>
+      <div class="campo"><label>Ambiente Nacional da NFS-e</label><select id="${id("nfse-ambnac")}" title="Opção 'Ambiente da NFSe Nacional' no painel da Focus. Itabira: não.">
+        <option value="false" ${!ambNac ? "selected" : ""}>Não (Itabira, Pronim)</option>
+        <option value="true" ${ambNac ? "selected" : ""}>Sim (município aderente)</option></select></div>
+      <div class="campo"><label>Código de tributação nacional do ISS</label><input id="${id("nfse-ctn")}" maxlength="6" value="${v(e.fiscal_codigo_tributacao_nacional_iss)}" placeholder="6 dígitos (7.02 → 0702xx)" title="cTribNac: desdobramento do item 7.02 na lista nacional (provável 070201); o contador confirma" /></div>
+      <div class="campo"><label>Código de tributação municipal do ISS</label><input id="${id("nfse-ctm")}" maxlength="3" value="${v(e.fiscal_codigo_tributacao_municipal_iss)}" placeholder="3 dígitos (tabela de Itabira)" /></div>
+      <div class="campo"><label>Código NBS</label><input id="${id("nfse-nbs")}" maxlength="9" value="${v(e.fiscal_codigo_nbs)}" placeholder="9 dígitos (opcional)" /></div>
+      <div class="campo"><label>Optante do Simples (NFS-e)</label><select id="${id("nfse-optante")}">
+        <option value="" ${opt === "" ? "selected" : ""}>Pelo regime tributário</option>
+        <option value="true" ${opt === "true" ? "selected" : ""}>Sim</option>
+        <option value="false" ${opt === "false" ? "selected" : ""}>Não</option></select></div>
+      <div class="campo"><label>Natureza (leiaute municipal)</label><select id="${id("nfse-natureza")}" title="Só no provedor municipal (v2/nfse); o leiaute nacional não usa">
+        <option value="">Automática (1 na sede, 2 fora)</option>
+        ${FISCAL_NFSE_NATUREZAS.map(([c, t]) => `<option value="${c}" ${e.fiscal_nfse_natureza_operacao === c ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
+      <div class="campo"><label>IBS/CBS da NFS-e: CST</label><input id="${id("nfse-ibs-cst")}" maxlength="3" value="${v(e.fiscal_nfse_ibs_cbs_cst)}" placeholder="vazio = sem o grupo" /></div>
+      <div class="campo"><label>IBS/CBS da NFS-e: classificação</label><input id="${id("nfse-ibs-class")}" maxlength="6" value="${v(e.fiscal_nfse_ibs_cbs_cclass)}" placeholder="6 dígitos (cClassTrib)" /></div>
+      <div class="campo largo"><label>Municípios liberados (IBGE da obra)</label><input id="${id("nfse-munis")}" value="${v(munis)}" placeholder="3131703, 3136207" title="Local da prestação em que o app emite. Conferidos na Focus em 22/10/2026: Itabira (3131703) e João Monlevade (3136207). Fora da lista: emitir pela prefeitura." /></div>
+      <div class="campo largo"><label>Texto padrão da discriminação</label><textarea id="${id("nfse-texto")}" rows="2" maxlength="600" placeholder="vai antes de BM, período, obra, contrato e itens">${v(e.fiscal_nfse_texto_discriminacao)}</textarea></div>
+    </div>`;
+}
+/* campos da 105c no salvar: null = colunas ainda não existem; { erro } = valor inválido */
+function fiscalEmpresaValores105c(pref){
+  if(!$(`${pref}-nfse-modelo`)) return null;
+  const g = s => ($(`${pref}-${s}`)?.value || "").trim();
+  const bool = s => g(s) === "true" ? true : g(s) === "false" ? false : null;
+  const munis = g("nfse-munis").split(/[\s,;]+/).map(x => x.replace(/\D/g, "")).filter(Boolean);
+  const reg = {
+    fiscal_nfse_modelo: g("nfse-modelo") === "nfse" ? "nfse" : "nfsen",
+    fiscal_nfse_ambiente_nacional: g("nfse-ambnac") === "true",
+    fiscal_codigo_tributacao_nacional_iss: g("nfse-ctn").replace(/\D/g, "") || null,
+    fiscal_codigo_tributacao_municipal_iss: g("nfse-ctm").replace(/\D/g, "") || null,
+    fiscal_codigo_nbs: g("nfse-nbs").replace(/\D/g, "") || null,
+    fiscal_optante_simples: bool("nfse-optante"),
+    fiscal_nfse_natureza_operacao: g("nfse-natureza") || null,
+    fiscal_nfse_ibs_cbs_cst: g("nfse-ibs-cst").replace(/\D/g, "") || null,
+    fiscal_nfse_ibs_cbs_cclass: g("nfse-ibs-class").replace(/\D/g, "") || null,
+    fiscal_nfse_municipios_liberados: [...new Set(munis)],
+    fiscal_nfse_texto_discriminacao: g("nfse-texto") || null
+  };
+  const erros = [];
+  if(reg.fiscal_codigo_tributacao_nacional_iss && !/^\d{6}$/.test(reg.fiscal_codigo_tributacao_nacional_iss)) erros.push("código de tributação nacional do ISS com 6 dígitos");
+  if(reg.fiscal_codigo_tributacao_municipal_iss && !/^\d{3}$/.test(reg.fiscal_codigo_tributacao_municipal_iss)) erros.push("código de tributação municipal do ISS com 3 dígitos");
+  if(reg.fiscal_codigo_nbs && !/^\d{9}$/.test(reg.fiscal_codigo_nbs)) erros.push("código NBS com 9 dígitos");
+  if(reg.fiscal_nfse_municipios_liberados.some(c => !/^\d{7}$/.test(c))) erros.push("municípios liberados: códigos IBGE de 7 dígitos");
+  if(!!reg.fiscal_nfse_ibs_cbs_cst !== !!reg.fiscal_nfse_ibs_cbs_cclass) erros.push("IBS/CBS da NFS-e: CST e classificação juntos (ou os dois vazios)");
+  if(reg.fiscal_nfse_ibs_cbs_cst && !/^\d{3}$/.test(reg.fiscal_nfse_ibs_cbs_cst)) erros.push("CST do IBS/CBS da NFS-e com 3 dígitos");
+  if(reg.fiscal_nfse_ibs_cbs_cclass && !/^\d{6}$/.test(reg.fiscal_nfse_ibs_cbs_cclass)) erros.push("classificação do IBS/CBS da NFS-e com 6 dígitos");
+  if((reg.fiscal_nfse_texto_discriminacao || "").length > 600) erros.push("texto padrão da discriminação com até 600 caracteres");
+  return erros.length ? { erro: erros.join("; ") } : reg;
+}
+
 /* ---------- Fase 105b: chamada da function focus-nfe ----------
    Devolve { data } ou { erro, corpo } com a mensagem real da function (FunctionsHttpError traz o corpo em error.context). */
 async function fiscalChamarFocus(acao, corpo){
@@ -278,7 +354,7 @@ function fiscalCertificadoHtml(pref, e, pode){
     <div class="grade">
       <div class="campo"><label>Validade do certificado</label><div>${val ? `${dataBR(val)} <span class="tag ${vencido ? "vermelho" : "verde"}">${vencido ? "vencido" : "válido"}</span>` : '<span class="meta">não enviado</span>'}</div></div>
       <div class="campo"><label>Enviado à Focus em</label><div>${e.fiscal_certificado_enviado_em ? esc(dataBR(e.fiscal_certificado_enviado_em)) : '<span class="meta">—</span>'}</div></div>
-      <div class="campo"><label>Webhook de NF-e</label><div>${hook ? `registrado em ${esc(dataBR(hook))} <span class="tag ${e.fiscal_focus_webhook_ambiente === "producao" ? "verde" : "ambar"}">${e.fiscal_focus_webhook_ambiente === "producao" ? "produção" : "homologação"}</span>` : '<span class="meta">não registrado</span>'}</div></div>
+      <div class="campo"><label>Webhook de NF-e e NFS-e</label><div>${hook ? `registrado em ${esc(dataBR(hook))} <span class="tag ${e.fiscal_focus_webhook_ambiente === "producao" ? "verde" : "ambar"}">${e.fiscal_focus_webhook_ambiente === "producao" ? "produção" : "homologação"}</span>` : '<span class="meta">não registrado</span>'}</div></div>
     </div>
     ${diretor ? `<div class="grade">
       <div class="campo"><label>Arquivo do certificado (.pfx ou .p12)</label><input type="file" id="${id("cert-arq")}" accept=".pfx,.p12" /></div>
@@ -379,6 +455,9 @@ async function fiscalEmpresaSalvar(pref){
   const reg105b = fiscalEmpresaValores105b(pref);   // fase 105b: null sem a migration
   if(reg105b && reg105b.erro) erros.push(reg105b.erro);
   else if(reg105b) Object.assign(reg, reg105b);
+  const reg105c = fiscalEmpresaValores105c(pref);   // fase 105c: null sem a migration
+  if(reg105c && reg105c.erro) erros.push(reg105c.erro);
+  else if(reg105c) Object.assign(reg, reg105c);
   if(erros.length){ aviso("app-aviso", "Confira: " + erros.join("; ") + ".", "erro"); return; }
   const antes = _fiscalEmpresa[pref] || {};
   if(reg.fiscal_ambiente === "producao" && antes.fiscal_ambiente !== "producao"

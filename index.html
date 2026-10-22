@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="df155ab" />
+<meta name="app-versao" content="902c666" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=df155ab" />
+<link rel="stylesheet" href="css/estilo.css?v=902c666" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -4668,7 +4668,7 @@
               <option value="importada_pdf">Importadas (PDF)</option>
               <option value="manual">Digitadas</option>
             </select>
-            <select id="med-f-receb" title="Fase 91: situação do recebimento da NF (líquido a receber = valor final − retenção − ISS retido)">
+            <select id="med-f-receb" title="Fase 91: situação do recebimento da NF (líquido a receber = valor final − retenção − ISS retido − retenções federais)">
               <option value="">Qualquer recebimento</option>
               <option value="a_receber">A receber (NF emitida, não recebida)</option>
               <option value="vencida">Vencidas (vencimento passou)</option>
@@ -4744,6 +4744,14 @@
               <button type="button" class="btn" id="btn-salvar-med">💾 Salvar</button>
               <button type="button" class="btn-sec" id="btn-gerar-pdf-med" title="Gera PDF da medição estilo CGL RG 11.4 (precisa estar salva)">📄 Gerar PDF</button>
               <button type="button" class="btn-sec" id="btn-med-boletim" style="display:none;" title="Abrir o PDF do boletim importado (fase 88)">📎 Boletim (PDF)</button>
+              <!-- fase 105c: NFS-e da medição pelo app (Focus NFe); cada botão aparece só quando cabe (medNfseBotoes) -->
+              <button type="button" class="btn" id="btn-med-nfse-emitir" style="display:none;" title="Confere o cadastro, mostra o resumo e envia a NFS-e à prefeitura pela Focus NFe">🧾 Emitir NFS-e</button>
+              <button type="button" class="btn-sec" id="btn-med-nfse-simular" style="display:none;" title="Monta a NFS-e e confere o cadastro sem enviar">🔎 Simular</button>
+              <button type="button" class="btn-sec" id="btn-med-nfse-consultar" style="display:none;" title="Pergunta à Focus o status da NFS-e (só quando o aviso automático não chegou)">↻ Consultar</button>
+              <button type="button" class="btn-sec" id="btn-med-nfse-pdf" style="display:none;">📄 PDF</button>
+              <button type="button" class="btn-sec" id="btn-med-nfse-xml" style="display:none;">🗎 XML</button>
+              <button type="button" class="btn-sec" id="btn-med-nfse-substituir" style="display:none;" title="Emite a NFS-e desta medição no lugar da nota autorizada de outra medição da mesma obra (só no Ambiente Nacional)">⇄ Substituir NFS-e</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-med-nfse-cancelar" style="display:none;">✗ Cancelar NFS-e</button>
               <button type="button" class="btn-sec acao-perigo" id="btn-excluir-med">🗑️ Excluir</button>
             </div>
             <div class="actions-right">
@@ -4767,6 +4775,7 @@
             <div class="chip"><span>Subtotal</span><strong id="med-ficha-subtotal-chip">R$ 0,00</strong></div>
             <div class="chip"><span>Valor final</span><strong id="med-ficha-valor-chip">R$ 0,00</strong></div>
             <div class="chip" id="med-ficha-prodpend" style="display:none;" title="A NF não bate com os itens gerados pelos diários do período. Some sozinha quando baterem (lançar os diários e usar ✨ Sugerir do período)."><span>Produção pendente</span><strong id="med-ficha-prodpend-txt"></strong></div>
+            <div class="chip" id="med-ficha-nfse" style="display:none;" title="Fase 105c: NFS-e emitida pelo app (Focus NFe); o status chega pelo webhook"><span>NFS-e (app)</span><strong id="med-ficha-nfse-chip">—</strong></div>
           </div>
 
           <div class="odoo-notebook" id="med-notebook">
@@ -4776,6 +4785,7 @@
             <button type="button" data-tab="resumo">💰 Resumo</button>
             <button type="button" data-tab="recebimento" title="Fase 91: recebimentos confirmados pelo financeiro e líquido a receber">💵 NF/Recebimento <span id="med-receb-badge" class="conf-badge"></span></button>
             <button type="button" data-tab="caucao" title="Fase 91: retenção contratual (caução) desta NF e a devolução">🔒 Caução <span id="med-cau-badge" class="conf-badge"></span></button>
+            <button type="button" data-tab="nfse" id="med-tab-nfse" style="display:none;" title="Fase 105c: NFS-e da medição emitida pelo app (Focus NFe)">🧾 NFS-e</button>
             <button type="button" data-tab="descricao">📝 Obs.</button>
           </div>
 
@@ -4810,7 +4820,13 @@
                 <div class="campo"><label>ISS (%)</label><input id="med-iss-pct" type="number" step="0.01" min="0" max="100" placeholder="ex.: 5" title="ISS por dentro: valor = valor final × %. Pedido do financeiro, 16/09/2026" /></div>
                 <div class="campo"><label>ISS retido na fonte?</label><select id="med-iss-retido"><option value="true">Sim (cliente retém e recolhe)</option><option value="false">Não (CGL recolhe)</option></select></div>
                 <div class="campo"><label>Valor do ISS (R$)</label><input id="med-iss-valor" type="number" step="0.01" min="0" title="Calculado pelo %; pode ser ajustado à mão" /></div>
-                <div class="campo"><label>Líquido a receber (R$)</label><input id="med-liquido" type="number" step="0.01" readonly title="Valor final − retenção contratual − ISS retido na fonte" style="background:var(--sucesso-bg);font-weight:700;color:var(--sucesso-txt);" /></div>
+                <!-- fase 105c: retenções federais que o cliente faz na fonte (vão na NFS-e e saem do líquido a receber) -->
+                <div class="campo med-ret-fed" style="display:none;"><label>IRRF retido (R$)</label><input id="med-ret-irrf" type="number" step="0.01" min="0" placeholder="0,00" title="Imposto de renda retido pelo cliente na fonte (vai na NFS-e)" /></div>
+                <div class="campo med-ret-fed" style="display:none;"><label>PIS retido (R$)</label><input id="med-ret-pis" type="number" step="0.01" min="0" placeholder="0,00" /></div>
+                <div class="campo med-ret-fed" style="display:none;"><label>COFINS retida (R$)</label><input id="med-ret-cofins" type="number" step="0.01" min="0" placeholder="0,00" /></div>
+                <div class="campo med-ret-fed" style="display:none;"><label>CSLL retida (R$)</label><input id="med-ret-csll" type="number" step="0.01" min="0" placeholder="0,00" /></div>
+                <div class="campo med-ret-fed" style="display:none;"><label>INSS retido (R$)</label><input id="med-ret-inss" type="number" step="0.01" min="0" placeholder="0,00" title="Contribuição previdenciária retida pelo cliente (cessão de mão de obra/empreitada)" /></div>
+                <div class="campo"><label>Líquido a receber (R$)</label><input id="med-liquido" type="number" step="0.01" readonly title="Valor final − retenção contratual − ISS retido na fonte − retenções federais" style="background:var(--sucesso-bg);font-weight:700;color:var(--sucesso-txt);" /></div>
                 <!-- fase 98: obra paga em imóvel — o crédito vira recebimento "permuta" quando a medição é aprovada/faturada -->
                 <div class="campo" id="campo-med-pm-pct" style="display:none;"><label>% permuta</label><input id="med-pm-pct" type="number" step="0.01" min="0" max="100" placeholder="obra sem permuta" title="Fase 98: parte da medição paga com o imóvel em permuta (herda da obra). Só financeiro e diretoria alteram." /></div>
                 <div class="campo" id="campo-med-pm-valor" style="display:none;"><label>Crédito de permuta (R$)</label><input id="med-pm-valor" type="number" step="0.01" min="0" title="Fase 98: % × valor final; digitar fixa o valor à mão. Entra como recebimento em permuta; o resto segue em dinheiro (aba NF/Recebimento)." /></div>
@@ -4923,6 +4939,31 @@
               <div id="med-cau-conteudo"><p class="vazio">Salve a medição com o documento fiscal e a retenção para a caução nascer aqui.</p></div>
             </div>
 
+            <!-- 🧾 NFS-e (fase 105c): nota de serviço emitida pelo app pela Focus NFe; o status chega pelo webhook (a statusbar só informa) -->
+            <div class="odoo-tab" data-tab="nfse">
+              <div class="lista-topo compacta"><h3>NFS-e pelo app (Focus NFe)</h3><span id="med-nfse-amb"></span></div>
+              <div class="odoo-statusbar informativa" id="med-nfse-statusbar" aria-label="Status da NFS-e">
+                <div class="stage" data-nfse="rascunho">Rascunho</div>
+                <div class="stage" data-nfse="processando">Processando</div>
+                <div class="stage" data-nfse="autorizada">Autorizada</div>
+                <div class="stage" data-nfse="cancelada">Cancelada</div>
+              </div>
+              <div id="med-nfse-rejeicao" class="dist-aviso perigo" style="display:none;margin-top:8px;"></div>
+              <p class="nota" id="med-nfse-info"></p>
+              <div class="grade">
+                <div class="campo"><label>NFS-e nº</label><div id="med-nfse-numero">—</div></div>
+                <div class="campo"><label>Código de verificação</label><div id="med-nfse-codverif">—</div></div>
+                <div class="campo"><label>Emitida pelo app em</label><div id="med-nfse-emitida">—</div></div>
+                <div class="campo"><label>Consulta pública</label><div id="med-nfse-link">—</div></div>
+                <div class="campo largo"><label>Chave (padrão nacional)</label><div id="med-nfse-chave" class="meta">—</div></div>
+                <div class="campo largo" id="med-nfse-cancel-campo" style="display:none;"><label>Cancelamento</label><div id="med-nfse-cancel">—</div></div>
+                <div class="campo largo" id="med-nfse-subst-campo" style="display:none;"><label>Substituição</label><div id="med-nfse-subst">—</div></div>
+              </div>
+              <p class="nota" id="med-nfse-nota">Tomador = cliente da obra; local da prestação = município da obra (IBGE); ISS e retenções da aba Geral. Na contingência (prefeitura ou UniNFe), lance o número na aba Geral depois de emitir lá.</p>
+              <h3 class="titulo-bloco">Eventos fiscais</h3>
+              <div id="med-nfse-eventos"></div>
+            </div>
+
             <!-- 📝 Obs. -->
             <div class="odoo-tab" data-tab="descricao">
               <div class="grade">
@@ -4931,6 +4972,31 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Modal: ações da NFS-e pelo app (fase 105c): resumo da emissão, simulação, cancelamento, substituição -->
+      <div id="med-nfse-modal" class="modal-fundo" style="display:none;">
+        <div class="modal-caixa" style="max-width:760px;">
+          <div class="modal-topo"><h3 id="med-nfse-modal-titulo">NFS-e</h3><button type="button" class="btn-sec" id="btn-med-nfse-modal-fechar">×</button></div>
+          <div id="med-nfse-modal-corpo"></div>
+          <div class="grade" id="med-nfse-modal-subst" style="display:none;">
+            <div class="campo"><label for="med-nfse-modal-subst-med">Medição com a NFS-e a substituir</label><select id="med-nfse-modal-subst-med"></select></div>
+            <div class="campo"><label for="med-nfse-modal-subst-cod">Motivo (código)</label><select id="med-nfse-modal-subst-cod">
+              <option value="99">99 — Outros</option>
+              <option value="05">05 — Rejeição pelo tomador</option>
+              <option value="01">01 — Desenquadramento do Simples Nacional</option>
+              <option value="02">02 — Enquadramento no Simples Nacional</option>
+              <option value="03">03 — Inclusão retroativa de imunidade/isenção</option>
+              <option value="04">04 — Exclusão retroativa de imunidade/isenção</option>
+            </select></div>
+          </div>
+          <div class="campo largo" id="med-nfse-modal-texto-campo" style="display:none;">
+            <label id="med-nfse-modal-texto-rot" for="med-nfse-modal-texto">Texto</label>
+            <textarea id="med-nfse-modal-texto" rows="4"></textarea>
+            <span class="meta" id="med-nfse-modal-contador"></span>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-med-nfse-modal-ok">Confirmar</button></div>
         </div>
       </div>
     </section>
@@ -5799,53 +5865,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=df155ab"></script>
+<script src="js/core.js?v=902c666"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=df155ab"></script>
+<script src="js/historico.js?v=902c666"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=df155ab"></script>
-<script src="js/fiscal_ncm.js?v=df155ab"></script>
+<script src="js/fiscal.js?v=902c666"></script>
+<script src="js/fiscal_ncm.js?v=902c666"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=df155ab"></script>
-<script src="js/fornecedores.js?v=df155ab"></script>
-<script src="js/apropriacoes.js?v=df155ab"></script>
-<script src="js/funcionarios.js?v=df155ab"></script>
-<script src="js/rh_documentos.js?v=df155ab"></script>
-<script src="js/servicos.js?v=df155ab"></script>
-<script src="js/produtos.js?v=df155ab"></script>
-<script src="js/estoque.js?v=df155ab"></script>
-<script src="js/separacoes.js?v=df155ab"></script>
-<script src="js/epi.js?v=df155ab"></script>
-<script src="js/compras.js?v=df155ab"></script>
-<script src="js/requisicoes.js?v=df155ab"></script>
-<script src="js/orcamentos.js?v=df155ab"></script>
-<script src="js/propostas.js?v=df155ab"></script>
-<script src="js/contratos.js?v=df155ab"></script>
-<script src="js/contas_pagar.js?v=df155ab"></script>
-<script src="js/centros_custo.js?v=df155ab"></script>
-<script src="js/carteira.js?v=df155ab"></script>
-<script src="js/obras.js?v=df155ab"></script>
-<script src="js/frota.js?v=df155ab"></script>
-<script src="js/viagens.js?v=df155ab"></script>
-<script src="js/equipamentos.js?v=df155ab"></script>
-<script src="js/vendas_bens.js?v=df155ab"></script>
-<script src="js/acessorios.js?v=df155ab"></script>
-<script src="js/reparos.js?v=df155ab"></script>
-<script src="js/manutencao.js?v=df155ab"></script>
-<script src="js/fabricacao.js?v=df155ab"></script>
-<script src="js/mobilizacoes.js?v=df155ab"></script>
-<script src="js/estacas.js?v=df155ab"></script>
-<script src="js/obra_abas.js?v=df155ab"></script>
-<script src="js/medicoes.js?v=df155ab"></script>
-<script src="js/movimentacoes.js?v=df155ab"></script>
-<script src="js/rdo.js?v=df155ab"></script>
-<script src="js/rdo_import_maya.js?v=df155ab"></script>
-<script src="js/usuarios.js?v=df155ab"></script>
-<script src="js/chamados.js?v=df155ab"></script>
-<script src="js/dashboard.js?v=df155ab"></script>
-<script src="js/rh_horas.js?v=df155ab"></script>
-<script src="js/patrimonio.js?v=df155ab"></script>
+<script src="js/clientes.js?v=902c666"></script>
+<script src="js/fornecedores.js?v=902c666"></script>
+<script src="js/apropriacoes.js?v=902c666"></script>
+<script src="js/funcionarios.js?v=902c666"></script>
+<script src="js/rh_documentos.js?v=902c666"></script>
+<script src="js/servicos.js?v=902c666"></script>
+<script src="js/produtos.js?v=902c666"></script>
+<script src="js/estoque.js?v=902c666"></script>
+<script src="js/separacoes.js?v=902c666"></script>
+<script src="js/epi.js?v=902c666"></script>
+<script src="js/compras.js?v=902c666"></script>
+<script src="js/requisicoes.js?v=902c666"></script>
+<script src="js/orcamentos.js?v=902c666"></script>
+<script src="js/propostas.js?v=902c666"></script>
+<script src="js/contratos.js?v=902c666"></script>
+<script src="js/contas_pagar.js?v=902c666"></script>
+<script src="js/centros_custo.js?v=902c666"></script>
+<script src="js/carteira.js?v=902c666"></script>
+<script src="js/obras.js?v=902c666"></script>
+<script src="js/frota.js?v=902c666"></script>
+<script src="js/viagens.js?v=902c666"></script>
+<script src="js/equipamentos.js?v=902c666"></script>
+<script src="js/vendas_bens.js?v=902c666"></script>
+<script src="js/acessorios.js?v=902c666"></script>
+<script src="js/reparos.js?v=902c666"></script>
+<script src="js/manutencao.js?v=902c666"></script>
+<script src="js/fabricacao.js?v=902c666"></script>
+<script src="js/mobilizacoes.js?v=902c666"></script>
+<script src="js/estacas.js?v=902c666"></script>
+<script src="js/obra_abas.js?v=902c666"></script>
+<script src="js/medicoes.js?v=902c666"></script>
+<script src="js/movimentacoes.js?v=902c666"></script>
+<script src="js/rdo.js?v=902c666"></script>
+<script src="js/rdo_import_maya.js?v=902c666"></script>
+<script src="js/usuarios.js?v=902c666"></script>
+<script src="js/chamados.js?v=902c666"></script>
+<script src="js/dashboard.js?v=902c666"></script>
+<script src="js/rh_horas.js?v=902c666"></script>
+<script src="js/patrimonio.js?v=902c666"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=df155ab"></script>
+<script src="js/init.js?v=902c666"></script>
 </body>
 </html>

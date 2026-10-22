@@ -924,20 +924,8 @@ async function carregarDocumentosDaObra(obraId){
   });
 }
 
-/* MIME por extensão: o navegador manda "application/octet-stream" (ou vazio) para .dwg/.dxf/.zip
-   e o bucket obras-documentos recusava. Lista alinhada aos allowed_mime_types do bucket. */
-const MIME_POR_EXTENSAO = {
-  pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  doc: "application/msword", xls: "application/vnd.ms-excel", txt: "text/plain", csv: "text/csv",
-  dwg: "image/vnd.dwg", dxf: "image/vnd.dxf", zip: "application/zip"
-};
-function mimeDoArquivo(file, ext){
-  const t = String(file.type || "").toLowerCase();
-  if(t && t !== "application/octet-stream") return t;
-  return MIME_POR_EXTENSAO[ext] || "application/octet-stream";
-}
+/* MIME por extensão e reembalagem em Blob: helpers mimeDoArquivo/corpoComMime em core.js (hotfix 98). A lista
+   MIME_POR_EXTENSAO de core.js está alinhada aos allowed_mime_types do bucket obras-documentos. */
 
 function ligarUploadDoc(obraId){
   $("btn-doc-enviar")?.addEventListener("click", () => enviarDocumento(obraId));
@@ -954,12 +942,11 @@ async function enviarDocumento(obraId){
   btn.textContent = "Enviando...";
 
   try {
-    // Extensão entra no caminho do storage: só letras/dígitos (1-5), senão "bin"
-    const ext = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "bin";
+    const ext = extensaoArquivo(file);   // core.js: entra no caminho do storage (só letras/dígitos, senão "bin")
     const nomeUnico = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const mime = mimeDoArquivo(file, ext);
     // supabase-js ignora `contentType` quando o corpo é File/Blob (vale o type do próprio arquivo): reembala com o MIME da extensão
-    const corpo = file.type === mime ? file : new Blob([file], { type: mime });
+    const corpo = corpoComMime(file, mime);
     const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, corpo, {
       cacheControl: "3600", contentType: mime, upsert: false
     });
@@ -989,7 +976,8 @@ async function enviarDocumento(obraId){
     await carregarDocumentosDaObra(obraId);
     await carregarAbasObra(obraId);
   } catch(err){
-    aviso("app-aviso","Erro ao enviar: "+(err.message||err),"erro");
+    // hotfix 98 (#120): recusa de policy (tabela ou bucket) vira frase de cargo, não o texto cru do Postgres
+    aviso("app-aviso", ehErroDePermissao(err) ? "Seu cargo não anexa documentos da obra." : "Erro ao enviar: "+(err.message||err), "erro");
   } finally {
     btn.disabled = false;
     btn.textContent = txtOrig;
@@ -1010,9 +998,13 @@ async function baixarDocumento(path, nome){
 
 async function excluirDocumento(id, path, obraId){
   if(!confirm("Excluir este documento?")) return;
-  await sb.storage.from("obras-documentos").remove([path]);
-  const { error } = await sb.from("obras_documentos").delete().eq("id", id);
+  // hotfix 98 (#120): a linha sai primeiro. O financeiro anexa, mas excluir continua com os cargos de obras_doc_delete;
+  // como a RLS do delete não dá erro (apaga 0 linhas) e o bucket deixa o financeiro remover (import de boletim, fase
+  // 88b), remover o arquivo antes deixava a linha apontando para um arquivo apagado.
+  const { data: apagadas, error } = await sb.from("obras_documentos").delete().eq("id", id).select("id");
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
+  if(!apagadas || !apagadas.length){ aviso("app-aviso","Seu cargo não exclui documentos da obra.","erro"); return; }
+  await sb.storage.from("obras-documentos").remove([path]);
   aviso("app-aviso","Documento excluído.","ok");
   await carregarDocumentosDaObra(obraId);
   await carregarAbasObra(obraId);

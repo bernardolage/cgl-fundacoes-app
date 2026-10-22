@@ -151,6 +151,9 @@ async function carregarDashboard(){
 async function carregarDashFaixa(carga){
   const iv = dashIntervalo(_dashPeriodo);
   const verReceber = dashPodeVerReceber();
+  // fase 105c: retenções federais entram no líquido a receber (medLiquido); colunas lidas só depois da migration
+  const retCols = verReceber && typeof fiscalColunaExiste === "function" && await fiscalColunaExiste("medicoes", "ret_irrf")
+    ? ",ret_irrf,ret_pis,ret_cofins,ret_csll,ret_inss" : "";
   const [prod, frota, obras, rdos, meds, custos, viagens, recMed, recVendas] = await Promise.all([
     dashLer("vw_sc_producao_dia", q => q.select("obra_id,equipamento_id,data,estacas,metros,operador_id").gte("data", iv.antIni).lte("data", iv.fim), "dash-k-producao-sub"),
     dashLer("vw_sc_frota", q => q.select("*"), "dash-frota-lista"),
@@ -161,7 +164,7 @@ async function carregarDashFaixa(carga){
     // fase 89: viagens em trânsito agora e planejadas sem caminhão/motorista (aba Frota)
     dashLer("viagens", q => q.select("id,numero,data,status,finalidade,caminhao_id,funcionario_id,destino_tipo,destino_obra_id,destino_descricao,data_saida,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome)").in("status", ["planejada", "em_transito"]).order("data")),
     // fase 96: "A receber" = NFs de medição não recebidas (mesma regra da fase 91) + saldo das vendas de bens
-    verReceber ? dashLer("medicoes", q => q.select("valor_final,valor_medido,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,nf_numero,nf_vencimento,status").in("status", ["aprovada", "faturada"]).not("nf_numero", "is", null), "dash-k-receber-sub") : Promise.resolve(null),
+    verReceber ? dashLer("medicoes", q => q.select("valor_final,valor_medido,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,nf_numero,nf_vencimento,status" + retCols).in("status", ["aprovada", "faturada"]).not("nf_numero", "is", null), "dash-k-receber-sub") : Promise.resolve(null),
     verReceber && typeof vbResumoAReceber === "function" ? vbResumoAReceber() : Promise.resolve(null)
   ]);
   if(carga !== _dashCargaN) return;

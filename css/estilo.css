@@ -1481,8 +1481,8 @@ td.num, th.num {
 .odoo-statusbar.informativa .stage:hover { background: var(--sup-0); }
 .odoo-statusbar.informativa .stage.atual:hover { background: var(--marca-600); }
 .odoo-statusbar.informativa .stage.cancelada:hover { background: var(--perigo); }
-/* fase 105b: JSON da NF-e na simulação */
-.mov-nfe-json {
+/* fase 105b: JSON da NF-e na simulação (105c: e da NFS-e da medição) */
+.mov-nfe-json, .med-nfse-json {
   background: var(--sup-2);
   padding: var(--esp-3);
   border-radius: var(--radius-sm);

@@ -7,13 +7,18 @@
 let _medRegistros = [];
 let _medView      = "lista";
 let medEditId     = null;
+let _medNfseOk    = false;   // fase 105c: a migration da NFS-e (medicoes.nfse_status, ret_*) já está no banco
+let _medAtual     = null;    // fase 105c: linha da medição aberta (estado da NFS-e)
 
 const MED_STAGES = ["rascunho","enviada","aprovada","faturada","recebida"];   // fase 91: recebida nasce no banco (recebimentos)
+const MED_RET_FED = ["irrf", "pis", "cofins", "csll", "inss"];                 // fase 105c: retenções federais (ret_*)
 
 /* ---------- Carga ---------- */
 async function carregarMedicoes(){
+  if(!_medNfseOk && typeof fiscalColunaExiste === "function") _medNfseOk = await fiscalColunaExiste("medicoes", "nfse_status");   // fase 105c
   const { data, error } = await sb.from("medicoes")
-    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,permuta_percentual,permuta_valor,obra:obras(codigo,nome,cliente_id)")   // fase 91: líquido, recebido e cliente (indicadores e visão por cliente); fase 98: permuta
+    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,permuta_percentual,permuta_valor,obra:obras(codigo,nome,cliente_id)"   // fase 91: líquido, recebido e cliente (indicadores e visão por cliente); fase 98: permuta
+      + (_medNfseOk ? ",nfse_status,nfse_ambiente," + MED_RET_FED.map(k => "ret_" + k).join(",") : ""))   // fase 105c: NFS-e e retenções federais
     .order("data_medicao", { ascending: false });
   _medRegistros = error ? [] : (data || []);
   renderMedicoes();
@@ -86,6 +91,11 @@ function medDocTxt(m){
   if(!m.nf_numero) return "—";
   return `${m.doc_tipo === "rr" ? "RR" : "NF"} ${m.nf_numero}`;
 }
+/* fase 105c: status da NFS-e emitida pelo app (lista, kanban) */
+function medNfseMarca(m){
+  if(!m || !m.nfse_status) return "";
+  return " " + tagStatus("nfse", m.nfse_status) + (m.nfse_ambiente === "homologacao" ? ' <span class="tag ambar" title="Emitida no ambiente de homologação da Focus: nota de teste, sem valor fiscal">homolog.</span>' : "");
+}
 
 function renderMedLista(dados){
   const cont = $("med-conteudo");
@@ -100,7 +110,7 @@ function renderMedLista(dados){
     <td>${medPeriodoTxt(m)}</td>
     <td>${num(m.percentual)}%</td>
     <td>${tagStatus("medicao", m.status)}</td>
-    <td>${esc(medDocTxt(m))}${medRecebMarca(m)}${typeof medPmMarca === "function" ? medPmMarca(m) : ""}</td>
+    <td>${esc(medDocTxt(m))}${medNfseMarca(m)}${medRecebMarca(m)}${typeof medPmMarca === "function" ? medPmMarca(m) : ""}</td>
     <td class="num">${brl(m.valor_medido)}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
@@ -124,7 +134,7 @@ function renderMedKanban(dados){
           <span class="meta">${num(m.percentual)}% · ${medPeriodoTxt(m)}</span>
         </div>
         <div class="serv-kan-card-rod">
-          <span>${esc(medDocTxt(m))}</span>
+          <span>${esc(medDocTxt(m))}${medNfseMarca(m)}</span>
           <strong>${brl(m.valor_medido)}</strong>
         </div>
       </div>`).join("");
@@ -243,6 +253,8 @@ function novaMedicao(){
   if($("med-iss-pct"))      $("med-iss-pct").value = "";
   if($("med-iss-retido"))   $("med-iss-retido").value = "true";
   if($("med-iss-valor"))  { $("med-iss-valor").value = ""; $("med-iss-valor").dataset.manual = "0"; }
+  MED_RET_FED.forEach(k => { const el = $("med-ret-" + k); if(el) el.value = ""; });   // fase 105c
+  _medAtual = null;
   $("med-percentual").value = 0;
   if($("med-subtotal"))      $("med-subtotal").value = 0;
   if($("med-desc-sinal"))    $("med-desc-sinal").value = 0;
@@ -259,12 +271,15 @@ function novaMedicao(){
 }
 
 async function abrirMedicao(id){
-  const [medRes, itensRes] = await Promise.all([
+  const lerItens = () => sb.from("medicao_itens")
+    .select(MED_ITENS_COLS + (_medTemTrava ? ",valor_total_lido,total_travado" : ""))
+    .eq("medicao_id", id).order("ordem");
+  let [medRes, itensRes] = await Promise.all([
     sb.from("medicoes").select("*").eq("id", id).single(),
-    sb.from("medicao_itens")
-      .select("id,ordem,descricao,variante_id,execucao_id,orcamento_item_id,quantidade,unidade,valor_unitario,valor_total,preco_origem,preco_origem_obs,equipamento_id,equipamento_tag,quantidade_lida,valor_unitario_lido,conferido")
-      .eq("medicao_id", id).order("ordem")
+    lerItens()
   ]);
+  // hotfix 93: banco ainda sem total_travado/valor_total_lido → lê com a lista antiga
+  if(itensRes.error && medErroSemTrava(itensRes.error)){ _medTemTrava = false; itensRes = await lerItens(); }
   if(medRes.error){ aviso("app-aviso","Erro ao abrir medição: "+medRes.error.message, "erro"); return; }
   // Itens não carregaram → NÃO abrir: salvarMedicao apaga e reinsere os itens,
   // e reinseriria uma lista vazia (perda dos itens da medição).
@@ -299,6 +314,10 @@ async function abrirMedicao(id){
   if($("med-iss-retido"))   $("med-iss-retido").value = data.iss_retido_fonte === false ? "false" : "true";
   if($("med-iss-valor"))  { $("med-iss-valor").value = data.iss_valor ?? ""; $("med-iss-valor").dataset.manual = (data.iss_valor != null && data.iss_percentual == null) ? "1" : "0"; }
   if(data.iss_percentual == null) medPreencherIssDaObra(data.obra_id); // medição antiga sem ISS: herda a alíquota da obra
+  // fase 105c: retenções federais e estado da NFS-e (o select("*") já traz as colunas novas depois da migration)
+  _medAtual = data;
+  if(Object.prototype.hasOwnProperty.call(data, "nfse_status")) _medNfseOk = true;
+  MED_RET_FED.forEach(k => { const el = $("med-ret-" + k); if(el) el.value = Number(data["ret_" + k]) > 0 ? data["ret_" + k] : ""; });
   $("med-percentual").value = data.percentual || 0;
   if($("med-subtotal"))      $("med-subtotal").value = data.subtotal ?? 0;
   if($("med-desc-sinal"))    $("med-desc-sinal").value = data.desconto_sinal ?? 0;
@@ -334,6 +353,7 @@ function abrirFichaMed(med){
   medRecebCarregarFicha(med);   // fase 91: aba NF/Recebimento
   medCauCarregarFicha(med);     // fase 91: aba Caução
   if(typeof medPmCarregarFicha === "function") medPmCarregarFicha(med);   // fase 98: % e crédito de permuta (aba Geral)
+  if(typeof medNfseAtualizar === "function") medNfseAtualizar();          // fase 105c: NFS-e (aba, botões, campos travados)
 }
 
 /* Lote S39 (chamado #26): NF cadastrada antes da produção. A pendência é calculada na view
@@ -361,6 +381,27 @@ const PRECO_ORIGEM_INFO = {
   manual:           { lbl: "Manual",            ic: "✋", cor: "var(--aviso-txt)", bg: "var(--aviso-bg)" }
 };
 
+/* Hotfix 93 (#93): quantidade com até 6 casas (medicao_itens.quantidade numeric(18,6)) e total do boletim travado
+   (medicao_itens.total_travado + valor_total_lido; o banco gera valor_total = total lido quando travado, senão
+   quantidade × unitário). Item travado não recalcula; "usar q × unitário" destrava. Sem a migration do hotfix as duas
+   colunas não existem: a leitura cai na lista antiga e a gravação não as manda (nada fica travado). */
+const MED_ITENS_COLS = "id,ordem,descricao,variante_id,execucao_id,orcamento_item_id,quantidade,unidade,valor_unitario,valor_total,preco_origem,preco_origem_obs,equipamento_id,equipamento_tag,quantidade_lida,valor_unitario_lido,conferido";
+let _medTemTrava = true;   // false quando o banco ainda não tem total_travado/valor_total_lido
+const medErroSemTrava = (e) => !!e && /total_travado|valor_total_lido/.test(e.message || "");
+const medArred6 = (n) => Math.round((Number(n) || 0) * 1e6) / 1e6;
+const medQtd  = (v) => Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 6 });
+const medQtd6 = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 6, maximumFractionDigits: 6 });
+const medItemTravado = (it) => it.total_travado === true && it.valor_total_lido != null;
+/* Insere itens; se o banco ainda não tem as colunas do hotfix 93, repete sem elas (o salvar da ficha apaga os itens
+   antes de inserir: falhar aqui perderia os itens). semTrava = gravou sem o total travado. */
+async function medInserirItens(linhas){
+  const r = await sb.from("medicao_itens").insert(linhas);
+  if(!(r.error && medErroSemTrava(r.error))) return r;
+  _medTemTrava = false;
+  const r2 = await sb.from("medicao_itens").insert(linhas.map(({ valor_total_lido, total_travado, ...resto }) => resto));
+  return { ...r2, semTrava: linhas.some(l => l.total_travado === true) };
+}
+
 function renderMedItens(){
   const tb    = $("med-itens-tbody");
   const vazio = $("med-itens-vazio");
@@ -380,15 +421,20 @@ function renderMedItens(){
     const tituloOrigem = it.preco_origem_obs || oi.lbl;
     // fase 88: item que veio de boletim importado mostra o que o PDF trazia, para comparar com o que ficou
     const lido = (it.quantidade_lida != null || it.valor_unitario_lido != null)
-      ? `<div class="meta" title="O que o boletim importado (PDF) trazia">PDF: ${it.quantidade_lida != null ? num(it.quantidade_lida) : "—"} × ${it.valor_unitario_lido != null ? brl(it.valor_unitario_lido) : "—"}${it.conferido ? " · ✓ conferido" : ""}${it.equipamento_tag ? " · " + esc(it.equipamento_tag) : ""}</div>`
+      ? `<div class="meta" title="O que o boletim importado (PDF) trazia">PDF: ${it.quantidade_lida != null ? medQtd(it.quantidade_lida) : "—"} × ${it.valor_unitario_lido != null ? brl(it.valor_unitario_lido) : "—"}${it.valor_total_lido != null ? " = " + brl(it.valor_total_lido) : ""}${it.conferido ? " · ✓ conferido" : ""}${it.equipamento_tag ? " · " + esc(it.equipamento_tag) : ""}</div>`
+      : "";
+    // hotfix 93: total do boletim travado (não muda com quantidade nem unitário) e botão para voltar a q × unitário
+    const trava = medItemTravado(it)
+      ? `<div class="meta" title="Total impresso no boletim importado: não muda com a quantidade nem com o unitário">🔒 do boletim</div>
+         <button type="button" class="btn-sec btn-sm btn-mi-destravar" data-idx="${idx}" title="Destrava o total e passa a calcular quantidade × unitário">usar q × unitário</button>`
       : "";
     return `<tr data-idx="${idx}">
       <td><strong>${idx+1}</strong></td>
       <td><input type="text" class="mi-desc" value="${esc(it.descricao||"")}" style="min-width:220px;" placeholder="ex.: Estaca Ø400 18-24m" />${lido}</td>
-      <td><input type="number" class="mi-qty col-xs" step="0.01" min="0" value="${it.quantidade ?? 0}" /></td>
+      <td><input type="number" class="mi-qty col-xs" step="any" min="0" value="${medArred6(it.quantidade ?? 0)}" title="Até 6 casas decimais" /></td>
       <td><input type="text" class="mi-uni" value="${esc(it.unidade||"")}" style="width:50px;" placeholder="m/vb/h" /></td>
       <td><input type="number" class="mi-unit col-sm" step="0.01" min="0" value="${it.valor_unitario ?? 0}" /></td>
-      <td class="num"><strong class="mi-total">${brl(it.valor_total ?? 0)}</strong></td>
+      <td class="num"><strong class="mi-total">${brl(it.valor_total ?? 0)}</strong>${trava}</td>
       <td><span class="badge-origem" title="${esc(tituloOrigem)}" style="background:${oi.bg};color:${oi.cor};">${oi.ic} ${oi.lbl}</span></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-mi-rem txt-perigo" data-idx="${idx}">×</button></td>
     </tr>`;
@@ -400,10 +446,11 @@ function renderMedItens(){
     const sync = () => {
       const it = _medItens[idx];
       it.descricao      = tr.querySelector(".mi-desc")?.value.trim() || null;
-      it.quantidade     = parseFloat(tr.querySelector(".mi-qty")?.value) || 0;
+      it.quantidade     = medArred6(parseFloat(tr.querySelector(".mi-qty")?.value) || 0);   // hotfix 93: 6 casas
       it.unidade        = tr.querySelector(".mi-uni")?.value.trim() || null;
       it.valor_unitario = parseFloat(tr.querySelector(".mi-unit")?.value) || 0;
-      it.valor_total    = +(it.quantidade * it.valor_unitario).toFixed(2);
+      // hotfix 93: item travado fica com o total do boletim; os outros recalculam
+      it.valor_total    = medItemTravado(it) ? Number(it.valor_total_lido) : +(it.quantidade * it.valor_unitario).toFixed(2);
       // Se editou unitário manualmente, marca como manual
       const unitInput = tr.querySelector(".mi-unit");
       if(document.activeElement === unitInput && it.preco_origem !== "manual"){
@@ -424,7 +471,17 @@ function renderMedItens(){
       renderMedItens();
     });
   });
+  // hotfix 93: destravar = o total passa a ser quantidade × unitário (o total lido fica guardado para comparar)
+  tb.querySelectorAll(".btn-mi-destravar").forEach(b => {
+    b.addEventListener("click", () => {
+      const it = _medItens[Number(b.dataset.idx)]; if(!it) return;
+      it.total_travado = false;
+      it.valor_total = +((Number(it.quantidade) || 0) * (Number(it.valor_unitario) || 0)).toFixed(2);
+      renderMedItens();
+    });
+  });
   recalcularTotaisMedicao();
+  if(typeof medNfseTravarCampos === "function") medNfseTravarCampos();   // fase 105c: itens da NFS-e emitida não mudam
 }
 
 /* ====================================================================
@@ -567,7 +624,9 @@ function recalcularTotaisMedicao(){
   if($("med-liquido")){
     const retV = parseFloat($("med-ret-valor")?.value) || 0;
     const issV = ($("med-iss-retido")?.value === "false") ? 0 : (parseFloat($("med-iss-valor")?.value) || 0);
-    $("med-liquido").value = (valorFinal - retV - issV).toFixed(2);
+    // fase 105c: retenções federais (IRRF, PIS, COFINS, CSLL, INSS) também saem do líquido, como em medicao_liquido()
+    const fedV = MED_RET_FED.reduce((s, k) => s + (parseFloat($("med-ret-" + k)?.value) || 0), 0);
+    $("med-liquido").value = (valorFinal - retV - issV - fedV).toFixed(2);
   }
   if($("med-ficha-subtotal-chip")) $("med-ficha-subtotal-chip").textContent = brl(subtotal);
   if($("med-ficha-valor-chip"))    $("med-ficha-valor-chip").textContent = brl(valorFinal);
@@ -927,6 +986,20 @@ async function salvarMedicao(novoStatus){
   };
   if(typeof medPmLerCampos === "function") Object.assign(reg, medPmLerCampos());   // fase 98: só financeiro/admin/diretor mandam a permuta
   Object.assign(reg, medEquipParaGravar("med-equip"));   // fase 101 (#94): máquina da medição
+  // fase 105c: retenções federais (só depois da migration) e medição travada pela NFS-e emitida pelo app
+  if(_medNfseOk){
+    for(const k of MED_RET_FED){
+      const v = parseFloat($("med-ret-" + k)?.value);
+      if(isFinite(v) && v < 0){ aviso("app-aviso", "Retenção federal não pode ser negativa.", "erro"); ativarTabMed("geral"); return; }
+      reg["ret_" + k] = isFinite(v) ? +v.toFixed(2) : 0;
+    }
+  }
+  const travadaNfse = medNfseTravada();
+  if(travadaNfse){
+    // o que está impresso na nota não vai no salvar (o banco recusaria); os itens também não (delete + insert abaixo)
+    MED_NFSE_CAMPOS_TRAVADOS.forEach(k => delete reg[k]);
+    if(medNfseNfDoApp()) ["nf_numero", "nf_data_emissao", "nf_valor", "doc_tipo"].forEach(k => delete reg[k]);
+  }
   let result;
   if(medEditId){
     result = await sb.from("medicoes").update(reg).eq("id", medEditId).select().single();
@@ -940,7 +1013,8 @@ async function salvarMedicao(novoStatus){
   medEditId = result.data.id;
 
   // Substitui itens (delete + insert) — mais simples que reconciliar por id
-  if(medEditId){
+  // fase 105c: medição com NFS-e emitida pelo app fica com os itens que foram para a nota (a guarda do banco também barra)
+  if(medEditId && !travadaNfse){
     const { error: errDel } = await sb.from("medicao_itens").delete().eq("medicao_id", medEditId);
     if(errDel){ aviso("app-aviso","Erro ao limpar itens antigos: "+errDel.message,"erro"); return; }
     if(_medItens.length){
@@ -953,10 +1027,10 @@ async function salvarMedicao(novoStatus){
           variante_id: it.variante_id || null,
           execucao_id: it.execucao_id || null,
           orcamento_item_id: it.orcamento_item_id || null,
-          quantidade: Number(it.quantidade) || 0,
+          quantidade: medArred6(it.quantidade),   // hotfix 93: numeric(18,6)
           unidade: it.unidade || null,
           valor_unitario: Number(it.valor_unitario) || 0,
-          // valor_total é coluna GENERATED no banco — não enviamos
+          // valor_total é coluna GENERATED no banco — não enviamos (hotfix 93: = valor_total_lido quando travado)
           preco_origem: it.preco_origem || "manual",
           preco_origem_obs: it.preco_origem_obs || null,
           // TAG do boletim e, na fase 88, o que o PDF importado trazia: preservados no delete + insert
@@ -964,10 +1038,12 @@ async function salvarMedicao(novoStatus){
           equipamento_tag: it.equipamento_tag || null,
           quantidade_lida: it.quantidade_lida ?? null,
           valor_unitario_lido: it.valor_unitario_lido ?? null,
-          conferido: it.conferido === true
+          conferido: it.conferido === true,
+          // hotfix 93: total do boletim e trava preservados no delete + insert (só quando o banco já tem as colunas)
+          ...(_medTemTrava ? { valor_total_lido: it.valor_total_lido ?? null, total_travado: medItemTravado(it) } : {})
         }));
       if(insertItens.length){
-        const { error: errIns } = await sb.from("medicao_itens").insert(insertItens);
+        const { error: errIns } = await medInserirItens(insertItens);
         if(errIns){ aviso("app-aviso","Erro ao salvar itens: "+errIns.message,"erro"); return; }
       }
     }
@@ -982,6 +1058,7 @@ async function salvarMedicao(novoStatus){
   if(reg.tipo_medicao === "quinzenal" && !_medItens.length){
     aviso("app-aviso","Medição salva. Nenhuma execução no período: a medição fica com a pendência 'produção pendente' até os diários serem lançados.","aviso");
   }
+  return true;   // fase 105c: a NFS-e salva antes de simular/emitir e precisa saber se deu certo
 }
 
 /* ============================================================
@@ -1688,12 +1765,19 @@ function medImpMontarConferencia(resp, arq){
   st.itens = (resp.itens || []).map((it, i) => {
     const uni = medImpNormalizarUnidade(it.unidade);
     const cas = medImpCasarCascata(it.descricao);
-    const qtd = Number(it.quantidade) || 0;
+    const qtd = medArred6(Number(it.quantidade) || 0);   // hotfix 93: 6 casas
     const vuLido = Number(it.valor_unitario) || 0;
+    // hotfix 93 (#93): o total impresso é a verdade quando o boletim o traz. A function v1.4 manda total_divergente e
+    // quantidade_calculada; com a v1.3 ainda no ar, a mesma conta é feita aqui (|q × unitário − total| > R$ 0,01).
+    const vtLido = (it.valor_total != null && isFinite(Number(it.valor_total))) ? Number(it.valor_total) : null;
+    const conta = +(qtd * vuLido).toFixed(2);
+    const divergente = vtLido != null && (it.total_divergente != null ? it.total_divergente === true : Math.abs(conta - vtLido) > 0.01);
+    const qCalc = !divergente ? null : (it.quantidade_calculada != null ? medArred6(it.quantidade_calculada) : (vuLido ? medArred6(vtLido / vuLido) : null));
     return {
       ordem: i + 1, descricao: it.descricao || "", unidade: uni.valor, unidade_lida: it.unidade || "", unidade_aviso: uni.aviso,
-      quantidade: qtd, quantidade_lida: qtd, valor_unitario_lido: vuLido,
-      valor_total_lido: it.valor_total != null ? Number(it.valor_total) : +(qtd * vuLido).toFixed(2),
+      quantidade: (divergente && qCalc != null) ? qCalc : qtd, quantidade_lida: qtd, valor_unitario_lido: vuLido,
+      valor_total_lido: vtLido != null ? vtLido : conta, total_impresso: vtLido != null && it.total_impresso !== false,
+      total_divergente: divergente, quantidade_calculada: qCalc, caminho: divergente ? "boletim" : "conta",   // o do boletim marcado por padrão
       tag: it.tag || m.equipamento || null, cascata: cas, usar: "lido", conferido: false, removido: false
     };
   });
@@ -1717,6 +1801,27 @@ function medImpMontarConferencia(resp, arq){
   medImpRenderConferencia(resp, arq);
 }
 
+/* Hotfix 93 (#93): item cujo total impresso não bate com quantidade × unitário mostra os dois caminhos, com o do boletim
+   marcado. Boletim = total travado no impresso e a quantidade que o fecha (6 casas); conta = quantidade lida × unitário.
+   Com o unitário do app ("usar app") vale a conta: o caminho do boletim fica desabilitado. */
+function medImpTravado(it){ return !!it.total_divergente && it.caminho === "boletim" && it.usar !== "app" && it.valor_total_lido != null; }
+function medImpTotalItem(it){ return medImpTravado(it) ? Number(it.valor_total_lido) : +((Number(it.quantidade) || 0) * medImpUnitarioEscolhido(it)).toFixed(2); }
+function medImpQtdBoletim(it){
+  const vu = Number(it.valor_unitario_lido) || 0;
+  return vu ? medArred6(Number(it.valor_total_lido) / vu) : (it.quantidade_calculada ?? it.quantidade_lida);
+}
+function medImpRotuloConta(it){ return `${medQtd(it.quantidade_lida)} × ${brl(it.valor_unitario_lido)} = ${brl(+((Number(it.quantidade_lida) || 0) * (Number(it.valor_unitario_lido) || 0)).toFixed(2))}`; }
+function medImpRotuloBoletim(it){ return `${brl(it.valor_total_lido)} do boletim, quantidade ${medQtd6(medImpQtdBoletim(it))}`; }
+function medImpCaminhosHtml(it, i){
+  if(!it.total_divergente) return "";
+  const app = it.usar === "app";
+  return `<div class="ia-duvidas" style="margin-top:4px;" role="radiogroup" aria-label="Total do item ${i + 1}">
+      <div>⚠️ O total impresso não bate com quantidade × unitário. Qual vale?</div>
+      <label style="display:block;"><input type="radio" name="med-imp-cam-${i}" data-c="caminho" value="conta"${(it.caminho === "conta" || app) ? " checked" : ""} /> <span class="med-imp-cam-conta">${esc(medImpRotuloConta(it))}</span></label>
+      <label style="display:block;" title="${app ? "Com o unitário do app vale quantidade × unitário" : "Total travado no impresso; a quantidade fecha o total com 6 casas"}"><input type="radio" name="med-imp-cam-${i}" data-c="caminho" value="boletim"${(it.caminho === "boletim" && !app) ? " checked" : ""}${app ? " disabled" : ""} /> 🔒 <span class="med-imp-cam-boletim">${esc(medImpRotuloBoletim(it))}</span></label>
+    </div>`;
+}
+
 function medImpLinhaItem(it, i){
   const cas = it.cascata;
   const oi = cas ? (PRECO_ORIGEM_INFO[cas.fonte] || PRECO_ORIGEM_INFO.manual) : null;
@@ -1728,11 +1833,12 @@ function medImpLinhaItem(it, i){
     <td>${i + 1}</td>
     <td><input data-c="descricao" value="${esc(it.descricao)}" style="min-width:240px" />
         ${it.unidade_aviso ? `<div class="meta" style="color:var(--aviso-txt);">⚠️ ${esc(it.unidade_aviso)}</div>` : ""}
-        ${cas ? `<div class="meta" title="Item do app casado pela descrição">≈ ${esc(cas.descricao || cas.variante_nome || "")}${(cas.fonte === "orcamento_obra" && cas.orcamento_numero) ? ` · orç. ${esc(cas.orcamento_numero)}${cas.orcamento_revisao ? " rev " + esc(cas.orcamento_revisao) : ""}` : ""}</div>` : ""}</td>
+        ${cas ? `<div class="meta" title="Item do app casado pela descrição">≈ ${esc(cas.descricao || cas.variante_nome || "")}${(cas.fonte === "orcamento_obra" && cas.orcamento_numero) ? ` · orç. ${esc(cas.orcamento_numero)}${cas.orcamento_revisao ? " rev " + esc(cas.orcamento_revisao) : ""}` : ""}</div>` : ""}
+        ${medImpCaminhosHtml(it, i)}</td>
     <td><select data-c="unidade" title="Lido no PDF: ${esc(it.unidade_lida || "—")}">${uniOpts}</select></td>
-    <td class="num"><input type="number" step="0.001" min="0" data-c="quantidade" value="${it.quantidade}" style="width:84px" /></td>
+    <td class="num"><input type="number" step="any" min="0" data-c="quantidade" value="${it.quantidade}" style="width:96px" title="Até 6 casas decimais" /></td>
     <td class="num"><input type="number" step="0.01" min="0" data-c="valor_unitario_lido" value="${it.valor_unitario_lido}" style="width:92px" /></td>
-    <td class="num" title="Total impresso no PDF">${brl(it.valor_total_lido)}</td>
+    <td class="num${it.total_divergente ? " dif-alta" : ""}" title="${it.total_divergente ? "Total impresso no PDF: diferente de quantidade × unitário" : "Total impresso no PDF"}">${brl(it.valor_total_lido)}</td>
     <td class="num col-app">${vuApp != null ? brl(vuApp) : "—"}</td>
     <td class="col-app">${oi ? `<span class="badge-origem" style="background:${oi.bg};color:${oi.cor};">${oi.ic} ${oi.lbl}</span>` : '<span class="meta">sem preço no app</span>'}</td>
     <td class="num med-imp-dif${difAlta ? " dif-alta" : ""}">${dif != null ? (dif > 0 ? "+" : "") + brl(dif) : "—"}</td>
@@ -1851,11 +1957,36 @@ function medImpLerLinha(tr){
   const it = _medImp?.itens[Number(tr.dataset.idx)]; if(!it) return;
   it.descricao = tr.querySelector('[data-c="descricao"]').value.trim();
   it.unidade = tr.querySelector('[data-c="unidade"]').value;
-  it.quantidade = parseFloat(tr.querySelector('[data-c="quantidade"]').value) || 0;
+  it.quantidade = medArred6(parseFloat(tr.querySelector('[data-c="quantidade"]').value) || 0);   // hotfix 93: 6 casas
   it.valor_unitario_lido = parseFloat(tr.querySelector('[data-c="valor_unitario_lido"]').value) || 0;
   const usar = tr.querySelector('[data-c="usar"]:checked'); it.usar = usar ? usar.value : "lido";
   it.tag = tr.querySelector('[data-c="tag"]').value.trim() || null;
   it.conferido = tr.querySelector('[data-c="conferido"]').checked;
+  // hotfix 93: trocar de caminho põe a quantidade dele (lida ou a que fecha o total do boletim)
+  if(it.total_divergente){
+    const cam = tr.querySelector('[data-c="caminho"]:checked');
+    const novo = cam ? cam.value : "conta";
+    if(novo !== it.caminho){
+      it.caminho = novo;
+      it.quantidade = novo === "boletim" ? medImpQtdBoletim(it) : it.quantidade_lida;
+      const q = tr.querySelector('[data-c="quantidade"]'); if(q) q.value = it.quantidade;
+    }
+    medImpSincCaminho(tr, it);
+  }
+}
+/* Com o unitário do app vale quantidade × unitário: o caminho do boletim fica desabilitado e volta para a conta */
+function medImpSincCaminho(tr, it){
+  if(!tr || !it || !it.total_divergente) return;
+  const rb = tr.querySelector('[data-c="caminho"][value="boletim"]');
+  const rc = tr.querySelector('[data-c="caminho"][value="conta"]');
+  if(it.usar === "app" && it.caminho === "boletim"){
+    it.caminho = "conta"; it.quantidade = it.quantidade_lida;
+    const q = tr.querySelector('[data-c="quantidade"]'); if(q) q.value = it.quantidade;
+  }
+  if(rb){ rb.disabled = it.usar === "app"; rb.checked = it.caminho === "boletim"; }
+  if(rc) rc.checked = it.caminho === "conta";
+  const lc = tr.querySelector(".med-imp-cam-conta");   if(lc) lc.textContent = medImpRotuloConta(it);
+  const lb = tr.querySelector(".med-imp-cam-boletim"); if(lb) lb.textContent = medImpRotuloBoletim(it);
 }
 function medImpAtualizarLinha(tr){
   const it = _medImp?.itens[Number(tr.dataset.idx)]; if(!it) return;
@@ -1873,6 +2004,7 @@ function medImpUsarTodos(modo){
     if(modo === "app" && !it.cascata) return;
     it.usar = modo;
     const r = document.querySelector(`input[name="med-imp-usar-${i}"][value="${modo}"]`); if(r) r.checked = true;
+    medImpSincCaminho(document.querySelector(`#med-imp-conf tbody tr[data-idx="${i}"]`), it);   // hotfix 93
   });
   medImpAtualizarTotais();
 }
@@ -1893,7 +2025,9 @@ function medImpChecarDuplicado(){
 function medImpCalcular(){
   const st = _medImp; if(!st || !st.cab) return null;
   const ativos = st.itens.filter(it => !it.removido);
-  const subtotal = +ativos.reduce((s, it) => s + it.quantidade * medImpUnitarioEscolhido(it), 0).toFixed(2);
+  // hotfix 93: total por item como o banco gera (2 casas; o do boletim quando travado)
+  const subtotal = +ativos.reduce((s, it) => s + medImpTotalItem(it), 0).toFixed(2);
+  const travados = ativos.filter(medImpTravado).length;
   const tipo = $("med-imp-h-tipo")?.value || "quinzenal";
   const descSinal = parseFloat($("med-imp-h-sinal")?.value) || 0;
   const acresc = parseFloat($("med-imp-h-acresc")?.value) || 0;
@@ -1914,7 +2048,7 @@ function medImpCalcular(){
   const issV = parseFloat(issEl?.value) || 0;
   const issRetido = ($("med-imp-h-iss-retido")?.value || "true") !== "false";
   const liquido = +(valorFinal - retV - (issRetido ? issV : 0)).toFixed(2);
-  return { subtotal, descSinal, acresc, mult, valorFinal, retPct: isFinite(retPct) ? retPct : null, retV, issPct: isFinite(issPct) ? issPct : null, issV, issRetido, liquido, tipo, itens: ativos.length };
+  return { subtotal, descSinal, acresc, mult, valorFinal, retPct: isFinite(retPct) ? retPct : null, retV, issPct: isFinite(issPct) ? issPct : null, issV, issRetido, liquido, tipo, itens: ativos.length, travados };
 }
 function medImpAtualizarTotais(){
   const st = _medImp; if(!st || !st.cab) return;
@@ -1926,7 +2060,7 @@ function medImpAtualizarTotais(){
   const difSub = subLido != null ? t.subtotal - subLido : null;
   const destaque = (d) => (d != null && Math.abs(d) > 0.5) ? ' style="color:var(--aviso-txt);"' : "";
   cont.innerHTML = `
-    <div class="ind"><div class="num">${brl(t.subtotal)}<small>${t.itens} item(ns)${subLido != null ? ` · PDF ${brl(subLido)}` : ""}</small></div><div class="rot"${destaque(difSub)}>${(difSub != null && Math.abs(difSub) > 0.5) ? `Subtotal · dif. ${brl(difSub)} contra o PDF` : "Subtotal"}</div></div>
+    <div class="ind"><div class="num">${brl(t.subtotal)}<small>${t.itens} item(ns)${t.travados ? ` · ${t.travados} 🔒 do boletim` : ""}${subLido != null ? ` · PDF ${brl(subLido)}` : ""}</small></div><div class="rot"${destaque(difSub)}>${(difSub != null && Math.abs(difSub) > 0.5) ? `Subtotal · dif. ${brl(difSub)} contra o PDF` : "Subtotal"}</div></div>
     <div class="ind"><div class="num">${t.descSinal ? "− " + brl(t.descSinal) : "—"}</div><div class="rot">Desconto do sinal</div></div>
     <div class="ind"><div class="num">${t.acresc ? "+ " + brl(t.acresc) : "—"}</div><div class="rot">Acréscimos</div></div>
     <div class="ind"><div class="num">${brl(t.valorFinal)}<small>${t.mult !== 100 ? `${num(t.mult)}% do subtotal · ` : ""}${(isFinite(vfLido) && vfLido > 0) ? `PDF ${brl(vfLido)}` : "PDF sem valor final"}</small></div><div class="rot"${destaque(difVF)}>${(difVF != null && Math.abs(difVF) > 0.5) ? `Valor final · dif. ${brl(difVF)} contra o PDF` : "Valor final"}</div></div>
@@ -2001,21 +2135,27 @@ async function medImpConfirmar(){
     return {
       medicao_id: medId, ordem: i + 1, descricao: it.descricao,
       variante_id: it.cascata?.variante_id || null, orcamento_item_id: it.cascata?.orcamento_item_id || null,
-      quantidade: it.quantidade, unidade: MED_IMP_UNIDADES_VALIDAS.includes(it.unidade) ? it.unidade : "un",
+      quantidade: medArred6(it.quantidade), unidade: MED_IMP_UNIDADES_VALIDAS.includes(it.unidade) ? it.unidade : "un",
       valor_unitario: medImpUnitarioEscolhido(it),
       preco_origem: usaApp ? it.cascata.fonte : "manual",
       preco_origem_obs: usaApp
         ? `Cascata do app (${(PRECO_ORIGEM_INFO[it.cascata.fonte] || {}).lbl || it.cascata.fonte}); o boletim trazia ${brl(it.valor_unitario_lido)}`
         : `Lido do boletim importado (PDF)${it.cascata ? "; o app calcularia " + brl(it.cascata.valor_unitario) : ""}`,
       equipamento_id: eq ? eq.id : null, equipamento_tag: it.tag,
-      quantidade_lida: it.quantidade_lida, valor_unitario_lido: it.valor_unitario_lido, conferido: it.conferido === true
+      quantidade_lida: medArred6(it.quantidade_lida), valor_unitario_lido: it.valor_unitario_lido, conferido: it.conferido === true,
+      // hotfix 93: total impresso guardado; travado quando o caminho do boletim foi escolhido (o banco gera valor_total = ele)
+      valor_total_lido: it.total_impresso ? it.valor_total_lido : null, total_travado: medImpTravado(it)
     };
   });
-  const insIt = await sb.from("medicao_itens").insert(itens);
-  if(insIt.error){
+  const insIt = await medInserirItens(itens);
+  if(insIt.error || insIt.semTrava){
+    // semTrava: banco sem as colunas do hotfix 93 e item com o total do boletim → não grava um total diferente do escolhido
+    if(insIt.semTrava) await sb.from("medicao_itens").delete().eq("medicao_id", medId);
     await sb.from("medicoes").delete().eq("id", medId);
     if(storagePath) await sb.storage.from("obras-documentos").remove([storagePath]);
-    aviso("med-imp-aviso", "Não foi possível gravar os itens (a medição foi desfeita): " + insIt.error.message, "erro");
+    aviso("med-imp-aviso", insIt.error
+      ? "Não foi possível gravar os itens (a medição foi desfeita): " + insIt.error.message
+      : "O banco ainda não guarda o total do boletim travado (atualização do hotfix 93 pendente): a medição foi desfeita. Escolha \"quantidade × unitário\" nos itens marcados ou tente depois da atualização.", "erro");
     return;
   }
 
@@ -2184,11 +2324,13 @@ let _medRecebMes     = null;   // { ini, total, n } recebido no mês corrente (i
 
 function medCauPodeOperar(){ return !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
 function medTagCau(st){ const o = MED_CAU_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${o.cor}">${esc(o.label)}</span>`; }
-/* Líquido a receber da medição (fase 47): valor final − retenção contratual − ISS retido na fonte. Igual a medicao_liquido() no banco. */
+/* Líquido a receber da medição (fase 47): valor final − retenção contratual − ISS retido na fonte − retenções federais
+   (fase 105c: IRRF, PIS, COFINS, CSLL e INSS; ausentes = 0). Igual a medicao_liquido() no banco. */
 function medLiquido(m){
   const vf = Number(m.valor_final) || Number(m.valor_medido) || 0;
   const iss = (m.iss_retido_fonte === false) ? 0 : (Number(m.iss_valor) || 0);
-  return Math.round((vf - (Number(m.retencao_valor) || 0) - iss) * 100) / 100;
+  const fed = MED_RET_FED.reduce((s, k) => s + (Number(m["ret_" + k]) || 0), 0);   // fase 105c
+  return Math.round((vf - (Number(m.retencao_valor) || 0) - iss - fed) * 100) / 100;
 }
 function medRecebSaldo(m){ return Math.max(0, Math.round((medLiquido(m) - (Number(m.recebido_valor) || 0)) * 100) / 100); }
 /* Situação do recebimento: sem_nf | a_receber | parcial | vencida | recebida */
@@ -2272,7 +2414,7 @@ async function medRecebRenderIndicadores(){
   const fAtivo = $("med-f-receb")?.value || "";
   cont.style.display = "";
   cont.innerHTML = `
-    <div class="ind ind-click${fAtivo === "a_receber" ? " ativo" : ""}" data-receb="a_receber" title="Medições com NF emitida e ainda não recebidas, pelo líquido a receber (valor final − retenção − ISS retido) menos o já recebido. Clique para filtrar."><div class="num">${brl(soma(aRec))}</div><div class="rot">A receber · ${aRec.length} NF(s)</div></div>
+    <div class="ind ind-click${fAtivo === "a_receber" ? " ativo" : ""}" data-receb="a_receber" title="Medições com NF emitida e ainda não recebidas, pelo líquido a receber (valor final − retenção − ISS retido − retenções federais) menos o já recebido. Clique para filtrar."><div class="num">${brl(soma(aRec))}</div><div class="rot">A receber · ${aRec.length} NF(s)</div></div>
     <div class="ind ind-click${fAtivo === "vencida" ? " ativo" : ""}" data-receb="vencida" title="Vencimento da NF já passou e o recebimento não está completo. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(soma(venc))}</div><div class="rot">Vencidas · ${venc.length} NF(s)</div></div>
     <div class="ind" title="Recebimentos confirmados pelo financeiro no mês corrente (aba NF/Recebimento das medições)"><div class="num" style="color:var(--sucesso);">${brl(_medRecebMes.total)}</div><div class="rot">Recebido no mês · ${_medRecebMes.n} lançamento(s)</div></div>`;
 }
@@ -2623,7 +2765,7 @@ function renderMedRecebFicha(med){
       ${chip("Valor final", brl(Number(med.valor_final) || Number(med.valor_medido) || 0))}
       ${chip("Retenção", brl(med.retencao_valor || 0), "Caução que o cliente segura (aba Caução)")}
       ${chip("ISS retido", med.iss_retido_fonte === false ? "não" : brl(med.iss_valor || 0), "ISS retido na fonte pelo cliente")}
-      ${chip("Líquido a receber", `<span style="color:var(--sucesso-txt);">${brl(liq)}</span>`, "valor final − retenção − ISS retido (fase 47)")}
+      ${chip("Líquido a receber", `<span style="color:var(--sucesso-txt);">${brl(liq)}</span>`, "valor final − retenção − ISS retido − retenções federais (fases 47 e 105c)")}
       ${chip("Recebido", brl(recebido))}
       ${chip("Saldo", `<span class="${saldo > 0.009 ? "txt-perigo" : ""}">${brl(saldo)}</span>`)}
       ${chip("Situação", `<span class="tag ${SIT[sit][1]}">${SIT[sit][0]}</span>`)}
@@ -3390,4 +3532,399 @@ if(document.readyState === "loading"){
   document.addEventListener("DOMContentLoaded", ligarMedPermutas);
 } else {
   ligarMedPermutas();
+}
+
+/* ====================================================================
+   FASE 105c — NFS-e da medição pelo app (Focus NFe; function focus-nfe, status pelo focus-nfe-webhook)
+   Spec: docs/specs/fase-105-emissao-fiscal-focus-nfe.md (parte 105c). Prefixo med-nfse-.
+   - Aba "NFS-e" da ficha: statusbar informativa (rascunho → processando → autorizada | rejeitada → cancelada/substituída),
+     chip do ambiente, bloco Rejeição com a mensagem da prefeitura, dados da nota e eventos fiscais (registros_log,
+     entidade medicoes, tipo 'fiscal'; gravados pela function e pelo webhook).
+   - Topo da ficha: Emitir NFS-e (medição aprovada; confirmação com tomador, município, valor, ISS retido ou não e o
+     ambiente), Simular (pendências + JSON), Consultar, PDF, XML, Substituir (só no Ambiente Nacional) e Cancelar (motivo
+     com 15 a 255 caracteres).
+   - Medição com NFS-e processando, autorizada, cancelada ou substituída fica travada: valor, itens, ISS, retenções e obra
+     não mudam (gatilhos trg_medicoes_nfse_guarda e trg_medicao_itens_nfse_guarda no banco) e o salvar não manda esses
+     campos nem os itens; NF nº/emissão/valor ficam só leitura enquanto a nota do app vale.
+   - Retenções federais (IRRF, PIS, COFINS, CSLL, INSS) na aba Geral: vão na nota e saem do líquido a receber.
+   - Quem emite: podeEmitirFiscal() (decisão 6) e que leia a medição; a function confere de novo.
+   Sem a migration da 105c (_medNfseOk falso) nada disso aparece e o salvar não manda as colunas novas.
+   ==================================================================== */
+const MED_NFSE_STAGES = ["rascunho", "processando", "autorizada", "cancelada"];
+// colunas que estão impressas na nota: saem do salvar enquanto a medição estiver travada (a guarda do banco recusaria)
+const MED_NFSE_CAMPOS_TRAVADOS = ["obra_id", "subtotal", "desconto_sinal", "acrescimo", "multiplicador_pct", "valor_medido",
+  "iss_percentual", "iss_valor", "iss_retido_fonte", "ret_irrf", "ret_pis", "ret_cofins", "ret_csll", "ret_inss"];
+const MED_NFSE_TRAVA_IDS = ["med-obra", "med-tipo", "med-multiplicador", "med-desc-sinal", "med-acrescimo", "med-valor-final",
+  "med-iss-pct", "med-iss-retido", "med-iss-valor", "med-ret-irrf", "med-ret-pis", "med-ret-cofins", "med-ret-csll", "med-ret-inss"];
+const MED_NFSE_NF_IDS = ["med-doc-tipo", "med-nf-numero", "med-nf-emissao", "med-nf-valor"];
+let _medNfseCfg = null;       // { modelo, ambNacional } dos dados fiscais da empresa (botão Substituir)
+let _medNfseModalOk = null;
+
+function medNfseTravada(m){
+  m = m || _medAtual;
+  return !!(_medNfseOk && m && m.nfse_ref_focus && ["processando", "autorizada", "cancelada", "substituida"].includes(m.nfse_status));
+}
+function medNfseNfDoApp(m){
+  m = m || _medAtual;
+  return !!(_medNfseOk && m && m.nfse_ref_focus && ["processando", "autorizada", "substituida"].includes(m.nfse_status));
+}
+function medNfsePodeEmitir(){
+  return typeof podeEmitirFiscal === "function" && podeEmitirFiscal() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+}
+function medNfseNfManual(m){
+  m = m || _medAtual;
+  const nf = String(m?.nf_numero || "").trim();
+  return !!nf && !(m.nfse_ref_focus && nf === String(m.nfse_numero || ""));
+}
+async function medNfseCarregarCfg(){
+  if(_medNfseCfg || !_medNfseOk) return _medNfseCfg;
+  const { data, error } = await sb.from("empresa_config").select("fiscal_nfse_modelo,fiscal_nfse_ambiente_nacional").eq("id", 1).maybeSingle();
+  if(!error && data) _medNfseCfg = { modelo: data.fiscal_nfse_modelo || "nfsen", ambNacional: data.fiscal_nfse_ambiente_nacional === true };
+  return _medNfseCfg;
+}
+
+/* campos de valor, ISS, retenções, obra e itens travados enquanto a nota do app vale (reaplicado a cada render dos itens) */
+function medNfseTravarCampos(){
+  const trava = medNfseTravada();
+  const nfApp = medNfseNfDoApp();
+  // devolve true quando o campo acabou de ser destravado
+  const aplicar = (id, travar) => {
+    const el = $(id);
+    if(!el) return false;
+    if(travar){
+      el.dataset.nfseTrava = "1";
+      if(el.tagName === "SELECT") el.disabled = true; else el.readOnly = true;
+    } else if(el.dataset.nfseTrava === "1"){
+      el.dataset.nfseTrava = "";
+      if(el.tagName === "SELECT") el.disabled = false; else el.readOnly = false;
+      return true;
+    }
+    return false;
+  };
+  const destravou = MED_NFSE_TRAVA_IDS.map(id => aplicar(id, trava)).some(Boolean);
+  MED_NFSE_NF_IDS.forEach(id => aplicar(id, nfApp));
+  if(destravou) recalcularTotaisMedicao();   // o valor final volta à regra dos itens (só leitura com itens)
+  document.querySelectorAll("#med-itens-tbody input").forEach(el => { el.readOnly = trava; });
+  document.querySelectorAll("#med-itens-tbody .btn-mi-rem").forEach(b => { b.style.display = trava ? "none" : ""; });
+  ["btn-med-add-item", "btn-med-sugerir"].forEach(id => { const b = $(id); if(b) b.style.display = trava ? "none" : ""; });
+  if(trava && $("btn-med-compor-sinal")) $("btn-med-compor-sinal").style.display = "none";
+  ["btn-med-sugerir-abat", "btn-med-calc-he", "btn-med-calc-fatmin"].forEach(id => { const b = $(id); if(b) b.disabled = trava; });
+}
+
+/* ---------- ficha: aba NFS-e, chip, rejeição, dados da nota, botões ---------- */
+function medNfseAtualizar(){
+  const m = _medAtual;
+  document.querySelectorAll("#med-ficha .med-ret-fed").forEach(el => { el.style.display = _medNfseOk ? "" : "none"; });
+  const tab = $("med-tab-nfse");
+  if(tab) tab.style.display = _medNfseOk && medEditId ? "" : "none";
+  const homolog = m?.nfse_ambiente === "homologacao";
+  const chipBox = $("med-ficha-nfse"), chip = $("med-ficha-nfse-chip");
+  if(chipBox) chipBox.style.display = _medNfseOk && m?.nfse_status ? "" : "none";
+  if(chip) chip.innerHTML = m?.nfse_status
+    ? tagStatus("nfse", m.nfse_status) + (homolog ? ' <span class="tag ambar" title="Ambiente de homologação da Focus: nota de teste, sem valor fiscal">Homologação</span>' : "")
+    : "—";
+  const st = m?.nfse_status || "rascunho";
+  const sbar = $("med-nfse-statusbar");
+  if(sbar){
+    const ruim = st === "rejeitada";
+    const fim = st === "cancelada" || st === "substituida";
+    const pos = ruim ? 2 : Math.max(0, MED_NFSE_STAGES.indexOf(st === "substituida" ? "cancelada" : st));
+    sbar.querySelectorAll(".stage").forEach((el, i) => {
+      el.classList.remove("atual", "passada", "cancelada");
+      el.removeAttribute("aria-current");
+      if(el.dataset.nfse === "autorizada") el.textContent = ruim ? "Rejeitada" : "Autorizada";
+      if(el.dataset.nfse === "cancelada") el.textContent = st === "substituida" ? "Substituída" : "Cancelada";
+      if(i < pos) el.classList.add("passada");
+      if(i === pos){ el.classList.add(ruim || fim ? "cancelada" : "atual"); el.setAttribute("aria-current", "step"); }
+    });
+  }
+  const amb = $("med-nfse-amb");
+  if(amb){
+    amb.innerHTML = m?.nfse_ambiente
+      ? `<span class="tag ${homolog ? "ambar" : "verde"}">${homolog ? "Homologação: sem valor fiscal" : "Produção"}</span>`
+      : '<span class="meta">o ambiente (homologação ou produção) vem dos dados fiscais da empresa</span>';
+  }
+  const rej = $("med-nfse-rejeicao");
+  if(rej){
+    const erros = Array.isArray(m?.nfse_erros) ? m.nfse_erros : [];
+    const mostra = st === "rejeitada" && (m?.nfse_mensagem || erros.length);
+    rej.style.display = mostra ? "" : "none";
+    rej.innerHTML = !mostra ? "" : `<strong>Rejeição:</strong> ${esc(m.nfse_mensagem || "")}
+      ${erros.length ? `<ul>${erros.map(x => `<li>${x.codigo ? `<strong>${esc(x.codigo)}</strong>: ` : ""}${esc(x.mensagem || "")}${x.correcao ? ` <span class="meta">— ${esc(x.correcao)}</span>` : ""}</li>`).join("")}</ul>` : ""}
+      <div class="meta">Corrija o cadastro indicado (empresa, cliente, obra ou medição) e use Emitir NFS-e de novo (vai com outra referência).</div>`;
+  }
+  const info = $("med-nfse-info");
+  if(info){
+    info.textContent = !m?.nfse_status ? "NFS-e ainda não emitida pelo app."
+      : st === "processando" ? "Enviada à prefeitura pela Focus NFe: o status chega sozinho (webhook). Se não chegar, use Consultar."
+      : st !== "rejeitada" && m.nfse_mensagem ? `Prefeitura/Focus: ${m.nfse_mensagem}` : "";
+  }
+  const txt = (id, html) => { const el = $(id); if(el) el.innerHTML = html; };
+  txt("med-nfse-numero", m?.nfse_numero ? `<strong>${esc(m.nfse_numero)}</strong>` : "—");
+  txt("med-nfse-codverif", m?.nfse_codigo_verificacao ? esc(m.nfse_codigo_verificacao) : "—");
+  txt("med-nfse-emitida", m?.nfse_emitida_em ? esc(typeof histQuando === "function" ? histQuando(m.nfse_emitida_em) : dataBR(m.nfse_emitida_em)) : "—");
+  txt("med-nfse-link", m?.nfse_link_prefeitura && /^https:\/\//.test(m.nfse_link_prefeitura)
+    ? `<a href="${esc(m.nfse_link_prefeitura)}" target="_blank" rel="noopener">abrir a consulta pública ↗</a>` : "—");
+  txt("med-nfse-chave", m?.nfse_chave ? esc(m.nfse_chave) : "—");
+  const cancel = $("med-nfse-cancel-campo");
+  if(cancel) cancel.style.display = m?.nfse_cancelada_em ? "" : "none";
+  txt("med-nfse-cancel", m?.nfse_cancelada_em ? `${esc(dataBR(m.nfse_cancelada_em))}${m.nfse_cancelamento_justificativa ? " · " + esc(m.nfse_cancelamento_justificativa) : ""}` : "—");
+  const subst = $("med-nfse-subst-campo");
+  if(subst) subst.style.display = m?.nfse_substituida_por_id ? "" : "none";
+  if(m?.nfse_substituida_por_id){
+    const outra = _medRegistros.find(x => x.id === m.nfse_substituida_por_id);
+    txt("med-nfse-subst", `${st === "substituida" ? "Substituída" : "Substituição em andamento"} pela NFS-e da medição ${esc(outra ? outra.numero : "?")}`);
+  }
+  const nota = $("med-nfse-nota");
+  if(nota && medNfseTravada()) nota.textContent = "Nota emitida pelo app: valor, itens, ISS, retenções e obra ficam como foram para a prefeitura. Para mudar, cancele a NFS-e e faça outra medição.";
+  else if(nota) nota.textContent = "Tomador = cliente da obra; local da prestação = município da obra (IBGE); ISS e retenções da aba Geral. Na contingência (prefeitura ou UniNFe), lance o número na aba Geral depois de emitir lá.";
+  medNfseTravarCampos();
+  medNfseBotoes();
+  medNfseEventos();
+}
+async function medNfseBotoes(){
+  const m = _medAtual;
+  const pode = medNfsePodeEmitir();
+  const ok = _medNfseOk && !!medEditId && !!m;
+  const st = m?.nfse_status || null;
+  const livre = !st || ["rascunho", "rejeitada", "cancelada"].includes(st);
+  const aprovada = ["aprovada", "faturada"].includes(m?.status);
+  const emitivel = ok && pode && aprovada && livre && !medNfseNfManual(m);
+  const mostra = (id, cond) => { const b = $(id); if(b) b.style.display = cond ? "" : "none"; };
+  mostra("btn-med-nfse-emitir", emitivel);
+  mostra("btn-med-nfse-simular", ok && pode && livre);
+  mostra("btn-med-nfse-consultar", ok && pode && !!m.nfse_ref_focus && (st === "processando" || (st === "autorizada" && (!m.nfse_pdf_url || !m.nfse_xml_url))));
+  mostra("btn-med-nfse-pdf", ok && (!!m.nfse_pdf_url || (pode && ["autorizada", "cancelada", "substituida"].includes(st))));
+  mostra("btn-med-nfse-xml", ok && (!!m.nfse_xml_url || (pode && ["autorizada", "cancelada", "substituida"].includes(st))));
+  mostra("btn-med-nfse-cancelar", ok && pode && st === "autorizada");
+  mostra("btn-med-nfse-substituir", false);
+  if(emitivel){
+    const cfg = await medNfseCarregarCfg();
+    const temOutra = _medRegistros.some(x => x.obra_id === m.obra_id && x.id !== m.id && x.nfse_status === "autorizada");
+    if(_medAtual === m) mostra("btn-med-nfse-substituir", !!cfg && cfg.ambNacional && cfg.modelo === "nfsen" && temOutra);
+  }
+}
+/* eventos fiscais da medição (registros_log, tipo 'fiscal') */
+async function medNfseEventos(){
+  const box = $("med-nfse-eventos");
+  const m = _medAtual;
+  if(!box) return;
+  if(!m?.id || !_medNfseOk){ box.innerHTML = ""; return; }
+  const { data, error } = await sb.from("registros_log").select("campo,valor_anterior,valor_novo,autor_nome,criado_em")
+    .eq("entidade", "medicoes").eq("registro_id", m.id).eq("tipo", "fiscal")
+    .order("criado_em", { ascending: false }).limit(50);
+  if(_medAtual !== m) return;
+  if(error || !(data || []).length){ box.innerHTML = '<p class="vazio">Nenhum evento fiscal registrado.</p>'; return; }
+  const quando = d => typeof histQuando === "function" ? histQuando(d) : dataBR(d);
+  const rot = { nfse_status: "NFS-e", nfse_cancelamento: "Cancelamento" };
+  box.innerHTML = `<div class="tabela-rola"><table>
+    <thead><tr><th>Quando</th><th>Evento</th><th>Por</th></tr></thead>
+    <tbody>${data.map(l => `<tr><td>${esc(quando(l.criado_em))}</td><td>${esc(rot[l.campo] || l.campo || "NFS-e")}: ${l.valor_anterior ? esc(l.valor_anterior) + " → " : ""}${esc(l.valor_novo || "")}</td><td>${esc(l.autor_nome || "—")}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+/* ---------- diálogo único das ações da NFS-e ---------- */
+function medNfseModal({ titulo, corpo, texto, rotulo, min, max, botao, perigo, subst, onOk }){
+  $("med-nfse-modal-titulo").textContent = titulo || "NFS-e";
+  $("med-nfse-modal-corpo").innerHTML = corpo || "";
+  const sub = $("med-nfse-modal-subst");
+  if(sub) sub.style.display = subst ? "" : "none";
+  const campo = $("med-nfse-modal-texto-campo"), ta = $("med-nfse-modal-texto"), cont = $("med-nfse-modal-contador");
+  campo.style.display = texto ? "" : "none";
+  ta.value = "";
+  ta.oninput = null;
+  if(texto){
+    $("med-nfse-modal-texto-rot").textContent = rotulo || "Texto";
+    ta.maxLength = max;
+    const contar = () => { const n = ta.value.replace(/\s+/g, " ").trim().length; cont.textContent = `${n} caracteres (de ${min} a ${max})`; cont.classList.toggle("txt-perigo", n > 0 && n < min); };
+    ta.oninput = contar;
+    contar();
+  }
+  const b = $("btn-med-nfse-modal-ok");
+  b.style.display = onOk ? "" : "none";
+  b.textContent = botao || "Confirmar";
+  b.className = perigo ? "btn-sec acao-perigo" : "btn";
+  _medNfseModalOk = onOk ? async () => {
+    const txt = ta.value.replace(/\s+/g, " ").trim();
+    if(texto && (txt.length < min || txt.length > max)){ aviso("app-aviso", `${rotulo}: de ${min} a ${max} caracteres.`, "erro"); return; }
+    await onOk(txt);
+  } : null;
+  $("med-nfse-modal").style.display = "flex";
+  if(texto) ta.focus();
+}
+function medNfseModalFechar(){ $("med-nfse-modal").style.display = "none"; _medNfseModalOk = null; }
+function medNfseResumoHtml(d){
+  const r = d.resumo || {}, pend = d.pendencias || [], av = d.avisos || [];
+  const prod = r.ambiente === "producao";
+  const fed = r.retencoes_federais || {};
+  const fedTxt = Number(fed.total) > 0
+    ? `${brl(fed.total)} <span class="meta">(${MED_RET_FED.filter(k => Number(fed[k]) > 0).map(k => `${k.toUpperCase()} ${brl(fed[k])}`).join(" · ")})</span>` : "—";
+  const iss = r.iss || {};
+  return `${pend.length ? `<div class="dist-aviso alerta"><strong>Falta completar antes de emitir (nada foi enviado):</strong><ul>${pend.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
+    ${av.length ? `<div class="dist-aviso neutro"><ul>${av.map(a => `<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}
+    <div class="dist-aviso ${prod ? "perigo" : "neutro"}"><strong>${prod ? "PRODUÇÃO: nota com valor fiscal na prefeitura" : "Homologação: nota de teste, sem valor fiscal"}</strong> <span class="meta">· ${esc(r.endpoint || "")}</span></div>
+    <div class="grade">
+      <div class="campo largo"><label>Tomador</label><div>${esc(r.tomador || "—")}${r.tomador_doc ? ` <span class="meta">· ${esc(typeof fiscalFormatarDoc === "function" ? fiscalFormatarDoc(r.tomador_doc) : r.tomador_doc)}</span>` : ""}</div></div>
+      <div class="campo"><label>Município da prestação</label><div>${esc(r.municipio_prestacao || "—")}</div></div>
+      <div class="campo"><label>Competência</label><div>${esc(dataBR(r.competencia) || "—")}</div></div>
+      <div class="campo"><label>Valor do serviço</label><div><strong>${brl(r.valor)}</strong></div></div>
+      <div class="campo"><label>ISS</label><div>${esc(String(iss.aliquota ?? "—"))}% · ${brl(iss.valor)} · <strong>${iss.retido ? "retido pelo tomador" : "não retido (CGL recolhe)"}</strong></div></div>
+      <div class="campo"><label>Retenções federais</label><div>${fedTxt}</div></div>
+      <div class="campo"><label>Caução (retenção contratual)</label><div>${Number(r.caucao) > 0 ? brl(r.caucao) : "—"}</div></div>
+      <div class="campo"><label>Líquido a receber</label><div><strong>${brl(r.liquido)}</strong></div></div>
+      ${r.substitui ? `<div class="campo largo"><label>Substitui</label><div>${esc(r.substitui)}</div></div>` : ""}
+    </div>
+    ${r.discriminacao ? `<p class="nota"><strong>Discriminação:</strong> ${esc(r.discriminacao)}</p>` : ""}`;
+}
+
+/* ---------- ações ---------- */
+async function medNfseSalvarAntes(){
+  if(!medEditId){ aviso("app-aviso", "Salve a medição antes.", "erro"); return false; }
+  if(medNfseTravada()) return true;
+  return !!(await salvarMedicao());   // a function lê o banco: o que está na tela precisa estar salvo
+}
+async function medNfseRecarregar(){
+  const id = medEditId;
+  if(!id) return;
+  await carregarMedicoes();
+  await abrirMedicao(id);
+  ativarTabMed("nfse");
+}
+async function medNfseSimular(extra){
+  const r = await fiscalChamarFocus(extra?.substituida_id ? "substituir_nfse" : "emitir_nfse", { medicao_id: medEditId, dry_run: true, ...(extra || {}) });
+  if(r.erro){ aviso("app-aviso", "NFS-e: " + r.erro, "erro"); return null; }
+  return r.data;
+}
+async function medNfseSimularMostrar(){
+  if(!(await medNfseSalvarAntes())) return;
+  const d = await medNfseSimular();
+  if(!d) return;
+  medNfseModal({
+    titulo: `Simulação da NFS-e · medição ${_medAtual?.numero || ""}`,
+    corpo: medNfseResumoHtml(d) + `<details><summary class="meta">JSON que vai para a Focus (${esc(d.modelo || "")})</summary><pre class="med-nfse-json">${esc(JSON.stringify(d.nfse, null, 2))}</pre></details>`
+  });
+}
+async function medNfseEmitir(){
+  if(!(await medNfseSalvarAntes())) return;
+  const d = await medNfseSimular();
+  if(!d) return;
+  const prod = d.ambiente === "producao";
+  const med = _medAtual;
+  medNfseModal({
+    titulo: `Emitir NFS-e · medição ${med?.numero || ""}`,
+    corpo: medNfseResumoHtml(d),
+    botao: prod ? "🧾 Emitir em PRODUÇÃO" : "🧾 Emitir em homologação",
+    onOk: (d.pendencias || []).length ? null : async () => {
+      if(prod && !confirm("Emitir a NFS-e em PRODUÇÃO, com valor fiscal na prefeitura?")) return;
+      const r = await fiscalChamarFocus("emitir_nfse", { medicao_id: med.id });
+      medNfseModalFechar();
+      if(r.erro){
+        const pend = r.corpo?.pendencias || [];
+        aviso("app-aviso", "NFS-e: " + r.erro + (pend.length ? " " + pend.join(" ") : ""), "erro");
+      } else {
+        aviso("app-aviso", r.data.nfse_status === "autorizada" ? `NFS-e autorizada${r.data.mensagem ? ": " + r.data.mensagem : "."}` : (r.data.mensagem || "NFS-e enviada."), r.data.nfse_status === "rejeitada" ? "erro" : "ok");
+      }
+      await medNfseRecarregar();
+    }
+  });
+}
+async function medNfseSubstituir(){
+  if(!(await medNfseSalvarAntes())) return;
+  const med = _medAtual;
+  const outras = _medRegistros.filter(x => x.obra_id === med.obra_id && x.id !== med.id && x.nfse_status === "autorizada");
+  if(!outras.length){ aviso("app-aviso", "Nenhuma NFS-e autorizada de outra medição desta obra para substituir.", "erro"); return; }
+  const sel = $("med-nfse-modal-subst-med");
+  if(sel) sel.innerHTML = outras.map(x => `<option value="${esc(x.id)}">${esc(x.numero)} · ${esc(medDocTxt(x))} · ${brl(x.valor_final || x.valor_medido)}</option>`).join("");
+  medNfseModal({
+    titulo: `Substituir NFS-e · medição ${med.numero}`,
+    corpo: `<p class="nota">A NFS-e desta medição sai no lugar da nota autorizada da medição escolhida (mesma obra e tomador). Quando a nova for autorizada, a antiga vira <strong>substituída</strong>. Só no Ambiente Nacional; em Itabira, cancele e emita de novo.</p>`,
+    subst: true, texto: true, rotulo: "Motivo da substituição", min: 15, max: 255, botao: "⇄ Conferir e substituir",
+    onOk: async (txt) => {
+      const extra = { substituida_id: $("med-nfse-modal-subst-med").value, codigo_motivo: $("med-nfse-modal-subst-cod").value, motivo: txt };
+      const d = await medNfseSimular(extra);
+      if(!d) return;
+      if((d.pendencias || []).length){
+        $("med-nfse-modal-corpo").innerHTML = medNfseResumoHtml(d);
+        return;
+      }
+      const prod = d.ambiente === "producao";
+      if(!confirm(`Enviar a NFS-e substituta em ${prod ? "PRODUÇÃO" : "homologação"}? Valor ${brl(d.resumo?.valor)}.`)) return;
+      const r = await fiscalChamarFocus("substituir_nfse", { medicao_id: med.id, ...extra });
+      medNfseModalFechar();
+      if(r.erro) aviso("app-aviso", "Substituição: " + r.erro + ((r.corpo?.pendencias || []).length ? " " + r.corpo.pendencias.join(" ") : ""), "erro");
+      else aviso("app-aviso", r.data.mensagem || "NFS-e substituta enviada.", r.data.nfse_status === "rejeitada" ? "erro" : "ok");
+      await medNfseRecarregar();
+    }
+  });
+}
+async function medNfseConsultar(){
+  const r = await fiscalChamarFocus("consultar_nfse", { medicao_id: medEditId });
+  if(r.erro){ aviso("app-aviso", "Consulta da NFS-e: " + r.erro, "erro"); return; }
+  const rot = String((STATUS.nfse[r.data.nfse_status] || {}).label || r.data.nfse_status || "");
+  aviso("app-aviso", `${rot}${r.data.mensagem ? ": " + r.data.mensagem : ""}`, r.data.nfse_status === "rejeitada" ? "erro" : "ok");
+  await medNfseRecarregar();
+}
+async function medNfseArquivo(tipo){
+  const m = _medAtual;
+  if(!m) return;
+  const col = tipo === "pdf" ? "nfse_pdf_url" : "nfse_xml_url";
+  const nome = tipo === "pdf" ? "PDF da NFS-e" : "XML da NFS-e";
+  const janela = window.open("", "_blank");   // aberta no clique, antes do await (bloqueador de pop-up)
+  let url = null, erro = null;
+  if(m[col] && String(m[col]).startsWith("nfse/")){
+    const { data, error } = await sb.storage.from("fiscal-documentos").createSignedUrl(m[col], 120);
+    url = data?.signedUrl || null;
+    erro = error?.message || null;
+  }
+  if(!url && medNfsePodeEmitir()){
+    const r = await fiscalChamarFocus(tipo === "pdf" ? "baixar_pdf_nfse" : "baixar_xml_nfse", { medicao_id: m.id });
+    url = r.data?.url || null;
+    erro = r.erro || erro;
+  }
+  if(!url){
+    if(janela) janela.close();
+    aviso("app-aviso", `${nome}: ${erro || "arquivo ainda não disponível"}.`, "erro");
+    return;
+  }
+  if(janela) janela.location.href = url; else window.open(url, "_blank");
+  if(!m[col]) await medNfseRecarregar();
+}
+function medNfseCancelar(){
+  const m = _medAtual;
+  if(Number(m?.recebido_valor) > 0){
+    aviso("app-aviso", "A medição já tem recebimento confirmado: estorne o recebimento (aba NF/Recebimento) antes de cancelar a nota, ou fale com o contador.", "erro");
+    return;
+  }
+  medNfseModal({
+    titulo: `Cancelar NFS-e · nº ${m?.nfse_numero || ""}`,
+    corpo: `<div class="dist-aviso alerta">O cancelamento é definitivo e a prefeitura tem prazo próprio para aceitar. A medição volta para "aprovada" sem NF e fica travada (valor, itens, ISS e retenções): para cobrar de novo, emita outra NFS-e desta medição com os mesmos valores, ou faça outra medição se os valores mudarem.</div>`,
+    texto: true, rotulo: "Motivo do cancelamento", min: 15, max: 255, botao: "✗ Cancelar a NFS-e", perigo: true,
+    onOk: async (txt) => {
+      const r = await fiscalChamarFocus("cancelar_nfse", { medicao_id: m.id, justificativa: txt });
+      if(r.erro){ aviso("app-aviso", "Cancelamento: " + r.erro, "erro"); return; }
+      medNfseModalFechar();
+      aviso("app-aviso", "NFS-e cancelada" + (r.data.mensagem ? ": " + r.data.mensagem : "."), "ok");
+      await medNfseRecarregar();
+    }
+  });
+}
+
+/* ---------- ligações da fase 105c ---------- */
+function ligarMedNfse(){
+  $("btn-med-nfse-emitir")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-emitir", medNfseEmitir));
+  $("btn-med-nfse-simular")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-simular", medNfseSimularMostrar));
+  $("btn-med-nfse-consultar")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-consultar", medNfseConsultar));
+  $("btn-med-nfse-pdf")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-pdf", () => medNfseArquivo("pdf")));
+  $("btn-med-nfse-xml")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-xml", () => medNfseArquivo("xml")));
+  $("btn-med-nfse-substituir")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-substituir", medNfseSubstituir));
+  $("btn-med-nfse-cancelar")?.addEventListener("click", medNfseCancelar);
+  $("btn-med-nfse-modal-fechar")?.addEventListener("click", medNfseModalFechar);
+  $("btn-med-nfse-modal-ok")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-modal-ok", () => _medNfseModalOk ? _medNfseModalOk() : null));
+  // retenções federais recalculam o líquido a receber
+  MED_RET_FED.forEach(k => $("med-ret-" + k)?.addEventListener("input", recalcularTotaisMedicao));
+}
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", ligarMedNfse);
+} else {
+  ligarMedNfse();
 }

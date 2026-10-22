@@ -171,6 +171,15 @@ const STATUS = {
     cancelada:   { label:"NF-e cancelada",   cor:"vermelho" },
     denegada:    { label:"NF-e denegada",    cor:"vermelho" },
     inutilizada: { label:"NF-e inutilizada", cor:"cinza"    }
+  },
+  // fase 105c: NFS-e da medição emitida pelo app (medicoes.nfse_status, gravado pela Focus NFe)
+  nfse: {
+    rascunho:    { label:"NFS-e rascunho",    cor:"cinza"    },
+    processando: { label:"NFS-e processando", cor:"azul"     },
+    autorizada:  { label:"NFS-e autorizada",  cor:"verde"    },
+    rejeitada:   { label:"NFS-e rejeitada",   cor:"vermelho" },
+    cancelada:   { label:"NFS-e cancelada",   cor:"vermelho" },
+    substituida: { label:"NFS-e substituída", cor:"cinza"    }
   }
 };
 
@@ -390,6 +399,37 @@ async function comBotaoTravado(btnOuId, fn){
     if(b){ delete b.dataset.travado; b.disabled = false; }
     if(passou && b && BOTAO_GRAVACAO_RE.test((b.id || "") + " " + (b.textContent || "")) && !appAvisoComErro()) appLimparSujo();
   }
+}
+
+/* Uploads (regra do CLAUDE.md; hotfix 98, saiu de obra_abas.js): o supabase-js ignora `contentType` quando o corpo é
+   File e manda o `type` do próprio arquivo, que o navegador deixa vazio ou "application/octet-stream" (PDF salvo pelo
+   Windows, .dwg, .dxf) ou troca (.zip = "application/x-zip-compressed"), e o bucket recusa. O MIME sai da extensão e o
+   corpo é reembalado em Blob. Usado em obra_abas.js (documentos da obra) e contratos.js (anexos de contrato). */
+const MIME_POR_EXTENSAO = {
+  pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  doc: "application/msword", xls: "application/vnd.ms-excel", txt: "text/plain", csv: "text/csv",
+  dwg: "image/vnd.dwg", dxf: "image/vnd.dxf", zip: "application/zip"
+};
+/* extensão do nome do arquivo em minúsculas; entra no caminho do storage, então só letras/dígitos (1-5), senão "bin" */
+function extensaoArquivo(file){
+  const partes = String((file && file.name) || "").split(".");
+  return (partes.length > 1 && (partes.pop().toLowerCase().match(/^[a-z0-9]{1,5}$/) || [])[0]) || "bin";
+}
+/* MIME pela extensão quando ela é conhecida; senão o que o navegador deu; senão application/octet-stream */
+function mimeDoArquivo(file, ext){
+  const e = ext || extensaoArquivo(file);
+  if(MIME_POR_EXTENSAO[e]) return MIME_POR_EXTENSAO[e];
+  return String((file && file.type) || "").toLowerCase() || "application/octet-stream";
+}
+/* corpo do upload com o MIME certo: o próprio File quando o type já bate, senão um Blob com o MIME */
+function corpoComMime(file, mime){ return file.type === mime ? file : new Blob([file], { type: mime }); }
+/* recusa de policy: insert na tabela (42501) ou upload no Storage ("new row violates row-level security policy", 403) */
+function ehErroDePermissao(err){
+  const e = err || {};
+  return e.code === "42501" || String(e.statusCode || "") === "403" || e.status === 403
+    || /row-level security|permission denied/i.test(String(e.message || e.error || err || ""));
 }
 
 /* Leitura por IA (edge function) com limite de tempo no cliente (lote S39, chamados #28 #20 #21).
@@ -974,7 +1014,8 @@ function podeVerPatrimonio(perfil){
   return !!p && ["diretor", "auditor"].includes(p.cargo);
 }
 /* Fase 105 (Bernardo, 22/10/2026, decisão 6): emitem e cancelam NF-e de remessa e NFS-e, e editam os dados fiscais da
-   empresa, o gestor de acessórios, o financeiro e a logística; ADMIN FORA. Espelha fiscal_pode_emitir() do banco. */
+   empresa, o gestor de acessórios, o financeiro e a logística; ADMIN FORA. Espelha fiscal_pode_emitir() do banco.
+   Fase 105c: a NFS-e da medição ainda exige ler a medição (pode_ler_financeiro), conferido pela function focus-nfe. */
 function podeEmitirFiscal(){
   return !!usuarioAtual && ["diretor", "gestor_acessorios", "financeiro", "logistica"].includes(usuarioAtual.cargo);
 }

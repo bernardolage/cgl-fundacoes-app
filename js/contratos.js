@@ -448,8 +448,63 @@ const CON_DOC_PADRAO = {
   container:  "con-doc-conteudo",
   prefixo:    "con-doc",
   smartBtn:   "sb-con-documentos",
-  msgSemPai:  "Salve o contrato primeiro para anexar arquivos."
+  msgSemPai:  "Salve o contrato primeiro para anexar arquivos.",
+  natureza:   "fornecedor",   // hotfix 98: a aba Contrato da obra passa "cliente" (OBR_CON_DOC_CONF em obras.js)
+  aditivos:   false           // hotfix 98: a aba Contrato da obra lista os aditivos (só leitura)
 };
+
+/* Hotfix 98 (#98, 21/10/2026): quem anexa documento de contrato. Espelha as policies de contratos_documentos e do bucket
+   contratos-docs: admin, financeiro e comercial em qualquer contrato (diretor por has_role); engenheiro e assistente de
+   engenharia só no contrato de cliente (o contrato assinado e o aditivo chegam por eles, em campo). Excluir anexo e
+   cadastrar aditivo (contrato_aditivos: valor e prazo) continuam com admin, financeiro e comercial. */
+const CON_DOC_CARGOS_GESTAO = ["diretor", "admin", "financeiro", "comercial"];
+const CON_DOC_CARGOS_ENGENHARIA = ["engenheiro", "assistente_engenharia"];
+const CON_DOC_EXTENSOES = ["pdf", "doc", "docx", "jpg", "jpeg", "png"];   // = allowed_mime_types do bucket contratos-docs
+const CON_DOC_LIMITE_BYTES = 20971520;                                    // = file_size_limit do bucket (20 MB)
+function conCargoAtual(){ return (usuarioAtual && !ehSomenteLeitura()) ? usuarioAtual.cargo : null; }
+function conPodeAnexar(natureza){
+  const c = conCargoAtual();
+  return !!c && (CON_DOC_CARGOS_GESTAO.includes(c) || (natureza === "cliente" && CON_DOC_CARGOS_ENGENHARIA.includes(c)));
+}
+function conPodeExcluirAnexo(){ return CON_DOC_CARGOS_GESTAO.includes(conCargoAtual()); }
+function conPodeCadastrarAditivo(){ return CON_DOC_CARGOS_GESTAO.includes(conCargoAtual()); }
+
+/* Hotfix 98: aditivos do contrato de cliente, só leitura, na aba Contrato da obra. Quem lê é pode_ler_financeiro()
+   (engenharia inclusive); erro de leitura some com o bloco. */
+const ADITIVO_TIPO = {
+  valor: "Valor", prazo: "Prazo", valor_prazo: "Valor e prazo", escopo: "Escopo", reajuste: "Reajuste",
+  supressao: "Supressão", distrato: "Distrato", outro: "Outro"
+};
+async function conAditivosHTML(contratoId){
+  const { data, error } = await sb.from("contrato_aditivos")
+    .select("id,numero,ordem,tipo,descricao,valor_delta,prazo_dias,nova_data_fim,assinatura_status,data_assinatura")
+    .eq("contrato_id", contratoId)
+    .order("ordem");
+  if(error) return "";
+  // quem lê aditivo e não cadastra (engenheiro e assistente; o auditor só lê e não precisa do aviso)
+  const avisoCargo = (conPodeCadastrarAditivo() || ehSomenteLeitura()) ? ""
+    : `<p class="meta">Aditivo é cadastrado pelo financeiro ou comercial. Aqui você anexa o PDF assinado (tipo "Aditivo").</p>`;
+  const comValor = podeVerValorObra();
+  if(!data || !data.length){
+    return `<div style="margin-bottom:14px;"><h4 class="sub-titulo">Aditivos cadastrados (0)</h4>${avisoCargo}
+      <p class="vazio">Nenhum aditivo cadastrado neste contrato.</p></div>`;
+  }
+  const linhas = data.map(a => {
+    const prazo = a.nova_data_fim ? "até " + dataBR(a.nova_data_fim) : (a.prazo_dias ? a.prazo_dias + " dias" : "—");
+    return `<tr>
+      <td>${esc(a.numero)}</td>
+      <td>${esc(ADITIVO_TIPO[a.tipo] || a.tipo)}</td>
+      <td>${esc(a.descricao || "—")}</td>
+      ${comValor ? `<td class="num">${brl(a.valor_delta)}</td>` : ""}
+      <td>${esc(prazo)}</td>
+      <td>${tagAssinatura(a.assinatura_status)}${a.data_assinatura ? " " + dataBR(a.data_assinatura) : ""}</td>
+    </tr>`;
+  }).join("");
+  return `<div style="margin-bottom:14px;"><h4 class="sub-titulo">Aditivos cadastrados (${data.length})</h4>${avisoCargo}
+    <div class="tabela-rola"><table>
+      <thead><tr><th>Nº</th><th>Tipo</th><th>Descrição</th>${comValor ? `<th class="num">Valor</th>` : ""}<th>Prazo</th><th>Assinatura</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div></div>`;
+}
 
 async function carregarDocumentosDoContrato(contratoId, opts){
   const conf = Object.assign({}, CON_DOC_PADRAO, opts || {});
@@ -468,17 +523,27 @@ async function carregarDocumentosDoContrato(contratoId, opts){
     return;
   }
 
-  const { data, error } = await sb.from("contratos_documentos")
-    .select("id,categoria,nome,descricao,storage_path,mime_type,tamanho_bytes,created_at")
-    .eq("contrato_id", contratoId)
-    .order("created_at", { ascending:false });
+  const [{ data, error }, aditivos] = await Promise.all([
+    sb.from("contratos_documentos")
+      .select("id,categoria,nome,descricao,storage_path,mime_type,tamanho_bytes,created_at")
+      .eq("contrato_id", contratoId)
+      .order("created_at", { ascending:false }),
+    conf.aditivos ? conAditivosHTML(contratoId) : Promise.resolve("")
+  ]);
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; setSB(0); return; }
   setSB((data||[]).length);
 
   const px   = conf.prefixo;
   const cats = Object.entries(CON_DOC_CATEGORIAS)
     .map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-  const uploader = `
+  // hotfix 98: quem não anexa vê a lista sem o formulário (antes o formulário aparecia e o envio falhava na RLS)
+  const podeAnexar = conPodeAnexar(conf.natureza);
+  const podeExcluir = conPodeExcluirAnexo();
+  const uploader = !podeAnexar
+    ? `<p class="meta" style="margin:0 0 10px;">${conf.natureza === "cliente"
+        ? "Anexo de contrato: financeiro, comercial e engenharia."
+        : "Anexo de contrato de fornecedor: financeiro e comercial."}</p>`
+    : `
     <div class="card" style="margin-bottom:14px;padding:12px;">
       <h4 style="margin:0 0 8px;font-size:var(--txt-md);">📤 Anexar arquivo</h4>
       <div class="grade">
@@ -488,7 +553,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
         <div class="campo"><label>Descrição (opcional)</label>
           <input id="${px}-descricao" placeholder="ex.: 1º aditivo de prazo" />
         </div>
-        <div class="campo largo"><label>Arquivo — PDF, Word ou imagem (máx. 20MB)</label>
+        <div class="campo largo"><label>Arquivo — PDF, DOC/DOCX, JPG ou PNG (máx. 20 MB)</label>
           <input id="${px}-arquivo" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
         </div>
       </div>
@@ -498,7 +563,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
     </div>`;
 
   if(!data || !data.length){
-    cont.innerHTML = `${uploader}<p class="vazio">Nenhum arquivo anexado ainda.</p>`;
+    cont.innerHTML = `${aditivos}${uploader}<p class="vazio">Nenhum arquivo anexado ainda.</p>`;
     $(`btn-${px}-enviar`)?.addEventListener("click", () => enviarDocumentoContrato(contratoId, conf));
     return;
   }
@@ -513,12 +578,12 @@ async function carregarDocumentosDoContrato(contratoId, opts){
       <td>${new Date(d.created_at).toLocaleDateString("pt-BR")}</td>
       <td class="col-acao">
         <button type="button" class="btn-sec btn-sm doc-con-baixar" data-path="${esc(d.storage_path)}" data-nome="${esc(d.nome)}" title="Baixar">⬇️</button>
-        <button type="button" class="btn-sec btn-sm doc-con-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="Excluir">🗑️</button>
+        ${podeExcluir ? `<button type="button" class="btn-sec btn-sm doc-con-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="Excluir">🗑️</button>` : ""}
       </td>
     </tr>`;
   }).join("");
 
-  cont.innerHTML = `${uploader}<div class="tabela-rola"><table>
+  cont.innerHTML = `${aditivos}${uploader}<div class="tabela-rola"><table>
     <thead><tr><th>Arquivo</th><th>Tipo</th><th>Descrição</th><th>Tamanho</th><th>Enviado em</th><th class="col-acao"></th></tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 
@@ -537,7 +602,12 @@ async function enviarDocumentoContrato(contratoId, opts){
   const inp  = $(`${px}-arquivo`);
   if(!inp?.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo.","erro"); return; }
   const file = inp.files[0];
-  if(file.size > 20971520){ aviso("app-aviso","Arquivo maior que 20MB.","erro"); return; }
+  // hotfix 98: extensão e tamanho conferidos antes do upload, iguais ao bucket (antes o bucket recusava sem explicar)
+  const ext = extensaoArquivo(file);   // core.js: entra no caminho do storage
+  if(!CON_DOC_EXTENSOES.includes(ext) || file.size > CON_DOC_LIMITE_BYTES){
+    aviso("app-aviso","Só PDF, DOC/DOCX, JPG e PNG até 20 MB.","erro");
+    return;
+  }
 
   const btn = $(`btn-${px}-enviar`);
   btn.disabled = true;
@@ -545,11 +615,12 @@ async function enviarDocumentoContrato(contratoId, opts){
   btn.textContent = "Enviando...";
 
   try {
-    // Extensão entra no caminho do storage: só letras/dígitos (1-5), senão "bin"
-    const ext = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "bin";
     const nomeUnico = `${contratoId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
-    const { error: errUp } = await sb.storage.from("contratos-docs").upload(nomeUnico, file, {
-      cacheControl: "3600", contentType: file.type, upsert: false
+    // hotfix 98: MIME pela extensão e corpo reembalado em Blob (supabase-js ignora contentType com File; PDF salvo pelo
+    // Windows chegava como application/octet-stream, que o bucket não aceita)
+    const mime = mimeDoArquivo(file, ext);
+    const { error: errUp } = await sb.storage.from("contratos-docs").upload(nomeUnico, corpoComMime(file, mime), {
+      cacheControl: "3600", contentType: mime, upsert: false
     });
     if(errUp) throw errUp;
 
@@ -560,19 +631,21 @@ async function enviarDocumentoContrato(contratoId, opts){
       nome: file.name,
       descricao: $(`${px}-descricao`).value.trim() || null,
       storage_path: nomeUnico,
-      mime_type: file.type,
+      mime_type: mime,
       tamanho_bytes: file.size,
       enviado_por: user ? user.id : null
     });
     if(errIns){
-      // se falhar o metadado, remove o arquivo pra não deixar órfão
+      // se falhar o metadado, remove o arquivo pra não deixar órfão (engenharia não remove do bucket: fica o arquivo
+      // sem linha, que nenhuma tela mostra; só acontece se a policy da tabela recusar depois da do bucket aceitar)
       await sb.storage.from("contratos-docs").remove([nomeUnico]);
       throw errIns;
     }
     aviso("app-aviso","Arquivo anexado.","ok");
     await carregarDocumentosDoContrato(contratoId, conf);
   } catch(err){
-    aviso("app-aviso","Erro ao enviar: "+(err.message||err),"erro");
+    // hotfix 98: recusa de policy (tabela ou bucket) vira frase de cargo, não o texto cru do Postgres
+    aviso("app-aviso", ehErroDePermissao(err) ? "Seu cargo não anexa documentos de contrato." : "Erro ao enviar: "+(err.message||err), "erro");
   } finally {
     btn.disabled = false;
     btn.textContent = txtOrig;
@@ -593,9 +666,12 @@ async function baixarDocumentoContrato(path, nome){
 
 async function excluirDocumentoContrato(id, path, contratoId, opts){
   if(!confirm("Excluir este anexo?")) return;
-  await sb.storage.from("contratos-docs").remove([path]);
-  const { error } = await sb.from("contratos_documentos").delete().eq("id", id);
+  // hotfix 98: a linha sai primeiro e só depois o arquivo. A RLS do delete não dá erro (apaga 0 linhas): sem a
+  // conferência o aviso dizia "excluído" para quem não exclui.
+  const { data: apagadas, error } = await sb.from("contratos_documentos").delete().eq("id", id).select("id");
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
+  if(!apagadas || !apagadas.length){ aviso("app-aviso","Seu cargo não exclui documentos de contrato.","erro"); return; }
+  await sb.storage.from("contratos-docs").remove([path]);
   aviso("app-aviso","Anexo excluído.","ok");
   await carregarDocumentosDoContrato(contratoId, opts);
 }

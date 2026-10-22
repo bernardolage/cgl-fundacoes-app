@@ -21,7 +21,9 @@ const OBR_CON_DOC_CONF = {
   container: "obr-con-doc-conteudo",
   prefixo:   "obr-con-doc",
   smartBtn:  null,
-  msgSemPai: "Preencha o número do contrato e salve a obra para anexar o contrato assinado."
+  msgSemPai: "Preencha o número do contrato e salve a obra para anexar o contrato assinado.",
+  natureza:  "cliente",   // hotfix 98: engenheiro e assistente anexam (conPodeAnexar em contratos.js)
+  aditivos:  true         // hotfix 98: aditivos do contrato, só leitura, acima dos anexos
 };
 
 /* Fase 90 (áudios do Julio, 18/10/2026): o valor contratado saiu de obras e vive em obras_financeiro, que no banco só

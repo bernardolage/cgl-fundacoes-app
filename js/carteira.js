@@ -233,12 +233,15 @@ async function carregarDetalheCarteira(contratoId){
     ]);
     det = { aditivos: a.data || [], orcamentos: o.data || [], obras: ob.data || [], fin: {} };
     // fase 91: faturado (NF emitida) × recebido por obra, pelo líquido a receber (valor final − retenção − ISS retido)
+    // fase 105c: − retenções federais (colunas ret_*, lidas só depois da migration)
     if(det.obras.length){
-      const { data: meds } = await sb.from("medicoes").select("obra_id,status,nf_numero,valor_final,valor_medido,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor")
+      const temRet = typeof fiscalColunaExiste === "function" && await fiscalColunaExiste("medicoes", "ret_irrf");
+      const { data: meds } = await sb.from("medicoes").select("obra_id,status,nf_numero,valor_final,valor_medido,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor" + (temRet ? ",ret_irrf,ret_pis,ret_cofins,ret_csll,ret_inss" : ""))
         .in("obra_id", det.obras.map(x => x.id)).not("nf_numero", "is", null).in("status", ["aprovada", "faturada", "recebida"]);
       (meds || []).forEach(m => {
         const vf = Number(m.valor_final) || Number(m.valor_medido) || 0;
-        const liq = vf - (Number(m.retencao_valor) || 0) - (m.iss_retido_fonte === false ? 0 : (Number(m.iss_valor) || 0));
+        const fed = ["ret_irrf", "ret_pis", "ret_cofins", "ret_csll", "ret_inss"].reduce((s, k) => s + (Number(m[k]) || 0), 0);
+        const liq = vf - (Number(m.retencao_valor) || 0) - (m.iss_retido_fonte === false ? 0 : (Number(m.iss_valor) || 0)) - fed;
         const f = det.fin[m.obra_id] || (det.fin[m.obra_id] = { faturado: 0, recebido: 0 });
         f.faturado += liq; f.recebido += Math.min(liq, Number(m.recebido_valor) || 0);
       });
