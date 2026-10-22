@@ -186,10 +186,45 @@ async function sugerirNumeroMedicao(){
   }
 }
 
+/* fase 101 (#94): máquina da medição (medicoes.equipamento_id, opcional; vale para os itens sem TAG na receita por
+   máquina, vw_equipamento_receita). As máquinas da obra (vw_obra_equipamentos) vêm primeiro. Sem a migration, a lista
+   mostra só as máquinas ativas e o campo só vai para o banco quando alguém escolhe uma. */
+let _medEquipsCache = null;
+async function medPreencherMaquinas(obraId, selId, valor){
+  const sel = $(selId);
+  if(!sel) return 0;
+  if(!_medEquipsCache){
+    const { data } = await sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).order("codigo");
+    _medEquipsCache = (data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
+  }
+  let ids = [];
+  if(obraId){
+    const { data, error } = await sb.from("vw_obra_equipamentos").select("equipamento_id").eq("obra_id", obraId);
+    if(!error) ids = [...new Set((data || []).map(x => x.equipamento_id))];
+  }
+  const atual = valor !== undefined ? (valor || "") : sel.value;
+  const daObra = new Set(ids);
+  const opt = (q) => `<option value="${esc(q.id)}">${esc(q.codigo)}${q.nome ? " — " + esc(q.nome) : ""}</option>`;
+  const l1 = _medEquipsCache.filter(q => daObra.has(q.id)), l2 = _medEquipsCache.filter(q => !daObra.has(q.id));
+  sel.innerHTML = `<option value="">— sem máquina —</option>` + (l1.length ? `<optgroup label="Máquinas da obra">${l1.map(opt).join("")}</optgroup><optgroup label="Demais máquinas">${l2.map(opt).join("")}</optgroup>` : l2.map(opt).join(""));
+  sel.value = atual;
+  sel.dataset.obra = obraId || "";
+  sel.dataset.nObra = String(l1.length);
+  return l1.length;
+}
+// só manda a coluna quando há valor (ou quando havia e foi tirado): o front não quebra antes da migration
+function medEquipParaGravar(selId){
+  const sel = $(selId);
+  if(!sel) return {};
+  const v = sel.value || null, orig = sel.dataset.orig || null;
+  return (v || orig) ? { equipamento_id: v } : {};
+}
+
 function novaMedicao(){
   medEditId = null;
   $("med-numero").value = "";
   $("med-obra").value = "";
+  if($("med-equip")){ $("med-equip").value = ""; $("med-equip").dataset.orig = ""; $("med-equip").dataset.obra = ""; }
   if($("med-tipo")) $("med-tipo").value = "quinzenal";
   if($("med-multiplicador")) $("med-multiplicador").value = 100;
   $("med-status").value = "rascunho";
@@ -243,6 +278,7 @@ async function abrirMedicao(id){
   if($("med-sinal-hint")){ $("med-sinal-hint").textContent = ""; $("med-sinal-hint").style.color = ""; }
   $("med-numero").value = data.numero || "";
   $("med-obra").value = data.obra_id || "";
+  if($("med-equip")){ $("med-equip").dataset.orig = data.equipamento_id || ""; medPreencherMaquinas(data.obra_id, "med-equip", data.equipamento_id || ""); }   // fase 101
   if($("med-tipo")) $("med-tipo").value = data.tipo_medicao || "quinzenal";
   if($("med-multiplicador")) $("med-multiplicador").value = data.multiplicador_pct ?? 100;
   ajustarUISinalContratual();
@@ -890,6 +926,7 @@ async function salvarMedicao(novoStatus){
     // valor_final é recalculado por trigger no banco
   };
   if(typeof medPmLerCampos === "function") Object.assign(reg, medPmLerCampos());   // fase 98: só financeiro/admin/diretor mandam a permuta
+  Object.assign(reg, medEquipParaGravar("med-equip"));   // fase 101 (#94): máquina da medição
   let result;
   if(medEditId){
     result = await sb.from("medicoes").update(reg).eq("id", medEditId).select().single();
@@ -1737,6 +1774,7 @@ function medImpRenderConferencia(resp, arq){
     <div class="campo"><label>Data da medição</label><input id="med-imp-h-data" type="date" value="${esc(c.data)}" /></div>
     <div class="campo"><label>Período — início</label><input id="med-imp-h-ini" type="date" value="${esc(c.periodo_inicio)}" /></div>
     <div class="campo"><label>Período — fim</label><input id="med-imp-h-fim" type="date" value="${esc(c.periodo_fim)}" /></div>
+    <div class="campo" title="Fase 101 (#94): vale para os itens sem TAG na receita por máquina"><label>Máquina (TAG) <small class="meta">itens sem TAG</small></label><select id="med-imp-h-equip"><option value="">— sem máquina —</option></select></div>
     <div class="campo"><label>Obra / contrato no PDF</label><input value="${esc([c.obra_ref, c.contrato].filter(Boolean).join(" · ") || "—")}" readonly /></div>
     <div class="campo"><label>Cliente no PDF</label><input value="${esc(c.cliente || "—")}" readonly /></div>
   </div>
@@ -1750,6 +1788,7 @@ function medImpRenderConferencia(resp, arq){
     </tr></thead>
     <tbody>${st.itens.map((it, i) => medImpLinhaItem(it, i)).join("")}</tbody>
   </table></div>
+  <div id="med-imp-maq-aviso" class="ia-duvidas" style="display:none;"></div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0;">
     <button type="button" class="btn-sec btn-sm" id="btn-med-imp-conferir-todos">✓ Marcar todos como conferidos</button>
     <button type="button" class="btn-sec btn-sm" id="btn-med-imp-usar-app" title="Só nos itens que têm preço no app">Usar o do app em todos</button>
@@ -1770,8 +1809,11 @@ function medImpRenderConferencia(resp, arq){
   <div class="indicadores med-imp-totais" id="med-imp-totais"></div>`;
   $("med-imp-acoes").style.display = "";
 
+  // fase 101 (#94): máquinas da obra no seletor e aviso (não bloqueio) quando há várias e item sem TAG
+  medPreencherMaquinas(st.obraId, "med-imp-h-equip", "").then(medImpAvisoMaquinas);
+  $("med-imp-h-equip")?.addEventListener("change", medImpAvisoMaquinas);
   cont.querySelectorAll("tbody tr[data-idx]").forEach(tr => {
-    const sync = () => { medImpLerLinha(tr); medImpAtualizarLinha(tr); medImpAtualizarTotais(); };
+    const sync = () => { medImpLerLinha(tr); medImpAtualizarLinha(tr); medImpAtualizarTotais(); medImpAvisoMaquinas(); };
     tr.addEventListener("input", sync);
     tr.addEventListener("change", sync);
     tr.querySelector(".med-imp-rem")?.addEventListener("click", () => { st.itens[Number(tr.dataset.idx)].removido = true; tr.remove(); medImpAtualizarTotais(); });
@@ -1793,6 +1835,16 @@ function medImpRenderConferencia(resp, arq){
   $("btn-med-imp-usar-app")?.addEventListener("click", () => medImpUsarTodos("app"));
   $("btn-med-imp-usar-lido")?.addEventListener("click", () => medImpUsarTodos("lido"));
   medImpAtualizarTotais();
+}
+
+function medImpAvisoMaquinas(){
+  const el = $("med-imp-maq-aviso"), sel = $("med-imp-h-equip"), st = _medImp;
+  if(!el || !sel || !st) return;
+  const n = Number(sel.dataset.nObra || 0);
+  const semTag = (st.itens || []).filter(it => !it.removido && !String(it.tag || "").trim()).length;
+  const mostra = n > 1 && semTag && !sel.value;
+  el.style.display = mostra ? "" : "none";
+  el.textContent = mostra ? `⚠️ ${n} máquinas na obra e ${semTag} item(ns) sem TAG: escolha a TAG da medição (vale para esses itens) ou informe a TAG em cada item. Pode gravar assim mesmo.` : "";
 }
 
 function medImpLerLinha(tr){
@@ -1929,7 +1981,8 @@ async function medImpConfirmar(){
     acrescimo: t.acresc, acrescimo_descricao: ($("med-imp-h-acresc-obs")?.value || "").trim() || null,
     retencao_percentual: t.retPct, retencao_valor: t.retV || null,
     iss_percentual: t.issPct, iss_valor: t.issV || null, iss_retido_fonte: t.issRetido,
-    observacoes: obs.join("\n") || null
+    observacoes: obs.join("\n") || null,
+    ...medEquipParaGravar("med-imp-h-equip")   // fase 101 (#94): máquina da medição (itens sem TAG)
     // valor_final vem do gatilho trg_medicoes_valor_final
   };
   const ins = await sb.from("medicoes").insert(reg).select("id").single();
@@ -2065,6 +2118,9 @@ function ligarMedicoes(){
   $("med-iss-valor")?.addEventListener("input", () => { $("med-iss-valor").dataset.manual = "1"; recalcularTotaisMedicao(); });
   $("med-iss-retido")?.addEventListener("change", recalcularTotaisMedicao);
   $("med-obra")?.addEventListener("change", () => medPreencherIssDaObra($("med-obra").value, true));
+  // fase 101 (#94): máquinas da obra primeiro no seletor (a obra também chega por código, sem evento: o foco confere)
+  $("med-obra")?.addEventListener("change", () => medPreencherMaquinas($("med-obra").value, "med-equip"));
+  $("med-equip")?.addEventListener("focus", () => { const s = $("med-equip"); if(s && s.dataset.obra !== ($("med-obra")?.value || "")) medPreencherMaquinas($("med-obra").value, "med-equip"); });
 
   // Cálculos automáticos de Hora Extra e Faturamento Mínimo
   $("btn-med-calc-he")?.addEventListener("click", calcularHoraExtraMedicao);

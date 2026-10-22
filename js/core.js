@@ -1935,3 +1935,56 @@ function podeVerKpiFinanceiro(regraAnterior){
   }
   return !!usuarioAtual && ["diretor", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
+
+/* ---------- fase 101 (#85): texto do documento → TAG do cadastro ----------
+   "TAG 99", "TAG-99", "Máquina 107", "Equipamento 099", "EQP 66", "HC-66", "66-HC", "99 RZ" → { numero: "99", familia: "RZ"|null }.
+   equipamentos.codigo é "NN-XX" (99-RZ, 55B-CM): o número casa com zeros à esquerda ignorados e, quando o texto traz a
+   família (HC, RZ…), ela desempata. eqCasarTexto devolve { exato, proximo, candidatos } e NUNCA vincula sozinho: quem
+   chama mostra a sugestão e a pessoa confirma (exato = o número bate; proximo = o número mais perto, de preferência entre
+   as máquinas da obra). Usado na prévia do import do RDO. */
+function eqNormalizarTexto(texto){
+  const t = String(texto || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase()
+    .replace(/\b(TAG|MAQUINA|MAQ|EQUIPAMENTO|EQUIP|EQP|EQ|PERFURATRIZ)\b\.?/g, " ").replace(/[º°#:]/g, " ").replace(/\bN[O]?\b\.?/g, " ").trim();
+  // família antes (HC-66) ou depois (66-HC, 99 RZ) do número; letra colada ao número (55B) faz parte dele
+  let m = t.match(/(?:^|[^0-9A-Z])([A-Z]{2,3})[\s\-./]*0*(\d{1,4})(?![0-9])/);
+  if(m) return { numero: m[2].replace(/^0+(?=\d)/, "") || "0", familia: m[1] };
+  m = t.match(/0*(\d{1,4})([A-Z](?![A-Z]))?(?:[\s\-./]+([A-Z]{2,3}))?/);
+  if(!m) return { numero: null, familia: null };
+  return { numero: ((m[1] || "") + (m[2] || "")).replace(/^0+(?=\d)/, "") || null, familia: m[3] || null };
+}
+function eqNumeroDoCodigo(codigo){
+  const m = String(codigo || "").toUpperCase().match(/^0*(\d{1,4}[A-Z]?)[\s\-]*([A-Z]{1,3})?/);
+  return m ? { numero: m[1].replace(/^0+(?=\d)/, ""), familia: m[2] || null } : { numero: null, familia: null };
+}
+function eqCasarTexto(texto, lista, preferidosIds){
+  const vazio = { texto: texto || "", numero: null, familia: null, exato: null, proximo: null, candidatos: [] };
+  const bruto = String(texto || "").trim();
+  if(!bruto || !Array.isArray(lista) || !lista.length) return vazio;
+  const pref = new Set(preferidosIds || []);
+  const up = bruto.toUpperCase().replace(/\s+/g, "");
+  // código ou código externo idêntico também é exato (mas continua sendo só sugestão)
+  const igual = lista.find(e => [e.codigo, e.codigo_externo].filter(Boolean).some(c => String(c).toUpperCase().replace(/\s+/g, "") === up));
+  const { numero, familia } = eqNormalizarTexto(bruto);
+  if(igual) return { ...vazio, numero, familia, exato: igual, candidatos: [igual] };
+  if(!numero) return { ...vazio, familia };
+  const comNum = lista.map(e => ({ e, ...eqNumeroDoCodigo(e.codigo) })).filter(x => x.numero);
+  const filtra = (arr, f) => { const r = arr.filter(f); return r.length ? r : arr; };
+  let cands = comNum.filter(x => x.numero === numero);
+  if(familia && cands.length > 1) cands = filtra(cands, x => x.familia === familia);
+  if(cands.length > 1 && pref.size) cands = filtra(cands, x => pref.has(x.e.id));
+  if(cands.length > 1) cands = filtra(cands, x => ["perfuratriz", "bate_estaca"].includes(x.e.tipo));
+  if(cands.length === 1) return { ...vazio, numero, familia, exato: cands[0].e, candidatos: [cands[0].e] };
+  if(cands.length > 1) return { ...vazio, numero, familia, candidatos: cands.map(x => x.e) };
+  // sem número igual: o mais perto (primeiro entre as máquinas da obra, depois perfuratriz/bate-estaca, depois todas)
+  const n = parseInt(numero, 10);
+  const universo = [comNum.filter(x => pref.has(x.e.id)), comNum.filter(x => ["perfuratriz", "bate_estaca"].includes(x.e.tipo)), comNum].find(u => u.length) || [];
+  const ord = universo.map(x => ({ ...x, d: Math.abs(parseInt(x.numero, 10) - n) + (familia && x.familia !== familia ? 0.5 : 0) }))
+    .sort((a, b) => a.d - b.d);
+  return { ...vazio, numero, familia, proximo: ord.length ? ord[0].e : null, candidatos: ord.slice(0, 3).map(x => x.e) };
+}
+/* "TAG-99 (exata)" / "107-RZ (mais próximo)" para a prévia; '' quando não há sugestão */
+function eqSugestaoTxt(r){
+  if(r && r.exato) return `${r.exato.codigo} (exata)`;
+  if(r && r.proximo) return `${r.proximo.codigo} (mais próximo)`;
+  return "";
+}

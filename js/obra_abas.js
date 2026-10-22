@@ -15,7 +15,7 @@ async function carregarAbasObra(obraId){
   // Em paralelo, busca as contagens pra smart-buttons.
   // Estacas: contamos APENAS pela tabela `estacas` (literal, sem dedup — BB são nomes legítimos).
   // Execuções órfãs aparecem no badge separado "🔗 Reconciliar".
-  const [eq, med, rdoG, doc, estsTotal, estsExec, mob, ace, orf] = await Promise.all([
+  const [eq, med, rdoG, doc, estsTotal, estsExec, mob, ace, orf, maq] = await Promise.all([
     sb.from("equipamentos").select("id", { count: "exact", head: true }).eq("localizacao_obra_id", obraId).eq("ativo", true),
     sb.from("medicoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("rdo").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
@@ -24,7 +24,8 @@ async function carregarAbasObra(obraId){
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("status", "executada"),
     sb.from("mobilizacoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId).neq("status", "cancelada"),
     sb.from("acessorios").select("id", { count: "exact", head: true }).eq("local_obra_id", obraId).eq("local_tipo", "obra").eq("ativo", true),   // fase 80
-    sb.from("rdo_execucao_estaca").select("id, rdo:rdo_id!inner(obra_id)", { count: "exact", head: true }).is("estaca_id", null).eq("rdo.obra_id", obraId)   // fase 94: execuções do campo sem par
+    sb.from("rdo_execucao_estaca").select("id, rdo:rdo_id!inner(obra_id)", { count: "exact", head: true }).is("estaca_id", null).eq("rdo.obra_id", obraId),   // fase 94: execuções do campo sem par
+    sb.from("vw_obra_equipamentos").select("equipamento_id,vigente").eq("obra_id", obraId)   // fase 101: máquinas da obra (erro = migration ainda não aplicada)
   ]);
   // Guarda de corrida: outra obra foi aberta enquanto esta carregava → descarta
   if(obraId !== obraEditId) return;
@@ -39,7 +40,8 @@ async function carregarAbasObra(obraId){
     mobilizacoes: mob.count || 0,
     medicoes: med.count || 0,
     rdos: rdoG.count || 0,
-    documentos: doc.count || 0
+    documentos: doc.count || 0,
+    maquinas: maq.error ? null : new Set((maq.data || []).filter(m => m.vigente !== false).map(m => m.equipamento_id)).size
   };
   atualizarSmartButtons();
   if(typeof obrPmCarregar === "function") obrPmCarregar(obraId);   // fase 98: bloco Permuta da aba Contrato
@@ -55,6 +57,7 @@ function atualizarSmartButtons(){
   const map = {
     "sb-estacas": [estacasNum, "🔧", estacasLbl],
     "sb-equipamentos": [(c.equipamentos || 0) + (c.acessorios || 0), "🚜", `bens · ${c.equipamentos || 0} TAG${c.equipamentos === 1 ? "" : "s"}`],   // fase 80: TAGs + peças na obra agora
+    "sb-maquinas": [c.maquinas ?? "—", "🛠️", c.maquinas === 1 ? "máquina" : "máquinas"],   // fase 101
     "sb-rdos": [c.rdos, "📋", "RDOs"],
     "sb-medicoes": [c.medicoes, "💰", "medições"],
     "sb-documentos": [c.documentos, "📎", "documentos"]
@@ -191,6 +194,134 @@ async function carregarEquipamentosDaObra(obraId){
   }));
   _obrBensNaObraAgora = false;
   await Promise.all([obrRenderBensEquip(obraId, data || []), obrRenderBensAce(obraId)]);
+}
+
+/* ====================================================================
+   ABA MÁQUINAS (fase 101, #85 e #109): quais máquinas e veículos TRABALHAM na obra — mobilização ativa,
+   RDO/execução dos últimos 60 dias e vínculo manual (obra_equipamentos, com condutor para o veículo leve).
+   Localização continua vindo da mobilização (regra fixa): o vínculo manual não muda onde a máquina está.
+   Cadastrar máquina nova é em Equipamentos; a busca é a mesma das TAGs de apoio da mobilização (mobLigarApoio).
+   ==================================================================== */
+const OBR_MAQ_CARGOS = ["diretor", "admin", "engenheiro", "assistente_engenharia", "gestor_frota", "logistica"];   // = policy obra_equipamentos_write
+const OBR_MAQ_VEICULOS = ["veiculo", "caminhao"];
+function obrMaqPodeEditar(){ return !!usuarioAtual && OBR_MAQ_CARGOS.includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
+function obrMaqPodeExigir(){ return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia"].includes(usuarioAtual.cargo); }   // = obras_write sem o comercial
+let _obrMaqFuncs = null;
+
+async function carregarMaquinasDaObra(obraId){
+  const cont = $("obr-maq-conteudo");
+  if(!cont) return;
+  if(!obraId){ cont.innerHTML = `<p class="vazio">Salve a obra primeiro.</p>`; return; }
+  const [vRes, oRes] = await Promise.all([
+    sb.from("vw_obra_equipamentos").select("*").eq("obra_id", obraId),
+    sb.from("obras").select("rdo_exige_equipamento").eq("id", obraId).maybeSingle()
+  ]);
+  if(obraId !== obraEditId) return;
+  if(vRes.error){
+    cont.innerHTML = `<p class="vazio">As máquinas da obra entram com a migration da fase 101 (${esc(vRes.error.message)}).</p>`;
+    return;
+  }
+  const linhas = vRes.data || [];
+  const exige = oRes.error ? null : !!oRes.data?.rdo_exige_equipamento;
+  // agrupa por máquina: uma linha por TAG, com as origens em chips
+  const porEq = new Map();
+  linhas.forEach(l => {
+    const g = porEq.get(l.equipamento_id) || { id: l.equipamento_id, codigo: l.codigo, nome: l.nome, tipo: l.tipo, placa: l.placa, origens: [] };
+    g.origens.push(l); porEq.set(l.equipamento_id, g);
+  });
+  const ord = (a, b) => String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR", { numeric: true });
+  const todas = [...porEq.values()].sort(ord);
+  const veiculos = todas.filter(g => OBR_MAQ_VEICULOS.includes(g.tipo));
+  const maquinas = todas.filter(g => !OBR_MAQ_VEICULOS.includes(g.tipo));
+  const pode = obrMaqPodeEditar();
+  const d = (v) => v ? dataBR(v) : "…";
+  const chipOrigem = (o) => {
+    if(o.origem === "mobilizacao")
+      return `<span class="mob-chip" title="Mobilização ${esc(o.mob_status || "")}: é ela que diz onde a máquina está">🚚 mobilização${o.papel === "apoio" ? " (apoio)" : ""} · desde ${d(o.de)}</span>`;
+    if(o.origem === "rdo")
+      return `<span class="mob-chip" title="Diários e execuções desta máquina na obra nos últimos 60 dias">📋 ${o.qtd_rdos || 0} RDO${o.qtd_rdos === 1 ? "" : "s"} · ${num(o.metros || 0)} m · ${d(o.de)}–${d(o.ate)}</span>`;
+    return `<span class="mob-chip${o.vigente ? "" : " meta"}" title="${esc(o.observacao || "Vínculo manual")}">✍️ manual · ${d(o.de)}–${d(o.ate)}${o.condutor_nome ? " · condutor " + esc(o.condutor_nome) : ""}${o.vigente ? "" : " (encerrado)"}
+      ${pode ? `<button type="button" class="btn-rem" data-maq-acao="${o.vigente ? "encerrar" : "excluir"}" data-maq-id="${esc(o.referencia_id)}" title="${o.vigente ? "Encerrar o vínculo hoje" : "Excluir o vínculo"}">${o.vigente ? "⏹" : "&times;"}</button>` : ""}</span>`;
+  };
+  const tabela = (lista, comCondutor) => `<div class="tabela-rola"><table>
+    <thead><tr><th>TAG</th><th>Nome</th><th>Tipo</th>${comCondutor ? "<th>Condutor atual</th>" : ""}<th>Origem do vínculo</th></tr></thead>
+    <tbody>${lista.map(g => {
+      const cond = g.origens.find(o => o.origem === "manual" && o.vigente && o.condutor_nome);
+      return `<tr>
+        <td><a href="#" class="link-cad" data-eqp="${esc(g.id)}"><strong>${esc(g.codigo || "?")}</strong></a>${g.placa ? ` <span class="meta">${esc(g.placa)}</span>` : ""}</td>
+        <td>${esc(g.nome || "")}</td><td>${esc(g.tipo || "")}</td>
+        ${comCondutor ? `<td>${cond ? esc(cond.condutor_nome) : '<span class="meta">—</span>'}</td>` : ""}
+        <td>${g.origens.map(chipOrigem).join(" ")}</td></tr>`; }).join("")}</tbody></table></div>`;
+
+  cont.innerHTML = `
+    <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
+      <h4 style="margin:0;font-size:var(--txt-md);">🛠️ Máquinas da obra <span class="contador">${maquinas.length}</span></h4>
+      ${exige === null ? "" : `<label class="check-inline" title="${obrMaqPodeExigir() ? "Ligado: salvar RDO sem máquina nesta obra é recusado" : "Só a engenharia altera"}">
+        <input type="checkbox" id="obr-maq-exige"${exige ? " checked" : ""}${obrMaqPodeExigir() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) ? "" : " disabled"} /> RDO exige máquina</label>`}
+    </div>
+    <p class="meta" style="margin:0 0 10px;">Vínculo de trabalho: mobilização ativa, RDO dos últimos 60 dias e vínculo manual. Onde a máquina está continua vindo da mobilização. Máquina nova se cadastra em <a href="#" id="obr-maq-ir-eqp">Equipamentos</a>.</p>
+    ${maquinas.length ? tabela(maquinas, false) : `<p class="vazio" style="padding:8px 0;">Nenhuma máquina com mobilização ativa, RDO recente ou vínculo manual.</p>`}
+    <div class="lista-topo" style="border:none;padding:0;margin:16px 0 10px;">
+      <h4 style="margin:0;font-size:var(--txt-md);">🚙 Veículos leves <span class="contador">${veiculos.length}</span></h4>
+    </div>
+    ${veiculos.length ? tabela(veiculos, true) : `<p class="vazio" style="padding:8px 0;">Nenhum veículo vinculado à obra.</p>`}
+    ${pode ? `<hr style="border:none;border-top:1px solid var(--borda);margin:14px 0;">
+    <h4 style="margin:0 0 8px;font-size:var(--txt-md);">+ Vincular máquina ou veículo</h4>
+    ${typeof mobApoioHTML === "function" ? mobApoioHTML("obrmaq") : `<p class="vazio">Busca indisponível.</p>`}
+    <div class="grade" style="margin-top:8px;">
+      <div class="campo"><label>De</label><input type="date" id="obr-maq-de" value="${esc(hojeISO())}" /></div>
+      <div class="campo"><label>Até <small class="meta">(vazio = em aberto)</small></label><input type="date" id="obr-maq-ate" /></div>
+      <div class="campo"><label>Condutor <small class="meta">(veículo leve)</small></label><select id="obr-maq-condutor"><option value="">—</option></select></div>
+      <div class="campo largo"><label>Observação</label><input id="obr-maq-obs" placeholder="ex.: perfuratriz de apoio na frente 2" /></div>
+    </div>
+    <div class="form-acoes compacta"><button type="button" class="btn" id="btn-obr-maq-vincular">Vincular</button></div>` : ""}`;
+
+  cont.querySelectorAll("a[data-eqp]").forEach(a => a.addEventListener("click", ev => {
+    ev.preventDefault();
+    if(irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(a.dataset.eqp);
+  }));
+  $("obr-maq-ir-eqp")?.addEventListener("click", ev => { ev.preventDefault(); irParaSecao("equipamentos"); });
+  $("obr-maq-exige")?.addEventListener("change", async ev => {
+    const v = ev.target.checked;
+    const { error } = await sb.from("obras").update({ rdo_exige_equipamento: v }).eq("id", obraId);
+    if(error){ ev.target.checked = !v; aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
+    aviso("app-aviso", v ? "Esta obra passa a recusar RDO sem máquina." : "RDO sem máquina volta a ser aceito nesta obra (com aviso no Para regularizar).", "ok");
+  });
+  cont.querySelectorAll("[data-maq-acao]").forEach(b => b.addEventListener("click", async () => {
+    const id = b.dataset.maqId, acao = b.dataset.maqAcao;
+    if(acao === "excluir" && !confirm("Excluir este vínculo manual? O histórico fica no log da obra.")) return;
+    const req = acao === "encerrar"
+      ? sb.from("obra_equipamentos").update({ ate: hojeISO() }).eq("id", id)
+      : sb.from("obra_equipamentos").delete().eq("id", id);
+    const { error } = await req;
+    if(error){ aviso("app-aviso", "Não foi possível alterar o vínculo: " + error.message, "erro"); return; }
+    await carregarMaquinasDaObra(obraId); carregarAbasObra(obraId);
+  }));
+  if(!pode) return;
+  // busca de TAG reaproveitada da mobilização (fase 80): todas as categorias, várias TAGs de uma vez
+  await _obrMobPronto();
+  if(obraId !== obraEditId || typeof mobLigarApoio !== "function") return;
+  _mobApoioSel.obrmaq = [];
+  const todos = $("obrmaq-apoio-todos"); if(todos) todos.checked = true;
+  const busca = $("obrmaq-apoio-busca"); if(busca) busca.placeholder = "buscar máquina ou veículo por TAG, placa ou nome…";
+  mobLigarApoio("obrmaq", obraId, null);
+  if(!_obrMaqFuncs){
+    const { data } = await sb.from("funcionarios").select("id,nome").eq("ativo", true).order("nome");
+    _obrMaqFuncs = data || [];
+  }
+  preencherSelect($("obr-maq-condutor"), _obrMaqFuncs, "id", "nome", "—");
+  $("btn-obr-maq-vincular")?.addEventListener("click", () => comBotaoTravado("btn-obr-maq-vincular", async () => {
+    const ids = [...(_mobApoioSel.obrmaq || [])];
+    if(!ids.length){ aviso("app-aviso", "Escolha ao menos uma TAG na busca.", "erro"); return; }
+    const de = $("obr-maq-de").value || hojeISO(), ate = $("obr-maq-ate").value || null;
+    if(ate && ate < de){ aviso("app-aviso", "O fim do vínculo é antes do início.", "erro"); return; }
+    const regs = ids.map(id => ({ obra_id: obraId, equipamento_id: id, de, ate,
+      condutor_id: $("obr-maq-condutor").value || null, observacao: $("obr-maq-obs").value.trim() || null }));
+    const { error } = await sb.from("obra_equipamentos").insert(regs);
+    if(error){ aviso("app-aviso", "Não foi possível vincular: " + error.message, "erro"); return; }
+    aviso("app-aviso", `${regs.length} vínculo(s) gravado(s).`, "ok");
+    await carregarMaquinasDaObra(obraId); carregarAbasObra(obraId);
+  }));
 }
 
 /* ====================================================================
@@ -401,7 +532,8 @@ async function carregarMedicoesDaObra(obraId){
       <div class="ind"><div class="num">${brl(totalMedido)}</div><div class="rot">Total medido</div></div>
       <div class="ind"><div class="num">${brl(saldo)}</div><div class="rot">Saldo contratual</div></div>
       <div class="ind"><div class="num">${pctTotal.toFixed(1)}%</div><div class="rot">% medido</div></div>
-    </div>`;
+    </div>
+    <div id="obr-medic-maq"></div>`;
 
   // fase 88 (#54): boletim já emitido (PDF do Maya ou da planilha) entra conferido e nasce aprovado
   const podeImportar = typeof medImpPodeImportar === "function" && medImpPodeImportar();
@@ -415,6 +547,7 @@ async function carregarMedicoesDaObra(obraId){
     $("btn-medic-importar")?.addEventListener("click", () => abrirImportBoletimPDF(obraId));
     return;
   }
+  obrMedPorMaquina(obraId);   // fase 101 (#94)
   const tipoLbl = { sinal_contratual: "Sinal", quinzenal: "Quinzenal", final: "Final", avulsa: "Avulsa" };
   const linhas = data.map(m => `<tr class="linha-clicavel" data-id="${esc(m.id)}">
     <td>${esc(m.numero)}${m.origem === "importada_pdf" ? ' <span title="Importada do boletim (PDF)">📄</span>' : ""}</td>
@@ -440,6 +573,41 @@ async function carregarMedicoesDaObra(obraId){
   cont.querySelectorAll(".linha-clicavel").forEach(tr => {
     tr.addEventListener("click", () => abrirMedicaoExistente(tr.dataset.id));
   });
+}
+
+/* fase 101 (#94): resumo "por máquina" da aba Medições — receita medida por TAG (vw_equipamento_receita, só quem lê
+   financeiro: decisão do Bernardo de 21/10) ao lado do custo da TAG na obra (vw_custos). Item sem TAG usa a máquina da
+   medição; sem nenhuma, fica em "sem máquina". Sem a migration aplicada o bloco não aparece. */
+async function obrMedPorMaquina(obraId){
+  const box = $("obr-medic-maq");
+  if(!box || !(typeof podeVerValorObra === "function" && podeVerValorObra())) return;
+  const [rec, cus] = await Promise.all([
+    sb.from("vw_equipamento_receita").select("equipamento_id,equipamento_codigo,valor,medicao_id").eq("obra_id", obraId),
+    sb.from("vw_custos").select("equipamento_id,valor").eq("obra_id", obraId).not("equipamento_id", "is", null)
+  ]);
+  if(obraId !== obraEditId || rec.error) return;
+  const porEq = new Map();
+  const g = (id, cod) => { const k = id || ""; if(!porEq.has(k)) porEq.set(k, { id, cod: cod || null, receita: 0, custo: 0, meds: new Set() }); return porEq.get(k); };
+  (rec.data || []).forEach(r => { const o = g(r.equipamento_id, r.equipamento_codigo); o.receita += Number(r.valor) || 0; o.meds.add(r.medicao_id); });
+  if(!cus.error) (cus.data || []).forEach(c => { const o = g(c.equipamento_id, null); o.custo += Number(c.valor) || 0; });
+  const semCod = [...porEq.values()].filter(o => o.id && !o.cod).map(o => o.id);
+  if(semCod.length){
+    const { data: eqs } = await sb.from("equipamentos").select("id,codigo").in("id", semCod);
+    (eqs || []).forEach(e => { const o = porEq.get(e.id); if(o) o.cod = e.codigo; });
+    if(obraId !== obraEditId) return;
+  }
+  const cod = (o) => o.cod || (o.id ? "TAG" : "sem máquina");
+  const linhas = [...porEq.values()].filter(o => o.receita || o.custo)
+    .sort((a, b) => (a.id ? 0 : 1) - (b.id ? 0 : 1) || String(cod(a)).localeCompare(String(cod(b)), "pt-BR", { numeric: true }));
+  if(!linhas.length) return;
+  box.innerHTML = `<details class="obr-medic-maq" ${linhas.some(o => o.id) ? "open" : ""} style="margin:0 0 14px;">
+    <summary style="cursor:pointer;font-size:var(--txt-sm);font-weight:600;">🛠️ Por máquina <span class="meta" style="font-weight:400;">receita medida (item com TAG, senão a máquina da medição) × custo da TAG nesta obra</span></summary>
+    <div class="tabela-rola" style="margin-top:6px;"><table>
+      <thead><tr><th>Máquina</th><th class="num">Medições</th><th class="num">Receita medida</th><th class="num" title="vw_custos: peças, combustível, manutenção, deslocamento… lançados para a TAG nesta obra">Custo na obra</th><th class="num">Resultado</th></tr></thead>
+      <tbody>${linhas.map(o => `<tr><td>${o.id ? `<strong>${esc(cod(o))}</strong>` : '<span class="tag ambar" title="Item sem TAG em medição sem máquina: escolha a máquina na ficha da medição">sem máquina</span>'}</td>
+        <td class="num">${o.meds.size || "—"}</td><td class="num">${brl(o.receita)}</td><td class="num">${o.custo ? brl(o.custo) : "—"}</td>
+        <td class="num${o.receita - o.custo < 0 ? " txt-perigo" : ""}">${o.id ? brl(o.receita - o.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>
+  </details>`;
 }
 
 function abrirMedicaoPraObra(){
@@ -475,11 +643,20 @@ async function carregarRDOsDaObra(obraId){
   }
 
   // Resumo dos RDOs + execuções por rdo (pra contar vinculadas)
-  const [resumoRes, execsRes] = await Promise.all([
+  const [resumoRes, execsRes, injRes] = await Promise.all([
     sb.from("vw_rdo_resumo").select("*").eq("obra_id", obraId).order("data", { ascending: false }),
     // !inner + eq: só execuções desta obra (antes vinha a tabela inteira)
-    sb.from("rdo_execucao_estaca").select("rdo_id, estaca_id, rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)
+    sb.from("rdo_execucao_estaca").select("rdo_id, estaca_id, rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId),
+    // fase 101 (#99): injeção do dia nos RDOs de raiz (cimento, areia, água, m³ injetado); erro = migration ainda não aplicada
+    sb.from("rdo_execucao_estaca").select("rdo_id,consumo_cimento_raiz,consumo_cimento_unidade,consumo_areia_raiz,consumo_areia_unidade,agua_l,volume_injetado_m3,rdo:rdo_id!inner(obra_id,tipo_servico)")
+      .eq("rdo.obra_id", obraId).eq("rdo.tipo_servico", "estaca_raiz")
   ]);
+  const injPorRdo = {};
+  if(!injRes.error && typeof rdoTotaisInjecao === "function"){
+    const g = {};
+    (injRes.data || []).forEach(x => (g[x.rdo_id] = g[x.rdo_id] || []).push(x));
+    Object.entries(g).forEach(([id, xs]) => { const it = rdoTotaisInjecaoTxt(rdoTotaisInjecao(xs)); if(it.length) injPorRdo[id] = it.map(([l, v]) => `${l.toLowerCase()} ${v}`).join(" · "); });
+  }
   if(resumoRes.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(resumoRes.error.message)}</p>`; return; }
   const todos = resumoRes.data || [];
 
@@ -506,6 +683,8 @@ async function carregarRDOsDaObra(obraId){
   const semMaq = todos.filter(r => !r.equipamento_id).length;
   if(_obrRdoFiltroMaq && _obrRdoFiltroMaq !== "sem" && !maquinas.some(([id]) => id === _obrRdoFiltroMaq)) _obrRdoFiltroMaq = "";
   const data = todos.filter(r => _obrRdoFiltroMaq === "sem" ? !r.equipamento_id : (!_obrRdoFiltroMaq || r.equipamento_id === _obrRdoFiltroMaq));
+  // fase 101 (#85): "atribuir máquina" em lote aos diários sem máquina (RPC rdo_atribuir_maquina; mesmos cargos de rdo_write)
+  const atribuiLote = !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado"].includes(usuarioAtual.cargo);
 
   const header = `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
@@ -518,7 +697,12 @@ async function carregarRDOsDaObra(obraId){
       <button type="button" class="btn" id="btn-rdo-novo">+ Novo RDO</button>
     </div>
     ${semMaq ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-sm);">
-      ⚠️ <strong>${semMaq} diário${semMaq > 1 ? "s" : ""} sem máquina</strong> — abra cada um e informe a máquina no cabeçalho; até lá ficam em "Para regularizar" do responsável da obra. Diário com execuções de duas máquinas tem o botão "Dividir por máquina".
+      ⚠️ <strong>${semMaq} diário${semMaq > 1 ? "s" : ""} sem máquina</strong> — ${atribuiLote ? `marque os diários abaixo e use "Atribuir máquina" para vários de uma vez, ou` : ""} abra cada um e informe a máquina no cabeçalho; até lá ficam em "Para regularizar" do responsável da obra. Diário com execuções de duas máquinas tem o botão "Dividir por máquina".
+      ${atribuiLote ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+        <label class="check-inline"><input type="checkbox" id="obr-rdo-sel-todos" /> marcar todos sem máquina</label>
+        <select id="obr-rdo-atrib-maq" style="max-width:260px;"><option value="">— máquina —</option></select>
+        <button type="button" class="btn btn-sm" id="btn-obr-rdo-atribuir">Atribuir máquina aos marcados</button>
+      </div>` : ""}
     </div>` : ""}`;
   const ligarFiltroMaq = () => $("obr-rdo-f-maq")?.addEventListener("change", (ev) => { _obrRdoFiltroMaq = ev.target.value; carregarRDOsDaObra(obraId); });
 
@@ -526,6 +710,7 @@ async function carregarRDOsDaObra(obraId){
     cont.innerHTML = `${header}<p class="vazio">${todos.length ? "Nenhum RDO para esta máquina." : "Nenhum RDO registrado."}</p>`;
     $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
     ligarFiltroMaq();
+    if(semMaq && atribuiLote) obrRdoLigarAtribuir(obraId);
     return;
   }
 
@@ -556,14 +741,14 @@ async function carregarRDOsDaObra(obraId){
       ? "Todas as execuções deste RDO estão vinculadas a estacas cadastradas"
       : `${orf} execução(ões) sem vínculo (órfãs)`;
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
-      <td>${dataBR(r.data)}</td>
+      <td>${atribuiLote && !r.equipamento_id ? `<input type="checkbox" class="obr-rdo-sel" data-rdo="${esc(r.id)}" title="Marcar para atribuir máquina" /> ` : ""}${dataBR(r.data)}</td>
       <td>${r.equipamento_id ? esc(r.maquina || "?") : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho">sem máquina</span>'}</td>
       <td>${esc(lblsTipo[r.tipo_servico] || r.tipo_servico)}</td>
       <td>${r.qtd_estacas_executadas || 0}</td>
       <td title="${tituloVinc}" style="color:${corVinc};font-weight:600;">
         ${v.vinculadas} / ${v.total}${orf > 0 ? ` <small style="font-weight:400;">(${orf} órfã${orf>1?'s':''})</small>` : ""}
       </td>
-      <td class="num">${num(r.metragem_total)} m</td>
+      <td class="num">${num(r.metragem_total)} m${injPorRdo[r.id] ? `<div class="meta" title="Injeção do dia (raiz)">💧 ${esc(injPorRdo[r.id])}</div>` : ""}</td>
       <td class="num">${num(r.concreto_total_m3)} m³</td>
       <td>${tagStatus("rdo", r.status)}</td>
     </tr>`;
@@ -581,8 +766,36 @@ async function carregarRDOsDaObra(obraId){
   $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
   ligarFiltroMaq();
   cont.querySelectorAll(".linha-clicavel").forEach(tr => {
-    tr.addEventListener("click", () => abrirRdoExistente(tr.dataset.id));
+    tr.addEventListener("click", (ev) => { if(ev.target.closest(".obr-rdo-sel")) return; abrirRdoExistente(tr.dataset.id); });
   });
+  if(semMaq && atribuiLote) obrRdoLigarAtribuir(obraId);
+}
+
+/* fase 101 (#85): select de máquinas (as da obra primeiro) e o botão do lote */
+async function obrRdoLigarAtribuir(obraId){
+  const sel = $("obr-rdo-atrib-maq");
+  if(!sel) return;
+  $("obr-rdo-sel-todos")?.addEventListener("change", ev => document.querySelectorAll("#obr-rdo-conteudo .obr-rdo-sel").forEach(cb => { cb.checked = ev.target.checked; }));
+  const [eqs, daObra] = await Promise.all([
+    sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).order("codigo"),
+    sb.from("vw_obra_equipamentos").select("equipamento_id").eq("obra_id", obraId)
+  ]);
+  if(obraId !== obraEditId) return;
+  const lista = (eqs.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
+  const idsObra = new Set((daObra.error ? [] : daObra.data || []).map(x => x.equipamento_id));
+  const opt = (q) => `<option value="${esc(q.id)}">${esc(q.codigo)}${q.nome ? " — " + esc(q.nome) : ""}</option>`;
+  const daO = lista.filter(q => idsObra.has(q.id)), outras = lista.filter(q => !idsObra.has(q.id));
+  sel.innerHTML = '<option value="">— máquina —</option>' + (daO.length ? `<optgroup label="Máquinas da obra">${daO.map(opt).join("")}</optgroup>` : "") + `<optgroup label="Demais máquinas">${outras.map(opt).join("")}</optgroup>`;
+  $("btn-obr-rdo-atribuir")?.addEventListener("click", () => comBotaoTravado("btn-obr-rdo-atribuir", async () => {
+    const ids = [...document.querySelectorAll("#obr-rdo-conteudo .obr-rdo-sel:checked")].map(cb => cb.dataset.rdo);
+    if(!ids.length){ aviso("app-aviso", "Marque ao menos um diário sem máquina.", "erro"); return; }
+    if(!sel.value){ aviso("app-aviso", "Escolha a máquina.", "erro"); return; }
+    const { data, error } = await sb.rpc("rdo_atribuir_maquina", { p_rdos: ids, p_equipamento: sel.value });
+    if(error){ aviso("app-aviso", "Não foi possível atribuir: " + error.message, "erro"); return; }
+    const r = data || {};
+    aviso("app-aviso", `${r.atribuidos || 0} diário(s) com máquina.${r.conflitos ? ` ${r.conflitos} ficaram de fora porque essa máquina já tem diário no mesmo dia (${(r.conflitos_datas || []).join(", ")}): abra e junte à mão.` : ""}`, r.conflitos ? "erro" : "ok");
+    await carregarRDOsDaObra(obraId); carregarAbasObra(obraId);
+  }));
 }
 
 function abrirRdoPraObra(){
@@ -1169,6 +1382,7 @@ function ligarAbasObra(){
       const tab = b.dataset.tab;
       if(!obraEditId) return;
       if(tab === "equipamentos") carregarEquipamentosDaObra(obraEditId);
+      else if(tab === "maquinas") carregarMaquinasDaObra(obraEditId);   // fase 101
       else if(tab === "medicoes") carregarMedicoesDaObra(obraEditId);
       else if(tab === "rdos") carregarRDOsDaObra(obraEditId);
       else if(tab === "vincular" && typeof estvCarregar === "function") estvCarregar(obraEditId);   // fase 94 (#80)

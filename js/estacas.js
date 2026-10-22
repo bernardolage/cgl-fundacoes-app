@@ -3543,8 +3543,21 @@ function esthConsumos(l){
   return [l.pressao_injecao_kgcm2 != null ? `${num(l.pressao_injecao_kgcm2)} kg/cm²` : "",
     l.consumo_cimento_raiz ? `cimento ${l.consumo_cimento_raiz} ${l.consumo_cimento_unidade || ""}`.trim() : "",
     l.consumo_areia_raiz ? `areia ${l.consumo_areia_raiz} ${l.consumo_areia_unidade || ""}`.trim() : "",
+    l.agua_l != null ? `água ${num(l.agua_l)} L` : "",   // fase 101 (#99)
+    l.volume_injetado_m3 != null ? `${num(l.volume_injetado_m3)} m³ injetados` : "",
     l.volume_concreto_m3 != null ? `${num(l.volume_concreto_m3)} m³` : "",
     l.torque != null ? `torque ${num(l.torque)}` : ""].filter(Boolean).join(" · ");
+}
+/* fase 101 (#99): consumos de injeção (cimento, areia, água, m³ injetado) somados por etapa da execução */
+function esthConsumosPorEtapaHTML(execs){
+  if(typeof rdoTotaisInjecao !== "function" || typeof rdoTotaisInjecaoTxt !== "function") return "";
+  const porEtapa = {};
+  (execs || []).forEach(x => { (porEtapa[x.etapa || "sem_etapa"] = porEtapa[x.etapa || "sem_etapa"] || []).push(x); });
+  const linhas = Object.entries(porEtapa).map(([k, xs]) => [k, rdoTotaisInjecaoTxt(rdoTotaisInjecao(xs))]).filter(([, it]) => it.length);
+  if(!linhas.length) return "";
+  return `<h4 class="titulo-linha" style="margin:12px 0 4px;">Consumos por etapa</h4>
+    <table class="itens-tabela"><thead><tr><th>Etapa</th><th>Consumos</th></tr></thead>
+    <tbody>${linhas.map(([k, it]) => `<tr><td>${esc(ESTH_ETAPA[k] || k)}</td><td>${it.map(([l, v]) => `${esc(l)}: <strong>${esc(v)}</strong>`).join(" · ")}</td></tr>`).join("")}</tbody></table>`;
 }
 function esthRender(){
   const cont = $("esth-conteudo");
@@ -3585,6 +3598,7 @@ function esthRender(){
       <div><h4 class="titulo-linha" style="margin-bottom:4px;">Metros por ferramental</h4><table class="itens-tabela"><tbody>${tabFerr || '<tr><td class="vazio">Sem ferramental informado nas execuções</td></tr>'}</tbody></table></div>
       <div><h4 class="titulo-linha" style="margin-bottom:4px;">Execuções por etapa</h4><table class="itens-tabela"><thead><tr><th>Etapa</th><th class="num">Dias</th><th class="num">Metros</th></tr></thead><tbody>${tabEtapa}</tbody></table></div>
     </div>
+    ${esthConsumosPorEtapaHTML(t.execs)}
     <h4 class="titulo-linha" style="margin:12px 0 4px;">Medições que cobrem a estaca</h4>
     <table class="itens-tabela"><thead><tr><th>Nº</th><th>Data</th><th>Período</th><th>Status</th><th>Vínculo</th></tr></thead><tbody>${meds}</tbody></table>`;
 }
@@ -3639,7 +3653,7 @@ function esthExportarXlsx(){
     "Etapa": esthEtapaLbl(l.etapa), "Modalidade": l.modalidade || "", "De (m)": l.de_m, "Até (m)": l.ate_m, "Metragem (m)": l.metragem_m,
     "Ferramental": ESTH_FERR[l.ferramental] || l.ferramental || "", "Acessórios (texto)": l.identificacao_acessorios || "",
     "Pressão (kg/cm²)": l.pressao_injecao_kgcm2, "Cimento": l.consumo_cimento_raiz || "", "Un. cimento": l.consumo_cimento_unidade || "",
-    "Areia": l.consumo_areia_raiz || "", "Un. areia": l.consumo_areia_unidade || "", "Concreto (m³)": l.volume_concreto_m3, "Torque": l.torque,
+    "Areia": l.consumo_areia_raiz || "", "Un. areia": l.consumo_areia_unidade || "", "Água (L)": l.agua_l ?? "", "Volume injetado (m³)": l.volume_injetado_m3 ?? "","Concreto (m³)": l.volume_concreto_m3, "Torque": l.torque,
     "Inclinação": l.inclinacao || "", "Observação": l.observacoes || "", "Nome no campo": l.nome_campo || "", "Nome corrigido": l.estaca_numero_corrigido || "",
     "Medição": l.medicao_numero || "", "Status medição": l.medicao_status || "", "Vínculo medição": ESTH_VINC[l.vinculo_medicao] || "",
     "Período início": l.periodo_inicio ? dataBR(l.periodo_inicio) : "", "Período fim": l.periodo_fim ? dataBR(l.periodo_fim) : ""

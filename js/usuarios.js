@@ -186,6 +186,18 @@ async function carregarPalavrasEtapaCard(){
   const { data, error } = await sb.from("empresa_config").select("rdo_palavras_etapa_final").eq("id", 1).maybeSingle();
   if(error){ aviso("app-aviso", "Não foi possível ler as palavras de etapa final: " + error.message, "erro"); return; }
   $("usr-rdo-palavras").value = (data?.rdo_palavras_etapa_final || []).join(", ");
+  // fase 101 (#99): classificações do solo (coluna nova; sem a migration o campo fica vazio e o salvar avisa)
+  const sol = await sb.from("empresa_config").select("rdo_solo_classificacoes").eq("id", 1).maybeSingle();
+  if($("usr-rdo-solo")) $("usr-rdo-solo").value = sol.error ? "" : (sol.data?.rdo_solo_classificacoes || []).join(", ");
+}
+async function salvarSoloClassificacoes(){
+  const lista = [...new Set(($("usr-rdo-solo")?.value || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean))];
+  if(!lista.length){ aviso("app-aviso", "Informe ao menos uma classificação (ex.: Argila, Rocha alterada).", "erro"); return; }
+  const { error } = await sb.from("empresa_config").update({ rdo_solo_classificacoes: lista, updated_at: new Date().toISOString() }).eq("id", 1);
+  if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
+  if(typeof _rdoSoloClassif !== "undefined") _rdoSoloClassif = null;   // o RDO relê na próxima abertura
+  $("usr-rdo-solo").value = lista.join(", ");
+  aviso("app-aviso", "Classificações salvas. Aparecem como sugestão nas camadas do RDO de raiz.", "ok");
 }
 async function salvarPalavrasEtapa(){
   const lista = [...new Set($("usr-rdo-palavras").value.split(/[,;\n]/).map(s => s.trim().toLowerCase()).filter(Boolean))];
@@ -551,6 +563,7 @@ function ligarUsuarios(){
   $("btn-encerrar-sessoes-usr")?.addEventListener("click", () => comBotaoTravado("btn-encerrar-sessoes-usr", encerrarSessoesUsr));
   $("btn-usr-sessao-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessao-salvar", salvarPoliticaSessao));
   $("btn-usr-rdo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-salvar", salvarPalavrasEtapa));   // fase 94
+  $("btn-usr-rdo-solo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-solo-salvar", salvarSoloClassificacoes));   // fase 101
   $("btn-usr-sessoes-todas")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessoes-todas", encerrarTodasSessoes));
 
   const navUsr = document.querySelector('nav button[data-secao="usuarios"]');

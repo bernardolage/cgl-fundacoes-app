@@ -9,6 +9,7 @@
    em qualquer aba, com o mesmo padrão "título na coluna A + cabeçalho + linhas"):
      • Abastecimento      — Data | Máquina | Combustível | Quantidade (L) | Horímetro | Observação
      • Fim do Expediente  — Data | Hora | Descrição   (também aceita "Encerramento")
+     • Injeção (fase 101) — Data | Estaca | Cimento | Areia | Água (L) | Volume injetado (m³) | Pressão  (raiz)
    Tudo vira o MESMO contrato v3 (dias[]) que a Edge Function extrair-rdo-arquivo
    devolve e segue pelo preview de conferência do import por IA (montarPreviewDias
    em rdo.js). Dias só com ocorrência (manutenção, paralisação) também viram RDO —
@@ -97,6 +98,7 @@ function mayaParaDias(abas){
   const obsBl   = mayaBloco(abas, ["Observações", "Observacoes"]) || [];
   const ocorBl  = mayaBloco(abas, ["Ocorrências", "Ocorrencias"]) || [];
   const abastBl = mayaBloco(abas, ["Abastecimento", "Abastecimentos"]) || [];
+  const injBl   = mayaBloco(abas, ["Injeção", "Injecao", "Injeção de argamassa", "Injecao de argamassa"]) || [];   // fase 101 (#99)
   const fimBl   = mayaBloco(abas, ["Fim do Expediente", "Fim de Expediente", "Encerramento", "Fim do expediente / Encerramento"]) || [];
 
   // Obra: qualquer linha antes de "Estacas" (1ª aba) com "Obra: xxx"
@@ -202,6 +204,22 @@ function mayaParaDias(abas){
     if(qtd == null && hor == null && !obs) return;
     d.abastecimentos.push({ maquina: maq, combustivel: comb, quantidade: qtd, unidade: "L", horimetro: hor, observacao: obs });
     if(maq && !d.maquina) d.maquina = maq;
+  });
+
+  // fase 101 (#99): bloco complementar "Injeção" (raiz) — Data | Estaca | Cimento | Areia | Água (L) | Volume injetado (m³) | Pressão.
+  // Vira o mesmo "injecao" do contrato v3 (casado por estaca em iaInjecaoDaEstaca, rdo.js).
+  injBl.forEach(o => {
+    const iso = mayaDataISO(mayaCampo(o, "data"));
+    const est = mayaEstaca(mayaCampo(o, "estaca"));
+    if(!iso || !est.numero) return;
+    const areiaTxt = mayaNorm(mayaCampo(o, "areia") || "");
+    dia(iso).injecao.push({
+      estaca: est.numero, agrupamento: null,
+      consumo_cimento: mayaNum(mayaCampo(o, "cimento")), consumo_areia: mayaNum(mayaCampo(o, "areia")),
+      consumo_areia_unidade: /padiola/.test(areiaTxt) ? "padiola" : null,
+      agua_l: mayaNum(mayaCampo(o, "agua")), volume_injetado_m3: mayaNum(mayaCampo(o, "volume", "injetad")),
+      pressao_kgcm2: mayaNum(mayaCampo(o, "pressao"))
+    });
   });
 
   const lista = Object.values(dias).sort((a, b) => a.data.localeCompare(b.data));

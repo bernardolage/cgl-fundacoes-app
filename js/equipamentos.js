@@ -284,12 +284,13 @@ function abrirFichaEquipamento(e){
   atualizarStatusbarEquipamento(e.status || "disponivel");
 
   // smart-buttons zerados até carregar
-  ["sb-eqp-ace","sb-eqp-mob","sb-eqp-mov","sb-eqp-rep","sb-eqp-man"].forEach(id => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = "0"; b.classList.add("zero"); } });
+  ["sb-eqp-ace","sb-eqp-mob","sb-eqp-rdo","sb-eqp-mov","sb-eqp-rep","sb-eqp-man"].forEach(id => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = "0"; b.classList.add("zero"); } });
   $("eqp-ace-lista").innerHTML = `<p class="vazio">${novo ? "Salve o equipamento para ver os acessórios." : "Carregando…"}</p>`;
-  ["eqp-mob-lista","eqp-mov-lista","eqp-rep-lista"].forEach(id => $(id).innerHTML = `<p class="vazio">${novo ? "—" : "Carregando…"}</p>`);
+  ["eqp-mob-lista","eqp-rdo-lista","eqp-mov-lista","eqp-rep-lista"].forEach(id => { const el = $(id); if(el) el.innerHTML = `<p class="vazio">${novo ? "—" : "Carregando…"}</p>`; });
+  if($("eqp-chip-trab-box")) $("eqp-chip-trab-box").style.display = "none";   // fase 101: preenchido em eqpCarregarTrabalho
   $("eqp-man-lista").innerHTML = "";
 
-  if(!novo) eqpCarregarFilhas(e);
+  if(!novo){ eqpCarregarFilhas(e); eqpCarregarRdos(e); eqpCarregarTrabalho(e); }   // fase 101: RDOs da máquina; obra e condutor do vínculo
   // fase 96: aba Venda (js/vendas_bens.js)
   const vCont = $("eqp-venda");
   if(vCont){ if(novo || typeof vbRenderAba !== "function") vCont.innerHTML = `<p class="vazio">—</p>`; else vbRenderAba(e, "eqp-venda"); }
@@ -412,6 +413,56 @@ async function eqpCarregarFilhas(e){
   });
   // fase 92: plano preventivo (semáforo) e leituras de horímetro/km da TAG
   if(typeof manRenderResumoEquipamento === "function") manRenderResumoEquipamento(e, "eqp-man-plano");
+}
+
+/* ---------- fase 101 (#85): histórico de RDOs da máquina (diário com a máquina no cabeçalho ou execução dela) ---------- */
+const EQP_RDO_TIPO = { helice_continua: "Hélice contínua", trado_mecanizado: "Trado mecanizado", estaca_raiz: "Estaca raiz", helice_secante: "Hélice secante" };
+async function eqpCarregarRdos(e){
+  const id = e.id, cont = $("eqp-rdo-lista");
+  if(!cont) return;
+  const [cab, ex] = await Promise.all([
+    sb.from("vw_rdo_resumo").select("id,obra_id,data,tipo_servico,status,qtd_estacas_executadas,metragem_total,concreto_total_m3").eq("equipamento_id", id).order("data", { ascending: false }).limit(500),
+    // execuções desta máquina em diário de outra máquina ou sem máquina (antes da fase 94 o diário era por obra)
+    sb.from("rdo_execucao_estaca").select("rdo_id,profundidade_executada,rdo:rdo_id!inner(id,obra_id,data,tipo_servico,status,equipamento_id)").eq("equipamento_id", id).limit(3000)
+  ]);
+  if(_eqpAtual?.id !== id) return;
+  if(cab.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(cab.error.message)}</p>`; return; }
+  const linhas = new Map((cab.data || []).map(r => [r.id, { ...r, origem: "diário" }]));
+  (ex.data || []).forEach(x => {
+    if(!x.rdo || linhas.has(x.rdo.id)) return;
+    const l = linhas.get("x" + x.rdo.id) || { ...x.rdo, id: x.rdo.id, qtd_estacas_executadas: 0, metragem_total: 0, concreto_total_m3: null, origem: "execução" };
+    l.qtd_estacas_executadas++; l.metragem_total = Number(l.metragem_total || 0) + Number(x.profundidade_executada || 0);
+    linhas.set("x" + x.rdo.id, l);
+  });
+  const lista = [...linhas.values()].sort((a, b) => String(b.data).localeCompare(String(a.data)));
+  const b = $("sb-eqp-rdo"); if(b){ b.querySelector(".sb-num").textContent = lista.length; b.classList.toggle("zero", !lista.length); }
+  if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhum RDO com esta máquina.</p>`; return; }
+  const porObra = {};
+  lista.forEach(r => { const o = porObra[r.obra_id] || (porObra[r.obra_id] = { n: 0, m: 0, ini: r.data, fim: r.data }); o.n++; o.m += Number(r.metragem_total || 0); if(r.data < o.ini) o.ini = r.data; if(r.data > o.fim) o.fim = r.data; });
+  const resumo = Object.entries(porObra).sort((a, b) => String(b[1].fim).localeCompare(String(a[1].fim)))
+    .map(([oid, o]) => `<span class="mob-chip">${linkObra(oid, eqpObra(oid) || "obra")} · ${o.n} RDO${o.n === 1 ? "" : "s"} · ${num(o.m)} m · ${dataBR(o.ini)}–${dataBR(o.fim)}</span>`).join(" ");
+  cont.innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">RDOs desta máquina <span class="contador">${lista.length}</span></h3>
+      <span class="meta" style="margin-left:auto;">Total ${num(lista.reduce((s, r) => s + Number(r.metragem_total || 0), 0))} m</span></div>
+    <div style="margin:6px 0 10px;">${resumo}</div>
+    <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Obra</th><th>Tipo</th><th title="diário = máquina no cabeçalho; execução = linha desta máquina em diário de outra (ou sem máquina)">Vínculo</th><th class="num">Estacas</th><th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th></tr></thead>
+    <tbody>${lista.map(r => `<tr class="linha-clicavel" data-rdo="${esc(r.id)}"><td>${dataBR(r.data)}</td><td>${linkObra(r.obra_id, eqpObra(r.obra_id) || "obra")}</td>
+      <td>${esc(EQP_RDO_TIPO[r.tipo_servico] || r.tipo_servico || "")}</td><td>${esc(r.origem)}</td><td class="num">${r.qtd_estacas_executadas || 0}</td>
+      <td class="num">${num(r.metragem_total || 0)} m</td><td class="num">${r.concreto_total_m3 != null ? num(r.concreto_total_m3) + " m³" : "—"}</td><td>${tagStatus("rdo", r.status)}</td></tr>`).join("")}</tbody></table></div>`;
+  cont.querySelectorAll("tr[data-rdo]").forEach(tr => tr.addEventListener("click", ev => {
+    if(ev.target.closest("a")) return;
+    if(irParaSecao("rdo") && typeof abrirRDO === "function") abrirRDO(tr.dataset.rdo);
+  }));
+}
+/* fase 101 (#109): obra e condutor atuais do vínculo de trabalho (obra_equipamentos, aba Máquinas da obra) */
+async function eqpCarregarTrabalho(e){
+  const box = $("eqp-chip-trab-box");
+  if(!box) return;
+  const { data, error } = await sb.from("obra_equipamentos").select("obra_id,de,ate,condutor:funcionarios(nome)").eq("equipamento_id", e.id)
+    .or(`ate.is.null,ate.gte.${hojeISO()}`).order("de", { ascending: false }).limit(5);
+  if(_eqpAtual?.id !== e.id) return;
+  if(error || !data || !data.length){ box.style.display = "none"; return; }
+  $("eqp-chip-trab").innerHTML = data.map(v => `${linkObra(v.obra_id, eqpObra(v.obra_id) || "obra")}${v.condutor?.nome ? " · " + esc(v.condutor.nome) : ""}`).join("; ");
+  box.style.display = "";
 }
 
 /* ---------- Fase 59: OS de manutenção (tabela manutencoes, sem tela até aqui) ---------- */

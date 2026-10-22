@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="3bba499" />
+<meta name="app-versao" content="5afc53a" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=3bba499" />
+<link rel="stylesheet" href="css/estilo.css?v=5afc53a" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -2417,6 +2417,9 @@
             <button type="button" class="sb-btn" id="sb-equipamentos" data-goto-tab="equipamentos">
               <span class="sb-num">0</span><span class="sb-icon">🚜</span><span class="sb-lbl">equipamentos</span>
             </button>
+            <button type="button" class="sb-btn" id="sb-maquinas" data-goto-tab="maquinas" title="Fase 101: máquinas e veículos que trabalham na obra (mobilização, RDO dos últimos 60 dias e vínculo manual)">
+              <span class="sb-num">0</span><span class="sb-icon">🛠️</span><span class="sb-lbl">máquinas</span>
+            </button>
             <button type="button" class="sb-btn" id="sb-rdos" data-goto-tab="rdos">
               <span class="sb-num">0</span><span class="sb-icon">📋</span><span class="sb-lbl">RDOs</span>
             </button>
@@ -2437,6 +2440,7 @@
             <button type="button" data-tab="estacas">Estacas</button>
             <button type="button" data-tab="vincular" title="Fase 94 (#80): execuções do campo sem par no projeto — vincular, criar estaca nova do campo ou corrigir prefixo em lote">Vincular estacas <span id="obr-estv-badge" class="aba-badge"></span></button>
             <button type="button" data-tab="equipamentos">Bens do contrato</button>
+            <button type="button" data-tab="maquinas" title="Fase 101 (#85, #109): máquinas e veículos que trabalham na obra">Máquinas</button>
             <button type="button" data-tab="medicoes">Medições</button>
             <button type="button" data-tab="rdos">RDOs</button>
             <button type="button" data-tab="documentos">Documentos</button>
@@ -2647,6 +2651,11 @@
             <!-- Aba Equipamentos -->
             <div class="odoo-tab" data-tab="equipamentos">
               <div id="obr-equip-conteudo"><p class="vazio">Carregando...</p></div>
+            </div>
+
+            <!-- Aba Máquinas (fase 101, #85 e #109): vínculo de trabalho; localização continua da mobilização -->
+            <div class="odoo-tab" data-tab="maquinas">
+              <div id="obr-maq-conteudo"><p class="vazio">Carregando...</p></div>
             </div>
 
             <!-- Aba Medições -->
@@ -3104,13 +3113,16 @@
                       <th title="Operador da execução — vem da aba Equipe">👷 Operador</th>
                       <th>Obs.</th>
                       <th title="Fase 94 (#75): por que a estaca conta como executada neste dia — metragem, ou injeção/concretagem/argamassado citados na observação. Vazio = a linha não muda o status da estaca (locação, marcação, armação). Confirmado pelo banco ao salvar.">Etapa</th>
-                      <th data-col-tipo="estaca_raiz" style="width:40px;" title="Boletim por estaca">📋</th>
+                      <th data-col-tipo="estaca_raiz" title="Boletim por estaca: camadas de solo e ferramenta, injeção (cimento, areia, água, m³ injetado), paradas">Camadas</th>
                       <th class="col-acao"></th>
                     </tr>
                   </thead>
                   <tbody id="rdo-execs"></tbody>
                 </table>
               </div>
+              <!-- fase 101 (#99): totais de injeção do dia (raiz) e sugestões da classificação do solo -->
+              <div id="rdo-raiz-totais" class="rdo-raiz-totais" style="display:none;"></div>
+              <datalist id="rdo-solo-classif-lista"></datalist>
             </div>
 
             <!-- Dados Raiz (só raiz) — apenas cabeçalho do dia -->
@@ -3373,11 +3385,13 @@
             <div class="chip"><span>Mobilização</span><strong id="eqp-chip-mob">—</strong></div>
             <div class="chip"><span>Horímetro</span><strong id="eqp-chip-hor">—</strong></div>
             <div class="chip"><span>Encaixe / Ø máx.</span><strong id="eqp-chip-tec">—</strong></div>
+            <div class="chip" id="eqp-chip-trab-box" style="display:none;" title="Fase 101 (#109): obra e condutor do vínculo de trabalho (aba Máquinas da obra). Onde está continua vindo da mobilização"><span>Trabalha em</span><strong id="eqp-chip-trab">—</strong></div>
           </div>
 
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-eqp-ace" data-goto-tab="acessorios"><span class="sb-num">0</span><span class="sb-icon">⚙️</span><span class="sb-lbl">acessórios</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-mob" data-goto-tab="mobilizacoes"><span class="sb-num">0</span><span class="sb-icon">🏗️</span><span class="sb-lbl">mobilizações</span></button>
+            <button type="button" class="sb-btn" id="sb-eqp-rdo" data-goto-tab="rdos" title="Fase 101: diários desta máquina"><span class="sb-num">0</span><span class="sb-icon">📋</span><span class="sb-lbl">RDOs</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-mov" data-goto-tab="movimentacoes"><span class="sb-num">0</span><span class="sb-icon">🚚</span><span class="sb-lbl">viagens</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-rep" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">reparos</span></button>
             <button type="button" class="sb-btn" id="sb-eqp-man" data-goto-tab="manutencao"><span class="sb-num">0</span><span class="sb-icon">🛠️</span><span class="sb-lbl">manutenções</span></button>
@@ -3389,6 +3403,7 @@
             <button type="button" data-tab="tecnica">Ficha técnica</button>
             <button type="button" data-tab="acessorios">Acessórios</button>
             <button type="button" data-tab="mobilizacoes">Mobilizações</button>
+            <button type="button" data-tab="rdos" title="Fase 101 (#85): histórico de RDOs desta máquina, com obra e produção">RDOs</button>
             <button type="button" data-tab="movimentacoes">Viagens</button>
             <button type="button" data-tab="manutencao">Reparos & manutenções</button>
             <button type="button" data-tab="custos">Custos</button>
@@ -3458,6 +3473,7 @@
             </div>
 
             <div class="odoo-tab" data-tab="mobilizacoes"><div id="eqp-mob-lista"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="rdos"><div id="eqp-rdo-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="movimentacoes"><div id="eqp-mov-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="manutencao"><div id="eqp-man-plano"></div><div id="eqp-man-lista" style="margin-top:16px;"></div><div id="eqp-rep-lista" style="margin-top:16px;"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="custos"><div id="eqp-custos"><p class="vazio">—</p></div></div>
@@ -4720,6 +4736,7 @@
                   </select>
                 </div>
                 <div class="campo"><label>Status</label><select id="med-status"></select></div>
+                <div class="campo" title="Fase 101 (#94): máquina da medição; vale para os itens sem TAG própria na receita por máquina"><label>Máquina (TAG) <small class="meta">itens sem TAG</small></label><select id="med-equip"><option value="">—</option></select></div>
                 <div class="campo"><label>Data da medição</label><input id="med-data" type="date" /></div>
                 <div class="campo"><label>Período — início</label><input id="med-inicio" type="date" /></div>
                 <div class="campo"><label>Período — fim</label><input id="med-fim" type="date" /></div>
@@ -5455,6 +5472,13 @@
           <div class="form-acoes compacta">
             <button type="button" class="btn" id="btn-usr-rdo-salvar">💾 Salvar palavras</button>
           </div>
+          <!-- fase 101 (#99): sugestões da classificação do solo nas camadas do RDO de raiz -->
+          <div class="grade" style="margin-top:12px;">
+            <div class="campo largo"><label>Classificações do solo sugeridas no RDO de raiz (separadas por vírgula; o campo continua aceitando texto livre)</label><input id="usr-rdo-solo" placeholder="Aterro, Argila, Argila arenosa, Rocha alterada, Rocha sã…" /></div>
+          </div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn" id="btn-usr-rdo-solo-salvar">💾 Salvar classificações</button>
+          </div>
         </div>
       </div>
 
@@ -5675,50 +5699,50 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=3bba499"></script>
+<script src="js/core.js?v=5afc53a"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=3bba499"></script>
+<script src="js/historico.js?v=5afc53a"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=3bba499"></script>
-<script src="js/fornecedores.js?v=3bba499"></script>
-<script src="js/apropriacoes.js?v=3bba499"></script>
-<script src="js/funcionarios.js?v=3bba499"></script>
-<script src="js/rh_documentos.js?v=3bba499"></script>
-<script src="js/servicos.js?v=3bba499"></script>
-<script src="js/produtos.js?v=3bba499"></script>
-<script src="js/estoque.js?v=3bba499"></script>
-<script src="js/separacoes.js?v=3bba499"></script>
-<script src="js/epi.js?v=3bba499"></script>
-<script src="js/compras.js?v=3bba499"></script>
-<script src="js/requisicoes.js?v=3bba499"></script>
-<script src="js/orcamentos.js?v=3bba499"></script>
-<script src="js/propostas.js?v=3bba499"></script>
-<script src="js/contratos.js?v=3bba499"></script>
-<script src="js/contas_pagar.js?v=3bba499"></script>
-<script src="js/centros_custo.js?v=3bba499"></script>
-<script src="js/carteira.js?v=3bba499"></script>
-<script src="js/obras.js?v=3bba499"></script>
-<script src="js/frota.js?v=3bba499"></script>
-<script src="js/viagens.js?v=3bba499"></script>
-<script src="js/equipamentos.js?v=3bba499"></script>
-<script src="js/vendas_bens.js?v=3bba499"></script>
-<script src="js/acessorios.js?v=3bba499"></script>
-<script src="js/reparos.js?v=3bba499"></script>
-<script src="js/manutencao.js?v=3bba499"></script>
-<script src="js/fabricacao.js?v=3bba499"></script>
-<script src="js/mobilizacoes.js?v=3bba499"></script>
-<script src="js/estacas.js?v=3bba499"></script>
-<script src="js/obra_abas.js?v=3bba499"></script>
-<script src="js/medicoes.js?v=3bba499"></script>
-<script src="js/movimentacoes.js?v=3bba499"></script>
-<script src="js/rdo.js?v=3bba499"></script>
-<script src="js/rdo_import_maya.js?v=3bba499"></script>
-<script src="js/usuarios.js?v=3bba499"></script>
-<script src="js/chamados.js?v=3bba499"></script>
-<script src="js/dashboard.js?v=3bba499"></script>
-<script src="js/rh_horas.js?v=3bba499"></script>
-<script src="js/patrimonio.js?v=3bba499"></script>
+<script src="js/clientes.js?v=5afc53a"></script>
+<script src="js/fornecedores.js?v=5afc53a"></script>
+<script src="js/apropriacoes.js?v=5afc53a"></script>
+<script src="js/funcionarios.js?v=5afc53a"></script>
+<script src="js/rh_documentos.js?v=5afc53a"></script>
+<script src="js/servicos.js?v=5afc53a"></script>
+<script src="js/produtos.js?v=5afc53a"></script>
+<script src="js/estoque.js?v=5afc53a"></script>
+<script src="js/separacoes.js?v=5afc53a"></script>
+<script src="js/epi.js?v=5afc53a"></script>
+<script src="js/compras.js?v=5afc53a"></script>
+<script src="js/requisicoes.js?v=5afc53a"></script>
+<script src="js/orcamentos.js?v=5afc53a"></script>
+<script src="js/propostas.js?v=5afc53a"></script>
+<script src="js/contratos.js?v=5afc53a"></script>
+<script src="js/contas_pagar.js?v=5afc53a"></script>
+<script src="js/centros_custo.js?v=5afc53a"></script>
+<script src="js/carteira.js?v=5afc53a"></script>
+<script src="js/obras.js?v=5afc53a"></script>
+<script src="js/frota.js?v=5afc53a"></script>
+<script src="js/viagens.js?v=5afc53a"></script>
+<script src="js/equipamentos.js?v=5afc53a"></script>
+<script src="js/vendas_bens.js?v=5afc53a"></script>
+<script src="js/acessorios.js?v=5afc53a"></script>
+<script src="js/reparos.js?v=5afc53a"></script>
+<script src="js/manutencao.js?v=5afc53a"></script>
+<script src="js/fabricacao.js?v=5afc53a"></script>
+<script src="js/mobilizacoes.js?v=5afc53a"></script>
+<script src="js/estacas.js?v=5afc53a"></script>
+<script src="js/obra_abas.js?v=5afc53a"></script>
+<script src="js/medicoes.js?v=5afc53a"></script>
+<script src="js/movimentacoes.js?v=5afc53a"></script>
+<script src="js/rdo.js?v=5afc53a"></script>
+<script src="js/rdo_import_maya.js?v=5afc53a"></script>
+<script src="js/usuarios.js?v=5afc53a"></script>
+<script src="js/chamados.js?v=5afc53a"></script>
+<script src="js/dashboard.js?v=5afc53a"></script>
+<script src="js/rh_horas.js?v=5afc53a"></script>
+<script src="js/patrimonio.js?v=5afc53a"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=3bba499"></script>
+<script src="js/init.js?v=5afc53a"></script>
 </body>
 </html>

@@ -19,10 +19,91 @@ let _rdoRaizEquipe = [];
 let _rdoRaizDados  = null;
 let _rdoFuncs = [];           // cache funcionários
 const FERRAMENTAS_RAIZ = { revestimento:"Revestimento", martelo:"Martelo", tricone:"Tricone", trado:"Trado", outro:"Outro" };
+/* fase 101 (#99): volume injetado (m³) e água (L) por estaca. As colunas nascem na migration da fase 101: só entram no
+   insert quando preenchidas, para o front não quebrar se for publicado antes dela. */
+function rdoCamposInjecao(e){
+  const o = {};
+  const vi = numOrNull(e && e.volume_injetado_m3), ag = numOrNull(e && e.agua_l);
+  if(vi != null) o.volume_injetado_m3 = vi;
+  if(ag != null) o.agua_l = ag;
+  return o;
+}
+const RDO_SOLO_CLASSIF_PADRAO = ["Aterro", "Argila", "Argila arenosa", "Argila siltosa", "Argiloso c/ cascalho", "Areia", "Areia argilosa",
+  "Silte", "Silte arenoso", "Cascalho", "Alteração de rocha", "Rocha alterada", "Rocha sã", "Matacão"];
+let _rdoSoloClassif = null;   // empresa_config.rdo_solo_classificacoes (fase 101); null = ainda não lida
+async function rdoCarregarSoloClassif(){
+  if(_rdoSoloClassif) return _rdoSoloClassif;
+  const { data, error } = await sb.from("empresa_config").select("rdo_solo_classificacoes").eq("id", 1).maybeSingle();
+  const lista = !error && data && Array.isArray(data.rdo_solo_classificacoes) ? data.rdo_solo_classificacoes.filter(Boolean) : [];
+  _rdoSoloClassif = lista.length ? lista : RDO_SOLO_CLASSIF_PADRAO;
+  const dl = $("rdo-solo-classif-lista");
+  if(dl) dl.innerHTML = _rdoSoloClassif.map(c => `<option value="${esc(c)}"></option>`).join("");
+  return _rdoSoloClassif;
+}
+const RDO_UN_CIM = { saco: "sc", kg: "kg", m3: "m³" };
+const RDO_UN_AREIA = { m3: "m³", kg: "kg", padiola: "padiola" };
+// "cimento 10 sc · areia 2 padiola · água 400 L · 3 m³ injetados · 3 kg/cm²"
+function rdoResumoInjecao(e){
+  const p = [];
+  if(String(e.consumo_cimento_raiz || "").trim()) p.push(`cimento ${e.consumo_cimento_raiz}${e.consumo_cimento_unidade ? " " + (RDO_UN_CIM[e.consumo_cimento_unidade] || e.consumo_cimento_unidade) : ""}`);
+  if(String(e.consumo_areia_raiz || "").trim()) p.push(`areia ${e.consumo_areia_raiz}${e.consumo_areia_unidade ? " " + (RDO_UN_AREIA[e.consumo_areia_unidade] || e.consumo_areia_unidade) : ""}`);
+  if(numOrNull(e.agua_l) != null) p.push(`água ${num(numOrNull(e.agua_l))} L`);
+  if(numOrNull(e.volume_injetado_m3) != null) p.push(`${num(numOrNull(e.volume_injetado_m3))} m³ injetados`);
+  if(numOrNull(e.pressao_injecao_kgcm2) != null) p.push(`${num(numOrNull(e.pressao_injecao_kgcm2))} kg/cm²`);
+  return p.join(" · ");
+}
+// texto da sub-linha da estaca de raiz: camadas + injeção (vazio = "sem camadas")
+function rdoResumoLinhaRaizHTML(e){
+  const cam = rdoResumoCamadas(e), inj = rdoResumoInjecao(e);
+  return `${cam ? "⛏️ " + esc(cam) : '<span class="rdo-camadas-vazio">⛏️ sem camadas de solo</span>'}${inj ? " &nbsp;·&nbsp; 💧 " + esc(inj) : ""}`;
+}
+function rdoAtualizarResumoLinha(idx){
+  const e = _rdoExecucoes[idx]; if(!e) return;
+  const td = document.querySelector(`#rdo-execs tr[data-resumo-idx="${idx}"] td`);
+  if(td) td.innerHTML = rdoResumoLinhaRaizHTML(e);
+  const b = document.querySelector(`#rdo-execs .btn-boletim-toggle[data-idx="${idx}"]`);
+  if(b) b.textContent = `Camadas${(e._solo || []).length ? " (" + e._solo.length + ")" : ""}`;
+  rdoRenderTotaisRaiz();
+}
+/* totais do dia (raiz): cimento e areia por unidade, água e m³ injetado — rodapé da aba Execuções */
+function rdoTotaisInjecao(execs){
+  const t = { cimento: {}, areia: {}, agua: 0, vol: 0, temAgua: false, temVol: false };
+  (execs || []).forEach(e => {
+    const c = numOrNull(e.consumo_cimento_raiz), a = numOrNull(e.consumo_areia_raiz);
+    if(c != null){ const u = e.consumo_cimento_unidade || "saco"; t.cimento[u] = (t.cimento[u] || 0) + c; }
+    if(a != null){ const u = e.consumo_areia_unidade || "m3"; t.areia[u] = (t.areia[u] || 0) + a; }
+    if(numOrNull(e.agua_l) != null){ t.agua += numOrNull(e.agua_l); t.temAgua = true; }
+    if(numOrNull(e.volume_injetado_m3) != null){ t.vol += numOrNull(e.volume_injetado_m3); t.temVol = true; }
+  });
+  return t;
+}
+function rdoTotaisInjecaoTxt(t){
+  const un = (o, mapa) => Object.entries(o).map(([u, v]) => `${num(v)} ${mapa[u] || u}`).join(" + ");
+  return [Object.keys(t.cimento).length ? ["Cimento", un(t.cimento, RDO_UN_CIM)] : null,
+          Object.keys(t.areia).length ? ["Areia", un(t.areia, RDO_UN_AREIA)] : null,
+          t.temAgua ? ["Água", `${num(t.agua)} L`] : null,
+          t.temVol ? ["Injetado", `${num(t.vol)} m³`] : null].filter(Boolean);
+}
+function rdoRenderTotaisRaiz(){
+  const box = $("rdo-raiz-totais");
+  if(!box) return;
+  const ehRaiz = $("rdo-tipo-servico")?.value === "estaca_raiz";
+  const itens = ehRaiz ? rdoTotaisInjecaoTxt(rdoTotaisInjecao(_rdoExecucoes)) : [];
+  box.style.display = itens.length ? "" : "none";
+  box.innerHTML = itens.length ? `<span>💧 <strong>Injeção do dia</strong></span>` + itens.map(([l, v]) => `<span>${esc(l)}: <strong>${esc(v)}</strong></span>`).join("") : "";
+}
+// "0–5 m argiloso c/ cascalho · revestimento; 5–12 m rocha · martelo" (linha da estaca, visível sem expandir)
+function rdoResumoCamadas(e){
+  const fmt = (v) => v == null ? "?" : num(v);
+  return (e._solo || []).filter(s => s.inicio_ml != null || s.final_ml != null || s.classificacao || s.ferramenta)
+    .map(s => `${fmt(s.inicio_ml)}–${fmt(s.final_ml)} m${s.classificacao ? " " + s.classificacao : ""}${s.ferramenta ? " · " + (FERRAMENTAS_RAIZ[s.ferramenta] || s.ferramenta).toLowerCase() : ""}`)
+    .join("; ");
+}
 let _rdoEquipsCache = [];     // cache equipamentos
 let _rdoVizinhos = { anterior: null, proximo: null, indice: 0, total: 0 };
 let _rdoBoletimAberto = null;
 let _rdoObraParams = null;    // obras.concretagem_tipo_padrao/traco/peso_saco/fator_perda/jornada_* da obra da ficha
+let _rdoMaqOriginal = null;   // fase 101: máquina gravada do diário aberto (a troca vai para registros_log pelo gatilho)
 
 const RDO_STAGES = ["rascunho","finalizado"];
 
@@ -120,6 +201,40 @@ async function rdoCarregarAuxiliares(){
   const selF = $("rdo-f-maquina");
   if(selF){ const v = selF.value; selF.innerHTML = '<option value="">Todas as máquinas</option><option value="sem">Sem máquina</option>' + optMaq; selF.value = v; }
   rdoCarregarPalavrasEtapa();
+  rdoCarregarSoloClassif();   // fase 101 (#99): sugestões da classificação do solo
+}
+
+/* fase 101 (#85): o campo Equipamento do cabeçalho lista primeiro as máquinas da obra (vw_obra_equipamentos: mobilização
+   ativa, RDO recente, vínculo manual) e depois as demais; na obra com rdo_exige_equipamento o aviso diz que é obrigatório
+   (quem recusa é o gatilho trg_rdo_exige_equipamento). Sem a migration aplicada, a lista fica como na fase 94. */
+let _rdoMaqObraIds = [];
+let _rdoObraExige = false;
+async function rdoMontarSelectMaquina(obraId){
+  const sel = $("rdo-equipamento");
+  if(!sel) return;
+  _rdoMaqObraIds = []; _rdoObraExige = false;
+  if(obraId){
+    const [v, o] = await Promise.all([
+      sb.from("vw_obra_equipamentos").select("equipamento_id").eq("obra_id", obraId),
+      sb.from("obras").select("rdo_exige_equipamento").eq("id", obraId).maybeSingle()
+    ]);
+    if(($("rdo-obra")?.value || null) !== obraId) return;   // trocou de obra enquanto lia
+    if(!v.error) _rdoMaqObraIds = [...new Set((v.data || []).map(x => x.equipamento_id))];
+    if(!o.error) _rdoObraExige = !!o.data?.rdo_exige_equipamento;
+  }
+  const atual = sel.value;
+  const ehPerf = (q) => ["perfuratriz", "bate_estaca"].includes(q.tipo) ? 0 : 1;
+  const ord = (a, b) => ehPerf(a) - ehPerf(b) || String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR", { numeric: true });
+  const daObra = new Set(_rdoMaqObraIds);
+  const opt = (q) => `<option value="${esc(q.id)}">${esc(q.codigo || "")}${q.nome ? " — " + esc(q.nome) : ""}</option>`;
+  const lst1 = _rdoEquipsCache.filter(q => daObra.has(q.id)).sort(ord), lst2 = _rdoEquipsCache.filter(q => !daObra.has(q.id)).sort(ord);
+  sel.innerHTML = `<option value="">${_rdoObraExige ? "— escolha a máquina (obrigatório nesta obra) —" : "— sem máquina (equipe de apoio) —"}</option>`
+    + (lst1.length ? `<optgroup label="Máquinas da obra">${lst1.map(opt).join("")}</optgroup><optgroup label="Demais máquinas">${lst2.map(opt).join("")}</optgroup>` : lst2.map(opt).join(""));
+  sel.value = atual;
+  if(atual && sel.value !== atual){   // máquina inativa (fora do cache): mantém o valor gravado
+    sel.insertAdjacentHTML("beforeend", `<option value="${esc(atual)}">máquina inativa</option>`); sel.value = atual;
+  }
+  rdoAtualizarChipMaquina(sel.value || null);
 }
 
 /* ---------- Carga lista ---------- */
@@ -284,6 +399,7 @@ async function novoRDO(){
   if($("rdo-feriado")) $("rdo-feriado").checked = false;
   $("rdo-tipo-servico").value = "helice_continua";
   if($("rdo-equipamento")) $("rdo-equipamento").value = "";   // fase 94
+  _rdoMaqOriginal = null;
   $("rdo-status").value = "rascunho";
   $("rdo-responsavel").value = "";
   if($("rdo-local")) $("rdo-local").value = "";
@@ -330,6 +446,7 @@ async function abrirRDO(id){
   if($("rdo-feriado")) $("rdo-feriado").checked = !!data.feriado;
   $("rdo-tipo-servico").value     = data.tipo_servico || "helice_continua";
   if($("rdo-equipamento")) $("rdo-equipamento").value = data.equipamento_id || "";   // fase 94
+  _rdoMaqOriginal = data.equipamento_id || null;   // fase 101: trocar a máquina leva junto as execuções que eram dela
   $("rdo-status").value           = data.status || "rascunho";
   $("rdo-responsavel").value      = data.responsavel_id || "";
   if($("rdo-local")) $("rdo-local").value = data.local || "";
@@ -560,9 +677,9 @@ function renderExecucoes(){
       <td><select class="ex-operador" style="min-width:140px;">${opOpts}</select></td>
       <td><input type="text" class="ex-obs" value="${esc(e.observacoes||"")}" style="min-width:140px;" /></td>
       <td class="ex-etapa">${rdoEtapaHTML(e)}</td>
-      <td data-col-tipo="estaca_raiz"><button type="button" class="btn-sec btn-sm btn-boletim-toggle" data-idx="${idx}" style="${bltStyle}" title="Boletim desta estaca">📋</button></td>
+      <td data-col-tipo="estaca_raiz"><button type="button" class="btn-sec btn-sm btn-boletim-toggle" data-idx="${idx}" style="${bltStyle}" title="Boletim desta estaca: camadas de solo e ferramenta, injeção, paradas">Camadas${(e._solo || []).length ? " (" + e._solo.length + ")" : ""}</button></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-ex-rem txt-perigo" data-idx="${idx}">×</button></td>
-    </tr>`;
+    </tr>${ehRaiz ? `<tr class="rdo-camadas-resumo" data-resumo-idx="${idx}"><td colspan="20">${rdoResumoLinhaRaizHTML(e)}</td></tr>` : ""}`;   // fase 101 (#99): visível sem expandir
   }).join("");
 
   // pré-seleciona equipamento + operador nos selects
@@ -575,7 +692,7 @@ function renderExecucoes(){
 
   // Injeta boletim expandido abaixo da linha correta
   if(ehRaiz && _rdoBoletimAberto !== null && _rdoExecucoes[_rdoBoletimAberto]){
-    const mainRow = tb.querySelector(`tr[data-idx="${_rdoBoletimAberto}"]`);
+    const mainRow = tb.querySelector(`tr[data-resumo-idx="${_rdoBoletimAberto}"]`) || tb.querySelector(`tr[data-idx="${_rdoBoletimAberto}"]`);   // fase 101: depois do resumo
     if(mainRow){
       mainRow.insertAdjacentHTML("afterend", renderBoletimExpandidoHTML(_rdoBoletimAberto));
       attachBoletimListeners(_rdoBoletimAberto);
@@ -710,6 +827,7 @@ function atualizarChipsExec(){
   $("rdo-ficha-execs-chip").textContent = _rdoExecucoes.length;
   const metragem = _rdoExecucoes.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
   $("rdo-ficha-metragem-chip").textContent = `${num(metragem)} m`;
+  rdoRenderTotaisRaiz();   // fase 101 (#99)
 }
 
 /* ---------- Boletim por estaca (Estaca Raiz) ---------- */
@@ -725,7 +843,7 @@ function renderBoletimSoloRows(idx){
   return solos.map((s, si) => `<tr data-solo-idx="${si}">
     <td><input type="number" step="0.01" min="0" class="blt-solo-ini col-sm" value="${esc(s.inicio_ml??'')}" /></td>
     <td><input type="number" step="0.01" min="0" class="blt-solo-fim col-sm" value="${esc(s.final_ml??'')}" /></td>
-    <td><input type="text" class="blt-solo-class" value="${esc(s.classificacao||'')}" style="min-width:200px;" /></td>
+    <td><input type="text" class="blt-solo-class" list="rdo-solo-classif-lista" value="${esc(s.classificacao||'')}" style="min-width:200px;" title="Sugestões em Usuários › Parâmetros do RDO; aceita texto livre" /></td>
     <td><select class="blt-solo-ferr"><option value="">—</option>${Object.entries(FERRAMENTAS_RAIZ).map(([v,l]) => `<option value="${v}"${s.ferramenta===v?' selected':''}>${l}</option>`).join('')}</select></td>
     <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-blt-solo-rem txt-perigo" data-si="${si}">×</button></td>
   </tr>`).join('');
@@ -751,7 +869,7 @@ function renderBoletimExpandidoHTML(idx){
     `<option value="${v}"${e.abastecimento_tipo===v?' selected':''}>${v}</option>`).join('');
   const cimUn = [['saco','Sacos'],['kg','kg'],['m3','m³']].map(([v,l]) =>
     `<option value="${v}"${e.consumo_cimento_unidade===v?' selected':''}>${l}</option>`).join('');
-  const arUn  = [['m3','m³'],['kg','kg']].map(([v,l]) =>
+  const arUn  = [['m3','m³'],['kg','kg'],['padiola','padiola']].map(([v,l]) =>   // fase 101 (#99): padiola
     `<option value="${v}"${e.consumo_areia_unidade===v?' selected':''}>${l}</option>`).join('');
 
   return `<tr class="rdo-boletim-row" data-boletim-idx="${idx}">
@@ -793,6 +911,10 @@ function renderBoletimExpandidoHTML(idx){
             </div></div>
           <div class="campo"><label>Pressão (kg/cm²)</label>
             <input type="number" step="0.01" class="blt-pressao col-sm" value="${esc(e.pressao_injecao_kgcm2??'')}" /></div>
+          <div class="campo"><label>Volume injetado (m³)</label>
+            <input type="number" step="0.01" min="0" class="blt-vol-inj col-sm" value="${esc(e.volume_injetado_m3??'')}" /></div>
+          <div class="campo"><label>Água (L)</label>
+            <input type="number" step="1" min="0" class="blt-agua col-sm" value="${esc(e.agua_l??'')}" /></div>
         </div>
         <div class="campo" style="max-width:420px;margin-bottom:14px;">
           <label>Identificação dos Acessórios</label>
@@ -829,7 +951,10 @@ function attachBoletimListeners(idx){
     e.consumo_areia_raiz       = row.querySelector('.blt-ar-val')?.value.trim()       || null;
     e.consumo_areia_unidade    = row.querySelector('.blt-ar-un')?.value               || null;
     e.pressao_injecao_kgcm2    = numOrNull(row.querySelector('.blt-pressao')?.value);
+    e.volume_injetado_m3       = numOrNull(row.querySelector('.blt-vol-inj')?.value);   // fase 101 (#99)
+    e.agua_l                   = numOrNull(row.querySelector('.blt-agua')?.value);
     e.identificacao_acessorios = row.querySelector('.blt-acessorios')?.value.trim()   || null;
+    rdoAtualizarResumoLinha(idx);
   };
   row.addEventListener('input',  syncCampos);
   row.addEventListener('change', syncCampos);
@@ -846,22 +971,28 @@ function attachBoletimListeners(idx){
         e._solo[si].classificacao = tr.querySelector('.blt-solo-class').value.trim() || null;
         e._solo[si].ferramenta    = tr.querySelector('.blt-solo-ferr')?.value || null;
         sincronizarTrechoDaEstaca(idx);
+        rdoAtualizarResumoLinha(idx);   // fase 101: resumo da linha acompanha
       });
+      tr.querySelector('.blt-solo-ferr')?.addEventListener('change', () => tr.dispatchEvent(new Event('input')));
     });
     tb2.querySelectorAll('.btn-blt-solo-rem').forEach(b => {
       b.addEventListener('click', () => {
         e._solo.splice(Number(b.dataset.si), 1);
         const tb3 = document.querySelector(`#blt-solo-tbl-${idx} tbody`);
         if(tb3){ tb3.innerHTML = renderBoletimSoloRows(idx); rebindSolo(); }
+        rdoAtualizarResumoLinha(idx);
       });
     });
   };
   rebindSolo();
 
   row.querySelector('.btn-blt-add-solo')?.addEventListener('click', () => {
-    e._solo.push({});
+    // fase 101: a camada nova começa onde a anterior terminou
+    const ult = e._solo[e._solo.length - 1];
+    e._solo.push(ult && ult.final_ml != null ? { inicio_ml: ult.final_ml } : {});
     const tb2 = document.querySelector(`#blt-solo-tbl-${idx} tbody`);
     if(tb2){ tb2.innerHTML = renderBoletimSoloRows(idx); rebindSolo(); }
+    rdoAtualizarResumoLinha(idx);
   });
 
   const rebindJust = () => {
@@ -938,6 +1069,7 @@ function volumeConcretoJS(tipo, diametroMm, profMaxM, qtdSacos, params){
 }
 async function carregarParamsObraRDO(obraId){
   _rdoObraParams = null;
+  rdoMontarSelectMaquina(obraId);   // fase 101: máquinas da obra primeiro (não bloqueia a jornada)
   if(!obraId){ atualizarChipJornadaRDO(null); return null; }
   const [{ data }] = await Promise.all([
     sb.from("obras")
@@ -1370,6 +1502,17 @@ async function salvarRDO(novoStatus){
     atividades:       $("rdo-atividades").value.trim() || null,
     observacoes:      $("rdo-obs").value.trim() || null
   };
+  // fase 101 (#85): obra que exige máquina recusa o diário sem ela (o gatilho do banco é quem garante)
+  if(_rdoObraExige && !reg.equipamento_id){
+    aviso("app-aviso", "Esta obra exige a máquina do diário. Escolha o equipamento no cabeçalho (as máquinas da obra vêm primeiro).", "erro");
+    ativarTabRDO("cabecalho"); $("rdo-equipamento")?.focus(); return;
+  }
+  // fase 101: trocou a máquina do diário → as execuções que eram da máquina antiga passam para a nova
+  if(rdoEditId && _rdoMaqOriginal && reg.equipamento_id && _rdoMaqOriginal !== reg.equipamento_id){
+    const n = _rdoExecucoes.filter(e => e.equipamento_id === _rdoMaqOriginal).length;
+    if(n && confirm(`Trocar a máquina do diário também nas ${n} execução(ões) que estavam com a máquina anterior?`))
+      _rdoExecucoes.forEach(e => { if(e.equipamento_id === _rdoMaqOriginal) e.equipamento_id = reg.equipamento_id; });
+  }
 
   let savedId = rdoEditId;
   if(rdoEditId){
@@ -1454,7 +1597,8 @@ async function salvarRDO(novoStatus){
           consumo_areia_raiz:       e.consumo_areia_raiz       || null,
           consumo_areia_unidade:    e.consumo_areia_unidade    || null,
           pressao_injecao_kgcm2:    numOrNull(e.pressao_injecao_kgcm2),
-          identificacao_acessorios: e.identificacao_acessorios || null
+          identificacao_acessorios: e.identificacao_acessorios || null,
+          ...rdoCamposInjecao(e)   // fase 101 (#99): m³ injetado e água
         });
       }
       return base;
@@ -1583,7 +1727,9 @@ function rdoAtualizarChipMaquina(eqId){
     chip.querySelector("strong").textContent = q ? `${q.codigo}${q.nome ? " — " + q.nome : ""}` : (eqId ? "máquina inativa" : "sem máquina · informe no cabeçalho");
   }
   const av = $("rdo-equipamento-aviso");
-  if(av) av.textContent = eqId ? "" : "Diário sem máquina entra em \"Para regularizar\" do responsável da obra até alguém informar.";
+  if(av) av.textContent = eqId ? "" : _rdoObraExige
+    ? "Esta obra exige a máquina do diário: sem ela o RDO não é salvo."   // fase 101 (#85)
+    : "Diário sem máquina entra em \"Para regularizar\" do responsável da obra até alguém informar.";
   const maqs = new Set(_rdoExecucoes.map(e => e.equipamento_id).filter(Boolean));
   const b = $("btn-rdo-dividir");
   if(b) b.style.display = rdoEditId && maqs.size > 1 && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) ? "" : "none";
@@ -1743,6 +1889,30 @@ let _csvTipoDetectado = null;     // tipo_servico inferido pelos campos
 let _csvMaquinasSemMatch = [];    // ["HC-66", ...] sem equipamento_id
 let _csvMapaManual = {};          // { "HC-66": equipamento_id } resolvidos manualmente
 let _csvSalvarMapeamento = {};    // { "HC-66": true } user quer salvar permanente
+/* fase 101 (#85): no import por IA a máquina nunca vincula sozinha. Só o código (ou código externo / nome) idêntico ao
+   cadastro casa direto; "TAG 99", "Máquina 107", "HC-66" viram SUGESTÃO no bloco de máquinas da prévia (eqCasarTexto, exata
+   ou mais próxima, as máquinas da obra primeiro) e a pessoa confirma com "usar". CSV, SoftSaci e Maya seguem o lote S42. */
+let _csvMaqEstrito = false;
+let _csvMaqObraIds = [];          // máquinas da obra (vw_obra_equipamentos) para ordenar e sugerir
+function rdoCasarMaquinaEstrito(texto){
+  const t = String(texto || "").trim().toUpperCase().replace(/\s+/g, ""); if(!t) return null;
+  return _rdoEquipsCache.find(e => [e.codigo_externo, e.codigo, e.nome].filter(Boolean).some(c => String(c).toUpperCase().replace(/\s+/g, "") === t)) || null;
+}
+function rdoCasarMaquinaImport(texto){ return _csvMaqEstrito ? rdoCasarMaquinaEstrito(texto) : rdoCasarMaquina(texto); }
+async function rdoCarregarMaqObraImport(obraId){
+  _csvMaqObraIds = [];
+  if(!obraId) return _csvMaqObraIds;
+  const { data, error } = await sb.from("vw_obra_equipamentos").select("equipamento_id").eq("obra_id", obraId);
+  if(!error) _csvMaqObraIds = [...new Set((data || []).map(x => x.equipamento_id))];
+  return _csvMaqObraIds;
+}
+// <option>s com as máquinas da obra primeiro (optgroup) e as demais depois
+function rdoOptsMaquinas(idsObra, selecionado){
+  const obra = new Set(idsObra || []);
+  const opt = (e) => `<option value="${esc(e.id)}"${e.id === selecionado ? " selected" : ""}>${esc(e.codigo)}${e.nome ? " — " + esc(e.nome) : ""}</option>`;
+  const daObra = _rdoEquipsCache.filter(e => obra.has(e.id)), outras = _rdoEquipsCache.filter(e => !obra.has(e.id));
+  return daObra.length ? `<optgroup label="Máquinas da obra">${daObra.map(opt).join("")}</optgroup><optgroup label="Demais máquinas">${outras.map(opt).join("")}</optgroup>` : outras.map(opt).join("");
+}
 
 function abrirModalImportCSV(){
   // Pode ser chamado tanto da ficha quanto do painel — não exige obra prévia
@@ -1939,6 +2109,7 @@ async function processarCSV(){
     if(!registros){ return; }
   }
 
+  _csvMaqEstrito = false;   // fase 101: CSV e SoftSaci continuam casando apelidos sozinhos (lote S42)
   await continuarProcessamentoImport(registros, obraTxtFonte, formato);
 }
 
@@ -2050,6 +2221,9 @@ async function montarPreviewDias(data, origem, obraSel){
       if(mobs && mobs.length === 1) maqSugerida = _rdoEquipsCache.find(e => e.id === mobs[0].equipamento_id) || null;
     }
     _csvMaqSugerida = maqSugerida;   // fase 94: oferecida na prévia para as linhas que ficarem sem máquina
+    // fase 101 (#85): leitura por IA só sugere a máquina (confirmação na prévia); planilha do Maya segue o lote S42
+    _csvMaqEstrito = /^ia_/.test(origem || "");
+    await rdoCarregarMaqObraImport(obraSel);
     const ts = (dia, hhmm) => hhmm ? `${dia}T${hhmm}:00` : null;
     const registros = [];
     _iaExtras = {};
@@ -2076,7 +2250,8 @@ async function montarPreviewDias(data, origem, obraSel){
       ex.responsavel_sugerido_id = iaSugerirResponsavel(ex);
       _iaExtras[d.data] = ex;
       (d.estacas || []).forEach(e => {
-        const maq = (e.maquina || d.maquina || "").trim();
+        // fase 101: v3.5 manda equipamento_texto (como está no documento); v3.4 só maquina
+        const maq = (e.equipamento_texto || e.maquina || d.equipamento_texto || d.maquina || "").trim();
         const ref = detectarRefuro(normalizarNumeroEstaca(e.numero || ""));
         const trechos = (Array.isArray(e.trechos) ? e.trechos : [])
           .map(t => ({ de: numOrNull(t.de), ate: numOrNull(t.ate), ferramenta: t.ferramenta || null, solo: t.solo || null }))
@@ -2103,6 +2278,10 @@ async function montarPreviewDias(data, origem, obraSel){
           consumo_cimento_raiz: inj && inj.consumo_cimento != null ? String(inj.consumo_cimento) : null,
           consumo_areia_raiz:   inj && inj.consumo_areia   != null ? String(inj.consumo_areia)   : null,
           pressao_injecao_kgcm2: inj ? (inj.pressao_kgcm2 ?? null) : null,
+          // fase 101 (#99): v3.5 lê volume injetado (m³), água (L) e a unidade da areia (padiola) quando o boletim traz
+          volume_injetado_m3: inj ? numOrNull(inj.volume_injetado_m3) : null,
+          agua_l: inj ? numOrNull(inj.agua_l) : null,
+          consumo_areia_unidade: inj && inj.consumo_areia_unidade ? String(inj.consumo_areia_unidade) : null,
           perfuracao_inicio: ts(d.data, e.perfuracao_inicio),
           perfuracao_fim: ts(d.data, e.perfuracao_fim),
           concretagem_inicio: ts(d.data, e.concretagem_inicio),
@@ -2110,8 +2289,9 @@ async function montarPreviewDias(data, origem, obraSel){
           torque: e.torque,
           volume_concreto_m3: e.volume_concreto_m3,
           diametro_mm: e.diametro_mm,
-          maquina_codigo: maq || (maqSugerida ? maqSugerida.codigo : ""),
-          equipamento_id: (rdoCasarMaquina(maq) || (!maq ? maqSugerida : null) || {}).id || null,
+          // fase 101: no import por IA a mobilização única também é só sugestão (select "sem máquina" da prévia)
+          maquina_codigo: maq || (maqSugerida && !_csvMaqEstrito ? maqSugerida.codigo : ""),
+          equipamento_id: (rdoCasarMaquinaImport(maq) || (!maq && !_csvMaqEstrito ? maqSugerida : null) || {}).id || null,
           observacoes: e.observacoes || null,
           origem_dados: origem
         });
@@ -2480,6 +2660,8 @@ function renderConferenciaIA(resp){
               <label class="meta">Cimento <input data-c="consumo_cimento_raiz" value="${esc(v(e.consumo_cimento_raiz))}" style="width:56px" /></label>
               <label class="meta">Areia <input data-c="consumo_areia_raiz" value="${esc(v(e.consumo_areia_raiz))}" style="width:56px" /></label>
               <label class="meta">Pressão kg/cm² <input type="number" step="0.01" data-c="pressao_injecao_kgcm2" value="${v(e.pressao_injecao_kgcm2)}" style="width:62px" /></label>
+              <label class="meta" title="Fase 101 (#99): volume injetado na estaca no dia">m³ injetado <input type="number" step="0.01" min="0" data-c="volume_injetado_m3" value="${v(e.volume_injetado_m3)}" style="width:62px" /></label>
+              <label class="meta" title="Fase 101 (#99): água consumida na estaca no dia">Água (L) <input type="number" step="1" min="0" data-c="agua_l" value="${v(e.agua_l)}" style="width:62px" /></label>
               <button type="button" class="btn-sec btn-sm ia-add-trecho">+ trecho</button>
             </div>
             <table class="itens-tabela ia-tabela ia-trechos-tbl"><thead><tr><th>De (m)</th><th>Até (m)</th><th>Ferramenta</th><th>Classificação do solo</th><th></th></tr></thead>
@@ -2487,7 +2669,7 @@ function renderConferenciaIA(resp){
               <td><input type="number" step="0.01" data-t="de" value="${v(t.de)}" style="width:62px" /></td>
               <td><input type="number" step="0.01" data-t="ate" value="${v(t.ate)}" style="width:62px" /></td>
               <td><select data-t="ferramenta">${ferrOpts(t.ferramenta)}</select></td>
-              <td><input data-t="solo" value="${esc(v(t.solo))}" style="min-width:180px" /></td>
+              <td><input data-t="solo" list="rdo-solo-classif-lista" value="${esc(v(t.solo))}" style="min-width:180px" /></td>
               <td class="col-acao"><button type="button" class="btn-rem ia-rem-trecho" title="remover trecho">&times;</button></td>
             </tr>`).join("")}</tbody></table>
           </details>
@@ -2628,7 +2810,7 @@ function renderConferenciaIA(resp){
         <td><input type="number" step="0.01" data-t="de" value="${esc(deIni)}" style="width:62px" /></td>
         <td><input type="number" step="0.01" data-t="ate" value="" style="width:62px" /></td>
         <td><select data-t="ferramenta">${ferrOpts("")}</select></td>
-        <td><input data-t="solo" value="" style="min-width:180px" /></td>
+        <td><input data-t="solo" list="rdo-solo-classif-lista" value="" style="min-width:180px" /></td>
         <td class="col-acao"><button type="button" class="btn-rem ia-rem-trecho" title="remover trecho">&times;</button></td></tr>`);
       sub.querySelector("details").open = true;
       ligarTrechos(sub);
@@ -2665,7 +2847,7 @@ function lerConferenciaIA(){
       const numero = normalizarNumeroEstaca(g("estaca_numero").value.trim());
       if(!numero) return;
       const maq = g("maquina_codigo").value.trim();
-      const eq = rdoCasarMaquina(maq);   // lote S42: apelidos TAG-NN
+      const eq = rdoCasarMaquinaImport(maq);   // lote S42: apelidos TAG-NN; fase 101: no import por IA só o código idêntico (o resto é sugestão)
       // sub-linha (trechos, inclinação, injeção)
       const sub = tr.nextElementSibling && tr.nextElementSibling.classList.contains("ia-sub") ? tr.nextElementSibling : null;
       const gs = (c) => sub ? sub.querySelector(`[data-c="${c}"]`) : null;
@@ -2689,6 +2871,8 @@ function lerConferenciaIA(){
         consumo_cimento_raiz: gs("consumo_cimento_raiz") ? (gs("consumo_cimento_raiz").value.trim() || null) : (base.consumo_cimento_raiz || null),
         consumo_areia_raiz:   gs("consumo_areia_raiz")   ? (gs("consumo_areia_raiz").value.trim()   || null) : (base.consumo_areia_raiz   || null),
         pressao_injecao_kgcm2: gs("pressao_injecao_kgcm2") ? num(gs("pressao_injecao_kgcm2").value) : (base.pressao_injecao_kgcm2 ?? null),
+        volume_injetado_m3: gs("volume_injetado_m3") ? num(gs("volume_injetado_m3").value) : (base.volume_injetado_m3 ?? null),   // fase 101
+        agua_l: gs("agua_l") ? num(gs("agua_l").value) : (base.agua_l ?? null),
         perfuracao_inicio: ts(dia, g("perfuracao_inicio").value), perfuracao_fim: ts(dia, g("perfuracao_fim").value),
         concretagem_inicio: ts(dia, g("concretagem_inicio").value), concretagem_fim: ts(dia, g("concretagem_fim").value),
         volume_concreto_m3: num(g("volume_concreto_m3").value),
@@ -2868,6 +3052,8 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
 
   // Detecta tipo de serviço
   _csvTipoDetectado = detectarTipoServico(registros);
+  // fase 101: máquinas da obra (da ficha ou detectada) vêm primeiro nos selects e orientam a sugestão
+  await rdoCarregarMaqObraImport($("rdo-obra")?.value || (_csvObraDetectada && _csvObraDetectada.id) || null);
 
   // Detecta máquinas (códigos únicos no CSV) sem match em equipamentos
   const maquinasNoCSV = [...new Set(registros.map(r => (r.maquina_codigo||"").trim()).filter(Boolean))];
@@ -2920,21 +3106,27 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   // Bloco de mapeamento de máquinas (códigos sem match)
   let blocoMaq = "";
   if(_csvMaquinasSemMatch.length){
-    const equipOpts = '<option value="">— escolha o equipamento —</option>' +
-      _rdoEquipsCache.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome)}</option>`).join("");
-    const linhasMaq = _csvMaquinasSemMatch.map(maq => `
+    const equipOpts = '<option value="">— escolha o equipamento —</option>' + rdoOptsMaquinas(_csvMaqObraIds, null);
+    // fase 101 (#85): sugestão pela TAG do texto (exata quando o número bate, senão a mais próxima); nunca pré-seleciona
+    const linhasMaq = _csvMaquinasSemMatch.map(maq => {
+      const sug = typeof eqCasarTexto === "function" ? eqCasarTexto(maq, _rdoEquipsCache, _csvMaqObraIds) : null;
+      const alvo = sug && (sug.exato || sug.proximo);
+      return `
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
         <code style="background:var(--sup-0);padding:2px 8px;border-radius:3px;border:1px solid var(--borda-forte);min-width:80px;text-align:center;"><strong>${esc(maq)}</strong></code>
         <span style="color:var(--txt-fraco);font-size:var(--txt-xs);">→</span>
         <select class="csv-maq-select" data-maq="${esc(maq)}" style="flex:1;min-width:240px;">${equipOpts}</select>
+        ${alvo ? `<button type="button" class="btn-sec btn-sm csv-maq-usar" data-maq="${esc(maq)}" data-eq="${esc(alvo.id)}" title="${sug.exato ? "O número do documento bate com esta TAG" : "Nenhuma TAG com esse número: esta é a mais próxima"}${_csvMaqObraIds.includes(alvo.id) ? " (máquina da obra)" : ""}. Confira antes de usar.">💡 ${esc(eqSugestaoTxt(sug))} · usar</button>` : ""}
         <label style="font-size:var(--txt-xs);color:var(--txt-fraco);display:flex;align-items:center;gap:4px;">
-          <input type="checkbox" class="csv-maq-salvar" data-maq="${esc(maq)}" checked />
+          <input type="checkbox" class="csv-maq-salvar" data-maq="${esc(maq)}"${_csvMaqEstrito ? "" : " checked"} />
           Salvar como código externo
         </label>
-      </div>`).join("");
+      </div>`; }).join("");
     blocoMaq = `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
-      ⚠️ <strong>${_csvMaquinasSemMatch.length} máquina${_csvMaquinasSemMatch.length>1?'s':''} sem equipamento cadastrado:</strong>
-      <div style="font-size:var(--txt-xs);color:var(--txt-fraco);margin-top:2px;">Vincule cada código do CSV ao equipamento correspondente. Marque "salvar" para o sistema reconhecer automaticamente nas próximas importações.</div>
+      ⚠️ <strong>${_csvMaquinasSemMatch.length} máquina${_csvMaquinasSemMatch.length>1?'s':''} ${_csvMaqEstrito ? "do documento a confirmar" : "sem equipamento cadastrado"}:</strong>
+      <div style="font-size:var(--txt-xs);color:var(--txt-fraco);margin-top:2px;">${_csvMaqEstrito
+        ? "A leitura por IA não vincula a máquina sozinha: confira a sugestão (💡) e clique em \"usar\", ou escolha outra TAG. As máquinas da obra vêm primeiro na lista."
+        : "Vincule cada código do CSV ao equipamento correspondente. Marque \"salvar\" para o sistema reconhecer automaticamente nas próximas importações."}</div>
       <div style="margin-top:10px;">${linhasMaq}</div>
     </div>`;
   }
@@ -2951,8 +3143,8 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   const semMaq = registros.filter(r => !r.equipamento_id && !(r.maquina_codigo && _csvMaquinasSemMatch.includes(r.maquina_codigo))).length;
   const blocoSemMaq = semMaq ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
       ⚠️ <strong>${semMaq} linha${semMaq>1?"s":""} sem máquina identificada</strong> — vão para o diário sem máquina do dia (que entra em "Para regularizar"), a menos que você escolha a máquina:
-      <select id="csv-maq-sem" style="width:100%;margin-top:6px;"><option value="">— deixar sem máquina —</option>${_rdoEquipsCache.map(e => `<option value="${esc(e.id)}"${_csvMaqSugerida && _csvMaqSugerida.id === e.id ? " selected" : ""}>${esc(e.codigo)} — ${esc(e.nome)}</option>`).join("")}</select>
-      ${_csvMaqSugerida ? `<div class="meta">Sugerida: ${esc(_csvMaqSugerida.codigo)} (única mobilização ativa da obra).</div>` : ""}
+      <select id="csv-maq-sem" style="width:100%;margin-top:6px;"><option value="">— deixar sem máquina —</option>${rdoOptsMaquinas(_csvMaqObraIds, _csvMaqSugerida && !_csvMaqEstrito ? _csvMaqSugerida.id : null)}</select>
+      ${_csvMaqSugerida ? `<div class="meta">Sugerida: ${esc(_csvMaqSugerida.codigo)} (única mobilização ativa da obra).${_csvMaqEstrito ? ` <button type="button" class="btn-sec btn-sm" id="csv-maq-sem-usar" data-eq="${esc(_csvMaqSugerida.id)}">usar</button>` : ""}</div>` : ""}
     </div>` : "";
   const nDiarios = rdoDiariosImport().length;
   // lote S44 (L5, #78): sugestões de vínculo estaca do arquivo ↔ cadastro entram aqui (rdoRenderSugestoesEstacas)
@@ -2981,11 +3173,24 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     selObra.addEventListener("change", () => rdoRenderSugestoesEstacas(selObra.value));   // lote S44 (L5)
   }
   // fase 94: trocar a máquina das linhas sem máquina refaz a contagem de diários e o resumo por dia
-  $("csv-maq-sem")?.addEventListener("change", () => {
+  const recontarDiarios = () => {
     const n = rdoDiariosImport().length;
     if($("csv-n-diarios")) $("csv-n-diarios").textContent = n;
     document.querySelectorAll(".csv-maq-dia").forEach(el => { const r = rdoResumoMaquinasDia(el.dataset.dia); el.innerHTML = r ? "· " + r : ""; });
-  });
+  };
+  $("csv-maq-sem")?.addEventListener("change", recontarDiarios);
+  $("csv-maq-sem-usar")?.addEventListener("click", (ev) => { $("csv-maq-sem").value = ev.target.dataset.eq; recontarDiarios(); });
+  // fase 101 (#85): a máquina escolhida (ou a sugestão confirmada com "usar") já vale para a contagem de diários
+  document.querySelectorAll(".csv-maq-select").forEach(sel => sel.addEventListener("change", () => {
+    if(sel.value) _csvMapaManual[sel.dataset.maq] = sel.value; else delete _csvMapaManual[sel.dataset.maq];
+    recontarDiarios();
+  }));
+  document.querySelectorAll(".csv-maq-usar").forEach(b => b.addEventListener("click", () => {
+    const sel = document.querySelector(`.csv-maq-select[data-maq="${CSS.escape(b.dataset.maq)}"]`);
+    if(!sel) return;
+    sel.value = b.dataset.eq; sel.dispatchEvent(new Event("change"));
+    b.textContent = "✓ " + b.textContent.replace(/^💡\s*/, "").replace(/ · usar$/, ""); b.disabled = true;
+  }));
   // lote S44 (L5, #78): sugestões de vínculo para a obra já conhecida (o import por IA refaz ao pré-selecionar a obra da ficha)
   rdoRenderSugestoesEstacas(selObra ? selObra.value : (_csvObraDetectada && _csvObraDetectada.casamento === "exato" ? _csvObraDetectada.id : null));
 
@@ -3056,6 +3261,16 @@ async function confirmarImportCSV(){
   // fase 94 (#77): um diário por dia e máquina (as máquinas resolvidas acima entram na chave)
   const gruposPrev = rdoDiariosImport();
   const semMaqPrev = gruposPrev.filter(g => !g.eq && g.linhas.length).length;
+  // fase 101 (#85): obra que exige máquina não aceita diário sem ela (o gatilho recusaria no meio da gravação)
+  const semMaqTodos = gruposPrev.filter(g => !g.eq).length;
+  if(semMaqTodos){
+    const { data: oEx, error: eEx } = await sb.from("obras").select("rdo_exige_equipamento").eq("id", obra_id).maybeSingle();
+    if(!eEx && oEx?.rdo_exige_equipamento){
+      aviso("app-aviso", `Esta obra exige a máquina do diário: ${semMaqTodos} diário(s) ficariam sem máquina. Confirme a TAG no bloco de máquinas (💡 usar) ou escolha a máquina das linhas sem máquina.`, "erro");
+      if($("csv-aviso")) aviso("csv-aviso", "Obra exige máquina: escolha a TAG antes de importar.", "erro");
+      return;
+    }
+  }
   if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}?\n${gruposPrev.length} diário(s), um por dia e máquina${semMaqPrev ? ` — ${semMaqPrev} sem máquina (vão para "Para regularizar")` : ""}.`)) return;
 
   const btn = $("btn-csv-confirmar");
@@ -3149,8 +3364,9 @@ async function confirmarImportCSV(){
           consumo_cimento_raiz: e.consumo_cimento_raiz || null,
           consumo_cimento_unidade: e.consumo_cimento_raiz ? "saco" : null,
           consumo_areia_raiz: e.consumo_areia_raiz || null,
-          consumo_areia_unidade: e.consumo_areia_raiz ? "m3" : null,
+          consumo_areia_unidade: e.consumo_areia_raiz ? (e.consumo_areia_unidade || "m3") : null,
           pressao_injecao_kgcm2: e.pressao_injecao_kgcm2 ?? null,
+          ...rdoCamposInjecao(e),   // fase 101 (#99): m³ injetado e água, só quando vieram (colunas novas)
           perfuracao_inicio: e.perfuracao_inicio,
           perfuracao_fim: e.perfuracao_fim,
           concretagem_inicio: e.concretagem_inicio,

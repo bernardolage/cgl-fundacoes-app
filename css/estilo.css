@@ -2029,6 +2029,26 @@ a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus
   padding-top: 8px;
   border-top: 1px solid var(--borda-forte);
 }
+/* fase 101 (#99): camadas de solo, ferramenta e injeção visíveis na linha da estaca, sem expandir o boletim */
+.rdo-camadas-resumo > td {
+  padding: 2px var(--esp-2) var(--esp-1) var(--esp-4);
+  font-size: var(--txt-xs);
+  color: var(--txt-sec);
+  border-top: none;
+  background: var(--sup-1);
+}
+.rdo-camadas-resumo .rdo-camadas-vazio { color: var(--aviso-txt); }
+.rdo-raiz-totais {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-2) var(--esp-4);
+  margin-top: var(--esp-2);
+  padding: var(--esp-2) var(--esp-3);
+  font-size: var(--txt-sm);
+  background: var(--marca-50);
+  border-left: 3px solid var(--marca-600);
+}
+.rdo-raiz-totais strong { color: var(--txt); }
 
 /* ========== Fase 21 — Contratos de fornecedores ========== */
 
