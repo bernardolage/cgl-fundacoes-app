@@ -72,10 +72,12 @@ async function novaViagem(pre = {}){
 
 async function abrirViagem(id, voltarPara){
   await vgGarantirBase();
+  // fase 105b: status da NF-e emitida pelo app (só depois da migration; sem ela a nota vem como antes)
+  const nfeCols = typeof fiscalColunaExiste === "function" && await fiscalColunaExiste("movimentacoes_ativos", "nf_status") ? ",nf_status,nf_ambiente" : "";
   const [v, movs, mdfes, rat] = await Promise.all([
     // mobilizacoes tem três caminhos até viagens (mobilizacao_id, viagem_ida_id, viagem_volta_id): o hint pela coluna evita a ambiguidade do PostgREST
     sb.from("viagens").select("*, caminhao:equipamentos!caminhao_id(id,codigo,nome,placa), funcionario:funcionarios(id,nome,funcao), mobilizacao:mobilizacoes!mobilizacao_id(id,obra_id,status)").eq("id", id).single(),
-    sb.from("movimentacoes_ativos").select("id,numero,tipo,status,interna,nf_numero,nf_serie,nf_chave_acesso,valor_total_produtos,peso_bruto_kg,origem_tipo,origem_obra_id,origem_descricao,origem_uf,destino_tipo,destino_obra_id,destino_descricao,destino_uf,data_emissao,mdfe_id,itens:movimentacao_itens(id,equipamento_id,produto_id,acessorio_id,descricao,quantidade,unidade,valor_unitario,numero_serie,chassi)").eq("viagem_id", id).order("created_at"),
+    sb.from("movimentacoes_ativos").select("id,numero,tipo,status,interna,nf_numero,nf_serie,nf_chave_acesso,valor_total_produtos,peso_bruto_kg,origem_tipo,origem_obra_id,origem_descricao,origem_uf,destino_tipo,destino_obra_id,destino_descricao,destino_uf,data_emissao,mdfe_id" + nfeCols + ",itens:movimentacao_itens(id,equipamento_id,produto_id,acessorio_id,descricao,quantidade,unidade,valor_unitario,numero_serie,chassi)").eq("viagem_id", id).order("created_at"),
     sb.from("manifestos_mdfe").select("*").eq("viagem_id", id).order("created_at"),
     sb.from("vw_viagem_obras").select("obra_id,fracao").eq("viagem_id", id)
   ]);
@@ -470,7 +472,7 @@ function vgRenderDocs(){
         <td><a href="#" class="vg-nota-abrir" data-id="${esc(m.id)}" title="abrir a ficha da nota"><strong>${esc(m.numero)}</strong></a></td>
         <td>${esc(movLbl[m.tipo] || m.tipo)}</td>
         <td>${movSt[m.status] ? `<span class="tag ${movSt[m.status].cor}">${esc(movSt[m.status].label)}</span>` : esc(m.status)}</td>
-        <td>${m.nf_numero ? esc(`${m.nf_numero}/${m.nf_serie || "1"}`) : '<span class="meta">—</span>'}</td>
+        <td>${m.nf_numero ? esc(`${m.nf_numero}/${m.nf_serie || "1"}`) : '<span class="meta">—</span>'}${m.nf_status ? " " + tagStatus("nfe", m.nf_status) : ""}${m.nf_status && m.nf_ambiente === "homologacao" ? ' <span class="tag ambar" title="emitida em homologação: sem valor fiscal">homolog.</span>' : ""}</td>
         <td class="meta" title="${esc(m.nf_chave_acesso || "")}">${m.nf_chave_acesso ? esc(String(m.nf_chave_acesso).slice(0, 8)) + "…" : "—"}</td>
         <td class="num">${(m.itens || []).length}</td><td class="num">${brl(m.valor_total_produtos)}</td>
         <td>${m.mdfe_id ? esc(mdfeNum(m.mdfe_id) || "sim") : '<span class="meta">—</span>'}</td>

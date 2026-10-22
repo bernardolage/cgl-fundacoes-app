@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="d335ee3" />
+<meta name="app-versao" content="df155ab" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=d335ee3" />
+<link rel="stylesheet" href="css/estilo.css?v=df155ab" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -4987,6 +4987,15 @@
               <button type="button" class="btn-sec" id="btn-sugerir-fiscais" title="Sugere CFOP e natureza baseado nos itens">🪄 Sugerir fiscais</button>
               <button type="button" class="btn-sec" id="btn-dados-uninfe">📋 Dados UniNFe</button>
               <button type="button" class="btn-sec" id="btn-recomenda-mdf">🚚 Verificar MDF-e</button>
+              <!-- fase 105b: NF-e pelo app (Focus NFe); cada botão aparece só quando cabe (movNfeBotoes) -->
+              <button type="button" class="btn" id="btn-mov-nfe-emitir" style="display:none;" title="Confere o cadastro, mostra o resumo e envia a NF-e à SEFAZ pela Focus NFe">🧾 Emitir NF-e</button>
+              <button type="button" class="btn-sec" id="btn-mov-nfe-simular" style="display:none;" title="Monta a nota e confere o cadastro sem enviar (com token: prévia do DANFE sem valor fiscal)">🔎 Simular</button>
+              <button type="button" class="btn-sec" id="btn-mov-nfe-consultar" style="display:none;" title="Pergunta à Focus o status da nota (só quando o aviso automático não chegou)">↻ Consultar</button>
+              <button type="button" class="btn-sec" id="btn-mov-nfe-danfe" style="display:none;">📄 DANFE</button>
+              <button type="button" class="btn-sec" id="btn-mov-nfe-xml" style="display:none;">🗎 XML</button>
+              <button type="button" class="btn-sec" id="btn-mov-nfe-cce" style="display:none;">✎ Carta de correção</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-mov-nfe-cancelar" style="display:none;">✗ Cancelar NF-e</button>
+              <button type="button" class="btn-sec" id="btn-mov-nfe-inutilizar" style="display:none;" title="Número reservado em produção para nota rejeitada que não será emitida">Inutilizar número</button>
             </div>
             <div class="actions-right">
               <button type="button" class="btn" id="btn-marcar-emitida">✓ Emitida</button>
@@ -5013,6 +5022,7 @@
             <div class="chip"><span>NF</span><strong id="mov-ficha-nf-chip">—</strong></div>
             <div class="chip"><span>Total</span><strong id="mov-ficha-total-chip">R$ 0,00</strong></div>
             <div class="chip"><span>Viagem</span><strong id="mov-ficha-viagem-chip">—</strong></div>
+            <div class="chip"><span>NF-e (app)</span><strong id="mov-ficha-nfe-chip">—</strong></div>
           </div>
 
           <!-- Notebook com abas -->
@@ -5079,6 +5089,7 @@
                 <table class="itens-tabela">
                   <thead><tr>
                     <th>Item</th>
+                    <th style="width:110px;" title="NCM do cadastro (aba Fiscal da máquina, acessório ou produto)">NCM</th>
                     <th style="width:90px;">Qtd</th>
                     <th style="width:60px;">Un</th>
                     <th style="width:120px;">Valor unit.</th>
@@ -5088,7 +5099,7 @@
                   <tbody id="mov-itens"></tbody>
                 </table>
               </div>
-              <div class="grade" style="margin-top:12px;">
+              <div class="grade" id="mov-itens-adicionar" style="margin-top:12px;">
                 <div class="campo"><label>+ Adicionar equipamento (TAG)</label>
                   <div style="display:flex;gap:6px;">
                     <select id="mov-add-equip" style="flex:1;"></select>
@@ -5152,7 +5163,19 @@
 
             <!-- Aba Fiscal -->
             <div class="odoo-tab" data-tab="fiscal">
-              <p class="nota">Preencha após emitir a NF-e no UniNFe.</p>
+              <!-- fase 105b: NF-e emitida pelo app (status do webhook da Focus; a statusbar só informa) -->
+              <div id="mov-nfe-painel" style="display:none;">
+                <div class="lista-topo compacta"><h3>NF-e pelo app (Focus NFe)</h3><span id="mov-nfe-amb"></span></div>
+                <div class="odoo-statusbar informativa" id="mov-nfe-statusbar" aria-label="Status da NF-e">
+                  <div class="stage" data-nfe="rascunho">Rascunho</div>
+                  <div class="stage" data-nfe="processando">Processando</div>
+                  <div class="stage" data-nfe="autorizada">Autorizada</div>
+                  <div class="stage" data-nfe="cancelada">Cancelada</div>
+                </div>
+                <div id="mov-nfe-rejeicao" class="dist-aviso perigo" style="display:none;margin-top:8px;"></div>
+                <p class="nota" id="mov-nfe-info"></p>
+              </div>
+              <p class="nota" id="mov-fiscal-nota">Preencha após emitir a NF-e no UniNFe.</p>
               <div class="grade">
                 <div class="campo"><label>Natureza da operação</label><input id="mov-natureza" placeholder="ex.: REMESSA BEM ATIVO IMOBILIZADO" /></div>
                 <div class="campo"><label>CFOP</label><input id="mov-cfop" placeholder="5554 ou 5949" /></div>
@@ -5163,6 +5186,8 @@
                 <div class="campo"><label>Valor total dos produtos (R$)</label><input id="mov-valor-produtos" type="number" step="0.01" min="0" readonly style="background:var(--sup-2);" /></div>
                 <div class="campo largo"><label>Informação complementar</label><textarea id="mov-info-complementar" placeholder="se vazio, sistema sugere texto padrão na geração"></textarea></div>
               </div>
+              <h3 class="titulo-bloco">Eventos fiscais</h3>
+              <div id="mov-nfe-eventos"></div>
             </div>
 
             <!-- Aba Observações -->
@@ -5186,6 +5211,20 @@
           <div class="form-acoes" style="margin-top:12px;">
             <button type="button" class="btn" id="btn-copiar-uninfe">📋 Copiar tudo</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Modal: ações da NF-e pelo app (fase 105b): resumo da emissão, simulação, carta de correção, cancelamento, inutilização -->
+      <div id="mov-nfe-modal" class="modal-fundo" style="display:none;">
+        <div class="modal-caixa" style="max-width:760px;">
+          <div class="modal-topo"><h3 id="mov-nfe-modal-titulo">NF-e</h3><button type="button" class="btn-sec" id="btn-mov-nfe-modal-fechar">×</button></div>
+          <div id="mov-nfe-modal-corpo"></div>
+          <div class="campo largo" id="mov-nfe-modal-texto-campo" style="display:none;">
+            <label id="mov-nfe-modal-texto-rot" for="mov-nfe-modal-texto">Texto</label>
+            <textarea id="mov-nfe-modal-texto" rows="4"></textarea>
+            <span class="meta" id="mov-nfe-modal-contador"></span>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-mov-nfe-modal-ok">Confirmar</button></div>
         </div>
       </div>
     </section>
@@ -5760,53 +5799,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=d335ee3"></script>
+<script src="js/core.js?v=df155ab"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=d335ee3"></script>
+<script src="js/historico.js?v=df155ab"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=d335ee3"></script>
-<script src="js/fiscal_ncm.js?v=d335ee3"></script>
+<script src="js/fiscal.js?v=df155ab"></script>
+<script src="js/fiscal_ncm.js?v=df155ab"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=d335ee3"></script>
-<script src="js/fornecedores.js?v=d335ee3"></script>
-<script src="js/apropriacoes.js?v=d335ee3"></script>
-<script src="js/funcionarios.js?v=d335ee3"></script>
-<script src="js/rh_documentos.js?v=d335ee3"></script>
-<script src="js/servicos.js?v=d335ee3"></script>
-<script src="js/produtos.js?v=d335ee3"></script>
-<script src="js/estoque.js?v=d335ee3"></script>
-<script src="js/separacoes.js?v=d335ee3"></script>
-<script src="js/epi.js?v=d335ee3"></script>
-<script src="js/compras.js?v=d335ee3"></script>
-<script src="js/requisicoes.js?v=d335ee3"></script>
-<script src="js/orcamentos.js?v=d335ee3"></script>
-<script src="js/propostas.js?v=d335ee3"></script>
-<script src="js/contratos.js?v=d335ee3"></script>
-<script src="js/contas_pagar.js?v=d335ee3"></script>
-<script src="js/centros_custo.js?v=d335ee3"></script>
-<script src="js/carteira.js?v=d335ee3"></script>
-<script src="js/obras.js?v=d335ee3"></script>
-<script src="js/frota.js?v=d335ee3"></script>
-<script src="js/viagens.js?v=d335ee3"></script>
-<script src="js/equipamentos.js?v=d335ee3"></script>
-<script src="js/vendas_bens.js?v=d335ee3"></script>
-<script src="js/acessorios.js?v=d335ee3"></script>
-<script src="js/reparos.js?v=d335ee3"></script>
-<script src="js/manutencao.js?v=d335ee3"></script>
-<script src="js/fabricacao.js?v=d335ee3"></script>
-<script src="js/mobilizacoes.js?v=d335ee3"></script>
-<script src="js/estacas.js?v=d335ee3"></script>
-<script src="js/obra_abas.js?v=d335ee3"></script>
-<script src="js/medicoes.js?v=d335ee3"></script>
-<script src="js/movimentacoes.js?v=d335ee3"></script>
-<script src="js/rdo.js?v=d335ee3"></script>
-<script src="js/rdo_import_maya.js?v=d335ee3"></script>
-<script src="js/usuarios.js?v=d335ee3"></script>
-<script src="js/chamados.js?v=d335ee3"></script>
-<script src="js/dashboard.js?v=d335ee3"></script>
-<script src="js/rh_horas.js?v=d335ee3"></script>
-<script src="js/patrimonio.js?v=d335ee3"></script>
+<script src="js/clientes.js?v=df155ab"></script>
+<script src="js/fornecedores.js?v=df155ab"></script>
+<script src="js/apropriacoes.js?v=df155ab"></script>
+<script src="js/funcionarios.js?v=df155ab"></script>
+<script src="js/rh_documentos.js?v=df155ab"></script>
+<script src="js/servicos.js?v=df155ab"></script>
+<script src="js/produtos.js?v=df155ab"></script>
+<script src="js/estoque.js?v=df155ab"></script>
+<script src="js/separacoes.js?v=df155ab"></script>
+<script src="js/epi.js?v=df155ab"></script>
+<script src="js/compras.js?v=df155ab"></script>
+<script src="js/requisicoes.js?v=df155ab"></script>
+<script src="js/orcamentos.js?v=df155ab"></script>
+<script src="js/propostas.js?v=df155ab"></script>
+<script src="js/contratos.js?v=df155ab"></script>
+<script src="js/contas_pagar.js?v=df155ab"></script>
+<script src="js/centros_custo.js?v=df155ab"></script>
+<script src="js/carteira.js?v=df155ab"></script>
+<script src="js/obras.js?v=df155ab"></script>
+<script src="js/frota.js?v=df155ab"></script>
+<script src="js/viagens.js?v=df155ab"></script>
+<script src="js/equipamentos.js?v=df155ab"></script>
+<script src="js/vendas_bens.js?v=df155ab"></script>
+<script src="js/acessorios.js?v=df155ab"></script>
+<script src="js/reparos.js?v=df155ab"></script>
+<script src="js/manutencao.js?v=df155ab"></script>
+<script src="js/fabricacao.js?v=df155ab"></script>
+<script src="js/mobilizacoes.js?v=df155ab"></script>
+<script src="js/estacas.js?v=df155ab"></script>
+<script src="js/obra_abas.js?v=df155ab"></script>
+<script src="js/medicoes.js?v=df155ab"></script>
+<script src="js/movimentacoes.js?v=df155ab"></script>
+<script src="js/rdo.js?v=df155ab"></script>
+<script src="js/rdo_import_maya.js?v=df155ab"></script>
+<script src="js/usuarios.js?v=df155ab"></script>
+<script src="js/chamados.js?v=df155ab"></script>
+<script src="js/dashboard.js?v=df155ab"></script>
+<script src="js/rh_horas.js?v=df155ab"></script>
+<script src="js/patrimonio.js?v=df155ab"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=d335ee3"></script>
+<script src="js/init.js?v=df155ab"></script>
 </body>
 </html>

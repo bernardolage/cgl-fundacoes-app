@@ -1476,6 +1476,22 @@ td.num, th.num {
 .odoo-statusbar .stage.cancelada {
   color: var(--txt-sobre); background: var(--perigo);
 }
+/* fase 105b: statusbar só informativa (status da NF-e vem da Focus, não do clique) */
+.odoo-statusbar.informativa .stage { cursor: default; }
+.odoo-statusbar.informativa .stage:hover { background: var(--sup-0); }
+.odoo-statusbar.informativa .stage.atual:hover { background: var(--marca-600); }
+.odoo-statusbar.informativa .stage.cancelada:hover { background: var(--perigo); }
+/* fase 105b: JSON da NF-e na simulação */
+.mov-nfe-json {
+  background: var(--sup-2);
+  padding: var(--esp-3);
+  border-radius: var(--radius-sm);
+  font-family: Consolas, monospace;
+  font-size: var(--txt-xs);
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+}
 
 .odoo-contexto {
   display: flex;
@@ -2561,6 +2577,7 @@ tr.cart-aberta td { background: var(--info-bg); }
 .dist-aviso.ok      { background: var(--sucesso-bg); color: var(--sucesso-txt); }
 .dist-aviso.alerta  { background: var(--aviso-bg);   color: var(--aviso-txt); }
 .dist-aviso.neutro  { background: var(--sup-2);      color: var(--txt-fraco); }
+.dist-aviso.perigo  { background: var(--perigo-bg);  color: var(--perigo-txt); }   /* fase 105b: rejeição da NF-e, produção */
 .dist-aviso ul { margin: var(--esp-1) 0 0; padding-left: 18px; }
 .dist-aviso li { margin-bottom: 2px; }
 /* pendência que abre a medição (lote S39, #26): o fundo da caixa já é --sup-2, então o hover sublinha */

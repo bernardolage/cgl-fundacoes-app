@@ -3,6 +3,10 @@
    Layout: padrão Serviços (painel + ficha) + Odoo (statusbar, header
    actions, notebook tabs). Ver memória feedback-padrao-ui.
    Fluxo: rascunho → emitida (com NF-e) → em_trânsito → recebida.
+   Fase 105b: a NF-e de remessa/retorno sai pelo app (Focus NFe, function focus-nfe): Emitir NF-e, Simular, Consultar,
+   DANFE, XML, Carta de correção, Cancelar NF-e e Inutilizar número. O status da nota (nf_status) e os campos mov-nf-*
+   chegam pelo webhook e ficam só leitura; nota digitada à mão (UniNFe, contingência) continua editável. Itens de nota
+   emitida pelo app não mudam (o banco também barra). Quem emite: podeEmitirFiscal().
    ==================================================================== */
 
 let mapaEquipamentos = {};            // id -> equipamento
@@ -14,6 +18,9 @@ let _movObras        = [];            // obras (para vincular origem/destino e s
 let _movObraMap      = {};            // id -> obra
 let _movAceSug       = [];            // peças sugeridas no painel da aba Itens
 let _movVoltarPara   = null;          // fase 89: "Voltar" devolve para quem abriu a nota (ficha da viagem, Documentos de Logística)
+let _movNfeOk        = false;         // fase 105b: a migration da NF-e pelo app (nf_status) já está no banco
+let _movNcmOk        = false;         // fase 105a: NCM nos cadastros de equipamento, acessório e produto
+let _movFiscalItens  = {};            // fase 105b: "tipo:id" -> { ncm, ucom, sug, origem } dos itens da ficha
 const MOV_EQ_PRODUCAO = ["perfuratriz","bate_estaca","escavadeira","retroescavadeira","guindaste"]; // TAG que "leva" acessório
 
 const MOV_TIPOS = {
@@ -87,8 +94,9 @@ async function carregarEquipamentosSelect(){
 }
 
 async function fetchMovimentacoes(){
+  if(!_movNfeOk && typeof fiscalColunaExiste === "function") _movNfeOk = await fiscalColunaExiste("movimentacoes_ativos", "nf_status");
   const { data, error } = await sb.from("movimentacoes_ativos")
-    .select("id,numero,tipo,status,origem_tipo,origem_descricao,destino_tipo,destino_descricao,data_emissao,nf_numero,nf_chave_acesso,valor_total_produtos")
+    .select("id,numero,tipo,status,origem_tipo,origem_descricao,destino_tipo,destino_descricao,data_emissao,nf_numero,nf_chave_acesso,valor_total_produtos" + (_movNfeOk ? ",nf_status,nf_ambiente" : ""))
     .order("created_at", { ascending: false })
     .limit(500);
   _movRegistros = error ? [] : (data || []);
@@ -135,7 +143,7 @@ function renderMovLista(dados){
       <td>${esc(LOC_TIPOS[m.origem_tipo])}${m.origem_descricao ? " · " + esc(m.origem_descricao) : ""}</td>
       <td>${esc(LOC_TIPOS[m.destino_tipo])}${m.destino_descricao ? " · " + esc(m.destino_descricao) : ""}</td>
       <td>${dataBR(m.data_emissao)}</td>
-      <td>${m.nf_numero ? esc(m.nf_numero) : "—"}</td>
+      <td>${m.nf_numero ? esc(m.nf_numero) : "—"}${m.nf_status ? " " + tagStatus("nfe", m.nf_status) : ""}${m.nf_status && m.nf_ambiente === "homologacao" ? ' <span class="tag ambar" title="emitida em homologação: sem valor fiscal">homolog.</span>' : ""}</td>
       <td class="num">${brl(m.valor_total_produtos)}</td>
       <td><span class="tag ${st.cor}">${esc(st.label)}</span></td>
     </tr>`;
@@ -195,6 +203,7 @@ function novaMovimentacao(){
     frete_por_conta: "proprio"
   };
   itensAtuais = [];
+  _movFiscalItens = {};
   mostrarFichaMovimentacao();
 }
 
@@ -211,6 +220,9 @@ async function abrirMovimentacao(id){
   }
   movimentacaoAtual = m;
   itensAtuais = itens || [];
+  _movNfeOk = Object.prototype.hasOwnProperty.call(m, "nf_status");   // fase 105b: o select("*") já traz as colunas novas
+  await movCarregarFiscalItens();
+  if(movimentacaoAtual !== m) return;
   mostrarFichaMovimentacao();
 }
 
@@ -274,6 +286,7 @@ function mostrarFichaMovimentacao(){
   atualizarStatusbar();
   atualizarChipsContexto();
   atualizarBotoesAcao();
+  movNfeAtualizar();   // fase 105b: statusbar fiscal, chip do ambiente, rejeição, campos travados, eventos
   // sempre abre na primeira aba
   ativarTab("cabecalho");
 }
@@ -423,21 +436,32 @@ function ativarTab(nome){
 function renderizarItens(){
   const tb = $("mov-itens");
   if(!itensAtuais.length){
-    tb.innerHTML = `<tr><td colspan="6" class="vazio">Adicione equipamentos, produtos ou acessórios abaixo.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="7" class="vazio">Adicione equipamentos, produtos ou acessórios abaixo.</td></tr>`;
     atualizarTotal();
     movAtualizarSugestao();
     return;
   }
-  tb.innerHTML = itensAtuais.map((it, idx) => `
-    <tr>
+  const trava = movItensTravados();   // fase 105b: itens de NF-e emitida pelo app não mudam
+  const origemTxt = o => (typeof FISCAL_ITEM_ORIGEM === "object" && FISCAL_ITEM_ORIGEM[o]) || o || "";
+  tb.innerHTML = itensAtuais.map((it, idx) => {
+    const fis = movItemFiscal(it);
+    const [tipoMestre, idMestre] = movItemChave(it);
+    const ncm = fis.ncm ? (typeof ncmFormatar === "function" ? ncmFormatar(fis.ncm) : fis.ncm) : "";
+    const ncmCel = !_movNcmOk ? '<span class="meta">—</span>'
+      : ncm ? esc(ncm)
+      : `<a href="#" class="mov-sem-ncm txt-perigo" data-tipo="${esc(tipoMestre)}" data-id="${esc(idMestre)}" title="Sem NCM a NF-e não sai: abre a aba Fiscal do cadastro">sem NCM</a>`;
+    const sug = !trava && !(Number(it.valor_unitario) > 0) && fis.sug > 0
+      ? `<div class="meta">sugerido <a href="#" class="mov-usar-sug" data-idx="${idx}" title="${esc(origemTxt(fis.origem))}">${brl(fis.sug)}</a></div>` : "";
+    return `<tr>
       <td>${it.acessorio_id ? "⚙️ " + linkAcessorio(it.acessorio_id, it.descricao) : it.equipamento_id ? "🔧 " + linkEquipamento(it.equipamento_id, it.descricao) : "📦 " + linkProduto(it.produto_id, it.descricao)}${it.acessorio_id && it._onde ? ` <span class="meta">· ${esc(it._onde)}</span>` : ""}</td>
-      <td><input type="number" step="0.001" min="0" value="${esc(it.quantidade)}" data-idx="${idx}" data-field="quantidade" class="item-input" style="width:80px;text-align:right;" /></td>
-      <td>${esc(it.unidade)}</td>
-      <td><input type="number" step="0.01" min="0" value="${esc(it.valor_unitario || 0)}" data-idx="${idx}" data-field="valor_unitario" class="item-input" style="width:110px;text-align:right;" /></td>
+      <td>${ncmCel}</td>
+      <td><input type="number" step="0.001" min="0" value="${esc(it.quantidade)}" data-idx="${idx}" data-field="quantidade" class="item-input" style="width:80px;text-align:right;" ${trava ? "disabled" : ""} /></td>
+      <td>${esc(movItemUnidade(it))}</td>
+      <td><input type="number" step="0.01" min="0" value="${esc(it.valor_unitario || 0)}" data-idx="${idx}" data-field="valor_unitario" class="item-input" style="width:110px;text-align:right;" ${trava ? "disabled" : ""} />${sug}</td>
       <td class="num">${brl((it.quantidade||0) * (it.valor_unitario||0))}</td>
-      <td><button type="button" class="btn-sec btn-sm btn-remove-item" data-idx="${idx}">×</button></td>
-    </tr>
-  `).join("");
+      <td>${trava ? "" : `<button type="button" class="btn-sec btn-sm btn-remove-item" data-idx="${idx}">×</button>`}</td>
+    </tr>`;
+  }).join("");
 
   tb.querySelectorAll(".item-input").forEach(inp => {
     inp.addEventListener("input", (e) => {
@@ -457,6 +481,17 @@ function renderizarItens(){
       renderizarItens();
     });
   });
+  // fase 105b: valor sugerido (fiscal_valor_remessa) e atalho para o NCM no cadastro
+  tb.querySelectorAll(".mov-usar-sug").forEach(a => a.addEventListener("click", (e) => {
+    e.preventDefault();
+    const it = itensAtuais[Number(a.dataset.idx)];
+    const fis = it ? movItemFiscal(it) : {};
+    if(it && fis.sug > 0){ it.valor_unitario = fis.sug; renderizarItens(); }
+  }));
+  tb.querySelectorAll(".mov-sem-ncm").forEach(a => a.addEventListener("click", (e) => {
+    e.preventDefault();
+    movAbrirFiscalItem(a.dataset.tipo, a.dataset.id);
+  }));
   atualizarTotal();
   movAtualizarSugestao();
 }
@@ -499,6 +534,7 @@ function adicionarEquipamento(){
   });
   sel.value = "";
   renderizarItens();
+  movCompletarNovos(itensAtuais.slice(-1));   // fase 105b: NCM e valor sugerido do cadastro
 }
 
 /* ---------- Buscar produto ---------- */
@@ -550,6 +586,7 @@ function configurarBuscaProdutos(){
             lista.innerHTML = "";
             lista.style.display = "none";
             renderizarItens();
+            movCompletarNovos(itensAtuais.slice(-1));   // fase 105b
           });
         });
       }
@@ -583,6 +620,7 @@ function movAddAcessorio(a){
 function movAddAcessorios(lista){
   let n = 0; lista.forEach(a => { if(movAddAcessorio(a)) n++; });
   renderizarItens();
+  if(n) movCompletarNovos(itensAtuais.slice(-n));   // fase 105b
   if(n) aviso("app-aviso", `${n} peça(s) adicionada(s) à carga.`, "ok");
   else aviso("app-aviso", "Essas peças já estão na lista.", "erro");
 }
@@ -643,7 +681,7 @@ function configurarBuscaAcessorios(){
 async function movAtualizarSugestao(){
   const box = $("mov-ace-sugestao"); if(!box || !movimentacaoAtual) return;
   const st = movimentacaoAtual.status || "rascunho";
-  if(st !== "rascunho" && st !== "emitida"){ box.style.display = "none"; return; }
+  if((st !== "rascunho" && st !== "emitida") || movItensTravados()){ box.style.display = "none"; return; }
   const origemTipo = $("mov-origem-tipo").value, origemObra = $("mov-origem-obra").value;
   const eqIds = itensAtuais.filter(i => i.equipamento_id && MOV_EQ_PRODUCAO.includes((mapaEquipamentos[i.equipamento_id] || {}).tipo)).map(i => i.equipamento_id);
   let titulo = "", filtro = null;
@@ -689,20 +727,23 @@ function movSugAdicionar(){
 
 /* ---------- Botões de ação contextuais ---------- */
 function atualizarBotoesAcao(){
-  const st = movimentacaoAtual.status;
+  const m = movimentacaoAtual, st = m.status;
+  const nfeApp = movNfeEmitidaPeloApp(m);                                        // fase 105b
+  const nfeViva = nfeApp && ["processando", "autorizada"].includes(m.nf_status);
   $("btn-salvar-rascunho").style.display   = (st !== "recebida" && st !== "cancelada") ? "" : "none";
-  $("btn-marcar-emitida").style.display    = (st === "rascunho") ? "" : "none";
+  $("btn-marcar-emitida").style.display    = (st === "rascunho" && !nfeViva) ? "" : "none";   // NF-e do app: vira emitida na autorização
   $("btn-marcar-transito").style.display   = (st === "emitida")  ? "" : "none";
   $("btn-marcar-recebida").style.display   = (st === "emitida" || st === "em_transito") ? "" : "none";
-  $("btn-cancelar").style.display          = (st !== "cancelada" && st !== "recebida")  ? "" : "none";
-  $("btn-dados-uninfe").style.display      = (st !== "cancelada") ? "" : "none";
+  $("btn-cancelar").style.display          = (st !== "cancelada" && st !== "recebida" && !nfeViva) ? "" : "none";   // com NF-e viva, cancele a nota antes
+  $("btn-dados-uninfe").style.display      = (st !== "cancelada" && !nfeApp) ? "" : "none";   // UniNFe = contingência
   $("btn-recomenda-mdf").style.display     = (st === "emitida" || st === "em_transito") ? "" : "none";
-  $("btn-sugerir-fiscais").style.display   = (st === "rascunho" || st === "emitida")    ? "" : "none";
+  $("btn-sugerir-fiscais").style.display   = ((st === "rascunho" || st === "emitida") && !nfeApp) ? "" : "none";
+  movNfeBotoes();
 }
 
 /* ---------- Coletar dados do form ---------- */
 function coletarDadosForm(){
-  return {
+  const dados = {
     tipo: $("mov-tipo").value,
     origem_tipo: $("mov-origem-tipo").value,
     origem_descricao: $("mov-origem-descricao").value.trim() || null,
@@ -736,6 +777,14 @@ function coletarDadosForm(){
     info_complementar: $("mov-info-complementar").value.trim() || null,
     observacoes: $("mov-observacoes").value.trim() || null
   };
+  // fase 105b: nota emitida pelo app e já na SEFAZ (processando, autorizada, cancelada, denegada) — número, série, chave,
+  // protocolo, CFOP, natureza, tipo, obras e valor vêm da Focus e ficam como estão (o banco barra a troca). Rejeitada ou
+  // inutilizada continua editável: é o caminho da contingência pela UniNFe.
+  if(movItensTravados()){
+    ["nf_numero", "nf_serie", "nf_chave_acesso", "nf_protocolo", "cfop", "natureza_operacao",
+     "tipo", "origem_obra_id", "destino_obra_id", "valor_total_produtos"].forEach(k => delete dados[k]);
+  }
+  return dados;
 }
 
 /* ---------- Salvar (cabeçalho + itens) ---------- */
@@ -746,6 +795,7 @@ async function salvarMovimentacao(novoStatus){
     return null;
   }
   const dados = coletarDadosForm();
+  const travaItens = movItensTravados();   // fase 105b: nota emitida pelo app — itens ficam como estão
   if(novoStatus) dados.status = novoStatus;
   const temAce = itensAtuais.some(it => it.acessorio_id);
   if(temAce && ["obra","cliente"].includes(dados.destino_tipo) && !dados.destino_obra_id){
@@ -770,7 +820,7 @@ async function salvarMovimentacao(novoStatus){
     movimentacaoAtual = upd;
   }
 
-  const { error: errDelItens } = await sb.from("movimentacao_itens").delete().eq("movimentacao_id", movId);
+  const { error: errDelItens } = travaItens ? { error: null } : await sb.from("movimentacao_itens").delete().eq("movimentacao_id", movId);
   if(errDelItens){ aviso("app-aviso","Erro ao substituir os itens: "+errDelItens.message+". Nada foi reinserido — tente salvar de novo.","erro"); return; }
   const itensInsert = itensAtuais.map(it => ({
     movimentacao_id: movId,
@@ -787,7 +837,7 @@ async function salvarMovimentacao(novoStatus){
     cst: it.cst || null,
     cfop_item: it.cfop_item || null
   }));
-  const { error: itErr } = await sb.from("movimentacao_itens").insert(itensInsert);
+  const { error: itErr } = travaItens ? { error: null } : await sb.from("movimentacao_itens").insert(itensInsert);
   if(itErr){ aviso("app-aviso","Erro ao salvar itens: "+itErr.message, "erro"); return null; }
 
   aviso("app-aviso","Movimentação salva com sucesso.", "ok");
@@ -919,6 +969,362 @@ function ligarStatusbarClicavel(){
   });
 }
 
+/* ====================================================================
+   Fase 105b — NF-e de remessa e retorno pelo app (Focus NFe; function focus-nfe, status pelo focus-nfe-webhook)
+   ==================================================================== */
+const MOV_NFE_STAGES = ["rascunho", "processando", "autorizada", "cancelada"];
+function movNfeEmitidaPeloApp(m){ m = m || movimentacaoAtual; return !!(m && m.nf_ref_focus); }
+function movItensTravados(m){
+  m = m || movimentacaoAtual;
+  return !!(m && m.nf_ref_focus && ["processando", "autorizada", "cancelada", "denegada"].includes(m.nf_status));
+}
+function movNfeTipoOk(m){ return !!m && ["remessa", "retorno"].includes(m.tipo) && !m.interna; }
+
+/* ---------- itens: NCM, unidade comercial e valor sugerido (cadastro da fase 105a) ---------- */
+const MOV_TABELA_MESTRE = { equipamento: "equipamentos", acessorio: "acessorios", produto: "produtos" };
+function movItemChave(it){
+  if(it.equipamento_id) return ["equipamento", it.equipamento_id];
+  if(it.acessorio_id) return ["acessorio", it.acessorio_id];
+  return ["produto", it.produto_id];
+}
+function movItemFiscal(it){
+  const [t, id] = movItemChave(it);
+  const f = _movFiscalItens[`${t}:${id}`] || {};
+  return { ...f, ncm: it.ncm || f.ncm || null };
+}
+function movItemUnidade(it){ return String(movItemFiscal(it).ucom || it.unidade || "un").toUpperCase(); }
+async function movSugerirValor(it){
+  const [t, id] = movItemChave(it);
+  if(!id) return null;
+  const { data } = await sb.rpc("fiscal_valor_remessa", { p_tipo: t, p_id: id });
+  const s = Array.isArray(data) ? data[0] : data;
+  if(!s || s.valor == null) return null;
+  const k = `${t}:${id}`;
+  _movFiscalItens[k] = { ...(_movFiscalItens[k] || {}), sug: Number(s.valor), origem: s.origem };
+  return Number(s.valor);
+}
+async function movCarregarFiscalItens(lista){
+  if(!lista) _movFiscalItens = {};
+  _movNcmOk = typeof fiscalColunaExiste === "function" && await fiscalColunaExiste("equipamentos", "ncm");
+  const itens = lista || itensAtuais;
+  if(!_movNcmOk || !itens.length) return;
+  const ids = { equipamento: new Set(), acessorio: new Set(), produto: new Set() };
+  itens.forEach(it => { const [t, id] = movItemChave(it); if(id) ids[t].add(id); });
+  await Promise.all(Object.entries(ids).filter(([, s]) => s.size).map(async ([t, s]) => {
+    const { data } = await sb.from(MOV_TABELA_MESTRE[t]).select("id,ncm,unidade_comercial").in("id", [...s]);
+    (data || []).forEach(r => { const k = `${t}:${r.id}`; _movFiscalItens[k] = { ...(_movFiscalItens[k] || {}), ncm: r.ncm, ucom: r.unidade_comercial }; });
+  }));
+  if(movItensTravados()) return;
+  await Promise.all(itens.filter(it => !(Number(it.valor_unitario) > 0)).map(it => movSugerirValor(it)));
+}
+/* item recém-adicionado: lê o NCM e, sem valor, já preenche o sugerido */
+async function movCompletarNovos(novos){
+  if(!novos.length) return;
+  const doc = movimentacaoAtual;
+  await movCarregarFiscalItens(novos);
+  if(movimentacaoAtual !== doc) return;
+  novos.forEach(it => { const f = movItemFiscal(it); if(!(Number(it.valor_unitario) > 0) && f.sug > 0) it.valor_unitario = f.sug; });
+  renderizarItens();
+}
+/* "sem NCM": abre o cadastro na aba Fiscal (mesmo caminho do Para regularizar da 105a) */
+async function movAbrirFiscalItem(tipo, id){
+  if(!id) return;
+  if(tipo === "equipamento"){
+    if(irParaSecao("equipamentos") && typeof abrirEquipamento === "function"){ await abrirEquipamento(id); if(typeof ativarTabEquipamento === "function") ativarTabEquipamento("fiscal"); }
+  } else if(tipo === "acessorio"){
+    if(irParaSecao("acessorios") && typeof abrirAcessorio === "function"){
+      for(let i = 0; i < 80 && !(typeof _aceCarregado !== "undefined" && _aceCarregado); i++) await new Promise(r => setTimeout(r, 250));
+      abrirAcessorio(id);
+      if(typeof ativarTabAcessorio === "function") ativarTabAcessorio("fiscal");
+    }
+  } else if(irParaSecao("produtos") && typeof abrirProduto === "function"){
+    await abrirProduto(id);
+    if(typeof ativarTabProd === "function") ativarTabProd("fiscal");
+  }
+}
+
+/* ---------- ficha: statusbar fiscal, chip do ambiente, rejeição, campos travados ---------- */
+function movNfeAtualizar(){
+  const m = movimentacaoAtual;
+  if(!m) return;
+  const nfeApp = movNfeEmitidaPeloApp(m);
+  const homolog = m.nf_ambiente === "homologacao";
+  const chip = $("mov-ficha-nfe-chip");
+  if(chip){
+    chip.innerHTML = m.nf_status
+      ? tagStatus("nfe", m.nf_status) + (homolog ? ' <span class="tag ambar" title="Ambiente de homologação da Focus: nota de teste, sem valor fiscal">Homologação</span>' : "")
+      : '<span class="meta">—</span>';
+  }
+  const painel = $("mov-nfe-painel");
+  if(painel) painel.style.display = _movNfeOk && movNfeTipoOk(m) && m.id ? "" : "none";
+  const sbar = $("mov-nfe-statusbar");
+  if(sbar){
+    const st = m.nf_status || "rascunho";
+    const ruim = ["rejeitada", "denegada", "inutilizada"].includes(st);
+    const pos = ruim ? 2 : Math.max(0, MOV_NFE_STAGES.indexOf(st));
+    sbar.querySelectorAll(".stage").forEach((el, i) => {
+      el.classList.remove("atual", "passada", "cancelada");
+      el.removeAttribute("aria-current");
+      if(el.dataset.nfe === "autorizada") el.textContent = ruim ? String((STATUS.nfe[st] || {}).label || st).replace(/^NF-e /, "") : "Autorizada";
+      if(i < pos) el.classList.add("passada");
+      if(i === pos){ el.classList.add(ruim || st === "cancelada" ? "cancelada" : "atual"); el.setAttribute("aria-current", "step"); }
+    });
+  }
+  const amb = $("mov-nfe-amb");
+  if(amb){
+    amb.innerHTML = m.nf_ambiente
+      ? `<span class="tag ${homolog ? "ambar" : "verde"}">${homolog ? "Homologação: sem valor fiscal" : "Produção"}</span>`
+      : '<span class="meta">o ambiente (homologação ou produção) vem dos dados fiscais da empresa</span>';
+  }
+  const rej = $("mov-nfe-rejeicao");
+  if(rej){
+    const erros = Array.isArray(m.nf_erros) ? m.nf_erros : [];
+    const mostra = ["rejeitada", "denegada"].includes(m.nf_status) && (m.nf_mensagem || erros.length);
+    rej.style.display = mostra ? "" : "none";
+    rej.innerHTML = !mostra ? "" : `<strong>${m.nf_status === "denegada" ? "Uso denegado pela SEFAZ" : "Rejeição"}:</strong> ${esc(m.nf_mensagem || "")}
+      ${erros.length ? `<ul>${erros.map(x => `<li>${x.campo ? `<strong>${esc(x.campo)}</strong>: ` : ""}${esc(x.mensagem || "")}</li>`).join("")}</ul>` : ""}
+      ${m.nf_status === "rejeitada" ? `<div class="meta">Corrija o cadastro indicado e use Emitir NF-e de novo (mesma referência${m.nf_ambiente === "producao" && m.nf_numero ? ` e o mesmo número ${esc(m.nf_numero)}` : ""}).</div>` : ""}`;
+  }
+  const info = $("mov-nfe-info");
+  if(info){
+    info.textContent = !m.nf_status ? "Nota ainda não emitida pelo app."
+      : m.nf_status === "processando" ? "Enviada à SEFAZ pela Focus NFe: o status chega sozinho em segundos (webhook). Se não chegar, use Consultar."
+      : (!["rejeitada", "denegada"].includes(m.nf_status) && m.nf_mensagem) ? `SEFAZ: ${m.nf_mensagem}${m.nf_cce_sequencia ? ` · cartas de correção: ${m.nf_cce_sequencia}` : ""}` : "";
+  }
+  const trava = movItensTravados(m);
+  ["mov-nf-numero", "mov-nf-serie", "mov-nf-chave", "mov-nf-protocolo", "mov-cfop", "mov-natureza"].forEach(i => { const el = $(i); if(el) el.readOnly = trava; });
+  const nota = $("mov-fiscal-nota");
+  if(nota) nota.textContent = trava
+    ? "Número, série, chave, protocolo, CFOP e natureza vêm da Focus NFe (emissão pelo app): a tela não altera."
+    : nfeApp
+      ? "A nota do app não foi autorizada: corrija e emita de novo, ou, na contingência (UniNFe), preencha estes campos depois de emitir lá."
+      : "Emissão pelo app: botão Emitir NF-e. Na contingência (UniNFe), preencha estes campos depois de emitir lá.";
+  ["mov-tipo", "mov-origem-tipo", "mov-destino-tipo", "mov-origem-obra", "mov-destino-obra"].forEach(i => { const el = $(i); if(el) el.disabled = trava; });
+  const add = $("mov-itens-adicionar");
+  if(add) add.style.display = trava ? "none" : "";
+  movNfeEventos();
+}
+function movNfeBotoes(){
+  const m = movimentacaoAtual;
+  const pode = typeof podeEmitirFiscal === "function" && podeEmitirFiscal();
+  const ok = _movNfeOk && movNfeTipoOk(m) && !!m.id;
+  const st = m.nf_status;
+  const mostra = (id, cond) => { const b = $(id); if(b) b.style.display = cond ? "" : "none"; };
+  const emitivel = ok && pode && m.status === "rascunho" && (!st || st === "rascunho" || st === "rejeitada") && itensAtuais.length > 0;
+  const noBucket = c => !!m[c] && String(m[c]).startsWith("nfe/");
+  mostra("btn-mov-nfe-emitir", emitivel);
+  mostra("btn-mov-nfe-simular", emitivel);
+  mostra("btn-mov-nfe-consultar", ok && pode && !!m.nf_ref_focus && (st === "processando" || (st === "autorizada" && (!m.arquivo_pdf_url || !m.nf_xml_url))));
+  mostra("btn-mov-nfe-danfe", ok && (noBucket("arquivo_pdf_url") || (pode && ["autorizada", "cancelada"].includes(st))));
+  mostra("btn-mov-nfe-xml", ok && (noBucket("nf_xml_url") || (pode && ["autorizada", "cancelada"].includes(st))));
+  mostra("btn-mov-nfe-cce", ok && pode && st === "autorizada");
+  mostra("btn-mov-nfe-cancelar", ok && pode && st === "autorizada");
+  mostra("btn-mov-nfe-inutilizar", ok && pode && st === "rejeitada" && m.nf_ambiente === "producao" && !!m.nf_numero);
+}
+/* eventos fiscais do documento (registros_log, tipo 'fiscal'; gravados pela function e pelo webhook) */
+async function movNfeEventos(){
+  const box = $("mov-nfe-eventos");
+  const m = movimentacaoAtual;
+  if(!box) return;
+  if(!m?.id || !_movNfeOk){ box.innerHTML = ""; return; }
+  const { data, error } = await sb.from("registros_log").select("campo,valor_anterior,valor_novo,autor_nome,criado_em")
+    .eq("entidade", "movimentacoes_ativos").eq("registro_id", m.id).eq("tipo", "fiscal")
+    .order("criado_em", { ascending: false }).limit(50);
+  if(movimentacaoAtual !== m) return;
+  if(error || !(data || []).length){ box.innerHTML = '<p class="vazio">Nenhum evento fiscal registrado.</p>'; return; }
+  const quando = d => typeof histQuando === "function" ? histQuando(d) : dataBR(d);
+  box.innerHTML = `<div class="tabela-rola"><table>
+    <thead><tr><th>Quando</th><th>Evento</th><th>Por</th></tr></thead>
+    <tbody>${data.map(l => `<tr><td>${esc(quando(l.criado_em))}</td><td>${l.campo === "nf_cce" ? "Carta de correção" : "NF-e"}: ${l.valor_anterior ? esc(l.valor_anterior) + " → " : ""}${esc(l.valor_novo || "")}</td><td>${esc(l.autor_nome || "—")}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+/* ---------- diálogo único das ações fiscais ---------- */
+let _movNfeModalOk = null;
+function movNfeModal({ titulo, corpo, texto, rotulo, min, max, botao, perigo, onOk }){
+  $("mov-nfe-modal-titulo").textContent = titulo || "NF-e";
+  $("mov-nfe-modal-corpo").innerHTML = corpo || "";
+  const campo = $("mov-nfe-modal-texto-campo"), ta = $("mov-nfe-modal-texto"), cont = $("mov-nfe-modal-contador");
+  campo.style.display = texto ? "" : "none";
+  ta.value = "";
+  ta.oninput = null;
+  if(texto){
+    $("mov-nfe-modal-texto-rot").textContent = rotulo || "Texto";
+    ta.maxLength = max;
+    const contar = () => { const n = ta.value.replace(/\s+/g, " ").trim().length; cont.textContent = `${n} caracteres (de ${min} a ${max})`; cont.classList.toggle("txt-perigo", n > 0 && n < min); };
+    ta.oninput = contar;
+    contar();
+  }
+  const b = $("btn-mov-nfe-modal-ok");
+  b.style.display = onOk ? "" : "none";
+  b.textContent = botao || "Confirmar";
+  b.className = perigo ? "btn-sec acao-perigo" : "btn";
+  _movNfeModalOk = onOk ? async () => {
+    const txt = ta.value.replace(/\s+/g, " ").trim();
+    if(texto && (txt.length < min || txt.length > max)){ aviso("app-aviso", `${rotulo}: de ${min} a ${max} caracteres.`, "erro"); return; }
+    await onOk(txt);
+  } : null;
+  $("mov-nfe-modal").style.display = "flex";
+  if(texto) ta.focus();
+}
+function movNfeModalFechar(){ $("mov-nfe-modal").style.display = "none"; _movNfeModalOk = null; }
+function movNfeResumoHtml(d){
+  const r = d.resumo || {}, pend = d.pendencias || [];
+  const prod = r.ambiente === "producao";
+  return `${pend.length ? `<div class="dist-aviso alerta"><strong>Falta completar antes de emitir (nada foi enviado):</strong><ul>${pend.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
+    <div class="dist-aviso ${prod ? "perigo" : "neutro"}"><strong>${prod ? "PRODUÇÃO: nota com valor fiscal na SEFAZ" : "Homologação: nota de teste, sem valor fiscal"}</strong></div>
+    <div class="grade">
+      <div class="campo"><label>Natureza</label><div>${esc(r.natureza || "")}</div></div>
+      <div class="campo"><label>CFOP</label><div>${esc(r.cfop || "—")} <span class="meta">${esc(r.tipo_documento || "")} · ${esc(r.operacao || "")}</span></div></div>
+      <div class="campo"><label>Número</label><div>${esc(r.numero || "")}</div></div>
+      <div class="campo largo"><label>Destinatário</label><div>${esc(r.destinatario || "—")}${r.entrega ? ` <span class="meta">· entrega/retirada: ${esc(r.entrega)}</span>` : ""}</div></div>
+    </div>
+    <div class="tabela-rola"><table>
+      <thead><tr><th>Item</th><th>NCM</th><th class="num">Qtd</th><th>Un</th><th class="num">Valor</th></tr></thead>
+      <tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td>${esc(i.ncm || "—")}</td><td class="num">${esc(i.quantidade)}</td><td>${esc(i.unidade)}</td><td class="num">${brl(i.valor)}</td></tr>`).join("")}
+        <tr><td colspan="4"><strong>Total</strong></td><td class="num"><strong>${brl(r.total)}</strong></td></tr></tbody>
+    </table></div>
+    ${r.informacoes ? `<p class="nota"><strong>Informações complementares:</strong> ${esc(r.informacoes)}</p>` : ""}`;
+}
+
+/* ---------- ações ---------- */
+async function movNfeSalvarAntes(){
+  const m = movimentacaoAtual;
+  if(!m?.id){ aviso("app-aviso", "Salve o documento antes.", "erro"); return false; }
+  if(movItensTravados(m)) return true;
+  return !!(await salvarMovimentacao(m.status || "rascunho"));   // a function lê o banco: o que está na tela precisa estar salvo
+}
+async function movNfeRecarregar(){
+  const id = movimentacaoAtual?.id;
+  if(!id) return;
+  await abrirMovimentacao(id);
+  ativarTab("fiscal");
+  await fetchMovimentacoes();
+  renderMovimentacoes();
+}
+async function movNfeSimular(previa){
+  const r = await fiscalChamarFocus("emitir", { movimentacao_id: movimentacaoAtual.id, dry_run: true, previa_danfe: !!previa });
+  if(r.erro){ aviso("app-aviso", "NF-e: " + r.erro, "erro"); return null; }
+  return r.data;
+}
+async function movNfeSimularMostrar(){
+  if(!(await movNfeSalvarAntes())) return;
+  const d = await movNfeSimular(true);
+  if(!d) return;
+  const previa = d.previa_url
+    ? `<p><a href="${esc(d.previa_url)}" target="_blank" rel="noopener">📄 Abrir a prévia do DANFE (sem valor fiscal)</a></p>`
+    : d.previa_erro ? `<p class="nota txt-perigo">${esc(d.previa_erro)}</p>`
+    : (d.pendencias || []).length ? "" : '<p class="nota">A prévia do DANFE aparece quando o token da Focus estiver configurado.</p>';
+  movNfeModal({
+    titulo: `Simulação da NF-e · ${movimentacaoAtual.numero}`,
+    corpo: movNfeResumoHtml(d) + previa + `<details><summary class="meta">JSON que vai para a Focus</summary><pre class="mov-nfe-json">${esc(JSON.stringify(d.nfe, null, 2))}</pre></details>`
+  });
+}
+async function movNfeEmitir(){
+  if(!(await movNfeSalvarAntes())) return;
+  const d = await movNfeSimular(false);
+  if(!d) return;
+  const prod = d.ambiente === "producao";
+  const doc = movimentacaoAtual;
+  movNfeModal({
+    titulo: `Emitir NF-e · ${doc.numero}`,
+    corpo: movNfeResumoHtml(d),
+    botao: prod ? "🧾 Emitir em PRODUÇÃO" : "🧾 Emitir em homologação",
+    onOk: (d.pendencias || []).length ? null : async () => {
+      if(prod && !confirm("Emitir a NF-e em PRODUÇÃO, com valor fiscal na SEFAZ?")) return;
+      const r = await fiscalChamarFocus("emitir", { movimentacao_id: doc.id });
+      movNfeModalFechar();
+      if(r.erro){
+        const pend = r.corpo?.pendencias || [];
+        aviso("app-aviso", "NF-e: " + r.erro + (pend.length ? " " + pend.join(" ") : ""), "erro");
+      } else {
+        aviso("app-aviso", r.data.nf_status === "autorizada" ? `NF-e autorizada${r.data.mensagem ? ": " + r.data.mensagem : "."}` : (r.data.mensagem || "NF-e enviada."), r.data.nf_status === "rejeitada" ? "erro" : "ok");
+      }
+      await movNfeRecarregar();
+    }
+  });
+}
+async function movNfeConsultar(){
+  const r = await fiscalChamarFocus("consultar", { movimentacao_id: movimentacaoAtual.id });
+  if(r.erro){ aviso("app-aviso", "Consulta da NF-e: " + r.erro, "erro"); return; }
+  const rot = String((STATUS.nfe[r.data.nf_status] || {}).label || r.data.nf_status || "");
+  aviso("app-aviso", `${rot}${r.data.mensagem ? ": " + r.data.mensagem : ""}`, r.data.nf_status === "rejeitada" ? "erro" : "ok");
+  await movNfeRecarregar();
+}
+async function movNfeArquivo(tipo){
+  const m = movimentacaoAtual;
+  const col = tipo === "pdf" ? "arquivo_pdf_url" : "nf_xml_url";
+  const nome = tipo === "pdf" ? "DANFE" : "XML";
+  const janela = window.open("", "_blank");   // aberta no clique, antes do await (bloqueador de pop-up)
+  let url = null, erro = null;
+  if(m[col] && String(m[col]).startsWith("nfe/")){
+    const { data, error } = await sb.storage.from("fiscal-documentos").createSignedUrl(m[col], 120);
+    url = data?.signedUrl || null;
+    erro = error?.message || null;
+  }
+  if(!url && typeof podeEmitirFiscal === "function" && podeEmitirFiscal()){
+    const r = await fiscalChamarFocus(tipo === "pdf" ? "baixar_pdf" : "baixar_xml", { movimentacao_id: m.id });
+    url = r.data?.url || null;
+    erro = r.erro || erro;
+  }
+  if(!url){
+    if(janela) janela.close();
+    aviso("app-aviso", `${nome}: ${erro || "arquivo ainda não disponível"}.`, "erro");
+    return;
+  }
+  if(janela) janela.location.href = url; else window.open(url, "_blank");
+  if(!m[col]) await movNfeRecarregar();
+}
+function movNfeCartaCorrecao(){
+  const m = movimentacaoAtual;
+  movNfeModal({
+    titulo: `Carta de correção · NF ${m.nf_numero || ""}`,
+    corpo: `<p class="nota">Corrige dado que não muda o imposto, o remetente/destinatário nem as datas (regra da SEFAZ). Vale sempre a última carta; até 20 por nota. Já enviadas: ${Number(m.nf_cce_sequencia) || 0}.</p>`,
+    texto: true, rotulo: "Texto da correção", min: 15, max: 1000, botao: "✎ Enviar carta de correção",
+    onOk: async (txt) => {
+      const r = await fiscalChamarFocus("carta_correcao", { movimentacao_id: m.id, correcao: txt });
+      if(r.erro){ aviso("app-aviso", "Carta de correção: " + r.erro, "erro"); return; }
+      movNfeModalFechar();
+      aviso("app-aviso", `Carta de correção ${r.data.sequencia || ""} registrada na SEFAZ.`, "ok");
+      if(r.data.url) window.open(r.data.url, "_blank");
+      await movNfeRecarregar();
+    }
+  });
+}
+function movNfeCancelar(){
+  const m = movimentacaoAtual;
+  const horas = m.nf_data_autorizacao ? (Date.now() - new Date(m.nf_data_autorizacao).getTime()) / 3600000 : 0;
+  movNfeModal({
+    titulo: `Cancelar NF-e · NF ${m.nf_numero || ""}`,
+    corpo: `<div class="dist-aviso ${horas > 24 ? "perigo" : "alerta"}">${horas > 24
+      ? `A nota foi autorizada há ${Math.floor(horas)} h: a SEFAZ costuma aceitar o cancelamento só nas primeiras 24 h. Pode tentar; se recusar, fale com o contador.`
+      : "O cancelamento é definitivo. Para levar a carga depois, crie outro documento."}</div>`,
+    texto: true, rotulo: "Motivo do cancelamento", min: 15, max: 255, botao: "✗ Cancelar a NF-e", perigo: true,
+    onOk: async (txt) => {
+      const r = await fiscalChamarFocus("cancelar", { movimentacao_id: m.id, justificativa: txt });
+      if(r.erro){ aviso("app-aviso", "Cancelamento: " + r.erro, "erro"); return; }
+      movNfeModalFechar();
+      aviso("app-aviso", "NF-e cancelada" + (r.data.mensagem ? ": " + r.data.mensagem : "."), "ok");
+      await movNfeRecarregar();
+    }
+  });
+}
+function movNfeInutilizar(){
+  const m = movimentacaoAtual;
+  movNfeModal({
+    titulo: `Inutilizar o número ${m.nf_numero}/${m.nf_serie || ""}`,
+    corpo: `<p class="nota">O número ${esc(m.nf_numero)} da série ${esc(m.nf_serie || "")} ficou reservado para esta nota rejeitada. Inutilize só se este documento não vai mais ser emitido: a SEFAZ registra o salto da numeração.</p>`,
+    texto: true, rotulo: "Justificativa", min: 15, max: 255, botao: "Inutilizar o número", perigo: true,
+    onOk: async (txt) => {
+      const r = await fiscalChamarFocus("inutilizar", { movimentacao_id: m.id, numero_inicial: Number(m.nf_numero), numero_final: Number(m.nf_numero), serie: m.nf_serie, justificativa: txt });
+      if(r.erro){ aviso("app-aviso", "Inutilização: " + r.erro, "erro"); return; }
+      movNfeModalFechar();
+      aviso("app-aviso", r.data.mensagem || "Número inutilizado.", "ok");
+      await movNfeRecarregar();
+    }
+  });
+}
+
 /* ---------- Listeners ---------- */
 function ligarFichaMovimentacao(){
   // Painel: visões + filtros + nova + clique nas linhas
@@ -978,6 +1384,18 @@ function ligarFichaMovimentacao(){
   $("btn-fechar-uninfe")?.addEventListener("click", () => { $("mov-uninfe-modal").style.display = "none"; });
   $("btn-copiar-uninfe")?.addEventListener("click", copiarUniNFe);
   $("btn-recomenda-mdf")?.addEventListener("click", verificarMDFRecomendado);
+
+  // fase 105b: NF-e pelo app (Focus NFe)
+  $("btn-mov-nfe-emitir")?.addEventListener("click", () => comBotaoTravado("btn-mov-nfe-emitir", movNfeEmitir));
+  $("btn-mov-nfe-simular")?.addEventListener("click", () => comBotaoTravado("btn-mov-nfe-simular", movNfeSimularMostrar));
+  $("btn-mov-nfe-consultar")?.addEventListener("click", () => comBotaoTravado("btn-mov-nfe-consultar", movNfeConsultar));
+  $("btn-mov-nfe-danfe")?.addEventListener("click", () => comBotaoTravado("btn-mov-nfe-danfe", () => movNfeArquivo("pdf")));
+  $("btn-mov-nfe-xml")?.addEventListener("click", () => comBotaoTravado("btn-mov-nfe-xml", () => movNfeArquivo("xml")));
+  $("btn-mov-nfe-cce")?.addEventListener("click", movNfeCartaCorrecao);
+  $("btn-mov-nfe-cancelar")?.addEventListener("click", movNfeCancelar);
+  $("btn-mov-nfe-inutilizar")?.addEventListener("click", movNfeInutilizar);
+  $("btn-mov-nfe-modal-fechar")?.addEventListener("click", movNfeModalFechar);
+  $("btn-mov-nfe-modal-ok")?.addEventListener("click", () => comBotaoTravado("btn-mov-nfe-modal-ok", () => _movNfeModalOk ? _movNfeModalOk() : null));
 
   // Notebook (abas internas)
   document.querySelectorAll("#mov-notebook button").forEach(b => {

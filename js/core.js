@@ -161,6 +161,16 @@ const STATUS = {
     em_transito: { label:"Em trânsito", cor:"ambar"    },
     concluida:   { label:"Concluída",   cor:"verde"    },
     cancelada:   { label:"Cancelada",   cor:"vermelho" }
+  },
+  // fase 105b: NF-e de remessa/retorno emitida pelo app (movimentacoes_ativos.nf_status, gravado pela Focus NFe)
+  nfe: {
+    rascunho:    { label:"NF-e rascunho",    cor:"cinza"    },
+    processando: { label:"NF-e processando", cor:"azul"     },
+    autorizada:  { label:"NF-e autorizada",  cor:"verde"    },
+    rejeitada:   { label:"NF-e rejeitada",   cor:"vermelho" },
+    cancelada:   { label:"NF-e cancelada",   cor:"vermelho" },
+    denegada:    { label:"NF-e denegada",    cor:"vermelho" },
+    inutilizada: { label:"NF-e inutilizada", cor:"cinza"    }
   }
 };
 
@@ -907,9 +917,10 @@ const SECOES_SEM_MENU = { movimentacoes: () => podeVerMovimentacoes() };
 /* Fase 49: módulos comerciais (catálogo de serviços e orçamentos) — só diretoria e comercial */
 const SECOES_COMERCIAIS = ["servicos", "orcamentos"];
 /* Fase 53: Movimentações de Ativos (remessa/retorno de máquinas e acessórios) — diretoria, admin, logística, gestor de acessórios e almoxarife.
-   Os demais cargos seguem gerando remessa/retorno pela mobilização, sem precisar da tela. */
+   Os demais cargos seguem gerando remessa/retorno pela mobilização, sem precisar da tela.
+   Fase 105b: o financeiro entra (decisão 6: emite e cancela a NF-e de remessa, que vive na ficha do documento). */
 function podeVerMovimentacoes(){
-  return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_acessorios", "almoxarife", "auditor"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_acessorios", "almoxarife", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
 function podeVerComercial(){
   return !!usuarioAtual && ["diretor", "comercial", "auditor"].includes(usuarioAtual.cargo);

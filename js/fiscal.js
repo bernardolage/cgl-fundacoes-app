@@ -12,6 +12,10 @@
      "Pendências fiscais" de Clientes (gestor de acessórios, financeiro e logística não veem Usuários). Só quem passa
      em podeEmitirFiscal() (core.js; fiscal_pode_emitir() no banco) grava; o admin vê e não edita (decisão 6).
    - NCM de produtos, equipamentos e acessórios: js/fiscal_ncm.js.
+   - Fase 105b (NF-e de remessa/retorno pela Focus NFe): fiscalChamarFocus() fala com a edge function focus-nfe; o bloco
+     da empresa ganha sede, CST/CSOSN, CFOPs, texto legal, IBS/CBS, o certificado A1 (arquivo e senha vão direto para a
+     function e nunca ficam no banco, em log ou no console) e o registro do webhook. Sem a migration da 105b os campos
+     novos ficam desligados (fiscalColunaExiste).
    ==================================================================== */
 
 /* ---------- CPF / CNPJ ---------- */
@@ -118,6 +122,7 @@ function fiscalLigarCep(ids){
 /* ---------- Dados fiscais da empresa (empresa_config.fiscal_*) ---------- */
 const FISCAL_REGIMES = { simples_nacional: "Simples Nacional", lucro_presumido: "Lucro presumido", lucro_real: "Lucro real" };
 const FISCAL_EMPRESA_COLS = "fiscal_cnpj,fiscal_razao_social,fiscal_ie,fiscal_im,fiscal_regime_tributario,fiscal_cnae,fiscal_codigo_servico,fiscal_item_lc116,fiscal_iss_aliquota,fiscal_nfe_serie,fiscal_nfe_proximo_numero,fiscal_nfse_serie,fiscal_nfse_proximo_numero,fiscal_ambiente,fiscal_contador_email";
+const FISCAL_EMPRESA_COLS_105B = "fiscal_uf,fiscal_codigo_municipio,fiscal_cst_icms_remessa,fiscal_cst_pis_cofins_remessa,fiscal_cst_pis_cofins_retorno,fiscal_texto_legal_remessa,fiscal_cfop_remessa_dentro_uf,fiscal_cfop_remessa_fora_uf,fiscal_cfop_retorno_dentro_uf,fiscal_cfop_retorno_fora_uf,fiscal_ibs_cbs_cst_remessa,fiscal_ibs_cbs_cclass_remessa,fiscal_certificado_validade,fiscal_certificado_enviado_em,fiscal_focus_webhook_registrado_em,fiscal_focus_webhook_ambiente";
 const _fiscalEmpresa = {};   // por prefixo: último registro lido
 /* o que falta para a primeira emissão (a 105b confere de novo antes de emitir) */
 function fiscalEmpresaPendencias(e){
@@ -128,13 +133,18 @@ function fiscalEmpresaPendencias(e){
     vazio(e.fiscal_im) && "IM", vazio(e.fiscal_regime_tributario) && "regime", vazio(e.fiscal_cnae) && "CNAE",
     vazio(e.fiscal_codigo_servico) && "código de serviço", vazio(e.fiscal_iss_aliquota) && "ISS",
     (vazio(e.fiscal_nfe_serie) || vazio(e.fiscal_nfe_proximo_numero)) && "série/número da NF-e",
-    (vazio(e.fiscal_nfse_serie) || vazio(e.fiscal_nfse_proximo_numero)) && "série/número da NFS-e"
+    (vazio(e.fiscal_nfse_serie) || vazio(e.fiscal_nfse_proximo_numero)) && "série/número da NFS-e",
+    // fase 105b (só quando as colunas existem)
+    ("fiscal_cst_icms_remessa" in e) && vazio(e.fiscal_cst_icms_remessa) && "CST/CSOSN da remessa",
+    ("fiscal_codigo_municipio" in e) && (vazio(e.fiscal_uf) || vazio(e.fiscal_codigo_municipio)) && "UF/município da sede",
+    ("fiscal_certificado_validade" in e) && vazio(e.fiscal_certificado_validade) && "certificado A1"
   ].filter(Boolean);
 }
 async function fiscalEmpresaRender(pref){
   const box = $(pref);
   if(!box) return;
-  const { data, error } = await sb.from("empresa_config").select(FISCAL_EMPRESA_COLS).eq("id", 1).maybeSingle();
+  const tem105b = await fiscalColunaExiste("empresa_config", "fiscal_cfop_remessa_dentro_uf");
+  const { data, error } = await sb.from("empresa_config").select(FISCAL_EMPRESA_COLS + (tem105b ? "," + FISCAL_EMPRESA_COLS_105B : "")).eq("id", 1).maybeSingle();
   if(error){
     const semColuna = error.code === "42703" || /fiscal_/i.test(error.message || "");
     box.innerHTML = `<div class="lista-topo"><h3>Dados fiscais da empresa</h3></div>
@@ -171,12 +181,166 @@ async function fiscalEmpresaRender(pref){
       <div class="campo"><label>Ambiente</label><select id="${id("ambiente")}"><option value="homologacao" ${amb === "homologacao" ? "selected" : ""}>Homologação (teste, sem valor fiscal)</option><option value="producao" ${amb === "producao" ? "selected" : ""}>Produção</option></select></div>
       <div class="campo largo"><label>E-mail do contador</label><input id="${id("contador")}" type="email" value="${v(e.fiscal_contador_email)}" /></div>
     </div>
+    ${tem105b ? fiscalEmpresaHtml105b(pref, e) : ""}
     <div class="form-acoes compacta">
       <button type="button" class="btn" id="${id("salvar")}"${pode ? "" : ' style="display:none;"'}>💾 Salvar dados fiscais</button>
-    </div>`;
-  box.querySelectorAll("input,select").forEach(el => { el.disabled = !pode; });
+    </div>
+    ${tem105b ? fiscalCertificadoHtml(pref, e, pode) : ""}`;
+  box.querySelectorAll("input,select,textarea").forEach(el => { el.disabled = !pode; });
   const bs = $(id("salvar"));
   if(bs && pode) bs.addEventListener("click", () => comBotaoTravado(id("salvar"), () => fiscalEmpresaSalvar(pref)));
+  if(tem105b) fiscalCertificadoLigar(pref);
+}
+
+/* ---------- Fase 105b: NF-e de remessa e retorno (campos da empresa) ---------- */
+const FISCAL_CST_SUGESTOES = [["41", "não tributada (regime normal)"], ["50", "suspensão (regime normal)"], ["90", "outras (regime normal)"], ["400", "não tributada pelo Simples (CSOSN)"], ["900", "outras do Simples (CSOSN)"]];
+function fiscalEmpresaHtml105b(pref, e){
+  const id = s => `${pref}-${s}`;
+  const v = x => esc(x == null ? "" : x);
+  const uf = String(e.fiscal_uf || "").toUpperCase();
+  return `<h3 class="titulo-bloco">NF-e de remessa e retorno (fase 105b)</h3>
+    <p class="nota">Sem destaque de ICMS. O contador define CST/CSOSN, CFOPs e o texto legal antes da primeira nota; item com CFOP próprio usa o dele.</p>
+    <div class="grade">
+      <div class="campo"><label>UF da sede</label><select id="${id("uf")}"><option value="">—</option>${UFS.map(u => `<option value="${u.toLowerCase()}" ${uf === u ? "selected" : ""}>${u}</option>`).join("")}</select></div>
+      <div class="campo"><label>Município da sede (IBGE)</label><input id="${id("mun")}" maxlength="7" value="${v(e.fiscal_codigo_municipio)}" placeholder="3131703 = Itabira" /></div>
+      <div class="campo"><label>CST/CSOSN do ICMS</label><input id="${id("cst")}" maxlength="3" list="${id("cst-lista")}" value="${v(e.fiscal_cst_icms_remessa)}" placeholder="41 (normal) ou 400 (Simples)" />
+        <datalist id="${id("cst-lista")}">${FISCAL_CST_SUGESTOES.map(([c, t]) => `<option value="${c}">${esc(t)}</option>`).join("")}</datalist></div>
+      <div class="campo"><label>CST PIS/COFINS na remessa</label><input id="${id("pis-rem")}" maxlength="2" value="${v(e.fiscal_cst_pis_cofins_remessa)}" placeholder="49" title="49 = outras operações de saída" /></div>
+      <div class="campo"><label>CST PIS/COFINS no retorno</label><input id="${id("pis-ret")}" maxlength="2" value="${v(e.fiscal_cst_pis_cofins_retorno)}" placeholder="98" title="98 = outras operações de entrada" /></div>
+      <div class="campo"><label>CFOP remessa dentro da UF</label><input id="${id("cfop-rd")}" maxlength="4" value="${v(e.fiscal_cfop_remessa_dentro_uf)}" placeholder="5949" /></div>
+      <div class="campo"><label>CFOP remessa fora da UF</label><input id="${id("cfop-rf")}" maxlength="4" value="${v(e.fiscal_cfop_remessa_fora_uf)}" placeholder="6949" /></div>
+      <div class="campo"><label>CFOP retorno dentro da UF</label><input id="${id("cfop-td")}" maxlength="4" value="${v(e.fiscal_cfop_retorno_dentro_uf)}" placeholder="1949" /></div>
+      <div class="campo"><label>CFOP retorno fora da UF</label><input id="${id("cfop-tf")}" maxlength="4" value="${v(e.fiscal_cfop_retorno_fora_uf)}" placeholder="2949" /></div>
+      <div class="campo"><label>IBS/CBS: CST</label><input id="${id("ibs-cst")}" maxlength="3" value="${v(e.fiscal_ibs_cbs_cst_remessa)}" placeholder="vazio = sem o grupo" title="Reforma tributária: 3 dígitos; vazio, a nota vai sem o grupo IBS/CBS" /></div>
+      <div class="campo"><label>IBS/CBS: classificação</label><input id="${id("ibs-class")}" maxlength="6" value="${v(e.fiscal_ibs_cbs_cclass_remessa)}" placeholder="6 dígitos (cClassTrib)" /></div>
+      <div class="campo largo"><label>Texto legal (informações complementares)</label><textarea id="${id("texto-legal")}" rows="2" maxlength="2000" placeholder="ex.: base legal da não incidência do ICMS na remessa para prestação de serviço">${v(e.fiscal_texto_legal_remessa)}</textarea></div>
+    </div>`;
+}
+/* campos da 105b no salvar: null = colunas ainda não existem; { erro } = valor inválido */
+function fiscalEmpresaValores105b(pref){
+  if(!$(`${pref}-cfop-rd`)) return null;
+  const g = s => ($(`${pref}-${s}`)?.value || "").trim();
+  const reg = {
+    fiscal_uf: g("uf") || null,
+    fiscal_codigo_municipio: g("mun").replace(/\D/g, "") || null,
+    fiscal_cst_icms_remessa: g("cst").replace(/\D/g, "") || null,
+    fiscal_cst_pis_cofins_remessa: g("pis-rem").replace(/\D/g, "") || "49",
+    fiscal_cst_pis_cofins_retorno: g("pis-ret").replace(/\D/g, "") || "98",
+    fiscal_cfop_remessa_dentro_uf: g("cfop-rd").replace(/\D/g, "") || "5949",
+    fiscal_cfop_remessa_fora_uf: g("cfop-rf").replace(/\D/g, "") || "6949",
+    fiscal_cfop_retorno_dentro_uf: g("cfop-td").replace(/\D/g, "") || "1949",
+    fiscal_cfop_retorno_fora_uf: g("cfop-tf").replace(/\D/g, "") || "2949",
+    fiscal_ibs_cbs_cst_remessa: g("ibs-cst").replace(/\D/g, "") || null,
+    fiscal_ibs_cbs_cclass_remessa: g("ibs-class").replace(/\D/g, "") || null,
+    fiscal_texto_legal_remessa: g("texto-legal") || null
+  };
+  const erros = [];
+  if(reg.fiscal_codigo_municipio && !/^\d{7}$/.test(reg.fiscal_codigo_municipio)) erros.push("município da sede com 7 dígitos (IBGE)");
+  if(reg.fiscal_cst_icms_remessa && !/^\d{2,3}$/.test(reg.fiscal_cst_icms_remessa)) erros.push("CST (2 dígitos) ou CSOSN (3 dígitos) do ICMS");
+  if(!/^\d{2}$/.test(reg.fiscal_cst_pis_cofins_remessa) || !/^\d{2}$/.test(reg.fiscal_cst_pis_cofins_retorno)) erros.push("CST de PIS/COFINS com 2 dígitos");
+  [["fiscal_cfop_remessa_dentro_uf", "5", "remessa dentro da UF"], ["fiscal_cfop_remessa_fora_uf", "6", "remessa fora da UF"],
+   ["fiscal_cfop_retorno_dentro_uf", "1", "retorno dentro da UF"], ["fiscal_cfop_retorno_fora_uf", "2", "retorno fora da UF"]].forEach(([k, ini, t]) => {
+    if(!new RegExp(`^${ini}\\d{3}$`).test(reg[k])) erros.push(`CFOP de ${t} começa com ${ini} (4 dígitos)`);
+  });
+  if(!!reg.fiscal_ibs_cbs_cst_remessa !== !!reg.fiscal_ibs_cbs_cclass_remessa) erros.push("IBS/CBS: CST e classificação juntos (ou os dois vazios)");
+  if(reg.fiscal_ibs_cbs_cst_remessa && !/^\d{3}$/.test(reg.fiscal_ibs_cbs_cst_remessa)) erros.push("CST do IBS/CBS com 3 dígitos");
+  if(reg.fiscal_ibs_cbs_cclass_remessa && !/^\d{6}$/.test(reg.fiscal_ibs_cbs_cclass_remessa)) erros.push("classificação do IBS/CBS com 6 dígitos");
+  return erros.length ? { erro: erros.join("; ") } : reg;
+}
+
+/* ---------- Fase 105b: chamada da function focus-nfe ----------
+   Devolve { data } ou { erro, corpo } com a mensagem real da function (FunctionsHttpError traz o corpo em error.context). */
+async function fiscalChamarFocus(acao, corpo){
+  try {
+    const { data, error } = await sb.functions.invoke("focus-nfe", { body: { acao, ...(corpo || {}) } });
+    if(error){
+      let msg = error.message || "erro", det = null;
+      try { det = await error.context?.json(); if(det?.error) msg = det.error; } catch(_e){}
+      return { erro: msg, corpo: det || {} };
+    }
+    return { data: data || {} };
+  } catch(e){
+    return { erro: e.message || String(e), corpo: {} };
+  }
+}
+
+/* ---------- Fase 105b: certificado A1 e webhook da Focus ----------
+   O arquivo (.pfx/.p12) é lido no navegador em base64 e vai, com a senha, direto para a function focus-nfe, que repassa à
+   Focus (API de Empresas). Nada disso é gravado no banco, em log ou no console; o app guarda só a validade. Envio só pelo
+   diretor (decisão 2); consulta da validade e registro do webhook por quem emite. */
+function fiscalCertificadoHtml(pref, e, pode){
+  const id = s => `${pref}-${s}`;
+  const diretor = !!usuarioAtual && usuarioAtual.cargo === "diretor";
+  const val = e.fiscal_certificado_validade;
+  const vencido = val && String(val).slice(0, 10) < hojeISO();
+  const hook = e.fiscal_focus_webhook_registrado_em;
+  return `<h3 class="titulo-bloco">Certificado digital A1 e webhook da Focus NFe</h3>
+    <div class="grade">
+      <div class="campo"><label>Validade do certificado</label><div>${val ? `${dataBR(val)} <span class="tag ${vencido ? "vermelho" : "verde"}">${vencido ? "vencido" : "válido"}</span>` : '<span class="meta">não enviado</span>'}</div></div>
+      <div class="campo"><label>Enviado à Focus em</label><div>${e.fiscal_certificado_enviado_em ? esc(dataBR(e.fiscal_certificado_enviado_em)) : '<span class="meta">—</span>'}</div></div>
+      <div class="campo"><label>Webhook de NF-e</label><div>${hook ? `registrado em ${esc(dataBR(hook))} <span class="tag ${e.fiscal_focus_webhook_ambiente === "producao" ? "verde" : "ambar"}">${e.fiscal_focus_webhook_ambiente === "producao" ? "produção" : "homologação"}</span>` : '<span class="meta">não registrado</span>'}</div></div>
+    </div>
+    ${diretor ? `<div class="grade">
+      <div class="campo"><label>Arquivo do certificado (.pfx ou .p12)</label><input type="file" id="${id("cert-arq")}" accept=".pfx,.p12" /></div>
+      <div class="campo"><label>Senha do certificado</label><input type="password" id="${id("cert-senha")}" autocomplete="new-password" /></div>
+    </div>` : ""}
+    <div class="form-acoes compacta">
+      ${diretor ? `<button type="button" class="btn" id="${id("cert-enviar")}">🔐 Enviar certificado à Focus</button>` : ""}
+      ${pode ? `<button type="button" class="btn-sec" id="${id("cert-status")}">Consultar validade</button>
+      <button type="button" class="btn-sec" id="${id("webhook")}" title="Registra na Focus o aviso automático de status das notas (ambiente atual)">Registrar webhook</button>` : ""}
+    </div>
+    <p class="nota">O arquivo e a senha vão direto para a Focus pela função do servidor e não ficam guardados no app; fica só a validade. O webhook é registrado por ambiente: ao virar para produção, registre de novo.</p>`;
+}
+function fiscalCertificadoLigar(pref){
+  const id = s => `${pref}-${s}`;
+  $(id("cert-enviar"))?.addEventListener("click", () => comBotaoTravado(id("cert-enviar"), () => fiscalCertificadoEnviar(pref)));
+  $(id("cert-status"))?.addEventListener("click", () => comBotaoTravado(id("cert-status"), async () => {
+    const r = await fiscalChamarFocus("certificado_status");
+    if(r.erro){ aviso("app-aviso", "Certificado: " + r.erro, "erro"); return; }
+    aviso("app-aviso", r.data.validade ? `Certificado válido até ${dataBR(r.data.validade)}.` : "A Focus não informou a validade do certificado.", r.data.validade ? "ok" : "erro");
+    await fiscalEmpresaRender(pref);
+  }));
+  $(id("webhook"))?.addEventListener("click", () => comBotaoTravado(id("webhook"), async () => {
+    const r = await fiscalChamarFocus("webhook_registrar");
+    if(r.erro){ aviso("app-aviso", "Webhook: " + r.erro, "erro"); return; }
+    aviso("app-aviso", r.data.mensagem || "Webhook registrado.", "ok");
+    await fiscalEmpresaRender(pref);
+  }));
+}
+function fiscalLerArquivoBase64(arquivo){
+  return new Promise((ok, falha) => {
+    const leitor = new FileReader();
+    leitor.onload = () => ok(String(leitor.result || "").replace(/^data:[^,]*,/, ""));
+    leitor.onerror = () => falha(new Error("Não foi possível ler o arquivo."));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+async function fiscalCertificadoEnviar(pref){
+  const inpArq = $(`${pref}-cert-arq`), inpSenha = $(`${pref}-cert-senha`);
+  const arquivo = inpArq?.files?.[0];
+  if(!arquivo){ aviso("app-aviso", "Escolha o arquivo do certificado (.pfx ou .p12).", "erro"); return; }
+  if(!/\.(pfx|p12)$/i.test(arquivo.name)){ aviso("app-aviso", "O certificado A1 é um arquivo .pfx ou .p12.", "erro"); return; }
+  if(arquivo.size > 150 * 1024){ aviso("app-aviso", "Arquivo grande demais para um certificado A1 (até 150 KB).", "erro"); return; }
+  if(!inpSenha?.value){ aviso("app-aviso", "Informe a senha do certificado.", "erro"); return; }
+  if(!confirm("Enviar o certificado A1 da CGL para a Focus NFe? O arquivo e a senha não ficam guardados no app.")) return;
+  let r;
+  try {
+    const base64 = await fiscalLerArquivoBase64(arquivo);
+    r = await fiscalChamarFocus("certificado_enviar", { arquivo_base64: base64, senha: inpSenha.value });
+  } catch(e){
+    r = { erro: e.message || "falha ao ler o arquivo" };
+  } finally {
+    // arquivo e senha saem da tela em qualquer caso
+    if(inpArq) inpArq.value = "";
+    if(inpSenha) inpSenha.value = "";
+  }
+  if(r.erro){
+    const det = (r.corpo?.erros || []).map(x => x.mensagem).filter(Boolean).join("; ");
+    aviso("app-aviso", "Certificado não enviado: " + r.erro + (det && !r.erro.includes(det) ? " (" + det + ")" : ""), "erro");
+    return;
+  }
+  aviso("app-aviso", `Certificado enviado à Focus${r.data.validade ? `: válido até ${dataBR(r.data.validade)}` : ""}${r.data.cnpj_confere === false ? ". ATENÇÃO: o CNPJ do certificado não é o da empresa." : "."}`, r.data.cnpj_confere === false ? "erro" : "ok");
+  await fiscalEmpresaRender(pref);
 }
 async function fiscalEmpresaSalvar(pref){
   if(!(typeof podeEmitirFiscal === "function" && podeEmitirFiscal())){ aviso("app-aviso", "Seu cargo só consulta os dados fiscais da empresa.", "erro"); return; }
@@ -212,6 +376,9 @@ async function fiscalEmpresaSalvar(pref){
     const n = reg[k]; if(n != null && !(Number.isInteger(n) && n >= 1 && n <= 999999999)) erros.push(`próximo número da ${t} inteiro a partir de 1`);
   });
   if(reg.fiscal_contador_email && !fiscalEmailsValidos(reg.fiscal_contador_email)) erros.push("e-mail do contador");
+  const reg105b = fiscalEmpresaValores105b(pref);   // fase 105b: null sem a migration
+  if(reg105b && reg105b.erro) erros.push(reg105b.erro);
+  else if(reg105b) Object.assign(reg, reg105b);
   if(erros.length){ aviso("app-aviso", "Confira: " + erros.join("; ") + ".", "erro"); return; }
   const antes = _fiscalEmpresa[pref] || {};
   if(reg.fiscal_ambiente === "producao" && antes.fiscal_ambiente !== "producao"
