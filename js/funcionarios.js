@@ -1270,15 +1270,51 @@ async function funcAdmConcluir(){
 const FUNC_ACESSO_CARGOS = { operador: "Operador", encarregado: "Encarregado", mecanico: "Mecânico", auxiliar_almoxarifado: "Auxiliar de almoxarifado" };
 let _funcAcesso = { funcionarioId: null, perfil: null, modo: null };   // modo: null | "senha" (formulário de nova senha aberto)
 
-/* Fase 100 (chamado #102): o almoxarife (Julio) cria o login da equipe dele, só no funcionário de departamento
-   "Almoxarif…" (o próprio ou o pai), com o cargo travado em Auxiliar de almoxarifado; cria e redefine a senha,
-   não desativa nem reativa (RH e administração). A function convidar-usuario confere tudo de novo. */
-function funcAcessoEhAlmox(){ return !!usuarioAtual && usuarioAtual.cargo === "almoxarife"; }
-function funcAcessoNoSetorAlmox(){
-  const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+/* Fase 100 (chamado #102) e hotfix 145 (chamado #145): criadores de login com setor. Cada um cria o login e define
+   nova senha só da equipe dele; não desativa nem reativa (RH e administração), não vê o CPF e não passa por MFA.
+   - almoxarife (Julio, fase 100): funcionário de departamento "Almoxarif…" (o próprio ou o pai), cargo travado em
+     Auxiliar de almoxarifado.
+   - gestor_manutencao (Bruno, hotfix 145): funcionário de departamento "MANUTENÇÃO" (o próprio ou o pai), menos o
+     subdepartamento Almoxarife (continua com o Julio e o RH; a exclusão vale só para o departamento do próprio
+     funcionário), cargos Mecânico, Operador ou Encarregado.
+   Nome do departamento comparado sem acento e em maiúsculas. A function convidar-usuario confere tudo de novo. */
+const FUNC_ACESSO_CRIADORES = {
+  almoxarife: {
+    setor: /ALMOXARIF/, exclui: null, cargos: ["auxiliar_almoxarifado"],
+    ajuda: "A equipe do almoxarifado entra como <em>Auxiliar de almoxarifado</em>."
+  },
+  gestor_manutencao: {
+    setor: /MANUTEN/, exclui: /ALMOXARIF/, cargos: ["mecanico", "operador", "encarregado"],
+    ajuda: "A equipe da manutenção entra como <em>Mecânico</em> (soldadores e mecânicos), <em>Operador</em> (operadores e ajudantes) ou <em>Encarregado</em> (encarregados), pela função do cadastro; outra função pede o cargo aqui, só entre esses três."
+  },
+};
+/* cópia de CARGO_POR_FUNCAO da function convidar-usuario (mesma ordem): no front só serve para o select do criador
+   com setor saber se o cargo automático é um dos dele; quem decide é a function */
+const FUNC_ACESSO_CARGO_POR_FUNCAO = [
+  [/ALMOXARIF/, "auxiliar_almoxarifado"],
+  [/ENCARREGAD/, "encarregado"],
+  [/SOLDADOR|MECANIC/, "mecanico"],
+  [/OPERADOR|AJUDANTE/, "operador"],
+];
+function funcAcessoNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); }
+function funcAcessoCargoPelaFuncao(funcao){
+  const f = funcAcessoNorm(funcao).replace(/\s+/g, " ").trim();
+  const regra = FUNC_ACESSO_CARGO_POR_FUNCAO.find(([re]) => re.test(f));
+  return regra ? regra[1] : null;
+}
+/* "mecânico, operador ou encarregado": rótulos dos cargos em minúsculas, para as mensagens */
+function funcAcessoListaCargos(cargos, conjuncao){
+  const r = (cargos || []).map(c => (FUNC_ACESSO_CARGOS[c] || c).toLowerCase());
+  return r.length > 1 ? r.slice(0, -1).join(", ") + " " + conjuncao + " " + r[r.length - 1] : (r[0] || "");
+}
+/* criador com setor do usuário logado (almoxarife, gestor de manutenção) ou null (rh/admin/diretor e os demais) */
+function funcAcessoCriador(){ return (usuarioAtual && FUNC_ACESSO_CRIADORES[usuarioAtual.cargo]) || null; }
+function funcAcessoNoSetor(cr){
+  if(!cr) return false;
   let d = (_depts || []).find(x => x.id === ($("func-departamento")?.value || ""));
+  if(d && cr.exclui && cr.exclui.test(funcAcessoNorm(d.nome))) return false;   // hotfix 145: o Almoxarife da MANUTENÇÃO não é do gestor
   for(let nivel = 0; d && nivel < 2; nivel++){
-    if(/ALMOXARIF/.test(norm(d.nome))) return true;
+    if(cr.setor.test(funcAcessoNorm(d.nome))) return true;
     d = d.parent_id ? _depts.find(x => x.id === d.parent_id) : null;
   }
   return false;
@@ -1286,7 +1322,8 @@ function funcAcessoNoSetorAlmox(){
 function funcAcessoPodeVer(){
   if(!usuarioAtual) return false;
   if(["diretor", "admin", "rh"].includes(usuarioAtual.cargo)) return true;
-  return funcAcessoEhAlmox() && !!funcEditId && funcAcessoNoSetorAlmox();
+  const cr = funcAcessoCriador();
+  return !!cr && !!funcEditId && funcAcessoNoSetor(cr);
 }
 function funcAcessoPodeOperar(){ return funcAcessoPodeVer() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
 function funcAcessoAplicarVisibilidade(){
@@ -1297,7 +1334,7 @@ function funcAcessoAplicarVisibilidade(){
 async function funcAcessoCarregar(){
   const cont = $("func-acesso-conteudo");
   if(!cont) return;
-  if(!funcAcessoPodeVer()){ cont.innerHTML = `<p class="vazio">Só RH, administração e diretoria cuidam do login do funcionário (o almoxarife, da equipe do almoxarifado).</p>`; return; }
+  if(!funcAcessoPodeVer()){ cont.innerHTML = `<p class="vazio">Só RH, administração e diretoria cuidam do login do funcionário (o almoxarife, da equipe do almoxarifado; o gestor de manutenção, da equipe da manutenção).</p>`; return; }
   if(!funcEditId){ cont.innerHTML = `<p class="vazio">Salve o funcionário primeiro; depois crie o login aqui.</p>`; return; }
   if(_funcAcesso.funcionarioId !== funcEditId) _funcAcesso = { funcionarioId: funcEditId, perfil: null, modo: null };
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
@@ -1330,23 +1367,39 @@ function renderFuncAcesso(){
   const p = _funcAcesso.perfil;
   const opera = funcAcessoPodeOperar();
   const funcAtivo = ($("func-status")?.value || "ativo") !== "demitido" && !$("func-demissao")?.value && ($("func-ativo")?.checked !== false);
-  const almox = funcAcessoEhAlmox();
+  const cr = funcAcessoCriador();   // fase 100 / hotfix 145: almoxarife e gestor de manutenção, só a equipe deles
   if(!p){
-    const selCargo = almox
-      ? `<div class="campo"><label>Cargo no sistema</label><input value="Auxiliar de almoxarifado" disabled />
-          <div class="meta">Compras, fornecedores e outros cargos: a administração troca depois, na tela Usuários.</div></div>`
-      : `<div class="campo"><label>Cargo no sistema</label>
-        <select id="func-acesso-cargo"><option value="">Automático pela função (${esc($("func-funcao")?.value || "—")})</option>
+    const funcao = $("func-funcao")?.value || "";
+    let selCargo;
+    if(cr && cr.cargos.length === 1){
+      // fase 100: o almoxarife não escolhe (Auxiliar de almoxarifado)
+      selCargo = `<div class="campo"><label>Cargo no sistema</label><input value="${esc(FUNC_ACESSO_CARGOS[cr.cargos[0]] || cr.cargos[0])}" disabled />
+          <div class="meta">Compras, fornecedores e outros cargos: a administração troca depois, na tela Usuários.</div></div>`;
+    } else if(cr){
+      // hotfix 145: o gestor de manutenção escolhe só entre os cargos dele; função sem cargo automático (ex.:
+      // Apontador de Produção) ou com um cargo que não é dele exige a escolha (funcAcessoCriar não manda vazio)
+      const auto = funcAcessoCargoPelaFuncao(funcao);
+      const autoOk = !!auto && cr.cargos.includes(auto);
+      selCargo = `<div class="campo"><label>Cargo no sistema${autoOk ? "" : " *"}</label>
+        <select id="func-acesso-cargo">${autoOk
+          ? `<option value="">Automático pela função (${esc(funcao)}): ${esc(FUNC_ACESSO_CARGOS[auto])}</option>`
+          : `<option value="">Escolha o cargo</option>`}
+          ${cr.cargos.map(v => `<option value="${v}">${esc(FUNC_ACESSO_CARGOS[v] || v)}</option>`).join("")}</select>
+        <div class="meta">${autoOk ? "" : `A função ${esc(funcao || "—")} não tem cargo automático: escolha ${esc(funcAcessoListaCargos(cr.cargos, "ou"))}. `}Outros cargos: a administração troca depois, na tela Usuários.</div></div>`;
+    } else {
+      selCargo = `<div class="campo"><label>Cargo no sistema</label>
+        <select id="func-acesso-cargo"><option value="">Automático pela função (${esc(funcao || "—")})</option>
           ${Object.entries(FUNC_ACESSO_CARGOS).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>`;
+    }
     cont.innerHTML = `<div class="meta bloco" style="margin-bottom:12px;"><span class="tag cinza">Sem login</span> Este funcionário ainda não entra no sistema.</div>
       ${!funcAtivo ? `<p class="vazio">Funcionário inativo ou demitido não recebe login.</p>` : !opera ? `<p class="vazio">Usuário de revisão não cria login.</p>` : `
-      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${almox ? " (pelo RH)" : ""}. ${almox ? "A equipe do almoxarifado entra como <em>Auxiliar de almoxarifado</em>." : "Operadores e ajudantes entram como <em>Operador</em>, encarregados como <em>Encarregado</em>, soldadores e mecânicos como <em>Mecânico</em>, o pessoal do almoxarifado como <em>Auxiliar de almoxarifado</em>; outra função pede o cargo aqui."}</p>
+      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ? cr.ajuda : "Operadores e ajudantes entram como <em>Operador</em>, encarregados como <em>Encarregado</em>, soldadores e mecânicos como <em>Mecânico</em>, o pessoal do almoxarifado como <em>Auxiliar de almoxarifado</em>; outra função pede o cargo aqui."}</p>
       <div class="grade">${selCargo}</div>
       ${funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar")}`}`;
     return;
   }
-  // fase 100: o almoxarife só mexe em login de auxiliar de almoxarifado e não desativa/reativa
-  const operaEste = opera && (!almox || p.cargo === "auxiliar_almoxarifado");
+  // fase 100 / hotfix 145: o criador com setor só mexe em login com os cargos que ele dá e não desativa/reativa
+  const operaEste = opera && (!cr || cr.cargos.includes(p.cargo));
   const situacao = p.ativo === false ? `<span class="tag vermelho">Login desativado</span>`
     : p.senha_provisoria ? `<span class="tag ambar">Senha provisória</span> <span class="tag verde">Login ativo</span>`
     : `<span class="tag verde">Login ativo</span>`;
@@ -1359,15 +1412,15 @@ function renderFuncAcesso(){
     <p class="meta bloco" style="margin-bottom:12px;">${p.ativo === false
       ? "O funcionário não consegue entrar. Reativar libera o acesso de novo (com a senha de antes ou uma nova)."
       : p.senha_provisoria ? "Ele ainda não trocou a senha provisória: no primeiro acesso o sistema obriga a troca."
-      : "Senha já trocada pelo funcionário. Sem a senha, defina uma nova aqui e repasse."}${almox && !operaEste ? " Este login não é de auxiliar de almoxarifado: quem cuida dele é o RH ou a administração." : ""}</p>
-    ${!operaEste ? "" : almox && p.ativo === false ? `<p class="vazio">Login desativado: reativar fica com o RH ou a administração.</p>` : _funcAcesso.modo === "senha"
+      : "Senha já trocada pelo funcionário. Sem a senha, defina uma nova aqui e repasse."}${cr && !operaEste ? ` Este login não é de ${esc(funcAcessoListaCargos(cr.cargos, "nem"))}: quem cuida dele é o RH ou a administração.` : ""}</p>
+    ${!operaEste ? "" : cr && p.ativo === false ? `<p class="vazio">Login desativado: reativar fica com o RH ou a administração.</p>` : _funcAcesso.modo === "senha"
       ? funcAcessoSenhaHtml("-nova", p.ativo === false ? "✅ Reativar com esta senha" : "🔑 Definir nova senha", p.ativo === false ? "btn-func-acesso-reativar-senha" : "btn-func-acesso-nova-senha-ok")
       : `<div class="form-acoes compacta">
           ${p.ativo === false
             ? `<button type="button" class="btn" id="btn-func-acesso-reativar" ${funcAtivo ? "" : 'disabled title="Reative o cadastro do funcionário antes"'}>✅ Reativar login</button>
                <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha" ${funcAtivo ? "" : "disabled"}>🔑 Reativar com nova senha</button>`
             : `<button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha">🔑 Nova senha</button>
-               ${almox ? "" : '<button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo);">⛔ Desativar login</button>'}`}
+               ${cr ? "" : '<button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo);">⛔ Desativar login</button>'}`}
         </div>`}`;
 }
 
@@ -1397,7 +1450,18 @@ async function funcAcessoCriar(){
   if(!funcAcessoPodeOperar() || !funcEditId) return;
   const senha = funcAcessoLerSenha("");
   if(!senha) return;
-  const cargo = funcAcessoEhAlmox() ? "auxiliar_almoxarifado" : ($("func-acesso-cargo")?.value || "");   // fase 100: cargo travado para o almoxarife
+  // fase 100: cargo travado para o almoxarife; hotfix 145: o gestor de manutenção escolhe entre os cargos dele e,
+  // quando o cargo automático pela função não é um deles, a escolha é obrigatória (não vai vazio para a function)
+  const cr = funcAcessoCriador();
+  let cargo = $("func-acesso-cargo")?.value || "";
+  if(cr && cr.cargos.length === 1) cargo = cr.cargos[0];
+  else if(cr && cargo && !cr.cargos.includes(cargo)){
+    aviso("func-acesso-aviso", `Escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Cargo no sistema".`, "erro"); return;
+  } else if(cr && !cargo && !cr.cargos.includes(funcAcessoCargoPelaFuncao($("func-funcao")?.value))){
+    aviso("func-acesso-aviso", `A função deste funcionário não tem cargo automático: escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Cargo no sistema".`, "erro");
+    $("func-acesso-cargo")?.focus();
+    return;
+  }
   try {
     const r = await funcAcessoChamar({ acao: "criar_login_funcionario", senha, cargo: cargo || undefined });
     aviso("func-acesso-aviso", `Login criado como ${FUNC_ACESSO_CARGOS[r.cargo] || r.cargo}. Repasse ao funcionário: entrar com o CPF (só números) e a senha que você digitou; o sistema pede a troca no primeiro acesso.`, "ok");
