@@ -22,6 +22,8 @@ let _balItens = [];                // fase 78: itens da saída no balcão [{ p, 
 let _balRetirante = null;          // funcionário que retira
 let _balFuncs = null;              // funcionários ativos (busca do retirante)
 let _balHoje = [];                 // saídas de hoje
+let _balDestinoOrigem = "";        // fase 108c: quem preencheu o destino ("", "sugestao", "alocacao", "manual")
+let _balAlocCache = {};            // fase 108c: funcionario_id -> resposta de estoque_destino_epi
 
 const EST_TIPO_LBL = { entrada: "Entrada", saida: "Saída", ajuste: "Ajuste", devolucao: "Devolução", transferencia: "Transferência" };
 const EST_TIPO_COR = { entrada: "verde", saida: "ambar", ajuste: "azul", devolucao: "verde", transferencia: "cinza" };
@@ -77,7 +79,12 @@ async function carregarEstoque(force){
    Fase 100 (#97): é a tela única de saída ("Registrar movimento" ficou só com entrada e inventário). Quem retira
    é obrigatório só quando a lista tem EPI (produtos.categoria_custo = epi; decisão 1 do Bernardo) e vai para
    movimentacoes_estoque.funcionario_id; com EPI e retirante, a assinatura do recebimento abre em seguida
-   (js/epi.js). */
+   (js/epi.js).
+   Fase 108c: com EPI na lista e quem retira escolhido, o destino vem da alocação vigente do funcionário (obra) ou,
+   sem ela, do centro SESMT (RPC estoque_destino_epi, a mesma regra do banco); o almoxarife troca à mão e a troca vence.
+   Método (opcional) só com destino obra; vai para movimentacoes_estoque.metodo e vw_custos. */
+const BAL_METODOS = [["helice_continua", "Hélice contínua"], ["escavada", "Trado mecanizado (escavada)"], ["raiz", "Raiz"],
+  ["secante", "Hélice secante"], ["hsa", "HSA"], ["strauss", "Strauss"], ["pre_moldada", "Pré-moldada"], ["outro", "Outro"]];
 function balPreencherDestino(){
   const sel = $("bal-destino"); if(!sel) return;
   const obras = _estObras.filter(o => o.status === "em_andamento");
@@ -86,6 +93,71 @@ function balPreencherDestino(){
     + `<optgroup label="Obra em andamento">${obras.map(o => `<option value="obra:${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("")}</optgroup>`
     + `<optgroup label="TAG">${_estEquips.map(e => `<option value="eq:${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("")}</optgroup>`
     + `<optgroup label="Setor">${grupo("setor")}</optgroup><optgroup label="Obra interna">${grupo("obra_interna")}</optgroup>`;
+  const met = $("bal-metodo");   // fase 108c
+  if(met) met.innerHTML = `<option value="">— sem método —</option>` + BAL_METODOS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
+  balAplicarMetodo();
+}
+/* fase 108c: método só faz sentido com destino obra */
+function balAplicarMetodo(){
+  const met = $("bal-metodo"), dv = $("bal-destino")?.value || ""; if(!met) return;
+  const obra = dv.startsWith("obra:");
+  met.disabled = !obra;
+  if(!obra) met.value = "";
+}
+/* fase 108c: EPI para o destino pela alocação = categoria EPI / UNIFORMES ou EPI, ou categoria de custo epi/uniforme
+   (produto_eh_epi no banco). A obrigatoriedade de quem retira e a ficha de EPI seguem por balEhEpi (fase 100). */
+const BAL_CATEGORIAS_EPI = ["EPI / UNIFORMES", "EPI"];
+function balEhEpiAloc(p){
+  if(!p) return false;
+  if(p.categoria_custo === "epi" || p.categoria_custo === "uniforme") return true;
+  return BAL_CATEGORIAS_EPI.includes(String(p.categoria?.nome || "").trim().toUpperCase());
+}
+async function balDestinoEpi(funcId){
+  if(!funcId) return null;
+  if(Object.prototype.hasOwnProperty.call(_balAlocCache, funcId)) return _balAlocCache[funcId];
+  const { data, error } = await sb.rpc("estoque_destino_epi", { p_funcionario_id: funcId });
+  if(error) return null;   // migration da 108c ainda não aplicada: sem sugestão, o almoxarife escolhe o destino
+  _balAlocCache[funcId] = data || null;
+  return _balAlocCache[funcId];
+}
+/* a obra da alocação pode não estar "em andamento" (ou o SESMT inativo): a opção entra num grupo próprio */
+function balGarantirOpcao(valor, rotulo){
+  const sel = $("bal-destino"); if(!sel || [...sel.options].some(o => o.value === valor)) return;
+  let g = sel.querySelector("optgroup[data-aloc]");
+  if(!g){ g = document.createElement("optgroup"); g.label = "Pela alocação"; g.dataset.aloc = "1"; sel.insertBefore(g, sel.children[1] || null); }
+  const o = document.createElement("option"); o.value = valor; o.textContent = rotulo; g.appendChild(o);
+}
+function balDiaMes(iso){ const s = String(iso || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : s; }
+async function balAtualizarDestinoAloc(){
+  const box = $("bal-destino-aloc"), sel = $("bal-destino"); if(!box || !sel) return;
+  const ret = _balRetirante;
+  if(!ret || !_balItens.some(i => balEhEpiAloc(i.p))){
+    box.style.display = "none"; box.innerHTML = "";
+    if(_balDestinoOrigem === "alocacao"){ sel.value = ""; _balDestinoOrigem = ""; balAplicarMetodo(); }
+    return;
+  }
+  const d = await balDestinoEpi(ret.id);
+  if(_balRetirante !== ret) return;   // trocou quem retira durante a consulta
+  if(!d){ box.style.display = "none"; box.innerHTML = ""; return; }
+  let valor = "", rotulo = "", txt = "";
+  if(d.origem === "alocacao"){
+    valor = "obra:" + d.obra_id; rotulo = `${d.obra_codigo || ""} — ${d.obra_nome || ""}`;
+    txt = `destino pela alocação: <strong>${esc(ret.nome)} · obra ${esc(d.obra_codigo || "?")} desde ${esc(balDiaMes(d.desde))}</strong>`;
+  } else if(d.origem === "sesmt"){
+    valor = "cc:" + d.centro_custo_id; rotulo = d.centro_nome || "SESMT";
+    const semObra = d.alocacao_id && d.equipamento_codigo;
+    txt = `destino: <strong>${esc(d.centro_nome || "SESMT")} (sem alocação${semObra ? " em obra" : ""})</strong>`
+      + ` <span class="txt-aviso">· ${esc(ret.nome)} ${semObra ? "está alocado só na TAG " + esc(d.equipamento_codigo) : "não tem alocação vigente"}</span>`;
+  } else {
+    txt = `<span class="txt-aviso">${esc(ret.nome)} sem alocação vigente e sem centro SESMT cadastrado: escolha o destino</span>`;
+  }
+  const manual = _balDestinoOrigem === "manual" && !!sel.value && sel.value !== valor;
+  if(valor && !manual){
+    balGarantirOpcao(valor, rotulo);
+    sel.value = valor; _balDestinoOrigem = "alocacao"; balAplicarMetodo();
+  }
+  box.innerHTML = txt + (manual ? ' · <span class="txt-aviso">destino trocado à mão</span>' : "");
+  box.style.display = "";
 }
 function balDestinoTxt(m){
   if(m.obra_id){ const o = _estObras.find(x => x.id === m.obra_id); return "Obra " + (o ? o.codigo : ((typeof mapaObras === "object" && mapaObras && mapaObras[m.obra_id]) || "")); }
@@ -103,7 +175,9 @@ async function balCarregarFuncionarios(){
 function balLigarRetirante(){
   const inp = $("bal-retirante"), lista = $("bal-retirante-res"); if(!inp || !lista) return;
   inp.addEventListener("input", debounce(async () => {
+    const tinha = !!_balRetirante;
     _balRetirante = null;
+    if(tinha) balAtualizarDestinoAloc();   // fase 108c: sem quem retira, o destino pela alocação sai
     const q = semAcentoBal(inp.value.trim());
     if(q.length < 2){ lista.style.display = "none"; return; }
     const fs = (await balCarregarFuncionarios()).filter(f => semAcentoBal(`${f.nome} ${f.matricula || ""}`).includes(q)).slice(0, 15);
@@ -113,13 +187,14 @@ function balLigarRetirante(){
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => {
       _balRetirante = fs.find(f => f.id === d.dataset.id) || null;
       inp.value = _balRetirante ? _balRetirante.nome : ""; lista.style.display = "none";
+      balAtualizarDestinoAloc();   // fase 108c
       $("bal-item")?.focus();
     }));
   }, 200));
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 200));
 }
 function semAcentoBal(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
-const BAL_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,custo_ultimo,codigo_barras,categoria_custo";
+const BAL_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,custo_ultimo,codigo_barras,categoria_custo,categoria:categorias_produto(nome)";   // fase 108c: categoria para o EPI
 function balEhEpi(p){ return !!p && p.categoria_custo === "epi"; }   // fase 100
 async function balBuscar(termo){
   const t = termo.replace(/[%,()]/g, " ").trim(); if(t.length < 2) return [];
@@ -153,6 +228,7 @@ function balAddItem(p){
 function renderBalItens(){
   const tb = $("bal-itens"); if(!tb) return;
   $("bal-contador").textContent = _balItens.length ? `${_balItens.length} item(ns)` : "";
+  balAtualizarDestinoAloc();   // fase 108c: EPI entrou ou saiu da lista
   if(!_balItens.length){ tb.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum item. Bipe ou busque acima.</td></tr>`; return; }
   tb.innerHTML = _balItens.map((it, i) => { const saldo = Number(it.p.estoque_atual || 0), falta = Number(it.quantidade || 0) > saldo;
     return `<tr data-i="${i}" class="${falta && it.p.controle_reposicao ? "est-rep-critico" : ""}">
@@ -176,6 +252,8 @@ async function registrarSaidaBalcao(){
   if(!_balItens.length){ aviso("app-aviso", "Adicione pelo menos um item.", "erro"); $("bal-item").focus(); return; }
   if(_balItens.some(i => !(Number(i.quantidade) > 0))){ aviso("app-aviso", "Há item sem quantidade.", "erro"); return; }
   const destino = dv.startsWith("obra:") ? { obra_id: dv.slice(5) } : dv.startsWith("eq:") ? { equipamento_id: dv.slice(3) } : { centro_custo_id: dv.slice(3) };
+  const met = $("bal-metodo")?.value || "";
+  if(met && destino.obra_id) destino.metodo = met;   // fase 108c: método opcional, só com obra
   const itens = _balItens.slice(), retirante = _balRetirante;
   const { data, error } = await sb.rpc("estoque_saida_registrar", {
     p_retirante_id: retirante ? retirante.id : null, p_destino: destino,
@@ -186,6 +264,7 @@ async function registrarSaidaBalcao(){
   const ids = data || [], n = ids.length;
   aviso("app-aviso", `Saída registrada: ${n} item(ns)${retirante ? " para " + retirante.nome : ""} · ${$("bal-destino").selectedOptions[0]?.textContent || ""}.`, "ok");
   _balItens = []; _balRetirante = null; $("bal-retirante").value = ""; $("bal-doc").value = ""; $("bal-destino").value = "";
+  _balDestinoOrigem = ""; _balAlocCache = {}; $("bal-destino").querySelector("optgroup[data-aloc]")?.remove(); balAplicarMetodo();   // fase 108c
   renderBalItens();
   // fase 100: EPI entregue a uma pessoa → assinatura do recebimento na tela (o RPC devolve os ids na ordem dos itens)
   const assinar = retirante ? itens.map((it, k) => ({ it, id: ids[k] })).filter(x => x.id && balEhEpi(x.it.p)) : [];
@@ -419,7 +498,7 @@ async function estSugerirCentro(produtoId){
   const sel = $("bal-destino"); if(!sel || sel.value) return;
   const { data } = await sb.from("pedido_compra_itens").select("centro_custo_id").eq("produto_id", produtoId).not("centro_custo_id", "is", null).order("created_at", { ascending: false }).limit(1);
   const c = data && data[0] && data[0].centro_custo_id;
-  if(c && !sel.value && [...sel.options].some(o => o.value === "cc:" + c)) sel.value = "cc:" + c;
+  if(c && !sel.value && [...sel.options].some(o => o.value === "cc:" + c)){ sel.value = "cc:" + c; _balDestinoOrigem = "sugestao"; balAplicarMetodo(); }
 }
 /* atalho da Reposição: prepara o formulário para o item; saída vai para a "Saída de material" (fase 100, #97) */
 function estPrepararMovimento(tipo, p){
@@ -491,7 +570,7 @@ function estSituacao(p){
 async function carregarReposicao(){
   const cont = $("est-reposicao"); if(!cont) return;
   const { data, error } = await sb.from("produtos")
-    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,localizacao,odoo_saldo_em,codigo_barras,categoria_custo")
+    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,localizacao,odoo_saldo_em,codigo_barras,categoria_custo,categoria:categorias_produto(nome)")
     .eq("controle_reposicao", true).eq("ativo", true).order("nome");
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   _estRep = data || [];
@@ -658,6 +737,8 @@ function ligarEstoque(){
   $("btn-est-ctrl-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-ctrl-salvar", salvarControlarItem));
   // fase 78: saída no balcão
   balLigarRetirante();
+  // fase 108c: destino escolhido à mão vence o da alocação; método só com obra
+  $("bal-destino")?.addEventListener("change", () => { _balDestinoOrigem = "manual"; balAplicarMetodo(); balAtualizarDestinoAloc(); });
   $("bal-item")?.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); balEnter(); } });
   $("bal-item")?.addEventListener("input", debounce(async () => { const t = $("bal-item").value.trim(); if(t.length < 2){ $("bal-item-res").style.display = "none"; return; } balMostrarLista(await balBuscar(t)); }, 250));
   $("bal-item")?.addEventListener("blur", () => setTimeout(() => { if($("bal-item-res")) $("bal-item-res").style.display = "none"; }, 200));

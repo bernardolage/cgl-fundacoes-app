@@ -222,9 +222,12 @@ async function dashCarregarAcoes(){
   // fase 83: as separações vêm numa view à parte (vw_sc_acoes_sep); fase 84: a fabricação idem (vw_sc_acoes_fab); entram na mesma lista
   // fase 91: caução vencida / a vencer e NF vencida sem recebimento (setor financeiro) em vw_sc_acoes_fin
   // fase 92: preventiva vencida/vencendo e mobilização sem checklist aprovado (setor manutenção) em vw_sc_acoes_man
-  const [dados, sep, fab, fin, man] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*"))]);
+  // fase 108b: chave de dono do custo pendente do usuário logado (vw_pedidos_aprovacao_pendente.dono_meu) entra em Compras
+  const [dados, sep, fab, fin, man, ass] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
+    dashLer("vw_pedidos_aprovacao_pendente", q => q.select("pedido_id,numero,total,quem_assina,criado_em").eq("dono_meu", true).order("criado_em"))]);
   if(!dados) return;
   _dashAcoes = dados.concat(sep || [], fab || [], fin || [], man || []).filter(a => dashGereSetor(a.setor))
+    .concat(dashAcoesAssinatura(ass || []))   // é do usuário (ele é o dono do custo): não passa pelo filtro de setor
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
   _dashAcoes.forEach(a => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
@@ -239,6 +242,19 @@ async function dashCarregarAcoes(){
       <div class="dash-setor-tit">${esc(DASH_SETOR[s] || s)}</div>
       ${_dashAcoes.map((a, i) => a.setor !== s ? "" : dashLinhaAcao(a, i, "acao")).join("")}
     </div>`).join("");
+}
+/* Fase 108b: uma linha por pedido com chave de dono do custo pendente que é do usuário logado (engenheiro responsável
+   da obra, gestor de manutenção ou de frota da TAG, responsável do centro). Abre a ficha do pedido para assinar, mesmo
+   para quem não tem Compras no menu (cmpAbrirParaAssinar em js/compras.js). */
+function dashAcoesAssinatura(linhas){
+  const porPedido = {};
+  linhas.forEach(l => { (porPedido[l.pedido_id] = porPedido[l.pedido_id] || []).push(l); });
+  return Object.values(porPedido).map((ls, k) => {
+    const l = ls[0], dias = Math.floor((Date.now() - new Date(l.criado_em).getTime()) / 86400000);
+    return { setor: "compras", nivel: "atencao", ordem: k, quantidade: 1, secao: "compras", registro_id: l.pedido_id, _assinar: true,
+      titulo: "Compra aguardando a sua assinatura",
+      detalhe: [l.numero, brl(l.total), ls.map(x => x.quem_assina).join("; "), dias >= 1 ? `há ${dias} d` : ""].filter(Boolean).join(" · ") };
+  });
 }
 function dashLinhaAcao(a, i, tipo){
   const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
@@ -532,6 +548,8 @@ async function dashAbrirAcao(a){
       if(id) dashAbrirOrcamento(id); else irParaSecao("orcamentos");
       break;
     case "compras":
+      // fase 108b: chave de dono do custo → ficha do pedido para assinar (com ou sem Compras no menu)
+      if(a._assinar && id && typeof cmpAbrirParaAssinar === "function"){ await cmpAbrirParaAssinar(id); break; }
       if(irParaSecao("compras") && /requisi/i.test(a.titulo) && typeof renderCompras === "function"){
         _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; setTimeout(() => renderCompras(), 400);
       }

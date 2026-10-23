@@ -19,10 +19,11 @@ const PROD_PAGINA = 300;
 const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo";
 
 /* ---------- Categorias ---------- */
+let _prodCatTipo = {};   // fase 108b: id da categoria -> tipo de compra padrão (reposicao | aplicacao_direta | null)
 async function carregarCategorias(){
-  const { data } = await sb.from("categorias_produto").select("id,nome").order("nome");
-  _prodCategorias = {};
-  (data || []).forEach(c => { _prodCategorias[c.id] = c.nome; });
+  const { data } = await sb.from("categorias_produto").select("id,nome,tipo_compra_padrao").order("nome");
+  _prodCategorias = {}; _prodCatTipo = {};
+  (data || []).forEach(c => { _prodCategorias[c.id] = c.nome; _prodCatTipo[c.id] = c.tipo_compra_padrao || null; });
   const opc = '<option value="">— sem categoria —</option>' +
     (data||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
   const sel = $("prod-categoria");
@@ -202,6 +203,32 @@ function prodPreencherCatCusto(valor){
 function prodAplicarCamposEpi(){
   document.querySelectorAll("#prod-ficha .prod-epi").forEach(el => { el.style.display = _prodTemEpi ? "" : "none"; });
 }
+/* Fase 108b: tipo de compra padrão (Reposição de estoque / Aplicação direta). O do produto vence o da categoria; sem
+   nenhum, o item nasce como aplicação direta (produto_tipo_compra_padrao no banco). O da categoria grava na hora, com
+   confirmação, e só para quem escreve em categorias_produto (admin, almoxarife, comprador; diretor). */
+const PROD_TIPO_COMPRA_LBL = { reposicao: "Reposição de estoque", aplicacao_direta: "Aplicação direta" };
+function prodPodeEditarCategoria(){ return !!usuarioAtual && ["diretor", "admin", "almoxarife", "comprador"].includes(usuarioAtual.cargo); }
+function prodAtualizarTipoCompra(){
+  const sel = $("prod-tipo-compra"), selCat = $("prod-cat-tipo-compra"); if(!sel || !selCat) return;
+  const cat = $("prod-categoria")?.value || "";
+  const tCat = cat ? _prodCatTipo[cat] || null : null;
+  const op = sel.querySelector('option[value=""]');
+  if(op) op.textContent = "Pela categoria: " + (tCat ? PROD_TIPO_COMPRA_LBL[tCat] : "aplicação direta").toLowerCase();
+  selCat.value = tCat || "";
+  selCat.disabled = !cat || !prodPodeEditarCategoria() || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+  selCat.title = !cat ? "Escolha a categoria do produto" : `Vale para os produtos de ${_prodCategorias[cat] || "esta categoria"} que não têm tipo próprio`;
+}
+async function prodSalvarTipoCategoria(){
+  const cat = $("prod-categoria")?.value || "", selCat = $("prod-cat-tipo-compra");
+  if(!cat || !selCat) return;
+  const novo = selCat.value || null, nomeCat = _prodCategorias[cat] || "a categoria";
+  if(!confirm(`Trocar o tipo de compra padrão de ${nomeCat} para "${novo ? PROD_TIPO_COMPRA_LBL[novo] : "sem padrão (aplicação direta)"}"? Vale para os produtos dela que não têm tipo próprio.`)){ prodAtualizarTipoCompra(); return; }
+  const { error } = await sb.from("categorias_produto").update({ tipo_compra_padrao: novo }).eq("id", cat);
+  if(error){ aviso("app-aviso", "Não foi possível gravar o tipo da categoria: " + error.message, "erro"); prodAtualizarTipoCompra(); return; }
+  _prodCatTipo[cat] = novo;
+  prodAtualizarTipoCompra();
+  aviso("app-aviso", `Tipo de compra padrão de ${nomeCat} atualizado.`, "ok");
+}
 
 function novoProduto(){
   prodEditId = null;
@@ -210,6 +237,8 @@ function novoProduto(){
   ["prod-codigo","prod-nome","prod-codbarras","prod-refext","prod-localizacao","prod-descricao"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
   $("prod-categoria").value = "";
+  if($("prod-tipo-compra")) $("prod-tipo-compra").value = "";   // fase 108b
+  prodAtualizarTipoCompra();
   $("prod-unidade").value = "un";
   $("prod-minimo").value = 0;
   $("prod-ideal").value = "";
@@ -227,6 +256,8 @@ async function abrirProduto(id){
   $("prod-codigo").value      = data.codigo || "";
   $("prod-nome").value        = data.nome || "";
   $("prod-categoria").value   = data.categoria_id || "";
+  if($("prod-tipo-compra")) $("prod-tipo-compra").value = data.tipo_compra_padrao || "";   // fase 108b
+  prodAtualizarTipoCompra();
   $("prod-unidade").value     = data.unidade || "un";
   $("prod-minimo").value      = data.estoque_minimo || 0;
   $("prod-ideal").value       = data.estoque_ideal ?? "";
@@ -323,6 +354,7 @@ async function salvarProduto(){
   };
   // fase 100: categoria de custo sempre (coluna da fase 53); CA e troca só com a migration da fase 100 aplicada
   if($("prod-cat-custo")) reg.categoria_custo = $("prod-cat-custo").value || null;
+  if($("prod-tipo-compra")) reg.tipo_compra_padrao = $("prod-tipo-compra").value || null;   // fase 108b (nulo = pela categoria)
   if(_prodTemEpi){
     reg.ca = ($("prod-ca")?.value || "").trim() || null;
     const val = $("prod-epi-validade")?.value || "";
@@ -410,6 +442,8 @@ function ligarProdutos(){
   $("btn-salvar-prod")?.addEventListener("click", () => comBotaoTravado("btn-salvar-prod", salvarProduto));
   $("btn-excluir-prod")?.addEventListener("click", excluirProduto);
   $("btn-nova-cat")?.addEventListener("click", criarNovaCategoria);
+  $("prod-categoria")?.addEventListener("change", prodAtualizarTipoCompra);   // fase 108b
+  $("prod-cat-tipo-compra")?.addEventListener("change", () => prodSalvarTipoCategoria());
 
   document.querySelectorAll("#prod-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabProd(b.dataset.tab));
