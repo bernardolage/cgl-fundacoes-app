@@ -787,8 +787,14 @@ async function iniciarApp(){
   if(await mfaPrecisaDesafio()){ $("tela-app").style.display = "none"; $("tela-login").style.display = ""; mostrarDesafioMFALogin(); return; }
   // fase 93b: login_cpf e senha_provisoria entram na leitura; se a migration da 93b ainda não estiver no banco
   // (42703: coluna não existe), lê sem elas para ninguém ficar sem perfil
+  // hotfix 147: traz a função cadastrada pelo RH (funcionarios.funcao, pela FK profiles.funcionario_id); o embed vem
+  // nulo para quem não tem funcionário ligado. Sem a relação (PGRST200) ou sem coluna (42703), lê como antes
+  const perfilCols = "id,nome,cargo,ativo,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate";   // hotfix 113: módulos extras
   let { data:perfil, error:perfilErr } = await sb.from("profiles")
-    .select("id,nome,cargo,ativo,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate").eq("id",user.id).single();   // hotfix 113: módulos extras
+    .select(perfilCols + ",funcionario:funcionarios!profiles_funcionario_id_fkey(funcao)").eq("id",user.id).single();
+  if(perfilErr && (perfilErr.code === "PGRST200" || perfilErr.code === "42703")){
+    ({ data:perfil, error:perfilErr } = await sb.from("profiles").select(perfilCols).eq("id",user.id).single());
+  }
   if(perfilErr && perfilErr.code === "42703"){
     ({ data:perfil, error:perfilErr } = await sb.from("profiles").select("id,nome,cargo,ativo").eq("id",user.id).single());
   }
@@ -805,7 +811,12 @@ async function iniciarApp(){
   _loginCpfDigitos = emailEhLoginCpf(user.email) ? String(user.email).split("@")[0] : null;
   const rotuloSemPerfil = _loginCpfDigitos ? "Funcionário" : user.email;
   usuarioAtual = perfil || { id:user.id, nome:rotuloSemPerfil, cargo:null, ativo:true };
-  const nome = perfil ? (perfil.nome + " · " + perfil.cargo) : rotuloSemPerfil;
+  // hotfix 147: a função do RH fica em usuarioAtual.funcao (null sem funcionário ligado); o cargo continua sendo o
+  // perfil de acesso (permissão). Login por CPF com função mostra "nome · função"; os demais, como antes
+  usuarioAtual.funcao = String(perfil?.funcionario?.funcao || "").trim() || null;
+  const nome = !perfil ? rotuloSemPerfil
+    : (perfil.login_cpf && usuarioAtual.funcao) ? (perfil.nome + " · " + usuarioAtual.funcao)
+    : (perfil.nome + " · " + perfil.cargo);
   $("usr-nome").textContent = nome;
 
   /* Cargos de gestão: diretor tem acesso total (has_role() no banco

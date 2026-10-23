@@ -34,9 +34,15 @@ let usrEditEmail = null;
 /* ---------- Carga ---------- */
 async function carregarUsuarios(){
   // fase 93b: login_cpf e senha_provisoria; se a migration da 93b ainda não estiver no banco (42703), lê sem elas
+  // hotfix 147: + função cadastrada pelo RH (embed pela FK profiles.funcionario_id; nulo sem funcionário ligado).
+  // Sem a relação (PGRST200) ou sem coluna (42703), lê como antes
+  const cols = "id,nome,email,cargo,telefone,ativo,created_at,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate";
   let { data, error } = await sb.from("profiles")
-    .select("id,nome,email,cargo,telefone,ativo,created_at,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate")
+    .select(cols + ",funcionario:funcionarios!profiles_funcionario_id_fkey(funcao)")
     .order("nome");
+  if(error && (error.code === "PGRST200" || error.code === "42703")){
+    ({ data, error } = await sb.from("profiles").select(cols).order("nome"));
+  }
   if(error && error.code === "42703"){
     ({ data, error } = await sb.from("profiles").select("id,nome,email,cargo,telefone,ativo,created_at").order("nome"));
   }
@@ -254,6 +260,13 @@ function usrLoginRotulo(u){
   if(u?.login_cpf) return `<span class="tag azul" title="Criado pelo RH na ficha do funcionário; entra com o CPF">login: CPF</span>${u.senha_provisoria ? ' <span class="tag ambar" title="Ainda não trocou a senha definida pelo RH">senha provisória</span>' : ""}`;
   return esc(u?.email || "—");
 }
+/* hotfix 147 (chamado #147): no login por CPF o que aparece é a função cadastrada pelo RH (funcionarios.funcao); o
+   cargo de permissão é o "perfil de acesso" e fica em segundo plano. Convidado por e-mail: null (tudo como antes). */
+function usrFuncaoRH(u){
+  if(!u?.login_cpf) return null;
+  return String(u.funcionario?.funcao || "").trim() || null;
+}
+function usrCargoRotulo(u){ return CARGOS[u?.cargo] || u?.cargo || "—"; }
 
 /* ---------- Filtros ---------- */
 function usrFiltrados(){
@@ -265,7 +278,7 @@ function usrFiltrados(){
     if(fAtivo === "ativos" && u.ativo === false) return false;
     if(fAtivo === "inativos" && u.ativo !== false) return false;
     if(termo){
-      const alvo = `${u.nome||""} ${u.login_cpf ? "login cpf" : (u.email||"")} ${CARGOS[u.cargo]||u.cargo||""}`.toLowerCase();
+      const alvo = `${u.nome||""} ${u.login_cpf ? "login cpf" : (u.email||"")} ${CARGOS[u.cargo]||u.cargo||""} ${usrFuncaoRH(u)||""}`.toLowerCase();   // hotfix 147: + função do RH
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -299,16 +312,20 @@ function renderUsrLista(dados){
     cont.innerHTML = `<p class="vazio">Nenhum usuário encontrado.</p>`;
     return;
   }
-  const linhas = dados.map(u => `<tr class="linha-clicavel" data-id="${esc(u.id)}">
+  // hotfix 147: login por CPF mostra a função do RH e, embaixo, o perfil de acesso; convidado por e-mail, o cargo
+  const linhas = dados.map(u => {
+    const funcao = usrFuncaoRH(u);
+    return `<tr class="linha-clicavel" data-id="${esc(u.id)}">
     <td>${esc(u.nome||"—")}</td>
     <td>${usrLoginRotulo(u)}</td>
-    <td>${esc(CARGOS[u.cargo] || u.cargo || "—")}</td>
+    <td>${funcao ? `${esc(funcao)}<div class="meta">perfil: ${esc(usrCargoRotulo(u))}</div>` : esc(usrCargoRotulo(u))}</td>
     <td>${esc(u.telefone||"—")}</td>
     <td>${tagSituacao(u.ativo)}</td>
-  </tr>`).join("");
+  </tr>`;
+  }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Nome</th><th>E-mail / login</th><th>Cargo</th><th>Telefone</th><th>Situação</th>
+      <th>Nome</th><th>E-mail / login</th><th>Função / perfil</th><th>Telefone</th><th>Situação</th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 }
@@ -316,10 +333,12 @@ function renderUsrLista(dados){
 function renderUsrKanban(dados){
   const cont = $("usr-conteudo");
   if(!cont) return;
-  // Agrupa por cargo
+  // Agrupa por cargo. Hotfix 147: login por CPF fica no grupo do perfil de acesso ("Mecânico · perfil de acesso"),
+  // separado do cargo de quem foi convidado por e-mail, e o cartão mostra a função do RH
   const grupos = {};
   dados.forEach(u => {
-    const k = CARGOS[u.cargo] || u.cargo || "Sem cargo";
+    const rot = CARGOS[u.cargo] || u.cargo || "Sem cargo";
+    const k = u.login_cpf ? `${rot} · perfil de acesso` : rot;
     if(!grupos[k]) grupos[k] = [];
     grupos[k].push(u);
   });
@@ -330,6 +349,7 @@ function renderUsrKanban(dados){
       <div class="serv-kan-card linha-clicavel" data-id="${esc(u.id)}">
         <div class="serv-kan-card-nome">${esc(u.nome || "—")}</div>
         <div class="serv-kan-card-meta">
+          ${usrFuncaoRH(u) ? `<span class="meta bloco">${esc(usrFuncaoRH(u))}</span>` : ""}
           <span class="meta">${usrLoginRotulo(u)}</span>
         </div>
         <div class="serv-kan-card-rod">
@@ -405,7 +425,16 @@ function abrirFichaUsrVisual(u){
   $("usr-ficha").style.display = "";
 
   $("usr-ficha-nome").textContent = u.nome || "(novo)";
-  $("usr-ficha-cargo-chip").textContent = CARGOS[u.cargo] || u.cargo || "—";
+  // hotfix 147: login por CPF mostra a função do RH no chip (o perfil de acesso em segundo plano) e o select de cargo
+  // vira "Perfil de acesso"; convidado por e-mail continua "Cargo". Os rótulos são do index.html, trocados aqui
+  const funcao = usrFuncaoRH(u);
+  const chipCargo = $("usr-ficha-cargo-chip");
+  const rotChipCargo = chipCargo.previousElementSibling;
+  if(rotChipCargo) rotChipCargo.textContent = funcao ? "Função" : u.login_cpf ? "Perfil de acesso" : "Cargo";
+  if(funcao) chipCargo.innerHTML = `${esc(funcao)} <small class="meta">· perfil ${esc(usrCargoRotulo(u))}</small>`;
+  else chipCargo.textContent = usrCargoRotulo(u);
+  const rotSelCargo = $("usr-cargo").closest(".campo")?.querySelector("label");
+  if(rotSelCargo) rotSelCargo.textContent = u.login_cpf ? "Perfil de acesso *" : "Cargo *";
   $("usr-ficha-email-chip").innerHTML   = usrLoginRotulo(u);   // fase 93b: "login: CPF" no lugar do e-mail técnico
   $("usr-ficha-tel-chip").textContent = u.telefone || "—";
   $("usr-ficha-ativo-chip").innerHTML = (u.ativo === false)

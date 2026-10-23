@@ -1266,6 +1266,8 @@ async function funcAdmConcluir(){
    do cadastro (tabela CARGO_POR_FUNCAO na function) ou escolhido no select. Desativar o funcionário (status
    Demitido, data de demissão ou inativo) desativa o login por gatilho no banco.
    Bloco independente do resto do arquivo: só a linha de plumbing em carregarFuncionarios() o chama.
+   Hotfix 147 (chamado #147, decisão do Bernardo de 23/10): o que aparece do funcionário é a função cadastrada pelo RH;
+   o cargo de permissão do login chama-se "Perfil de acesso" nas telas (o enum e o nome `cargo` no código não mudam).
    ==================================================================== */
 const FUNC_ACESSO_CARGOS = { operador: "Operador", encarregado: "Encarregado", mecanico: "Mecânico", auxiliar_almoxarifado: "Auxiliar de almoxarifado" };
 let _funcAcesso = { funcionarioId: null, perfil: null, modo: null };   // modo: null | "senha" (formulário de nova senha aberto)
@@ -1281,11 +1283,11 @@ let _funcAcesso = { funcionarioId: null, perfil: null, modo: null };   // modo: 
 const FUNC_ACESSO_CRIADORES = {
   almoxarife: {
     setor: /ALMOXARIF/, exclui: null, cargos: ["auxiliar_almoxarifado"],
-    ajuda: "A equipe do almoxarifado entra como <em>Auxiliar de almoxarifado</em>."
+    ajuda: "A equipe do almoxarifado tem o perfil <em>Auxiliar de almoxarifado</em>."
   },
   gestor_manutencao: {
     setor: /MANUTEN/, exclui: /ALMOXARIF/, cargos: ["mecanico", "operador", "encarregado"],
-    ajuda: "A equipe da manutenção entra como <em>Mecânico</em> (soldadores e mecânicos), <em>Operador</em> (operadores e ajudantes) ou <em>Encarregado</em> (encarregados), pela função do cadastro; outra função pede o cargo aqui, só entre esses três."
+    ajuda: "A equipe da manutenção tem o perfil <em>Mecânico</em> (soldadores, mecânicos e apontadores), <em>Operador</em> (operadores e ajudantes) ou <em>Encarregado</em> (encarregados), pela função do cadastro; outra função pede o perfil aqui, só entre esses três."
   },
 };
 /* cópia de CARGO_POR_FUNCAO da function convidar-usuario (mesma ordem): no front só serve para o select do criador
@@ -1294,6 +1296,7 @@ const FUNC_ACESSO_CARGO_POR_FUNCAO = [
   [/ALMOXARIF/, "auxiliar_almoxarifado"],
   [/ENCARREGAD/, "encarregado"],
   [/SOLDADOR|MECANIC/, "mecanico"],
+  [/APONTADOR/, "mecanico"],   // hotfix 147: Apontador de Produção faz as rotinas do Mecânico (OS, checklist, horímetro)
   [/OPERADOR|AJUDANTE/, "operador"],
 ];
 function funcAcessoNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); }
@@ -1373,27 +1376,29 @@ function renderFuncAcesso(){
     let selCargo;
     if(cr && cr.cargos.length === 1){
       // fase 100: o almoxarife não escolhe (Auxiliar de almoxarifado)
-      selCargo = `<div class="campo"><label>Cargo no sistema</label><input value="${esc(FUNC_ACESSO_CARGOS[cr.cargos[0]] || cr.cargos[0])}" disabled />
-          <div class="meta">Compras, fornecedores e outros cargos: a administração troca depois, na tela Usuários.</div></div>`;
+      selCargo = `<div class="campo"><label>Perfil de acesso</label><input value="${esc(FUNC_ACESSO_CARGOS[cr.cargos[0]] || cr.cargos[0])}" disabled />
+          <div class="meta">Compras, fornecedores e outros perfis: a administração troca depois, na tela Usuários.</div></div>`;
     } else if(cr){
-      // hotfix 145: o gestor de manutenção escolhe só entre os cargos dele; função sem cargo automático (ex.:
-      // Apontador de Produção) ou com um cargo que não é dele exige a escolha (funcAcessoCriar não manda vazio)
+      // hotfix 145: o gestor de manutenção escolhe só entre os perfis dele; função sem perfil automático (ex.:
+      // Técnico de Produção) ou com um perfil que não é dele exige a escolha (funcAcessoCriar não manda vazio)
       const auto = funcAcessoCargoPelaFuncao(funcao);
       const autoOk = !!auto && cr.cargos.includes(auto);
-      selCargo = `<div class="campo"><label>Cargo no sistema${autoOk ? "" : " *"}</label>
+      selCargo = `<div class="campo"><label>Perfil de acesso${autoOk ? "" : " *"}</label>
         <select id="func-acesso-cargo">${autoOk
           ? `<option value="">Automático pela função (${esc(funcao)}): ${esc(FUNC_ACESSO_CARGOS[auto])}</option>`
-          : `<option value="">Escolha o cargo</option>`}
+          : `<option value="">Escolha o perfil</option>`}
           ${cr.cargos.map(v => `<option value="${v}">${esc(FUNC_ACESSO_CARGOS[v] || v)}</option>`).join("")}</select>
-        <div class="meta">${autoOk ? "" : `A função ${esc(funcao || "—")} não tem cargo automático: escolha ${esc(funcAcessoListaCargos(cr.cargos, "ou"))}. `}Outros cargos: a administração troca depois, na tela Usuários.</div></div>`;
+        <div class="meta">${autoOk ? "" : `A função ${esc(funcao || "—")} não tem perfil automático: escolha ${esc(funcAcessoListaCargos(cr.cargos, "ou"))}. `}Outros perfis: a administração troca depois, na tela Usuários.</div></div>`;
     } else {
-      selCargo = `<div class="campo"><label>Cargo no sistema</label>
-        <select id="func-acesso-cargo"><option value="">Automático pela função (${esc(funcao || "—")})</option>
+      // hotfix 147: o automático mostra o perfil que a função dá, quando a regra conhece a função
+      const auto = funcAcessoCargoPelaFuncao(funcao);
+      selCargo = `<div class="campo"><label>Perfil de acesso</label>
+        <select id="func-acesso-cargo"><option value="">Automático pela função (${esc(funcao || "—")})${auto ? ": " + esc(FUNC_ACESSO_CARGOS[auto]) : ""}</option>
           ${Object.entries(FUNC_ACESSO_CARGOS).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>`;
     }
     cont.innerHTML = `<div class="meta bloco" style="margin-bottom:12px;"><span class="tag cinza">Sem login</span> Este funcionário ainda não entra no sistema.</div>
       ${!funcAtivo ? `<p class="vazio">Funcionário inativo ou demitido não recebe login.</p>` : !opera ? `<p class="vazio">Usuário de revisão não cria login.</p>` : `
-      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ? cr.ajuda : "Operadores e ajudantes entram como <em>Operador</em>, encarregados como <em>Encarregado</em>, soldadores e mecânicos como <em>Mecânico</em>, o pessoal do almoxarifado como <em>Auxiliar de almoxarifado</em>; outra função pede o cargo aqui."}</p>
+      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ? cr.ajuda : "Operadores e ajudantes têm o perfil <em>Operador</em>, encarregados o perfil <em>Encarregado</em>, soldadores, mecânicos e apontadores o perfil <em>Mecânico</em>, o pessoal do almoxarifado o perfil <em>Auxiliar de almoxarifado</em>; outra função pede o perfil aqui. Nas telas aparece a função do cadastro; o perfil decide o que ele acessa."}</p>
       <div class="grade">${selCargo}</div>
       ${funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar")}`}`;
     return;
@@ -1406,13 +1411,14 @@ function renderFuncAcesso(){
   cont.innerHTML = `<div class="odoo-contexto" style="margin:0 0 12px;">
       <div class="chip"><span>Situação</span><strong>${situacao}</strong></div>
       <div class="chip"><span>Login</span><strong>CPF do funcionário</strong></div>
-      <div class="chip"><span>Cargo</span><strong>${esc(FUNC_ACESSO_CARGOS[p.cargo] || (typeof CARGOS !== "undefined" && CARGOS[p.cargo]) || p.cargo || "—")}</strong></div>
+      <div class="chip"><span>Função</span><strong>${esc(($("func-funcao")?.value || "").trim() || "—")}</strong></div>
+      <div class="chip"><span>Perfil de acesso</span><strong>${esc(FUNC_ACESSO_CARGOS[p.cargo] || (typeof CARGOS !== "undefined" && CARGOS[p.cargo]) || p.cargo || "—")}</strong></div>
       <div class="chip"><span>Criado em</span><strong>${p.created_at ? dataBR(p.created_at.slice(0, 10)) : "—"}</strong></div>
     </div>
     <p class="meta bloco" style="margin-bottom:12px;">${p.ativo === false
       ? "O funcionário não consegue entrar. Reativar libera o acesso de novo (com a senha de antes ou uma nova)."
       : p.senha_provisoria ? "Ele ainda não trocou a senha provisória: no primeiro acesso o sistema obriga a troca."
-      : "Senha já trocada pelo funcionário. Sem a senha, defina uma nova aqui e repasse."}${cr && !operaEste ? ` Este login não é de ${esc(funcAcessoListaCargos(cr.cargos, "nem"))}: quem cuida dele é o RH ou a administração.` : ""}</p>
+      : "Senha já trocada pelo funcionário. Sem a senha, defina uma nova aqui e repasse."}${cr && !operaEste ? ` Este login não tem o perfil ${esc(funcAcessoListaCargos(cr.cargos, "nem"))}: quem cuida dele é o RH ou a administração.` : ""}</p>
     ${!operaEste ? "" : cr && p.ativo === false ? `<p class="vazio">Login desativado: reativar fica com o RH ou a administração.</p>` : _funcAcesso.modo === "senha"
       ? funcAcessoSenhaHtml("-nova", p.ativo === false ? "✅ Reativar com esta senha" : "🔑 Definir nova senha", p.ativo === false ? "btn-func-acesso-reativar-senha" : "btn-func-acesso-nova-senha-ok")
       : `<div class="form-acoes compacta">
@@ -1456,17 +1462,17 @@ async function funcAcessoCriar(){
   let cargo = $("func-acesso-cargo")?.value || "";
   if(cr && cr.cargos.length === 1) cargo = cr.cargos[0];
   else if(cr && cargo && !cr.cargos.includes(cargo)){
-    aviso("func-acesso-aviso", `Escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Cargo no sistema".`, "erro"); return;
+    aviso("func-acesso-aviso", `Escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Perfil de acesso".`, "erro"); return;
   } else if(cr && !cargo && !cr.cargos.includes(funcAcessoCargoPelaFuncao($("func-funcao")?.value))){
-    aviso("func-acesso-aviso", `A função deste funcionário não tem cargo automático: escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Cargo no sistema".`, "erro");
+    aviso("func-acesso-aviso", `A função deste funcionário não tem perfil automático: escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Perfil de acesso".`, "erro");
     $("func-acesso-cargo")?.focus();
     return;
   }
   try {
     const r = await funcAcessoChamar({ acao: "criar_login_funcionario", senha, cargo: cargo || undefined });
-    aviso("func-acesso-aviso", `Login criado como ${FUNC_ACESSO_CARGOS[r.cargo] || r.cargo}. Repasse ao funcionário: entrar com o CPF (só números) e a senha que você digitou; o sistema pede a troca no primeiro acesso.`, "ok");
+    aviso("func-acesso-aviso", `Login criado com o perfil ${FUNC_ACESSO_CARGOS[r.cargo] || r.cargo}. Repasse ao funcionário: entrar com o CPF (só números) e a senha que você digitou; o sistema pede a troca no primeiro acesso.`, "ok");
   } catch(err){
-    if(err.body?.cargo_indefinido) aviso("func-acesso-aviso", err.message + " Escolha em \"Cargo no sistema\".", "erro");
+    if(err.body?.cargo_indefinido) aviso("func-acesso-aviso", err.message + " Escolha em \"Perfil de acesso\".", "erro");
     else aviso("func-acesso-aviso", err.message, "erro");
     return;
   }
