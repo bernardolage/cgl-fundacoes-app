@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="31d6611" />
+<meta name="app-versao" content="ff6d857" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=31d6611" />
+<link rel="stylesheet" href="css/estilo.css?v=ff6d857" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -1571,17 +1571,18 @@
     <section class="secao" id="sec-compras">
       <div id="cmp-painel">
         <h2>Compras</h2>
-        <p class="texto-apoio">Pedido de compra com aprovação em duas chaves (alçada pelo valor e dono do custo) e recebimento da nota. Cada item é <strong>reposição de estoque</strong> (entra no almoxarifado; o custo aparece na saída) ou <strong>aplicação direta</strong> (o custo cai na obra, na TAG ou no centro no recebimento). Os títulos a pagar gerados pelas notas ficam em Contratos &amp; Contas a pagar.</p>
+        <p class="texto-apoio">Pedido de compra com aprovação em duas chaves (alçada pelo valor e dono do custo) e recebimento da nota. Cada item é <strong>reposição de estoque</strong> (entra no almoxarifado; o custo aparece na saída) ou <strong>aplicação direta</strong> (o custo cai na obra, na TAG ou no centro no recebimento). Os títulos a pagar gerados pelas notas ficam em Contratos &amp; Contas a pagar. O processo segue as etapas: requisição → estoque (separação) ou compra → cotações → aprovação → recebimento conferido por quem pediu → financeiro.</p>
         <div id="cmp-odoo-sync" class="meta" style="display:none;margin:0 0 10px;" title="Espelho do Odoo até o corte (fase 81): pedidos, fornecedores, catálogo, preços e saldo de estoque copiados todo dia às 05:30"></div>
 
+        <!-- fase 102 (#92): cartões na sequência do processo do Fabrício; cada um filtra a lista (valores só para quem lê contas a pagar) -->
         <div class="indicadores">
-          <div class="ind ind-click" data-kpi=""><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div></div>
-          <div class="ind ind-click" data-kpi="aprovar" title="Pedidos com chave de aprovação pendente; entre parênteses, os que têm chave que você assina (fase 108b)"><div class="num" id="cmp-kpi-aprovar" style="color:var(--marca-600);">—</div><div class="rot">Aguardando aprovação <span id="cmp-kpi-aprovar-meus"></span></div></div>
-          <div class="ind ind-click" data-kpi="entrega"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando recebimento</div></div>
-          <div class="ind ind-click" data-kpi="atrasados"><div class="num" id="cmp-kpi-atrasados">—</div><div class="rot">Recebimento atrasado</div></div>
-          <div class="ind ind-click" data-kpi="receber" title="Pedidos enviados ou parcialmente recebidos esperando o recebimento (fase 78); entre parênteses, os que estão com você"><div class="num" id="cmp-kpi-receber">—</div><div class="rot">Para receber <span id="cmp-kpi-receber-meus"></span></div></div>
-          <div class="ind"><div class="num" id="cmp-kpi-valor">—</div><div class="rot">Valor em aberto</div></div>
-          <div class="ind ind-click" data-kpi="requisicoes"><div class="num" id="cmp-kpi-req" style="color:var(--aviso);">—</div><div class="rot">Requisições pendentes</div></div>
+          <div class="ind ind-click" data-kpi="requisicoes" title="Requisições esperando a decisão de Compras (estoque ou compra)"><div class="num" id="cmp-kpi-req" style="color:var(--aviso);">—</div><div class="rot">Requisição pendente</div></div>
+          <div class="ind ind-click" data-kpi="em_cotacao" title="Pedidos em cotação com fornecedores"><div class="num" id="cmp-kpi-cotacao">—</div><div class="rot">Em cotação</div><div class="meta" id="cmp-kpi-cotacao-sub"></div></div>
+          <div class="ind ind-click" data-kpi="aprovar" title="Pedidos com chave de aprovação pendente; entre parênteses, os que têm chave que você assina (fase 108b)"><div class="num" id="cmp-kpi-aprovar" style="color:var(--marca-600);">—</div><div class="rot">Aguardando aprovação <span id="cmp-kpi-aprovar-meus"></span></div><div class="meta" id="cmp-kpi-aprovar-sub"></div></div>
+          <div class="ind ind-click" data-kpi="entrega" title="Aprovados, enviados e parcialmente recebidos, mais os recebidos pelo almoxarifado que esperam a conferência de quem pediu"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando recebimento</div><div class="meta" id="cmp-kpi-entrega-sub"></div></div>
+          <div class="ind ind-click" data-kpi="financeiro" title="Recebidos e conferidos, com título a pagar ainda não exportado ao financeiro (NF recebida e programação de pagamento)"><div class="num" id="cmp-kpi-financeiro">—</div><div class="rot">Financeiro</div><div class="meta" id="cmp-kpi-financeiro-sub"></div></div>
+          <div class="ind ind-click" data-kpi="abertos" title="Todos os pedidos que ainda não terminaram: rascunho, cotação, aprovação, recebimento, conferência e financeiro"><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div><div class="meta" id="cmp-kpi-valor"></div></div>
+          <div class="ind ind-click" data-kpi="finalizados" title="Recebidos, conferidos e com os títulos exportados, no período escolhido abaixo"><div class="num" id="cmp-kpi-finalizados">—</div><div class="rot">Pedidos finalizados</div><div class="meta" id="cmp-kpi-finalizados-sub"></div></div>
         </div>
 
         <div class="card">
@@ -1603,6 +1604,7 @@
           <div class="serv-filtros" id="cmp-filtros">
             <input id="cmp-busca" placeholder="Buscar número, fornecedor, obra, TAG, item…" />
             <select id="cmp-f-status"><option value="_abertos">Abertos</option><option value="">Todos os status</option></select>
+            <select id="cmp-f-etapa" title="etapa do processo (fase 102)"><option value="">Etapa</option></select>
             <select id="cmp-f-periodo" title="período do pedido (os em aberto entram sempre)"><option value="30">Últimos 30 dias</option><option value="90" selected>Últimos 90 dias</option><option value="180">Últimos 180 dias</option><option value="365">Últimos 12 meses</option><option value="">Todo o período</option></select>
             <select id="cmp-f-forn"><option value="">Fornecedor</option></select>
             <select id="cmp-f-obra"><option value="">Obra</option></select>
@@ -1622,7 +1624,9 @@
             <div class="actions-left">
               <button type="button" class="btn-sec" id="btn-cmp-voltar">← Voltar</button>
               <button type="button" class="btn" id="btn-cmp-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-cotacao" data-acao="em_cotacao" title="Manda o rascunho para cotação com fornecedores (fase 102)">📨 Pedir cotações</button>
               <button type="button" class="btn cmp-acao" id="btn-cmp-enviar-aprov" data-acao="enviar_aprovacao">✅ Enviar para aprovação</button>
+              <button type="button" class="btn btn-sucesso cmp-acao" id="btn-cmp-conferir" data-acao="conferir" style="display:none;" title="Quem fez a requisição confere o material recebido pelo almoxarifado (fase 102)">✔ Recebi e conferi</button>
               <button type="button" class="btn btn-sucesso cmp-acao" id="btn-cmp-aprovar" data-acao="aprovar">👍 Aprovar</button>
               <button type="button" class="btn cmp-acao" id="btn-cmp-enviado" data-acao="enviado">📤 Enviado ao fornecedor</button>
               <button type="button" class="btn cmp-acao" id="btn-cmp-receber" data-acao="receber">📥 Receber NF</button>
@@ -1636,6 +1640,7 @@
 
           <div class="odoo-statusbar" id="cmp-statusbar" title="Status do pedido">
             <div class="stage" data-status="rascunho">Rascunho</div>
+            <div class="stage" data-status="em_cotacao">Em cotação</div>
             <div class="stage" data-status="aguardando_aprovacao">Aguardando aprovação</div>
             <div class="stage" data-status="aprovado">Aprovado</div>
             <div class="stage" data-status="enviado">Enviado</div>
@@ -1652,12 +1657,17 @@
             <div class="chip"><span>Aprovação</span><strong id="cmp-chip-aprov">—</strong></div>
             <div class="chip" title="Reposição de estoque: entra no almoxarifado, custo na saída. Aplicação direta: custo na obra, TAG ou centro no recebimento."><span>Tipo de compra</span><strong id="cmp-chip-tipo">—</strong></div>
             <div class="chip" id="cmp-chip-odoo" style="display:none;"><span>Odoo</span><strong id="cmp-chip-odoo-txt">—</strong></div>
+            <!-- fase 102: etapa do processo, conferência de quem pediu e financeiro (este só para quem lê contas a pagar) -->
+            <div class="chip" title="Etapa do processo de compras"><span>Etapa</span><strong id="cmp-chip-etapa">—</strong></div>
+            <div class="chip" id="cmp-chip-conf" style="display:none;" title="Conferência do material pelo setor que fez a requisição"><span>Conferência</span><strong id="cmp-chip-conf-txt">—</strong></div>
+            <div class="chip" id="cmp-chip-fin" style="display:none;" title="NF recebida e títulos a pagar (Contas a pagar)"><span>Financeiro</span><strong id="cmp-chip-fin-txt">—</strong></div>
           </div>
           <!-- fase 108b: "Falta assinar" (chaves pendentes e quem assina), só em aguardando aprovação -->
           <div id="cmp-aprov-falta" style="display:none;"></div>
 
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-cmp-itens" data-goto-tab="itens"><span class="sb-num">0</span><span class="sb-icon">📦</span><span class="sb-lbl">itens</span></button>
+            <button type="button" class="sb-btn" id="sb-cmp-cot" data-goto-tab="cotacoes"><span class="sb-num">0</span><span class="sb-icon">📨</span><span class="sb-lbl">cotações</span></button>
             <button type="button" class="sb-btn" id="sb-cmp-rec" data-goto-tab="recebimentos"><span class="sb-num">0</span><span class="sb-icon">📥</span><span class="sb-lbl">recebimentos</span></button>
             <button type="button" class="sb-btn" id="sb-cmp-tit" data-goto-tab="financeiro"><span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">títulos</span></button>
             <button type="button" class="sb-btn" id="sb-cmp-anexos" data-goto-tab="anexos"><span class="sb-num">0</span><span class="sb-icon">📎</span><span class="sb-lbl">anexos</span></button>
@@ -1666,6 +1676,7 @@
           <div class="odoo-notebook" id="cmp-notebook">
             <button type="button" data-tab="cabecalho" class="ativo">Cabeçalho</button>
             <button type="button" data-tab="itens">Itens</button>
+            <button type="button" data-tab="cotacoes">Cotações</button>
             <button type="button" data-tab="recebimentos">Recebimentos</button>
             <button type="button" data-tab="financeiro">Financeiro</button>
             <button type="button" data-tab="anexos">Anexos</button>
@@ -1707,6 +1718,29 @@
                   <div id="cmp-res-prod" class="autocomplete-lista" style="display:none;"></div>
                 </div>
                 <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-item-livre">+ Item livre (serviço / sem cadastro)</button></div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-prod-novo" style="display:none;" title="Produto que ainda não está no catálogo: cadastro mínimo sem sair do pedido (fase 102, #160)">＋ Novo produto</button></div>
+              </div>
+            </div>
+
+            <!-- fase 102 (#91, etapa 3): cotações do pedido; o formulário abre por "+ Nova cotação" ou ✏️ -->
+            <div class="odoo-tab" data-tab="cotacoes">
+              <p class="ajuda-campo">Uma cotação por fornecedor, com o preço de cada item, prazo, frete e condição. O menor preço de cada item fica marcado. "Fechar com este fornecedor" copia fornecedor, preços, frete, prazo e condição para o pedido, descarta as outras e volta o pedido a rascunho para você conferir e enviar à aprovação.</p>
+              <div id="cmp-cot-lista"><p class="vazio">—</p></div>
+              <div class="card compacto" id="cmp-cot-form" style="display:none;margin-top:14px;">
+                <h4 id="cmp-cot-form-titulo" style="margin:0 0 8px;font-size:var(--txt-md);">Nova cotação</h4>
+                <div class="grade grade-3">
+                  <div class="campo largo"><label>Fornecedor *</label><select id="cmp-cot-forn"></select></div>
+                  <div class="campo"><label>Prazo de entrega (dias)</label><input type="number" id="cmp-cot-prazo" min="0" max="365" step="1" /></div>
+                  <div class="campo"><label>Frete (R$)</label><input type="number" id="cmp-cot-frete" min="0" step="0.01" /></div>
+                  <div class="campo"><label>Condição de pagamento</label><input id="cmp-cot-cond" placeholder="ex.: 28 dias, 30/60, à vista" list="cmp-cond-lista" /></div>
+                  <div class="campo"><label>Validade da proposta</label><input type="date" id="cmp-cot-validade" /></div>
+                  <div class="campo largo"><label>Observações</label><input id="cmp-cot-obs" /></div>
+                  <div class="campo largo"><label>Proposta do fornecedor (vai para Anexos como orçamento)</label><input type="file" id="cmp-cot-anexo" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx,.txt" /></div>
+                </div>
+                <div class="tabela-rola" style="margin-top:8px;">
+                  <table class="itens-tabela"><thead><tr><th>Item</th><th class="num" style="width:110px;">Qtd</th><th style="width:150px;">Preço unitário (R$)</th><th class="num" style="width:120px;">Total</th></tr></thead><tbody id="cmp-cot-itens"></tbody></table>
+                </div>
+                <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-cmp-cot-cancelar">Cancelar</button><button type="button" class="btn" id="btn-cmp-cot-salvar">💾 Salvar cotação</button></div>
               </div>
             </div>
 
@@ -1806,34 +1840,57 @@
       <div class="modal-fundo" id="cmp-req-modal" style="display:none;">
         <div class="modal-caixa" style="max-width:860px;">
           <div class="modal-topo"><h3 id="req-titulo">Nova requisição</h3><button type="button" class="btn-sec" id="btn-req-fechar">×</button></div>
-          <p class="meta">Peça o que precisa; o comprador junta as requisições e gera o pedido. Informe obra ou TAG para o custo cair no lugar certo. Sem os dois, é reposição do estoque da base.</p>
+          <p class="meta">Peça o que precisa e diga para onde vai o custo: obra, TAG ou setor, ou marque reposição do estoque. Ao aprovar, o que tem no estoque vira separação no almoxarifado e o resto vira pedido de compra. Quando o almoxarifado receber, quem pediu confere ("Recebi e conferi").</p>
           <div id="req-meta" class="meta" style="margin-bottom:6px;"></div>
+          <!-- fase 102 (#143): destinos da requisição (separação e pedido) com a etapa de cada um -->
+          <div id="req-destinos" style="display:none;margin-bottom:8px;"></div>
           <div class="grade grade-3">
             <div class="campo"><label>Obra</label><select id="req-obra"></select></div>
             <div class="campo"><label>Equipamento / TAG</label><select id="req-equip"></select></div>
+            <div class="campo"><label>Setor / obra interna</label><select id="req-centro" title="Sem obra nem TAG: o custo vai para o setor (fase 102)"></select></div>
             <div class="campo"><label>Prioridade</label><select id="req-prioridade"><option value="normal">Normal</option><option value="urgente">Urgente (máquina parada)</option></select></div>
             <div class="campo largo"><label>Justificativa / para quê</label><input id="req-just" placeholder="ex.: mangueira estourou na 02-HM · reposição da oficina · EPI da equipe da obra X" /></div>
+            <div class="campo largo"><label class="check-inline"><input type="checkbox" id="req-reposicao" /> Reposição do estoque da base (sem obra, TAG nem setor: vai direto para compra)</label></div>
           </div>
           <div id="req-itens-add" class="lista-topo compacta" style="margin-top:8px;">
             <div class="campo largo" style="flex:1;margin:0;"><input id="req-busca" placeholder="Buscar produto por código ou nome (≥ 2 letras)…" autocomplete="off" /><div id="req-res" class="autocomplete-lista" style="display:none;"></div></div>
             <button type="button" class="btn-sec" id="btn-req-livre">+ item livre</button>
           </div>
-          <div class="tabela-rola"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th>Un</th><th class="col-acao"></th></tr></thead><tbody id="req-itens"></tbody></table></div>
+          <div class="tabela-rola"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th>Un</th><th id="req-th-estoque" title="saldo do produto e destino na aprovação (fase 102)">Estoque e destino</th><th class="col-acao"></th></tr></thead><tbody id="req-itens"></tbody></table></div>
           <div class="form-acoes compacta">
             <button type="button" class="btn-sec" id="btn-req-cancelar" style="display:none;color:var(--perigo);">✕ Cancelar requisição</button>
             <button type="button" class="btn-sec" id="btn-req-rejeitar" style="display:none;">👎 Rejeitar</button>
-            <button type="button" class="btn-sec" id="btn-req-estoque" style="display:none;" title="Tem no estoque: atende sem comprar">📦 Atendida pelo estoque</button>
-            <button type="button" class="btn" id="btn-req-pedido" style="display:none;">🛒 Gerar pedido</button>
+            <button type="button" class="btn-sec" id="btn-req-estoque" style="display:none;" title="Já atendida à mão (saída de balcão): marca sem gerar separação nem pedido">📦 Atendida pelo estoque</button>
+            <button type="button" class="btn-sec" id="btn-req-pedido" style="display:none;" title="Manda tudo para compra, mesmo o que tem no estoque">🛒 Só compra</button>
+            <button type="button" class="btn" id="btn-req-aprovar" style="display:none;" title="O que tem saldo no estoque vira separação no almoxarifado; o resto vira pedido de compra em rascunho (fase 102)">✅ Aprovar</button>
+            <button type="button" class="btn btn-sucesso" id="btn-req-conferir" style="display:none;" title="O almoxarifado recebeu: confira o material e registre">✔ Recebi e conferi</button>
             <button type="button" class="btn" id="btn-req-salvar">💾 Abrir requisição</button>
           </div>
         </div>
       </div>
       <div class="modal-fundo" id="cmp-req-ped-modal" style="display:none;">
-        <div class="modal-caixa" style="max-width:560px;">
-          <div class="modal-topo"><h3>Gerar pedido de compra</h3><button type="button" class="btn-sec" id="btn-req-ped-fechar">×</button></div>
+        <div class="modal-caixa" style="max-width:820px;">
+          <div class="modal-topo"><h3 id="req-ped-titulo">Aprovar requisição</h3><button type="button" class="btn-sec" id="btn-req-ped-fechar">×</button></div>
           <div id="req-ped-resumo"></div>
-          <div class="grade"><div class="campo largo"><label>Fornecedor do pedido *</label><select id="req-ped-forn"></select><span class="meta">Sugerido pelo fornecedor padrão dos produtos. Requisições de fornecedores diferentes: gere um pedido por vez.</span></div></div>
-          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-req-ped-gerar">🛒 Gerar pedido em rascunho</button></div>
+          <div class="grade"><div class="campo largo"><label>Fornecedor do pedido (opcional)</label><select id="req-ped-forn"></select><span class="meta" id="req-ped-forn-ajuda">Sugerido pelo fornecedor padrão dos produtos. Vazio: o pedido nasce em rascunho e o fornecedor sai das cotações.</span></div></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-req-ped-gerar">✅ Aprovar</button></div>
+        </div>
+      </div>
+
+      <!-- fase 102 (#160): novo produto a partir do item do pedido -->
+      <div class="modal-fundo" id="cmp-prod-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:620px;">
+          <div class="modal-topo"><h3>Novo produto</h3><button type="button" class="btn-sec" id="btn-cmp-prod-fechar">×</button></div>
+          <p class="meta">Cadastro mínimo para usar no pedido agora. O restante (estoque mínimo, código de barras, fiscal) fica em Produtos.</p>
+          <div class="grade grade-3">
+            <div class="campo largo"><label>Nome *</label><input id="cmp-prod-nome" placeholder="ex.: MANGUEIRA HIDRÁULICA 1/2 R2" /></div>
+            <div class="campo"><label>Categoria</label><select id="cmp-prod-cat"></select></div>
+            <div class="campo"><label>Unidade</label><select id="cmp-prod-un"></select></div>
+            <div class="campo"><label>NCM (opcional)</label><input id="cmp-prod-ncm" placeholder="8 dígitos" maxlength="10" /></div>
+            <div class="campo"><label>Código (opcional)</label><input id="cmp-prod-cod" placeholder="vazio = CGL-00001…" /></div>
+          </div>
+          <p class="meta" id="cmp-prod-tipo-info"></p>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cmp-prod-salvar">💾 Cadastrar e usar no pedido</button></div>
         </div>
       </div>
 
@@ -5902,53 +5959,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=31d6611"></script>
+<script src="js/core.js?v=ff6d857"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=31d6611"></script>
+<script src="js/historico.js?v=ff6d857"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=31d6611"></script>
-<script src="js/fiscal_ncm.js?v=31d6611"></script>
+<script src="js/fiscal.js?v=ff6d857"></script>
+<script src="js/fiscal_ncm.js?v=ff6d857"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=31d6611"></script>
-<script src="js/fornecedores.js?v=31d6611"></script>
-<script src="js/apropriacoes.js?v=31d6611"></script>
-<script src="js/funcionarios.js?v=31d6611"></script>
-<script src="js/rh_documentos.js?v=31d6611"></script>
-<script src="js/servicos.js?v=31d6611"></script>
-<script src="js/produtos.js?v=31d6611"></script>
-<script src="js/estoque.js?v=31d6611"></script>
-<script src="js/separacoes.js?v=31d6611"></script>
-<script src="js/epi.js?v=31d6611"></script>
-<script src="js/compras.js?v=31d6611"></script>
-<script src="js/requisicoes.js?v=31d6611"></script>
-<script src="js/orcamentos.js?v=31d6611"></script>
-<script src="js/propostas.js?v=31d6611"></script>
-<script src="js/contratos.js?v=31d6611"></script>
-<script src="js/contas_pagar.js?v=31d6611"></script>
-<script src="js/centros_custo.js?v=31d6611"></script>
-<script src="js/carteira.js?v=31d6611"></script>
-<script src="js/obras.js?v=31d6611"></script>
-<script src="js/frota.js?v=31d6611"></script>
-<script src="js/viagens.js?v=31d6611"></script>
-<script src="js/equipamentos.js?v=31d6611"></script>
-<script src="js/vendas_bens.js?v=31d6611"></script>
-<script src="js/acessorios.js?v=31d6611"></script>
-<script src="js/reparos.js?v=31d6611"></script>
-<script src="js/manutencao.js?v=31d6611"></script>
-<script src="js/fabricacao.js?v=31d6611"></script>
-<script src="js/mobilizacoes.js?v=31d6611"></script>
-<script src="js/estacas.js?v=31d6611"></script>
-<script src="js/obra_abas.js?v=31d6611"></script>
-<script src="js/medicoes.js?v=31d6611"></script>
-<script src="js/movimentacoes.js?v=31d6611"></script>
-<script src="js/rdo.js?v=31d6611"></script>
-<script src="js/rdo_import_maya.js?v=31d6611"></script>
-<script src="js/usuarios.js?v=31d6611"></script>
-<script src="js/chamados.js?v=31d6611"></script>
-<script src="js/dashboard.js?v=31d6611"></script>
-<script src="js/rh_horas.js?v=31d6611"></script>
-<script src="js/patrimonio.js?v=31d6611"></script>
+<script src="js/clientes.js?v=ff6d857"></script>
+<script src="js/fornecedores.js?v=ff6d857"></script>
+<script src="js/apropriacoes.js?v=ff6d857"></script>
+<script src="js/funcionarios.js?v=ff6d857"></script>
+<script src="js/rh_documentos.js?v=ff6d857"></script>
+<script src="js/servicos.js?v=ff6d857"></script>
+<script src="js/produtos.js?v=ff6d857"></script>
+<script src="js/estoque.js?v=ff6d857"></script>
+<script src="js/separacoes.js?v=ff6d857"></script>
+<script src="js/epi.js?v=ff6d857"></script>
+<script src="js/compras.js?v=ff6d857"></script>
+<script src="js/requisicoes.js?v=ff6d857"></script>
+<script src="js/orcamentos.js?v=ff6d857"></script>
+<script src="js/propostas.js?v=ff6d857"></script>
+<script src="js/contratos.js?v=ff6d857"></script>
+<script src="js/contas_pagar.js?v=ff6d857"></script>
+<script src="js/centros_custo.js?v=ff6d857"></script>
+<script src="js/carteira.js?v=ff6d857"></script>
+<script src="js/obras.js?v=ff6d857"></script>
+<script src="js/frota.js?v=ff6d857"></script>
+<script src="js/viagens.js?v=ff6d857"></script>
+<script src="js/equipamentos.js?v=ff6d857"></script>
+<script src="js/vendas_bens.js?v=ff6d857"></script>
+<script src="js/acessorios.js?v=ff6d857"></script>
+<script src="js/reparos.js?v=ff6d857"></script>
+<script src="js/manutencao.js?v=ff6d857"></script>
+<script src="js/fabricacao.js?v=ff6d857"></script>
+<script src="js/mobilizacoes.js?v=ff6d857"></script>
+<script src="js/estacas.js?v=ff6d857"></script>
+<script src="js/obra_abas.js?v=ff6d857"></script>
+<script src="js/medicoes.js?v=ff6d857"></script>
+<script src="js/movimentacoes.js?v=ff6d857"></script>
+<script src="js/rdo.js?v=ff6d857"></script>
+<script src="js/rdo_import_maya.js?v=ff6d857"></script>
+<script src="js/usuarios.js?v=ff6d857"></script>
+<script src="js/chamados.js?v=ff6d857"></script>
+<script src="js/dashboard.js?v=ff6d857"></script>
+<script src="js/rh_horas.js?v=ff6d857"></script>
+<script src="js/patrimonio.js?v=ff6d857"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=31d6611"></script>
+<script src="js/init.js?v=ff6d857"></script>
 </body>
 </html>

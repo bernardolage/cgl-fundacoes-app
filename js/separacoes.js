@@ -22,7 +22,7 @@ let _sepCentros = [];            // lote S48 (#107): centros de custo (setor / o
 
 const SEP_STATUS = { aberta: ["Aberta", "azul"], em_separacao: ["Em separação", "ambar"], separada: ["Separada", "verde"], entregue: ["Entregue", "cinza"], cancelada: ["Cancelada", "cinza"] };
 const SEP_STAGES = ["aberta", "em_separacao", "separada", "entregue"];
-const SEP_ORIGEM = { mobilizacao: "Mobilização", pedido_obra: "Pedido da obra" };
+const SEP_ORIGEM = { mobilizacao: "Mobilização", pedido_obra: "Pedido da obra", requisicao: "Requisição" };   // fase 102 (#143): separação nascida da requisição
 // lote S48 (#107): "*" traz valor_total quando a migration 20261022_loteS48_b estiver aplicada (sem ela, a tela segue sem valor)
 const SEP_SELECT = "*,"
   + "solicitante:profiles!separacoes_solicitante_id_fkey(nome),responsavel:profiles!separacoes_responsavel_id_fkey(nome),retirante:funcionarios(nome),itens:separacao_itens(id,separado)";

@@ -13,6 +13,14 @@
    108a): a ficha mostra "Falta assinar", o botão diz "Assinar" a quem só assina a chave de dono e "Aprovar" a quem
    fecha o pedido; o painel filtra "para eu aprovar" (vw_pedidos_aprovacao_pendente). O dono do custo fora de Compras
    chega pela Sala de Comando (cmpAbrirParaAssinar).
+   Fase 102 (26/10/2026, chamados #91, #92, #143 e #160): o pedido segue as seis etapas do Fabrício (requisição →
+   estoque ou compra → cotações → aprovação → recebimento conferido por quem pediu → financeiro). Status novo
+   em_cotacao (rascunho → em cotação → rascunho); aba Cotações (comparativo por item, menor preço marcado, "Fechar com
+   este fornecedor" = RPC cotacao_fechar); conferência do recebimento pelo solicitante (recebimento_conferir; a etapa
+   "aguardando conferência" é calculada em vw_compras_pedido_etapa: o status continua `recebido` quando o almoxarifado
+   confirma a NF); chips Etapa, Conferência e Financeiro (este só para podeVerContasPagar); resumo com os cartões da
+   sequência do Fabrício (vw_compras_etapas; valores só para quem lê contas a pagar); "Novo produto" no item do pedido
+   (produto_cadastro_rapido). Os itens do pedido passam a ser gravados mantendo o id (as cotações apontam para eles).
    ==================================================================== */
 
 let _cmpView = "kanban";
@@ -48,12 +56,20 @@ let _cmpAprovPend = {};           // fase 108b: pedido_id -> chaves pendentes (v
 let _cmpAprovAtual = { pend: [], assinadas: [], carregado: false };   // fase 108b: chaves do pedido aberto
 let _cmpModoDono = false;         // fase 108b: ficha aberta pela Sala de Comando por quem não tem Compras no menu
 const _cmpObraMetodo = {};        // fase 108b: obra_id -> método padrão pelo tipo de serviço da obra (null = sem padrão)
+let _cmpEtapaEsp = {};            // fase 102: pedido_id -> linha de vw_compras_pedido_etapa (conferência, financeiro, aviso)
+let _cmpEtapasResumo = null;      // fase 102: etapa -> { q, v, atr, cv } somados de vw_compras_etapas (null = view ausente)
+let _cmpCotacoes = [];            // fase 102: cotações do pedido aberto
+let _cmpCotEdit = null;           // fase 102: cotação em edição no formulário (null = fechado; {} = nova)
+let _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };   // fase 102: conferências do pedido aberto
+let _cmpCategorias = null;        // fase 102 (#160): categorias_produto para o cadastro rápido
+let _cmpViewInicial = false;      // fase 102: quem não opera Compras abre direto em Requisições (uma vez)
 /* colunas que o painel usa (a ficha abre o pedido inteiro em abrirPedido) */
 const CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at";
 const CMP_PRIMEIRA_CARGA_DIAS = 30;
 
 const CMP_STATUS = {
   rascunho:              { label: "Rascunho",             cor: "cinza" },
+  em_cotacao:            { label: "Em cotação",           cor: "ambar" },   // fase 102
   aguardando_aprovacao:  { label: "Aguardando aprovação", cor: "ambar" },
   aprovado:              { label: "Aprovado",             cor: "azul" },
   enviado:               { label: "Enviado",              cor: "azul" },
@@ -61,8 +77,40 @@ const CMP_STATUS = {
   recebido:              { label: "Recebido",             cor: "verde" },
   cancelado:             { label: "Cancelado",            cor: "vermelho" }
 };
-const CMP_STAGES = ["rascunho","aguardando_aprovacao","aprovado","enviado","parcialmente_recebido","recebido"];
-const CMP_ABERTOS = ["rascunho","aguardando_aprovacao","aprovado","enviado","parcialmente_recebido"];
+const CMP_STAGES = ["rascunho","em_cotacao","aguardando_aprovacao","aprovado","enviado","parcialmente_recebido","recebido"];
+const CMP_ABERTOS = ["rascunho","em_cotacao","aguardando_aprovacao","aprovado","enviado","parcialmente_recebido"];
+/* fase 102: etapa do fluxo do Fabrício (#91), = vw_compras_pedido_etapa.etapa. O status do pedido continua o mesmo;
+   aguardando_conferencia, financeiro e finalizado são calculados sobre o status `recebido`. */
+const CMP_ETAPA = {
+  rascunho:               { label: "Rascunho",               cor: "cinza" },
+  em_cotacao:             { label: "Em cotação",             cor: "ambar" },
+  aguardando_aprovacao:   { label: "Aguardando aprovação",   cor: "ambar" },
+  aguardando_recebimento: { label: "Aguardando recebimento", cor: "azul" },
+  aguardando_conferencia: { label: "Aguardando conferência", cor: "ambar" },
+  financeiro:             { label: "Financeiro",             cor: "azul" },
+  finalizado:             { label: "Finalizado",             cor: "verde" },
+  cancelado:              { label: "Cancelado",              cor: "vermelho" }
+};
+const CMP_ETAPAS_ABERTAS = ["rascunho","em_cotacao","aguardando_aprovacao","aguardando_recebimento","aguardando_conferencia","financeiro"];
+/* cartão do resumo → etapas que ele conta e filtra (#92) */
+const CMP_KPI_ETAPAS = { em_cotacao: ["em_cotacao"], aprovar: ["aguardando_aprovacao"], entrega: ["aguardando_recebimento","aguardando_conferencia"],
+  financeiro: ["financeiro"], abertos: CMP_ETAPAS_ABERTAS, finalizados: ["finalizado"] };
+function cmpEtapa(p){
+  const e = _cmpEtapaEsp[p.id];
+  if(e && e.etapa) return e.etapa;
+  if(p.status === "recebido") return "finalizado";
+  if(["aprovado","enviado","parcialmente_recebido"].includes(p.status)) return "aguardando_recebimento";
+  return CMP_ETAPA[p.status] ? p.status : "cancelado";
+}
+function cmpEtapaTag(et){ const o = CMP_ETAPA[et] || {}; return `<span class="tag ${o.cor || "cinza"}">${esc(o.label || et)}</span>`; }
+/* tag que vai ao lado do status na lista e no cartão: só o que o status não diz */
+function cmpEtapaExtra(p){
+  const et = cmpEtapa(p), e = _cmpEtapaEsp[p.id];
+  const partes = [];
+  if(["aguardando_conferencia","financeiro"].includes(et)) partes.push(cmpEtapaTag(et));
+  if(e && Number(e.conferencias_vencidas) > 0) partes.push(`<span class="tag vermelho" title="o solicitante não conferiu o recebimento no prazo; o pedido seguiu com aviso">sem conferência</span>`);
+  return partes.join(" ");
+}
 // Depois de aprovado, o pedido ou aguarda recebimento ou terminou (06/10/2026). Atraso só conta aqui:
 // rascunho e cotação não têm entrega a atrasar.
 const CMP_AGUARDA_RECEB = ["aprovado","enviado","parcialmente_recebido"];
@@ -350,6 +398,15 @@ async function carregarCompras(force){
   ["btn-cmp-novo","btn-cmp-receber-avulso","btn-cmp-compra-direta"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
   if($("btn-cmp-req-nova")) $("btn-cmp-req-nova").style.display = (typeof reqPodePedir === "function" && reqPodePedir()) ? "" : "none"; // fase 60
   if($("cmp-view-naturezas")) $("cmp-view-naturezas").style.display = cmpPodeVerNaturezas() ? "" : "none";   // fase 108b
+  // fase 102: quem não opera Compras (encarregado, operador, assistente de engenharia) não lê pedidos; abre uma vez
+  // direto nas requisições, que é onde ele pede e confere o que chegou (o atalho da Sala de Comando já escolhe a visão)
+  if(!_cmpViewInicial){
+    _cmpViewInicial = true;
+    if(!pode && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) && _cmpView === "kanban"){
+      _cmpView = "requisicoes";
+      if(typeof _reqFiltroSt !== "undefined") _reqFiltroSt = "";
+    }
+  }
   await cmpFetchPedidos();   // lote S43: 1ª carga renderizada, resto em segundo plano
   await pKpis;
   cmpCarregarSync();   // fase 81
@@ -360,10 +417,31 @@ function cmpKpisCarregando(on){
   document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.disabled = on);
 }
 async function cmpCarregarKpis(){
-  const { data, error } = await sb.from("vw_compras_kpis").select("*").maybeSingle();
-  if(error) console.warn("vw_compras_kpis:", error.message);
-  _cmpKpis = (!error && data) ? data : null;
+  // fase 102: os cartões da sequência do Fabrício vêm de vw_compras_etapas (etapa × setor × mês, somados aqui);
+  // vw_compras_kpis continua para "seus para receber" e para a tela antiga se a view nova não existir
+  const [k, e] = await Promise.all([
+    sb.from("vw_compras_kpis").select("*").maybeSingle(),
+    cmpLerEtapas()
+  ]);
+  if(k.error) console.warn("vw_compras_kpis:", k.error.message);
+  _cmpKpis = (!k.error && k.data) ? k.data : null;
+  _cmpEtapasResumo = e;
   cmpRenderKpis();
+}
+async function cmpLerEtapas(){
+  const linhas = [];
+  for(let de = 0; linhas.length === de; de += 1000){
+    const r = await sb.from("vw_compras_etapas").select("etapa,quantidade,valor,atrasados,conferencias_vencidas").range(de, de + 999);
+    if(r.error){ console.warn("vw_compras_etapas:", r.error.message); return null; }
+    linhas.push(...(r.data || []));
+  }
+  const res = {};
+  linhas.forEach(l => {
+    const o = res[l.etapa] = res[l.etapa] || { q: 0, v: null, atr: 0, cv: 0 };
+    o.q += Number(l.quantidade || 0); o.atr += Number(l.atrasados || 0); o.cv += Number(l.conferencias_vencidas || 0);
+    if(l.valor !== null && l.valor !== undefined) o.v = (o.v || 0) + Number(l.valor);
+  });
+  return res;
 }
 /* fase 81: última sincronização com o Odoo (scripts/importar-odoo-compras.js sincronizar, todo dia às 05:30).
    Lote S43 (L3): lê a ÚLTIMA LINHA POR ETAPA (vw_odoo_sync_ultima) em vez das 12 últimas linhas, que
@@ -454,10 +532,20 @@ async function cmpFetchPedidos(){
   const abertosIn = `status.in.(${CMP_ABERTOS.join(",")})`;
   _cmpCompleto = false;
   // 1ª carga: em aberto + últimos 30 dias
-  const prim = await cmpFetchPaginas(q => q.or(`data_pedido.gte.${corte1},${abertosIn}`));
+  const [prim] = await Promise.all([
+    cmpFetchPaginas(q => q.or(`data_pedido.gte.${corte1},${abertosIn}`)),
+    cmpFetchEtapaEsp()   // fase 102
+  ]);
   if(token !== _cmpCarga) return;
   if(prim.error){ aviso("app-aviso", "Erro ao carregar pedidos: " + prim.error.message, "erro"); return; }
   const porId = {}; prim.data.forEach(p => { p.itens = null; porId[p.id] = p; });   // null = itens não carregados
+  // fase 102: pedido recebido que espera a conferência ou o financeiro entra sempre, como os abertos
+  const faltam = Object.keys(_cmpEtapaEsp).filter(id => !porId[id] && CMP_ETAPAS_ABERTAS.includes(_cmpEtapaEsp[id].etapa));
+  for(let i = 0; i < faltam.length; i += 100){
+    const r = await cmpFetchPaginas(q => q.in("id", faltam.slice(i, i + 100)));
+    if(token !== _cmpCarga) return;
+    if(!r.error) r.data.forEach(p => { if(!porId[p.id]){ p.itens = null; porId[p.id] = p; prim.data.push(p); } });
+  }
   const abertos = prim.data.filter(p => CMP_ABERTOS.includes(p.status));
   const [it, pr, ap] = await Promise.all([
     cmpFetchItens(abertos.map(p => p.id)),
@@ -479,6 +567,19 @@ async function cmpFetchPedidos(){
   document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.disabled = false);
   // 2ª carga em segundo plano (sem await: quem chamou segue; a lista se completa quando chegar)
   if(temResto) cmpFetchResto(token, corte, corte1, porId);
+}
+/* fase 102: etapa calculada dos pedidos em que o status não basta (aguardando conferência, financeiro, recebido sem
+   conferência no prazo); os outros a tela deduz do status (cmpEtapa). Sem a view (migration não aplicada) fica vazio. */
+async function cmpFetchEtapaEsp(){
+  const out = {};
+  for(let de = 0; ; de += 1000){
+    const r = await sb.from("vw_compras_pedido_etapa").select("pedido_id,etapa,conferencias_pendentes,conferencias_vencidas,titulos_pendentes,proximo_vencimento")
+      .or("etapa.in.(aguardando_conferencia,financeiro),conferencias_vencidas.gt.0").order("pedido_id").range(de, de + 999);
+    if(r.error){ console.warn("vw_compras_pedido_etapa:", r.error.message); break; }
+    (r.data || []).forEach(l => { out[l.pedido_id] = l; });
+    if((r.data || []).length < 1000) break;
+  }
+  _cmpEtapaEsp = out;
 }
 /* o resto do período (fechados antes dos 30 dias), sem itens; mesma paginação */
 async function cmpFetchResto(token, corte, corte1, porId){
@@ -508,13 +609,16 @@ function cmpPreencherSelectsFixos(){
   const eqOpts = ph => `<option value="">${ph}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
   set("cmp-forn", fornOpts("— escolha o fornecedor —")); set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
+  set("cmp-cot-forn", fornOpts("— fornecedor da cotação —"));   // fase 102
+  set("cmp-f-etapa", `<option value="">Etapa</option>` + Object.entries(CMP_ETAPA).filter(([k]) => k !== "cancelado").map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("")
+    + `<option value="_atrasado">Recebimento atrasado</option>`);   // fase 102
   set("cmp-obra", obraOpts("— nenhuma —")); set("cmp-f-obra", obraOpts("Obra")); set("cmp-av-obra", obraOpts("— nenhuma —"));
   set("cmp-equip", eqOpts("— nenhuma —")); set("cmp-f-equip", eqOpts("TAG")); set("cmp-av-equip", eqOpts("— nenhuma —"));
   set("cmp-centro", cmpCentroOptions("— nenhum —", true)); set("cmp-av-centro", cmpCentroOptions("— nenhum —", true));
   set("cmp-resp-receb", `<option value="">— o solicitante —</option>` + _cmpPerfis.map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join(""));
   const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
   const ac = $("cmp-av-cat"); if(ac) ac.innerHTML = cmpCatOptions("outro");
-  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-f-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53); S45: filtro do painel
+  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-f-forn", "cmp-cot-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53); S45: filtro do painel; fase 102: cotação
 }
 
 /* ---------- painel ---------- */
@@ -523,22 +627,23 @@ function cmpFiltrados(){
   const fSt = $("cmp-f-status")?.value || "", fF = $("cmp-f-forn")?.value || "", fO = $("cmp-f-obra")?.value || "", fE = $("cmp-f-equip")?.value || "", fM = $("cmp-f-mes")?.value || "";
   const soMeus = !!$("cmp-f-meus")?.checked, eu = usuarioAtual?.id;
   const soAprovar = !!$("cmp-f-aprovar-eu")?.checked;   // fase 108b: "para eu aprovar" (chave pendente que eu assino)
+  const fEt = $("cmp-f-etapa")?.value || "";   // fase 102
+  // fase 102: cartão ou etapa escolhidos definem o conjunto; o "Abertos" padrão do status não corta financeiro/finalizado
+  const ignoraAbertos = !!CMP_KPI_ETAPAS[_cmpKpi] || !!fEt;
   return _cmpPedidos.filter(p => {
     if(soMeus && !(_cmpParaReceber[p.id] && _cmpParaReceber[p.id].responsavel_recebimento_id === eu)) return false;   // fase 78
     if(soAprovar && !cmpEuAssino(p.id)) return false;
-    if(fSt === "_abertos"){ if(!CMP_ABERTOS.includes(p.status)) return false; }
+    // fase 102: "Abertos" = o cartão "Pedidos em aberto" (inclui recebido que espera conferência ou o financeiro)
+    if(fSt === "_abertos"){ if(!ignoraAbertos && !CMP_ETAPAS_ABERTAS.includes(cmpEtapa(p))) return false; }
     else if(fSt && p.status !== fSt) return false;
     if(!fSt && _cmpKpi === "" && _cmpView === "kanban" && p.status === "cancelado") return false;
     if(fF && p.fornecedor_id !== fF) return false;
     if(fO && p.obra_id !== fO && !(p.itens || []).some(i => i.obra_id === fO)) return false;
     if(fE && p.equipamento_id !== fE && !(p.itens || []).some(i => i.equipamento_id === fE)) return false;
     if(fM && String(p.data_pedido || "").slice(0, 7) !== fM) return false;
-    switch(_cmpKpi){
-      case "aprovar":   if(p.status !== "aguardando_aprovacao") return false; break;
-      case "entrega":   if(!CMP_AGUARDA_RECEB.includes(p.status)) return false; break;
-      case "atrasados": if(!cmpAtrasado(p)) return false; break;
-      case "receber":   if(!_cmpParaReceber[p.id]) return false; break;   // fase 78
-    }
+    if(fEt === "_atrasado"){ if(!cmpAtrasado(p)) return false; }
+    else if(fEt && cmpEtapa(p) !== fEt) return false;
+    if(CMP_KPI_ETAPAS[_cmpKpi] && !CMP_KPI_ETAPAS[_cmpKpi].includes(cmpEtapa(p))) return false;   // fase 102 (#92)
     if(q){
       const alvo = [p.numero, p.codigo_externo, p.comprador_externo, p.fornecedor?.razao_social, cmpObra(p.obra_id), cmpEq(p.equipamento_id), p.condicao_pagamento, ...(p.itens || []).map(i => i.descricao)].filter(Boolean).join(" ").toLowerCase();
       if(!alvo.includes(q) && !(_cmpBuscaItensIds && _cmpBuscaItensIds.has(p.id))) return false;   // lote S43: item casado no servidor
@@ -550,28 +655,48 @@ function cmpFiltrados(){
    como antes, mas só depois que o período inteiro chegou; até lá fica "…". */
 /* fase 108b: pedido em que o usuário logado tem chave pendente para assinar */
 function cmpEuAssino(pedidoId){ return (_cmpAprovPend[pedidoId] || []).some(a => a.eu_assino); }
+/* fase 102 (#92): os cartões seguem a sequência do Fabrício (Requisição pendente · Em cotação · Aguardando aprovação ·
+   Aguardando recebimento · Financeiro · Pedidos em aberto · Pedidos finalizados). Os números das etapas em aberto vêm de
+   vw_compras_etapas (todos os pedidos abertos); "finalizados" conta a lista carregada (o período escolhido), então só
+   aparece quando o período inteiro chegou. Valor só para quem lê contas a pagar (a view já devolve nulo aos outros). */
 function cmpRenderKpis(){
   const set = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   const nAprovar = Object.keys(_cmpAprovPend).filter(cmpEuAssino).length;   // fase 108b
   set("cmp-kpi-aprovar-meus", nAprovar ? `(${nAprovar} para você)` : "");
-  const k = _cmpKpis;
-  if(k){
-    set("cmp-kpi-abertos", k.abertos); set("cmp-kpi-aprovar", k.aguardando_aprovacao); set("cmp-kpi-entrega", k.aguardando_entrega);
-    set("cmp-kpi-atrasados", k.atrasados); set("cmp-kpi-valor", brl(k.valor_aberto)); set("cmp-kpi-req", k.requisicoes_pendentes);
-    set("cmp-kpi-receber", k.para_receber); set("cmp-kpi-receber-meus", k.para_receber_meus ? `(${k.para_receber_meus} seus)` : "");
+  const verValor = typeof podeVerContasPagar === "function" && podeVerContasPagar();
+  const vTxt = v => verValor && v !== null && v !== undefined ? brl(v) : "";
+  const k = _cmpKpis, E = _cmpEtapasResumo;
+  const per = $("cmp-f-periodo");
+  const perTxt = per && per.value ? per.options[per.selectedIndex].text.toLowerCase() : "todo o período";
+  if(_cmpCompleto){
+    const fin = _cmpPedidos.filter(p => cmpEtapa(p) === "finalizado");
+    set("cmp-kpi-finalizados", fin.length);
+    set("cmp-kpi-finalizados-sub", [perTxt, verValor ? brl(fin.reduce((s, p) => s + Number(p.total || 0), 0)) : ""].filter(Boolean).join(" · "));
+  } else { set("cmp-kpi-finalizados", "…"); set("cmp-kpi-finalizados-sub", ""); }
+  if(E){
+    const q = et => (E[et] ? E[et].q : 0), soma = (lst, campo) => lst.reduce((s, et) => s + (E[et] ? Number(E[et][campo] || 0) : 0), 0);
+    const val = lst => (verValor && lst.some(et => E[et] && E[et].v !== null)) ? soma(lst, "v") : null;
+    set("cmp-kpi-req", q("requisicao_pendente"));
+    set("cmp-kpi-cotacao", q("em_cotacao")); set("cmp-kpi-cotacao-sub", vTxt(val(["em_cotacao"])));
+    set("cmp-kpi-aprovar", q("aguardando_aprovacao")); set("cmp-kpi-aprovar-sub", vTxt(val(["aguardando_aprovacao"])));
+    const nConf = q("aguardando_conferencia"), nAtr = soma(["aguardando_recebimento"], "atr"), meus = k ? Number(k.para_receber_meus || 0) : 0;
+    set("cmp-kpi-entrega", q("aguardando_recebimento") + nConf);
+    set("cmp-kpi-entrega-sub", [nConf ? `${nConf} a conferir` : "", nAtr ? `${nAtr} atrasado(s)` : "", meus ? `${meus} seus para receber` : ""].filter(Boolean).join(" · "));
+    set("cmp-kpi-financeiro", q("financeiro")); set("cmp-kpi-financeiro-sub", vTxt(val(["financeiro"])));
+    set("cmp-kpi-abertos", CMP_ETAPAS_ABERTAS.reduce((s, et) => s + q(et), 0)); set("cmp-kpi-valor", vTxt(val(CMP_ETAPAS_ABERTAS)));
+    _cmpReqPend = q("requisicao_pendente");
+  } else if(k){
+    // sem a view da fase 102 (migration não aplicada): os números antigos nos cartões que existiam
+    set("cmp-kpi-req", k.requisicoes_pendentes); set("cmp-kpi-cotacao", "—"); set("cmp-kpi-aprovar", k.aguardando_aprovacao);
+    set("cmp-kpi-entrega", k.aguardando_entrega); set("cmp-kpi-entrega-sub", k.atrasados ? `${k.atrasados} atrasado(s)` : "");
+    set("cmp-kpi-financeiro", "—"); set("cmp-kpi-abertos", k.abertos); set("cmp-kpi-valor", vTxt(k.valor_aberto));
     _cmpReqPend = Number(k.requisicoes_pendentes || 0);
   } else if(_cmpCompleto){
-    const ab = _cmpPedidos.filter(p => CMP_ABERTOS.includes(p.status));
-    set("cmp-kpi-abertos", ab.length);
-    set("cmp-kpi-aprovar", ab.filter(p => p.status === "aguardando_aprovacao").length);
-    set("cmp-kpi-entrega", ab.filter(p => CMP_AGUARDA_RECEB.includes(p.status)).length);
-    set("cmp-kpi-atrasados", ab.filter(cmpAtrasado).length);
-    set("cmp-kpi-valor", brl(ab.reduce((s, p) => s + Number(p.total || 0), 0)));
-    set("cmp-kpi-req", _cmpReqPend);
-    const pr = Object.values(_cmpParaReceber), meus = pr.filter(r => r.responsavel_recebimento_id === usuarioAtual?.id).length;   // fase 78
-    set("cmp-kpi-receber", pr.length); set("cmp-kpi-receber-meus", meus ? `(${meus} seus)` : "");
+    const conta = lst => _cmpPedidos.filter(p => lst.includes(cmpEtapa(p))).length;
+    set("cmp-kpi-req", _cmpReqPend); set("cmp-kpi-cotacao", conta(["em_cotacao"])); set("cmp-kpi-aprovar", conta(["aguardando_aprovacao"]));
+    set("cmp-kpi-entrega", conta(CMP_KPI_ETAPAS.entrega)); set("cmp-kpi-financeiro", conta(["financeiro"])); set("cmp-kpi-abertos", conta(CMP_ETAPAS_ABERTAS));
   } else return;
-  document.querySelectorAll("#cmp-painel .ind").forEach(el => el.classList.remove("carregando"));
+  document.querySelectorAll("#cmp-painel .ind").forEach(el => { if(el.dataset.kpi !== "finalizados" || _cmpCompleto) el.classList.remove("carregando"); });
 }
 function renderCompras(){
   const cont = $("cmp-conteudo"); if(!cont) return;
@@ -594,7 +719,7 @@ function cmpCardHTML(p){
   const it = p.itens;   // null = pedido fechado, itens só na ficha (lote S43)
   const tipo = cmpTipoPedido(p);   // fase 108b
   return `<div class="serv-kan-card${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
-    <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span>${cmpEuAssino(p.id) ? ` <span class="tag ambar" title="chave de aprovação pendente que você assina">falta sua assinatura</span>` : ""}</div>
+    <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span>${cmpEuAssino(p.id) ? ` <span class="tag ambar" title="chave de aprovação pendente que você assina">falta sua assinatura</span>` : ""}${cmpEtapaExtra(p) ? " " + cmpEtapaExtra(p) : ""}</div>
     <div>${esc(p.fornecedor?.razao_social || "— sem fornecedor —")}</div>
     <div class="meta">${dest}${it ? ` · ${it.length} item(ns)` : ""}${tipo ? ` · ${esc(tipo)}` : ""}</div>
     <div class="meta" style="display:flex;justify-content:space-between;margin-top:4px;"><strong>${brl(p.total)}</strong>${p.previsao_entrega ? `<span class="${atras ? "txt-perigo" : ""}">${atras ? "⚠ " : "📅 "}${dataBR(p.previsao_entrega)}</span>` : ""}</div>
@@ -639,7 +764,7 @@ function renderComprasLista(dados){
       <td class="meta">${esc(cmpTipoPedido(p) || "—")}</td>
       <td class="num">${p.itens ? p.itens.length : "—"}</td><td class="num">${brl(p.total)}</td>
       <td class="${cmpAtrasado(p) ? "txt-perigo" : ""}">${dataBR(p.previsao_entrega)}</td>
-      <td>${cmpTag(p.status)}${cmpEuAssino(p.id) ? ` <span class="tag ambar" title="chave de aprovação pendente que você assina">falta sua assinatura</span>` : ""}</td><td class="meta">${esc(p._responsavel || "")}${_cmpParaReceber[p.id]?.tem_servico ? ` <span class="tag ${_cmpParaReceber[p.id].tem_evidencia ? "verde" : "ambar"}">serviço${_cmpParaReceber[p.id].tem_evidencia ? " c/ evidência" : ""}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+      <td>${cmpTag(p.status)}${cmpEuAssino(p.id) ? ` <span class="tag ambar" title="chave de aprovação pendente que você assina">falta sua assinatura</span>` : ""}${cmpEtapaExtra(p) ? " " + cmpEtapaExtra(p) : ""}</td><td class="meta">${esc(p._responsavel || "")}${_cmpParaReceber[p.id]?.tem_servico ? ` <span class="tag ${_cmpParaReceber[p.id].tem_evidencia ? "verde" : "ambar"}">serviço${_cmpParaReceber[p.id].tem_evidencia ? " c/ evidência" : ""}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 /* recebimentos (visão do painel) */
@@ -719,6 +844,7 @@ function mostrarPainelCompras(){
   $("cmp-ficha").style.display = "none"; $("cmp-painel").style.display = "";
   _cmpAtual = null; _cmpEditId = null; _cmpItens = [];
   _cmpAprovAtual = { pend: [], assinadas: [], carregado: false };
+  _cmpCotacoes = []; _cmpCotEdit = null; _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };   // fase 102
   if(typeof ocultarHistorico === "function") ocultarHistorico("cmp-chatter");
   // fase 108b: quem chegou pela Sala de Comando sem ter Compras no menu volta para o Início (o painel não é dele)
   if(_cmpModoDono){
@@ -789,6 +915,9 @@ function abrirFichaPedido(p){
   $("cmp-resp-receb").value = p.responsavel_recebimento_id || "";
   $("cmp-resp-receb").disabled = !(ed || cmpPodeTrocarResp());
   $("cmp-itens-add").style.display = ed ? "" : "none";
+  if($("btn-cmp-prod-novo")) $("btn-cmp-prod-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";   // fase 102 (#160)
+  _cmpCotacoes = []; _cmpCotEdit = null; _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };   // fase 102
+  if($("cmp-cot-form")) $("cmp-cot-form").style.display = "none";
   $("cmp-alcada-info").textContent = cmpPodeOperar()
     ? `Sua alçada de aprovação: ${cmpAlcadaTxt()}. A aprovação tem duas chaves: a alçada pelo valor e, para cada obra, TAG ou centro com item de aplicação direta, o dono do custo (engenheiro responsável da obra, gestor de manutenção ou de frota, responsável do centro). Reposição de estoque só pede a alçada.`
     : `Você vê este pedido porque é dono do custo de um destino dele. Confira os itens e use "Assinar" para a sua chave.`;
@@ -800,11 +929,12 @@ function abrirFichaPedido(p){
   renderItensPedido();
   if(!novo) cmpCarregarAprovacoes(p.id);
   const setSb = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); } };
-  setSb("sb-cmp-itens", _cmpItens.length); setSb("sb-cmp-rec", 0); setSb("sb-cmp-tit", 0); setSb("sb-cmp-anexos", 0);
+  setSb("sb-cmp-itens", _cmpItens.length); setSb("sb-cmp-rec", 0); setSb("sb-cmp-tit", 0); setSb("sb-cmp-anexos", 0); setSb("sb-cmp-cot", 0);
   $("cmp-rec-lista").innerHTML = `<p class="vazio">${novo ? "Salve o pedido para receber." : "Carregando…"}</p>`;
   $("cmp-tit-lista").innerHTML = `<p class="vazio">—</p>`;
+  if($("cmp-cot-lista")) $("cmp-cot-lista").innerHTML = `<p class="vazio">${novo ? "Salve o pedido para registrar cotações." : "Carregando…"}</p>`;   // fase 102
   cmpAnxPreparar(novo);   // lote S48 (#117)
-  if(!novo){ cmpCarregarFilhas(p.id); cmpCarregarAnexosPedido(p.id); }
+  if(!novo){ cmpCarregarFilhas(p.id); cmpCarregarAnexosPedido(p.id); cmpCarregarCotacoes(p.id); }
   if(!novo && typeof montarHistorico === "function") montarHistorico("pedidos_compra", p.id, "cmp-chatter");
   else if(typeof ocultarHistorico === "function") ocultarHistorico("cmp-chatter");
   ativarTabPedido(novo ? "cabecalho" : (_cmpItens.length ? "itens" : "cabecalho"));
@@ -835,6 +965,66 @@ function cmpAtualizarChips(){
   $("cmp-chip-aprov").textContent = p.status === "cancelado" ? "Cancelado" : p.aprovador ? `${p.aprovador.nome}${p.aprovado_em ? " · " + dataBR(String(p.aprovado_em).slice(0, 10)) : ""}`
     : p.status === "aguardando_aprovacao" ? (nPend ? `falta ${nPend} assinatura${nPend > 1 ? "s" : ""}` : "aguardando") : "—";
   if($("cmp-chip-tipo")) $("cmp-chip-tipo").textContent = cmpTipoResumo(_cmpItens) || "—";   // fase 108b
+  // fase 102: etapa do fluxo e conferência do solicitante
+  const chEt = $("cmp-chip-etapa");
+  if(chEt){ const et = p.id ? ((_cmpConfAtual.etapa && _cmpConfAtual.etapa.etapa) || cmpEtapa(p)) : "rascunho"; chEt.textContent = (CMP_ETAPA[et] || {}).label || et; }
+  cmpAtualizarChipConferencia();
+}
+/* ---------- conferência do recebimento pelo solicitante (fase 102, etapa 5 do #91) ----------
+   vw_compras_conferencias: recebimentos confirmados desde a publicação de pedidos com requisição; exigida = requisição
+   de obra, TAG ou setor (decisão 1); vencida = passou do prazo em dias úteis (decisão 2: o pedido segue com aviso).
+   Quem confere: quem fez a requisição, ou a diretoria (compras_pode_conferir); o comprador e o almoxarife não. */
+function cmpDataLocal(ts){ return ts ? dataLocalISO(new Date(ts)) : ""; }
+function cmpSomarDiasUteis(iso, n){
+  if(!iso) return "";
+  const d = new Date(iso + "T12:00:00"); let k = 0;
+  while(k < n){ d.setDate(d.getDate() + 1); const s = d.getDay(); if(s !== 0 && s !== 6) k++; }
+  return dataLocalISO(d);
+}
+async function cmpCarregarConferencias(id){
+  const [lst, pode, et] = await Promise.all([
+    sb.from("vw_compras_conferencias").select("recebimento_id,nf_numero,data_recebimento,confirmado_em,recebido_por_nome,conferido_por_nome,conferido_em,conferencia_obs,exigida,pendente,vencida,dias_uteis,prazo_uteis").eq("pedido_id", id).order("confirmado_em"),
+    sb.rpc("compras_pode_conferir", { p_pedido: id }),
+    sb.from("vw_compras_pedido_etapa").select("etapa,conferencias_pendentes,conferencias_vencidas,titulos_pendentes,proximo_vencimento").eq("pedido_id", id).maybeSingle()
+  ]);
+  if(_cmpEditId !== id) return;
+  if(lst.error) console.warn("vw_compras_conferencias:", lst.error.message);   // antes da migration da fase 102: sem conferência
+  _cmpConfAtual = { lista: lst.error ? [] : (lst.data || []), pode: !pode.error && pode.data === true, etapa: et.error ? null : (et.data || null), carregado: !lst.error };
+  cmpAtualizarChips();
+  cmpAtualizarBotoes();
+}
+function cmpAtualizarChipConferencia(){
+  const ch = $("cmp-chip-conf"), txt = $("cmp-chip-conf-txt"); if(!ch || !txt) return;
+  const p = _cmpAtual, c = _cmpConfAtual;
+  const feitas = c.lista.filter(r => !r.pendente), pend = c.lista.filter(r => r.pendente);
+  if(!p || !p.id || !c.carregado || (!p.exige_conferencia && !feitas.length)){ ch.style.display = "none"; return; }
+  let t;
+  if(!c.lista.length) t = "do solicitante, quando o almoxarifado receber";
+  else if(pend.length){
+    const venc = pend.filter(r => r.vencida && r.exigida).length;
+    if(venc) t = `vencida: ${venc} recebimento(s) sem conferência (o pedido seguiu com aviso)`;
+    else t = `aguardando o solicitante · até ${dataBR(cmpSomarDiasUteis(cmpDataLocal(pend[0].confirmado_em), Number(pend[0].prazo_uteis || 5)))}`;
+  } else {
+    const u = feitas[feitas.length - 1];
+    t = `conferido por ${u.conferido_por_nome || "?"} em ${dataBR(cmpDataLocal(u.conferido_em))}`;
+  }
+  txt.textContent = t;
+  ch.style.display = "";
+}
+/* "Recebi e conferi" no pedido: confere os recebimentos pendentes deste pedido (um por um, pela RPC) */
+async function cmpConferirRecebimentos(){
+  const pend = _cmpConfAtual.lista.filter(r => r.pendente);
+  if(!pend.length || !_cmpConfAtual.pode){ aviso("app-aviso", "Nada a conferir neste pedido.", "erro"); return; }
+  const obs = prompt(`Conferir ${pend.length} recebimento(s) (${pend.map(r => r.nf_numero ? "NF " + r.nf_numero : dataBR(r.data_recebimento)).join(", ")}).\nObservação (opcional; diga aqui se faltou algo ou veio com defeito):`, "");
+  if(obs === null) return;
+  for(const r of pend){
+    const { error } = await sb.rpc("recebimento_conferir", { p_id: r.recebimento_id, p_obs: obs || null });
+    if(error){ aviso("app-aviso", "Conferência não registrada: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); break; }
+  }
+  aviso("app-aviso", "Conferência registrada. Obrigado: o pedido segue para o financeiro.", "ok");
+  const id = _cmpEditId;
+  await cmpFetchPedidos();
+  if(id) await abrirPedido(id);
 }
 /* ---------- aprovação em duas chaves (fase 108b; banco da 108a) ----------
    Pendentes pela view vw_pedidos_aprovacao_pendente (quem assina, eu_assino); assinadas por pedido_aprovacoes. */
@@ -888,10 +1078,13 @@ function cmpAtualizarBotoes(){
     bAp.textContent = fecha ? "👍 Aprovar" : "✍️ Assinar";
     bAp.title = (fecha ? "Assina e aprova o pedido: " : "Assina a sua chave (o pedido continua aguardando as outras): ") + minhas.map(k => k.quem_assina).join("; ");
   }
+  const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
   const mostra = { "btn-cmp-salvar": pode && st === "rascunho", "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
+    "btn-cmp-cotacao": pode && st === "rascunho" && !novo && !leitura,   // fase 102: rascunho → em cotação
+    "btn-cmp-conferir": !novo && !leitura && _cmpConfAtual.pode && _cmpConfAtual.lista.some(r => r.pendente),   // fase 102
     "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": pode && ["aprovado","enviado","parcialmente_recebido"].includes(st),
     "btn-cmp-receber-servico": cmpPodeReceberServico(),
-    "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && ["aguardando_aprovacao","aprovado"].includes(st),
+    "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && ["aguardando_aprovacao","aprovado","em_cotacao"].includes(st),
     "btn-cmp-cancelar": pode && !novo && !["recebido","cancelado"].includes(st) };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
 }
@@ -902,7 +1095,8 @@ function ativarTabPedido(nome){
 async function cmpCarregarFilhas(id){
   const [rec, tit] = await Promise.all([
     sb.from("recebimentos").select("id,status,tipo,nf_numero,nf_serie,data_recebimento,total_nf,vencimento,parcelas,observacoes,itens:recebimento_itens(id,descricao,quantidade_aceita,valor_unitario_nf,destino,obra_id,equipamento_id,centro_custo_id),anexos:recebimento_anexos(id,nome,storage_path)").eq("pedido_id", id).order("data_recebimento", { ascending: false }),
-    sb.from("titulos_pagar").select("*, recebimento:recebimentos!inner(pedido_id)").eq("recebimento.pedido_id", id).order("vencimento")
+    sb.from("titulos_pagar").select("*, recebimento:recebimentos!inner(pedido_id)").eq("recebimento.pedido_id", id).order("vencimento"),
+    cmpCarregarConferencias(id)   // fase 102: conferência de cada recebimento (linha no cartão abaixo)
   ]);
   if(_cmpEditId !== id) return;
   const setSb = (bid, n) => { const b = $(bid); if(b){ b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); } };
@@ -913,10 +1107,230 @@ async function cmpCarregarFilhas(id){
       <span style="margin-left:auto;">${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
       <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${brl(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table>
       ${r.observacoes ? `<p class="meta" style="margin:6px 0 0;">${esc(r.observacoes)}</p>` : ""}
+      ${cmpConferenciaLinha(r.id)}
       ${(r.anexos || []).length ? `<div class="meta" style="margin-top:6px;">📎 ${r.anexos.map(a => `<a href="#" class="cmp-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}">${esc(a.nome)}</a>`).join(" · ")}</div>` : ""}</div>`).join("");
   $("cmp-rec-lista").querySelectorAll(".cmp-anexo").forEach(a => a.addEventListener("click", e => { e.preventDefault(); cmpAbrirAnexo(a.dataset.path, a.dataset.nome); }));
+  cmpAtualizarChipFinanceiro(recs, tit.error ? [] : tits);   // fase 102
   $("cmp-tit-lista").innerHTML = !podeVerContasPagar() ? `<p class="vazio">Os títulos deste pedido ficam em Contratos & Contas a pagar; seu perfil não tem acesso a esse módulo.</p>` : tit.error ? `<p class="vazio">Erro: ${esc(tit.error.message)}</p>` : !tits.length ? `<p class="vazio">Nenhum título. Eles nascem no recebimento da NF quando há vencimento informado.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Vencimento</th><th>NF</th><th>Parcela</th><th class="num">Valor</th><th>Exportado ao financeiro</th></tr></thead><tbody>${tits.map(t => `<tr><td><strong>${dataBR(t.vencimento)}</strong></td><td>${esc(t.nf_numero || "—")}</td><td>${t.parcela}/${t.total_parcelas}</td><td class="num">${brl(t.valor)}</td><td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+/* fase 102: linha da conferência no cartão do recebimento */
+function cmpConferenciaLinha(recId){
+  const c = _cmpConfAtual.lista.find(x => x.recebimento_id === recId);
+  if(!c) return "";
+  if(!c.pendente) return `<div class="meta" style="margin-top:6px;">✔ Conferido por <strong>${esc(c.conferido_por_nome || "?")}</strong> em ${dataBR(cmpDataLocal(c.conferido_em))}${c.conferencia_obs ? " · " + esc(c.conferencia_obs) : ""}</div>`;
+  if(!c.exigida) return `<div class="meta" style="margin-top:6px;">Conferência do solicitante opcional (reposição do estoque).</div>`;
+  return c.vencida
+    ? `<div class="meta txt-perigo" style="margin-top:6px;">Sem conferência do solicitante há ${Number(c.dias_uteis || 0)} dias úteis: o pedido seguiu com aviso na Sala de Comando.</div>`
+    : `<div class="meta txt-aviso" style="margin-top:6px;">Aguardando a conferência de quem pediu (até ${dataBR(cmpSomarDiasUteis(cmpDataLocal(c.confirmado_em), Number(c.prazo_uteis || 5)))}).</div>`;
+}
+/* fase 102 (#91, etapa 6): chip "Financeiro" com a NF recebida e o próximo vencimento, só para quem lê contas a pagar */
+function cmpAtualizarChipFinanceiro(recs, tits){
+  const ch = $("cmp-chip-fin"), txt = $("cmp-chip-fin-txt"); if(!ch || !txt) return;
+  const conf = (recs || []).filter(r => r.status === "confirmado");
+  if(!(typeof podeVerContasPagar === "function" && podeVerContasPagar()) || !conf.length){ ch.style.display = "none"; return; }
+  const nfs = [...new Set(conf.map(r => r.nf_numero).filter(Boolean))];
+  const pend = (tits || []).filter(t => !t.exportado_em).sort((a, b) => String(a.vencimento).localeCompare(String(b.vencimento)));
+  txt.textContent = [nfs.length ? "NF " + nfs.join(", ") : "sem NF",
+    pend.length ? `vence ${dataBR(pend[0].vencimento)} (${pend.length} a exportar)` : (tits || []).length ? "títulos exportados" : "sem título a pagar"].join(" · ");
+  ch.style.display = "";
+}
+
+/* ---------- cotações (fase 102, etapa 3 do #91) ----------
+   cotacoes + cotacao_itens: uma por fornecedor, preço por item do pedido, prazo, frete, condição e validade; a
+   proposta do fornecedor vai para os anexos do pedido como orçamento (pedido_compra_anexos, mesma regra do lote S48)
+   e fica ligada à cotação (anexo_id). Mudam só com o pedido em rascunho ou em cotação (gatilho no banco).
+   "Fechar com este fornecedor" = RPC cotacao_fechar: fornecedor, preços, frete, prazo e condição vão para o pedido,
+   que volta a rascunho para o comprador conferir e enviar à aprovação. Cotação mínima livre (decisão 3). */
+function cmpCotEditavel(){ return cmpPodeOperar() && ["rascunho","em_cotacao"].includes(_cmpAtual?.status) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
+async function cmpCarregarCotacoes(id){
+  const { data, error } = await sb.from("cotacoes")
+    .select("id,fornecedor_id,status,prazo_entrega_dias,frete,condicao_pagamento,validade,observacoes,anexo_id,escolhida_em,created_at,updated_at,fornecedor:fornecedores(razao_social),itens:cotacao_itens(id,pedido_item_id,valor_unitario),anexo:pedido_compra_anexos(id,nome,storage_path)")
+    .eq("pedido_id", id).order("created_at");
+  if(_cmpEditId !== id) return;
+  const b = $("sb-cmp-cot");
+  if(error){
+    console.warn("cotacoes:", error.message);   // antes da migration da fase 102
+    _cmpCotacoes = [];
+    if(b){ b.querySelector(".sb-num").textContent = 0; b.classList.add("zero"); }
+    if($("cmp-cot-lista")) $("cmp-cot-lista").innerHTML = `<p class="vazio">Cotações ainda não disponíveis.</p>`;
+    return;
+  }
+  _cmpCotacoes = data || [];
+  if(b){ b.querySelector(".sb-num").textContent = _cmpCotacoes.length; b.classList.toggle("zero", !_cmpCotacoes.length); }
+  renderCotacoes();
+}
+function cmpCotPreco(c, itemId){ const i = (c.itens || []).find(x => x.pedido_item_id === itemId); return i && i.valor_unitario !== null && i.valor_unitario !== undefined ? Number(i.valor_unitario) : null; }
+function cmpCotTotal(c){
+  return _cmpItens.reduce((s, it) => { const v = cmpCotPreco(c, it.id); return s + (v === null ? 0 : Math.round(v * Number(it.quantidade || 0) * 100) / 100); }, 0) + Number(c.frete || 0);
+}
+const CMP_COT_STATUS = { aberta: ["aberta", "azul"], escolhida: ["escolhida", "verde"], descartada: ["descartada", "cinza"] };
+function renderCotacoes(){
+  const cont = $("cmp-cot-lista"); if(!cont) return;
+  const ed = cmpCotEditavel();
+  const itens = _cmpItens.filter(it => it.id);
+  const topo = `<div class="lista-topo compacta"><h3>Cotações <span class="contador">${_cmpCotacoes.length}</span></h3>
+    ${ed ? `<button type="button" class="btn-sec btn-sm" id="btn-cmp-cot-nova" style="margin-left:auto;">＋ Nova cotação</button>` : ""}</div>`;
+  if(!_cmpCotacoes.length){
+    cont.innerHTML = topo + `<p class="vazio">${ed ? (itens.length ? "Nenhuma cotação. Registre a proposta de cada fornecedor (1 a N)." : "Salve os itens do pedido antes de cotar.") : "Nenhuma cotação registrada."}</p>`;
+    $("btn-cmp-cot-nova")?.addEventListener("click", () => cmpAbrirCotacao(null));
+    return;
+  }
+  const vivas = _cmpCotacoes.filter(c => c.status !== "descartada");
+  // menor preço por item entre as cotações vivas (abertas e a escolhida)
+  const melhor = {};
+  itens.forEach(it => { const ps = vivas.map(c => cmpCotPreco(c, it.id)).filter(v => v !== null); if(ps.length) melhor[it.id] = Math.min(...ps); });
+  const totais = _cmpCotacoes.map(cmpCotTotal), menorTotal = Math.min(...vivas.map(cmpCotTotal));
+  const th = _cmpCotacoes.map(c => { const s = CMP_COT_STATUS[c.status] || [c.status, "cinza"];
+    return `<th class="num" style="min-width:150px;"><div>${esc(c.fornecedor?.razao_social || cmpForn(c.fornecedor_id) || "?")}</div><span class="tag ${s[1]}">${esc(s[0])}</span></th>`; }).join("");
+  const linhas = itens.map(it => `<tr><td>${esc(it.descricao)}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>${
+    _cmpCotacoes.map(c => { const v = cmpCotPreco(c, it.id); const ehMelhor = v !== null && c.status !== "descartada" && v === melhor[it.id] && vivas.length > 1;
+      return `<td class="num">${v === null ? '<span class="meta">não cotou</span>' : `${brl(v)}<div class="meta">${brl(Math.round(v * Number(it.quantidade || 0) * 100) / 100)}</div>`}${ehMelhor ? ' <span class="tag verde" title="menor preço deste item entre as cotações">melhor</span>' : ""}</td>`; }).join("")}</tr>`).join("");
+  const rodape = (rot, fn) => `<tr><th colspan="2" style="text-align:right;">${rot}</th>${_cmpCotacoes.map(fn).join("")}</tr>`;
+  cont.innerHTML = topo + `<div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Item</th><th class="num">Qtd</th>${th}</tr></thead><tbody>${linhas}</tbody>
+    <tfoot>
+      ${rodape("Frete", c => `<td class="num">${brl(c.frete || 0)}</td>`)}
+      ${rodape("Total", (c, i) => `<td class="num"><strong>${brl(totais[i])}</strong>${c.status !== "descartada" && vivas.length > 1 && totais[i] === menorTotal ? ' <span class="tag verde">menor total</span>' : ""}</td>`)}
+      ${rodape("Prazo de entrega", c => `<td class="num">${c.prazo_entrega_dias !== null && c.prazo_entrega_dias !== undefined ? esc(c.prazo_entrega_dias) + " dia(s)" : "—"}</td>`)}
+      ${rodape("Condição", c => `<td class="num">${esc(c.condicao_pagamento || "—")}</td>`)}
+      ${rodape("Validade", c => `<td class="num">${c.validade ? dataBR(c.validade) : "—"}</td>`)}
+      ${rodape("Proposta", c => `<td class="num">${c.anexo ? `<a href="#" class="cmp-cot-anexo" data-path="${esc(c.anexo.storage_path)}" data-nome="${esc(c.anexo.nome)}">📎 ${esc(c.anexo.nome)}</a>` : "—"}${c.observacoes ? `<div class="meta">${esc(c.observacoes)}</div>` : ""}</td>`)}
+      ${ed ? rodape("", c => `<td class="num" data-cot="${esc(c.id)}">${c.status === "escolhida" ? '<span class="meta">pedido fechado com esta</span><br>' : `<button type="button" class="btn btn-sm cmp-cot-fechar" title="Copia fornecedor, preços, frete, prazo e condição para o pedido">✔ Fechar com este fornecedor</button><br>`}<button type="button" class="btn-sec btn-sm cmp-cot-editar" title="Editar">✏️</button> <button type="button" class="btn-sec btn-sm txt-perigo cmp-cot-excluir" title="Excluir">🗑️</button></td>`) : ""}
+    </tfoot></table></div>`;
+  $("btn-cmp-cot-nova")?.addEventListener("click", () => cmpAbrirCotacao(null));
+  cont.querySelectorAll(".cmp-cot-anexo").forEach(a => a.addEventListener("click", e => { e.preventDefault(); cmpAbrirAnexo(a.dataset.path, a.dataset.nome); }));
+  cont.querySelectorAll(".cmp-cot-fechar").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => cmpFecharCotacao(b.closest("td").dataset.cot))));
+  cont.querySelectorAll(".cmp-cot-editar").forEach(b => b.addEventListener("click", () => cmpAbrirCotacao(_cmpCotacoes.find(c => c.id === b.closest("td").dataset.cot))));
+  cont.querySelectorAll(".cmp-cot-excluir").forEach(b => b.addEventListener("click", () => cmpExcluirCotacao(b.closest("td").dataset.cot)));
+}
+function cmpAbrirCotacao(c){
+  if(!cmpCotEditavel()) return;
+  const itens = _cmpItens.filter(it => it.id);
+  if(!itens.length){ aviso("app-aviso", "Salve os itens do pedido antes de cotar.", "erro"); return; }
+  _cmpCotEdit = c || {};
+  $("cmp-cot-form-titulo").textContent = c ? `Cotação de ${c.fornecedor?.razao_social || cmpForn(c.fornecedor_id) || "?"}` : "Nova cotação";
+  $("cmp-cot-forn").value = c?.fornecedor_id || ""; $("cmp-cot-forn").disabled = !!c; cmpFornAtualizar("cmp-cot-forn");
+  $("cmp-cot-prazo").value = c?.prazo_entrega_dias ?? ""; $("cmp-cot-frete").value = c?.frete ?? ""; $("cmp-cot-cond").value = c?.condicao_pagamento || "";
+  $("cmp-cot-validade").value = c?.validade || ""; $("cmp-cot-obs").value = c?.observacoes || ""; $("cmp-cot-anexo").value = "";
+  $("cmp-cot-itens").innerHTML = itens.map(it => { const v = c ? cmpCotPreco(c, it.id) : null;
+    return `<tr data-item="${esc(it.id)}"><td>${esc(it.descricao)}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>
+      <td><input type="number" class="cmp-cot-preco" step="0.0001" min="0" value="${v === null ? "" : esc(v)}" placeholder="não cotou" style="width:120px;text-align:right;" /></td>
+      <td class="num cmp-cot-tot">${v === null ? "—" : brl(Math.round(v * Number(it.quantidade || 0) * 100) / 100)}</td></tr>`; }).join("");
+  $("cmp-cot-itens").querySelectorAll(".cmp-cot-preco").forEach(inp => inp.addEventListener("input", () => {
+    const tr = inp.closest("tr"), it = _cmpItens.find(x => x.id === tr.dataset.item), v = inp.value === "" ? null : Number(inp.value);
+    tr.querySelector(".cmp-cot-tot").textContent = v === null ? "—" : brl(Math.round(v * Number(it?.quantidade || 0) * 100) / 100);
+  }));
+  $("cmp-cot-form").style.display = "";
+  $("cmp-cot-form").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function cmpFecharFormCotacao(){ _cmpCotEdit = null; if($("cmp-cot-form")) $("cmp-cot-form").style.display = "none"; }
+async function cmpSalvarCotacao(){
+  const c = _cmpCotEdit, pedidoId = _cmpEditId; if(!c || !pedidoId || !cmpCotEditavel()) return;
+  const forn = c.id ? c.fornecedor_id : $("cmp-cot-forn").value;
+  if(!forn){ aviso("app-aviso", "Escolha o fornecedor da cotação.", "erro"); return; }
+  if(!c.id && _cmpCotacoes.some(x => x.fornecedor_id === forn)){ aviso("app-aviso", "Este fornecedor já tem cotação neste pedido: use ✏️ para editar.", "erro"); return; }
+  const prazo = $("cmp-cot-prazo").value === "" ? null : Math.round(Number($("cmp-cot-prazo").value));
+  if(prazo !== null && !(prazo >= 0 && prazo <= 365)){ aviso("app-aviso", "Prazo de entrega entre 0 e 365 dias.", "erro"); return; }
+  const precos = [...$("cmp-cot-itens").querySelectorAll("tr[data-item]")].map(tr => { const v = tr.querySelector(".cmp-cot-preco").value; return { pedido_item_id: tr.dataset.item, valor_unitario: v === "" ? null : Number(v) }; });
+  if(precos.some(p => p.valor_unitario !== null && !(p.valor_unitario >= 0))){ aviso("app-aviso", "Preço inválido.", "erro"); return; }
+  if(!precos.some(p => p.valor_unitario !== null)){ aviso("app-aviso", "Informe o preço de pelo menos um item.", "erro"); return; }
+  const cab = { prazo_entrega_dias: prazo, frete: Number($("cmp-cot-frete").value || 0), condicao_pagamento: $("cmp-cot-cond").value.trim() || null,
+    validade: $("cmp-cot-validade").value || null, observacoes: $("cmp-cot-obs").value.trim() || null };
+  let cotId = c.id;
+  if(cotId){
+    const { error } = await sb.from("cotacoes").update(cab).eq("id", cotId);
+    if(error){ aviso("app-aviso", "Cotação não salva: " + error.message, "erro"); return; }
+  } else {
+    const { data, error } = await sb.from("cotacoes").insert({ pedido_id: pedidoId, fornecedor_id: forn, ...cab }).select("id").single();
+    if(error){ aviso("app-aviso", "Cotação não salva: " + (/duplicate|unique/i.test(error.message) ? "este fornecedor já tem cotação neste pedido." : error.message), "erro"); return; }
+    cotId = data.id;
+  }
+  const { error: eIt } = await sb.from("cotacao_itens").upsert(precos.map(p => ({ cotacao_id: cotId, ...p })), { onConflict: "cotacao_id,pedido_item_id" });
+  if(eIt){ aviso("app-aviso", "Preços da cotação não salvos: " + eIt.message, "erro"); await cmpCarregarCotacoes(pedidoId); return; }
+  // proposta do fornecedor: anexo do pedido (orçamento) ligado à cotação
+  const f = ($("cmp-cot-anexo").files || [])[0];
+  if(f){
+    const ext = (f.name.split(".").pop() || "").toLowerCase(), mime = CMP_ANEXO_MIME[ext];
+    if(!mime || f.size > 20 * 1024 * 1024){ aviso("app-aviso", `Cotação salva, mas a proposta "${f.name}" não foi anexada: use PDF, foto, Word ou Excel até 20 MB.`, "erro"); }
+    else {
+      const nome = f.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.\-]+/g, "_").slice(-80);
+      const caminho = `pedidos/${pedidoId}/${Date.now()}_cot_${nome}`;
+      const { data: lin, error: eIns } = await sb.from("pedido_compra_anexos").insert({ pedido_id: pedidoId, tipo: "orcamento", nome: f.name, storage_path: caminho, mime_type: mime, tamanho: f.size, enviado_por: usuarioAtual.id }).select("id").single();
+      if(eIns) aviso("app-aviso", "Cotação salva, mas a proposta não foi anexada: " + eIns.message, "erro");
+      else {
+        // supabase-js ignora contentType quando o corpo é File: reembala com o MIME da extensão
+        const corpo = f.type === mime ? f : new Blob([f], { type: mime });
+        const { error: eUp } = await sb.storage.from("compras-evidencias").upload(caminho, corpo, { cacheControl: "3600", contentType: mime, upsert: false });
+        if(eUp){ await sb.from("pedido_compra_anexos").delete().eq("id", lin.id); aviso("app-aviso", "Cotação salva, mas a proposta não subiu: " + eUp.message, "erro"); }
+        else await sb.from("cotacoes").update({ anexo_id: lin.id }).eq("id", cotId);
+      }
+    }
+  }
+  if(!appAvisoComErro()) aviso("app-aviso", "Cotação salva.", "ok");
+  cmpFecharFormCotacao();
+  await cmpCarregarCotacoes(pedidoId);
+  cmpCarregarAnexosPedido(pedidoId);
+}
+async function cmpExcluirCotacao(id){
+  const c = _cmpCotacoes.find(x => x.id === id); if(!c || !cmpCotEditavel()) return;
+  if(!confirm(`Excluir a cotação de ${c.fornecedor?.razao_social || "?"}? A proposta anexada continua na aba Anexos.`)) return;
+  const { error } = await sb.from("cotacoes").delete().eq("id", id);
+  if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Cotação excluída.", "ok");
+  await cmpCarregarCotacoes(_cmpEditId);
+}
+async function cmpFecharCotacao(id){
+  const c = _cmpCotacoes.find(x => x.id === id); if(!c) return;
+  const semPreco = _cmpItens.filter(it => it.id && cmpCotPreco(c, it.id) === null).length;
+  if(!confirm(`Fechar o pedido com ${c.fornecedor?.razao_social || "este fornecedor"} (${brl(cmpCotTotal(c))})?\nFornecedor, preços, frete, prazo e condição da cotação vão para o pedido${semPreco ? `; ${semPreco} item(ns) sem preço nesta cotação ficam com o preço atual` : ""}. As outras cotações ficam descartadas.`)) return;
+  const pedidoId = _cmpEditId;
+  const { data, error } = await sb.rpc("cotacao_fechar", { p_id: id });
+  if(error){ aviso("app-aviso", (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
+  aviso("app-aviso", data || "Pedido fechado com o fornecedor da cotação.", "ok");
+  await cmpFetchPedidos();
+  await abrirPedido(pedidoId);
+  ativarTabPedido("itens");
+}
+
+/* ---------- novo produto a partir do pedido (fase 102, #160) ----------
+   Cadastro mínimo (nome, categoria, unidade, NCM opcional; código CGL-NNNNN se vazio) pela RPC produto_cadastro_rapido,
+   mesmos cargos da policy produtos_write (admin, almoxarife, comprador, gestor de acessórios; diretor). O tipo de compra
+   padrão fica o da categoria; o produto volta já na linha do pedido. O módulo extra do #150 não entra (sem decisão). */
+function cmpPodeCadastrarProduto(){ return !!usuarioAtual && ["diretor","admin","almoxarife","comprador","gestor_acessorios"].includes(usuarioAtual.cargo); }
+async function cmpAbrirProdutoRapido(){
+  if(!cmpPodeCadastrarProduto() || !cmpEditavel()) return;
+  if(_cmpCategorias === null){
+    const { data } = await sb.from("categorias_produto").select("id,nome,tipo_compra_padrao,ativo").eq("ativo", true).order("nome");
+    _cmpCategorias = data || [];
+  }
+  $("cmp-prod-cat").innerHTML = `<option value="">— sem categoria —</option>` + _cmpCategorias.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+  $("cmp-prod-un").innerHTML = (typeof UNIDADES !== "undefined" ? UNIDADES : ["un"]).map(u => `<option value="${esc(u)}"${u === "un" ? " selected" : ""}>${esc(u)}</option>`).join("");
+  ["cmp-prod-nome", "cmp-prod-ncm", "cmp-prod-cod"].forEach(id => $(id).value = "");
+  const termo = ($("cmp-busca-prod")?.value || "").trim();
+  if(termo) $("cmp-prod-nome").value = termo.toUpperCase();
+  cmpProdTipoInfo();
+  $("cmp-prod-modal").style.display = "flex";
+  $("cmp-prod-nome").focus();
+}
+function cmpProdTipoInfo(){
+  const c = (_cmpCategorias || []).find(x => x.id === $("cmp-prod-cat").value);
+  const t = c && c.tipo_compra_padrao ? CMP_TIPO_LBL[c.tipo_compra_padrao] : CMP_TIPO_LBL.aplicacao_direta;
+  $("cmp-prod-tipo-info").textContent = `Tipo de compra padrão: ${t}${c ? (c.tipo_compra_padrao ? " (pela categoria)" : " (a categoria não define)") : " (sem categoria)"}. O comprador ainda escolhe na linha do pedido.`;
+}
+function cmpFecharProdutoRapido(){ $("cmp-prod-modal").style.display = "none"; }
+async function cmpSalvarProdutoRapido(){
+  const nome = $("cmp-prod-nome").value.trim();
+  if(!nome){ aviso("app-aviso", "Informe o nome do produto.", "erro"); $("cmp-prod-nome").focus(); return; }
+  const ncm = $("cmp-prod-ncm").value.replace(/\D/g, "");
+  if(ncm && ncm.length !== 8){ aviso("app-aviso", "NCM tem 8 dígitos (ex.: 8431.43.10).", "erro"); return; }
+  const { data, error } = await sb.rpc("produto_cadastro_rapido", { p_nome: nome, p_categoria_id: $("cmp-prod-cat").value || null, p_unidade: $("cmp-prod-un").value || "un",
+    p_ncm: ncm || null, p_codigo: $("cmp-prod-cod").value.trim() || null });
+  if(error){ aviso("app-aviso", "Produto não cadastrado: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
+  cmpFecharProdutoRapido();
+  if($("cmp-busca-prod")){ $("cmp-busca-prod").value = ""; if($("cmp-res-prod")){ $("cmp-res-prod").innerHTML = ""; $("cmp-res-prod").style.display = "none"; } }
+  cmpAddItem(data);
+  aviso("app-aviso", `Produto ${data.codigo} — ${data.nome} cadastrado e incluído no pedido. Salve o pedido para gravar o item.`, "ok");
 }
 
 /* itens */
@@ -1121,10 +1535,7 @@ async function salvarPedido(silencioso){
     if(error){ aviso("app-aviso", "Erro ao criar o pedido: " + error.message, "erro"); return null; }
     id = data.id;
   }
-  const { error: eDel } = await sb.from("pedido_compra_itens").delete().eq("pedido_id", id);
-  if(eDel){ aviso("app-aviso", "Erro ao regravar os itens: " + eDel.message, "erro"); return null; }
-  if(_cmpItens.length){
-    const { error: eIns } = await sb.from("pedido_compra_itens").insert(_cmpItens.map((it, i) => ({
+  const linha = (it, i) => ({
       pedido_id: id, ordem: i, produto_id: it.produto_id || null, descricao: String(it.descricao).trim(), unidade: it.unidade || "un", quantidade: Number(it.quantidade),
       valor_unitario: Number(it.valor_unitario || 0), categoria_custo: it.categoria_custo || null, destino: it.destino || "estoque", obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null,
       // fase 76: centro como custo (destino centro_custo) ou, no item para o almoxarifado, como identificação de quem pediu
@@ -1133,7 +1544,25 @@ async function salvarPedido(silencioso){
       natureza: it.natureza || null, centro_custo_externo: it.centro_custo_externo || null, obra_externa: it.obra_externa || null, codigo_externo: it.codigo_externo || null, observacoes: it.observacoes || null,
       // fase 108b: natureza (cadastro) e método; reposição não leva método (entra na saída do estoque). tipo_compra é gerada pelo destino
       natureza_id: it.natureza_id || null, metodo: (it.destino || "estoque") === "estoque" ? null : (it.metodo || null)
-    })));
+    });
+  // fase 102: os itens são gravados mantendo o id (as cotações e o item da requisição apontam para eles). Antes apagava
+  // e reinseria tudo, e o vínculo requisicao_item_id do item se perdia no primeiro "Salvar".
+  const { data: atuais, error: eSel } = await sb.from("pedido_compra_itens").select("id").eq("pedido_id", id);
+  if(eSel){ aviso("app-aviso", "Erro ao ler os itens gravados: " + eSel.message, "erro"); return null; }
+  const gravados = new Set((atuais || []).map(r => r.id));
+  const manter = new Set(_cmpItens.filter(it => it.id && gravados.has(it.id)).map(it => it.id));
+  const remover = [...gravados].filter(x => !manter.has(x));
+  if(remover.length){
+    const { error: eDel } = await sb.from("pedido_compra_itens").delete().in("id", remover);
+    if(eDel){ aviso("app-aviso", "Erro ao tirar itens do pedido: " + eDel.message, "erro"); return null; }
+  }
+  const comId = _cmpItens.map((it, i) => ({ it, i })).filter(x => manter.has(x.it.id));
+  const res = await Promise.all(comId.map(x => sb.from("pedido_compra_itens").update(linha(x.it, x.i)).eq("id", x.it.id)));
+  const eUpd = res.find(r => r.error);
+  if(eUpd){ aviso("app-aviso", "Erro ao salvar itens: " + eUpd.error.message, "erro"); return null; }
+  const novos = _cmpItens.map((it, i) => ({ it, i })).filter(x => !manter.has(x.it.id));
+  if(novos.length){
+    const { error: eIns } = await sb.from("pedido_compra_itens").insert(novos.map(x => linha(x.it, x.i)));
     if(eIns){ aviso("app-aviso", "Erro ao salvar itens: " + eIns.message, "erro"); return null; }
   }
   if(!silencioso) aviso("app-aviso", "Pedido salvo.", "ok");
@@ -1144,9 +1573,20 @@ async function cmpAcao(acao){
   if(acao === "pdf"){ return cmpPdfPedido(); }
   if(acao === "receber"){ return abrirRecebimento(_cmpAtual); }
   if(acao === "receber_servico"){ return abrirReceberServico(); }   // fase 78
+  if(acao === "conferir"){ return cmpConferirRecebimentos(); }      // fase 102
   let id = _cmpEditId;
   try {
-    if(acao === "enviar_aprovacao"){
+    if(acao === "em_cotacao"){
+      // fase 102: grava o rascunho antes (as cotações apontam para os itens gravados) e manda para cotação
+      id = await salvarPedido(true); if(!id) return;
+      if(!_cmpItens.length){ aviso("app-aviso", "Adicione os itens antes de pedir cotações.", "erro"); return; }
+      const { error } = await sb.rpc("pedido_mudar_status", { p_id: id, p_status: "em_cotacao" }); if(error) throw error;
+      aviso("app-aviso", "Pedido em cotação. Registre as propostas na aba Cotações e feche com o fornecedor escolhido.", "ok");
+      await cmpFetchPedidos();
+      await abrirPedido(id);
+      ativarTabPedido("cotacoes");
+      return;
+    } else if(acao === "enviar_aprovacao"){
       // fase 108b: natureza é o 2º eixo da distribuição; sem ela o envio segue, mas o comprador confirma
       const semNat = _cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta" && !i.natureza_id && !i.natureza).length;
       if(semNat && !confirm(`${semNat} item(ns) de aplicação direta sem natureza do gasto. Enviar para aprovação assim mesmo?`)){ ativarTabPedido("itens"); return; }
@@ -1348,7 +1788,8 @@ async function confirmarRecebimento(){
   if(eIt){ await sb.from("recebimentos").delete().eq("id", rec.id); aviso("app-aviso", "Erro nos itens do recebimento: " + eIt.message, "erro"); return; }
   const { error: eRpc } = await sb.rpc("recebimento_confirmar", { p_id: rec.id });
   if(eRpc){ await sb.from("recebimentos").delete().eq("id", rec.id); aviso("app-aviso", "Recebimento não confirmado: " + eRpc.message.replace(/^.*?: /, ""), "erro"); return; }
-  aviso("app-aviso", "Recebimento confirmado: estoque/custos atualizados" + (venc ? " e títulos gerados." : "."), "ok");
+  aviso("app-aviso", "Recebimento confirmado: estoque/custos atualizados" + (venc ? " e títulos gerados." : ".")
+    + (r.pedido?.exige_conferencia ? " Falta quem fez a requisição conferir o material (\"Recebi e conferi\")." : ""), "ok");   // fase 102
   fecharRecebimento();
   if(typeof aceInvalidar === "function") aceInvalidar();
   if(typeof carregarProdutos === "function") carregarProdutos();
@@ -1730,7 +2171,7 @@ function ligarCompras(){
     if(k === "requisicoes"){ _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; renderCompras(); return; } // fase 60
     _cmpKpi = (_cmpKpi === k) ? "" : k; if(!["kanban","lista"].includes(_cmpView)) _cmpView = "kanban"; renderCompras();
   }));
-  ["cmp-f-status","cmp-f-forn","cmp-f-obra","cmp-f-equip","cmp-f-mes"].forEach(id => $(id)?.addEventListener("change", renderCompras));
+  ["cmp-f-status","cmp-f-forn","cmp-f-obra","cmp-f-equip","cmp-f-mes","cmp-f-etapa"].forEach(id => $(id)?.addEventListener("change", renderCompras));   // fase 102: etapa
   $("cmp-f-periodo")?.addEventListener("change", async () => { $("cmp-conteudo").innerHTML = `<p class="vazio">Carregando compras…</p>`; await cmpFetchPedidos(); });   // cmpFetchPedidos renderiza
   $("cmp-busca")?.addEventListener("input", debounce(cmpBuscar, 250));   // lote S43: itens no servidor com 3+ letras
   $("btn-cmp-atualizar")?.addEventListener("click", () => carregarCompras(true));
@@ -1772,7 +2213,14 @@ function ligarCompras(){
     if(f?.prazo_entrega_dias && !$("cmp-prev").value){ const d = new Date(); d.setDate(d.getDate() + Number(f.prazo_entrega_dias)); $("cmp-prev").value = d.toISOString().slice(0, 10); cmpAtualizarChips(); } });
   cmpLigarBusca("cmp-busca-prod", "cmp-res-prod", p => cmpAddItem(p));
   $("btn-cmp-item-livre")?.addEventListener("click", () => cmpAddItem(null));
-  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn"].forEach(id => cmpCampoFornecedor(id));   // lote S43 (#53): fornecedor com busca e chip
+  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-cot-forn"].forEach(id => cmpCampoFornecedor(id));   // lote S43 (#53): fornecedor com busca e chip; fase 102: cotação
+  // fase 102: cotações e novo produto a partir do pedido (#160)
+  $("btn-cmp-cot-salvar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-cot-salvar", cmpSalvarCotacao));
+  $("btn-cmp-cot-cancelar")?.addEventListener("click", cmpFecharFormCotacao);
+  $("btn-cmp-prod-novo")?.addEventListener("click", cmpAbrirProdutoRapido);
+  $("btn-cmp-prod-fechar")?.addEventListener("click", cmpFecharProdutoRapido);
+  $("btn-cmp-prod-salvar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-prod-salvar", cmpSalvarProdutoRapido));
+  $("cmp-prod-cat")?.addEventListener("change", cmpProdTipoInfo);
   cmpCampoFornecedor("cmp-f-forn", "Fornecedor (nome ou CNPJ)…");   // lote S45 (L2): o filtro do painel deixa de ser um select com 641 opções
 
   // recebimento

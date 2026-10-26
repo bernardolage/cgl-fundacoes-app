@@ -552,8 +552,10 @@ async function dashAbrirAcao(a){
     case "compras":
       // fase 108b: chave de dono do custo → ficha do pedido para assinar (com ou sem Compras no menu)
       if(a._assinar && id && typeof cmpAbrirParaAssinar === "function"){ await cmpAbrirParaAssinar(id); break; }
-      if(irParaSecao("compras") && /requisi/i.test(a.titulo) && typeof renderCompras === "function"){
-        _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; setTimeout(() => renderCompras(), 400);
+      if(irParaSecao("compras")){
+        if(/requisi/i.test(a.titulo) && typeof renderCompras === "function"){ _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; setTimeout(() => renderCompras(), 400); }
+        // fase 102: "Cotação parada" e "Recebimento sem conferência" com um pedido só abrem a ficha do pedido
+        else if(id && typeof abrirPedido === "function"){ if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false); await abrirPedido(id); }
       }
       break;
     case "separacoes": // fase 83: uma separação abre a ficha; o grupo abre o painel já filtrado
