@@ -30,6 +30,47 @@ async function carregarCategorias(){
   if(sel) sel.innerHTML = opc;
 }
 
+/* Lote S51 (#150, Bernardo 26/10/2026): o SESMT (cargo sesmt ou módulo extra "produtos_sesmt", como a Iasmym) cadastra e
+   edita só produtos das categorias do SESMT; não exclui, não cria categoria e não mexe em saldo nem custo. Espelha
+   produtos_write (cadastro inteiro) e produtos_sesmt_insert/update + categoria_produto_eh_sesmt() do banco. */
+const PROD_CATEGORIAS_SESMT = ["EPI", "EPI / UNIFORMES", "UNIFORMES", "DOCUMENTACAO SESMT", "EXAMES SESMT"];
+const PROD_MSG_SO_SESMT = "Seu perfil edita só produtos do SESMT (EPI, uniformes, documentação e exames).";
+let _prodCatOriginal = null;   // categoria do produto aberto, como veio do banco (o SESMT só grava se ela for do SESMT)
+function prodCategoriaEhSesmt(catId){
+  return !!catId && PROD_CATEGORIAS_SESMT.includes(String(_prodCategorias[catId] || "").trim().toUpperCase());
+}
+/* "tudo" (produtos_write: admin, almoxarife, comprador, gestor de acessórios; diretor), "sesmt" ou "" (só consulta) */
+function prodPerfilEdicao(){
+  if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return "";
+  if(["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios"].includes(usuarioAtual.cargo)) return "tudo";
+  if(usuarioAtual.cargo === "sesmt" || (typeof temModuloExtra === "function" && temModuloExtra("produtos_sesmt"))) return "sesmt";
+  return "";
+}
+/* select de categoria da ficha: o SESMT vê só as categorias dele (e a do produto aberto, marcada, se for de outra) */
+function prodMontarSelectCategoria(atual){
+  const sel = $("prod-categoria"); if(!sel) return;
+  const cats = Object.entries(_prodCategorias).map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  if(prodPerfilEdicao() === "sesmt"){
+    const doSesmt = cats.filter(c => prodCategoriaEhSesmt(c.id));
+    const fora = atual && !prodCategoriaEhSesmt(atual) ? cats.find(c => c.id === atual) : null;
+    sel.innerHTML = `<option value="">— escolha a categoria do SESMT —</option>` +
+      doSesmt.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("") +
+      (fora ? `<option value="${esc(fora.id)}">${esc(fora.nome)} (fora do SESMT)</option>` : "");
+  } else {
+    sel.innerHTML = `<option value="">— sem categoria —</option>` + cats.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+  }
+  sel.value = atual || "";
+}
+/* botões da ficha e do painel conforme o perfil: Salvar para quem grava, Excluir só no cadastro inteiro, "+ nova"
+   categoria só para quem grava em categorias_produto (prodPodeEditarCategoria) */
+function prodAplicarPerfil(){
+  const perfil = prodPerfilEdicao();
+  const novo = $("btn-novo-produto"); if(novo) novo.style.display = perfil ? "" : "none";
+  const salvar = $("btn-salvar-prod"); if(salvar) salvar.style.display = perfil ? "" : "none";
+  const excluir = $("btn-excluir-prod"); if(excluir) excluir.style.display = (perfil === "tudo" && prodEditId) ? "" : "none";
+  const novaCat = $("btn-nova-cat"); if(novaCat) novaCat.style.display = prodPodeEditarCategoria() && !ehSomenteLeitura() ? "" : "none";
+}
+
 /* ---------- Produtos ---------- */
 function prodTermo(){ return ($("prod-busca")?.value || "").trim().replace(/[%,()]/g, " ").trim(); }
 function prodModoPadrao(){ return !prodTermo() && !($("prod-f-categoria")?.value) && !($("prod-f-estoque")?.value) && !_prodTodos; }
@@ -100,6 +141,7 @@ function preencherFiltrosProd(){
 /* ---------- Render ---------- */
 function renderProdutos(){
   preencherFiltrosProd();
+  prodAplicarPerfil();   // lote S51: "+ Novo" só para quem grava
   const dados = prodFiltrados();
   const cont = $("prod-contador");
   if(cont) cont.textContent = `${num(_prodTotalFiltro)} de ${num(_prodTotalAtivos ?? _prodTotalFiltro)}`;   // N da consulta, de M ativos
@@ -236,7 +278,8 @@ function novoProduto(){
   prodAplicarCamposEpi();
   ["prod-codigo","prod-nome","prod-codbarras","prod-refext","prod-localizacao","prod-descricao"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
-  $("prod-categoria").value = "";
+  _prodCatOriginal = null;
+  prodMontarSelectCategoria("");   // lote S51: o SESMT escolhe entre as categorias dele
   if($("prod-tipo-compra")) $("prod-tipo-compra").value = "";   // fase 108b
   prodAtualizarTipoCompra();
   $("prod-unidade").value = "un";
@@ -244,7 +287,7 @@ function novoProduto(){
   $("prod-ideal").value = "";
   $("prod-reposicao").checked = false;
   $("prod-conferido").checked = true;
-  $("btn-excluir-prod").style.display = "none";
+  prodAplicarPerfil();   // lote S51 (produto novo: sem Excluir)
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });   // fase 105a
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
 }
@@ -255,7 +298,8 @@ async function abrirProduto(id){
   if(error){ aviso("app-aviso","Erro ao abrir produto: "+error.message,"erro"); return; }
   $("prod-codigo").value      = data.codigo || "";
   $("prod-nome").value        = data.nome || "";
-  $("prod-categoria").value   = data.categoria_id || "";
+  _prodCatOriginal = data.categoria_id || null;
+  prodMontarSelectCategoria(data.categoria_id || "");   // lote S51 (SESMT: só as categorias dele + a do produto)
   if($("prod-tipo-compra")) $("prod-tipo-compra").value = data.tipo_compra_padrao || "";   // fase 108b
   prodAtualizarTipoCompra();
   $("prod-unidade").value     = data.unidade || "un";
@@ -274,7 +318,7 @@ async function abrirProduto(id){
   if($("prod-epi-validade")) $("prod-epi-validade").value = data.epi_validade_dias ?? "";
   prodAplicarCamposEpi();
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", data);   // fase 105a: aba Fiscal (NCM)
-  $("btn-excluir-prod").style.display = "";
+  prodAplicarPerfil();   // lote S51: Excluir só no cadastro inteiro
   abrirFichaProdVisual(data);
   prodCarregarFabricacoes(id);
 }
@@ -367,6 +411,12 @@ async function salvarProduto(){
   const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("prod") : null;
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabProd("fiscal"); return; }
   if(fis) Object.assign(reg, fis);
+  // lote S51 (#150): o SESMT grava só produto que era e continua numa categoria do SESMT (o banco confere igual)
+  const perfil = prodPerfilEdicao();
+  if(!perfil){ aviso("app-aviso", "Seu perfil só consulta o cadastro de produtos.", "erro"); return; }
+  if(perfil === "sesmt" && (!prodCategoriaEhSesmt(reg.categoria_id) || (prodEditId && !prodCategoriaEhSesmt(_prodCatOriginal)))){
+    aviso("app-aviso", PROD_MSG_SO_SESMT, "erro"); ativarTabProd("geral"); return;
+  }
   let result;
   if(prodEditId){
     result = await sb.from("produtos").update(reg).eq("id", prodEditId).select().single();
@@ -374,11 +424,15 @@ async function salvarProduto(){
     result = await sb.from("produtos").insert(reg).select().single();
   }
   if(result.error){
-    aviso("app-aviso","Não foi possível salvar: "+result.error.message,"erro");
+    // recusa da policy do SESMT: no insert vem 42501; no update de produto fora do SESMT nenhuma linha volta (PGRST116)
+    const recusa = result.error.code === "42501" || result.error.code === "PGRST116" || /row-level security/i.test(result.error.message || "");
+    aviso("app-aviso", perfil === "sesmt" && recusa && !/^Seu perfil/.test(result.error.message || "")
+      ? PROD_MSG_SO_SESMT : "Não foi possível salvar: " + result.error.message, "erro");
     return;
   }
   prodEditId = result.data.id;
-  $("btn-excluir-prod").style.display = "";
+  _prodCatOriginal = result.data.categoria_id || null;
+  prodAplicarPerfil();
   aviso("app-aviso","Produto salvo.","ok");
   await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
@@ -387,6 +441,7 @@ async function salvarProduto(){
 
 async function excluirProduto(){
   if(!prodEditId) return;
+  if(prodPerfilEdicao() !== "tudo"){ aviso("app-aviso", "Seu perfil não exclui produtos: peça ao almoxarifado.", "erro"); return; }   // lote S51
   if(!confirm("Excluir este produto? A ação não pode ser desfeita.")) return;
   const { error } = await sb.from("produtos").delete().eq("id", prodEditId);
   if(error){
@@ -400,6 +455,7 @@ async function excluirProduto(){
 }
 
 async function criarNovaCategoria(){
+  if(!prodPodeEditarCategoria()){ aviso("app-aviso", "Categoria nova é pedida ao almoxarifado ou à diretoria.", "erro"); return; }   // lote S51
   const nome = prompt("Nome da nova categoria:");
   if(!nome) return;
   const { error } = await sb.from("categorias_produto").insert({ nome: nome.trim() });

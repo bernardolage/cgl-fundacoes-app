@@ -222,9 +222,18 @@ function funcRenderizarSidebarDept(){
 function funcVeSensivel(){
   return !!(usuarioAtual && ["diretor", "rh"].includes(usuarioAtual.cargo));
 }
+/* Lote S51 (#141, Bernardo 26/10/2026): o admin (administrativo) vê a aba Apropriações só com os totais por obra e
+   competência e roda a apuração (js/apropriacoes.js, renderFuncApropTotais); ficha sensível, valores por funcionário,
+   lançamentos, parâmetros, fechar competência e a carga da ficha continuam diretoria e RH. Espelha
+   fn_apropriacao_totais_obra() e fn_apropriar_competencia() do banco. O auditor continua sem a aba. */
+function funcVeApropriacao(){
+  return funcVeSensivel() || !!(usuarioAtual && usuarioAtual.cargo === "admin");
+}
 function funcAplicarVisibilidadeSensivel(){
   const ve = funcVeSensivel();
   document.querySelectorAll(".func-sens").forEach(el => { el.style.display = ve ? "" : "none"; });
+  const veAprop = funcVeApropriacao();   // lote S51
+  document.querySelectorAll(".func-aprop").forEach(el => { el.style.display = veAprop ? "" : "none"; });
   const av = $("func-sens-aviso"); if(av) av.style.display = ve ? "none" : "";
 }
 async function funcCarregarSensivel(id){

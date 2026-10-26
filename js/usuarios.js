@@ -378,6 +378,31 @@ function preencherCargosFicha(){
   $("usr-cargo").innerHTML = Object.entries(CARGOS)
     .filter(([v]) => v !== "rh" || usuarioAtual?.cargo === "diretor")
     .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  usrGarantirChecksExtras();
+}
+
+/* Módulos extras (hotfix 113; lote S51 #150): acesso a um módulo além do cargo, por usuário, com UMA validade para todos
+   (profiles.modulos_extras_ate). Só diretoria/admin gravam (gatilho no banco); o check profiles_modulos_extras_chk lista os
+   valores aceitos. O checkbox de Orçamentos nasce no index.html; os demais são criados aqui, no mesmo campo. */
+const USR_MODULOS_EXTRAS = [
+  { id: "orcamentos", el: "usr-extra-orc", rotulo: "Orçamentos (além do cargo)" },
+  { id: "produtos_sesmt", el: "usr-extra-prodsesmt", rotulo: "Produtos do SESMT (cadastro de EPI e uniformes)" }
+];
+function usrGarantirChecksExtras(){
+  const campo = $("usr-extra-orc")?.closest(".campo"); if(!campo) return;
+  USR_MODULOS_EXTRAS.forEach(m => {
+    if($(m.el)) return;
+    const lbl = document.createElement("label"); lbl.className = "check-inline";
+    const inp = document.createElement("input"); inp.type = "checkbox"; inp.id = m.el;
+    lbl.append(inp, " " + m.rotulo);
+    campo.appendChild(lbl);
+  });
+}
+/* lista a gravar: os marcados + os que o banco já tinha e esta tela não conhece (não apaga módulo de outra versão) */
+function usrExtrasMarcados(antes){
+  const conhecidos = USR_MODULOS_EXTRAS.map(m => m.id);
+  return (Array.isArray(antes) ? antes : []).filter(m => !conhecidos.includes(m))
+    .concat(USR_MODULOS_EXTRAS.filter(m => $(m.el)?.checked).map(m => m.id));
 }
 
 function novoUsuario(){
@@ -390,7 +415,8 @@ function novoUsuario(){
   $("usr-cargo").value = "visualizador";
   $("usr-telefone").value = "";
   $("usr-ativo").checked = true;
-  if($("usr-extra-orc")){ $("usr-extra-orc").checked = false; $("usr-extra-ate").value = ""; }   // hotfix 113
+  USR_MODULOS_EXTRAS.forEach(m => { if($(m.el)) $(m.el).checked = false; });   // hotfix 113 + lote S51
+  if($("usr-extra-ate")) $("usr-extra-ate").value = "";
   $("btn-reset-senha-usr").style.display = "none";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "none";
   $("btn-salvar-usr").textContent = "📨 Enviar convite";
@@ -410,10 +436,9 @@ function abrirUsuario(id){
   $("usr-cargo").value     = u.cargo || "visualizador";
   $("usr-telefone").value  = u.telefone || "";
   $("usr-ativo").checked   = u.ativo !== false;
-  if($("usr-extra-orc")){   // hotfix 113: módulo extra com validade
-    $("usr-extra-orc").checked = Array.isArray(u.modulos_extras) && u.modulos_extras.includes("orcamentos");
-    $("usr-extra-ate").value = u.modulos_extras_ate ? String(u.modulos_extras_ate).slice(0, 10) : "";
-  }
+  // hotfix 113 + lote S51: módulos extras com validade (uma data para todos)
+  USR_MODULOS_EXTRAS.forEach(m => { if($(m.el)) $(m.el).checked = Array.isArray(u.modulos_extras) && u.modulos_extras.includes(m.id); });
+  if($("usr-extra-ate")) $("usr-extra-ate").value = u.modulos_extras_ate ? String(u.modulos_extras_ate).slice(0, 10) : "";
   $("btn-reset-senha-usr").style.display = u.login_cpf ? "none" : "";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "";   // fase 87
   $("btn-salvar-usr").textContent = "💾 Salvar alterações";
@@ -468,8 +493,8 @@ async function salvarUsuario(){
 
   try {
     if(usrEditId){
-      // hotfix 113: módulos extras (só diretoria/admin; o banco confere no gatilho)
-      const extras = $("usr-extra-orc")?.checked ? ["orcamentos"] : [];
+      // hotfix 113 + lote S51: módulos extras (só diretoria/admin; o banco confere no gatilho e no check)
+      const extras = usrExtrasMarcados(_usuarios.find(x => x.id === usrEditId)?.modulos_extras);
       const extrasAte = extras.length ? ($("usr-extra-ate")?.value || null) : null;
       const { error } = await sb.from("profiles")
         .update({ nome, cargo, telefone, modulos_extras: extras, modulos_extras_ate: extrasAte })

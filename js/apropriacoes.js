@@ -10,6 +10,8 @@
    A leitura da planilha antiga fica só como CARGA INICIAL da ficha (banco/salário/benefícios),
    lida no navegador com SheetJS — dados sensíveis não passam por servidor nosso.
    Acesso: diretor e rh (RLS + fn_funcionario_sensivel).
+   Lote S51 (#141): o admin vê só os totais por obra/centro e competência (renderFuncApropTotais, lidos por
+   fn_apropriacao_totais_obra com MFA) e roda a apuração; nada por funcionário.
    ==================================================================== */
 let _aprop = { comp: null, folha: [], custo: [], pres: [], lanc: [], params: [], fech: null, parse: null, res: null };
 
@@ -29,6 +31,28 @@ function apropMoeda(v){ return Number(v || 0).toLocaleString("pt-BR", { style: "
 function apropNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim(); }
 function apropCompLabel(c){ if(!c) return "—"; const d = new Date(Number(c.slice(0, 4)), Number(c.slice(5, 7)) - 1, 1); return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }); }
 function apropCompPadrao(){ const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
+/* <option> dos últimos 18 meses (competência), com a atual marcada */
+function apropOpcoesMes(){
+  const opcoes = []; const d = new Date(); d.setDate(1);
+  for(let i = 0; i < 18; i++){ const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; opcoes.push(`<option value="${v}" ${v === _aprop.comp ? "selected" : ""}>${apropCompLabel(v)}</option>`); d.setMonth(d.getMonth() - 1); }
+  return opcoes.join("");
+}
+/* linha "Último cálculo" (só contagens e o total da competência) */
+function apropResumoCalculo(res){
+  if(!res) return "";
+  return `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${res.funcionarios} funcionários · ${res.com_rdo} com presença em RDO · ${res.por_alocacao} pela alocação · ${res.sem_obra} sem obra (ADM/PÁTIO) · ${res.linhas} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${res.sem_ficha} ativo(s) sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${res.presencas_sem_cadastro} nome(s) no RDO sem cadastro</span>` : ""}</p>`;
+}
+/* tabela "Custo de mão de obra por obra / centro de custo" (linhas de vw_custo_mao_obra_por_obra) */
+function apropTabelaObras(linhas, tot, obraDe){
+  return `<h4 style="margin:0 0 6px;">Custo de mão de obra por obra / centro de custo</h4>
+    <div class="tabela-rola" style="margin-bottom:14px;"><table>
+      <thead><tr><th>Obra / centro de custo</th><th class="num">Salários</th><th class="num">Benefícios</th><th class="num">Encargos</th><th class="num">Total</th><th class="num">%</th></tr></thead>
+      <tbody>${linhas.slice().sort((a, b) => Number(b.total) - Number(a.total)).map(r => `<tr><td>${esc(obraDe(r))}</td><td class="num">${apropMoeda(r.salarios)}</td><td class="num">${apropMoeda(r.beneficios)}</td><td class="num">${apropMoeda(r.encargos)}</td><td class="num"><strong>${apropMoeda(r.total)}</strong></td><td class="num">${tot.total ? (100 * Number(r.total) / tot.total).toFixed(1) : "0"}%</td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nenhuma apropriação nesta competência. Clique em <strong>Calcular apropriação</strong>.</td></tr>`}</tbody>
+    </table></div>`;
+}
+function apropSomaObras(linhas){
+  return linhas.reduce((s, r) => ({ sal: s.sal + Number(r.salarios || 0), ben: s.ben + Number(r.beneficios || 0), enc: s.enc + Number(r.encargos || 0), total: s.total + Number(r.total || 0) }), { sal: 0, ben: 0, enc: 0, total: 0 });
+}
 
 /* ---------- leitura ---------- */
 async function apropCarregar(comp){
@@ -48,7 +72,10 @@ async function apropCarregar(comp){
 async function renderFuncAprop(){
   const cont = $("func-conteudo");
   if(!cont) return;
-  if(!funcVeSensivel()){ cont.innerHTML = `<p class="vazio">Apropriações da folha: acesso restrito à diretoria e ao RH.</p>`; return; }
+  if(!funcVeSensivel()){
+    if(typeof funcVeApropriacao === "function" && funcVeApropriacao()) return renderFuncApropTotais();   // lote S51: admin
+    cont.innerHTML = `<p class="vazio">Apropriações da folha: acesso restrito à diretoria, ao RH e à administração.</p>`; return;
+  }
   if(!_aprop.comp) _aprop.comp = apropCompPadrao();
   cont.innerHTML = `<p class="vazio">Carregando apropriação de ${apropCompLabel(_aprop.comp)}…</p>`;
   await apropCarregar(_aprop.comp);
@@ -57,7 +84,7 @@ async function renderFuncAprop(){
   const fechada = !!_aprop.fech;
   const ehDiretor = usuarioAtual?.cargo === "diretor";
 
-  const tot = _aprop.custo.reduce((s, r) => ({ sal: s.sal + Number(r.salarios || 0), ben: s.ben + Number(r.beneficios || 0), enc: s.enc + Number(r.encargos || 0), total: s.total + Number(r.total || 0) }), { sal: 0, ben: 0, enc: 0, total: 0 });
+  const tot = apropSomaObras(_aprop.custo);
   const funcs = new Set(_aprop.folha.map(r => r.funcionario_id));
   const semObra = _aprop.folha.filter(r => !r.obra_id).reduce((s, r) => s + Number(r.valor || 0), 0);
 
@@ -80,12 +107,9 @@ async function renderFuncAprop(){
   const ativos = _funcs.filter(f => f.ativo !== false && f.status !== "demitido");
   const semFicha = _aprop.folha.length ? ativos.filter(f => !funcs.has(f.id)) : [];
 
-  const opcoesMes = []; { const d = new Date(); d.setDate(1); for(let i = 0; i < 18; i++){ const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; opcoesMes.push(`<option value="${v}" ${v === _aprop.comp ? "selected" : ""}>${apropCompLabel(v)}</option>`); d.setMonth(d.getMonth() - 1); } }
-  const res = _aprop.res;
-
   cont.innerHTML = `
     <div class="meta" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
-      <label>Competência <select id="aprop-comp">${opcoesMes.join("")}</select></label>
+      <label>Competência <select id="aprop-comp">${apropOpcoesMes()}</select></label>
       ${fechada ? `<span class="conf-badge" style="background:var(--sucesso);">Fechada em ${dataBR((_aprop.fech.fechada_em || "").slice(0, 10))}</span>` : `<span class="conf-badge" style="background:var(--aviso);color:var(--aviso-txt);">Aberta</span>`}
       ${fechada ? (ehDiretor ? `<button type="button" class="btn-sec btn-sm" id="btn-aprop-reabrir">🔓 Reabrir</button>` : "") :
         `<button type="button" class="btn btn-sm" id="btn-aprop-calcular">⚙️ Calcular apropriação</button>
@@ -93,7 +117,7 @@ async function renderFuncAprop(){
       <button type="button" class="btn-sec btn-sm" id="btn-aprop-csv" ${listaFunc.length ? "" : "disabled"}>⬇️ CSV</button>
       <span style="margin-left:auto;">Rateio pelos dias de presença no RDO → alocação vigente → ADM/PÁTIO</span>
     </div>
-    ${res ? `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${res.funcionarios} funcionários · ${res.com_rdo} com presença em RDO · ${res.por_alocacao} pela alocação · ${res.sem_obra} sem obra (ADM/PÁTIO) · ${res.linhas} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${res.sem_ficha} ativo(s) sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${res.presencas_sem_cadastro} nome(s) no RDO sem cadastro</span>` : ""}</p>` : ""}
+    ${apropResumoCalculo(_aprop.res)}
     <div id="aprop-preview"></div>
     <div class="indicadores" style="margin-bottom:12px;">
       <div class="ind"><div class="num">${funcs.size}</div><div class="rot">Funcionários apropriados</div></div>
@@ -105,11 +129,7 @@ async function renderFuncAprop(){
     </div>
     ${semFicha.length ? `<p class="txt-perigo" style="margin:0 0 10px;">⚠️ ${semFicha.length} funcionário(s) ativo(s) ficaram fora por não terem salário na ficha: ${semFicha.slice(0, 12).map(f => `<a href="#" class="aprop-abrir-func" data-id="${f.id}">${esc(f.nome)}</a>`).join(", ")}${semFicha.length > 12 ? "…" : ""}</p>` : ""}
 
-    <h4 style="margin:0 0 6px;">Custo de mão de obra por obra / centro de custo</h4>
-    <div class="tabela-rola" style="margin-bottom:14px;"><table>
-      <thead><tr><th>Obra / centro de custo</th><th class="num">Salários</th><th class="num">Benefícios</th><th class="num">Encargos</th><th class="num">Total</th><th class="num">%</th></tr></thead>
-      <tbody>${_aprop.custo.slice().sort((a, b) => Number(b.total) - Number(a.total)).map(r => `<tr><td>${esc(obraDe(r))}</td><td class="num">${apropMoeda(r.salarios)}</td><td class="num">${apropMoeda(r.beneficios)}</td><td class="num">${apropMoeda(r.encargos)}</td><td class="num"><strong>${apropMoeda(r.total)}</strong></td><td class="num">${tot.total ? (100 * Number(r.total) / tot.total).toFixed(1) : "0"}%</td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nenhuma apropriação nesta competência. Clique em <strong>Calcular apropriação</strong>.</td></tr>`}</tbody>
-    </table></div>
+    ${apropTabelaObras(_aprop.custo, tot, obraDe)}
 
     <h4 style="margin:0 0 6px;">Por funcionário <span class="meta">(${listaFiltrada.length})</span></h4>
     <div class="tabela-rola" style="margin-bottom:14px;"><table>
@@ -159,6 +179,61 @@ async function renderFuncAprop(){
     const csv = ["Funcionario;Salarios;Beneficios;Encargos;Total;Rateio"].concat(listaFunc.map(a => [a.nome, a.sal.toFixed(2), a.ben.toFixed(2), a.enc.toFixed(2), a.total.toFixed(2), [...a.destinos].join(" | ")].map(cel).join(";"))).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `apropriacoes-${_aprop.comp.slice(0, 7)}.csv`;
+    document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);
+  });
+}
+
+/* ---------- lote S51 (#141): visão do admin ----------
+   Só os totais por obra/centro de custo da competência, lidos por fn_apropriacao_totais_obra() (security definer, sem linha
+   por funcionário, exige MFA nesta sessão), e o botão Calcular apropriação (fn_apropriar_competencia, que devolve só
+   contagens e o total). Ficam com o RH e a diretoria: a tabela por funcionário, os lançamentos do mês, os parâmetros de
+   encargos, fechar/reabrir a competência e a carga inicial da ficha (que grava a ficha sensível). */
+async function renderFuncApropTotais(){
+  const cont = $("func-conteudo");
+  if(!cont) return;
+  if(!_aprop.comp) _aprop.comp = apropCompPadrao();
+  cont.innerHTML = `<p class="vazio">Carregando apropriação de ${apropCompLabel(_aprop.comp)}…</p>`;
+  const { data, error } = await sb.rpc("fn_apropriacao_totais_obra", { p_comp: _aprop.comp });
+  if(error){
+    const mfa = error.hint === "mfa_obrigatorio" || /dois fatores|mfa/i.test(error.message || "");
+    cont.innerHTML = `<p class="vazio">${mfa ? "Apropriações exigem autenticação em dois fatores nesta sessão: saia e entre de novo concluindo o MFA."
+      : "Não foi possível carregar a apropriação: " + esc(error.message || "")}</p>`;
+    return;
+  }
+  const linhas = Array.isArray(data?.linhas) ? data.linhas : [];
+  const fechadaEm = data?.fechada_em || null;
+  const obraDe = (r) => r.obra_id ? (mapaObras?.[r.obra_id] || "Obra") : (r.centro_custo || "—");
+  const tot = apropSomaObras(linhas);
+  const semObra = linhas.filter(r => !r.obra_id).reduce((s, r) => s + Number(r.total || 0), 0);
+  const nFunc = Number(data?.funcionarios || 0);
+
+  cont.innerHTML = `
+    <div class="meta" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+      <label>Competência <select id="aprop-comp">${apropOpcoesMes()}</select></label>
+      ${fechadaEm ? `<span class="conf-badge" style="background:var(--sucesso);">Fechada em ${dataBR(String(fechadaEm).slice(0, 10))}</span>` : `<span class="conf-badge" style="background:var(--aviso);color:var(--aviso-txt);">Aberta</span>`}
+      ${fechadaEm ? "" : `<button type="button" class="btn btn-sm" id="btn-aprop-calcular">⚙️ Calcular apropriação</button>`}
+      <button type="button" class="btn-sec btn-sm" id="btn-aprop-csv" ${linhas.length ? "" : "disabled"}>⬇️ CSV</button>
+      <span style="margin-left:auto;">Rateio pelos dias de presença no RDO → alocação vigente → ADM/PÁTIO</span>
+    </div>
+    ${apropResumoCalculo(_aprop.res)}
+    <div class="indicadores" style="margin-bottom:12px;">
+      <div class="ind"><div class="num">${nFunc}</div><div class="rot">Funcionários apropriados</div></div>
+      <div class="ind"><div class="num">${apropMoeda(tot.sal)}</div><div class="rot">Salários</div></div>
+      <div class="ind"><div class="num">${apropMoeda(tot.ben)}</div><div class="rot">Benefícios</div></div>
+      <div class="ind"><div class="num">${apropMoeda(tot.enc)}</div><div class="rot">Encargos</div></div>
+      <div class="ind"><div class="num" style="color:var(--marca-600);">${apropMoeda(tot.total)}</div><div class="rot">Custo total da folha</div></div>
+      <div class="ind"><div class="num" style="color:${semObra ? "var(--aviso-txt)" : "inherit"};">${apropMoeda(semObra)}</div><div class="rot">Sem obra (ADM/PÁTIO)</div></div>
+    </div>
+    ${apropTabelaObras(linhas, tot, obraDe)}
+    <p class="meta" style="margin:0;">🔒 Valores por funcionário, lançamentos do mês, parâmetros de encargos, fechamento da competência e a ficha de cada funcionário ficam com o RH e a diretoria.</p>`;
+
+  $("aprop-comp")?.addEventListener("change", async e => { _aprop.comp = e.target.value; _aprop.res = null; await renderFuncAprop(); });
+  $("btn-aprop-calcular")?.addEventListener("click", () => comBotaoTravado("btn-aprop-calcular", apropCalcular));
+  $("btn-aprop-csv")?.addEventListener("click", () => {
+    const cel = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = ["Obra/centro de custo;Salarios;Beneficios;Encargos;Total"].concat(linhas.map(r => [obraDe(r), Number(r.salarios || 0).toFixed(2), Number(r.beneficios || 0).toFixed(2), Number(r.encargos || 0).toFixed(2), Number(r.total || 0).toFixed(2)].map(cel).join(";"))).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `apropriacoes-por-obra-${_aprop.comp.slice(0, 7)}.csv`;
     document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);
   });
 }

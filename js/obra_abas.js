@@ -840,6 +840,25 @@ const DOC_CATEGORIAS = {
   outro: "Outro"
 };
 
+/* Lote S51 (#153, Bernardo 26/10/2026): quem anexou exclui o próprio documento (origem manual) em até 4 h; fora disso só os
+   cargos de obras_doc_delete. Espelha obras_doc_delete e obras_doc_storage_delete do banco; o relógio do navegador entra
+   com 1 min de folga para o botão sumir antes do prazo do servidor. */
+const OBR_DOC_CARGOS_EXCLUEM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado", "almoxarife", "comercial"];
+const OBR_DOC_PRAZO_PROPRIO_MS = 4 * 3600 * 1000;
+const OBR_DOC_FOLGA_MS = 60 * 1000;
+/* null = sem botão; senão o texto do title do 🗑️ */
+function obrDocExclusao(d){
+  if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return null;
+  if(OBR_DOC_CARGOS_EXCLUEM.includes(usuarioAtual.cargo)) return "Excluir";
+  if(d.origem !== "manual" || !d.enviado_por || d.enviado_por !== usuarioAtual.id) return null;
+  const ini = new Date(d.created_at).getTime();
+  const limite = ini + OBR_DOC_PRAZO_PROPRIO_MS - OBR_DOC_FOLGA_MS, agora = Date.now();
+  if(!(agora < limite)) return null;
+  const min = Math.max(0, Math.floor((agora - ini) / 60000));
+  const ate = new Date(limite).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `Você anexou há ${min} min; pode excluir até ${ate}`;
+}
+
 async function carregarDocumentosDaObra(obraId){
   const cont = $("obr-doc-conteudo");
   if(!cont) return;
@@ -894,6 +913,7 @@ async function carregarDocumentosDaObra(obraId){
       // lote S45 (L8): o boletim importado (origem medicao_importada) aponta para o mesmo PDF da medição
       // (medicoes.arquivo_origem_url): sem 🗑️ aqui, senão a medição ficaria sem o arquivo.
       const boletim = d.origem === "medicao_importada";
+      const tituloExcluir = boletim ? null : obrDocExclusao(d);   // lote S51 (#153)
       const origemBadge = d.origem === "movimentacao_ativa"
         ? '<span class="tag azul" style="font-size:var(--txt-xs);">auto</span>'
         : boletim ? '<span class="tag azul" style="font-size:var(--txt-xs);" title="PDF da medição importada; abre também pela ficha da medição">boletim</span>' : "";
@@ -904,7 +924,7 @@ async function carregarDocumentosDaObra(obraId){
         <td>${new Date(d.created_at).toLocaleDateString("pt-BR")}</td>
         <td class="col-acao">
           <button type="button" class="btn-sec btn-sm btn-doc-baixar" data-path="${esc(d.storage_path)}" data-nome="${esc(d.nome)}" title="Baixar">⬇️</button>
-          ${boletim ? "" : `<button type="button" class="btn-sec btn-sm btn-doc-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="Excluir">🗑️</button>`}
+          ${tituloExcluir ? `<button type="button" class="btn-sec btn-sm btn-doc-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="${esc(tituloExcluir)}">🗑️</button>` : ""}
         </td>
       </tr>`;
     }).join("");
@@ -1004,7 +1024,8 @@ async function excluirDocumento(id, path, obraId){
   // 88b), remover o arquivo antes deixava a linha apontando para um arquivo apagado.
   const { data: apagadas, error } = await sb.from("obras_documentos").delete().eq("id", id).select("id");
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
-  if(!apagadas || !apagadas.length){ aviso("app-aviso","Seu cargo não exclui documentos da obra.","erro"); return; }
+  // lote S51 (#153): o próprio documento só até 4 h depois de anexar; depois disso (ou o de outra pessoa) a RLS não apaga
+  if(!apagadas || !apagadas.length){ aviso("app-aviso","Só quem tem permissão na obra exclui; peça à engenharia.","erro"); return; }
   await sb.storage.from("obras-documentos").remove([path]);
   aviso("app-aviso","Documento excluído.","ok");
   await carregarDocumentosDaObra(obraId);

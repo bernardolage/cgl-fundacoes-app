@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="ff6d857" />
+<meta name="app-versao" content="8ab263b" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=ff6d857" />
+<link rel="stylesheet" href="css/estilo.css?v=8ab263b" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -689,7 +689,8 @@
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
               <button type="button" class="serv-view-btn" data-view="logistica" title="Onde cada um está, TAG, próxima baixada">Logística</button>
               <button type="button" class="serv-view-btn" data-view="he" title="Horas por colaborador e obra a partir dos RDOs">Horas extras</button>
-              <button type="button" class="serv-view-btn func-sens" data-view="aprop" title="Apropriação da folha por obra calculada pelo sistema (dias de RDO × custo mensal da ficha)">Apropriações</button>
+              <!-- lote S51 (#141): func-aprop = diretoria, RH e admin (o admin vê só os totais por obra) -->
+              <button type="button" class="serv-view-btn func-aprop" data-view="aprop" title="Apropriação da folha por obra calculada pelo sistema (dias de RDO × custo mensal da ficha)">Apropriações</button>
               <button type="button" class="serv-view-btn func-sens" data-view="promocoes" title="Plano de cargos: próxima mudança de função prevista por funcionário (fase 93a)">Funções</button>
               <!-- fase 100: relatório de EPI por colaborador e por obra (js/epi.js); almoxarifado, SESMT, RH e diretoria -->
               <button type="button" class="serv-view-btn" data-view="epi" style="display:none;" title="Gasto de EPI e uniforme por colaborador, por obra e por item; trocas vencidas (fase 100)">EPI</button>
@@ -5959,53 +5960,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=ff6d857"></script>
+<script src="js/core.js?v=8ab263b"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=ff6d857"></script>
+<script src="js/historico.js?v=8ab263b"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=ff6d857"></script>
-<script src="js/fiscal_ncm.js?v=ff6d857"></script>
+<script src="js/fiscal.js?v=8ab263b"></script>
+<script src="js/fiscal_ncm.js?v=8ab263b"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=ff6d857"></script>
-<script src="js/fornecedores.js?v=ff6d857"></script>
-<script src="js/apropriacoes.js?v=ff6d857"></script>
-<script src="js/funcionarios.js?v=ff6d857"></script>
-<script src="js/rh_documentos.js?v=ff6d857"></script>
-<script src="js/servicos.js?v=ff6d857"></script>
-<script src="js/produtos.js?v=ff6d857"></script>
-<script src="js/estoque.js?v=ff6d857"></script>
-<script src="js/separacoes.js?v=ff6d857"></script>
-<script src="js/epi.js?v=ff6d857"></script>
-<script src="js/compras.js?v=ff6d857"></script>
-<script src="js/requisicoes.js?v=ff6d857"></script>
-<script src="js/orcamentos.js?v=ff6d857"></script>
-<script src="js/propostas.js?v=ff6d857"></script>
-<script src="js/contratos.js?v=ff6d857"></script>
-<script src="js/contas_pagar.js?v=ff6d857"></script>
-<script src="js/centros_custo.js?v=ff6d857"></script>
-<script src="js/carteira.js?v=ff6d857"></script>
-<script src="js/obras.js?v=ff6d857"></script>
-<script src="js/frota.js?v=ff6d857"></script>
-<script src="js/viagens.js?v=ff6d857"></script>
-<script src="js/equipamentos.js?v=ff6d857"></script>
-<script src="js/vendas_bens.js?v=ff6d857"></script>
-<script src="js/acessorios.js?v=ff6d857"></script>
-<script src="js/reparos.js?v=ff6d857"></script>
-<script src="js/manutencao.js?v=ff6d857"></script>
-<script src="js/fabricacao.js?v=ff6d857"></script>
-<script src="js/mobilizacoes.js?v=ff6d857"></script>
-<script src="js/estacas.js?v=ff6d857"></script>
-<script src="js/obra_abas.js?v=ff6d857"></script>
-<script src="js/medicoes.js?v=ff6d857"></script>
-<script src="js/movimentacoes.js?v=ff6d857"></script>
-<script src="js/rdo.js?v=ff6d857"></script>
-<script src="js/rdo_import_maya.js?v=ff6d857"></script>
-<script src="js/usuarios.js?v=ff6d857"></script>
-<script src="js/chamados.js?v=ff6d857"></script>
-<script src="js/dashboard.js?v=ff6d857"></script>
-<script src="js/rh_horas.js?v=ff6d857"></script>
-<script src="js/patrimonio.js?v=ff6d857"></script>
+<script src="js/clientes.js?v=8ab263b"></script>
+<script src="js/fornecedores.js?v=8ab263b"></script>
+<script src="js/apropriacoes.js?v=8ab263b"></script>
+<script src="js/funcionarios.js?v=8ab263b"></script>
+<script src="js/rh_documentos.js?v=8ab263b"></script>
+<script src="js/servicos.js?v=8ab263b"></script>
+<script src="js/produtos.js?v=8ab263b"></script>
+<script src="js/estoque.js?v=8ab263b"></script>
+<script src="js/separacoes.js?v=8ab263b"></script>
+<script src="js/epi.js?v=8ab263b"></script>
+<script src="js/compras.js?v=8ab263b"></script>
+<script src="js/requisicoes.js?v=8ab263b"></script>
+<script src="js/orcamentos.js?v=8ab263b"></script>
+<script src="js/propostas.js?v=8ab263b"></script>
+<script src="js/contratos.js?v=8ab263b"></script>
+<script src="js/contas_pagar.js?v=8ab263b"></script>
+<script src="js/centros_custo.js?v=8ab263b"></script>
+<script src="js/carteira.js?v=8ab263b"></script>
+<script src="js/obras.js?v=8ab263b"></script>
+<script src="js/frota.js?v=8ab263b"></script>
+<script src="js/viagens.js?v=8ab263b"></script>
+<script src="js/equipamentos.js?v=8ab263b"></script>
+<script src="js/vendas_bens.js?v=8ab263b"></script>
+<script src="js/acessorios.js?v=8ab263b"></script>
+<script src="js/reparos.js?v=8ab263b"></script>
+<script src="js/manutencao.js?v=8ab263b"></script>
+<script src="js/fabricacao.js?v=8ab263b"></script>
+<script src="js/mobilizacoes.js?v=8ab263b"></script>
+<script src="js/estacas.js?v=8ab263b"></script>
+<script src="js/obra_abas.js?v=8ab263b"></script>
+<script src="js/medicoes.js?v=8ab263b"></script>
+<script src="js/movimentacoes.js?v=8ab263b"></script>
+<script src="js/rdo.js?v=8ab263b"></script>
+<script src="js/rdo_import_maya.js?v=8ab263b"></script>
+<script src="js/usuarios.js?v=8ab263b"></script>
+<script src="js/chamados.js?v=8ab263b"></script>
+<script src="js/dashboard.js?v=8ab263b"></script>
+<script src="js/rh_horas.js?v=8ab263b"></script>
+<script src="js/patrimonio.js?v=8ab263b"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=ff6d857"></script>
+<script src="js/init.js?v=8ab263b"></script>
 </body>
 </html>
