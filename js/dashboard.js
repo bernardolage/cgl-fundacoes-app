@@ -499,7 +499,9 @@ async function dashAbrirRegularizar(a){
     const f = $("cham-f-status");
     if(f && [...f.options].some(o => o.value === "atrasados")){ f.value = "atrasados"; if(typeof renderChamados === "function") renderChamados(); }
   } else if(a.secao === "rhh"){ // fase 93c: "Horas e alocação" › A liberar, só pendentes, nas obras do aviso
-    if(typeof rhhAbrirPreset === "function") rhhAbrirPreset({ obraIds: ids, pendentes: true });
+    // fase 103: filtro revisar_informacao ("Equipe do RDO com 'Revisar informação'") abre a mesma visão sem o filtro de
+    // extras e buscando "revisar" (rhhAplicarPreset em rh_horas.js); a_liberar segue como antes
+    if(typeof rhhAbrirPreset === "function") rhhAbrirPreset({ obraIds: ids, pendentes: true, filtro: a.filtro });
     irParaSecao("rhh");
   }
 }

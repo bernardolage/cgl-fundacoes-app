@@ -920,39 +920,60 @@ async function renderFuncHE(){
     cont.innerHTML = `<p class="vazio">Apurando ${comp}…</p>`;
     const ini = comp + "-01";
     const fim = dataLocalISO(new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0));
-    const { data, error } = await sb.from("rdo_equipe")
-      .select("funcionario_id,nome_avulso,funcao_no_dia,hora_entrada,hora_saida,horas_normais,horas_50,horas_100,horas_noturnas,rdo:rdo_id!inner(data,obra_id)")
+    // fase 103 (#23): status_dia da linha (ausência não conta como dia); sem a migration a consulta repete sem a coluna
+    const ler = (comStatus) => sb.from("rdo_equipe")
+      .select(`funcionario_id,nome_avulso,funcao_no_dia,hora_entrada,hora_saida,horas_normais,horas_50,horas_100,horas_noturnas,${comStatus ? "status_dia," : ""}rdo:rdo_id!inner(data,obra_id)`)
       .gte("rdo.data", ini).lte("rdo.data", fim).limit(5000);
+    let { data, error } = await ler(true);
+    if(error && /status_dia/i.test(error.message || "")) ({ data, error } = await ler(false));
     if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
-    _funcHE = { comp, dados: data || [] };
+    // fase 103: contagem do mês por status vem de vw_rh_horas_mes (horas liberadas para a folha; a view é do RH e da
+    // diretoria). Para os demais cargos, ou sem a migration, as colunas não aparecem.
+    let status = null;
+    if(["diretor", "rh"].includes(usuarioAtual?.cargo)){
+      const r = await sb.from("vw_rh_horas_mes").select("funcionario_id,obra_id,dias_falta,dias_folga,dias_dsr,dias_atestado,dias_viagem,dias_treinamento").eq("competencia", ini).limit(5000);
+      if(!r.error){ status = new Map(); (r.data || []).forEach(v => status.set(`${v.funcionario_id}|${v.obra_id || ""}`, v)); }
+    }
+    _funcHE = { comp, dados: data || [], status };
   }
   const nomeDe = (r) => r.funcionario_id ? ((_funcs.find(f => f.id === r.funcionario_id) || {}).nome || "?") : (r.nome_avulso || "—");
   const presenca = (r) => { if(!r.hora_entrada || !r.hora_saida) return 0; const [h1, m1] = r.hora_entrada.split(":").map(Number), [h2, m2] = r.hora_saida.split(":").map(Number); let d = (h2 * 60 + m2) - (h1 * 60 + m1); if(d < 0) d += 1440; return d / 60; };
+  const AUSENCIAS = ["falta", "folga", "dsr", "atestado"];   // fase 103: não contam como dia trabalhado
   const g = new Map();
+  let nAus = 0;
   _funcHE.dados.forEach(r => {
     const k = nomeDe(r) + "|" + (r.rdo?.obra_id || "");
-    if(!g.has(k)) g.set(k, { nome: nomeDe(r), obra: mapaObras[r.rdo?.obra_id] || "—", obra_id: r.rdo?.obra_id || null, dias: new Set(), pres: 0, hn: 0, h50: 0, h100: 0, hnot: 0 });
-    const a = g.get(k); a.dias.add(r.rdo?.data); a.pres += presenca(r);
+    if(!g.has(k)) g.set(k, { nome: nomeDe(r), fid: r.funcionario_id || null, obra: mapaObras[r.rdo?.obra_id] || "—", obra_id: r.rdo?.obra_id || null, dias: new Set(), pres: 0, hn: 0, h50: 0, h100: 0, hnot: 0 });
+    const a = g.get(k);
+    if(AUSENCIAS.includes(r.status_dia)){ nAus++; return; }   // ausência: sem horas e sem dia
+    a.dias.add(r.rdo?.data); a.pres += presenca(r);
     a.hn += Number(r.horas_normais) || 0; a.h50 += Number(r.horas_50) || 0; a.h100 += Number(r.horas_100) || 0; a.hnot += Number(r.horas_noturnas) || 0;
   });
+  // fase 103: colunas por status (vw_rh_horas_mes, liberadas), no fim da tabela e do CSV
+  const COLS_ST = _funcHE.status ? [["dias_falta", "Faltas"], ["dias_folga", "Folgas"], ["dias_dsr", "DSR"], ["dias_atestado", "Atestados"], ["dias_viagem", "Viagem"], ["dias_treinamento", "Treinamento"]] : [];
+  const st = (a, c) => Number(_funcHE.status?.get(`${a.fid}|${a.obra_id || ""}`)?.[c] || 0);
   const termo = ($("func-busca")?.value || "").trim().toLowerCase();
-  const linhas = [...g.values()].filter(a => !termo || `${a.nome} ${a.obra}`.toLowerCase().includes(termo))
+  const linhas = [...g.values()].filter(a => a.dias.size > 0 || COLS_ST.some(([c]) => st(a, c) > 0))   // fase 103: só ausência pendente não vira linha
+    .filter(a => !termo || `${a.nome} ${a.obra}`.toLowerCase().includes(termo))
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR") || a.obra.localeCompare(b.obra, "pt-BR"));
   const f1 = (v) => Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
   const tot = linhas.reduce((s, a) => ({ dias: s.dias + a.dias.size, pres: s.pres + a.pres, hn: s.hn + a.hn, h50: s.h50 + a.h50, h100: s.h100 + a.h100, hnot: s.hnot + a.hnot }), { dias: 0, pres: 0, hn: 0, h50: 0, h100: 0, hnot: 0 });
+  const totSt = (c) => linhas.reduce((s, a) => s + st(a, c), 0);
   const semHoras = (tot.pres + tot.hn + tot.h50 + tot.h100 + tot.hnot) === 0 && linhas.length > 0;
-  cont.innerHTML = `<div class="meta" style="margin:0 0 8px;">Competência <strong>${esc(comp)}</strong> · ${linhas.length} colaborador×obra · ${_funcHE.dados.length} presenças em RDO
+  const nCol = 8 + COLS_ST.length;
+  cont.innerHTML = `<div class="meta" style="margin:0 0 8px;">Competência <strong>${esc(comp)}</strong> · ${linhas.length} colaborador×obra · ${Number(_funcHE.dados.length - nAus)} presenças em RDO${nAus ? ` · ${Number(nAus)} ausência(s) lançada(s) no RDO (Falta, Folga, DSR, Atestado) não contam como dia` : ""}
+      ${COLS_ST.length ? `<br>Faltas, Folgas, DSR, Atestados, Viagem e Treinamento: dias com o status no RDO já liberados para a folha (Horas e alocação).` : ""}
       ${semHoras ? `<br><span class="txt-perigo">⚠️ Nenhum RDO desta competência tem entrada/saída ou horas preenchidas — a equipe do RDO precisa registrar os horários para este relatório substituir a planilha.</span>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-func-he-csv" style="margin-left:8px;">⬇️ CSV</button></div>
     <div class="tabela-rola"><table>
-      <thead><tr><th>Colaborador</th><th>Obra</th><th class="num">Dias</th><th class="num">Horas (entrada→saída)</th><th class="num">Normais</th><th class="num">HE 50%</th><th class="num">HE 100%</th><th class="num">Noturnas</th></tr></thead>
-      <tbody>${linhas.map(a => `<tr><td>${esc(a.nome)}</td><td>${linkObra(a.obra_id, a.obra)}</td><td class="num">${a.dias.size}</td><td class="num">${f1(a.pres)}</td><td class="num">${f1(a.hn)}</td><td class="num">${f1(a.h50)}</td><td class="num">${f1(a.h100)}</td><td class="num">${f1(a.hnot)}</td></tr>`).join("") || `<tr><td colspan="8" class="vazio">Sem presenças em RDO nesta competência.</td></tr>`}</tbody>
-      <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${tot.dias}</strong></td><td class="num"><strong>${f1(tot.pres)}</strong></td><td class="num"><strong>${f1(tot.hn)}</strong></td><td class="num"><strong>${f1(tot.h50)}</strong></td><td class="num"><strong>${f1(tot.h100)}</strong></td><td class="num"><strong>${f1(tot.hnot)}</strong></td></tr></tfoot>
+      <thead><tr><th>Colaborador</th><th>Obra</th><th class="num" title="Dias no RDO; ausências (Falta, Folga, DSR, Atestado) não contam">Dias</th><th class="num">Horas (entrada→saída)</th><th class="num">Normais</th><th class="num">HE 50%</th><th class="num">HE 100%</th><th class="num">Noturnas</th>${COLS_ST.map(([, l]) => `<th class="num" title="Dias com o status no RDO, liberados para a folha">${esc(l)}</th>`).join("")}</tr></thead>
+      <tbody>${linhas.map(a => `<tr><td>${esc(a.nome)}</td><td>${linkObra(a.obra_id, a.obra)}</td><td class="num">${a.dias.size}</td><td class="num">${f1(a.pres)}</td><td class="num">${f1(a.hn)}</td><td class="num">${f1(a.h50)}</td><td class="num">${f1(a.h100)}</td><td class="num">${f1(a.hnot)}</td>${COLS_ST.map(([c]) => `<td class="num">${Number(st(a, c)) || "—"}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${Number(nCol)}" class="vazio">Sem presenças em RDO nesta competência.</td></tr>`}</tbody>
+      <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${tot.dias}</strong></td><td class="num"><strong>${f1(tot.pres)}</strong></td><td class="num"><strong>${f1(tot.hn)}</strong></td><td class="num"><strong>${f1(tot.h50)}</strong></td><td class="num"><strong>${f1(tot.h100)}</strong></td><td class="num"><strong>${f1(tot.hnot)}</strong></td>${COLS_ST.map(([c]) => `<td class="num"><strong>${Number(totSt(c)) || "—"}</strong></td>`).join("")}</tr></tfoot>
     </table></div>`;
   $("btn-func-he-csv")?.addEventListener("click", () => {
     const cel = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const csv = ["Colaborador;Obra;Dias;Horas_presenca;Normais;HE50;HE100;Noturnas"]
-      .concat(linhas.map(a => [a.nome, a.obra, a.dias.size, a.pres.toFixed(2), a.hn, a.h50, a.h100, a.hnot].map(cel).join(";"))).join("\n");
+    const csv = ["Colaborador;Obra;Dias;Horas_presenca;Normais;HE50;HE100;Noturnas" + COLS_ST.map(([, l]) => ";" + l).join("")]
+      .concat(linhas.map(a => [a.nome, a.obra, a.dias.size, a.pres.toFixed(2), a.hn, a.h50, a.h100, a.hnot].concat(COLS_ST.map(([c]) => st(a, c))).map(cel).join(";"))).join("\n");
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
     const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `horas-extras-${comp}.csv`;
     document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);

@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="bb987e3" />
+<meta name="app-versao" content="31d6611" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=bb987e3" />
+<link rel="stylesheet" href="css/estilo.css?v=31d6611" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -3241,6 +3241,7 @@
                       <th>Funcionário</th>
                       <th>Nome avulso<br><small style="font-weight:400;color:var(--txt-fraco);">(terceiro sem cadastro)</small></th>
                       <th>Função no dia</th>
+                      <th title="Fase 103 (#23): status do funcionário no dia. Vazio = presente">Status do dia</th>
                       <th>Entrada</th>
                       <th>Saída</th>
                       <th title="Intervalo de almoço REAL (min). Vazio = 60 min padrão; piso de 30 min no cálculo">Interv. (min)</th>
@@ -3254,8 +3255,11 @@
                   <tbody id="rdo-equipe-tbody"></tbody>
                 </table>
               </div>
+              <!-- Fase 103 (#23): presentes, em viagem, ausentes por status e linhas a revisar -->
+              <div class="meta" id="rdo-equipe-resumo" style="margin-top:6px;"></div>
               <p class="nota">
                 💡 Preencha <strong>Entrada/Saída</strong> (e o intervalo real de almoço, se o diário registrar) e o sistema calcula a <strong>HE 100%</strong> pela jornada da obra (Obra › Parâmetros; sem ela, a jornada padrão da empresa: seg-qui 07:00–17:00, sexta 07:00–16:00): seg-sex o que passar da jornada; sábado, domingo e feriado o dia inteiro. Regra RH de 11/09/2026: toda HE é 100%; a coluna HE 50% ficou sem uso. Saída antes da entrada é turno da noite (vira o dia) e as <strong>Noturnas</strong> (22h–5h) saem sozinhas. Linha com 🔒 já foi liberada para a folha em <strong>Horas e alocação</strong> e não muda aqui.
+                <strong>Status do dia</strong> (vazio = presente): Falta, Folga, DSR e Atestado não têm horário nem horas (Folga e Falta entram no débito de folga do mês); Em Treinamento fica sem HE; Em Viagem e Viagem Retorno Casa ficam sem HE e as horas do dia vão para a folha como horas de viagem; Manutenção e Noturno contam como presença; <strong>Revisar Informação</strong> deixa a linha amarela e as horas não são liberadas até alguém corrigir e trocar o status.
               </p>
 
               <!-- Abastecimento do dia (fase 46, 16/09/2026): vem do diário preenchido à mão pelo operador -->
@@ -5898,53 +5902,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=bb987e3"></script>
+<script src="js/core.js?v=31d6611"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=bb987e3"></script>
+<script src="js/historico.js?v=31d6611"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=bb987e3"></script>
-<script src="js/fiscal_ncm.js?v=bb987e3"></script>
+<script src="js/fiscal.js?v=31d6611"></script>
+<script src="js/fiscal_ncm.js?v=31d6611"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=bb987e3"></script>
-<script src="js/fornecedores.js?v=bb987e3"></script>
-<script src="js/apropriacoes.js?v=bb987e3"></script>
-<script src="js/funcionarios.js?v=bb987e3"></script>
-<script src="js/rh_documentos.js?v=bb987e3"></script>
-<script src="js/servicos.js?v=bb987e3"></script>
-<script src="js/produtos.js?v=bb987e3"></script>
-<script src="js/estoque.js?v=bb987e3"></script>
-<script src="js/separacoes.js?v=bb987e3"></script>
-<script src="js/epi.js?v=bb987e3"></script>
-<script src="js/compras.js?v=bb987e3"></script>
-<script src="js/requisicoes.js?v=bb987e3"></script>
-<script src="js/orcamentos.js?v=bb987e3"></script>
-<script src="js/propostas.js?v=bb987e3"></script>
-<script src="js/contratos.js?v=bb987e3"></script>
-<script src="js/contas_pagar.js?v=bb987e3"></script>
-<script src="js/centros_custo.js?v=bb987e3"></script>
-<script src="js/carteira.js?v=bb987e3"></script>
-<script src="js/obras.js?v=bb987e3"></script>
-<script src="js/frota.js?v=bb987e3"></script>
-<script src="js/viagens.js?v=bb987e3"></script>
-<script src="js/equipamentos.js?v=bb987e3"></script>
-<script src="js/vendas_bens.js?v=bb987e3"></script>
-<script src="js/acessorios.js?v=bb987e3"></script>
-<script src="js/reparos.js?v=bb987e3"></script>
-<script src="js/manutencao.js?v=bb987e3"></script>
-<script src="js/fabricacao.js?v=bb987e3"></script>
-<script src="js/mobilizacoes.js?v=bb987e3"></script>
-<script src="js/estacas.js?v=bb987e3"></script>
-<script src="js/obra_abas.js?v=bb987e3"></script>
-<script src="js/medicoes.js?v=bb987e3"></script>
-<script src="js/movimentacoes.js?v=bb987e3"></script>
-<script src="js/rdo.js?v=bb987e3"></script>
-<script src="js/rdo_import_maya.js?v=bb987e3"></script>
-<script src="js/usuarios.js?v=bb987e3"></script>
-<script src="js/chamados.js?v=bb987e3"></script>
-<script src="js/dashboard.js?v=bb987e3"></script>
-<script src="js/rh_horas.js?v=bb987e3"></script>
-<script src="js/patrimonio.js?v=bb987e3"></script>
+<script src="js/clientes.js?v=31d6611"></script>
+<script src="js/fornecedores.js?v=31d6611"></script>
+<script src="js/apropriacoes.js?v=31d6611"></script>
+<script src="js/funcionarios.js?v=31d6611"></script>
+<script src="js/rh_documentos.js?v=31d6611"></script>
+<script src="js/servicos.js?v=31d6611"></script>
+<script src="js/produtos.js?v=31d6611"></script>
+<script src="js/estoque.js?v=31d6611"></script>
+<script src="js/separacoes.js?v=31d6611"></script>
+<script src="js/epi.js?v=31d6611"></script>
+<script src="js/compras.js?v=31d6611"></script>
+<script src="js/requisicoes.js?v=31d6611"></script>
+<script src="js/orcamentos.js?v=31d6611"></script>
+<script src="js/propostas.js?v=31d6611"></script>
+<script src="js/contratos.js?v=31d6611"></script>
+<script src="js/contas_pagar.js?v=31d6611"></script>
+<script src="js/centros_custo.js?v=31d6611"></script>
+<script src="js/carteira.js?v=31d6611"></script>
+<script src="js/obras.js?v=31d6611"></script>
+<script src="js/frota.js?v=31d6611"></script>
+<script src="js/viagens.js?v=31d6611"></script>
+<script src="js/equipamentos.js?v=31d6611"></script>
+<script src="js/vendas_bens.js?v=31d6611"></script>
+<script src="js/acessorios.js?v=31d6611"></script>
+<script src="js/reparos.js?v=31d6611"></script>
+<script src="js/manutencao.js?v=31d6611"></script>
+<script src="js/fabricacao.js?v=31d6611"></script>
+<script src="js/mobilizacoes.js?v=31d6611"></script>
+<script src="js/estacas.js?v=31d6611"></script>
+<script src="js/obra_abas.js?v=31d6611"></script>
+<script src="js/medicoes.js?v=31d6611"></script>
+<script src="js/movimentacoes.js?v=31d6611"></script>
+<script src="js/rdo.js?v=31d6611"></script>
+<script src="js/rdo_import_maya.js?v=31d6611"></script>
+<script src="js/usuarios.js?v=31d6611"></script>
+<script src="js/chamados.js?v=31d6611"></script>
+<script src="js/dashboard.js?v=31d6611"></script>
+<script src="js/rh_horas.js?v=31d6611"></script>
+<script src="js/patrimonio.js?v=31d6611"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=bb987e3"></script>
+<script src="js/init.js?v=31d6611"></script>
 </body>
 </html>
