@@ -836,6 +836,7 @@ const DOC_CATEGORIAS = {
   projeto: "Projeto",
   nfs: "Nota fiscal de serviço",   /* lote S39, chamado #27 (valor do enum só na migration 20261022_loteS48_a) */
   cno: "CNO (Cadastro Nacional de Obras)",   /* lote S48, chamado #119: o RH abre pela tag CNO em Horas e alocação (#122) */
+  seguro_garantia: "Seguro garantia",   /* lote S50, chamado #152 (Tamires): apólice; valor do enum só na migration 20261026_loteS50_a */
   outro: "Outro"
 };
 

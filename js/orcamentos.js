@@ -91,9 +91,15 @@ function orcNumeroCasa(numero, termo){
 // lote S45 (L10, decisão do Bernardo em 19/10): alimentação no canteiro (VRB.ALC.SERV, variante ALC-MES, migration
 // 20261020_loteS45_alimentacao_canteiro) entra como item de preço quando o adicional "CGL fornece alimentação" está
 // marcado, como diesel e hospedagem; a linha de encargos da proposta (S44, L7) continua.
+// lote S50 (#157, Frederico): a hélice traz o jogo adicional de trado (qtd 0: o comercial preenche quando passar de 3
+// jogos) e a secante passa a ter lista própria (a da hélice + gabarito); antes `secante` era o mesmo objeto da hélice.
+// lote S50 (#158): a raiz traz compressor e gerador, mobilização (qtd 1) e mensal (qtd 0). `fim` escolhe, entre as
+// variantes que passam no filtro do Modelo (tipo de obra), a de código terminado assim: convencional → LOC-CO-EXT-MOB
+// e LOC-CO-EXT-MES, industrial → as IND (sem variante do tipo de obra, a primeira, como na mobilização de raiz).
 const ITENS_PADRAO_ORC = {
   helice: [
     { serv: "MOB.HC.SERV", qtd: 1 },
+    { serv: "MOB.HC.TRADO.SERV", var: "MOB-HC-TRADO", qtd: 0 },
     { serv: "DIA.MDP.SERV" },
     { serv: "DIA.FM.HC.SERV" },
     { serv: "INS.DI.SERV", var: "INS-DI-HC" },
@@ -109,7 +115,11 @@ const ITENS_PADRAO_ORC = {
     { serv: "INS.DI.SERV", var: "INS-DI-RZ" },
     { serv: "VRB.ALH.SERV" },
     { serv: "VRB.ALC.SERV" },
-    { serv: "EXEC.RZ.INJ.SERV" }
+    { serv: "EXEC.RZ.INJ.SERV" },
+    { serv: "LOC.CO.SERV", fim: "-MOB", qtd: 1 },
+    { serv: "LOC.CO.SERV", fim: "-MES", qtd: 0 },
+    { serv: "LOC.GE.SERV", fim: "-MOB", qtd: 1 },
+    { serv: "LOC.GE.SERV", fim: "-MES", qtd: 0 }
   ],
   trado: [
     { serv: "MOB.ESC.SERV", var: "MOB-ESC", qtd: 1 },
@@ -121,7 +131,18 @@ const ITENS_PADRAO_ORC = {
   ],
   outro: []
 };
-ITENS_PADRAO_ORC.secante = ITENS_PADRAO_ORC.helice; // secante usa mobilização/fat. mínimo/bomba de hélice
+// secante usa mobilização/fat. mínimo/bomba de hélice; lote S50 (#157): lista própria, com o gabarito só nela
+ITENS_PADRAO_ORC.secante = ITENS_PADRAO_ORC.helice.concat([{ serv: "INS.GAB.SERV", var: "GAB-SEC" }]);
+// variante do item padrão: fixa (`var`) ou, com `fim`, a de código terminado assim
+function _orcPadraoCasaVar(d, v){
+  const cod = String(v?.codigo || "");
+  return (!d.var || d.var === cod) && (!d.fim || cod.endsWith(d.fim));
+}
+// lote S50 (#157): variante fixa de um item padrão do modelo nunca some do select por eixo ("Mobilização de jogo
+// adicional de trado" tem "trado" no nome e o filtro de eixo da variante a escondia na hélice e na secante)
+function _orcVarPadraoFixa(tipoProp, v){
+  return !!(tipoProp && v && v.codigo) && (ITENS_PADRAO_ORC[tipoProp] || []).some(d => d.var && d.var === v.codigo);
+}
 
 // Chamado #3 (Thales, 15/09/2026): eixo do serviço de execução pelo servicos.tipo_estaca
 // (helice → helice_continua/hsa; trado → escavada/strauss; raiz → raiz; secante → secante).
@@ -251,7 +272,7 @@ function _variantesFiltradasOrc(s, f){
   if(f.tipoProp && f.tipoProp !== "outro"){
     // variante de outro método nunca aparece (estrito): "Diária Equipe Raiz" some do orçamento de hélice
     const ok = ORC_EIXOS_VARIANTE[f.tipoProp] || [f.tipoProp];
-    vars = vars.filter(v => !v.eixo || ok.includes(v.eixo));
+    vars = vars.filter(v => !v.eixo || ok.includes(v.eixo) || _orcVarPadraoFixa(f.tipoProp, v));   // lote S50 (#157)
   }
   if(f.tipoObra){
     const d = vars.filter(v => v.tipo_obra === f.tipoObra || v.tipo_obra === "especial");
@@ -332,6 +353,9 @@ function atualizarFiltroCatalogoOrc(){
     const s = _orcServicos.find(x => x.id === v.servico_id);
     if(!s || !_servicoVisivelOrc(s, _orcCatFiltro.tipoProp)) return; // mudou o eixo: não troca sozinho
     let cand = _variantesFiltradasOrc(s, _orcCatFiltro).filter(c => c.id !== v.id);
+    // lote S50 (#158): compressor/gerador padrão da raiz troca de tipo de obra mantendo mobilização ou mensal
+    const dP = (ITENS_PADRAO_ORC[_orcCatFiltro.tipoProp] || [])[_orcPadraoIdx(_orcCatFiltro.tipoProp, v)];
+    if(dP && dP.fim) cand = cand.filter(c => _orcPadraoCasaVar(dP, c));
     if(cand.length > 1){
       // mesma distância "(até 100km)" (mobilização por porte) …
       const suf = (v.nome.match(/\(([^)]*)\)\s*$/) || [])[1];
@@ -383,9 +407,11 @@ function carregarItensPadraoOrc(silencioso){
     const s = _orcServByCod[d.serv];
     if(!s) return;
     let v = d.var ? _orcVarByCod[d.var] : null;
-    if(!v) v = _variantesFiltradasOrc(s, _orcCatFiltro)[0];
+    if(!v) v = _variantesFiltradasOrc(s, _orcCatFiltro).find(x => _orcPadraoCasaVar(d, x));   // lote S50 (#158): `fim`
     if(!v || presentes.has(v.id)) return;
-    if(!d.var && servPresentes.has(s.id)) return;
+    if(d.fim){   // lote S50 (#158): já tem variante do serviço com o mesmo fim (outro tipo de obra ou distância)? não duplica
+      if([...presentes].some(id => _orcVarById[id]?.servico_id === s.id && _orcPadraoCasaVar(d, _orcVarById[id]))) return;
+    } else if(!d.var && servPresentes.has(s.id)) return;
     adicionarItemPreenchido({
       variante_id:    v.id,
       descricao:      _nomeItemCatalogoOrc(v),
@@ -415,7 +441,7 @@ function carregarItensPadraoOrc(silencioso){
 function _orcPadraoIdx(tipo, v){
   const s = v && _orcServById[v.servico_id];
   if(!s) return -1;
-  return (ITENS_PADRAO_ORC[tipo] || []).findIndex(d => d.serv === s.codigo && (!d.var || d.var === v.codigo));
+  return (ITENS_PADRAO_ORC[tipo] || []).findIndex(d => d.serv === s.codigo && _orcPadraoCasaVar(d, v));   // lote S50: + `fim`
 }
 function orcTrocarModelo(){
   const sel = $("orc-tipo-proposta");

@@ -112,6 +112,7 @@ function renderReparos(){
   document.querySelectorAll("#rep-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _repView));
   const dados = repFiltrados();
   $("rep-contador").textContent = `${dados.length} de ${_repLista.length}`;
+  repRenderContagem(dados);
   if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhum reparo com esses filtros.</p>`; return; }
   if(_repView === "kanban"){
     const cols = REP_STAGES.concat(dados.some(r => r.status === "cancelado") ? ["cancelado"] : []);
@@ -130,6 +131,15 @@ function renderReparos(){
         <td>${repAlvoLink(r)}</td><td>${esc(r.descricao || "")}</td><td>${esc(REP_SETOR[r.setor] || "—")}</td><td class="meta">${esc(repResp(r.responsavel_id))}</td>
         <td class="num">${repDias(r) ?? "—"}</td><td class="num">${brl(r.custo_real)}</td><td>${repTag(r.status)}</td></tr>`).join("")}</tbody></table></div>`;
   }
+}
+
+/* lote S50 (#142, Lucas): contagem por status no topo do painel, sobre a lista já filtrada (busca, status, setor,
+   responsável e período): a soma dos chips é o total "N reparos". Ordem do fluxo (REP_STAGES) e cancelado no fim. */
+function repRenderContagem(dados){
+  const el = $("rep-st-chips"); if(!el) return;
+  const n = dados.length;
+  el.innerHTML = `<strong>${n} ${n === 1 ? "reparo" : "reparos"}</strong>`
+    + REP_STAGES.concat(["cancelado"]).map(st => `<span>${repTag(st)}<span class="contador">${dados.filter(r => r.status === st).length}</span></span>`).join("");
 }
 
 /* ---------- ficha ---------- */

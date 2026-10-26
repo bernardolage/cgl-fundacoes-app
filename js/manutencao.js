@@ -698,6 +698,9 @@ function manAbrirFicha(m, ativs, horas, mats, anexos, checks){
   $("man-hor").value = m.horimetro_km ?? ""; $("man-km").value = m.km ?? ""; $("man-forn").value = m.fornecedor_id || ""; $("man-custo").value = m.custo ?? ""; $("man-obs").value = m.observacoes || "";
   $("man-ficha").querySelectorAll(".odoo-tab[data-tab=geral] input, .odoo-tab[data-tab=geral] select, #man-obs").forEach(el => el.disabled = !pode);
   $("man-equip").disabled = !pode || (!novo && m.origem === "planilha");
+  // lote S50 (#146, parte 1): atividades digitadas no cadastro, uma por linha; só na OS ainda não salva
+  $("man-ativs-novas-campo").style.display = novo ? "" : "none";
+  $("man-ativs-novas").value = ""; $("man-ativs-novas").disabled = !pode;
   manHorAtual();
   $("man-h-data").value = hojeISO();
   manAtualizarCabecalho();
@@ -748,6 +751,25 @@ function manAtualizarCabecalho(){
 function manAtivarTab(nome){
   document.querySelectorAll("#man-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.tab === nome));
   document.querySelectorAll("#man-ficha .odoo-tab").forEach(t => t.classList.toggle("ativa", t.dataset.tab === nome));
+  if(nome === "atividades") document.querySelectorAll("#man-ativs textarea").forEach(manAtivAltura);   // lote S50 (#148): a aba estava oculta no render
+}
+/* lote S50 (#148): o campo da atividade cresce com o texto (aba oculta não tem altura: mede ao abrir a aba) */
+function manAtivAltura(el){
+  if(!el || !el.offsetParent) return;
+  el.style.height = "auto";
+  el.style.height = (el.scrollHeight + 2) + "px";
+}
+/* lote S50 (#146, parte 1): linhas do campo "Atividades (uma por linha)" da OS nova: aparadas, sem marcador de tópico
+   ("- ", "• ", "* "), sem linha vazia e sem repetir (comparação sem diferença de maiúscula e espaço) */
+function manAtivsNovasLinhas(){
+  const vistas = new Set(), out = [];
+  String($("man-ativs-novas")?.value || "").split(/\r?\n/).forEach(l => {
+    const t = l.replace(/^\s*[-•*–]\s+/, "").trim();
+    const k = t.toLowerCase().replace(/\s+/g, " ");
+    if(!t || vistas.has(k)) return;
+    vistas.add(k); out.push(t);
+  });
+  return out;
 }
 function mostrarPainelManutencao(){ $("man-ficha").style.display = "none"; $("man-painel").style.display = ""; _manAtual = null; carregarManutencao(false); }
 
@@ -762,10 +784,20 @@ async function salvarManutencao(){
   if(!reg.descricao){ aviso("app-aviso", "Descreva o serviço da OS.", "erro"); manAtivarTab("geral"); return null; }
   const e = manEq(reg.equipamento_id);
   if(reg.horimetro_km != null && e && e.horimetro != null && reg.horimetro_km < e.horimetro && !confirm(`O horímetro informado (${num(reg.horimetro_km)} h) é menor que o atual da máquina (${num(e.horimetro)} h). O horímetro da máquina não volta para trás ao concluir. Salvar assim mesmo?`)) return null;
-  let id = _manAtual.id;
+  let id = _manAtual.id, msg = "OS salva.", tipoMsg = "ok";
   if(id){ const { error } = await sb.from("manutencoes").update(reg).eq("id", id); if(error){ aviso("app-aviso", "Erro ao salvar: " + error.message, "erro"); return null; } }
-  else { const { data, error } = await sb.from("manutencoes").insert({ ...reg, status: "agendada", origem: "app" }).select("id").single(); if(error){ aviso("app-aviso", "Erro ao abrir a OS: " + error.message, "erro"); return null; } id = data.id; }
-  aviso("app-aviso", "OS salva.", "ok");
+  else {
+    const { data, error } = await sb.from("manutencoes").insert({ ...reg, status: "agendada", origem: "app" }).select("id").single(); if(error){ aviso("app-aviso", "Erro ao abrir a OS: " + error.message, "erro"); return null; } id = data.id;
+    // lote S50 (#146, parte 1): cada linha do campo vira uma atividade pendente, na ordem digitada e com o setor da OS.
+    // Falha aqui não desfaz a OS: avisa para lançar pela aba Atividades.
+    const linhas = manAtivsNovasLinhas();
+    if(linhas.length){
+      const { error: eA } = await sb.from("manutencao_atividades").insert(linhas.map((t, i) => ({ manutencao_id: id, ordem: i + 1, setor: reg.setor || null, atividade: t, situacao: "pendente" })));
+      if(eA){ msg = "OS salva; as atividades não entraram: lance pela aba Atividades. (" + eA.message + ")"; tipoMsg = "aviso"; }
+      else msg = `OS salva com ${linhas.length} atividade(s).`;
+    }
+  }
+  aviso("app-aviso", msg, tipoMsg);
   await abrirManutencao(id);
   return id;
 }
@@ -806,11 +838,11 @@ function manRenderAtivs(){
   const optF = `<option value="">—</option>` + _manFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
   const optS = Object.entries(MAN_SETOR).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
   const optSit = Object.entries(MAN_SITUACAO).map(([v, l]) => `<option value="${v}">${esc(l[0])}</option>`).join("");
-  if(!_manAtivs.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${_manAtual?.id ? "Nenhuma atividade. Use o campo abaixo ou um item do plano." : "Salve a OS para lançar atividades."}</td></tr>`; }
+  if(!_manAtivs.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${_manAtual?.id ? "Nenhuma atividade. Use o campo abaixo ou um item do plano." : "Escreva as atividades na aba Geral (uma por linha) ou salve a OS para lançar aqui."}</td></tr>`; }
   else tb.innerHTML = _manAtivs.map(a => pode ? `<tr data-a="${esc(a.id)}">
       <td>${a.ordem}</td>
       <td><select class="man-a-f" data-c="setor"><option value="">—</option>${optS}</select></td>
-      <td><input class="man-a-f" data-c="atividade" value="${esc(a.atividade)}" />${a.plano_item_id ? ' <span class="tag azul" title="item do plano: ao concluir a OS com esta atividade executada, a última execução do item é atualizada">plano</span>' : ""}${a.checklist_item_id ? ' <span class="tag cinza" title="veio do checklist">checklist</span>' : ""}</td>
+      <td><textarea class="man-a-f" data-c="atividade" rows="1">${esc(a.atividade)}</textarea>${a.plano_item_id ? ' <span class="tag azul" title="item do plano: ao concluir a OS com esta atividade executada, a última execução do item é atualizada">plano</span>' : ""}${a.checklist_item_id ? ' <span class="tag cinza" title="veio do checklist">checklist</span>' : ""}</td>
       <td><select class="man-a-f" data-c="situacao">${optSit}</select></td>
       <td><select class="man-a-f" data-c="executante_id">${optF}</select>${a.executante_nome && !a.executante_id ? `<div class="meta" title="nome da planilha, sem par no cadastro">${esc(a.executante_nome)}</div>` : ""}</td>
       <td><input type="time" class="man-a-f" data-c="inicio" value="${a.inicio ? esc(String(a.inicio).slice(0, 5)) : ""}" /></td>
@@ -822,6 +854,7 @@ function manRenderAtivs(){
   if(pode){
     _manAtivs.forEach(a => { const tr = tb.querySelector(`tr[data-a="${a.id}"]`); if(!tr) return;
       tr.querySelector('[data-c="setor"]').value = a.setor || ""; tr.querySelector('[data-c="situacao"]').value = a.situacao; tr.querySelector('[data-c="executante_id"]').value = a.executante_id || ""; });
+    tb.querySelectorAll('textarea[data-c="atividade"]').forEach(el => { manAtivAltura(el); el.addEventListener("input", () => manAtivAltura(el)); });   // lote S50 (#148)
     tb.querySelectorAll(".man-a-f").forEach(el => el.addEventListener("change", async () => {
       const id = el.closest("tr").dataset.a, c = el.dataset.c; let v = el.value;
       if(c === "atividade" && !v.trim()){ aviso("app-aviso", "A atividade não pode ficar vazia.", "erro"); return; }

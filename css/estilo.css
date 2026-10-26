@@ -2463,6 +2463,7 @@ table td:has(> textarea) {
   flex-direction: column;
   overflow-y: auto;
 }
+.modal-caixa > .tabela-rola { flex-shrink: 0; }   /* lote S50 (achado da 108b): em tela baixa a tabela do "Receber NF" encolhia a ~2 px; a caixa rola */
 
 /* ---- Bloco de assinatura eletrônica (D4Sign) na ficha ---- */
 .assin-bloco {

@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="c6e1936" />
+<meta name="app-versao" content="bb987e3" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=c6e1936" />
+<link rel="stylesheet" href="css/estilo.css?v=bb987e3" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -3783,7 +3783,8 @@
                 <div class="campo"><label>Tipo</label><select id="man-tipo"><option value="corretiva">Corretiva</option><option value="preventiva">Preventiva</option><option value="preditiva">Preditiva</option></select></div>
                 <div class="campo"><label>Setor</label><select id="man-setor"><option value="">—</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="solda">Solda</option><option value="eletronica">Eletrônica</option><option value="lubrificacao">Lubrificação</option><option value="pintura">Pintura</option><option value="externo">Externo (terceiros)</option><option value="outros">Outros</option></select></div>
                 <div class="campo"><label>Prioridade</label><select id="man-prioridade"><option value="">—</option><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
-                <div class="campo largo"><label>Serviço / descrição *</label><input id="man-desc" placeholder="ex.: preventiva 500 h · troca de mangueiras do pull-down · motor não parte" /></div>
+                <div class="campo largo"><label>Serviço / descrição *</label><input id="man-desc" placeholder="título da OS em uma linha, ex.: preventiva 500 h · motor não parte (os tópicos vão em Atividades)" /></div>
+                <div class="campo largo" id="man-ativs-novas-campo" style="display:none;"><label>Atividades (uma por linha)</label><textarea id="man-ativs-novas" rows="4" placeholder="ex.:&#10;trocar mangueiras do pull-down&#10;verificar nível do óleo hidráulico"></textarea><span class="meta">Cada linha vira uma atividade pendente da OS ao salvar. Depois de salva, as atividades se lançam na aba Atividades.</span></div>
                 <div class="campo"><label>Responsável</label><select id="man-resp"></select></div>
                 <div class="campo"><label>Local</label><input id="man-local" placeholder="Pátio CGL, obra, oficina do fornecedor…" /></div>
                 <div class="campo"><label>Prevista para</label><input type="date" id="man-prev" /></div>
@@ -3796,7 +3797,7 @@
               </div>
             </div>
             <div class="odoo-tab" data-tab="atividades">
-              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:36px;">#</th><th style="width:120px;">Setor</th><th>Atividade</th><th style="width:130px;">Situação</th><th style="width:180px;">Executante</th><th style="width:90px;">Início</th><th style="width:90px;">Fim</th><th>Observação</th><th class="col-acao"></th></tr></thead>
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:36px;">#</th><th style="width:120px;">Setor</th><th style="min-width:280px;">Atividade</th><th style="width:130px;">Situação</th><th style="width:180px;">Executante</th><th style="width:90px;">Início</th><th style="width:90px;">Fim</th><th>Observação</th><th class="col-acao"></th></tr></thead>
                 <tbody id="man-ativs"></tbody></table></div>
               <div class="grade" id="man-ativ-add" style="margin-top:10px;">
                 <div class="campo"><label>Setor</label><select id="man-a-setor"><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="solda">Solda</option><option value="eletronica">Eletrônica</option><option value="lubrificacao">Lubrificação</option><option value="pintura">Pintura</option><option value="externo">Externo</option><option value="outros">Outros</option></select></div>
@@ -4378,6 +4379,7 @@
             <button type="button" class="btn-sec" id="btn-rep-atualizar">🔄 Atualizar</button>
             <button type="button" class="btn" id="btn-rep-novo" style="display:none;">+ Novo reparo</button>
           </div>
+          <div id="rep-st-chips" class="meta" style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin:-8px 0 14px;"></div>
           <div class="serv-filtros">
             <input id="rep-busca" placeholder="Buscar nº, marcação, TAG, descrição, WH/RO…" />
             <select id="rep-f-status"><option value="_abertos">Abertos</option><option value="">Todos os status</option><option value="aberto">Aberto</option><option value="em_execucao">Em execução</option><option value="concluido">Concluído</option><option value="cancelado">Cancelado</option></select>
@@ -5896,53 +5898,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=c6e1936"></script>
+<script src="js/core.js?v=bb987e3"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=c6e1936"></script>
+<script src="js/historico.js?v=bb987e3"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=c6e1936"></script>
-<script src="js/fiscal_ncm.js?v=c6e1936"></script>
+<script src="js/fiscal.js?v=bb987e3"></script>
+<script src="js/fiscal_ncm.js?v=bb987e3"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=c6e1936"></script>
-<script src="js/fornecedores.js?v=c6e1936"></script>
-<script src="js/apropriacoes.js?v=c6e1936"></script>
-<script src="js/funcionarios.js?v=c6e1936"></script>
-<script src="js/rh_documentos.js?v=c6e1936"></script>
-<script src="js/servicos.js?v=c6e1936"></script>
-<script src="js/produtos.js?v=c6e1936"></script>
-<script src="js/estoque.js?v=c6e1936"></script>
-<script src="js/separacoes.js?v=c6e1936"></script>
-<script src="js/epi.js?v=c6e1936"></script>
-<script src="js/compras.js?v=c6e1936"></script>
-<script src="js/requisicoes.js?v=c6e1936"></script>
-<script src="js/orcamentos.js?v=c6e1936"></script>
-<script src="js/propostas.js?v=c6e1936"></script>
-<script src="js/contratos.js?v=c6e1936"></script>
-<script src="js/contas_pagar.js?v=c6e1936"></script>
-<script src="js/centros_custo.js?v=c6e1936"></script>
-<script src="js/carteira.js?v=c6e1936"></script>
-<script src="js/obras.js?v=c6e1936"></script>
-<script src="js/frota.js?v=c6e1936"></script>
-<script src="js/viagens.js?v=c6e1936"></script>
-<script src="js/equipamentos.js?v=c6e1936"></script>
-<script src="js/vendas_bens.js?v=c6e1936"></script>
-<script src="js/acessorios.js?v=c6e1936"></script>
-<script src="js/reparos.js?v=c6e1936"></script>
-<script src="js/manutencao.js?v=c6e1936"></script>
-<script src="js/fabricacao.js?v=c6e1936"></script>
-<script src="js/mobilizacoes.js?v=c6e1936"></script>
-<script src="js/estacas.js?v=c6e1936"></script>
-<script src="js/obra_abas.js?v=c6e1936"></script>
-<script src="js/medicoes.js?v=c6e1936"></script>
-<script src="js/movimentacoes.js?v=c6e1936"></script>
-<script src="js/rdo.js?v=c6e1936"></script>
-<script src="js/rdo_import_maya.js?v=c6e1936"></script>
-<script src="js/usuarios.js?v=c6e1936"></script>
-<script src="js/chamados.js?v=c6e1936"></script>
-<script src="js/dashboard.js?v=c6e1936"></script>
-<script src="js/rh_horas.js?v=c6e1936"></script>
-<script src="js/patrimonio.js?v=c6e1936"></script>
+<script src="js/clientes.js?v=bb987e3"></script>
+<script src="js/fornecedores.js?v=bb987e3"></script>
+<script src="js/apropriacoes.js?v=bb987e3"></script>
+<script src="js/funcionarios.js?v=bb987e3"></script>
+<script src="js/rh_documentos.js?v=bb987e3"></script>
+<script src="js/servicos.js?v=bb987e3"></script>
+<script src="js/produtos.js?v=bb987e3"></script>
+<script src="js/estoque.js?v=bb987e3"></script>
+<script src="js/separacoes.js?v=bb987e3"></script>
+<script src="js/epi.js?v=bb987e3"></script>
+<script src="js/compras.js?v=bb987e3"></script>
+<script src="js/requisicoes.js?v=bb987e3"></script>
+<script src="js/orcamentos.js?v=bb987e3"></script>
+<script src="js/propostas.js?v=bb987e3"></script>
+<script src="js/contratos.js?v=bb987e3"></script>
+<script src="js/contas_pagar.js?v=bb987e3"></script>
+<script src="js/centros_custo.js?v=bb987e3"></script>
+<script src="js/carteira.js?v=bb987e3"></script>
+<script src="js/obras.js?v=bb987e3"></script>
+<script src="js/frota.js?v=bb987e3"></script>
+<script src="js/viagens.js?v=bb987e3"></script>
+<script src="js/equipamentos.js?v=bb987e3"></script>
+<script src="js/vendas_bens.js?v=bb987e3"></script>
+<script src="js/acessorios.js?v=bb987e3"></script>
+<script src="js/reparos.js?v=bb987e3"></script>
+<script src="js/manutencao.js?v=bb987e3"></script>
+<script src="js/fabricacao.js?v=bb987e3"></script>
+<script src="js/mobilizacoes.js?v=bb987e3"></script>
+<script src="js/estacas.js?v=bb987e3"></script>
+<script src="js/obra_abas.js?v=bb987e3"></script>
+<script src="js/medicoes.js?v=bb987e3"></script>
+<script src="js/movimentacoes.js?v=bb987e3"></script>
+<script src="js/rdo.js?v=bb987e3"></script>
+<script src="js/rdo_import_maya.js?v=bb987e3"></script>
+<script src="js/usuarios.js?v=bb987e3"></script>
+<script src="js/chamados.js?v=bb987e3"></script>
+<script src="js/dashboard.js?v=bb987e3"></script>
+<script src="js/rh_horas.js?v=bb987e3"></script>
+<script src="js/patrimonio.js?v=bb987e3"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=c6e1936"></script>
+<script src="js/init.js?v=bb987e3"></script>
 </body>
 </html>
