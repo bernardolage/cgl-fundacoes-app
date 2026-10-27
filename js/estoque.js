@@ -77,7 +77,8 @@ async function carregarEstoque(force){
    Vários itens numa transação (RPC estoque_saida_registrar); o banco só recusa saldo insuficiente em item com
    controle de reposição (o saldo herdado do Odoo não é confiável). Desfazer em 10 min = devolução com estorno_de.
    Fase 100 (#97): é a tela única de saída ("Registrar movimento" ficou só com entrada e inventário). Quem retira
-   é obrigatório só quando a lista tem EPI (produtos.categoria_custo = epi; decisão 1 do Bernardo) e vai para
+   é obrigatório só quando a lista tem EPI ou uniforme (decisão 1 do Bernardo; hotfix 168: pela categoria do produto,
+   como produto_eh_epi() no banco, não só pela marcação categoria_custo) e vai para
    movimentacoes_estoque.funcionario_id; com EPI e retirante, a assinatura do recebimento abre em seguida
    (js/epi.js).
    Fase 108c: com EPI na lista e quem retira escolhido, o destino vem da alocação vigente do funcionário (obra) ou,
@@ -106,7 +107,7 @@ function balAplicarMetodo(){
 }
 /* fase 108c: EPI para o destino pela alocação = categoria EPI / UNIFORMES ou EPI, ou categoria de custo epi/uniforme
    (produto_eh_epi no banco). A obrigatoriedade de quem retira e a ficha de EPI seguem por balEhEpi (fase 100). */
-const BAL_CATEGORIAS_EPI = ["EPI / UNIFORMES", "EPI"];
+const BAL_CATEGORIAS_EPI = ["EPI / UNIFORMES", "EPI", "UNIFORMES"];   // hotfix 151 (UNIFORMES) · hotfix 168
 function balEhEpiAloc(p){
   if(!p) return false;
   if(p.categoria_custo === "epi" || p.categoria_custo === "uniforme") return true;
@@ -195,7 +196,9 @@ function balLigarRetirante(){
 }
 function semAcentoBal(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 const BAL_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,custo_ultimo,codigo_barras,categoria_custo,categoria:categorias_produto(nome)";   // fase 108c: categoria para o EPI
-function balEhEpi(p){ return !!p && p.categoria_custo === "epi"; }   // fase 100
+function balEhEpi(p){ return balEhEpiAloc(p); }   // fase 100 → hotfix 168 (#168): a mesma regra do produto_eh_epi() do banco
+/* hotfix 168: na lista de hoje a movimentação já traz a categoria gravada pela RPC (epi/uniforme); a marcação do produto é reserva */
+function balMovEhEpi(m){ return !!m && (["epi", "uniforme"].includes(m.categoria_custo) || ["epi", "uniforme"].includes(m.produto?.categoria_custo)); }
 async function balBuscar(termo){
   const t = termo.replace(/[%,()]/g, " ").trim(); if(t.length < 2) return [];
   const { data } = await sb.from("produtos").select(BAL_COLS).eq("ativo", true)
@@ -232,7 +235,7 @@ function renderBalItens(){
   if(!_balItens.length){ tb.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum item. Bipe ou busque acima.</td></tr>`; return; }
   tb.innerHTML = _balItens.map((it, i) => { const saldo = Number(it.p.estoque_atual || 0), falta = Number(it.quantidade || 0) > saldo;
     return `<tr data-i="${i}" class="${falta && it.p.controle_reposicao ? "est-rep-critico" : ""}">
-      <td><strong>${esc(it.p.codigo)}</strong></td><td>${esc(it.p.nome)}${balEhEpi(it.p) ? ' <span class="tag azul" title="EPI: exige quem retira e entra na ficha de EPI do colaborador">EPI</span>' : it.p.categoria_custo === "uniforme" ? ' <span class="tag cinza">uniforme</span>' : ""}</td>
+      <td><strong>${esc(it.p.codigo)}</strong></td><td>${esc(it.p.nome)}${balEhEpi(it.p) ? (it.p.categoria_custo === "uniforme" ? ' <span class="tag cinza" title="uniforme: exige quem retira e entra na ficha do colaborador">uniforme</span>' : ' <span class="tag azul" title="EPI: exige quem retira e entra na ficha de EPI do colaborador">EPI</span>') : ""}</td>
       <td class="num">${num(saldo)} <span class="meta">${esc(it.p.unidade || "un")}</span>${falta ? `<div class="meta ${it.p.controle_reposicao ? "txt-perigo" : ""}">${it.p.controle_reposicao ? "saldo insuficiente" : "vai ficar negativo"}</div>` : ""}</td>
       <td><input type="number" class="bal-q" step="0.001" min="0.001" value="${esc(it.quantidade)}" style="width:86px;text-align:right;" /></td>
       <td><input class="bal-o" value="${esc(it.observacoes || "")}" placeholder="opcional" style="width:100%;" /></td>
@@ -246,7 +249,7 @@ async function registrarSaidaBalcao(){
   // fase 100: quem retira só é obrigatório com EPI na lista (o banco confere de novo)
   const epis = _balItens.filter(i => balEhEpi(i.p));
   if(!_balRetirante && $("bal-retirante").value.trim()){ aviso("app-aviso", "Escolha quem retira na lista de nomes (ou apague o campo).", "erro"); $("bal-retirante").focus(); return; }
-  if(!_balRetirante && epis.length){ aviso("app-aviso", `Informe quem retira: ${epis.map(i => i.p.codigo).join(", ")} ${epis.length > 1 ? "são EPI" : "é EPI"} e a entrega vai para a ficha de EPI do colaborador.`, "erro"); $("bal-retirante").focus(); return; }
+  if(!_balRetirante && epis.length){ aviso("app-aviso", `Informe quem retira: ${epis.map(i => i.p.codigo).join(", ")} ${epis.length > 1 ? "são EPI ou uniforme" : "é EPI ou uniforme"} e a entrega vai para a ficha do colaborador.`, "erro"); $("bal-retirante").focus(); return; }
   const dv = $("bal-destino").value;
   if(!dv){ aviso("app-aviso", "Escolha o destino: obra, TAG ou setor.", "erro"); $("bal-destino").focus(); return; }
   if(!_balItens.length){ aviso("app-aviso", "Adicione pelo menos um item.", "erro"); $("bal-item").focus(); return; }
@@ -279,7 +282,7 @@ async function registrarSaidaBalcao(){
 async function carregarSaidasHoje(){
   const cont = $("bal-hoje"); if(!cont) return;
   const desde = new Date(hojeISO() + "T00:00:00").toISOString();
-  const COLS = "id,quantidade,custo_unitario,obra_id,equipamento_id,centro_custo_id,documento,observacoes,created_at,registrado_por,produto:produtos(codigo,nome,unidade,categoria_custo),retirante:funcionarios!movimentacoes_estoque_responsavel_id_fkey(nome)";
+  const COLS = "id,quantidade,custo_unitario,obra_id,equipamento_id,centro_custo_id,documento,observacoes,categoria_custo,created_at,registrado_por,produto:produtos(codigo,nome,unidade,categoria_custo),retirante:funcionarios!movimentacoes_estoque_responsavel_id_fkey(nome)";
   const saidas = cols => sb.from("movimentacoes_estoque").select(cols).eq("tipo", "saida").gte("created_at", desde).order("created_at", { ascending: false }).limit(300);
   const semColuna = r => r.error && ["42703", "PGRST204"].includes(r.error.code);
   let [sa, es] = await Promise.all([
@@ -348,7 +351,7 @@ function renderSaidasHoje(){
   const hora = m => new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   // fase 100: EPI entregue a uma pessoa sem assinatura ainda → botão "assinar" (a mesma tela de assinatura do balcão).
   // Lote S52: assinado não se edita (desfazer e lançar de novo, colhendo nova assinatura).
-  const assinaTag = m => (m.estornada || m.produto?.categoria_custo !== "epi" || !m.funcionario_id) ? ""
+  const assinaTag = m => (m.estornada || !balMovEhEpi(m) || !m.funcionario_id) ? ""
     : m.assinatura_em ? ' <span class="tag verde" title="recebimento assinado · para corrigir, desfaça e lance de novo, colhendo nova assinatura">assinado</span>'
     : ` <button type="button" class="btn-sec btn-sm bal-assinar" data-id="${esc(m.id)}" title="colher a assinatura do recebimento">✍ assinar</button>`;
   // lote S52: a original riscada diz "corrigida"; a nova, "correção" apontando para a hora da original
@@ -365,7 +368,7 @@ function renderSaidasHoje(){
       if(_balEdit === m.id && podeEditar) return `<tr><td>${hora(m)}</td>${balEditarHTML(m)}</tr>`;
       return `<tr${m.estornada ? ' class="meta" style="text-decoration:line-through;"' : ""}>
         <td>${hora(m)}</td><td>${esc(m.retirante?.nome || "—")}</td>
-        <td>${esc(m.produto ? m.produto.codigo + " — " + m.produto.nome : "—")}${m.produto?.categoria_custo === "epi" ? ' <span class="tag azul">EPI</span>' : ""}${assinaTag(m)}${m.estornada ? "" : marca(m)}</td>
+        <td>${esc(m.produto ? m.produto.codigo + " — " + m.produto.nome : "—")}${balMovEhEpi(m) ? (m.categoria_custo === "uniforme" ? ' <span class="tag cinza">uniforme</span>' : ' <span class="tag azul">EPI</span>') : ""}${assinaTag(m)}${m.estornada ? "" : marca(m)}</td>
         <td class="num">${num(Math.abs(m.quantidade || 0))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${brl(Math.abs(Number(m.quantidade || 0)) * Number(m.custo_unitario || 0))}</td>
         <td>${esc(balDestinoTxt(m))}</td><td class="meta">${esc([m.documento, m.observacoes].filter(Boolean).join(" · "))}</td>
@@ -376,7 +379,7 @@ function renderSaidasHoje(){
   cont.querySelectorAll(".bal-assinar").forEach(b => b.addEventListener("click", () => {
     const m = _balHoje.find(x => x.id === b.dataset.id); if(!m || typeof epiAbrirAssinatura !== "function") return;
     // junta as entregas de EPI do mesmo colaborador ainda sem assinatura (uma assinatura para o lote do dia)
-    const lote = _balHoje.filter(x => !x.estornada && x.funcionario_id === m.funcionario_id && x.produto?.categoria_custo === "epi" && !x.assinatura_em);
+    const lote = _balHoje.filter(x => !x.estornada && x.funcionario_id === m.funcionario_id && balMovEhEpi(x) && !x.assinatura_em);
     epiAbrirAssinatura({ funcionarioId: m.funcionario_id, funcionarioNome: m.retirante?.nome,
       itens: lote.map(x => ({ id: x.id, descricao: `${num(Math.abs(x.quantidade || 0))} ${x.produto?.unidade || ""} · ${x.produto?.codigo} — ${x.produto?.nome}` })),
       aoConcluir: () => carregarSaidasHoje() });
