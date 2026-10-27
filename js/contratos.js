@@ -108,7 +108,7 @@ function preencherFiltrosCon(){
   const selCat = $("con-f-categoria");
   if(selCat && !selCat.options.length){
     selCat.innerHTML = `<option value="">Todas as categorias</option>` +
-      Object.entries(CONTRATO_CATEGORIA).map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      Object.entries(CONTRATO_CATEGORIA).map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   }
 }
 
@@ -189,7 +189,7 @@ function renderConLista(dados){
     const dias = diasParaVencer(c);
     let classe = "linha-clicavel";
     if(contratoEmAlerta(c)) classe += dias < 0 ? " con-vencido" : " con-vencendo";
-    return `<tr class="${classe}" data-id="${esc(c.id)}">
+    return `<tr class="${esc(classe)}" data-id="${esc(c.id)}">
       <td>${esc(c.numero)}</td>
       <td>${esc(mapaFornecedores[c.fornecedor_id] || "—")}</td>
       <td>${esc(CONTRATO_CATEGORIA[c.categoria] || c.categoria || "—")}</td>
@@ -535,7 +535,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
 
   const px   = conf.prefixo;
   const cats = Object.entries(CON_DOC_CATEGORIAS)
-    .map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+    .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   // hotfix 98: quem não anexa vê a lista sem o formulário (antes o formulário aparecia e o envio falhava na RLS)
   const podeAnexar = conPodeAnexar(conf.natureza);
   const podeExcluir = conPodeExcluirAnexo();
@@ -548,17 +548,17 @@ async function carregarDocumentosDoContrato(contratoId, opts){
       <h4 style="margin:0 0 8px;font-size:var(--txt-md);">📤 Anexar arquivo</h4>
       <div class="grade">
         <div class="campo"><label>Tipo</label>
-          <select id="${px}-categoria">${cats}</select>
+          <select id="${esc(px)}-categoria">${cats}</select>
         </div>
         <div class="campo"><label>Descrição (opcional)</label>
-          <input id="${px}-descricao" placeholder="ex.: 1º aditivo de prazo" />
+          <input id="${esc(px)}-descricao" placeholder="ex.: 1º aditivo de prazo" />
         </div>
         <div class="campo largo"><label>Arquivo — PDF, DOC/DOCX, JPG ou PNG (máx. 20 MB)</label>
-          <input id="${px}-arquivo" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+          <input id="${esc(px)}-arquivo" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
         </div>
       </div>
       <div class="form-acoes">
-        <button type="button" class="btn" id="btn-${px}-enviar">📤 Enviar</button>
+        <button type="button" class="btn" id="btn-${esc(px)}-enviar">📤 Enviar</button>
       </div>
     </div>`;
 
@@ -695,7 +695,7 @@ function tagAssinatura(st){
   const m = ASSINATURA_META[st] || ASSINATURA_META.nao_iniciada;
   // Glifo redundante à cor (daltônicos não distinguem verde/âmbar/vermelho)
   const glifo = { verde: "✓ ", ambar: "◔ ", vermelho: "✕ ", azul: "→ " }[m.cor] || "○ ";
-  return `<span class="tag ${m.cor}">${glifo}${esc(m.label)}</span>`;
+  return `<span class="tag ${esc(m.cor)}">${esc(glifo)}${esc(m.label)}</span>`;
 }
 
 /* Alvo atual do modal: contrato + como recarregar a ficha de origem */
@@ -725,21 +725,21 @@ function renderBlocoAssinatura(contrato, containerId, conf){
       ? new Date(contrato.data_envio_assinatura).toLocaleDateString("pt-BR") : "—"}${
       signatarios ? " para " + esc(signatarios) : ""}</span>`;
   } else if(st === "concluida" && contrato.arquivo_assinado_url){
-    meio = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-baixar-${containerId}">⬇️ Baixar assinado</button>`;
+    meio = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-baixar-${esc(containerId)}">⬇️ Baixar assinado</button>`;
   }
 
   let acoes = "";
   if(st === "nao_iniciada" || st === "cancelada"){
-    acoes = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-abrir-${containerId}">✍️ Enviar para assinatura</button>`;
+    acoes = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-abrir-${esc(containerId)}">✍️ Enviar para assinatura</button>`;
   } else if(st === "enviada" || st === "parcial"){
-    acoes = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-status-${containerId}" title="Consulta manual — gasta 1 requisição da cota">🔄 Atualizar status</button>`;
+    acoes = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-status-${esc(containerId)}" title="Consulta manual — gasta 1 requisição da cota">🔄 Atualizar status</button>`;
   }
 
   cont.innerHTML = `<div class="assin-bloco">
     <strong>Assinatura eletrônica</strong>
     ${tagAssinatura(st)}
-    ${meio}
-    <div class="assin-acoes">${acoes}</div>
+    ${/* html */ meio}
+    <div class="assin-acoes">${/* html */ acoes}</div>
   </div>`;
 
   $(`btn-d4s-abrir-${containerId}`)?.addEventListener("click", () => abrirModalAssinatura(contrato, conf));
@@ -859,7 +859,7 @@ async function conPreencherDestinos(){
   const obra = $("con-obra"), eq = $("con-equip"), cat = $("con-cat-custo");
   if(obra) obra.innerHTML = `<option value="">— nenhuma —</option>` + (typeof _cmpObras === "object" ? _cmpObras : []).map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
   if(eq)   eq.innerHTML   = `<option value="">— nenhuma —</option>` + (typeof _cmpEquips === "object" ? _cmpEquips : []).map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
-  if(cat)  cat.innerHTML  = `<option value="">— pela categoria do contrato —</option>` + Object.entries(typeof CMP_CAT_LBL === "object" ? CMP_CAT_LBL : {}).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  if(cat)  cat.innerHTML  = `<option value="">— pela categoria do contrato —</option>` + Object.entries(typeof CMP_CAT_LBL === "object" ? CMP_CAT_LBL : {}).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
   _conDestinosOk = true;
 }
 
@@ -882,7 +882,7 @@ async function conCarregarTitulos(id){
   } else {
     cont.innerHTML = `<div class="lista-topo compacta"><span class="meta">Títulos deste contrato. A exportação ao Compor 90 é feita no painel, visão "A pagar". Reajuste de valor ou troca de dia/obra/TAG refaz os que ainda não foram exportados.</span>${gerar}</div>
       <div class="tabela-rola"><table><thead><tr><th>Competência</th><th>Vencimento</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>
-      <tbody>${tits.map(t => `<tr><td>${t.competencia ? String(t.competencia).slice(5, 7) + "/" + String(t.competencia).slice(0, 4) : "—"}</td><td class="${!t.exportado_em && t.vencimento < hoje ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong></td><td class="num">${brl(t.valor)}</td>
+      <tbody>${tits.map(t => `<tr><td>${t.competencia ? esc(String(t.competencia).slice(5, 7)) + "/" + esc(String(t.competencia).slice(0, 4)) : "—"}</td><td class="${!t.exportado_em && t.vencimento < hoje ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong></td><td class="num">${brl(t.valor)}</td>
         <td>${t.obra_id ? linkObra(t.obra_id, (typeof cmpObra === "function" && cmpObra(t.obra_id)) || "obra") : "—"}</td><td>${t.equipamento_id ? esc((typeof cmpEq === "function" && cmpEq(t.equipamento_id)) || "TAG") : "—"}</td>
         <td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody>
       <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${brl(tits.reduce((s, t) => s + Number(t.valor || 0), 0))}</strong></td><td colspan="3"></td></tr></tfoot></table></div>`;

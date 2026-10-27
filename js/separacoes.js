@@ -37,7 +37,7 @@ const SEP_ACE_COLS = "id,marcacao,familia,tipo,diametro_mm,local_tipo,local_obra
 function sepPodeOperar(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "gestor_acessorios", "engenheiro", "logistica", "financeiro", "mecanico", "gestor_frota", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
 /* quem pede material para a obra (separacoes_pode_pedir() no banco); lote S48 (#124): + gestor_manutencao */
 function sepPodePedir(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "encarregado", "engenheiro", "assistente_engenharia", "mecanico", "operador", "logistica", "gestor_acessorios", "financeiro", "gestor_frota", "gestor_manutencao"].includes(usuarioAtual.cargo); }
-function sepTag(st){ const o = SEP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
+function sepTag(st){ const o = SEP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function sepObra(id){ const o = _sepObras.find(x => x.id === id); return o ? o.codigo : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
 function sepObraNome(id){ const o = _sepObras.find(x => x.id === id); return o ? o.nome : ""; }
 function sepEq(id){ const e = _sepEquips.find(x => x.id === id); return e ? e.codigo : ""; }
@@ -197,7 +197,7 @@ function renderSeparacoes(){
         ${its.slice(0, 200).map(s => { const p = sepProgresso(s); return `<div class="serv-kan-card" data-id="${esc(s.id)}">
           <div class="serv-kan-card-nome"><strong>${esc(s.numero)}</strong> <span class="meta">${esc(SEP_ORIGEM[s.origem_tipo] || "")}</span></div>
           <div>${esc(sepObra(s.obra_id) || "—")}${s.equipamento_id ? ` · TAG ${esc(sepEq(s.equipamento_id))}` : ""}</div>
-          <div class="meta">${p.ok} de ${p.n} separado(s)${s.responsavel ? " · " + esc(s.responsavel.nome) : " · sem responsável"}</div>
+          <div class="meta">${esc(p.ok)} de ${esc(p.n)} separado(s)${s.responsavel ? " · " + esc(s.responsavel.nome) : " · sem responsável"}</div>
           ${verValor && s.valor_total != null ? `<div class="meta">valor ${brl(s.valor_total)}</div>` : ""}
           ${s.prazo ? `<div class="meta">prazo ${dataBR(s.prazo)}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}</div>` : ""}
         </div>`; }).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
@@ -209,7 +209,7 @@ function renderSeparacoes(){
         <td>${linkObra(s.obra_id, sepObra(s.obra_id) || "—")}</td><td>${s.equipamento_id ? linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id)) : '<span class="meta">—</span>'}</td>
         <td class="meta">${esc(s.solicitante?.nome || "—")}</td><td>${s.responsavel ? esc(s.responsavel.nome) : '<span class="tag ambar">sem responsável</span>'}</td>
         <td>${s.prazo ? dataBR(s.prazo) : "—"}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}</td>
-        <td class="num">${p.ok} / ${p.n}</td>${verValor ? `<td class="num">${s.valor_total != null ? brl(s.valor_total) : "—"}</td>` : ""}<td>${sepTag(s.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
+        <td class="num">${esc(p.ok)} / ${esc(p.n)}</td>${verValor ? `<td class="num">${s.valor_total != null ? brl(s.valor_total) : "—"}</td>` : ""}<td>${sepTag(s.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
   }
   $("sep-preset-off")?.addEventListener("click", e => { e.preventDefault(); _sepPreset = ""; renderSeparacoes(); });
   cont.querySelectorAll("[data-id]").forEach(el => el.addEventListener("click", () => abrirSeparacao(el.dataset.id)));

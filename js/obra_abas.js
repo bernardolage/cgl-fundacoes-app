@@ -94,14 +94,14 @@ function _obrMobCardHTML(c, pend){
   const atrasadas = abertas.filter(p => p.atrasada).length;
   const porSetor = {};
   abertas.forEach(p => { porSetor[p.setor] = (porSetor[p.setor] || 0) + 1; });
-  const chipsSetor = Object.entries(porSetor).map(([s, n]) => `<span class="mob-chip">${esc(setorLbl(s))} ${n}</span>`).join("");
+  const chipsSetor = Object.entries(porSetor).map(([s, n]) => `<span class="mob-chip">${esc(setorLbl(s))} ${esc(n)}</span>`).join("");
   const listaPend = abertas.slice(0, 6).map(p => `<li${p.atrasada ? ' class="txt-perigo"' : ""}>${p.atrasada ? "⏰ " : ""}${esc(p.titulo)} <span class="meta">· ${esc(setorLbl(p.setor))}${p.prazo ? " · até " + dataBR(p.prazo) : ""}</span></li>`).join("")
     + (abertas.length > 6 ? `<li class="meta">… mais ${abertas.length - 6}</li>` : "");
   const datas = [
     ["Prevista", c.data_mobilizacao_prev], ["Saída", c.data_saida_real], ["Chegada", c.data_chegada_real], ["Desmob.", c.data_desmob_real]
-  ].filter(([, v]) => v).map(([l, v]) => `<span class="mob-chip" title="${l}">${l}: ${d(v)}</span>`).join("");
-  return `<div class="mob-card obr-mob-card" data-id="${esc(c.id)}" style="border-left-color:${col.cor || "var(--sup-3)"};cursor:pointer;" tabindex="0" role="button" aria-label="Abrir mobilização">
-    <div class="mob-card-titulo">${icone} ${esc(col.label || c.coluna || "Mobilização")} <span class="mob-chip st">${esc(stLbl)}</span></div>
+  ].filter(([, v]) => v).map(([l, v]) => `<span class="mob-chip" title="${esc(l)}">${esc(l)}: ${d(v)}</span>`).join("");
+  return `<div class="mob-card obr-mob-card" data-id="${esc(c.id)}" style="border-left-color:${esc(col.cor || "var(--sup-3)")};cursor:pointer;" tabindex="0" role="button" aria-label="Abrir mobilização">
+    <div class="mob-card-titulo">${esc(icone)} ${esc(col.label || c.coluna || "Mobilização")} <span class="mob-chip st">${esc(stLbl)}</span></div>
     <div class="mob-card-chips">
       <span class="mob-chip tag">${esc(c.equipamento_tag || "sem máquina")}</span>${c.equipamento_nome ? `<span class="meta">${esc(c.equipamento_nome)}</span>` : ""}
       ${c.apoio_tags ? `<span class="mob-chip">+ apoio: ${esc(c.apoio_tags)}</span>` : ""}
@@ -413,7 +413,7 @@ async function obrRenderBensAce(obraId){
   const porFam = {};
   agora.forEach(r => { const f = famLbl(r.familia); porFam[f] = porFam[f] || {}; const d = desc(r); (porFam[f][d] = porFam[f][d] || []).push(r); });
   const blocoAgora = Object.keys(porFam).sort().map(f => { const grupos = porFam[f]; const n = Object.values(grupos).reduce((t, g) => t + g.length, 0);
-    return `<details class="obr-bens-fam"><summary><strong>${esc(f)}</strong> <span class="contador">${n}</span> <span class="meta">${Object.keys(grupos).length} modelo(s)</span></summary>
+    return `<details class="obr-bens-fam"><summary><strong>${esc(f)}</strong> <span class="contador">${esc(n)}</span> <span class="meta">${Object.keys(grupos).length} modelo(s)</span></summary>
       <div class="mov-ace-sug-lista">${Object.keys(grupos).sort().map(d => `<div class="mov-ace-sug-grupo"><div class="mov-ace-sug-grupo-t">${esc(d)} <span class="meta">${grupos[d].length}</span></div>
         ${grupos[d].map(r => `<div class="mov-ace-sug-item"><strong>${linkAcessorio(r.acessorio_id, r.marcacao)}</strong>${r.jogo ? ` <span class="meta">jogo ${esc(r.jogo)}</span>` : ""} <span class="meta">${r.entrada ? "desde " + dataBR(r.entrada) : ""}</span></div>`).join("")}</div>`).join("")}</div></details>`; }).join("");
   const csvLinha = r => ({ "Peça": r.marcacao, "Família": famLbl(r.familia), "Descrição": desc(r), Jogo: r.jogo || "", Entrada: r.entrada ? dataBR(r.entrada) : "", "Saída": r.saida ? dataBR(r.saida) : "", Dias: r.dias ?? "", "Situação": r.na_obra_agora ? "na obra" : r.em_transito ? "em trânsito" : "saiu" });
@@ -428,7 +428,7 @@ async function obrRenderBensAce(obraId){
     <div class="lista-topo compacta" style="border:none;padding:0;margin-top:12px;"><strong>Passaram pela obra</strong> <span class="contador">${passaram.length}</span>
       ${passaram.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-pas" style="margin-left:auto;">⬇ Exportar CSV</button>` : ""}</div>
     ${passaram.length ? `<div class="tabela-rola"><table><thead><tr><th>Peça</th><th>Descrição</th><th>Entrada</th><th>Saída</th><th class="num">Dias</th></tr></thead>
-      <tbody>${passaram.map(r => `<tr><td><strong>${linkAcessorio(r.acessorio_id, r.marcacao)}</strong></td><td>${esc(desc(r))}</td><td>${r.entrada ? dataBR(r.entrada) : "—"}</td><td>${dataBR(r.saida)}</td><td class="num">${r.dias ?? "—"}</td></tr>`).join("")}</tbody></table></div>`
+      <tbody>${passaram.map(r => `<tr><td><strong>${linkAcessorio(r.acessorio_id, r.marcacao)}</strong></td><td>${esc(desc(r))}</td><td>${r.entrada ? dataBR(r.entrada) : "—"}</td><td>${dataBR(r.saida)}</td><td class="num">${esc(r.dias ?? "—")}</td></tr>`).join("")}</tbody></table></div>`
       : `<p class="vazio">Nenhuma peça entrou e saiu desta obra pelos registros de localização.</p>`}
     <div class="lista-topo compacta" style="border:none;padding:0;margin-top:12px;"><strong>Perdas e reparos na obra</strong> <span class="contador">${perdas.length}</span>
       ${perdas.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-perdas" style="margin-left:auto;">⬇ Exportar CSV</button>` : ""}</div>
@@ -443,7 +443,7 @@ async function obrRenderBensAce(obraId){
 function tagStatusEquip(st){
   const cores = { disponivel:"verde", em_uso:"azul", em_manutencao:"ambar", inativo:"cinza" };
   const lbls  = { disponivel:"Disponível", em_uso:"Em uso", em_manutencao:"Manutenção", inativo:"Inativo" };
-  return `<span class="tag ${cores[st]||"cinza"}">${esc(lbls[st]||st)}</span>`;
+  return `<span class="tag ${esc(cores[st]||"cinza")}">${esc(lbls[st]||st)}</span>`;
 }
 
 /* Atalho: abre o módulo Movimentações com obra pré-preenchida */
@@ -517,7 +517,7 @@ async function carregarMedicoesDaObra(obraId){
     <div style="background:${zerado ? "var(--sucesso-bg)" : "var(--marca-50)"};border-left:3px solid ${zerado ? "var(--sucesso)" : "var(--marca-600)"};padding:10px 14px;margin-bottom:14px;font-size:var(--txt-sm);">
       <strong>Sinal contratual</strong> · ${(sinal.pctSinal * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% do contrato atual (${brl(sinal.valorContratado)})
       <div class="indicadores" style="margin:8px 0 6px;">
-        <div class="ind"><div class="num">${brl(sinal.recebido)}</div><div class="rot">Recebido (${sinal.qtdSinais} medição${sinal.qtdSinais > 1 ? "ões" : ""})</div></div>
+        <div class="ind"><div class="num">${brl(sinal.recebido)}</div><div class="rot">Recebido (${esc(sinal.qtdSinais)} medição${sinal.qtdSinais > 1 ? "ões" : ""})</div></div>
         <div class="ind"><div class="num">${brl(sinal.abatido)}</div><div class="rot">Já abatido</div></div>
         <div class="ind"><div class="num" style="color:${zerado ? "var(--sucesso)" : "var(--aviso-txt)"};">${brl(sinal.saldoSinal)}</div><div class="rot">A abater</div></div>
         <div class="ind"><div class="num">${brl(sinal.saldoAMedir)}</div><div class="rot">Saldo a medir</div></div>
@@ -526,7 +526,7 @@ async function carregarMedicoesDaObra(obraId){
     </div>`;
   }
 
-  const stats = `${blocoSinal}
+  const stats = `${/* html */ blocoSinal}
     <div class="indicadores" style="margin-bottom:14px;">
       <div class="ind"><div class="num">${data.length}</div><div class="rot">Medições</div></div>
       <div class="ind"><div class="num">${brl(totalMedido)}</div><div class="rot">Total medido</div></div>
@@ -566,7 +566,7 @@ async function carregarMedicoesDaObra(obraId){
     </div>
     <div class="tabela-rola"><table>
       <thead><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>%</th><th>Status</th><th title="Documento fiscal da medição (aba Geral)">NF/RR</th><th class="num" title="Abatimento do sinal contratual nesta medição">Sinal abatido</th><th class="num">Valor</th></tr></thead>
-      <tbody>${linhas}</tbody></table></div>
+      <tbody>${/* html */ linhas}</tbody></table></div>
   `;
   $("btn-medic-nova")?.addEventListener("click", abrirMedicaoPraObra);
   $("btn-medic-importar")?.addEventListener("click", () => abrirImportBoletimPDF(obraId));
@@ -744,9 +744,9 @@ async function carregarRDOsDaObra(obraId){
       <td>${atribuiLote && !r.equipamento_id ? `<input type="checkbox" class="obr-rdo-sel" data-rdo="${esc(r.id)}" title="Marcar para atribuir máquina" /> ` : ""}${dataBR(r.data)}</td>
       <td>${r.equipamento_id ? esc(r.maquina || "?") : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho">sem máquina</span>'}</td>
       <td>${esc(lblsTipo[r.tipo_servico] || r.tipo_servico)}</td>
-      <td>${r.qtd_estacas_executadas || 0}</td>
-      <td title="${tituloVinc}" style="color:${corVinc};font-weight:600;">
-        ${v.vinculadas} / ${v.total}${orf > 0 ? ` <small style="font-weight:400;">(${orf} órfã${orf>1?'s':''})</small>` : ""}
+      <td>${esc(r.qtd_estacas_executadas || 0)}</td>
+      <td title="${esc(tituloVinc)}" style="color:${corVinc};font-weight:600;">
+        ${esc(v.vinculadas)} / ${esc(v.total)}${orf > 0 ? ` <small style="font-weight:400;">(${esc(orf)} órfã${orf>1?'s':''})</small>` : ""}
       </td>
       <td class="num">${num(r.metragem_total)} m${injPorRdo[r.id] ? `<div class="meta" title="Injeção do dia (raiz)">💧 ${esc(injPorRdo[r.id])}</div>` : ""}</td>
       <td class="num">${num(r.concreto_total_m3)} m³</td>
@@ -761,7 +761,7 @@ async function carregarRDOsDaObra(obraId){
         <th title="Execuções vinculadas a estacas cadastradas / total de execuções">Vinculadas</th>
         <th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th>
       </tr></thead>
-      <tbody>${linhas}</tbody></table></div>`;
+      <tbody>${/* html */ linhas}</tbody></table></div>`;
 
   $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
   ligarFiltroMaq();
@@ -873,7 +873,7 @@ async function carregarDocumentosDaObra(obraId){
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
 
   const cats = Object.entries(DOC_CATEGORIAS)
-    .map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+    .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   const uploader = `
     <div class="card" style="margin-bottom:14px;padding:12px;">
       <h4 style="margin:0 0 8px;font-size:var(--txt-md);">📤 Enviar novo documento</h4>
@@ -932,7 +932,7 @@ async function carregarDocumentosDaObra(obraId){
       <h4 style="font-size:var(--txt-sm);color:var(--marca-600);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px;">${esc(cat)} (${docs.length})</h4>
       <div class="tabela-rola"><table>
         <thead><tr><th>Arquivo</th><th>Descrição</th><th>Tamanho</th><th>Enviado em</th><th class="col-acao"></th></tr></thead>
-        <tbody>${linhas}</tbody></table></div>
+        <tbody>${/* html */ linhas}</tbody></table></div>
     </div>`;
   }).join("");
   cont.innerHTML = `${uploader}${blocos}`;
@@ -1274,7 +1274,7 @@ async function carregarTimelineDaObra(obraId){
       ${tiposPresentes.map(t => {
         const n = eventos.filter(e => e.tipo === t).length;
         return `<button type="button" class="tl-filtro" data-tl-tipo="${esc(t)}">
-          ${TL_EVENTOS[t].icone} ${TL_EVENTOS[t].lbl} (${n})
+          ${esc(TL_EVENTOS[t].icone)} ${esc(TL_EVENTOS[t].lbl)} (${esc(n)})
         </button>`;
       }).join("")}
     </div>`;
@@ -1307,11 +1307,11 @@ async function carregarTimelineDaObra(obraId){
     }
 
     return `<div class="tl-item" data-tl-tipo="${esc(ev.tipo)}">
-      <div class="tl-icone" style="background:${meta.cor};">${meta.icone}</div>
+      <div class="tl-icone" style="background:${esc(meta.cor)};">${esc(meta.icone)}</div>
       <div class="tl-conteudo">
         <div class="tl-titulo">${esc(ev.titulo)}</div>
         ${ev.meta ? `<div class="tl-meta">${esc(ev.meta)}</div>` : ""}
-        ${linhaComent}
+        ${/* html */ linhaComent}
         <div class="tl-data">${dataFmt}${autorTag ? " · " + autorTag : ""}</div>
       </div>
     </div>`;

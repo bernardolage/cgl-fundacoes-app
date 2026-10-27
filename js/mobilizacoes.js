@@ -101,7 +101,7 @@ function preencherFiltrosMob(){
     selTag.value = tags.includes(v) ? v : "";
   }
   if(selSetor && !selSetor.options.length){
-    selSetor.innerHTML = '<option value="">Qualquer setor pendente</option>' + Object.entries(MOB_SETOR).map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+    selSetor.innerHTML = '<option value="">Qualquer setor pendente</option>' + Object.entries(MOB_SETOR).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
   }
 }
 
@@ -145,7 +145,7 @@ function mobBadgePend(c){
   const cls = c.tem_atrasada ? "perigo" : (ab ? "aviso" : "ok");
   const txt = ab ? `${ab}/${tot} pend.` : `✓ ${tot}/${tot}`;
   const setores = (c.setores_pendentes || []).map(s => MOB_SETOR[s] || s).join(", ");
-  return `<span class="mob-badge ${cls}" title="${esc(setores || "todas as pendências concluídas")}">${c.tem_atrasada ? "⏰ " : ""}${txt}</span>`;
+  return `<span class="mob-badge ${esc(cls)}" title="${esc(setores || "todas as pendências concluídas")}">${c.tem_atrasada ? "⏰ " : ""}${txt}</span>`;
 }
 
 function cardMobHTML(c){
@@ -154,10 +154,10 @@ function cardMobHTML(c){
     ? `📅 ${dataBR(c.data_mobilizacao_prev)}${(dias != null && ["novo_contrato", "mobilizando"].includes(c.coluna)) ? ` <span class="meta">(${dias < 0 ? `há ${-dias} d` : dias === 0 ? "hoje" : `em ${dias} d`})</span>` : ""}`
     : `<span class="meta">sem data prevista</span>`;
   const med = ["finalizada_medicao_pendente", "finalizada"].includes(c.coluna)
-    ? `<span class="mob-badge ${Number(c.medicoes_abertas) ? "aviso" : (Number(c.medicoes_faturadas) ? "ok" : "perigo")}">💰 ${Number(c.medicoes_abertas) ? c.medicoes_abertas + " aberta(s)" : (Number(c.medicoes_faturadas) ? c.medicoes_faturadas + " faturada(s)" : "sem medição")}</span>` : "";
+    ? `<span class="mob-badge ${Number(c.medicoes_abertas) ? "aviso" : (Number(c.medicoes_faturadas) ? "ok" : "perigo")}">💰 ${Number(c.medicoes_abertas) ? esc(c.medicoes_abertas) + " aberta(s)" : (Number(c.medicoes_faturadas) ? esc(c.medicoes_faturadas) + " faturada(s)" : "sem medição")}</span>` : "";
   const icone = MOB_TIPO_ICONE[c.tipo_proposta] || "⚙️";
-  return `<div class="mob-card" data-id="${esc(c.id)}" style="border-left-color:${(MOB_COLUNAS.find(x => x.k === c.coluna) || {}).cor || "var(--sup-3)"}" tabindex="0" role="button" aria-label="Abrir mobilização ${esc(c.titulo_card)}">
-    <div class="mob-card-titulo">${icone} ${esc(c.titulo_card)}</div>
+  return `<div class="mob-card" data-id="${esc(c.id)}" style="border-left-color:${esc((MOB_COLUNAS.find(x => x.k === c.coluna) || {}).cor || "var(--sup-3)")}" tabindex="0" role="button" aria-label="Abrir mobilização ${esc(c.titulo_card)}">
+    <div class="mob-card-titulo">${esc(icone)} ${esc(c.titulo_card)}</div>
     ${c.obra_codigo && c.obra_id ? `<div class="meta">🏗️ ${linkObra(c.obra_id, `${c.obra_codigo} — ${c.obra_nome || ""}`.trim())}</div>` : ""}
     <div class="mob-card-chips">
       <span class="mob-chip tag">${esc(c.equipamento_tag || "XX")}</span>
@@ -185,8 +185,8 @@ function renderQuadroMob(){
   cont.innerHTML = `<div class="mob-quadro">${MOB_COLUNAS.map(col => {
     const cards = porCol[col.k] || [];
     const colapsada = _mobColapsadas.has(col.k);
-    return `<div class="mob-col${colapsada ? " colapsada" : ""}" data-col="${col.k}">
-      <div class="mob-col-titulo" style="border-top-color:${col.cor}">
+    return `<div class="mob-col${colapsada ? " colapsada" : ""}" data-col="${esc(col.k)}">
+      <div class="mob-col-titulo" style="border-top-color:${esc(col.cor)}">
         <span>${esc(col.label)}</span><span class="mob-col-n">${cards.length}</span>
         <button type="button" class="mob-col-toggle" title="${colapsada ? "mostrar" : "recolher"}" aria-label="${colapsada ? "Mostrar" : "Recolher"} coluna ${esc(col.label)}">${colapsada ? "▸" : "▾"}</button>
       </div>
@@ -282,12 +282,12 @@ function mobEquipOnde(e){
 /* fase 80: TAGs de apoio por busca (bomba, compressor e gerador; "todos os tipos" para segunda perfuratriz ou
    caminhão). Cada resultado diz onde a TAG está; a que está em outra obra aparece com aviso, não some. */
 function mobApoioHTML(pref){
-  return `<div id="${pref}-apoio-chips" class="mob-acoes" style="margin:0 0 6px;"></div>
+  return `<div id="${esc(pref)}-apoio-chips" class="mob-acoes" style="margin:0 0 6px;"></div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-      <input id="${pref}-apoio-busca" placeholder="buscar bomba, compressor ou gerador por TAG ou nome…" autocomplete="off" style="flex:1;min-width:220px;" />
-      <label class="check-inline"><input type="checkbox" id="${pref}-apoio-todos" /> todos os tipos</label>
+      <input id="${esc(pref)}-apoio-busca" placeholder="buscar bomba, compressor ou gerador por TAG ou nome…" autocomplete="off" style="flex:1;min-width:220px;" />
+      <label class="check-inline"><input type="checkbox" id="${esc(pref)}-apoio-todos" /> todos os tipos</label>
     </div>
-    <div id="${pref}-apoio-res" class="autocomplete-lista" style="display:none;"></div>`;
+    <div id="${esc(pref)}-apoio-res" class="autocomplete-lista" style="display:none;"></div>`;
 }
 function mobLigarApoio(pref, obraId, principalSelId){
   const inp = $(`${pref}-apoio-busca`), lista = $(`${pref}-apoio-res`), todos = $(`${pref}-apoio-todos`), chips = $(`${pref}-apoio-chips`);
@@ -332,12 +332,12 @@ function renderDrawerMob(){
   const col = MOB_COLUNAS.find(x => x.k === c.coluna) || {};
   const est = Array.isArray(m.estacas_resumo) ? m.estacas_resumo : [];
   const podeEditar = mobPodeEditar();   // fase 95: lista única (MOB_CARGOS_EDITAM), vale para "Salvar alterações" e para os botões de status
-  const porQuem = (id, v) => `<select id="${id}"><option value="">—</option><option value="cgl"${v === "cgl" ? " selected" : ""}>CGL</option><option value="cliente"${v === "cliente" ? " selected" : ""}>Cliente</option></select>`;
-  const simNao = (id, v) => `<select id="${id}"><option value="">—</option><option value="true"${v === true ? " selected" : ""}>Sim</option><option value="false"${v === false ? " selected" : ""}>Não</option></select>`;
+  const porQuem = (id, v) => `<select id="${esc(id)}"><option value="">—</option><option value="cgl"${v === "cgl" ? " selected" : ""}>CGL</option><option value="cliente"${v === "cliente" ? " selected" : ""}>Cliente</option></select>`;
+  const simNao = (id, v) => `<select id="${esc(id)}"><option value="">—</option><option value="true"${v === true ? " selected" : ""}>Sim</option><option value="false"${v === false ? " selected" : ""}>Não</option></select>`;
   _mobApoioSel.mob = [...(m.equipamentos_apoio || [])];
   // fase 95: quem não grava em mobilizacoes vê o status e "Sem ações de status disponíveis" (antes os botões apareciam para
   // todo cargo: quem grava em viagens/movimentacoes_ativos criava a remessa e o UPDATE da mobilização voltava 0 linhas)
-  const transicoes = podeEditar ? (MOB_TRANSICOES[m.status] || []).map(([st, lbl, cls]) => `<button type="button" class="${cls}" data-mob-status="${st}">${lbl}</button>`).join("") : "";
+  const transicoes = podeEditar ? (MOB_TRANSICOES[m.status] || []).map(([st, lbl, cls]) => `<button type="button" class="${esc(cls)}" data-mob-status="${esc(st)}">${esc(lbl)}</button>`).join("") : "";
   const respOpts = (sel) => '<option value="">— responsável —</option>' + _mobProfiles.map(p => `<option value="${esc(p.id)}"${p.id === sel ? " selected" : ""}>${esc(p.nome)}</option>`).join("");
   const porSetor = {};
   _mobPendAberta.forEach(p => (porSetor[p.setor] = porSetor[p.setor] || []).push(p));
@@ -358,10 +358,10 @@ function renderDrawerMob(){
   cont.innerHTML = `
     <div class="mob-drawer-topo">
       <div>
-        <div class="mob-drawer-titulo">${MOB_TIPO_ICONE[c.tipo_proposta] || "⚙️"} ${esc(c.titulo_card || "Mobilização")}</div>
+        <div class="mob-drawer-titulo">${esc(MOB_TIPO_ICONE[c.tipo_proposta] || "⚙️")} ${esc(c.titulo_card || "Mobilização")}</div>
         <div class="mob-drawer-sub">
           <span class="mob-chip st">${esc(MOB_STATUS[m.status] || m.status)}</span>
-          <span class="mob-chip" style="border-color:${col.cor || "var(--sup-3)"}">${esc(col.label || "")}</span>
+          <span class="mob-chip" style="border-color:${esc(col.cor || "var(--sup-3)")}">${esc(col.label || "")}</span>
           ${c.obra_codigo ? `🏗️ ${linkObra(m.obra_id, `${c.obra_codigo} — ${c.obra_nome || ""}`.trim())}` : ""}
           ${m.trello_card_url ? `<a href="${esc(m.trello_card_url)}" target="_blank" rel="noopener" class="meta">card no Trello ↗</a>` : ""}
         </div>
@@ -470,7 +470,7 @@ async function mobRenderViagens(){
   const chip = (id, rot) => {
     const v = (data || []).find(x => x.id === id); if(!v) return "";
     const st = (typeof STATUS !== "undefined" && STATUS.viagem && STATUS.viagem[v.status]) || { label: v.status };
-    return `<a href="#" class="mob-chip ${v.status === "concluida" ? "ok" : "st"}" data-vg="${esc(v.id)}" title="abrir a viagem em Logística">🚚 ${rot} ${esc(v.numero)} · ${esc(st.label)} · ${v.caminhao ? esc(v.caminhao.codigo) : "sem caminhão"}${v.funcionario ? " · " + esc(v.funcionario.nome) : ""}</a>`;
+    return `<a href="#" class="mob-chip ${v.status === "concluida" ? "ok" : "st"}" data-vg="${esc(v.id)}" title="abrir a viagem em Logística">🚚 ${esc(rot)} ${esc(v.numero)} · ${esc(st.label)} · ${v.caminhao ? esc(v.caminhao.codigo) : "sem caminhão"}${v.funcionario ? " · " + esc(v.funcionario.nome) : ""}</a>`;
   };
   // fase 95: além de operar a viagem, precisa gravar o vínculo em mobilizacoes (senão a viagem nasce órfã)
   const podeProgramar = pode && mobPodeEditar() && !m.viagem_ida_id && ["prevista", "em_preparacao"].includes(m.status);
@@ -546,7 +546,7 @@ async function mobRenderSeparacao(){
   if(s){
     const its = s.itens || [], ok = its.filter(i => i.separado).length;
     const lbl = { aberta: "aberta", em_separacao: "em separação", separada: "separada", entregue: "entregue" }[s.status] || s.status;
-    box.innerHTML = `<a href="#" class="mob-chip ${s.status === "entregue" ? "ok" : "st"}" id="mob-sep-abrir" title="abrir a separação">📦 Separação ${esc(s.numero)}: ${ok} de ${its.length} separado(s) · ${esc(lbl)}${s.responsavel ? " · " + esc(s.responsavel.nome) : " · sem responsável"}</a>`;
+    box.innerHTML = `<a href="#" class="mob-chip ${s.status === "entregue" ? "ok" : "st"}" id="mob-sep-abrir" title="abrir a separação">📦 Separação ${esc(s.numero)}: ${esc(ok)} de ${its.length} separado(s) · ${esc(lbl)}${s.responsavel ? " · " + esc(s.responsavel.nome) : " · sem responsável"}</a>`;
     $("mob-sep-abrir")?.addEventListener("click", e => { e.preventDefault(); fecharMobilizacao(); if(irParaSecao("separacoes") && typeof abrirSeparacao === "function") abrirSeparacao(s.id); });
   } else {
     box.innerHTML = podePedir
@@ -569,7 +569,7 @@ async function mobRenderSeparacao(){
 function mobKitEditavel(){ return _mobAberta && ["prevista","em_preparacao"].includes(_mobAberta.status); }
 function mobAceDescr(a){ return (typeof aceDescr === "function" ? aceDescr(a) : (a.tipo || "Acessório")); }
 function mobAceOnde(a){ return typeof aceOnde === "function" ? aceOnde(a) : (a.local_tipo || ""); }
-function mobAceCond(a){ const o = (STATUS.acessorio || {})[a.condicao] || {}; return `<span class="tag ${o.cor || "cinza"}">${esc(o.label || a.condicao || "")}</span>`; }
+function mobAceCond(a){ const o = (STATUS.acessorio || {})[a.condicao] || {}; return `<span class="tag ${esc(o.cor || "cinza")}">${esc(o.label || a.condicao || "")}</span>`; }
 async function mobCatalogo(force){
   if(typeof aceCatalogo !== "function") return [];
   try { return await aceCatalogo(force); } catch(e){ aviso("app-aviso", "Não foi possível carregar os acessórios: " + (e.message || e), "erro"); return []; }
@@ -631,11 +631,11 @@ async function mobRenderKit(){
     };
     const cont = {}; kit.forEach(a => { const [l] = sit(a); cont[l] = (cont[l] || 0) + 1; });
     box.innerHTML = `
-      <p class="meta">Kit desta mobilização: ${kit.length} peça(s)${Object.keys(cont).length ? " · " + Object.entries(cont).map(([l, n]) => `${n} ${l}`).join(" · ") : ""}
+      <p class="meta">Kit desta mobilização: ${kit.length} peça(s)${Object.keys(cont).length ? " · " + Object.entries(cont).map(([l, n]) => `${esc(n)} ${esc(l)}`).join(" · ") : ""}
         ${m.movimentacao_remessa_id ? ` · remessa ${linkMovimentacao(m.movimentacao_remessa_id, num(m.movimentacao_remessa_id))}` : ""}
         ${m.movimentacao_retorno_id ? ` · retorno ${linkMovimentacao(m.movimentacao_retorno_id, num(m.movimentacao_retorno_id))}` : ""}</p>
       ${kit.length ? `<div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Peça</th><th>Descrição</th><th>Jogo</th><th>Condição</th><th>Situação hoje</th></tr></thead>
-        <tbody>${kit.map(a => { const [l, cor] = sit(a); return `<tr><td><strong>${linkAcessorio(a.id, a.marcacao)}</strong></td><td>${esc(mobAceDescr(a))}</td><td>${esc(a.jogo || "—")}</td><td>${mobAceCond(a)}</td><td><span class="tag ${cor}">${esc(l)}</span> <span class="meta">${esc(mobAceOnde(a))}</span></td></tr>`; }).join("")}</tbody></table></div>`
+        <tbody>${kit.map(a => { const [l, cor] = sit(a); return `<tr><td><strong>${linkAcessorio(a.id, a.marcacao)}</strong></td><td>${esc(mobAceDescr(a))}</td><td>${esc(a.jogo || "—")}</td><td>${mobAceCond(a)}</td><td><span class="tag ${esc(cor)}">${esc(l)}</span> <span class="meta">${esc(mobAceOnde(a))}</span></td></tr>`; }).join("")}</tbody></table></div>`
         : `<p class="vazio">Nenhuma peça foi separada no kit desta mobilização.</p>`}
       ${m.status === "em_obra" && kit.length ? `<p class="meta">Ao desmobilizar, as peças do kit que estiverem na obra entram no retorno para a logística conferir (o retorno leva também as demais peças registradas na obra; o que ficar é removido lá).</p>` : ""}
       <p><a href="#" id="mob-ver-bens">Ver todos os bens desta obra →</a></p>`;
@@ -710,10 +710,10 @@ async function mobSalvarKit(){
 function mobEstacaLinhaHTML(e){
   const v = (x) => (x == null ? "" : x);
   return `<tr>
-    <td><input type="number" class="me-qtd" value="${v(e.qtd)}" style="width:70px" /></td>
-    <td><input type="number" class="me-diam" value="${v(e.diametro_mm)}" style="width:80px" /></td>
-    <td><input type="number" step="0.5" class="me-pmin" value="${v(e.prof_min)}" style="width:80px" /></td>
-    <td><input type="number" step="0.5" class="me-pmax" value="${v(e.prof_max)}" style="width:80px" /></td>
+    <td><input type="number" class="me-qtd" value="${esc(v(e.qtd))}" style="width:70px" /></td>
+    <td><input type="number" class="me-diam" value="${esc(v(e.diametro_mm))}" style="width:80px" /></td>
+    <td><input type="number" step="0.5" class="me-pmin" value="${esc(v(e.prof_min))}" style="width:80px" /></td>
+    <td><input type="number" step="0.5" class="me-pmax" value="${esc(v(e.prof_max))}" style="width:80px" /></td>
     <td><input type="text" class="me-obs" value="${esc(v(e.obs))}" /></td>
     <td class="col-acao"><button type="button" class="btn-rem mob-est-rem" title="remover">&times;</button></td>
   </tr>`;

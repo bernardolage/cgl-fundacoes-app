@@ -315,7 +315,7 @@ function montarOpcoesCatalogoOrc(f){
           + vars.map(v => `<option value="${esc(v.id)}">${esc(v.nome)}${_orcFaixaAproximada(v, f) ? " · faixa mais próxima" : ""}</option>`).join("")
           + `</optgroup>`;
   });
-  return html;
+  return /* html */ html;
 }
 function _opcoesFiltradasOrc(){ return montarOpcoesCatalogoOrc(_orcCatFiltro); }
 
@@ -655,12 +655,12 @@ function preencherFiltrosOrc(){
   const selPorte = $("orc-f-porte");
   if(selPorte && !selPorte.options.length){
     selPorte.innerHTML = `<option value="">Todos os portes</option>` +
-      Object.entries(ORC_PORTE_LBL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+      Object.entries(ORC_PORTE_LBL).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
   }
   const selMet = $("orc-f-metodo");   // lote S44 (L3, #63)
   if(selMet && !selMet.options.length){
     selMet.innerHTML = `<option value="">Todos os métodos</option>` +
-      Object.entries(ORC_METODO_LBL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+      Object.entries(ORC_METODO_LBL).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
   }
   const selConc = $("orc-f-conc");   // lote S47 (#111): agrupar ou escolher uma concorrência
   if(selConc){
@@ -1055,7 +1055,7 @@ function renderizarVinculosOrc(contratos, obras, medicoes){
     <h4>📋 Contratos (${contratos.length})</h4>
     <div class="tabela-rola" style="margin-bottom:14px;"><table>
       <thead><tr><th>Número</th><th>Status</th><th>Data assinatura</th><th class="num">Valor</th></tr></thead>
-      <tbody>${contratos.map(c => `<tr class="linha-clicavel" data-abrir="contrato" data-id="${c.id}" title="Abrir contrato">
+      <tbody>${contratos.map(c => `<tr class="linha-clicavel" data-abrir="contrato" data-id="${esc(c.id)}" title="Abrir contrato">
         <td><strong>${esc(c.numero||"—")}</strong></td>
         <td>${tagStatus("contrato", c.status)}</td>
         <td>${dataBR(c.data_assinatura)}</td>
@@ -1066,7 +1066,7 @@ function renderizarVinculosOrc(contratos, obras, medicoes){
     <h4>🏗️ Obras (${obras.length})</h4>
     <div class="tabela-rola" style="margin-bottom:14px;"><table>
       <thead><tr><th>Código</th><th>Nome</th><th>Status</th></tr></thead>
-      <tbody>${obras.map(o => `<tr class="linha-clicavel" data-abrir="obra" data-id="${o.id}" title="Abrir obra">
+      <tbody>${obras.map(o => `<tr class="linha-clicavel" data-abrir="obra" data-id="${esc(o.id)}" title="Abrir obra">
         <td><strong>${esc(o.codigo||"—")}</strong></td>
         <td>${esc(o.nome||"—")}</td>
         <td>${tagStatus("obra", o.status)}</td>
@@ -1076,12 +1076,12 @@ function renderizarVinculosOrc(contratos, obras, medicoes){
     <h4>💰 Medições (${medicoes.length})</h4>
     <div class="tabela-rola"><table>
       <thead><tr><th>Nº</th><th>Obra</th><th>Status</th><th>Data</th><th class="num">Itens com este orçamento</th></tr></thead>
-      <tbody>${medicoes.map(m => `<tr class="linha-clicavel" data-abrir="medicao" data-id="${m.id}" title="Abrir medição">
+      <tbody>${medicoes.map(m => `<tr class="linha-clicavel" data-abrir="medicao" data-id="${esc(m.id)}" title="Abrir medição">
         <td><strong>${esc(m.numero||"—")}</strong></td>
         <td>${esc(m.obra?.codigo||"")} ${esc(m.obra?.nome||"")}</td>
         <td>${tagStatus("medicao", m.status)}</td>
         <td>${dataBR(m.data_medicao)}</td>
-        <td class="num">${m._itens}</td>
+        <td class="num">${esc(m._itens)}</td>
       </tr>`).join("")}</tbody></table></div>` : "";
 
   cont.innerHTML = blocoContrat + blocoObras + blocoMed;
@@ -1240,7 +1240,7 @@ function ativarTabOrc(nome){
 
 /* ---------- Editor de itens ---------- */
 function linhaItemHTML(){
-  const uns = UNIDADES.map(u=>`<option value="${u}"${u==="un"?" selected":""}>${u}</option>`).join("");
+  const uns = UNIDADES.map(u=>`<option value="${esc(u)}"${u==="un"?" selected":""}>${esc(u)}</option>`).join("");
   return `<tr>
     <td><div class="it-cat-wrap"><select class="it-cat">${_opcoesFiltradasOrc()}</select><button type="button" class="it-cat-all" title="Ver todo o catálogo nesta linha" aria-pressed="false">⋯</button></div></td>
     <td><input type="text" class="it-desc" placeholder="descrição do item" /></td>

@@ -93,13 +93,13 @@ function rhExtenso(valor){
 
 /* ---------- utilitários de texto ---------- */
 const rhdV   = (v) => (v == null || String(v).trim() === "") ? "" : String(v).trim();
-const rhdOu  = (v, vazio = "________________") => rhdV(v) ? esc(rhdV(v)) : vazio;
+const rhdOu  = (v, vazio = "________________") => rhdV(v) ? esc(rhdV(v)) : /* html */ vazio;
 const rhdDat = (d) => d ? dataBR(String(d).slice(0, 10)) : "____/____/______";
 const rhdBRL = (v) => (v == null || v === "") ? "R$ __________" : "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const rhdX   = (cond) => cond ? "X" : "&nbsp;&nbsp;";
 function rhdDataPorExtenso(iso){
   const d = iso ? new Date(String(iso).slice(0, 10) + "T00:00:00") : new Date();
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  return esc(d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }));
 }
 
 /* ---------- cabeçalho do SGQ (todas as páginas dos modelos) ---------- */
@@ -107,7 +107,7 @@ function rhdCabecalho(titulo, rg, rev, pagina, total){
   const cel = "border:1px solid #333;padding:2px 4px;font-size:8pt;";
   return `<table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-bottom:5mm;" class="nao-quebrar">
     <tr>
-      <td rowspan="4" style="${cel}width:22mm;text-align:center;vertical-align:middle;"><img src="${pdfUrl(PDF_LOGO_SRC)}" alt="CGL" style="height:16mm;width:16mm;display:block;margin:0 auto;"></td>
+      <td rowspan="4" style="${cel}width:22mm;text-align:center;vertical-align:middle;"><img src="${esc(pdfUrl(PDF_LOGO_SRC))}" alt="CGL" style="height:16mm;width:16mm;display:block;margin:0 auto;"></td>
       <td colspan="4" style="${cel}text-align:center;font-weight:700;font-size:9pt;">Sistema de Gestão da Qualidade</td>
     </tr>
     <tr>
@@ -120,21 +120,21 @@ function rhdCabecalho(titulo, rg, rev, pagina, total){
       <td style="${cel}text-align:center;">REVISÃO<br>${esc(rev)}</td>
     </tr>
     <tr>
-      <td colspan="2" style="${cel}text-align:center;">PÁGINA ${pagina} de ${total}</td>
+      <td colspan="2" style="${cel}text-align:center;">PÁGINA ${esc(pagina)} de ${esc(total)}</td>
     </tr>
   </table>`;
 }
 /* 10 pt justificado: o contrato de experiência (RG 5.4/5.5, 14 parágrafos + quadro do VT + assinaturas) tem de caber numa página A4 */
 const RHD_P = "font-family:Arial,Helvetica,sans-serif;font-size:10pt;line-height:1.38;color:#111;text-align:justify;margin:0 0 2.4mm;";
 function rhdPagina(conteudo, primeira){
-  return `<div style="${primeira ? "" : "page-break-before:always;"}font-family:Arial,Helvetica,sans-serif;color:#111;">${conteudo}</div>`;
+  return `<div style="${primeira ? "" : "page-break-before:always;"}font-family:Arial,Helvetica,sans-serif;color:#111;">${/* html */ conteudo}</div>`;
 }
 /* página cheia (contrato de experiência do ajudante com os dois §, contrato de trabalho): 9,5 pt para caber como no Word */
 function rhdDensa(html){
   return html.replace(/font-size:10pt;line-height:1\.38;[^"]*margin:0 0 2\.4mm;/g, "font-size:9.5pt;line-height:1.3;color:#111;text-align:justify;margin:0 0 1.9mm;");
 }
 function rhdAssinaturas(nomeEmpregado, comEmpresa = true, rotuloEmpregado = ""){
-  const bloco = (t) => `<td style="width:50%;text-align:center;padding:14mm 4mm 0;font-size:10pt;"><div style="border-top:1px solid #111;padding-top:2mm;">${t}</div></td>`;
+  const bloco = (t) => `<td style="width:50%;text-align:center;padding:14mm 4mm 0;font-size:10pt;"><div style="border-top:1px solid #111;padding-top:2mm;">${/* html */ t}</div></td>`;
   return `<table style="width:100%;border-collapse:collapse;margin-top:6mm;" class="nao-quebrar"><tr>
     ${comEmpresa ? bloco(RHD_EMPRESA.nomeCaixa) : `<td style="width:50%;"></td>`}
     ${bloco((rotuloEmpregado ? rotuloEmpregado + "<br>" : "") + rhdOu(nomeEmpregado))}
@@ -174,8 +174,8 @@ function rhdHtmlFicha(c){
   const m = RHD_MODELOS.admissao_ficha;
   const td = "border:1px solid #333;padding:2px 5px;font-size:9.5pt;vertical-align:top;";
   const rot = `<span style="font-size:7.5pt;color:#444;display:block;">`;
-  const cel = (rotulo, valor, extra = "") => `<td style="${td}${extra}">${rot}${rotulo}</span>${valor || "&nbsp;"}</td>`;
-  const chk = (t) => `<td style="${td}width:50%;">☐ ${t}</td>`;
+  const cel = (rotulo, valor, extra = "") => `<td style="${td}${esc(extra)}">${rot}${esc(rotulo)}</span>${/* html */ valor || "&nbsp;"}</td>`;
+  const chk = (t) => `<td style="${td}width:50%;">☐ ${esc(t)}</td>`;
   const corpo = `
     ${rhdCabecalho(m.titulo.toUpperCase(), m.rg, m.rev, 1, 1)}
     <p style="${RHD_P}text-align:center;font-weight:700;font-size:11pt;">DADOS PARA ADMISSÃO CGL FUNDAÇÕES</p>
@@ -245,7 +245,7 @@ function rhdHtmlContratoExperiencia(c, tipo){
     <p style="${RHD_P}">§ 2º - Permanecendo na mesma função de Ajudante de Equipamento II pelo período de 3(três) anos será garantida uma gratificação de 15% (quinze por cento) sobre o salário, passando a ser denominado Ajudante de Equipamento III.</p>` : "";
   const pag1 = `
     ${rhdCabecalho("CONTRATO DE EXPERIÊNCIA", base, m.rev, 1, 4)}
-    <p style="${RHD_P}">Por este instrumento particular, que entre si fazem a empresa, ${E.nomeCaixa} – CNPJ:${E.cnpj} com sede na Avenida Hematita, 562, Distrito Industrial, Itabira, CEP ${E.cep}, neste ato denominado (a) EMPREGADOR (A), e o (a) Sr &nbsp;${rhdOu(c.nome)} portador(a) da Carteira de Trabalho nº ${rhdOu(c.ctps)}. Série ${rhdOu(c.serie)}, PIS/PASEP nº. ${rhdOu(c.pis)}, doravante chamado simplesmente EMPREGADO e firmam o presente contrato individual de trabalho, em caráter de experiência, conforme a letra C parágrafo 2º do Artigo 443 da Consolidação das Leis do Trabalho, mediante as seguintes condições:</p>
+    <p style="${RHD_P}">Por este instrumento particular, que entre si fazem a empresa, ${esc(E.nomeCaixa)} – CNPJ:${esc(E.cnpj)} com sede na Avenida Hematita, 562, Distrito Industrial, Itabira, CEP ${esc(E.cep)}, neste ato denominado (a) EMPREGADOR (A), e o (a) Sr &nbsp;${rhdOu(c.nome)} portador(a) da Carteira de Trabalho nº ${rhdOu(c.ctps)}. Série ${rhdOu(c.serie)}, PIS/PASEP nº. ${rhdOu(c.pis)}, doravante chamado simplesmente EMPREGADO e firmam o presente contrato individual de trabalho, em caráter de experiência, conforme a letra C parágrafo 2º do Artigo 443 da Consolidação das Leis do Trabalho, mediante as seguintes condições:</p>
     <p style="${RHD_P}">O empregado trabalhará para a empregadora, exercendo a função de ${rhdOu(c.funcao)}, percebendo como salário a quantia de &nbsp;${rhdBRL(c.salario)}(${rhdOu(c.salario_extenso)}) por mês.</p>
     ${clausulaAjudante}
     <p style="${RHD_P}">O horário a ser obedecido será o seguinte: ${esc(c.horario)}, com ${esc(c.intervalo)} de intervalo para repouso e alimentação.</p>
@@ -263,11 +263,11 @@ function rhdHtmlContratoExperiencia(c, tipo){
       <tr><td style="width:8mm;border:1px solid #333;text-align:center;font-weight:700;">${rhdX(c.vt_opta === true)}</td><td style="padding:1mm 3mm;">Pretende utilizar o benefício do vale transporte e dessa forma requer o fornecimento do mesmo, permitindo o desconto de 6% de seu salário.</td></tr>
     </table>
     <p style="${RHD_P}">E por estarem em pleno acordo, assinam ambas as partes, em duas vias de igual teor.</p>
-    <p style="${RHD_P}">${E.cidade}, ${rhdDataPorExtenso(c.data_admissao)}</p>
+    <p style="${RHD_P}">${esc(E.cidade)}, ${rhdDataPorExtenso(c.data_admissao)}</p>
     ${rhdAssinaturas(c.nome)}`;
   const pag2 = `
     ${rhdCabecalho("ACORDO COMPENSAÇÃO DE HORAS", sub(1), m.rev, 2, 4)}
-    <p style="${RHD_P}">Pelo presente Acordo de Trabalho, celebrado entre a ${E.nome}, CNPJ ${E.cnpj}, situada a Avenida Hematita, 562, Distrito Industrial, Itabira /MG; e seu empregado ${rhdOu(c.nome)} função ${rhdOu(c.funcao)}, fica estipulado o seguinte:</p>
+    <p style="${RHD_P}">Pelo presente Acordo de Trabalho, celebrado entre a ${esc(E.nome)}, CNPJ ${esc(E.cnpj)}, situada a Avenida Hematita, 562, Distrito Industrial, Itabira /MG; e seu empregado ${rhdOu(c.nome)} função ${rhdOu(c.funcao)}, fica estipulado o seguinte:</p>
     <p style="${RHD_P}">Que o horário de trabalho será prorrogado por mais minutos de trabalho, a título de compensação, em consequência ficará dispensado ou terá seu horário de trabalho diminuído.</p>
     <p style="${RHD_P}">Que o presente acordo poderá ser rescindido entre as partes, mediante simples notificação por escrito da parte interessada, passando a prevalecer o horário normal, aos sábados;</p>
     <p style="${RHD_P}">O horário de trabalho, em face de compensação de presente acordo é o seguinte.</p>
@@ -279,13 +279,13 @@ function rhdHtmlContratoExperiencia(c, tipo){
       Sábado e domingo: &nbsp;não trabalha</p>
     <p style="${RHD_P}">O presente acordo vigorará por tempo indeterminado</p>
     <p style="${RHD_P}">E por estarem ambas as partes assim acordadas, firmam o presente em duas vias de igual teor e para os mesmos fins, perante duas testemunhas.</p>
-    <p style="${RHD_P}">${E.cidade}, ${rhdDataPorExtenso(c.data_admissao)}</p>
+    <p style="${RHD_P}">${esc(E.cidade)}, ${rhdDataPorExtenso(c.data_admissao)}</p>
     ${rhdAssinaturas(c.nome)}
     ${rhdTestemunhas()}`;
   const pag3 = `
     ${rhdCabecalho("DECLARAÇÃO DE OPÇÃO", sub(2), m.rev, 3, 4)}
-    <p style="${RHD_P}">Eu, ${rhdOu(c.nome)}, portador da Carteira Profissional nº. ${rhdOu(c.ctps)} Série ${rhdOu(c.serie)}, empregado da empresa ${E.nome}, situada Avenida Hematita, 562, Distrito Industrial, Itabira / MG, declaro, para todos os fins, que nesta data, exerço a opção pelo regime do regulamento do Fundo de Garantia do Tempo de Serviço.</p>
-    <p style="${RHD_P}">${E.cidade}, ${rhdDataPorExtenso(c.data_admissao)}</p>
+    <p style="${RHD_P}">Eu, ${rhdOu(c.nome)}, portador da Carteira Profissional nº. ${rhdOu(c.ctps)} Série ${rhdOu(c.serie)}, empregado da empresa ${esc(E.nome)}, situada Avenida Hematita, 562, Distrito Industrial, Itabira / MG, declaro, para todos os fins, que nesta data, exerço a opção pelo regime do regulamento do Fundo de Garantia do Tempo de Serviço.</p>
+    <p style="${RHD_P}">${esc(E.cidade)}, ${rhdDataPorExtenso(c.data_admissao)}</p>
     <p style="${RHD_P}">Empregado:</p>
     ${rhdAssinaturas(c.nome, false)}`;
   const pag4 = `
@@ -293,7 +293,7 @@ function rhdHtmlContratoExperiencia(c, tipo){
     ${rhdTabelaPartes(c)}
     <p style="${RHD_P}">Declaro sob as penas da lei, que não estou recebendo o seguro desemprego que trata o Decreto-Lei n.º 2.284 de 10/03/1986, regulamento pelo decreto n.º 92.608 de 02/05/1986, que estou ciente que o recebimento do benefício após a admissão nesta empresa é crime e está sujeito a ser punido civil e criminalmente. Desde já assumo o compromisso de restituir a empresa a 3ª via de Comunicação de Dispensa – CD, recebido no emprego anterior.</p>
     <p style="${RHD_P}">Por ser a expressão da verdade a presente declaração na forma da Lei, presença de 2 (duas) testemunhas.</p>
-    <p style="${RHD_P}">${E.cidade}, ${rhdDataPorExtenso(c.data_admissao)}</p>
+    <p style="${RHD_P}">${esc(E.cidade)}, ${rhdDataPorExtenso(c.data_admissao)}</p>
     <p style="${RHD_P}">Empregado:</p>
     ${rhdAssinaturas(c.nome, false)}
     ${rhdTestemunhas()}`;
@@ -305,8 +305,8 @@ function rhdTabelaPartes(c, comCtps){
   const td = "border:1px solid #333;padding:2px 5px;font-size:10pt;vertical-align:top;";
   const rot = `<span style="font-size:7.5pt;color:#444;display:block;">`;
   return `<table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin:0 0 4mm;" class="nao-quebrar">
-    <tr><td style="${td}width:60%;">${rot}Empresa:</span>${E.nome}</td><td style="${td}">${rot}CNPJ:</span>${E.cnpj}</td></tr>
-    <tr><td colspan="2" style="${td}">${rot}Endereço:</span>Avenida Hematita, 562 – Distrito Industrial I, CEP:${E.cep} ITABIRA/MG</td></tr>
+    <tr><td style="${td}width:60%;">${rot}Empresa:</span>${esc(E.nome)}</td><td style="${td}">${rot}CNPJ:</span>${esc(E.cnpj)}</td></tr>
+    <tr><td colspan="2" style="${td}">${rot}Endereço:</span>Avenida Hematita, 562 – Distrito Industrial I, CEP:${esc(E.cep)} ITABIRA/MG</td></tr>
     <tr><td style="${td}">${rot}Empregado:</span>${rhdOu(c.nome, "")}</td><td style="${td}">${rot}${comCtps ? "CTPS:" : "Cargo:"}</span>${comCtps ? esc([c.ctps, c.serie].filter(Boolean).join("/")) : rhdOu(c.funcao, "")}</td></tr>
     ${comCtps ? `<tr><td colspan="2" style="${td}">${rot}Cargo:</span>${rhdOu(c.funcao, "")}</td></tr>` : ""}
   </table>`;
@@ -321,11 +321,11 @@ function rhdHtmlProrrogacao(c){
     ${rhdCabecalho("TERMO DE PRORROGAÇÃO DO CONTRATO DE EXPERIÊNCIA", m.rg, m.rev, 1, 1)}
     <p style="${RHD_P}">O presente TERMO DE PRORROGAÇÃO DE CONTRATO, celebrado entre a:</p>
     ${rhdTabelaPartes(c, true)}
-    <p style="${RHD_P}">Que entre si fazem, ${E.nome}., empresa de construção civil, sediada na Avenida Hematita, 562, Distrito Industrial I, Itabira/MG, inscrita no CNPJ. N.º ${E.cnpj} mediante as seguintes cláusulas e condições:</p>
-    <p style="${RHD_P}">II – Este contrato teve início a partir de ${rhdDat(c.data_admissao)}, vencendo em ${rhdDat(c.venc1)}, portanto ${c.prazo} (${esc(rhExtenso(c.prazo).replace(/ Reais?$/, ""))}) dias, podendo ser prorrogado, obedecido o disposto no parágrafo único do artigo 445 da CLT.</p>
-    <p style="${RHD_P}">III – Fica prorrogado o Contrato de Experiência anteriormente firmado por mais ${c.prorrogacao} (${esc(rhExtenso(c.prorrogacao).replace(/ Reais?$/, ""))}) dias, vindo, portanto a expirar em ${rhdDat(c.venc2)}.</p>
+    <p style="${RHD_P}">Que entre si fazem, ${esc(E.nome)}., empresa de construção civil, sediada na Avenida Hematita, 562, Distrito Industrial I, Itabira/MG, inscrita no CNPJ. N.º ${esc(E.cnpj)} mediante as seguintes cláusulas e condições:</p>
+    <p style="${RHD_P}">II – Este contrato teve início a partir de ${rhdDat(c.data_admissao)}, vencendo em ${rhdDat(c.venc1)}, portanto ${esc(c.prazo)} (${esc(rhExtenso(c.prazo).replace(/ Reais?$/, ""))}) dias, podendo ser prorrogado, obedecido o disposto no parágrafo único do artigo 445 da CLT.</p>
+    <p style="${RHD_P}">III – Fica prorrogado o Contrato de Experiência anteriormente firmado por mais ${esc(c.prorrogacao)} (${esc(rhExtenso(c.prorrogacao).replace(/ Reais?$/, ""))}) dias, vindo, portanto a expirar em ${rhdDat(c.venc2)}.</p>
     <p style="${RHD_P}">IIII – Assim sendo, por ser esta a real vontade das partes, firmam o presente em duas vias de igual teor, para que surtam os direitos jurídicos legais, perante duas testemunhas.</p>
-    <p style="${RHD_P}margin-top:6mm;">${E.cidade}, ____/____/_____.</p>
+    <p style="${RHD_P}margin-top:6mm;">${esc(E.cidade)}, ____/____/_____.</p>
     ${rhdAssinaturas(c.nome)}
     ${rhdTestemunhas()}`;
   return rhdPagina(corpo, true);
@@ -338,7 +338,7 @@ function rhdHtmlContratoTrabalho(c){
   const m = RHD_MODELOS.admissao_contrato_trabalho, E = RHD_EMPRESA;
   const corpo = `
     ${rhdCabecalho("CONTRATO DE TRABALHO", m.rg, m.rev, 1, 1)}
-    <p style="${RHD_P}">Por este instrumento particular, que entre si fazem a empresa ${E.nome.replace("Ltda", "LTDA")}, com sede à Avenida Hematita, 562, bairro Distrito Industrial, no município de Itabira, inscrito (a) no CNPJ sob o Nº ${E.cnpj}, neste ato denominada simplesmente EMPREGADORA e o Sr.${rhdOu(c.nome)}, portador(a) da Carteira de Trabalho nº ${rhdOu(c.ctps)} Série ${rhdOu(c.serie)} PIS/PASEP nº. ${rhdOu(c.pis)} doravante chamado EMPREGADO, fica justo e acertado o presente contrato individual de trabalho, regido pelas seguintes clausulas:</p>
+    <p style="${RHD_P}">Por este instrumento particular, que entre si fazem a empresa ${esc(E.nome.replace("Ltda", "LTDA"))}, com sede à Avenida Hematita, 562, bairro Distrito Industrial, no município de Itabira, inscrito (a) no CNPJ sob o Nº ${esc(E.cnpj)}, neste ato denominada simplesmente EMPREGADORA e o Sr.${rhdOu(c.nome)}, portador(a) da Carteira de Trabalho nº ${rhdOu(c.ctps)} Série ${rhdOu(c.serie)} PIS/PASEP nº. ${rhdOu(c.pis)} doravante chamado EMPREGADO, fica justo e acertado o presente contrato individual de trabalho, regido pelas seguintes clausulas:</p>
     <p style="${RHD_P}">CLAUSULA 1ª – O encerramento deste contrato não poderá se arquido como fator obstativo á aquisição ou manutenção de qualquer direito trabalhista, inclusive salário/auxílio maternidade, por haver sido previsto, á data de sua celebração, o seu caráter temporário e seu término normal.</p>
     <p style="${RHD_P}">CLAUSULA 2ª – O empregado trabalhará na função de ${rhdOu(c.funcao)} e demais atribuições que lhe forem correlatadas ou que com ela sua disponibilidade para realizar eventuais viagens em território Nacional, em decorrência das necessidades dos serviços. Compromete-se, ainda, ao fiel comprimento das ordens de serviço, verbais e/ou escritas que lhe forem dadas.</p>
     <p style="${RHD_P}">CLAUSULA 3ª – O empregado Receberá o salário inicial de ${rhdBRL(c.salario)} (${rhdOu(c.salario_extenso)}) por mês, pagável mensalmente e autoriza a Empregadora a depositar a organização bancaria de sua escolha, salários e quaisquer outros vencimentos que se refiram à sua remuneração.</p>
@@ -352,7 +352,7 @@ function rhdHtmlContratoTrabalho(c){
     <p style="${RHD_P}">CLAUSULA 9ª – As invenções decorrentes das atribuições do empregado originadas de pesquisa pura e aplicadas, bem como aquela oriunda de estudos efetuados com utilização das instalações e equipamentos do local de trabalho, são de prioridade exclusiva da Empregadora.</p>
     <p style="${RHD_P}">CLAUSULA 10ª – Enquanto perdurar o presente contrato, poderão ser feitas modificações de salários, funções, cargos, horários á adaptação ao emprego, conforme suas características individuais, desde que não resultem em prejuízos ao Empregado.</p>
     <p style="${RHD_P}">E por estarem justos e contratados, o Empregado e o representante legal da empregadora, firmam o presente instrumento em 02 (duas) vias de igual forma e teor para um só efeito legal, na presença das testemunhas abaixo.</p>
-    <p style="${RHD_P}">${E.cidade}, ${rhdDataPorExtenso(c.data_admissao)}</p>
+    <p style="${RHD_P}">${esc(E.cidade)}, ${rhdDataPorExtenso(c.data_admissao)}</p>
     ${rhdAssinaturas(c.nome)}
     ${rhdTestemunhas()}`;
   return rhdPagina(rhdDensa(corpo), true);
@@ -499,9 +499,9 @@ function rhdRender(){
   const a = _rhdAdm;
   const st = a ? (RHD_ADM_STATUS[a.status] || ["cinza", a.status]) : null;
   const resumo = a
-    ? `<p class="meta">Admissão em <strong>${dataBR(a.data_admissao)}</strong> · ${esc(a.funcao)} · experiência ${a.prazo_experiencia_dias} + ${a.prorrogacao_dias} dias (1º vencimento ${dataBR(a.vencimento_1) || "—"}, 2º ${dataBR(a.vencimento_2) || "—"}) · ${esc(RHD_TIPO_DOC_LBL[a.tipo_documento] || a.tipo_documento)} <span class="tag ${st[0]}">${esc(st[1])}</span>${a.status !== "concluida" ? ` <button type="button" class="btn-sec btn-sm" id="btn-rhd-concluir">Concluir admissão</button>` : ""}</p>`
+    ? `<p class="meta">Admissão em <strong>${dataBR(a.data_admissao)}</strong> · ${esc(a.funcao)} · experiência ${esc(a.prazo_experiencia_dias)} + ${esc(a.prorrogacao_dias)} dias (1º vencimento ${dataBR(a.vencimento_1) || "—"}, 2º ${dataBR(a.vencimento_2) || "—"}) · ${esc(RHD_TIPO_DOC_LBL[a.tipo_documento] || a.tipo_documento)} <span class="tag ${esc(st[0])}">${esc(st[1])}</span>${a.status !== "concluida" ? ` <button type="button" class="btn-sec btn-sm" id="btn-rhd-concluir">Concluir admissão</button>` : ""}</p>`
     : `<p class="meta">Sem admissão registrada no app. Use <strong>Admitir</strong> no painel (ou gere a ficha com os dados do cadastro: os campos do contrato saem em branco).</p>`;
-  const opcoes = Object.entries(RHD_MODELOS).map(([k, m]) => `<option value="${k}">${esc(m.rotulo)}</option>`).join("");
+  const opcoes = Object.entries(RHD_MODELOS).map(([k, m]) => `<option value="${esc(k)}">${esc(m.rotulo)}</option>`).join("");
   const linhas = _rhdDocs.map(d => `<tr>
       <td><strong>${esc(d.descricao || RHD_MODELOS[d.tipo]?.rotulo || d.tipo)}</strong><div class="meta">${esc(RHD_MODELOS[d.tipo]?.rg || "")}</div></td>
       <td>${d.gerado_em ? dataHoraBR(d.gerado_em) : dataBR(d.emissao) || "—"}</td>
@@ -621,7 +621,7 @@ async function rhdVisualizar(tipo, funcionarioId, admissaoId){
   const w = window.open("", "_blank");
   if(!w){ aviso("app-aviso", "Pop-up bloqueado. Permita pop-ups para visualizar.", "erro"); return; }
   w.document.open();
-  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(RHD_MODELOS[tipo].rotulo)}</title></head><body style="margin:12mm auto;max-width:190mm;background:#fff;">${html}</body></html>`);
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(RHD_MODELOS[tipo].rotulo)}</title></head><body style="margin:12mm auto;max-width:190mm;background:#fff;">${/* html */ html}</body></html>`);
   w.document.close();
 }
 

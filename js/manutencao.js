@@ -59,10 +59,10 @@ function manPodeMateriais(){ return manPodeEditar() || (!!usuarioAtual && !ehSom
 function manPodeChecklist(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["encarregado", "operador", "logistica", "assistente_engenharia", "gestor_acessorios"].includes(usuarioAtual.cargo)); }
 
 /* ---------- utilitários ---------- */
-function manTag(st){ const o = MAN_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
-function manTagSem(s){ const o = MAN_SEMAFORO[s] || [s || "—", "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
-function manTagSit(s){ const o = MAN_SITUACAO[s] || [s, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
-function manTagRes(r){ if(!r) return `<span class="tag azul">Em preenchimento</span>`; const o = MAN_CHECK_RES[r] || [r, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
+function manTag(st){ const o = MAN_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
+function manTagSem(s){ const o = MAN_SEMAFORO[s] || [s || "—", "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
+function manTagSit(s){ const o = MAN_SITUACAO[s] || [s, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
+function manTagRes(r){ if(!r) return `<span class="tag azul">Em preenchimento</span>`; const o = MAN_CHECK_RES[r] || [r, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function manEq(id){ return _manEquips.find(e => e.id === id) || null; }
 function manEqTxt(e){ return e ? `${e.codigo}${e.nome ? " · " + e.nome : ""}` : "—"; }
 function manFunc(id){ const f = _manFuncs.find(x => x.id === id); return f ? f.nome : ""; }
@@ -205,7 +205,7 @@ function renderManutencao(){
   $("btn-man-novo-plano").style.display = pode && _manView === "planos" ? "" : "none";
   $("btn-man-novo-check").style.display = manPodeChecklist() && _manView === "checklists" ? "" : "none";
   const titulo = { os: "Ordens de serviço", preventivas: "Preventivas por TAG", planos: "Plano de manutenção", checklists: "Checklists de mobilização" }[_manView];
-  $("man-titulo-lista").innerHTML = `${titulo} <span id="man-contador" class="contador"></span>`;
+  $("man-titulo-lista").innerHTML = `${esc(titulo)} <span id="man-contador" class="contador"></span>`;
   if(_manView === "os") renderManOS();
   else if(_manView === "preventivas") renderManPreventivas();
   else if(_manView === "planos") renderManPlano();
@@ -293,7 +293,7 @@ function renderManPreventivas(){
       <td><strong>${esc(t.codigo)}</strong></td><td>${esc(t.nome || "")} <span class="meta">${esc(MAN_TIPO_EQ[t.tipo] || t.tipo || "")}</span></td>
       <td class="num">${t.horimetro != null ? num(t.horimetro) + " h" : "—"}</td><td class="num">${t.km != null ? num(t.km) + " km" : "—"}</td>
       <td class="meta">${t.data_leitura ? dataBR(t.data_leitura) : "—"}</td>
-      <td>${t.semPlano ? '<span class="meta">sem plano</span>' : [["critico", "vermelho"], ["atencao", "ambar"], ["sem_base", "cinza"], ["ok", "verde"]].filter(([k]) => t.n[k]).map(([k, c]) => `<span class="tag ${c}" title="${esc(MAN_SEMAFORO[k][0])}">${t.n[k]}</span>`).join(" ")} <span class="meta">${t.itens.length ? t.itens.length + " itens" : ""}</span></td>
+      <td>${t.semPlano ? '<span class="meta">sem plano</span>' : [["critico", "vermelho"], ["atencao", "ambar"], ["sem_base", "cinza"], ["ok", "verde"]].filter(([k]) => t.n[k]).map(([k, c]) => `<span class="tag ${esc(c)}" title="${esc(MAN_SEMAFORO[k][0])}">${esc(t.n[k])}</span>`).join(" ")} <span class="meta">${t.itens.length ? t.itens.length + " itens" : ""}</span></td>
       <td>${t.proximo ? `${esc(manAtividadeTxt(t.proximo))} <span class="meta">· ${esc(manRestanteTxt(t.proximo))}</span>` : "—"}</td>
       <td>${t.semPlano ? "—" : manTagSem(t.pior)}</td>
       <td class="col-acao" style="white-space:nowrap;">${t.semPlano ? (pode ? `<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">+ Plano</button>` : "") :
@@ -360,9 +360,9 @@ async function renderManPlano(){
     <div class="tabela-rola"><table>
       <thead><tr><th style="width:36px;">#</th><th>Componente</th><th>Operação</th><th>Setor</th><th class="num">Periodicidade</th><th class="num">Última</th><th class="num">Próxima</th><th>Restante</th><th>Semáforo</th><th class="num">Kit</th><th class="col-acao"></th></tr></thead>
       <tbody>${_manPlanoItens.map(i => `<tr data-item="${esc(i.item_id)}">
-        <td>${i.ordem}</td><td>${esc(i.componente)}</td><td>${esc((i.operacao_descricao || MAN_OPERACAO[i.operacao] || "").toUpperCase())}</td><td class="meta">${esc(MAN_SETOR[i.setor] || "—")}</td>
+        <td>${esc(i.ordem)}</td><td>${esc(i.componente)}</td><td>${esc((i.operacao_descricao || MAN_OPERACAO[i.operacao] || "").toUpperCase())}</td><td class="meta">${esc(MAN_SETOR[i.setor] || "—")}</td>
         <td class="num">${esc(manPer(i))}</td><td class="num">${esc(manUltTxt(i))}</td><td class="num">${esc(manProxTxt(i))}</td><td>${esc(manRestanteTxt(i))}</td><td>${manTagSem(i.semaforo)}</td>
-        <td class="num">${i.n_materiais || 0}</td>
+        <td class="num">${esc(i.n_materiais || 0)}</td>
         <td class="col-acao" style="white-space:nowrap;">${pode ? `<button type="button" class="btn-sec btn-sm man-item-ed" data-item="${esc(i.item_id)}">✎</button> <button type="button" class="btn-sec btn-sm txt-perigo man-item-rem" data-item="${esc(i.item_id)}" title="remover">×</button>` : `<button type="button" class="btn-sec btn-sm man-item-ed" data-item="${esc(i.item_id)}">ver</button>`}</td>
       </tr>`).join("") || `<tr><td colspan="11" class="vazio">Plano sem itens. Use "+ Item".</td></tr>`}</tbody></table></div>`;
   $("btn-man-pl-salvar")?.addEventListener("click", async () => {
@@ -589,16 +589,16 @@ function manCheckRender(){
       <div class="campo"><label>Mobilização</label><div>${c.mobilizacao?.obra_id ? linkObra(c.mobilizacao.obra_id, (typeof mapaObras === "object" && mapaObras[c.mobilizacao.obra_id]) || "obra") + ` <span class="meta">${esc((typeof MOB_STATUS === "object" && MOB_STATUS && MOB_STATUS[c.mobilizacao.status]) || "")}</span>` : '<span class="meta">—</span>'}</div></div>
       <div class="campo"><label>Modelo</label><div class="meta">${esc(c.modelo?.nome || "")}${c.modelo?.versao ? " · rev. " + esc(c.modelo.versao) : ""}</div></div>
       <div class="campo"><label>Data</label><input type="date" id="man-ck-data" value="${esc(c.data)}" ${podeEd ? "" : "disabled"} /></div>
-      <div class="campo"><label>Horímetro (h)</label><input type="number" id="man-ck-hor" step="0.1" min="0" value="${c.horimetro ?? ""}" ${podeEd ? "" : "disabled"} /></div>
-      <div class="campo"><label>km</label><input type="number" id="man-ck-km" step="1" min="0" value="${c.km ?? ""}" ${podeEd ? "" : "disabled"} /></div>
+      <div class="campo"><label>Horímetro (h)</label><input type="number" id="man-ck-hor" step="0.1" min="0" value="${esc(c.horimetro ?? "")}" ${podeEd ? "" : "disabled"} /></div>
+      <div class="campo"><label>km</label><input type="number" id="man-ck-km" step="1" min="0" value="${esc(c.km ?? "")}" ${podeEd ? "" : "disabled"} /></div>
       <div class="campo"><label>Vistoriador</label><input id="man-ck-vist" value="${esc(c.vistoriador || "")}" ${podeEd ? "" : "disabled"} /></div>
       <div class="campo"><label>Operador</label><input id="man-ck-oper" value="${esc(c.operador || "")}" ${podeEd ? "" : "disabled"} /></div>
       <div class="campo"><label>OS de correção</label><div>${c.manutencao_id ? linkManutencao(c.manutencao_id, c.os?.numero || "OS") + ` <span class="meta">${esc((MAN_STATUS[c.os?.status] || [""])[0])}</span>` : '<span class="meta">—</span>'}</div></div>
     </div>
-    <p class="meta">OK = em condições · Não ok = precisa de correção (vira atividade de OS) · N/A = não se aplica. ${semResp ? `<strong>${semResp}</strong> item(ns) sem resposta.` : "Todos respondidos."}</p>
+    <p class="meta">OK = em condições · Não ok = precisa de correção (vira atividade de OS) · N/A = não se aplica. ${semResp ? `<strong>${esc(semResp)}</strong> item(ns) sem resposta.` : "Todos respondidos."}</p>
     <div class="tabela-rola" style="max-height:52vh;"><table class="itens-tabela"><thead><tr><th style="width:36px;">#</th><th>Item a verificar</th><th style="width:220px;">Situação</th><th>Observação</th></tr></thead>
-      <tbody>${_manCheckItens.map(i => `<tr data-ci="${esc(i.id)}"><td>${i.ordem}</td><td>${esc(i.descricao)}${i.atividade_id ? ' <span class="tag azul" title="já virou atividade da OS">na OS</span>' : ""}</td>
-        <td><div class="serv-views">${[["ok", "OK"], ["nao_ok", "Não ok"], ["nao_aplicavel", "N/A"]].map(([v, l]) => `<button type="button" class="serv-view-btn man-ck-sit${i.situacao === v ? " ativo" : ""}" data-ci="${esc(i.id)}" data-v="${v}" ${podeEd ? "" : "disabled"}>${l}</button>`).join("")}</div></td>
+      <tbody>${_manCheckItens.map(i => `<tr data-ci="${esc(i.id)}"><td>${esc(i.ordem)}</td><td>${esc(i.descricao)}${i.atividade_id ? ' <span class="tag azul" title="já virou atividade da OS">na OS</span>' : ""}</td>
+        <td><div class="serv-views">${[["ok", "OK"], ["nao_ok", "Não ok"], ["nao_aplicavel", "N/A"]].map(([v, l]) => `<button type="button" class="serv-view-btn man-ck-sit${i.situacao === v ? " ativo" : ""}" data-ci="${esc(i.id)}" data-v="${esc(v)}" ${podeEd ? "" : "disabled"}>${esc(l)}</button>`).join("")}</div></td>
         <td><input class="man-ck-obs" data-ci="${esc(i.id)}" value="${esc(i.observacao || "")}" ${podeEd ? "" : "disabled"} /></td></tr>`).join("")}</tbody></table></div>
     <div class="grade" style="margin-top:8px;"><div class="campo largo"><label>Observações gerais</label><input id="man-ck-obsg" value="${esc(c.observacoes || "")}" ${podeEd ? "" : "disabled"} /></div></div>
     <div class="form-acoes compacta" style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -842,11 +842,11 @@ function manAtivDiaHora(dia, hora, vazio){
 function manRenderAtivs(){
   const tb = $("man-ativs"), pode = manPodeEditar() && _manAtual && _manAtual.status !== "cancelada" && !!_manAtual.id;
   const optF = `<option value="">—</option>` + _manFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
-  const optS = Object.entries(MAN_SETOR).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-  const optSit = Object.entries(MAN_SITUACAO).map(([v, l]) => `<option value="${v}">${esc(l[0])}</option>`).join("");
+  const optS = Object.entries(MAN_SETOR).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  const optSit = Object.entries(MAN_SITUACAO).map(([v, l]) => `<option value="${esc(v)}">${esc(l[0])}</option>`).join("");
   if(!_manAtivs.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${_manAtual?.id ? "Nenhuma atividade. Use o campo abaixo ou um item do plano." : "Escreva as atividades na aba Geral (uma por linha) ou salve a OS para lançar aqui."}</td></tr>`; }
   else tb.innerHTML = _manAtivs.map(a => pode ? `<tr data-a="${esc(a.id)}">
-      <td>${a.ordem}</td>
+      <td>${esc(a.ordem)}</td>
       <td><select class="man-a-f" data-c="setor"><option value="">—</option>${optS}</select></td>
       <td><textarea class="man-a-f" data-c="atividade" rows="1">${esc(a.atividade)}</textarea>${a.plano_item_id ? ' <span class="tag azul" title="item do plano: ao concluir a OS com esta atividade executada, a última execução do item é atualizada">plano</span>' : ""}${a.checklist_item_id ? ' <span class="tag cinza" title="veio do checklist">checklist</span>' : ""}</td>
       <td><select class="man-a-f" data-c="situacao">${optSit}</select></td>
@@ -855,7 +855,7 @@ function manRenderAtivs(){
       <td><input type="date" class="man-a-f" data-c="data_fim" value="${esc(a.data_fim || "")}" title="Dia de conclusão" style="width:118px;" /> <input type="time" class="man-a-f" data-c="fim" value="${a.fim ? esc(String(a.fim).slice(0, 5)) : ""}" title="Hora de conclusão" style="width:78px;" /></td>
       <td><input class="man-a-f" data-c="observacao" value="${esc(a.observacao || "")}" /></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo man-a-rem" data-a="${esc(a.id)}" title="remover">×</button></td></tr>`
-    : `<tr><td>${a.ordem}</td><td class="meta">${esc(MAN_SETOR[a.setor] || "—")}</td><td>${esc(a.atividade)}</td><td>${manTagSit(a.situacao)}</td><td class="meta">${esc(manFunc(a.executante_id) || a.executante_nome || "—")}</td>
+    : `<tr><td>${esc(a.ordem)}</td><td class="meta">${esc(MAN_SETOR[a.setor] || "—")}</td><td>${esc(a.atividade)}</td><td>${manTagSit(a.situacao)}</td><td class="meta">${esc(manFunc(a.executante_id) || a.executante_nome || "—")}</td>
       <td>${esc(manAtivDiaHora(a.data_inicio, a.inicio))}</td><td>${esc(manAtivDiaHora(a.data_fim, a.fim))}</td><td class="meta">${esc(a.observacao || "")}</td><td></td></tr>`).join("");
   if(pode){
     _manAtivs.forEach(a => { const tr = tb.querySelector(`tr[data-a="${a.id}"]`); if(!tr) return;
@@ -1067,7 +1067,7 @@ async function manImprimirOS(){
   const th = td + "background:#ddd;font-weight:700;";
   const setores = [...new Set(_manAtivs.map(a => a.setor || "outros"))];
   const ativHTML = setores.map(s => `<tr><td colspan="6" style="${th}text-transform:uppercase;">${esc(MAN_SETOR[s] || s)}</td></tr>` +
-    _manAtivs.filter(a => (a.setor || "outros") === s).map(a => `<tr><td style="${td}text-align:center;">${a.ordem}</td><td style="${td}">${esc(a.atividade)}</td><td style="${td}">${esc(MAN_SITUACAO[a.situacao]?.[0] || "")}</td>
+    _manAtivs.filter(a => (a.setor || "outros") === s).map(a => `<tr><td style="${td}text-align:center;">${esc(a.ordem)}</td><td style="${td}">${esc(a.atividade)}</td><td style="${td}">${esc(MAN_SITUACAO[a.situacao]?.[0] || "")}</td>
       <td style="${td}">${esc(manFunc(a.executante_id) || a.executante_nome || "")}</td><td style="${td}">${esc(manAtivDiaHora(a.data_inicio, a.inicio, ""))}</td><td style="${td}">${esc(manAtivDiaHora(a.data_fim, a.fim, ""))}</td></tr>`).join("")).join("");   // lote S54 (#169): dia e hora
   const vazias = Math.max(0, 8 - _manAtivs.length);
   const linhasVazias = Array.from({ length: vazias }, (_, i) => `<tr><td style="${td}text-align:center;">${_manAtivs.length + i + 1}</td><td style="${td}">&nbsp;</td><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td></tr>`).join("");
@@ -1093,16 +1093,16 @@ async function manImprimirOS(){
     </table>
     <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
       <tr><td style="${th}width:30px;">ITEM</td><td style="${th}">ATIVIDADE</td><td style="${th}width:70px;">SITUAÇÃO</td><td style="${th}width:110px;">EXECUTANTE</td><td style="${th}width:78px;">INÍCIO (DIA · HORA)</td><td style="${th}width:78px;">CONCLUSÃO (DIA · HORA)</td></tr>
-      ${ativHTML}${linhasVazias}
+      ${ativHTML}${/* html */ linhasVazias}
     </table>
     <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
       <tr><td style="${th}" colspan="4">MATERIAIS NECESSÁRIOS / UTILIZADOS</td></tr>
       <tr><td style="${th}width:30px;">ITEM</td><td style="${th}">DESCRIÇÃO</td><td style="${th}width:80px;">QTD</td><td style="${th}width:120px;">ESTOQUE</td></tr>
-      ${mats}
+      ${/* html */ mats}
     </table>
     ${_manHoras.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
       <tr><td style="${th}" colspan="5">APROPRIAÇÃO DE MÃO DE OBRA</td></tr>
-      <tr><td style="${th}">NOME</td><td style="${th}width:70px;">DATA</td><td style="${th}width:60px;">INÍCIO</td><td style="${th}width:60px;">FIM</td><td style="${th}width:60px;">HORAS</td></tr>${horas}</table>` : ""}
+      <tr><td style="${th}">NOME</td><td style="${th}width:70px;">DATA</td><td style="${th}width:60px;">INÍCIO</td><td style="${th}width:60px;">FIM</td><td style="${th}width:60px;">HORAS</td></tr>${/* html */ horas}</table>` : ""}
     <table style="width:100%;border-collapse:collapse;margin-top:28px;">
       <tr><td style="${th}" colspan="3">RESPONSÁVEIS TÉCNICOS</td></tr>
       <tr><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>EXECUTANTE</td><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>GESTOR DA MANUTENÇÃO</td><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>OPERADOR / ENCARREGADO</td></tr>
@@ -1126,7 +1126,7 @@ async function manRenderResumoEquipamento(e, containerId){
   const prox = itens.filter(i => i.restante != null).sort((a, b) => Number(a.restante) - Number(b.restante)).slice(0, 5);
   box.innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Plano preventivo</h3>
       <span style="margin-left:8px;">${itens.length ? manTagSem(pior) : '<span class="tag cinza">sem plano</span>'}</span>
-      <span class="meta" style="margin-left:8px;">${itens.length ? `${itens.length} itens · ${n.critico} crítico(s), ${n.atencao} em atenção` : ""}</span>
+      <span class="meta" style="margin-left:8px;">${itens.length ? `${itens.length} itens · ${esc(n.critico)} crítico(s), ${esc(n.atencao)} em atenção` : ""}</span>
       ${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">${itens.length ? "Abrir plano" : "+ Criar plano"}</button>${itens.length && (n.critico || n.atencao) ? ` <button type="button" class="btn btn-sm" id="btn-eqp-man-gerar">⚙ Gerar OS preventiva</button>` : ""}` : (itens.length ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">Ver plano</button>` : "")}
     </div>
     ${prox.length ? `<div class="tabela-rola"><table><thead><tr><th>Item</th><th class="num">Periodicidade</th><th class="num">Próxima</th><th>Restante</th><th>Semáforo</th></tr></thead>

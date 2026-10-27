@@ -94,11 +94,11 @@ async function carregarFrota(force){
 
 function frotaPreencherSelects(){
   const opt = (lista, rot) => lista.map(v => `<option value="${esc(v.id)}">${esc(rot(v))}</option>`).join("");
-  const manter = (sel, html, vazio) => { if(!sel) return; const v = sel.value; sel.innerHTML = `<option value="">${vazio}</option>` + html; sel.value = v; };
+  const manter = (sel, html, vazio) => { if(!sel) return; const v = sel.value; sel.innerHTML = `<option value="">${esc(vazio)}</option>` + html; sel.value = v; };
   manter($("frota-f-caminhao"), opt(_frotaVeic, v => `${v.codigo} · ${v.nome || ""}`), "Todos os caminhões");
   manter($("frota-f-obra"), opt(_frotaObras, o => `${o.codigo} — ${o.nome}`), "Todas as obras");
-  manter($("frota-f-finalidade"), Object.entries(VG_FINALIDADES).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join(""), "Toda finalidade");
-  manter($("frota-f-status"), Object.entries(STATUS.viagem).map(([k, o]) => `<option value="${k}">${esc(o.label)}</option>`).join(""), "Todo status");
+  manter($("frota-f-finalidade"), Object.entries(VG_FINALIDADES).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join(""), "Toda finalidade");
+  manter($("frota-f-status"), Object.entries(STATUS.viagem).map(([k, o]) => `<option value="${esc(k)}">${esc(o.label)}</option>`).join(""), "Todo status");
 }
 
 /* ---------- render ---------- */
@@ -150,15 +150,15 @@ function renderFrotaVeiculos(){
   const ativos = _frotaVeic.filter(v => v.ativo !== false);
   const comFipe = ativos.filter(v => v.valor_fipe != null);
   const totalFipe = comFipe.reduce((s, v) => s + Number(v.valor_fipe || 0), 0);
-  const fipeRef = v => v.fipe_referencia ? ` <span class="meta" title="referência FIPE">${String(v.fipe_referencia).slice(5, 7)}/${String(v.fipe_referencia).slice(0, 4)}</span>` : "";
+  const fipeRef = v => v.fipe_referencia ? ` <span class="meta" title="referência FIPE">${esc(String(v.fipe_referencia).slice(5, 7))}/${esc(String(v.fipe_referencia).slice(0, 4))}</span>` : "";
   cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">${(typeof ehDiretoria === "function" && ehDiretoria()) ? `Valor FIPE da frota ativa: <strong>${frotaMoeda(totalFipe)}</strong> ` : "FIPE "}(${comFipe.length} de ${ativos.length} com FIPE informada${ativos.length - comFipe.length ? ` · ${ativos.length - comFipe.length} sem valor` : ""})</p>
   <div class="tabela-rola"><table>
     <thead><tr><th>TAG</th><th>Tipo</th><th>Descrição</th><th>Placa</th><th class="num">km atual</th><th class="num">R$/km</th><th class="num">FIPE</th><th>Onde está</th><th>Status</th></tr></thead>
-    <tbody>${lista.map(v => `<tr class="linha-clicavel" data-veic="${v.id}" ${v.ativo === false ? 'style="opacity:.55"' : ""}>
-        <td><strong>${esc(v.codigo)}</strong></td><td>${FROTA_TIPO_LBL[v.tipo] || esc(v.tipo)}</td><td>${esc(v.nome || "")}</td><td>${esc(v.placa || "—")}</td>
+    <tbody>${lista.map(v => `<tr class="linha-clicavel" data-veic="${esc(v.id)}" ${v.ativo === false ? 'style="opacity:.55"' : ""}>
+        <td><strong>${esc(v.codigo)}</strong></td><td>${esc(FROTA_TIPO_LBL[v.tipo]) || esc(v.tipo)}</td><td>${esc(v.nome || "")}</td><td>${esc(v.placa || "—")}</td>
         <td class="num">${v.km != null ? frotaNum(v.km) : "—"}</td><td class="num">${v.valor_km != null ? frotaNum(v.valor_km, 2) : "—"}</td>
         <td class="num">${v.valor_fipe != null ? frotaMoeda(v.valor_fipe) + fipeRef(v) : '<span class="tag ambar" title="sem valor FIPE">—</span>'}</td>
-        <td>${esc(frotaOndeEsta(v))}</td><td>${FROTA_STATUS_LBL[v.status] || esc(v.status || "")}</td></tr>`).join("") || `<tr><td colspan="9" class="vazio">Nenhum veículo cadastrado.</td></tr>`}</tbody>
+        <td>${esc(frotaOndeEsta(v))}</td><td>${esc(FROTA_STATUS_LBL[v.status]) || esc(v.status || "")}</td></tr>`).join("") || `<tr><td colspan="9" class="vazio">Nenhum veículo cadastrado.</td></tr>`}</tbody>
   </table></div>
   ${vendidos.length ? `<p class="meta" style="margin:8px 0 0;">${vendidos.length} veículo(s) vendido(s) fora da lista: ${vendidos.map(v => esc(v.codigo)).join(", ")}. ${typeof vbAbrirPainel === "function" ? `<a href="#" id="frota-vendidos-ver">Ver em Equipamentos › Vendas</a>` : ""}</p>` : ""}`;
   $("frota-vendidos-ver")?.addEventListener("click", (e) => { e.preventDefault(); vbAbrirPainel({ busca: "" }); });
@@ -229,9 +229,9 @@ function renderFrotaLista(linhas, mes, tot){
   const agrupar = (rot) => { const g = new Map(); linhas.filter(v => v.status !== "cancelada").forEach(d => { const k = rot(d); const a = g.get(k) || { k, n: 0, km: 0, val: 0 }; a.n++; a.km += Number(d.km_total) || 0; a.val += Number(d.valor_total) || 0; g.set(k, a); }); return [...g.values()].sort((a, b) => b.val - a.val); };
   const porCam = agrupar(d => d.caminhao ? `${d.caminhao.codigo} · ${d.caminhao.nome || ""}` : "Sem caminhão");
   const porObra = agrupar(obraTxt);
-  const resumo = (titulo, lista) => `<div class="card" style="flex:1 1 320px;min-width:280px;"><h4 style="margin:0 0 8px;">${titulo}</h4><div class="tabela-rola"><table>
+  const resumo = (titulo, lista) => `<div class="card" style="flex:1 1 320px;min-width:280px;"><h4 style="margin:0 0 8px;">${esc(titulo)}</h4><div class="tabela-rola"><table>
       <thead><tr><th>${titulo.includes("obra") ? "Obra / destino" : "Caminhão"}</th><th class="num">Viagens</th><th class="num">km</th><th class="num">R$</th></tr></thead>
-      <tbody>${lista.slice(0, 12).map(a => `<tr><td>${esc(a.k)}</td><td class="num">${a.n}</td><td class="num">${frotaNum(a.km)}</td><td class="num">${frotaMoeda(a.val)}</td></tr>`).join("") || `<tr><td colspan="4" class="vazio">—</td></tr>`}</tbody></table></div></div>`;
+      <tbody>${lista.slice(0, 12).map(a => `<tr><td>${esc(a.k)}</td><td class="num">${esc(a.n)}</td><td class="num">${frotaNum(a.km)}</td><td class="num">${frotaMoeda(a.val)}</td></tr>`).join("") || `<tr><td colspan="4" class="vazio">—</td></tr>`}</tbody></table></div></div>`;
 
   cont.innerHTML = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">${resumo("Por caminhão", porCam)}${resumo("Por obra atendida", porObra)}</div>
@@ -324,7 +324,7 @@ async function renderFrotaDocumentos(){
       <thead><tr><th>Nota</th><th>Tipo</th><th>Status</th><th>NF</th><th>Emissão</th><th>Origem → destino</th><th>Placa · motorista</th><th class="num">Valor</th>${pode ? '<th style="min-width:260px;">Viagem</th>' : ""}</tr></thead>
       <tbody>${notas.map(x => `<tr>
         <td><strong>${linkMovimentacao(x.id, x.numero)}</strong></td><td>${esc(movLbl[x.tipo] || x.tipo)}</td>
-        <td>${movSt[x.status] ? `<span class="tag ${movSt[x.status].cor}">${esc(movSt[x.status].label)}</span>` : esc(x.status)}</td>
+        <td>${movSt[x.status] ? `<span class="tag ${esc(movSt[x.status].cor)}">${esc(movSt[x.status].label)}</span>` : esc(x.status)}</td>
         <td>${esc(x.nf_numero || "—")}</td><td>${dataBR(x.data_emissao)}</td>
         <td>${esc(lado(x.origem_tipo, x.origem_obra_id, x.origem_descricao))} → ${esc(lado(x.destino_tipo, x.destino_obra_id, x.destino_descricao))}</td>
         <td class="meta">${esc([x.transp_placa, x.motorista].filter(Boolean).join(" · ") || "—")}</td>

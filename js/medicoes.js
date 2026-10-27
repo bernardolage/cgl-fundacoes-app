@@ -431,11 +431,11 @@ function renderMedItens(){
     return `<tr data-idx="${idx}">
       <td><strong>${idx+1}</strong></td>
       <td><input type="text" class="mi-desc" value="${esc(it.descricao||"")}" style="min-width:220px;" placeholder="ex.: Estaca Ø400 18-24m" />${lido}</td>
-      <td><input type="number" class="mi-qty col-xs" step="any" min="0" value="${medArred6(it.quantidade ?? 0)}" title="Até 6 casas decimais" /></td>
+      <td><input type="number" class="mi-qty col-xs" step="any" min="0" value="${esc(medArred6(it.quantidade ?? 0))}" title="Até 6 casas decimais" /></td>
       <td><input type="text" class="mi-uni" value="${esc(it.unidade||"")}" style="width:50px;" placeholder="m/vb/h" /></td>
-      <td><input type="number" class="mi-unit col-sm" step="0.01" min="0" value="${it.valor_unitario ?? 0}" /></td>
+      <td><input type="number" class="mi-unit col-sm" step="0.01" min="0" value="${esc(it.valor_unitario ?? 0)}" /></td>
       <td class="num"><strong class="mi-total">${brl(it.valor_total ?? 0)}</strong>${trava}</td>
-      <td><span class="badge-origem" title="${esc(tituloOrigem)}" style="background:${oi.bg};color:${oi.cor};">${oi.ic} ${oi.lbl}</span></td>
+      <td><span class="badge-origem" title="${esc(tituloOrigem)}" style="background:${esc(oi.bg)};color:${esc(oi.cor)};">${esc(oi.ic)} ${esc(oi.lbl)}</span></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-mi-rem txt-perigo" data-idx="${idx}">×</button></td>
     </tr>`;
   }).join("");
@@ -692,7 +692,7 @@ async function carregarDetalhesExecucaoMed(){
       <td style="text-align:center;">${i+1}</td>
       <td><strong>${esc(num)}</strong>${isRef ? ' <span class="badge-alterado" style="background:var(--aviso-bg);color:var(--aviso-txt);border-color:var(--aviso);">REFURO</span>' : ""}</td>
       <td>${esc(data)} <small style="color:var(--txt-sutil);">${esc(hora)}</small></td>
-      <td class="num">${diam}</td>
+      <td class="num">${esc(diam)}</td>
       <td class="num">${num(e.profundidade_executada||0)} m</td>
       <td class="num">${num(e.volume_concreto_m3||0)} m³</td>
       <td>${esc(e.equipamento?.codigo || "—")}</td>
@@ -1311,10 +1311,10 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
       </thead>
       <tbody>
         ${Object.entries(porDiam).map(([d, info]) => `<tr>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${d}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${esc(d)}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${num(info.metragem)} m</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(valorPorMetro) : "—"}</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${info.qty}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${esc(info.qty)}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(info.metragem * valorPorMetro) : "—"}</td>
         </tr>`).join("")}
         <tr style="background:#f4f4f4;font-weight:700;">
@@ -1369,7 +1369,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
       <tbody>
         ${diasOrd.map(d => `<tr>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${dataBR(d)}</td>
-          <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${porDia[d].estacas}</td>
+          <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${esc(porDia[d].estacas)}</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:center;">${num(porDia[d].metragem)} m</td>
           <td style="padding:4px 6px;border:1px solid #000;text-align:right;">${valorPorMetro != null ? brl(porDia[d].metragem * valorPorMetro) : "—"}</td>
         </tr>`).join("")}
@@ -1672,7 +1672,7 @@ function medImpAdicionarArquivos(files){
 function medImpRenderFila(){
   const ul = $("med-imp-fila"); if(!ul || !_medImp) return;
   const rot = { fila: "na fila", lendo: "lendo…", conferindo: "em conferência", feito: "gravada", erro: "erro", pulado: "pulado" };
-  ul.innerHTML = _medImp.fila.map(a => `<li class="${(a.status === "lendo" || a.status === "conferindo") ? "atual" : esc(a.status)}" title="${esc(a.erro || "")}">📄 ${esc(a.nome)} · ${rot[a.status] || esc(a.status)}${a.erro ? " · " + esc(a.erro) : ""}</li>`).join("");
+  ul.innerHTML = _medImp.fila.map(a => `<li class="${(a.status === "lendo" || a.status === "conferindo") ? "atual" : esc(a.status)}" title="${esc(a.erro || "")}">📄 ${esc(a.nome)} · ${esc(rot[a.status]) || esc(a.status)}${a.erro ? " · " + esc(a.erro) : ""}</li>`).join("");
 }
 function medImpLerArquivo(file, modo){
   return new Promise((resolve, reject) => {
@@ -1836,11 +1836,11 @@ function medImpLinhaItem(it, i){
         ${cas ? `<div class="meta" title="Item do app casado pela descrição">≈ ${esc(cas.descricao || cas.variante_nome || "")}${(cas.fonte === "orcamento_obra" && cas.orcamento_numero) ? ` · orç. ${esc(cas.orcamento_numero)}${cas.orcamento_revisao ? " rev " + esc(cas.orcamento_revisao) : ""}` : ""}</div>` : ""}
         ${medImpCaminhosHtml(it, i)}</td>
     <td><select data-c="unidade" title="Lido no PDF: ${esc(it.unidade_lida || "—")}">${uniOpts}</select></td>
-    <td class="num"><input type="number" step="any" min="0" data-c="quantidade" value="${it.quantidade}" style="width:96px" title="Até 6 casas decimais" /></td>
-    <td class="num"><input type="number" step="0.01" min="0" data-c="valor_unitario_lido" value="${it.valor_unitario_lido}" style="width:92px" /></td>
+    <td class="num"><input type="number" step="any" min="0" data-c="quantidade" value="${esc(it.quantidade)}" style="width:96px" title="Até 6 casas decimais" /></td>
+    <td class="num"><input type="number" step="0.01" min="0" data-c="valor_unitario_lido" value="${esc(it.valor_unitario_lido)}" style="width:92px" /></td>
     <td class="num${it.total_divergente ? " dif-alta" : ""}" title="${it.total_divergente ? "Total impresso no PDF: diferente de quantidade × unitário" : "Total impresso no PDF"}">${brl(it.valor_total_lido)}</td>
     <td class="num col-app">${vuApp != null ? brl(vuApp) : "—"}</td>
-    <td class="col-app">${oi ? `<span class="badge-origem" style="background:${oi.bg};color:${oi.cor};">${oi.ic} ${oi.lbl}</span>` : '<span class="meta">sem preço no app</span>'}</td>
+    <td class="col-app">${oi ? `<span class="badge-origem" style="background:${esc(oi.bg)};color:${esc(oi.cor)};">${esc(oi.ic)} ${esc(oi.lbl)}</span>` : '<span class="meta">sem preço no app</span>'}</td>
     <td class="num med-imp-dif${difAlta ? " dif-alta" : ""}">${dif != null ? (dif > 0 ? "+" : "") + brl(dif) : "—"}</td>
     <td style="white-space:nowrap;"><label class="meta"><input type="radio" name="med-imp-usar-${i}" data-c="usar" value="lido"${it.usar === "lido" ? " checked" : ""} /> lido</label><br><label class="meta"><input type="radio" name="med-imp-usar-${i}" data-c="usar" value="app"${it.usar === "app" ? " checked" : ""}${cas ? "" : " disabled"} /> app</label></td>
     <td><input data-c="tag" value="${esc(it.tag || "")}" style="width:72px" placeholder="HC-66" /></td>
@@ -1861,8 +1861,8 @@ function medImpRenderConferencia(resp, arq){
   const refOk = !refLida || refs.some(r => r && (refLida.includes(r) || r.includes(refLida)));
   const dup = c.numero && st.numerosExistentes.includes(String(c.numero).trim().toLowerCase());
   const tipoOpts = Object.entries({ quinzenal: "Quinzenal", sinal_contratual: "Sinal contratual", final: "Final", avulsa: "Avulsa" })
-    .map(([k, l]) => `<option value="${k}"${k === c.tipo_medicao ? " selected" : ""}>${l}</option>`).join("");
-  const v = (x) => (x == null ? "" : x);
+    .map(([k, l]) => `<option value="${esc(k)}"${k === c.tipo_medicao ? " selected" : ""}>${esc(l)}</option>`).join("");
+  const v = (x) => (x == null ? "" : esc(x));
 
   cont.innerHTML = `<div class="ia-conf-topo">
     <div>🤖 <strong>Lido por IA</strong> · ${esc(arq.nome)} · ${esc(leiauteLbl)} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
@@ -2060,7 +2060,7 @@ function medImpAtualizarTotais(){
   const difSub = subLido != null ? t.subtotal - subLido : null;
   const destaque = (d) => (d != null && Math.abs(d) > 0.5) ? ' style="color:var(--aviso-txt);"' : "";
   cont.innerHTML = `
-    <div class="ind"><div class="num">${brl(t.subtotal)}<small>${t.itens} item(ns)${t.travados ? ` · ${t.travados} 🔒 do boletim` : ""}${subLido != null ? ` · PDF ${brl(subLido)}` : ""}</small></div><div class="rot"${destaque(difSub)}>${(difSub != null && Math.abs(difSub) > 0.5) ? `Subtotal · dif. ${brl(difSub)} contra o PDF` : "Subtotal"}</div></div>
+    <div class="ind"><div class="num">${brl(t.subtotal)}<small>${esc(t.itens)} item(ns)${t.travados ? ` · ${esc(t.travados)} 🔒 do boletim` : ""}${subLido != null ? ` · PDF ${brl(subLido)}` : ""}</small></div><div class="rot"${destaque(difSub)}>${(difSub != null && Math.abs(difSub) > 0.5) ? `Subtotal · dif. ${brl(difSub)} contra o PDF` : "Subtotal"}</div></div>
     <div class="ind"><div class="num">${t.descSinal ? "− " + brl(t.descSinal) : "—"}</div><div class="rot">Desconto do sinal</div></div>
     <div class="ind"><div class="num">${t.acresc ? "+ " + brl(t.acresc) : "—"}</div><div class="rot">Acréscimos</div></div>
     <div class="ind"><div class="num">${brl(t.valorFinal)}<small>${t.mult !== 100 ? `${num(t.mult)}% do subtotal · ` : ""}${(isFinite(vfLido) && vfLido > 0) ? `PDF ${brl(vfLido)}` : "PDF sem valor final"}</small></div><div class="rot"${destaque(difVF)}>${(difVF != null && Math.abs(difVF) > 0.5) ? `Valor final · dif. ${brl(difVF)} contra o PDF` : "Valor final"}</div></div>
@@ -2323,7 +2323,7 @@ let _medRecebLista   = [];     // recebimentos da medição aberta
 let _medRecebMes     = null;   // { ini, total, n } recebido no mês corrente (indicador)
 
 function medCauPodeOperar(){ return !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
-function medTagCau(st){ const o = MED_CAU_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${o.cor}">${esc(o.label)}</span>`; }
+function medTagCau(st){ const o = MED_CAU_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`; }
 /* Líquido a receber da medição (fase 47): valor final − retenção contratual − ISS retido na fonte − retenções federais
    (fase 105c: IRRF, PIS, COFINS, CSLL e INSS; ausentes = 0). Igual a medicao_liquido() no banco. */
 function medLiquido(m){
@@ -2416,7 +2416,7 @@ async function medRecebRenderIndicadores(){
   cont.innerHTML = `
     <div class="ind ind-click${fAtivo === "a_receber" ? " ativo" : ""}" data-receb="a_receber" title="Medições com NF emitida e ainda não recebidas, pelo líquido a receber (valor final − retenção − ISS retido − retenções federais) menos o já recebido. Clique para filtrar."><div class="num">${brl(soma(aRec))}</div><div class="rot">A receber · ${aRec.length} NF(s)</div></div>
     <div class="ind ind-click${fAtivo === "vencida" ? " ativo" : ""}" data-receb="vencida" title="Vencimento da NF já passou e o recebimento não está completo. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(soma(venc))}</div><div class="rot">Vencidas · ${venc.length} NF(s)</div></div>
-    <div class="ind" title="Recebimentos confirmados pelo financeiro no mês corrente (aba NF/Recebimento das medições)"><div class="num" style="color:var(--sucesso);">${brl(_medRecebMes.total)}</div><div class="rot">Recebido no mês · ${_medRecebMes.n} lançamento(s)</div></div>`;
+    <div class="ind" title="Recebimentos confirmados pelo financeiro no mês corrente (aba NF/Recebimento das medições)"><div class="num" style="color:var(--sucesso);">${brl(_medRecebMes.total)}</div><div class="rot">Recebido no mês · ${esc(_medRecebMes.n)} lançamento(s)</div></div>`;
 }
 
 /* ---------- visão Caução ---------- */
@@ -2523,7 +2523,7 @@ function renderMedCauLista(dados){
     <td class="num" title="devolvido ${brl(c.valor_devolvido)}${Number(c.juros) ? " + juros " + brl(c.juros) : ""}${Number(c.descontos) ? " − descontos " + brl(c.descontos) : ""}">${brl(c.credito)}</td>
     <td class="num"><strong>${brl(c.saldo)}</strong></td>
     <td>${c.data_prevista ? dataBR(c.data_prevista) : "—"}</td>
-    <td class="num">${c.dias_atraso > 0 ? `<span class="txt-perigo" title="dias além da previsão">${c.dias_atraso}</span>` : (medCauAberta(c) && c.dias_em_aberto != null ? `<span class="meta" title="dias desde a NF">${c.dias_em_aberto}</span>` : "—")}</td>
+    <td class="num">${c.dias_atraso > 0 ? `<span class="txt-perigo" title="dias além da previsão">${esc(c.dias_atraso)}</span>` : (medCauAberta(c) && c.dias_em_aberto != null ? `<span class="meta" title="dias desde a NF">${esc(c.dias_em_aberto)}</span>` : "—")}</td>
     <td>${medTagCau(c.status)}${c.banco ? ` <span class="meta">${esc(c.banco)}</span>` : ""}</td>
   </tr>`).join("");
   const tot = (f) => dados.reduce((s, c) => s + (Number(f(c)) || 0), 0);
@@ -2560,11 +2560,11 @@ function renderMedCauPorCliente(dados){
   const lista = [...grupos.values()].sort((a, b) => b.saldo - a.saldo || b.retido - a.retido);
   const linhas = lista.map(g => `<tr class="linha-clicavel" data-cau-cli="${esc(g.k)}" title="Ver as NFs deste cliente">
     <td title="${esc(g.cliente)}">${esc(g.cliente)}${g.cliente_id ? "" : ' <span class="meta" title="Cliente sem cadastro no app">?</span>'}</td>
-    <td class="num">${g.nfs}</td>
+    <td class="num">${esc(g.nfs)}</td>
     <td class="num">${brl(g.retido)}</td>
     <td class="num">${brl(g.credito)}</td>
-    <td class="num"><strong>${brl(g.saldo)}</strong>${g.abertas ? ` <span class="meta">${g.abertas} NF(s)</span>` : ""}</td>
-    <td class="num">${g.vencidas ? `<span class="txt-perigo">${g.vencidas}</span>` : "—"}</td>
+    <td class="num"><strong>${brl(g.saldo)}</strong>${g.abertas ? ` <span class="meta">${esc(g.abertas)} NF(s)</span>` : ""}</td>
+    <td class="num">${g.vencidas ? `<span class="txt-perigo">${esc(g.vencidas)}</span>` : "—"}</td>
     <td class="num">${g.aRec ? brl(g.aRec) : "—"}</td>
     <td class="num">${g.venc ? `<span class="txt-perigo">${brl(g.venc)}</span>` : "—"}</td>
   </tr>`).join("");
@@ -2609,9 +2609,9 @@ function medCauFormHTML(c, pref){
     if(c.status === "baixada"){ if(s === "devolvida") cls = "cancelada"; }
     else if(i === idxAtual) cls = "atual";
     else if(i < idxAtual) cls = "passada";
-    return `<div class="stage ${cls}" title="Status calculado no banco a partir dos valores">${s === "devolvida" && c.status === "baixada" ? "Baixada" : MED_CAU_STATUS[s].label}</div>`;
+    return `<div class="stage ${esc(cls)}" title="Status calculado no banco a partir dos valores">${s === "devolvida" && c.status === "baixada" ? "Baixada" : esc(MED_CAU_STATUS[s].label)}</div>`;
   }).join("");
-  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${lbl}</span><strong>${val}</strong></div>`;
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
   return `
     <div class="odoo-statusbar" style="border:1px solid var(--border-color);border-radius:var(--radius-md);overflow:hidden;">${stages}</div>
     <div class="odoo-contexto" style="padding:12px 0;">
@@ -2622,27 +2622,27 @@ function medCauFormHTML(c, pref){
       ${chip("Retido", brl(c.valor_retido))}
       ${chip("Devolvido", brl(c.credito), `devolvido ${brl(c.valor_devolvido)} + juros ${brl(c.juros)} − descontos ${brl(c.descontos)}`)}
       ${chip("Saldo", `<span class="${Number(c.saldo) > 0.009 ? "txt-perigo" : ""}">${brl(c.saldo)}</span>`)}
-      ${chip("Previsão", c.data_prevista ? dataBR(c.data_prevista) + (c.dias_atraso > 0 ? ` <span class="txt-perigo">(${c.dias_atraso} d de atraso)</span>` : "") : "—", "NF + prazo da obra (ou 90 dias da empresa)")}
+      ${chip("Previsão", c.data_prevista ? dataBR(c.data_prevista) + (c.dias_atraso > 0 ? ` <span class="txt-perigo">(${esc(c.dias_atraso)} d de atraso)</span>` : "") : "—", "NF + prazo da obra (ou 90 dias da empresa)")}
       ${chip("Status", medTagCau(c.status))}
     </div>
     <h4 class="titulo-bloco">Devolução</h4>
     <div class="grade">
-      <div class="campo"><label>Valor devolvido (acumulado, R$)</label><input id="${pref}-devolvido" type="number" step="0.01" min="0" value="${Number(c.valor_devolvido) || 0}" ${podeOp ? "" : "readonly"} title="Soma do que o cliente já devolveu desta NF (devolução parcial: atualize o acumulado)" /></div>
-      <div class="campo"><label>Juros recebidos (R$)</label><input id="${pref}-juros" type="number" step="0.01" min="0" value="${Number(c.juros) || 0}" ${podeOp ? "" : "readonly"} /></div>
-      <div class="campo"><label>Descontos do cliente (R$)</label><input id="${pref}-descontos" type="number" step="0.01" min="0" value="${Number(c.descontos) || 0}" ${podeOp ? "" : "readonly"} title="Alimentação, glosa parcial etc.: reduz o que volta" /></div>
-      <div class="campo"><label>Data da devolução</label><input id="${pref}-data" type="date" value="${esc(c.data_devolucao || "")}" ${podeOp ? "" : "readonly"} /></div>
-      <div class="campo"><label>Banco</label><input id="${pref}-banco" list="med-cau-bancos" value="${esc(c.banco || "")}" placeholder="Itaú, Caixa…" ${podeOp ? "" : "readonly"} /></div>
-      <div class="campo"><label>Previsão de devolução</label><input id="${pref}-prevista" type="date" value="${esc(c.data_prevista || "")}" ${podeOp ? "" : "readonly"} title="Calculada pela NF + prazo; pode ser ajustada quando o cliente negociar outra data" /></div>
-      <div class="campo largo"><label>Observações</label><textarea id="${pref}-obs" rows="2" ${podeOp ? "" : "readonly"}>${esc(c.observacoes || "")}</textarea></div>
+      <div class="campo"><label>Valor devolvido (acumulado, R$)</label><input id="${esc(pref)}-devolvido" type="number" step="0.01" min="0" value="${Number(c.valor_devolvido) || 0}" ${podeOp ? "" : "readonly"} title="Soma do que o cliente já devolveu desta NF (devolução parcial: atualize o acumulado)" /></div>
+      <div class="campo"><label>Juros recebidos (R$)</label><input id="${esc(pref)}-juros" type="number" step="0.01" min="0" value="${Number(c.juros) || 0}" ${podeOp ? "" : "readonly"} /></div>
+      <div class="campo"><label>Descontos do cliente (R$)</label><input id="${esc(pref)}-descontos" type="number" step="0.01" min="0" value="${Number(c.descontos) || 0}" ${podeOp ? "" : "readonly"} title="Alimentação, glosa parcial etc.: reduz o que volta" /></div>
+      <div class="campo"><label>Data da devolução</label><input id="${esc(pref)}-data" type="date" value="${esc(c.data_devolucao || "")}" ${podeOp ? "" : "readonly"} /></div>
+      <div class="campo"><label>Banco</label><input id="${esc(pref)}-banco" list="med-cau-bancos" value="${esc(c.banco || "")}" placeholder="Itaú, Caixa…" ${podeOp ? "" : "readonly"} /></div>
+      <div class="campo"><label>Previsão de devolução</label><input id="${esc(pref)}-prevista" type="date" value="${esc(c.data_prevista || "")}" ${podeOp ? "" : "readonly"} title="Calculada pela NF + prazo; pode ser ajustada quando o cliente negociar outra data" /></div>
+      <div class="campo largo"><label>Observações</label><textarea id="${esc(pref)}-obs" rows="2" ${podeOp ? "" : "readonly"}>${esc(c.observacoes || "")}</textarea></div>
     </div>
     ${c.motivo_baixa ? `<p class="nota">Baixada: ${esc(c.motivo_baixa)}</p>` : ""}
     ${podeOp ? `<div class="form-acoes compacta" style="justify-content:flex-start;">
-      <button type="button" class="btn" id="${pref}-salvar">💾 Registrar devolução</button>
+      <button type="button" class="btn" id="${esc(pref)}-salvar">💾 Registrar devolução</button>
       ${c.status === "baixada"
-        ? `<button type="button" class="btn-sec" id="${pref}-reabrir" title="Volta a cobrar: limpa o motivo da baixa">↩ Reabrir</button>`
-        : `<button type="button" class="btn-sec acao-perigo" id="${pref}-baixar" title="Encerra sem devolução: não é caução, glosa, não precisa cobrar">⛔ Baixar</button>`}
+        ? `<button type="button" class="btn-sec" id="${esc(pref)}-reabrir" title="Volta a cobrar: limpa o motivo da baixa">↩ Reabrir</button>`
+        : `<button type="button" class="btn-sec acao-perigo" id="${esc(pref)}-baixar" title="Encerra sem devolução: não é caução, glosa, não precisa cobrar">⛔ Baixar</button>`}
     </div>` : `<p class="nota">Só o financeiro, o admin e a diretoria registram devolução e baixa.</p>`}
-    <div id="${pref}-chatter" class="historico"></div>`;
+    <div id="${esc(pref)}-chatter" class="historico"></div>`;
 }
 async function medCauSalvar(c, pref, extra){
   const n = (id) => { const v = $(id)?.value; return v === "" || v == null ? 0 : Number(v); };
@@ -2746,7 +2746,7 @@ function renderMedRecebFicha(med){
   const saldo = Math.max(0, Math.round((liq - recebido) * 100) / 100);
   const sit = medRecebSituacao({ ...med, recebido_valor: recebido });
   const SIT = { sem_nf: ["Sem documento fiscal", "cinza"], a_receber: ["A receber", "ambar"], parcial: ["Recebida em parte", "azul"], vencida: ["Vencida", "vermelho"], recebida: ["Recebida", "verde"] };
-  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${lbl}</span><strong>${val}</strong></div>`;
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
   const temNf = !!med.nf_numero;
   const linhas = _medRecebLista.map(r => `<tr>
       <td>${dataBR(r.data)}</td>
@@ -2768,7 +2768,7 @@ function renderMedRecebFicha(med){
       ${chip("Líquido a receber", `<span style="color:var(--sucesso-txt);">${brl(liq)}</span>`, "valor final − retenção − ISS retido − retenções federais (fases 47 e 105c)")}
       ${chip("Recebido", brl(recebido))}
       ${chip("Saldo", `<span class="${saldo > 0.009 ? "txt-perigo" : ""}">${brl(saldo)}</span>`)}
-      ${chip("Situação", `<span class="tag ${SIT[sit][1]}">${SIT[sit][0]}</span>`)}
+      ${chip("Situação", `<span class="tag ${esc(SIT[sit][1])}">${esc(SIT[sit][0])}</span>`)}
     </div>
     <h4 class="titulo-bloco">Recebimentos confirmados <small class="meta">(a medição fica "recebida" sozinha quando a soma atinge o líquido)</small></h4>
     ${_medRecebLista.length ? `<div class="tabela-rola"><table>
@@ -2781,7 +2781,7 @@ function renderMedRecebFicha(med){
     <div class="grade">
       <div class="campo"><label>Data</label><input id="med-receb-data" type="date" value="${hojeISO()}" /></div>
       <div class="campo"><label>Valor (R$)</label><input id="med-receb-valor" type="number" step="0.01" min="0.01" value="${saldo > 0 ? saldo.toFixed(2) : ""}" placeholder="parcial é comum" /></div>
-      <div class="campo"><label>Forma</label><select id="med-receb-forma">${Object.entries(MED_RECEB_FORMAS).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
+      <div class="campo"><label>Forma</label><select id="med-receb-forma">${Object.entries(MED_RECEB_FORMAS).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></div>
       <div class="campo"><label>Banco</label><input id="med-receb-banco" list="med-cau-bancos" placeholder="Itaú, Caixa…" /></div>
       <div class="campo largo"><label>Observações</label><input id="med-receb-obs" placeholder="ex.: 2ª parcela, desconto de alimentação…" /></div>
     </div>

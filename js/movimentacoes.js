@@ -145,7 +145,7 @@ function renderMovLista(dados){
       <td>${dataBR(m.data_emissao)}</td>
       <td>${m.nf_numero ? esc(m.nf_numero) : "—"}${m.nf_status ? " " + tagStatus("nfe", m.nf_status) : ""}${m.nf_status && m.nf_ambiente === "homologacao" ? ' <span class="tag ambar" title="emitida em homologação: sem valor fiscal">homolog.</span>' : ""}</td>
       <td class="num">${brl(m.valor_total_produtos)}</td>
-      <td><span class="tag ${st.cor}">${esc(st.label)}</span></td>
+      <td><span class="tag ${esc(st.cor)}">${esc(st.label)}</span></td>
     </tr>`;
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
@@ -605,7 +605,7 @@ function movAceDescr(a){
 function movAceOnde(a){ return typeof aceOnde === "function" ? aceOnde(a) : (a.local_tipo || ""); }
 function movAceCond(a){
   const o = (STATUS.acessorio || {})[a.condicao] || {};
-  return `<span class="tag ${o.cor || "cinza"}">${esc(o.label || a.condicao || "")}</span>`;
+  return `<span class="tag ${esc(o.cor || "cinza")}">${esc(o.label || a.condicao || "")}</span>`;
 }
 function movAddAcessorio(a){
   if(itensAtuais.some(i => i.acessorio_id === a.id)) return false;

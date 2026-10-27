@@ -121,7 +121,7 @@ function corDaMaquina(eqId){
   if(!eqId) return "var(--txt-sutil)";
   const ids = Object.keys(_mapaMaquinas).sort();
   const i = ids.indexOf(eqId);
-  return CORES_MAQUINA[i % CORES_MAQUINA.length];
+  return esc(CORES_MAQUINA[i % CORES_MAQUINA.length]);
 }
 
 /* Cores da estaca por status na planta. Fluxo (fase 25):
@@ -242,7 +242,7 @@ function tiposEstacaDisponiveis(extras){
 }
 function opcoesTipoEstaca(selecionado, prefixo){
   return tiposEstacaDisponiveis(selecionado ? [selecionado] : [])
-    .map(t => `<option value="${t}"${t === selecionado ? " selected" : ""}>${esc((prefixo || "") + ESTACA_TIPOS[t])}</option>`).join("");
+    .map(t => `<option value="${esc(t)}"${t === selecionado ? " selected" : ""}>${esc((prefixo || "") + ESTACA_TIPOS[t])}</option>`).join("");
 }
 function montarSelectsTipoEstaca(){
   const disp = tiposEstacaDisponiveis();
@@ -550,7 +550,7 @@ async function renderAcompanhamentoRaiz(){
     if(l.local !== localAtual){ localAtual = l.local; cab = `<tr class="raiz-grupo"><td colspan="19">📍 ${esc(l.local || "Sem local")}</td></tr>`; }
     const stCls = l.status === "executada" ? "ok" : (l.status === "refugada" ? "perigo" : "");
     return cab + `<tr class="${stCls}">
-      <td>${esc(l.bloco || "—")}</td><td><strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${l.refuros} refuro(s)">🔄${l.refuros}</span>` : ""}</td>
+      <td>${esc(l.bloco || "—")}</td><td><strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${esc(l.refuros)} refuro(s)">🔄${esc(l.refuros)}</span>` : ""}</td>
       <td class="num">${f0(l.diametro)}</td><td class="num">${f2(l.estimado)}</td>
       <td class="num">${l.compFinal != null ? estCelulaExecutada({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }, f2) : "—"}</td><td class="num">${f2(l.compTotal)}</td><td>${dt(l.dataExec)}</td>
       <td class="num">${l.compFinal != null ? f2(l.revest) : "—"}</td><td class="num">${l.compFinal != null ? f2(l.martelo) : "—"}</td><td class="num">${l.compFinal != null ? f2(l.tricone) : "—"}</td>
@@ -569,7 +569,7 @@ async function renderAcompanhamentoRaiz(){
         <th>Data</th><th class="num">Sacos</th><th class="num">m³</th><th>TAG</th>
         <th>Período</th><th>Medição</th><th>Obs.</th><th></th></tr>
     </thead>
-    <tbody>${trs}</tbody>
+    <tbody>${/* html */ trs}</tbody>
     <tfoot><tr><td colspan="4"><strong>Totais</strong></td><td class="num"></td><td class="num"><strong>${f2(soma("compTotal"))}</strong></td><td></td>
       <td class="num"><strong>${f2(soma("revest"))}</strong></td><td class="num"><strong>${f2(soma("martelo"))}</strong></td><td class="num"><strong>${f2(soma("tricone"))}</strong></td><td></td>
       <td></td><td class="num"><strong>${f0(soma("sacos"))}</strong></td><td class="num"><strong>${f2(soma("m3"))}</strong></td><td colspan="5"></td></tr></tfoot>
@@ -663,19 +663,19 @@ function renderEstacas(){
       const motivo = e.alteracao_motivo || "Alteração manual";
       badgeAlt = `<span class="badge-alterado badge-alterado-suspeito" title="Alterada em ${quando} · ${esc(motivo)}">⚠️ ALTERADO</span>`;
     } else if(e._execs_refuros > 0){
-      badgeAlt = `<span class="badge-alterado" title="Estaca tem ${e._execs_refuros} refuro(s) registrado(s)">🔄 REFURO</span>`;
+      badgeAlt = `<span class="badge-alterado" title="Estaca tem ${esc(e._execs_refuros)} refuro(s) registrado(s)">🔄 REFURO</span>`;
     } else if(e._alterada){
-      badgeAlt = `<span class="badge-alterado badge-alterado-suspeito" title="${e._execs_total} execuções vinculadas — verificar na Conferência">⚠️ ALTERADO</span>`;
+      badgeAlt = `<span class="badge-alterado badge-alterado-suspeito" title="${esc(e._execs_total)} execuções vinculadas — verificar na Conferência">⚠️ ALTERADO</span>`;
     }
     return `<tr data-id="${esc(e.id)}">
-      <td>${esc(e.numero)} ${badgeAlt}</td>
+      <td>${esc(e.numero)} ${/* html */ badgeAlt}</td>
       <td class="meta">${esc([e.local, e.bloco].filter(Boolean).join(" · ") || "—")}</td>
       <td>${esc(ESTACA_TIPOS[e.tipo] || e.tipo || "—")}</td>
       <td class="num">${e.diametro_mm != null ? num(e.diametro_mm) : "—"}</td>
       <td class="num">${e.profundidade_m != null ? num(e.profundidade_m) : "—"}</td>
       <td class="num">${estCelulaExecutada(e)}</td>
       <td>${dataBR(e.data_execucao)}</td>
-      <td><span class="tag ${st.cor}">${esc(st.label)}</span></td>
+      <td><span class="tag ${esc(st.cor)}">${esc(st.label)}</span></td>
       <td class="col-acao">
         <button type="button" class="btn-sec btn-sm est-edit" data-id="${esc(e.id)}">✏️</button>
         <button type="button" class="btn-sec btn-sm est-del txt-perigo" data-id="${esc(e.id)}">🗑️</button>
@@ -688,7 +688,7 @@ function renderEstacas(){
       <th class="num" title="Profundidade executada (maior &quot;até&quot; das execuções). Destaque quando difere do projeto além da tolerância">Executada (m)</th>
       <th>Execução</th><th>Status</th><th class="col-acao"></th>
     </tr></thead>
-    <tbody>${linhas}</tbody></table></div>`;
+    <tbody>${/* html */ linhas}</tbody></table></div>`;
 
   cont.querySelectorAll(".est-edit").forEach(b => {
     b.addEventListener("click", () => abrirModalEstaca(b.dataset.id));
@@ -739,7 +739,7 @@ function estCelulaExecutada(e, fmt){
   const tag = estProfDiverge(e)
     ? ` <span class="tag ${d < 0 ? "ambar" : "azul"}" title="${d < 0 ? "Abaixo do projeto (impenetrável, rocha?)" : "Acima do projeto"}">${d > 0 ? "+" : ""}${num(d)}</span>`
     : "";
-  return fmt(e.profundidade_executada_m) + tag;
+  return esc(fmt(e.profundidade_executada_m)) + /* html */ tag;
 }
 
 /* ---------- Modal Estaca (nova / editar) ---------- */
@@ -962,7 +962,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   let blocoUnidade = "";
   if(temCoord){
     const sug = _importUnidade || unidadeSugeridaCoords(_importPreview) || _unidadeCoord || "mm";
-    const opt = (v, l) => `<option value="${v}"${v === sug ? " selected" : ""}>${l}</option>`;
+    const opt = (v, l) => `<option value="${esc(v)}"${v === sug ? " selected" : ""}>${esc(l)}</option>`;
     const aviso_ = (sug !== _unidadeCoord) ? ` <span style="color:var(--aviso-txt);">— a obra estava em <strong>${esc(_unidadeCoord)}</strong>; ao importar, a obra passa para a unidade escolhida.</span>` : "";
     blocoUnidade = `<div style="background:var(--marca-50);border-left:3px solid var(--marca-600);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-sm);">
       📏 <strong>Unidade das coordenadas:</strong>
@@ -971,7 +971,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     </div>`;
   }
   const obs = observacoes ? `<p style="font-size:var(--txt-sm);color:var(--txt-fraco);margin:0 0 8px;"><b>Notas da IA:</b> ${esc(observacoes)}</p>` : "";
-  const metaTxt = meta ? `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0 0 8px;">Modelo: ${esc(meta.modelo)} · Tokens: ${meta.tokens_input}/${meta.tokens_output}</p>` : "";
+  const metaTxt = meta ? `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0 0 8px;">Modelo: ${esc(meta.modelo)} · Tokens: ${esc(meta.tokens_input)}/${esc(meta.tokens_output)}</p>` : "";
 
   // Conta quantas precisam de cada campo
   const semDiam = _importPreview.filter(e => e.diametro_mm == null).length;
@@ -1005,7 +1005,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
         <div>
           <label class="meta bloco">Coluna A</label>
           <select id="reorg-a" class="col-xl">
-            ${Object.entries(COLUNAS_LBL).map(([v,l],i) => `<option value="${v}" ${i===0?"selected":""}>${esc(l)}</option>`).join("")}
+            ${Object.entries(COLUNAS_LBL).map(([v,l],i) => `<option value="${esc(v)}" ${i===0?"selected":""}>${esc(l)}</option>`).join("")}
           </select>
         </div>
         <div>
@@ -1020,7 +1020,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
         <div>
           <label class="meta bloco">Coluna B</label>
           <select id="reorg-b" class="col-xl">
-            ${Object.entries(COLUNAS_LBL).map(([v,l],i) => `<option value="${v}" ${i===1?"selected":""}>${esc(l)}</option>`).join("")}
+            ${Object.entries(COLUNAS_LBL).map(([v,l],i) => `<option value="${esc(v)}" ${i===1?"selected":""}>${esc(l)}</option>`).join("")}
           </select>
         </div>
         <button type="button" class="btn" id="btn-reorg-aplicar" style="padding:5px 12px;background:var(--marca-600);">Aplicar</button>
@@ -1079,13 +1079,13 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   }).join("");
 
   $(contId).innerHTML = `
-    ${obs}${metaTxt}${blocoUnidade}${alerta}${reorganizador}${massEdit}
+    ${obs}${metaTxt}${/* html */ blocoUnidade}${alerta}${reorganizador}${massEdit}
     <div class="tabela-rola">
       <table>
         <thead><tr>
           <th>Nº</th><th>Local</th><th title="Agrupamento da estaca (${esc(String(_importNomenclatura || "bloco").toLowerCase())}) — faz parte da identidade: E1 do BL-01 e E1 do BL-02 são estacas diferentes">${esc(rotuloAgrupamento())}</th><th>Tipo</th><th>Ø (mm)</th><th>Prof. (m)</th>${temCoord ? "<th>X</th><th>Y</th>" : ""}<th>Obs.</th><th></th>
         </tr></thead>
-        <tbody>${linhas}</tbody>
+        <tbody>${/* html */ linhas}</tbody>
       </table>
     </div>
     <p style="margin-top:8px;font-size:var(--txt-sm);color:var(--txt-fraco);">${_importPreview.length} estacas${temCoord ? " (com coordenadas)" : " extraídas"}. Edite o que precisar antes de importar. <span style="background:var(--aviso-bg);padding:1px 6px;">células amarelas</span> = campos vazios.</p>
@@ -1513,11 +1513,11 @@ function renderDXFConfig(){
     if(c.POINT)  partes.push(`${c.POINT} pontos`);
     if(c.CIRCLE) partes.push(`${c.CIRCLE} círculos`);
     if(c.INSERT) partes.push(`${c.INSERT} blocos`);
-    return `<option value="${esc(nome)}" ${i===0?"selected":""}>${esc(nome)} — ${partes.join(", ")}</option>`;
+    return `<option value="${esc(nome)}" ${i===0?"selected":""}>${esc(nome)} — ${esc(partes.join(", "))}</option>`;
   }).join("");
 
   const textOpts = `<option value="__auto__" selected>Automático (texto mais próximo de cada estaca)</option>`
-    + textLayers.map(([nome, c]) => `<option value="${esc(nome)}">${esc(nome)} — ${c.TEXT+c.MTEXT} textos</option>`).join("")
+    + textLayers.map(([nome, c]) => `<option value="${esc(nome)}">${esc(nome)} — ${esc(c.TEXT+c.MTEXT)} textos</option>`).join("")
     + `<option value="__none__">Sem rótulo (numero em branco)</option>`;
 
   box.innerHTML = `
@@ -1868,7 +1868,7 @@ function _avisoParesProximos(comCoord){
       return `<div class="dist-aviso alerta">📏 <strong>Unidade das coordenadas provavelmente errada.</strong> A obra está em <strong>${esc(_unidadeCoord)}</strong>, mas as distâncias entre estacas ficaram ${dmax < 0.05 ? "todas abaixo de 5 cm" : "acima de 500 m"} — as coordenadas parecem estar em <strong>${sug}</strong>. Ajuste em "Regra de distância → Unidade das coordenadas".</div>`;
     }
   }
-  const f2 = (n) => n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const f2 = (n) => esc(n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}));
   const locacao = [], execucao = [];
   for(let i = 0; i < comCoord.length; i++){
     for(let j = i + 1; j < comCoord.length; j++){
@@ -2068,7 +2068,7 @@ function renderLegendaPlanta(){
       executada: "2.5px solid var(--txt)", refugada: "2.5px dotted var(--txt)"
     };
     box.innerHTML = Object.entries(ESTACA_STATUS)
-      .map(([v]) => `<span title="${esc(ESTACA_STATUS[v].label)}"><i style="background:${COR_STATUS[v] || "var(--txt-sutil)"};border:${contorno[v] || "1.5px solid var(--sup-3)"};box-sizing:border-box;"></i>${esc(ESTACA_STATUS[v].label)}</span>`).join("") +
+      .map(([v]) => `<span title="${esc(ESTACA_STATUS[v].label)}"><i style="background:${esc(COR_STATUS[v] || "var(--txt-sutil)")};border:${esc(contorno[v] || "1.5px solid var(--sup-3)")};box-sizing:border-box;"></i>${esc(ESTACA_STATUS[v].label)}</span>`).join("") +
       `<span><i style="background:var(--estaca-hoje)"></i>Hoje</span>`;
   }
 }
@@ -2119,7 +2119,7 @@ function renderConflitosDistancia(filtradas){
     return;
   }
   const itens = conflitos.slice(0, 8).map(c =>
-    `<li><strong>${esc(c.b.numero)}</strong> logo após <strong>${esc(c.a.numero)}</strong> — ${c.d.toLocaleString("pt-BR",{maximumFractionDigits:2})} m (mín. ${c.min.toLocaleString("pt-BR",{maximumFractionDigits:2})} m)</li>`).join("");
+    `<li><strong>${esc(c.b.numero)}</strong> logo após <strong>${esc(c.a.numero)}</strong> — ${esc(c.d.toLocaleString("pt-BR",{maximumFractionDigits:2}))} m (mín. ${esc(c.min.toLocaleString("pt-BR",{maximumFractionDigits:2}))} m)</li>`).join("");
   const resto = conflitos.length > 8 ? `<li>… e mais ${conflitos.length - 8}.</li>` : "";
   box.innerHTML = htmlProx + `<div class="dist-aviso alerta">
     <strong>⚠️ ${conflitos.length} conflito(s) de distância na sequência</strong>
@@ -2190,7 +2190,7 @@ function mostrarTooltipPlanta(ev, e){
   const tipoLbl = ESTACA_TIPOS[e.tipo] || e.tipo || "—";
   const stLbl = (ESTACA_STATUS[e.status] || {}).label || e.status;
   tip.innerHTML = `<strong>${esc(e.numero)}</strong> · ${esc(stLbl)}<br>
-    ${esc(tipoLbl)} · Ø ${e.diametro_mm || "?"}mm · ${e.profundidade_m || "?"}m
+    ${esc(tipoLbl)} · Ø ${esc(e.diametro_mm || "?")}mm · ${esc(e.profundidade_m || "?")}m
     ${e.data_execucao ? "<br>Exec: " + dataBR(e.data_execucao) : ""}`;
   const cont = $("est-planta-svg-container").getBoundingClientRect();
   tip.style.left = (ev.clientX - cont.left + 12) + "px";
@@ -2308,8 +2308,8 @@ async function abrirModalExecucao(id){
   const tipoLbl = ESTACA_TIPOS[e.tipo] || e.tipo || "—";
   $("exec-resumo").innerHTML = `
     <strong>${esc(tipoLbl)}</strong>
-    · Ø ${e.diametro_mm || "—"}mm
-    · projeto ${e.profundidade_m || "?"}m
+    · Ø ${esc(e.diametro_mm || "—")}mm
+    · projeto ${esc(e.profundidade_m || "?")}m
     ${e.observacoes ? "<br>" + esc(e.observacoes) : ""}
   `;
   $("exec-status").value = e.status || "prevista";
@@ -2566,7 +2566,7 @@ function renderizarReconciliacao(){
       const exec = p.status==='executada' ? " ⚠ já executada" : "";
       const stars = score >= 0.9 ? "★★★" : score >= 0.6 ? "★★" : "★";
       const pct = (score*100).toFixed(0);
-      return `<option value="${esc(p.id)}">${stars} ${esc(p.numero)} — ${pct}%${exec}</option>`;
+      return `<option value="${esc(p.id)}">${stars} ${esc(p.numero)} — ${pct}%${esc(exec)}</option>`;
     }).join("");
 
     const idsSug = new Set(sugs.map(s => s.p.id));
@@ -2591,7 +2591,7 @@ function renderizarReconciliacao(){
           <select class="rec-select" data-orfa-id="${esc(o.id)}" data-sugestao="${esc(sugId)}" style="flex:1;min-width:0;">
             <option value="">— não vincular —</option>
             ${optionsSugs ? `<optgroup label="🤖 Sugestões automáticas">${optionsSugs}</optgroup>` : ""}
-            ${optionsTodas ? `<optgroup label="Outras estacas previstas">${optionsTodas}</optgroup>` : ""}
+            ${optionsTodas ? `<optgroup label="Outras estacas previstas">${/* html */ optionsTodas}</optgroup>` : ""}
           </select>
           ${badge}
         </div>
@@ -2616,7 +2616,7 @@ function renderizarReconciliacao(){
           <th>Sugestão · vincular a</th>
           <th class="col-acao" style="width:200px;text-align:right;">Ações</th>
         </tr></thead>
-        <tbody>${linhas}</tbody>
+        <tbody>${/* html */ linhas}</tbody>
       </table>
     </div>
   `;
@@ -2897,7 +2897,7 @@ function renderizarAlteradas(){
            </select>
            <button type="button" class="btn btn-sm btn-alt-realocar" data-exec-id="${esc(re.id)}" data-estaca-orig="${esc(g.estaca.id)}" style="background:var(--marca-600);">→ Realocar</button>`;
       return `<tr>
-        <td>${tag}</td>
+        <td>${/* html */ tag}</td>
         <td>${esc(data)}</td>
         <td class="num">${num(re.profundidade_executada || 0)} m</td>
         <td class="num">${num(re.volume_concreto_m3 || 0)} m³</td>
@@ -2933,7 +2933,7 @@ function renderizarAlteradas(){
       Refuros legítimos (mesmo nome + R no CSV) já vêm marcados em verde.
       Casos suspeitos em <strong>vermelho</strong> precisam de revisão.
     </div>
-    ${linhas}
+    ${/* html */ linhas}
   `;
 
   // Listeners
@@ -3016,7 +3016,7 @@ function renderizarDuplicadas(){
         <td>${esc((ESTACA_TIPOS[e.tipo]||e.tipo||"—"))}</td>
         <td class="num">${e.diametro_mm!=null ? num(e.diametro_mm) : "—"}</td>
         <td class="num">${e.profundidade_m!=null ? num(e.profundidade_m) : "—"}</td>
-        <td><span class="tag ${stMeta.cor}">${esc(stMeta.label)}</span></td>
+        <td><span class="tag ${esc(stMeta.cor)}">${esc(stMeta.label)}</span></td>
         <td class="col-acao">
           <button type="button" class="btn-sec btn-sm btn-dup-renomear" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">✏️ Renomear</button>
           <button type="button" class="btn-sec btn-sm btn-dup-excluir txt-perigo" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">🗑️</button>
@@ -3032,7 +3032,7 @@ function renderizarDuplicadas(){
           <th>#</th><th>Número</th><th>Local</th><th>${esc(rotuloAgrupamento())}</th><th>Tipo</th>
           <th class="num">Ø</th><th class="num">Prof.</th><th>Status</th><th class="col-acao"></th>
         </tr></thead>
-        <tbody>${linhas}</tbody></table></div>
+        <tbody>${/* html */ linhas}</tbody></table></div>
     </div>`;
   }).join("");
   cont.innerHTML = blocos;
@@ -3099,7 +3099,7 @@ function renderizarRefuradas(){
       <th>Nº</th><th>Bloco</th><th class="num">Ø</th><th class="num">Profund.</th>
       <th>Data</th><th>Observação</th><th class="col-acao"></th>
     </tr></thead>
-    <tbody>${linhas}</tbody></table></div>`;
+    <tbody>${/* html */ linhas}</tbody></table></div>`;
 
   cont.querySelectorAll(".btn-ref-substituir").forEach(b => {
     b.addEventListener("click", () => criarSubstitutaRefurada(b.dataset.id, b.dataset.num));
@@ -3205,9 +3205,9 @@ async function confirmarReconciliacao(){
       ? `<details style="margin-top:6px;font-size:var(--txt-xs);"><summary>Ver erros</summary><pre style="white-space:pre-wrap;">${esc(erros.slice(0,5).join("\n"))}</pre></details>`
       : `<div style="font-size:var(--txt-sm);margin-top:4px;color:var(--txt-sec);">As estacas previstas correspondentes foram marcadas como <strong>executada</strong> automaticamente.</div>`;
     const banner = `
-      <div style="background:${cor};border-left:4px solid ${borda};padding:14px 18px;margin-bottom:14px;border-radius:4px;">
+      <div style="background:${esc(cor)};border-left:4px solid ${borda};padding:14px 18px;margin-bottom:14px;border-radius:4px;">
         <div style="font-size:var(--txt-base);font-weight:600;color:var(--marca-900);">${icone} ${titulo}</div>
-        ${detalhe}
+        ${/* html */ detalhe}
       </div>`;
     cont.insertAdjacentHTML("afterbegin", banner);
   }
@@ -3443,7 +3443,7 @@ function estvRender(){
             ${opts ? `<optgroup label="Sugestões">${opts}</optgroup>` : ""}
             <option value="__outra">outra estaca do projeto…</option>
           </select>
-          ${top ? `<span class="rec-badge rec-badge-${ESTV_CONF[top.conf].nivel}" title="Confiança da melhor sugestão">${esc(ESTV_CONF[top.conf].lbl)}</span>` : `<span class="rec-badge rec-badge-zero">sem par</span>`}${seloTrav}${seloEmpate}${seloDesv}
+          ${top ? `<span class="rec-badge rec-badge-${esc(ESTV_CONF[top.conf].nivel)}" title="Confiança da melhor sugestão">${esc(ESTV_CONF[top.conf].lbl)}</span>` : `<span class="rec-badge rec-badge-zero">sem par</span>`}${seloTrav}${seloEmpate}${seloDesv}
         </div>`;
     }
     // lote S49 (#130): vinculada ganha "Trocar" (troca direta, sem desvincular antes)
@@ -3458,13 +3458,13 @@ function estvRender(){
       <td>${esc(estvMaquina(x))}</td>
       <td class="num">${metr ? num(metr) + " m" : "—"}${acum ? ` <span class="meta">(até ${num(acum)})</span>` : ""}</td>
       <td>${etapa}</td>
-      <td class="estv-col-vinc">${colVinculo}</td>
+      <td class="estv-col-vinc">${/* html */ colVinculo}</td>
       <td class="col-acao" style="white-space:nowrap;text-align:right;">${acoes}</td>
     </tr>`;
   }).join("");
   cont.innerHTML = ind + topo + `<div class="tabela-rola"><table>
     <thead><tr><th>Nome no campo</th><th>Data</th><th>Máquina</th><th class="num">Metragem</th><th title="Etapa final reconhecida (fase 94)">Etapa</th><th>Estaca do projeto · sugestão</th><th class="col-acao"></th></tr></thead>
-    <tbody>${linhas}</tbody></table></div>`;
+    <tbody>${/* html */ linhas}</tbody></table></div>`;
   Object.entries(preSel).forEach(([execId, estId]) => { const s = cont.querySelector(`.estv-sel[data-exec="${execId}"]`); if(s) s.value = estId; });
   estvLigar(cont);
 }
@@ -3623,7 +3623,7 @@ function ativarTabEstacaModal(nome){
   document.querySelectorAll("#est-modal-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.estTab === nome));
   document.querySelectorAll("#est-modal .odoo-tab[data-est-tab]").forEach(t => t.classList.toggle("ativa", t.dataset.estTab === nome));
 }
-function esthHora(ts){ return ts ? String(ts).slice(11, 16) : ""; }
+function esthHora(ts){ return ts ? esc(String(ts).slice(11, 16)) : ""; }
 function esthEtapaLbl(et){ return (typeof RDO_ETAPA_LBL !== "undefined" && RDO_ETAPA_LBL[et]) || et || ""; }
 async function esthCarregar(estacaId){
   _esthEstaca = _estacas.find(e => e.id === estacaId) || _esthEstaca;
@@ -3688,8 +3688,8 @@ function esthRender(){
   if(!_esthLinhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma execução de RDO vinculada a esta estaca ainda.</p>`; return; }
   const t = esthTotais(_esthLinhas);
   const ind = `<div class="indicadores" style="margin-bottom:12px;">
-    <div class="ind"><div class="num">${t.dias}</div><div class="rot">Dias de trabalho</div></div>
-    <div class="ind"><div class="num">${t.execs.length}</div><div class="rot">Execuções${t.refuros ? ` (${t.refuros} refuro)` : ""}</div></div>
+    <div class="ind"><div class="num">${esc(t.dias)}</div><div class="rot">Dias de trabalho</div></div>
+    <div class="ind"><div class="num">${t.execs.length}</div><div class="rot">Execuções${t.refuros ? ` (${esc(t.refuros)} refuro)` : ""}</div></div>
     <div class="ind"><div class="num">${num(t.metros)} m</div><div class="rot">Metros perfurados</div></div>
     <div class="ind"><div class="num">${t.acum ? num(t.acum) + " m" : "—"}</div><div class="rot">Profundidade atingida${e.profundidade_m != null ? ` · projeto ${num(e.profundidade_m)} m` : ""}</div></div>
   </div>`;
@@ -3709,13 +3709,13 @@ function esthRender(){
     </tr>`;
   }).join("");
   const tabFerr = Object.entries(t.porFerr).sort((a, b) => b[1] - a[1]).map(([k, m]) => `<tr><td>${esc(ESTH_FERR[k] || k)}</td><td class="num">${num(m)} m</td></tr>`).join("");
-  const tabEtapa = Object.entries(t.porEtapa).map(([k, v]) => `<tr><td>${esc(ESTH_ETAPA[k] || k)}</td><td class="num">${v.n}</td><td class="num">${v.m ? num(v.m) + " m" : "—"}</td></tr>`).join("");
+  const tabEtapa = Object.entries(t.porEtapa).map(([k, v]) => `<tr><td>${esc(ESTH_ETAPA[k] || k)}</td><td class="num">${esc(v.n)}</td><td class="num">${v.m ? num(v.m) + " m" : "—"}</td></tr>`).join("");
   const meds = t.meds.length
     ? t.meds.map(m => `<tr><td>${esc(m.medicao_numero || "—")}</td><td>${dataBR(m.data)}</td><td>${m.periodo_inicio ? `${dataBR(m.periodo_inicio)} – ${dataBR(m.periodo_fim)}` : ""}</td><td>${tagStatus("medicao", m.medicao_status)}</td><td class="meta">${esc(ESTH_VINC[m.vinculo_medicao] || m.vinculo_medicao || "")}</td></tr>`).join("")
     : `<tr><td colspan="5" class="vazio">Nenhuma medição cobre as execuções desta estaca (ou o seu perfil não lê medições).</td></tr>`;
   cont.innerHTML = ind + `<div class="tabela-rola" style="max-height:38vh;overflow-y:auto;"><table class="itens-tabela">
     <thead><tr><th>Data · horas</th><th>Máquina</th><th>Operador</th><th>Etapa</th><th class="num">De–até (m)</th><th>Ferramental</th><th>Pressão · consumos</th><th>Observação</th></tr></thead>
-    <tbody>${linhas}</tbody></table></div>
+    <tbody>${/* html */ linhas}</tbody></table></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
       <div><h4 class="titulo-linha" style="margin-bottom:4px;">Metros por ferramental</h4><table class="itens-tabela"><tbody>${tabFerr || '<tr><td class="vazio">Sem ferramental informado nas execuções</td></tr>'}</tbody></table></div>
       <div><h4 class="titulo-linha" style="margin-bottom:4px;">Execuções por etapa</h4><table class="itens-tabela"><thead><tr><th>Etapa</th><th class="num">Dias</th><th class="num">Metros</th></tr></thead><tbody>${tabEtapa}</tbody></table></div>
@@ -3749,12 +3749,12 @@ function esthExportarPDF(){
       <div style="font-size:9px;text-align:right;">CGL Fundações · emitido em ${dataBR(hojeISO())}</div>
     </div>
     <table style="width:100%;border-collapse:collapse;margin-bottom:8px;"><tr>
-      <td ${td}><b>Dias de trabalho</b><br>${t.dias}</td><td ${td}><b>Execuções</b><br>${t.execs.length}${t.refuros ? " (" + t.refuros + " refuro)" : ""}</td><td ${td}><b>Metros perfurados</b><br>${num(t.metros)} m</td><td ${td}><b>Profundidade atingida</b><br>${t.acum ? num(t.acum) + " m" : "—"}</td><td ${td}><b>Status</b><br>${esc((ESTACA_STATUS[e.status] || {}).label || e.status || "")}</td>
+      <td ${td}><b>Dias de trabalho</b><br>${esc(t.dias)}</td><td ${td}><b>Execuções</b><br>${t.execs.length}${t.refuros ? " (" + esc(t.refuros) + " refuro)" : ""}</td><td ${td}><b>Metros perfurados</b><br>${num(t.metros)} m</td><td ${td}><b>Profundidade atingida</b><br>${t.acum ? num(t.acum) + " m" : "—"}</td><td ${td}><b>Status</b><br>${esc((ESTACA_STATUS[e.status] || {}).label || e.status || "")}</td>
     </tr></table>
-    <table style="width:100%;border-collapse:collapse;"><thead><tr><th ${th}>Data · horas</th><th ${th}>Máquina</th><th ${th}>Operador</th><th ${th}>Etapa</th><th ${th}>De–até (m)</th><th ${th}>Ferramental</th><th ${th}>Pressão · consumos · observação</th></tr></thead><tbody>${linhas}</tbody></table>
+    <table style="width:100%;border-collapse:collapse;"><thead><tr><th ${th}>Data · horas</th><th ${th}>Máquina</th><th ${th}>Operador</th><th ${th}>Etapa</th><th ${th}>De–até (m)</th><th ${th}>Ferramental</th><th ${th}>Pressão · consumos · observação</th></tr></thead><tbody>${/* html */ linhas}</tbody></table>
     <div style="display:flex;gap:12px;margin-top:10px;">
       <table style="border-collapse:collapse;flex:1;"><thead><tr><th ${th} colspan="2">Metros por ferramental</th></tr></thead><tbody>${Object.entries(t.porFerr).sort((a, b) => b[1] - a[1]).map(([k, m]) => `<tr><td ${td}>${esc(ESTH_FERR[k] || k)}</td><td ${tdn}>${num(m)} m</td></tr>`).join("") || `<tr><td ${td} colspan="2">Sem ferramental informado</td></tr>`}</tbody></table>
-      <table style="border-collapse:collapse;flex:1;"><thead><tr><th ${th}>Etapa</th><th ${th}>Dias</th><th ${th}>Metros</th></tr></thead><tbody>${Object.entries(t.porEtapa).map(([k, v]) => `<tr><td ${td}>${esc(ESTH_ETAPA[k] || k)}</td><td ${tdn}>${v.n}</td><td ${tdn}>${v.m ? num(v.m) + " m" : "—"}</td></tr>`).join("")}</tbody></table>
+      <table style="border-collapse:collapse;flex:1;"><thead><tr><th ${th}>Etapa</th><th ${th}>Dias</th><th ${th}>Metros</th></tr></thead><tbody>${Object.entries(t.porEtapa).map(([k, v]) => `<tr><td ${td}>${esc(ESTH_ETAPA[k] || k)}</td><td ${tdn}>${esc(v.n)}</td><td ${tdn}>${v.m ? num(v.m) + " m" : "—"}</td></tr>`).join("")}</tbody></table>
     </div>
     ${t.meds.length ? `<table style="width:100%;border-collapse:collapse;margin-top:10px;"><thead><tr><th ${th}>Medição</th><th ${th}>Data</th><th ${th}>Período</th><th ${th}>Status</th><th ${th}>Vínculo</th></tr></thead><tbody>${t.meds.map(m => `<tr><td ${td}>${esc(m.medicao_numero || "")}</td><td ${td}>${dataBR(m.data)}</td><td ${td}>${m.periodo_inicio ? dataBR(m.periodo_inicio) + " – " + dataBR(m.periodo_fim) : ""}</td><td ${td}>${esc(m.medicao_status || "")}</td><td ${td}>${esc(ESTH_VINC[m.vinculo_medicao] || "")}</td></tr>`).join("")}</tbody></table>` : ""}
   </div>`;

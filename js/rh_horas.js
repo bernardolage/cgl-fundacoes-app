@@ -471,7 +471,7 @@ function renderRhhFechamento(){
   kpi("rhh-kpi-linhas", linhas.length); kpi("rhh-kpi-he", rhhHz(soma("horas_100"))); kpi("rhh-kpi-not", rhhHz(soma("horas_noturnas"))); kpi("rhh-kpi-viag", rhhHz(soma("horas_viagem"))); kpi("rhh-kpi-pend", _rhhPendMes);
   const { mesIni } = rhhPeriodo();
   const comp = new Date(mesIni + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  let html = _rhhPendMes ? `<div class="aviso atencao" style="display:block;">⚠️ ${_rhhPendMes} linha(s) da equipe do RDO de ${esc(comp)} ainda sem liberação não entram aqui nem em "Lançar na folha". Peça a liberação em "A liberar".</div>` : "";
+  let html = _rhhPendMes ? `<div class="aviso atencao" style="display:block;">⚠️ ${esc(_rhhPendMes)} linha(s) da equipe do RDO de ${esc(comp)} ainda sem liberação não entram aqui nem em "Lançar na folha". Peça a liberação em "A liberar".</div>` : "";
   if(!linhas.length){ cont.innerHTML = html + `<p class="vazio">Nenhuma hora liberada em ${esc(comp)}.</p>`; return; }
   html += `<div class="tabela-rola"><table><thead><tr><th>Funcionário</th><th>Matr.</th><th>Função</th><th>Obra</th><th title="Cadastro Nacional de Obras do cliente">CNO</th><th class="num" title="Dias no RDO da obra; Falta, Folga, DSR e Atestado não contam (fase 103)">Dias</th><th class="num">Normais</th><th class="num">HE 100 %</th><th class="num">Noturnas</th><th class="num">Viagem</th>${cols.map(c => `<th class="num" title="${esc(c.t)}">${esc(c.l)}</th>`).join("")}</tr></thead><tbody>`;
   let ultimo = null;
@@ -525,9 +525,9 @@ function rhhAlocFiltrada(){
 }
 function rhhDivergencias(r){
   const t = [];
-  if(Number(r.dias_duas_obras) > 0) t.push(`<span class="tag ambar" title="Dias do mês em que o funcionário aparece em diários de duas obras">${r.dias_duas_obras} dia(s) em 2 obras</span>`);
-  if(Number(r.dias_uteis_sem_diario) > 0) t.push(`<span class="tag cinza" title="Dias úteis entre o primeiro e o último diário do mês sem presença em nenhum diário">${r.dias_uteis_sem_diario} dia(s) útil(eis) sem diário</span>`);
-  return t.join(" ") || "—";
+  if(Number(r.dias_duas_obras) > 0) t.push(`<span class="tag ambar" title="Dias do mês em que o funcionário aparece em diários de duas obras">${esc(r.dias_duas_obras)} dia(s) em 2 obras</span>`);
+  if(Number(r.dias_uteis_sem_diario) > 0) t.push(`<span class="tag cinza" title="Dias úteis entre o primeiro e o último diário do mês sem presença em nenhum diário">${esc(r.dias_uteis_sem_diario)} dia(s) útil(eis) sem diário</span>`);
+  return /* html */ t.join(" ") || "—";
 }
 
 function renderRhhAlocacao(){
@@ -561,7 +561,7 @@ function renderRhhAlocacao(){
         <td>${podeConferir ? `<input type="checkbox" class="rhh-sel" data-k="${esc(k)}" data-fid="${esc(oid)}" ${_rhhSel.has(k) ? "checked" : ""} />` : ""}</td>
         <td><strong>${esc(r.funcionario)}</strong></td><td class="meta">${esc(r.matricula || "")}</td><td class="meta">${esc(r.funcao || "")}</td>
         <td>${esc(dataBR(r.primeiro_dia))}${r.ultimo_dia !== r.primeiro_dia ? " – " + esc(dataBR(r.ultimo_dia)) : ""}</td>
-        <td class="num">${r.dias}</td><td>${esc(r.equipamento_codigo || "—")}</td><td>${rhhDivergencias(r)}</td>
+        <td class="num">${esc(r.dias)}</td><td>${esc(r.equipamento_codigo || "—")}</td><td>${rhhDivergencias(r)}</td>
         <td>${r.conferido_em ? `<span class="tag verde" title="${esc(r.conferido_por_nome || "")}">conferida ${esc(dataBR(String(r.conferido_em).slice(0, 10)))}</span>` : '<span class="tag cinza">a conferir</span>'}</td></tr>`;
     });
   }

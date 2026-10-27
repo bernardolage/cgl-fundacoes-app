@@ -39,7 +39,7 @@ const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_
 function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "logistica", "almoxarife"].includes(usuarioAtual.cargo); }
 function fabEhDiretoria(){ return !!usuarioAtual && ["admin", "diretor"].includes(usuarioAtual.cargo); }
 function fabSt(st){ return st === "planejada" ? "rascunho" : st; }   // valor antigo do enum (fase 6) lido como rascunho
-function fabTag(st){ const o = FAB_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
+function fabTag(st){ const o = FAB_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function fabProdTxt(o){ return o.produto ? `${o.produto.codigo} — ${o.produto.nome}` : (o.descricao || "—"); }
 function fabProdLink(o){ return o.produto_id ? linkProduto(o.produto_id, fabProdTxt(o)) : esc(o.descricao || "—"); }
 function fabDestinoTxt(o){

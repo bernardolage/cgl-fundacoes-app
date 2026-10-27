@@ -45,7 +45,7 @@ function reqPodePedir(){
   return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","encarregado","engenheiro","assistente_engenharia","mecanico","operador","logistica","gestor_acessorios","financeiro","gestor_frota","gestor_manutencao"].includes(usuarioAtual.cargo);
 }
 function reqPodeDecidir(){ return typeof cmpPodeOperar === "function" && cmpPodeOperar(); }
-function reqTag(st){ const o = REQ_STATUS[st] || [st, "cinza"]; return `<span class="tag ${o[1]}">${esc(o[0])}</span>`; }
+function reqTag(st){ const o = REQ_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function reqDestino(r){
   if(r.centro_custo_id) return (typeof cmpCentro === "function" && cmpCentro(r.centro_custo_id)) || "Setor";   // fase 102
   return r.equipamento_id ? "TAG " + (cmpEq(r.equipamento_id) || "?") : r.obra_id ? (cmpObra(r.obra_id) || "obra") : "Estoque (reposição da base)";
@@ -111,7 +111,7 @@ async function renderRequisicoes(){
   _reqSel = new Set([..._reqSel].filter(id => _reqLista.some(r => r.id === id && r.status === "pendente")));
   $("cmp-contador").textContent = `${_reqLista.length} requisição(ões)`;
   const decide = reqPodeDecidir() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
-  const filtros = Object.entries(REQ_STATUS).map(([k, v]) => `<option value="${k}"${_reqFiltroSt === k ? " selected" : ""}>${esc(v[0])}</option>`).join("")
+  const filtros = Object.entries(REQ_STATUS).map(([k, v]) => `<option value="${esc(k)}"${_reqFiltroSt === k ? " selected" : ""}>${esc(v[0])}</option>`).join("")
     + `<option value="${REQ_FILTRO_CONFERIR}"${conferir ? " selected" : ""}>Aguardando a minha conferência</option>`;
   cont.innerHTML = `<div class="lista-topo compacta">
       <span class="meta">Quem precisa pede aqui. Aprovar consulta o estoque: o que tem saldo vira separação no almoxarifado e o resto vira pedido de compra. Quando o almoxarifado recebe, quem pediu confere.</span>
@@ -119,7 +119,7 @@ async function renderRequisicoes(){
       ${decide ? `<button type="button" class="btn-sec" id="btn-req-gerar" ${_reqSel.size ? "" : "disabled"} title="Tudo para compra, mesmo o que tem no estoque">🛒 Só compra (${_reqSel.size})</button>
         <button type="button" class="btn" id="btn-req-aprovar-sel" ${_reqSel.size ? "" : "disabled"}>✅ Aprovar ${_reqSel.size} selecionada(s)</button>` : ""}
     </div>
-    ${!_reqLista.length ? `<p class="vazio">${conferir ? "Nenhum recebimento esperando a sua conferência." : `Nenhuma requisição${_reqFiltroSt && REQ_STATUS[_reqFiltroSt] ? " " + REQ_STATUS[_reqFiltroSt][0].toLowerCase() : ""}. Use "+ Requisição" para pedir material ou serviço.`}</p>` : `<div class="tabela-rola"><table>
+    ${!_reqLista.length ? `<p class="vazio">${conferir ? "Nenhum recebimento esperando a sua conferência." : `Nenhuma requisição${_reqFiltroSt && REQ_STATUS[_reqFiltroSt] ? " " + esc(REQ_STATUS[_reqFiltroSt][0].toLowerCase()) : ""}. Use "+ Requisição" para pedir material ou serviço.`}</p>` : `<div class="tabela-rola"><table>
     <thead><tr>${decide ? "<th></th>" : ""}<th>Número</th><th>Data</th><th>Quem pediu</th><th>Destino do custo</th><th>Prioridade</th><th>Itens</th><th>Status</th><th>Separação / pedido</th></tr></thead>
     <tbody>${_reqLista.map(r => { const its = r.itens || []; const resumo = its.slice(0, 2).map(i => `${num(i.quantidade_solicitada)} ${esc(i.unidade || i.produto?.unidade || "un")} ${esc(reqItemNome(i))}`).join(" · ") + (its.length > 2 ? ` · +${its.length - 2}` : "");
       const dest = _reqDestinos[r.id] || [];
@@ -224,7 +224,7 @@ function reqRenderItens(){
   if(!_reqItens.length){ tb.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum item. Busque o produto acima ou adicione um item livre.</td></tr>`; return; }
   tb.innerHTML = _reqItens.map((it, idx) => `<tr data-idx="${idx}">
     <td>${it.produto_id ? `<strong>${esc(it.produto?.codigo || "")}</strong> ${esc(it.produto?.nome || it.descricao || "")}` : nova ? `<input type="text" data-f="descricao" value="${esc(it.descricao || "")}" placeholder="descrição do item ou serviço" style="min-width:260px;" />` : esc(it.descricao || "item")}</td>
-    <td class="num">${nova ? `<input type="number" data-f="quantidade_solicitada" value="${it.quantidade_solicitada ?? 1}" min="0" step="0.001" style="width:90px;text-align:right;" />` : num(it.quantidade_solicitada)}${!nova && it.quantidade_atendida ? ` <span class="meta">(atendido ${num(it.quantidade_atendida)})</span>` : ""}</td>
+    <td class="num">${nova ? `<input type="number" data-f="quantidade_solicitada" value="${esc(it.quantidade_solicitada ?? 1)}" min="0" step="0.001" style="width:90px;text-align:right;" />` : num(it.quantidade_solicitada)}${!nova && it.quantidade_atendida ? ` <span class="meta">(atendido ${num(it.quantidade_atendida)})</span>` : ""}</td>
     <td>${nova ? `<input type="text" data-f="unidade" value="${esc(it.unidade || it.produto?.unidade || "un")}" style="width:60px;" />` : esc(it.unidade || "un")}</td>
     <td>${reqItemDestinoTxt(it)}</td>
     <td class="col-acao">${nova ? `<button type="button" class="btn-sec btn-sm txt-perigo" data-rem="${idx}">×</button>` : ""}</td></tr>`).join("");

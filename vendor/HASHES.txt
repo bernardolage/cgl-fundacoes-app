@@ -1,0 +1,13 @@
+# Fase 99a (21/10/2026): bibliotecas de terceiros servidas pelo próprio Pages, sem CDN.
+# Formato do sha256sum. O publicar-app.sh confere (grep -v '^#' vendor/HASHES.txt | sha256sum -c) e aborta se não bater.
+# Trocar de versão = baixar o arquivo novo com a versão no nome, atualizar esta lista e o <script> do index.html.
+# Origem:
+#   supabase-js-2.118.0.min.js     https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js
+#                                  (o que o "@2" flutuante servia em 21/10/2026; hash igual ao publicado no npm)
+#   xlsx-0.20.3.full.min.js        https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js
+#                                  (troca a 0.18.5: corrige CVE-2023-30533 e CVE-2024-22363)
+#   html2pdf-0.10.1.bundle.min.js  https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js
+#                                  (hash igual ao publicado no npm)
+ee3be8de192b97cb1d73d1e95d6b82bb1f6b658c0f97c4ef757fc331996ed3d3  supabase-js-2.118.0.min.js
+cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41  xlsx-0.20.3.full.min.js
+85e6ee9ce246e3ae4424313f7e46a5ed860a28d757811de8dc9c43f306049d65  html2pdf-0.10.1.bundle.min.js

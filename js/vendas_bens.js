@@ -72,8 +72,8 @@ function vbPodeLer(e){
 
 /* ---------- utilidades ---------- */
 const vbR2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
-function vbTag(st){ const o = VB_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${o.cor}">${esc(o.label)}</span>`; }
-function vbTagParc(st){ const o = VB_PARC_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${o.cor}">${esc(o.label)}</span>`; }
+function vbTag(st){ const o = VB_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`; }
+function vbTagParc(st){ const o = VB_PARC_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`; }
 function vbPendTags(v, so){
   const lst = (v.pendencias || []).filter(p => !so || so.includes(p));
   return lst.map(p => `<span class="tag ${p === "sem_valor_aquisicao" || p === "sem_contrato" ? "cinza" : "ambar"}" title="pendência da venda">${esc(VB_PEND[p] || p)}</span>`).join(" ");
@@ -115,11 +115,11 @@ function vbPreencherFiltros(lista){
   const manter = (sel, html) => { if(!sel) return; const v = sel.value; sel.innerHTML = html; if([...sel.options].some(o => o.value === v)) sel.value = v; };
   const anos = [...new Set(lista.map(v => v.ano).filter(Boolean))].sort((a, b) => b - a);
   const semData = lista.some(v => !v.data_venda);
-  manter($("vb-f-ano"), `<option value="">Todos os anos</option>${anos.map(a => `<option value="${a}">${a}</option>`).join("")}${semData ? `<option value="sem_data">Sem data (a completar)</option>` : ""}`);
-  manter($("vb-f-status"), `<option value="">Status (menos canceladas)</option><option value="abertas">Em aberto (a receber)</option>${Object.entries(VB_STATUS).map(([k, o]) => `<option value="${k}">${esc(o.label)}</option>`).join("")}`);
+  manter($("vb-f-ano"), `<option value="">Todos os anos</option>${anos.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join("")}${semData ? `<option value="sem_data">Sem data (a completar)</option>` : ""}`);
+  manter($("vb-f-status"), `<option value="">Status (menos canceladas)</option><option value="abertas">Em aberto (a receber)</option>${Object.entries(VB_STATUS).map(([k, o]) => `<option value="${esc(k)}">${esc(o.label)}</option>`).join("")}`);
   const comps = [...new Set(lista.map(v => v.comprador).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   manter($("vb-f-comprador"), `<option value="">Todos os compradores</option>${comps.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}`);
-  manter($("vb-f-pend"), `<option value="">Pendência</option>${Object.entries(VB_PEND).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}`);
+  manter($("vb-f-pend"), `<option value="">Pendência</option>${Object.entries(VB_PEND).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("")}`);
 }
 function vbAplicarPreset(){
   if(!_vbPreset) return;
@@ -204,7 +204,7 @@ async function vbRenderPainel(){
       <td class="num">${brl(v.recebido)}</td>
       <td class="num">${v.saldo != null ? brl(v.saldo) : "—"}</td>
       <td>${v.proximo_vencimento ? dataBR(v.proximo_vencimento) : "—"}</td>
-      <td class="num">${Number(v.valor_vencido) > 0.009 ? `<span class="txt-perigo">${brl(v.valor_vencido)}</span> <span class="meta">${v.dias_atraso} d</span>` : "—"}</td>
+      <td class="num">${Number(v.valor_vencido) > 0.009 ? `<span class="txt-perigo">${brl(v.valor_vencido)}</span> <span class="meta">${esc(v.dias_atraso)} d</span>` : "—"}</td>
       <td>${vbTag(v.status)}</td>
       <td class="num">${v.resultado != null ? `<span class="${v.resultado < 0 ? "txt-perigo" : ""}">${brl(v.resultado)}</span>` : '<span class="meta" title="Informe o valor de aquisição do bem">sem aquisição</span>'}</td>
       <td>${vbPendTags(v, ["sem_comprador", "sem_valor", "sem_data", "sem_parcelas", "sem_contrato", "sem_transferencia"]) || '<span class="meta">—</span>'}</td>
@@ -328,7 +328,7 @@ async function vbRenderAba(e, contId){
 function vbHTMLVenda(v, parcelas, e){
   const podeReg = vbPodeRegistrar(e) && v.status !== "cancelada";
   const podeRec = vbPodeReceber() && v.status !== "cancelada";
-  const chip = (lbl, val, title, cls) => `<div class="chip${cls ? " " + cls : ""}"${title ? ` title="${esc(title)}"` : ""}><span>${lbl}</span><strong>${val}</strong></div>`;
+  const chip = (lbl, val, title, cls) => `<div class="chip${cls ? " " + esc(cls) : ""}"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
   const temRecebido = parcelas.some(p => Number(p.valor_recebido) > 0 || Number(p.encargos) > 0);
   const resultado = v.resultado != null
     ? `<span class="${v.resultado < 0 ? "txt-perigo" : ""}">${brl(v.resultado)}</span>`
@@ -346,12 +346,12 @@ function vbHTMLVenda(v, parcelas, e){
     ].filter(Boolean).join(" ");
     return `<tr>
       <td>${p.numero === 0 ? "Entrada" : esc(p.numero)}</td><td>${esc(p.descricao || "")}</td>
-      <td>${dataBR(p.vencimento)}${p.dias_atraso > 0 ? ` <span class="meta txt-perigo">${p.dias_atraso} d</span>` : ""}</td>
+      <td>${dataBR(p.vencimento)}${p.dias_atraso > 0 ? ` <span class="meta txt-perigo">${esc(p.dias_atraso)} d</span>` : ""}</td>
       <td class="num">${brl(p.valor)}</td><td class="num">${Number(p.valor_recebido) > 0 ? brl(p.valor_recebido) : "—"}</td>
       <td class="num">${Number(p.encargos) > 0 ? brl(p.encargos) : (p.encargo_sugerido ? `<span class="meta" title="encargo sugerido pelo contrato (multa + juros pro rata dia)">sug. ${brl(p.encargo_sugerido)}</span>` : "—")}</td>
       <td>${dataBR(p.recebido_em)}</td><td>${esc(VB_FORMAS_REC[p.forma_recebimento] || p.forma_recebimento || "—")}${p.banco ? ` · ${esc(p.banco)}` : ""}</td>
       <td>${vbTagParc(p.status)}</td><td class="meta">${esc(p.observacao || "")}${p.confirmado_por_nome ? `<div>${esc(p.confirmado_por_nome)}</div>` : ""}</td>
-      <td class="col-acao" style="white-space:nowrap;">${acoes}</td></tr>`;
+      <td class="col-acao" style="white-space:nowrap;">${/* html */ acoes}</td></tr>`;
   }).join("");
   const somaP = parcelas.reduce((s, p) => s + (Number(p.valor) || 0), 0);
   const difPlano = v.valor_venda != null && parcelas.length && Math.abs(vbR2(somaP) - vbR2(v.valor_venda)) > 0.01;
@@ -373,7 +373,7 @@ function vbHTMLVenda(v, parcelas, e){
       ${chip("Plano", esc(vbPlanoTxt(v)) + (v.valor_entrada > 0 ? ` <span class="meta">entrada ${brl(v.valor_entrada)}</span>` : ""))}
       ${chip("Recebido", brl(v.recebido) + (Number(v.encargos_recebidos) > 0 ? ` <span class="meta">+ ${brl(v.encargos_recebidos)} juros/multa</span>` : ""))}
       ${chip("Saldo", v.saldo != null ? `<span class="${Number(v.saldo) > 0.009 ? "txt-perigo" : ""}">${brl(v.saldo)}</span>` : "—")}
-      ${chip("Vencido", Number(v.valor_vencido) > 0.009 ? `<span class="txt-perigo">${brl(v.valor_vencido)}</span> <span class="meta">${v.dias_atraso} d</span>` : "—")}
+      ${chip("Vencido", Number(v.valor_vencido) > 0.009 ? `<span class="txt-perigo">${brl(v.valor_vencido)}</span> <span class="meta">${esc(v.dias_atraso)} d</span>` : "—")}
       ${chip("Próximo vencimento", v.proximo_vencimento ? dataBR(v.proximo_vencimento) : (v.status === "quitada" ? `quitada ${dataBR(v.quitada_em)}` : "—"))}
       ${chip("Resultado", resultado, "Valor da venda − valor de aquisição do bem (resultado simples, sem depreciação)", v.resultado == null ? "chip-aviso" : "")}
       ${chip("NF", v.nf_numero ? esc(v.nf_numero) + (v.nf_data ? ` <span class="meta">${dataBR(v.nf_data)}</span>` : "") : "—")}
@@ -478,11 +478,11 @@ function vbAbrirParcela(modo, p){
     const saldo = vbR2(Number(p.valor) - Number(p.valor_recebido));
     $("vb-parc-titulo").textContent = `Receber ${p.numero === 0 ? "a entrada" : "a parcela " + p.numero} · ${v.numero}`;
     $("vb-parc-info").innerHTML = `Vencimento ${dataBR(p.vencimento)} · valor ${brl(p.valor)}${Number(p.valor_recebido) > 0 ? ` · já recebido ${brl(p.valor_recebido)}` : ""} · saldo <strong>${brl(saldo)}</strong>`
-      + (p.encargo_sugerido ? `<br>Encargo sugerido pelo contrato: <strong>${brl(p.encargo_sugerido)}</strong> (${p.dias_atraso} dia(s) de atraso; multa ${num(v.multa_atraso_pct || 0)}% + juros ${num(v.juros_mora_pct || 0)}% a.m. pro rata). Confirme ou ajuste.` : "");
+      + (p.encargo_sugerido ? `<br>Encargo sugerido pelo contrato: <strong>${brl(p.encargo_sugerido)}</strong> (${esc(p.dias_atraso)} dia(s) de atraso; multa ${num(v.multa_atraso_pct || 0)}% + juros ${num(v.juros_mora_pct || 0)}% a.m. pro rata). Confirme ou ajuste.` : "");
     $("vb-pr-data").value = hojeISO();
     $("vb-pr-valor").value = saldo > 0 ? saldo.toFixed(2) : "";
     $("vb-pr-encargos").value = p.encargo_sugerido ? Number(p.encargo_sugerido).toFixed(2) : "";
-    $("vb-pr-forma").innerHTML = Object.entries(VB_FORMAS_REC).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("");
+    $("vb-pr-forma").innerHTML = Object.entries(VB_FORMAS_REC).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
     $("vb-pr-forma").value = p.forma_recebimento || "transferencia";
     $("vb-pr-banco").value = p.banco || "";
     $("vb-pr-obs").value = p.observacao || "";
@@ -577,7 +577,7 @@ async function vbAbrirRegistro(e, venda){
   $("vb-forma").value = v.forma || "a_vista";
   $("vb-n").value = v.n_parcelas ?? "";
   $("vb-venc").value = v.primeiro_vencimento || "";
-  $("vb-period").innerHTML = Object.entries(VB_PERIOD).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("");
+  $("vb-period").innerHTML = Object.entries(VB_PERIOD).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
   $("vb-period").value = v.periodicidade || "mensal";
   $("vb-intervalo").value = v.intervalo_dias ?? "";
   $("vb-juros").value = v.juros_mora_pct ?? "";

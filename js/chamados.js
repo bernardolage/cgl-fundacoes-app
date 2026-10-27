@@ -129,12 +129,12 @@ function chamDataHora(iso){
 }
 function chamTag(status){
   const st = CHAM_STATUS[status] || { label: status || "—", cor: "cinza" };
-  return `<span class="tag ${st.cor}">${esc(st.label)}</span>`;
+  return `<span class="tag ${esc(st.cor)}">${esc(st.label)}</span>`;
 }
 function chamTagPrioridade(p, longo){
   const o = CHAM_PRIORIDADE[p];
   if(!o) return '<span class="meta">—</span>';
-  return `<span class="tag ${o.cor}" title="${esc(o.label)}">${esc(longo ? o.label : "P" + p)}</span>`;
+  return `<span class="tag ${esc(o.cor)}" title="${esc(o.label)}">${esc(longo ? o.label : "P" + p)}</span>`;
 }
 // quem abriu / quem comentou: a rotina de triagem grava sem usuário (origem = 'triagem')
 function chamAutor(id, origem){ return !id && origem === "triagem" ? "Triagem automática" : chamNome(id); }
@@ -201,18 +201,18 @@ function preencherFiltrosChamados(){
       `<option value="minha_resposta">Esperando minha resposta</option>` +
       (chamPodeTriar() ? `<option value="atrasados">Esperando resposta, prazo vencido</option>` : "") +
       `<option value="resolvidos7">Resolvidos nos últimos 7 dias</option>` +
-      Object.entries(CHAM_STATUS).map(([v, o]) => `<option value="${v}">${esc(o.label)}</option>`).join("");
+      Object.entries(CHAM_STATUS).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
   }
   const fp = $("cham-f-prioridade");
   if(fp && fp.options.length <= 1){
     fp.innerHTML = `<option value="">Todas as prioridades</option>` +
-      Object.entries(CHAM_PRIORIDADE).map(([v, o]) => `<option value="${v}">${esc(o.label)}</option>`).join("") +
+      Object.entries(CHAM_PRIORIDADE).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("") +
       `<option value="sem">Sem prioridade (não triado)</option>`;
   }
   const fc = $("cham-f-categoria");
   if(fc && fc.options.length <= 1){
     fc.innerHTML = `<option value="">Todas as categorias</option>` +
-      Object.entries(CHAM_CATEGORIA).map(([v, o]) => `<option value="${v}">${esc(o.label)}</option>`).join("");
+      Object.entries(CHAM_CATEGORIA).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
   }
   const fo = $("cham-f-obra");
   if(fo){
@@ -335,7 +335,7 @@ function renderFichaChamado(erroComentarios){
     const atual = v === c.status;
     // gestão muda qualquer status; quem abriu só pode marcar como resolvido o próprio chamado
     const pode = !atual && (podeTriar || (ehAutor && v === "resolvido"));
-    return `<div class="stage${atual ? " atual" : ""}" data-status="${v}" ${pode ? "" : 'aria-disabled="true"'} title="${atual ? "Status atual" : pode ? "Mudar para " + esc(o.label) : "Só a diretoria muda este status"}">${esc(o.label)}</div>`;
+    return `<div class="stage${atual ? " atual" : ""}" data-status="${esc(v)}" ${pode ? "" : 'aria-disabled="true"'} title="${atual ? "Status atual" : pode ? "Mudar para " + esc(o.label) : "Só a diretoria muda este status"}">${esc(o.label)}</div>`;
   }).join("");
   const abreRegistro = c.registro_tipo && c.registro_id && CHAM_ABRIR_REGISTRO[c.registro_tipo];
   box.innerHTML = `
@@ -364,7 +364,7 @@ function renderFichaChamado(erroComentarios){
       <button type="button" class="btn-sec btn-sm btn-cham-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}" title="Baixar">⬇ ${esc(a.nome)}</button>
       <span class="meta">${esc(chamTamanho(a.tamanho_bytes))} · ${esc(chamNome(a.enviado_por))} · ${esc(chamDataHora(a.criado_em))}</span>
     </div>`).join("") : `<p class="vazio">Nenhum anexo visível. Os anexos só aparecem para quem enviou, para quem abriu o chamado e para a diretoria.</p>`}</div>
-    <div class="cham-anexo-novo"><input type="file" id="cham-anexo-novo" multiple accept="${CHAM_ANEXO_ACCEPT}" />
+    <div class="cham-anexo-novo"><input type="file" id="cham-anexo-novo" multiple accept="${esc(CHAM_ANEXO_ACCEPT)}" />
       <button type="button" class="btn-sec btn-sm" id="btn-cham-anexar">📎 Anexar ao chamado</button></div>
     <h4 class="titulo-bloco" style="margin-top:14px;">Andamento (${_chamComentarios.length})</h4>
     ${erroComentarios ? `<p class="vazio">Não foi possível ler os comentários: ${esc(erroComentarios)}</p>` : ""}
@@ -722,7 +722,7 @@ function abrirNovoChamado(ctx){
     <span class="chip">Quem: <strong>${esc(usuarioAtual.nome || "")}</strong></span>
     <span class="chip meta">${c.registro_tipo || c.obra_id ? "Contexto capturado da tela aberta — a triagem já sabe onde olhar." : "Abra pela tela do problema para o chamado sair com obra e registro."}</span>`;
   const selCat = $("chamn-categoria");
-  selCat.innerHTML = Object.entries(CHAM_CATEGORIA).map(([v, o]) => `<option value="${v}">${esc(o.label)}</option>`).join("");
+  selCat.innerHTML = Object.entries(CHAM_CATEGORIA).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
   selCat.value = "codigo";
   const selObra = $("chamn-obra");
   const obras = Object.entries(mapaObras).map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));

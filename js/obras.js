@@ -373,8 +373,8 @@ async function renderPendenciasContratoObra(contratoId){
     let txt = esc(p.detalhe || "");
     if(p.tipo === "saldo_negativo" && p.valor_impacto != null)
       txt += ` <strong>(excede ${brl(p.valor_impacto)} — abra um aditivo)</strong>`;
-    if(p.medicao_id) return `<li class="linha-clicavel" data-med="${esc(p.medicao_id)}" title="Abrir a medição"><span class="tag ${m.cor}">${esc(m.label)}</span> ${txt}</li>`;
-    return `<li><span class="tag ${m.cor}">${esc(m.label)}</span> ${txt}</li>`;
+    if(p.medicao_id) return `<li class="linha-clicavel" data-med="${esc(p.medicao_id)}" title="Abrir a medição"><span class="tag ${esc(m.cor)}">${esc(m.label)}</span> ${/* html */ txt}</li>`;
+    return `<li><span class="tag ${esc(m.cor)}">${esc(m.label)}</span> ${/* html */ txt}</li>`;
   }).join("");
   const grave = pend.some(p => (p.severidade || 9) === 1);
   box.innerHTML = `<div class="dist-aviso ${grave ? "alerta" : "neutro"}" style="margin-bottom:14px;">

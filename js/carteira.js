@@ -57,7 +57,7 @@ function brlInt(v){
 
 function cartTagPend(p, curta){
   const m = CART_PEND_META[p.tipo] || { label: p.tipo, curto: p.tipo, cor: "cinza" };
-  return `<span class="tag ${m.cor}" title="${esc(m.label)}: ${esc(p.detalhe || "")}">${esc(curta ? m.curto : m.label)}</span>`;
+  return `<span class="tag ${esc(m.cor)}" title="${esc(m.label)}: ${esc(p.detalhe || "")}">${esc(curta ? m.curto : m.label)}</span>`;
 }
 
 /* ---------- Carga ---------- */
@@ -95,7 +95,7 @@ function preencherFiltroTipoPend(){
   sel.innerHTML = `<option value="">Todos os tipos</option>` +
     Object.entries(CART_PEND_META)
       .filter(([t]) => porTipo[t])
-      .map(([t, m]) => `<option value="${t}">${esc(m.label)} (${porTipo[t]})</option>`).join("");
+      .map(([t, m]) => `<option value="${esc(t)}">${esc(m.label)} (${esc(porTipo[t])})</option>`).join("");
   sel.value = atual;
 }
 
@@ -199,7 +199,7 @@ function renderCartContratos(dados, pendMap){
       <th class="num">Original</th><th class="num" title="soma dos aditivos assinados">Aditivos ✓</th>
       <th class="num">Vigente</th><th>Pendências</th>
     </tr></thead>
-    <tbody>${linhas}</tbody></table></div>`;
+    <tbody>${/* html */ linhas}</tbody></table></div>`;
 
   cont.querySelectorAll("tr.linha-clicavel").forEach(tr => {
     tr.addEventListener("click", () => {
@@ -276,7 +276,7 @@ async function carregarDetalheCarteira(contratoId){
 
   const resumo = c ? `<p class="meta" style="margin:0 0 8px;">
       ${esc(c.descricao || "")}${c.descricao ? " · " : ""}valor exato vigente: <strong>${brl(c.valor_vigente)}</strong>
-      · ${c.qtd_obras || 0} obra(s)</p>` : "";
+      · ${esc(c.qtd_obras || 0)} obra(s)</p>` : "";
 
   cel.innerHTML = `${resumo}<div class="cart-detalhe">
     <div><h4>Obras (${det.obras.length})</h4>${blocoObras}</div>

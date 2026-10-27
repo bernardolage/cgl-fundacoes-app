@@ -114,7 +114,7 @@ function cmpEtapa(p){
   if(["aprovado","enviado","parcialmente_recebido"].includes(p.status)) return "aguardando_recebimento";
   return CMP_ETAPA[p.status] ? p.status : "cancelado";
 }
-function cmpEtapaTag(et){ const o = CMP_ETAPA[et] || {}; return `<span class="tag ${o.cor || "cinza"}">${esc(o.label || et)}</span>`; }
+function cmpEtapaTag(et){ const o = CMP_ETAPA[et] || {}; return `<span class="tag ${esc(o.cor || "cinza")}">${esc(o.label || et)}</span>`; }
 /* tag que vai ao lado do status na lista e no cartão: só o que o status não diz */
 function cmpEtapaExtra(p){
   const et = cmpEtapa(p), e = _cmpEtapaEsp[p.id];
@@ -149,7 +149,7 @@ function cmpForn(id){ const f = _cmpFornMap[id]; return f ? f.razao_social : "";
 function cmpObra(id){ const o = _cmpObraMap[id]; return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
 function cmpEq(id){ const e = _cmpEqMap[id]; return e ? e.codigo + (e.nome ? " · " + e.nome : "") : ""; }
 function cmpCentro(id){ const c = _cmpCentroMap[id]; return c ? `${CMP_CENTRO_TIPO[c.tipo] || c.tipo}: ${c.nome}` : ""; }
-function cmpTag(st){ const o = CMP_STATUS[st] || {}; return `<span class="tag ${o.cor || "cinza"}">${esc(o.label || st)}</span>`; }
+function cmpTag(st){ const o = CMP_STATUS[st] || {}; return `<span class="tag ${esc(o.cor || "cinza")}">${esc(o.label || st)}</span>`; }
 /* destino de um ITEM (pedido ou recebimento). O do pedido inteiro (lista, ordenação) é cmpDestinoPedidoTxt. */
 function cmpDestinoTxt(it){
   if(it.destino === "obra") return "Obra: " + (cmpObra(it.obra_id) || "?");
@@ -213,7 +213,7 @@ function cmpNatPadrao(tipo, catCusto){
   }
   return null;
 }
-function cmpMetodoOptions(sel){ return `<option value="">— método —</option>` + Object.entries(CMP_METODO_LBL).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
+function cmpMetodoOptions(sel){ return `<option value="">— método —</option>` + Object.entries(CMP_METODO_LBL).map(([k, v]) => `<option value="${esc(k)}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
 /* método padrão da obra: o tipo de serviço dela (RDO, estacas, mobilização); só quando há um tipo só */
 async function cmpMetodoDaObra(obraId){
   if(!obraId) return null;
@@ -240,7 +240,7 @@ function cmpDestinoDoValor(v){
 function cmpCentroOptions(ph, soAtivos){
   const lst = _cmpCentros.filter(c => !soAtivos || c.ativo);
   const grupo = t => lst.filter(c => c.tipo === t).map(c => `<option value="${esc(c.id)}">${esc(c.nome)}${c.ativo ? "" : " (inativo)"}</option>`).join("");
-  return `<option value="">${ph}</option><optgroup label="Setores">${grupo("setor")}</optgroup><optgroup label="Obras internas">${grupo("obra_interna")}</optgroup>`;
+  return `<option value="">${esc(ph)}</option><optgroup label="Setores">${grupo("setor")}</optgroup><optgroup label="Obras internas">${grupo("obra_interna")}</optgroup>`;
 }
 /* lote S54 (#171): obras abertas num optgroup + "Concluídas" no fim (NF que chega depois do fim da obra tem onde cair;
    pedido antigo cuja obra foi concluída não perde o destino ao ser editado). Canceladas ficam fora. val(o) = valor da
@@ -252,18 +252,18 @@ function cmpObraOptgroups(sel, val, rot, rotuloAbertas){
 }
 function cmpDestinoOptions(sel){
   const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => `Obra: ${o.codigo} — ${o.nome}`, "Aplicação direta na obra");
-  const eqs = _cmpEquips.map(e => `<option value="eq:${e.id}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
-  const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${c.id}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
+  const eqs = _cmpEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
+  const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
   return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Reposição de estoque (almoxarifado)</option>${obras}<optgroup label="Aplicação direta na TAG">${eqs}</optgroup><optgroup label="Aplicação direta no setor / obra interna">${centros}</optgroup>`;
 }
 /* fase 108b: destino de item de aplicação direta (sem a opção do estoque; vazio = falta escolher) */
 function cmpDestinoDiretoOptions(sel){
   const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => `${o.codigo} — ${o.nome}`, "Obra");
-  const eqs = _cmpEquips.map(e => `<option value="eq:${e.id}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
-  const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${c.id}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
+  const eqs = _cmpEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
+  const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
   return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou centro —</option>${obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>`;
 }
-function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
+function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${esc(k)}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
 /* ---------- lote S54 (#170): unidade na linha do pedido ----------
    Select com as UNIDADES de core.js (catálogo e item livre), a unidade do produto como padrão e "≠" quando a linha difere
    dela; valor fora da lista continua como "(antiga)"; a última opção abre um chamado pedindo a unidade nova (o enum
@@ -338,7 +338,7 @@ function cmpAnxPreparar(novo){
   $("cmp-anx-envio").style.display = pode ? "" : "none";
   const fin = cmpPodeAnexoFinanceiro();
   $("cmp-anx-tipo").innerHTML = Object.entries(CMP_ANX_TIPO).filter(([k]) => fin || !CMP_ANX_FINANCEIRO.includes(k))
-    .map(([k, v]) => `<option value="${k}"${k === (fin ? "boleto" : "orcamento") ? " selected" : ""}>${esc(v[0])}</option>`).join("");
+    .map(([k, v]) => `<option value="${esc(k)}"${k === (fin ? "boleto" : "orcamento") ? " selected" : ""}>${esc(v[0])}</option>`).join("");
   $("cmp-anx-regra").textContent = fin ? "Boleto, nota fiscal e fatura ficam visíveis só para quem acessa Contas a pagar; orçamento e outro, para quem acessa Compras."
     : "Seu perfil anexa orçamento e outros documentos. Boleto, nota fiscal e fatura são do comprador e do financeiro.";
   $("cmp-anx-arquivo").value = "";
@@ -544,7 +544,7 @@ async function cmpCarregarSync(){
     : `<span title="a tarefa agendada CGL Odoo sync não rodou; até o corte do Odoo a rodada é manual">tarefa parada</span>`;
   el.innerHTML = `<span class="tag ${ruim ? "vermelho" : "verde"}">Odoo</span> `
     + (ruim
-      ? `<strong class="txt-perigo">sem sincronizar${fimBoa ? ` desde ${dd} ${hh}` : " (nenhuma rodada de pedidos concluída)"}</strong> · ${motivo}`
+      ? `<strong class="txt-perigo">sem sincronizar${fimBoa ? ` desde ${esc(dd)} ${esc(hh)}` : " (nenhuma rodada de pedidos concluída)"}</strong> · ${motivo}`
       : `sincronizado às ${hh} de ${dd}`)
     + (partes.length ? " · " + esc(partes.join(" · ")) : "");
   el.style.display = "";
@@ -712,19 +712,19 @@ async function cmpBuscar(){
   renderCompras();
 }
 function cmpPreencherSelectsFixos(){
-  const fornOpts = ph => `<option value="">${ph}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
-  const obraOpts = ph => `<option value="">${ph}</option>` + cmpObraOptgroups("", o => o.id, o => `${o.codigo} — ${o.nome}`, "Obras");   // lote S54 (#171): + grupo Concluídas
-  const eqOpts = ph => `<option value="">${ph}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
+  const fornOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
+  const obraOpts = ph => `<option value="">${esc(ph)}</option>` + cmpObraOptgroups("", o => o.id, o => `${o.codigo} — ${o.nome}`, "Obras");   // lote S54 (#171): + grupo Concluídas
+  const eqOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
   set("cmp-forn", fornOpts("— escolha o fornecedor —")); set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
   set("cmp-cot-forn", fornOpts("— fornecedor da cotação —"));   // fase 102
-  set("cmp-f-etapa", `<option value="">Etapa</option>` + Object.entries(CMP_ETAPA).filter(([k]) => k !== "cancelado").map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("")
+  set("cmp-f-etapa", `<option value="">Etapa</option>` + Object.entries(CMP_ETAPA).filter(([k]) => k !== "cancelado").map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join("")
     + `<option value="_atrasado">Recebimento atrasado</option>`);   // fase 102
   set("cmp-obra", obraOpts("— nenhuma —")); set("cmp-f-obra", obraOpts("Obra")); set("cmp-av-obra", obraOpts("— nenhuma —"));
   set("cmp-equip", eqOpts("— nenhuma —")); set("cmp-f-equip", eqOpts("TAG")); set("cmp-av-equip", eqOpts("— nenhuma —"));
   set("cmp-centro", cmpCentroOptions("— nenhum —", true)); set("cmp-av-centro", cmpCentroOptions("— nenhum —", true));
   set("cmp-resp-receb", `<option value="">— o solicitante —</option>` + _cmpPerfis.map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join(""));
-  const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
+  const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
   const ac = $("cmp-av-cat"); if(ac) ac.innerHTML = cmpCatOptions("outro");
   ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-f-forn", "cmp-cot-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53); S45: filtro do painel; fase 102: cotação
 }
@@ -839,7 +839,7 @@ function renderComprasKanban(dados){
   const cols = CMP_STAGES.concat(dados.some(p => p.status === "cancelado") ? ["cancelado"] : []);
   $("cmp-conteudo").innerHTML = `<div class="serv-kanban">${cols.map(st => {
     const its = dados.filter(p => p.status === st);
-    return `<div class="serv-kan-col" data-status="${st}"><div class="serv-kan-col-head">${cmpTag(st)} <span class="contador">${its.length}</span>${its.length ? ` <span class="meta">${brl(its.reduce((s, p) => s + Number(p.total || 0), 0))}</span>` : ""}</div>
+    return `<div class="serv-kan-col" data-status="${esc(st)}"><div class="serv-kan-col-head">${cmpTag(st)} <span class="contador">${its.length}</span>${its.length ? ` <span class="meta">${brl(its.reduce((s, p) => s + Number(p.total || 0), 0))}</span>` : ""}</div>
       ${its.map(cmpCardHTML).join("") || `<p class="vazio">—</p>`}</div>`; }).join("")}</div>`;
 }
 /* lote S49 (#132, Fabrício): a lista de pedidos ordena pelo cabeçalho (ordenarTabela do core.js, o mesmo da lista de
@@ -888,7 +888,7 @@ async function renderRecebimentos(){
   const stTag = s => s === "confirmado" ? '<span class="tag verde">Confirmado</span>' : s === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>';
   cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>NF</th><th>Fornecedor</th><th>Pedido</th><th class="num">Itens</th><th>Tipo de compra</th><th class="num">Total</th><th>Status</th></tr></thead>
     <tbody>${data.map(r => { const it = r.itens || []; const d = [...new Set(it.map(i => i.destino === "estoque" ? "reposição" : "aplicação direta"))].sort().reverse().join(" + ");   // fase 108b
-      return `<tr class="linha-clicavel" data-pedido="${esc(r.pedido ? r.pedido.numero : "")}"><td>${dataBR(r.data_recebimento)}</td><td><strong>${esc(r.nf_numero || "—")}</strong>${r.nf_serie ? "/" + esc(r.nf_serie) : ""}${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${CMP_REC_TIPO[r.tipo][1]}">${CMP_REC_TIPO[r.tipo][0]}</span>` : ""}</td>
+      return `<tr class="linha-clicavel" data-pedido="${esc(r.pedido ? r.pedido.numero : "")}"><td>${dataBR(r.data_recebimento)}</td><td><strong>${esc(r.nf_numero || "—")}</strong>${r.nf_serie ? "/" + esc(r.nf_serie) : ""}${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}</td>
       <td>${esc(cmpForn(r.fornecedor_id) || "—")}</td><td>${r.pedido ? esc(r.pedido.numero) : '<span class="meta">sem pedido</span>'}</td><td class="num">${it.length}</td><td class="meta">${esc(d)}</td><td class="num">${brl(r.total_nf)}</td><td>${stTag(r.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
 }
 
@@ -899,7 +899,7 @@ async function renderRecebimentos(){
 function cmpPodeEditarNaturezas(){ return !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo); }
 function cmpPodeVerNaturezas(){ return cmpPodeEditarNaturezas() || (!!usuarioAtual && usuarioAtual.cargo === "auditor"); }
 function cmpTipoPadraoOptions(sel){
-  return `<option value="">— sem padrão —</option>` + Object.entries(CMP_TIPO_LBL).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join("");
+  return `<option value="">— sem padrão —</option>` + Object.entries(CMP_TIPO_LBL).map(([k, v]) => `<option value="${esc(k)}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join("");
 }
 function renderNaturezas(){
   const cont = $("cmp-conteudo");
@@ -907,7 +907,7 @@ function renderNaturezas(){
   const ed = cmpPodeEditarNaturezas() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
   const dis = ed ? "" : " disabled";
   $("cmp-contador").textContent = `${_cmpNaturezas.length} natureza(s) · ${_cmpNaturezas.filter(n => n.ativo).length} ativa(s)`;
-  const catOpts = sel => `<option value="">—</option>` + Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join("");
+  const catOpts = sel => `<option value="">—</option>` + Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${esc(k)}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join("");
   cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Natureza do gasto: o 2º eixo da distribuição de cada item de compra (o 1º é o destino; o 3º, o método). O código segue o plano analítico do Odoo (ex.: 2.06.003); a categoria de custo continua como agrupador dos relatórios; o tipo padrão sugere o tipo de compra da linha.</p>
     <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:110px;">Código</th><th>Nome</th><th style="width:160px;">Categoria de custo</th><th style="width:180px;">Tipo de compra padrão</th><th style="width:60px;">Ativa</th><th>Nome no Odoo</th></tr></thead>
     <tbody>${_cmpNaturezas.map(n => `<tr data-nat="${esc(n.id)}">
@@ -1234,7 +1234,7 @@ async function cmpCarregarFilhas(id){
   const recs = rec.data || [], tits = tit.data || [];
   setSb("sb-cmp-rec", recs.length); setSb("sb-cmp-tit", tits.length);
   $("cmp-rec-lista").innerHTML = rec.error ? `<p class="vazio">Erro: ${esc(rec.error.message)}</p>` : !recs.length ? `<p class="vazio">Nenhum recebimento. Use "Receber NF" quando a mercadoria chegar.</p>` :
-    recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${CMP_REC_TIPO[r.tipo][1]}">${CMP_REC_TIPO[r.tipo][0]}</span>` : ""}</h3>
+    recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}</h3>
       <span style="margin-left:auto;">${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
       <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${brl(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table>
       ${r.observacoes ? `<p class="meta" style="margin:6px 0 0;">${esc(r.observacoes)}</p>` : ""}
@@ -1243,7 +1243,7 @@ async function cmpCarregarFilhas(id){
   $("cmp-rec-lista").querySelectorAll(".cmp-anexo").forEach(a => a.addEventListener("click", e => { e.preventDefault(); cmpAbrirAnexo(a.dataset.path, a.dataset.nome); }));
   cmpAtualizarChipFinanceiro(recs, tit.error ? [] : tits);   // fase 102
   $("cmp-tit-lista").innerHTML = !podeVerContasPagar() ? `<p class="vazio">Os títulos deste pedido ficam em Contratos & Contas a pagar; seu perfil não tem acesso a esse módulo.</p>` : tit.error ? `<p class="vazio">Erro: ${esc(tit.error.message)}</p>` : !tits.length ? `<p class="vazio">Nenhum título. Eles nascem no recebimento da NF quando há vencimento informado.</p>` :
-    `<div class="tabela-rola"><table><thead><tr><th>Vencimento</th><th>NF</th><th>Parcela</th><th class="num">Valor</th><th>Exportado ao financeiro</th></tr></thead><tbody>${tits.map(t => `<tr><td><strong>${dataBR(t.vencimento)}</strong></td><td>${esc(t.nf_numero || "—")}</td><td>${t.parcela}/${t.total_parcelas}</td><td class="num">${brl(t.valor)}</td><td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody></table></div>`;
+    `<div class="tabela-rola"><table><thead><tr><th>Vencimento</th><th>NF</th><th>Parcela</th><th class="num">Valor</th><th>Exportado ao financeiro</th></tr></thead><tbody>${tits.map(t => `<tr><td><strong>${dataBR(t.vencimento)}</strong></td><td>${esc(t.nf_numero || "—")}</td><td>${esc(t.parcela)}/${esc(t.total_parcelas)}</td><td class="num">${brl(t.valor)}</td><td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 /* fase 102: linha da conferência no cartão do recebimento */
@@ -2006,7 +2006,7 @@ function cmpRecTipoDestinoCel(it){
 }
 function cmpRiBadge(it){
   const m = { codigo: ["casado por código", "verde"], ean: ["casado por EAN", "verde"], pedido: ["do pedido", "azul"], manual: ["casado à mão", "verde"] };
-  if(it.casamento && m[it.casamento]) return ` <span class="tag ${m[it.casamento][1]} cmp-ri-badge">${m[it.casamento][0]}</span>`;
+  if(it.casamento && m[it.casamento]) return ` <span class="tag ${esc(m[it.casamento][1])} cmp-ri-badge">${esc(m[it.casamento][0])}</span>`;
   if(it.produto_id) return "";
   return ` <span class="tag ambar cmp-ri-badge">sem produto</span>`;
 }
@@ -2322,7 +2322,7 @@ async function cmpImportarXml(file){
   const casados = _cmpRec.itens.filter(i => i.produto_id).length, semProd = _cmpRec.itens.length - casados;
   const somaItens = _cmpRec.itens.reduce((s, i) => s + i.quantidade_nf * i.valor_unitario_nf, 0);
   const dif = nf.totais.vNF - somaItens - (nf.totais.vFrete || 0);
-  info.innerHTML = `✔ NF <strong>${esc(nf.numero)}</strong> de <strong>${esc(nf.emit.nome)}</strong> (${esc(nf.emit.cnpj)}) · ${nf.itens.length} item(ns): ${casados} casado(s) com o catálogo${semProd ? `, <strong>${semProd} para casar</strong> (ou mandar como aplicação direta)` : ""}`
+  info.innerHTML = `✔ NF <strong>${esc(nf.numero)}</strong> de <strong>${esc(nf.emit.nome)}</strong> (${esc(nf.emit.cnpj)}) · ${nf.itens.length} item(ns): ${casados} casado(s) com o catálogo${semProd ? `, <strong>${esc(semProd)} para casar</strong> (ou mandar como aplicação direta)` : ""}`
     + (nf.duplicatas.length ? ` · ${nf.duplicatas.length} duplicata(s)` : " · sem duplicatas no XML: informe o vencimento")
     + (naoVieram ? ` · ${naoVieram} item(ns) do pedido não vieram nesta nota (ficam pendentes)` : "")
     + (Math.abs(dif) >= 0.05 ? ` · total da NF ${brl(nf.totais.vNF)} difere dos itens + frete em ${brl(dif)} (IPI/ST/desconto)` : "")
@@ -2399,12 +2399,12 @@ async function custosRender(containerId, filtro, cbTotal){
   c.innerHTML = `
     <div class="lista-topo compacta"><h3>Custos <span class="meta">${linhas.length} lançamento(s)</span></h3>
       <strong style="margin-left:auto;">Total ${brl(total)}</strong>
-      ${pode ? `<button type="button" class="btn-sec btn-sm" id="${containerId}-av">＋ Custo avulso</button>` : ""}
-      ${linhas.length ? `<button type="button" class="btn-sec btn-sm" id="${containerId}-xls">📊 Excel</button>` : ""}
+      ${pode ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-av">＋ Custo avulso</button>` : ""}
+      ${linhas.length ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-xls">📊 Excel</button>` : ""}
     </div>
     ${linhas.length ? `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Por categoria</div>${Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="custos-linha"><span>${esc(CMP_CAT_LBL[k] || k)}</span><strong>${brl(v)}</strong></div>`).join("")}</div>
-      <div><div class="mov-ace-sug-grupo-t">Por mês</div>${meses.map(m => `<div class="custos-linha"><span>${m.slice(5, 7)}/${m.slice(0, 4)}</span><strong>${brl(porMes[m])}</strong></div>`).join("")}</div>
+      <div><div class="mov-ace-sug-grupo-t">Por mês</div>${meses.map(m => `<div class="custos-linha"><span>${esc(m.slice(5, 7))}/${esc(m.slice(0, 4))}</span><strong>${brl(porMes[m])}</strong></div>`).join("")}</div>
     </div>
     <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Categoria</th><th>Descrição</th><th>${filtro.equipamento_id ? "Obra" : filtro.centro_custo_id ? "Obra / TAG" : "TAG"}</th><th>Fornecedor</th><th>Doc.</th><th class="num">Valor</th></tr></thead>
       <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : l.origem === "combustivel" ? "ambar" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}</span></td>
@@ -2437,7 +2437,7 @@ async function cmpPdfPedido(){
       <div style="text-align:right;"><div style="font-size:16px;font-weight:700;">PEDIDO DE COMPRA ${esc(p.numero)}</div><div>Data: ${dataBR(p.data_pedido)}</div>${p.previsao_entrega ? `<div>Entrega prevista: ${dataBR(p.previsao_entrega)}</div>` : ""}</div>
     </div>
     <table style="width:100%;margin:10px 0;font-size:12px;"><tr>
-      <td style="vertical-align:top;width:50%;"><strong>Fornecedor</strong><br>${esc(f.razao_social || "")}<br>${f.cpf_cnpj ? "CNPJ/CPF: " + esc(f.cpf_cnpj) + "<br>" : ""}${[f.cidade, f.uf].filter(Boolean).join("/")}<br>${esc(f.telefone || "")} ${esc(f.email || "")}</td>
+      <td style="vertical-align:top;width:50%;"><strong>Fornecedor</strong><br>${esc(f.razao_social || "")}<br>${f.cpf_cnpj ? "CNPJ/CPF: " + esc(f.cpf_cnpj) + "<br>" : ""}${esc([f.cidade, f.uf].filter(Boolean).join("/"))}<br>${esc(f.telefone || "")} ${esc(f.email || "")}</td>
       <td style="vertical-align:top;"><strong>Entrega</strong><br>${p.local_entrega === "obra" ? "Direto na obra: " + esc(cmpObra(p.obra_id)) : "Base CGL — Itabira/MG"}${p.equipamento_id ? "<br>Equipamento: TAG " + esc(cmpEq(p.equipamento_id)) : ""}<br><strong>Condição de pagamento:</strong> ${esc(p.condicao_pagamento || "a combinar")}</td>
     </tr></table>
     <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
@@ -2453,7 +2453,7 @@ async function cmpPdfPedido(){
   const wrap = document.createElement("div"); wrap.innerHTML = html;
   if(typeof html2pdf === "undefined"){
     const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }
-    w.document.write(`<html><head><title>${esc(p.numero)}</title><style>@page { size: A4; margin: 14mm; }</style></head><body>${html}</body></html>`); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); return;
+    w.document.write(`<html><head><title>${esc(p.numero)}</title><style>@page { size: A4; margin: 14mm; }</style></head><body>${/* html */ html}</body></html>`); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); return;
   }
   try {
     await pdfGerar(wrap, { filename: `Pedido_${p.numero}.pdf`, largura: 182, topo: 14 });

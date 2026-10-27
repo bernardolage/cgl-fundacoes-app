@@ -115,8 +115,8 @@ function aceDataISOparaTS(d){ return d ? new Date(d + "T12:00:00").toISOString()
 function aceQuando(iso){
   if(!iso) return "—";
   const d = new Date(iso); if(isNaN(d)) return "—";
-  const p = n => String(n).padStart(2, "0");
-  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  const p = n => esc(String(n).padStart(2, "0"));
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${esc(d.getFullYear())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function aceOrdMarc(a, b){ return String(a.marcacao).localeCompare(String(b.marcacao), "pt-BR", { numeric: true }); }
 function aceChaveFamilia(){ return "ace_familia_" + (usuarioAtual?.id || "anon"); }
@@ -238,20 +238,20 @@ async function aceRefetch(ids){
 }
 
 function acePreencherSelectsFixos(){
-  const optEq = `<option value="">— nenhum —</option>` + _aceEquips.map(e => `<option value="${e.id}">${esc(e.codigo)}${e.nome ? " · " + esc(e.nome) : ""}</option>`).join("");
+  const optEq = `<option value="">— nenhum —</option>` + _aceEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)}${e.nome ? " · " + esc(e.nome) : ""}</option>`).join("");
   ["ace-padrao","ace-mv-equip"].forEach(id => { const el = $(id); if(el) el.innerHTML = optEq; });
-  const comp = $("ace-compat"); if(comp) comp.innerHTML = _aceEquips.map(e => `<option value="${e.id}">${esc(e.codigo)}${e.nome ? " · " + esc(e.nome) : ""}</option>`).join("");
+  const comp = $("ace-compat"); if(comp) comp.innerHTML = _aceEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)}${e.nome ? " · " + esc(e.nome) : ""}</option>`).join("");
   const obras = Object.entries(typeof mapaObras === "object" && mapaObras ? mapaObras : {}).sort((a, b) => String(b[1]).localeCompare(String(a[1]), "pt-BR"));
-  const optObra = `<option value="">— selecione —</option>` + obras.map(([id, rot]) => `<option value="${id}">${esc(rot)}</option>`).join("");
+  const optObra = `<option value="">— selecione —</option>` + obras.map(([id, rot]) => `<option value="${esc(id)}">${esc(rot)}</option>`).join("");
   const mo = $("ace-mv-obra"); if(mo) mo.innerHTML = optObra;
-  const optForn = `<option value="">— selecione —</option>` + _aceForns.map(f => `<option value="${f.id}">${esc(f.razao_social)}</option>`).join("");
+  const optForn = `<option value="">— selecione —</option>` + _aceForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}</option>`).join("");
   ["ace-mv-forn","ace-rp-forn"].forEach(id => { const el = $(id); if(el) el.innerHTML = optForn; });
-  const fam = Object.entries(ACE_FAMILIA_LBL).map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  const fam = Object.entries(ACE_FAMILIA_LBL).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   ["ace-familia","ace-md-familia"].forEach(id => { const el = $(id); if(el) el.innerHTML = fam; });
-  const ac = $("ace-acopl"); if(ac) ac.innerHTML = `<option value="">—</option>` + Object.entries(ACE_ACOPL_LBL).map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
-  const mv = $("ace-mv-tipo"); if(mv) mv.innerHTML = ACE_LOCAIS_MOVER.map(v => `<option value="${v}">${esc(aceLbl("acessorio_local", v))}</option>`).join("");
+  const ac = $("ace-acopl"); if(ac) ac.innerHTML = `<option value="">—</option>` + Object.entries(ACE_ACOPL_LBL).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  const mv = $("ace-mv-tipo"); if(mv) mv.innerHTML = ACE_LOCAIS_MOVER.map(v => `<option value="${esc(v)}">${esc(aceLbl("acessorio_local", v))}</option>`).join("");
   const cd = $("ace-cd-cond"); if(cd) cd.innerHTML = opcoesStatus("acessorio");
-  const rt = $("ace-rp-tipo"); if(rt) rt.innerHTML = Object.entries(ACE_REPARO_TIPOS).map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  const rt = $("ace-rp-tipo"); if(rt) rt.innerHTML = Object.entries(ACE_REPARO_TIPOS).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   const fc = $("ace-f-condicao"); if(fc) fc.innerHTML = `<option value="">Condição</option>` + opcoesStatus("acessorio");
   const fl = $("ace-f-local"); if(fl) fl.innerHTML = `<option value="">Onde está</option>` + opcoesStatus("acessorio_local");
   const grupos = [...new Set(_aceModelos.map(m => m.grupo_contagem).filter(Boolean))].sort();
@@ -366,7 +366,7 @@ function aceRenderKpis(){
   }
 }
 
-function aceCondCor(c){ return (STATUS.acessorio[c] || {}).cor || "cinza"; }
+function aceCondCor(c){ return esc((STATUS.acessorio[c] || {}).cor || "cinza"); }
 
 function renderAcessoriosKanban(dados){
   const cont = $("ace-conteudo");
@@ -382,9 +382,9 @@ function renderAcessoriosKanban(dados){
     const cards = [...grupos.values()].sort((x, y) => aceDescr(x[0]).localeCompare(aceDescr(y[0]), "pt-BR", { numeric: true })).map(g => {
       const ids = g.map(a => a.id);
       const todosSel = ids.every(id => _aceSel.has(id));
-      const pills = g.sort(aceOrdMarc).map(a => `<span class="tag ${aceCondCor(a.condicao)} ace-pill" data-id="${a.id}" title="${esc(aceDescr(a))} · ${esc(aceLbl("acessorio", a.condicao))}${a.jogo ? " · jogo " + esc(a.jogo) : ""}\nClique: abrir · Ctrl+clique: selecionar" style="cursor:pointer;margin:2px 3px 2px 0;${_aceSel.has(a.id) ? "outline:2px solid var(--marca-600);outline-offset:1px;" : ""}">${_aceFotosN[a.id] ? "📷 " : ""}${esc(a.marcacao)}</span>`).join("");
+      const pills = g.sort(aceOrdMarc).map(a => `<span class="tag ${aceCondCor(a.condicao)} ace-pill" data-id="${esc(a.id)}" title="${esc(aceDescr(a))} · ${esc(aceLbl("acessorio", a.condicao))}${a.jogo ? " · jogo " + esc(a.jogo) : ""}\nClique: abrir · Ctrl+clique: selecionar" style="cursor:pointer;margin:2px 3px 2px 0;${_aceSel.has(a.id) ? "outline:2px solid var(--marca-600);outline-offset:1px;" : ""}">${_aceFotosN[a.id] ? "📷 " : ""}${esc(a.marcacao)}</span>`).join("");
       const med = aceMedida(g[0]);
-      return `<div class="serv-kan-card" data-ids="${ids.join(",")}" draggable="true" style="cursor:pointer;" title="${ids.length === 1 ? "Abrir a ficha da peça" : "Ver as " + ids.length + " peças"} · arraste para mover">
+      return `<div class="serv-kan-card" data-ids="${esc(ids.join(","))}" draggable="true" style="cursor:pointer;" title="${ids.length === 1 ? "Abrir a ficha da peça" : "Ver as " + ids.length + " peças"} · arraste para mover">
         <div class="serv-kan-card-nome" style="display:flex;align-items:center;gap:6px;">
           <input type="checkbox" class="ace-sel-grupo" ${todosSel ? "checked" : ""} title="Selecionar estas ${ids.length} peça(s)" style="margin:0;" />
           <span style="flex:1;">${esc(aceDescr(g[0]))}${med && !aceDescr(g[0]).includes(med) ? ` <span class="meta">${esc(med)}</span>` : ""}</span>
@@ -410,10 +410,10 @@ function renderAcessoriosLista(dados){
       <th>Marcação</th><th>Modelo</th><th>Tipo</th><th>Ø / medida</th>${temAcopl ? "<th>Acopl.</th>" : ""}${temJogo ? "<th>Jogo</th>" : ""}
       <th>Condição</th><th>Onde está</th><th>Pertence</th><th class="num">Valor</th><th>Atualizado</th>
     </tr></thead>
-    <tbody>${dados.map(a => `<tr class="linha-clicavel" data-id="${a.id}" ${a.ativo === false ? 'style="opacity:.55"' : ""}>
-        <td><input type="checkbox" class="ace-sel" data-id="${a.id}" ${_aceSel.has(a.id) ? "checked" : ""} /></td>
+    <tbody>${dados.map(a => `<tr class="linha-clicavel" data-id="${esc(a.id)}" ${a.ativo === false ? 'style="opacity:.55"' : ""}>
+        <td><input type="checkbox" class="ace-sel" data-id="${esc(a.id)}" ${_aceSel.has(a.id) ? "checked" : ""} /></td>
         <td><strong>${esc(a.marcacao)}</strong></td><td>${esc(aceDescr(a))}</td><td>${esc(ACE_TIPO_LBL[a.tipo] || a.tipo)}</td><td>${esc(aceMedida(a) || "—")}</td>
-        ${temAcopl ? `<td>${esc(ACE_ACOPL_LBL[a.acoplamento] || a.acoplamento || "—")}</td>` : ""}${temJogo ? `<td>${esc(a.jogo || "—")}${a.seq_no_jogo ? ` <span class="meta">#${a.seq_no_jogo}</span>` : ""}</td>` : ""}
+        ${temAcopl ? `<td>${esc(ACE_ACOPL_LBL[a.acoplamento] || a.acoplamento || "—")}</td>` : ""}${temJogo ? `<td>${esc(a.jogo || "—")}${a.seq_no_jogo ? ` <span class="meta">#${esc(a.seq_no_jogo)}</span>` : ""}</td>` : ""}
         <td>${tagStatus("acessorio", a.condicao)}${a.condicao_motivo && a.local_tipo !== "perdido" ? ` <span class="meta" title="${esc(a.condicao_motivo)}">ⓘ</span>` : ""}</td>
         <td>${tagStatus("acessorio_local", a.local_tipo)} ${esc(aceOnde(a).replace(/^(Pátio|Oficina|Em trânsito|Perdido|Não localizado)/, "").replace(/^ · /, ""))}</td>
         <td>${a.equipamento_padrao_id ? "TAG " + esc(aceEqTag(a.equipamento_padrao_id)) : "—"}</td>
@@ -443,20 +443,20 @@ async function renderAcessoriosContagem(opts){
   const precoTag = l => !l.preco_referencia ? '<span class="tag ambar" title="modelo sem preço: clique na linha e informe">sem preço</span>' : l.preco_origem === "estimativa" ? '<span class="tag ambar" title="estimado a partir do Ø vizinho, do R$/m ou do piso de um orçamento">estimado</span>' : (l.preco_origem === "cotacao" ? '<span class="tag azul" title="preço de cotação de fornecedor (S.A Trados, 2024)">cotação</span> ' : "") + (l.preco_vencido ? '<span class="tag ambar" title="preço com mais de 12 meses">vencido</span>' : (l.preco_origem === "compra" ? '<span class="tag verde" title="atualizado pela última compra">compra</span>' : ""));
   const grupos = new Map();
   linhas.forEach(l => { const g = l.grupo_contagem || "SEM GRUPO"; if(!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(l); });
-  const linha = (l) => `<tr class="linha-clicavel" data-modelo="${l.modelo_id}">
+  const linha = (l) => `<tr class="linha-clicavel" data-modelo="${esc(l.modelo_id)}">
       <td>${esc(l.descricao)}</td><td>${esc(l.medida && l.medida !== "-" ? l.medida : "")}</td>
-      <td class="num"><strong>${l.cadastrados}</strong></td><td class="num">${l.em_estoque}</td><td class="num">${l.em_obra}</td><td class="num">${l.em_manutencao}</td><td class="num">${l.perdas}</td><td class="num">${l.sem_marcacao}</td>
+      <td class="num"><strong>${esc(l.cadastrados)}</strong></td><td class="num">${esc(l.em_estoque)}</td><td class="num">${esc(l.em_obra)}</td><td class="num">${esc(l.em_manutencao)}</td><td class="num">${esc(l.perdas)}</td><td class="num">${esc(l.sem_marcacao)}</td>
       <td class="num">${l.preco_referencia != null ? brl(l.preco_referencia) : '<span class="meta">—</span>'} ${precoTag(l)}</td>${verTot ? `<td class="num">${brl(l.valor_reposicao)}</td>` : ""}</tr>`;
-  const sub = (g, arr) => { const t = soma(arr); return `<tr style="background:var(--bg-body);font-weight:600;"><td colspan="2">Subtotal ${esc(g)}</td>${cols.map(k => `<td class="num">${t[k]}</td>`).join("")}<td></td>${verTot ? `<td class="num">${brl(t.valor_total)}</td>` : ""}</tr>`; };
+  const sub = (g, arr) => { const t = soma(arr); return `<tr style="background:var(--bg-body);font-weight:600;"><td colspan="2">Subtotal ${esc(g)}</td>${cols.map(k => `<td class="num">${esc(t[k])}</td>`).join("")}<td></td>${verTot ? `<td class="num">${brl(t.valor_total)}</td>` : ""}</tr>`; };
   const tot = soma(linhas);
   const semPreco = linhas.filter(l => !l.preco_referencia).length, estim = linhas.filter(l => l.preco_origem === "estimativa").length, venc = linhas.filter(l => l.preco_vencido).length;
   const sucPreco = _aceSucata[0];
   cont.innerHTML = `
     <div class="meta" style="margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <strong style="font-size:14px;color:var(--txt);">${verTot ? "Valor de reposição" : "Contagem"}${_aceFamilia ? " · " + esc(ACE_FAMILIA_LBL[_aceFamilia]) : ""}${verTot ? ": " + brl(tot.valor_total) : ""}</strong>
-      ${semPreco ? `<span class="tag ambar">${semPreco} modelo(s) sem preço</span>` : ""}${estim ? `<span class="tag ambar">${estim} estimado(s)</span>` : ""}${venc ? `<span class="tag ambar">${venc} vencido(s)</span>` : ""}
+      ${semPreco ? `<span class="tag ambar">${semPreco} modelo(s) sem preço</span>` : ""}${estim ? `<span class="tag ambar">${esc(estim)} estimado(s)</span>` : ""}${venc ? `<span class="tag ambar">${esc(venc)} vencido(s)</span>` : ""}
       <label class="check-inline" title="Mostrar só os modelos sem preço de reposição"><input type="checkbox" id="ace-f-sem-preco" ${_aceSoSemPreco ? "checked" : ""} /> só sem preço</label>
-      <span>Sucata: ${sucPreco ? `${brl(sucPreco.preco_kg)}/kg (${String(sucPreco.competencia).slice(5, 7)}/${String(sucPreco.competencia).slice(0, 4)})` : '<span class="tag ambar">sem preço do kg</span>'}</span>
+      <span>Sucata: ${sucPreco ? `${brl(sucPreco.preco_kg)}/kg (${esc(String(sucPreco.competencia).slice(5, 7))}/${esc(String(sucPreco.competencia).slice(0, 4))})` : '<span class="tag ambar">sem preço do kg</span>'}</span>
       ${acePodeEditar() ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-sucata">♻️ Preço da sucata</button>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-ace-xlsx" style="margin-left:auto;">⬇️ Excel</button>
     </div>
@@ -464,7 +464,7 @@ async function renderAcessoriosContagem(opts){
     <div class="tabela-rola"><table>
       <thead><tr><th>Modelo</th><th>Medida</th><th class="num">Cadastradas</th><th class="num">Em estoque</th><th class="num">Em obra</th><th class="num">Em manut.</th><th class="num">Perdas</th><th class="num">S/M</th><th class="num">Preço reposição</th>${verTot ? '<th class="num">Valor</th>' : ""}</tr></thead>
       <tbody>${[...grupos.entries()].map(([g, arr]) => `<tr><td colspan="${verTot ? 10 : 9}" style="background:var(--bg-body);"><strong>${esc(g)}</strong></td></tr>` + arr.map(linha).join("") + (arr.length > 1 ? sub(g, arr) : "")).join("") || `<tr><td colspan="${verTot ? 10 : 9}" class="vazio">Nenhum modelo com peças.</td></tr>`}</tbody>
-      <tfoot><tr><td colspan="2"><strong>Total geral</strong></td>${cols.map(k => `<td class="num"><strong>${tot[k]}</strong></td>`).join("")}<td></td>${verTot ? `<td class="num"><strong>${brl(tot.valor_total)}</strong></td>` : ""}</tr></tfoot>
+      <tfoot><tr><td colspan="2"><strong>Total geral</strong></td>${cols.map(k => `<td class="num"><strong>${esc(tot[k])}</strong></td>`).join("")}<td></td>${verTot ? `<td class="num"><strong>${brl(tot.valor_total)}</strong></td>` : ""}</tr></tfoot>
     </table></div>`;
   $("btn-ace-xlsx")?.addEventListener("click", () => aceExportarContagem(linhas, grupos, tot, verTot));
   $("ace-f-sem-preco")?.addEventListener("change", e => renderAcessoriosContagem({ semPreco: e.target.checked }));
@@ -708,6 +708,8 @@ async function aceFotoFalhou(img){
   if(!url){ placeholder(); return; }
   img.src = url; const a = img.closest("a"); if(a) a.href = url;
 }
+// fase 99a: a CSP não roda onerror inline; o erro de imagem não borbulha, então escuta na captura
+document.addEventListener("error", (e) => { const t = e.target; if(t && t.tagName === "IMG" && t.dataset.falha === "ace-foto") aceFotoFalhou(t); }, true);
 async function aceRenderFotos(a){
   const c = $("ace-fotos"), capa = $("ace-capa"); if(!c) return;
   const { data, error } = await sb.from("acessorio_fotos").select("id,storage_path,legenda,tipo,capa,created_at").eq("acessorio_id", a.id).order("capa", { ascending: false }).order("created_at", { ascending: false });
@@ -722,10 +724,10 @@ async function aceRenderFotos(a){
   const capaFoto = fotos.find(f => f.capa) || fotos[0];
   if(capa){ capa.dataset.path = capaFoto.storage_path; delete capa.dataset.tentou; capa.onerror = () => aceFotoFalhou(capa); capa.src = urls[fotos.indexOf(capaFoto)] || ""; capa.style.display = capa.src ? "" : "none"; capa.title = capaFoto.legenda || ACE_FOTO_TIPO_LBL[capaFoto.tipo] || ""; }
   c.innerHTML = fotos.map((f, i) => `<div class="ace-foto${f.capa ? " capa" : ""}">
-      <a href="${esc(urls[i])}" target="_blank" rel="noopener"><img src="${esc(urls[i])}" alt="${esc(f.legenda || "")}" loading="lazy" data-path="${esc(f.storage_path)}" onerror="aceFotoFalhou(this)" /></a>
+      <a href="${esc(urls[i])}" target="_blank" rel="noopener"><img src="${esc(urls[i])}" alt="${esc(f.legenda || "")}" loading="lazy" data-path="${esc(f.storage_path)}" data-falha="ace-foto" /></a>
       <div class="ace-foto-rod"><span><span class="tag ${f.tipo === "descarte" ? "vermelho" : f.tipo === "avaria" ? "ambar" : "cinza"}">${esc(ACE_FOTO_TIPO_LBL[f.tipo] || f.tipo)}</span>${f.capa ? ' <span class="tag azul">capa</span>' : ""} <span class="meta">${dataBR(String(f.created_at).slice(0, 10))}</span></span>
         ${f.legenda ? `<span>${esc(f.legenda)}</span>` : ""}
-        ${pode ? `<span class="acoes">${f.capa ? "" : `<button type="button" class="btn-sec btn-sm" data-ft-capa="${f.id}">★ capa</button>`}<button type="button" class="btn-sec btn-sm" data-ft-del="${f.id}" data-path="${esc(f.storage_path)}" style="color:var(--perigo);">✕</button></span>` : ""}
+        ${pode ? `<span class="acoes">${f.capa ? "" : `<button type="button" class="btn-sec btn-sm" data-ft-capa="${esc(f.id)}">★ capa</button>`}<button type="button" class="btn-sec btn-sm" data-ft-del="${esc(f.id)}" data-path="${esc(f.storage_path)}" style="color:var(--perigo);">✕</button></span>` : ""}
       </div></div>`).join("");
   c.querySelectorAll("[data-ft-capa]").forEach(b => b.addEventListener("click", async () => {
     await sb.from("acessorio_fotos").update({ capa: false }).eq("acessorio_id", a.id);
@@ -817,7 +819,7 @@ function abrirModeloAcessorio(modeloId, pre, depois){
 function aceMdPreencherTipos(){
   const fam = $("ace-md-familia").value;
   const atual = $("ace-md-tipo").value;
-  $("ace-md-tipo").innerHTML = (ACE_TIPOS_FAMILIA[fam] || Object.keys(ACE_TIPO_LBL)).map(t => `<option value="${t}">${esc(ACE_TIPO_LBL[t])}</option>`).join("");
+  $("ace-md-tipo").innerHTML = (ACE_TIPOS_FAMILIA[fam] || Object.keys(ACE_TIPO_LBL)).map(t => `<option value="${esc(t)}">${esc(ACE_TIPO_LBL[t])}</option>`).join("");
   if([...$("ace-md-tipo").options].some(o => o.value === atual)) $("ace-md-tipo").value = atual;
 }
 function fecharModeloAcessorio(){ $("ace-modelo-modal").style.display = "none"; }
@@ -872,13 +874,13 @@ function acePreencherTipoForm(valor){
   const sel = $("ace-tipo");
   const tipos = aceTiposDaFamilia(fam).slice();
   if(valor && !tipos.includes(valor)) tipos.push(valor);
-  sel.innerHTML = tipos.map(t => `<option value="${t}">${esc(ACE_TIPO_LBL[t] || t)}</option>`).join("");
+  sel.innerHTML = tipos.map(t => `<option value="${esc(t)}">${esc(ACE_TIPO_LBL[t] || t)}</option>`).join("");
   if(valor) sel.value = valor;
 }
 function acePreencherModeloForm(valor){
   const fam = $("ace-familia").value, tipo = $("ace-tipo").value;
   const lista = _aceModelos.filter(m => m.familia === fam && (m.tipo === tipo || m.id === valor) && (m.ativo !== false || m.id === valor));
-  $("ace-modelo").innerHTML = `<option value="">— sem modelo —</option>` + lista.map(m => `<option value="${m.id}">${esc(m.descricao)}${m.medida && m.medida !== "-" ? " · " + esc(m.medida) : ""}</option>`).join("");
+  $("ace-modelo").innerHTML = `<option value="">— sem modelo —</option>` + lista.map(m => `<option value="${esc(m.id)}">${esc(m.descricao)}${m.medida && m.medida !== "-" ? " · " + esc(m.medida) : ""}</option>`).join("");
   $("ace-modelo").value = valor || "";
 }
 
@@ -1016,9 +1018,9 @@ function aceRenderHistorico(evs, err, movs){
     if(e.tipo === "importacao") txt = `Cadastro importado · ${esc(aceRefLabel(e.para_local_tipo, e.para_ref_id, e.para_descricao))}${e.para_condicao ? " · " + esc(aceLbl("acessorio", e.para_condicao)) : ""}`;
     else if(["localizacao","perda","observacao"].includes(e.tipo)) txt = `${e.de_local_tipo ? esc(aceRefLabel(e.de_local_tipo, e.de_ref_id, e.de_descricao)) + " → " : ""}${esc(aceRefLabel(e.para_local_tipo, e.para_ref_id, e.para_descricao))}`;
     else txt = `${esc(aceLbl("acessorio", e.de_condicao))} → ${esc(aceLbl("acessorio", e.para_condicao))}`;
-    return `<div class="tl-item"><div class="tl-icone">${icone[e.tipo] || "•"}</div><div class="tl-conteudo">
+    return `<div class="tl-item"><div class="tl-icone">${esc(icone[e.tipo] || "•")}</div><div class="tl-conteudo">
       <div class="tl-titulo">${esc(ACE_EVENTO_LBL[e.tipo] || e.tipo)} <span class="tl-data meta">${aceQuando(e.data)}</span></div>
-      <div>${txt}</div>${e.observacao ? `<div class="meta">${esc(e.observacao)}</div>` : ""}${e.movimentacao_id ? `<div class="meta">🚚 ${linkMovimentacao(e.movimentacao_id, movById[e.movimentacao_id]?.numero || "ver a movimentação")}</div>` : ""}
+      <div>${/* html */ txt}</div>${e.observacao ? `<div class="meta">${esc(e.observacao)}</div>` : ""}${e.movimentacao_id ? `<div class="meta">🚚 ${linkMovimentacao(e.movimentacao_id, movById[e.movimentacao_id]?.numero || "ver a movimentação")}</div>` : ""}
       <div class="tl-autor meta">${esc(e.autor_nome || "sistema")}</div></div></div>`;
   }).join("")}</div>`;
 }
@@ -1031,7 +1033,7 @@ function aceRenderReparos(reps, err){
     <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${r.status === "concluido" ? "verde" : r.status === "cancelado" ? "cinza" : "ambar"}">${esc(ACE_REPARO_STATUS[r.status] || r.status)}</span></td>
       <td>${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_inicio)}</td><td>${dataBR(r.data_conclusao)}</td><td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td>
       <td class="meta">${esc((r.observacoes || "").replace(/^\[import raiz\]\s*/, ""))}</td>
-      ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${r.id}" data-st="em_execucao">▶ Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${r.id}" data-st="concluido">✅ Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${r.id}" data-st="cancelado" style="color:var(--perigo);">✖</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
+      ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="em_execucao">▶ Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="concluido">✅ Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="cancelado" style="color:var(--perigo);">✖</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum reparo registrado para esta peça.</p>`);
   $("btn-ace-rep-novo")?.addEventListener("click", () => abrirReparoAcessorios([_aceAtual.id]));
   c.querySelectorAll("button[data-rep]").forEach(b => b.addEventListener("click", () => {
@@ -1049,7 +1051,7 @@ function aceRenderJogo(a, irmaos){
   const locais = new Set(todos.map(aceColKey));
   c.innerHTML = (locais.size > 1 ? `<p class="meta" style="color:var(--perigo);">⚠️ O jogo <strong>${esc(a.jogo)}</strong> está separado em ${locais.size} lugares.</p>` : `<p class="meta">Jogo <strong>${esc(a.jogo)}</strong> completo no mesmo lugar.</p>`) +
     `<div class="tabela-rola"><table><thead><tr><th>#</th><th>Marcação</th><th>Modelo</th><th>Condição</th><th>Onde está</th></tr></thead>
-    <tbody>${todos.map(x => `<tr class="linha-clicavel" data-id="${x.id}" ${x.id === a.id ? 'style="background:var(--bg-body);"' : ""}><td>${x.seq_no_jogo ?? ""}</td><td><strong>${esc(x.marcacao)}</strong></td><td>${esc(aceDescr(x))}</td><td>${tagStatus("acessorio", x.condicao)}</td><td>${esc(aceOnde(x))}</td></tr>`).join("")}</tbody></table></div>`;
+    <tbody>${todos.map(x => `<tr class="linha-clicavel" data-id="${esc(x.id)}" ${x.id === a.id ? 'style="background:var(--bg-body);"' : ""}><td>${esc(x.seq_no_jogo ?? "")}</td><td><strong>${esc(x.marcacao)}</strong></td><td>${esc(aceDescr(x))}</td><td>${tagStatus("acessorio", x.condicao)}</td><td>${esc(aceOnde(x))}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 /* custos lançados contra o jogo (reformas, fretes…) — custos_avulsos.acessorio_jogo */

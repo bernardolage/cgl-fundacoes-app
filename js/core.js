@@ -231,7 +231,8 @@ function esc(s){
 function dataBR(d){
   if(!d) return "—";
   const p = String(d).slice(0,10).split("-");
-  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d;
+  // fase 99a: escapado, porque o checar-xss confia no dataBR dentro de HTML (data normal sai igual)
+  return esc(p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d);
 }
 
 /* data de hoje em formato ISO (yyyy-mm-dd) no FUSO LOCAL, para preencher
@@ -272,14 +273,14 @@ function preencherSelect(sel, itens, valor, texto, placeholder){
 /* devolve as <option> de um grupo de status (core STATUS) */
 function opcoesStatus(grupo){
   return Object.entries(STATUS[grupo])
-    .map(([v,o]) => `<option value="${v}">${esc(o.label)}</option>`).join("");
+    .map(([v,o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
 }
 
 /* devolve a tag colorida de um status */
 function tagStatus(grupo, valor){
   const o = (STATUS[grupo] || {})[valor];
   if(!o) return `<span class="tag cinza">${esc(valor||"—")}</span>`;
-  return `<span class="tag ${o.cor}">${esc(o.label)}</span>`;
+  return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`;
 }
 
 /* Situação ativo/inativo — UMA semântica para Clientes, Fornecedores e
@@ -300,24 +301,24 @@ function opcoesDe(obj){
 /* ---------- Selects fixos ---------- */
 function montarSelects(){
   $("cli-uf").innerHTML = '<option value="">—</option>' +
-    UFS.map(u=>`<option value="${u.toLowerCase()}">${u}</option>`).join("");
+    UFS.map(u=>`<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
   $("obr-uf").innerHTML = '<option value="">—</option>' +
-    UFS.map(u=>`<option value="${u.toLowerCase()}">${u}</option>`).join("");
+    UFS.map(u=>`<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
   $("forn-uf").innerHTML = '<option value="">—</option>' +
-    UFS.map(u=>`<option value="${u.toLowerCase()}">${u}</option>`).join("");
+    UFS.map(u=>`<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
   ["mov-origem-uf","mov-destino-uf"].forEach(id => {
     const el = $(id);
     if(el) el.innerHTML = '<option value="">—</option>' +
-      UFS.map(u=>`<option value="${u.toLowerCase()}">${u}</option>`).join("");
+      UFS.map(u=>`<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
   });
-  $("prod-unidade").innerHTML = UNIDADES.map(u=>`<option value="${u}">${u}</option>`).join("");
+  $("prod-unidade").innerHTML = UNIDADES.map(u=>`<option value="${esc(u)}">${esc(u)}</option>`).join("");
   $("orc-status").innerHTML = opcoesStatus("orcamento");
   $("con-status").innerHTML = opcoesStatus("contrato");
   $("obr-status").innerHTML = opcoesStatus("obra");
   $("med-status").innerHTML = opcoesStatus("medicao");
   $("con-categoria").innerHTML = opcoesDe(CONTRATO_CATEGORIA);
   $("con-recorrencia").innerHTML = opcoesDe(RECORRENCIA);
-  $("lista-indices").innerHTML = INDICES_REAJUSTE.map(i=>`<option value="${i}">`).join("");
+  $("lista-indices").innerHTML = INDICES_REAJUSTE.map(i=>`<option value="${esc(i)}">`).join("");
   /* aba Contrato da ficha da obra (contrato do cliente — fase 21) */
   $("obr-con-categoria").innerHTML = opcoesDe(CONTRATO_CATEGORIA);
   $("obr-con-status").innerHTML = opcoesStatus("contrato");
@@ -479,7 +480,7 @@ function pdfMargens(larguraMm, topoMm){
 function pdfUrl(caminho){ return new URL(caminho, document.baseURI).href; }
 
 function pdfCabecalhoHTML(titulo = "", subtitulo = ""){
-  const logo = `<img src="${pdfUrl(PDF_LOGO_SRC)}" alt="CGL Fundações" style="display:block;height:18mm;width:18mm;">`;
+  const logo = `<img src="${esc(pdfUrl(PDF_LOGO_SRC))}" alt="CGL Fundações" style="display:block;height:18mm;width:18mm;">`;
   if(!titulo && !subtitulo) return logo;
   return `<div style="display:flex;align-items:center;justify-content:center;gap:4mm;">${logo}<div style="text-align:left;">
     ${titulo ? `<div style="font-size:14px;font-weight:700;color:#111;">${esc(titulo)}</div>` : ""}
@@ -490,7 +491,7 @@ function pdfCabecalhoHTML(titulo = "", subtitulo = ""){
 function pdfRodapeHTML(){
   return `<div class="pdf-rodape" style="display:flex;align-items:center;justify-content:space-between;gap:4mm;margin-top:6mm;padding-top:2mm;border-top:1px solid #b4b4b4;font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#555;">
     <span>${esc(PDF_RODAPE_TEXTO)}</span>
-    <img src="${pdfUrl(PDF_SELO_SRC)}" alt="Selo ISO 9001" style="display:block;height:${PDF_SELO_MM}mm;width:${PDF_SELO_MM}mm;">
+    <img src="${esc(pdfUrl(PDF_SELO_SRC))}" alt="Selo ISO 9001" style="display:block;height:${PDF_SELO_MM}mm;width:${PDF_SELO_MM}mm;">
   </div>`;
 }
 
@@ -1732,9 +1733,12 @@ async function verificarMFAAdmin(){
       <div class="aviso-mfa">
         <strong>⚠ Segurança:</strong>
         Sua conta de administrador não tem autenticação em dois fatores (MFA) configurada.
-        <button type="button" class="aviso-mfa-btn" onclick="abrirModalMFA()">Configurar agora</button>
-        <button type="button" class="aviso-mfa-btn aviso-mfa-fechar" onclick="document.getElementById('mfa-aviso-banner').remove()">Fechar</button>
+        <button type="button" class="aviso-mfa-btn aviso-mfa-configurar">Configurar agora</button>
+        <button type="button" class="aviso-mfa-btn aviso-mfa-fechar">Fechar</button>
       </div>`;
+    // fase 99a: a CSP (script-src 'self') não roda onclick inline; os dois botões ligam por addEventListener
+    banner.querySelector(".aviso-mfa-configurar").addEventListener("click", () => abrirModalMFA());
+    banner.querySelector(".aviso-mfa-fechar").addEventListener("click", () => banner.remove());
     // Dentro do viewport (coluna flex de altura fixa): o banner ocupa espaço e o <main> encolhe.
     // Antes ia no <body>, empurrava a tela inteira para baixo e escondia o rodapé da sidebar.
     ($("app-viewport") || document.body).prepend(banner);
@@ -1804,9 +1808,9 @@ async function abrirModalMFA(obrigatorio){
     const qr = data.totp.qr_code;
     if(qr && qr.startsWith("<svg")){
       qrArea.innerHTML = `<div style="display:inline-block;padding:12px;background:var(--sup-0);
-        border:1px solid var(--borda);border-radius:6px;">${qr}</div>`;
+        border:1px solid var(--borda);border-radius:6px;">${/* html */ qr}</div>`;
     } else {
-      qrArea.innerHTML = `<img src="${qr}" alt="QR Code MFA"
+      qrArea.innerHTML = `<img src="${esc(qr)}" alt="QR Code MFA"
         style="width:200px;height:200px;border:1px solid var(--borda);padding:8px;border-radius:6px;" />`;
     }
     $("mfa-secret-text").textContent = data.totp.secret;

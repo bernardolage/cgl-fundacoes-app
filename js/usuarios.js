@@ -91,7 +91,7 @@ async function carregarRespServico(){
 function respPreencherPapel(){
   const area = $("usr-resp-area")?.value || "obras";
   const sel = $("usr-resp-papel");
-  if(sel) sel.innerHTML = RESP_PAPEIS_AREA[area].map(p => `<option value="${p}">${esc(RESP_PAPEL[p])}</option>`).join("");
+  if(sel) sel.innerHTML = RESP_PAPEIS_AREA[area].map(p => `<option value="${esc(p)}">${esc(RESP_PAPEL[p])}</option>`).join("");
 }
 
 function renderRespServico(){
@@ -109,7 +109,7 @@ function renderRespServico(){
     <tbody>${linhas.map(r => `<tr>
       <td>${esc(RESP_AREA[r.area] || r.area)}</td><td>${esc(RESP_TIPO[r.tipo_servico] || r.tipo_servico)}</td>
       <td>${esc(r.pessoa?.nome || "—")}${r.pessoa && r.pessoa.ativo === false ? ' <span class="tag cinza">inativo</span>' : ""}</td>
-      <td><select data-resp-papel="${esc(r.id)}" title="Trocar o papel">${(RESP_PAPEIS_AREA[r.area] || []).map(p => `<option value="${p}" ${p === r.papel ? "selected" : ""}>${esc(RESP_PAPEL[p])}</option>`).join("")}</select></td>
+      <td><select data-resp-papel="${esc(r.id)}" title="Trocar o papel">${(RESP_PAPEIS_AREA[r.area] || []).map(p => `<option value="${esc(p)}" ${p === r.papel ? "selected" : ""}>${esc(RESP_PAPEL[p])}</option>`).join("")}</select></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo" data-resp-del="${esc(r.id)}" title="Remover">🗑️</button></td>
     </tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum responsável cadastrado: os avisos de cadastro ficam só no total da diretoria.</p>`;
@@ -289,7 +289,7 @@ function preencherFiltrosUsr(){
   const sel = $("usr-f-cargo");
   if(sel && !sel.options.length){
     sel.innerHTML = `<option value="">Todos os cargos</option>` +
-      Object.entries(CARGOS).map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      Object.entries(CARGOS).map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   }
 }
 

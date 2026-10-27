@@ -211,7 +211,7 @@ async function carregarDashFaixa(carga){
     const sub = $("dash-k-receber-sub");
     if(sub) sub.innerHTML = `<a href="#" data-dash-receber="medicoes" title="Medições › NFs a receber">Medições ${brl(medTot)}</a> · ${nfs.length} NF(s)${medVenc > 0.009 ? ` <span class="txt-perigo">(${brl(medVenc)} vencido)</span>` : ""}<br>`
       + (recVendas?.erro ? `<span class="meta">Vendas de bens: não foi possível ler</span>`
-        : `<a href="#" data-dash-receber="vendas" title="Equipamentos › Vendas em aberto">Vendas de bens ${brl(vb.total)}</a> · ${vb.n} venda(s)${vb.vencido > 0.009 ? ` <span class="txt-perigo">(${brl(vb.vencido)} vencido)</span>` : ""}`);
+        : `<a href="#" data-dash-receber="vendas" title="Equipamentos › Vendas em aberto">Vendas de bens ${brl(vb.total)}</a> · ${esc(vb.n)} venda(s)${vb.vencido > 0.009 ? ` <span class="txt-perigo">(${brl(vb.vencido)} vencido)</span>` : ""}`);
   }
 }
 
@@ -232,7 +232,7 @@ async function dashCarregarAcoes(){
   const porNivel = {};
   _dashAcoes.forEach(a => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
   if($("dash-acoes-cont")) $("dash-acoes-cont").innerHTML = _dashAcoes.length
-    ? Object.entries(DASH_NIVEL).filter(([k]) => porNivel[k]).map(([k, o]) => `<span class="tag ${o.cor}">${porNivel[k]} ${esc(o.label.toLowerCase())}</span>`).join(" ")
+    ? Object.entries(DASH_NIVEL).filter(([k]) => porNivel[k]).map(([k, o]) => `<span class="tag ${esc(o.cor)}">${esc(porNivel[k])} ${esc(o.label.toLowerCase())}</span>`).join(" ")
     : "";
   if(!_dashAcoes.length){ cont.innerHTML = `<p class="vazio">✅ Nada exigindo ação hoje.</p>`; return; }
   // agrupado por setor, setores na ordem do item mais urgente
@@ -258,9 +258,9 @@ function dashAcoesAssinatura(linhas){
 }
 function dashLinhaAcao(a, i, tipo){
   const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
-  return `<div class="dash-pendencia-item clicavel" data-${tipo}="${i}" title="Abrir">
-      <span class="tag ${n.cor}">${esc(n.label)}</span>
-      <div class="dash-acao-txt"><strong>${esc(dashTituloAcao(a.titulo))}</strong>${a.quantidade > 1 ? ` <span class="contador">(${a.quantidade})</span>` : ""}
+  return `<div class="dash-pendencia-item clicavel" data-${esc(tipo)}="${i}" title="Abrir">
+      <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
+      <div class="dash-acao-txt"><strong>${esc(dashTituloAcao(a.titulo))}</strong>${a.quantidade > 1 ? ` <span class="contador">(${esc(a.quantidade)})</span>` : ""}
         ${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
       <span class="dash-pend-seta">›</span>
     </div>`;
@@ -340,7 +340,7 @@ async function dashCarregarRegularizar(){
     : "";
   cont.innerHTML = _dashReg.length
     ? _dashReg.map((a, i) => `<div class="dash-pendencia-item clicavel" data-reg="${i}" title="Abrir a tela para corrigir">
-        <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong> <span class="contador">(${a.quantidade})</span> ${DASH_REG_PAPEL[a.papel]?.tag || ""}
+        <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong> <span class="contador">(${esc(a.quantidade)})</span> ${/* html */ DASH_REG_PAPEL[a.papel]?.tag || ""}
           ${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
         <span class="dash-pend-seta">›</span>
       </div>`).join("")
@@ -609,14 +609,14 @@ function renderDashFrota(){
       const per = prodPer[f.equipamento_id];
       return `<tr class="linha-clicavel" data-eqp="${esc(f.equipamento_id)}">
         <td><strong>${esc(f.codigo || "—")}</strong> <span class="meta">${esc(f.nome || "")}</span></td>
-        <td><span class="tag ${s.cor}">${esc(s.label)}</span>${f.situacao === "parada" && f.dias_sem_lancar != null ? ` <span class="meta">há ${f.dias_sem_lancar} d</span>` : ""}</td>
+        <td><span class="tag ${esc(s.cor)}">${esc(s.label)}</span>${f.situacao === "parada" && f.dias_sem_lancar != null ? ` <span class="meta">há ${esc(f.dias_sem_lancar)} d</span>` : ""}</td>
         <td>${f.obra_id ? linkObra(f.obra_id, f.obra_codigo || mapaObras[f.obra_id]) : '<span class="meta">—</span>'}</td>
-        <td>${f.ultimo_lancamento ? `${dataBR(f.ultimo_lancamento)} <span class="meta">(${f.dias_sem_lancar} d)</span>` : '<span class="meta">nunca</span>'}</td>
+        <td>${f.ultimo_lancamento ? `${dataBR(f.ultimo_lancamento)} <span class="meta">(${esc(f.dias_sem_lancar)} d)</span>` : '<span class="meta">nunca</span>'}</td>
         <td class="num"><span class="meta">sem horário</span></td>
-        <td class="num">${per ? `${num(per.m)} m · ${per.e} est.` : '<span class="meta">—</span>'}</td>
-        <td class="num">${Number(f.metros_mes) > 0 ? `${num(f.metros_mes)} m · ${f.estacas_mes} est.` : '<span class="meta">—</span>'}</td>
+        <td class="num">${per ? `${num(per.m)} m · ${esc(per.e)} est.` : '<span class="meta">—</span>'}</td>
+        <td class="num">${Number(f.metros_mes) > 0 ? `${num(f.metros_mes)} m · ${esc(f.estacas_mes)} est.` : '<span class="meta">—</span>'}</td>
         <td class="num">${f.horimetro != null ? num(f.horimetro) : '<span class="meta">—</span>'}</td>
-        <td>${f.manut_vencidas ? `<span class="tag vermelho">${f.manut_vencidas} vencida(s)</span> ` : ""}${f.manut_abertas ? `<span class="meta">${f.manut_abertas} aberta(s)</span>` : '<span class="meta">—</span>'}</td>
+        <td>${f.manut_vencidas ? `<span class="tag vermelho">${esc(f.manut_vencidas)} vencida(s)</span> ` : ""}${f.manut_abertas ? `<span class="meta">${esc(f.manut_abertas)} aberta(s)</span>` : '<span class="meta">—</span>'}</td>
       </tr>`;
     }).join("")}</tbody></table></div>`;
 }
@@ -655,12 +655,12 @@ function renderDashObrasAndamento(){
       return `<tr class="linha-clicavel" data-obra="${esc(o.obra_id)}">
         <td><button type="button" class="dash-pin${pins.has(o.obra_id) ? " ativo" : ""}" data-pin="${esc(o.obra_id)}" title="${pins.has(o.obra_id) ? "Desafixar" : "Fixar no topo"}">${pins.has(o.obra_id) ? "★" : "☆"}</button></td>
         <td><strong>${esc(o.codigo || "")}</strong> <span class="meta">${esc((o.nome || "").slice(0, 40))}</span></td>
-        <td>${o.previstas > 0 ? `${o.executadas} / ${o.previstas} <span class="meta">(${num(pct)}%)</span><div class="dash-barra"><div style="width:${pct}%"></div></div>` : '<span class="meta">sem previstas</span>'}${o.refuradas ? ` <span class="meta">· ${o.refuradas} refurada(s)</span>` : ""}</td>
+        <td>${o.previstas > 0 ? `${esc(o.executadas)} / ${esc(o.previstas)} <span class="meta">(${num(pct)}%)</span><div class="dash-barra"><div style="width:${pct}%"></div></div>` : '<span class="meta">sem previstas</span>'}${o.refuradas ? ` <span class="meta">· ${esc(o.refuradas)} refurada(s)</span>` : ""}</td>
         <td class="num">${o.m_dia != null && Number(o.m_dia) > 0 ? num(o.m_dia) : '<span class="meta">—</span>'}</td>
         <td class="num">${prodPer[o.obra_id] ? `${num(prodPer[o.obra_id])} m` : '<span class="meta">—</span>'}</td>
-        <td>${o.previsao_termino ? `${dataBR(o.previsao_termino)}${folga != null ? ` <span class="tag ${folga < 0 ? "vermelho" : "verde"}">${folga < 0 ? Math.abs(folga) + " d atrasada" : folga + " d de folga"}</span>` : ""}` : `<span class="meta" title="Precisa de 3 dias com RDO, ritmo maior que zero e metros faltando">sem dados</span>`}</td>
-        <td>${o.ultimo_rdo ? dataBR(o.ultimo_rdo) : '<span class="meta">sem RDO</span>'}${o.dias_sem_lancamento != null ? ` <span class="meta">(${o.dias_sem_lancamento} d)</span>` : ""}</td>
-        <td>${o.parada ? '<span class="tag ambar">parada</span> ' : ""}${o.pronta_baixa ? '<span class="tag verde">pronta p/ baixa</span> ' : ""}${o.sem_previstas ? '<span class="tag cinza">sem previstas</span> ' : ""}${_dashObraMat[o.obra_id] ? `<span class="tag ambar" title="separações abertas no almoxarifado (fase 83)">material pedido (${_dashObraMat[o.obra_id].itens_pendentes})</span>` : ""}</td>
+        <td>${o.previsao_termino ? `${dataBR(o.previsao_termino)}${folga != null ? ` <span class="tag ${folga < 0 ? "vermelho" : "verde"}">${folga < 0 ? Math.abs(folga) + " d atrasada" : esc(folga) + " d de folga"}</span>` : ""}` : `<span class="meta" title="Precisa de 3 dias com RDO, ritmo maior que zero e metros faltando">sem dados</span>`}</td>
+        <td>${o.ultimo_rdo ? dataBR(o.ultimo_rdo) : '<span class="meta">sem RDO</span>'}${o.dias_sem_lancamento != null ? ` <span class="meta">(${esc(o.dias_sem_lancamento)} d)</span>` : ""}</td>
+        <td>${o.parada ? '<span class="tag ambar">parada</span> ' : ""}${o.pronta_baixa ? '<span class="tag verde">pronta p/ baixa</span> ' : ""}${o.sem_previstas ? '<span class="tag cinza">sem previstas</span> ' : ""}${_dashObraMat[o.obra_id] ? `<span class="tag ambar" title="separações abertas no almoxarifado (fase 83)">material pedido (${esc(_dashObraMat[o.obra_id].itens_pendentes)})</span>` : ""}</td>
       </tr>`;
     }).join("")}</tbody></table></div>`;
 }
@@ -692,7 +692,7 @@ async function renderDashOperadores(){
   }).sort((a, b) => b.m - a.m);
   cont.innerHTML = `<div class="tabela-rola"><table class="dash-tabela">
     <thead><tr><th>#</th><th>Operador</th><th class="num">Metros</th><th class="num">Estacas</th><th class="num">Dias</th><th class="num">m/dia</th><th>Máquina</th></tr></thead>
-    <tbody>${linhas.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.nome)}</td><td class="num">${num(l.m)}</td><td class="num">${l.e}</td><td class="num">${l.dias}</td><td class="num">${num(l.dias ? l.m / l.dias : 0)}</td><td>${esc(l.maq)}</td></tr>`).join("")}</tbody>
+    <tbody>${linhas.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.nome)}</td><td class="num">${num(l.m)}</td><td class="num">${esc(l.e)}</td><td class="num">${esc(l.dias)}</td><td class="num">${num(l.dias ? l.m / l.dias : 0)}</td><td>${esc(l.maq)}</td></tr>`).join("")}</tbody>
   </table></div>`;
 }
 
@@ -955,7 +955,7 @@ async function carregarDashAtividade(){
     // esc() aqui: profiles.nome é editável pelo próprio usuário e vai para innerHTML
     (profs||[]).forEach(p => { mapaU[p.id] = esc(p.nome); });
   }
-  const nomeDe = (uid) => uid ? (mapaU[uid] || "usuário") : "sistema";
+  const nomeDe = (uid) => uid ? (esc(mapaU[uid] || "usuário")) : "sistema";
 
   const eventos = [];
   (medsNovas||[]).forEach(m => eventos.push({
@@ -984,7 +984,7 @@ async function carregarDashAtividade(){
     const extra = e.obraId ? `cursor:pointer;` : "";
     const attrs = e.obraId ? ` data-idx="${idx}" title="Abrir a obra"` : "";
     return `<div${cls}${attrs} style="padding:6px 4px;border-bottom:1px solid var(--sup-3);${extra}">
-      <span style="color:var(--txt-sutil);font-size:var(--txt-xs);">${hora}</span> · ${e.txt}
+      <span style="color:var(--txt-sutil);font-size:var(--txt-xs);">${hora}</span> · ${/* html */ e.txt}
     </div>`;
   }).join("")}</div>`;
   cont.querySelectorAll(".dash-ativ-item[data-idx]").forEach(el => {

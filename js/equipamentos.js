@@ -49,11 +49,11 @@ function eqpOndeHTML(e){
   const txt = e.localizacao_obra_id && (t === "obra" || t === "em_transito")
     ? `${t === "em_transito" ? "Em trânsito → " : ""}${linkObra(e.localizacao_obra_id, eqpObra(e.localizacao_obra_id) || "Obra")}${e.localizacao_descricao ? " · " + esc(e.localizacao_descricao) : ""}`
     : esc(eqpOnde(e));
-  return `<span class="tag ${EQP_LOCAL_COR[t] || "cinza"}">${esc(EQP_LOCAL_LBL[t] || t)}</span> ${txt}`;
+  return `<span class="tag ${esc(EQP_LOCAL_COR[t] || "cinza")}">${esc(EQP_LOCAL_LBL[t] || t)}</span> ${txt}`;
 }
 function eqpTag(e){ return `${e.codigo}${e.nome ? " · " + e.nome : ""}`; }
 function eqpOrd(a, b){ return String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }); }
-function eqpNumAce(e){ return e._ace || 0; }
+function eqpNumAce(e){ return Number(e._ace) || 0; }
 
 /* ---------- carga ---------- */
 async function carregarEquipamentos(force){
@@ -95,18 +95,18 @@ async function carregarEquipamentos(force){
 
 function eqpPreencherSelectsFixos(){
   const tipo = $("eqp-tipo");
-  if(tipo) tipo.innerHTML = EQP_TIPOS.map(t => `<option value="${t}">${esc(EQP_TIPO_LBL[t])}</option>`).join("");
+  if(tipo) tipo.innerHTML = EQP_TIPOS.map(t => `<option value="${esc(t)}">${esc(EQP_TIPO_LBL[t])}</option>`).join("");
   const ac = $("eqp-acopl");
-  if(ac && typeof ACE_ACOPL_LBL === "object") ac.innerHTML = `<option value="">—</option>` + Object.entries(ACE_ACOPL_LBL).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  if(ac && typeof ACE_ACOPL_LBL === "object") ac.innerHTML = `<option value="">—</option>` + Object.entries(ACE_ACOPL_LBL).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
   const lo = $("eqp-local-obra");
   if(lo) preencherSelect(lo, _eqpObras.map(o => ({ id: o.id, txt: `${o.codigo} — ${o.nome}` })), "id", "txt", "— obra —");
   const fs = $("eqp-f-status");
-  if(fs) fs.innerHTML = `<option value="">Status</option>` + Object.entries(STATUS.equipamento || {}).filter(([k]) => !EQP_FORA_OPERACAO.includes(k)).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
+  if(fs) fs.innerHTML = `<option value="">Status</option>` + Object.entries(STATUS.equipamento || {}).filter(([k]) => !EQP_FORA_OPERACAO.includes(k)).map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join("");
   const fl = $("eqp-f-local");
-  if(fl) fl.innerHTML = `<option value="">Onde está</option>` + Object.entries(EQP_LOCAL_LBL).filter(([k]) => !EQP_FORA_OPERACAO.includes(k)).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  if(fl) fl.innerHTML = `<option value="">Onde está</option>` + Object.entries(EQP_LOCAL_LBL).filter(([k]) => !EQP_FORA_OPERACAO.includes(k)).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
 }
 function eqpPreencherFiltros(){
-  const keep = (sel, itens, ph) => { if(!sel) return; const v = sel.value; sel.innerHTML = `<option value="">${ph}</option>` + itens.map(i => `<option value="${esc(i.v)}">${esc(i.t)}</option>`).join(""); sel.value = v; };
+  const keep = (sel, itens, ph) => { if(!sel) return; const v = sel.value; sel.innerHTML = `<option value="">${esc(ph)}</option>` + itens.map(i => `<option value="${esc(i.v)}">${esc(i.t)}</option>`).join(""); sel.value = v; };
   const tipos = [...new Set(_eqpRegistros.map(e => e.tipo).filter(Boolean))].sort((a, b) => (EQP_TIPO_LBL[a] || a).localeCompare(EQP_TIPO_LBL[b] || b));
   keep($("eqp-f-tipo"), tipos.map(t => ({ v: t, t: EQP_TIPO_LBL[t] || t })), "Todos os tipos");
   const obras = [...new Set(_eqpRegistros.map(e => e.localizacao_obra_id).filter(Boolean))];
@@ -195,7 +195,7 @@ function renderEquipamentosKanban(dados){
   const cols = Object.keys(STATUS.equipamento || {}).filter(st => !EQP_FORA_OPERACAO.includes(st));
   $("eqp-conteudo").innerHTML = `<div class="serv-kanban">${cols.map(st => {
     const its = dados.filter(e => (e.status || "disponivel") === st);
-    return `<div class="serv-kan-col" data-status="${st}">
+    return `<div class="serv-kan-col" data-status="${esc(st)}">
       <div class="serv-kan-col-head">${tagStatus("equipamento", st)} <span class="contador">${its.length}</span></div>
       ${its.map(eqpCardHTML).join("") || `<p class="vazio">—</p>`}
     </div>`; }).join("")}</div>`;
@@ -385,7 +385,7 @@ async function eqpCarregarFilhas(e){
     ${soltas.length ? `<h3 class="titulo-bloco">Notas sem viagem</h3><div class="tabela-rola"><table><thead><tr><th>Nº</th><th>Tipo</th><th>Status</th><th>Emissão</th><th>Origem</th><th>Destino</th><th>Recebida</th></tr></thead>
     <tbody>${soltas.map(m => `<tr class="linha-clicavel" data-mov="${esc(m.id)}">
       <td><strong>${esc(m.numero || "—")}</strong></td><td>${esc((typeof MOV_TIPOS === "object" && MOV_TIPOS && MOV_TIPOS[m.tipo]) || m.tipo)}</td>
-      <td>${typeof MOV_STATUS === "object" && MOV_STATUS && MOV_STATUS[m.status] ? `<span class="tag ${MOV_STATUS[m.status].cor}">${esc(MOV_STATUS[m.status].label)}</span>` : esc(m.status)}</td>
+      <td>${typeof MOV_STATUS === "object" && MOV_STATUS && MOV_STATUS[m.status] ? `<span class="tag ${esc(MOV_STATUS[m.status].cor)}">${esc(MOV_STATUS[m.status].label)}</span>` : esc(m.status)}</td>
       <td>${dataBR(m.data_emissao)}</td><td>${esc(m.origem_descricao || locLbl(m.origem_tipo))}</td>
       <td>${m.destino_obra_id ? linkObra(m.destino_obra_id, m.destino_descricao || eqpObra(m.destino_obra_id)) : esc(m.destino_descricao || locLbl(m.destino_tipo))}</td>
       <td>${dataBR(m.data_recebimento)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
@@ -401,7 +401,7 @@ async function eqpCarregarFilhas(e){
   const repLbl = (typeof ACE_REPARO_STATUS === "object" && ACE_REPARO_STATUS) || {};
   $("eqp-rep-lista").innerHTML = `<h3 class="titulo-bloco">Reparos de caldeiraria</h3>` + (rep.error ? `<p class="vazio">Erro: ${esc(rep.error.message)}</p>` : !reps.length ? `<p class="vazio">Nenhum reparo aberto para esta TAG.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Abertura</th><th>Status</th><th>Descrição</th><th>Conclusão</th><th class="num">Custo</th></tr></thead>
-    <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${repSt[r.status] || "cinza"}">${esc(repLbl[r.status] || r.status)}</span></td>
+    <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${esc(repSt[r.status] || "cinza")}">${esc(repLbl[r.status] || r.status)}</span></td>
       <td>${r.acessorio_id ? "⚙️ " : ""}${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_conclusao)}</td>
       <td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td></tr>`).join("")}</tbody></table></div>`);
   const manTipo = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
@@ -412,7 +412,7 @@ async function eqpCarregarFilhas(e){
     <p class="meta">Preventiva, corretiva ou preditiva, com atividades, mão de obra e peças (baixa no estoque) na ficha da OS em Manutenção. OS concluída com horímetro/km atualiza a máquina.</p>` + (man.error ? `<p class="vazio">Erro: ${esc(man.error.message)}</p>` : !mans.length ? `<p class="vazio">Nenhuma OS registrada para esta TAG.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>OS</th><th>Prevista</th><th>Tipo</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Horímetro</th><th class="num">Custo</th></tr></thead>
     <tbody>${mans.map(m => `<tr data-os="${esc(m.id)}"><td><strong>${linkManutencao(m.id, m.numero || "OS")}</strong>${m.codigo_externo ? ` <span class="meta">${esc(m.codigo_externo)}</span>` : ""}</td><td>${dataBR(m.data_prevista)}</td><td>${esc(manTipo[m.tipo] || m.tipo)}</td>
-      <td><span class="tag ${(manSt[m.status] || [])[1] || "cinza"}">${esc((manSt[m.status] || [])[0] || m.status)}</span></td>
+      <td><span class="tag ${esc((manSt[m.status] || [])[1] || "cinza")}">${esc((manSt[m.status] || [])[0] || m.status)}</span></td>
       <td>${esc(m.descricao || "")}</td><td>${dataBR(m.data_inicio)}</td><td>${dataBR(m.data_conclusao)}</td>
       <td class="num">${m.horimetro_km != null ? num(m.horimetro_km) : "—"}</td><td class="num">${m.custo_real != null ? brl(m.custo_real) : m.custo != null ? brl(m.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>`);
   $("btn-eqp-os-nova")?.addEventListener("click", () => {
@@ -554,7 +554,7 @@ function eqpRenderAcessorios(){
     const ps = porDiam.get(k).sort(ordem);
     const jogos = new Set(ps.filter(a => a.jogo).map(a => a.jogo));
     return `<div class="eqp-diam-bloco">
-      <div class="eqp-diam-titulo">${k ? `Ø ${k} mm` : "Sem Ø (guias, prolongas, caixas, bombas…)"} <span class="meta">${ps.length} peça(s)${jogos.size ? ` · ${jogos.size} jogo(s)` : ""}</span></div>
+      <div class="eqp-diam-titulo">${k ? `Ø ${esc(k)} mm` : "Sem Ø (guias, prolongas, caixas, bombas…)"} <span class="meta">${ps.length} peça(s)${jogos.size ? ` · ${jogos.size} jogo(s)` : ""}</span></div>
       <div class="tabela-rola"><table>
         <thead><tr><th>Jogo</th><th>Marcação</th><th>Peça</th><th class="num">Passo</th><th class="num">Compr.</th><th>Condição</th><th>Onde está</th><th>Vínculo</th></tr></thead>
         <tbody>${ps.map(a => `<tr class="linha-clicavel" data-ace="${esc(a.id)}">

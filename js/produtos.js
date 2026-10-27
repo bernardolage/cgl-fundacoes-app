@@ -116,7 +116,7 @@ function renderProdModo(){
     el.innerHTML = `Mostrando os produtos com saldo em estoque. <a href="#" data-prod-modo="todos">Mostrar todos os ${num(_prodTotalAtivos || 0)} ativos (${PROD_PAGINA} por página)</a>`;
   } else {
     const paginas = Math.max(1, Math.ceil(total / PROD_PAGINA)), pag = _prodPagina + 1;
-    el.innerHTML = `Todos os produtos ativos · página ${pag} de ${paginas} (${num(_prodPagina * PROD_PAGINA + 1)}–${num(_prodPagina * PROD_PAGINA + n)} de ${num(total)}) ·
+    el.innerHTML = `Todos os produtos ativos · página ${esc(pag)} de ${paginas} (${num(_prodPagina * PROD_PAGINA + 1)}–${num(_prodPagina * PROD_PAGINA + n)} de ${num(total)}) ·
       <a href="#" data-prod-modo="ant" ${pag <= 1 ? off : ""}>‹ anterior</a> · <a href="#" data-prod-modo="prox" ${pag >= paginas ? off : ""}>próxima ›</a> ·
       <a href="#" data-prod-modo="saldo">só com saldo</a>`;
   }

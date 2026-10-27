@@ -49,8 +49,8 @@ function vgPreencherSelects(){
   $("vg-caminhao").innerHTML = opt(caminhoes, v => `${v.codigo} · ${v.nome || ""}${v.placa ? " · " + v.placa : ""}`, "— a definir —");
   $("vg-motorista").innerHTML = opt(_frotaFuncs, f => f.nome + (f.funcao ? " · " + f.funcao : ""), "— a definir —");
   $("vg-equip").innerHTML = opt(_frotaEquipOutros.filter(e => e.ativo !== false), e => `${e.codigo} · ${e.nome || ""}`, "— nenhum —");
-  $("vg-finalidade").innerHTML = Object.entries(VG_FINALIDADES).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("");
-  ["vg-origem-tipo", "vg-destino-tipo"].forEach(id => { $(id).innerHTML = Object.entries(VG_LOC).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join(""); });
+  $("vg-finalidade").innerHTML = Object.entries(VG_FINALIDADES).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
+  ["vg-origem-tipo", "vg-destino-tipo"].forEach(id => { $(id).innerHTML = Object.entries(VG_LOC).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join(""); });
   ["vg-origem-obra", "vg-destino-obra"].forEach(id => { $(id).innerHTML = opt(_frotaObras, o => `${o.codigo} — ${o.nome}${o.status === "em_andamento" ? "" : " (" + o.status + ")"}`, "— escolha a obra —"); });
 }
 
@@ -299,7 +299,7 @@ function vgRenderItens(){
       <thead><tr><th>Item</th><th>Documento</th><th class="num" style="width:90px;">Qtd</th><th style="width:60px;">Un</th><th>Série / chassi</th><th class="col-acao"></th></tr></thead>
       <tbody>${itens.map(it => `<tr>
         <td>${vgItemNome(it)}</td>
-        <td>${it.mov.interna ? '<span class="meta">itens da viagem (sem NF-e)</span>' : `${linkMovimentacao(it.mov.id, it.mov.numero)} ${movSt[it.mov.status] ? `<span class="tag ${movSt[it.mov.status].cor}">${esc(movSt[it.mov.status].label)}</span>` : ""}${it.mov.nf_numero ? ` <span class="meta">NF ${esc(it.mov.nf_numero)}</span>` : ""}`}</td>
+        <td>${it.mov.interna ? '<span class="meta">itens da viagem (sem NF-e)</span>' : `${linkMovimentacao(it.mov.id, it.mov.numero)} ${movSt[it.mov.status] ? `<span class="tag ${esc(movSt[it.mov.status].cor)}">${esc(movSt[it.mov.status].label)}</span>` : ""}${it.mov.nf_numero ? ` <span class="meta">NF ${esc(it.mov.nf_numero)}</span>` : ""}`}</td>
         <td class="num">${num(it.quantidade)}</td><td>${esc(it.unidade || "un")}</td>
         <td class="meta">${esc([it.numero_serie, it.chassi].filter(Boolean).join(" · ") || "—")}</td>
         <td class="col-acao">${pode && it.mov.interna && it.mov.status === "rascunho" ? `<button type="button" class="btn-rem vg-item-rem" data-id="${esc(it.id)}" title="tirar da viagem">&times;</button>` : ""}</td>
@@ -471,7 +471,7 @@ function vgRenderDocs(){
       <tbody>${notas.map(m => `<tr>
         <td><a href="#" class="vg-nota-abrir" data-id="${esc(m.id)}" title="abrir a ficha da nota"><strong>${esc(m.numero)}</strong></a></td>
         <td>${esc(movLbl[m.tipo] || m.tipo)}</td>
-        <td>${movSt[m.status] ? `<span class="tag ${movSt[m.status].cor}">${esc(movSt[m.status].label)}</span>` : esc(m.status)}</td>
+        <td>${movSt[m.status] ? `<span class="tag ${esc(movSt[m.status].cor)}">${esc(movSt[m.status].label)}</span>` : esc(m.status)}</td>
         <td>${m.nf_numero ? esc(`${m.nf_numero}/${m.nf_serie || "1"}`) : '<span class="meta">—</span>'}${m.nf_status ? " " + tagStatus("nfe", m.nf_status) : ""}${m.nf_status && m.nf_ambiente === "homologacao" ? ' <span class="tag ambar" title="emitida em homologação: sem valor fiscal">homolog.</span>' : ""}</td>
         <td class="meta" title="${esc(m.nf_chave_acesso || "")}">${m.nf_chave_acesso ? esc(String(m.nf_chave_acesso).slice(0, 8)) + "…" : "—"}</td>
         <td class="num">${(m.itens || []).length}</td><td class="num">${brl(m.valor_total_produtos)}</td>
@@ -491,13 +491,13 @@ function vgRenderDocs(){
         const nNotas = notas.filter(m => m.mdfe_id === d.id).length;
         return `<tr>
           <td><strong>${esc(d.numero || "—")}</strong>${d.data_encerramento ? `<br><span class="meta">encerrado em ${dataBR(d.data_encerramento)}</span>` : ""}</td>
-          <td><span class="tag ${st[1]}">${esc(st[0])}</span></td><td>${dataBR(d.data_emissao)}</td>
+          <td><span class="tag ${esc(st[1])}">${esc(st[0])}</span></td><td>${dataBR(d.data_emissao)}</td>
           <td>${esc(d.placa)}<br><span class="meta">${esc(d.motorista_nome)}</span></td>
           <td>${esc(String(d.uf_origem).toUpperCase())} → ${esc(String(d.uf_destino).toUpperCase())}</td>
           <td class="num">${nNotas}</td>
           <td>${edit ? `<input class="vg-mdfe-chave" data-id="${esc(d.id)}" value="${esc(d.chave_acesso || "")}" placeholder="44 dígitos" maxlength="44" style="width:170px;" />` : `<span class="meta" title="${esc(d.chave_acesso || "")}">${d.chave_acesso ? esc(String(d.chave_acesso).slice(0, 8)) + "…" : "—"}</span>`}</td>
           <td>${edit ? `<input class="vg-mdfe-prot" data-id="${esc(d.id)}" value="${esc(d.protocolo || "")}" style="width:120px;" />` : esc(d.protocolo || "—")}</td>
-          <td class="col-acao" style="white-space:nowrap;">${pode ? [
+          <td class="col-acao" style="white-space:nowrap;">${pode ? /* html */ [
             edit ? `<button type="button" class="btn-sec btn-sm vg-mdfe-salvar" data-id="${esc(d.id)}" title="guardar chave e protocolo">💾</button>` : "",
             d.status === "rascunho" ? `<button type="button" class="btn-sec btn-sm vg-mdfe-st" data-id="${esc(d.id)}" data-st="emitido" title="marcar como emitido no UniNFe">✓ Emitido</button>` : "",
             d.status === "emitido" ? `<button type="button" class="btn-sec btn-sm vg-mdfe-st" data-id="${esc(d.id)}" data-st="em_transito">🚛 Trânsito</button>` : "",

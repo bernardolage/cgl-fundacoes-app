@@ -259,12 +259,12 @@ async function carregarPatrimonio(){
 /* ---------- Filtros ---------- */
 function preencherFiltrosPatrimonio(){
   const selAno = $("pat-f-ano"), selGrp = $("pat-f-grupo");
-  selAno.innerHTML = patAnos().map(a => `<option value="${a}">${a === patAnoPadrao() ? `Avaliação ${a} (vigente)` : `Avaliação ${a}`}</option>`).join("");
+  selAno.innerHTML = patAnos().map(a => `<option value="${esc(a)}">${a === patAnoPadrao() ? `Avaliação ${esc(a)} (vigente)` : `Avaliação ${esc(a)}`}</option>`).join("");
   selAno.value = String(_patAno);
   const grpAtual = selGrp.value;
   const presentes = new Set(_patBens.map(b => b.grupo));
   selGrp.innerHTML = `<option value="">Todos os grupos</option>` +
-    PAT_GRUPOS.filter(([g]) => presentes.has(g)).map(([g, l]) => `<option value="${g}">${esc(l)}</option>`).join("");
+    PAT_GRUPOS.filter(([g]) => presentes.has(g)).map(([g, l]) => `<option value="${esc(g)}">${esc(l)}</option>`).join("");
   if(grpAtual && presentes.has(grpAtual)) selGrp.value = grpAtual;
 }
 function patFiltrados(){
@@ -329,7 +329,7 @@ function renderPatAvaliacao(dados){
     const mudou = v ? patQtdMudou(b, v.aval) : null;
     const valorHtml = v
       ? `${brl(v.valor)}${v.base === "fipe" && !v.aval ? '<div class="meta">FIPE do cadastro</div>' : ""}${modelo && v.aval && v.aval.valor_unitario != null ? `<div class="meta">${num(v.aval.quantidade)} × ${brl(v.aval.valor_unitario)}</div>` : ""}${mudou ? `<div class="meta txt-aviso" title="Peças contadas na avaliação → peças hoje. O valor do ano é o gravado; clique para regravar com a quantidade atual">${num(mudou.antes)} → ${num(mudou.agora)} peças</div>` : ""}`
-      : `<span class="tag vermelho">sem valor</span>${ult ? `<div class="meta">último: ${brl(ult.valor)} (${ult.ano_referencia})</div>` : ""}${modelo && b.valor_sugerido != null ? `<div class="meta" title="Preço de referência do modelo (módulo Acessórios): só sugestão, nunca gravada sozinha">sugestão ${brl(b.valor_sugerido)}/peça</div>` : ""}`;
+      : `<span class="tag vermelho">sem valor</span>${ult ? `<div class="meta">último: ${brl(ult.valor)} (${esc(ult.ano_referencia)})</div>` : ""}${modelo && b.valor_sugerido != null ? `<div class="meta" title="Preço de referência do modelo (módulo Acessórios): só sugestão, nunca gravada sozinha">sugestão ${brl(b.valor_sugerido)}/peça</div>` : ""}`;
     const titulo = !edita ? "" : modelo ? `Clique para lançar o valor unitário por peça de ${ano} (total = ${num(b.quantidade || 0)} × unitário)` : `Clique para lançar o valor de ${ano}`;
     const html = `<tr class="linha-clicavel${v ? "" : " pat-sem-valor"}" data-k="${esc(patChave(b))}">
         <td><strong>${esc(b.tag || "—")}</strong></td>
@@ -371,10 +371,10 @@ function renderPatAvaliacao(dados){
   cont.innerHTML = `<div class="tabela-rola"><table class="pat-tabela">
     <thead><tr>
       <th>TAG</th><th>Bem</th><th>Ano</th><th>Série / placa</th><th>Estado</th>
-      <th class="num">Valor ${ano}</th><th>Base</th><th class="num" title="Custo histórico do cadastro (valor de aquisição): não entra no total">Aquisição</th>
+      <th class="num">Valor ${esc(ano)}</th><th>Base</th><th class="num" title="Custo histórico do cadastro (valor de aquisição): não entra no total">Aquisição</th>
     </tr></thead>
     <tbody>${corpo}</tbody>
-    <tfoot><tr><td colspan="5"><strong>Total ${ano}${$("pat-busca").value || $("pat-f-grupo").value || $("pat-f-sem").checked ? " (filtro)" : ""}</strong>
+    <tfoot><tr><td colspan="5"><strong>Total ${esc(ano)}${$("pat-busca").value || $("pat-f-grupo").value || $("pat-f-sem").checked ? " (filtro)" : ""}</strong>
       ${semTotal ? `<span class="meta">· ${semTotal} sem valor</span>` : ""}</td>
       <td class="num"><strong>${brl(total)}</strong></td><td colspan="2"></td></tr></tfoot>
   </table></div>`;
@@ -469,18 +469,18 @@ function renderPatResumo(){
     <div class="ind ind-click" data-grupo="${esc(r.grupo)}" title="Ver os bens do grupo na Avaliação">
       <div class="num">${esc(patBrlCurto(r.total))}</div>
       <div class="rot">${esc(patRotuloGrupo(r.grupo))}</div>
-      <div class="meta">${r.bens} ${r.bens === 1 ? "bem" : "bens"}${r.sem_valor ? ` · <span class="txt-perigo">${r.sem_valor} sem valor</span>` : ""}${r.variacao != null ? ` · ${esc(patVariacaoTexto(r))}` : ""}</div>
+      <div class="meta">${esc(r.bens)} ${r.bens === 1 ? "bem" : "bens"}${r.sem_valor ? ` · <span class="txt-perigo">${esc(r.sem_valor)} sem valor</span>` : ""}${r.variacao != null ? ` · ${esc(patVariacaoTexto(r))}` : ""}</div>
     </div>`).join("");
   const tabela = `<div class="tabela-rola"><table class="pat-tabela">
     <thead><tr><th>Grupo</th><th class="num">Bens</th><th class="num">Com valor</th><th class="num">Sem valor</th>
-      <th class="num">Total ${ano}</th><th class="num">Total ${ano - 1}</th><th class="num">Variação</th></tr></thead>
+      <th class="num">Total ${esc(ano)}</th><th class="num">Total ${ano - 1}</th><th class="num">Variação</th></tr></thead>
     <tbody>${linhas.map(r => `<tr class="linha-clicavel" data-grupo="${esc(r.grupo)}">
-      <td>${esc(patRotuloGrupo(r.grupo))}</td><td class="num">${r.bens}</td><td class="num">${r.com_valor}</td>
-      <td class="num">${r.sem_valor ? `<span class="txt-perigo">${r.sem_valor}</span>` : "0"}</td>
+      <td>${esc(patRotuloGrupo(r.grupo))}</td><td class="num">${esc(r.bens)}</td><td class="num">${esc(r.com_valor)}</td>
+      <td class="num">${r.sem_valor ? `<span class="txt-perigo">${esc(r.sem_valor)}</span>` : "0"}</td>
       <td class="num">${brl(r.total)}</td><td class="num">${r.total_ano_anterior != null ? brl(r.total_ano_anterior) : "—"}</td>
       <td class="num">${esc(patVariacaoTexto(r))}</td></tr>`).join("")}</tbody>
-    ${tot ? `<tfoot><tr><td><strong>Total geral</strong></td><td class="num"><strong>${tot.bens}</strong></td><td class="num">${tot.com_valor}</td>
-      <td class="num">${tot.sem_valor}</td><td class="num"><strong>${brl(tot.total)}</strong></td>
+    ${tot ? `<tfoot><tr><td><strong>Total geral</strong></td><td class="num"><strong>${esc(tot.bens)}</strong></td><td class="num">${esc(tot.com_valor)}</td>
+      <td class="num">${esc(tot.sem_valor)}</td><td class="num"><strong>${brl(tot.total)}</strong></td>
       <td class="num">${tot.total_ano_anterior != null ? brl(tot.total_ano_anterior) : "—"}</td><td class="num">${esc(patVariacaoTexto(tot))}</td></tr></tfoot>` : ""}
   </table></div>`;
   const refSem = _patSemValor.length ? _patSemValor[0].ano_referencia : patAnoPadrao();
@@ -491,9 +491,9 @@ function renderPatResumo(){
           <td>${esc(patRotuloGrupo(s.grupo))}</td><td><strong>${esc(s.tag || "—")}</strong></td>
           <td>${esc(s.descricao || "—")}${s.observacoes_cadastro ? `<div class="meta">${esc(String(s.observacoes_cadastro).slice(0, 110))}</div>` : ""}</td>
           <td>${s.bem_tipo === "equipamento" ? tagStatus("equipamento", s.status) : s.bem_tipo === "acessorio_modelo" ? patEstadoHtml(s) : esc(s.status || "—")}</td>
-          <td>${s.ultimo_valor != null ? `${brl(s.ultimo_valor)} <span class="meta">(${s.ultimo_ano_avaliado})</span>` : '<span class="tag vermelho">nunca avaliado</span>'}</td></tr>`).join("")}
+          <td>${s.ultimo_valor != null ? `${brl(s.ultimo_valor)} <span class="meta">(${esc(s.ultimo_ano_avaliado)})</span>` : '<span class="tag vermelho">nunca avaliado</span>'}</td></tr>`).join("")}
       </tbody></table></div>`
-    : `<p class="vazio">Todos os bens próprios ativos têm valor em ${refSem}.</p>`;
+    : `<p class="vazio">Todos os bens próprios ativos têm valor em ${esc(refSem)}.</p>`;
   const edita = patPodeEditar();
   const listaFora = _patFora.length
     ? `<div class="tabela-rola"><table class="pat-tabela"><thead><tr><th>TAG</th><th>Equipamento</th><th>Titularidade</th><th>Status</th>${edita ? "<th></th>" : ""}</tr></thead><tbody>
@@ -507,14 +507,14 @@ function renderPatResumo(){
   const verbas = _patBens.filter(b => b.bem_tipo === "bem" && b.grupo === "acessorios_raiz");
   const modelosAvaliados = _patBens.filter(b => patEhModelo(b) && patValorNoAno(b, ano)).length;
   const avisoVerba = verbas.length && modelosAvaliados
-    ? `<p class="texto-apoio compacto txt-aviso">Verba única ${verbas.map(v => `"${esc(v.descricao)}"`).join(", ")} ativa junto com ${modelosAvaliados} ${modelosAvaliados === 1 ? "modelo avaliado" : "modelos avaliados"} em ${ano}: retire-a (ficha do bem, "Retirar do patrimônio") para não contar em dobro.</p>`
+    ? `<p class="texto-apoio compacto txt-aviso">Verba única ${verbas.map(v => `"${esc(v.descricao)}"`).join(", ")} ativa junto com ${modelosAvaliados} ${modelosAvaliados === 1 ? "modelo avaliado" : "modelos avaliados"} em ${esc(ano)}: retire-a (ficha do bem, "Retirar do patrimônio") para não contar em dobro.</p>`
     : "";
   cont.innerHTML = `
     <div class="indicadores pat-resumo-cards">${cards}</div>
     ${avisoVerba}
-    <h3 class="titulo-bloco">Total por grupo — ${ano} × ${ano - 1}</h3>
+    <h3 class="titulo-bloco">Total por grupo — ${esc(ano)} × ${ano - 1}</h3>
     ${tabela}
-    <h3 class="titulo-bloco">Sem valor em ${refSem} <span class="contador">${semValor.length}</span></h3>
+    <h3 class="titulo-bloco">Sem valor em ${esc(refSem)} <span class="contador">${semValor.length}</span></h3>
     <p class="texto-apoio compacto">Pendência oficial: bem próprio ativo sem avaliação no ano de referência vigente (o maior ano já avaliado). Veículo com FIPE no cadastro não entra.</p>
     ${listaSem}
     <h3 class="titulo-bloco">Fora do patrimônio <span class="contador">${_patFora.length}</span></h3>
@@ -803,7 +803,7 @@ async function carregarHistoricoPat(b){
   const anoDe = Object.fromEntries(avs.map(a => [a.id, a.ano_referencia]));
   const tabAv = avs.length
     ? `<div class="tabela-rola"><table class="pat-tabela"><thead><tr><th>Ano</th><th class="num">Valor</th><th>Base</th><th>Lançada em</th><th>Por</th><th>Observações</th></tr></thead><tbody>
-        ${avs.map(a => `<tr><td><strong>${a.ano_referencia}</strong></td><td class="num">${brl(a.valor)}${a.valor_unitario != null ? `<div class="meta" title="${esc(a.bem_rotulo || "")}">${num(a.quantidade)} × ${brl(a.valor_unitario)}</div>` : ""}</td><td>${esc(PAT_BASES[a.base] || a.base)}</td>
+        ${avs.map(a => `<tr><td><strong>${esc(a.ano_referencia)}</strong></td><td class="num">${brl(a.valor)}${a.valor_unitario != null ? `<div class="meta" title="${esc(a.bem_rotulo || "")}">${num(a.quantidade)} × ${brl(a.valor_unitario)}</div>` : ""}</td><td>${esc(PAT_BASES[a.base] || a.base)}</td>
           <td>${esc(dataBR(a.avaliado_em))}</td><td>${esc(nomes[a.avaliado_por] || "—")}</td><td>${esc(a.observacoes || "")}</td></tr>`).join("")}
       </tbody></table></div>`
     : `<p class="vazio">Nenhuma avaliação lançada${b.grupo === "veiculo" && b.valor_fipe != null ? " (vale a FIPE do cadastro)" : ""}.</p>`;
@@ -813,7 +813,7 @@ async function carregarHistoricoPat(b){
     const quando = l.criado_em ? `${dataBR(l.criado_em)} ${String(l.criado_em).slice(11, 16)}` : "";
     const oque = l.tipo === "criacao" ? `avaliação de ${ano ?? "?"} lançada`
       : `${ano ?? ""} · ${esc(l.campo || "")}: ${esc(fmtValor(l.campo, l.valor_anterior))} → ${esc(fmtValor(l.campo, l.valor_novo))}`;
-    return `<li><span class="meta">${esc(quando)} · ${esc(l.autor_nome || "sistema")}</span> — ${oque}</li>`;
+    return `<li><span class="meta">${esc(quando)} · ${esc(l.autor_nome || "sistema")}</span> — ${/* html */ oque}</li>`;
   }).join("");
   const outros = (rt.data || []).map(l => {
     const quando = l.criado_em ? `${dataBR(l.criado_em)} ${String(l.criado_em).slice(11, 16)}` : "";

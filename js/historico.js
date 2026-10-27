@@ -103,7 +103,7 @@ async function histCarregarTimeline(){
         ? '<span class="tag azul">Comunicação</span>'
         : '<span class="tag ambar">Nota interna</span>';
       return `<div class="hist-item hist-msg">
-        <div class="hist-item-topo"><strong>${autor}</strong> ${tag}<span class="hist-quando">${quando}</span></div>
+        <div class="hist-item-topo"><strong>${autor}</strong> ${tag}<span class="hist-quando">${esc(quando)}</span></div>
         <div class="hist-item-corpo">${esc(ev.texto).replace(/\n/g,"<br>")}</div>
       </div>`;
     }
@@ -116,8 +116,8 @@ async function histCarregarTimeline(){
       corpo = `<strong>${esc(histCampoLabel(ev.campo))}:</strong> ${de} <span class="hist-seta">&rarr;</span> ${para}`;
     }
     return `<div class="hist-item hist-log">
-      <div class="hist-item-topo"><strong>${autor}</strong><span class="hist-quando">${quando}</span></div>
-      <div class="hist-item-corpo">${corpo}</div>
+      <div class="hist-item-topo"><strong>${autor}</strong><span class="hist-quando">${esc(quando)}</span></div>
+      <div class="hist-item-corpo">${/* html */ corpo}</div>
     </div>`;
   }).join("");
 }

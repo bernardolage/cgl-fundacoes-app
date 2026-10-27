@@ -97,9 +97,9 @@ function preencherFiltrosServ(){
   $("serv-f-categoria").innerHTML = `<option value="">Todas as categorias</option>` +
     raizes.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
   $("serv-f-natureza").innerHTML = `<option value="">Todas as naturezas</option>` +
-    Object.entries(SERV_NATUREZA).map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+    Object.entries(SERV_NATUREZA).map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   $("serv-f-tipoobra").innerHTML = `<option value="">Todos os tipos de obra</option>` +
-    Object.entries(SERV_TIPO_OBRA).map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+    Object.entries(SERV_TIPO_OBRA).map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
 }
 
 /* devolve as variantes que passam pelos filtros, já com serviço e raiz resolvidos */
@@ -196,7 +196,7 @@ function renderServKanban(dados){
       <div class="serv-kan-card">
         <div class="serv-kan-card-nome">${esc(g.s.nome)}</div>
         <div class="serv-kan-card-meta">
-          <span class="tag ${SERV_NAT_COR[g.s.natureza]||'cinza'}">${esc(SERV_NATUREZA[g.s.natureza]||g.s.natureza)}</span>
+          <span class="tag ${esc(SERV_NAT_COR[g.s.natureza]||'cinza')}">${esc(SERV_NATUREZA[g.s.natureza]||g.s.natureza)}</span>
         </div>
         <div class="serv-kan-card-rod">
           <span>${g.vars.length} variante${g.vars.length>1?'s':''}</span>
@@ -242,7 +242,7 @@ function renderServCatalogo(dados){
             <strong>${esc(g.s.nome)}</strong>
             <span class="serv-caminho">${esc(servCatCaminho(g.s.categoria_id))} · ${esc(g.s.unidade||"")}</span>
           </div>
-          <span class="tag ${SERV_NAT_COR[g.s.natureza]||'cinza'}">${esc(SERV_NATUREZA[g.s.natureza]||g.s.natureza)}</span>
+          <span class="tag ${esc(SERV_NAT_COR[g.s.natureza]||'cinza')}">${esc(SERV_NATUREZA[g.s.natureza]||g.s.natureza)}</span>
         </div>
         <div class="tabela-rola"><table>
           <thead><tr><th>Código</th><th>Variante</th><th>Tipo de obra</th><th class="num">Preço ref.</th></tr></thead>
@@ -268,7 +268,7 @@ function abrirFichaServ(id){
   const p = _servPrecos[id] || {};
 
   $("serv-tipoobra").innerHTML = Object.entries(SERV_TIPO_OBRA)
-    .map(([val,l]) => `<option value="${val}">${esc(l)}</option>`).join("");
+    .map(([val,l]) => `<option value="${esc(val)}">${esc(l)}</option>`).join("");
 
   $("serv-ficha-contexto").innerHTML = s ? `
     <div><span>Serviço</span><strong>${esc(s.nome)}</strong></div>

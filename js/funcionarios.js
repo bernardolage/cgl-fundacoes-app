@@ -52,7 +52,7 @@ function iniciais(nome){
 function tagContrato(tipo){
   if(!tipo) return "";
   const m = TIPO_CONTRATO_META[tipo] || { label:tipo, cor:"var(--txt-fraco)" };
-  return `<span class="func-contrato-tag" style="background:${m.cor}20;color:${m.cor};border-color:${m.cor}50">${m.label}</span>`;
+  return `<span class="func-contrato-tag" style="background:${esc(m.cor)}20;color:${esc(m.cor)};border-color:${esc(m.cor)}50">${esc(m.label)}</span>`;
 }
 
 function deptSubtreeIds(id){
@@ -120,12 +120,14 @@ async function funcFotoFalhou(img){
   const url = funcFotoUrl(path);
   if(url) img.src = url; else if(wrap) wrap.textContent = iniciaisTxt;
 }
+// fase 99a: a CSP não roda onerror inline; o erro de imagem não borbulha, então escuta na captura
+document.addEventListener("error", (e) => { const t = e.target; if(t && t.tagName === "IMG" && t.dataset.falha === "func-foto") funcFotoFalhou(t); }, true);
 
 function avatarHtml(f, sz=40){
   const style = `width:${sz}px;height:${sz}px;font-size:${Math.round(sz*0.35)}px;flex-shrink:0;`;
   const url = funcFotoUrl(f.foto_url);
   if(url){
-    return `<div class="func-kan-avatar" style="${style}"><img src="${esc(url)}" alt="" loading="lazy" data-path="${esc(funcFotoPath(f.foto_url))}" data-ini="${esc(iniciais(f.nome))}" onerror="funcFotoFalhou(this)" /></div>`;
+    return `<div class="func-kan-avatar" style="${style}"><img src="${esc(url)}" alt="" loading="lazy" data-path="${esc(funcFotoPath(f.foto_url))}" data-ini="${esc(iniciais(f.nome))}" data-falha="func-foto" /></div>`;
   }
   return `<div class="func-kan-avatar" style="${style}">${esc(iniciais(f.nome))}</div>`;
 }
@@ -137,7 +139,7 @@ function funcMontarSelectsFixos(){
 
   const selUF = $("func-uf");
   if(selUF) selUF.innerHTML = '<option value="">—</option>' +
-    UFS.map(u => `<option value="${u.toLowerCase()}">${u}</option>`).join("");
+    UFS.map(u => `<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
 
   const selFStat = $("func-f-status");
   if(selFStat && !selFStat.options.length)
@@ -147,7 +149,7 @@ function funcMontarSelectsFixos(){
   if(selFContr && !selFContr.options.length)
     selFContr.innerHTML = `<option value="">Todos os contratos</option>` +
       Object.entries(TIPO_CONTRATO_META).map(([v,m]) =>
-        `<option value="${v}">${m.label}</option>`).join("");
+        `<option value="${esc(v)}">${esc(m.label)}</option>`).join("");
 }
 
 /* ---------- departamentos ---------- */
@@ -168,7 +170,7 @@ function funcPopularSelectDept(){
   _depts.filter(d => !d.parent_id).sort((a,b) => a.ordem-b.ordem)
     .forEach(r => { items.push({ id:r.id, label: r.nome }); addLevel(r.id, "  "); });
   sel.innerHTML = `<option value="">— Sem departamento —</option>` +
-    items.map(i => `<option value="${i.id}">${esc(i.label)}</option>`).join("");
+    items.map(i => `<option value="${esc(i.id)}">${esc(i.label)}</option>`).join("");
 }
 
 /* ---------- supervisores ---------- */
@@ -178,7 +180,7 @@ async function funcCarregarSupervisores(){
   const sel = $("func-supervisor");
   if(!sel) return;
   sel.innerHTML = `<option value="">— Sem supervisor —</option>` +
-    _supervisores.map(s => `<option value="${s.id}">${esc(s.nome)}</option>`).join("");
+    _supervisores.map(s => `<option value="${esc(s.id)}">${esc(s.nome)}</option>`).join("");
 }
 
 /* ---------- sidebar de departamentos ---------- */
@@ -198,7 +200,7 @@ function funcRenderizarSidebarDept(){
     const cls = nivel===1 ? " dept-filho" : nivel>=2 ? " dept-neto" : "";
     _depts.filter(d => d.parent_id===parentId).sort((a,b)=>a.ordem-b.ordem).forEach(d => {
       const ativo = _funcDeptFiltro===d.id ? " ativo" : "";
-      html += `<div class="func-dept-item${cls}${ativo}" data-dept-id="${d.id}">
+      html += `<div class="func-dept-item${esc(cls)}${ativo}" data-dept-id="${esc(d.id)}">
         <span>${esc(d.nome)}</span><span class="dept-count">${countDept(d.id)}</span></div>`;
       renderNivel(d.id, nivel+1);
     });
@@ -206,7 +208,7 @@ function funcRenderizarSidebarDept(){
 
   _depts.filter(d=>!d.parent_id).sort((a,b)=>a.ordem-b.ordem).forEach(r => {
     const ativo = _funcDeptFiltro===r.id ? " ativo" : "";
-    html += `<div class="func-dept-item${ativo}" data-dept-id="${r.id}">
+    html += `<div class="func-dept-item${ativo}" data-dept-id="${esc(r.id)}">
       <span>${esc(r.nome)}</span><span class="dept-count">${countDept(r.id)}</span></div>`;
     renderNivel(r.id, 1);
   });
@@ -581,7 +583,7 @@ function renderDocsFuncionario(docs){
       <td>${esc(d.descricao||"—")}</td>
       <td>${esc(d.numero||"—")}</td>
       <td>${dataBR(d.emissao)||"—"}</td>
-      <td class="${valCls}">${valTxt}</td>
+      <td class="${esc(valCls)}">${esc(valTxt)}</td>
       <td><button type="button" class="btn-sec btn-sm func-doc-del" data-id="${esc(d.id)}">Excluir</button></td>
     </tr>`;
   }).join("");
@@ -885,7 +887,7 @@ async function renderFuncLogistica(){
     .filter(f => !termo || `${f.nome} ${f.funcao || ""} ${f.tag_atual || ""} ${f.obra_atual || ""} ${f.categoria_operacional || ""} ${f.especialidade || ""}`.toLowerCase().includes(termo))
     .sort((a, b) => (a.dias_para_baixada ?? 9999) - (b.dias_para_baixada ?? 9999) || a.nome.localeCompare(b.nome, "pt-BR"));
   const sem = (d) => d == null ? `<span class="tag cinza">sem baixada</span>`
-    : d < 0 ? `<span class="tag vermelho">vencida há ${-d} d</span>` : d <= 30 ? `<span class="tag ambar">em ${d} d</span>` : `<span class="tag verde">em ${d} d</span>`;
+    : d < 0 ? `<span class="tag vermelho">vencida há ${-d} d</span>` : d <= 30 ? `<span class="tag ambar">em ${esc(d)} d</span>` : `<span class="tag verde">em ${esc(d)} d</span>`;
   const venc = lista.filter(f => f.dias_para_baixada != null && f.dias_para_baixada < 0).length;
   const prox = lista.filter(f => f.dias_para_baixada != null && f.dias_para_baixada >= 0 && f.dias_para_baixada <= 30).length;
   cont.innerHTML = `<div class="meta" style="margin:0 0 8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
@@ -916,7 +918,7 @@ function funcPreencherCompetencias(){
   for(let i = 0; i < 12; i++){
     const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
     const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    opts.push(`<option value="${v}">${d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</option>`);
+    opts.push(`<option value="${esc(v)}">${d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</option>`);
   }
   sel.innerHTML = opts.join("");
 }
@@ -926,7 +928,7 @@ async function renderFuncHE(){
   if(!cont) return;
   const comp = $("func-he-competencia")?.value || hojeISO().slice(0, 7);
   if(!_funcHE.dados || _funcHE.comp !== comp){
-    cont.innerHTML = `<p class="vazio">Apurando ${comp}…</p>`;
+    cont.innerHTML = `<p class="vazio">Apurando ${esc(comp)}…</p>`;
     const ini = comp + "-01";
     const fim = dataLocalISO(new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0));
     // fase 103 (#23): status_dia da linha (ausência não conta como dia); sem a migration a consulta repete sem a coluna
@@ -982,7 +984,7 @@ async function renderFuncHE(){
     <div class="tabela-rola"><table>
       <thead><tr><th>Colaborador</th><th>Obra</th><th class="num" title="Dias no RDO; ausências (Falta, Folga, DSR, Atestado) não contam">Dias</th><th class="num">Horas (entrada→saída)</th><th class="num">Normais</th><th class="num">HE 50%</th><th class="num">HE 100%</th><th class="num">Noturnas</th>${COLS_ST.map(([, l]) => `<th class="num" title="Dias com o status no RDO, liberados para a folha">${esc(l)}</th>`).join("")}</tr></thead>
       <tbody>${linhas.map(a => `<tr><td>${esc(a.nome)}</td><td>${linkObra(a.obra_id, a.obra)}</td><td class="num">${a.dias.size}</td><td class="num">${f1(a.pres)}</td><td class="num">${f1(a.hn)}</td><td class="num">${f1(a.h50)}</td><td class="num">${f1(a.h100)}</td><td class="num">${f1(a.hnot)}</td>${COLS_ST.map(([c]) => `<td class="num">${Number(st(a, c)) || "—"}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${Number(nCol)}" class="vazio">Sem presenças em RDO nesta competência.</td></tr>`}</tbody>
-      <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${tot.dias}</strong></td><td class="num"><strong>${f1(tot.pres)}</strong></td><td class="num"><strong>${f1(tot.hn)}</strong></td><td class="num"><strong>${f1(tot.h50)}</strong></td><td class="num"><strong>${f1(tot.h100)}</strong></td><td class="num"><strong>${f1(tot.hnot)}</strong></td>${COLS_ST.map(([c]) => `<td class="num"><strong>${Number(totSt(c)) || "—"}</strong></td>`).join("")}</tr></tfoot>
+      <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${esc(tot.dias)}</strong></td><td class="num"><strong>${f1(tot.pres)}</strong></td><td class="num"><strong>${f1(tot.hn)}</strong></td><td class="num"><strong>${f1(tot.h50)}</strong></td><td class="num"><strong>${f1(tot.h100)}</strong></td><td class="num"><strong>${f1(tot.hnot)}</strong></td>${COLS_ST.map(([c]) => `<td class="num"><strong>${Number(totSt(c)) || "—"}</strong></td>`).join("")}</tr></tfoot>
     </table></div>`;
   $("btn-func-he-csv")?.addEventListener("click", () => {
     const cel = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -1026,8 +1028,8 @@ function funcPreencherDatalistFuncoes(){
 function funcPromoTag(p){
   if(!p) return "";
   if(p.semaforo === "vencida") return `<span class="tag vermelho">vencida h\u00e1 ${-p.dias_restantes} d</span>`;
-  if(p.semaforo === "proxima") return `<span class="tag ambar">em ${p.dias_restantes} d</span>`;
-  return `<span class="tag verde">em ${p.dias_restantes} d</span>`;
+  if(p.semaforo === "proxima") return `<span class="tag ambar">em ${esc(p.dias_restantes)} d</span>`;
+  return `<span class="tag verde">em ${esc(p.dias_restantes)} d</span>`;
 }
 
 /* ---------- aba Fun\u00e7\u00f5es ---------- */
@@ -1047,7 +1049,7 @@ async function funcCarregarFuncoes(id){
   const p = prom?.data || null;
   $("func-funcoes-prox").innerHTML = p
     ? `Pr\u00f3xima mudan\u00e7a pelo plano de cargos: <strong>${esc(p.proxima_funcao)}</strong> prevista para <strong>${dataBR(p.data_prevista)}</strong> ${funcPromoTag(p)}
-       <span class="meta">(${esc(p.funcao)} desde ${dataBR(p.funcao_desde)} \u00b7 regra de ${p.meses} meses${p.criterio ? " \u00b7 " + esc(p.criterio) : ""})</span>`
+       <span class="meta">(${esc(p.funcao)} desde ${dataBR(p.funcao_desde)} \u00b7 regra de ${esc(p.meses)} meses${p.criterio ? " \u00b7 " + esc(p.criterio) : ""})</span>`
     : (vePlano ? `<span class="meta">Fun\u00e7\u00e3o atual fora do plano de cargos: sem mudan\u00e7a prevista.</span>` : "");
   const podeApagar = funcVeSensivel() && !ehSomenteLeitura();
   cont.innerHTML = linhas.length
@@ -1112,7 +1114,7 @@ async function renderFuncPromocoes(){
     .filter(p => f === "todas" || (f === "vencidas" && p.semaforo === "vencida") || (f === "60dias" && p.semaforo === "proxima") || (f === "no_prazo" && p.semaforo === "no_prazo"))
     .filter(p => !termo || `${p.nome} ${p.matricula || ""} ${p.funcao} ${p.proxima_funcao}`.toLowerCase().includes(termo));
   const n = (s) => todos.filter(p => p.semaforo === s).length;
-  const btn = (k, cls, txt) => `<button type="button" class="tag ${cls} func-promo-f" data-f="${k}" style="cursor:pointer;border:${f === k ? "2px solid var(--txt)" : "2px solid transparent"};">${txt}</button>`;
+  const btn = (k, cls, txt) => `<button type="button" class="tag ${esc(cls)} func-promo-f" data-f="${esc(k)}" style="cursor:pointer;border:${f === k ? "2px solid var(--txt)" : "2px solid transparent"};">${esc(txt)}</button>`;
   cont.innerHTML = `<div class="meta" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <span><strong>${todos.length}</strong> no plano de cargos</span>
       ${btn("vencidas", "vermelho", n("vencida") + " vencidas")} ${btn("60dias", "ambar", n("proxima") + " em 60 dias")} ${btn("no_prazo", "verde", n("no_prazo") + " no prazo")} ${btn("todas", "cinza", "todas")}
@@ -1123,7 +1125,7 @@ async function renderFuncPromocoes(){
       <thead><tr><th>Nome</th><th>Matr\u00edcula</th><th>Fun\u00e7\u00e3o atual</th><th>Desde</th><th>Pr\u00f3xima fun\u00e7\u00e3o</th><th>Prevista</th><th>Situa\u00e7\u00e3o</th><th>Regra</th></tr></thead>
       <tbody>${lista.map(p => `<tr class="linha-clicavel func-promo-row" data-id="${esc(p.funcionario_id)}">
         <td><strong>${esc(p.nome)}</strong></td><td>${esc(p.matricula || "\u2014")}</td><td>${esc(p.funcao)}</td><td>${dataBR(p.funcao_desde)}</td>
-        <td>${esc(p.proxima_funcao)}</td><td>${dataBR(p.data_prevista)}</td><td>${funcPromoTag(p)}</td><td class="meta">${p.meses} meses \u00b7 ${esc(p.grupo)}</td>
+        <td>${esc(p.proxima_funcao)}</td><td>${dataBR(p.data_prevista)}</td><td>${funcPromoTag(p)}</td><td class="meta">${esc(p.meses)} meses \u00b7 ${esc(p.grupo)}</td>
       </tr>`).join("") || `<tr><td colspan="8" class="vazio">Ningu\u00e9m para o filtro.</td></tr>`}</tbody>
     </table></div>
     <p class="meta">A data de in\u00edcio da fun\u00e7\u00e3o veio da data de admiss\u00e3o na carga inicial: quem j\u00e1 mudou de fun\u00e7\u00e3o precisa da data real registrada na aba Fun\u00e7\u00f5es (motivo "Corre\u00e7\u00e3o").</p>`;
@@ -1211,7 +1213,7 @@ function funcAdmSugerirModelo(){
 function funcAdmResumo(){
   const v = (id) => esc(($(id)?.value || "").trim() || "\u2014");
   const sal = $("adm-salario").value;
-  const item = (r, val) => `<div><span class="meta">${r}</span><br><strong>${val}</strong></div>`;
+  const item = (r, val) => `<div><span class="meta">${esc(r)}</span><br><strong>${/* html */ val}</strong></div>`;
   $("adm-resumo").innerHTML = `<strong>Resumo da admiss\u00e3o</strong>
     <div class="grade" style="margin-top:8px;">
       ${item("Nome", v("adm-nome"))}${item("Fun\u00e7\u00e3o", v("adm-funcao"))}${item("Admiss\u00e3o", dataBR($("adm-data").value) || "\u2014")}
@@ -1391,12 +1393,12 @@ async function funcAcessoCarregar(){
 function funcAcessoSenhaHtml(idSufixo, rotuloBotao, idBotao){
   return `<div class="grade">
       <div class="campo"><label>Senha (mín. 8 caracteres) *</label>
-        <div class="senha-wrap"><input type="password" id="func-acesso-senha${idSufixo}" autocomplete="new-password" />
-          <button type="button" class="ver-senha" data-ver-senha="func-acesso-senha${idSufixo}">mostrar</button></div></div>
-      <div class="campo"><label>Confirmar senha *</label><input type="password" id="func-acesso-senha2${idSufixo}" autocomplete="new-password" /></div>
+        <div class="senha-wrap"><input type="password" id="func-acesso-senha${esc(idSufixo)}" autocomplete="new-password" />
+          <button type="button" class="ver-senha" data-ver-senha="func-acesso-senha${esc(idSufixo)}">mostrar</button></div></div>
+      <div class="campo"><label>Confirmar senha *</label><input type="password" id="func-acesso-senha2${esc(idSufixo)}" autocomplete="new-password" /></div>
     </div>
     <p class="meta bloco">A senha é provisória: no primeiro acesso o sistema obriga a troca. Repasse ao funcionário junto com a orientação "entre com o CPF, só números". A senha não fica guardada aqui.</p>
-    <div class="form-acoes compacta"><button type="button" class="btn" id="${idBotao}">${rotuloBotao}</button>${_funcAcesso.modo === "senha" ? ' <button type="button" class="btn-sec" id="btn-func-acesso-cancelar">Cancelar</button>' : ""}</div>`;
+    <div class="form-acoes compacta"><button type="button" class="btn" id="${esc(idBotao)}">${esc(rotuloBotao)}</button>${_funcAcesso.modo === "senha" ? ' <button type="button" class="btn-sec" id="btn-func-acesso-cancelar">Cancelar</button>' : ""}</div>`;
 }
 
 function renderFuncAcesso(){
@@ -1422,19 +1424,19 @@ function renderFuncAcesso(){
         <select id="func-acesso-cargo">${autoOk
           ? `<option value="">Automático pela função (${esc(funcao)}): ${esc(FUNC_ACESSO_CARGOS[auto])}</option>`
           : `<option value="">Escolha o perfil</option>`}
-          ${cr.cargos.map(v => `<option value="${v}">${esc(FUNC_ACESSO_CARGOS[v] || v)}</option>`).join("")}</select>
+          ${cr.cargos.map(v => `<option value="${esc(v)}">${esc(FUNC_ACESSO_CARGOS[v] || v)}</option>`).join("")}</select>
         <div class="meta">${autoOk ? "" : `A função ${esc(funcao || "—")} não tem perfil automático: escolha ${esc(funcAcessoListaCargos(cr.cargos, "ou"))}. `}Outros perfis: a administração troca depois, na tela Usuários.</div></div>`;
     } else {
       // hotfix 147: o automático mostra o perfil que a função dá, quando a regra conhece a função
       const auto = funcAcessoCargoPelaFuncao(funcao);
       selCargo = `<div class="campo"><label>Perfil de acesso</label>
         <select id="func-acesso-cargo"><option value="">Automático pela função (${esc(funcao || "—")})${auto ? ": " + esc(FUNC_ACESSO_CARGOS[auto]) : ""}</option>
-          ${Object.entries(FUNC_ACESSO_CARGOS).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>`;
+          ${Object.entries(FUNC_ACESSO_CARGOS).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></div>`;
     }
     cont.innerHTML = `<div class="meta bloco" style="margin-bottom:12px;"><span class="tag cinza">Sem login</span> Este funcionário ainda não entra no sistema.</div>
       ${!funcAtivo ? `<p class="vazio">Funcionário inativo ou demitido não recebe login.</p>` : !opera ? `<p class="vazio">Usuário de revisão não cria login.</p>` : `
       <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ? cr.ajuda : "Operadores e ajudantes têm o perfil <em>Operador</em>, encarregados o perfil <em>Encarregado</em>, soldadores, mecânicos e apontadores o perfil <em>Mecânico</em>, o pessoal do almoxarifado o perfil <em>Auxiliar de almoxarifado</em>; outra função pede o perfil aqui. Nas telas aparece a função do cadastro; o perfil decide o que ele acessa."}</p>
-      <div class="grade">${selCargo}</div>
+      <div class="grade">${/* html */ selCargo}</div>
       ${funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar")}`}`;
     return;
   }

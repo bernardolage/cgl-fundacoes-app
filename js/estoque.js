@@ -661,9 +661,9 @@ function renderReposicao(){
       <td>${esc(p.nome)}${p.localizacao ? ` <span class="meta">· ${esc(p.localizacao)}</span>` : ""}${estChipOdoo(p)}</td>
       <td class="num"><strong>${num(p.estoque_atual || 0)}</strong> <span class="meta">${esc(p.unidade || "un")}</span></td>
       <td class="num">${pode ? `<input type="number" class="est-rep-min" data-id="${esc(p.id)}" value="${esc(p.estoque_minimo ?? 0)}" min="0" step="1" style="width:64px;text-align:right;" />` : num(p.estoque_minimo || 0)}</td>
-      <td class="num">${pode ? `<input type="number" class="est-rep-ideal" data-id="${esc(p.id)}" value="${p.estoque_ideal ?? ""}" min="0" step="1" style="width:64px;text-align:right;" />` : (p.estoque_ideal != null ? num(p.estoque_ideal) : "—")}</td>
+      <td class="num">${pode ? `<input type="number" class="est-rep-ideal" data-id="${esc(p.id)}" value="${esc(p.estoque_ideal ?? "")}" min="0" step="1" style="width:64px;text-align:right;" />` : (p.estoque_ideal != null ? num(p.estoque_ideal) : "—")}</td>
       <td class="num">${ac > 0 ? `<strong>${num(ac)}</strong>` : "—"}</td>
-      <td><span class="tag ${cor}">${esc(sit)}</span></td>
+      <td><span class="tag ${esc(cor)}">${esc(sit)}</span></td>
       ${pode ? `<td style="white-space:nowrap;"><button type="button" class="btn-sec btn-sm" data-mov="entrada" data-id="${esc(p.id)}" title="registrar entrada">＋</button> <button type="button" class="btn-sec btn-sm" data-mov="saida" data-id="${esc(p.id)}" title="registrar saída">－</button> <button type="button" class="btn-sec btn-sm" data-mov="ajuste" data-id="${esc(p.id)}" title="lançar contagem">📋</button> <button type="button" class="btn-sec btn-sm" data-mov="tirar" data-id="${esc(p.id)}" title="tirar da lista de reposição">✕</button></td>` : ""}
     </tr>`; }).join("")}</tbody></table></div>`;
   cont.querySelectorAll(".est-rep-min, .est-rep-ideal").forEach(inp => inp.addEventListener("change", async () => {
@@ -768,12 +768,12 @@ function renderUltimasEntradas(){
         : [m.obra_id ? linkObra(m.obra_id, obraTxt(m.obra_id) || "obra") : "", m.equipamento_id ? "TAG " + esc(eqTxt(m.equipamento_id)) : ""].filter(Boolean).join(" · ") || "—";
       const q = Number(m.quantidade || 0);
       return `<tr>
-        <td>${isNaN(d) ? "—" : d.toLocaleDateString("pt-BR")}</td>
-        <td><span class="tag ${EST_TIPO_COR[m.tipo] || "cinza"}">${esc(EST_TIPO_LBL[m.tipo] || m.tipo)}</span></td>
+        <td>${isNaN(d) ? "—" : esc(d.toLocaleDateString("pt-BR"))}</td>
+        <td><span class="tag ${esc(EST_TIPO_COR[m.tipo] || "cinza")}">${esc(EST_TIPO_LBL[m.tipo] || m.tipo)}</span></td>
         <td>${esc(prodTxt(m))}</td>
         <td class="num">${m.tipo === "saida" || q < 0 ? "−" : (m.tipo === "ajuste" ? "+" : "")}${num(Math.abs(q))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${m.custo_unitario ? brl(m.custo_unitario) : "—"}</td>
-        <td>${m.tipo === "entrada" ? esc(destino) : destino}</td>
+        <td>${m.tipo === "entrada" ? esc(destino) : esc(destino)}</td>
         <td>${esc(m.documento || "—")}</td>
         <td class="meta">${esc(m.observacoes || "")}</td>
       </tr>`; }).join("")}</tbody></table></div>`;

@@ -166,12 +166,12 @@ const TIPO_SERVICO = {
 /* ---------- Selects fixos ---------- */
 function rdoMontarSelectsFixos(){
   const optTempo = '<option value="">—</option>' +
-    Object.entries(CONDICAO_TEMPO).map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join("");
+    Object.entries(CONDICAO_TEMPO).map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join("");
   $("rdo-tempo-manha").innerHTML = optTempo;
   $("rdo-tempo-tarde").innerHTML = optTempo;
   $("rdo-status").innerHTML = opcoesStatus("rdo");
   $("rdo-tipo-servico").innerHTML = Object.entries(TIPO_SERVICO)
-    .map(([v,o]) => `<option value="${v}">${o.icone} ${esc(o.label)}</option>`).join("");
+    .map(([v,o]) => `<option value="${esc(v)}">${esc(o.icone)} ${esc(o.label)}</option>`).join("");
 }
 
 function rdoPreencherObras(){
@@ -249,7 +249,7 @@ async function carregarRDO(){
   const selT = $("rdo-f-tipo");
   if(selT && !selT.options.length){
     selT.innerHTML = `<option value="">Todos os tipos</option>` +
-      Object.entries(TIPO_SERVICO).map(([v,o]) => `<option value="${v}">${esc(o.label)}</option>`).join("");
+      Object.entries(TIPO_SERVICO).map(([v,o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
   }
   // Busca RDOs + execuções agregadas via view
   const { data, error } = await sb.from("vw_rdo_resumo").select("*").order("data", { ascending:false });
@@ -298,9 +298,9 @@ function renderRDOLista(dados){
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
       <td>${dataBR(r.data)}</td>
       <td>${linkObra(r.obra_id)}</td>
-      <td>${t.icone} ${esc(t.label)}</td>
+      <td>${esc(t.icone)} ${esc(t.label)}</td>
       <td>${rdoCelulaMaquina(r)}</td>
-      <td>${r.qtd_estacas_executadas || 0}</td>
+      <td>${esc(r.qtd_estacas_executadas || 0)}</td>
       <td class="num">${num(r.metragem_total)} m</td>
       <td class="num">${num(r.concreto_total_m3)} m³</td>
       <td>${tagStatus("rdo", r.status)}</td>
@@ -311,7 +311,7 @@ function renderRDOLista(dados){
       <th>Data</th><th>Obra</th><th>Tipo</th><th title="Fase 94: um diário por máquina">Máquina</th><th>Estacas</th>
       <th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th>
     </tr></thead>
-    <tbody>${linhas}</tbody></table></div>`;
+    <tbody>${/* html */ linhas}</tbody></table></div>`;
 }
 
 function renderRDOKanban(dados){
@@ -360,11 +360,11 @@ function renderRDOKanban(dados){
           <span>${num(metragem)} m</span>
           <strong>${num(concreto)} m³</strong>
         </div>
-        ${statusBadges.length ? `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">${statusBadges.join("")}</div>` : ""}
+        ${statusBadges.length ? `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">${/* html */ statusBadges.join("")}</div>` : ""}
       </div>`;
     }).join("");
     return `<div class="serv-kan-col">
-      <div class="serv-kan-col-head">${meta.icone} ${esc(meta.label)}<span>${grupos.length}</span></div>
+      <div class="serv-kan-col-head">${esc(meta.icone)} ${esc(meta.label)}<span>${grupos.length}</span></div>
       ${cards || '<div class="kan-vazio">—</div>'}
     </div>`;
   }).join("");
@@ -667,10 +667,10 @@ function renderExecucoes(){
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" data-auto="${esc(e._pexecAuto ?? "")}" style="width:75px;" title="Metros perfurados neste dia (o que a medição soma) = Acum. − De. Pode corrigir à mão" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pde" step="0.01" min="0" value="${esc(e.perfuracao_de_m ?? "")}" style="width:62px;" title="Onde a estaca estava no começo do dia: o sistema traz o acumulado dos RDOs anteriores desta estaca" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pate" step="0.01" min="0" value="${esc(e.perfuracao_ate_m ?? "")}" style="width:62px;" title="Acumulado da estaca ao fim do dia (o que está no boletim)" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perfi col-lg" value="${e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(0,16) : ""}" /></td>
-      <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perff col-lg" value="${e.perfuracao_fim ? String(e.perfuracao_fim).slice(0,16) : ""}" /></td>
-      <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-conci col-lg" value="${e.concretagem_inicio ? String(e.concretagem_inicio).slice(0,16) : ""}" /></td>
-      <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-concf col-lg" value="${e.concretagem_fim ? String(e.concretagem_fim).slice(0,16) : ""}" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perfi col-lg" value="${e.perfuracao_inicio ? esc(String(e.perfuracao_inicio).slice(0,16)) : ""}" /></td>
+      <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="datetime-local" class="ex-perff col-lg" value="${e.perfuracao_fim ? esc(String(e.perfuracao_fim).slice(0,16)) : ""}" /></td>
+      <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-conci col-lg" value="${e.concretagem_inicio ? esc(String(e.concretagem_inicio).slice(0,16)) : ""}" /></td>
+      <td data-col-tipo="helice_continua,helice_secante"${showHelice?'':' style="display:none;"'}><input type="datetime-local" class="ex-concf col-lg" value="${e.concretagem_fim ? esc(String(e.concretagem_fim).slice(0,16)) : ""}" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="number" class="ex-torque" step="0.1" value="${esc(e.torque ?? "")}" style="width:70px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,helice_secante"${showHelice||tipo==='trado_mecanizado'?'':' style="display:none;"'}><input type="number" class="ex-vol" step="0.001" min="0" value="${esc(e.volume_concreto_m3 ?? "")}" style="width:70px;" /></td>
       <td><select class="ex-equip col-sm">${eqOpts}</select></td>
@@ -845,7 +845,7 @@ function renderBoletimSoloRows(idx){
     <td><input type="number" step="0.01" min="0" class="blt-solo-ini col-sm" value="${esc(s.inicio_ml??'')}" /></td>
     <td><input type="number" step="0.01" min="0" class="blt-solo-fim col-sm" value="${esc(s.final_ml??'')}" /></td>
     <td><input type="text" class="blt-solo-class" list="rdo-solo-classif-lista" value="${esc(s.classificacao||'')}" style="min-width:200px;" title="Sugestões em Usuários › Parâmetros do RDO; aceita texto livre" /></td>
-    <td><select class="blt-solo-ferr"><option value="">—</option>${Object.entries(FERRAMENTAS_RAIZ).map(([v,l]) => `<option value="${v}"${s.ferramenta===v?' selected':''}>${l}</option>`).join('')}</select></td>
+    <td><select class="blt-solo-ferr"><option value="">—</option>${Object.entries(FERRAMENTAS_RAIZ).map(([v,l]) => `<option value="${esc(v)}"${s.ferramenta===v?' selected':''}>${esc(l)}</option>`).join('')}</select></td>
     <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-blt-solo-rem txt-perigo" data-si="${si}">×</button></td>
   </tr>`).join('');
 }
@@ -865,15 +865,15 @@ function renderBoletimJustRows(idx){
 function renderBoletimExpandidoHTML(idx){
   const e = _rdoExecucoes[idx] || {};
   const incOpts = ['Vertical','5°','10°','15°','20°','Outro'].map(v =>
-    `<option value="${v}"${e.inclinacao===v?' selected':''}>${v}</option>`).join('');
+    `<option value="${esc(v)}"${e.inclinacao===v?' selected':''}>${esc(v)}</option>`).join('');
   const combOpts = ['Diesel','Gasolina','GNV','Elétrico','Outro'].map(v =>
-    `<option value="${v}"${e.abastecimento_tipo===v?' selected':''}>${v}</option>`).join('');
+    `<option value="${esc(v)}"${e.abastecimento_tipo===v?' selected':''}>${esc(v)}</option>`).join('');
   const cimUn = [['saco','Sacos'],['kg','kg'],['m3','m³']].map(([v,l]) =>
-    `<option value="${v}"${e.consumo_cimento_unidade===v?' selected':''}>${l}</option>`).join('');
+    `<option value="${esc(v)}"${e.consumo_cimento_unidade===v?' selected':''}>${esc(l)}</option>`).join('');
   const arUn  = [['m3','m³'],['kg','kg'],['padiola','padiola']].map(([v,l]) =>   // fase 101 (#99): padiola
-    `<option value="${v}"${e.consumo_areia_unidade===v?' selected':''}>${l}</option>`).join('');
+    `<option value="${esc(v)}"${e.consumo_areia_unidade===v?' selected':''}>${esc(l)}</option>`).join('');
 
-  return `<tr class="rdo-boletim-row" data-boletim-idx="${idx}">
+  return `<tr class="rdo-boletim-row" data-boletim-idx="${esc(idx)}">
     <td colspan="20" class="rdo-boletim-cell">
       <div class="rdo-boletim-conteudo">
         <div class="rdo-boletim-titulo">📋 Boletim de Perfuração — Estaca ${esc(e.estaca_numero||'?')}</div>
@@ -891,7 +891,7 @@ function renderBoletimExpandidoHTML(idx){
 
         <div class="rdo-boletim-secao">Característica da Estaca (Solo)</div>
         <div class="tabela-rola">
-          <table class="itens-tabela" id="blt-solo-tbl-${idx}">
+          <table class="itens-tabela" id="blt-solo-tbl-${esc(idx)}">
             <thead><tr><th>Início (ml)</th><th>Final (ml)</th><th>Classificação do Solo</th><th>Ferramenta</th><th class="col-acao"></th></tr></thead>
             <tbody>${renderBoletimSoloRows(idx)}</tbody>
           </table>
@@ -923,7 +923,7 @@ function renderBoletimExpandidoHTML(idx){
 
         <div class="rdo-boletim-secao">Justificativas (paradas)</div>
         <div class="tabela-rola">
-          <table class="itens-tabela" id="blt-just-tbl-${idx}">
+          <table class="itens-tabela" id="blt-just-tbl-${esc(idx)}">
             <thead><tr><th>H Inicial</th><th>H Final</th><th>Motivo</th><th class="col-acao"></th></tr></thead>
             <tbody>${renderBoletimJustRows(idx)}</tbody>
           </table>
@@ -1174,7 +1174,7 @@ function rdoDuracaoMin(hi, hf){
 function rdoFmtDuracao(min){
   if(min == null) return "—";
   const h = Math.floor(min / 60), m = min % 60;
-  return h ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
+  return h ? `${h}h${esc(String(m).padStart(2, "0"))}` : `${esc(m)} min`;
 }
 function renderRdoAtividades(){
   const tb = $("rdo-atividades-grade");
@@ -1357,7 +1357,7 @@ function renderRdoEquipe(){
   const optFunc = '<option value="">— do cadastro —</option>' +
     _rdoFuncs.map(f=>`<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
   const optFuncao = '<option value="">—</option>' +
-    RDO_FUNCOES.map(o=>`<option value="${o.v}">${o.l}</option>`).join("");
+    RDO_FUNCOES.map(o=>`<option value="${esc(o.v)}">${esc(o.l)}</option>`).join("");
   const optStatus = '<option value="">Presente</option>' +
     RDO_STATUS_DIA.map(s => `<option value="${esc(s.v)}">${esc(s.l)}</option>`).join("");   // fase 103
   // fase 103: ausência esconde horário e horas (inputs ficam, vazios e ocultos, para o sync); "—" no lugar
@@ -1474,12 +1474,12 @@ function renderRdoAbast(){
     return;
   }
   const optMaq = '<option value="">— máquina —</option>' + _rdoEquipsCache.map(e => `<option value="${esc(e.id)}">${esc(e.codigo || "")}${e.nome ? " · " + esc(e.nome) : ""}</option>`).join("");
-  const optComb = RDO_COMBUSTIVEIS.map(c => `<option value="${c}">${c.replace("_", " ")}</option>`).join("");
+  const optComb = RDO_COMBUSTIVEIS.map(c => `<option value="${esc(c)}">${esc(c.replace("_", " "))}</option>`).join("");
   tb.innerHTML = _rdoAbast.map((a, idx) => `<tr data-idx="${idx}">
     <td><select class="ab-maq">${optMaq}</select>${a.maquina_codigo && !a.equipamento_id ? `<div class="meta">no diário: ${esc(a.maquina_codigo)}</div>` : ""}</td>
     <td><select class="ab-comb">${optComb}</select></td>
-    <td><input type="number" class="ab-qtd" step="0.01" min="0" value="${a.quantidade ?? ""}" style="width:90px;" /></td>
-    <td><input type="number" class="ab-hor" step="0.1" min="0" value="${a.horimetro ?? ""}" style="width:100px;" /><div class="meta ab-hor-atual"></div></td>
+    <td><input type="number" class="ab-qtd" step="0.01" min="0" value="${esc(a.quantidade ?? "")}" style="width:90px;" /></td>
+    <td><input type="number" class="ab-hor" step="0.1" min="0" value="${esc(a.horimetro ?? "")}" style="width:100px;" /><div class="meta ab-hor-atual"></div></td>
     <td><input type="text" class="ab-obs" value="${esc(a.observacao || "")}" style="min-width:140px;" /></td>
     <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-ab-rem txt-perigo" data-idx="${idx}">×</button></td>
   </tr>`).join("");
@@ -2744,11 +2744,11 @@ function iaRecalcularHorasLinha(tr, dia, soVazias){
 function renderConferenciaIA(resp){
   const cont = $("csv-preview-conteudo");
   if(!cont || !_csvParsed) return;
-  const hh = (iso) => iso ? String(iso).slice(11, 16) : "";
+  const hh = (iso) => iso ? esc(String(iso).slice(11, 16)) : "";
   const v  = (x) => (x == null ? "" : x);
-  const tempoOpts = (sel) => '<option value="">—</option>' + Object.entries(CONDICAO_TEMPO_IA).map(([k,l]) => `<option value="${k}"${k===sel?" selected":""}>${l}</option>`).join("");
-  const funcOpts  = (sel, comCadastro) => (comCadastro ? '<option value="">— do cadastro —</option>' : "") + FUNCOES_RDO_IA.map(f => `<option value="${f}"${f===sel?" selected":""}>${f}</option>`).join("");
-  const ferrOpts  = (sel) => '<option value="">—</option>' + Object.entries(FERRAMENTAS_TRECHO_IA).map(([k,l]) => `<option value="${k}"${k===sel?" selected":""}>${l}</option>`).join("");
+  const tempoOpts = (sel) => '<option value="">—</option>' + Object.entries(CONDICAO_TEMPO_IA).map(([k,l]) => `<option value="${esc(k)}"${k===sel?" selected":""}>${esc(l)}</option>`).join("");
+  const funcOpts  = (sel, comCadastro) => (comCadastro ? '<option value="">— do cadastro —</option>' : "") + FUNCOES_RDO_IA.map(f => `<option value="${esc(f)}"${f===sel?" selected":""}>${esc(f)}</option>`).join("");
+  const ferrOpts  = (sel) => '<option value="">—</option>' + Object.entries(FERRAMENTAS_TRECHO_IA).map(([k,l]) => `<option value="${esc(k)}"${k===sel?" selected":""}>${esc(l)}</option>`).join("");
   const funcOptsCadastro = '<option value="">— sem cadastro (avulso) —</option>' + _rdoFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
 
   const conf = resp?.confianca || "media";
@@ -2756,7 +2756,7 @@ function renderConferenciaIA(resp){
   const duvidas = (resp?.duvidas || []);
   const temJornada = !!(_iaJornadaObra && !_iaJornadaObra.padrao_empresa);
   let html = `<div class="ia-conf-topo">
-    <div>${resp?.origem_label ? resp.origem_label : `🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"}`} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
+    <div>${resp?.origem_label ? esc(resp.origem_label) : `🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"}`} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
       ${resp?.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
     ${duvidas.length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${duvidas.map(esc).join(" · ")}</div>` : ""}
     <div class="ia-duvidas ia-jornada-aviso" style="${temJornada ? "display:none;" : ""}">${esc(iaTextoAvisoJornada())}</div>
@@ -2811,17 +2811,17 @@ function renderConferenciaIA(resp){
           <td><input data-c="estaca_numero" value="${esc(v(e.estaca_numero))}" style="width:70px" /></td>
           <td><input data-c="agrupamento" value="${esc(v(e.agrupamento))}" style="width:60px" placeholder="BL3" /></td>
           <td><input type="checkbox" data-c="refuro" ${e.modalidade_execucao === "refuro" ? "checked" : ""} /></td>
-          <td><input type="number" step="1" data-c="diametro_mm" value="${v(e.diametro_mm)}" style="width:64px" /></td>
-          <td><input type="number" step="0.01" data-c="profundidade_projeto" value="${v(e.profundidade_projeto)}" style="width:70px" /></td>
-          <td><input type="number" step="0.01" data-c="profundidade_executada" value="${v(e.profundidade_executada)}" data-auto="${v(e.profundidade_executada)}" style="width:70px" title="Metros perfurados neste dia" /></td>
-          <td><input type="number" step="0.01" data-c="perfuracao_de_m" value="${v(e.perfuracao_de_m)}" style="width:62px" /></td>
-          <td><input type="number" step="0.01" data-c="perfuracao_ate_m" value="${v(e.perfuracao_ate_m ?? e.profundidade_acumulada_m)}" style="width:62px" title="Profundidade acumulada da estaca ao fim do dia" /></td>
+          <td><input type="number" step="1" data-c="diametro_mm" value="${esc(v(e.diametro_mm))}" style="width:64px" /></td>
+          <td><input type="number" step="0.01" data-c="profundidade_projeto" value="${esc(v(e.profundidade_projeto))}" style="width:70px" /></td>
+          <td><input type="number" step="0.01" data-c="profundidade_executada" value="${esc(v(e.profundidade_executada))}" data-auto="${esc(v(e.profundidade_executada))}" style="width:70px" title="Metros perfurados neste dia" /></td>
+          <td><input type="number" step="0.01" data-c="perfuracao_de_m" value="${esc(v(e.perfuracao_de_m))}" style="width:62px" /></td>
+          <td><input type="number" step="0.01" data-c="perfuracao_ate_m" value="${esc(v(e.perfuracao_ate_m ?? e.profundidade_acumulada_m))}" style="width:62px" title="Profundidade acumulada da estaca ao fim do dia" /></td>
           <td><input type="time" data-c="perfuracao_inicio" value="${hh(e.perfuracao_inicio)}" /></td>
           <td><input type="time" data-c="perfuracao_fim" value="${hh(e.perfuracao_fim)}" /></td>
           <td><input type="time" data-c="concretagem_inicio" value="${hh(e.concretagem_inicio)}" /></td>
           <td><input type="time" data-c="concretagem_fim" value="${hh(e.concretagem_fim)}" /></td>
-          <td><input type="number" step="0.01" data-c="volume_concreto_m3" value="${v(e.volume_concreto_m3)}" style="width:70px" /></td>
-          <td><input type="number" step="0.1" data-c="torque" value="${v(e.torque)}" style="width:60px" /></td>
+          <td><input type="number" step="0.01" data-c="volume_concreto_m3" value="${esc(v(e.volume_concreto_m3))}" style="width:70px" /></td>
+          <td><input type="number" step="0.1" data-c="torque" value="${esc(v(e.torque))}" style="width:60px" /></td>
           <td><input data-c="maquina_codigo" value="${esc(v(e.maquina_codigo))}" style="width:80px" /></td>
           <td><input data-c="observacoes" value="${esc(v(e.observacoes))}" style="width:140px" /></td>
           <td class="ia-etapa">${rdoEtapaHTML(e)}</td>
@@ -2834,15 +2834,15 @@ function renderConferenciaIA(resp){
               <label class="meta">Inclinação <input data-c="inclinacao" value="${esc(v(e.inclinacao))}" style="width:60px" placeholder="90" /></label>
               <label class="meta">Cimento <input data-c="consumo_cimento_raiz" value="${esc(v(e.consumo_cimento_raiz))}" style="width:56px" /></label>
               <label class="meta">Areia <input data-c="consumo_areia_raiz" value="${esc(v(e.consumo_areia_raiz))}" style="width:56px" /></label>
-              <label class="meta">Pressão kg/cm² <input type="number" step="0.01" data-c="pressao_injecao_kgcm2" value="${v(e.pressao_injecao_kgcm2)}" style="width:62px" /></label>
-              <label class="meta" title="Fase 101 (#99): volume injetado na estaca no dia">m³ injetado <input type="number" step="0.01" min="0" data-c="volume_injetado_m3" value="${v(e.volume_injetado_m3)}" style="width:62px" /></label>
-              <label class="meta" title="Fase 101 (#99): água consumida na estaca no dia">Água (L) <input type="number" step="1" min="0" data-c="agua_l" value="${v(e.agua_l)}" style="width:62px" /></label>
+              <label class="meta">Pressão kg/cm² <input type="number" step="0.01" data-c="pressao_injecao_kgcm2" value="${esc(v(e.pressao_injecao_kgcm2))}" style="width:62px" /></label>
+              <label class="meta" title="Fase 101 (#99): volume injetado na estaca no dia">m³ injetado <input type="number" step="0.01" min="0" data-c="volume_injetado_m3" value="${esc(v(e.volume_injetado_m3))}" style="width:62px" /></label>
+              <label class="meta" title="Fase 101 (#99): água consumida na estaca no dia">Água (L) <input type="number" step="1" min="0" data-c="agua_l" value="${esc(v(e.agua_l))}" style="width:62px" /></label>
               <button type="button" class="btn-sec btn-sm ia-add-trecho">+ trecho</button>
             </div>
             <table class="itens-tabela ia-tabela ia-trechos-tbl"><thead><tr><th>De (m)</th><th>Até (m)</th><th>Ferramenta</th><th>Classificação do solo</th><th></th></tr></thead>
             <tbody>${trechos.map(t => `<tr>
-              <td><input type="number" step="0.01" data-t="de" value="${v(t.de)}" style="width:62px" /></td>
-              <td><input type="number" step="0.01" data-t="ate" value="${v(t.ate)}" style="width:62px" /></td>
+              <td><input type="number" step="0.01" data-t="de" value="${esc(v(t.de))}" style="width:62px" /></td>
+              <td><input type="number" step="0.01" data-t="ate" value="${esc(v(t.ate))}" style="width:62px" /></td>
               <td><select data-t="ferramenta">${ferrOpts(t.ferramenta)}</select></td>
               <td><input data-t="solo" list="rdo-solo-classif-lista" value="${esc(v(t.solo))}" style="min-width:180px" /></td>
               <td class="col-acao"><button type="button" class="btn-rem ia-rem-trecho" title="remover trecho">&times;</button></td>
@@ -2861,10 +2861,10 @@ function renderConferenciaIA(resp){
           <td><select data-e="status_dia" style="min-width:130px;"${p.status_texto ? ` title="No boletim: ${esc(p.status_texto)}"` : ""}><option value="">Presente</option>${RDO_STATUS_DIA.map(s => `<option value="${esc(s.v)}"${s.v === p.status_dia ? " selected" : ""}>${esc(s.l)}</option>`).join("")}</select>${p.status_texto && !p.status_dia ? `<div class="meta" title="Texto do boletim sem correspondência: escolha o status">“${esc(p.status_texto)}”</div>` : ""}</td>
           <td><input type="time" data-e="hora_entrada" value="${esc(v(p.hora_entrada))}" /></td>
           <td><input type="time" data-e="hora_saida" value="${esc(v(p.hora_saida))}" /></td>
-          <td><input type="number" step="5" min="0" max="240" data-e="intervalo_minutos" value="${v(p.intervalo_minutos ?? ex.intervalo_minutos)}" style="width:60px" placeholder="60" /></td>
-          <td><input type="number" step="0.25" data-e="horas_normais" value="${v(p.horas_normais)}" style="width:60px" /></td>
-          <td><input type="number" step="0.25" data-e="horas_50" value="${v(p.horas_50)}" style="width:60px" /></td>
-          <td><input type="number" step="0.25" data-e="horas_100" value="${v(p.horas_100)}" style="width:60px" /></td>
+          <td><input type="number" step="5" min="0" max="240" data-e="intervalo_minutos" value="${esc(v(p.intervalo_minutos ?? ex.intervalo_minutos))}" style="width:60px" placeholder="60" /></td>
+          <td><input type="number" step="0.25" data-e="horas_normais" value="${esc(v(p.horas_normais))}" style="width:60px" /></td>
+          <td><input type="number" step="0.25" data-e="horas_50" value="${esc(v(p.horas_50))}" style="width:60px" /></td>
+          <td><input type="number" step="0.25" data-e="horas_100" value="${esc(v(p.horas_100))}" style="width:60px" /></td>
           <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="remover">&times;</button></td>
         </tr>`).join("")}</tbody></table>
       </details>
@@ -2874,8 +2874,8 @@ function renderConferenciaIA(resp){
         <tbody>${ex.abastecimentos.map(a => `<tr>
           <td><input data-a="maquina" value="${esc(v(a.maquina))}" style="width:90px" /></td>
           <td><input data-a="combustivel" value="${esc(v(a.combustivel))}" style="width:90px" /></td>
-          <td><input type="number" step="0.01" data-a="quantidade" value="${v(a.quantidade)}" style="width:80px" /></td>
-          <td><input type="number" step="0.1" data-a="horimetro" value="${v(a.horimetro)}" style="width:90px" /></td>
+          <td><input type="number" step="0.01" data-a="quantidade" value="${esc(v(a.quantidade))}" style="width:80px" /></td>
+          <td><input type="number" step="0.1" data-a="horimetro" value="${esc(v(a.horimetro))}" style="width:90px" /></td>
           <td><input data-a="observacao" value="${esc(v(a.observacao))}" style="min-width:160px" /></td>
           <td class="col-acao"><button type="button" class="btn-rem ia-rem" title="não importar">&times;</button></td>
         </tr>`).join("")}</tbody></table>
@@ -3276,7 +3276,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     <div style="margin-top:6px;">
       <label class="meta">Confirme ou altere:</label>
       <select id="csv-tipo-select" style="width:100%;margin-top:4px;">
-        ${Object.entries(TIPO_SERVICO).map(([v,o]) => `<option value="${v}" ${v===_csvTipoDetectado?"selected":""}>${o.icone} ${esc(o.label)}</option>`).join("")}
+        ${Object.entries(TIPO_SERVICO).map(([v,o]) => `<option value="${esc(v)}" ${v===_csvTipoDetectado?"selected":""}>${esc(o.icone)} ${esc(o.label)}</option>`).join("")}
       </select>
     </div>
   </div>`;

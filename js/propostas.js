@@ -172,7 +172,7 @@ const CSS_PROPOSTA = `
 
 /* cabeçalho institucional com logo, identificação do documento e meta-dados */
 /* lote S42 (L3): sigla de norma (NBR-7212, NBR-12.655) fica inteira na mesma linha; recebe texto já escapado */
-function siglasSemQuebra(html){ return String(html || "").replace(/\bNBR-?\s?[\d.]+/g, m => `<span class="sigla">${m}</span>`); }
+function siglasSemQuebra(html){ return /* html */ String(html || "").replace(/\bNBR-?\s?[\d.]+/g, m => `<span class="sigla">${esc(m)}</span>`); }
 
 /* lote S42 (L2): "Página i de N" saiu daqui (era "1 de 1" num PDF de 5 páginas) e vai no carimbo do rodapé de cada
    página (pdfCarimbarRodape, core.js), que conhece o total */
@@ -363,7 +363,7 @@ function blocoQuadroPrecos(itens, orcamento){
         secaoAtual  = it.secao;
         secaoNumero = nivel;
         subIndex    = 0;
-        html += `<tr class="item-secao"><td colspan="6">${secaoNumero}- ${esc(it.secao)}</td></tr>`;
+        html += `<tr class="item-secao"><td colspan="6">${esc(secaoNumero)}- ${esc(it.secao)}</td></tr>`;
         nivel++;
       }
       subIndex++;
@@ -381,7 +381,7 @@ function blocoQuadroPrecos(itens, orcamento){
 
     html += `
       <tr>
-        <td>${rotuloNum}- ${esc(it.descricao || "")}</td>
+        <td>${esc(rotuloNum)}- ${esc(it.descricao || "")}</td>
         <td class="col-un">${esc(it.unidade || "")}</td>
         <td class="col-qtd">${qtd ? num(qtd) : ""}</td>
         <td class="col-vu">${brl(vu)}</td>
@@ -392,7 +392,7 @@ function blocoQuadroPrecos(itens, orcamento){
   if(tot.iss > 0){
     html += `
       <tr>
-        <td>${nivel}- ${esc(tot.rotulo)}</td>
+        <td>${esc(nivel)}- ${esc(tot.rotulo)}</td>
         <td class="col-un"></td>
         <td class="col-qtd"></td>
         <td class="col-vu"></td>
@@ -632,7 +632,7 @@ function blocoEncargos(encargos){
     const cls = it.destaque ? "destaque" : "";
     return `<tr class="${cls}">
       <td>${siglasSemQuebra(esc(it.d))}</td>
-      <td class="x">${c}</td>
+      <td class="x">${esc(c)}</td>
       <td class="x">${g}</td>
       <td class="x">${n}</td>
     </tr>`;
@@ -702,7 +702,7 @@ function montarHtmlProposta(dados){
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Proposta ${esc(orcamento.numero || "")}</title>
 <style>${CSS_PROPOSTA}</style>
-</head><body>${corpo}</body></html>`;
+</head><body>${/* html */ corpo}</body></html>`;
 }
 
 /* ====================================================================

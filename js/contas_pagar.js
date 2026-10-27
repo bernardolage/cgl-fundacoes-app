@@ -64,7 +64,7 @@ async function renderTitulosPagar(){
   const podeExp = capPodeExportar();
   cont.innerHTML = `<div class="lista-topo compacta">
       <span class="meta">Títulos gerados no recebimento das notas (Compras) e pelos contratos recorrentes. O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</span>
-      <select id="cap-f-origem" style="margin-left:auto;"><option value="">Todas as origens</option>${Object.entries(CAP_ORIGEM_LBL).map(([k, v]) => `<option value="${k}"${_capFiltroOrigem === k ? " selected" : ""}>${esc(v)}</option>`).join("")}</select>
+      <select id="cap-f-origem" style="margin-left:auto;"><option value="">Todas as origens</option>${Object.entries(CAP_ORIGEM_LBL).map(([k, v]) => `<option value="${esc(k)}"${_capFiltroOrigem === k ? " selected" : ""}>${esc(v)}</option>`).join("")}</select>
       <select id="cap-f-venc">
         <option value=""${_capFiltroVenc === "" ? " selected" : ""}>Qualquer vencimento</option>
         <option value="vencidos"${_capFiltroVenc === "vencidos" ? " selected" : ""}>Já vencidos</option>
@@ -77,9 +77,9 @@ async function renderTitulosPagar(){
     ${!_capTitulos.length ? `<p class="vazio">Nenhum título ${_capIncluirExp ? "" : "pendente de exportação"}${_capFiltroVenc ? " nesse vencimento" : ""}.</p>` : `<div class="tabela-rola"><table>
     <thead><tr><th>Vencimento</th><th>Origem</th><th>Fornecedor</th><th>Documento</th><th>Pedido</th><th>Parcela</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>
     <tbody>${_capTitulos.map(t => { const venc = !t.exportado_em && t.vencimento < hoje; const ped = t.recebimento?.pedido;
-      const doc = t.origem === "contrato" ? `<a href="#" class="cap-contrato" data-contrato-id="${esc(t.contrato_id)}">${esc(t.contrato?.numero || "contrato")}</a>${t.competencia ? ` <span class="meta">${String(t.competencia).slice(5, 7)}/${String(t.competencia).slice(0, 4)}</span>` : ""}` : t.origem === "avulso" ? esc(t.nf_numero || t.observacoes || "—") : esc(t.nf_numero || "—");
+      const doc = t.origem === "contrato" ? `<a href="#" class="cap-contrato" data-contrato-id="${esc(t.contrato_id)}">${esc(t.contrato?.numero || "contrato")}</a>${t.competencia ? ` <span class="meta">${esc(String(t.competencia).slice(5, 7))}/${esc(String(t.competencia).slice(0, 4))}</span>` : ""}` : t.origem === "avulso" ? esc(t.nf_numero || t.observacoes || "—") : esc(t.nf_numero || "—");
       return `<tr><td class="${venc ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong>${venc ? " ⚠" : ""}</td><td><span class="tag ${t.origem === "contrato" ? "verde" : t.origem === "avulso" ? "ambar" : "azul"}">${esc(CAP_ORIGEM_LBL[t.origem] || t.origem)}</span></td><td>${esc(cmpForn(t.fornecedor_id) || "—")}</td><td>${doc}</td>
-      <td>${ped ? `<a href="#" class="cap-pedido" data-pedido-id="${esc(t.recebimento.pedido_id)}">${esc(ped.numero)}</a>` : '<span class="meta">sem pedido</span>'}</td><td>${t.parcela}/${t.total_parcelas}</td>
+      <td>${ped ? `<a href="#" class="cap-pedido" data-pedido-id="${esc(t.recebimento.pedido_id)}">${esc(ped.numero)}</a>` : '<span class="meta">sem pedido</span>'}</td><td>${esc(t.parcela)}/${esc(t.total_parcelas)}</td>
       <td class="num">${brl(t.valor)}</td><td>${t.obra_id ? linkObra(t.obra_id, cmpObra(t.obra_id)) : "—"}</td><td>${t.equipamento_id ? esc(cmpEq(t.equipamento_id)) : "—"}</td>
       <td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`; }).join("")}</tbody>
     <tfoot><tr><td colspan="6"><strong>Total</strong></td><td class="num"><strong>${brl(capSoma(_capTitulos))}</strong></td><td colspan="3"></td></tr></tfoot></table></div>`}`;
@@ -137,7 +137,7 @@ async function renderExportacoes(){
   if(!lotes.length){ cont.innerHTML = `<p class="vazio">Nenhuma exportação ainda. Na visão "A pagar", o botão Exportar gera o arquivo e registra o lote aqui.</p>`; return; }
   cont.innerHTML = `<p class="meta">Cada exportação para o Compor 90 fica registrada como um lote. Clique no lote para ver os títulos e baixar o mesmo arquivo de novo.</p>
     <div class="tabela-rola"><table><thead><tr><th>Gerado em</th><th>Por</th><th class="num">Títulos</th><th class="num">Valor</th><th>Arquivo</th></tr></thead>
-    <tbody>${lotes.map(l => `<tr class="cap-lote" data-lote="${esc(l.id)}" style="cursor:pointer;"><td><strong>${esc(capDataHora(l.gerado_em))}</strong></td><td>${esc(l.autor?.nome || "—")}</td><td class="num">${l.quantidade}</td><td class="num">${brl(l.valor_total)}</td><td class="meta">${esc(l.arquivo || "—")}</td></tr>`).join("")}</tbody></table></div>`;
+    <tbody>${lotes.map(l => `<tr class="cap-lote" data-lote="${esc(l.id)}" style="cursor:pointer;"><td><strong>${esc(capDataHora(l.gerado_em))}</strong></td><td>${esc(l.autor?.nome || "—")}</td><td class="num">${esc(l.quantidade)}</td><td class="num">${brl(l.valor_total)}</td><td class="meta">${esc(l.arquivo || "—")}</td></tr>`).join("")}</tbody></table></div>`;
   cont.querySelectorAll("tr.cap-lote").forEach(tr => tr.addEventListener("click", () => {
     _capLote = lotes.find(l => l.id === tr.dataset.lote) || null; _capFiltroVenc = ""; _capFiltroOrigem = "";
     capAtivarView("titulos");

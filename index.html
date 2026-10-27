@@ -3,16 +3,22 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="c59477a" />
+<!-- fase 99a (OWASP A03/A05): o navegador só roda script deste site (nada inline, nada de CDN) e só conversa com o
+     próprio site, o projeto Supabase e a ViaCEP (CEP do cadastro fiscal, fase 105a; acrescentada no merge de 27/10).
+     Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
+     header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
+<meta name="app-versao" content="00b1103" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=c59477a" />
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<link rel="stylesheet" href="css/estilo.css?v=00b1103" />
+<!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
+<script src="vendor/supabase-js-2.118.0.min.js?v=00b1103"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=00b1103"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=00b1103"></script>
 </head>
 <body>
 
@@ -5985,53 +5991,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=c59477a"></script>
+<script src="js/core.js?v=00b1103"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=c59477a"></script>
+<script src="js/historico.js?v=00b1103"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=c59477a"></script>
-<script src="js/fiscal_ncm.js?v=c59477a"></script>
+<script src="js/fiscal.js?v=00b1103"></script>
+<script src="js/fiscal_ncm.js?v=00b1103"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=c59477a"></script>
-<script src="js/fornecedores.js?v=c59477a"></script>
-<script src="js/apropriacoes.js?v=c59477a"></script>
-<script src="js/funcionarios.js?v=c59477a"></script>
-<script src="js/rh_documentos.js?v=c59477a"></script>
-<script src="js/servicos.js?v=c59477a"></script>
-<script src="js/produtos.js?v=c59477a"></script>
-<script src="js/estoque.js?v=c59477a"></script>
-<script src="js/separacoes.js?v=c59477a"></script>
-<script src="js/epi.js?v=c59477a"></script>
-<script src="js/compras.js?v=c59477a"></script>
-<script src="js/requisicoes.js?v=c59477a"></script>
-<script src="js/orcamentos.js?v=c59477a"></script>
-<script src="js/propostas.js?v=c59477a"></script>
-<script src="js/contratos.js?v=c59477a"></script>
-<script src="js/contas_pagar.js?v=c59477a"></script>
-<script src="js/centros_custo.js?v=c59477a"></script>
-<script src="js/carteira.js?v=c59477a"></script>
-<script src="js/obras.js?v=c59477a"></script>
-<script src="js/frota.js?v=c59477a"></script>
-<script src="js/viagens.js?v=c59477a"></script>
-<script src="js/equipamentos.js?v=c59477a"></script>
-<script src="js/vendas_bens.js?v=c59477a"></script>
-<script src="js/acessorios.js?v=c59477a"></script>
-<script src="js/reparos.js?v=c59477a"></script>
-<script src="js/manutencao.js?v=c59477a"></script>
-<script src="js/fabricacao.js?v=c59477a"></script>
-<script src="js/mobilizacoes.js?v=c59477a"></script>
-<script src="js/estacas.js?v=c59477a"></script>
-<script src="js/obra_abas.js?v=c59477a"></script>
-<script src="js/medicoes.js?v=c59477a"></script>
-<script src="js/movimentacoes.js?v=c59477a"></script>
-<script src="js/rdo.js?v=c59477a"></script>
-<script src="js/rdo_import_maya.js?v=c59477a"></script>
-<script src="js/usuarios.js?v=c59477a"></script>
-<script src="js/chamados.js?v=c59477a"></script>
-<script src="js/dashboard.js?v=c59477a"></script>
-<script src="js/rh_horas.js?v=c59477a"></script>
-<script src="js/patrimonio.js?v=c59477a"></script>
+<script src="js/clientes.js?v=00b1103"></script>
+<script src="js/fornecedores.js?v=00b1103"></script>
+<script src="js/apropriacoes.js?v=00b1103"></script>
+<script src="js/funcionarios.js?v=00b1103"></script>
+<script src="js/rh_documentos.js?v=00b1103"></script>
+<script src="js/servicos.js?v=00b1103"></script>
+<script src="js/produtos.js?v=00b1103"></script>
+<script src="js/estoque.js?v=00b1103"></script>
+<script src="js/separacoes.js?v=00b1103"></script>
+<script src="js/epi.js?v=00b1103"></script>
+<script src="js/compras.js?v=00b1103"></script>
+<script src="js/requisicoes.js?v=00b1103"></script>
+<script src="js/orcamentos.js?v=00b1103"></script>
+<script src="js/propostas.js?v=00b1103"></script>
+<script src="js/contratos.js?v=00b1103"></script>
+<script src="js/contas_pagar.js?v=00b1103"></script>
+<script src="js/centros_custo.js?v=00b1103"></script>
+<script src="js/carteira.js?v=00b1103"></script>
+<script src="js/obras.js?v=00b1103"></script>
+<script src="js/frota.js?v=00b1103"></script>
+<script src="js/viagens.js?v=00b1103"></script>
+<script src="js/equipamentos.js?v=00b1103"></script>
+<script src="js/vendas_bens.js?v=00b1103"></script>
+<script src="js/acessorios.js?v=00b1103"></script>
+<script src="js/reparos.js?v=00b1103"></script>
+<script src="js/manutencao.js?v=00b1103"></script>
+<script src="js/fabricacao.js?v=00b1103"></script>
+<script src="js/mobilizacoes.js?v=00b1103"></script>
+<script src="js/estacas.js?v=00b1103"></script>
+<script src="js/obra_abas.js?v=00b1103"></script>
+<script src="js/medicoes.js?v=00b1103"></script>
+<script src="js/movimentacoes.js?v=00b1103"></script>
+<script src="js/rdo.js?v=00b1103"></script>
+<script src="js/rdo_import_maya.js?v=00b1103"></script>
+<script src="js/usuarios.js?v=00b1103"></script>
+<script src="js/chamados.js?v=00b1103"></script>
+<script src="js/dashboard.js?v=00b1103"></script>
+<script src="js/rh_horas.js?v=00b1103"></script>
+<script src="js/patrimonio.js?v=00b1103"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=c59477a"></script>
+<script src="js/init.js?v=00b1103"></script>
 </body>
 </html>

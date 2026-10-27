@@ -37,14 +37,14 @@ function apropCompPadrao(){ const d = new Date(); d.setDate(1); d.setMonth(d.get
 /* <option> dos últimos 18 meses (competência), com a atual marcada */
 function apropOpcoesMes(){
   const opcoes = []; const d = new Date(); d.setDate(1);
-  for(let i = 0; i < 18; i++){ const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; opcoes.push(`<option value="${v}" ${v === _aprop.comp ? "selected" : ""}>${apropCompLabel(v)}</option>`); d.setMonth(d.getMonth() - 1); }
+  for(let i = 0; i < 18; i++){ const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; opcoes.push(`<option value="${esc(v)}" ${v === _aprop.comp ? "selected" : ""}>${apropCompLabel(v)}</option>`); d.setMonth(d.getMonth() - 1); }
   return opcoes.join("");
 }
 /* linha "Último cálculo" (só contagens e o total da competência) */
 function apropResumoCalculo(res){
   if(!res) return "";
   // lote S54 (#178): ausencias_rdo = linhas do RDO com Falta, Folga, DSR ou Atestado, que não contam como presença
-  return `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${res.funcionarios} funcionários · ${res.com_rdo} com presença em RDO · ${res.por_alocacao} pela alocação · ${res.sem_obra} sem obra (ADM/PÁTIO) · ${res.linhas} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${res.sem_ficha} ativo(s) sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${res.presencas_sem_cadastro} nome(s) no RDO sem cadastro</span>` : ""}${res.ausencias_rdo ? ` · ${Number(res.ausencias_rdo)} ausência(s) no RDO (Falta, Folga, DSR, Atestado) não contadas` : ""}</p>`;
+  return `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${esc(res.funcionarios)} funcionários · ${esc(res.com_rdo)} com presença em RDO · ${esc(res.por_alocacao)} pela alocação · ${esc(res.sem_obra)} sem obra (ADM/PÁTIO) · ${esc(res.linhas)} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${esc(res.sem_ficha)} ativo(s) sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${esc(res.presencas_sem_cadastro)} nome(s) no RDO sem cadastro</span>` : ""}${res.ausencias_rdo ? ` · ${Number(res.ausencias_rdo)} ausência(s) no RDO (Falta, Folga, DSR, Atestado) não contadas` : ""}</p>`;
 }
 /* tabela "Custo de mão de obra por obra / centro de custo" (linhas de vw_custo_mao_obra_por_obra) */
 function apropTabelaObras(linhas, tot, obraDe){
@@ -131,7 +131,7 @@ async function renderFuncAprop(){
       <div class="ind"><div class="num" style="color:var(--marca-600);">${apropMoeda(tot.total)}</div><div class="rot">Custo total da folha</div></div>
       <div class="ind"><div class="num" style="color:${semObra ? "var(--aviso-txt)" : "inherit"};">${apropMoeda(semObra)}</div><div class="rot">Sem obra (ADM/PÁTIO)</div></div>
     </div>
-    ${semFicha.length ? `<p class="txt-perigo" style="margin:0 0 10px;">⚠️ ${semFicha.length} funcionário(s) ativo(s) ficaram fora por não terem salário na ficha: ${semFicha.slice(0, 12).map(f => `<a href="#" class="aprop-abrir-func" data-id="${f.id}">${esc(f.nome)}</a>`).join(", ")}${semFicha.length > 12 ? "…" : ""}</p>` : ""}
+    ${semFicha.length ? `<p class="txt-perigo" style="margin:0 0 10px;">⚠️ ${semFicha.length} funcionário(s) ativo(s) ficaram fora por não terem salário na ficha: ${semFicha.slice(0, 12).map(f => `<a href="#" class="aprop-abrir-func" data-id="${esc(f.id)}">${esc(f.nome)}</a>`).join(", ")}${semFicha.length > 12 ? "…" : ""}</p>` : ""}
 
     ${apropTabelaObras(_aprop.custo, tot, obraDe)}
 
@@ -144,19 +144,19 @@ async function renderFuncAprop(){
 
     <details style="margin-bottom:12px;"><summary style="cursor:pointer;"><strong>Lançamentos do mês</strong> <span class="meta">(${_aprop.lanc.length}) — HE, prêmio, 13º, férias, rescisão, descontos…</span></summary>
       <div class="grade" style="margin-top:8px;">
-        <div class="campo largo"><label>Funcionário</label><select id="lanc-func"><option value="">Selecione…</option>${_funcs.slice().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map(f => `<option value="${f.id}">${esc(f.nome)}</option>`).join("")}</select></div>
-        <div class="campo"><label>Rubrica</label><select id="lanc-rubrica">${Object.entries(APROP_RUBRICA_LBL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+        <div class="campo largo"><label>Funcionário</label><select id="lanc-func"><option value="">Selecione…</option>${_funcs.slice().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("")}</select></div>
+        <div class="campo"><label>Rubrica</label><select id="lanc-rubrica">${Object.entries(APROP_RUBRICA_LBL).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</select></div>
         <div class="campo"><label>Valor (R$) — negativo = desconto</label><input type="number" step="0.01" id="lanc-valor" /></div>
-        <div class="campo largo"><label>Obra (opcional — vazio segue o rateio do funcionário)</label><select id="lanc-obra"><option value="">— rateio normal —</option>${Object.entries(mapaObras || {}).sort((a, b) => String(b[1]).localeCompare(String(a[1]), "pt-BR")).map(([id, rot]) => `<option value="${id}">${esc(rot)}</option>`).join("")}</select></div>
+        <div class="campo largo"><label>Obra (opcional — vazio segue o rateio do funcionário)</label><select id="lanc-obra"><option value="">— rateio normal —</option>${Object.entries(mapaObras || {}).sort((a, b) => String(b[1]).localeCompare(String(a[1]), "pt-BR")).map(([id, rot]) => `<option value="${esc(id)}">${esc(rot)}</option>`).join("")}</select></div>
         <div class="campo largo"><label>Observação</label><input id="lanc-obs" /></div>
       </div>
       <div class="form-acoes compacta"><button type="button" class="btn btn-sm" id="btn-lanc-add" ${fechada ? "disabled" : ""}>+ Lançar</button></div>
       <div class="tabela-rola"><table><thead><tr><th>Funcionário</th><th>Rubrica</th><th class="num">Valor</th><th>Obra</th><th>Obs.</th><th></th></tr></thead>
-        <tbody>${_aprop.lanc.map(l => `<tr><td>${esc(nomeDe(l.funcionario_id))}</td><td>${esc(APROP_RUBRICA_LBL[l.rubrica] || APROP_RUBRICA_AUTO[l.rubrica] || l.rubrica)}</td><td class="num">${Number(l.valor) < 0 ? `<span class="txt-perigo" title="Desconto (valor negativo)">${apropMoeda(l.valor)}</span>` : apropMoeda(l.valor)}</td><td>${esc(l.obra_id ? (mapaObras?.[l.obra_id] || "obra") : "rateio")}</td><td class="meta">${esc(l.observacoes || "")}</td><td>${fechada ? "" : `<button type="button" class="btn-sec btn-sm aprop-lanc-del" data-id="${l.id}">🗑️</button>`}</td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nenhum lançamento neste mês.</td></tr>`}</tbody></table></div>
+        <tbody>${_aprop.lanc.map(l => `<tr><td>${esc(nomeDe(l.funcionario_id))}</td><td>${esc(APROP_RUBRICA_LBL[l.rubrica] || APROP_RUBRICA_AUTO[l.rubrica] || l.rubrica)}</td><td class="num">${Number(l.valor) < 0 ? `<span class="txt-perigo" title="Desconto (valor negativo)">${apropMoeda(l.valor)}</span>` : apropMoeda(l.valor)}</td><td>${esc(l.obra_id ? (mapaObras?.[l.obra_id] || "obra") : "rateio")}</td><td class="meta">${esc(l.observacoes || "")}</td><td>${fechada ? "" : `<button type="button" class="btn-sec btn-sm aprop-lanc-del" data-id="${esc(l.id)}">🗑️</button>`}</td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nenhum lançamento neste mês.</td></tr>`}</tbody></table></div>
     </details>
 
     <details style="margin-bottom:12px;"><summary style="cursor:pointer;"><strong>Parâmetros de encargos</strong> <span class="meta">(% sobre o salário contábil)</span></summary>
-      <div class="grade" style="margin-top:8px;">${_aprop.params.map(p => `<div class="campo"><label>${esc(p.descricao || p.chave)}</label><input type="number" step="0.01" class="aprop-param" data-chave="${p.chave}" value="${p.valor}" /></div>`).join("")}</div>
+      <div class="grade" style="margin-top:8px;">${_aprop.params.map(p => `<div class="campo"><label>${esc(p.descricao || p.chave)}</label><input type="number" step="0.01" class="aprop-param" data-chave="${esc(p.chave)}" value="${esc(p.valor)}" /></div>`).join("")}</div>
       <div class="form-acoes compacta"><button type="button" class="btn-sec btn-sm" id="btn-aprop-params">💾 Salvar parâmetros</button></div>
     </details>
 
