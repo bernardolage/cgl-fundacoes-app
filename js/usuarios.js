@@ -389,7 +389,10 @@ const USR_MODULOS_EXTRAS = [
   { id: "produtos_sesmt", el: "usr-extra-prodsesmt", rotulo: "Produtos do SESMT (cadastro de EPI e uniformes)" },
   // lote S55 (#173, #182, #180): Thayse e Maria Eduarda (produtos); Maria Eduarda (compras). Valores aceitos pelo check do banco.
   { id: "produtos", el: "usr-extra-prod", rotulo: "Produtos (cadastro: edita e cadastra, sem saldo nem custo)" },
-  { id: "compras", el: "usr-extra-cmp", rotulo: "Compras (requisição e recebimento de NF, sem alçada)" }
+  { id: "compras", el: "usr-extra-cmp", rotulo: "Compras (requisição e recebimento de NF, sem alçada)" },
+  // fase 109a (D1): a Iasmym (engenheiro) opera o SESMT; compras_sesmt é reservado para a 109e (Layane)
+  { id: "sesmt", el: "usr-extra-sesmt", rotulo: "SESMT (catálogo, matriz, documentos de segurança, programas legais)" },
+  { id: "compras_sesmt", el: "usr-extra-compsesmt", rotulo: "Compras do SESMT (fase 109e; ainda sem efeito)" }
 ];
 function usrGarantirChecksExtras(){
   const campo = $("usr-extra-orc")?.closest(".campo"); if(!campo) return;

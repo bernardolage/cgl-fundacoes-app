@@ -45,6 +45,7 @@ async function carregarAbasObra(obraId){
   };
   atualizarSmartButtons();
   if(typeof obrPmCarregar === "function") obrPmCarregar(obraId);   // fase 98: bloco Permuta da aba Contrato
+  if(typeof sstObraSmartButton === "function") sstObraSmartButton(obraId);   // fase 109a: smart-button "programas legais" (js/sesmt.js)
 }
 
 function atualizarSmartButtons(){
@@ -1401,7 +1402,7 @@ function ligarAbasObra(){
       else if(tab === "medicoes") carregarMedicoesDaObra(obraEditId);
       else if(tab === "rdos") carregarRDOsDaObra(obraEditId);
       else if(tab === "vincular" && typeof estvCarregar === "function") estvCarregar(obraEditId);   // fase 94 (#80)
-      else if(tab === "documentos") carregarDocumentosDaObra(obraEditId);
+      else if(tab === "documentos"){ carregarDocumentosDaObra(obraEditId); if(typeof sstObraProgramasRender === "function") sstObraProgramasRender(obraEditId); }   // fase 109a: bloco Programas legais
       else if(tab === "timeline") carregarTimelineDaObra(obraEditId);
       else if(tab === "custos" && typeof custosRender === "function") custosRender("obr-custos", { obra_id: obraEditId });
     });

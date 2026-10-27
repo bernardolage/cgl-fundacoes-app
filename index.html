@@ -8,17 +8,17 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="b29105e" />
+<meta name="app-versao" content="7db933e" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=b29105e" />
+<link rel="stylesheet" href="css/estilo.css?v=7db933e" />
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=b29105e"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=b29105e"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=b29105e"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=7db933e"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=7db933e"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=7db933e"></script>
 </head>
 <body>
 
@@ -175,6 +175,17 @@
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
         <span>Diário de Obra</span>
       </button>
+      <!-- fase 109a: SESMT (catálogo, matriz, GHE, programas legais, vencimentos); só podeVerSesmt() (aplicarMenuPorCargo) -->
+      <button data-secao="sesmt" id="nav-sesmt" style="display:none;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg>
+        <span>SESMT</span>
+      </button>
+      <!-- fase 109d (#108): ocorrências de SST. Item de todos (D15: registro rápido aberto a todo usuário ativo, inclusive login por
+           CPF); o painel completo só aparece para quem lê (ssoPodeLerOcorrencias em js/sesmt_ocorrencias.js). Fica logo abaixo do item "SESMT" da 109a. -->
+      <button data-secao="sesmt-ocorrencias" id="nav-sesmt-ocorrencias">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <span>Ocorrências SST</span>
+      </button>
       <!-- fase 93c: horas do RDO a liberar, fechamento do mês e alocação por obra (RH, engenharia, encarregado, logística) -->
       <button data-secao="rhh" id="nav-rhh" style="display:none;">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
@@ -321,6 +332,15 @@
           <button type="button" class="dash-origem" id="btn-dash-epi-abrir">abrir relatório ›</button>
         </div>
         <div id="dash-epi"><p class="vazio">Carregando…</p></div>
+      </div>
+
+      <!-- SST (fase 109d, #108): acidentes do mês, dias sem acidente, ações vencidas, ocorrências sem classificação (sst_indicadores). Quem lê ocorrências -->
+      <div class="card compacto" id="dash-sst-card" style="display:none;">
+        <div class="dash-bloco-topo">
+          <h3>⚠️ Segurança do trabalho</h3>
+          <button type="button" class="dash-origem" id="btn-dash-sst-abrir">abrir ocorrências ›</button>
+        </div>
+        <div id="dash-sst"><p class="vazio">Carregando…</p></div>
       </div>
 
       <!-- Abas: frota, obras em execução, operadores, produção -->
@@ -780,6 +800,8 @@
             <button type="button" data-tab="acesso" style="display:none;">Acesso</button>
             <!-- fase 100: ficha de EPI (NR-6) do colaborador; almoxarifado, SESMT, RH e diretoria (epiAplicarVisibilidadeFicha) -->
             <button type="button" data-tab="epi" style="display:none;">EPI</button>
+            <!-- fase 109a: situação por requisito exigido (todos veem) e documentos de segurança com arquivo (SESMT, RH, auditor); js/sesmt.js -->
+            <button type="button" data-tab="seguranca" style="display:none;" title="Situação dos requisitos de SST (treinamentos, ASO, documentos) e os arquivos">Segurança</button>
           </div>
 
           <div class="odoo-body">
@@ -1016,6 +1038,10 @@
             <div class="odoo-tab" data-tab="epi">
               <div id="func-epi-aviso" class="aviso" style="margin-bottom:8px;"></div>
               <div id="func-epi-conteudo"><p class="vazio">—</p></div>
+            </div>
+            <!-- TAB SEGURANÇA (fase 109a): chips de situação por requisito (sst_situacao) e documentos de segurança; conteúdo em js/sesmt.js -->
+            <div class="odoo-tab" data-tab="seguranca">
+              <div id="func-sst-conteudo"><p class="vazio">—</p></div>
             </div>
           </div>
         </div>
@@ -2594,6 +2620,10 @@
             <button type="button" class="sb-btn" id="sb-documentos" data-goto-tab="documentos">
               <span class="sb-num">0</span><span class="sb-icon">📎</span><span class="sb-lbl">documentos</span>
             </button>
+            <!-- fase 109a: programas legais da obra (PGR, PCMSO, LTCAT…); abre o painel SESMT filtrado pela obra (js/sesmt.js) -->
+            <button type="button" class="sb-btn" id="sb-sst" title="Programas legais do SESMT desta obra (PGR, PCMSO, ART (CREA), vigência)">
+              <span class="sb-num">0</span><span class="sb-icon">🦺</span><span class="sb-lbl">programas legais</span>
+            </button>
           </div>
 
           <div class="odoo-notebook" id="obr-notebook">
@@ -2845,6 +2875,8 @@
 
             <!-- Aba Documentos -->
             <div class="odoo-tab" data-tab="documentos">
+              <!-- fase 109a: bloco "Programas legais" do SESMT (PGR, PCMSO, ART (CREA), vigência, entregue à contratante); js/sesmt.js -->
+              <div id="obr-sst-programas"></div>
               <div id="obr-doc-conteudo"><p class="vazio">Carregando...</p></div>
             </div>
 
@@ -5453,6 +5485,157 @@
       </div>
     </section>
 
+    <!-- ============ SESMT (fase 109a) — js/sesmt.js, prefixo sst- ============ -->
+    <section class="secao" id="sec-sesmt">
+      <div id="sst-painel">
+        <h2>SESMT</h2>
+        <p class="texto-apoio">Segurança e saúde no trabalho: o catálogo de requisitos (treinamentos, exames, documentos, programas legais), a matriz do que cada função, GHE, método, equipamento, cliente ou obra exige, a situação de cada pessoa calculada pelo banco e os programas legais das obras. Documento de saúde (ASO, exame) só com MFA.</p>
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Segurança do trabalho <span id="sst-contador" class="contador"></span></h3>
+            <div class="serv-views" id="sst-views">
+              <button type="button" class="serv-view-btn ativo" data-view="vencimentos" title="Pessoa × requisito exigido, com farol">Vencimentos</button>
+              <button type="button" class="serv-view-btn" data-view="pessoas" title="Uma linha por pessoa: ok, vencendo, vencido, falta">Pessoas</button>
+              <button type="button" class="serv-view-btn" data-view="programas" title="PGR, PCMSO, LTCAT, ART (CREA) por obra e da sede">Programas legais</button>
+              <button type="button" class="serv-view-btn" data-view="matriz" title="Grade alvo × requisito: X obrigatório, E eventual">Matriz</button>
+              <button type="button" class="serv-view-btn" data-view="ghe" title="Grupos Homogêneos de Exposição e suas funções">GHE</button>
+              <button type="button" class="serv-view-btn" data-view="catalogo" title="Catálogo de requisitos (substitui a lista fixa de tipos de documento)">Catálogo</button>
+            </div>
+            <span style="margin-left:auto;"></span>
+            <button type="button" class="btn-sec" id="btn-sst-exportar" title="Planilha função × requisito e GHE × requisito pré-marcada para a Iasmym conferir (D5)">📤 Exportar para conferência</button>
+            <button type="button" class="btn-sec" id="btn-sst-importar" style="display:none;" title="Lê a planilha conferida, mostra o resumo e só grava depois do Aplicar">📥 Importar conferida</button>
+            <input type="file" id="sst-importar-arquivo" accept=".xlsx" style="display:none;" />
+            <button type="button" class="btn-sec" id="btn-sst-atualizar">🔄 Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-sst-novo-prog" style="display:none;">+ Programa legal</button>
+            <button type="button" class="btn" id="btn-sst-novo-req" style="display:none;">+ Requisito</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="sst-busca" placeholder="Buscar pessoa, função, requisito, código…" />
+            <select id="sst-f-depto"><option value="">Departamento</option></select>
+            <select id="sst-f-funcao"><option value="">Função</option></select>
+            <select id="sst-f-ghe"><option value="">GHE</option></select>
+            <select id="sst-f-obra"><option value="">Obra (situação na obra)</option></select>
+            <select id="sst-f-natureza"><option value="">Natureza</option><option value="treinamento">Treinamento</option><option value="exame">Exame</option><option value="documento">Documento</option><option value="programa">Programa</option></select>
+            <select id="sst-f-status"><option value="pendente">Pendentes (vencendo, vencido, falta)</option><option value="">Todos</option><option value="ok">OK</option><option value="vencendo">Vencendo</option><option value="vencido">Vencido</option><option value="falta">Falta</option><option value="nao_aplica">Não se aplica</option></select>
+          </div>
+          <div id="sst-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha do requisito (estilo Odoo) -->
+      <div id="sst-ficha-req" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-sst-req-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-sst-req-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-sst-req-excluir" style="color:var(--perigo);">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right"><strong id="sst-req-titulo">Novo requisito</strong></div>
+          </div>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Código</span><strong id="sst-req-chip-codigo">—</strong></div>
+            <div class="chip"><span>Natureza</span><strong id="sst-req-chip-natureza">—</strong></div>
+            <div class="chip"><span>Grupo</span><strong id="sst-req-chip-grupo">—</strong></div>
+            <div class="chip"><span>Validade</span><strong id="sst-req-chip-validade">—</strong></div>
+            <div class="chip"><span>Na matriz</span><strong id="sst-req-chip-matriz">0</strong></div>
+            <div class="chip"><span>Situação</span><strong id="sst-req-chip-situacao">—</strong></div>
+          </div>
+          <div class="odoo-notebook" id="sst-req-notebook">
+            <button type="button" data-tab="dados" class="ativo">Dados</button>
+            <button type="button" data-tab="matriz" title="Onde este requisito é exigido e a validade própria de cada alvo">Na matriz</button>
+            <button type="button" data-tab="certificado" title="Conteúdo programático e normas impressos no certificado (109b)">Certificado</button>
+            <button type="button" data-tab="sinonimos" title="Nomes que a carga por nome de arquivo reconhece (D11)">Sinônimos</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="dados">
+              <div class="grade">
+                <div class="campo"><label>Código *</label><input id="sst-req-codigo" placeholder="ex.: NR12_HELICE" /></div>
+                <div class="campo largo"><label>Nome *</label><input id="sst-req-nome" /></div>
+                <div class="campo"><label>Natureza</label><select id="sst-req-natureza"></select></div>
+                <div class="campo"><label>Grupo</label><select id="sst-req-grupo"></select></div>
+                <div class="campo"><label>Validade</label><input id="sst-req-validade" placeholder="ex.: 24 meses, 912 dias (vazio = sem validade)" /></div>
+                <div class="campo"><label>Carga horária (h)</label><input id="sst-req-carga" type="number" step="0.5" min="0" /></div>
+                <div class="campo"><label>Emissor</label><select id="sst-req-emissor"></select></div>
+                <div class="campo"><label>Sensível (dado de saúde)</label><label class="check-inline"><input type="checkbox" id="sst-req-sensivel" /> só SESMT e RH com MFA</label></div>
+                <div class="campo"><label>Exige prova</label><label class="check-inline"><input type="checkbox" id="sst-req-prova" /> nota mínima</label></div>
+                <div class="campo"><label>Nota mínima</label><input id="sst-req-nota" type="number" step="1" min="0" max="100" /></div>
+                <div class="campo"><label>Custo de referência (R$)</label><input id="sst-req-custo" type="number" step="0.01" min="0" /></div>
+                <div class="campo"><label>Guarda (anos, D12)</label><input id="sst-req-guarda" type="number" step="1" min="1" max="99" /></div>
+                <div class="campo"><label>Formulário RG</label><input id="sst-req-rg" placeholder="ex.: RG 4.8" /></div>
+                <div class="campo"><label>Tipo legado (enum antigo)</label><select id="sst-req-legado"></select></div>
+                <div class="campo"><label>Ordem</label><input id="sst-req-ordem" type="number" step="1" /></div>
+                <div class="campo"><label>Situação</label><label class="check-inline"><input type="checkbox" id="sst-req-ativo" /> ativo</label></div>
+                <div class="campo largo"><label>Observações</label><input id="sst-req-obs" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="matriz"><div id="sst-req-matriz"><p class="vazio">—</p></div></div>
+            <div class="odoo-tab" data-tab="certificado">
+              <div class="grade">
+                <div class="campo largo"><label>Conteúdo programático</label><textarea id="sst-req-conteudo" rows="6"></textarea></div>
+                <div class="campo largo"><label>Normas de referência</label><textarea id="sst-req-normas" rows="3"></textarea></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="sinonimos">
+              <div class="grade">
+                <div class="campo largo"><label>Sinônimos (um por linha)</label><textarea id="sst-req-sinonimos" rows="6" placeholder="NR 35&#10;NR-35&#10;NR35"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ficha do programa legal (estilo Odoo) -->
+      <div id="sst-ficha-prog" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-sst-prog-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-sst-prog-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-sst-prog-excluir" style="color:var(--perigo);">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right"><strong id="sst-prog-titulo">Novo programa legal</strong></div>
+          </div>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Programa</span><strong id="sst-prog-chip-programa">—</strong></div>
+            <div class="chip"><span>Escopo</span><strong id="sst-prog-chip-escopo">—</strong></div>
+            <div class="chip"><span>Vigência</span><strong id="sst-prog-chip-vigencia">—</strong></div>
+            <div class="chip"><span>Situação</span><strong id="sst-prog-chip-situacao">—</strong></div>
+            <div class="chip"><span>ART (CREA)</span><strong id="sst-prog-chip-art">—</strong></div>
+          </div>
+          <div class="odoo-notebook" id="sst-prog-notebook">
+            <button type="button" data-tab="dados" class="ativo">Dados</button>
+            <button type="button" data-tab="arquivo">Arquivo e observações</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="dados">
+              <div class="grade">
+                <div class="campo largo"><label>Programa *</label><select id="sst-prog-requisito"></select></div>
+                <div class="campo"><label>Escopo</label><select id="sst-prog-escopo"><option value="obra">Obra</option><option value="sede">Sede</option></select></div>
+                <div class="campo largo"><label>Obra</label><select id="sst-prog-obra"></select></div>
+                <div class="campo"><label>Revisão</label><input id="sst-prog-revisao" placeholder="ex.: rev. 02" /></div>
+                <div class="campo"><label>Vigência início</label><input id="sst-prog-inicio" type="date" /></div>
+                <div class="campo"><label>Vigência fim</label><input id="sst-prog-fim" type="date" /></div>
+                <div class="campo"><label>Responsável técnico</label><input id="sst-prog-resp" /></div>
+                <div class="campo"><label>ART (CREA) nº</label><input id="sst-prog-art" /></div>
+                <div class="campo"><label>ART baixada</label><label class="check-inline"><input type="checkbox" id="sst-prog-art-baixada" /> sim</label></div>
+                <div class="campo"><label>Entregue à contratante em</label><input id="sst-prog-entregue" type="date" title="Item 19 da notificação do MTE" /></div>
+                <div class="campo"><label>Valor (R$)</label><input id="sst-prog-valor" type="number" step="0.01" min="0" /></div>
+                <div class="campo"><label>Destino do custo (D17)</label><select id="sst-prog-destino"><option value="sesmt">Centro SESMT</option><option value="obra">Obra</option></select></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="arquivo">
+              <div class="grade">
+                <div class="campo largo" id="sst-prog-arquivo-bloco"><label>Arquivo atual</label><div id="sst-prog-arquivo-atual"><p class="vazio">—</p></div></div>
+                <div class="campo largo"><label>Novo arquivo (PDF, JPG ou PNG, até 20 MB; salvo junto com a ficha)</label><input id="sst-prog-arquivo" type="file" accept="application/pdf,image/jpeg,image/png" /></div>
+                <div class="campo largo"><label>Observações</label><textarea id="sst-prog-obs" rows="4"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ HORAS E ALOCAÇÃO (fase 93c) — js/rh_horas.js, prefixo rhh- ============ -->
     <section class="secao" id="sec-rhh">
       <h2>Horas e alocação</h2>
@@ -5531,6 +5714,213 @@
             <input type="month" id="rhv-f-mes" title="Mês" style="margin-left:auto;" />
           </div>
           <div id="rhv-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ OCORRÊNCIAS SST (fase 109d, #108) — js/sesmt_ocorrencias.js, prefixo sso-. Seção própria, separada da sec-sesmt
+         da 109a. Registro rápido de todos (D15); painel, ficha, saúde e indicadores por permissão (RLS + ssoPodeLer*). ============ -->
+    <section class="secao" id="sec-sesmt-ocorrencias">
+      <h2>Ocorrências SST</h2>
+      <div id="sso-painel">
+        <!-- registro rápido (celular): o que, onde, quando, foto; nada de saúde. Nasce "registrada"; o SESMT classifica -->
+        <div class="card" id="sso-registro-card" style="display:none;">
+          <div class="lista-topo compacta"><h3 class="titulo-linha">Registrar ocorrência</h3>
+            <button type="button" class="btn-sec btn-sm" id="btn-sso-reg-fechar" style="margin-left:auto;">Fechar</button></div>
+          <p class="texto-apoio compacto">Viu um acidente, um quase acidente ou um desvio? Registre aqui o que aconteceu, onde e quando, com foto se tiver. O SESMT classifica e investiga. Lesão e atendimento médico não entram aqui.</p>
+          <div class="grade">
+            <div class="campo"><label>Quando *</label><input type="datetime-local" id="sso-reg-data" /></div>
+            <div class="campo"><label>Onde</label><select id="sso-reg-local-tipo"></select></div>
+            <div class="campo"><label>Obra</label><select id="sso-reg-obra"></select></div>
+            <div class="campo"><label>Máquina (TAG)</label><select id="sso-reg-equip"></select></div>
+            <div class="campo"><label>Local (frente, setor, ponto)</label><input id="sso-reg-local" placeholder="ex.: frente 2, perto da estaca E-14" /></div>
+            <div class="campo"><label>O que parece ser</label><select id="sso-reg-categoria"></select></div>
+            <div class="campo largo"><label>O que aconteceu *</label><textarea id="sso-reg-descricao" rows="3" placeholder="Descreva o fato: quem estava fazendo o quê, o que deu errado"></textarea></div>
+            <div class="campo largo"><label>O que foi feito na hora</label><input id="sso-reg-acoes" placeholder="ex.: isolou a área, parou a máquina, levou ao ambulatório" /></div>
+            <div class="campo"><label>Envolvido (funcionário)</label><select id="sso-reg-func"></select></div>
+            <div class="campo"><label>Envolvido (terceiro / visitante)</label><input id="sso-reg-externo" placeholder="nome e empresa" /></div>
+            <div class="campo largo"><label>Fotos ou vídeo</label><input type="file" id="sso-reg-fotos" accept="image/*,video/*,application/pdf" multiple /></div>
+          </div>
+          <div id="sso-reg-aviso" class="aviso" role="alert"></div>
+          <div class="form-acoes compacta">
+            <button type="button" class="btn-sec" id="btn-sso-reg-limpar">Limpar</button>
+            <button type="button" class="btn" id="btn-sso-reg-enviar">Registrar ocorrência</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="lista-topo">
+            <h3 id="sso-titulo-lista">Ocorrências <span id="sso-contador" class="contador"></span></h3>
+            <div class="serv-views" id="sso-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="kanban" data-so-leitor="1">Kanban</button>
+              <button type="button" class="serv-view-btn" data-view="indicadores" data-so-leitor="1">Indicadores</button>
+              <button type="button" class="serv-view-btn" data-view="licoes">Lições aprendidas</button>
+            </div>
+            <button type="button" class="btn" id="btn-sso-registrar" style="margin-left:8px;">+ Registrar ocorrência</button>
+          </div>
+          <div class="serv-filtros" id="sso-filtros">
+            <input id="sso-busca" placeholder="Buscar número, descrição, local…" />
+            <select id="sso-f-ano"></select>
+            <select id="sso-f-categoria"></select>
+            <select id="sso-f-status"></select>
+            <select id="sso-f-obra"></select>
+            <select id="sso-f-setor"></select>
+          </div>
+          <div id="sso-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <!-- ficha (Odoo): header de ações, statusbar com os 6 estados, chips, smart-buttons e abas -->
+      <div id="sso-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-sso-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-sso-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-sso-investigar">🔎 Investigar</button>
+              <button type="button" class="btn-sec" id="btn-sso-encerrar">✅ Encerrar</button>
+              <select id="sso-pdf-tipo" title="Tipo do PDF">
+                <option value="preliminar">Comunicação preliminar</option>
+                <option value="investigacao">Relatório de investigação</option>
+                <option value="licao">Lição aprendida</option>
+              </select>
+              <button type="button" class="btn-sec" id="btn-sso-pdf">📄 PDF</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-sso-excluir">🗑️ Excluir</button>
+            </div>
+            <div class="actions-right"><strong id="sso-ficha-titulo">Ocorrência</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="sso-statusbar">
+            <div class="stage" data-status="registrada">Registrada</div>
+            <div class="stage" data-status="em_investigacao">Em investigação</div>
+            <div class="stage" data-status="plano_de_acao">Plano de ação</div>
+            <div class="stage" data-status="acoes_concluidas">Ações concluídas</div>
+            <div class="stage" data-status="eficacia_verificada">Eficácia verificada</div>
+            <div class="stage" data-status="encerrada">Encerrada</div>
+          </div>
+          <div class="odoo-contexto">
+            <div class="chip"><span>Número</span><strong id="sso-chip-numero">—</strong></div>
+            <div class="chip"><span>Categoria</span><strong id="sso-chip-categoria">—</strong></div>
+            <div class="chip"><span>Quando</span><strong id="sso-chip-data">—</strong></div>
+            <div class="chip"><span>Obra</span><strong id="sso-chip-obra">—</strong></div>
+            <div class="chip"><span>Máquina</span><strong id="sso-chip-equip">—</strong></div>
+            <div class="chip"><span>Registrada por</span><strong id="sso-chip-registrado">—</strong></div>
+          </div>
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-sso-envolvidos" data-goto-tab="envolvidos"><span class="sb-num">0</span><span class="sb-icon">👥</span><span class="sb-lbl">envolvidos</span></button>
+            <button type="button" class="sb-btn" id="sb-sso-acoes" data-goto-tab="acoes"><span class="sb-num">0</span><span class="sb-icon">📋</span><span class="sb-lbl">ações</span></button>
+            <button type="button" class="sb-btn" id="sb-sso-acoes-vencidas" data-goto-tab="acoes"><span class="sb-num">0</span><span class="sb-icon">⏰</span><span class="sb-lbl">vencidas</span></button>
+            <button type="button" class="sb-btn" id="sb-sso-anexos" data-goto-tab="anexos"><span class="sb-num">0</span><span class="sb-icon">📎</span><span class="sb-lbl">anexos</span></button>
+          </div>
+          <div class="odoo-notebook" id="sso-notebook">
+            <button type="button" data-tab="descricao" class="ativo">Descrição</button>
+            <button type="button" data-tab="envolvidos">Envolvidos</button>
+            <button type="button" data-tab="investigacao">Investigação</button>
+            <button type="button" data-tab="acoes">Plano de ação</button>
+            <button type="button" data-tab="licao">Lição aprendida</button>
+            <button type="button" data-tab="saude" id="sso-tab-saude-btn">Saúde</button>
+            <button type="button" data-tab="anexos">Anexos</button>
+            <button type="button" data-tab="historico">Histórico</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="descricao">
+              <div class="grade">
+                <div class="campo"><label>Quando *</label><input type="datetime-local" id="sso-data" /></div>
+                <div class="campo"><label>Categoria</label><select id="sso-categoria"></select></div>
+                <div class="campo"><label>Onde</label><select id="sso-local-tipo"></select></div>
+                <div class="campo"><label>Obra</label><select id="sso-obra"></select></div>
+                <div class="campo"><label>Máquina (TAG)</label><select id="sso-equip"></select></div>
+                <div class="campo"><label>Setor</label><input id="sso-setor" list="sso-setores-lista" placeholder="fundação, oficina, pátio…" /><datalist id="sso-setores-lista"></datalist></div>
+                <div class="campo"><label>Local (frente, ponto)</label><input id="sso-local" /></div>
+                <div class="campo"><label>Atividade</label><input id="sso-atividade" placeholder="o que se fazia na hora" /></div>
+                <div class="campo"><label>Tipo de perda</label><select id="sso-tipo-perda"></select></div>
+                <div class="campo"><label>Relação com o trabalho</label><select id="sso-relacao"></select></div>
+                <div class="campo"><label>Agente / tipo (Sienge)</label><select id="sso-agente"></select></div>
+                <div class="campo"><label>Comunicado ao cliente em</label><input type="datetime-local" id="sso-comunicado-cliente" /></div>
+                <div class="campo largo"><label>Descrição *</label><textarea id="sso-descricao" rows="4"></textarea></div>
+                <div class="campo largo"><label>Ações imediatas</label><textarea id="sso-acoes-imediatas" rows="2"></textarea></div>
+                <div class="campo largo"><label>Cronologia (uma linha por fato: hora — fato)</label><textarea id="sso-cronologia" rows="3" placeholder="07:40 — equipe iniciou a montagem&#10;08:15 — …"></textarea></div>
+              </div>
+              <h4 class="sub-titulo">Severidade (1 a 5 por dimensão)</h4>
+              <div class="grade" id="sso-severidade">
+                <div class="campo"><label>Segurança e pessoas — real</label><select id="sso-sev-real-seguranca" class="sso-sev"></select></div>
+                <div class="campo"><label>Segurança e pessoas — potencial</label><select id="sso-sev-pot-seguranca" class="sso-sev"></select></div>
+                <div class="campo"><label>Meio ambiente — real</label><select id="sso-sev-real-meio_ambiente" class="sso-sev"></select></div>
+                <div class="campo"><label>Meio ambiente — potencial</label><select id="sso-sev-pot-meio_ambiente" class="sso-sev"></select></div>
+                <div class="campo"><label>Financeiro — real</label><select id="sso-sev-real-financeiro" class="sso-sev"></select></div>
+                <div class="campo"><label>Financeiro — potencial</label><select id="sso-sev-pot-financeiro" class="sso-sev"></select></div>
+                <div class="campo"><label>Comunidade — real</label><select id="sso-sev-real-comunidade" class="sso-sev"></select></div>
+                <div class="campo"><label>Comunidade — potencial</label><select id="sso-sev-pot-comunidade" class="sso-sev"></select></div>
+              </div>
+              <div class="grade">
+                <div class="campo largo"><label>Observações</label><textarea id="sso-observacoes" rows="2"></textarea></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="envolvidos">
+              <div class="grade" id="sso-env-form">
+                <div class="campo"><label>Funcionário</label><select id="sso-env-func"></select></div>
+                <div class="campo"><label>ou nome externo</label><input id="sso-env-externo" placeholder="terceiro, visitante, subcontratado" /></div>
+                <div class="campo"><label>Vínculo</label><select id="sso-env-vinculo"></select></div>
+                <div class="campo"><label>Papel</label><select id="sso-env-papel"></select></div>
+                <div class="campo"><label>Função na data</label><input id="sso-env-funcao" /></div>
+                <div class="campo" style="align-self:end;"><button type="button" class="btn" id="btn-sso-env-add">+ Adicionar</button></div>
+              </div>
+              <div id="sso-env-lista"></div>
+            </div>
+            <div class="odoo-tab" data-tab="investigacao">
+              <div class="grade">
+                <div class="campo"><label>Método</label><select id="sso-metodo"></select></div>
+                <div class="campo"><label>Coordenador</label><select id="sso-coordenador"></select></div>
+                <div class="campo largo"><label>Equipe de investigação</label><input id="sso-equipe" placeholder="nomes e funções" /></div>
+                <div class="campo largo"><label>Causa imediata</label><textarea id="sso-causa-imediata" rows="2"></textarea></div>
+                <div class="campo largo"><label>Causas básicas (5 porquês / Ishikawa / árvore)</label><textarea id="sso-causas-basicas" rows="4" placeholder="Por quê? …&#10;Por quê? …"></textarea></div>
+                <div class="campo largo"><label>Fatores contribuintes</label><textarea id="sso-fatores" rows="2"></textarea></div>
+                <div class="campo largo"><label>Fatores positivos</label><textarea id="sso-fatores-positivos" rows="2"></textarea></div>
+              </div>
+              <h4 class="sub-titulo">Fatos a destacar</h4>
+              <div class="grade">
+                <div class="campo"><label>Treinamento</label><input id="sso-fatos-treinamento" /></div>
+                <div class="campo"><label>EPI</label><input id="sso-fatos-epi" /></div>
+                <div class="campo"><label>Ferramenta / equipamento</label><input id="sso-fatos-ferramenta" /></div>
+                <div class="campo"><label>Ambiente</label><input id="sso-fatos-ambiente" /></div>
+                <div class="campo largo"><label>Outras pessoas</label><input id="sso-fatos-pessoas" /></div>
+              </div>
+            </div>
+            <div class="odoo-tab" data-tab="acoes">
+              <div class="grade" id="sso-acao-form">
+                <div class="campo"><label>Causa ou fator</label><input id="sso-acao-causa" /></div>
+                <div class="campo largo"><label>Ação *</label><input id="sso-acao-texto" /></div>
+                <div class="campo"><label>Responsável</label><select id="sso-acao-resp"></select></div>
+                <div class="campo"><label>Setor</label><input id="sso-acao-setor" /></div>
+                <div class="campo"><label>Prazo</label><input type="date" id="sso-acao-prazo" /></div>
+                <div class="campo" style="align-self:end;"><button type="button" class="btn" id="btn-sso-acao-add">+ Adicionar ação</button></div>
+              </div>
+              <div id="sso-acoes-lista"></div>
+            </div>
+            <div class="odoo-tab" data-tab="licao">
+              <div class="grade">
+                <div class="campo largo"><label>Lição aprendida (o que a empresa aprendeu e o que muda; sem nome de pessoa)</label><textarea id="sso-licao" rows="5"></textarea></div>
+                <div class="campo"><label>Publicada em</label><input type="datetime-local" id="sso-licao-publicada" /></div>
+                <div class="campo"><label>Divulgada no DSS em</label><input type="date" id="sso-licao-dss" /></div>
+                <div class="campo"><label>Aprovada por</label><select id="sso-aprovada-por"></select></div>
+              </div>
+              <p class="texto-apoio compacto">Publicar a lição a mostra a todo usuário do app na visão "Lições aprendidas", sem o envolvido nem a descrição do caso.</p>
+            </div>
+            <div class="odoo-tab" data-tab="saude">
+              <p class="texto-apoio compacto">Área restrita: SESMT e RH com a sessão verificada (MFA). Cada leitura fica registrada.</p>
+              <div id="sso-saude-conteudo"></div>
+            </div>
+            <div class="odoo-tab" data-tab="anexos">
+              <div class="grade">
+                <div class="campo largo"><label>Enviar fotos, vídeos ou PDF</label><input type="file" id="sso-anexo-arquivos" accept="image/*,video/*,application/pdf" multiple /></div>
+                <div class="campo" style="align-self:end;"><button type="button" class="btn" id="btn-sso-anexo-enviar">Enviar</button></div>
+              </div>
+              <div id="sso-anexos-lista"></div>
+            </div>
+            <div class="odoo-tab" data-tab="historico">
+              <div id="sso-historico"></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -6028,53 +6418,56 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=b29105e"></script>
+<script src="js/core.js?v=7db933e"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=b29105e"></script>
+<script src="js/historico.js?v=7db933e"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=b29105e"></script>
-<script src="js/fiscal_ncm.js?v=b29105e"></script>
+<script src="js/fiscal.js?v=7db933e"></script>
+<script src="js/fiscal_ncm.js?v=7db933e"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=b29105e"></script>
-<script src="js/fornecedores.js?v=b29105e"></script>
-<script src="js/apropriacoes.js?v=b29105e"></script>
-<script src="js/funcionarios.js?v=b29105e"></script>
-<script src="js/rh_documentos.js?v=b29105e"></script>
-<script src="js/servicos.js?v=b29105e"></script>
-<script src="js/produtos.js?v=b29105e"></script>
-<script src="js/estoque.js?v=b29105e"></script>
-<script src="js/separacoes.js?v=b29105e"></script>
-<script src="js/epi.js?v=b29105e"></script>
-<script src="js/compras.js?v=b29105e"></script>
-<script src="js/requisicoes.js?v=b29105e"></script>
-<script src="js/orcamentos.js?v=b29105e"></script>
-<script src="js/propostas.js?v=b29105e"></script>
-<script src="js/contratos.js?v=b29105e"></script>
-<script src="js/contas_pagar.js?v=b29105e"></script>
-<script src="js/centros_custo.js?v=b29105e"></script>
-<script src="js/carteira.js?v=b29105e"></script>
-<script src="js/obras.js?v=b29105e"></script>
-<script src="js/frota.js?v=b29105e"></script>
-<script src="js/viagens.js?v=b29105e"></script>
-<script src="js/equipamentos.js?v=b29105e"></script>
-<script src="js/vendas_bens.js?v=b29105e"></script>
-<script src="js/acessorios.js?v=b29105e"></script>
-<script src="js/reparos.js?v=b29105e"></script>
-<script src="js/manutencao.js?v=b29105e"></script>
-<script src="js/fabricacao.js?v=b29105e"></script>
-<script src="js/mobilizacoes.js?v=b29105e"></script>
-<script src="js/estacas.js?v=b29105e"></script>
-<script src="js/obra_abas.js?v=b29105e"></script>
-<script src="js/medicoes.js?v=b29105e"></script>
-<script src="js/movimentacoes.js?v=b29105e"></script>
-<script src="js/rdo.js?v=b29105e"></script>
-<script src="js/rdo_import_maya.js?v=b29105e"></script>
-<script src="js/usuarios.js?v=b29105e"></script>
-<script src="js/chamados.js?v=b29105e"></script>
-<script src="js/dashboard.js?v=b29105e"></script>
-<script src="js/rh_horas.js?v=b29105e"></script>
-<script src="js/patrimonio.js?v=b29105e"></script>
+<script src="js/clientes.js?v=7db933e"></script>
+<script src="js/fornecedores.js?v=7db933e"></script>
+<script src="js/apropriacoes.js?v=7db933e"></script>
+<script src="js/funcionarios.js?v=7db933e"></script>
+<script src="js/rh_documentos.js?v=7db933e"></script>
+<script src="js/servicos.js?v=7db933e"></script>
+<script src="js/produtos.js?v=7db933e"></script>
+<script src="js/estoque.js?v=7db933e"></script>
+<script src="js/separacoes.js?v=7db933e"></script>
+<script src="js/epi.js?v=7db933e"></script>
+<script src="js/compras.js?v=7db933e"></script>
+<script src="js/requisicoes.js?v=7db933e"></script>
+<script src="js/orcamentos.js?v=7db933e"></script>
+<script src="js/propostas.js?v=7db933e"></script>
+<script src="js/contratos.js?v=7db933e"></script>
+<script src="js/contas_pagar.js?v=7db933e"></script>
+<script src="js/centros_custo.js?v=7db933e"></script>
+<script src="js/carteira.js?v=7db933e"></script>
+<script src="js/obras.js?v=7db933e"></script>
+<script src="js/frota.js?v=7db933e"></script>
+<script src="js/viagens.js?v=7db933e"></script>
+<script src="js/equipamentos.js?v=7db933e"></script>
+<script src="js/vendas_bens.js?v=7db933e"></script>
+<script src="js/acessorios.js?v=7db933e"></script>
+<script src="js/reparos.js?v=7db933e"></script>
+<script src="js/manutencao.js?v=7db933e"></script>
+<script src="js/fabricacao.js?v=7db933e"></script>
+<script src="js/mobilizacoes.js?v=7db933e"></script>
+<script src="js/estacas.js?v=7db933e"></script>
+<script src="js/obra_abas.js?v=7db933e"></script>
+<script src="js/medicoes.js?v=7db933e"></script>
+<script src="js/movimentacoes.js?v=7db933e"></script>
+<script src="js/rdo.js?v=7db933e"></script>
+<script src="js/rdo_import_maya.js?v=7db933e"></script>
+<script src="js/usuarios.js?v=7db933e"></script>
+<script src="js/chamados.js?v=7db933e"></script>
+<script src="js/dashboard.js?v=7db933e"></script>
+<script src="js/rh_horas.js?v=7db933e"></script>
+<script src="js/sesmt.js?v=7db933e"></script>
+<script src="js/patrimonio.js?v=7db933e"></script>
+<!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
+<script src="js/sesmt_ocorrencias.js?v=7db933e"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=b29105e"></script>
+<script src="js/init.js?v=7db933e"></script>
 </body>
 </html>

@@ -993,6 +993,14 @@ const SECOES_POR_MODULO_EXTRA = { orcamentos: "orcamentos", compras: "compras" }
 function secaoLiberadaPorExtra(secao){
   return Object.entries(SECOES_POR_MODULO_EXTRA).some(([modulo, sec]) => sec === secao && temModuloExtra(modulo));
 }
+/* Fase 109a (D1/D2, 27/10/2026): SESMT. Opera = cargo sesmt, admin/diretor ou módulo extra "sesmt" (a Iasmym é engenheiro
+   e faz SESMT); nunca o auditor. Lê = quem opera + rh + auditor. Espelham sst_pode_operar()/sst_pode_ler() do banco; o
+   dado de saúde (ASO, exame) ainda exige sessão com MFA (sst_pode_ler_saude), conferida no banco. */
+function sstPodeOperar(){
+  if(!usuarioAtual || ehSomenteLeitura()) return false;
+  return ["diretor", "admin", "sesmt"].includes(usuarioAtual.cargo) || temModuloExtra("sesmt");
+}
+function podeVerSesmt(){ return sstPodeOperar() || (!!usuarioAtual && ["rh", "auditor"].includes(usuarioAtual.cargo)); }
 /* Fase 55: Contratos & Contas a pagar (contratos de fornecedor, títulos a pagar, lançamentos avulsos, exportação
    para o Compor 90). Quem não está aqui vê os valores só como custo, na aba Custos da obra e do equipamento. */
 /* 22/09/2026 (diretoria): somatórios patrimoniais (valor de reposição dos acessórios, FIPE da frota) só para o cargo diretor.
@@ -1090,6 +1098,9 @@ function aplicarMenuPorCargo(perfil){
   // Fase 93c: "Horas e alocação" só para quem libera, confere ou fecha horas (lista em podeVerHorasRH)
   const navRhh = $("nav-rhh");
   if(navRhh) navRhh.style.display = podeVerHorasRH() ? "" : "none";
+  // Fase 109a: SESMT só para quem lê (cargo sesmt ou módulo extra, rh, admin/diretor, auditor); nasce escondido no index.html
+  const navSst = $("nav-sesmt");
+  if(navSst) navSst.style.display = podeVerSesmt() ? "" : "none";
   // Fase 97: Patrimônio só diretor e auditor (admin não); a lista de ocultas abaixo reforça para os demais cargos
   const navPat = $("nav-patrimonio");
   if(navPat) navPat.style.display = podeVerPatrimonio(perfil) ? "" : "none";

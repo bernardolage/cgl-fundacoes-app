@@ -495,6 +495,7 @@ function abrirFichaFuncVisual(f){
   ativarTabFunc("pessoais");
   if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 100: almoxarife vê a aba Acesso só no setor dele
   if(typeof epiAplicarVisibilidadeFicha === "function") epiAplicarVisibilidadeFicha();       // fase 100: aba EPI (js/epi.js)
+  if(typeof sstFichaFuncAplicarVisibilidade === "function") sstFichaFuncAplicarVisibilidade();   // fase 109a: aba Segurança (js/sesmt.js)
 }
 
 /* ---------- foto ---------- */
@@ -848,8 +849,10 @@ function ligarFuncionarios(){
     $("func-doc-form").style.display = "none";
   });
 
-  $("func-sb-docs")?.addEventListener("click", () => ativarTabFunc("documentos"));
-  $("func-sb-vencendo")?.addEventListener("click", () => ativarTabFunc("documentos"));
+  // fase 109a: os documentos de segurança (NR, ASO, CNH…) vivem na aba Segurança; Documentos fica com os PDFs de admissão do RH
+  const sstAba = () => { ativarTabFunc("seguranca"); if(typeof sstFichaFuncCarregar === "function") sstFichaFuncCarregar(); };
+  $("func-sb-docs")?.addEventListener("click", sstAba);
+  $("func-sb-vencendo")?.addEventListener("click", sstAba);
 
   const navFunc = document.querySelector('nav button[data-secao="funcionarios"]');
   if(navFunc) navFunc.addEventListener("click", mostrarPainelFunc);

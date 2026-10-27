@@ -97,6 +97,9 @@ const dashPodeVerReceber = () => podeVerKpiFinanceiro(() => !!usuarioAtual && ["
 const dashPodeVerSeguranca = () => !!usuarioAtual && ["diretor", "admin", "auditor"].includes(usuarioAtual.cargo);
 /* fase 100: card EPI (vw_sc_epi) — SESMT, almoxarife, RH e diretoria (podeVerEpi em js/epi.js = pode_ver_epi() no banco) */
 const dashPodeVerEpi = () => typeof podeVerEpi === "function" && podeVerEpi();
+/* fase 109d: card Segurança do trabalho (sst_indicadores) — quem lê ocorrências de SST (ssoPodeLerOcorrencias em js/sesmt_ocorrencias.js =
+   sst_ocorrencias_pode_ler() no banco: SESMT, rh, auditor, engenharia, gestor de manutenção e diretoria) */
+const dashPodeVerSst = () => typeof ssoPodeLerOcorrencias === "function" && ssoPodeLerOcorrencias();
 
 async function carregarDashboard(){
   const carga = ++_dashCargaN;
@@ -110,6 +113,7 @@ async function carregarDashboard(){
   if($("dash-card-receber")) $("dash-card-receber").style.display = dashPodeVerReceber() ? "" : "none";   // fase 96
   if($("dash-seguranca-card")) $("dash-seguranca-card").style.display = dashPodeVerSeguranca() ? "" : "none";   // fase 99b
   if($("dash-epi-card")) $("dash-epi-card").style.display = dashPodeVerEpi() ? "" : "none";   // fase 100
+  if($("dash-sst-card")) $("dash-sst-card").style.display = dashPodeVerSst() ? "" : "none";   // fase 109d
   const finEl = $("dash-financeiro");
   if(finEl) finEl.style.display = dashEhDiretoria() ? "" : "none";
   // fase 90: auxiliar de almoxarifado vê só "Exige ação hoje" e "Minha fila"
@@ -134,6 +138,7 @@ async function carregarDashboard(){
     carregarDashOrcamentos(),
     dashPodeVerSeguranca() ? dashCarregarSeguranca() : Promise.resolve(),   // fase 99b
     dashPodeVerEpi() ? dashCarregarEpi() : Promise.resolve(),               // fase 100
+    dashPodeVerSst() ? dashCarregarSst() : Promise.resolve(),               // fase 109d
     dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
     dashEhDiretoria() ? carregarDashIA() : Promise.resolve()
   ]);
@@ -342,10 +347,13 @@ async function dashCarregarRegularizar(){
   // fase 91: cauções com previsão de devolução vencida (financeiro) em vw_sc_regularizar_fin, mesmas colunas
   // fase 92: OS atrasadas e leitura parada (vw_sc_regularizar_man); fase 93a: plano de cargos (vw_sc_regularizar_rh); fase 93c: horas a liberar há 15+ dias (vw_sc_regularizar_rhh); mesmas colunas
   // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt; só quem vê EPI consulta)
-  const [dados, fin, man, rh, rhh, sesmt] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
-    dashPodeVerEpi() ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null]);
+  // fase 109d: ocorrências de SST sem classificação, ação do plano vencida (o responsável da ação pode ser qualquer usuário, por isso
+  // todo mundo consulta; a view devolve só o que a RLS deixa) e sem eficácia verificada (vw_sc_regularizar_sst_ocorrencias)
+  const [dados, fin, man, rh, rhh, sesmt, sst] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+    (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
+    dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*"))]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   const n = p => _dashReg.filter(a => a.papel === p).length;
   if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
@@ -434,6 +442,37 @@ async function dashCarregarEpi(){
     </div>`;
   cont.querySelectorAll("[data-epi-visao]").forEach(el => el.addEventListener("click", () => { if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio(el.dataset.epiVisao); }));
 }
+/* ---------- Segurança do trabalho (fase 109d, #108) ----------
+   sst_indicadores(ano) (security definer, só agregados, para quem lê ocorrências): acidentes e ocorrências do mês, dias sem
+   acidente, ocorrências abertas e sem classificação, ações do plano vencidas. Sem a migration (RPC inexistente) o card some. */
+async function dashCarregarSst(){
+  const card = $("dash-sst-card"), cont = $("dash-sst");
+  if(!card || !cont) return;
+  const btn = $("btn-dash-sst-abrir");
+  if(btn && !btn.dataset.ligado){ btn.dataset.ligado = "1"; btn.addEventListener("click", () => { if(irParaSecao("sesmt-ocorrencias") && typeof ssoAbrirPreset === "function") ssoAbrirPreset(null, null); }); }
+  const { data: k, error } = await sb.rpc("sst_indicadores", { p_ano: new Date().getFullYear() });
+  if(error){
+    if(["42P01", "PGRST205", "PGRST202", "42883"].includes(error.code)){ card.style.display = "none"; return; }   // migration da fase 109d pendente
+    cont.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message || "erro")}).</p>`;
+    return;
+  }
+  if(!k){ card.style.display = "none"; return; }
+  const t = k.totais || {};
+  const item = (rot, valor, sub, filtro, cor) => `<div class="dash-card${filtro != null ? " clicavel" : ""}"${filtro != null ? ` data-sst-filtro="${esc(filtro)}" title="Abrir em Ocorrências SST"` : ""}>
+      <div class="dash-card-rot">${esc(rot)}</div><div class="dash-card-num">${cor ? `<span class="tag ${esc(cor)}">${esc(valor)}</span>` : esc(valor)}</div><div class="dash-card-sub">${esc(sub)}</div></div>`;
+  cont.innerHTML = `<div class="dash-epi-grade">
+      ${item("Acidentes no mês", String(k.acidentes_mes || 0), `${k.ocorrencias_mes || 0} ocorrência(s) no mês`, "", k.acidentes_mes ? "vermelho" : "")}
+      ${item("Dias sem acidente", k.dias_sem_acidente == null ? "—" : String(k.dias_sem_acidente), k.ultimo_acidente_em ? "último em " + dataBR(k.ultimo_acidente_em) : "nenhum acidente registrado", null, k.dias_sem_acidente != null && k.dias_sem_acidente < 30 ? "ambar" : "verde")}
+      ${item("Acidentes no ano", String(t.acidentes || 0), `${t.com_afastamento || 0} com afastamento · ${t.dias_perdidos || 0} dia(s) perdido(s)`, "indicadores", "")}
+      ${item("Abertas", String(k.abertas || 0), `${k.sem_classificacao || 0} sem classificação`, "sem_classificacao", k.sem_classificacao ? "ambar" : "")}
+      ${item("Ações vencidas", String(k.acoes_vencidas || 0), "plano de ação fora do prazo", "acao_vencida", k.acoes_vencidas ? "vermelho" : "")}
+    </div>`;
+  cont.querySelectorAll("[data-sst-filtro]").forEach(el => el.addEventListener("click", () => {
+    if(!irParaSecao("sesmt-ocorrencias") || typeof ssoAbrirPreset !== "function") return;
+    if(el.dataset.sstFiltro === "indicadores"){ if(typeof _ssoView !== "undefined") _ssoView = "indicadores"; ssoAbrirPreset(null, null); }
+    else ssoAbrirPreset(el.dataset.sstFiltro || null, null);
+  }));
+}
 async function dashAbrirSeguranca(a){
   if(!a || !a.usuario_id || !irParaSecao("usuarios") || typeof abrirUsuario !== "function") return;
   if(typeof _usuarios !== "undefined" && !_usuarios.some(u => u.id === a.usuario_id) && typeof carregarUsuarios === "function") await carregarUsuarios();
@@ -513,6 +552,8 @@ async function dashAbrirRegularizar(a){
     if(a.registro_id && typeof abrirChamado === "function"){ abrirChamado(a.registro_id); return; }
     const f = $("cham-f-status");
     if(f && [...f.options].some(o => o.value === "atrasados")){ f.value = "atrasados"; if(typeof renderChamados === "function") renderChamados(); }
+  } else if(a.secao === "sesmt_ocorrencias"){ // fase 109d: ocorrência de SST (uma só abre a ficha; várias, a lista filtrada pelo motivo)
+    if(irParaSecao("sesmt-ocorrencias") && typeof ssoAbrirPreset === "function") ssoAbrirPreset(a.filtro, a.registro_id || null);
   } else if(a.secao === "rhh"){ // fase 93c: "Horas e alocação" › A liberar, só pendentes, nas obras do aviso
     // fase 103: filtro revisar_informacao ("Equipe do RDO com 'Revisar informação'") abre a mesma visão sem o filtro de
     // extras e buscando "revisar" (rhhAplicarPreset em rh_horas.js); a_liberar segue como antes
