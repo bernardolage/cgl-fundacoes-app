@@ -631,8 +631,9 @@ function renderExecucoes(){
   });
 
   // Opções de operador = membros do RDO (equipe do dia) — fallback: cadastro geral de funcionários
+  // lote S54 (#178): quem está ausente no dia (Falta, Folga, DSR, Atestado) não opera máquina
   const opsRDO = _rdoEquipe
-    .filter(eq => eq.funcionario_id)
+    .filter(eq => eq.funcionario_id && !rdoStatusDia(eq.status_dia)?.aus)
     .map(eq => _rdoFuncs.find(f => f.id === eq.funcionario_id))
     .filter(Boolean);
   const operadoresDisp = opsRDO.length ? opsRDO : _rdoFuncs;
@@ -1248,7 +1249,9 @@ const RDO_FUNCOES = [
    A regra de horas é do banco (gatilho trg_rdo_equipe_status_dia): ausência zera as horas e apaga o horário; treinamento
    e viagem ficam sem HE; a viagem vira horas de viagem no fechamento do mês (vw_rh_horas_mes, rubrica horas_viagem);
    "Revisar informação" segura a liberação para a folha até alguém corrigir e trocar o status. A tela só espelha a regra:
-   esconde o horário da ausência, trava a HE de treinamento e viagem e mostra as horas de viagem. */
+   esconde o horário da ausência, trava a HE de treinamento e viagem e mostra as horas de viagem.
+   Lote S54 (#178): "Folga meio período" (meio:true) é presença com o horário trabalhado obrigatório (débito de meia jornada
+   sai no fechamento do mês); treinamento só perde a HE em dia útil não feriado (rdoSemHE: sábado, domingo e feriado pagam). */
 const RDO_STATUS_DIA = [
   { v:"atestado",            l:"Atestado",            aus:true },
   { v:"dsr",                 l:"DSR",                 aus:true },
@@ -1256,23 +1259,58 @@ const RDO_STATUS_DIA = [
   { v:"em_viagem",           l:"Em Viagem",           semHE:true, viagem:true },
   { v:"falta",               l:"Falta",               aus:true },
   { v:"folga",               l:"Folga",               aus:true },
+  { v:"folga_meio_periodo",  l:"Folga meio período",  meio:true },
   { v:"manutencao",          l:"Manutenção" },
   { v:"noturno",             l:"Noturno" },
   { v:"revisar_informacao",  l:"Revisar Informação",  revisar:true },
   { v:"viagem_retorno_casa", l:"Viagem Retorno Casa", semHE:true, viagem:true }
 ];
 function rdoStatusDia(v){ return RDO_STATUS_DIA.find(s => s.v === v) || null; }
-/* Limpa na linha o que o status não admite (o gatilho do banco faz o mesmo ao gravar) */
-function rdoAplicarStatusDia(l){
+/* Lote S54 (#178, decisão 4): o status tira a HE neste dia? Viagem sempre; treinamento só em dia útil não feriado (em
+   sábado, domingo e feriado toda hora trabalhada é HE 100 % e fica). Sem data vale a regra da 103 (sem HE). Mesma conta do
+   gatilho fn_rdo_equipe_status_dia e de vw_rh_horas_mes. */
+function rdoSemHE(st, dataISO, feriado){
+  if(!st?.semHE) return false;
+  if(st.viagem) return true;
+  const m = String(dataISO || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return true;
+  const dow = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getDay();
+  return dow !== 0 && dow !== 6 && !feriado;
+}
+function rdoDiaFormulario(){ return { data: $("rdo-data")?.value || null, feriado: !!$("rdo-feriado")?.checked }; }
+/* Limpa na linha o que o status não admite (o gatilho do banco faz o mesmo ao gravar). dataISO/feriado: o dia do RDO (padrão:
+   o do formulário), porque a HE do treinamento depende do dia (lote S54) */
+function rdoAplicarStatusDia(l, dataISO, feriado){
   const s = l ? rdoStatusDia(l.status_dia) : null;
   if(!s) return l;
+  if(dataISO === undefined){ const d = rdoDiaFormulario(); dataISO = d.data; feriado = d.feriado; }
   if(s.aus) Object.assign(l, { hora_entrada: null, hora_saida: null, intervalo_minutos: null, horas_normais: null,
     horas_50: null, horas_100: null, horas_noturnas: null, horas_noturnas_manual: false });
-  else if(s.semHE){
+  else if(rdoSemHE(s, dataISO, feriado)){
     l.horas_50 = null; l.horas_100 = null;
     if(s.viagem){ l.horas_noturnas = null; l.horas_noturnas_manual = false; }
   }
   return l;
+}
+/* Lote S54 (#178): status do dia a partir do texto do boletim (import por IA; a function só transcreve, o usuário confere
+   na tabela de conferência). Sinônimos: FALTA, FOLGA, ½ FOLGA / MEIO PERÍODO, DSR, ATESTADO, TREINAMENTO, VIAGEM, RETORNO,
+   MANUTENÇÃO, NOTURNO, REVISAR. Sem correspondência (ou "presente") → null. */
+function rdoStatusDiaDeTexto(txt){
+  const t = rdoSemAcento(txt).toUpperCase().replace(/\s+/g, " ").trim();
+  if(!t) return null;
+  if(/PRESENTE|TRABALHOU|NORMAL/.test(t)) return null;
+  if(/MEIO|MEIA|1\/2|½/.test(t) && /FOLGA|PERIODO|EXPEDIENTE|DIA/.test(t)) return "folga_meio_periodo";
+  if(/FALTA|FALTOU|AUSENTE/.test(t)) return "falta";
+  if(/FOLGA/.test(t)) return "folga";
+  if(/\bDSR\b|DESCANSO/.test(t)) return "dsr";
+  if(/ATESTADO|MEDICO|AFASTAD/.test(t)) return "atestado";
+  if(/TREINAMENTO|TREINO|CURSO/.test(t)) return "em_treinamento";
+  if(/RETORNO/.test(t)) return "viagem_retorno_casa";
+  if(/VIAGEM|VIAJANDO/.test(t)) return "em_viagem";
+  if(/MANUTEN/.test(t)) return "manutencao";
+  if(/NOTURNO|NOITE/.test(t)) return "noturno";
+  if(/REVISAR|CONFERIR|VERIFICAR/.test(t)) return "revisar_informacao";
+  return null;
 }
 /* Horas do dia de quem está em viagem: saída − entrada − intervalo (vazio = 60 min, piso 30), com virada de dia. É o que o
    fechamento do mês soma em horas de viagem (fn_horas_equipe: normais + HE), salvo hora de viagem da 93c no mesmo dia. */
@@ -1294,7 +1332,8 @@ function renderRdoEquipeResumo(){
   linhas.forEach(e => { const k = rdoStatusDia(e.status_dia) ? e.status_dia : ""; cont[k] = (cont[k] || 0) + 1; });
   const filtra = (f) => RDO_STATUS_DIA.filter(s => f(s) && cont[s.v]);
   const soma = (f) => filtra(f).reduce((t, s) => t + cont[s.v], 0);
-  const detalhe = (f) => filtra(f).map(s => `${esc(s.l)} ${Number(cont[s.v])}`).join(" · ");
+  // lote S54 (#178): a folga de meio período conta entre os presentes, com a nota "(½)"
+  const detalhe = (f) => filtra(f).map(s => `${esc(s.l)}${s.meio ? " (½)" : ""} ${Number(cont[s.v])}`).join(" · ");
   const ehPresente = (s) => !s.aus && !s.viagem && !s.revisar;
   const presentes = (cont[""] || 0) + soma(ehPresente), viagem = soma(s => s.viagem), ausentes = soma(s => s.aus), revisar = soma(s => s.revisar);
   el.innerHTML = [
@@ -1327,19 +1366,22 @@ function renderRdoEquipe(){
   // fase 93c: linha já liberada para a folha (rdo_equipe.liberado_em) fica travada: o banco recusa alterar ou apagar e o
   // salvar do RDO pula essas linhas (delete só do que não foi liberado). Estorno em "Horas e alocação".
   // fase 103: "Revisar informação" pinta a linha de amarelo (a liberação fica recusada no banco até trocar o status)
+  // lote S54 (#178): a HE do treinamento depende do dia do RDO (rdoSemHE); trocar a data ou o feriado redesenha a tabela
+  const dia = rdoDiaFormulario();
   tb.innerHTML = _rdoEquipe.map((e, idx) => {
     const st = rdoStatusDia(e.status_dia);
-    const aus = !!st?.aus, semHE = !!st?.semHE, viagem = !!st?.viagem;
+    const aus = !!st?.aus, semHE = rdoSemHE(st, dia.data, dia.feriado), viagem = !!st?.viagem;
     const classes = [e.liberado_em ? "eq-liberada" : "", st?.revisar ? "con-vencendo" : ""].filter(Boolean).join(" ");
     const titulo = e.liberado_em ? "Horas liberadas para a folha em " + dataBR(String(e.liberado_em).slice(0, 10)) + ": estorne em Horas e alocação para alterar"
-      : st?.revisar ? "Revisar informação: corrija a linha e troque o status; enquanto isso as horas não são liberadas para a folha" : "";
-    const tituloHE = semHE ? `${st.l}: sem HE (regra do status do dia)` : "";
+      : st?.revisar ? "Revisar informação: corrija a linha e troque o status; enquanto isso as horas não são liberadas para a folha"
+      : st?.meio ? "Folga meio período: informe a entrada e a saída trabalhadas; o fechamento do mês debita metade da jornada do dia" : "";
+    const tituloHE = semHE ? `${st.l}: sem HE (regra do status do dia${st.semHE && !st.viagem ? "; em sábado, domingo e feriado a HE fica" : ""})` : "";
     return `<tr data-idx="${idx}"${classes ? ` class="${esc(classes)}"` : ""}${titulo ? ` title="${esc(titulo)}"` : ""}>
     <td><strong>${idx+1}</strong></td>
     <td><select class="eq-func">${optFunc}</select></td>
     <td><input type="text" class="eq-nome" placeholder="terceiro sem cadastro" value="${esc(e.nome_avulso||"")}" style="min-width:140px;" /></td>
     <td><select class="eq-funcao">${optFuncao}</select></td>
-    <td><select class="eq-status" style="min-width:150px;" title="Status do funcionário no dia (fase 103). Falta, Folga, DSR e Atestado zeram as horas; Em Treinamento e viagem ficam sem HE; Revisar Informação bloqueia a liberação para a folha">${optStatus}</select></td>
+    <td><select class="eq-status" style="min-width:150px;" title="Status do funcionário no dia (fase 103). Falta, Folga, DSR e Atestado zeram as horas; Em Treinamento (dia útil) e viagem ficam sem HE; Folga meio período exige o horário trabalhado; Revisar Informação bloqueia a liberação para a folha">${optStatus}</select></td>
     <td>${aus ? semHorario : ""}<input type="time" class="eq-entrada" value="${aus ? "" : esc(e.hora_entrada||"")}"${aus ? " hidden" : ""} /></td>
     <td>${aus ? semHorario : ""}<input type="time" class="eq-saida" value="${aus ? "" : esc(e.hora_saida||"")}"${aus ? " hidden" : ""} /></td>
     <td>${aus ? semHorario : ""}<input type="number" class="eq-interv" step="5" min="0" max="240" value="${aus ? "" : esc(e.intervalo_minutos ?? "")}" style="width:60px;" placeholder="60" title="Intervalo real de almoço (min). Vazio = 60; piso 30"${aus ? " hidden" : ""} /></td>
@@ -1403,7 +1445,7 @@ function renderRdoEquipe(){
         const n = calcularHorasNoturnas(l.hora_entrada, l.hora_saida);
         tr.querySelector(".eq-hnot").value = n == null ? "" : n;
       }
-      if(st?.semHE){
+      if(rdoSemHE(st, $("rdo-data")?.value, !!$("rdo-feriado")?.checked)){   // lote S54: treinamento só em dia útil
         // fase 103: treinamento e viagem sem HE; na viagem, as horas do dia aparecem como horas de viagem
         const vh = tr.querySelector(".eq-viagem-h");
         if(vh) vh.textContent = rdoTxtHorasViagem(l);
@@ -1600,6 +1642,14 @@ async function salvarRDO(novoStatus){
     aviso("app-aviso", "Esta obra exige a máquina do diário. Escolha o equipamento no cabeçalho (as máquinas da obra vêm primeiro).", "erro");
     ativarTabRDO("cabecalho"); $("rdo-equipamento")?.focus(); return;
   }
+  // lote S54 (#178, decisão 3): folga de meio período é presença e precisa das horas trabalhadas (o banco não exige)
+  const semMeio = _rdoEquipe.filter(e => !e.liberado_em && rdoStatusDia(e.status_dia)?.meio
+    && (e.funcionario_id || (e.nome_avulso && e.nome_avulso.trim())) && !(e.hora_entrada && e.hora_saida));
+  if(semMeio.length){
+    const nomes = semMeio.map(e => (_rdoFuncs.find(f => f.id === e.funcionario_id) || {}).nome || e.nome_avulso || "?");
+    aviso("app-aviso", `Folga meio período precisa das horas trabalhadas: informe entrada e saída de ${nomes.map(esc).join(", ")}.`, "erro");
+    ativarTabRDO("equipe"); return;
+  }
   // fase 101: trocou a máquina do diário → as execuções que eram da máquina antiga passam para a nova
   if(rdoEditId && _rdoMaqOriginal && reg.equipamento_id && _rdoMaqOriginal !== reg.equipamento_id){
     const n = _rdoExecucoes.filter(e => e.equipamento_id === _rdoMaqOriginal).length;
@@ -1747,10 +1797,11 @@ async function salvarRDO(novoStatus){
   }
 
   // Fase 103: o que o status do dia não admite sai antes de gravar (o gatilho do banco faz o mesmo)
-  _rdoEquipe.forEach(e => { if(!e.liberado_em) rdoAplicarStatusDia(e); });
+  // lote S54 (#178): com o dia e o feriado do diário (treinamento em fim de semana ou feriado mantém a HE)
+  _rdoEquipe.forEach(e => { if(!e.liberado_em) rdoAplicarStatusDia(e, dataRDO, reg.feriado); });
   // Lote S40 (#31): ao salvar, calcula a HE das linhas com entrada e saída e HE ainda vazia
-  // (fase 103: menos treinamento e viagem, que não têm HE)
-  const precisaHE = (e) => e.hora_entrada && e.hora_saida && e.horas_100 == null && !rdoStatusDia(e.status_dia)?.semHE;
+  // (fase 103: menos treinamento e viagem, que não têm HE; lote S54: treinamento só em dia útil não feriado)
+  const precisaHE = (e) => e.hora_entrada && e.hora_saida && e.horas_100 == null && !rdoSemHE(rdoStatusDia(e.status_dia), dataRDO, reg.feriado);
   if(_rdoEquipe.some(precisaHE)){
     if(!_rdoObraParams) await carregarParamsObraRDO(obra_id);
     const jornada = jornadaEfetiva(_rdoObraParams);
@@ -1912,6 +1963,9 @@ function ligarRDO(){
   $("btn-rdo-calc-concreto")?.addEventListener("click", calcularConcretoExecucoes);
   $("rdo-obra")?.addEventListener("change", () => carregarParamsObraRDO($("rdo-obra").value));
   $("rdo-equipamento")?.addEventListener("change", () => rdoAtualizarChipMaquina($("rdo-equipamento").value || null));   // fase 94
+  // lote S54 (#178): a data e o feriado decidem se o treinamento tem HE; a equipe é redesenhada
+  $("rdo-data")?.addEventListener("change", renderRdoEquipe);
+  $("rdo-feriado")?.addEventListener("change", renderRdoEquipe);
   $("rdo-ficha-jornada-link")?.addEventListener("click", (ev) => {
     ev.preventDefault();
     const id = $("rdo-ficha-jornada-chip")?.dataset.obraId || $("rdo-obra")?.value;
@@ -2484,7 +2538,10 @@ function iaCasarIntegrante(p){
     nome: p.nome || "", funcionario_id: f ? f.id : null,
     funcao_ia: funcaoIA, funcao_no_dia: null,
     hora_entrada: p.hora_entrada || null, hora_saida: p.hora_saida || null,
-    horas_normais: p.horas_normais ?? null, horas_50: p.horas_50 ?? null, horas_100: p.horas_100 ?? null
+    horas_normais: p.horas_normais ?? null, horas_50: p.horas_50 ?? null, horas_100: p.horas_100 ?? null,
+    // lote S54 (#178): status do dia como está no boletim (function v4.0 devolve `status`; a 3.x não manda → presente)
+    status_texto: typeof p.status === "string" && p.status.trim() ? p.status.trim() : null,
+    status_dia: rdoStatusDiaDeTexto(p.status)
   };
   iaAplicarCadastroIntegrante(m);
   return m;
@@ -2668,7 +2725,14 @@ function iaRecalcularHorasNoDOM(soVazias){
 }
 function iaRecalcularHorasLinha(tr, dia, soVazias){
   const g = (c) => tr.querySelector(`[data-e="${c}"]`);
+  // lote S54 (#178): o status do dia manda nas horas, como no RDO (ausência sem horas; treinamento em dia útil e viagem sem HE)
+  const st = rdoStatusDia(g("status_dia")?.value);
+  if(st?.aus){
+    ["hora_entrada","hora_saida","horas_normais","horas_50","horas_100"].forEach(k => { const el = g(k); if(el){ el.value = ""; el.dataset.auto = "1"; } });
+    return;
+  }
   const r = calcularHorasEquipe(dia, g("hora_entrada")?.value, g("hora_saida")?.value, _iaJornadaObra, g("intervalo_minutos")?.value, iaDiaFeriado(dia));
+  if(r && rdoSemHE(st, dia, iaDiaFeriado(dia))) r.horas_100 = 0;
   ["horas_normais","horas_50","horas_100"].forEach(k => {
     const el = g(k); if(!el) return;
     if(soVazias && el.value !== "" && el.dataset.auto !== "1") return;
@@ -2788,12 +2852,13 @@ function renderConferenciaIA(resp){
       </table></div>
       <details class="ia-equipe" ${ex.equipe.length ? "open" : ""}>
         <summary>👷 Equipe do dia (${ex.equipe.length})${semCadastro ? ` <span style="color:var(--aviso-txt);">· ⚠️ ${semCadastro} sem correspondência no cadastro → entram como avulsos</span>` : ""}</summary>
-        <table class="itens-tabela ia-tabela"><thead><tr><th>Nome no diário</th><th>Funcionário (cadastro)</th><th>Função (cadastro)</th><th title="Só quando o boletim disser outra função">Função no dia</th><th>Entrada</th><th>Saída</th><th title="Intervalo real de almoço (min). Vazio = 60; piso 30">Interv. (min)</th><th>H. normais</th><th title="Sem uso: toda HE é 100% (regra RH 11/09/2026)">H. 50%</th><th>H. 100%</th><th></th></tr></thead>
+        <table class="itens-tabela ia-tabela"><thead><tr><th>Nome no diário</th><th>Funcionário (cadastro)</th><th>Função (cadastro)</th><th title="Só quando o boletim disser outra função">Função no dia</th><th title="Lote S54 (#178): status do dia lido do boletim (FALTA, FOLGA, ½ FOLGA, DSR, ATESTADO, TREINAMENTO, VIAGEM…); vazio = presente. Confira: a IA só transcreve">Status do dia</th><th>Entrada</th><th>Saída</th><th title="Intervalo real de almoço (min). Vazio = 60; piso 30">Interv. (min)</th><th>H. normais</th><th title="Sem uso: toda HE é 100% (regra RH 11/09/2026)">H. 50%</th><th>H. 100%</th><th></th></tr></thead>
         <tbody>${ex.equipe.map(p => `<tr${p.funcionario_id ? "" : ' class="ia-sem-cadastro"'}>
           <td><input data-e="nome" value="${esc(v(p.nome))}" /></td>
           <td><select data-e="funcionario_id">${funcOptsCadastro}</select></td>
           <td class="ia-funcao-cadastro meta">${p.funcionario_id ? esc(p.funcao_cadastro || "—") : "⚠️ sem cadastro"}</td>
           <td><select data-e="funcao">${funcOpts(p.funcao_no_dia || "", !!p.funcionario_id)}</select></td>
+          <td><select data-e="status_dia" style="min-width:130px;"${p.status_texto ? ` title="No boletim: ${esc(p.status_texto)}"` : ""}><option value="">Presente</option>${RDO_STATUS_DIA.map(s => `<option value="${esc(s.v)}"${s.v === p.status_dia ? " selected" : ""}>${esc(s.l)}</option>`).join("")}</select>${p.status_texto && !p.status_dia ? `<div class="meta" title="Texto do boletim sem correspondência: escolha o status">“${esc(p.status_texto)}”</div>` : ""}</td>
           <td><input type="time" data-e="hora_entrada" value="${esc(v(p.hora_entrada))}" /></td>
           <td><input type="time" data-e="hora_saida" value="${esc(v(p.hora_saida))}" /></td>
           <td><input type="number" step="5" min="0" max="240" data-e="intervalo_minutos" value="${v(p.intervalo_minutos ?? ex.intervalo_minutos)}" style="width:60px" placeholder="60" /></td>
@@ -2841,6 +2906,7 @@ function renderConferenciaIA(resp){
       tr.querySelector('[data-e="hora_entrada"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));
       tr.querySelector('[data-e="hora_saida"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));
       tr.querySelector('[data-e="intervalo_minutos"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));
+      tr.querySelector('[data-e="status_dia"]')?.addEventListener("change", () => iaRecalcularHorasLinha(tr, bloco.dataset.dia, false));   // lote S54
       ["horas_normais","horas_50","horas_100"].forEach(k => tr.querySelector(`[data-e="${k}"]`)?.addEventListener("input", (ev) => { ev.target.dataset.auto = "0"; }));
       // troca de funcionário → função do cadastro e "Função no dia" voltam a seguir o cadastro
       sel?.addEventListener("change", () => {
@@ -3002,6 +3068,7 @@ function lerConferenciaIA(){
       if(!nome) return;
       const m = { ...(equipeAnt[i] || {}), nome,
         funcionario_id: g("funcionario_id")?.value || null,
+        status_dia: g("status_dia")?.value || null,   // lote S54 (#178)
         hora_entrada: g("hora_entrada").value || null, hora_saida: g("hora_saida").value || null,
         intervalo_minutos: num(g("intervalo_minutos")?.value),
         horas_normais: num(g("horas_normais").value), horas_50: num(g("horas_50").value), horas_100: num(g("horas_100").value) };
@@ -3524,12 +3591,16 @@ async function confirmarImportCSV(){
       // Casada com o cadastro: funcionario_id quando há correspondência; senão nome_avulso.
       const eqIA = _iaExtras?.[dia]?.equipe || [];
       if(eqIA.length && !rdoExist && ehPrincipal){
-        const linhas = eqIA.map((p, i) => ({ rdo_id: rdoId,
+        // lote S54 (#178): o status do dia conferido vai junto (só quando há; presente = sem a chave, como o RDO grava) e
+        // o que ele não admite sai antes (ausência sem horário e horas; treinamento em dia útil e viagem sem HE)
+        const feriadoDia = !!_iaExtras?.[dia]?.feriado;
+        const linhas = eqIA.map((p, i) => rdoAplicarStatusDia({ rdo_id: rdoId,
           funcionario_id: p.funcionario_id || null,
           nome_avulso: p.funcionario_id ? null : p.nome,
           funcao_no_dia: p.funcao_no_dia || (p.funcionario_id ? null : "outro"),
           hora_entrada: p.hora_entrada || null, hora_saida: p.hora_saida || null, intervalo_minutos: p.intervalo_minutos ?? null,
-          horas_normais: p.horas_normais, horas_50: p.horas_50, horas_100: p.horas_100, ordem: i + 1 }));
+          horas_normais: p.horas_normais, horas_50: p.horas_50, horas_100: p.horas_100, ordem: i + 1,
+          ...(rdoStatusDia(p.status_dia) ? { status_dia: p.status_dia } : {}) }, dia, feriadoDia));
         const { error: errEq } = await sb.from("rdo_equipe").insert(linhas);
         if(errEq) console.warn("Equipe de " + dia + " não gravada:", errEq.message);
       }

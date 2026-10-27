@@ -40,12 +40,16 @@ function rhhObraTxt(id, cod, nome){ return cod ? `${cod}${nome ? " — " + nome 
 /* Fase 103 (#23): status do funcionário no dia do RDO (rdo_equipe.status_dia; nulo = presente), com rótulo curto e o que a
    regra do banco faz com as horas (gatilho trg_rdo_equipe_status_dia + vw_rh_horas_mes): ausência = sem horas; viagem =
    horas do dia pagas como horas de viagem (salvo hora de viagem da 93c já liberada no mesmo dia), sem HE nem noturnas;
-   treinamento sem HE; "Revisar informação" = rh_liberar_horas recusa até alguém corrigir no RDO. */
+   treinamento sem HE; "Revisar informação" = rh_liberar_horas recusa até alguém corrigir no RDO.
+   Lote S54 (#178): "Folga ½" (folga_meio_periodo) é presença com as horas trabalhadas da linha e débito de meia jornada; o
+   treinamento só perde a HE em dia útil não feriado (sábado, domingo e feriado pagam HE), por isso aqui a linha mostra a HE
+   como gravada e a view decide. */
 const RHH_STATUS_DIA = {
   atestado:            { l: "Atestado",     aus: true },
   dsr:                 { l: "DSR",          aus: true },
   falta:               { l: "Falta",        aus: true },
   folga:               { l: "Folga",        aus: true },
+  folga_meio_periodo:  { l: "Folga ½",      meio: true },
   em_treinamento:      { l: "Treinamento",  semHE: true },
   em_viagem:           { l: "Em viagem",    viagem: true },
   viagem_retorno_casa: { l: "Retorno casa", viagem: true },
@@ -53,6 +57,13 @@ const RHH_STATUS_DIA = {
   noturno:             { l: "Noturno" },
   revisar_informacao:  { l: "Revisar",      revisar: true }
 };
+/* Lote S54 (#178): sábado, domingo ou feriado (toda hora trabalhada é HE 100 %; o treinamento mantém a HE nesses dias) */
+function rhhDiaExtra(dataISO, feriado){
+  const m = String(dataISO || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return false;
+  const dow = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getDay();
+  return dow === 0 || dow === 6 || !!feriado;
+}
 /* Horas do dia da linha (saída − entrada − intervalo; vazio = 60 min, piso 30; saída antes da entrada vira o dia): é o que
    vw_rh_horas_mes paga como horas de viagem quando o status é de viagem (fn_horas_equipe: normais + HE) */
 function rhhHorasDia(e){
@@ -239,7 +250,8 @@ function rhhLinhas(){
       horario: aus ? "ausência"
         : e.hora_entrada && e.hora_saida ? `${rhhHHMM(e.hora_entrada)}–${rhhHHMM(e.hora_saida)}${rhhHHMM(e.hora_saida) <= rhhHHMM(e.hora_entrada) ? " (+1 dia)" : ""}` : "—",
       normais: aus || emViagem ? 0 : Number(e.horas_normais || 0),
-      he: aus || emViagem || st?.semHE ? 0 : Number(e.horas_100 || 0),
+      // lote S54 (#178): treinamento em sábado, domingo ou feriado mantém a HE (o gatilho só zera em dia útil)
+      he: aus || emViagem || (st?.semHE && !rhhDiaExtra(e.rdo?.data, e.rdo?.feriado)) ? 0 : Number(e.horas_100 || 0),
       noturnas: aus || emViagem ? 0 : Number(e.horas_noturnas || 0),
       viagem: emViagem && !viagemDup ? rhhHorasDia(e) : 0,
       viagemDup, status: st ? e.status_dia : null, statusTxt: st?.l || "", aus, revisar: !!st?.revisar,
@@ -424,20 +436,24 @@ function rhhMesFiltrado(){
 }
 
 /* Fase 103: colunas novas de vw_rh_horas_mes, no fim da tabela e da planilha (dias por status, débito de folga do #31 e
-   saldo de HE). Só linhas liberadas, como o resto da view. Somem enquanto a view não as tiver (migration não aplicada). */
+   saldo de HE). Só linhas liberadas, como o resto da view. Somem enquanto a view não as tiver (migration não aplicada).
+   Lote S54 (#178): "Folga ½" (dias_folga_meio_periodo; opc = só quando a view já tem a coluna) e o débito passa a virar a
+   rubrica debito_folga em "Lançar na folha" (valor negativo), em vez de só informar. */
 const RHH_COLS_STATUS = [
-  { c: "dias_falta",         l: "Faltas",           t: "Dias com status Falta" },
-  { c: "dias_folga",         l: "Folgas",           t: "Dias com status Folga" },
-  { c: "dias_dsr",           l: "DSR",              t: "Dias com status DSR" },
-  { c: "dias_atestado",      l: "Atestados",        t: "Dias com status Atestado" },
-  { c: "dias_viagem",        l: "Dias viagem",      t: "Dias com status Em Viagem ou Viagem Retorno Casa" },
-  { c: "dias_treinamento",   l: "Treinamento",      t: "Dias com status Em Treinamento" },
-  { c: "dias_manutencao",    l: "Manutenção",       t: "Dias com status Manutenção" },
-  { c: "dias_noturno",       l: "Noturno",          t: "Dias com status Noturno" },
-  { c: "horas_debito_folga", l: "Débito folga (h)", t: "Folga e falta × jornada do dia (9 h seg-qui, 8 h sexta, 0 no fim de semana): sai da HE do mês (#31)", h: true },
-  { c: "saldo_he_folga",     l: "Saldo HE (h)",     t: "HE 100 % − débito de folga; negativo = horas que o funcionário deve", h: true }
+  { c: "dias_falta",              l: "Faltas",           t: "Dias com status Falta" },
+  { c: "dias_folga",              l: "Folgas",           t: "Dias com status Folga" },
+  { c: "dias_folga_meio_periodo", l: "Folga ½",          t: "Dias com status Folga meio período: conta como dia trabalhado (horas da linha) e debita metade da jornada (lote S54)", opc: true },
+  { c: "dias_dsr",                l: "DSR",              t: "Dias com status DSR" },
+  { c: "dias_atestado",           l: "Atestados",        t: "Dias com status Atestado" },
+  { c: "dias_viagem",             l: "Dias viagem",      t: "Dias com status Em Viagem ou Viagem Retorno Casa" },
+  { c: "dias_treinamento",        l: "Treinamento",      t: "Dias com status Em Treinamento (em sábado, domingo e feriado a HE fica)" },
+  { c: "dias_manutencao",         l: "Manutenção",       t: "Dias com status Manutenção" },
+  { c: "dias_noturno",            l: "Noturno",          t: "Dias com status Noturno" },
+  { c: "horas_debito_folga",      l: "Débito folga (h)", t: "Folga e falta × jornada do dia (9 h seg-qui, 8 h sexta, 0 no fim de semana) e folga de meio período × metade. \"Lançar na folha\" grava essas horas na rubrica débito de folga, com valor negativo (desconto); a HE 100 % sai bruta (#31, #178)", h: true },
+  { c: "saldo_he_folga",          l: "Saldo HE (h)",     t: "HE 100 % − débito de folga; negativo = horas que o funcionário deve", h: true }
 ];
 function rhhTemColsStatus(){ return _rhhMes.length > 0 && Object.prototype.hasOwnProperty.call(_rhhMes[0], "horas_debito_folga"); }
+function rhhColsStatus(){ return rhhTemColsStatus() ? RHH_COLS_STATUS.filter(c => !c.opc || Object.prototype.hasOwnProperty.call(_rhhMes[0], c.c)) : []; }
 function rhhCelStatus(col, v){
   const n = Number(v || 0);
   if(!col.h) return n ? String(n) : "—";
@@ -448,7 +464,7 @@ function rhhCelStatus(col, v){
 function renderRhhFechamento(){
   const cont = $("rhh-conteudo"); if(!cont) return;
   const linhas = rhhMesFiltrado();
-  const cols = rhhTemColsStatus() ? RHH_COLS_STATUS : [];   // fase 103
+  const cols = rhhColsStatus();   // fase 103 / lote S54
   if($("rhh-contador")) $("rhh-contador").textContent = `${linhas.length} de ${_rhhMes.length}`;
   const soma = (c) => linhas.reduce((s, r) => s + Number(r[c] || 0), 0);
   const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
@@ -470,14 +486,16 @@ function renderRhhFechamento(){
   rhhLigarCno(cont);
 }
 
-/* "Lançar na folha": rh_lancar_horas_folha(competência) grava he_100, adicional_noturno e horas_viagem em folha_lancamentos
+/* "Lançar na folha": rh_lancar_horas_folha(competência) grava he_100, adicional_noturno, horas_viagem e, lote S54 (#178),
+   debito_folga (horas de folga, falta e meio período; valor negativo = desconto; a HE sai bruta) em folha_lancamentos
    (origem rh_horas, substituído a cada clique; lançamento manual não é tocado). Exige rh com MFA na sessão. */
 async function rhhLancarFolha(){
   const { mesIni } = rhhPeriodo();
   const comp = new Date(mesIni + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   const funcs = new Set(_rhhMes.map(r => r.funcionario_id)).size;
   if(!_rhhMes.length){ aviso("app-aviso", `Nenhuma hora liberada em ${comp} para lançar.`, "erro"); return; }
-  if(!confirm(`Lançar na folha de ${comp} as horas liberadas de ${funcs} funcionário(s)?\n\nRubricas HE 100 %, adicional noturno e horas de viagem, por funcionário e obra. O que este botão gerou antes para esta competência é substituído; lançamento manual não muda.${_rhhPendMes ? `\n\nAtenção: ${_rhhPendMes} linha(s) do RDO ainda sem liberação ficam de fora.` : ""}`)) return;
+  const debito = _rhhMes.reduce((s, r) => s + Number(r.horas_debito_folga || 0), 0);
+  if(!confirm(`Lançar na folha de ${comp} as horas liberadas de ${funcs} funcionário(s)?\n\nRubricas HE 100 % (bruta), adicional noturno, horas de viagem e débito de folga (${rhhHz(debito)} h de folga, falta e meio período × jornada, em rubrica própria com valor negativo = desconto), por funcionário e obra. O que este botão gerou antes para esta competência é substituído; lançamento manual não muda.${_rhhPendMes ? `\n\nAtenção: ${_rhhPendMes} linha(s) do RDO ainda sem liberação ficam de fora.` : ""}`)) return;
   await comBotaoTravado("btn-rhh-folha", async () => {
     const { data, error } = await sb.rpc("rh_lancar_horas_folha", { p_competencia: mesIni });
     if(error){
@@ -486,7 +504,7 @@ async function rhhLancarFolha(){
       return;
     }
     const d = data || {};
-    aviso("app-aviso", `Folha de ${comp}: ${d.lancamentos || 0} lançamento(s) para ${d.funcionarios || 0} funcionário(s) — HE ${rhhHz(d.horas_100)} h, noturnas ${rhhHz(d.horas_noturnas)} h, viagem ${rhhHz(d.horas_viagem)} h${d.sem_salario ? ` · ${d.sem_salario} sem salário cadastrado (valor zerado, horas gravadas)` : ""}.`, "ok");
+    aviso("app-aviso", `Folha de ${comp}: ${d.lancamentos || 0} lançamento(s) para ${d.funcionarios || 0} funcionário(s) — HE ${rhhHz(d.horas_100)} h, noturnas ${rhhHz(d.horas_noturnas)} h, viagem ${rhhHz(d.horas_viagem)} h${d.horas_debito_folga != null ? `, débito de folga ${rhhHz(d.horas_debito_folga)} h em ${Number(d.lancamentos_debito || 0)} lançamento(s) negativo(s)` : ""}${d.sem_salario ? ` · ${d.sem_salario} sem salário cadastrado (valor zerado, horas gravadas)` : ""}.`, "ok");
   });
 }
 
@@ -609,7 +627,7 @@ function rhhExportar(){
   } else if(_rhhView === "fechamento"){
     const linhas = rhhMesFiltrado();
     if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
-    const cols = rhhTemColsStatus() ? RHH_COLS_STATUS : [];   // fase 103: colunas novas no fim
+    const cols = rhhColsStatus();   // fase 103 / lote S54: colunas novas no fim
     aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "Dias", "Normais", "HE 100 %", "Noturnas", "Viagem"].concat(cols.map(c => c.l))]
       .concat(linhas.map(r => [mes, r.matricula || "", r.funcionario, r.funcao || "", rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome), r.cno || "", num(r.dias), num(r.horas_normais), num(r.horas_100), num(r.horas_noturnas), num(r.horas_viagem)].concat(cols.map(c => num(r[c.c])))));
     nome = `fechamento-horas-${mes}.xlsx`; aba = "FECHAMENTO";

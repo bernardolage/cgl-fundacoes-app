@@ -16,6 +16,12 @@
    Vendas (atalho para a visão Vendas de Equipamentos, fase 96) e Resumo (totais por grupo, variação
    contra o ano anterior, "sem valor" e bens fora do patrimônio). Exporta .xlsx no leiaute da
    planilha. Nada deste módulo aparece em outra tela.
+
+   Lote S54 (#172, 27/10/2026): dentro de "Acessórios das raízes" cada MODELO de acessório de raiz
+   (acessorio_modelos; bem_tipo acessorio_modelo, bem_id = modelo) é um bem, agrupado na tela pela
+   linha da Contagem Geral (grupo_contagem). Quantidade = peças ativas contáveis (vw_pat_bens);
+   a avaliação do ano guarda quantidade, unitário por peça e rótulo; o diretor digita o unitário
+   (sugestão = preco_referencia do modelo). A verba única continua até a diretoria retirá-la.
    ==================================================================== */
 
 /* ---------- Estado do módulo ---------- */
@@ -61,7 +67,7 @@ const PAT_GRUPOS_BEM = ["imovel", "usina", "acessorios_raiz", "ferramentas", "mo
 const PAT_BASES = { mercado: "Mercado", fipe: "FIPE", laudo: "Laudo", aquisicao: "Aquisição" };
 const PAT_TIT_EQUIP = { propria: "Própria", locada: "Locada", terceiro: "De terceiro" };
 const PAT_TIT_BEM = { empresa: "Em nome da empresa", permuta: "Em processo de permuta" };
-const PAT_UNIDADES = { m2: "m²", vb: "VB" };
+const PAT_UNIDADES = { m2: "m²", vb: "VB", pc: "peças" };
 
 /* ---------- Helpers ---------- */
 function patPodeEditar(){ return !!usuarioAtual && usuarioAtual.cargo === "diretor"; }
@@ -69,8 +75,28 @@ const patChave = (b) => `${b.bem_tipo}:${b.bem_id}`;
 const patRotuloGrupo = (g) => PAT_GRUPO_ROTULO[g] || g || "—";
 const patOrdemGrupo = (g) => (PAT_GRUPO_ORDEM[g] ?? 99);
 function patBemPorChave(k){ return _patBens.find(b => patChave(b) === k) || null; }
-/* ordena TAG "07-HG" antes de "10-RZ" e "CGL-02" antes de "CGL-10" (número dentro do texto) */
+/* lote S54 (#172): bem de grupo = modelo de acessório de raiz (bem_tipo acessorio_modelo, bem_id = acessorio_modelos.id),
+   dentro do grupo "Acessórios das raízes" e agrupado na tela pela linha da Contagem Geral (grupo_contagem; sem ele, o tipo). */
+const patEhModelo = (b) => b && b.bem_tipo === "acessorio_modelo";
+function patSubgrupo(b){
+  if(b.grupo_contagem) return String(b.grupo_contagem).trim().toUpperCase();
+  const t = b.tipo_acessorio;
+  return (typeof ACE_TIPO_LBL === "object" && ACE_TIPO_LBL[t]) ? String(ACE_TIPO_LBL[t]).toUpperCase() : (t ? String(t).toUpperCase() : "OUTROS");
+}
+/* quantidade avaliada no ano × quantidade atual: "39 → 41 peças" quando mudou depois da avaliação */
+function patQtdMudou(b, av){
+  if(!patEhModelo(b) || !av || av.quantidade == null) return null;
+  const antes = Number(av.quantidade), agora = Number(b.quantidade || 0);
+  return antes === agora ? null : { antes, agora };
+}
+/* ordena TAG "07-HG" antes de "10-RZ" e "CGL-02" antes de "CGL-10" (número dentro do texto);
+   modelos de raiz (sem TAG) vêm depois dos bens avulsos do grupo, por grupo da Contagem Geral e descrição */
 function patCompararTag(a, b){
+  const ma = patEhModelo(a), mb = patEhModelo(b);
+  if(ma || mb){
+    if(ma !== mb) return ma ? 1 : -1;
+    return patSubgrupo(a).localeCompare(patSubgrupo(b), "pt-BR") || String(a.descricao || "").localeCompare(String(b.descricao || ""), "pt-BR", { numeric: true });
+  }
   const ta = a.tag || "", tb = b.tag || "";
   if(ta && tb) return ta.localeCompare(tb, "pt-BR", { numeric: true });
   if(ta || tb) return ta ? -1 : 1;
@@ -109,6 +135,15 @@ function patVariacaoTexto(r){
 function patEstadoHtml(b){
   if(b.bem_tipo === "equipamento") return tagStatus("equipamento", b.status);
   if(b.bem_tipo === "acessorio") return String(b.status || "").split(",").map(s => s.trim()).filter(Boolean).map(s => tagStatus("acessorio", s)).join(" ") || "—";
+  if(patEhModelo(b)){   // lote S54 (#172): "condicao:n, condicao:n" da view → uma tag por condição com a contagem (perdida pelo local)
+    const partes = String(b.status || "").split(",").map(s => s.trim()).filter(s => s.includes(":"));
+    if(!partes.length) return `<span class="tag cinza">${esc(b.status || "—")}</span>`;
+    return partes.map(p => {
+      const [cond, n] = p.split(":");
+      const o = (STATUS.acessorio || {})[cond] || (cond === "perdido" ? (STATUS.acessorio_local || {}).perdido : null);
+      return `<span class="tag ${o ? o.cor : "cinza"}" title="${esc(o ? o.label : cond)}">${esc(o ? o.label : cond)} · ${esc(n)}</span>`;
+    }).join(" ");
+  }
   const tag = b.titularidade_bem ? `<span class="tag ${b.titularidade_bem === "permuta" ? "ambar" : "verde"}">${esc(b.titularidade_bem === "permuta" ? "Permuta" : "Empresa")}</span>` : "—";
   // fase 98: imóvel em permuta mostra a permuta e o saldo a executar (vw_permutas, carregada por medicoes.js)
   return tag + (b.titularidade_bem === "permuta" && typeof pmPatChip === "function" ? pmPatChip(b.bem_id) : "");
@@ -118,6 +153,15 @@ function patSerieTexto(b){
   return [b.numero_serie, b.placa].filter(Boolean).join(" · ");
 }
 function patDetalheBem(b){
+  if(patEhModelo(b)){   // lote S54 (#172): "227 peças em uso · 3 em manutenção · 2 sucata · unitário R$ … (2026)"
+    const q = Number(b.quantidade || 0);
+    const p = [`${num(q)} ${q === 1 ? "peça" : "peças"} em uso`];
+    if(Number(b.qtd_manutencao)) p.push(`${num(b.qtd_manutencao)} em manutenção`);
+    if(Number(b.qtd_sucata)) p.push(`${num(b.qtd_sucata)} sucata`);
+    if(Number(b.qtd_perdida)) p.push(`${num(b.qtd_perdida)} perdida${Number(b.qtd_perdida) > 1 ? "s" : ""}`);
+    if(b.valor_unitario_avaliado != null) p.push(`unitário ${brl(b.valor_unitario_avaliado)} (${b.ano_avaliacao})`);
+    return p.join(" · ");
+  }
   if(b.bem_tipo === "bem" && b.quantidade != null){
     const un = PAT_UNIDADES[b.unidade] || b.unidade || "";
     return `${num(b.quantidade)} ${un}${b.valor_unitario != null ? " × " + brl(b.valor_unitario) : ""}`;
@@ -177,7 +221,7 @@ async function carregarPatrimonio(){
   if(!_patCarregado) cont.innerHTML = `<p class="vazio">Carregando o patrimônio…</p>`;
   const [rb, ra, rr, rs, rf] = await Promise.all([
     sb.from("vw_pat_bens").select("*"),
-    sb.from("patrimonio_avaliacoes").select("id,bem_tipo,bem_id,ano_referencia,valor,base,observacoes,avaliado_por,avaliado_em,updated_at")
+    sb.from("patrimonio_avaliacoes").select("id,bem_tipo,bem_id,ano_referencia,valor,base,observacoes,avaliado_por,avaliado_em,updated_at,quantidade,valor_unitario,bem_rotulo")   // lote S54 (#172)
       .order("ano_referencia", { ascending: false }).range(0, 9999),
     sb.from("vw_pat_resumo").select("*"),
     sb.from("vw_pat_sem_valor").select("*"),
@@ -231,7 +275,7 @@ function patFiltrados(){
     if(fGrp && b.grupo !== fGrp) return false;
     if(soSem && patValorNoAno(b, _patAno)) return false;
     if(termo){
-      const alvo = [b.tag, b.descricao, b.numero_serie, b.placa, b.marca, b.modelo, patRotuloGrupo(b.grupo)].filter(Boolean).join(" ").toLowerCase();
+      const alvo = [b.tag, b.descricao, b.numero_serie, b.placa, b.marca, b.modelo, patRotuloGrupo(b.grupo), b.grupo_contagem, b.tipo_acessorio, b.bem_rotulo_avaliado].filter(Boolean).join(" ").toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -275,32 +319,54 @@ function renderPatAvaliacao(dados){
     g.bens.push(b);
   });
   let total = 0, semTotal = 0;
-  const corpo = grupos.map(g => {
-    let sub = 0, sem = 0;
-    const linhas = g.bens.map(b => {
-      const v = patValorNoAno(b, ano);
-      if(v) sub += v.valor; else sem++;
-      const ult = v ? null : patUltimaAntes(b, ano);
-      const detalhe = patDetalheBem(b);
-      const obs = b.observacoes_cadastro ? String(b.observacoes_cadastro) : "";
-      const valorHtml = v
-        ? `${brl(v.valor)}${v.base === "fipe" && !v.aval ? '<div class="meta">FIPE do cadastro</div>' : ""}`
-        : `<span class="tag vermelho">sem valor</span>${ult ? `<div class="meta">último: ${brl(ult.valor)} (${ult.ano_referencia})</div>` : ""}`;
-      return `<tr class="linha-clicavel${v ? "" : " pat-sem-valor"}" data-k="${esc(patChave(b))}">
+  const linhaBem = (b) => {
+    const v = patValorNoAno(b, ano);
+    const ult = v ? null : patUltimaAntes(b, ano);
+    const detalhe = patDetalheBem(b);
+    const obs = b.observacoes_cadastro ? String(b.observacoes_cadastro) : "";
+    const modelo = patEhModelo(b);
+    // lote S54 (#172): modelo de raiz mostra qtd × unitário, "N → M peças" quando a contagem mudou e a sugestão quando sem valor
+    const mudou = v ? patQtdMudou(b, v.aval) : null;
+    const valorHtml = v
+      ? `${brl(v.valor)}${v.base === "fipe" && !v.aval ? '<div class="meta">FIPE do cadastro</div>' : ""}${modelo && v.aval && v.aval.valor_unitario != null ? `<div class="meta">${num(v.aval.quantidade)} × ${brl(v.aval.valor_unitario)}</div>` : ""}${mudou ? `<div class="meta txt-aviso" title="Peças contadas na avaliação → peças hoje. O valor do ano é o gravado; clique para regravar com a quantidade atual">${num(mudou.antes)} → ${num(mudou.agora)} peças</div>` : ""}`
+      : `<span class="tag vermelho">sem valor</span>${ult ? `<div class="meta">último: ${brl(ult.valor)} (${ult.ano_referencia})</div>` : ""}${modelo && b.valor_sugerido != null ? `<div class="meta" title="Preço de referência do modelo (módulo Acessórios): só sugestão, nunca gravada sozinha">sugestão ${brl(b.valor_sugerido)}/peça</div>` : ""}`;
+    const titulo = !edita ? "" : modelo ? `Clique para lançar o valor unitário por peça de ${ano} (total = ${num(b.quantidade || 0)} × unitário)` : `Clique para lançar o valor de ${ano}`;
+    const html = `<tr class="linha-clicavel${v ? "" : " pat-sem-valor"}" data-k="${esc(patChave(b))}">
         <td><strong>${esc(b.tag || "—")}</strong></td>
-        <td>${esc(b.descricao || "—")}${detalhe ? `<div class="meta">${esc(detalhe)}</div>` : ""}${obs ? `<div class="meta" title="${esc(obs)}">${esc(obs.length > 110 ? obs.slice(0, 110) + "…" : obs)}</div>` : ""}</td>
+        <td>${modelo ? `<span style="padding-left:16px;">${esc(b.descricao || "—")}</span>` : esc(b.descricao || "—")}${detalhe ? `<div class="meta"${modelo ? ' style="padding-left:16px;"' : ""}>${esc(detalhe)}</div>` : ""}${obs ? `<div class="meta" title="${esc(obs)}">${esc(obs.length > 110 ? obs.slice(0, 110) + "…" : obs)}</div>` : ""}</td>
         <td>${esc(b.ano || "—")}</td>
         <td class="meta">${esc(patSerieTexto(b) || "—")}</td>
         <td>${patEstadoHtml(b)}</td>
-        <td class="num${edita ? " pat-editavel" : ""}" data-k="${esc(patChave(b))}"${edita ? ` title="Clique para lançar o valor de ${ano}"` : ""}>${valorHtml}</td>
+        <td class="num${edita ? " pat-editavel" : ""}" data-k="${esc(patChave(b))}"${titulo ? ` title="${esc(titulo)}"` : ""}>${valorHtml}</td>
         <td>${v ? esc(PAT_BASES[v.base] || v.base) : "—"}</td>
         <td class="num"${b.data_aquisicao ? ` title="Aquisição em ${esc(dataBR(b.data_aquisicao))}"` : ""}>${b.valor_aquisicao != null ? brl(b.valor_aquisicao) : "—"}</td>
       </tr>`;
-    }).join("");
+    return { v, html };
+  };
+  /* sublinha de cabeçalho por grupo da Contagem Geral (CAMISAS, HASTES…) dentro de "Acessórios das raízes", com subtotal */
+  const cabecalhoSub = (nome, n, pecas, sem, tot) => `<tr class="pat-grupo" title="Linha da Contagem Geral do módulo Acessórios (grupo de contagem do modelo)"><td colspan="5" style="padding-left:28px;"><em>${esc(nome)}</em>
+        <span class="meta">· ${n} ${n === 1 ? "modelo" : "modelos"} · ${num(pecas)} ${pecas === 1 ? "peça" : "peças"}${sem ? ` · <span class="txt-perigo">${sem} sem valor</span>` : ""}</span></td>
+      <td class="num"><strong>${brl(tot)}</strong></td><td colspan="2"></td></tr>`;
+  const corpo = grupos.map(g => {
+    let sub = 0, sem = 0;
+    const partes = [];
+    let subNome = null, subTot = 0, subSem = 0, subN = 0, subPecas = 0, subIdx = -1;
+    const fecharSub = () => { if(subIdx >= 0) partes[subIdx] = cabecalhoSub(subNome, subN, subPecas, subSem, subTot); subNome = null; subIdx = -1; };
+    g.bens.forEach(b => {
+      if(patEhModelo(b)){
+        const s = patSubgrupo(b);
+        if(s !== subNome){ fecharSub(); subNome = s; subTot = 0; subSem = 0; subN = 0; subPecas = 0; subIdx = partes.length; partes.push(""); }
+      } else if(subNome !== null) fecharSub();
+      const r = linhaBem(b);
+      if(r.v) sub += r.v.valor; else sem++;
+      if(patEhModelo(b)){ subN++; subPecas += Number(b.quantidade || 0); if(r.v) subTot += r.v.valor; else subSem++; }
+      partes.push(r.html);
+    });
+    fecharSub();
     total += sub; semTotal += sem;
     return `<tr class="pat-grupo"><td colspan="5"><strong>${esc(patRotuloGrupo(g.grupo))}</strong>
         <span class="meta">· ${g.bens.length} ${g.bens.length === 1 ? "bem" : "bens"}${sem ? ` · <span class="txt-perigo">${sem} sem valor</span>` : ""}</span></td>
-      <td class="num"><strong>${brl(sub)}</strong></td><td colspan="2"></td></tr>${linhas}`;
+      <td class="num"><strong>${brl(sub)}</strong></td><td colspan="2"></td></tr>${partes.join("")}`;
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table class="pat-tabela">
     <thead><tr>
@@ -329,20 +395,27 @@ function patEditarInline(td){
   const b = patBemPorChave(td.dataset.k);
   if(!b) return;
   const atual = patValorNoAno(b, _patAno);
-  const ini = atual && atual.aval ? Number(atual.aval.valor) : null;
-  td.innerHTML = `<input type="number" class="pat-valor-input" step="0.01" min="0" value="${ini != null ? esc(ini) : ""}" placeholder="R$ ${_patAno}" />`;
-  const inp = td.querySelector("input");
+  const modelo = patEhModelo(b);
+  // lote S54 (#172): modelo de raiz edita o UNITÁRIO por peça (placeholder = sugestão); total = quantidade atual × unitário
+  const ini = atual && atual.aval ? Number(modelo ? atual.aval.valor_unitario : atual.aval.valor) : null;
+  const qtd = Number(b.quantidade || 0);
+  const mudou = atual ? patQtdMudou(b, atual.aval) : null;
+  const ph = modelo ? (b.valor_sugerido != null ? `sugestão ${Number(b.valor_sugerido)}` : "R$/peça") : `R$ ${_patAno}`;
+  td.innerHTML = `<input type="number" class="pat-valor-input" step="0.01" min="0" value="${ini != null ? esc(ini) : ""}" placeholder="${esc(ph)}"${modelo ? ` title="Valor unitário por peça; total = ${num(qtd)} × unitário"` : ""} />${modelo ? `<div class="meta pat-inline-total">= ${brl(qtd * (ini || 0))}</div>` : ""}`;
+  const inp = td.querySelector("input"), tot = td.querySelector(".pat-inline-total");
+  if(tot) inp.addEventListener("input", () => { tot.textContent = `= ${brl(qtd * Number(inp.value || 0))}`; });
   inp.focus(); inp.select();
   let feito = false;
   const fim = async (gravar) => {
     if(feito) return;
     feito = true;
     const txt = inp.value.trim();
-    if(!gravar || txt === "" || (ini != null && Number(txt) === ini)){ appLimparSujo(); renderPatrimonio(); return; }
+    // modelo com a contagem mudada regrava mesmo com o mesmo unitário (retrato novo: quantidade atual)
+    if(!gravar || txt === "" || (ini != null && Number(txt) === ini && !mudou)){ appLimparSujo(); renderPatrimonio(); return; }
     const v = Number(txt);
     if(!Number.isFinite(v) || v < 0){ aviso("app-aviso", "Valor inválido: use um número maior ou igual a zero.", "erro"); renderPatrimonio(); return; }
     inp.disabled = true;
-    const ok = await patGravarAvaliacao(b, _patAno, { valor: v });
+    const ok = await patGravarAvaliacao(b, _patAno, modelo ? { valor_unitario: v, quantidade: qtd, bem_rotulo: b.descricao } : { valor: v });
     appLimparSujo();
     if(ok) await carregarPatrimonio(); else renderPatrimonio();
   };
@@ -358,21 +431,29 @@ function patEditarInline(td){
 async function patGravarAvaliacao(b, ano, campos){
   if(!patPodeEditar()){ aviso("app-aviso", "Só o diretor lança valor no Patrimônio.", "erro"); return false; }
   const existente = patAvaliacoesDo(b).find(a => a.ano_referencia === ano);
+  // lote S54 (#172): modelo de raiz grava unitário, quantidade (atual) e rótulo; o gatilho recalcula valor = qtd × unitário
+  const modelo = patEhModelo(b);
+  const base = {};
+  if(modelo){
+    const q = Number(campos.quantidade ?? b.quantidade ?? 0), u = Number(campos.valor_unitario);
+    if(!Number.isFinite(u) || u < 0){ aviso("app-aviso", "Informe o valor unitário por peça.", "erro"); return false; }
+    Object.assign(base, { valor_unitario: u, quantidade: q, bem_rotulo: campos.bem_rotulo || b.descricao || null, valor: Math.round(q * u * 100) / 100 });
+  } else base.valor = campos.valor;
   let r;
   if(existente){
-    const upd = { valor: campos.valor };
+    const upd = { ...base };
     if(campos.base) upd.base = campos.base;
     if(campos.observacoes !== undefined) upd.observacoes = campos.observacoes;
     r = await sb.from("patrimonio_avaliacoes").update(upd).eq("id", existente.id).select("id");
   } else {
     r = await sb.from("patrimonio_avaliacoes").insert({
-      bem_tipo: b.bem_tipo, bem_id: b.bem_id, ano_referencia: ano, valor: campos.valor,
+      bem_tipo: b.bem_tipo, bem_id: b.bem_id, ano_referencia: ano, ...base,
       base: campos.base || "mercado", observacoes: campos.observacoes || null
     }).select("id");
   }
   if(r.error){ aviso("app-aviso", "Não foi possível gravar a avaliação: " + r.error.message, "erro"); return false; }
   if(!r.data || !r.data.length){ aviso("app-aviso", "A avaliação não foi gravada: o banco exige o cargo diretor e a sessão com MFA.", "erro"); return false; }
-  aviso("app-aviso", `Avaliação de ${ano} gravada (${b.tag || b.descricao}).`, "ok");
+  aviso("app-aviso", `Avaliação de ${ano} gravada (${b.tag || b.descricao}${modelo ? `: ${num(base.quantidade)} × ${brl(base.valor_unitario)} = ${brl(base.valor)}` : ""}).`, "ok");
   return true;
 }
 
@@ -409,7 +490,7 @@ function renderPatResumo(){
         ${semValor.map(s => `<tr class="linha-clicavel" data-k="${esc(s.bem_tipo + ":" + s.bem_id)}">
           <td>${esc(patRotuloGrupo(s.grupo))}</td><td><strong>${esc(s.tag || "—")}</strong></td>
           <td>${esc(s.descricao || "—")}${s.observacoes_cadastro ? `<div class="meta">${esc(String(s.observacoes_cadastro).slice(0, 110))}</div>` : ""}</td>
-          <td>${s.bem_tipo === "equipamento" ? tagStatus("equipamento", s.status) : esc(s.status || "—")}</td>
+          <td>${s.bem_tipo === "equipamento" ? tagStatus("equipamento", s.status) : s.bem_tipo === "acessorio_modelo" ? patEstadoHtml(s) : esc(s.status || "—")}</td>
           <td>${s.ultimo_valor != null ? `${brl(s.ultimo_valor)} <span class="meta">(${s.ultimo_ano_avaliado})</span>` : '<span class="tag vermelho">nunca avaliado</span>'}</td></tr>`).join("")}
       </tbody></table></div>`
     : `<p class="vazio">Todos os bens próprios ativos têm valor em ${refSem}.</p>`;
@@ -421,8 +502,16 @@ function renderPatResumo(){
           ${edita ? `<td><button type="button" class="btn-sec pat-voltar-propria" data-id="${esc(e.id)}" data-codigo="${esc(e.codigo)}">Voltar a próprio</button></td>` : ""}</tr>`).join("")}
       </tbody></table></div>`
     : `<p class="vazio">Nenhum equipamento ativo marcado como locado ou de terceiro.</p>`;
+  // lote S54 (#172): a verba única "Acessórios das raízes" (patrimonio_bens) continua até a diretoria retirá-la; com modelos
+  // avaliados no mesmo ano ela conta em dobro
+  const verbas = _patBens.filter(b => b.bem_tipo === "bem" && b.grupo === "acessorios_raiz");
+  const modelosAvaliados = _patBens.filter(b => patEhModelo(b) && patValorNoAno(b, ano)).length;
+  const avisoVerba = verbas.length && modelosAvaliados
+    ? `<p class="texto-apoio compacto txt-aviso">Verba única ${verbas.map(v => `"${esc(v.descricao)}"`).join(", ")} ativa junto com ${modelosAvaliados} ${modelosAvaliados === 1 ? "modelo avaliado" : "modelos avaliados"} em ${ano}: retire-a (ficha do bem, "Retirar do patrimônio") para não contar em dobro.</p>`
+    : "";
   cont.innerHTML = `
     <div class="indicadores pat-resumo-cards">${cards}</div>
+    ${avisoVerba}
     <h3 class="titulo-bloco">Total por grupo — ${ano} × ${ano - 1}</h3>
     ${tabela}
     <h3 class="titulo-bloco">Sem valor em ${refSem} <span class="contador">${semValor.length}</span></h3>
@@ -441,6 +530,19 @@ function patCliqueResumo(e){
     _patView = "avaliacao"; renderPatrimonio(); return true;
   }
   return false;
+}
+
+/* lote S54 (#172): o cadastro do modelo (descrição, medida, grupo de contagem, preço de referência) se edita no módulo
+   Acessórios: abre a família raiz com a busca pela descrição do modelo (as peças dele aparecem no quadro) */
+function patAbrirAcessoriosModelo(b){
+  if(!b || !irParaSecao("acessorios")) return;
+  const fam = document.querySelector('#ace-familias .serv-view-btn[data-familia="raiz"]');
+  if(fam) fam.click();
+  const busca = $("ace-busca");
+  if(busca){
+    busca.value = String(b.descricao || "").split(" · ")[0];
+    busca.dispatchEvent(new Event("input", { bubbles: true }));
+  }
 }
 
 /* ---------- Vendas: a visão é de Equipamentos (fase 96) ---------- */
@@ -464,12 +566,30 @@ function ativarTabPat(nome){
 function patPreencherAvaliacaoDoAno(b){
   const ano = Number($("pat-aval-ano").value) || _patAno;
   const av = b ? patAvaliacoesDo(b).find(a => a.ano_referencia === ano) : null;
+  const modelo = patEhModelo(b);
   $("pat-aval-valor").value = av ? Number(av.valor) : "";
   $("pat-aval-base").value = av ? av.base : "mercado";
   $("pat-aval-obs").value = av ? (av.observacoes || "") : "";
+  // lote S54 (#172): modelo de raiz — quantidade (atual × avaliada) só leitura, unitário editável, total calculado, sugestão
+  ["pat-aval-qtd-box", "pat-aval-unit-box", "pat-aval-sugestao"].forEach(id => { if($(id)) $(id).style.display = modelo ? "" : "none"; });
+  if($("pat-aval-valor-rot")) $("pat-aval-valor-rot").textContent = modelo ? "Valor do ano (quantidade × unitário)" : "Valor de mercado (R$)";
+  $("pat-aval-valor").disabled = modelo || !patPodeEditar();
+  $("pat-aval-valor").placeholder = modelo ? "calculado" : "vazio = não mexe";
+  if(modelo){
+    const qtd = Number(b.quantidade || 0);
+    $("pat-aval-qtd").value = `${num(qtd)}${av && av.quantidade != null ? ` × ${num(av.quantidade)} avaliada${Number(av.quantidade) !== qtd ? " (mudou)" : ""}` : " (sem avaliação no ano)"}`;
+    $("pat-aval-unit").value = av && av.valor_unitario != null ? Number(av.valor_unitario) : "";
+    $("pat-aval-unit").placeholder = b.valor_sugerido != null ? `sugestão ${Number(b.valor_sugerido)}` : "R$ por peça";
+    const sug = [];
+    if(b.valor_sugerido != null) sug.push(`preço de referência do modelo ${brl(b.valor_sugerido)}${b.sugestao_origem ? ` (${b.sugestao_origem}${b.sugestao_atualizada_em ? ", atualizado em " + dataBR(b.sugestao_atualizada_em) : ""})` : ""}`);
+    if(b.custo_produto_sugerido != null) sug.push(`custo do produto ${b.produto_codigo_sugerido || ""}: ${brl(b.custo_produto_sugerido)}`);
+    $("pat-aval-sugestao").textContent = sug.length ? `Sugestão: ${sug.join(" · ")}. É só referência (módulo Acessórios): o valor que vale é o unitário digitado aqui.` : "Sem preço de referência no cadastro do modelo (módulo Acessórios).";
+  }
   const fipe = b && b.grupo === "veiculo" && b.valor_fipe != null;
   $("pat-aval-info").textContent = av
-    ? `Avaliação de ${ano} lançada em ${dataBR(av.avaliado_em)}. Mudar o valor guarda o anterior no histórico de alterações.`
+    ? (modelo && av.valor_unitario != null
+        ? `Avaliação de ${ano}: ${num(av.quantidade)} × ${brl(av.valor_unitario)} = ${brl(av.valor)}, lançada em ${dataBR(av.avaliado_em)}${Number(av.quantidade) !== Number(b.quantidade || 0) ? `; hoje são ${num(b.quantidade || 0)} peças — salvar regrava com a quantidade atual` : ""}. O anterior fica no histórico.`
+        : `Avaliação de ${ano} lançada em ${dataBR(av.avaliado_em)}. Mudar o valor guarda o anterior no histórico de alterações.`)
     : (fipe ? `Sem avaliação em ${ano}: vale a FIPE do cadastro (${brl(b.valor_fipe)}${b.fipe_referencia ? ", referência " + dataBR(b.fipe_referencia) : ""}). Lance um valor só se a diretoria discordar.`
             : `Sem avaliação em ${ano}.`);
   $("btn-pat-excluir-aval").style.display = av && patPodeEditar() ? "" : "none";
@@ -477,7 +597,9 @@ function patPreencherAvaliacaoDoAno(b){
 function patTravarFicha(){
   const edita = patPodeEditar();
   /* o ano fica livre para todos (o auditor navega pelos anos); o resto só o diretor muda */
-  $("pat-ficha").querySelectorAll("input, select, textarea").forEach(el => { el.disabled = !edita && el.id !== "pat-aval-ano"; });
+  const modelo = patEhModelo(patEditKey && patEditKey !== "novo" ? patBemPorChave(patEditKey) : null);
+  // lote S54 (#172): no modelo de raiz o valor do ano é calculado (quantidade × unitário): a célula fica travada para todos
+  $("pat-ficha").querySelectorAll("input, select, textarea").forEach(el => { el.disabled = (!edita && el.id !== "pat-aval-ano") || (modelo && el.id === "pat-aval-valor"); });
   ["btn-salvar-pat", "btn-pat-tit-gravar"].forEach(id => { if($(id)) $(id).style.display = edita ? "" : "none"; });
 }
 function abrirPatrimonio(k){
@@ -487,7 +609,8 @@ function abrirPatrimonio(k){
   $("pat-painel").style.display = "none";
   $("pat-ficha").style.display = "";
   $("pat-ficha-titulo").textContent = `${b.tag ? b.tag + " — " : ""}${b.descricao || ""}`;
-  $("pat-ficha-grupo").textContent = patRotuloGrupo(b.grupo);
+  // lote S54 (#172): modelo de raiz mostra o grupo da Contagem Geral no chip do grupo
+  $("pat-ficha-grupo").textContent = patRotuloGrupo(b.grupo) + (patEhModelo(b) ? ` · ${patSubgrupo(b)}` : "");
   $("pat-ficha-tag").textContent = b.tag || "—";
   $("pat-ficha-estado").innerHTML = patEstadoHtml(b);
   $("pat-ficha-vigente").textContent = b.valor_vigente != null ? brl(b.valor_vigente) : "sem valor";
@@ -497,7 +620,8 @@ function abrirPatrimonio(k){
   $("pat-ficha-fipe-box").style.display = b.grupo === "veiculo" ? "" : "none";
   $("pat-ficha-fipe").textContent = b.valor_fipe != null ? brl(b.valor_fipe) : "—";
   $("pat-ficha-link").innerHTML = b.bem_tipo === "equipamento" ? linkEquipamento(b.bem_id, "Abrir o cadastro do equipamento")
-    : b.bem_tipo === "acessorio" ? linkAcessorio(b.bem_id, "Abrir uma peça do kit") : "";
+    : b.bem_tipo === "acessorio" ? linkAcessorio(b.bem_id, "Abrir uma peça do kit")
+    : patEhModelo(b) ? `<a href="#" class="pat-link-modelo" title="Módulo Acessórios, família raiz, busca pela descrição do modelo (o cadastro do modelo se edita lá)">Abrir Acessórios (raiz · modelo)</a>` : "";   // lote S54 (#172)
   /* abas: Cadastro do bem só para patrimonio_bens; Titularidade só para equipamento */
   $("pat-tab-bem-btn").style.display = b.bem_tipo === "bem" ? "" : "none";
   $("pat-tab-tit-btn").style.display = b.bem_tipo === "equipamento" ? "" : "none";
@@ -580,15 +704,21 @@ async function salvarPatrimonio(){
       patEditKey = patChave(b);
     }
   }
-  /* 2. avaliação do ano (valor vazio = não mexe na avaliação) */
+  /* 2. avaliação do ano (valor vazio = não mexe na avaliação); modelo de raiz: unitário por peça (lote S54, #172) */
   const ano = Number($("pat-aval-ano").value);
-  const txt = $("pat-aval-valor").value.trim();
+  const modelo = patEhModelo(b);
+  const txt = (modelo ? $("pat-aval-unit").value : $("pat-aval-valor").value).trim();
   if(txt !== ""){
     const valor = Number(txt);
     if(!Number.isInteger(ano) || ano < 2000 || ano > 2100){ aviso("app-aviso", "Ano de referência inválido.", "erro"); ativarTabPat("avaliacao"); return; }
-    if(!Number.isFinite(valor) || valor < 0){ aviso("app-aviso", "Valor inválido.", "erro"); ativarTabPat("avaliacao"); return; }
-    const ok = await patGravarAvaliacao(b, ano, { valor, base: $("pat-aval-base").value, observacoes: $("pat-aval-obs").value.trim() || null });
+    if(!Number.isFinite(valor) || valor < 0){ aviso("app-aviso", modelo ? "Valor unitário inválido." : "Valor inválido.", "erro"); ativarTabPat("avaliacao"); return; }
+    const campos = modelo ? { valor_unitario: valor, quantidade: Number(b.quantidade || 0), bem_rotulo: b.descricao } : { valor };
+    const ok = await patGravarAvaliacao(b, ano, { ...campos, base: $("pat-aval-base").value, observacoes: $("pat-aval-obs").value.trim() || null });
     if(!ok) return;
+  } else if(modelo){
+    aviso("app-aviso", "Informe o valor unitário por peça para gravar a avaliação do modelo.", "aviso");
+    ativarTabPat("avaliacao");
+    return;
   } else if(novo){
     aviso("app-aviso", "Bem gravado sem valor: ele aparece em \"sem valor\" até a avaliação do ano.", "ok");
   } else if(b.bem_tipo === "bem"){
@@ -673,11 +803,11 @@ async function carregarHistoricoPat(b){
   const anoDe = Object.fromEntries(avs.map(a => [a.id, a.ano_referencia]));
   const tabAv = avs.length
     ? `<div class="tabela-rola"><table class="pat-tabela"><thead><tr><th>Ano</th><th class="num">Valor</th><th>Base</th><th>Lançada em</th><th>Por</th><th>Observações</th></tr></thead><tbody>
-        ${avs.map(a => `<tr><td><strong>${a.ano_referencia}</strong></td><td class="num">${brl(a.valor)}</td><td>${esc(PAT_BASES[a.base] || a.base)}</td>
+        ${avs.map(a => `<tr><td><strong>${a.ano_referencia}</strong></td><td class="num">${brl(a.valor)}${a.valor_unitario != null ? `<div class="meta" title="${esc(a.bem_rotulo || "")}">${num(a.quantidade)} × ${brl(a.valor_unitario)}</div>` : ""}</td><td>${esc(PAT_BASES[a.base] || a.base)}</td>
           <td>${esc(dataBR(a.avaliado_em))}</td><td>${esc(nomes[a.avaliado_por] || "—")}</td><td>${esc(a.observacoes || "")}</td></tr>`).join("")}
       </tbody></table></div>`
     : `<p class="vazio">Nenhuma avaliação lançada${b.grupo === "veiculo" && b.valor_fipe != null ? " (vale a FIPE do cadastro)" : ""}.</p>`;
-  const fmtValor = (c, v) => (c === "valor" && v != null && v !== "" && !isNaN(Number(v))) ? brl(v) : (v ?? "");
+  const fmtValor = (c, v) => ((c === "valor" || c === "valor_unitario") && v != null && v !== "" && !isNaN(Number(v))) ? brl(v) : (v ?? "");   // lote S54 (#172): unitário também em R$
   const logs = (rl.data || []).map(l => {
     const ano = anoDe[l.registro_id];
     const quando = l.criado_em ? `${dataBR(l.criado_em)} ${String(l.criado_em).slice(11, 16)}` : "";
@@ -709,9 +839,17 @@ function exportarPatrimonio(){
     []
   ];
   let totalGeral = 0, grupoAtual = null, item = 0, sub = 0;
-  const linhasUnitario = new Set();   /* linhas de bem avulso: a coluna F é R$/m² ou verba */
+  const linhasUnitario = new Set();   /* linhas de bem avulso e de modelo de raiz: a coluna F é R$/m², verba ou R$/peça */
+  /* lote S54 (#172): dentro de ACESSÓRIOS DAS RAÍZES, subtotal por grupo da Contagem Geral (CAMISAS, HASTES…) */
+  let subNome = null, subTot = 0, subPecas = 0;
+  const fecharSub = () => {
+    if(subNome == null) return;
+    aoa.push(["", subNome, `Subtotal ${subNome}`, subPecas, "", "", "", subTot]);
+    subNome = null; subTot = 0; subPecas = 0;
+  };
   const fecharGrupo = () => {
     if(grupoAtual == null) return;
+    fecharSub();
     aoa.push(["", "", `Subtotal ${patRotuloGrupo(grupoAtual)}`, "", "", "", "", sub]);
     aoa.push([]);
   };
@@ -721,6 +859,7 @@ function exportarPatrimonio(){
       grupoAtual = b.grupo; item = 0; sub = 0;
       aoa.push([patRotuloGrupo(b.grupo).toUpperCase()]);
       if(b.grupo === "trados_kits") aoa.push(["Item", "TAG", "Diâmetro (mm)", "Comprimento (m)", "Modelo", "Peças", "Estado", `Valor ${ano}`, "Base", "Observações"]);
+      else if(b.grupo === "acessorios_raiz") aoa.push(["Item", "Grupo (Contagem Geral)", "Modelo / bem", "Peças / quantidade", "Unidade", "Valor unitário", "Titularidade", `Valor ${ano}`, "Base", "Observações"]);
       else if(b.bem_tipo === "bem") aoa.push(["Item", "", "Bem", "Quantidade", "Unidade", "Valor unitário", "Titularidade", `Valor ${ano}`, "Base", "Observações"]);
       else aoa.push(["Item", "TAG", "Máquina / Equipamento", "Modelo", "Marca", "Ano", "Série / placa", `Valor ${ano}`, "Base", "Observações"]);
     }
@@ -728,7 +867,16 @@ function exportarPatrimonio(){
     const v = patValorNoAno(b, ano);
     if(v){ sub += v.valor; totalGeral += v.valor; }
     const obs = (v && v.aval && v.aval.observacoes) || (v ? "" : "SEM VALOR");
-    if(b.grupo === "trados_kits"){
+    if(patEhModelo(b)){
+      const s = patSubgrupo(b);
+      if(s !== subNome){ fecharSub(); subNome = s; }
+      if(v) subTot += v.valor;
+      subPecas += Number(b.quantidade || 0);
+      const mudou = v ? patQtdMudou(b, v.aval) : null;
+      linhasUnitario.add(aoa.length);
+      aoa.push([item, s, b.descricao || "", Number(b.quantidade || 0), "pç", v && v.aval && v.aval.valor_unitario != null ? Number(v.aval.valor_unitario) : "", "",
+        v ? v.valor : "", v ? (PAT_BASES[v.base] || v.base) : "", [obs, mudou ? `avaliada com ${num(mudou.antes)} peças` : ""].filter(Boolean).join(" · ")]);
+    } else if(b.grupo === "trados_kits"){
       aoa.push([item, b.tag || "", b.diametro_mm ?? "", b.comprimento_m != null ? Number(b.comprimento_m) : "", b.modelo || "", b.pecas ?? "",
         String(b.status || "").split(",").map(s => s.trim()).filter(Boolean).map(s => (STATUS.acessorio[s] || {}).label || s).join(", "), v ? v.valor : "", v ? (PAT_BASES[v.base] || v.base) : "", obs]);
     } else if(b.bem_tipo === "bem"){
@@ -784,6 +932,18 @@ function ligarPatrimonio(){
   $("btn-pat-retirar")?.addEventListener("click", () => comBotaoTravado("btn-pat-retirar", retirarBemPat));
   $("btn-pat-tit-gravar")?.addEventListener("click", () => comBotaoTravado("btn-pat-tit-gravar", gravarTitularidadePat));
   $("pat-aval-ano")?.addEventListener("change", () => patPreencherAvaliacaoDoAno(patEditKey && patEditKey !== "novo" ? patBemPorChave(patEditKey) : null));
+  // lote S54 (#172): unitário digitado na ficha mostra o total calculado; o link do modelo abre Acessórios (raiz) com a busca
+  $("pat-aval-unit")?.addEventListener("input", () => {
+    const b = patEditKey && patEditKey !== "novo" ? patBemPorChave(patEditKey) : null;
+    if(!patEhModelo(b)) return;
+    const txt = $("pat-aval-unit").value;
+    $("pat-aval-valor").value = txt === "" ? "" : Math.round(Number(b.quantidade || 0) * Number(txt || 0) * 100) / 100;
+  });
+  $("pat-ficha-link")?.addEventListener("click", e => {
+    const a = e.target.closest(".pat-link-modelo"); if(!a) return;
+    e.preventDefault();
+    patAbrirAcessoriosModelo(patEditKey && patEditKey !== "novo" ? patBemPorChave(patEditKey) : null);
+  });
   document.querySelectorAll("#pat-notebook button").forEach(b => b.addEventListener("click", () => ativarTabPat(b.dataset.tab)));
   /* carga a cada abertura do menu (os valores mudam pouco, mas a ficha de outro módulo pode ter mudado o cadastro) */
   document.querySelector('nav button[data-secao="patrimonio"]')?.addEventListener("click", () => { mostrarPainelPat(); carregarPatrimonio(); });

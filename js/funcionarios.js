@@ -940,7 +940,10 @@ async function renderFuncHE(){
     // diretoria). Para os demais cargos, ou sem a migration, as colunas não aparecem.
     let status = null;
     if(["diretor", "rh"].includes(usuarioAtual?.cargo)){
-      const r = await sb.from("vw_rh_horas_mes").select("funcionario_id,obra_id,dias_falta,dias_folga,dias_dsr,dias_atestado,dias_viagem,dias_treinamento").eq("competencia", ini).limit(5000);
+      // lote S54 (#178): + dias_folga_meio_periodo; antes da migration S54 a view não tem a coluna e a consulta repete sem ela
+      const lerSt = (comMeio) => sb.from("vw_rh_horas_mes").select(`funcionario_id,obra_id,dias_falta,dias_folga,${comMeio ? "dias_folga_meio_periodo," : ""}dias_dsr,dias_atestado,dias_viagem,dias_treinamento`).eq("competencia", ini).limit(5000);
+      let r = await lerSt(true);
+      if(r.error && /dias_folga_meio_periodo/i.test(r.error.message || "")) r = await lerSt(false);
       if(!r.error){ status = new Map(); (r.data || []).forEach(v => status.set(`${v.funcionario_id}|${v.obra_id || ""}`, v)); }
     }
     _funcHE = { comp, dados: data || [], status };
@@ -958,8 +961,10 @@ async function renderFuncHE(){
     a.dias.add(r.rdo?.data); a.pres += presenca(r);
     a.hn += Number(r.horas_normais) || 0; a.h50 += Number(r.horas_50) || 0; a.h100 += Number(r.horas_100) || 0; a.hnot += Number(r.horas_noturnas) || 0;
   });
-  // fase 103: colunas por status (vw_rh_horas_mes, liberadas), no fim da tabela e do CSV
-  const COLS_ST = _funcHE.status ? [["dias_falta", "Faltas"], ["dias_folga", "Folgas"], ["dias_dsr", "DSR"], ["dias_atestado", "Atestados"], ["dias_viagem", "Viagem"], ["dias_treinamento", "Treinamento"]] : [];
+  // fase 103: colunas por status (vw_rh_horas_mes, liberadas), no fim da tabela e do CSV; lote S54 (#178): "Folga ½" só
+  // quando a view já tem a coluna (a folga de meio período conta como dia)
+  const temMeio = !!_funcHE.status && [..._funcHE.status.values()].some(v => Object.prototype.hasOwnProperty.call(v, "dias_folga_meio_periodo"));
+  const COLS_ST = _funcHE.status ? [["dias_falta", "Faltas"], ["dias_folga", "Folgas"]].concat(temMeio ? [["dias_folga_meio_periodo", "Folga ½"]] : []).concat([["dias_dsr", "DSR"], ["dias_atestado", "Atestados"], ["dias_viagem", "Viagem"], ["dias_treinamento", "Treinamento"]]) : [];
   const st = (a, c) => Number(_funcHE.status?.get(`${a.fid}|${a.obra_id || ""}`)?.[c] || 0);
   const termo = ($("func-busca")?.value || "").trim().toLowerCase();
   const linhas = [...g.values()].filter(a => a.dias.size > 0 || COLS_ST.some(([c]) => st(a, c) > 0))   // fase 103: só ausência pendente não vira linha
@@ -971,7 +976,7 @@ async function renderFuncHE(){
   const semHoras = (tot.pres + tot.hn + tot.h50 + tot.h100 + tot.hnot) === 0 && linhas.length > 0;
   const nCol = 8 + COLS_ST.length;
   cont.innerHTML = `<div class="meta" style="margin:0 0 8px;">Competência <strong>${esc(comp)}</strong> · ${linhas.length} colaborador×obra · ${Number(_funcHE.dados.length - nAus)} presenças em RDO${nAus ? ` · ${Number(nAus)} ausência(s) lançada(s) no RDO (Falta, Folga, DSR, Atestado) não contam como dia` : ""}
-      ${COLS_ST.length ? `<br>Faltas, Folgas, DSR, Atestados, Viagem e Treinamento: dias com o status no RDO já liberados para a folha (Horas e alocação).` : ""}
+      ${COLS_ST.length ? `<br>Faltas, Folgas${temMeio ? ", Folga ½" : ""}, DSR, Atestados, Viagem e Treinamento: dias com o status no RDO já liberados para a folha (Horas e alocação). Folga meio período conta como dia (horas trabalhadas da linha; débito de meia jornada no fechamento).` : ""}
       ${semHoras ? `<br><span class="txt-perigo">⚠️ Nenhum RDO desta competência tem entrada/saída ou horas preenchidas — a equipe do RDO precisa registrar os horários para este relatório substituir a planilha.</span>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-func-he-csv" style="margin-left:8px;">⬇️ CSV</button></div>
     <div class="tabela-rola"><table>

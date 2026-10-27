@@ -26,6 +26,9 @@ const APROP_GRUPO = { salario_contabil: "sal", salario_particular: "sal", gratif
   unimed: "ben", unimed_copart: "ben", metlife: "ben", seguro_vida: "ben", vale_transporte: "ben", vr: "ben", flash: "ben", outro: "ben",
   inss: "enc", irrf: "enc", fgts: "enc", contribuicao_sindical: "enc", consignado: "enc" };
 const APROP_SENS_BENEF = ["unimed", "metlife", "unimed_copart", "seguro_vida", "vale_transporte", "vr", "flash", "consignado"];
+// Rubricas geradas por "Lançar na folha" (fase 93c; lote S54 #178: débito de folga, valor negativo). Só rótulo de leitura: não
+// entram no select do lançamento manual (o botão do RH as regrava a cada clique).
+const APROP_RUBRICA_AUTO = { he_100: "HE 100 % (RDO)", adicional_noturno: "Adicional noturno (RDO)", horas_viagem: "Horas de viagem", debito_folga: "Débito de folga (desconto)" };
 
 function apropMoeda(v){ return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function apropNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim(); }
@@ -40,7 +43,8 @@ function apropOpcoesMes(){
 /* linha "Último cálculo" (só contagens e o total da competência) */
 function apropResumoCalculo(res){
   if(!res) return "";
-  return `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${res.funcionarios} funcionários · ${res.com_rdo} com presença em RDO · ${res.por_alocacao} pela alocação · ${res.sem_obra} sem obra (ADM/PÁTIO) · ${res.linhas} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${res.sem_ficha} ativo(s) sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${res.presencas_sem_cadastro} nome(s) no RDO sem cadastro</span>` : ""}</p>`;
+  // lote S54 (#178): ausencias_rdo = linhas do RDO com Falta, Folga, DSR ou Atestado, que não contam como presença
+  return `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${res.funcionarios} funcionários · ${res.com_rdo} com presença em RDO · ${res.por_alocacao} pela alocação · ${res.sem_obra} sem obra (ADM/PÁTIO) · ${res.linhas} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${res.sem_ficha} ativo(s) sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${res.presencas_sem_cadastro} nome(s) no RDO sem cadastro</span>` : ""}${res.ausencias_rdo ? ` · ${Number(res.ausencias_rdo)} ausência(s) no RDO (Falta, Folga, DSR, Atestado) não contadas` : ""}</p>`;
 }
 /* tabela "Custo de mão de obra por obra / centro de custo" (linhas de vw_custo_mao_obra_por_obra) */
 function apropTabelaObras(linhas, tot, obraDe){
@@ -148,7 +152,7 @@ async function renderFuncAprop(){
       </div>
       <div class="form-acoes compacta"><button type="button" class="btn btn-sm" id="btn-lanc-add" ${fechada ? "disabled" : ""}>+ Lançar</button></div>
       <div class="tabela-rola"><table><thead><tr><th>Funcionário</th><th>Rubrica</th><th class="num">Valor</th><th>Obra</th><th>Obs.</th><th></th></tr></thead>
-        <tbody>${_aprop.lanc.map(l => `<tr><td>${esc(nomeDe(l.funcionario_id))}</td><td>${APROP_RUBRICA_LBL[l.rubrica] || l.rubrica}</td><td class="num">${apropMoeda(l.valor)}</td><td>${esc(l.obra_id ? (mapaObras?.[l.obra_id] || "obra") : "rateio")}</td><td class="meta">${esc(l.observacoes || "")}</td><td>${fechada ? "" : `<button type="button" class="btn-sec btn-sm aprop-lanc-del" data-id="${l.id}">🗑️</button>`}</td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nenhum lançamento neste mês.</td></tr>`}</tbody></table></div>
+        <tbody>${_aprop.lanc.map(l => `<tr><td>${esc(nomeDe(l.funcionario_id))}</td><td>${esc(APROP_RUBRICA_LBL[l.rubrica] || APROP_RUBRICA_AUTO[l.rubrica] || l.rubrica)}</td><td class="num">${Number(l.valor) < 0 ? `<span class="txt-perigo" title="Desconto (valor negativo)">${apropMoeda(l.valor)}</span>` : apropMoeda(l.valor)}</td><td>${esc(l.obra_id ? (mapaObras?.[l.obra_id] || "obra") : "rateio")}</td><td class="meta">${esc(l.observacoes || "")}</td><td>${fechada ? "" : `<button type="button" class="btn-sec btn-sm aprop-lanc-del" data-id="${l.id}">🗑️</button>`}</td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nenhum lançamento neste mês.</td></tr>`}</tbody></table></div>
     </details>
 
     <details style="margin-bottom:12px;"><summary style="cursor:pointer;"><strong>Parâmetros de encargos</strong> <span class="meta">(% sobre o salário contábil)</span></summary>

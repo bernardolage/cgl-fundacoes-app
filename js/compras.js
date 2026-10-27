@@ -34,8 +34,10 @@ let _cmpKpi = "";
 let _cmpPedidos = [];
 let _cmpForns = [];
 let _cmpFornMap = {};
-let _cmpObras = [];
-let _cmpObraMap = {};
+let _cmpObras = [];             // obras abertas (planejada, em andamento, paralisada): requisição nova e Contratos leem daqui
+let _cmpObrasConcluidas = [];   // lote S54 (#171): concluídas entram nos selects de Compras num grupo "Concluídas" no fim; canceladas ficam fora
+let _cmpObraMap = {};           // todas as não canceladas (cmpObra resolve o nome de pedido antigo de obra concluída)
+let _cmpProdUn = {};            // lote S54 (#170): produto_id → unidade do cadastro (busca e itens carregados)
 let _cmpEquips = [];
 let _cmpEqMap = {};
 let _cmpCentros = [];             // fase 76: centros de custo internos (setores e obras internas)
@@ -240,20 +242,54 @@ function cmpCentroOptions(ph, soAtivos){
   const grupo = t => lst.filter(c => c.tipo === t).map(c => `<option value="${esc(c.id)}">${esc(c.nome)}${c.ativo ? "" : " (inativo)"}</option>`).join("");
   return `<option value="">${ph}</option><optgroup label="Setores">${grupo("setor")}</optgroup><optgroup label="Obras internas">${grupo("obra_interna")}</optgroup>`;
 }
+/* lote S54 (#171): obras abertas num optgroup + "Concluídas" no fim (NF que chega depois do fim da obra tem onde cair;
+   pedido antigo cuja obra foi concluída não perde o destino ao ser editado). Canceladas ficam fora. val(o) = valor da
+   option, rot(o) = rótulo; sel = valor selecionado. Requisição nova (req-obra) e Contratos continuam em _cmpObras. */
+function cmpObraOptgroups(sel, val, rot, rotuloAbertas){
+  const op = (o, conc) => `<option value="${esc(val(o))}"${sel === val(o) ? " selected" : ""}>${esc(rot(o))}${conc ? " · concluída" : ""}</option>`;
+  return `<optgroup label="${esc(rotuloAbertas || "Obras")}">${_cmpObras.map(o => op(o, false)).join("")}</optgroup>`
+    + (_cmpObrasConcluidas.length ? `<optgroup label="Concluídas">${_cmpObrasConcluidas.map(o => op(o, true)).join("")}</optgroup>` : "");
+}
 function cmpDestinoOptions(sel){
-  const obras = _cmpObras.map(o => `<option value="obra:${o.id}"${sel === "obra:" + o.id ? " selected" : ""}>Obra: ${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
+  const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => `Obra: ${o.codigo} — ${o.nome}`, "Aplicação direta na obra");
   const eqs = _cmpEquips.map(e => `<option value="eq:${e.id}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${c.id}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
-  return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Reposição de estoque (almoxarifado)</option><optgroup label="Aplicação direta na obra">${obras}</optgroup><optgroup label="Aplicação direta na TAG">${eqs}</optgroup><optgroup label="Aplicação direta no setor / obra interna">${centros}</optgroup>`;
+  return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Reposição de estoque (almoxarifado)</option>${obras}<optgroup label="Aplicação direta na TAG">${eqs}</optgroup><optgroup label="Aplicação direta no setor / obra interna">${centros}</optgroup>`;
 }
 /* fase 108b: destino de item de aplicação direta (sem a opção do estoque; vazio = falta escolher) */
 function cmpDestinoDiretoOptions(sel){
-  const obras = _cmpObras.map(o => `<option value="obra:${o.id}"${sel === "obra:" + o.id ? " selected" : ""}>${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
+  const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => `${o.codigo} — ${o.nome}`, "Obra");
   const eqs = _cmpEquips.map(e => `<option value="eq:${e.id}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${c.id}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
-  return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou centro —</option><optgroup label="Obra">${obras}</optgroup><optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>`;
+  return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou centro —</option>${obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>`;
 }
 function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
+/* ---------- lote S54 (#170): unidade na linha do pedido ----------
+   Select com as UNIDADES de core.js (catálogo e item livre), a unidade do produto como padrão e "≠" quando a linha difere
+   dela; valor fora da lista continua como "(antiga)"; a última opção abre um chamado pedindo a unidade nova (o enum
+   unidade_medida só ganha valor por migration própria). Tudo a jusante (recebimento, PDF, XML) segue a unidade da linha. */
+function cmpUnidadeOptions(atual){
+  const lista = typeof UNIDADES !== "undefined" ? UNIDADES : ["un"];
+  const cur = String(atual || "un").trim();
+  return lista.map(u => `<option value="${esc(u)}"${u === cur ? " selected" : ""}>${esc(u)}</option>`).join("")
+    + (cur && !lista.includes(cur) ? `<option value="${esc(cur)}" selected>${esc(cur)} (antiga)</option>` : "")
+    + `<option value="__outra">— outra unidade (pedir cadastro) —</option>`;
+}
+function cmpUnidadeCelula(it, ed){
+  const un = it.unidade || "un", padrao = it.produto_id ? (_cmpProdUn[it.produto_id] || null) : null;
+  const difere = padrao && padrao !== un;
+  const marca = difere ? ` <span class="meta" title="Cadastro do produto: ${esc(padrao)}">≠</span>` : "";
+  if(!ed) return esc(un) + marca;
+  return `<select class="cmp-it" data-f="unidade" style="width:74px;"${padrao ? ` title="Cadastro do produto: ${esc(padrao)}"` : ""}>${cmpUnidadeOptions(un)}</select>${marca}`;
+}
+function cmpPedirUnidadeNova(it){
+  const rotulo = String(it.descricao || "item do pedido").trim().slice(0, 80);
+  if(typeof abrirNovoChamado !== "function"){ aviso("app-aviso", "Abra um chamado em Chamados pedindo a unidade nova.", "aviso"); return; }
+  abrirNovoChamado({ modulo: "compras", modulo_label: "Compras", registro_tipo: "unidade de medida", registro_label: rotulo });
+  const t = $("chamn-titulo"), d = $("chamn-descricao");
+  if(t) t.value = `Unidade de medida nova para: ${rotulo}`;
+  if(d) d.value = `Unidade pedida: (escreva aqui, ex.: "ton", "m³")\nItem: ${rotulo}${_cmpAtual?.numero ? ` · pedido ${_cmpAtual.numero}` : ""}.\n\nDica: a unidade entra no catálogo por migration (enum unidade_medida) e na lista do app; até lá a linha fica com a unidade anterior.`;
+}
 function cmpAlcadaTxt(){ return _cmpAlcada === null ? "sem limite" : _cmpAlcada < 0 ? "sem alçada de aprovação" : "até " + brl(_cmpAlcada); }
 /* fase 78: item de serviço (recebido com evidência, nunca no estoque); mesma regra de compras_categoria_servico() */
 const CMP_CAT_SERVICO = ["servico_terceiro", "locacao", "frete"];
@@ -393,7 +429,7 @@ async function cmpCarregarBaseAgora(){
   {
     const [fo, ob, eq, al, cc, pf, nat] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
-      sb.from("obras").select("id,codigo,nome,status").not("status", "in", "(cancelada,concluida)").order("codigo", { ascending: false }),
+      sb.from("obras").select("id,codigo,nome,status").neq("status", "cancelada").order("codigo", { ascending: false }),   // lote S54 (#171): concluídas entram (grupo próprio nos selects)
       sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).order("codigo"),
       sb.rpc("compras_alcada_usuario"),
       sb.from("centros_custo").select("id,codigo,nome,tipo,ativo").order("tipo", { ascending: false }).order("nome"),
@@ -405,7 +441,9 @@ async function cmpCarregarBaseAgora(){
     _cmpPerfis = pf.data || [];
     _cmpCentros = cc.data || []; _cmpCentroMap = {}; _cmpCentros.forEach(c => _cmpCentroMap[c.id] = c);
     _cmpForns = fo.data || []; _cmpFornMap = {}; _cmpForns.forEach(f => _cmpFornMap[f.id] = f);
-    _cmpObras = ob.data || []; _cmpObraMap = {}; _cmpObras.forEach(o => _cmpObraMap[o.id] = o);
+    const todasObras = ob.data || [];
+    _cmpObras = todasObras.filter(o => o.status !== "concluida"); _cmpObrasConcluidas = todasObras.filter(o => o.status === "concluida");
+    _cmpObraMap = {}; todasObras.forEach(o => _cmpObraMap[o.id] = o);
     _cmpEquips = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
     _cmpEqMap = {}; _cmpEquips.forEach(e => _cmpEqMap[e.id] = e);
     _cmpAlcada = al.error ? -1 : (al.data === null || al.data === undefined ? null : Number(al.data));
@@ -675,7 +713,7 @@ async function cmpBuscar(){
 }
 function cmpPreencherSelectsFixos(){
   const fornOpts = ph => `<option value="">${ph}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
-  const obraOpts = ph => `<option value="">${ph}</option>` + _cmpObras.map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
+  const obraOpts = ph => `<option value="">${ph}</option>` + cmpObraOptgroups("", o => o.id, o => `${o.codigo} — ${o.nome}`, "Obras");   // lote S54 (#171): + grupo Concluídas
   const eqOpts = ph => `<option value="">${ph}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
   set("cmp-forn", fornOpts("— escolha o fornecedor —")); set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
@@ -963,12 +1001,15 @@ function novoPedido(pre){
 async function abrirPedido(id){
   const [{ data: p, error }, it] = await Promise.all([
     sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), solicitante:profiles!pedidos_compra_solicitante_id_fkey(nome), aprovador:profiles!pedidos_compra_aprovador_id_fkey(nome)").eq("id", id).single(),
-    sb.from("pedido_compra_itens").select("*").eq("pedido_id", id).order("ordem").order("created_at")
+    sb.from("pedido_compra_itens").select("*, produto:produtos(unidade)").eq("pedido_id", id).order("ordem").order("created_at")   // lote S54 (#170): unidade do cadastro
   ]);
   if(error || !p){ aviso("app-aviso", "Não foi possível abrir o pedido" + (error ? ": " + error.message : "."), "erro"); return; }
   if(it.error){ aviso("app-aviso", "Itens não carregaram: " + it.error.message, "erro"); return; }
   // fase 108b: natureza e método já gravados não são trocados pelo padrão quando o comprador muda o tipo ou o destino
-  const itens = (it.data || []).map(i => ({ ...i, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo }));
+  const itens = (it.data || []).map(({ produto, ...i }) => {
+    if(i.produto_id && produto?.unidade) _cmpProdUn[i.produto_id] = produto.unidade;   // lote S54 (#170)
+    return { ...i, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo };
+  });
   // lote S53 (#149): rateio dos itens com destino TAG (tabela nova; sem a migration a consulta falha e a ficha segue sem rateio)
   const ids = itens.map(i => i.id);
   if(ids.length){
@@ -1491,7 +1532,7 @@ function renderItensPedido(){
     // lote S53 (#166): descrição do item livre em textarea que cresce com o texto; % IPI e % ICMS por item; total com IPI
     return `<tr data-idx="${idx}">
       <td>${it.produto_id ? esc(it.descricao) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(it.descricao || "")}</textarea>` : esc(it.descricao))}${it.produto_id ? "" : ' <span class="meta">livre</span>'}</td>
-      <td>${ed && !it.produto_id ? `<input class="cmp-it" data-f="unidade" value="${esc(it.unidade || "un")}" style="width:56px;" />` : esc(it.unidade || "un")}</td>
+      <td>${cmpUnidadeCelula(it, ed)}</td>
       <td>${ed ? `<input type="number" step="0.001" min="0.001" class="cmp-it" data-f="quantidade" value="${esc(it.quantidade ?? 1)}" style="width:80px;text-align:right;" />` : num(it.quantidade)}</td>
       <td>${ed ? `<input type="number" step="0.01" min="0" class="cmp-it" data-f="valor_unitario" value="${esc(it.valor_unitario ?? 0)}" style="width:105px;text-align:right;" />` : brl(it.valor_unitario)}</td>
       <td>${ed ? `<input type="number" step="0.01" min="0" max="100" class="cmp-it" data-f="ipi_percentual" value="${esc(it.ipi_percentual ?? 0)}" title="% de IPI: soma ao total e ao custo" style="width:68px;text-align:right;" />` : `<span class="meta">${esc(cmpPct(it.ipi_percentual) || "—")}</span>`}</td>
@@ -1519,6 +1560,10 @@ function renderItensPedido(){
     }
     if(f === "natureza_id"){ it.natureza_id = v || null; it._natAuto = false; return; }
     if(f === "metodo"){ it.metodo = v || null; it._metAuto = false; return; }
+    if(f === "unidade"){   // lote S54 (#170): "— outra unidade —" volta à anterior e abre o chamado; o resto regrava a linha (marca ≠)
+      if(v === "__outra"){ e.target.value = it.unidade || "un"; cmpPedirUnidadeNova(it); return; }
+      it.unidade = v || "un"; renderItensPedido(); return;
+    }
     if(f === "categoria_custo" && it._natAuto){   // natureza ainda não escolhida à mão: segue a categoria de custo
       it.categoria_custo = v; it.natureza_id = cmpNatPadrao(cmpItemTipo(it), v); renderItensPedido(); return;
     }
@@ -1562,6 +1607,7 @@ function cmpTrocarTipoItem(it, tipo){
   if(tipo === "aplicacao_direta") cmpAplicarMetodoPadrao(it);
 }
 function cmpAddItem(p){
+  if(p?.id && p.unidade) _cmpProdUn[p.id] = p.unidade;   // lote S54 (#170): unidade do cadastro = padrão da linha
   // fase 108b: o produto sugere o tipo (produto → categoria → aplicação direta); item livre é aplicação direta
   const tipo = p ? cmpTipoPadraoProduto(p) : "aplicacao_direta";
   const d = tipo === "reposicao" ? { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null } : cmpDestinoDiretoPadrao();

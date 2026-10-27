@@ -833,6 +833,12 @@ async function manAcao(acao){
 }
 
 /* atividades */
+/* lote S54 (#169): dia (data_inicio/data_fim, date) ao lado da hora (inicio/fim, time) por atividade. Leitura "20/10 07:30",
+   "—" quando vazio; sem o dia só a hora, sem a hora só o dia. As horas de mão de obra continuam em manutencao_horas. */
+function manAtivDiaHora(dia, hora, vazio){
+  const d = dia ? dataBR(dia).slice(0, 5) : "", h = hora ? String(hora).slice(0, 5) : "";
+  return [d, h].filter(Boolean).join(" ") || (vazio == null ? "—" : vazio);
+}
 function manRenderAtivs(){
   const tb = $("man-ativs"), pode = manPodeEditar() && _manAtual && _manAtual.status !== "cancelada" && !!_manAtual.id;
   const optF = `<option value="">—</option>` + _manFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
@@ -845,12 +851,12 @@ function manRenderAtivs(){
       <td><textarea class="man-a-f" data-c="atividade" rows="1">${esc(a.atividade)}</textarea>${a.plano_item_id ? ' <span class="tag azul" title="item do plano: ao concluir a OS com esta atividade executada, a última execução do item é atualizada">plano</span>' : ""}${a.checklist_item_id ? ' <span class="tag cinza" title="veio do checklist">checklist</span>' : ""}</td>
       <td><select class="man-a-f" data-c="situacao">${optSit}</select></td>
       <td><select class="man-a-f" data-c="executante_id">${optF}</select>${a.executante_nome && !a.executante_id ? `<div class="meta" title="nome da planilha, sem par no cadastro">${esc(a.executante_nome)}</div>` : ""}</td>
-      <td><input type="time" class="man-a-f" data-c="inicio" value="${a.inicio ? esc(String(a.inicio).slice(0, 5)) : ""}" /></td>
-      <td><input type="time" class="man-a-f" data-c="fim" value="${a.fim ? esc(String(a.fim).slice(0, 5)) : ""}" /></td>
+      <td><input type="date" class="man-a-f" data-c="data_inicio" value="${esc(a.data_inicio || "")}" title="Dia de início" style="width:118px;" /> <input type="time" class="man-a-f" data-c="inicio" value="${a.inicio ? esc(String(a.inicio).slice(0, 5)) : ""}" title="Hora de início" style="width:78px;" /></td>
+      <td><input type="date" class="man-a-f" data-c="data_fim" value="${esc(a.data_fim || "")}" title="Dia de conclusão" style="width:118px;" /> <input type="time" class="man-a-f" data-c="fim" value="${a.fim ? esc(String(a.fim).slice(0, 5)) : ""}" title="Hora de conclusão" style="width:78px;" /></td>
       <td><input class="man-a-f" data-c="observacao" value="${esc(a.observacao || "")}" /></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo man-a-rem" data-a="${esc(a.id)}" title="remover">×</button></td></tr>`
     : `<tr><td>${a.ordem}</td><td class="meta">${esc(MAN_SETOR[a.setor] || "—")}</td><td>${esc(a.atividade)}</td><td>${manTagSit(a.situacao)}</td><td class="meta">${esc(manFunc(a.executante_id) || a.executante_nome || "—")}</td>
-      <td>${a.inicio ? esc(String(a.inicio).slice(0, 5)) : "—"}</td><td>${a.fim ? esc(String(a.fim).slice(0, 5)) : "—"}</td><td class="meta">${esc(a.observacao || "")}</td><td></td></tr>`).join("");
+      <td>${esc(manAtivDiaHora(a.data_inicio, a.inicio))}</td><td>${esc(manAtivDiaHora(a.data_fim, a.fim))}</td><td class="meta">${esc(a.observacao || "")}</td><td></td></tr>`).join("");
   if(pode){
     _manAtivs.forEach(a => { const tr = tb.querySelector(`tr[data-a="${a.id}"]`); if(!tr) return;
       tr.querySelector('[data-c="setor"]').value = a.setor || ""; tr.querySelector('[data-c="situacao"]').value = a.situacao; tr.querySelector('[data-c="executante_id"]').value = a.executante_id || ""; });
@@ -858,13 +864,23 @@ function manRenderAtivs(){
     tb.querySelectorAll(".man-a-f").forEach(el => el.addEventListener("change", async () => {
       const id = el.closest("tr").dataset.a, c = el.dataset.c; let v = el.value;
       if(c === "atividade" && !v.trim()){ aviso("app-aviso", "A atividade não pode ficar vazia.", "erro"); return; }
-      if(["setor", "executante_id", "inicio", "fim", "observacao"].includes(c)) v = v.trim ? (v.trim() || null) : (v || null);
+      if(["setor", "executante_id", "inicio", "fim", "observacao", "data_inicio", "data_fim"].includes(c)) v = v.trim ? (v.trim() || null) : (v || null);
       const upd = { [c]: v };
-      if(c === "situacao" && v === "executado"){ const a = _manAtivs.find(x => x.id === id); if(a && !a.fim) upd.fim = new Date().toTimeString().slice(0, 5); }
+      const atv = _manAtivs.find(x => x.id === id);
+      // lote S54 (#169): "Executado" sem fim preenche dia e hora de hoje; hora digitada sem dia assume o início da OS (ou hoje)
+      if(c === "situacao" && v === "executado" && atv){ if(!atv.fim) upd.fim = new Date().toTimeString().slice(0, 5); if(!atv.data_fim) upd.data_fim = hojeISO(); }
+      if(c === "inicio" && v && atv && !atv.data_inicio) upd.data_inicio = _manAtual?.data_inicio || hojeISO();
+      if(c === "fim" && v && atv && !atv.data_fim) upd.data_fim = atv.data_inicio || _manAtual?.data_inicio || hojeISO();
+      if((c === "data_inicio" || c === "data_fim") && v && atv){
+        const outro = c === "data_inicio" ? atv.data_fim : atv.data_inicio;
+        if(outro && (c === "data_inicio" ? v > outro : v < outro)){ aviso("app-aviso", "O dia de fim precisa ser igual ou posterior ao dia de início.", "erro"); el.value = atv[c] || ""; return; }
+        const ini = _manAtual?.data_inicio, fim = _manAtual?.data_conclusao;
+        if((ini && v < ini) || (fim && v > fim)) aviso("app-aviso", `Dia fora do período da OS (${dataBR(ini)}${fim ? " a " + dataBR(fim) : " em diante"}): gravado assim mesmo.`, "aviso");
+      }
       const { error } = await sb.from("manutencao_atividades").update(upd).eq("id", id);
       if(error){ aviso("app-aviso", "Não foi possível salvar a atividade: " + error.message, "erro"); return; }
-      const a = _manAtivs.find(x => x.id === id); if(a) Object.assign(a, upd);
-      if(c === "situacao") manRenderAtivs();
+      if(atv) Object.assign(atv, upd);
+      if(c === "situacao" || Object.keys(upd).length > 1) manRenderAtivs();
     }));
     tb.querySelectorAll(".man-a-rem").forEach(b => b.addEventListener("click", async () => {
       const { error } = await sb.from("manutencao_atividades").delete().eq("id", b.dataset.a);
@@ -1052,7 +1068,7 @@ async function manImprimirOS(){
   const setores = [...new Set(_manAtivs.map(a => a.setor || "outros"))];
   const ativHTML = setores.map(s => `<tr><td colspan="6" style="${th}text-transform:uppercase;">${esc(MAN_SETOR[s] || s)}</td></tr>` +
     _manAtivs.filter(a => (a.setor || "outros") === s).map(a => `<tr><td style="${td}text-align:center;">${a.ordem}</td><td style="${td}">${esc(a.atividade)}</td><td style="${td}">${esc(MAN_SITUACAO[a.situacao]?.[0] || "")}</td>
-      <td style="${td}">${esc(manFunc(a.executante_id) || a.executante_nome || "")}</td><td style="${td}">${a.inicio ? esc(String(a.inicio).slice(0, 5)) : ""}</td><td style="${td}">${a.fim ? esc(String(a.fim).slice(0, 5)) : ""}</td></tr>`).join("")).join("");
+      <td style="${td}">${esc(manFunc(a.executante_id) || a.executante_nome || "")}</td><td style="${td}">${esc(manAtivDiaHora(a.data_inicio, a.inicio, ""))}</td><td style="${td}">${esc(manAtivDiaHora(a.data_fim, a.fim, ""))}</td></tr>`).join("")).join("");   // lote S54 (#169): dia e hora
   const vazias = Math.max(0, 8 - _manAtivs.length);
   const linhasVazias = Array.from({ length: vazias }, (_, i) => `<tr><td style="${td}text-align:center;">${_manAtivs.length + i + 1}</td><td style="${td}">&nbsp;</td><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td></tr>`).join("");
   const mats = _manMats.map((i, k) => `<tr><td style="${td}text-align:center;">${k + 1}</td><td style="${td}">${esc(i.descricao)}${i.codigo_peca ? " · " + esc(i.codigo_peca) : ""}</td><td style="${td}text-align:right;">${num(i.quantidade)} ${esc(i.unidade || "un")}</td><td style="${td}">${i.movimentacao_estoque_id ? "baixado no estoque" : i.tipo === "retirada" ? "retirada" : ""}</td></tr>`).join("")
@@ -1076,7 +1092,7 @@ async function manImprimirOS(){
       <tr><td style="${td}">P03</td><td style="${td}">VERIFICAR ITENS PENDENTES NO LIVRO DE MANUTENÇÃO DA MÁQUINA</td><td style="${td}"></td></tr>
     </table>
     <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
-      <tr><td style="${th}width:30px;">ITEM</td><td style="${th}">ATIVIDADE</td><td style="${th}width:70px;">SITUAÇÃO</td><td style="${th}width:110px;">EXECUTANTE</td><td style="${th}width:60px;">HORA DE INÍCIO</td><td style="${th}width:60px;">HORA DE CONCLUSÃO</td></tr>
+      <tr><td style="${th}width:30px;">ITEM</td><td style="${th}">ATIVIDADE</td><td style="${th}width:70px;">SITUAÇÃO</td><td style="${th}width:110px;">EXECUTANTE</td><td style="${th}width:78px;">INÍCIO (DIA · HORA)</td><td style="${th}width:78px;">CONCLUSÃO (DIA · HORA)</td></tr>
       ${ativHTML}${linhasVazias}
     </table>
     <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">

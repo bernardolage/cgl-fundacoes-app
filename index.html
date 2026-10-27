@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="a878db5" />
+<meta name="app-versao" content="c59477a" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=a878db5" />
+<link rel="stylesheet" href="css/estilo.css?v=c59477a" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -3871,7 +3871,7 @@
               </div>
             </div>
             <div class="odoo-tab" data-tab="atividades">
-              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:36px;">#</th><th style="width:120px;">Setor</th><th style="min-width:280px;">Atividade</th><th style="width:130px;">Situação</th><th style="width:180px;">Executante</th><th style="width:90px;">Início</th><th style="width:90px;">Fim</th><th>Observação</th><th class="col-acao"></th></tr></thead>
+              <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th style="width:36px;">#</th><th style="width:120px;">Setor</th><th style="min-width:280px;">Atividade</th><th style="width:130px;">Situação</th><th style="width:180px;">Executante</th><th style="width:210px;" title="Dia e hora em que a atividade começou (lote S54, #169)">Início (dia · hora)</th><th style="width:210px;" title="Dia e hora em que a atividade terminou">Fim (dia · hora)</th><th>Observação</th><th class="col-acao"></th></tr></thead>
                 <tbody id="man-ativs"></tbody></table></div>
               <div class="grade" id="man-ativ-add" style="margin-top:10px;">
                 <div class="campo"><label>Setor</label><select id="man-a-setor"><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="solda">Solda</option><option value="eletronica">Eletrônica</option><option value="lubrificacao">Lubrificação</option><option value="pintura">Pintura</option><option value="externo">Externo</option><option value="outros">Outros</option></select></div>
@@ -5562,13 +5562,17 @@
             <div class="odoo-tab ativa" data-tab="avaliacao">
               <div class="grade">
                 <div class="campo"><label>Ano de referência</label><input id="pat-aval-ano" type="number" step="1" min="2000" max="2100" /></div>
-                <div class="campo"><label>Valor de mercado (R$)</label><input id="pat-aval-valor" type="number" step="0.01" min="0" placeholder="vazio = não mexe" /></div>
+                <!-- lote S54 (#172): modelo de acessório de raiz avalia por peça (quantidade atual × unitário; o total é calculado) -->
+                <div class="campo" id="pat-aval-qtd-box" style="display:none;"><label>Quantidade (atual × avaliada)</label><input id="pat-aval-qtd" readonly title="Peças ativas contáveis hoje × peças na data da avaliação do ano" /></div>
+                <div class="campo" id="pat-aval-unit-box" style="display:none;"><label>Valor unitário por peça (R$)</label><input id="pat-aval-unit" type="number" step="0.01" min="0" placeholder="vazio = não mexe" /></div>
+                <div class="campo"><label id="pat-aval-valor-rot">Valor de mercado (R$)</label><input id="pat-aval-valor" type="number" step="0.01" min="0" placeholder="vazio = não mexe" /></div>
                 <div class="campo"><label>Base do valor</label><select id="pat-aval-base">
                   <option value="mercado">Mercado (opinião da diretoria)</option><option value="fipe">FIPE</option><option value="laudo">Laudo</option><option value="aquisicao">Aquisição</option>
                 </select></div>
                 <div class="campo largo"><label>Observações da avaliação</label><input id="pat-aval-obs" placeholder="estado, motivo do valor, laudo…" /></div>
               </div>
               <p class="meta" id="pat-aval-info"></p>
+              <p class="meta" id="pat-aval-sugestao" style="display:none;"></p>
             </div>
             <div class="odoo-tab" data-tab="historico"><div id="pat-historico"></div></div>
             <div class="odoo-tab" data-tab="bem">
@@ -5981,53 +5985,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=a878db5"></script>
+<script src="js/core.js?v=c59477a"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=a878db5"></script>
+<script src="js/historico.js?v=c59477a"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=a878db5"></script>
-<script src="js/fiscal_ncm.js?v=a878db5"></script>
+<script src="js/fiscal.js?v=c59477a"></script>
+<script src="js/fiscal_ncm.js?v=c59477a"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=a878db5"></script>
-<script src="js/fornecedores.js?v=a878db5"></script>
-<script src="js/apropriacoes.js?v=a878db5"></script>
-<script src="js/funcionarios.js?v=a878db5"></script>
-<script src="js/rh_documentos.js?v=a878db5"></script>
-<script src="js/servicos.js?v=a878db5"></script>
-<script src="js/produtos.js?v=a878db5"></script>
-<script src="js/estoque.js?v=a878db5"></script>
-<script src="js/separacoes.js?v=a878db5"></script>
-<script src="js/epi.js?v=a878db5"></script>
-<script src="js/compras.js?v=a878db5"></script>
-<script src="js/requisicoes.js?v=a878db5"></script>
-<script src="js/orcamentos.js?v=a878db5"></script>
-<script src="js/propostas.js?v=a878db5"></script>
-<script src="js/contratos.js?v=a878db5"></script>
-<script src="js/contas_pagar.js?v=a878db5"></script>
-<script src="js/centros_custo.js?v=a878db5"></script>
-<script src="js/carteira.js?v=a878db5"></script>
-<script src="js/obras.js?v=a878db5"></script>
-<script src="js/frota.js?v=a878db5"></script>
-<script src="js/viagens.js?v=a878db5"></script>
-<script src="js/equipamentos.js?v=a878db5"></script>
-<script src="js/vendas_bens.js?v=a878db5"></script>
-<script src="js/acessorios.js?v=a878db5"></script>
-<script src="js/reparos.js?v=a878db5"></script>
-<script src="js/manutencao.js?v=a878db5"></script>
-<script src="js/fabricacao.js?v=a878db5"></script>
-<script src="js/mobilizacoes.js?v=a878db5"></script>
-<script src="js/estacas.js?v=a878db5"></script>
-<script src="js/obra_abas.js?v=a878db5"></script>
-<script src="js/medicoes.js?v=a878db5"></script>
-<script src="js/movimentacoes.js?v=a878db5"></script>
-<script src="js/rdo.js?v=a878db5"></script>
-<script src="js/rdo_import_maya.js?v=a878db5"></script>
-<script src="js/usuarios.js?v=a878db5"></script>
-<script src="js/chamados.js?v=a878db5"></script>
-<script src="js/dashboard.js?v=a878db5"></script>
-<script src="js/rh_horas.js?v=a878db5"></script>
-<script src="js/patrimonio.js?v=a878db5"></script>
+<script src="js/clientes.js?v=c59477a"></script>
+<script src="js/fornecedores.js?v=c59477a"></script>
+<script src="js/apropriacoes.js?v=c59477a"></script>
+<script src="js/funcionarios.js?v=c59477a"></script>
+<script src="js/rh_documentos.js?v=c59477a"></script>
+<script src="js/servicos.js?v=c59477a"></script>
+<script src="js/produtos.js?v=c59477a"></script>
+<script src="js/estoque.js?v=c59477a"></script>
+<script src="js/separacoes.js?v=c59477a"></script>
+<script src="js/epi.js?v=c59477a"></script>
+<script src="js/compras.js?v=c59477a"></script>
+<script src="js/requisicoes.js?v=c59477a"></script>
+<script src="js/orcamentos.js?v=c59477a"></script>
+<script src="js/propostas.js?v=c59477a"></script>
+<script src="js/contratos.js?v=c59477a"></script>
+<script src="js/contas_pagar.js?v=c59477a"></script>
+<script src="js/centros_custo.js?v=c59477a"></script>
+<script src="js/carteira.js?v=c59477a"></script>
+<script src="js/obras.js?v=c59477a"></script>
+<script src="js/frota.js?v=c59477a"></script>
+<script src="js/viagens.js?v=c59477a"></script>
+<script src="js/equipamentos.js?v=c59477a"></script>
+<script src="js/vendas_bens.js?v=c59477a"></script>
+<script src="js/acessorios.js?v=c59477a"></script>
+<script src="js/reparos.js?v=c59477a"></script>
+<script src="js/manutencao.js?v=c59477a"></script>
+<script src="js/fabricacao.js?v=c59477a"></script>
+<script src="js/mobilizacoes.js?v=c59477a"></script>
+<script src="js/estacas.js?v=c59477a"></script>
+<script src="js/obra_abas.js?v=c59477a"></script>
+<script src="js/medicoes.js?v=c59477a"></script>
+<script src="js/movimentacoes.js?v=c59477a"></script>
+<script src="js/rdo.js?v=c59477a"></script>
+<script src="js/rdo_import_maya.js?v=c59477a"></script>
+<script src="js/usuarios.js?v=c59477a"></script>
+<script src="js/chamados.js?v=c59477a"></script>
+<script src="js/dashboard.js?v=c59477a"></script>
+<script src="js/rh_horas.js?v=c59477a"></script>
+<script src="js/patrimonio.js?v=c59477a"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=a878db5"></script>
+<script src="js/init.js?v=c59477a"></script>
 </body>
 </html>

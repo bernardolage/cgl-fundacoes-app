@@ -150,7 +150,10 @@ async function abrirRequisicao(r){
   _reqPrevia = {};
   const nova = !r;
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
-  set("req-obra", `<option value="">— nenhuma —</option>` + _cmpObras.map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join(""));
+  // lote S54 (#171, D-171): requisição nova só para obra aberta; a obra de uma requisição já aberta aparece mesmo que concluída depois
+  const reqObras = _cmpObras.slice();
+  if(r?.obra_id && !reqObras.some(o => o.id === r.obra_id) && typeof _cmpObraMap === "object" && _cmpObraMap[r.obra_id]) reqObras.push(_cmpObraMap[r.obra_id]);
+  set("req-obra", `<option value="">— nenhuma —</option>` + reqObras.map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}${o.status === "concluida" ? " · concluída" : ""}</option>`).join(""));
   set("req-equip", `<option value="">— nenhuma —</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join(""));
   // fase 102: setor / obra interna (centros de custo ativos; o da requisição aparece mesmo inativo)
   set("req-centro", `<option value="">— nenhum —</option>` + _cmpCentros.filter(c => c.ativo || c.id === r?.centro_custo_id)

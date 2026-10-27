@@ -1539,7 +1539,7 @@ async function excluirMedicao(){
 const MED_IMP_MAX_BYTES   = 2 * 1024 * 1024;
 const MED_IMP_MAX_PAGINAS = 10;
 const MED_IMP_CARGOS      = ["diretor", "admin", "financeiro", "engenheiro", "assistente_engenharia"]; // mesma lista da function
-const MED_IMP_UNIDADES_VALIDAS = (typeof UNIDADES !== "undefined" ? UNIDADES : []).concat(["km"]);
+const MED_IMP_UNIDADES_VALIDAS = (typeof UNIDADES !== "undefined" ? UNIDADES : ["km"]).slice();   // lote S54 (#170): "km" entrou em UNIDADES (core.js); antes era concatenado aqui
 const MED_IMP_UNIDADE_MAPA = {
   m:"m", ml:"m", metro:"m", metros:"m", "m.l":"m", "m/l":"m", mts:"m",
   m2:"m2", "m²":"m2", m3:"m3", "m³":"m3",
