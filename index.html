@@ -8,17 +8,17 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="00b1103" />
+<meta name="app-versao" content="b29105e" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=00b1103" />
+<link rel="stylesheet" href="css/estilo.css?v=b29105e" />
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=00b1103"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=00b1103"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=00b1103"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=b29105e"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=b29105e"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=b29105e"></script>
 </head>
 <body>
 
@@ -1230,6 +1230,12 @@
               <option value="positivo">Estoque > 0</option>
               <option value="inativos">Inativos</option>
             </select>
+            <!-- lote S55 (#175): produto × serviço consumido (frete, hospedagem, locação…) -->
+            <select id="prod-f-tipo" title="Serviço consumido: o que a CGL compra como serviço (frete, hospedagem, locação). Não é o módulo Serviços.">
+              <option value="">Produtos e serviços</option>
+              <option value="produto">Só produtos</option>
+              <option value="servico">Só serviços consumidos</option>
+            </select>
           </div>
           <div id="prod-modo" class="meta" style="margin:0 0 8px;"></div>
           <div id="prod-conteudo"></div>
@@ -1279,6 +1285,8 @@
                   <select id="prod-categoria"><option value="">— sem categoria —</option></select>
                 </div>
                 <div class="campo"><label>Unidade</label><select id="prod-unidade"></select></div>
+                <!-- lote S55 (#175): serviço consumido = aplicação direta, sem estoque (gatilho trg_produtos_tipo_item força) -->
+                <div class="campo"><label>Tipo</label><select id="prod-tipo-item" title="Produto: material com estoque possível. Serviço consumido: frete, hospedagem, locação, serviço de terceiro — sem estoque, sempre aplicação direta. Não é o módulo Serviços (o que a CGL executa)."><option value="produto">Produto</option><option value="servico">Serviço consumido</option></select><span class="meta" id="prod-tipo-item-info"></span></div>
                 <!-- fase 100 (#100): categoria de custo (EPI e Uniforme entram na ficha de EPI do colaborador), CA e troca do EPI -->
                 <div class="campo"><label>Categoria de custo <span class="meta">(sugestão na compra)</span></label><select id="prod-cat-custo"><option value="">— não definida —</option></select></div>
                 <!-- fase 108b: tipo de compra que o item nasce no pedido (o do produto vence o da categoria; sem nenhum = aplicação direta) -->
@@ -1639,6 +1647,7 @@
               <button type="button" class="btn cmp-acao" id="btn-cmp-receber" data-acao="receber">📥 Receber NF</button>
               <button type="button" class="btn cmp-acao" id="btn-cmp-receber-servico" data-acao="receber_servico" title="Serviço executado: registra com foto ou documento (fase 78)">🧰 Receber serviço</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf" data-acao="pdf">🖨️ PDF do pedido</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf-sem-valor" data-acao="pdf_sem_valor" style="display:none;" title="Itens, unidades e quantidades sem preço, IPI, total nem aprovador: para pedir preço ao fornecedor (lote S55, #179)">🧾 PDF sem valores</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-voltar-rascunho" data-acao="rascunho">↩ Voltar a rascunho</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-cancelar" data-acao="cancelar" style="color:var(--perigo);">✕ Cancelar pedido</button>
             </div>
@@ -1725,8 +1734,10 @@
                   <input id="cmp-busca-prod" placeholder="digite ≥ 2 letras (código ou nome)…" autocomplete="off" />
                   <div id="cmp-res-prod" class="autocomplete-lista" style="display:none;"></div>
                 </div>
-                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-item-livre">+ Item livre (serviço / sem cadastro)</button></div>
+                <!-- lote S55 (#175): "+ Item livre" saiu; serviço consumido também é produto (cadastro rápido com tipo) -->
                 <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-prod-novo" style="display:none;" title="Produto que ainda não está no catálogo: cadastro mínimo sem sair do pedido (fase 102, #160)">＋ Novo produto</button></div>
+                <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-srv-novo" style="display:none;" title="Serviço que a CGL consome (frete, hospedagem, locação, serviço de terceiro): cadastro mínimo como produto do tipo serviço, aplicação direta, sem estoque (lote S55, #175)">＋ Cadastrar serviço</button></div>
+                <div class="campo largo"><span class="meta" id="cmp-prod-sem-cadastro" style="display:none;">Produto fora do catálogo? Peça o cadastro ao almoxarifado ou ao comprador.</span></div>
               </div>
             </div>
 
@@ -1811,7 +1822,8 @@
               <input id="cmp-rec-busca" placeholder="produto do catálogo (≥ 2 letras)…" autocomplete="off" />
               <div id="cmp-rec-res" class="autocomplete-lista" style="display:none;"></div>
             </div>
-            <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-rec-livre">+ Item livre</button></div>
+            <!-- lote S55 (#175): "+ Item livre" da nota saiu; a linha que não casou é cadastrada aqui (mesmo modal do pedido) -->
+            <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-cmp-rec-prod-novo" style="display:none;" title="Linha da nota que não existe no catálogo: cadastro mínimo de produto ou serviço consumido sem sair da nota (lote S55, #175)">＋ Cadastrar produto / serviço</button></div>
           </div>
           <div class="form-acoes compacta" style="justify-content:space-between;align-items:center;">
             <strong id="cmp-rec-soma">Total dos itens: R$ 0,00</strong>
@@ -1861,8 +1873,8 @@
             <div class="campo largo"><label class="check-inline"><input type="checkbox" id="req-reposicao" /> Reposição do estoque da base (sem obra, TAG nem setor: vai direto para compra)</label></div>
           </div>
           <div id="req-itens-add" class="lista-topo compacta" style="margin-top:8px;">
-            <div class="campo largo" style="flex:1;margin:0;"><input id="req-busca" placeholder="Buscar produto por código ou nome (≥ 2 letras)…" autocomplete="off" /><div id="req-res" class="autocomplete-lista" style="display:none;"></div></div>
-            <button type="button" class="btn-sec" id="btn-req-livre">+ item livre</button>
+            <!-- lote S55 (#175): "+ item livre" saiu; serviço consumido também é produto do catálogo -->
+            <div class="campo largo" style="flex:1;margin:0;"><input id="req-busca" placeholder="Buscar produto ou serviço consumido por código ou nome (≥ 2 letras)…" autocomplete="off" /><div id="req-res" class="autocomplete-lista" style="display:none;"></div></div>
           </div>
           <div class="tabela-rola"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th>Un</th><th id="req-th-estoque" title="saldo do produto e destino na aprovação (fase 102)">Estoque e destino</th><th class="col-acao"></th></tr></thead><tbody id="req-itens"></tbody></table></div>
           <div class="form-acoes compacta">
@@ -1902,7 +1914,9 @@
           <div class="modal-topo"><h3>Novo produto</h3><button type="button" class="btn-sec" id="btn-cmp-prod-fechar">×</button></div>
           <p class="meta">Cadastro mínimo para usar no pedido agora. O restante (estoque mínimo, código de barras, fiscal) fica em Produtos.</p>
           <div class="grade grade-3">
-            <div class="campo largo"><label>Nome *</label><input id="cmp-prod-nome" placeholder="ex.: MANGUEIRA HIDRÁULICA 1/2 R2" /></div>
+            <!-- lote S55 (#175): produto ou serviço consumido (frete, hospedagem, locação…) -->
+            <div class="campo"><label>Tipo</label><select id="cmp-prod-tipo"><option value="produto">Produto</option><option value="servico">Serviço consumido</option></select></div>
+            <div class="campo largo"><label>Nome *</label><input id="cmp-prod-nome" placeholder="ex.: MANGUEIRA HIDRÁULICA 1/2 R2 · FRETE CARRETA CARGA SECA" /></div>
             <div class="campo"><label>Categoria</label><select id="cmp-prod-cat"></select></div>
             <div class="campo"><label>Unidade</label><select id="cmp-prod-un"></select></div>
             <div class="campo"><label>NCM (opcional)</label><input id="cmp-prod-ncm" placeholder="8 dígitos" maxlength="10" /></div>
@@ -4007,12 +4021,13 @@
 
       <!-- ===== Painel (fase 89): viagens, veículos e documentos — js/frota.js ===== -->
       <div id="frota-painel">
-        <p class="texto-apoio">A viagem é o registro central da logística: caminhão, motorista, origem → destino, km e custo (km rodado × R$/km do caminhão), com os itens transportados, as notas de remessa e retorno e o MDF-e como documentos dela. A mobilização gera a viagem; a localização da máquina continua vindo do status da mobilização. O km atual do veículo acompanha a última chegada registrada.</p>
+        <p class="texto-apoio">A viagem é o registro central da logística: caminhão, motorista, origem → destino, km e custo (km rodado × R$/km do caminhão), com os itens transportados, as notas de remessa e retorno e o MDF-e como documentos dela. A mobilização gera a viagem; a localização da máquina continua vindo do status da mobilização. O km atual do veículo acompanha a última chegada registrada. Frete feito por transportador de fora é viagem com a finalidade <strong>Frete terceirizado</strong> (fase 130): transportador, valor combinado e vencimento no lugar de caminhão e km; o custo é direto, gera o título em Contas a pagar e cai nas obras atendidas; CT-e, NF de simples remessa e MDF-e do transportador ficam anexados à viagem.</p>
 
         <div class="indicadores">
           <div class="ind"><div class="num" id="frota-kpi-viagens">—</div><div class="rot">Viagens no período</div></div>
           <div class="ind"><div class="num" id="frota-kpi-km">—</div><div class="rot">km rodados</div></div>
-          <div class="ind"><div class="num" id="frota-kpi-valor" style="color:var(--marca-600);">—</div><div class="rot">Custo das viagens</div></div>
+          <div class="ind"><div class="num" id="frota-kpi-valor" style="color:var(--marca-600);">—</div><div class="rot">Custo da frota própria</div></div>
+          <div class="ind" title="Viagens com finalidade Frete terceirizado no período; o valor pago a transportadores aparece só para quem lê Contas a pagar"><div class="num" id="frota-kpi-frete">—</div><div class="rot">Fretes terceirizados</div></div>
           <div class="ind ind-click" id="frota-kpi-card-transito" title="Viagens em trânsito agora (clique para filtrar)"><div class="num" id="frota-kpi-transito">—</div><div class="rot">Em trânsito agora</div></div>
           <div class="ind ind-click" id="frota-kpi-card-notas" title="Notas em rascunho ou emitidas que ainda não estão em nenhuma viagem (clique para ver)"><div class="num" id="frota-kpi-notas">—</div><div class="rot">Notas sem viagem</div></div>
           <div class="ind ind-click" id="frota-kpi-card-caminhoes" title="Clique para ver só os caminhões ativos (de novo, todos)"><div class="num" id="frota-kpi-caminhoes">—</div><div class="rot">Caminhões ativos</div></div>
@@ -4117,6 +4132,8 @@
             <button type="button" class="sb-btn" id="sb-vg-notas" data-goto-tab="documentos"><span class="sb-num">0</span><span class="sb-icon">🧾</span><span class="sb-lbl">notas</span></button>
             <button type="button" class="sb-btn" id="sb-vg-mdfe" data-goto-tab="documentos"><span class="sb-num">0</span><span class="sb-icon">📑</span><span class="sb-lbl">MDF-e</span></button>
             <button type="button" class="sb-btn" id="sb-vg-custo" data-goto-tab="custo"><span class="sb-num">—</span><span class="sb-icon">💰</span><span class="sb-lbl">custo</span></button>
+            <button type="button" class="sb-btn" id="sb-vg-titulo" data-goto-tab="custo" style="display:none;" title="Título a pagar do frete terceirizado (fase 130)"><span class="sb-num">—</span><span class="sb-icon">🧮</span><span class="sb-lbl">título</span></button>
+            <button type="button" class="sb-btn" id="sb-vg-anexos" data-goto-tab="documentos" title="Documentos do transportador anexados (CT-e, NF de simples remessa, MDF-e, comprovante)"><span class="sb-num">0</span><span class="sb-icon">📎</span><span class="sb-lbl">anexos</span></button>
           </div>
 
           <div class="odoo-notebook" id="vg-notebook">
@@ -4131,8 +4148,11 @@
               <div class="grade">
                 <div class="campo"><label>Data *</label><input type="date" id="vg-data" /></div>
                 <div class="campo"><label>Finalidade</label><select id="vg-finalidade"></select></div>
-                <div class="campo"><label>Caminhão</label><select id="vg-caminhao"></select></div>
-                <div class="campo"><label>Motorista</label><select id="vg-motorista"></select></div>
+                <div class="campo" id="vg-campo-caminhao"><label>Caminhão</label><select id="vg-caminhao"></select></div>
+                <div class="campo" id="vg-campo-motorista"><label>Motorista</label><select id="vg-motorista"></select></div>
+                <div class="campo largo" id="vg-campo-transp" style="display:none;"><label>Transportador * <span class="meta">(fornecedor)</span></label><input id="vg-transp-busca" placeholder="digite ≥ 2 letras do nome ou CNPJ…" autocomplete="off" /><div id="vg-transp-res" class="autocomplete-lista" style="display:none;"></div></div>
+                <div class="campo" id="vg-campo-transp-placa" style="display:none;"><label>Placa do transportador</label><input id="vg-transp-placa" placeholder="ABC1D23" maxlength="10" /></div>
+                <div class="campo" id="vg-campo-transp-motorista" style="display:none;"><label>Motorista do transportador</label><input id="vg-transp-motorista" placeholder="nome" /></div>
                 <div class="campo"><label>Equipamento atendido</label><select id="vg-equip"></select></div>
               </div>
               <h3 class="titulo-bloco">Origem → destino</h3>
@@ -4144,16 +4164,32 @@
                 <div class="campo" id="vg-destino-obra-campo"><label>Obra de destino</label><select id="vg-destino-obra"></select></div>
                 <div class="campo"><label>Descrição do destino</label><input id="vg-destino-desc" placeholder="ex.: Obra ArcelorMittal Tubarão" /></div>
               </div>
-              <h3 class="titulo-bloco">Quilometragem e custo</h3>
+              <div id="vg-bloco-km">
+                <h3 class="titulo-bloco">Quilometragem e custo</h3>
+                <div class="grade">
+                  <div class="campo"><label>km saída</label><input type="number" id="vg-km-saida" min="0" step="1" /></div>
+                  <div class="campo"><label>km chegada</label><input type="number" id="vg-km-chegada" min="0" step="1" /></div>
+                  <div class="campo"><label>R$/km <span class="meta">(do veículo, editável)</span></label><input type="number" id="vg-valor-km" min="0" step="0.01" /></div>
+                </div>
+                <p class="nota">km rodado e valor da viagem são calculados no banco: (km chegada − km saída) × R$/km. O km atual do caminhão acompanha a maior chegada registrada. Concluir exige km de chegada maior ou igual ao de saída.</p>
+              </div>
+              <div id="vg-bloco-frete" style="display:none;">
+                <h3 class="titulo-bloco">Frete <span class="meta">(custo direto: gera o título em Contas a pagar)</span></h3>
+                <div class="grade">
+                  <div class="campo"><label>Valor combinado (R$) *</label><input type="number" id="vg-frete-valor" min="0" step="0.01" placeholder="0,00" /></div>
+                  <div class="campo"><label>Vencimento</label><input type="date" id="vg-frete-venc" /></div>
+                  <div class="campo"><label>Nº do CT-e / NF do transportador</label><input id="vg-frete-doc" placeholder="ex.: CT-e 1234" /></div>
+                  <div class="campo"><label>Emissão</label><input type="date" id="vg-frete-emissao" /></div>
+                  <div class="campo largo"><label>Observações do frete</label><input id="vg-frete-obs" placeholder="ex.: frete da TAG 09 até a obra, pago em 2 parcelas…" /></div>
+                </div>
+                <p class="nota" id="vg-frete-nota">O valor, o vencimento e o documento do frete ficam visíveis só para quem lê Contas a pagar (financeiro, comprador, admin, diretoria). O título nasce quando há valor maior que zero e vencimento, acompanha as alterações e some se a viagem for cancelada; depois de exportado ao financeiro ele não muda mais ("título já exportado: ajuste em Contas a pagar").</p>
+              </div>
+              <h3 class="titulo-bloco">Datas e observações</h3>
               <div class="grade">
-                <div class="campo"><label>km saída</label><input type="number" id="vg-km-saida" min="0" step="1" /></div>
-                <div class="campo"><label>km chegada</label><input type="number" id="vg-km-chegada" min="0" step="1" /></div>
-                <div class="campo"><label>R$/km <span class="meta">(do veículo, editável)</span></label><input type="number" id="vg-valor-km" min="0" step="0.01" /></div>
                 <div class="campo"><label>Saída real</label><input type="datetime-local" id="vg-data-saida" /></div>
                 <div class="campo"><label>Chegada real</label><input type="datetime-local" id="vg-data-chegada" /></div>
                 <div class="campo largo"><label>Observações</label><input id="vg-obs" placeholder="Ex.: mobilização da TAG 09, retorno ao pátio…" /></div>
               </div>
-              <p class="nota">km rodado e valor da viagem são calculados no banco: (km chegada − km saída) × R$/km. O km atual do caminhão acompanha a maior chegada registrada. Concluir exige km de chegada maior ou igual ao de saída.</p>
             </div>
             <div class="odoo-tab" data-tab="itens"><div id="vg-itens"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="documentos"><div id="vg-docs"><p class="vazio">—</p></div></div>
@@ -5628,6 +5664,7 @@
         <div class="ind ind-click" data-cham-status="em_analise"><div class="num" id="cham-kpi-analise" style="color:var(--aviso-txt);">—</div><div class="rot">Em análise</div></div>
         <div class="ind ind-click" data-cham-status="minha_resposta" title="Chamados esperando a sua resposta (lote S47)"><div class="num" id="cham-kpi-validacao" style="color:var(--marca-600);">—</div><div class="rot">Esperando minha resposta</div></div>
         <div class="ind ind-click" data-cham-status="resolvido"><div class="num" id="cham-kpi-resolvido" style="color:var(--sucesso);">—</div><div class="rot">Resolvidos (30 dias)</div></div>
+        <div class="ind ind-click" data-cham-status="resolvidos_sem_confirmacao" title="Resolvidos há menos de 7 dias ainda sem o 'Funcionou' do autor (lote S55)" style="display:none;"><div class="num" id="cham-kpi-semconf" style="color:var(--aviso-txt);">—</div><div class="rot">Sem confirmação</div></div>
         <div class="ind ind-click" data-cham-prioridade="1" title="Prioridade 1 (bloqueia operação) aberto ou em análise"><div class="num" id="cham-kpi-p1" style="color:var(--perigo);">—</div><div class="rot">P1 abertos</div></div>
       </div>
 
@@ -5991,53 +6028,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=00b1103"></script>
+<script src="js/core.js?v=b29105e"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=00b1103"></script>
+<script src="js/historico.js?v=b29105e"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=00b1103"></script>
-<script src="js/fiscal_ncm.js?v=00b1103"></script>
+<script src="js/fiscal.js?v=b29105e"></script>
+<script src="js/fiscal_ncm.js?v=b29105e"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=00b1103"></script>
-<script src="js/fornecedores.js?v=00b1103"></script>
-<script src="js/apropriacoes.js?v=00b1103"></script>
-<script src="js/funcionarios.js?v=00b1103"></script>
-<script src="js/rh_documentos.js?v=00b1103"></script>
-<script src="js/servicos.js?v=00b1103"></script>
-<script src="js/produtos.js?v=00b1103"></script>
-<script src="js/estoque.js?v=00b1103"></script>
-<script src="js/separacoes.js?v=00b1103"></script>
-<script src="js/epi.js?v=00b1103"></script>
-<script src="js/compras.js?v=00b1103"></script>
-<script src="js/requisicoes.js?v=00b1103"></script>
-<script src="js/orcamentos.js?v=00b1103"></script>
-<script src="js/propostas.js?v=00b1103"></script>
-<script src="js/contratos.js?v=00b1103"></script>
-<script src="js/contas_pagar.js?v=00b1103"></script>
-<script src="js/centros_custo.js?v=00b1103"></script>
-<script src="js/carteira.js?v=00b1103"></script>
-<script src="js/obras.js?v=00b1103"></script>
-<script src="js/frota.js?v=00b1103"></script>
-<script src="js/viagens.js?v=00b1103"></script>
-<script src="js/equipamentos.js?v=00b1103"></script>
-<script src="js/vendas_bens.js?v=00b1103"></script>
-<script src="js/acessorios.js?v=00b1103"></script>
-<script src="js/reparos.js?v=00b1103"></script>
-<script src="js/manutencao.js?v=00b1103"></script>
-<script src="js/fabricacao.js?v=00b1103"></script>
-<script src="js/mobilizacoes.js?v=00b1103"></script>
-<script src="js/estacas.js?v=00b1103"></script>
-<script src="js/obra_abas.js?v=00b1103"></script>
-<script src="js/medicoes.js?v=00b1103"></script>
-<script src="js/movimentacoes.js?v=00b1103"></script>
-<script src="js/rdo.js?v=00b1103"></script>
-<script src="js/rdo_import_maya.js?v=00b1103"></script>
-<script src="js/usuarios.js?v=00b1103"></script>
-<script src="js/chamados.js?v=00b1103"></script>
-<script src="js/dashboard.js?v=00b1103"></script>
-<script src="js/rh_horas.js?v=00b1103"></script>
-<script src="js/patrimonio.js?v=00b1103"></script>
+<script src="js/clientes.js?v=b29105e"></script>
+<script src="js/fornecedores.js?v=b29105e"></script>
+<script src="js/apropriacoes.js?v=b29105e"></script>
+<script src="js/funcionarios.js?v=b29105e"></script>
+<script src="js/rh_documentos.js?v=b29105e"></script>
+<script src="js/servicos.js?v=b29105e"></script>
+<script src="js/produtos.js?v=b29105e"></script>
+<script src="js/estoque.js?v=b29105e"></script>
+<script src="js/separacoes.js?v=b29105e"></script>
+<script src="js/epi.js?v=b29105e"></script>
+<script src="js/compras.js?v=b29105e"></script>
+<script src="js/requisicoes.js?v=b29105e"></script>
+<script src="js/orcamentos.js?v=b29105e"></script>
+<script src="js/propostas.js?v=b29105e"></script>
+<script src="js/contratos.js?v=b29105e"></script>
+<script src="js/contas_pagar.js?v=b29105e"></script>
+<script src="js/centros_custo.js?v=b29105e"></script>
+<script src="js/carteira.js?v=b29105e"></script>
+<script src="js/obras.js?v=b29105e"></script>
+<script src="js/frota.js?v=b29105e"></script>
+<script src="js/viagens.js?v=b29105e"></script>
+<script src="js/equipamentos.js?v=b29105e"></script>
+<script src="js/vendas_bens.js?v=b29105e"></script>
+<script src="js/acessorios.js?v=b29105e"></script>
+<script src="js/reparos.js?v=b29105e"></script>
+<script src="js/manutencao.js?v=b29105e"></script>
+<script src="js/fabricacao.js?v=b29105e"></script>
+<script src="js/mobilizacoes.js?v=b29105e"></script>
+<script src="js/estacas.js?v=b29105e"></script>
+<script src="js/obra_abas.js?v=b29105e"></script>
+<script src="js/medicoes.js?v=b29105e"></script>
+<script src="js/movimentacoes.js?v=b29105e"></script>
+<script src="js/rdo.js?v=b29105e"></script>
+<script src="js/rdo_import_maya.js?v=b29105e"></script>
+<script src="js/usuarios.js?v=b29105e"></script>
+<script src="js/chamados.js?v=b29105e"></script>
+<script src="js/dashboard.js?v=b29105e"></script>
+<script src="js/rh_horas.js?v=b29105e"></script>
+<script src="js/patrimonio.js?v=b29105e"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=00b1103"></script>
+<script src="js/init.js?v=b29105e"></script>
 </body>
 </html>

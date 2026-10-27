@@ -201,14 +201,14 @@ function balEhEpi(p){ return balEhEpiAloc(p); }   // fase 100 → hotfix 168 (#1
 function balMovEhEpi(m){ return !!m && (["epi", "uniforme"].includes(m.categoria_custo) || ["epi", "uniforme"].includes(m.produto?.categoria_custo)); }
 async function balBuscar(termo){
   const t = termo.replace(/[%,()]/g, " ").trim(); if(t.length < 2) return [];
-  const { data } = await sb.from("produtos").select(BAL_COLS).eq("ativo", true)
+  const { data } = await sb.from("produtos").select(BAL_COLS).eq("ativo", true).eq("tipo_item", "produto")   // lote S55 (#175): serviço consumido não passa pelo balcão
     .or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
   return data || [];
 }
 /* Enter no campo (leitor de código de barras manda Enter): código ou código de barras exato adiciona direto */
 async function balEnter(){
   const inp = $("bal-item"), t = inp.value.trim(); if(!t) return;
-  const { data } = await sb.from("produtos").select(BAL_COLS).eq("ativo", true).or(`codigo.eq.${t.replace(/[,()]/g, " ")},codigo_barras.eq.${t.replace(/[,()]/g, " ")}`).limit(2);
+  const { data } = await sb.from("produtos").select(BAL_COLS).eq("ativo", true).eq("tipo_item", "produto").or(`codigo.eq.${t.replace(/[,()]/g, " ")},codigo_barras.eq.${t.replace(/[,()]/g, " ")}`).limit(2);   // lote S55 (#175)
   let p = (data || []).length === 1 ? data[0] : null;
   if(!p){ const res = await balBuscar(t); if(res.length === 1) p = res[0]; else { balMostrarLista(res); return; } }
   balAddItem(p);
@@ -528,7 +528,7 @@ async function estBuscarProdutos(termo){
   const t = termo.replace(/[%,()]/g, " ").trim();
   const { data } = await sb.from("produtos")
     .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,odoo_saldo_em")
-    .eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`).order("nome").limit(25);
+    .eq("ativo", true).eq("tipo_item", "produto").or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`).order("nome").limit(25);
   return data || [];
 }
 function estLigarBuscaProduto(inpId, listaId, aoEscolher){
@@ -636,7 +636,7 @@ async function carregarReposicao(){
   const cont = $("est-reposicao"); if(!cont) return;
   const { data, error } = await sb.from("produtos")
     .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,localizacao,odoo_saldo_em,codigo_barras,categoria_custo,categoria:categorias_produto(nome)")
-    .eq("controle_reposicao", true).eq("ativo", true).order("nome");
+    .eq("controle_reposicao", true).eq("ativo", true).eq("tipo_item", "produto").order("nome");   // lote S55 (#175): serviço nunca entra na reposição
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   _estRep = data || [];
   renderReposicao();

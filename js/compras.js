@@ -145,6 +145,17 @@ const CMP_METODO_POR_SERVICO = { helice_continua: "helice_continua", trado_mecan
 function cmpPodeOperar(){
   return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","gestor_acessorios","engenheiro","logistica","financeiro","mecanico","gestor_frota","gestor_manutencao"].includes(usuarioAtual.cargo);
 }
+/* Lote S55 (#180): espelha compras_pode_receber() do banco — quem opera Compras ou tem o módulo extra "compras" (Maria
+   Eduarda: lê pedidos, abre requisição e recebe NF de pedido; sem alçada, sem pedido novo, compra direta, NF sem pedido,
+   aprovação, cotação nem fornecedor novo). O auditor nunca. */
+function cmpPodeReceber(){
+  if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
+  return cmpPodeOperar() || (typeof temModuloExtra === "function" && temModuloExtra("compras"));
+}
+/* lote S55 (#175): produto do tipo serviço consumido (tipo_item = servico): só aplicação direta, nunca estoque */
+let _cmpProdSrv = {};   // produto_id → true (busca, cadastro rápido e itens carregados)
+function cmpProdutoEhServico(it){ return !!it && !!it.produto_id && _cmpProdSrv[it.produto_id] === true; }
+function cmpTagServico(p){ return p && p.tipo_item === "servico" ? ' <span class="tag azul" title="Serviço consumido: aplicação direta, sem estoque">serviço</span>' : ""; }
 function cmpForn(id){ const f = _cmpFornMap[id]; return f ? f.razao_social : ""; }
 function cmpObra(id){ const o = _cmpObraMap[id]; return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
 function cmpEq(id){ const e = _cmpEqMap[id]; return e ? e.codigo + (e.nome ? " · " + e.nome : "") : ""; }
@@ -290,7 +301,8 @@ function cmpPedirUnidadeNova(it){
   if(t) t.value = `Unidade de medida nova para: ${rotulo}`;
   if(d) d.value = `Unidade pedida: (escreva aqui, ex.: "ton", "m³")\nItem: ${rotulo}${_cmpAtual?.numero ? ` · pedido ${_cmpAtual.numero}` : ""}.\n\nDica: a unidade entra no catálogo por migration (enum unidade_medida) e na lista do app; até lá a linha fica com a unidade anterior.`;
 }
-function cmpAlcadaTxt(){ return _cmpAlcada === null ? "sem limite" : _cmpAlcada < 0 ? "sem alçada de aprovação" : "até " + brl(_cmpAlcada); }
+/* lote S55 (#184): limite 0 (gestor de manutenção) = toda compra com valor passa por outra pessoa */
+function cmpAlcadaTxt(){ return _cmpAlcada === null ? "sem limite" : _cmpAlcada < 0 ? "sem alçada de aprovação" : _cmpAlcada === 0 ? "sem alçada: todo pedido seu vai para aprovação de outra pessoa" : "até " + brl(_cmpAlcada); }
 /* fase 78: item de serviço (recebido com evidência, nunca no estoque); mesma regra de compras_categoria_servico() */
 const CMP_CAT_SERVICO = ["servico_terceiro", "locacao", "frete"];
 const CMP_REC_TIPO = { servico: ["serviço", "azul"], compra_direta: ["compra direta", "verde"] };
@@ -1001,13 +1013,14 @@ function novoPedido(pre){
 async function abrirPedido(id){
   const [{ data: p, error }, it] = await Promise.all([
     sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), solicitante:profiles!pedidos_compra_solicitante_id_fkey(nome), aprovador:profiles!pedidos_compra_aprovador_id_fkey(nome)").eq("id", id).single(),
-    sb.from("pedido_compra_itens").select("*, produto:produtos(unidade)").eq("pedido_id", id).order("ordem").order("created_at")   // lote S54 (#170): unidade do cadastro
+    sb.from("pedido_compra_itens").select("*, produto:produtos(unidade,tipo_item)").eq("pedido_id", id).order("ordem").order("created_at")   // lote S54 (#170): unidade do cadastro; S55: tipo_item
   ]);
   if(error || !p){ aviso("app-aviso", "Não foi possível abrir o pedido" + (error ? ": " + error.message : "."), "erro"); return; }
   if(it.error){ aviso("app-aviso", "Itens não carregaram: " + it.error.message, "erro"); return; }
   // fase 108b: natureza e método já gravados não são trocados pelo padrão quando o comprador muda o tipo ou o destino
   const itens = (it.data || []).map(({ produto, ...i }) => {
     if(i.produto_id && produto?.unidade) _cmpProdUn[i.produto_id] = produto.unidade;   // lote S54 (#170)
+    if(i.produto_id) _cmpProdSrv[i.produto_id] = produto?.tipo_item === "servico";    // lote S55 (#175)
     return { ...i, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo };
   });
   // lote S53 (#149): rateio dos itens com destino TAG (tabela nova; sem a migration a consulta falha e a ficha segue sem rateio)
@@ -1041,7 +1054,10 @@ function abrirFichaPedido(p){
   $("cmp-resp-receb").value = p.responsavel_recebimento_id || "";
   $("cmp-resp-receb").disabled = !(ed || cmpPodeTrocarResp());
   $("cmp-itens-add").style.display = ed ? "" : "none";
-  if($("btn-cmp-prod-novo")) $("btn-cmp-prod-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";   // fase 102 (#160)
+  // fase 102 (#160) + lote S55 (#175): "+ Novo produto" / "+ Cadastrar serviço" para quem cadastra; aviso para quem não
+  if($("btn-cmp-prod-novo")) $("btn-cmp-prod-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";
+  if($("btn-cmp-srv-novo")) $("btn-cmp-srv-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";
+  if($("cmp-prod-sem-cadastro")) $("cmp-prod-sem-cadastro").style.display = ed && !cmpPodeCadastrarProduto() ? "" : "none";
   _cmpRatPadrao = []; _cmpRat = null; cmpRatPadraoTxt();   // lote S53 (#149): o "+ TAGs" do cabeçalho vale só para a ficha aberta
   if($("btn-cmp-rat-padrao")) $("btn-cmp-rat-padrao").style.display = ed ? "" : "none";
   if($("cmp-rat-modal")) $("cmp-rat-modal").style.display = "none";
@@ -1049,6 +1065,8 @@ function abrirFichaPedido(p){
   if($("cmp-cot-form")) $("cmp-cot-form").style.display = "none";
   $("cmp-alcada-info").textContent = cmpPodeOperar()
     ? `Sua alçada de aprovação: ${cmpAlcadaTxt()}. A aprovação tem duas chaves: a alçada pelo valor e, para cada obra, TAG ou centro com item de aplicação direta, o dono do custo (engenheiro responsável da obra, gestor de manutenção ou de frota, responsável do centro). Reposição de estoque só pede a alçada.`
+    : cmpPodeReceber()
+    ? `Você recebe notas e abre requisições; a aprovação é do comprador e do dono do custo.`   // lote S55 (#180): módulo extra compras
     : `Você vê este pedido porque é dono do custo de um destino dele. Confira os itens e use "Assinar" para a sua chave.`;
   _cmpAprovAtual = { pend: [], assinadas: [], carregado: false };   // fase 108b: chaves chegam em cmpCarregarAprovacoes
   cmpRenderFaltaAssinar();
@@ -1212,11 +1230,18 @@ function cmpAtualizarBotoes(){
   const mostra = { "btn-cmp-salvar": pode && st === "rascunho", "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
     "btn-cmp-cotacao": pode && st === "rascunho" && !novo && !leitura,   // fase 102: rascunho → em cotação
     "btn-cmp-conferir": !novo && !leitura && _cmpConfAtual.pode && _cmpConfAtual.lista.some(r => r.pendente),   // fase 102
-    "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": pode && ["aprovado","enviado","parcialmente_recebido"].includes(st),
+    "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180): módulo extra compras recebe
     "btn-cmp-receber-servico": cmpPodeReceberServico(),
     "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && ["aguardando_aprovacao","aprovado","em_cotacao"].includes(st),
+    "btn-cmp-pdf-sem-valor": !novo && st !== "cancelado" && st !== "em_cotacao",   // lote S55 (#179): em cotação o PDF já é a solicitação
     "btn-cmp-cancelar": pode && !novo && !["recebido","cancelado"].includes(st) };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
+  // lote S55 (#179): em cotação o botão PDF gera a "Solicitação de cotação" (sem preço, IPI, total nem aprovador)
+  const bPdf = $("btn-cmp-pdf");
+  if(bPdf){
+    bPdf.textContent = st === "em_cotacao" ? "📄 Solicitação de cotação" : "🖨️ PDF do pedido";
+    bPdf.title = st === "em_cotacao" ? "Solicitação de cotação (sem valores): itens, quantidades, prazo e condição desejados" : "";
+  }
 }
 function ativarTabPedido(nome){
   document.querySelectorAll("#cmp-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.tab === nome));
@@ -1456,26 +1481,51 @@ async function cmpFecharCotacao(id){
    Cadastro mínimo (nome, categoria, unidade, NCM opcional; código CGL-NNNNN se vazio) pela RPC produto_cadastro_rapido,
    mesmos cargos da policy produtos_write (admin, almoxarife, comprador, gestor de acessórios; diretor). O tipo de compra
    padrão fica o da categoria; o produto volta já na linha do pedido. O módulo extra do #150 não entra (sem decisão). */
-function cmpPodeCadastrarProduto(){ return !!usuarioAtual && ["diretor","admin","almoxarife","comprador","gestor_acessorios"].includes(usuarioAtual.cargo); }
-async function cmpAbrirProdutoRapido(){
-  if(!cmpPodeCadastrarProduto() || !cmpEditavel()) return;
+/* fase 102 (#160): mesmos cargos de produtos_write; lote S55 (#173): + módulo extra "produtos" (a Thayse opera Compras como
+   financeiro e cadastra o produto a partir do item do pedido, D-173b) */
+function cmpPodeCadastrarProduto(){
+  if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
+  return !!usuarioAtual && (["diretor","admin","almoxarife","comprador","gestor_acessorios"].includes(usuarioAtual.cargo) || (typeof temModuloExtra === "function" && temModuloExtra("produtos")));
+}
+/* Lote S55 (#175): o cadastro rápido ganha o tipo (produto / serviço consumido) e serve ao pedido (destino "pedido", padrão)
+   e ao recebimento (destino "rec": a linha da nota que não casou com nada). Serviço: unidade sugerida vb, aplicação direta. */
+let _cmpProdDestino = "pedido";
+async function cmpAbrirProdutoRapido(tipo, destino){
+  _cmpProdDestino = destino === "rec" ? "rec" : "pedido";
+  if(!cmpPodeCadastrarProduto() || (_cmpProdDestino === "pedido" && !cmpEditavel()) || (_cmpProdDestino === "rec" && !_cmpRec)) return;
   if(_cmpCategorias === null){
     const { data } = await sb.from("categorias_produto").select("id,nome,tipo_compra_padrao,ativo").eq("ativo", true).order("nome");
     _cmpCategorias = data || [];
   }
+  const servico = tipo === "servico";
   $("cmp-prod-cat").innerHTML = `<option value="">— sem categoria —</option>` + _cmpCategorias.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
-  $("cmp-prod-un").innerHTML = (typeof UNIDADES !== "undefined" ? UNIDADES : ["un"]).map(u => `<option value="${esc(u)}"${u === "un" ? " selected" : ""}>${esc(u)}</option>`).join("");
+  const unPadrao = servico ? "vb" : "un";
+  $("cmp-prod-un").innerHTML = (typeof UNIDADES !== "undefined" ? UNIDADES : ["un"]).map(u => `<option value="${esc(u)}"${u === unPadrao ? " selected" : ""}>${esc(u)}</option>`).join("");
+  if($("cmp-prod-tipo")) $("cmp-prod-tipo").value = servico ? "servico" : "produto";
   ["cmp-prod-nome", "cmp-prod-ncm", "cmp-prod-cod"].forEach(id => $(id).value = "");
-  const termo = ($("cmp-busca-prod")?.value || "").trim();
+  const termo = ($(_cmpProdDestino === "rec" ? "cmp-rec-busca" : "cmp-busca-prod")?.value || "").trim();
   if(termo) $("cmp-prod-nome").value = termo.toUpperCase();
+  const h3 = document.querySelector("#cmp-prod-modal h3"); if(h3) h3.textContent = servico ? "Novo serviço consumido" : "Novo produto";
   cmpProdTipoInfo();
   $("cmp-prod-modal").style.display = "flex";
   $("cmp-prod-nome").focus();
 }
 function cmpProdTipoInfo(){
+  const info = $("cmp-prod-tipo-info"); if(!info) return;
+  if($("cmp-prod-tipo")?.value === "servico"){   // lote S55 (#175)
+    info.textContent = "Serviço consumido (frete, hospedagem, locação, serviço de terceiro): aplicação direta, sem estoque; unidade sugerida vb, diária, h ou km. Não é o módulo Serviços (o que a CGL executa).";
+    return;
+  }
   const c = (_cmpCategorias || []).find(x => x.id === $("cmp-prod-cat").value);
   const t = c && c.tipo_compra_padrao ? CMP_TIPO_LBL[c.tipo_compra_padrao] : CMP_TIPO_LBL.aplicacao_direta;
-  $("cmp-prod-tipo-info").textContent = `Tipo de compra padrão: ${t}${c ? (c.tipo_compra_padrao ? " (pela categoria)" : " (a categoria não define)") : " (sem categoria)"}. O comprador ainda escolhe na linha do pedido.`;
+  info.textContent = `Tipo de compra padrão: ${t}${c ? (c.tipo_compra_padrao ? " (pela categoria)" : " (a categoria não define)") : " (sem categoria)"}. O comprador ainda escolhe na linha do pedido.`;
+}
+/* troca de tipo dentro do modal: serviço sugere vb; produto volta a un (só quando a unidade ainda é a sugerida) */
+function cmpProdTipoMudou(){
+  const servico = $("cmp-prod-tipo")?.value === "servico", un = $("cmp-prod-un");
+  if(un && ((servico && un.value === "un") || (!servico && un.value === "vb"))) un.value = servico ? "vb" : "un";
+  const h3 = document.querySelector("#cmp-prod-modal h3"); if(h3) h3.textContent = servico ? "Novo serviço consumido" : "Novo produto";
+  cmpProdTipoInfo();
 }
 function cmpFecharProdutoRapido(){ $("cmp-prod-modal").style.display = "none"; }
 async function cmpSalvarProdutoRapido(){
@@ -1483,13 +1533,20 @@ async function cmpSalvarProdutoRapido(){
   if(!nome){ aviso("app-aviso", "Informe o nome do produto.", "erro"); $("cmp-prod-nome").focus(); return; }
   const ncm = $("cmp-prod-ncm").value.replace(/\D/g, "");
   if(ncm && ncm.length !== 8){ aviso("app-aviso", "NCM tem 8 dígitos (ex.: 8431.43.10).", "erro"); return; }
+  const tipo = $("cmp-prod-tipo")?.value === "servico" ? "servico" : "produto";   // lote S55 (#175)
   const { data, error } = await sb.rpc("produto_cadastro_rapido", { p_nome: nome, p_categoria_id: $("cmp-prod-cat").value || null, p_unidade: $("cmp-prod-un").value || "un",
-    p_ncm: ncm || null, p_codigo: $("cmp-prod-cod").value.trim() || null });
+    p_ncm: ncm || null, p_codigo: $("cmp-prod-cod").value.trim() || null, p_tipo_item: tipo });
   if(error){ aviso("app-aviso", "Produto não cadastrado: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   cmpFecharProdutoRapido();
+  if(_cmpProdDestino === "rec" && _cmpRec){
+    if($("cmp-rec-busca")){ $("cmp-rec-busca").value = ""; if($("cmp-rec-res")){ $("cmp-rec-res").innerHTML = ""; $("cmp-rec-res").style.display = "none"; } }
+    cmpRecAddItem(data);
+    aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído na nota.`, "ok");
+    return;
+  }
   if($("cmp-busca-prod")){ $("cmp-busca-prod").value = ""; if($("cmp-res-prod")){ $("cmp-res-prod").innerHTML = ""; $("cmp-res-prod").style.display = "none"; } }
   cmpAddItem(data);
-  aviso("app-aviso", `Produto ${data.codigo} — ${data.nome} cadastrado e incluído no pedido. Salve o pedido para gravar o item.`, "ok");
+  aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído no pedido. Salve o pedido para gravar o item.`, "ok");
 }
 
 /* itens */
@@ -1511,12 +1568,14 @@ function cmpDestinoDiretoPadrao(){
    troca livre; depois de aprovado o banco trava (gatilho da 108a) e a tela só mostra. */
 function renderItensPedido(){
   const tb = $("cmp-itens"); const ed = cmpEditavel();
-  if(!_cmpItens.length){ tb.innerHTML = `<tr><td colspan="14" class="vazio">${ed ? "Adicione produtos do catálogo ou um item livre." : "Sem itens."}</td></tr>`; cmpAtualizarSbItens(); cmpAtualizarChips(); return; }
+  if(!_cmpItens.length){ tb.innerHTML = `<tr><td colspan="14" class="vazio">${ed ? "Adicione produtos do catálogo (serviço consumido também é produto)." : "Sem itens."}</td></tr>`; cmpAtualizarSbItens(); cmpAtualizarChips(); return; }   // lote S55 (#175): acabou o item livre
   tb.innerHTML = _cmpItens.map((it, idx) => {
-    const tipo = cmpItemTipo(it), repo = tipo === "reposicao";
+    const tipo = cmpItemTipo(it), repo = tipo === "reposicao", srv = cmpProdutoEhServico(it);
     const externo = it.obra_externa || it.centro_custo_externo ? `<div class="meta" title="rateio do Odoo sem cadastro no app">${esc([it.obra_externa, it.centro_custo_externo].filter(Boolean).join(" · "))}</div>` : "";
+    // lote S55 (#175): serviço consumido nunca é reposição (o banco recusa destino estoque)
+    const semEstoque = !it.produto_id ? ' disabled title="item sem produto do catálogo não entra no estoque"' : srv ? ' disabled title="serviço consumido não entra no estoque"' : "";
     const tipoCel = ed
-      ? `<select class="cmp-it" data-f="_tipo" style="min-width:140px;max-width:160px;"><option value="reposicao"${repo ? " selected" : ""}${it.produto_id ? "" : ' disabled title="item sem produto do catálogo não entra no estoque"'}>${esc(CMP_TIPO_LBL.reposicao)}</option><option value="aplicacao_direta"${repo ? "" : " selected"}>${esc(CMP_TIPO_LBL.aplicacao_direta)}</option></select>`
+      ? `<select class="cmp-it" data-f="_tipo" style="min-width:140px;max-width:160px;"><option value="reposicao"${repo ? " selected" : ""}${semEstoque}>${esc(CMP_TIPO_LBL.reposicao)}</option><option value="aplicacao_direta"${repo ? "" : " selected"}>${esc(CMP_TIPO_LBL.aplicacao_direta)}</option></select>`
       : cmpTipoTag(tipo);
     // lote S53 (#149): destino TAG ganha o botão ⚖ (rateio entre equipamentos) e a linha "+ N TAG(s) (rateio)"
     const destinoCel = repo
@@ -1531,7 +1590,7 @@ function renderItensPedido(){
       : `<span class="meta">${esc(CMP_METODO_LBL[it.metodo] || "—")}</span>`;
     // lote S53 (#166): descrição do item livre em textarea que cresce com o texto; % IPI e % ICMS por item; total com IPI
     return `<tr data-idx="${idx}">
-      <td>${it.produto_id ? esc(it.descricao) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(it.descricao || "")}</textarea>` : esc(it.descricao))}${it.produto_id ? "" : ' <span class="meta">livre</span>'}</td>
+      <td>${it.produto_id ? esc(it.descricao) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(it.descricao || "")}</textarea>` : esc(it.descricao))}${it.produto_id ? (srv ? cmpTagServico({ tipo_item: "servico" }) : "") : ' <span class="meta" title="item livre anterior ao lote S55: continua editável">livre (antigo)</span>'}</td>
       <td>${cmpUnidadeCelula(it, ed)}</td>
       <td>${ed ? `<input type="number" step="0.001" min="0.001" class="cmp-it" data-f="quantidade" value="${esc(it.quantidade ?? 1)}" style="width:80px;text-align:right;" />` : num(it.quantidade)}</td>
       <td>${ed ? `<input type="number" step="0.01" min="0" class="cmp-it" data-f="valor_unitario" value="${esc(it.valor_unitario ?? 0)}" style="width:105px;text-align:right;" />` : brl(it.valor_unitario)}</td>
@@ -1595,6 +1654,7 @@ function cmpAtualizarSbItens(){ const sbi = $("sb-cmp-itens"); if(sbi){ sbi.quer
 /* fase 108b: trocar o tipo em rascunho. Reposição: destino estoque, sem método; aplicação direta: destino pelo
    cabeçalho (ou a escolher) e método pela obra. A natureza só é recalculada enquanto não foi escolhida à mão. */
 function cmpTrocarTipoItem(it, tipo){
+  if(tipo === "reposicao" && cmpProdutoEhServico(it)){ aviso("app-aviso", "Serviço consumido não entra no estoque: informe a obra, a TAG ou o setor.", "erro"); renderItensPedido(); return; }   // lote S55 (#175)
   it._tipo = tipo;
   if(tipo === "reposicao"){
     Object.assign(it, { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null, metodo: null });
@@ -1606,19 +1666,22 @@ function cmpTrocarTipoItem(it, tipo){
   renderItensPedido();
   if(tipo === "aplicacao_direta") cmpAplicarMetodoPadrao(it);
 }
+/* lote S55 (#175): acabou o item livre (cmpAddItem(null)); todo item nasce de um produto do catálogo — serviço consumido
+   também é produto (tipo_item = servico: aplicação direta, nunca estoque; o banco força e recusa) */
 function cmpAddItem(p){
-  if(p?.id && p.unidade) _cmpProdUn[p.id] = p.unidade;   // lote S54 (#170): unidade do cadastro = padrão da linha
-  // fase 108b: o produto sugere o tipo (produto → categoria → aplicação direta); item livre é aplicação direta
-  const tipo = p ? cmpTipoPadraoProduto(p) : "aplicacao_direta";
+  if(!p?.id) return;
+  if(p.unidade) _cmpProdUn[p.id] = p.unidade;   // lote S54 (#170): unidade do cadastro = padrão da linha
+  const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv;
+  // fase 108b: o produto sugere o tipo (produto → categoria → aplicação direta)
+  const tipo = srv ? "aplicacao_direta" : cmpTipoPadraoProduto(p);
   const d = tipo === "reposicao" ? { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null } : cmpDestinoDiretoPadrao();
-  const it = { produto_id: p?.id || null, descricao: p ? `${p.codigo} — ${p.nome}` : "", unidade: p?.unidade || "un", quantidade: 1,
-    valor_unitario: Number(p?.custo_ultimo || 0), categoria_custo: p?.categoria_custo || "peca", ipi_percentual: 0, icms_percentual: 0, ...d, quantidade_recebida: 0,   // lote S53 (#166)
+  const it = { produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade: 1,
+    valor_unitario: Number(p.custo_ultimo || 0), categoria_custo: p.categoria_custo || (srv ? "servico_terceiro" : "peca"), ipi_percentual: 0, icms_percentual: 0, ...d, quantidade_recebida: 0,   // lote S53 (#166)
     _tipo: tipo, natureza_id: null, _natAuto: true, metodo: null, _metAuto: true };
   it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo);
   _cmpItens.push(it);
   renderItensPedido();
   if(tipo === "aplicacao_direta") cmpAplicarMetodoPadrao(it);
-  if(!p){ const inp = $("cmp-itens").querySelector(`tr[data-idx="${_cmpItens.length - 1}"] textarea[data-f=descricao]`); if(inp) inp.focus(); }
 }
 /* ---------- lote S53 (#149): modal de rateio entre TAGs ----------
    idx = índice do item em _cmpItens; null = "+ TAGs" do cabeçalho (TAGs padrão dos itens novos). Marcar/desmarcar uma TAG
@@ -1706,7 +1769,8 @@ async function cmpBuscarProdutos(termo){
   if(!termo || termo.length < 2) return [];
   const t = termo.replace(/[%,()]/g, " ").trim();
   // fase 108b: tipo de compra padrão do produto e da categoria (o do produto vence)
-  const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo,categoria_custo,fornecedor_padrao_id,tipo_compra_padrao,categoria:categorias_produto(nome,tipo_compra_padrao)").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`).order("nome").limit(25);
+  const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo,categoria_custo,fornecedor_padrao_id,tipo_compra_padrao,tipo_item,categoria:categorias_produto(nome,tipo_compra_padrao)").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`).order("nome").limit(25);   // lote S55: tipo_item
+  (data || []).forEach(p => { _cmpProdSrv[p.id] = p.tipo_item === "servico"; });
   return data || [];
 }
 function cmpLigarBusca(inpId, listaId, aoEscolher){
@@ -1718,8 +1782,8 @@ function cmpLigarBusca(inpId, listaId, aoEscolher){
       const termo = inp.value.trim();
       if(termo.length < 2){ lista.innerHTML = ""; lista.style.display = "none"; return; }
       const res = await cmpBuscarProdutos(termo);
-      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">estoque ${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}${p.custo_ultimo ? " · último " + brl(p.custo_ultimo) : ""}</span></div>`).join("")
-        : `<div class="resultado-item vazio">Nenhum produto. Use "Item livre" ou cadastre em Produtos.</div>`;
+      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)}${cmpTagServico(p)} <span class="meta" style="float:right;">${p.tipo_item === "servico" ? "" : "estoque " + num(p.estoque_atual || 0) + " "}${esc(p.unidade || "un")}${p.custo_ultimo ? " · último " + brl(p.custo_ultimo) : ""}</span></div>`).join("")
+        : `<div class="resultado-item vazio">Nenhum produto. Cadastre em Produtos ou use "+ Novo produto" / "+ Cadastrar serviço" (serviço consumido também é produto).</div>`;   // lote S55 (#175)
       lista.style.display = "";
       lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => { const p = res.find(x => x.id === d.dataset.id); inp.value = ""; lista.innerHTML = ""; lista.style.display = "none"; aoEscolher(p); }));
     }, 250);
@@ -1860,6 +1924,7 @@ async function salvarPedido(silencioso){
 }
 async function cmpAcao(acao){
   if(acao === "pdf"){ return cmpPdfPedido(); }
+  if(acao === "pdf_sem_valor"){ return cmpPdfPedido(true); }   // lote S55 (#179)
   if(acao === "receber"){ return abrirRecebimento(_cmpAtual); }
   if(acao === "receber_servico"){ return abrirReceberServico(); }   // fase 78
   if(acao === "conferir"){ return cmpConferirRecebimentos(); }      // fase 102
@@ -1912,9 +1977,11 @@ async function cmpAcao(acao){
 
 /* ---------- recebimento ---------- */
 function abrirRecebimento(pedido, modo){
-  if(!cmpPodeOperar()) return;
   const semPedido = !pedido;
   const direta = modo === "compra_direta";   // fase 78
+  // lote S55 (#180): o módulo extra "compras" recebe NF de pedido; NF sem pedido e compra direta continuam só para quem opera (D-180a)
+  if(!cmpPodeReceber() || ((semPedido || direta) && !cmpPodeOperar())) return;
+  if($("btn-cmp-rec-prod-novo")) $("btn-cmp-rec-prod-novo").style.display = cmpPodeCadastrarProduto() ? "" : "none";   // lote S55 (#175): cadastro rápido dentro da nota
   _cmpRec = { pedido: pedido || null, itens: [], xml: null, duplicatas: null, modo: direta ? "compra_direta" : "nf" };
   $("cmp-rec-anexos-campo").style.display = direta ? "" : "none"; $("cmp-rec-anexos").value = "";
   $("cmp-rec-th-pend").textContent = direta ? "Categoria" : "Pendente";
@@ -1998,7 +2065,7 @@ function cmpRiTotalHTML(it){ return brl(Number(it.quantidade_nf || 0) * Number(i
 function cmpRecTipoDestinoCel(it){
   const tipo = it.destino === "estoque" ? "reposicao" : "aplicacao_direta";
   const alerta = tipo === "reposicao" && !it.produto_id ? '<div class="meta txt-perigo">reposição sem produto do catálogo: case com um produto</div>'
-    : !it.produto_id ? '<div class="meta" title="item sem produto casado não entra no estoque">só aplicação direta</div>' : "";
+    : !it.produto_id ? (it.pedido_item_id ? '<div class="meta" title="item livre anterior ao lote S55: recebe como aplicação direta">item livre antigo do pedido</div>' : '<div class="meta txt-perigo" title="lote S55: toda linha da nota casa com um produto do catálogo">sem produto: case ou cadastre antes de confirmar</div>') : "";
   if(it.pedido_item_id) return `<td>${cmpTipoTag(tipo)}</td><td><span class="meta" title="tipo de compra e destino aprovados no pedido">${esc(cmpDestinoTxt(it))}</span>${alerta}</td>`;
   // item livre fora do pedido nasce como aplicação direta sem destino ("obra:" sem obra): o select mostra que falta escolher
   const v = cmpDestinoValor(it), incompleto = /:$/.test(v);
@@ -2038,10 +2105,15 @@ function cmpRecSoma(){
   const s = (_cmpRec?.itens || []).reduce((a, it) => a + Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0), 0) + Number($("cmp-rec-frete").value || 0);
   $("cmp-rec-soma").textContent = `Total dos itens + frete: ${brl(s)}`;
 }
+/* lote S55 (#175): acabou o item livre da nota (cmpRecAddItem(null)); a linha nasce de um produto do catálogo. Serviço
+   consumido não vai para o estoque: nasce com destino do pedido ou "obra" a escolher. */
 function cmpRecAddItem(p){
+  if(!p?.id) return;
+  const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv;
   const d = _cmpRec.pedido ? cmpDestinoDoValor(cmpDestinoPadraoDe(_cmpRec.pedido)) : { destino: "estoque", obra_id: null, equipamento_id: null };
-  _cmpRec.itens.push({ pedido_item_id: null, produto_id: p?.id || null, produto_txt: p ? `${p.codigo} — ${p.nome}` : "", casamento: p ? "manual" : null, livre: !p, descricao: p ? `${p.codigo} — ${p.nome}` : "", unidade: p?.unidade || "un", pendente: null, quantidade_nf: 1,
-    valor_unitario_nf: Number(p?.custo_ultimo || 0), categoria_custo: p?.categoria_custo || "peca", ...(p ? d : { destino: d.destino === "estoque" ? "obra" : d.destino, obra_id: d.obra_id, equipamento_id: d.equipamento_id }) });
+  if(srv && d.destino === "estoque"){ d.destino = "obra"; d.obra_id = _cmpRec.pedido?.obra_id || null; }
+  _cmpRec.itens.push({ pedido_item_id: null, produto_id: p.id, produto_txt: `${p.codigo} — ${p.nome}`, casamento: "manual", livre: false, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", pendente: null, quantidade_nf: 1,
+    valor_unitario_nf: Number(p.custo_ultimo || 0), categoria_custo: p.categoria_custo || (srv ? "servico_terceiro" : "peca"), ...d });
   renderItensRecebimento();
 }
 function cmpDestinoPadraoDe(p){ return p.equipamento_id ? "eq:" + p.equipamento_id : (p.local_entrega === "obra" && p.obra_id) ? "obra:" + p.obra_id : "estoque"; }
@@ -2054,7 +2126,11 @@ async function confirmarRecebimento(){
   if(!itens.length){ aviso("app-aviso", "Nenhum item com quantidade.", "erro"); return; }
   for(const it of itens){
     if(!it.descricao || !it.descricao.trim()){ aviso("app-aviso", "Há item sem descrição.", "erro"); return; }
-    if(it.destino === "estoque" && !it.produto_id){ aviso("app-aviso", it.pedido_item_id ? `"${it.descricao}" é reposição de estoque e não tem produto do catálogo: case com um produto (campo abaixo do item) antes de confirmar.` : `"${it.descricao}" não tem produto do catálogo e não entra no estoque: case com um produto ou mande para obra, TAG ou setor (aplicação direta).`, "erro"); return; }
+    // lote S55 (#175): toda linha da nota casa com um produto do catálogo (o banco recusa sem); só a linha de um item livre
+    // antigo do pedido (pedido_item_id sem produto) passa, para os pedidos abertos de antes fecharem
+    if(!it.produto_id && !it.pedido_item_id){ aviso("app-aviso", `"${it.descricao}" não tem produto do catálogo: case a linha da NF com um produto (campo abaixo do item) ou cadastre-o com "+ Cadastrar produto / serviço".`, "erro"); return; }
+    if(it.destino === "estoque" && !it.produto_id){ aviso("app-aviso", `"${it.descricao}" é reposição de estoque e não tem produto do catálogo: case com um produto (campo abaixo do item) antes de confirmar.`, "erro"); return; }
+    if(it.destino === "estoque" && cmpProdutoEhServico(it)){ aviso("app-aviso", `"${it.descricao}" é serviço consumido: não entra no estoque, informe obra, TAG ou setor.`, "erro"); return; }
     if(it.destino === "obra" && !it.obra_id || it.destino === "equipamento" && !it.equipamento_id || it.destino === "centro_custo" && !it.centro_custo_id){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
     if(it.pendente != null && Number(it.quantidade_nf) > it.pendente * 1.1 && !confirm(`"${it.descricao}": a nota traz ${num(it.quantidade_nf)} e o pedido tem ${num(it.pendente)} pendente. Receber assim mesmo?`)) return;
   }
@@ -2108,8 +2184,8 @@ async function registrarCompraDireta(){
   if(!itens.length){ aviso("app-aviso", "Nenhum item com quantidade.", "erro"); return; }
   for(const it of itens){
     if(!it.descricao || !it.descricao.trim()){ aviso("app-aviso", "Há item sem descrição.", "erro"); return; }
-    if(it.destino === "estoque" && !it.produto_id){ aviso("app-aviso", `"${it.descricao}" não tem produto do catálogo e não entra no estoque: case com um produto ou mande para obra, TAG ou setor (aplicação direta).`, "erro"); return; }
-    if(it.destino === "estoque" && cmpItemServico(it)){ aviso("app-aviso", `"${it.descricao}" é serviço: o custo vai para obra, TAG ou setor, não para o estoque.`, "erro"); return; }
+    if(!it.produto_id){ aviso("app-aviso", `"${it.descricao}" não tem produto do catálogo: case a linha da NF com um produto ou cadastre-o com "+ Cadastrar produto / serviço" (o item livre saiu no lote S55).`, "erro"); return; }   // lote S55 (#175)
+    if(it.destino === "estoque" && (cmpItemServico(it) || cmpProdutoEhServico(it))){ aviso("app-aviso", `"${it.descricao}" é serviço: o custo vai para obra, TAG ou setor, não para o estoque.`, "erro"); return; }
     if(it.destino === "obra" && !it.obra_id || it.destino === "equipamento" && !it.equipamento_id || it.destino === "centro_custo" && !it.centro_custo_id){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
   }
   const nf = $("cmp-rec-nf").value.trim(), files = [...($("cmp-rec-anexos")?.files || [])];
@@ -2322,11 +2398,12 @@ async function cmpImportarXml(file){
   const casados = _cmpRec.itens.filter(i => i.produto_id).length, semProd = _cmpRec.itens.length - casados;
   const somaItens = _cmpRec.itens.reduce((s, i) => s + i.quantidade_nf * i.valor_unitario_nf, 0);
   const dif = nf.totais.vNF - somaItens - (nf.totais.vFrete || 0);
-  info.innerHTML = `✔ NF <strong>${esc(nf.numero)}</strong> de <strong>${esc(nf.emit.nome)}</strong> (${esc(nf.emit.cnpj)}) · ${nf.itens.length} item(ns): ${casados} casado(s) com o catálogo${semProd ? `, <strong>${esc(semProd)} para casar</strong> (ou mandar como aplicação direta)` : ""}`
+  info.innerHTML = `✔ NF <strong>${esc(nf.numero)}</strong> de <strong>${esc(nf.emit.nome)}</strong> (${esc(nf.emit.cnpj)}) · ${nf.itens.length} item(ns): ${casados} casado(s) com o catálogo${semProd ? `, <strong>${esc(semProd)} para casar</strong> (ou cadastrar com "+ Cadastrar produto / serviço")` : ""}`
     + (nf.duplicatas.length ? ` · ${nf.duplicatas.length} duplicata(s)` : " · sem duplicatas no XML: informe o vencimento")
     + (naoVieram ? ` · ${naoVieram} item(ns) do pedido não vieram nesta nota (ficam pendentes)` : "")
     + (Math.abs(dif) >= 0.05 ? ` · total da NF ${brl(nf.totais.vNF)} difere dos itens + frete em ${brl(dif)} (IPI/ST/desconto)` : "")
-    + (!forn ? `<br>⚠ Emitente não está no cadastro de fornecedores. <button type="button" class="btn-sec btn-sm" id="btn-cmp-rec-criar-forn">Cadastrar a partir da NF</button>` : "")
+    + (!forn ? (cmpPodeOperar() ? `<br>⚠ Emitente não está no cadastro de fornecedores. <button type="button" class="btn-sec btn-sm" id="btn-cmp-rec-criar-forn">Cadastrar a partir da NF</button>`
+                                 : `<br>⚠ Emitente não está no cadastro de fornecedores: peça ao Julio ou ao comprador o cadastro antes de receber.`) : "")   // lote S55 (#180): sem fornecedores_write o insert seria recusado
     + (avisos.length ? "<br>" + avisos.join("<br>") : "");
   $("btn-cmp-rec-criar-forn")?.addEventListener("click", () => comBotaoTravado("btn-cmp-rec-criar-forn", () => cmpCriarFornecedorDaNf(nf.emit)));
   renderItensRecebimento();
@@ -2422,41 +2499,64 @@ async function custosRender(containerId, filtro, cbTotal){
 }
 
 /* ---------- PDF do pedido ---------- */
-async function cmpPdfPedido(){
+/* Lote S55 (#179, Fabrício): semValores = true (botão "PDF sem valores") ou pedido em cotação → "Solicitação de cotação" /
+   "Pedido sem valores": só #, descrição, unidade e quantidade; prazo e condição desejados; sem unitário, IPI, ICMS, total
+   nem aprovador; rodapé pede preço, impostos, frete, prazo, condição e validade citando o número; contato = nome do usuário
+   logado (sem e-mail pessoal nem telefone da empresa, D-179a). Com valores: igual a antes. */
+async function cmpPdfPedido(semValores){
   const p = _cmpAtual; if(!p?.id) return;
   const f = _cmpFornMap[p.fornecedor_id] || {};
   const itens = _cmpItens;
+  const cotacao = p.status === "em_cotacao";
+  semValores = semValores === true || cotacao;
   // lote S53 (#166): total com IPI (itens + IPI + frete − desconto, como o banco); colunas % IPI / % ICMS e a linha do IPI
   const totItens = cmpSomaItens(itens), totIpi = cmpSomaIpi(itens);
   const total = totItens + totIpi + Number(p.frete || 0) - Number(p.desconto || 0);
   const cel = (txt, extra) => `<td style="border:1px solid #ccd;padding:5px;${extra || ""}">${txt}</td>`;
+  const th = (txt, extra) => `<th style="border:1px solid #ccd;padding:5px;${esc(extra || "")}">${esc(txt)}</th>`;
+  const titulo = semValores ? (cotacao ? `SOLICITAÇÃO DE COTAÇÃO ${esc(p.numero)}` : `PEDIDO DE COMPRA ${esc(p.numero)} — sem valores`) : `PEDIDO DE COMPRA ${esc(p.numero)}`;
+  const temForn = !!(f.razao_social);
+  const blocoForn = temForn
+    ? `<strong>Fornecedor</strong><br>${esc(f.razao_social || "")}<br>${f.cpf_cnpj ? "CNPJ/CPF: " + esc(f.cpf_cnpj) + "<br>" : ""}${esc([f.cidade, f.uf].filter(Boolean).join("/"))}<br>${esc(f.telefone || "")} ${esc(f.email || "")}`
+    : `<strong>A quem interessar</strong><br>Pedido em cotação: fornecedor a definir`;
+  const linhaItem = (i, k) => semValores
+    ? `<tr>${cel(k + 1)}${cel(esc(i.descricao) + (cmpTemRateio(i) ? `<div style="font-size:10px;color:#444;">Rateio: ${esc(cmpRateioTxt(i))}</div>` : ""))}${cel(esc(i.unidade || "un"), "text-align:center;")}${cel(num(i.quantidade), "text-align:right;")}</tr>`
+    : `<tr>${cel(k + 1)}${cel(esc(i.descricao) + (cmpTemRateio(i) ? `<div style="font-size:10px;color:#444;">Rateio: ${esc(cmpRateioTxt(i))}</div>` : ""))}${cel(esc(i.unidade || "un"), "text-align:center;")}${cel(num(i.quantidade), "text-align:right;")}${cel(brl(i.valor_unitario), "text-align:right;")}${cel(cmpPct(i.ipi_percentual) || "—", "text-align:right;")}${cel(cmpPct(i.icms_percentual) || "—", "text-align:right;")}${cel(brl(cmpItemTotal(i)), "text-align:right;")}</tr>`;
+  const cabecalhoTabela = semValores
+    ? `<tr style="background:#eef3fa;">${th("#", "text-align:left;")}${th("Descrição", "text-align:left;")}${th("Un")}${th("Qtd", "text-align:right;")}</tr>`
+    : `<tr style="background:#eef3fa;">${th("#", "text-align:left;")}${th("Descrição", "text-align:left;")}${th("Un")}${th("Qtd", "text-align:right;")}${th("Unitário", "text-align:right;")}${th("% IPI", "text-align:right;")}${th("% ICMS", "text-align:right;")}${th("Total com IPI", "text-align:right;")}</tr>`;
+  const rodapeTabela = semValores ? "" : `<tfoot><tr><td colspan="7" style="padding:4px;text-align:right;">Itens</td><td style="padding:4px;text-align:right;">${brl(totItens)}</td></tr>${totIpi ? `<tr><td colspan="7" style="padding:4px;text-align:right;">IPI</td><td style="padding:4px;text-align:right;">${brl(totIpi)}</td></tr>` : ""}${Number(p.frete) ? `<tr><td colspan="7" style="padding:4px;text-align:right;">Frete</td><td style="padding:4px;text-align:right;">${brl(p.frete)}</td></tr>` : ""}${Number(p.desconto) ? `<tr><td colspan="7" style="padding:4px;text-align:right;">Desconto</td><td style="padding:4px;text-align:right;">− ${brl(p.desconto)}</td></tr>` : ""}
+        <tr><td colspan="7" style="padding:6px;text-align:right;font-weight:700;">TOTAL</td><td style="padding:6px;text-align:right;font-weight:700;">${brl(total)}</td></tr></tfoot>`;
+  const rodapeTexto = semValores
+    ? `Favor informar preço unitário, IPI/ICMS, frete, prazo de entrega, condição de pagamento e validade da proposta, citando o número acima. Contato: ${esc(usuarioAtual?.nome || "")}.`
+    : `Favor mencionar o número do pedido na nota fiscal. Entregas na base: seg–sex 7h–17h. ${p.aprovador ? "Aprovado por " + esc(p.aprovador.nome) + (p.aprovado_em ? " em " + dataBR(String(p.aprovado_em).slice(0, 10)) : "") + "." : ""}`;
   // lote S41 (#36): logo oficial e selo ISO pelo helper do core.js; a margem passou do padding para o html2pdf
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#111;">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1B5FA8;padding-bottom:8px;">
       <div>${pdfCabecalhoHTML("", "Itabira/MG")}</div>
-      <div style="text-align:right;"><div style="font-size:16px;font-weight:700;">PEDIDO DE COMPRA ${esc(p.numero)}</div><div>Data: ${dataBR(p.data_pedido)}</div>${p.previsao_entrega ? `<div>Entrega prevista: ${dataBR(p.previsao_entrega)}</div>` : ""}</div>
+      <div style="text-align:right;"><div style="font-size:16px;font-weight:700;">${titulo}</div><div>Data: ${dataBR(p.data_pedido)}</div>${p.previsao_entrega ? `<div>${semValores ? "Prazo desejado" : "Entrega prevista"}: ${dataBR(p.previsao_entrega)}</div>` : ""}</div>
     </div>
     <table style="width:100%;margin:10px 0;font-size:12px;"><tr>
-      <td style="vertical-align:top;width:50%;"><strong>Fornecedor</strong><br>${esc(f.razao_social || "")}<br>${f.cpf_cnpj ? "CNPJ/CPF: " + esc(f.cpf_cnpj) + "<br>" : ""}${esc([f.cidade, f.uf].filter(Boolean).join("/"))}<br>${esc(f.telefone || "")} ${esc(f.email || "")}</td>
-      <td style="vertical-align:top;"><strong>Entrega</strong><br>${p.local_entrega === "obra" ? "Direto na obra: " + esc(cmpObra(p.obra_id)) : "Base CGL — Itabira/MG"}${p.equipamento_id ? "<br>Equipamento: TAG " + esc(cmpEq(p.equipamento_id)) : ""}<br><strong>Condição de pagamento:</strong> ${esc(p.condicao_pagamento || "a combinar")}</td>
+      <td style="vertical-align:top;width:50%;">${blocoForn}</td>
+      <td style="vertical-align:top;"><strong>Entrega</strong><br>${p.local_entrega === "obra" ? "Direto na obra: " + esc(cmpObra(p.obra_id)) : "Base CGL — Itabira/MG"}${p.equipamento_id ? "<br>Equipamento: TAG " + esc(cmpEq(p.equipamento_id)) : ""}<br><strong>${semValores ? "Condição de pagamento desejada" : "Condição de pagamento"}:</strong> ${esc(p.condicao_pagamento || "a combinar")}</td>
     </tr></table>
     <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
-      <thead><tr style="background:#eef3fa;"><th style="border:1px solid #ccd;padding:5px;text-align:left;">#</th><th style="border:1px solid #ccd;padding:5px;text-align:left;">Descrição</th><th style="border:1px solid #ccd;padding:5px;">Un</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Qtd</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Unitário</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">% IPI</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">% ICMS</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Total com IPI</th></tr></thead>
-      <tbody>${itens.map((i, k) => `<tr>${cel(k + 1)}${cel(esc(i.descricao) + (cmpTemRateio(i) ? `<div style="font-size:10px;color:#444;">Rateio: ${esc(cmpRateioTxt(i))}</div>` : ""))}${cel(esc(i.unidade || "un"), "text-align:center;")}${cel(num(i.quantidade), "text-align:right;")}${cel(brl(i.valor_unitario), "text-align:right;")}${cel(cmpPct(i.ipi_percentual) || "—", "text-align:right;")}${cel(cmpPct(i.icms_percentual) || "—", "text-align:right;")}${cel(brl(cmpItemTotal(i)), "text-align:right;")}</tr>`).join("")}</tbody>
-      <tfoot><tr><td colspan="7" style="padding:4px;text-align:right;">Itens</td><td style="padding:4px;text-align:right;">${brl(totItens)}</td></tr>${totIpi ? `<tr><td colspan="7" style="padding:4px;text-align:right;">IPI</td><td style="padding:4px;text-align:right;">${brl(totIpi)}</td></tr>` : ""}${Number(p.frete) ? `<tr><td colspan="7" style="padding:4px;text-align:right;">Frete</td><td style="padding:4px;text-align:right;">${brl(p.frete)}</td></tr>` : ""}${Number(p.desconto) ? `<tr><td colspan="7" style="padding:4px;text-align:right;">Desconto</td><td style="padding:4px;text-align:right;">− ${brl(p.desconto)}</td></tr>` : ""}
-        <tr><td colspan="7" style="padding:6px;text-align:right;font-weight:700;">TOTAL</td><td style="padding:6px;text-align:right;font-weight:700;">${brl(total)}</td></tr></tfoot>
+      <thead>${cabecalhoTabela}</thead>
+      <tbody>${itens.map(linhaItem).join("")}</tbody>
+      ${rodapeTabela}
     </table>
     ${p.observacoes ? `<p style="margin-top:10px;"><strong>Observações:</strong> ${esc(p.observacoes).replace(/\n/g, "<br>")}</p>` : ""}
-    <p style="margin-top:14px;font-size:11px;color:#444;">Favor mencionar o número do pedido na nota fiscal. Entregas na base: seg–sex 7h–17h. ${p.aprovador ? "Aprovado por " + esc(p.aprovador.nome) + (p.aprovado_em ? " em " + dataBR(String(p.aprovado_em).slice(0, 10)) : "") + "." : ""}</p>
+    <p style="margin-top:14px;font-size:11px;color:#444;">${rodapeTexto}</p>
     ${pdfRodapeHTML()}
   </div>`;
   const wrap = document.createElement("div"); wrap.innerHTML = html;
+  const arquivo = semValores ? (cotacao ? `Cotacao_${p.numero}.pdf` : `Pedido_${p.numero}_sem_valores.pdf`) : `Pedido_${p.numero}.pdf`;
   if(typeof html2pdf === "undefined"){
     const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }
     w.document.write(`<html><head><title>${esc(p.numero)}</title><style>@page { size: A4; margin: 14mm; }</style></head><body>${/* html */ html}</body></html>`); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); return;
   }
   try {
-    await pdfGerar(wrap, { filename: `Pedido_${p.numero}.pdf`, largura: 182, topo: 14 });
+    await pdfGerar(wrap, { filename: arquivo, largura: 182, topo: 14 });
   } catch(e){ aviso("app-aviso", "Erro ao gerar o PDF: " + (e.message || e), "erro"); }
 }
 
@@ -2511,7 +2611,10 @@ function ligarCompras(){
   $("cmp-forn")?.addEventListener("change", () => { const f = _cmpFornMap[$("cmp-forn").value]; if(f?.condicao_pagamento_padrao && !$("cmp-cond").value) $("cmp-cond").value = f.condicao_pagamento_padrao;
     if(f?.prazo_entrega_dias && !$("cmp-prev").value){ const d = new Date(); d.setDate(d.getDate() + Number(f.prazo_entrega_dias)); $("cmp-prev").value = d.toISOString().slice(0, 10); cmpAtualizarChips(); } });
   cmpLigarBusca("cmp-busca-prod", "cmp-res-prod", p => cmpAddItem(p));
-  $("btn-cmp-item-livre")?.addEventListener("click", () => cmpAddItem(null));
+  // lote S55 (#175): "+ Item livre" saiu (btn-cmp-item-livre); no lugar, "+ Cadastrar serviço" (mesmo modal do cadastro rápido)
+  $("btn-cmp-srv-novo")?.addEventListener("click", () => cmpAbrirProdutoRapido("servico"));
+  $("btn-cmp-rec-prod-novo")?.addEventListener("click", () => cmpAbrirProdutoRapido("produto", "rec"));
+  $("cmp-prod-tipo")?.addEventListener("change", cmpProdTipoMudou);
   // lote S53 (#149): rateio entre TAGs (modal) e "+ TAGs" do cabeçalho; trocar a TAG do cabeçalho à mão desfaz o padrão
   $("btn-cmp-rat-padrao")?.addEventListener("click", () => cmpAbrirRateio(null));
   $("cmp-equip")?.addEventListener("change", () => { if(_cmpRatPadrao.length && _cmpRatPadrao[0] !== $("cmp-equip").value){ _cmpRatPadrao = []; cmpRatPadraoTxt(); } });
@@ -2525,7 +2628,7 @@ function ligarCompras(){
   // fase 102: cotações e novo produto a partir do pedido (#160)
   $("btn-cmp-cot-salvar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-cot-salvar", cmpSalvarCotacao));
   $("btn-cmp-cot-cancelar")?.addEventListener("click", cmpFecharFormCotacao);
-  $("btn-cmp-prod-novo")?.addEventListener("click", cmpAbrirProdutoRapido);
+  $("btn-cmp-prod-novo")?.addEventListener("click", () => cmpAbrirProdutoRapido("produto"));
   $("btn-cmp-prod-fechar")?.addEventListener("click", cmpFecharProdutoRapido);
   $("btn-cmp-prod-salvar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-prod-salvar", cmpSalvarProdutoRapido));
   $("cmp-prod-cat")?.addEventListener("change", cmpProdTipoInfo);
@@ -2544,8 +2647,7 @@ function ligarCompras(){
     ["dragleave","drop"].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove("arrastando"); }));
     zona.addEventListener("drop", e => { const f = e.dataTransfer?.files && e.dataTransfer.files[0]; if(f) cmpImportarXml(f); });
   }
-  cmpLigarBusca("cmp-rec-busca", "cmp-rec-res", p => cmpRecAddItem(p));
-  $("btn-cmp-rec-livre")?.addEventListener("click", () => cmpRecAddItem(null));
+  cmpLigarBusca("cmp-rec-busca", "cmp-rec-res", p => cmpRecAddItem(p));   // lote S55 (#175): "+ Item livre" da nota saiu (btn-cmp-rec-livre)
 
   // custo avulso
   $("btn-cmp-av-fechar")?.addEventListener("click", fecharCustoAvulso);

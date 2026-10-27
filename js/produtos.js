@@ -16,7 +16,11 @@ let _prodTotalFiltro = 0;     // N: linhas que a consulta atual acha
 let _prodTodos = false;       // "mostrar todos": sem o corte de saldo, paginado
 let _prodPagina = 0;
 const PROD_PAGINA = 300;
-const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo";
+const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo,tipo_item";   // lote S55 (#175): tipo_item
+/* Lote S55 (#175, decisão do Bernardo de 27/10/2026): serviço consumido (frete, hospedagem, locação, serviço de terceiro) é
+   produto com tipo_item = "servico": sem estoque, sem reposição e sempre aplicação direta (o banco força pelo gatilho
+   trg_produtos_tipo_item). Não confundir com o módulo Serviços (js/servicos.js), catálogo do que a CGL executa. */
+function prodTagServico(p){ return p && p.tipo_item === "servico" ? ' <span class="tag azul" title="Serviço consumido: aplicação direta, sem estoque">serviço</span>' : ""; }
 
 /* ---------- Categorias ---------- */
 let _prodCatTipo = {};   // fase 108b: id da categoria -> tipo de compra padrão (reposicao | aplicacao_direta | null)
@@ -39,10 +43,16 @@ let _prodCatOriginal = null;   // categoria do produto aberto, como veio do banc
 function prodCategoriaEhSesmt(catId){
   return !!catId && PROD_CATEGORIAS_SESMT.includes(String(_prodCategorias[catId] || "").trim().toUpperCase());
 }
-/* "tudo" (produtos_write: admin, almoxarife, comprador, gestor de acessórios; diretor), "sesmt" ou "" (só consulta) */
+/* Lote S55 (#173 Thayse, #182 Maria Eduarda): módulo extra "produtos" = perfil "cadastro": cadastra e edita produto de
+   qualquer categoria, sem saldo, custo nem situação (ativo) — o gatilho fn_produtos_sesmt_guarda recusa — e não exclui
+   nem cria categoria. Espelha produto_pode_cadastrar() e as policies produtos_extra_insert/update. */
+const PROD_MSG_SO_CADASTRO = "Seu perfil edita o cadastro do produto, não o saldo, o custo nem a situação.";
+/* "tudo" (produtos_write: admin, almoxarife, comprador, gestor de acessórios; diretor), "cadastro" (módulo extra produtos),
+   "sesmt" ou "" (só consulta) */
 function prodPerfilEdicao(){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return "";
   if(["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios"].includes(usuarioAtual.cargo)) return "tudo";
+  if(typeof temModuloExtra === "function" && temModuloExtra("produtos")) return "cadastro";   // lote S55
   if(usuarioAtual.cargo === "sesmt" || (typeof temModuloExtra === "function" && temModuloExtra("produtos_sesmt"))) return "sesmt";
   return "";
 }
@@ -73,13 +83,14 @@ function prodAplicarPerfil(){
 
 /* ---------- Produtos ---------- */
 function prodTermo(){ return ($("prod-busca")?.value || "").trim().replace(/[%,()]/g, " ").trim(); }
-function prodModoPadrao(){ return !prodTermo() && !($("prod-f-categoria")?.value) && !($("prod-f-estoque")?.value) && !_prodTodos; }
+function prodModoPadrao(){ return !prodTermo() && !($("prod-f-categoria")?.value) && !($("prod-f-estoque")?.value) && !($("prod-f-tipo")?.value) && !_prodTodos; }
 async function carregarProdutos(){
-  const termo = prodTermo(), fCat = $("prod-f-categoria")?.value || "", fEst = $("prod-f-estoque")?.value || "";
+  const termo = prodTermo(), fCat = $("prod-f-categoria")?.value || "", fEst = $("prod-f-estoque")?.value || "", fTipo = $("prod-f-tipo")?.value || "";
   const baixo = fEst === "baixo";
   let q = sb.from("produtos").select(PROD_COLS, { count: "exact" }).eq("ativo", fEst !== "inativos").order("nome");
   if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo}`);
   if(fCat) q = q.eq("categoria_id", fCat);
+  if(fTipo) q = q.eq("tipo_item", fTipo);   // lote S55 (#175): Produtos / Serviços consumidos
   if(fEst === "zero") q = q.lte("estoque_atual", 0);
   else if(fEst === "positivo") q = q.gt("estoque_atual", 0);
   else if(baixo) q = q.gt("estoque_minimo", 0);           // o banco não compara duas colunas: traz os que têm mínimo e filtra abaixo
@@ -107,7 +118,7 @@ function prodFiltrados(){ return _produtos; }
 function renderProdModo(){
   const el = $("prod-modo"); if(!el) return;
   const termo = prodTermo(), total = _prodTotalFiltro, n = _produtos.length;
-  if(termo || $("prod-f-categoria")?.value || $("prod-f-estoque")?.value){
+  if(termo || $("prod-f-categoria")?.value || $("prod-f-estoque")?.value || $("prod-f-tipo")?.value){
     el.innerHTML = total > n ? `Mostrando ${n} de ${num(total)} resultado(s): refine a busca para ver os outros.` : "";
     return;
   }
@@ -167,10 +178,10 @@ function renderProdLista(dados){
     : "";
   const linhas = exibidos.map(p => {
     const baixo = Number(p.estoque_atual) <= Number(p.estoque_minimo);
-    const conf = p.inventario_conferido ? "" : ' <span class="tag ambar" title="Inventário a conferir">⚠</span>';
+    const conf = p.inventario_conferido || p.tipo_item === "servico" ? "" : ' <span class="tag ambar" title="Inventário a conferir">⚠</span>';
     return `<tr class="linha-clicavel" data-id="${esc(p.id)}">
       <td>${esc(p.codigo)}</td>
-      <td>${esc(p.nome)}${conf}</td>
+      <td>${esc(p.nome)}${prodTagServico(p)}${conf}</td>
       <td>${esc(_prodCategorias[p.categoria_id] || "—")}</td>
       <td>${esc(p.unidade)}</td>
       <td class="num">${num(p.estoque_atual)}</td>
@@ -203,7 +214,7 @@ function renderProdKanban(dados){
     const cards = itens.map(p => {
       const baixo = Number(p.estoque_atual) <= Number(p.estoque_minimo);
       return `<div class="serv-kan-card linha-clicavel" data-id="${esc(p.id)}">
-        <div class="serv-kan-card-nome">${esc(p.codigo)} · ${esc(p.nome)}</div>
+        <div class="serv-kan-card-nome">${esc(p.codigo)} · ${esc(p.nome)}${prodTagServico(p)}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">${num(p.estoque_atual)} ${esc(p.unidade)}</span>
           ${baixo ? '<span class="tag vermelho" style="font-size:var(--txt-xs);">baixo</span>' : ''}
@@ -287,6 +298,8 @@ function novoProduto(){
   $("prod-ideal").value = "";
   $("prod-reposicao").checked = false;
   $("prod-conferido").checked = true;
+  if($("prod-tipo-item")) $("prod-tipo-item").value = "produto";   // lote S55 (#175)
+  prodAplicarTipoItem();
   prodAplicarPerfil();   // lote S51 (produto novo: sem Excluir)
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });   // fase 105a
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
@@ -311,6 +324,8 @@ async function abrirProduto(id){
   $("prod-localizacao").value = data.localizacao || "";
   $("prod-descricao").value   = data.descricao || "";
   $("prod-conferido").checked = data.inventario_conferido === true;
+  if($("prod-tipo-item")) $("prod-tipo-item").value = data.tipo_item === "servico" ? "servico" : "produto";   // lote S55 (#175)
+  prodAplicarTipoItem();
   // fase 100: categoria de custo, CA e troca do EPI
   _prodTemEpi = Object.prototype.hasOwnProperty.call(data, "ca");
   prodPreencherCatCusto(data.categoria_custo);
@@ -361,9 +376,33 @@ function abrirFichaProdVisual(p){
   $("prod-ficha-conf-chip").innerHTML = conf
     ? '<span class="tag verde">Conferido</span>'
     : '<span class="tag ambar">⚠ A conferir</span>';
-  $("prod-ficha-titulo").textContent = prodEditId ? `${p.codigo} — ${p.nome}` : "Novo produto";
+  $("prod-ficha-titulo").textContent = (prodEditId ? `${p.codigo} — ${p.nome}` : "Novo produto") + (p.tipo_item === "servico" ? " · serviço consumido" : "");   // lote S55 (#175)
 
   ativarTabProd("geral");
+}
+
+/* Lote S55 (#175): escolher "Serviço consumido" trava o tipo de compra em Aplicação direta, desmarca e desabilita a
+   reposição, o mínimo e o ideal (o banco força o mesmo pelo gatilho) e sugere a unidade vb quando ainda é "un". */
+function prodAplicarTipoItem(){
+  const sel = $("prod-tipo-item"); if(!sel) return;
+  const servico = sel.value === "servico";
+  const tc = $("prod-tipo-compra");
+  if(tc){
+    if(!tc.dataset.titulo) tc.dataset.titulo = tc.title;   // guarda a dica original do campo
+    if(servico) tc.value = "aplicacao_direta";
+    tc.disabled = servico;
+    tc.title = servico ? "Serviço consumido é sempre aplicação direta (obra, TAG ou setor): não entra no estoque" : tc.dataset.titulo;
+  }
+  [["prod-reposicao", "Serviço consumido não entra na lista de reposição"], ["prod-minimo", "Serviço consumido não tem estoque mínimo"], ["prod-ideal", "Serviço consumido não tem estoque ideal"]].forEach(([id, dica]) => {
+    const el = $(id); if(!el) return;
+    if(servico){ if(el.type === "checkbox") el.checked = false; else el.value = el.id === "prod-minimo" ? 0 : ""; }
+    el.disabled = servico;
+    el.title = servico ? dica : "";
+  });
+  const un = $("prod-unidade");
+  if(servico && un && (un.value === "un" || !un.value) && [...un.options].some(o => o.value === "vb")) un.value = "vb";
+  const info = $("prod-tipo-item-info");
+  if(info) info.textContent = servico ? "Serviço que a CGL consome (frete, hospedagem, locação, serviço de terceiro): aplicação direta, sem estoque. Não é o módulo Serviços (o que a CGL executa)." : "";
 }
 
 function ativarTabProd(nome){
@@ -399,6 +438,8 @@ async function salvarProduto(){
   // fase 100: categoria de custo sempre (coluna da fase 53); CA e troca só com a migration da fase 100 aplicada
   if($("prod-cat-custo")) reg.categoria_custo = $("prod-cat-custo").value || null;
   if($("prod-tipo-compra")) reg.tipo_compra_padrao = $("prod-tipo-compra").value || null;   // fase 108b (nulo = pela categoria)
+  if($("prod-tipo-item")) reg.tipo_item = $("prod-tipo-item").value === "servico" ? "servico" : "produto";   // lote S55 (#175)
+  if(reg.tipo_item === "servico"){ reg.tipo_compra_padrao = "aplicacao_direta"; reg.controle_reposicao = false; reg.estoque_minimo = 0; reg.estoque_ideal = null; }
   if(_prodTemEpi){
     reg.ca = ($("prod-ca")?.value || "").trim() || null;
     const val = $("prod-epi-validade")?.value || "";
@@ -424,10 +465,14 @@ async function salvarProduto(){
     result = await sb.from("produtos").insert(reg).select().single();
   }
   if(result.error){
-    // recusa da policy do SESMT: no insert vem 42501; no update de produto fora do SESMT nenhuma linha volta (PGRST116)
+    // recusa da policy do SESMT: no insert vem 42501; no update de produto fora do SESMT nenhuma linha volta (PGRST116).
+    // lote S55: para o perfil "cadastro" a recusa é da guarda de saldo/custo/ativo (a ficha não manda esses campos; se
+    // vier 42501 é o banco dizendo que o módulo expirou ou que algo mudou saldo/custo)
     const recusa = result.error.code === "42501" || result.error.code === "PGRST116" || /row-level security/i.test(result.error.message || "");
-    aviso("app-aviso", perfil === "sesmt" && recusa && !/^Seu perfil/.test(result.error.message || "")
-      ? PROD_MSG_SO_SESMT : "Não foi possível salvar: " + result.error.message, "erro");
+    const msgBanco = /^Seu perfil/.test(result.error.message || "");
+    aviso("app-aviso", perfil === "sesmt" && recusa && !msgBanco ? PROD_MSG_SO_SESMT
+      : perfil === "cadastro" && recusa && !msgBanco ? PROD_MSG_SO_CADASTRO
+      : "Não foi possível salvar: " + result.error.message, "erro");
     return;
   }
   prodEditId = result.data.id;
@@ -477,7 +522,8 @@ function ligarProdutos(){
   // lote S42: busca e filtros consultam o servidor
   const recarregar = () => { _prodPagina = 0; carregarProdutos(); };
   $("prod-busca")?.addEventListener("input", debounce(recarregar, 250));
-  ["prod-f-categoria","prod-f-estoque"].forEach(id => $(id)?.addEventListener("change", recarregar));
+  ["prod-f-categoria","prod-f-estoque","prod-f-tipo"].forEach(id => $(id)?.addEventListener("change", recarregar));   // lote S55: filtro Tipo
+  $("prod-tipo-item")?.addEventListener("change", prodAplicarTipoItem);   // lote S55 (#175)
   $("prod-modo")?.addEventListener("click", e => {
     const a = e.target.closest("[data-prod-modo]"); if(!a) return;
     e.preventDefault();

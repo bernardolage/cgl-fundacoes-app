@@ -278,28 +278,43 @@ function dashTituloAcao(t){
 async function dashCarregarFila(){
   const cont = $("dash-fila");
   if(!cont) return;
-  const [dados, sep] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*"))]);   // fase 83
+  // fase 83: separações; lote S55 (#176): menções "@usuário" não lidas (vw_sc_minha_fila_mencoes, ordem 45; tolerante à ausência da view)
+  const [dados, sep, menc] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*"))]);
   if(!dados) return;
-  _dashFila = dados.concat(sep || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
+  if(typeof histMencoesPendentesDefinir === "function") histMencoesPendentesDefinir((menc || []).map(m => m.registro_id));
+  _dashFila = dados.concat(sep || [], menc || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
-    ? _dashFila.map((a, i) => dashChamadoEsperando(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
+    ? _dashFila.map((a, i) => dashChamadoEsperando(a) || dashChamadoConfirmar(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
     : `<p class="vazio">Nada esperando por você.</p>`;
 }
 /* Lote S47: chamado esperando a minha resposta (ramo 41 de vw_sc_minha_fila) mostra a pergunta e, quando há
    resposta sugerida, aprova com um clique (RPC chamado_aprovar, que aplica o status sugerido). */
 const dashChamadoEsperando = (a) => !!a && a.secao === "chamados" && Number(a.ordem) === 41 && !!a.registro_id;
+/* Lote S55 (#185): "Confira: #n" (ramo 42) com "✅ Funcionou" inline (RPC chamado_confirmar, só o autor); o card sai da fila. */
+const dashChamadoConfirmar = (a) => !!a && a.secao === "chamados" && Number(a.ordem) === 42 && !!a.registro_id;
 function dashLinhaFilaChamado(a, i){
   const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
-  const sugerida = /^Resposta sugerida:/.test(a.detalhe || "") && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+  const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+  const sugerida = dashChamadoEsperando(a) && /^Resposta sugerida:/.test(a.detalhe || "") && !leitura;
+  const confirmar = dashChamadoConfirmar(a) && !leitura;
   return `<div class="dash-pendencia-item clicavel" data-fila="${i}" title="Abrir o chamado">
       <span class="tag ${n.cor}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
       <span class="dash-fila-acoes">
         ${sugerida ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-aprovar="${i}" title="Envia a resposta sugerida em seu nome">✅ Aprovar</button>` : ""}
+        ${confirmar ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-confirmar="${i}" title="Registra que a correção funcionou">✅ Funcionou</button>` : ""}
         <button type="button" class="btn-sec btn-sm" data-fila-abrir="${i}">Abrir</button>
       </span>
     </div>`;
+}
+async function dashConfirmarChamadoFila(a){
+  if(!a || !a.registro_id) return;
+  const { error } = await sb.rpc("chamado_confirmar", { p_id: a.registro_id, p_texto: null });
+  if(error){ aviso("app-aviso", "Não foi possível confirmar: " + error.message, "erro"); return; }
+  aviso("app-aviso", `${String(a.titulo || "").replace(/^Confira: /, "").replace(/,.*$/, "")}: confirmação registrada. Obrigado!`, "ok");
+  await dashCarregarFila();
+  if(typeof carregarChamados === "function" && typeof _chamCarregado !== "undefined" && _chamCarregado) carregarChamados(true);
 }
 async function dashAprovarChamadoFila(btn, a){
   if(!a || !a.registro_id) return;
@@ -506,10 +521,39 @@ async function dashAbrirRegularizar(a){
   }
 }
 
+/* Lote S55 (#176): card "Você foi mencionado…" (ordem 45 de vw_sc_minha_fila_mencoes) → a ficha do registro com o chatter.
+   A view devolve a seção, não a entidade: caução e permuta chegam como "medicoes" e o título diz qual. Sem acesso ao menu,
+   irParaSecao() já avisa e para aqui. Ao montar o chatter da ficha, historico.js marca a menção como lida e refaz a fila. */
+const DASH_FICHA_POR_SECAO = {
+  compras:      async (id) => { if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false); if(typeof abrirPedido === "function") await abrirPedido(id); },
+  manutencao:   (id) => { if(typeof abrirManutencao === "function") abrirManutencao(id); },
+  mobilizacoes: (id) => { if(typeof abrirMobilizacao === "function") abrirMobilizacao(id); },
+  equipamentos: (id) => { if(typeof abrirEquipamento === "function") abrirEquipamento(id); },
+  acessorios:   (id) => { if(typeof abrirAcessorio === "function") abrirAcessorio(id); },
+  clientes:     (id) => { if(typeof abrirCliente === "function") abrirCliente(id); },
+  fornecedores: (id) => { if(typeof abrirFornecedor === "function") abrirFornecedor(id); },
+  centros:      (id) => { if(typeof abrirCentroCusto === "function") abrirCentroCusto(id); },
+  fabricacao:   (id) => { if(typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id); },
+  // D-176e: permuta abre pela ficha por id (medPmAbrirPorId); caução carrega a visão Caução e abre por id (medCauAbrir:
+  // medição com aba Caução quando há medição, senão o modal da caução)
+  medicoes:     async (id, a) => {
+    if(/permuta/i.test(a.titulo || "")){ if(typeof medPmAbrirPorId === "function") await medPmAbrirPorId(id); return; }
+    if(typeof medCauAbrirPreset === "function") medCauAbrirPreset("");
+    if(typeof medCauCarregar === "function") await medCauCarregar(true);
+    if(typeof medCauAbrir === "function") await medCauAbrir(id);
+  }
+};
+async function dashAbrirMencao(a){
+  const abrir = DASH_FICHA_POR_SECAO[a.secao];
+  if(a.secao !== "medicoes" || !/permuta/i.test(a.titulo || "")){ if(!irParaSecao(a.secao)) return; }   // medPmAbrirPorId muda de seção sozinho
+  if(abrir && a.registro_id) await abrir(a.registro_id, a);
+}
+
 /* Uma linha de ação ou da fila → a tela de origem */
 async function dashAbrirAcao(a){
   if(!a) return;
   const id = a.registro_id;
+  if(Number(a.ordem) === 45 && id){ await dashAbrirMencao(a); return; }   // lote S55: menção no chatter
   switch(a.secao){
     case "obras":
       if(a.obra_id) dashAbrirObra(a.obra_id, a.setor === "contratos" ? "contrato" : /estaca/i.test(a.titulo) ? "estacas" : /marcado/i.test(a.titulo) ? "timeline" : null);
@@ -714,6 +758,9 @@ function ligarSalaDeComando(){
     // lote S47: "Aprovar" inline não abre a ficha
     const ap = e.target.closest("[data-fila-aprovar]");
     if(ap){ e.stopPropagation(); comBotaoTravado(ap, () => dashAprovarChamadoFila(ap, _dashFila[Number(ap.dataset.filaAprovar)])); return; }
+    // lote S55: "Funcionou" inline também não abre a ficha
+    const cf = e.target.closest("[data-fila-confirmar]");
+    if(cf){ e.stopPropagation(); comBotaoTravado(cf, () => dashConfirmarChamadoFila(_dashFila[Number(cf.dataset.filaConfirmar)])); return; }
     const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]);
   });
   $("dash-regularizar")?.addEventListener("click", (e) => { const el = e.target.closest("[data-reg]"); if(el) dashAbrirRegularizar(_dashReg[Number(el.dataset.reg)]); });

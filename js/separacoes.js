@@ -447,7 +447,7 @@ function mostrarPainelSeparacoes(){ $("sep-ficha").style.display = "none"; $("se
 /* ---------- busca no catálogo (ficha, modal e materiais da mobilização) ---------- */
 async function sepBuscarProduto(termo){
   const t = termo.replace(/[%,()]/g, " ").trim(); if(t.length < 2) return [];
-  const { data } = await sb.from("produtos").select(SEP_PROD_COLS).eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
+  const { data } = await sb.from("produtos").select(SEP_PROD_COLS).eq("ativo", true).eq("tipo_item", "produto").or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
   return data || [];
 }
 /* lote S53 (#64): peças de acessório ativas pela marcação (BA10) ou pelo tipo ("bomba" → bomba_argamassa, bomba_agua),
@@ -502,7 +502,7 @@ function sepLigarBusca(inp, lista, aoEscolher, opts){
     if(e.key !== "Enter") return; e.preventDefault();
     const t = inp.value.trim(); if(!t) return;
     const x = t.replace(/[,()]/g, " ");
-    const { data } = await sb.from("produtos").select(SEP_PROD_COLS).eq("ativo", true).or(`codigo.eq.${x},codigo_barras.eq.${x}`).limit(2);
+    const { data } = await sb.from("produtos").select(SEP_PROD_COLS).eq("ativo", true).eq("tipo_item", "produto").or(`codigo.eq.${x},codigo_barras.eq.${x}`).limit(2);
     let p = (data || []).length === 1 ? data[0] : null;
     if(!p){
       await buscar(t);

@@ -155,7 +155,7 @@ async function manFetchPrev(){
   _manPrev = await manTodas((de, ate) => sb.from("vw_manutencao_preventiva").select("*").order("codigo").order("ordem").range(de, ate));
 }
 async function manFetchChecks(){
-  _manChecks = await manTodas((de, ate) => sb.from("checklists").select("id,data,equipamento_id,mobilizacao_id,manutencao_id,horimetro,km,resultado,responsavel_id,vistoriador,operador,created_at,equipamento:equipamentos(codigo,nome),mobilizacao:mobilizacoes(obra_id,status,data_mobilizacao_prev),os:manutencoes(numero,status),itens:checklist_itens(situacao,atividade_id)").order("data", { ascending: false }).order("created_at", { ascending: false }).range(de, ate));
+  _manChecks = await manTodas((de, ate) => sb.from("checklists").select("id,data,equipamento_id,mobilizacao_id,manutencao_id,horimetro,km,resultado,responsavel_id,vistoriador,operador,created_at,equipamento:equipamentos(codigo,nome),mobilizacao:mobilizacoes(obra_id,status,data_mobilizacao_prev),os:manutencoes!checklists_manutencao_id_fkey(numero,status),itens:checklist_itens(situacao,atividade_id)").order("data", { ascending: false }).order("created_at", { ascending: false }).range(de, ate));
 }
 /* custo da hora da oficina (empresa_config; o mesmo dos reparos e da fabricação) */
 function manRenderCustoHora(){
@@ -571,7 +571,7 @@ async function manCheckAbrir(id, aoFechar){
   if(!_manCarregado) await manCarregarBase();
   if(aoFechar) _manCheckOrigem = aoFechar;
   const [c, it] = await Promise.all([
-    sb.from("checklists").select("*,equipamento:equipamentos(codigo,nome,horimetro,km),mobilizacao:mobilizacoes(obra_id,status,data_mobilizacao_prev),os:manutencoes(numero,status),modelo:checklist_modelos(nome,versao)").eq("id", id).maybeSingle(),
+    sb.from("checklists").select("*,equipamento:equipamentos(codigo,nome,horimetro,km),mobilizacao:mobilizacoes(obra_id,status,data_mobilizacao_prev),os:manutencoes!checklists_manutencao_id_fkey(numero,status),modelo:checklist_modelos(nome,versao)").eq("id", id).maybeSingle(),
     sb.from("checklist_itens").select("*").eq("checklist_id", id).order("ordem")
   ]);
   if(c.error || !c.data){ aviso("app-aviso", "Não foi possível abrir o checklist" + (c.error ? ": " + c.error.message : "."), "erro"); return; }
@@ -649,7 +649,7 @@ function manCheckFechar(){
 /* seção 8 do drawer da mobilização (js/mobilizacoes.js chama) */
 async function manRenderChecklistMob(m, containerId){
   const box = $(containerId); if(!box || !m) return;
-  const { data, error } = await sb.from("checklists").select("id,data,horimetro,resultado,manutencao_id,vistoriador,os:manutencoes(numero),itens:checklist_itens(situacao)").eq("mobilizacao_id", m.id).order("data", { ascending: false });
+  const { data, error } = await sb.from("checklists").select("id,data,horimetro,resultado,manutencao_id,vistoriador,os:manutencoes!checklists_manutencao_id_fkey(numero),itens:checklist_itens(situacao)").eq("mobilizacao_id", m.id).order("data", { ascending: false });
   if(error){ box.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   const lista = data || [];
   const aprovado = lista.some(c => c.resultado === "aprovado");

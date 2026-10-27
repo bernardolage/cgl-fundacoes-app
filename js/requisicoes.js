@@ -40,9 +40,12 @@ const REQ_FILTRO_CONFERIR = "_conferir";   // fase 102: requisições com recebi
 const REQ_SEP_STATUS = { aberta: ["separação aberta", "azul"], em_separacao: ["em separação", "ambar"], separada: ["separada: pronta para retirar", "verde"],
   entregue: ["entregue", "verde"], cancelada: ["cancelada", "cinza"] };
 
-/* = policy requisicoes_write; lote S48 (#123): + gestor_manutencao (a fase 92c já o pôs no banco) */
+/* = policy requisicoes_write; lote S48 (#123): + gestor_manutencao (a fase 92c já o pôs no banco);
+   lote S55 (#180): + módulo extra "compras" (Maria Eduarda: requisição e recebimento de NF, sem alçada) */
 function reqPodePedir(){
-  return !!usuarioAtual && ["admin","diretor","comprador","almoxarife","encarregado","engenheiro","assistente_engenharia","mecanico","operador","logistica","gestor_acessorios","financeiro","gestor_frota","gestor_manutencao"].includes(usuarioAtual.cargo);
+  if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return false;
+  return ["admin","diretor","comprador","almoxarife","encarregado","engenheiro","assistente_engenharia","mecanico","operador","logistica","gestor_acessorios","financeiro","gestor_frota","gestor_manutencao"].includes(usuarioAtual.cargo)
+    || (typeof temModuloExtra === "function" && temModuloExtra("compras"));
 }
 function reqPodeDecidir(){ return typeof cmpPodeOperar === "function" && cmpPodeOperar(); }
 function reqTag(st){ const o = REQ_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
@@ -51,6 +54,8 @@ function reqDestino(r){
   return r.equipamento_id ? "TAG " + (cmpEq(r.equipamento_id) || "?") : r.obra_id ? (cmpObra(r.obra_id) || "obra") : "Estoque (reposição da base)";
 }
 function reqItemNome(it){ return it.produto ? `${it.produto.codigo} — ${it.produto.nome}` : (it.descricao || "item"); }
+/* lote S55 (#175): serviço consumido é produto com tipo_item = "servico" (tag na linha) */
+function reqTagServico(it){ return it.produto && it.produto.tipo_item === "servico" ? ' <span class="tag azul" title="Serviço consumido: aplicação direta, sem estoque">serviço</span>' : ""; }
 /* fase 102: a seção está no menu deste cargo? (abrir o pedido ou a separação a partir da requisição) */
 function reqPodeAbrirSecao(sec){ const b = document.querySelector(`.sidebar-nav button[data-secao="${sec}"]`); return !!b && b.style.display !== "none"; }
 function reqLePedidos(){ return reqPodeDecidir() || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
@@ -98,7 +103,7 @@ async function renderRequisicoes(){
   const conferir = _reqFiltroSt === REQ_FILTRO_CONFERIR;
   // fase 102: itens com "*" (pedido_item_id e separacao_item_id quando a migration estiver aplicada)
   let q = sb.from("requisicoes")
-    .select("*, solicitante:profiles!requisicoes_solicitado_por_fkey(nome), pedido:pedidos_compra(id,numero,status), itens:requisicao_itens(*, produto:produtos(codigo,nome,unidade,fornecedor_padrao_id,estoque_atual))")
+    .select("*, solicitante:profiles!requisicoes_solicitado_por_fkey(nome), pedido:pedidos_compra(id,numero,status), itens:requisicao_itens(*, produto:produtos(codigo,nome,unidade,fornecedor_padrao_id,estoque_atual,tipo_item))")   // lote S55: tipo_item
     .order("created_at", { ascending: false }).limit(500);
   if(conferir) q = q.eq("status", "aprovada");
   else if(_reqFiltroSt) q = q.eq("status", _reqFiltroSt);
@@ -215,15 +220,18 @@ function reqItemDestinoTxt(it){
   }
   if(it.separacao_item_id) return '<span class="tag verde">separação</span>';
   if(it.pedido_item_id) return '<span class="tag azul">compra</span>';
+  if(it.produto && it.produto.tipo_item === "servico") return '<span class="meta">serviço consumido: vai para compra</span>';   // lote S55 (#175)
   if(it.produto && it.produto.estoque_atual !== undefined && it.produto.estoque_atual !== null) return `<span class="meta">saldo ${num(it.produto.estoque_atual)}</span>`;
-  return it.produto_id ? "" : '<span class="meta">item livre: vai para compra</span>';
+  return it.produto_id ? "" : '<span class="meta">item livre (antigo): vai para compra</span>';   // lote S55: só itens anteriores ao fim do item livre
 }
+/* lote S55 (#175): acabou o item livre — todo item é produto do catálogo (serviço consumido também); os antigos sem
+   produto continuam renderizando (descrição fixa) */
 function reqRenderItens(){
   const tb = $("req-itens"); if(!tb) return;
   const nova = !_reqAtual;
-  if(!_reqItens.length){ tb.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum item. Busque o produto acima ou adicione um item livre.</td></tr>`; return; }
+  if(!_reqItens.length){ tb.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum item. Busque o produto acima (serviço consumido também é produto; fora do catálogo, peça o cadastro ao almoxarifado ou ao comprador).</td></tr>`; return; }
   tb.innerHTML = _reqItens.map((it, idx) => `<tr data-idx="${idx}">
-    <td>${it.produto_id ? `<strong>${esc(it.produto?.codigo || "")}</strong> ${esc(it.produto?.nome || it.descricao || "")}` : nova ? `<input type="text" data-f="descricao" value="${esc(it.descricao || "")}" placeholder="descrição do item ou serviço" style="min-width:260px;" />` : esc(it.descricao || "item")}</td>
+    <td>${it.produto_id ? `<strong>${esc(it.produto?.codigo || "")}</strong> ${esc(it.produto?.nome || it.descricao || "")}${reqTagServico(it)}` : esc(it.descricao || "item")}</td>
     <td class="num">${nova ? `<input type="number" data-f="quantidade_solicitada" value="${esc(it.quantidade_solicitada ?? 1)}" min="0" step="0.001" style="width:90px;text-align:right;" />` : num(it.quantidade_solicitada)}${!nova && it.quantidade_atendida ? ` <span class="meta">(atendido ${num(it.quantidade_atendida)})</span>` : ""}</td>
     <td>${nova ? `<input type="text" data-f="unidade" value="${esc(it.unidade || it.produto?.unidade || "un")}" style="width:60px;" />` : esc(it.unidade || "un")}</td>
     <td>${reqItemDestinoTxt(it)}</td>
@@ -233,11 +241,11 @@ function reqRenderItens(){
   tb.querySelectorAll("button[data-rem]").forEach(b => b.addEventListener("click", () => { _reqItens.splice(Number(b.dataset.rem), 1); reqRenderItens(); }));
 }
 function reqAddItem(p){
-  if(p && _reqItens.some(i => i.produto_id === p.id)){ aviso("app-aviso", "Esse produto já está na requisição.", "erro"); return; }
-  _reqItens.push({ produto_id: p?.id || null, produto: p ? { codigo: p.codigo, nome: p.nome, unidade: p.unidade, estoque_atual: p.estoque_atual } : null, descricao: p ? `${p.codigo} — ${p.nome}` : "", unidade: p?.unidade || "un", quantidade_solicitada: 1 });
+  if(!p?.id) return;   // lote S55 (#175): sem item livre; o banco também recusa (trg_requisicao_item_produto)
+  if(_reqItens.some(i => i.produto_id === p.id)){ aviso("app-aviso", "Esse produto já está na requisição.", "erro"); return; }
+  _reqItens.push({ produto_id: p.id, produto: { codigo: p.codigo, nome: p.nome, unidade: p.unidade, estoque_atual: p.estoque_atual, tipo_item: p.tipo_item }, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade_solicitada: 1 });
   reqRenderItens();
   if($("req-busca")) $("req-busca").value = "";
-  if(!p){ const inp = $("req-itens").querySelector(`tr[data-idx="${_reqItens.length - 1}"] input[data-f=descricao]`); if(inp) inp.focus(); }
 }
 /* fase 102: obra/TAG, setor e reposição se excluem (requisicoes_apropriacao_chk no banco) */
 function reqApropriacaoMudou(origem){
@@ -248,8 +256,8 @@ function reqApropriacaoMudou(origem){
 }
 async function salvarRequisicao(){
   if(_reqAtual) return;
-  const itens = _reqItens.filter(i => Number(i.quantidade_solicitada) > 0 && (i.produto_id || (i.descricao || "").trim()));
-  if(!itens.length){ aviso("app-aviso", "Adicione ao menos um item com quantidade.", "erro"); return; }
+  const itens = _reqItens.filter(i => Number(i.quantidade_solicitada) > 0 && i.produto_id);   // lote S55 (#175): só produto do catálogo
+  if(!itens.length){ aviso("app-aviso", "Adicione ao menos um item do catálogo com quantidade.", "erro"); return; }
   const reg = { obra_id: $("req-obra").value || null, equipamento_id: $("req-equip").value || null, centro_custo_id: $("req-centro").value || null,
     prioridade: $("req-prioridade").value || "normal", justificativa: $("req-just").value.trim() || null, status: "pendente" };
   // fase 102 (#91, etapa 1): apropriação obrigatória
@@ -260,7 +268,7 @@ async function salvarRequisicao(){
   if(!reg.centro_custo_id) delete reg.centro_custo_id;   // banco sem a migration da fase 102 continua aceitando
   const { data: r, error } = await sb.from("requisicoes").insert(reg).select("id,numero").single();
   if(error){ aviso("app-aviso", "Não foi possível abrir a requisição: " + error.message, "erro"); return; }
-  const { error: eIt } = await sb.from("requisicao_itens").insert(itens.map(i => ({ requisicao_id: r.id, produto_id: i.produto_id || null, descricao: i.produto_id ? null : i.descricao.trim(), unidade: (i.unidade || "un").trim(), quantidade_solicitada: Number(i.quantidade_solicitada) })));
+  const { error: eIt } = await sb.from("requisicao_itens").insert(itens.map(i => ({ requisicao_id: r.id, produto_id: i.produto_id, unidade: (i.unidade || "un").trim(), quantidade_solicitada: Number(i.quantidade_solicitada) })));   // lote S55: sem descricao (item livre acabou)
   if(eIt){ await sb.from("requisicoes").delete().eq("id", r.id); aviso("app-aviso", "Erro nos itens: " + eIt.message, "erro"); return; }
   aviso("app-aviso", `Requisição ${r.numero} aberta. O comprador vê em Compras › Requisições.`, "ok");
   fecharRequisicao();
@@ -376,7 +384,6 @@ function ligarRequisicoes(){
   $("btn-cmp-req-nova")?.addEventListener("click", () => abrirRequisicao(null));
   $("btn-req-fechar")?.addEventListener("click", fecharRequisicao);
   $("btn-req-salvar")?.addEventListener("click", () => comBotaoTravado("btn-req-salvar", salvarRequisicao));
-  $("btn-req-livre")?.addEventListener("click", () => reqAddItem(null));
   $("btn-req-rejeitar")?.addEventListener("click", () => reqMudarStatus("rejeitada"));
   $("btn-req-estoque")?.addEventListener("click", () => reqMudarStatus("separada"));
   $("btn-req-cancelar")?.addEventListener("click", () => reqMudarStatus("cancelada"));

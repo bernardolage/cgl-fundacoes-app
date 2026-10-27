@@ -4,6 +4,9 @@
    Lançamentos avulsos, os indicadores do painel e a exportação para o Compor 90.
    Os títulos nascem em Compras (recebimento_confirmar) e, na etapa B, nos contratos
    recorrentes; aqui o financeiro os vê e exporta. O pagamento em si fica no Compor 90.
+   Fase 130 (27/10/2026, #186): origem "Viagem" = frete terceirizado lançado em Logística (viagens com
+   finalidade frete_terceirizado; o gatilho do banco cria e mantém o título enquanto não exportado). A linha
+   mostra VG-… · origem → destino · transportador e abre a viagem (linkViagem).
    Depende dos cadastros de apoio de compras.js (cmpCarregarBase, cmpForn, cmpObra, cmpEq,
    abrirCustoAvulso, CMP_CAT_LBL) e de contratos.js (_contratos, contratoEmAlerta).
    Prefixo: cap-.
@@ -12,7 +15,17 @@
 let _capTitulos = [];
 let _capFiltroVenc = "";        // "" | "vencidos" | "30"
 let _capFiltroOrigem = "";      // "" | nf_compra | contrato | avulso (fase 56)
-const CAP_ORIGEM_LBL = { nf_compra: "NF de compra", contrato: "Contrato", avulso: "Avulso" };
+const CAP_ORIGEM_LBL = { nf_compra: "NF de compra", contrato: "Contrato", avulso: "Avulso", viagem: "Viagem" };   // fase 130: frete terceirizado
+const CAP_ORIGEM_COR = { contrato: "verde", avulso: "ambar", viagem: "cinza" };
+/* fase 130: origem → destino da viagem com os cadastros de compras (cmpObra) e os rótulos de Logística quando carregados */
+function capLadoViagem(v, lado){
+  if(!v) return "";
+  const tipo = v[lado + "_tipo"], obraId = v[lado + "_obra_id"], desc = v[lado + "_descricao"];
+  const loc = (typeof VG_LOC === "object" && VG_LOC) || { base: "Base CGL", obra: "Obra", cliente: "Cliente", fornecedor_manutencao: "Fornecedor / manutenção" };
+  if((tipo === "obra" || tipo === "cliente") && obraId) return cmpObra(obraId) || desc || loc[tipo] || tipo;
+  return desc || loc[tipo] || tipo || "—";
+}
+function capViagemTxt(t){ const v = t.viagem; return v ? `${v.numero} · ${capLadoViagem(v, "origem")} → ${capLadoViagem(v, "destino")}` : "viagem"; }
 let _capIncluirExp = false;
 let _capLote = null;            // fase 58: lote de exportação em foco (id) — mostra só os títulos daquele arquivo
 
@@ -50,7 +63,7 @@ async function renderTitulosPagar(){
   if(!podeVerContasPagar()){ cont.innerHTML = `<p class="vazio">Seu perfil não tem acesso às contas a pagar.</p>`; return; }
   await cmpCarregarBase(false); // nomes de fornecedor, obra e TAG
   const hoje = hojeISO();
-  let q = sb.from("titulos_pagar").select("*, recebimento:recebimentos(pedido_id, pedido:pedidos_compra(numero)), contrato:contratos(numero)").order("vencimento").limit(1000);
+  let q = sb.from("titulos_pagar").select("*, recebimento:recebimentos(pedido_id, pedido:pedidos_compra(numero)), contrato:contratos(numero), viagem:viagens(id,numero,finalidade,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,transportador_placa)").order("vencimento").limit(1000);   // fase 130: viagem do frete
   if(_capFiltroOrigem) q = q.eq("origem", _capFiltroOrigem);
   if(_capLote) q = q.eq("exportacao_id", _capLote.id);
   else if(!_capIncluirExp) q = q.is("exportado_em", null);
@@ -63,7 +76,7 @@ async function renderTitulosPagar(){
   if($("con-contador")) $("con-contador").textContent = `${_capTitulos.length} título(s)`;
   const podeExp = capPodeExportar();
   cont.innerHTML = `<div class="lista-topo compacta">
-      <span class="meta">Títulos gerados no recebimento das notas (Compras) e pelos contratos recorrentes. O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</span>
+      <span class="meta">Títulos gerados no recebimento das notas (Compras), pelos contratos recorrentes e pelos fretes terceirizados de Logística (origem Viagem). O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</span>
       <select id="cap-f-origem" style="margin-left:auto;"><option value="">Todas as origens</option>${Object.entries(CAP_ORIGEM_LBL).map(([k, v]) => `<option value="${esc(k)}"${_capFiltroOrigem === k ? " selected" : ""}>${esc(v)}</option>`).join("")}</select>
       <select id="cap-f-venc">
         <option value=""${_capFiltroVenc === "" ? " selected" : ""}>Qualquer vencimento</option>
@@ -77,8 +90,10 @@ async function renderTitulosPagar(){
     ${!_capTitulos.length ? `<p class="vazio">Nenhum título ${_capIncluirExp ? "" : "pendente de exportação"}${_capFiltroVenc ? " nesse vencimento" : ""}.</p>` : `<div class="tabela-rola"><table>
     <thead><tr><th>Vencimento</th><th>Origem</th><th>Fornecedor</th><th>Documento</th><th>Pedido</th><th>Parcela</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>
     <tbody>${_capTitulos.map(t => { const venc = !t.exportado_em && t.vencimento < hoje; const ped = t.recebimento?.pedido;
-      const doc = t.origem === "contrato" ? `<a href="#" class="cap-contrato" data-contrato-id="${esc(t.contrato_id)}">${esc(t.contrato?.numero || "contrato")}</a>${t.competencia ? ` <span class="meta">${esc(String(t.competencia).slice(5, 7))}/${esc(String(t.competencia).slice(0, 4))}</span>` : ""}` : t.origem === "avulso" ? esc(t.nf_numero || t.observacoes || "—") : esc(t.nf_numero || "—");
-      return `<tr><td class="${venc ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong>${venc ? " ⚠" : ""}</td><td><span class="tag ${t.origem === "contrato" ? "verde" : t.origem === "avulso" ? "ambar" : "azul"}">${esc(CAP_ORIGEM_LBL[t.origem] || t.origem)}</span></td><td>${esc(cmpForn(t.fornecedor_id) || "—")}</td><td>${doc}</td>
+      const doc = t.origem === "contrato" ? `<a href="#" class="cap-contrato" data-contrato-id="${esc(t.contrato_id)}">${esc(t.contrato?.numero || "contrato")}</a>${t.competencia ? ` <span class="meta">${esc(String(t.competencia).slice(5, 7))}/${esc(String(t.competencia).slice(0, 4))}</span>` : ""}`
+        : t.origem === "viagem" ? `${linkViagem(t.viagem_id, t.viagem?.numero || "viagem")} <span class="meta" title="${esc(t.observacoes || "")}">${esc(capLadoViagem(t.viagem, "origem"))} → ${esc(capLadoViagem(t.viagem, "destino"))}${t.nf_numero ? " · " + esc(t.nf_numero) : ""}${t.viagem?.transportador_placa ? " · " + esc(t.viagem.transportador_placa) : ""}</span>`   // fase 130: VG-… · origem → destino · documento do transportador
+        : t.origem === "avulso" ? esc(t.nf_numero || t.observacoes || "—") : esc(t.nf_numero || "—");
+      return `<tr><td class="${venc ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong>${venc ? " ⚠" : ""}</td><td><span class="tag ${esc(CAP_ORIGEM_COR[t.origem] || "azul")}">${esc(CAP_ORIGEM_LBL[t.origem] || t.origem)}</span></td><td>${esc(cmpForn(t.fornecedor_id) || "—")}</td><td>${doc}</td>
       <td>${ped ? `<a href="#" class="cap-pedido" data-pedido-id="${esc(t.recebimento.pedido_id)}">${esc(ped.numero)}</a>` : '<span class="meta">sem pedido</span>'}</td><td>${esc(t.parcela)}/${esc(t.total_parcelas)}</td>
       <td class="num">${brl(t.valor)}</td><td>${t.obra_id ? linkObra(t.obra_id, cmpObra(t.obra_id)) : "—"}</td><td>${t.equipamento_id ? esc(cmpEq(t.equipamento_id)) : "—"}</td>
       <td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`; }).join("")}</tbody>
@@ -104,7 +119,9 @@ function capBaixarCsv(lista, nomeArquivo){
   const num2 = v => Number(v || 0).toFixed(2).replace(".", ",");
   const cab = ["Fornecedor","CNPJ/CPF","Documento","Parcela","Total parcelas","Emissao","Vencimento","Valor","Obra","TAG","Observacoes","Origem"];
   const linhas = lista.map(t => { const f = _cmpFornMap[t.fornecedor_id] || {}; const o = _cmpObraMap[t.obra_id];
-    const doc = t.origem === "contrato" ? `Contrato ${t.contrato?.numero || ""}${t.competencia ? " " + String(t.competencia).slice(5, 7) + "/" + String(t.competencia).slice(0, 4) : ""}` : (t.nf_numero || "");
+    const doc = t.origem === "contrato" ? `Contrato ${t.contrato?.numero || ""}${t.competencia ? " " + String(t.competencia).slice(5, 7) + "/" + String(t.competencia).slice(0, 4) : ""}`
+      : t.origem === "viagem" ? `Viagem ${capViagemTxt(t)}${t.nf_numero ? " · " + t.nf_numero : ""}`   // fase 130
+      : (t.nf_numero || "");
     return [f.razao_social || "", f.cpf_cnpj || "", doc, t.parcela, t.total_parcelas, dataBR(t.emissao), dataBR(t.vencimento), num2(t.valor), o ? `${o.codigo} — ${o.nome}` : "", cmpEq(t.equipamento_id), t.observacoes || "", CAP_ORIGEM_LBL[t.origem] || t.origem || ""].map(cel).join(";"); });
   const csv = "\uFEFF" + cab.join(";") + "\n" + linhas.join("\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = nomeArquivo; a.click();

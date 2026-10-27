@@ -1186,9 +1186,16 @@ td.num, th.num {
 .hist-compositor-acoes {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
   margin-top: 10px;
 }
+.hist-compositor-acoes .meta { margin-right: auto; }
 .hist-compositor-acoes .btn { width: auto; padding: 8px 22px; }
+/* lote S55 (#176): lista de usuários do "@" flutua sob o textarea do compositor (mesma .autocomplete-lista das buscas) */
+.hist-mencoes-wrap { position: relative; }
+.hist-mencoes-wrap .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; margin-top: 0; }
+.autocomplete-lista .resultado-item.ativo { background: var(--marca-50); }
 
 .hist-timeline {
   display: flex;

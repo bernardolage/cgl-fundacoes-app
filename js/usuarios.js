@@ -386,7 +386,10 @@ function preencherCargosFicha(){
    valores aceitos. O checkbox de Orçamentos nasce no index.html; os demais são criados aqui, no mesmo campo. */
 const USR_MODULOS_EXTRAS = [
   { id: "orcamentos", el: "usr-extra-orc", rotulo: "Orçamentos (além do cargo)" },
-  { id: "produtos_sesmt", el: "usr-extra-prodsesmt", rotulo: "Produtos do SESMT (cadastro de EPI e uniformes)" }
+  { id: "produtos_sesmt", el: "usr-extra-prodsesmt", rotulo: "Produtos do SESMT (cadastro de EPI e uniformes)" },
+  // lote S55 (#173, #182, #180): Thayse e Maria Eduarda (produtos); Maria Eduarda (compras). Valores aceitos pelo check do banco.
+  { id: "produtos", el: "usr-extra-prod", rotulo: "Produtos (cadastro: edita e cadastra, sem saldo nem custo)" },
+  { id: "compras", el: "usr-extra-cmp", rotulo: "Compras (requisição e recebimento de NF, sem alçada)" }
 ];
 function usrGarantirChecksExtras(){
   const campo = $("usr-extra-orc")?.closest(".campo"); if(!campo) return;

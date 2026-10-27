@@ -109,6 +109,18 @@ function chamResolvidoRecente(c){
   if(!c || c.status !== "resolvido" || !c.resolvido_em) return false;
   return Date.now() - new Date(c.resolvido_em).getTime() < CHAM_REABRIR_DIAS * 86400000;
 }
+/* Lote S55 (#185): confirmação da correção pelo autor ("✅ Funcionou", RPC chamado_confirmar, mesma janela de 7 dias).
+   "autor" = confirmou; "prazo" = resolvido há mais de 7 dias sem reabrir (só exibição; a diretoria não confirma em nome
+   do autor); "pendente" = resolvido há menos de 7 dias sem confirmação; null = não está resolvido.
+   Antes da migration do lote S55 a coluna confirmado_em não vem no select("*"): chamTemConfirmacao() devolve false e
+   os botões não aparecem (o bloco "Confira a correção" segue com o "Não resolveu" de sempre). */
+const chamTemConfirmacao = (c) => !!c && Object.prototype.hasOwnProperty.call(c, "confirmado_em");
+function chamConfirmacao(c){
+  if(!c || c.status !== "resolvido") return null;
+  if(c.confirmado_em) return "autor";
+  return chamResolvidoRecente(c) ? "pendente" : "prazo";
+}
+const CHAM_CONFIRMACAO_TXT = { autor: "confirmado pelo autor", prazo: "confirmado por prazo", pendente: "sem confirmação" };
 const chamSomenteLeitura = () => typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
 // a última pergunta ou resposta sugerida do chamado aberto (o que a pessoa esperada precisa ler)
 function chamPerguntaAtual(){
@@ -201,6 +213,7 @@ function preencherFiltrosChamados(){
       `<option value="minha_resposta">Esperando minha resposta</option>` +
       (chamPodeTriar() ? `<option value="atrasados">Esperando resposta, prazo vencido</option>` : "") +
       `<option value="resolvidos7">Resolvidos nos últimos 7 dias</option>` +
+      `<option value="resolvidos_sem_confirmacao">Resolvidos sem confirmação</option>` +   // lote S55 (#185)
       Object.entries(CHAM_STATUS).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
   }
   const fp = $("cham-f-prioridade");
@@ -236,6 +249,7 @@ function chamadosFiltrados(){
     else if(fSt === "minha_resposta"){ if(!chamEsperaMinha(c)) return false; }   // lote S47
     else if(fSt === "atrasados"){ if(!chamPrazoVencido(c)) return false; }
     else if(fSt === "resolvidos7"){ if(!chamResolvidoRecente(c)) return false; }
+    else if(fSt === "resolvidos_sem_confirmacao"){ if(chamConfirmacao(c) !== "pendente") return false; }   // lote S55
     else if(fSt !== "todos" && c.status !== fSt) return false;
     if(fPri === "sem" ? c.prioridade != null : (fPri && String(c.prioridade) !== fPri)) return false;
     if(fCat && c.categoria !== fCat) return false;
@@ -262,6 +276,12 @@ function renderChamados(){
   kpi("cham-kpi-validacao", _chamados.some(chamTemEspera) ? _chamados.filter(chamEsperaMinha).length : cnt("aguardando_validacao"));
   kpi("cham-kpi-resolvido", cnt("resolvido"));
   kpi("cham-kpi-p1", _chamados.filter(c => c.prioridade === 1 && ["aberto","em_analise"].includes(c.status)).length);
+  // lote S55 (#185): resolvidos há menos de 7 dias ainda sem o "Funcionou" do autor; só a gestão vê o cartão
+  const kSem = $("cham-kpi-semconf");
+  if(kSem){
+    kSem.textContent = _chamados.filter(c => chamConfirmacao(c) === "pendente").length;
+    const ind = kSem.closest(".ind"); if(ind) ind.style.display = chamPodeTriar() ? "" : "none";
+  }
 
   const lista = chamadosFiltrados();
   const podeTriar = chamPodeTriar();
@@ -286,7 +306,7 @@ function renderChamados(){
         <td>${esc(cat.label)}${cat.validacao ? ' <span class="tag ambar" title="Exige validação da diretoria antes de executar">validação</span>' : ""}</td>
         <td><div>${esc(chamModuloLabel(c.modulo))}</div><div class="meta">${c.obra_id ? linkObra(c.obra_id) : ""}</div></td>
         <td><div>${esc(chamAutor(c[CHAM_COL.abertoPor], c.origem))}</div><div class="meta">${esc(chamDataHora(c[CHAM_COL.criado]))}</div></td>
-        <td>${chamTag(c.status)}${c.status === "aguardando_validacao" && c.aguardando_de ? `<div class="meta${chamPrazoVencido(c) ? " txt-perigo" : ""}">${esc(chamEsperaTxt(c))}</div>` : ""}${c.fase ? `<div class="meta">${esc(c.fase)}</div>` : ""}</td>
+        <td>${chamTag(c.status)}${c.status === "aguardando_validacao" && c.aguardando_de ? `<div class="meta${chamPrazoVencido(c) ? " txt-perigo" : ""}">${esc(chamEsperaTxt(c))}</div>` : ""}${chamConfirmacao(c) ? `<div class="meta">${esc(chamConfirmacao(c) === "autor" ? "confirmado " + chamDataHora(c.confirmado_em).slice(0, 5) : CHAM_CONFIRMACAO_TXT[chamConfirmacao(c)])}</div>` : ""}${c.fase ? `<div class="meta">${esc(c.fase)}</div>` : ""}</td>
       </tr>`;
     }).join("")}</tbody></table></div>`;
   if(typeof marcarAcionaveis === "function") marcarAcionaveis(cont);
@@ -347,6 +367,9 @@ function renderFichaChamado(erroComentarios){
       <span class="chip">Status: ${chamTag(c.status)}</span>
       ${c.status === "aguardando_validacao" && c.aguardando_de ? `<span class="chip${chamPrazoVencido(c) ? " txt-perigo" : ""}"><strong>${esc(chamEsperaTxt(c))}</strong>${chamPrazoVencido(c) ? " · prazo vencido" : ""}</span>` : ""}
       ${c.status === "resolvido" && c.resolvido_em ? `<span class="chip">Resolvido em <strong>${esc(chamDataHora(c.resolvido_em))}</strong></span>` : ""}
+      ${chamConfirmacao(c) === "autor" ? `<span class="chip">Confirmado pelo autor em <strong>${esc(chamDataHora(c.confirmado_em).slice(0, 5))}</strong></span>` : ""}
+      ${chamConfirmacao(c) === "prazo" ? `<span class="chip"><span class="meta">Confirmado por prazo (7 dias sem reabertura)</span></span>` : ""}
+      ${chamConfirmacao(c) === "pendente" ? `<span class="chip">Aguardando confirmação do autor</span>` : ""}
       ${c.reaberto_n ? `<span class="chip">Reaberto <strong>${esc(c.reaberto_n)}×</strong></span>` : ""}
       <span class="chip">Categoria: <strong>${esc(cat.label)}</strong>${cat.validacao ? " · exige validação" : ""}</span>
       <span class="chip">Módulo: <strong>${esc(chamModuloLabel(c.modulo))}</strong></span>
@@ -373,13 +396,14 @@ function renderFichaChamado(erroComentarios){
       const cls = /^\[status\]/i.test(txt) ? " sistema" : /^\[resolu[cç][aã]o\]/i.test(txt) ? " resolucao" : "";
       // fase 64: prefixos da triagem viram tag; o texto da [resposta sugerida] pode ser aprovado pela gestão
       // lote S47: [pergunta], [reaberto] e [decisão] também viram tag; "[sugere: x]" vira "ao aprovar: X"
-      const PREF_RE = /^\[(triagem|duplicado de #?\d+|resposta sugerida|pergunta|reaberto|decis[aã]o)\]\s*/i;
+      // lote S55: [confirmado] (o "Funcionou" do autor) vira tag verde
+      const PREF_RE = /^\[(triagem|duplicado de #?\d+|resposta sugerida|pergunta|reaberto|decis[aã]o|confirmado)\]\s*/i;
       const pref = txt.match(PREF_RE);
       const corpo = txt.replace(/^\[(status|resolu[cç][aã]o)\]\s*/i, "").replace(PREF_RE, "");
       const sugerida = chamRespostaSugerida(txt);
       const corpoHtml = esc(corpo).replace(/^\[resposta sugerida\]/im, '<span class="tag verde">resposta sugerida</span>')
         .replace(/\[sugere:\s*([a-z_]+)\]/gi, (_m, st) => `<span class="tag cinza">ao aprovar: ${esc(CHAM_SUGERE[st.toLowerCase()] || st)}</span>`);
-      const corPref = (p) => /^resposta/i.test(p) ? "verde" : /^duplicado/i.test(p) ? "cinza" : /^(pergunta|reaberto)/i.test(p) ? "ambar" : "azul";
+      const corPref = (p) => /^(resposta|confirmado)/i.test(p) ? "verde" : /^duplicado/i.test(p) ? "cinza" : /^(pergunta|reaberto)/i.test(p) ? "ambar" : "azul";
       // o botão antigo "Aprovar resposta" só existe antes da migration do lote S47 (depois, o bloco "Esperando" aprova)
       return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${corPref(pref[1])}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) && !chamTemEspera(c) && !chamSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">✅ Aprovar resposta</button>` : ""}</div>`;
     }).join("") : `<p class="vazio">Sem comentários ainda. A triagem diária (18h) registra aqui o andamento.</p>`}</div>
@@ -420,7 +444,13 @@ function renderFichaChamado(erroComentarios){
     w.style.display = ""; $("cham-aprovar-texto")?.focus();
   });
   $("btn-cham-aprovar-editado")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, () => chamAprovarEspera(true)));
-  $("btn-cham-reabrir")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, chamReabrirChamado));
+  // lote S55: "✅ Funcionou" confirma; "↩️ Ainda não" primeiro abre a caixa do motivo, depois reabre
+  $("btn-cham-confirmar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, chamConfirmarChamado));
+  $("btn-cham-reabrir")?.addEventListener("click", (e) => {
+    const w = $("cham-reabrir-wrap");
+    if(w && w.style.display === "none"){ w.style.display = ""; $("cham-reabrir-texto")?.focus(); return; }
+    comBotaoTravado(e.currentTarget, chamReabrirChamado);
+  });
   $("btn-cham-perguntar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, chamPerguntarChamado));
   $("cham-perg-de")?.addEventListener("change", chamAtualizarPerguntarUsuario);
 }
@@ -457,12 +487,20 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
         </div>`) : ""}
     </div>`;
   }
-  if(ehAutor && !leitura && chamResolvidoRecente(c)){
+  if(ehAutor && !leitura && chamResolvidoRecente(c) && !c.confirmado_em){
     const ate = new Date(new Date(c.resolvido_em).getTime() + CHAM_REABRIR_DIAS * 86400000);
+    // lote S55 (#185): com a coluna confirmado_em no banco, "✅ Funcionou" e "↩️ Ainda não" lado a lado; a caixa do motivo
+    // só aparece ao clicar "Ainda não" (segundo clique reabre, texto obrigatório). Antes da migration, o fluxo da S47.
+    const comConfirmacao = chamTemConfirmacao(c);
     html += `<div class="cham-espera">
-      <div><strong>Confira a correção.</strong> Se não ficou certo, você pode reabrir até ${esc(ate.toLocaleDateString("pt-BR"))}.</div>
-      <textarea id="cham-reabrir-texto" rows="2" placeholder="O que continua errado? (obrigatório)"></textarea>
-      <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-cham-reabrir">↩️ Não resolveu</button></div>
+      <div><strong>Confira a correção.</strong> ${comConfirmacao ? "Funcionou? Confirme aqui. Se não ficou certo, você pode reabrir" : "Se não ficou certo, você pode reabrir"} até ${esc(ate.toLocaleDateString("pt-BR"))}.</div>
+      <div id="cham-reabrir-wrap" ${comConfirmacao ? 'style="display:none;"' : ""}>
+        <textarea id="cham-reabrir-texto" rows="2" placeholder="O que continua errado? (obrigatório)"></textarea>
+      </div>
+      <div class="form-acoes compacta">
+        ${comConfirmacao ? `<button type="button" class="btn btn-sucesso" id="btn-cham-confirmar" title="Registra que a correção funcionou e tira o chamado da sua fila">✅ Funcionou</button>` : ""}
+        <button type="button" class="btn-sec" id="btn-cham-reabrir">${comConfirmacao ? "↩️ Ainda não" : "↩️ Não resolveu"}</button>
+      </div>
     </div>`;
   }
   if(podeTriar && !leitura && !chamFechado(c.status)){
@@ -515,6 +553,15 @@ async function chamAprovarEspera(editado){
   if(error){ aviso("cham-ficha-aviso", "Não foi possível enviar: " + error.message, "erro"); return; }
   await chamDepoisDaRpc(c.id);
   aviso("cham-ficha-aviso", `Resposta enviada. Chamado em ${CHAM_STATUS[data]?.label || data}.`, "ok");
+}
+// lote S55 (#185): o autor confirma que a correção funcionou (RPC chamado_confirmar: só o autor, até 7 dias, uma vez)
+async function chamConfirmarChamado(){
+  const c = _chamAberto;
+  if(!c) return;
+  const { error } = await sb.rpc("chamado_confirmar", { p_id: c.id, p_texto: null });
+  if(error){ aviso("cham-ficha-aviso", "Não foi possível confirmar: " + error.message, "erro"); return; }
+  await chamDepoisDaRpc(c.id);
+  aviso("cham-ficha-aviso", "Obrigado! Confirmação registrada.", "ok");
 }
 async function chamReabrirChamado(){
   const c = _chamAberto;

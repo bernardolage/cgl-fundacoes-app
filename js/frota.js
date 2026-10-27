@@ -9,6 +9,10 @@
    A ficha da viagem (prefixo vg-) fica em js/viagens.js, carregado depois deste arquivo.
    Escrita: logistica_pode_operar() no banco = logPodeOperar() aqui; veículos continuam pela
    policy de equipamentos (frotaPodeEditar). Localização de máquina vem da mobilização (fase 34).
+   Fase 130 (27/10/2026, #186): finalidade "Frete terceirizado" = viagem feita por transportador de fora
+   (viagens.transportador_id/placa/motorista, sem caminhão nem km). Valor, vencimento e documento ficam
+   em viagem_fretes (1:1), que só pode_ler_contas_pagar() lê: o embed frete:viagem_fretes(...) vem nulo
+   para os demais e a tela mostra só o frete_status (texto). O custo é direto e gera o título a pagar.
    ==================================================================== */
 let _frotaView = "viagens";          // viagens | veiculos | documentos
 let _frotaModo = "lista";            // lista | kanban (visão Viagens)
@@ -26,7 +30,25 @@ let _frotaUltimaData;                // undefined = ainda não consultado; null 
 const FROTA_TIPO_LBL = { caminhao: "Caminhão", veiculo: "Veículo" };
 const FROTA_STATUS_LBL = { disponivel: "Disponível", em_uso: "Em uso", manutencao: "Manutenção", em_manutencao: "Manutenção", inativo: "Inativo", vendido: "Vendido" };
 const VG_STAGES = ["planejada", "em_transito", "concluida"];
-const VG_FINALIDADES = { mobilizacao: "Mobilização", desmobilizacao: "Desmobilização", apoio: "Apoio à obra", entrega_material: "Entrega de material", manutencao: "Manutenção", outro: "Outro" };
+const VG_FINALIDADES = { mobilizacao: "Mobilização", desmobilizacao: "Desmobilização", apoio: "Apoio à obra", entrega_material: "Entrega de material", manutencao: "Manutenção", outro: "Outro", frete_terceirizado: "Frete terceirizado" };
+/* fase 130: viagens.frete_status (mantido pelo banco; texto sem valor, a logística lê) */
+const VG_FRETE_STATUS = { a_informar: ["Frete a informar", "ambar"], a_gerar: ["Título a gerar", "ambar"], gerado: ["Título gerado", "azul"], exportado: ["Título exportado", "verde"], cancelado: ["Cancelado", "cinza"] };
+function vgEhFrete(v){ return !!v && v.finalidade === "frete_terceirizado"; }
+/* viagem_fretes vem como objeto (1:1) ou nulo para quem não lê contas a pagar */
+function vgFrete(v){ if(!v || !v.frete) return null; return Array.isArray(v.frete) ? (v.frete[0] || null) : v.frete; }
+function vgPodeVerFrete(){ return typeof podeVerContasPagar === "function" && podeVerContasPagar(); }
+/* valor da viagem: frota própria = km × R$/km (valor_total); frete = valor combinado (nulo quando o usuário não lê) */
+function vgValorViagem(v){
+  if(vgEhFrete(v)){ const f = vgFrete(v); return f && f.valor_frete != null ? Number(f.valor_frete) : null; }
+  return v && v.valor_total != null ? Number(v.valor_total) : null;
+}
+function vgTransportadorTxt(v){
+  if(!v) return "—";
+  const t = v.transportador;
+  const nome = t ? (t.razao_social || t.nome_fantasia || "transportador") : "transportador";
+  return nome + (v.transportador_placa ? " · " + v.transportador_placa : "");
+}
+function vgTagFreteStatus(st){ const m = VG_FRETE_STATUS[st]; return m ? `<span class="tag ${esc(m[1])}">${esc(m[0])}</span>` : ""; }
 const VG_LOC = { base: "Base CGL", obra: "Obra", cliente: "Cliente", fornecedor_manutencao: "Fornecedor / manutenção" };
 /* Mesma lista de logistica_pode_operar() (migration da fase 89); diretor entra por has_role() lá e aqui na lista. */
 const VG_LOGISTICA_CARGOS = ["diretor", "admin", "logistica", "gestor_frota", "encarregado", "almoxarife", "engenheiro", "assistente_engenharia", "mecanico", "rh", "gestor_acessorios", "comercial"];
@@ -166,7 +188,9 @@ function renderFrotaVeiculos(){
 
 /* ---------- visão Viagens ---------- */
 const VG_SELECT_LISTA = "id,numero,data,status,finalidade,km_saida,km_chegada,km_total,valor_km,valor_total,observacoes,funcionario_id,obra_id,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,equipamento_atendido_id,caminhao_id,mobilizacao_id,data_saida,data_chegada,"
-  + "funcionario:funcionarios(nome),caminhao:equipamentos!caminhao_id(codigo,nome,placa),equip:equipamentos!equipamento_atendido_id(codigo,nome),notas:movimentacoes_ativos(id,numero,tipo,status,nf_numero,interna)";
+  + "transportador_id,transportador_placa,transportador_motorista,frete_status,"   // fase 130
+  + "funcionario:funcionarios(nome),caminhao:equipamentos!caminhao_id(codigo,nome,placa),equip:equipamentos!equipamento_atendido_id(codigo,nome),notas:movimentacoes_ativos(id,numero,tipo,status,nf_numero,interna),"
+  + "transportador:fornecedores!transportador_id(razao_social,nome_fantasia),frete:viagem_fretes(valor_frete,frete_vencimento,frete_documento)";   // fase 130: frete vem nulo para quem não lê contas a pagar
 
 async function frotaBuscarViagens(mes, camId){
   let q = sb.from("viagens").select(VG_SELECT_LISTA).order("data", { ascending: false }).order("numero", { ascending: false }).limit(2000);
@@ -193,7 +217,7 @@ function frotaViagensFiltradas(){
     if(st && v.status !== st) return false;
     if(comNota && !(v.notas || []).some(n => !n.interna)) return false;
     if(termo){
-      const alvo = `${v.numero} ${v.funcionario?.nome || ""} ${vgLado(v, "origem")} ${vgLado(v, "destino")} ${v.caminhao?.codigo || ""} ${v.caminhao?.placa || ""} ${v.equip?.codigo || ""} ${(v.notas || []).map(n => `${n.numero} ${n.nf_numero || ""}`).join(" ")} ${v.observacoes || ""}`.toLowerCase();
+      const alvo = `${v.numero} ${v.funcionario?.nome || ""} ${vgLado(v, "origem")} ${vgLado(v, "destino")} ${v.caminhao?.codigo || ""} ${v.caminhao?.placa || ""} ${v.equip?.codigo || ""} ${(v.notas || []).map(n => `${n.numero} ${n.nf_numero || ""}`).join(" ")} ${v.observacoes || ""} ${vgEhFrete(v) ? vgTransportadorTxt(v) + " " + (v.transportador_motorista || "") + " frete terceirizado" : ""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -214,10 +238,16 @@ async function renderFrotaViagens(){
   const linhas = frotaViagensFiltradas();
   const c = $("frota-contador"); if(c) c.textContent = `${linhas.length} de ${_frotaViagens.dados.length}`;
   const fechadas = linhas.filter(v => v.status !== "cancelada");
-  const tot = fechadas.reduce((s, d) => ({ km: s.km + (Number(d.km_total) || 0), val: s.val + (Number(d.valor_total) || 0) }), { km: 0, val: 0 });
+  // fase 130: frota própria (km × R$/km) e frete terceirizado (R$ pagos a transportadores) somam separados
+  const tot = fechadas.filter(v => !vgEhFrete(v)).reduce((s, d) => ({ km: s.km + (Number(d.km_total) || 0), val: s.val + (Number(d.valor_total) || 0), n: s.n + 1 }), { km: 0, val: 0, n: 0 });
+  const fretes = fechadas.filter(vgEhFrete);
+  tot.frete = fretes.reduce((s, d) => s + (vgValorViagem(d) || 0), 0);
+  tot.nFrete = fretes.length;
+  tot.freteSemValor = fretes.filter(d => vgValorViagem(d) == null).length;
   frotaKpi("frota-kpi-viagens", linhas.length);
   frotaKpi("frota-kpi-km", frotaNum(tot.km));
   frotaKpi("frota-kpi-valor", frotaMoeda(tot.val));
+  frotaKpi("frota-kpi-frete", tot.nFrete && vgPodeVerFrete() ? `${tot.nFrete} · ${frotaMoeda(tot.frete)}` : String(tot.nFrete));
   frotaKpi("frota-kpi-transito", _frotaViagens.dados.filter(v => v.status === "em_transito").length);
   if(_frotaModo === "kanban") renderFrotaKanban(linhas);
   else renderFrotaLista(linhas, mes, tot);
@@ -226,37 +256,41 @@ async function renderFrotaViagens(){
 function renderFrotaLista(linhas, mes, tot){
   const cont = $("frota-conteudo");
   const obraTxt = v => vgLado(v, v.destino_tipo === "base" && v.origem_tipo !== "base" ? "origem" : "destino");
-  const agrupar = (rot) => { const g = new Map(); linhas.filter(v => v.status !== "cancelada").forEach(d => { const k = rot(d); const a = g.get(k) || { k, n: 0, km: 0, val: 0 }; a.n++; a.km += Number(d.km_total) || 0; a.val += Number(d.valor_total) || 0; g.set(k, a); }); return [...g.values()].sort((a, b) => b.val - a.val); };
-  const porCam = agrupar(d => d.caminhao ? `${d.caminhao.codigo} · ${d.caminhao.nome || ""}` : "Sem caminhão");
+  const agrupar = (rot) => { const g = new Map(); linhas.filter(v => v.status !== "cancelada").forEach(d => { const k = rot(d); const a = g.get(k) || { k, n: 0, km: 0, val: 0 }; a.n++; a.km += Number(d.km_total) || 0; a.val += vgValorViagem(d) || 0; g.set(k, a); }); return [...g.values()].sort((a, b) => b.val - a.val); };
+  // fase 130: o frete terceirizado agrupa pelo transportador (sem km); o valor só soma para quem lê contas a pagar
+  const porCam = agrupar(d => vgEhFrete(d) ? `🚚 ${d.transportador?.razao_social || d.transportador?.nome_fantasia || "Transportador"}` : d.caminhao ? `${d.caminhao.codigo} · ${d.caminhao.nome || ""}` : "Sem caminhão");
   const porObra = agrupar(obraTxt);
   const resumo = (titulo, lista) => `<div class="card" style="flex:1 1 320px;min-width:280px;"><h4 style="margin:0 0 8px;">${esc(titulo)}</h4><div class="tabela-rola"><table>
-      <thead><tr><th>${titulo.includes("obra") ? "Obra / destino" : "Caminhão"}</th><th class="num">Viagens</th><th class="num">km</th><th class="num">R$</th></tr></thead>
+      <thead><tr><th>${titulo.includes("obra") ? "Obra / destino" : "Caminhão / transportador"}</th><th class="num">Viagens</th><th class="num">km</th><th class="num">R$</th></tr></thead>
       <tbody>${lista.slice(0, 12).map(a => `<tr><td>${esc(a.k)}</td><td class="num">${esc(a.n)}</td><td class="num">${frotaNum(a.km)}</td><td class="num">${frotaMoeda(a.val)}</td></tr>`).join("") || `<tr><td colspan="4" class="vazio">—</td></tr>`}</tbody></table></div></div>`;
 
   cont.innerHTML = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">${resumo("Por caminhão", porCam)}${resumo("Por obra atendida", porObra)}</div>
     <div class="meta" style="margin:0 0 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${linhas.length} viagem(ns)${mes ? " em " + esc(mes.slice(5, 7) + "/" + mes.slice(0, 4)) : " nos últimos 12 meses"} (planejadas e em trânsito aparecem sempre)
+      ${tot.nFrete ? `· <strong>${esc(tot.n)}</strong> da frota própria (${frotaNum(tot.km)} km · ${frotaMoeda(tot.val)}) · <strong>${esc(tot.nFrete)}</strong> frete(s) terceirizado(s)${vgPodeVerFrete() ? ` (${frotaMoeda(tot.frete)}${tot.freteSemValor ? `, ${esc(tot.freteSemValor)} sem valor` : ""})` : ""}` : ""}
       ${_frotaUltimaData ? `· última concluída em <strong>${dataBR(_frotaUltimaData)}</strong>` : ""}${_frotaUltimaData && String(_frotaUltimaData).slice(0, 7) < frotaMesAtual() ? ` <span class="tag ambar" title="as viagens depois dessa data ainda não foram lançadas no sistema">sem lançamentos depois disso</span>` : ""}
       ${mes && mes !== frotaMesAtual() ? `<button type="button" class="btn-sec btn-sm" id="btn-frota-mes-atual">Mês atual</button>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-frota-12m">Últimos 12 meses</button>
       <button type="button" class="btn-sec btn-sm" id="btn-frota-csv" style="margin-left:auto;">⬇️ CSV</button></div>
     <div class="tabela-rola"><table>
-      <thead><tr><th>Viagem</th><th>Data</th><th>Status</th><th>Finalidade</th><th>Caminhão</th><th>Motorista</th><th>Origem → destino</th><th>Notas</th><th class="num">km</th><th class="num">R$/km</th><th class="num">Valor</th></tr></thead>
-      <tbody>${linhas.map(d => `<tr class="linha-clicavel" data-vg="${esc(d.id)}">
+      <thead><tr><th>Viagem</th><th>Data</th><th>Status</th><th>Finalidade</th><th>Caminhão / transportador</th><th>Motorista</th><th>Origem → destino</th><th>Notas</th><th class="num">km</th><th class="num">R$/km</th><th class="num">Valor</th></tr></thead>
+      <tbody>${linhas.map(d => { const frete = vgEhFrete(d), val = vgValorViagem(d); return `<tr class="linha-clicavel" data-vg="${esc(d.id)}">
           <td><strong>${esc(d.numero)}</strong>${d.mobilizacao_id ? ' <span class="meta" title="gerada pela mobilização">mob.</span>' : ""}</td>
-          <td>${dataBR(d.data)}</td><td>${tagStatus("viagem", d.status)}</td><td>${esc(VG_FINALIDADES[d.finalidade] || d.finalidade || "")}</td>
-          <td>${esc(d.caminhao ? d.caminhao.codigo : "—")}</td><td>${esc(d.funcionario?.nome || "—")}</td>
+          <td>${dataBR(d.data)}</td><td>${tagStatus("viagem", d.status)}</td><td>${frete ? `<span class="tag azul">Frete terceirizado</span>${d.frete_status && d.frete_status !== "gerado" ? " " + vgTagFreteStatus(d.frete_status) : ""}` : esc(VG_FINALIDADES[d.finalidade] || d.finalidade || "")}</td>
+          <td>${frete ? `🚚 ${esc(vgTransportadorTxt(d))}` : esc(d.caminhao ? d.caminhao.codigo : "—")}</td><td>${esc(frete ? (d.transportador_motorista || "—") : (d.funcionario?.nome || "—"))}</td>
           <td title="${esc(d.observacoes || "")}">${esc(vgLado(d, "origem"))} → ${esc(vgLado(d, "destino"))}${d.equip ? ` <span class="meta">· atende ${esc(d.equip.codigo)}</span>` : ""}</td>
           <td>${vgNotasTxt(d)}</td>
-          <td class="num">${d.km_total != null ? frotaNum(d.km_total) : "—"}</td><td class="num">${d.valor_km != null ? frotaNum(d.valor_km, 2) : "—"}</td><td class="num">${d.valor_total != null ? frotaMoeda(d.valor_total) : "—"}</td></tr>`).join("") || `<tr><td colspan="11" class="vazio">Nenhuma viagem no período.</td></tr>`}</tbody>
-      <tfoot><tr><td colspan="8"><strong>Total</strong></td><td class="num"><strong>${frotaNum(tot.km)}</strong></td><td></td><td class="num"><strong>${frotaMoeda(tot.val)}</strong></td></tr></tfoot>
+          <td class="num">${d.km_total != null ? frotaNum(d.km_total) : "—"}</td><td class="num">${d.valor_km != null ? frotaNum(d.valor_km, 2) : "—"}</td><td class="num">${val != null ? frotaMoeda(val) : (frete && !vgPodeVerFrete() ? '<span class="meta" title="valor do frete visível só para quem lê Contas a pagar">restrito</span>' : "—")}</td></tr>`; }).join("") || `<tr><td colspan="11" class="vazio">Nenhuma viagem no período.</td></tr>`}</tbody>
+      <tfoot><tr><td colspan="8"><strong>Total</strong>${tot.nFrete ? ` <span class="meta">frota própria${vgPodeVerFrete() ? ` + frete terceirizado ${frotaMoeda(tot.frete)}` : ""}</span>` : ""}</td><td class="num"><strong>${frotaNum(tot.km)}</strong></td><td></td><td class="num"><strong>${frotaMoeda(tot.val + (vgPodeVerFrete() ? tot.frete : 0))}</strong></td></tr></tfoot>
     </table></div>`;
   $("btn-frota-mes-atual")?.addEventListener("click", () => { $("frota-f-mes").value = frotaMesAtual(); renderFrota(); });
   $("btn-frota-12m")?.addEventListener("click", () => { $("frota-f-mes").value = ""; renderFrota(); });
   $("btn-frota-csv")?.addEventListener("click", () => {
     const cel = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const csv = ["Viagem;Data;Status;Finalidade;Motorista;Caminhao;Equipamento;Origem;Destino;Notas;Km_saida;Km_chegada;Km;Valor_km;Valor"]
-      .concat(linhas.map(d => [d.numero, dataBR(d.data), STATUS.viagem[d.status]?.label || d.status, VG_FINALIDADES[d.finalidade] || d.finalidade, d.funcionario?.nome || "", d.caminhao?.codigo || "", d.equip?.codigo || "", vgLado(d, "origem"), vgLado(d, "destino"), (d.notas || []).filter(n => !n.interna).map(n => n.nf_numero ? "NF " + n.nf_numero : n.numero).join(" "), d.km_saida, d.km_chegada, d.km_total, d.valor_km, d.valor_total].map(cel).join(";"))).join("\n");
+    const csv = ["Viagem;Data;Status;Finalidade;Tipo;Transportador;Placa_transportador;Motorista;Caminhao;Equipamento;Origem;Destino;Notas;Km_saida;Km_chegada;Km;Valor_km;Valor;Status_frete"]
+      .concat(linhas.map(d => [d.numero, dataBR(d.data), STATUS.viagem[d.status]?.label || d.status, VG_FINALIDADES[d.finalidade] || d.finalidade, vgEhFrete(d) ? "Frete terceirizado" : "Frota própria",
+        vgEhFrete(d) ? (d.transportador?.razao_social || "") : "", d.transportador_placa || "", vgEhFrete(d) ? (d.transportador_motorista || "") : (d.funcionario?.nome || ""), d.caminhao?.codigo || "", d.equip?.codigo || "", vgLado(d, "origem"), vgLado(d, "destino"),
+        (d.notas || []).filter(n => !n.interna).map(n => n.nf_numero ? "NF " + n.nf_numero : n.numero).join(" "), d.km_saida, d.km_chegada, d.km_total, d.valor_km, vgValorViagem(d), vgEhFrete(d) ? ((VG_FRETE_STATUS[d.frete_status] || [d.frete_status || ""])[0]) : ""].map(cel).join(";"))).join("\n");   // fase 130: tipo, transportador e valor do frete (vazio para quem não lê)
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `viagens-${mes || "12m"}.csv`;
     document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);
@@ -271,14 +305,14 @@ function renderFrotaKanban(linhas){
     const meta = STATUS.viagem[st];
     const cards = itens.map(v => `
       <div class="serv-kan-card linha-clicavel" data-vg="${esc(v.id)}">
-        <div class="serv-kan-card-nome">${esc(v.numero)} · ${esc(v.caminhao ? v.caminhao.codigo : "sem caminhão")}</div>
+        <div class="serv-kan-card-nome">${esc(v.numero)} · ${esc(vgEhFrete(v) ? "🚚 " + vgTransportadorTxt(v) : v.caminhao ? v.caminhao.codigo : "sem caminhão")}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">${esc(VG_FINALIDADES[v.finalidade] || v.finalidade || "")} · → ${esc(vgLado(v, "destino"))}</span><br>
-          <span class="meta">${esc(v.funcionario?.nome || "sem motorista")}${(v.notas || []).some(n => !n.interna) ? " · 🧾 " + (v.notas || []).filter(n => !n.interna).length : ""}</span>
+          <span class="meta">${esc(vgEhFrete(v) ? (v.transportador_motorista || "motorista do transportador") : (v.funcionario?.nome || "sem motorista"))}${(v.notas || []).some(n => !n.interna) ? " · 🧾 " + (v.notas || []).filter(n => !n.interna).length : ""}</span>
         </div>
         <div class="serv-kan-card-rod">
           <span>${dataBR(v.data)}</span>
-          <strong>${v.valor_total != null ? frotaMoeda(v.valor_total) : (v.km_total != null ? frotaNum(v.km_total) + " km" : "—")}</strong>
+          <strong>${vgValorViagem(v) != null ? frotaMoeda(vgValorViagem(v)) : (v.km_total != null ? frotaNum(v.km_total) + " km" : vgEhFrete(v) ? vgTagFreteStatus(v.frete_status) || "frete" : "—")}</strong>
         </div>
       </div>`).join("");
     return `<div class="serv-kan-col" data-status="${esc(st)}">
@@ -299,7 +333,7 @@ async function renderFrotaDocumentos(){
         .is("viagem_id", null).eq("interna", false).neq("status", "cancelada").order("data_emissao", { ascending: false }).limit(300),
       sb.from("manifestos_mdfe").select("id,numero,status,data_emissao,placa,motorista_nome,uf_origem,uf_destino,viagem_id,viagem:viagens(numero,status)")
         .in("status", ["rascunho", "emitido", "em_transito"]).order("data_emissao", { ascending: false }).limit(200),
-      sb.from("viagens").select("id,numero,data,status,caminhao:equipamentos!caminhao_id(codigo)").in("status", ["planejada", "em_transito"]).order("data", { ascending: false }).limit(200)
+      sb.from("viagens").select("id,numero,data,status,finalidade,caminhao:equipamentos!caminhao_id(codigo),transportador:fornecedores!transportador_id(razao_social)").in("status", ["planejada", "em_transito"]).order("data", { ascending: false }).limit(200)
     ]);
     if(n.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(n.error.message)}</p>`; return; }
     _frotaDocs = { notas: n.data || [], mdfes: m.error ? [] : (m.data || []), abertas: a.error ? [] : (a.data || []) };
@@ -314,7 +348,7 @@ async function renderFrotaDocumentos(){
   const movLbl = (typeof MOV_TIPOS === "object" && MOV_TIPOS) || {};
   const movSt = (typeof MOV_STATUS === "object" && MOV_STATUS) || {};
   const lado = (tipo, obraId, desc) => (tipo === "obra" || tipo === "cliente") && obraId ? (vgObraTxt(obraId) || desc || "obra") : (desc || VG_LOC[tipo] || tipo || "—");
-  const optViagens = `<option value="">— vincular a uma viagem aberta —</option>` + _frotaDocs.abertas.map(v => `<option value="${esc(v.id)}">${esc(v.numero)} · ${dataBR(v.data)} · ${esc(v.caminhao?.codigo || "sem caminhão")} · ${esc(STATUS.viagem[v.status]?.label || v.status)}</option>`).join("");
+  const optViagens = `<option value="">— vincular a uma viagem aberta —</option>` + _frotaDocs.abertas.map(v => `<option value="${esc(v.id)}">${esc(v.numero)} · ${dataBR(v.data)} · ${esc(v.caminhao?.codigo || (vgEhFrete(v) ? "frete · " + (v.transportador?.razao_social || "transportador") : "sem caminhão"))} · ${esc(STATUS.viagem[v.status]?.label || v.status)}</option>`).join("");
   cont.innerHTML = `
     <div class="lista-topo compacta" style="border:none;padding:0;"><h4 style="margin:0;font-size:var(--txt-md);">🧾 Notas sem viagem <span class="contador">${notas.length}</span></h4>
       <span class="meta">Nota de remessa ou retorno em rascunho, emitida ou em trânsito que ainda não pertence a nenhuma viagem. O lugar certo de criar a nota é a aba Documentos da viagem.</span>

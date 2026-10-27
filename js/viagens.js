@@ -8,6 +8,12 @@
    viagem (uma por viagem, sem NF-e, interna = true). A nota (remessa/retorno) nasce ligada
    à viagem e abre a ficha de Movimentações (sec-movimentacoes), que volta para cá.
    Depende de js/frota.js (listas de veículos, funcionários e obras; logPodeOperar()).
+   Fase 130 (27/10/2026, #186): finalidade "Frete terceirizado" troca Caminhão/Motorista por Transportador
+   (fornecedor com busca, placa e motorista em texto) e o bloco km × R$/km pelo bloco Frete (valor combinado,
+   vencimento, nº do CT-e/NF, emissão, observações). O valor vive em viagem_fretes (só pode_ler_contas_pagar() lê)
+   e é gravado pela RPC viagem_frete_gravar: quem não lê informa e não vê de volta (a viagem guarda só
+   frete_status). O título a pagar nasce no banco (gatilho) e aparece no smart-button Título e na aba Custo.
+   Aba Documentos ganha "Anexos do transporte" (bucket privado viagens-anexos, MIME pela extensão + Blob).
    ==================================================================== */
 let _vgAtual = null;        // registro de viagens aberto (id null = nova)
 let _vgMovs = [];           // movimentacoes_ativos da viagem, com itens
@@ -15,8 +21,16 @@ let _vgMdfes = [];          // manifestos_mdfe da viagem
 let _vgRateio = [];         // vw_viagem_obras
 let _vgTab = "geral";
 let _vgVoltarPara = null;   // callback do "Voltar" quando a ficha foi aberta de outra tela (mobilização)
+let _vgAnexos = [];         // fase 130: viagem_anexos (documentos do transportador)
+let _vgTitulo = null;       // fase 130: titulos_pagar da viagem (só para quem lê contas a pagar)
+let _vgTranspSel = null;    // fase 130: transportador escolhido na busca { id, razao_social, ... }
 
-const VG_FIN_TIPO_MOV = { mobilizacao: "remessa", desmobilizacao: "retorno", apoio: "remessa", entrega_material: "remessa", manutencao: "conserto", outro: "remessa" };
+const VG_FIN_TIPO_MOV = { mobilizacao: "remessa", desmobilizacao: "retorno", apoio: "remessa", entrega_material: "remessa", manutencao: "conserto", outro: "remessa", frete_terceirizado: "remessa" };
+/* fase 130: anexos do transporte */
+const VG_ANEXO_BUCKET = "viagens-anexos";
+const VG_ANEXO_TIPOS = { cte: "CT-e", nf_remessa: "NF de simples remessa", mdfe: "MDF-e do transportador", comprovante: "Comprovante", outro: "Outro" };
+const VG_ANEXO_MIME = { pdf: "application/pdf", xml: "application/xml", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+const VG_ANEXO_MAX_BYTES = 20 * 1024 * 1024;
 const VG_MDFE_STATUS = { rascunho: ["Rascunho", "cinza"], emitido: ["Emitido", "azul"], em_transito: ["Em trânsito", "ambar"], encerrado: ["Encerrado", "verde"], cancelado: ["Cancelado", "vermelho"] };
 
 /* ---------- helpers ---------- */
@@ -63,9 +77,10 @@ async function novaViagem(pre = {}){
     caminhao_id: pre.caminhao_id || null, funcionario_id: null, equipamento_atendido_id: pre.equipamento_atendido_id || null,
     origem_tipo: pre.origem_tipo || "base", origem_obra_id: pre.origem_obra_id || null, origem_descricao: pre.origem_tipo ? null : "Base Itabira",
     destino_tipo: pre.destino_tipo || (pre.destino_obra_id ? "obra" : "base"), destino_obra_id: pre.destino_obra_id || null, destino_descricao: null,
-    km_saida: null, km_chegada: null, valor_km: null, data_saida: null, data_chegada: null, mobilizacao_id: pre.mobilizacao_id || null, observacoes: pre.observacoes || null
+    km_saida: null, km_chegada: null, valor_km: null, data_saida: null, data_chegada: null, mobilizacao_id: pre.mobilizacao_id || null, observacoes: pre.observacoes || null,
+    transportador_id: null, transportador_placa: null, transportador_motorista: null, frete_status: null, frete: null, transportador: null   // fase 130
   };
-  _vgMovs = []; _vgMdfes = []; _vgRateio = []; _vgTab = "geral";
+  _vgMovs = []; _vgMdfes = []; _vgRateio = []; _vgAnexos = []; _vgTitulo = null; _vgTranspSel = null; _vgTab = "geral";
   _vgVoltarPara = pre.voltar || null;
   vgMostrarFicha();
 }
@@ -74,18 +89,24 @@ async function abrirViagem(id, voltarPara){
   await vgGarantirBase();
   // fase 105b: status da NF-e emitida pelo app (só depois da migration; sem ela a nota vem como antes)
   const nfeCols = typeof fiscalColunaExiste === "function" && await fiscalColunaExiste("movimentacoes_ativos", "nf_status") ? ",nf_status,nf_ambiente" : "";
-  const [v, movs, mdfes, rat] = await Promise.all([
+  const [v, movs, mdfes, rat, anexos, tit] = await Promise.all([
     // mobilizacoes tem três caminhos até viagens (mobilizacao_id, viagem_ida_id, viagem_volta_id): o hint pela coluna evita a ambiguidade do PostgREST
-    sb.from("viagens").select("*, caminhao:equipamentos!caminhao_id(id,codigo,nome,placa), funcionario:funcionarios(id,nome,funcao), mobilizacao:mobilizacoes!mobilizacao_id(id,obra_id,status)").eq("id", id).single(),
+    // fase 130: transportador e frete (viagem_fretes vem nulo para quem não lê contas a pagar; sem erro)
+    sb.from("viagens").select("*, caminhao:equipamentos!caminhao_id(id,codigo,nome,placa), funcionario:funcionarios(id,nome,funcao), mobilizacao:mobilizacoes!mobilizacao_id(id,obra_id,status), transportador:fornecedores!transportador_id(id,razao_social,nome_fantasia,cpf_cnpj), frete:viagem_fretes(valor_frete,frete_vencimento,frete_documento,frete_emissao,frete_observacoes,updated_at)").eq("id", id).single(),
     sb.from("movimentacoes_ativos").select("id,numero,tipo,status,interna,nf_numero,nf_serie,nf_chave_acesso,valor_total_produtos,peso_bruto_kg,origem_tipo,origem_obra_id,origem_descricao,origem_uf,destino_tipo,destino_obra_id,destino_descricao,destino_uf,data_emissao,mdfe_id" + nfeCols + ",itens:movimentacao_itens(id,equipamento_id,produto_id,acessorio_id,descricao,quantidade,unidade,valor_unitario,numero_serie,chassi)").eq("viagem_id", id).order("created_at"),
     sb.from("manifestos_mdfe").select("*").eq("viagem_id", id).order("created_at"),
-    sb.from("vw_viagem_obras").select("obra_id,fracao").eq("viagem_id", id)
+    sb.from("vw_viagem_obras").select("obra_id,fracao").eq("viagem_id", id),
+    sb.from("viagem_anexos").select("id,tipo,nome,storage_path,mime_type,tamanho_bytes,created_at,enviado_por,autor:profiles!enviado_por(nome)").eq("viagem_id", id).order("created_at"),
+    vgPodeVerFrete() ? sb.from("titulos_pagar").select("id,valor,vencimento,emissao,nf_numero,exportado_em,exportacao_id,obra_id").eq("viagem_id", id).maybeSingle() : Promise.resolve({ data: null })
   ]);
   if(v.error || !v.data){ aviso("app-aviso", "Não foi possível abrir a viagem" + (v.error ? ": " + v.error.message : "."), "erro"); return; }
   _vgAtual = v.data;
   _vgMovs = movs.error ? [] : (movs.data || []);
   _vgMdfes = mdfes.error ? [] : (mdfes.data || []);
   _vgRateio = rat.error ? [] : (rat.data || []);
+  _vgAnexos = anexos.error ? [] : (anexos.data || []);
+  _vgTitulo = tit && !tit.error ? (tit.data || null) : null;
+  _vgTranspSel = _vgAtual.transportador || null;
   if(voltarPara !== undefined) _vgVoltarPara = voltarPara || null;
   vgMostrarFicha();
 }
@@ -131,10 +152,38 @@ function vgPreencherForm(){
   $("vg-data-saida").value = vgDtLocal(v.data_saida);
   $("vg-data-chegada").value = vgDtLocal(v.data_chegada);
   $("vg-obs").value = v.observacoes || "";
+  // fase 130: transportador e frete
+  $("vg-transp-busca").value = _vgTranspSel ? (_vgTranspSel.razao_social || _vgTranspSel.nome_fantasia || "") : "";
+  $("vg-transp-placa").value = v.transportador_placa || "";
+  $("vg-transp-motorista").value = v.transportador_motorista || "";
+  const f = vgFrete(v);
+  $("vg-frete-valor").value = f && f.valor_frete != null ? f.valor_frete : "";
+  $("vg-frete-venc").value = f?.frete_vencimento || "";
+  $("vg-frete-doc").value = f?.frete_documento || "";
+  $("vg-frete-emissao").value = f?.frete_emissao || "";
+  $("vg-frete-obs").value = f?.frete_observacoes || "";
+  // quem não lê contas a pagar informa e não vê de volta: o campo fica vazio e diz o que o banco guarda
+  const restrito = vgEhFrete(v) && !vgPodeVerFrete() && v.id;
+  $("vg-frete-valor").placeholder = restrito && v.frete_status && v.frete_status !== "a_informar" ? "informado (visível ao financeiro)" : "0,00";
   vgToggleObra();
+  vgToggleFinalidade();
   if(!v.id) vgSugerirDoVeiculo();
   const pode = logPodeOperar() && v.status !== "cancelada";
   document.querySelectorAll('#vg-ficha .odoo-tab[data-tab="geral"] input, #vg-ficha .odoo-tab[data-tab="geral"] select').forEach(el => { el.disabled = !pode; });
+  // título exportado: valor, vencimento, documento e emissão do frete travam no banco; a observação continua livre
+  if(v.frete_status === "exportado") ["vg-frete-valor", "vg-frete-venc", "vg-frete-doc", "vg-frete-emissao", "vg-transp-busca"].forEach(id => { $(id).disabled = true; });
+}
+/* fase 130: a finalidade decide os blocos da aba Geral (frota própria × frete terceirizado) e os rótulos dos chips */
+function vgToggleFinalidade(){
+  const frete = $("vg-finalidade").value === "frete_terceirizado";
+  ["vg-campo-caminhao", "vg-campo-motorista", "vg-bloco-km"].forEach(id => vgShow(id, !frete));
+  ["vg-campo-transp", "vg-campo-transp-placa", "vg-campo-transp-motorista", "vg-bloco-frete"].forEach(id => vgShow(id, frete));
+  const nota = $("vg-frete-nota");
+  if(nota && frete){
+    nota.textContent = vgPodeVerFrete()
+      ? "O título a pagar nasce no banco quando há valor maior que zero e vencimento, acompanha as alterações e some se a viagem for cancelada; depois de exportado ao financeiro ele não muda mais (\"título já exportado: ajuste em Contas a pagar\"). O custo cai nas obras atendidas (aba Custo)."
+      : "Você informa o valor, o vencimento e o documento; eles ficam visíveis só para quem lê Contas a pagar (financeiro, comprador, admin, diretoria). Depois de salvar o campo volta vazio e o chip Frete mostra o estado do título. Para corrigir, informe de novo.";
+  }
 }
 function vgToggleObra(){
   ["origem", "destino"].forEach(l => {
@@ -151,6 +200,7 @@ function vgObraEscolhida(lado){
 }
 /* R$/km vem do veículo; km de saída sugerido é o km atual do caminhão (viagem nova ou sem km) */
 function vgSugerirDoVeiculo(){
+  if($("vg-finalidade").value === "frete_terceirizado") return;   // fase 130: frete não tem caminhão
   const v = vgVeiculo($("vg-caminhao").value);
   if(!v) return;
   if(!$("vg-valor-km").value && v.valor_km != null) $("vg-valor-km").value = v.valor_km;
@@ -159,20 +209,46 @@ function vgSugerirDoVeiculo(){
 function vgColetar(){
   const num = id => $(id).value === "" ? null : Number($(id).value);
   const oTipo = $("vg-origem-tipo").value, dTipo = $("vg-destino-tipo").value;
+  const frete = $("vg-finalidade").value === "frete_terceirizado";   // fase 130
   return {
     data: $("vg-data").value || null,
     finalidade: $("vg-finalidade").value || "outro",
-    caminhao_id: $("vg-caminhao").value || null,
-    funcionario_id: $("vg-motorista").value || null,
+    caminhao_id: frete ? null : ($("vg-caminhao").value || null),
+    funcionario_id: frete ? null : ($("vg-motorista").value || null),
+    transportador_id: frete ? (_vgTranspSel?.id || null) : null,
+    transportador_placa: frete ? (frotaSoAlfaNum($("vg-transp-placa").value) || null) : null,
+    transportador_motorista: frete ? ($("vg-transp-motorista").value.trim() || null) : null,
     equipamento_atendido_id: $("vg-equip").value || null,
     origem_tipo: oTipo, origem_obra_id: (oTipo === "obra" || oTipo === "cliente") ? ($("vg-origem-obra").value || null) : null,
     origem_descricao: $("vg-origem-desc").value.trim() || null,
     destino_tipo: dTipo, destino_obra_id: (dTipo === "obra" || dTipo === "cliente") ? ($("vg-destino-obra").value || null) : null,
     destino_descricao: $("vg-destino-desc").value.trim() || null,
-    km_saida: num("vg-km-saida"), km_chegada: num("vg-km-chegada"), valor_km: num("vg-valor-km"),
+    km_saida: frete ? null : num("vg-km-saida"), km_chegada: frete ? null : num("vg-km-chegada"), valor_km: frete ? null : num("vg-valor-km"),
     data_saida: vgDtISO($("vg-data-saida").value), data_chegada: vgDtISO($("vg-data-chegada").value),
     observacoes: $("vg-obs").value.trim() || null
   };
+}
+/* fase 130: campos do frete (vão pela RPC viagem_frete_gravar, não pelo insert/update de viagens) */
+function vgColetarFrete(){
+  const valor = $("vg-frete-valor").value;
+  return {
+    informado: valor !== "",
+    valor: valor === "" ? null : Number(valor),
+    vencimento: $("vg-frete-venc").value || null,
+    documento: $("vg-frete-doc").value.trim() || null,
+    emissao: $("vg-frete-emissao").value || null,
+    observacoes: $("vg-frete-obs").value.trim() || null
+  };
+}
+/* grava o frete pela RPC (security definer: a logística informa sem ler viagem_fretes). Devolve false se o banco recusou. */
+async function vgGravarFrete(viagemId, fr){
+  const { data, error } = await sb.rpc("viagem_frete_gravar", { p_viagem_id: viagemId, p_valor: fr.valor, p_vencimento: fr.vencimento, p_documento: fr.documento, p_emissao: fr.emissao, p_observacoes: fr.observacoes });
+  if(error){ aviso("app-aviso", "Viagem salva, mas o frete não foi gravado: " + error.message, "erro"); return false; }
+  const st = data?.frete_status;
+  if(st === "gerado") aviso("app-aviso", "Frete informado; título a pagar " + (data?.titulo_exportado ? "já exportado (valor mantido)." : "gerado em Contas a pagar."), "ok");
+  else if(st === "a_gerar") aviso("app-aviso", "Frete informado. O título nasce quando houver valor maior que zero e vencimento.", "ok");
+  else if(st === "exportado") aviso("app-aviso", "Observação do frete gravada; o título já exportado não muda.", "ok");
+  return true;
 }
 
 /* ---------- salvar e status ---------- */
@@ -181,28 +257,40 @@ async function salvarViagem(extra = {}, silencioso){
   const reg = vgColetar();
   if(!reg.data){ aviso("app-aviso", "Informe a data da viagem.", "erro"); vgAtivarTab("geral"); return null; }
   if(reg.km_saida != null && reg.km_chegada != null && reg.km_chegada < reg.km_saida){ aviso("app-aviso", "km de chegada menor que km de saída.", "erro"); vgAtivarTab("geral"); return null; }
+  // fase 130: frete terceirizado exige o transportador; valor negativo não entra
+  const frete = reg.finalidade === "frete_terceirizado";
+  const fr = frete ? vgColetarFrete() : null;
+  if(frete && !reg.transportador_id){ aviso("app-aviso", "Escolha o transportador (fornecedor) do frete.", "erro"); vgAtivarTab("geral"); $("vg-transp-busca").focus(); return null; }
+  if(frete && fr.informado && !(fr.valor >= 0)){ aviso("app-aviso", "Valor do frete inválido.", "erro"); vgAtivarTab("geral"); $("vg-frete-valor").focus(); return null; }
   Object.assign(reg, extra);
   if(_vgAtual.mobilizacao_id && !_vgAtual.id) reg.mobilizacao_id = _vgAtual.mobilizacao_id;
   const r = _vgAtual.id
     ? await sb.from("viagens").update(reg).eq("id", _vgAtual.id).select("id").single()
     : await sb.from("viagens").insert(reg).select("id").single();
   if(r.error){ aviso("app-aviso", "Não foi possível salvar a viagem: " + r.error.message, "erro"); return null; }
-  if(!silencioso) aviso("app-aviso", "Viagem salva.", "ok");
+  // valor/vencimento/documento do frete: só quando a pessoa digitou (quem não lê vê o campo vazio e não apaga o que já está lá)
+  let freteOk = true;
+  if(frete && fr.informado && !$("vg-frete-valor").disabled) freteOk = await vgGravarFrete(r.data.id, fr);
+  if(!silencioso && freteOk && !(frete && fr.informado)) aviso("app-aviso", "Viagem salva.", "ok");
   _frotaViagens.chave = null; _frotaDocs = null;
   await abrirViagem(r.data.id);
   return r.data.id;
 }
 async function vgIniciar(){
-  if(!$("vg-caminhao").value){ aviso("app-aviso", "Defina o caminhão antes de iniciar a viagem.", "erro"); vgAtivarTab("geral"); $("vg-caminhao").focus(); return; }
+  const frete = $("vg-finalidade").value === "frete_terceirizado";
+  if(frete && !_vgTranspSel?.id){ aviso("app-aviso", "Defina o transportador antes de iniciar a viagem.", "erro"); vgAtivarTab("geral"); $("vg-transp-busca").focus(); return; }
+  if(!frete && !$("vg-caminhao").value){ aviso("app-aviso", "Defina o caminhão antes de iniciar a viagem.", "erro"); vgAtivarTab("geral"); $("vg-caminhao").focus(); return; }
   vgSugerirDoVeiculo();
   const id = await salvarViagem({ status: "em_transito", data_saida: vgDtISO($("vg-data-saida").value) || new Date().toISOString() }, true);
   if(id) aviso("app-aviso", "Viagem em trânsito.", "ok");
 }
 async function vgConcluir(){
+  const frete = $("vg-finalidade").value === "frete_terceirizado";   // fase 130: frete fecha sem km (o custo é o valor combinado)
   const ks = $("vg-km-saida").value, kc = $("vg-km-chegada").value;
-  if(ks === "" || kc === ""){ aviso("app-aviso", "Informe km de saída e km de chegada para concluir (fecham o custo da viagem).", "erro"); vgAtivarTab("geral"); $(kc === "" ? "vg-km-chegada" : "vg-km-saida").focus(); return; }
-  if(Number(kc) < Number(ks)){ aviso("app-aviso", "km de chegada menor que km de saída.", "erro"); vgAtivarTab("geral"); return; }
-  if(!$("vg-caminhao").value){ aviso("app-aviso", "Defina o caminhão antes de concluir.", "erro"); vgAtivarTab("geral"); return; }
+  if(!frete && (ks === "" || kc === "")){ aviso("app-aviso", "Informe km de saída e km de chegada para concluir (fecham o custo da viagem).", "erro"); vgAtivarTab("geral"); $(kc === "" ? "vg-km-chegada" : "vg-km-saida").focus(); return; }
+  if(!frete && Number(kc) < Number(ks)){ aviso("app-aviso", "km de chegada menor que km de saída.", "erro"); vgAtivarTab("geral"); return; }
+  if(!frete && !$("vg-caminhao").value){ aviso("app-aviso", "Defina o caminhão antes de concluir.", "erro"); vgAtivarTab("geral"); return; }
+  if(frete && !_vgTranspSel?.id){ aviso("app-aviso", "Defina o transportador antes de concluir.", "erro"); vgAtivarTab("geral"); return; }
   const abertos = _vgMdfes.filter(m => ["emitido", "em_transito"].includes(m.status));
   const id = await salvarViagem({ status: "concluida", data_chegada: vgDtISO($("vg-data-chegada").value) || new Date().toISOString() }, true);
   if(!id) return;
@@ -224,7 +312,8 @@ async function vgReabrir(){
 async function excluirViagem(){
   const v = _vgAtual; if(!v?.id) return;
   if(_vgMovs.length || _vgMdfes.length){ aviso("app-aviso", "A viagem tem nota ou MDF-e ligado: cancele em vez de excluir.", "erro"); return; }
-  if(!confirm(`Excluir a viagem ${v.numero}?`)) return;
+  if(v.frete_status === "exportado"){ aviso("app-aviso", "O título do frete já foi exportado ao financeiro: cancele a viagem em vez de excluir (ajuste em Contas a pagar).", "erro"); return; }
+  if(!confirm(`Excluir a viagem ${v.numero}?${vgEhFrete(v) ? " O frete, o título a pagar não exportado e os anexos vão junto." : ""}`)) return;
   const { error } = await sb.from("viagens").delete().eq("id", v.id);
   if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
   aviso("app-aviso", "Viagem excluída.", "ok");
@@ -246,13 +335,24 @@ function vgStatusbar(){
 }
 function vgChips(){
   const v = _vgAtual, cam = v.caminhao || vgVeiculo(v.caminhao_id), mot = v.funcionario || vgMotorista(v.funcionario_id);
-  $("vg-chip-numero").innerHTML = v.numero ? `${esc(v.numero)} ${tagStatus("viagem", v.status)}` : "(nova)";
-  $("vg-chip-caminhao").textContent = vgCaminhaoTxt(cam);
-  $("vg-chip-motorista").textContent = mot ? mot.nome : "—";
+  const frete = vgEhFrete(v), fr = vgFrete(v);
+  $("vg-chip-numero").innerHTML = v.numero ? `${esc(v.numero)} ${tagStatus("viagem", v.status)}${frete ? ' <span class="tag azul">Frete terceirizado</span>' : ""}` : "(nova)";
+  // fase 130: no frete os chips Caminhão/Motorista viram Transportador/Motorista do transportador, km vira Frete
+  const rotulo = (id, txt) => { const el = $(id)?.previousElementSibling; if(el) el.textContent = txt; };
+  rotulo("vg-chip-caminhao", frete ? "Transportador" : "Caminhão");
+  rotulo("vg-chip-motorista", frete ? "Motorista (transp.)" : "Motorista");
+  rotulo("vg-chip-km", frete ? "Frete" : "km");
+  $("vg-chip-caminhao").textContent = frete ? vgTransportadorTxt(v) : vgCaminhaoTxt(cam);
+  $("vg-chip-motorista").textContent = frete ? (v.transportador_motorista || "—") : (mot ? mot.nome : "—");
   $("vg-chip-destino").innerHTML = (v.destino_tipo === "obra" || v.destino_tipo === "cliente") && v.destino_obra_id ? linkObra(v.destino_obra_id, vgLado(v, "destino")) : esc(vgLado(v, "destino"));
   $("vg-chip-mob").innerHTML = v.mobilizacao_id ? `<a href="#" id="vg-abrir-mob" title="Abrir a mobilização">${esc(VG_FINALIDADES[v.finalidade] || "mobilização")} ↗</a>` : "—";
-  $("vg-chip-km").textContent = v.km_total != null ? frotaNum(v.km_total) + " km" : "—";
-  $("vg-chip-custo").textContent = v.valor_total != null ? frotaMoeda(v.valor_total) : "—";
+  if(frete){
+    $("vg-chip-km").innerHTML = vgTagFreteStatus(v.frete_status) || "—";
+    $("vg-chip-custo").innerHTML = fr && fr.valor_frete != null ? `${frotaMoeda(fr.valor_frete)}${fr.frete_vencimento ? ` <span class="meta">vence ${dataBR(fr.frete_vencimento)}</span>` : ""}` : (vgPodeVerFrete() ? "—" : '<span class="meta" title="valor do frete visível só para quem lê Contas a pagar">restrito</span>');
+  } else {
+    $("vg-chip-km").textContent = v.km_total != null ? frotaNum(v.km_total) + " km" : "—";
+    $("vg-chip-custo").textContent = v.valor_total != null ? frotaMoeda(v.valor_total) : "—";
+  }
   $("vg-abrir-mob")?.addEventListener("click", async e => {
     e.preventDefault();
     if(!irParaSecao("mobilizacoes")) return;
@@ -264,7 +364,15 @@ function vgChips(){
   setSb("sb-vg-itens", itens);
   setSb("sb-vg-notas", notas);
   setSb("sb-vg-mdfe", _vgMdfes.length);
-  setSb("sb-vg-custo", Number(v.valor_total) || 0, v.valor_total != null ? frotaMoeda(v.valor_total).replace(",00", "") : "—");
+  const valor = vgValorViagem(v);
+  setSb("sb-vg-custo", Number(valor) || 0, valor != null ? frotaMoeda(valor).replace(",00", "") : "—");
+  // fase 130: título do frete e anexos do transporte
+  vgShow("sb-vg-titulo", frete);
+  if(frete){
+    const stTit = v.frete_status === "exportado" ? "exportado" : v.frete_status === "gerado" ? "gerado" : v.frete_status === "cancelado" ? "cancelado" : "a gerar";
+    setSb("sb-vg-titulo", ["gerado", "exportado"].includes(v.frete_status) ? 1 : 0, stTit);
+  }
+  setSb("sb-vg-anexos", _vgAnexos.length);
 }
 function vgBotoes(){
   const v = _vgAtual, pode = logPodeOperar(), st = v.status, novo = !v.id;
@@ -376,12 +484,13 @@ async function vgGarantirInterna(){
   if(!v.id){ aviso("app-aviso", "Salve a viagem antes de lançar itens.", "erro"); return null; }
   const { data: numero, error: errNum } = await sb.rpc("proximo_numero_movimentacao");
   if(errNum){ aviso("app-aviso", "Erro gerando número do documento: " + errNum.message, "erro"); return null; }
-  const cam = vgVeiculo(v.caminhao_id), mot = vgMotorista(v.funcionario_id);
+  const cam = vgVeiculo(v.caminhao_id), mot = vgMotorista(v.funcionario_id), frete = vgEhFrete(v);
   const reg = {
     numero, tipo: VG_FIN_TIPO_MOV[v.finalidade] || "remessa", status: "rascunho", interna: true, viagem_id: v.id,
     origem_tipo: v.origem_tipo, origem_obra_id: v.origem_obra_id, origem_descricao: v.origem_descricao || vgLado(v, "origem"), origem_uf: vgUfDe(v, "origem"),
     destino_tipo: v.destino_tipo, destino_obra_id: v.destino_obra_id, destino_descricao: v.destino_descricao || vgLado(v, "destino"), destino_uf: vgUfDe(v, "destino"),
-    data_emissao: v.data || hojeISO(), frete_por_conta: "proprio", motorista: mot ? mot.nome : null, transp_placa: cam?.placa || null,
+    data_emissao: v.data || hojeISO(), frete_por_conta: frete ? "terceiro" : "proprio",   // fase 130: frete terceirizado leva placa e motorista do transportador
+    motorista: frete ? (v.transportador_motorista || null) : (mot ? mot.nome : null), transp_placa: frete ? (v.transportador_placa || null) : (cam?.placa || null),
     observacoes: `Itens transportados da viagem ${v.numero} (documento interno, sem NF-e).`
   };
   const { data, error } = await sb.from("movimentacoes_ativos").insert(reg).select("id,numero,tipo,status,interna,nf_numero").single();
@@ -414,28 +523,147 @@ async function vgRemoverItem(id){
 /* ---------- aba Custo ---------- */
 function vgRenderCusto(){
   const box = $("vg-custo"); if(!box) return;
-  const v = _vgAtual;
+  const v = _vgAtual, frete = vgEhFrete(v), fr = vgFrete(v), podeVer = vgPodeVerFrete();
   const obras = _vgRateio.map(r => ({ ...r, nome: vgObraTxt(r.obra_id) || "obra" }));
-  const valor = Number(v.valor_total) || 0;
-  box.innerHTML = `
+  const valor = vgValorViagem(v) || 0;
+  const valorTxt = frete ? (fr && fr.valor_frete != null ? frotaMoeda(fr.valor_frete) : (podeVer ? "—" : '<span class="meta" title="visível só para quem lê Contas a pagar">restrito</span>')) : "";
+  // fase 130: frete terceirizado mostra valor combinado, vencimento, documento e o título (quem lê contas a pagar)
+  const cabecalho = frete ? `
+    <div class="grade">
+      <div class="campo"><label>Transportador</label><strong>${esc(vgTransportadorTxt(v))}</strong></div>
+      <div class="campo"><label>Valor do frete</label><strong>${valorTxt}</strong></div>
+      <div class="campo"><label>Vencimento</label><strong>${fr?.frete_vencimento ? dataBR(fr.frete_vencimento) : "—"}</strong></div>
+      <div class="campo"><label>CT-e / NF do transportador</label><strong>${esc(fr?.frete_documento || "—")}${fr?.frete_emissao ? ` <span class="meta">emitido em ${dataBR(fr.frete_emissao)}</span>` : ""}</strong></div>
+      <div class="campo"><label>Título a pagar</label><strong>${vgTagFreteStatus(v.frete_status) || "—"}${_vgTitulo ? ` <span class="meta">${frotaMoeda(_vgTitulo.valor)} · vence ${dataBR(_vgTitulo.vencimento)}${_vgTitulo.exportado_em ? " · exportado em " + dataBR(String(_vgTitulo.exportado_em).slice(0, 10)) : " · pendente de exportação"}</span>` : ""}</strong></div>
+      <div class="campo"><label>Saída → chegada</label><strong>${vgDtBR(v.data_saida)} → ${vgDtBR(v.data_chegada)}</strong></div>
+    </div>
+    ${podeVer ? `<p class="meta" style="margin:0 0 8px;"><a href="#" id="vg-abrir-titulos">Abrir em Contas a pagar (títulos com origem Viagem) ↗</a></p>` : ""}
+    ${fr?.frete_observacoes ? `<p class="meta" style="margin:0 0 8px;">Obs. do frete: ${esc(fr.frete_observacoes)}</p>` : ""}` : `
     <div class="grade">
       <div class="campo"><label>km rodado</label><strong>${v.km_total != null ? frotaNum(v.km_total) + " km" : "—"}</strong></div>
       <div class="campo"><label>R$/km</label><strong>${v.valor_km != null ? frotaNum(v.valor_km, 2) : "—"}</strong></div>
       <div class="campo"><label>Custo da viagem</label><strong>${v.valor_total != null ? frotaMoeda(v.valor_total) : "—"}</strong></div>
       <div class="campo"><label>Saída → chegada</label><strong>${vgDtBR(v.data_saida)} → ${vgDtBR(v.data_chegada)}</strong></div>
-    </div>
+    </div>`;
+  box.innerHTML = `
+    ${/* html */ cabecalho}
     <h3 class="titulo-bloco">Rateio por obra <span class="meta">(partes iguais entre a obra principal e as obras de destino das notas; vw_viagem_obras)</span></h3>
     ${obras.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Obra</th><th class="num">Fração</th><th class="num">Valor</th><th class="col-acao"></th></tr></thead>
-      <tbody>${obras.map(o => `<tr><td>${linkObra(o.obra_id, o.nome)}</td><td class="num">${Math.round(Number(o.fracao) * 100)}%</td><td class="num">${frotaMoeda(valor * Number(o.fracao))}</td>
+      <tbody>${obras.map(o => `<tr><td>${linkObra(o.obra_id, o.nome)}</td><td class="num">${Math.round(Number(o.fracao) * 100)}%</td><td class="num">${frete && !(fr && fr.valor_frete != null) ? (podeVer ? "—" : '<span class="meta">restrito</span>') : frotaMoeda(valor * Number(o.fracao))}</td>
         <td class="col-acao"><button type="button" class="btn-sec btn-sm vg-obra-custos" data-obra="${esc(o.obra_id)}" title="Aba Custos da obra">💰 Custos da obra</button></td></tr>`).join("")}</tbody></table></div>`
-      : `<p class="vazio">Viagem sem obra: o custo fica só no caminhão (aba Custos do equipamento). Defina a obra de destino ou ligue uma nota com destino em obra.</p>`}
-    <p class="nota">O custo entra em <code>vw_custos</code> como origem "deslocamento" (categoria deslocamento), com o caminhão como equipamento e a fração de cada obra. Viagem cancelada ou sem km não gera custo.</p>`;
+      : `<p class="vazio">${frete ? "Viagem sem obra: o frete fica sem rateio (o título a pagar nasce sem obra). Defina a obra de destino ou ligue uma nota com destino em obra." : "Viagem sem obra: o custo fica só no caminhão (aba Custos do equipamento). Defina a obra de destino ou ligue uma nota com destino em obra."}</p>`}
+    <p class="nota">${frete
+      ? 'O frete entra em <code>vw_custos</code> como origem "deslocamento", subtipo <code>frete_terceirizado</code>, com o transportador como fornecedor, sem equipamento e com a fração de cada obra; o valor aparece só para quem lê Contas a pagar. O título a pagar (origem Viagem) nasce com valor maior que zero e vencimento; viagem cancelada apaga o título não exportado.'
+      : 'O custo entra em <code>vw_custos</code> como origem "deslocamento" (subtipo frota_propria, categoria deslocamento), com o caminhão como equipamento e a fração de cada obra. Viagem cancelada ou sem km não gera custo.'}</p>`;
   box.querySelectorAll(".vg-obra-custos").forEach(b => b.addEventListener("click", async () => {
     if(!irParaSecao("obras") || typeof abrirObra !== "function") return;
     await abrirObra(b.dataset.obra);
     document.querySelector('#obr-notebook button[data-tab="custos"]')?.click();
   }));
+  $("vg-abrir-titulos")?.addEventListener("click", e => {
+    e.preventDefault();
+    if(!irParaSecao("contratos")) return;
+    if(typeof _capFiltroOrigem !== "undefined"){ _capFiltroOrigem = "viagem"; _capIncluirExp = true; _capLote = null; }
+    if(typeof capAtivarView === "function") capAtivarView("titulos");
+  });
+}
+
+/* ---------- fase 130: anexos do transporte (CT-e, NF de simples remessa, MDF-e do transportador, comprovante) ----------
+   Bucket privado viagens-anexos, caminho <viagem_id>/<arquivo>. MIME pela extensão e corpo reembalado em Blob (regra do
+   CLAUDE.md: o supabase-js ignora contentType quando o corpo é File). Download por URL assinada (2 min). */
+function vgTamanho(b){ b = Number(b || 0); return b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : b >= 1024 ? Math.round(b / 1024) + " KB" : b + " B"; }
+function vgHtmlAnexos(pode){
+  const v = _vgAtual, frete = vgEhFrete(v);
+  return `
+    <div class="lista-topo compacta" style="border:none;padding:0;"><h4 style="margin:0;font-size:var(--txt-md);">📎 Anexos do transporte <span class="contador">${_vgAnexos.length}</span></h4>
+      <span class="meta">${frete ? "CT-e, NF de simples remessa, MDF-e do transportador e comprovantes do frete terceirizado." : "Documentos do transporte que não saem do app (comprovante, PDF do transportador…)."} PDF, XML ou imagem até 20 MB.</span></div>
+    ${_vgAnexos.length ? `<div class="tabela-rola"><table>
+      <thead><tr><th>Tipo</th><th>Arquivo</th><th>Enviado</th><th class="num">Tamanho</th><th class="col-acao"></th></tr></thead>
+      <tbody>${_vgAnexos.map(a => `<tr>
+        <td><span class="tag cinza">${esc(VG_ANEXO_TIPOS[a.tipo] || a.tipo)}</span></td>
+        <td><a href="#" class="vg-anexo-baixar" data-id="${esc(a.id)}" title="baixar (URL assinada)">${esc(a.nome)}</a></td>
+        <td class="meta">${dataBR(String(a.created_at || "").slice(0, 10))}${a.autor?.nome ? " · " + esc(a.autor.nome) : ""}</td>
+        <td class="num meta">${esc(vgTamanho(a.tamanho_bytes))}</td>
+        <td class="col-acao">${pode ? `<button type="button" class="btn-rem vg-anexo-rem" data-id="${esc(a.id)}" title="remover o anexo">&times;</button>` : ""}</td>
+      </tr>`).join("")}</tbody></table></div>` : `<p class="vazio">${v.id ? "Nenhum anexo." : "Salve a viagem para anexar documentos."}</p>`}
+    ${pode && v.id ? `<div class="grade" style="margin-top:8px;">
+      <div class="campo"><label>Tipo</label><select id="vg-anexo-tipo">${Object.entries(VG_ANEXO_TIPOS).map(([k, l]) => `<option value="${esc(k)}"${k === (frete ? "cte" : "comprovante") ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+      <div class="campo largo"><label>Arquivo(s)</label><input type="file" id="vg-anexo-arq" multiple accept=".pdf,.xml,.jpg,.jpeg,.png,.webp" /></div>
+      <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-vg-anexar">📎 Anexar</button></div>
+    </div>` : ""}`;
+}
+function vgLigarAnexos(){
+  const box = $("vg-docs"); if(!box) return;
+  box.querySelectorAll(".vg-anexo-baixar").forEach(a => a.addEventListener("click", e => { e.preventDefault(); vgBaixarAnexo(a.dataset.id); }));
+  box.querySelectorAll(".vg-anexo-rem").forEach(b => b.addEventListener("click", () => vgRemoverAnexo(b.dataset.id)));
+  $("btn-vg-anexar")?.addEventListener("click", () => comBotaoTravado("btn-vg-anexar", vgAnexar));
+}
+async function vgAnexar(){
+  const v = _vgAtual, inp = $("vg-anexo-arq");
+  if(!v?.id || !inp || !usuarioAtual) return;
+  const arquivos = [...(inp.files || [])];
+  if(!arquivos.length){ aviso("app-aviso", "Escolha o arquivo antes de anexar.", "erro"); return; }
+  const tipo = $("vg-anexo-tipo")?.value || "outro";
+  const falhas = [];
+  for(const f of arquivos){
+    const ext = extensaoArquivo(f), mime = VG_ANEXO_MIME[ext];
+    if(!mime){ falhas.push(`${f.name}: tipo não aceito (PDF, XML, JPG, PNG ou WEBP)`); continue; }
+    if(f.size > VG_ANEXO_MAX_BYTES){ falhas.push(`${f.name}: ${vgTamanho(f.size)}; o limite é 20 MB`); continue; }
+    const caminho = `${v.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const up = await sb.storage.from(VG_ANEXO_BUCKET).upload(caminho, corpoComMime(f, mime), { cacheControl: "3600", contentType: mime, upsert: false });
+    if(up.error){ falhas.push(`${f.name}: ${ehErroDePermissao(up.error) ? "seu perfil não anexa documentos da viagem" : up.error.message}`); continue; }
+    const ins = await sb.from("viagem_anexos").insert({ viagem_id: v.id, tipo, nome: f.name, storage_path: caminho, mime_type: mime, tamanho_bytes: f.size, enviado_por: usuarioAtual.id });
+    if(ins.error){ await sb.storage.from(VG_ANEXO_BUCKET).remove([caminho]); falhas.push(`${f.name}: ${ins.error.message}`); }
+  }
+  const enviados = arquivos.length - falhas.length;
+  _vgTab = "documentos";
+  await vgRecarregar();
+  if(falhas.length) aviso("app-aviso", (enviados ? `${enviados} anexado(s). ` : "") + "Não foi possível anexar: " + falhas.join(" · "), "erro");
+  else aviso("app-aviso", `${enviados} arquivo(s) anexado(s) à viagem.`, "ok");
+}
+async function vgBaixarAnexo(id){
+  const a = _vgAnexos.find(x => x.id === id); if(!a) return;
+  const { data, error } = await sb.storage.from(VG_ANEXO_BUCKET).createSignedUrl(a.storage_path, 120, { download: a.nome || true });
+  if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível baixar o anexo: " + (error?.message || "sem permissão"), "erro"); return; }
+  window.open(data.signedUrl, "_blank", "noopener");
+}
+async function vgRemoverAnexo(id){
+  const a = _vgAnexos.find(x => x.id === id); if(!a) return;
+  if(!confirm(`Remover o anexo "${a.nome}"?`)) return;
+  const { error, count } = await sb.from("viagem_anexos").delete({ count: "exact" }).eq("id", id);
+  if(error || !count){ aviso("app-aviso", "Não foi possível remover: " + (error?.message || "seu perfil não altera anexos da viagem"), "erro"); return; }
+  await sb.storage.from(VG_ANEXO_BUCKET).remove([a.storage_path]);
+  _vgTab = "documentos";
+  await vgRecarregar();
+}
+/* busca do transportador (fornecedores ativos, por nome ou CNPJ) */
+function vgLigarBuscaTransportador(){
+  const inp = $("vg-transp-busca"), lista = $("vg-transp-res");
+  if(!inp || !lista) return;
+  let t = null;
+  const fechar = () => { lista.innerHTML = ""; lista.style.display = "none"; };
+  inp.addEventListener("input", () => {
+    _vgTranspSel = null;   // digitou: a escolha anterior cai até clicar num resultado
+    clearTimeout(t);
+    t = setTimeout(async () => {
+      const termo = inp.value.trim();
+      if(termo.length < 2){ fechar(); return; }
+      const like = `%${termo.replace(/[%_,()]/g, " ")}%`;
+      const { data, error } = await sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,cidade,uf").eq("ativo", true)
+        .or(`razao_social.ilike.${like},nome_fantasia.ilike.${like},cpf_cnpj.ilike.${like}`).order("razao_social").limit(20);
+      if(error){ lista.innerHTML = `<div class="resultado-item vazio">Erro: ${esc(error.message)}</div>`; lista.style.display = ""; return; }
+      const res = data || [];
+      lista.innerHTML = res.length ? res.map(f => `<div class="resultado-item" data-id="${esc(f.id)}"><strong>${esc(f.razao_social)}</strong>${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? ` (${esc(f.nome_fantasia)})` : ""} <span class="meta" style="float:right;">${esc([f.cpf_cnpj, [f.cidade, f.uf].filter(Boolean).join("/")].filter(Boolean).join(" · "))}</span></div>`).join("")
+        : `<div class="resultado-item vazio">Nenhum fornecedor ativo com esse nome. Cadastre o transportador em Compras › Fornecedores.</div>`;
+      lista.style.display = "";
+      lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => {
+        const f = res.find(x => x.id === d.dataset.id); fechar();
+        if(f){ _vgTranspSel = f; inp.value = f.razao_social; }
+      }));
+    }, 250);
+  });
+  inp.addEventListener("blur", () => setTimeout(fechar, 200));
 }
 
 /* ---------- ir para a ficha da nota e voltar para a viagem ---------- */
@@ -504,7 +732,10 @@ function vgRenderDocs(){
             ["emitido", "em_transito"].includes(d.status) ? `<button type="button" class="btn-sec btn-sm vg-mdfe-st" data-id="${esc(d.id)}" data-st="encerrado" title="encerra o manifesto (chegada)">🔒 Encerrar</button>` : "",
             !["encerrado", "cancelado"].includes(d.status) ? `<button type="button" class="btn-sec btn-sm acao-perigo vg-mdfe-st" data-id="${esc(d.id)}" data-st="cancelado">✗</button>` : ""
           ].join(" ") : ""}</td></tr>`; }).join("")}</tbody></table></div>` : `<p class="vazio">Nenhum MDF-e. O manifesto agrupa as notas emitidas da viagem (frete próprio); "Gerar MDF-e" monta com a placa, o motorista e as UFs.</p>`}
-    <p class="nota">NF-e e MDF-e são emitidos no UniNFe; o sistema guarda número, chave, protocolo e PDF. "Dados UniNFe" na ficha da nota monta o texto para digitar lá. Ao concluir a viagem, os MDF-e emitidos ou em trânsito são encerrados.</p>`;
+    <p class="nota">NF-e e MDF-e são emitidos no UniNFe; o sistema guarda número, chave, protocolo e PDF. "Dados UniNFe" na ficha da nota monta o texto para digitar lá. Ao concluir a viagem, os MDF-e emitidos ou em trânsito são encerrados.</p>
+    <hr style="border:none;border-top:1px solid var(--borda);margin:14px 0;">
+    ${/* html */ vgHtmlAnexos(pode)}`;
+  vgLigarAnexos();
   box.querySelectorAll(".vg-nota-abrir").forEach(a => a.addEventListener("click", e => { e.preventDefault(); vgIrParaMov(a.dataset.id); }));
   box.querySelectorAll(".vg-nota-desvincular").forEach(b => b.addEventListener("click", () => vgDesvincularNota(b.dataset.id)));
   $("btn-vg-nota-remessa")?.addEventListener("click", () => comBotaoTravado("btn-vg-nota-remessa", () => vgNovaNota("remessa")));
@@ -515,12 +746,13 @@ function vgRenderDocs(){
   box.querySelectorAll(".vg-mdfe-st").forEach(b => b.addEventListener("click", () => vgMdfeStatus(b.dataset.id, b.dataset.st)));
 }
 function vgNotaBase(tipo){
-  const v = _vgAtual, cam = v.caminhao || vgVeiculo(v.caminhao_id), mot = v.funcionario || vgMotorista(v.funcionario_id);
+  const v = _vgAtual, cam = v.caminhao || vgVeiculo(v.caminhao_id), mot = v.funcionario || vgMotorista(v.funcionario_id), frete = vgEhFrete(v);
   return {
     tipo, status: "rascunho", interna: false, viagem_id: v.id,
     origem_tipo: v.origem_tipo, origem_obra_id: v.origem_obra_id, origem_descricao: v.origem_descricao || vgLado(v, "origem"), origem_uf: vgUfDe(v, "origem"),
     destino_tipo: v.destino_tipo, destino_obra_id: v.destino_obra_id, destino_descricao: v.destino_descricao || vgLado(v, "destino"), destino_uf: vgUfDe(v, "destino"),
-    data_emissao: hojeISO(), data_saida: v.data || null, frete_por_conta: "proprio", motorista: mot ? mot.nome : null, transp_placa: cam?.placa || null,
+    data_emissao: hojeISO(), data_saida: v.data || null, frete_por_conta: frete ? "terceiro" : "proprio",
+    motorista: frete ? (v.transportador_motorista || null) : (mot ? mot.nome : null), transp_placa: frete ? (v.transportador_placa || null) : (cam?.placa || null),
     observacoes: `Nota da viagem ${v.numero}.`
   };
 }
@@ -578,9 +810,12 @@ async function vgGerarMdfe(){
   const v = _vgAtual; if(!v.id) return;
   const notas = vgNotas().filter(m => m.nf_numero && ["emitida", "em_transito", "recebida"].includes(m.status) && !m.mdfe_id);
   if(!notas.length){ aviso("app-aviso", "Nenhuma nota emitida sem MDF-e nesta viagem. Emita a NF-e no UniNFe e marque a nota como emitida.", "erro"); return; }
-  const cam = v.caminhao || vgVeiculo(v.caminhao_id), mot = v.funcionario || vgMotorista(v.funcionario_id);
-  if(!cam?.placa){ aviso("app-aviso", "Defina o caminhão (com placa cadastrada) antes de gerar o MDF-e.", "erro"); vgAtivarTab("geral"); return; }
-  if(!mot){ aviso("app-aviso", "Defina o motorista antes de gerar o MDF-e.", "erro"); vgAtivarTab("geral"); return; }
+  // fase 130: no frete terceirizado o MDF-e do app leva a placa e o motorista do transportador (o MDF-e dele vai em Anexos)
+  const frete = vgEhFrete(v);
+  const cam = frete ? { placa: v.transportador_placa } : (v.caminhao || vgVeiculo(v.caminhao_id));
+  const mot = frete ? (v.transportador_motorista ? { nome: v.transportador_motorista } : null) : (v.funcionario || vgMotorista(v.funcionario_id));
+  if(!cam?.placa){ aviso("app-aviso", frete ? "Informe a placa do transportador antes de gerar o MDF-e." : "Defina o caminhão (com placa cadastrada) antes de gerar o MDF-e.", "erro"); vgAtivarTab("geral"); return; }
+  if(!mot){ aviso("app-aviso", frete ? "Informe o motorista do transportador antes de gerar o MDF-e." : "Defina o motorista antes de gerar o MDF-e.", "erro"); vgAtivarTab("geral"); return; }
   const { data: numero, error: errNum } = await sb.rpc("proximo_numero_mdfe");
   if(errNum){ aviso("app-aviso", "Erro gerando número do MDF-e: " + errNum.message, "erro"); return; }
   const reg = {
@@ -633,7 +868,9 @@ async function vgMdfeStatus(id, status){
    notas e MDF-e, assinatura do motorista e do recebedor. Estilo inline com hex porque roda fora do CSS do app. */
 async function vgRomaneio(){
   const v = _vgAtual; if(!v?.id) return;
-  const cam = v.caminhao || vgVeiculo(v.caminhao_id), mot = v.funcionario || vgMotorista(v.funcionario_id);
+  const frete = vgEhFrete(v);   // fase 130: transportador no lugar do caminhão/motorista da CGL
+  const cam = frete ? { codigo: vgTransportadorTxt(v), placa: null } : (v.caminhao || vgVeiculo(v.caminhao_id));
+  const mot = frete ? (v.transportador_motorista ? { nome: v.transportador_motorista } : null) : (v.funcionario || vgMotorista(v.funcionario_id));
   const itens = vgItensTodos(), notas = vgNotas();
   const movLbl = (typeof MOV_TIPOS === "object" && MOV_TIPOS) || {};
   const td = "border:1px solid #777;padding:4px 5px;vertical-align:top;";
@@ -647,7 +884,7 @@ async function vgRomaneio(){
   const html = `<div style="font-family:'Open Sans',Arial,sans-serif;font-size:11px;color:#111;">
     ${typeof pdfCabecalhoHTML === "function" ? pdfCabecalhoHTML("Romaneio de carga", `Viagem ${v.numero} · ${dataBR(v.data)}`) : `<h2>Romaneio de carga — ${esc(v.numero)}</h2>`}
     <table style="width:100%;border-collapse:collapse;margin:10px 0 12px;"><tr>
-      <td style="padding:3px;width:34%;"><b>Caminhão:</b> ${esc(cam ? `${cam.codigo}${cam.nome ? " · " + cam.nome : ""}${cam.placa ? " · placa " + cam.placa : ""}` : "a definir")}</td>
+      <td style="padding:3px;width:34%;"><b>${frete ? "Transportador" : "Caminhão"}:</b> ${esc(cam ? `${cam.codigo}${cam.nome ? " · " + cam.nome : ""}${cam.placa ? " · placa " + cam.placa : ""}` : "a definir")}</td>
       <td style="padding:3px;width:33%;"><b>Motorista:</b> ${esc(mot ? mot.nome : "a definir")}</td>
       <td style="padding:3px;"><b>Finalidade:</b> ${esc(VG_FINALIDADES[v.finalidade] || v.finalidade || "")}</td></tr><tr>
       <td style="padding:3px;"><b>Origem:</b> ${esc(vgLado(v, "origem"))}</td>
@@ -699,5 +936,7 @@ function ligarViagens(){
   $("vg-origem-obra")?.addEventListener("change", () => vgObraEscolhida("origem"));
   $("vg-destino-obra")?.addEventListener("change", () => vgObraEscolhida("destino"));
   $("vg-caminhao")?.addEventListener("change", () => { $("vg-valor-km").value = ""; vgSugerirDoVeiculo(); });
+  $("vg-finalidade")?.addEventListener("change", vgToggleFinalidade);   // fase 130
+  vgLigarBuscaTransportador();
 }
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarViagens); else ligarViagens();

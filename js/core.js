@@ -986,6 +986,13 @@ function temModuloExtra(modulo){
   return !ate || String(ate).slice(0, 10) >= (typeof hojeISO === "function" ? hojeISO() : new Date().toISOString().slice(0, 10));
 }
 function podeVerOrcamentos(){ return podeVerComercial() || temModuloExtra("orcamentos"); }
+/* Lote S55 (#180): seção do menu que um módulo extra libera mesmo quando o cargo a esconde (SECOES_OCULTAS_POR_CARGO).
+   Orçamentos já fazia isso por podeVerOrcamentos (hotfix 113); Compras entra pelo módulo "compras" (Maria Eduarda:
+   requisição e recebimento de NF). Entradas novas aqui, sem reestruturar (a fase 109a também acrescenta). */
+const SECOES_POR_MODULO_EXTRA = { orcamentos: "orcamentos", compras: "compras" };
+function secaoLiberadaPorExtra(secao){
+  return Object.entries(SECOES_POR_MODULO_EXTRA).some(([modulo, sec]) => sec === secao && temModuloExtra(modulo));
+}
 /* Fase 55: Contratos & Contas a pagar (contratos de fornecedor, títulos a pagar, lançamentos avulsos, exportação
    para o Compor 90). Quem não está aqui vê os valores só como custo, na aba Custos da obra e do equipamento. */
 /* 22/09/2026 (diretoria): somatórios patrimoniais (valor de reposição dos acessórios, FIPE da frota) só para o cargo diretor.
@@ -1092,7 +1099,9 @@ function aplicarMenuPorCargo(perfil){
   ["btn-mob-nova", "btn-obr-criar-mob"].forEach(id => { const b = $(id); if(b) b.style.display = podeMob ? "" : "none"; });
 
   // Só esconde: reexibir aqui mostraria "Usuários" (oculto do auditor) a todos os cargos. Sair recarrega a página.
+  // Lote S55 (#180): seção liberada por módulo extra válido (SECOES_POR_MODULO_EXTRA) não é escondida pelo cargo.
   (SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || []).forEach(s => {
+    if(secaoLiberadaPorExtra(s)) return;
     const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
     if(b) b.style.display = "none";
   });
