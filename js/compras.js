@@ -48,7 +48,8 @@ let _cmpSrv = null;               // fase 78: recebimento de serviço em montage
 let _cmpKpis = null;              // lote S43 (L2): linha de vw_compras_kpis (indicadores numa consulta só)
 let _cmpCarga = 0;                // lote S43: token da carga em andamento (trocar o período cancela a anterior)
 let _cmpCompleto = false;         // lote S43: o resto do período já chegou? (a 1ª carga é abertos + 30 dias)
-let _cmpBuscaItensIds = null;     // lote S43: ids de pedidos cujo item casa com a busca (consulta no servidor, 3+ letras)
+let _cmpBuscaServidorIds = null;  // lote S43 → S52: ids de pedidos que casaram no servidor (item, nº da NF do recebimento ou "Ref. Odoo" nas observações; 3+ letras)
+let _cmpNfs = {};                 // lote S52 (#162): pedido_id -> ["185", "186/1", …] (recebimentos não cancelados)
 let _cmpBasePromessa = null;      // fase 108b: carga dos cadastros em andamento (Sala de Comando e menu chamam juntos)
 let _cmpNaturezas = [];           // fase 108b: naturezas_custo (natureza do gasto, códigos do plano do Odoo)
 let _cmpNatMap = {};
@@ -64,7 +65,7 @@ let _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };  
 let _cmpCategorias = null;        // fase 102 (#160): categorias_produto para o cadastro rápido
 let _cmpViewInicial = false;      // fase 102: quem não opera Compras abre direto em Requisições (uma vez)
 /* colunas que o painel usa (a ficha abre o pedido inteiro em abrirPedido) */
-const CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at";
+const CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at,observacoes";   // lote S52: observacoes guarda o "Documento de origem" do Odoo ("Ref. Odoo: 10034")
 const CMP_PRIMEIRA_CARGA_DIAS = 30;
 
 const CMP_STATUS = {
@@ -547,8 +548,9 @@ async function cmpFetchPedidos(){
     if(!r.error) r.data.forEach(p => { if(!porId[p.id]){ p.itens = null; porId[p.id] = p; prim.data.push(p); } });
   }
   const abertos = prim.data.filter(p => CMP_ABERTOS.includes(p.status));
-  const [it, pr, ap] = await Promise.all([
+  const [it, pr, ap, nfs] = await Promise.all([
     cmpFetchItens(abertos.map(p => p.id)),
+    cmpFetchNfs(prim.data.map(p => p.id)),   // lote S52 (#162): NFs dos recebimentos da 1ª carga (abertos + 30 dias)
     sb.from("vw_compras_para_receber").select("pedido_id,responsavel_recebimento_id,responsavel_nome,dias_desde_envio,tem_servico,tem_evidencia"),   // fase 78
     sb.from("vw_pedidos_aprovacao_pendente").select("pedido_id,chave,destino_tipo,destino_rotulo,quem_assina,eu_assino,dono_meu")   // fase 108b
   ]);
@@ -556,6 +558,7 @@ async function cmpFetchPedidos(){
   if(it.error){ aviso("app-aviso", "Erro ao carregar itens dos pedidos: " + it.error.message, "erro"); return; }
   abertos.forEach(p => { p.itens = []; });
   it.data.forEach(i => { const p = porId[i.pedido_id]; if(p) p.itens.push(i); });
+  _cmpNfs = nfs;
   _cmpParaReceber = {}; (pr.data || []).forEach(r => _cmpParaReceber[r.pedido_id] = r);
   if(ap.error) console.warn("vw_pedidos_aprovacao_pendente:", ap.error.message);
   _cmpAprovPend = {}; (ap.data || []).forEach(a => (_cmpAprovPend[a.pedido_id] = _cmpAprovPend[a.pedido_id] || []).push(a));
@@ -587,20 +590,61 @@ async function cmpFetchResto(token, corte, corte1, porId){
   if(token !== _cmpCarga) return;
   _cmpCompleto = true;
   if(resto.error){ aviso("app-aviso", "O restante do período não carregou: " + resto.error.message, "erro"); renderCompras(); return; }
-  resto.data.forEach(p => { if(!porId[p.id]){ p.itens = null; porId[p.id] = p; _cmpPedidos.push(p); } });
+  const novos = [];
+  resto.data.forEach(p => { if(!porId[p.id]){ p.itens = null; porId[p.id] = p; _cmpPedidos.push(p); novos.push(p); } });
   cmpOrdenar(_cmpPedidos);
   if(["kanban","lista"].includes(_cmpView)) renderCompras();   // completa a lista; as outras visões não dependem dela
+  // lote S52 (#162): as NFs do resto chegam depois, em segundo plano, para a coluna NF não ficar "—" só nos antigos
+  const nfs = await cmpFetchNfs(novos.map(p => p.id));
+  if(token !== _cmpCarga || !Object.keys(nfs).length) return;
+  Object.assign(_cmpNfs, nfs);
+  if(["kanban","lista"].includes(_cmpView)) renderCompras();
 }
-/* lote S43 (L2): busca com 3+ letras também consulta a descrição dos itens no servidor (os itens dos
-   pedidos fechados não vêm mais na carga) */
+/* lote S52 (#162, Thayse): a NF do pedido é a dos seus recebimentos (recebimentos.nf_numero/nf_serie, não cancelados).
+   Sem campo novo no banco. Lotes de 100 ids (como `faltam`); devolve { pedido_id: ["185", "186/1", …] }. */
+async function cmpFetchNfs(ids){
+  const out = {};
+  for(let i = 0; i < ids.length; i += 100){
+    const r = await sb.from("recebimentos").select("pedido_id,nf_numero,nf_serie,data_recebimento").in("pedido_id", ids.slice(i, i + 100))
+      .neq("status", "cancelado").not("nf_numero", "is", null).order("data_recebimento").limit(1000);
+    if(r.error){ console.warn("recebimentos (NF):", r.error.message); break; }
+    (r.data || []).forEach(x => { const nf = String(x.nf_numero).trim() + (x.nf_serie ? "/" + String(x.nf_serie).trim() : ""); const l = out[x.pedido_id] = out[x.pedido_id] || []; if(nf && !l.includes(nf)) l.push(nf); });
+  }
+  return out;
+}
+function cmpNfTxt(p){ return (_cmpNfs[p.id] || []).join(", "); }
+/* lote S43 (L2): busca com 3+ letras também consulta o servidor (os itens dos pedidos fechados não vêm mais na carga).
+   Lote S52 (#162): além da descrição dos itens, o nº da NF dos recebimentos e o "Documento de origem" do Odoo
+   (observacoes "Ref. Odoo: 10034"); pedido casado que está fora do período carregado é buscado e entra na lista
+   (sem itens), com as suas NFs. */
 async function cmpBuscar(){
   const q = ($("cmp-busca")?.value || "").trim();
-  if(q.length < 3){ _cmpBuscaItensIds = null; renderCompras(); return; }
+  if(q.length < 3){ _cmpBuscaServidorIds = null; renderCompras(); return; }
   renderCompras();   // o que casa na memória aparece já
   const t = q.replace(/[%,()]/g, " ").trim();
-  const { data } = await sb.from("pedido_compra_itens").select("pedido_id").ilike("descricao", `%${t}%`).limit(2000);
-  if(($("cmp-busca")?.value || "").trim() !== q) return;   // já digitou outra coisa
-  _cmpBuscaItensIds = new Set((data || []).map(i => i.pedido_id));
+  const mudou = () => ($("cmp-busca")?.value || "").trim() !== q;   // já digitou outra coisa
+  const [it, nf, ob] = await Promise.all([
+    sb.from("pedido_compra_itens").select("pedido_id").ilike("descricao", `%${t}%`).limit(2000),
+    sb.from("recebimentos").select("pedido_id").ilike("nf_numero", `%${t}%`).neq("status", "cancelado").not("pedido_id", "is", null).limit(500),
+    sb.from("pedidos_compra").select("id").ilike("observacoes", `%${t}%`).limit(500)
+  ]);
+  if(mudou()) return;
+  const ids = new Set([...(it.data || []).map(i => i.pedido_id), ...(nf.data || []).map(r => r.pedido_id), ...(ob.data || []).map(p => p.id)].filter(Boolean));
+  // pedido antigo (fora do período carregado): busca e entra na memória sem itens (a ficha abre o pedido inteiro)
+  const faltam = [...ids].filter(id => !_cmpPedidos.some(p => p.id === id));
+  if(faltam.length){
+    const novos = [];
+    for(let i = 0; i < faltam.length; i += 100){
+      const r = await cmpFetchPaginas(x => x.in("id", faltam.slice(i, i + 100)));
+      if(!r.error) novos.push(...r.data);
+    }
+    const nfs = await cmpFetchNfs(novos.map(p => p.id));
+    if(mudou()) return;
+    novos.forEach(p => { if(!_cmpPedidos.some(x => x.id === p.id)){ p.itens = null; _cmpPedidos.push(p); } });
+    Object.assign(_cmpNfs, nfs);
+    cmpOrdenar(_cmpPedidos);
+  }
+  _cmpBuscaServidorIds = ids;
   renderCompras();
 }
 function cmpPreencherSelectsFixos(){
@@ -631,10 +675,12 @@ function cmpFiltrados(){
   // fase 102: cartão ou etapa escolhidos definem o conjunto; o "Abertos" padrão do status não corta financeiro/finalizado
   const ignoraAbertos = !!CMP_KPI_ETAPAS[_cmpKpi] || !!fEt;
   return _cmpPedidos.filter(p => {
+    const casouServidor = !!(q && _cmpBuscaServidorIds && _cmpBuscaServidorIds.has(p.id));   // lote S52: item, NF ou Ref. Odoo
     if(soMeus && !(_cmpParaReceber[p.id] && _cmpParaReceber[p.id].responsavel_recebimento_id === eu)) return false;   // fase 78
     if(soAprovar && !cmpEuAssino(p.id)) return false;
-    // fase 102: "Abertos" = o cartão "Pedidos em aberto" (inclui recebido que espera conferência ou o financeiro)
-    if(fSt === "_abertos"){ if(!ignoraAbertos && !CMP_ETAPAS_ABERTAS.includes(cmpEtapa(p))) return false; }
+    // fase 102: "Abertos" = o cartão "Pedidos em aberto" (inclui recebido que espera conferência ou o financeiro).
+    // Lote S52: o pedido que o servidor achou pela busca (NF de pedido fechado há meses) aparece mesmo no "Abertos" padrão.
+    if(fSt === "_abertos"){ if(!ignoraAbertos && !casouServidor && !CMP_ETAPAS_ABERTAS.includes(cmpEtapa(p))) return false; }
     else if(fSt && p.status !== fSt) return false;
     if(!fSt && _cmpKpi === "" && _cmpView === "kanban" && p.status === "cancelado") return false;
     if(fF && p.fornecedor_id !== fF) return false;
@@ -645,8 +691,8 @@ function cmpFiltrados(){
     else if(fEt && cmpEtapa(p) !== fEt) return false;
     if(CMP_KPI_ETAPAS[_cmpKpi] && !CMP_KPI_ETAPAS[_cmpKpi].includes(cmpEtapa(p))) return false;   // fase 102 (#92)
     if(q){
-      const alvo = [p.numero, p.codigo_externo, p.comprador_externo, p.fornecedor?.razao_social, cmpObra(p.obra_id), cmpEq(p.equipamento_id), p.condicao_pagamento, ...(p.itens || []).map(i => i.descricao)].filter(Boolean).join(" ").toLowerCase();
-      if(!alvo.includes(q) && !(_cmpBuscaItensIds && _cmpBuscaItensIds.has(p.id))) return false;   // lote S43: item casado no servidor
+      const alvo = [p.numero, p.codigo_externo, p.comprador_externo, p.fornecedor?.razao_social, cmpObra(p.obra_id), cmpEq(p.equipamento_id), p.condicao_pagamento, cmpNfTxt(p), p.observacoes, ...(p.itens || []).map(i => i.descricao)].filter(Boolean).join(" ").toLowerCase();   // lote S52: NF e Ref. Odoo
+      if(!alvo.includes(q) && !casouServidor) return false;   // lote S43: item casado no servidor
     }
     return true;
   });
@@ -721,7 +767,7 @@ function cmpCardHTML(p){
   return `<div class="serv-kan-card${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
     <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span>${cmpEuAssino(p.id) ? ` <span class="tag ambar" title="chave de aprovação pendente que você assina">falta sua assinatura</span>` : ""}${cmpEtapaExtra(p) ? " " + cmpEtapaExtra(p) : ""}</div>
     <div>${esc(p.fornecedor?.razao_social || "— sem fornecedor —")}</div>
-    <div class="meta">${dest}${it ? ` · ${it.length} item(ns)` : ""}${tipo ? ` · ${esc(tipo)}` : ""}</div>
+    <div class="meta">${dest}${it ? ` · ${it.length} item(ns)` : ""}${tipo ? ` · ${esc(tipo)}` : ""}${cmpNfTxt(p) ? ` · NF ${esc(cmpNfTxt(p))}` : ""}</div>
     <div class="meta" style="display:flex;justify-content:space-between;margin-top:4px;"><strong>${brl(p.total)}</strong>${p.previsao_entrega ? `<span class="${atras ? "txt-perigo" : ""}">${atras ? "⚠ " : "📅 "}${dataBR(p.previsao_entrega)}</span>` : ""}</div>
   </div>`;
 }
@@ -747,6 +793,7 @@ const _cmpOrdem = ordenarTabela({
   numero:     { tipo: "texto", valor: p => p.numero || "" },
   data:       { tipo: "data",  valor: p => p.data_pedido || "", dirInicial: "desc" },
   fornecedor: { tipo: "texto", valor: p => p.fornecedor?.razao_social || "" },
+  nf:         { tipo: "texto", valor: p => cmpNfTxt(p) },   // lote S52 (#162)
   destino:    { tipo: "texto", valor: p => cmpDestinoPedidoTxt(p) },
   tipo:       { tipo: "texto", valor: p => cmpTipoPedido(p) },   // fase 108b
   total:      { tipo: "num",   valor: p => Number(p.total || 0), dirInicial: "desc" },
@@ -757,9 +804,9 @@ function renderComprasLista(dados){
   dados = _cmpOrdem.aplicar(dados);
   const th = (col, rot, extra) => _cmpOrdem.th(col, rot, extra);
   $("cmp-conteudo").innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr>${th("numero", "Número")}${th("data", "Data")}${th("fornecedor", "Fornecedor")}${th("destino", "Destino")}${th("tipo", "Tipo de compra")}<th class="num">Itens</th>${th("total", "Total", { cls: "num" })}${th("previsao", "Previsão")}${th("status", "Status")}<th>Para receber com</th></tr></thead>
+    <thead><tr>${th("numero", "Número")}${th("data", "Data")}${th("fornecedor", "Fornecedor")}${th("nf", "NF", { title: "nº da NF dos recebimentos do pedido" })}${th("destino", "Destino")}${th("tipo", "Tipo de compra")}<th class="num">Itens</th>${th("total", "Total", { cls: "num" })}${th("previsao", "Previsão")}${th("status", "Status")}<th>Para receber com</th></tr></thead>
     <tbody>${dados.map(p => `<tr class="linha-clicavel${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
-      <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td>
+      <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td><td>${cmpNfTxt(p) ? esc(cmpNfTxt(p)) : '<span class="meta">—</span>'}</td>
       <td>${p.obra_id ? linkObra(p.obra_id, cmpObra(p.obra_id)) : p.equipamento_id ? "TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? esc(cmpCentro(p.centro_custo_id)) : "Estoque"}</td>
       <td class="meta">${esc(cmpTipoPedido(p) || "—")}</td>
       <td class="num">${p.itens ? p.itens.length : "—"}</td><td class="num">${brl(p.total)}</td>

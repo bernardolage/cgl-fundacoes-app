@@ -110,6 +110,11 @@ function repFiltrados(){
 function renderReparos(){
   const cont = $("rep-conteudo"); if(!cont) return;
   document.querySelectorAll("#rep-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _repView));
+  // lote S52 (#164): a visão de horas troca os filtros (período, departamento, origem) e esconde a contagem por status
+  const horas = _repView === "horas";
+  document.querySelectorAll("#rep-painel [data-rep-so]").forEach(el => { el.style.display = el.dataset.repSo === (horas ? "horas" : "lista") ? "" : "none"; });
+  const busca = $("rep-busca"); if(busca) busca.placeholder = horas ? "Buscar colaborador, ordem ou departamento…" : "Buscar nº, marcação, TAG, descrição, WH/RO…";
+  if(horas){ $("rep-st-chips").innerHTML = ""; rephRender(); return; }
   const dados = repFiltrados();
   $("rep-contador").textContent = `${dados.length} de ${_repLista.length}`;
   repRenderContagem(dados);
@@ -131,6 +136,148 @@ function renderReparos(){
         <td>${repAlvoLink(r)}</td><td>${esc(r.descricao || "")}</td><td>${esc(REP_SETOR[r.setor] || "—")}</td><td class="meta">${esc(repResp(r.responsavel_id))}</td>
         <td class="num">${repDias(r) ?? "—"}</td><td class="num">${brl(r.custo_real)}</td><td>${repTag(r.status)}</td></tr>`).join("")}</tbody></table></div>`;
   }
+}
+
+/* ---------- Horas por colaborador (lote S52, #164, Lais) ----------
+   Relatório de horas apropriadas na oficina, como o "Relatório de Apropriação de Horas" do Odoo: soma por colaborador das
+   horas lançadas em reparos (RP), ordens de fabricação (OF) e OS de manutenção (OS), lidas de vw_horas_oficina (security
+   invoker: vale a policy de cada tabela base). Filtros: período (padrão mês atual), departamento do RH (filhos de
+   MANUTENÇÃO + o que mais aparecer no período) e origem; a busca filtra por colaborador, ordem ou departamento. Clicar na
+   linha abre o detalhe por ordem. Exporta .xlsx (Resumo + Detalhe). Sem valores em R$: a bonificação é cálculo da Lais e o
+   custo da hora fica na ficha da ordem. O almoço já vem descontado em `horas` (gatilhos das três tabelas). */
+let _rephLinhas = [];          // lançamentos do período (vw_horas_oficina)
+let _rephDeps = null;          // departamentos (id, nome, parent_id) — carregados uma vez
+let _rephAberto = null;        // chave do colaborador com o detalhe aberto
+let _rephCarga = 0;            // token da carga (trocar o período cancela a anterior)
+let _rephPeriodo = "";         // "de|ate" da última carga
+const REPH_ORIGEM = { reparo: ["RP", "Reparo"], fabricacao: ["OF", "Fabricação"], manutencao: ["OS", "Manutenção"] };
+function rephHmin(h){
+  const t = Math.round(Number(h || 0) * 60), neg = t < 0, a = Math.abs(t);
+  return `${neg ? "-" : ""}${Math.floor(a / 60)}:${String(a % 60).padStart(2, "0")}`;
+}
+function rephMesISO(d){ return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function rephPeriodoPadrao(){
+  const de = $("rep-h-de"), ate = $("rep-h-ate"); if(!de || !ate) return;
+  if(!de.value || !ate.value) rephAtalho("mes");
+}
+function rephAtalho(qual){
+  const hoje = new Date(), de = $("rep-h-de"), ate = $("rep-h-ate"); if(!de || !ate) return;
+  if(qual === "hoje"){ de.value = hojeISO(); ate.value = hojeISO(); }
+  else if(qual === "anterior"){
+    const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1), fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+    de.value = dataLocalISO(ini); ate.value = dataLocalISO(fim);
+  } else { de.value = rephMesISO(hoje) + "-01"; ate.value = hojeISO(); }
+}
+async function rephCarregarDeps(){
+  if(_rephDeps) return;
+  const { data } = await sb.from("departamentos").select("id,nome,parent_id,ordem,ativo").order("ordem").order("nome");
+  _rephDeps = data || [];
+}
+function rephDepOptions(){
+  const sel = $("rep-h-dep"); if(!sel) return;
+  const atual = sel.value;
+  const man = (_rephDeps || []).find(d => String(d.nome || "").trim().toUpperCase() === "MANUTENÇÃO");
+  const filhos = man ? (_rephDeps || []).filter(d => d.parent_id === man.id && d.ativo !== false) : [];
+  const ids = new Set(filhos.map(d => d.id));
+  // departamentos que aparecem no período e não são da MANUTENÇÃO (ex.: a Lorrayne está no pai) entram depois
+  const outros = {}; _rephLinhas.forEach(l => { if(l.departamento_id && !ids.has(l.departamento_id)) outros[l.departamento_id] = l.departamento_nome || "?"; });
+  sel.innerHTML = `<option value="">Todos os departamentos</option>`
+    + filhos.map(d => `<option value="${esc(d.id)}">${esc(d.nome)}</option>`).join("")
+    + Object.entries(outros).sort((a, b) => a[1].localeCompare(b[1], "pt-BR")).map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join("")
+    + `<option value="_sem">Sem departamento</option>`;
+  sel.value = [...sel.options].some(o => o.value === atual) ? atual : "";
+}
+async function rephCarregar(){
+  const cont = $("rep-conteudo"); if(!cont) return;
+  rephPeriodoPadrao();
+  const de = $("rep-h-de")?.value || "", ate = $("rep-h-ate")?.value || "";
+  if(!de || !ate){ cont.innerHTML = `<p class="vazio">Informe o período (de / até).</p>`; return; }
+  if(ate < de){ cont.innerHTML = `<p class="vazio">A data final é anterior à inicial.</p>`; return; }
+  const token = ++_rephCarga;
+  cont.innerHTML = `<p class="vazio">Carregando horas…</p>`;
+  await rephCarregarDeps();
+  const out = [];
+  for(let d0 = 0; out.length === d0; d0 += 1000){
+    const r = await sb.from("vw_horas_oficina").select("origem,ordem_id,ordem_numero,ordem_abertura,ordem_descricao,funcionario_id,funcionario_nome,departamento_id,departamento_nome,data,inicio,fim,horas,hora_extra,codigo_externo,observacao,lancamento_id")
+      .gte("data", de).lte("data", ate).order("data").order("funcionario_nome").order("lancamento_id").range(d0, d0 + 999);
+    if(token !== _rephCarga) return;
+    if(r.error){
+      cont.innerHTML = `<p class="vazio">${r.error.code === "42P01" || /vw_horas_oficina/.test(r.error.message) ? "O relatório de horas ainda não está disponível (migration do lote S52 não aplicada)." : "Erro: " + esc(r.error.message)}</p>`;
+      _rephLinhas = []; return;
+    }
+    out.push(...(r.data || []));
+  }
+  _rephLinhas = out; _rephPeriodo = `${de}|${ate}`; _rephAberto = null;
+  rephDepOptions();
+  rephRender();
+}
+function rephChave(l){ return l.funcionario_id || (l.funcionario_nome ? "nome:" + l.funcionario_nome : "—"); }
+function rephFiltradas(){
+  const q = ($("rep-busca")?.value || "").trim().toLowerCase();
+  const dep = $("rep-h-dep")?.value || "", ori = $("rep-h-origem")?.value || "";
+  return _rephLinhas.filter(l => {
+    if(ori && l.origem !== ori) return false;
+    if(dep === "_sem"){ if(l.departamento_id) return false; } else if(dep && l.departamento_id !== dep) return false;
+    if(q && ![l.funcionario_nome, l.departamento_nome, l.ordem_numero, l.ordem_descricao, l.codigo_externo].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+function rephResumo(linhas){
+  const por = {};
+  linhas.forEach(l => {
+    const k = rephChave(l);
+    const o = por[k] = por[k] || { chave: k, nome: l.funcionario_nome || "Sem colaborador", dep: l.departamento_nome || "Sem departamento", ordens: new Set(), horas: 0, he: 0, n: 0, linhas: [] };
+    o.ordens.add(l.origem + ":" + l.ordem_id); o.horas += Number(l.horas || 0); if(l.hora_extra) o.he += Number(l.horas || 0); o.n++; o.linhas.push(l);
+  });
+  return Object.values(por).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+function rephOrdemLink(l){
+  const n = l.ordem_numero || "—";
+  if(l.origem === "reparo" && typeof linkReparo === "function") return linkReparo(l.ordem_id, n);
+  if(l.origem === "fabricacao" && typeof linkFabricacao === "function") return linkFabricacao(l.ordem_id, n);
+  if(l.origem === "manutencao" && typeof linkManutencao === "function") return linkManutencao(l.ordem_id, n);
+  return esc(n);
+}
+function rephRender(){
+  const cont = $("rep-conteudo"); if(!cont) return;
+  const de = $("rep-h-de")?.value || "", ate = $("rep-h-ate")?.value || "";
+  if(!_rephLinhas.length && _rephPeriodo !== `${de}|${ate}`){ rephCarregar(); return; }   // 1ª abertura ou período trocado sem carga
+  const linhas = rephFiltradas(), res = rephResumo(linhas);
+  const tot = res.reduce((s, r) => s + r.horas, 0), totHe = res.reduce((s, r) => s + r.he, 0), totOrd = new Set(linhas.map(l => l.origem + ":" + l.ordem_id)).size;
+  $("rep-contador").textContent = `${res.length} colaborador(es) · ${num(tot)} h`;
+  if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma hora lançada em reparos, fabricação ou manutenção nesse período com esses filtros.</p>`; return; }
+  const hr = l => l.inicio && l.fim ? `${esc(String(l.inicio).slice(0, 5))}–${esc(String(l.fim).slice(0, 5))}` : "—";   // linha do Odoo sem horário
+  const detalhe = r => `<tr class="reph-det"><td colspan="6"><div class="tabela-rola" style="margin:2px 0 6px;"><table>
+      <thead><tr><th>Data</th><th>Ordem</th><th>Descrição</th><th>Abertura</th><th>Início–fim</th><th class="num">Horas</th><th class="num">h:min</th><th>Obs.</th></tr></thead>
+      <tbody>${r.linhas.slice().sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.inicio || "").localeCompare(String(b.inicio || ""))).map(l => `<tr>
+        <td>${dataBR(l.data)}</td><td><span class="tag cinza">${esc(REPH_ORIGEM[l.origem]?.[0] || l.origem)}</span> ${rephOrdemLink(l)}${l.hora_extra ? ' <span class="tag ambar" title="hora extra (fabricação)">HE</span>' : ""}</td>
+        <td class="meta">${esc(l.ordem_descricao || "")}</td><td>${dataBR(l.ordem_abertura)}</td><td>${hr(l)}</td>
+        <td class="num">${num(l.horas)}</td><td class="num">${rephHmin(l.horas)}</td><td class="meta">${esc(l.observacao || "")}${l.codigo_externo ? (l.observacao ? " · " : "") + "Odoo" : ""}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><th colspan="5">${r.ordens.size} ordem(ns) · ${r.n} lançamento(s)</th><th class="num">${num(r.horas)}</th><th class="num">${rephHmin(r.horas)}</th><th></th></tr></tfoot></table></div></td></tr>`;
+  cont.innerHTML = `<div class="tabela-rola"><table>
+    <thead><tr><th>Colaborador</th><th>Departamento</th><th class="num">Ordens</th><th class="num">Horas</th><th class="num">Horas (h:min)</th><th class="num" title="hora extra, só nas ordens de fabricação">HE (h)</th></tr></thead>
+    <tbody>${res.map(r => `<tr class="linha-clicavel reph-linha" data-chave="${esc(r.chave)}" title="${_rephAberto === r.chave ? "fechar o detalhe" : "ver as ordens e os lançamentos"}">
+        <td><strong>${esc(r.nome)}</strong></td><td class="meta">${esc(r.dep)}</td><td class="num">${r.ordens.size}</td>
+        <td class="num">${num(r.horas)}</td><td class="num">${rephHmin(r.horas)}</td><td class="num">${r.he ? num(r.he) : '<span class="meta">—</span>'}</td></tr>${_rephAberto === r.chave ? detalhe(r) : ""}`).join("")}</tbody>
+    <tfoot><tr><th>Total · ${res.length} colaborador(es)</th><th></th><th class="num">${totOrd}</th><th class="num">${num(tot)}</th><th class="num">${rephHmin(tot)}</th><th class="num">${totHe ? num(totHe) : "—"}</th></tr></tfoot></table></div>
+    <p class="meta" style="margin-top:6px;">Período ${dataBR(de)} a ${dataBR(ate)} · ${linhas.length} lançamento(s). O almoço já está descontado (lançamento que atravessa 12:00–13:00 perde 1 h); "—" em início–fim é lançamento do Odoo só com a duração. Sem valores: o custo da hora fica na ficha de cada ordem.</p>`;
+}
+function rephExportar(){
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
+  const linhas = rephFiltradas(), res = rephResumo(linhas);
+  if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
+  const de = $("rep-h-de")?.value || "", ate = $("rep-h-ate")?.value || "";
+  const resumo = [["Colaborador", "Departamento", "Ordens", "Horas", "Horas (h:min)", "HE (h)", "Lançamentos"]]
+    .concat(res.map(r => [r.nome, r.dep, r.ordens.size, Number(r.horas.toFixed(2)), rephHmin(r.horas), Number(r.he.toFixed(2)), r.n]))
+    .concat([["Total", "", new Set(linhas.map(l => l.origem + ":" + l.ordem_id)).size, Number(res.reduce((s, r) => s + r.horas, 0).toFixed(2)), rephHmin(res.reduce((s, r) => s + r.horas, 0)), Number(res.reduce((s, r) => s + r.he, 0).toFixed(2)), linhas.length]]);
+  const detalhe = [["Colaborador", "Departamento", "Data", "Origem", "Ordem", "Descrição", "Abertura da ordem", "Início", "Fim", "Horas", "Horas (h:min)", "HE", "Obs.", "Odoo"]]
+    .concat(linhas.slice().sort((a, b) => String(a.funcionario_nome || "").localeCompare(String(b.funcionario_nome || ""), "pt-BR") || String(a.data).localeCompare(String(b.data)))
+      .map(l => [l.funcionario_nome || "Sem colaborador", l.departamento_nome || "Sem departamento", dataBR(l.data), REPH_ORIGEM[l.origem]?.[1] || l.origem, l.ordem_numero || "", l.ordem_descricao || "",
+        dataBR(l.ordem_abertura), l.inicio ? String(l.inicio).slice(0, 5) : "", l.fim ? String(l.fim).slice(0, 5) : "", Number(l.horas || 0), rephHmin(l.horas), l.hora_extra ? "sim" : "", l.observacao || "", l.codigo_externo || ""]));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), "Resumo");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detalhe), "Detalhe");
+  XLSX.writeFile(wb, `horas-oficina-${de}_${ate}.xlsx`);
 }
 
 /* lote S50 (#142, Lucas): contagem por status no topo do painel, sobre a lista já filtrada (busca, status, setor,
@@ -370,10 +517,19 @@ function ligarReparos(){
   $("rep-busca")?.addEventListener("input", debounce(renderReparos));
   ["rep-f-status", "rep-f-setor", "rep-f-resp"].forEach(id => $(id)?.addEventListener("change", renderReparos));
   $("rep-f-periodo")?.addEventListener("change", async () => { await repFetch(); renderReparos(); });
-  $("btn-rep-atualizar")?.addEventListener("click", () => carregarReparos(true));
+  // lote S52 (#164): filtros da visão de horas
+  ["rep-h-de", "rep-h-ate"].forEach(id => $(id)?.addEventListener("change", rephCarregar));
+  $("rep-h-atalho")?.addEventListener("change", e => { if(e.target.value){ rephAtalho(e.target.value); e.target.value = ""; rephCarregar(); } });
+  ["rep-h-dep", "rep-h-origem"].forEach(id => $(id)?.addEventListener("change", rephRender));
+  $("btn-rep-exportar")?.addEventListener("click", rephExportar);
+  $("btn-rep-atualizar")?.addEventListener("click", () => { if(_repView === "horas") rephCarregar(); else carregarReparos(true); });
   $("btn-rep-novo")?.addEventListener("click", () => novoReparo());
   $("rep-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a")) return;
+    if(_repView === "horas"){   // lote S52: a linha do colaborador abre/fecha o detalhe por ordem
+      const l = e.target.closest("tr.reph-linha"); if(!l) return;
+      _rephAberto = _rephAberto === l.dataset.chave ? null : l.dataset.chave; rephRender(); return;
+    }
     const el = e.target.closest("[data-id]"); if(el) abrirReparo(el.dataset.id);
   });
   $("btn-rep-voltar")?.addEventListener("click", mostrarPainelReparos);

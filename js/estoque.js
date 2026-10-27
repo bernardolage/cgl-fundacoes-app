@@ -281,15 +281,63 @@ async function carregarSaidasHoje(){
   const desde = new Date(hojeISO() + "T00:00:00").toISOString();
   const COLS = "id,quantidade,custo_unitario,obra_id,equipamento_id,centro_custo_id,documento,observacoes,created_at,registrado_por,produto:produtos(codigo,nome,unidade,categoria_custo),retirante:funcionarios!movimentacoes_estoque_responsavel_id_fkey(nome)";
   const saidas = cols => sb.from("movimentacoes_estoque").select(cols).eq("tipo", "saida").gte("created_at", desde).order("created_at", { ascending: false }).limit(300);
+  const semColuna = r => r.error && ["42703", "PGRST204"].includes(r.error.code);
   let [sa, es] = await Promise.all([
-    saidas(COLS + ",funcionario_id,assinatura_em"),   // fase 100: quem recebeu e assinatura do EPI
+    saidas(COLS + ",funcionario_id,assinatura_em,corrige_de"),   // fase 100: quem recebeu e assinatura do EPI; lote S52: correção
     sb.from("movimentacoes_estoque").select("estorno_de").not("estorno_de", "is", null).gte("created_at", desde)
   ]);
-  if(sa.error && ["42703", "PGRST204"].includes(sa.error.code)) sa = await saidas(COLS);   // migration da fase 100 ainda não aplicada
+  if(semColuna(sa)) sa = await saidas(COLS + ",funcionario_id,assinatura_em");   // migration do lote S52 ainda não aplicada
+  if(semColuna(sa)) sa = await saidas(COLS);   // migration da fase 100 ainda não aplicada
   if(sa.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(sa.error.message)}</p>`; return; }
   const estornadas = new Set((es.data || []).map(e => e.estorno_de));
-  _balHoje = (sa.data || []).map(m => ({ ...m, estornada: estornadas.has(m.id) }));
+  const corrigidas = new Set((sa.data || []).map(m => m.corrige_de).filter(Boolean));   // lote S52 (#167): original de uma correção de hoje
+  _balHoje = (sa.data || []).map(m => ({ ...m, estornada: estornadas.has(m.id), corrigida: corrigidas.has(m.id) }));
+  if(_balEdit && !_balHoje.some(m => m.id === _balEdit)) _balEdit = null;
   renderSaidasHoje();
+}
+/* lote S52 (#167, Julio): "✎ Editar" a saída em até 10 min, nas mesmas condições do Desfazer (e não para EPI já assinado).
+   Troca a linha por quantidade, destino (as opções do balcão, sem o grupo da alocação), documento e observação; Salvar chama
+   estoque_saida_corrigir (estorno da original + saída nova com corrige_de). Retirante não muda: para trocar quem retirou,
+   desfazer e lançar de novo. */
+let _balEdit = null;   // id da saída em edição na lista de hoje
+function balDestinoValor(m){ return m.obra_id ? "obra:" + m.obra_id : m.equipamento_id ? "eq:" + m.equipamento_id : m.centro_custo_id ? "cc:" + m.centro_custo_id : ""; }
+function balDestinoOptions(atual, rotuloAtual){
+  const sel = $("bal-destino"); if(!sel) return "";
+  const clone = sel.cloneNode(true);
+  clone.querySelector("optgroup[data-aloc]")?.remove();
+  if(atual && ![...clone.options].some(o => o.value === atual)){   // obra fora de "em andamento": entra para não perder o destino atual
+    const o = document.createElement("option"); o.value = atual; o.textContent = rotuloAtual || "destino atual";
+    clone.insertBefore(o, clone.children[1] || null);
+  }
+  [...clone.options].forEach(o => { if(o.value === atual) o.setAttribute("selected", ""); else o.removeAttribute("selected"); });   // atributo: innerHTML não leva a propriedade
+  return clone.innerHTML;
+}
+function balEditarHTML(m){
+  const atual = balDestinoValor(m);
+  return `<td colspan="6">
+      <div class="grade grade-3" style="margin:2px 0;">
+        <div class="campo"><label>Item</label><div><strong>${esc(m.produto?.codigo || "")}</strong> — ${esc(m.produto?.nome || "")}${m.retirante?.nome ? ` <span class="meta">· retirante ${esc(m.retirante.nome)} (não muda)</span>` : ""}</div></div>
+        <div class="campo"><label>Quantidade <span class="meta">(${esc(m.produto?.unidade || "un")})</span></label><input type="number" id="bal-ed-qtd" step="0.001" min="0.001" value="${esc(Math.abs(m.quantidade || 0))}" style="width:110px;text-align:right;" /></div>
+        <div class="campo"><label>Destino</label><select id="bal-ed-destino">${balDestinoOptions(atual, balDestinoTxt(m))}</select></div>
+        <div class="campo"><label>Documento</label><input id="bal-ed-doc" value="${esc(m.documento || "")}" placeholder="Saída no balcão" /></div>
+        <div class="campo largo"><label>Observação</label><input id="bal-ed-obs" value="${esc(m.observacoes || "")}" placeholder="opcional" /></div>
+      </div></td>
+    <td><button type="button" class="btn btn-sm bal-ed-salvar" data-id="${esc(m.id)}">💾 Salvar</button> <button type="button" class="btn-sec btn-sm bal-ed-cancelar">Cancelar</button></td>`;
+}
+async function balSalvarEdicao(id){
+  const m = _balHoje.find(x => x.id === id); if(!m) return;
+  const qtd = Number($("bal-ed-qtd")?.value || 0);
+  if(!(qtd > 0)){ aviso("app-aviso", "Informe a quantidade.", "erro"); $("bal-ed-qtd")?.focus(); return; }
+  const dv = $("bal-ed-destino")?.value || "";
+  if(!dv){ aviso("app-aviso", "Escolha o destino: obra, TAG ou setor.", "erro"); $("bal-ed-destino")?.focus(); return; }
+  const destino = dv.startsWith("obra:") ? { obra_id: dv.slice(5) } : dv.startsWith("eq:") ? { equipamento_id: dv.slice(3) } : { centro_custo_id: dv.slice(3) };
+  const { error } = await sb.rpc("estoque_saida_corrigir", { p_id: id, p_quantidade: qtd, p_destino: destino,
+    p_documento: ($("bal-ed-doc")?.value || "").trim(), p_observacoes: ($("bal-ed-obs")?.value || "").trim() });
+  if(error){ aviso("app-aviso", "Não foi possível corrigir: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  _balEdit = null;
+  aviso("app-aviso", "Saída corrigida: a original ficou estornada e a nova vale no estoque e no custo.", "ok");
+  if(typeof carregarProdutos === "function") carregarProdutos();
+  await Promise.all([carregarSaidasHoje(), carregarReposicao(), carregarUltimasEntradas()]);
 }
 function renderSaidasHoje(){
   const cont = $("bal-hoje"); if(!cont) return;
@@ -297,20 +345,34 @@ function renderSaidasHoje(){
   $("bal-hoje-contador").textContent = _balHoje.length ? `${valendo.length} · ${brl(valendo.reduce((s, m) => s + Number(m.quantidade || 0) * Number(m.custo_unitario || 0), 0))}` : "";
   if(!_balHoje.length){ cont.innerHTML = `<p class="vazio">Nenhuma saída hoje.</p>`; return; }
   const admin = !!usuarioAtual && ["admin","diretor"].includes(usuarioAtual.cargo);
-  // fase 100: EPI entregue a uma pessoa sem assinatura ainda → botão "assinar" (a mesma tela de assinatura do balcão)
+  const hora = m => new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  // fase 100: EPI entregue a uma pessoa sem assinatura ainda → botão "assinar" (a mesma tela de assinatura do balcão).
+  // Lote S52: assinado não se edita (desfazer e lançar de novo, colhendo nova assinatura).
   const assinaTag = m => (m.estornada || m.produto?.categoria_custo !== "epi" || !m.funcionario_id) ? ""
-    : m.assinatura_em ? ' <span class="tag verde" title="recebimento assinado">assinado</span>'
+    : m.assinatura_em ? ' <span class="tag verde" title="recebimento assinado · para corrigir, desfaça e lance de novo, colhendo nova assinatura">assinado</span>'
     : ` <button type="button" class="btn-sec btn-sm bal-assinar" data-id="${esc(m.id)}" title="colher a assinatura do recebimento">✍ assinar</button>`;
+  // lote S52: a original riscada diz "corrigida"; a nova, "correção" apontando para a hora da original
+  const marca = m => {
+    if(m.estornada) return `<span class="tag cinza">${m.corrigida ? "corrigida" : "desfeita"}</span>`;
+    if(!m.corrige_de) return "";
+    const o = _balHoje.find(x => x.id === m.corrige_de);
+    return ` <span class="tag azul" title="corrige a saída das ${o ? hora(o) : "—"}">correção</span>`;
+  };
   cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Hora</th><th>Retirante</th><th>Item</th><th class="num">Qtd</th><th class="num">Custo</th><th>Destino</th><th>Documento / obs.</th><th></th></tr></thead>
-    <tbody>${_balHoje.map(m => { const d = new Date(m.created_at), min = (Date.now() - d.getTime()) / 60000;
+    <tbody>${_balHoje.map(m => { const min = (Date.now() - new Date(m.created_at).getTime()) / 60000;
       const podeDesfazer = !m.estornada && min < 10 && (m.registrado_por === usuarioAtual?.id || admin);
+      const podeEditar = podeDesfazer && !m.assinatura_em;
+      if(_balEdit === m.id && podeEditar) return `<tr><td>${hora(m)}</td>${balEditarHTML(m)}</tr>`;
       return `<tr${m.estornada ? ' class="meta" style="text-decoration:line-through;"' : ""}>
-        <td>${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</td><td>${esc(m.retirante?.nome || "—")}</td>
-        <td>${esc(m.produto ? m.produto.codigo + " — " + m.produto.nome : "—")}${m.produto?.categoria_custo === "epi" ? ' <span class="tag azul">EPI</span>' : ""}${assinaTag(m)}</td>
+        <td>${hora(m)}</td><td>${esc(m.retirante?.nome || "—")}</td>
+        <td>${esc(m.produto ? m.produto.codigo + " — " + m.produto.nome : "—")}${m.produto?.categoria_custo === "epi" ? ' <span class="tag azul">EPI</span>' : ""}${assinaTag(m)}${m.estornada ? "" : marca(m)}</td>
         <td class="num">${num(Math.abs(m.quantidade || 0))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${brl(Math.abs(Number(m.quantidade || 0)) * Number(m.custo_unitario || 0))}</td>
         <td>${esc(balDestinoTxt(m))}</td><td class="meta">${esc([m.documento, m.observacoes].filter(Boolean).join(" · "))}</td>
-        <td>${m.estornada ? '<span class="tag cinza">desfeita</span>' : podeDesfazer ? `<button type="button" class="btn-sec btn-sm bal-desfazer" data-id="${esc(m.id)}" title="desfazer (até 10 min)">↩ Desfazer</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
+        <td style="white-space:nowrap;">${m.estornada ? marca(m) : podeDesfazer ? `${podeEditar ? `<button type="button" class="btn-sec btn-sm bal-editar" data-id="${esc(m.id)}" title="corrigir quantidade, destino, documento ou observação (até 10 min)">✎ Editar</button> ` : ""}<button type="button" class="btn-sec btn-sm bal-desfazer" data-id="${esc(m.id)}" title="desfazer (até 10 min)">↩ Desfazer</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
+  cont.querySelectorAll(".bal-editar").forEach(b => b.addEventListener("click", () => { _balEdit = b.dataset.id; renderSaidasHoje(); $("bal-ed-qtd")?.focus(); }));
+  cont.querySelectorAll(".bal-ed-cancelar").forEach(b => b.addEventListener("click", () => { _balEdit = null; renderSaidasHoje(); }));
+  cont.querySelectorAll(".bal-ed-salvar").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => balSalvarEdicao(b.dataset.id))));
   cont.querySelectorAll(".bal-assinar").forEach(b => b.addEventListener("click", () => {
     const m = _balHoje.find(x => x.id === b.dataset.id); if(!m || typeof epiAbrirAssinatura !== "function") return;
     // junta as entregas de EPI do mesmo colaborador ainda sem assinatura (uma assinatura para o lote do dia)

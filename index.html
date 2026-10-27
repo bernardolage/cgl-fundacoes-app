@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="8ab263b" />
+<meta name="app-versao" content="fa21b8e" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=8ab263b" />
+<link rel="stylesheet" href="css/estilo.css?v=fa21b8e" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -4436,18 +4436,27 @@
             <div class="serv-views" id="rep-views">
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Por status</button>
+              <!-- lote S52 (#164, Lais): horas apropriadas na oficina (RP, OF e OS) por colaborador, vw_horas_oficina -->
+              <button type="button" class="serv-view-btn" data-view="horas">Horas por colaborador</button>
             </div>
             <span class="meta" id="rep-custo-hora" style="margin-left:auto;"></span>
+            <button type="button" class="btn-sec" id="btn-rep-exportar" data-rep-so="horas" style="display:none;" title="Resumo por colaborador e detalhe por lançamento (sem valores)">⬇ Exportar .xlsx</button>
             <button type="button" class="btn-sec" id="btn-rep-atualizar">🔄 Atualizar</button>
             <button type="button" class="btn" id="btn-rep-novo" style="display:none;">+ Novo reparo</button>
           </div>
           <div id="rep-st-chips" class="meta" style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin:-8px 0 14px;"></div>
           <div class="serv-filtros">
             <input id="rep-busca" placeholder="Buscar nº, marcação, TAG, descrição, WH/RO…" />
-            <select id="rep-f-status"><option value="_abertos">Abertos</option><option value="">Todos os status</option><option value="aberto">Aberto</option><option value="em_execucao">Em execução</option><option value="concluido">Concluído</option><option value="cancelado">Cancelado</option></select>
-            <select id="rep-f-setor"><option value="">Setor</option><option value="caldeiraria">Caldeiraria</option><option value="usinagem">Usinagem</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="pintura">Pintura</option><option value="externo">Externo</option></select>
-            <select id="rep-f-resp"><option value="">Responsável</option></select>
-            <select id="rep-f-periodo" title="abertura"><option value="90">Últimos 90 dias</option><option value="365" selected>Últimos 12 meses</option><option value="">Todo o período</option></select>
+            <select id="rep-f-status" data-rep-so="lista"><option value="_abertos">Abertos</option><option value="">Todos os status</option><option value="aberto">Aberto</option><option value="em_execucao">Em execução</option><option value="concluido">Concluído</option><option value="cancelado">Cancelado</option></select>
+            <select id="rep-f-setor" data-rep-so="lista"><option value="">Setor</option><option value="caldeiraria">Caldeiraria</option><option value="usinagem">Usinagem</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="pintura">Pintura</option><option value="externo">Externo</option></select>
+            <select id="rep-f-resp" data-rep-so="lista"><option value="">Responsável</option></select>
+            <select id="rep-f-periodo" data-rep-so="lista" title="abertura"><option value="90">Últimos 90 dias</option><option value="365" selected>Últimos 12 meses</option><option value="">Todo o período</option></select>
+            <!-- lote S52: filtros da visão "Horas por colaborador" (período, departamento do RH, origem) -->
+            <input type="date" id="rep-h-de" data-rep-so="horas" style="display:none;" title="de" />
+            <input type="date" id="rep-h-ate" data-rep-so="horas" style="display:none;" title="até" />
+            <select id="rep-h-atalho" data-rep-so="horas" style="display:none;" title="período"><option value="">Período…</option><option value="mes">Mês atual</option><option value="anterior">Mês anterior</option><option value="hoje">Hoje</option></select>
+            <select id="rep-h-dep" data-rep-so="horas" style="display:none;"><option value="">Todos os departamentos</option></select>
+            <select id="rep-h-origem" data-rep-so="horas" style="display:none;"><option value="">Todas as origens</option><option value="reparo">Reparos (RP)</option><option value="fabricacao">Fabricação (OF)</option><option value="manutencao">Manutenção (OS)</option></select>
           </div>
           <div id="rep-conteudo"><p class="vazio">Carregando…</p></div>
         </div>
@@ -5960,53 +5969,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=8ab263b"></script>
+<script src="js/core.js?v=fa21b8e"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=8ab263b"></script>
+<script src="js/historico.js?v=fa21b8e"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=8ab263b"></script>
-<script src="js/fiscal_ncm.js?v=8ab263b"></script>
+<script src="js/fiscal.js?v=fa21b8e"></script>
+<script src="js/fiscal_ncm.js?v=fa21b8e"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=8ab263b"></script>
-<script src="js/fornecedores.js?v=8ab263b"></script>
-<script src="js/apropriacoes.js?v=8ab263b"></script>
-<script src="js/funcionarios.js?v=8ab263b"></script>
-<script src="js/rh_documentos.js?v=8ab263b"></script>
-<script src="js/servicos.js?v=8ab263b"></script>
-<script src="js/produtos.js?v=8ab263b"></script>
-<script src="js/estoque.js?v=8ab263b"></script>
-<script src="js/separacoes.js?v=8ab263b"></script>
-<script src="js/epi.js?v=8ab263b"></script>
-<script src="js/compras.js?v=8ab263b"></script>
-<script src="js/requisicoes.js?v=8ab263b"></script>
-<script src="js/orcamentos.js?v=8ab263b"></script>
-<script src="js/propostas.js?v=8ab263b"></script>
-<script src="js/contratos.js?v=8ab263b"></script>
-<script src="js/contas_pagar.js?v=8ab263b"></script>
-<script src="js/centros_custo.js?v=8ab263b"></script>
-<script src="js/carteira.js?v=8ab263b"></script>
-<script src="js/obras.js?v=8ab263b"></script>
-<script src="js/frota.js?v=8ab263b"></script>
-<script src="js/viagens.js?v=8ab263b"></script>
-<script src="js/equipamentos.js?v=8ab263b"></script>
-<script src="js/vendas_bens.js?v=8ab263b"></script>
-<script src="js/acessorios.js?v=8ab263b"></script>
-<script src="js/reparos.js?v=8ab263b"></script>
-<script src="js/manutencao.js?v=8ab263b"></script>
-<script src="js/fabricacao.js?v=8ab263b"></script>
-<script src="js/mobilizacoes.js?v=8ab263b"></script>
-<script src="js/estacas.js?v=8ab263b"></script>
-<script src="js/obra_abas.js?v=8ab263b"></script>
-<script src="js/medicoes.js?v=8ab263b"></script>
-<script src="js/movimentacoes.js?v=8ab263b"></script>
-<script src="js/rdo.js?v=8ab263b"></script>
-<script src="js/rdo_import_maya.js?v=8ab263b"></script>
-<script src="js/usuarios.js?v=8ab263b"></script>
-<script src="js/chamados.js?v=8ab263b"></script>
-<script src="js/dashboard.js?v=8ab263b"></script>
-<script src="js/rh_horas.js?v=8ab263b"></script>
-<script src="js/patrimonio.js?v=8ab263b"></script>
+<script src="js/clientes.js?v=fa21b8e"></script>
+<script src="js/fornecedores.js?v=fa21b8e"></script>
+<script src="js/apropriacoes.js?v=fa21b8e"></script>
+<script src="js/funcionarios.js?v=fa21b8e"></script>
+<script src="js/rh_documentos.js?v=fa21b8e"></script>
+<script src="js/servicos.js?v=fa21b8e"></script>
+<script src="js/produtos.js?v=fa21b8e"></script>
+<script src="js/estoque.js?v=fa21b8e"></script>
+<script src="js/separacoes.js?v=fa21b8e"></script>
+<script src="js/epi.js?v=fa21b8e"></script>
+<script src="js/compras.js?v=fa21b8e"></script>
+<script src="js/requisicoes.js?v=fa21b8e"></script>
+<script src="js/orcamentos.js?v=fa21b8e"></script>
+<script src="js/propostas.js?v=fa21b8e"></script>
+<script src="js/contratos.js?v=fa21b8e"></script>
+<script src="js/contas_pagar.js?v=fa21b8e"></script>
+<script src="js/centros_custo.js?v=fa21b8e"></script>
+<script src="js/carteira.js?v=fa21b8e"></script>
+<script src="js/obras.js?v=fa21b8e"></script>
+<script src="js/frota.js?v=fa21b8e"></script>
+<script src="js/viagens.js?v=fa21b8e"></script>
+<script src="js/equipamentos.js?v=fa21b8e"></script>
+<script src="js/vendas_bens.js?v=fa21b8e"></script>
+<script src="js/acessorios.js?v=fa21b8e"></script>
+<script src="js/reparos.js?v=fa21b8e"></script>
+<script src="js/manutencao.js?v=fa21b8e"></script>
+<script src="js/fabricacao.js?v=fa21b8e"></script>
+<script src="js/mobilizacoes.js?v=fa21b8e"></script>
+<script src="js/estacas.js?v=fa21b8e"></script>
+<script src="js/obra_abas.js?v=fa21b8e"></script>
+<script src="js/medicoes.js?v=fa21b8e"></script>
+<script src="js/movimentacoes.js?v=fa21b8e"></script>
+<script src="js/rdo.js?v=fa21b8e"></script>
+<script src="js/rdo_import_maya.js?v=fa21b8e"></script>
+<script src="js/usuarios.js?v=fa21b8e"></script>
+<script src="js/chamados.js?v=fa21b8e"></script>
+<script src="js/dashboard.js?v=fa21b8e"></script>
+<script src="js/rh_horas.js?v=fa21b8e"></script>
+<script src="js/patrimonio.js?v=fa21b8e"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=8ab263b"></script>
+<script src="js/init.js?v=fa21b8e"></script>
 </body>
 </html>
