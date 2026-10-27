@@ -294,7 +294,9 @@ async function reqAbrirAprovar(ids, modo){
   sel.innerHTML = `<option value="">— sem fornecedor (definir nas cotações) —</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}</option>`).join("");
   sel.value = reqFornecedorSugerido(ids);
   $("req-ped-titulo").textContent = compra ? "Mandar para compra" : (ids.length > 1 ? `Aprovar ${ids.length} requisições` : "Aprovar requisição");
-  $("btn-req-ped-gerar").textContent = compra ? "🛒 Gerar pedido em rascunho" : "✅ Aprovar";
+  _reqPedNPed = null;
+  reqPedTextos();
+  sel.onchange = reqPedTextos;   // lote S53 (#163): o botão e a ajuda seguem o fornecedor escolhido
   const reqs = _reqLista.filter(r => ids.includes(r.id));
   $("req-ped-resumo").innerHTML = `<p class="meta">Carregando o que o estoque cobre…</p>`;
   $("cmp-req-ped-modal").style.display = "flex";
@@ -306,13 +308,25 @@ async function reqAbrirAprovar(ids, modo){
   sel.value = reqFornecedorSugerido(ids, linhas.filter(l => l.destino === "pedido").map(l => l.requisicao_item_id));
   const nomeItem = l => { const r = reqs.find(x => x.id === l.requisicao_id); const it = (r?.itens || []).find(i => i.id === l.requisicao_item_id); return it ? reqItemNome(it) : "item"; };
   const numReq = l => (reqs.find(x => x.id === l.requisicao_id) || {}).numero || "";
-  $("req-ped-resumo").innerHTML = `<p class="meta">${reqs.length} requisição(ões): ${reqs.map(r => esc(r.numero)).join(", ")}. ${compra ? "Todos os itens pendentes vão para um pedido em rascunho." : `${nSep} item(ns) vão para a <strong>separação</strong> do almoxarifado (têm saldo) e ${nPed} para um <strong>pedido de compra</strong> em rascunho.`} O preço do pedido começa no último custo do produto; o comprador ajusta, cota e envia para aprovação.</p>
+  $("req-ped-resumo").innerHTML = `<p class="meta">${reqs.length} requisição(ões): ${reqs.map(r => esc(r.numero)).join(", ")}. ${compra ? "Todos os itens pendentes vão para um pedido de compra." : `${nSep} item(ns) vão para a <strong>separação</strong> do almoxarifado (têm saldo) e ${nPed} para um <strong>pedido de compra</strong>.`} Sem fornecedor o pedido nasce <strong>em cotação</strong> (o fornecedor sai da cotação escolhida); com fornecedor nasce em rascunho. O preço começa no último custo do produto; o comprador ajusta, cota e envia para aprovação.</p>
     ${linhas.length ? `<div class="tabela-rola"><table><thead><tr><th>Requisição</th><th>Item</th><th class="num">Qtd</th><th class="num">Disponível</th><th>Destino</th></tr></thead><tbody>${linhas.map(l => `<tr>
       <td>${esc(numReq(l))}</td><td>${esc(nomeItem(l))}</td><td class="num">${num(l.quantidade)}</td>
       <td class="num">${l.disponivel === null || l.disponivel === undefined ? "—" : num(l.disponivel)}</td>
       <td>${l.destino === "separacao" ? '<span class="tag verde">separação</span>' : '<span class="tag azul">compra</span>'} <span class="meta">${esc(l.motivo || "")}</span></td></tr>`).join("")}</tbody></table></div>`
       : `<p class="vazio">Nenhum item pendente.</p>`}`;
-  $("req-ped-forn-ajuda").textContent = nPed || compra ? "Sugerido pelo fornecedor padrão dos produtos. Vazio: o pedido nasce em rascunho e o fornecedor sai das cotações." : "Nada vai para compra: o fornecedor não é usado.";
+  _reqPedNPed = nPed;
+  reqPedTextos();
+}
+/* lote S53 (#163): sem fornecedor o pedido gerado nasce em cotação (requisicoes_aprovar); com fornecedor, em rascunho.
+   O botão e a ajuda do modal dizem qual dos dois vai acontecer. _reqPedNPed = itens que vão para compra (null = prévia
+   ainda carregando). */
+let _reqPedNPed = null;
+function reqPedTextos(){
+  const compra = _reqPedModo === "compra", semForn = !$("req-ped-forn").value, vaiPedido = compra || _reqPedNPed === null || _reqPedNPed > 0;
+  $("btn-req-ped-gerar").textContent = compra ? (semForn ? "🛒 Mandar para cotação" : "🛒 Gerar pedido em rascunho") : "✅ Aprovar";
+  $("req-ped-forn-ajuda").textContent = !vaiPedido ? "Nada vai para compra: o fornecedor não é usado."
+    : semForn ? "Sem fornecedor: o pedido nasce em cotação; o fornecedor sai da cotação escolhida (aba Cotações do pedido)."
+    : "Com fornecedor (sugerido pelo fornecedor padrão dos produtos): o pedido nasce em rascunho; confira os preços e envie para aprovação.";
 }
 async function reqConfirmarAprovar(){
   const ids = _reqPedIds; if(!ids.length) return;
@@ -321,11 +335,12 @@ async function reqConfirmarAprovar(){
   if(error){ aviso("app-aviso", "Não foi possível aprovar: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   $("cmp-req-ped-modal").style.display = "none"; _reqSel = new Set(); _reqPedIds = [];
   const seps = (data?.separacoes || []).map(s => s.numero).join(", ");
+  const emCot = data?.pedido_status === "em_cotacao";   // lote S53 (#163)
   const partes = [data?.itens_separacao ? `${data.itens_separacao} item(ns) na separação ${seps} (almoxarifado)` : "",
-    data?.itens_pedido ? `${data.itens_pedido} no pedido ${data.pedido_numero} (rascunho: confira preços, cote e envie para aprovação)` : ""].filter(Boolean);
+    data?.itens_pedido ? `${data.itens_pedido} no pedido ${data.pedido_numero} (${emCot ? "em cotação: registre as propostas na aba Cotações e feche com o fornecedor escolhido" : "rascunho: confira preços, cote e envie para aprovação"})` : ""].filter(Boolean);
   aviso("app-aviso", "Aprovado: " + (partes.join(" e ") || "os destinos que já existiam continuam") + ".", "ok");
   await cmpFetchPedidos();
-  if(data?.pedido_id) await abrirPedido(data.pedido_id);
+  if(data?.pedido_id){ await abrirPedido(data.pedido_id); if(emCot && typeof ativarTabPedido === "function") ativarTabPedido("cotacoes"); }
 }
 /* fase 102 (#91, etapa 5): quem pediu confere o que o almoxarifado recebeu */
 async function reqConferir(){

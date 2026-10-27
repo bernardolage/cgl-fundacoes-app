@@ -21,6 +21,12 @@
    confirma a NF); chips Etapa, Conferência e Financeiro (este só para podeVerContasPagar); resumo com os cartões da
    sequência do Fabrício (vw_compras_etapas; valores só para quem lê contas a pagar); "Novo produto" no item do pedido
    (produto_cadastro_rapido). Os itens do pedido passam a ser gravados mantendo o id (as cotações apontam para eles).
+   Lote S53 (27/10/2026, chamados #163, #166 e #149): o pedido gerado da requisição sem fornecedor nasce em cotação e
+   "Fechar com este fornecedor" pode enviar para aprovação na mesma transação (cotacao_fechar com p_enviar; o fornecedor
+   só é obrigatório para aprovar); % IPI e % ICMS por item (IPI soma ao total do pedido e ao custo, ICMS só informa;
+   fn_pedido_compra_total), descrição do item livre em textarea que cresce, rodapé Itens · IPI · Frete · Desconto · Total;
+   rateio de um item com destino TAG entre equipamentos (pedido_item_rateio, RPC pedido_item_rateio_definir, modal ⚖ e
+   "+ TAGs" no cabeçalho): vw_custos abre uma linha por TAG e cada TAG pede a chave do seu dono do custo.
    ==================================================================== */
 
 let _cmpView = "kanban";
@@ -64,6 +70,9 @@ let _cmpCotEdit = null;           // fase 102: cotação em edição no formulá
 let _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };   // fase 102: conferências do pedido aberto
 let _cmpCategorias = null;        // fase 102 (#160): categorias_produto para o cadastro rápido
 let _cmpViewInicial = false;      // fase 102: quem não opera Compras abre direto em Requisições (uma vez)
+let _cmpRat = null;               // lote S53 (#149): modal de rateio aberto { idx: índice do item | null = cabeçalho, sel: Map(equipamento_id -> %) }
+let _cmpRatPadrao = [];           // lote S53 (#149): TAGs do "+ TAGs" do cabeçalho (itens novos nascem rateados em partes iguais)
+let _cmpCotEnviar = true;         // lote S53 (#163): "ao fechar, enviar para aprovação" (caixa da aba Cotações)
 /* colunas que o painel usa (a ficha abre o pedido inteiro em abrirPedido) */
 const CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at,observacoes";   // lote S52: observacoes guarda o "Documento de origem" do Odoo ("Ref. Odoo: 10034")
 const CMP_PRIMEIRA_CARGA_DIAS = 30;
@@ -148,6 +157,23 @@ function cmpDestinoTxt(it){
   return "Almoxarifado" + (it.centro_custo_id && cmpCentro(it.centro_custo_id) ? " · p/ " + _cmpCentroMap[it.centro_custo_id].nome : "");
 }
 function cmpDestinoValor(it){ return it.destino === "obra" ? "obra:" + (it.obra_id || "") : it.destino === "equipamento" ? "eq:" + (it.equipamento_id || "") : it.destino === "centro_custo" ? "cc:" + (it.centro_custo_id || "") : it.destino ? "estoque" : ""; }
+/* ---------- lote S53 (#166): IPI por item ----------
+   valor_total = round(q × unitário, 2) e valor_ipi = round(valor_total × ipi / 100, 2), como as colunas geradas do banco;
+   o ICMS é só informativo. Total do pedido = itens + IPI + frete − desconto (fn_pedido_compra_total). */
+function cmpItemBase(it){ return Math.round(Number(it.quantidade || 0) * Number(it.valor_unitario || 0) * 100) / 100; }
+function cmpItemIpi(it){ return Math.round(cmpItemBase(it) * Number(it.ipi_percentual || 0)) / 100; }
+function cmpItemTotal(it){ return Math.round((cmpItemBase(it) + cmpItemIpi(it)) * 100) / 100; }
+function cmpSomaItens(itens){ return Math.round((itens || []).reduce((s, i) => s + cmpItemBase(i), 0) * 100) / 100; }
+function cmpSomaIpi(itens){ return Math.round((itens || []).reduce((s, i) => s + cmpItemIpi(i), 0) * 100) / 100; }
+function cmpPct(v){ return v === null || v === undefined || v === "" || !Number(v) ? "" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "%"; }
+/* ---------- lote S53 (#149): rateio do item entre TAGs ----------
+   it._rateio = [{ equipamento_id, fracao }] com 2+ TAGs (nulo = sem rateio), na ordem do código da TAG; it._rateioDirty
+   marca o que vai à RPC pedido_item_rateio_definir depois do Salvar. O equipamento_id do item fica = primeira TAG. */
+function cmpTemRateio(it){ return it.destino === "equipamento" && Array.isArray(it._rateio) && it._rateio.length >= 2; }
+function cmpPctFracao(f){ return (Math.round(Number(f || 0) * 10000) / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "%"; }
+function cmpRateioTxt(it){ return cmpTemRateio(it) ? it._rateio.map(r => `TAG ${cmpEq(r.equipamento_id) || "?"} ${cmpPctFracao(r.fracao)}`).join(" · ") : ""; }
+function cmpDestinoRateioHTML(it){ return cmpTemRateio(it) ? `<div class="meta" title="${esc(cmpRateioTxt(it))}">+ ${it._rateio.length - 1} TAG(s) (rateio)</div>` : ""; }
+function cmpOrdenarRateio(lista){ return lista.sort((a, b) => (cmpEq(a.equipamento_id) || "").localeCompare(cmpEq(b.equipamento_id) || "", "pt-BR")); }
 /* fase 108b: tipo de compra do item. _tipo = escolha na tela (rascunho); tipo_compra = coluna gerada do banco */
 function cmpItemTipo(it){ return it._tipo || it.tipo_compra || (it.destino === "estoque" ? "reposicao" : "aplicacao_direta"); }
 function cmpTipoTag(t){ return `<span class="tag ${CMP_TIPO_COR[t] || "cinza"}">${esc(CMP_TIPO_LBL[t] || t)}</span>`; }
@@ -942,7 +968,19 @@ async function abrirPedido(id){
   if(error || !p){ aviso("app-aviso", "Não foi possível abrir o pedido" + (error ? ": " + error.message : "."), "erro"); return; }
   if(it.error){ aviso("app-aviso", "Itens não carregaram: " + it.error.message, "erro"); return; }
   // fase 108b: natureza e método já gravados não são trocados pelo padrão quando o comprador muda o tipo ou o destino
-  _cmpItens = (it.data || []).map(i => ({ ...i, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo }));
+  const itens = (it.data || []).map(i => ({ ...i, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo }));
+  // lote S53 (#149): rateio dos itens com destino TAG (tabela nova; sem a migration a consulta falha e a ficha segue sem rateio)
+  const ids = itens.map(i => i.id);
+  if(ids.length){
+    const { data: rat, error: eRat } = await sb.from("pedido_item_rateio").select("pedido_item_id,equipamento_id,fracao").in("pedido_item_id", ids);
+    if(eRat) console.warn("pedido_item_rateio:", eRat.message);
+    else {
+      const por = {};
+      (rat || []).forEach(r => { (por[r.pedido_item_id] = por[r.pedido_item_id] || []).push({ equipamento_id: r.equipamento_id, fracao: Number(r.fracao) }); });
+      itens.forEach(i => { const l = por[i.id]; if(l && l.length >= 2) i._rateio = cmpOrdenarRateio(l); });
+    }
+  }
+  _cmpItens = itens;
   abrirFichaPedido(p);
 }
 function cmpEditavel(){ return cmpPodeOperar() && (_cmpAtual?.status || "rascunho") === "rascunho"; }
@@ -963,6 +1001,9 @@ function abrirFichaPedido(p){
   $("cmp-resp-receb").disabled = !(ed || cmpPodeTrocarResp());
   $("cmp-itens-add").style.display = ed ? "" : "none";
   if($("btn-cmp-prod-novo")) $("btn-cmp-prod-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";   // fase 102 (#160)
+  _cmpRatPadrao = []; _cmpRat = null; cmpRatPadraoTxt();   // lote S53 (#149): o "+ TAGs" do cabeçalho vale só para a ficha aberta
+  if($("btn-cmp-rat-padrao")) $("btn-cmp-rat-padrao").style.display = ed ? "" : "none";
+  if($("cmp-rat-modal")) $("cmp-rat-modal").style.display = "none";
   _cmpCotacoes = []; _cmpCotEdit = null; _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };   // fase 102
   if($("cmp-cot-form")) $("cmp-cot-form").style.display = "none";
   $("cmp-alcada-info").textContent = cmpPodeOperar()
@@ -998,7 +1039,8 @@ function cmpAtualizarStatusbar(st){
 }
 function cmpAtualizarChips(){
   const p = _cmpAtual; if(!p) return;
-  const total = _cmpItens.reduce((s, i) => s + Number(i.quantidade || 0) * Number(i.valor_unitario || 0), 0) + Number($("cmp-frete").value || 0) - Number($("cmp-desc").value || 0);
+  const total = cmpSomaItens(_cmpItens) + cmpSomaIpi(_cmpItens) + Number($("cmp-frete").value || 0) - Number($("cmp-desc").value || 0);   // lote S53 (#166): o IPI entra no total
+  cmpRenderRodapeItens();
   $("cmp-chip-num").textContent = p.numero || "(novo)";
   const chOdoo = $("cmp-chip-odoo");   // fase 65: pedido importado do Odoo
   if(chOdoo){ const ext = p.codigo_externo_origem === "odoo"; chOdoo.style.display = ext ? "" : "none";
@@ -1138,6 +1180,7 @@ function cmpAtualizarBotoes(){
 function ativarTabPedido(nome){
   document.querySelectorAll("#cmp-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.tab === nome));
   document.querySelectorAll("#cmp-ficha .odoo-tab").forEach(t => t.classList.toggle("ativa", t.dataset.tab === nome));
+  if(nome === "itens") $("cmp-itens")?.querySelectorAll("textarea.cmp-it").forEach(cmpCrescerTextarea);   // lote S53 (#166): a aba escondida não media o texto
 }
 async function cmpCarregarFilhas(id){
   const [rec, tit] = await Promise.all([
@@ -1193,7 +1236,7 @@ function cmpAtualizarChipFinanceiro(recs, tits){
 function cmpCotEditavel(){ return cmpPodeOperar() && ["rascunho","em_cotacao"].includes(_cmpAtual?.status) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
 async function cmpCarregarCotacoes(id){
   const { data, error } = await sb.from("cotacoes")
-    .select("id,fornecedor_id,status,prazo_entrega_dias,frete,condicao_pagamento,validade,observacoes,anexo_id,escolhida_em,created_at,updated_at,fornecedor:fornecedores(razao_social),itens:cotacao_itens(id,pedido_item_id,valor_unitario),anexo:pedido_compra_anexos(id,nome,storage_path)")
+    .select("id,fornecedor_id,status,prazo_entrega_dias,frete,condicao_pagamento,validade,observacoes,anexo_id,escolhida_em,created_at,updated_at,fornecedor:fornecedores(razao_social),itens:cotacao_itens(id,pedido_item_id,valor_unitario,ipi_percentual,icms_percentual),anexo:pedido_compra_anexos(id,nome,storage_path)")   // lote S53 (#166): % IPI / % ICMS cotados
     .eq("pedido_id", id).order("created_at");
   if(_cmpEditId !== id) return;
   const b = $("sb-cmp-cot");
@@ -1208,20 +1251,31 @@ async function cmpCarregarCotacoes(id){
   if(b){ b.querySelector(".sb-num").textContent = _cmpCotacoes.length; b.classList.toggle("zero", !_cmpCotacoes.length); }
   renderCotacoes();
 }
-function cmpCotPreco(c, itemId){ const i = (c.itens || []).find(x => x.pedido_item_id === itemId); return i && i.valor_unitario !== null && i.valor_unitario !== undefined ? Number(i.valor_unitario) : null; }
+function cmpCotItem(c, itemId){ return (c.itens || []).find(x => x.pedido_item_id === itemId) || null; }
+function cmpCotPreco(c, itemId){ const i = cmpCotItem(c, itemId); return i && i.valor_unitario !== null && i.valor_unitario !== undefined ? Number(i.valor_unitario) : null; }
+/* lote S53 (#166): IPI da cotação por item (o cotado; vazio = o % que o item já tem, que é o que cotacao_fechar mantém) */
+function cmpCotIpiItem(c, it){
+  const v = cmpCotPreco(c, it.id); if(v === null) return 0;
+  const ci = cmpCotItem(c, it.id), pct = ci && ci.ipi_percentual !== null && ci.ipi_percentual !== undefined ? Number(ci.ipi_percentual) : Number(it.ipi_percentual || 0);
+  return Math.round(Math.round(v * Number(it.quantidade || 0) * 100) * pct / 100) / 100;
+}
+function cmpCotIpi(c){ return Math.round(_cmpItens.reduce((s, it) => s + cmpCotIpiItem(c, it), 0) * 100) / 100; }
 function cmpCotTotal(c){
-  return _cmpItens.reduce((s, it) => { const v = cmpCotPreco(c, it.id); return s + (v === null ? 0 : Math.round(v * Number(it.quantidade || 0) * 100) / 100); }, 0) + Number(c.frete || 0);
+  return _cmpItens.reduce((s, it) => { const v = cmpCotPreco(c, it.id); return s + (v === null ? 0 : Math.round(v * Number(it.quantidade || 0) * 100) / 100); }, 0) + cmpCotIpi(c) + Number(c.frete || 0);
 }
 const CMP_COT_STATUS = { aberta: ["aberta", "azul"], escolhida: ["escolhida", "verde"], descartada: ["descartada", "cinza"] };
 function renderCotacoes(){
   const cont = $("cmp-cot-lista"); if(!cont) return;
   const ed = cmpCotEditavel();
   const itens = _cmpItens.filter(it => it.id);
+  // lote S53 (#163): ao fechar com o fornecedor, enviar para aprovação na mesma transação (caixa marcada por padrão)
   const topo = `<div class="lista-topo compacta"><h3>Cotações <span class="contador">${_cmpCotacoes.length}</span></h3>
-    ${ed ? `<button type="button" class="btn-sec btn-sm" id="btn-cmp-cot-nova" style="margin-left:auto;">＋ Nova cotação</button>` : ""}</div>`;
+    ${ed ? `<label class="meta" style="display:flex;align-items:center;gap:4px;margin-left:auto;" title="Marcada: 'Fechar com este fornecedor' já manda o pedido para a aprovação (alçada e donos do custo). Desmarcada: o pedido volta a rascunho para você conferir."><input type="checkbox" id="cmp-cot-enviar"${_cmpCotEnviar ? " checked" : ""} /> ao fechar, enviar para aprovação</label>
+    <button type="button" class="btn-sec btn-sm" id="btn-cmp-cot-nova">＋ Nova cotação</button>` : ""}</div>`;
+  const ligarTopo = () => { $("btn-cmp-cot-nova")?.addEventListener("click", () => cmpAbrirCotacao(null)); $("cmp-cot-enviar")?.addEventListener("change", e => { _cmpCotEnviar = e.target.checked; }); };
   if(!_cmpCotacoes.length){
     cont.innerHTML = topo + `<p class="vazio">${ed ? (itens.length ? "Nenhuma cotação. Registre a proposta de cada fornecedor (1 a N)." : "Salve os itens do pedido antes de cotar.") : "Nenhuma cotação registrada."}</p>`;
-    $("btn-cmp-cot-nova")?.addEventListener("click", () => cmpAbrirCotacao(null));
+    ligarTopo();
     return;
   }
   const vivas = _cmpCotacoes.filter(c => c.status !== "descartada");
@@ -1233,19 +1287,22 @@ function renderCotacoes(){
     return `<th class="num" style="min-width:150px;"><div>${esc(c.fornecedor?.razao_social || cmpForn(c.fornecedor_id) || "?")}</div><span class="tag ${s[1]}">${esc(s[0])}</span></th>`; }).join("");
   const linhas = itens.map(it => `<tr><td>${esc(it.descricao)}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>${
     _cmpCotacoes.map(c => { const v = cmpCotPreco(c, it.id); const ehMelhor = v !== null && c.status !== "descartada" && v === melhor[it.id] && vivas.length > 1;
-      return `<td class="num">${v === null ? '<span class="meta">não cotou</span>' : `${brl(v)}<div class="meta">${brl(Math.round(v * Number(it.quantidade || 0) * 100) / 100)}</div>`}${ehMelhor ? ' <span class="tag verde" title="menor preço deste item entre as cotações">melhor</span>' : ""}</td>`; }).join("")}</tr>`).join("");
+      const ci = cmpCotItem(c, it.id), imp = ci ? [ci.ipi_percentual !== null && ci.ipi_percentual !== undefined ? "IPI " + cmpPct(ci.ipi_percentual) : "", ci.icms_percentual !== null && ci.icms_percentual !== undefined ? "ICMS " + cmpPct(ci.icms_percentual) : ""].filter(Boolean).join(" · ") : "";   // lote S53 (#166)
+      return `<td class="num">${v === null ? '<span class="meta">não cotou</span>' : `${brl(v)}<div class="meta">${brl(Math.round(v * Number(it.quantidade || 0) * 100) / 100)}${imp ? " · " + esc(imp) : ""}</div>`}${ehMelhor ? ' <span class="tag verde" title="menor preço deste item entre as cotações">melhor</span>' : ""}</td>`; }).join("")}</tr>`).join("");
   const rodape = (rot, fn) => `<tr><th colspan="2" style="text-align:right;">${rot}</th>${_cmpCotacoes.map(fn).join("")}</tr>`;
+  const comIpi = _cmpCotacoes.some(c => cmpCotIpi(c) > 0);
   cont.innerHTML = topo + `<div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Item</th><th class="num">Qtd</th>${th}</tr></thead><tbody>${linhas}</tbody>
     <tfoot>
+      ${comIpi ? rodape("IPI", c => `<td class="num">${brl(cmpCotIpi(c))}</td>`) : ""}
       ${rodape("Frete", c => `<td class="num">${brl(c.frete || 0)}</td>`)}
       ${rodape("Total", (c, i) => `<td class="num"><strong>${brl(totais[i])}</strong>${c.status !== "descartada" && vivas.length > 1 && totais[i] === menorTotal ? ' <span class="tag verde">menor total</span>' : ""}</td>`)}
       ${rodape("Prazo de entrega", c => `<td class="num">${c.prazo_entrega_dias !== null && c.prazo_entrega_dias !== undefined ? esc(c.prazo_entrega_dias) + " dia(s)" : "—"}</td>`)}
       ${rodape("Condição", c => `<td class="num">${esc(c.condicao_pagamento || "—")}</td>`)}
       ${rodape("Validade", c => `<td class="num">${c.validade ? dataBR(c.validade) : "—"}</td>`)}
       ${rodape("Proposta", c => `<td class="num">${c.anexo ? `<a href="#" class="cmp-cot-anexo" data-path="${esc(c.anexo.storage_path)}" data-nome="${esc(c.anexo.nome)}">📎 ${esc(c.anexo.nome)}</a>` : "—"}${c.observacoes ? `<div class="meta">${esc(c.observacoes)}</div>` : ""}</td>`)}
-      ${ed ? rodape("", c => `<td class="num" data-cot="${esc(c.id)}">${c.status === "escolhida" ? '<span class="meta">pedido fechado com esta</span><br>' : `<button type="button" class="btn btn-sm cmp-cot-fechar" title="Copia fornecedor, preços, frete, prazo e condição para o pedido">✔ Fechar com este fornecedor</button><br>`}<button type="button" class="btn-sec btn-sm cmp-cot-editar" title="Editar">✏️</button> <button type="button" class="btn-sec btn-sm txt-perigo cmp-cot-excluir" title="Excluir">🗑️</button></td>`) : ""}
+      ${ed ? rodape("", c => `<td class="num" data-cot="${esc(c.id)}">${c.status === "escolhida" ? '<span class="meta">pedido fechado com esta</span><br>' : `<button type="button" class="btn btn-sm cmp-cot-fechar" title="Copia fornecedor, preços, IPI/ICMS, frete, prazo e condição para o pedido; com a caixa 'enviar para aprovação' marcada, já manda para a aprovação">✔ Fechar com este fornecedor</button><br>`}<button type="button" class="btn-sec btn-sm cmp-cot-editar" title="Editar">✏️</button> <button type="button" class="btn-sec btn-sm txt-perigo cmp-cot-excluir" title="Excluir">🗑️</button></td>`) : ""}
     </tfoot></table></div>`;
-  $("btn-cmp-cot-nova")?.addEventListener("click", () => cmpAbrirCotacao(null));
+  ligarTopo();
   cont.querySelectorAll(".cmp-cot-anexo").forEach(a => a.addEventListener("click", e => { e.preventDefault(); cmpAbrirAnexo(a.dataset.path, a.dataset.nome); }));
   cont.querySelectorAll(".cmp-cot-fechar").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => cmpFecharCotacao(b.closest("td").dataset.cot))));
   cont.querySelectorAll(".cmp-cot-editar").forEach(b => b.addEventListener("click", () => cmpAbrirCotacao(_cmpCotacoes.find(c => c.id === b.closest("td").dataset.cot))));
@@ -1260,16 +1317,26 @@ function cmpAbrirCotacao(c){
   $("cmp-cot-forn").value = c?.fornecedor_id || ""; $("cmp-cot-forn").disabled = !!c; cmpFornAtualizar("cmp-cot-forn");
   $("cmp-cot-prazo").value = c?.prazo_entrega_dias ?? ""; $("cmp-cot-frete").value = c?.frete ?? ""; $("cmp-cot-cond").value = c?.condicao_pagamento || "";
   $("cmp-cot-validade").value = c?.validade || ""; $("cmp-cot-obs").value = c?.observacoes || ""; $("cmp-cot-anexo").value = "";
-  $("cmp-cot-itens").innerHTML = itens.map(it => { const v = c ? cmpCotPreco(c, it.id) : null;
+  // lote S53 (#166): % IPI / % ICMS por item (opcionais; vazio mantém o % que o item do pedido já tem, mostrado no placeholder)
+  const pctVal = (ci, campo) => ci && ci[campo] !== null && ci[campo] !== undefined ? esc(ci[campo]) : "";
+  $("cmp-cot-itens").innerHTML = itens.map(it => { const v = c ? cmpCotPreco(c, it.id) : null, ci = c ? cmpCotItem(c, it.id) : null;
     return `<tr data-item="${esc(it.id)}"><td>${esc(it.descricao)}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>
       <td><input type="number" class="cmp-cot-preco" step="0.0001" min="0" value="${v === null ? "" : esc(v)}" placeholder="não cotou" style="width:120px;text-align:right;" /></td>
-      <td class="num cmp-cot-tot">${v === null ? "—" : brl(Math.round(v * Number(it.quantidade || 0) * 100) / 100)}</td></tr>`; }).join("");
-  $("cmp-cot-itens").querySelectorAll(".cmp-cot-preco").forEach(inp => inp.addEventListener("input", () => {
-    const tr = inp.closest("tr"), it = _cmpItens.find(x => x.id === tr.dataset.item), v = inp.value === "" ? null : Number(inp.value);
-    tr.querySelector(".cmp-cot-tot").textContent = v === null ? "—" : brl(Math.round(v * Number(it?.quantidade || 0) * 100) / 100);
+      <td><input type="number" class="cmp-cot-ipi" step="0.01" min="0" max="100" value="${pctVal(ci, "ipi_percentual")}" placeholder="${esc(it.ipi_percentual ?? 0)}" title="% de IPI cotado; vazio mantém o do item" style="width:76px;text-align:right;" /></td>
+      <td><input type="number" class="cmp-cot-icms" step="0.01" min="0" max="100" value="${pctVal(ci, "icms_percentual")}" placeholder="${esc(it.icms_percentual ?? 0)}" title="% de ICMS cotado (informativo)" style="width:76px;text-align:right;" /></td>
+      <td class="num cmp-cot-tot">${v === null ? "—" : brl(cmpCotLinhaTotal(v, it, ci ? ci.ipi_percentual : null))}</td></tr>`; }).join("");
+  $("cmp-cot-itens").querySelectorAll(".cmp-cot-preco, .cmp-cot-ipi").forEach(inp => inp.addEventListener("input", () => {
+    const tr = inp.closest("tr"), it = _cmpItens.find(x => x.id === tr.dataset.item), pv = tr.querySelector(".cmp-cot-preco").value, pi = tr.querySelector(".cmp-cot-ipi").value;
+    const v = pv === "" ? null : Number(pv);
+    tr.querySelector(".cmp-cot-tot").textContent = v === null ? "—" : brl(cmpCotLinhaTotal(v, it || {}, pi === "" ? null : Number(pi)));
   }));
   $("cmp-cot-form").style.display = "";
   $("cmp-cot-form").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+/* total da linha da cotação com IPI (o cotado ou, vazio, o do item) */
+function cmpCotLinhaTotal(v, it, ipiCotado){
+  const base = Math.round(v * Number(it.quantidade || 0) * 100) / 100, pct = ipiCotado === null || ipiCotado === undefined ? Number(it.ipi_percentual || 0) : Number(ipiCotado);
+  return base + Math.round(base * pct) / 100;
 }
 function cmpFecharFormCotacao(){ _cmpCotEdit = null; if($("cmp-cot-form")) $("cmp-cot-form").style.display = "none"; }
 async function cmpSalvarCotacao(){
@@ -1279,8 +1346,10 @@ async function cmpSalvarCotacao(){
   if(!c.id && _cmpCotacoes.some(x => x.fornecedor_id === forn)){ aviso("app-aviso", "Este fornecedor já tem cotação neste pedido: use ✏️ para editar.", "erro"); return; }
   const prazo = $("cmp-cot-prazo").value === "" ? null : Math.round(Number($("cmp-cot-prazo").value));
   if(prazo !== null && !(prazo >= 0 && prazo <= 365)){ aviso("app-aviso", "Prazo de entrega entre 0 e 365 dias.", "erro"); return; }
-  const precos = [...$("cmp-cot-itens").querySelectorAll("tr[data-item]")].map(tr => { const v = tr.querySelector(".cmp-cot-preco").value; return { pedido_item_id: tr.dataset.item, valor_unitario: v === "" ? null : Number(v) }; });
+  const pct = tr => { const i = tr.querySelector(".cmp-cot-ipi").value, c2 = tr.querySelector(".cmp-cot-icms").value; return { ipi_percentual: i === "" ? null : Number(i), icms_percentual: c2 === "" ? null : Number(c2) }; };   // lote S53 (#166)
+  const precos = [...$("cmp-cot-itens").querySelectorAll("tr[data-item]")].map(tr => { const v = tr.querySelector(".cmp-cot-preco").value; return { pedido_item_id: tr.dataset.item, valor_unitario: v === "" ? null : Number(v), ...pct(tr) }; });
   if(precos.some(p => p.valor_unitario !== null && !(p.valor_unitario >= 0))){ aviso("app-aviso", "Preço inválido.", "erro"); return; }
+  if(precos.some(p => [p.ipi_percentual, p.icms_percentual].some(x => x !== null && !(x >= 0 && x <= 100)))){ aviso("app-aviso", "% IPI e % ICMS entre 0 e 100.", "erro"); return; }
   if(!precos.some(p => p.valor_unitario !== null)){ aviso("app-aviso", "Informe o preço de pelo menos um item.", "erro"); return; }
   const cab = { prazo_entrega_dias: prazo, frete: Number($("cmp-cot-frete").value || 0), condicao_pagamento: $("cmp-cot-cond").value.trim() || null,
     validade: $("cmp-cot-validade").value || null, observacoes: $("cmp-cot-obs").value.trim() || null };
@@ -1330,9 +1399,11 @@ async function cmpExcluirCotacao(id){
 async function cmpFecharCotacao(id){
   const c = _cmpCotacoes.find(x => x.id === id); if(!c) return;
   const semPreco = _cmpItens.filter(it => it.id && cmpCotPreco(c, it.id) === null).length;
-  if(!confirm(`Fechar o pedido com ${c.fornecedor?.razao_social || "este fornecedor"} (${brl(cmpCotTotal(c))})?\nFornecedor, preços, frete, prazo e condição da cotação vão para o pedido${semPreco ? `; ${semPreco} item(ns) sem preço nesta cotação ficam com o preço atual` : ""}. As outras cotações ficam descartadas.`)) return;
+  const enviar = $("cmp-cot-enviar") ? !!$("cmp-cot-enviar").checked : _cmpCotEnviar;   // lote S53 (#163)
+  if(!confirm(`Fechar o pedido com ${c.fornecedor?.razao_social || "este fornecedor"} (${brl(cmpCotTotal(c))})${enviar ? " e enviar para aprovação" : ""}?\nFornecedor, preços, IPI/ICMS, frete, prazo e condição da cotação vão para o pedido${semPreco ? `; ${semPreco} item(ns) sem preço nesta cotação ficam com o preço atual` : ""}. As outras cotações ficam descartadas.${enviar ? " O pedido segue para a aprovação (alçada e donos do custo)." : " O pedido volta a rascunho para você conferir."}`)) return;
   const pedidoId = _cmpEditId;
-  const { data, error } = await sb.rpc("cotacao_fechar", { p_id: id });
+  let { data, error } = await sb.rpc("cotacao_fechar", { p_id: id, p_enviar: enviar });
+  if(error && /could not find the function|p_enviar/i.test(error.message || "")){ ({ data, error } = await sb.rpc("cotacao_fechar", { p_id: id })); }   // banco ainda sem a migration do lote S53
   if(error){ aviso("app-aviso", (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   aviso("app-aviso", data || "Pedido fechado com o fornecedor da cotação.", "ok");
   await cmpFetchPedidos();
@@ -1384,7 +1455,12 @@ async function cmpSalvarProdutoRapido(){
 /* fase 108b: destino padrão de item de APLICAÇÃO DIRETA pelo cabeçalho (TAG, senão obra); sem eles fica para escolher */
 function cmpDestinoDiretoPadrao(){
   const obra = $("cmp-obra").value, eq = $("cmp-equip").value;
-  if(eq) return cmpDestinoDoValor("eq:" + eq);
+  if(eq){
+    const d = cmpDestinoDoValor("eq:" + eq);
+    // lote S53 (#149): "+ TAGs" do cabeçalho → o item novo nasce rateado em partes iguais (a primeira TAG é o equipamento_id)
+    if(_cmpRatPadrao.length >= 2 && _cmpRatPadrao[0] === eq){ d._rateio = _cmpRatPadrao.map(id => ({ equipamento_id: id, fracao: 1 / _cmpRatPadrao.length })); d._rateioDirty = true; }
+    return d;
+  }
   if(obra) return cmpDestinoDoValor("obra:" + obra);
   return { ...CMP_SEM_DESTINO };
 }
@@ -1394,30 +1470,33 @@ function cmpDestinoDiretoPadrao(){
    troca livre; depois de aprovado o banco trava (gatilho da 108a) e a tela só mostra. */
 function renderItensPedido(){
   const tb = $("cmp-itens"); const ed = cmpEditavel();
-  if(!_cmpItens.length){ tb.innerHTML = `<tr><td colspan="12" class="vazio">${ed ? "Adicione produtos do catálogo ou um item livre." : "Sem itens."}</td></tr>`; cmpAtualizarSbItens(); cmpAtualizarChips(); return; }
+  if(!_cmpItens.length){ tb.innerHTML = `<tr><td colspan="14" class="vazio">${ed ? "Adicione produtos do catálogo ou um item livre." : "Sem itens."}</td></tr>`; cmpAtualizarSbItens(); cmpAtualizarChips(); return; }
   tb.innerHTML = _cmpItens.map((it, idx) => {
-    const tot = Number(it.quantidade || 0) * Number(it.valor_unitario || 0);
     const tipo = cmpItemTipo(it), repo = tipo === "reposicao";
     const externo = it.obra_externa || it.centro_custo_externo ? `<div class="meta" title="rateio do Odoo sem cadastro no app">${esc([it.obra_externa, it.centro_custo_externo].filter(Boolean).join(" · "))}</div>` : "";
     const tipoCel = ed
       ? `<select class="cmp-it" data-f="_tipo" style="min-width:140px;max-width:160px;"><option value="reposicao"${repo ? " selected" : ""}${it.produto_id ? "" : ' disabled title="item sem produto do catálogo não entra no estoque"'}>${esc(CMP_TIPO_LBL.reposicao)}</option><option value="aplicacao_direta"${repo ? "" : " selected"}>${esc(CMP_TIPO_LBL.aplicacao_direta)}</option></select>`
       : cmpTipoTag(tipo);
+    // lote S53 (#149): destino TAG ganha o botão ⚖ (rateio entre equipamentos) e a linha "+ N TAG(s) (rateio)"
     const destinoCel = repo
       ? `<span class="meta" title="entra no almoxarifado no recebimento; o custo aparece na saída do estoque">${esc(cmpDestinoTxt({ destino: "estoque", centro_custo_id: ed ? $("cmp-centro").value : it.centro_custo_id }))}</span>`
-      : ed ? `<select class="cmp-it${it.destino ? "" : " txt-perigo"}" data-f="destino" style="min-width:150px;max-width:190px;">${cmpDestinoDiretoOptions(cmpDestinoValor(it))}</select>`
-      : esc(cmpDestinoTxt(it));
+      : ed ? `<select class="cmp-it${it.destino ? "" : " txt-perigo"}" data-f="destino" style="min-width:150px;max-width:190px;">${cmpDestinoDiretoOptions(cmpDestinoValor(it))}</select> <button type="button" class="btn-sec btn-sm cmp-it-rat" title="Ratear este item entre TAGs (partes iguais, ajustáveis)" style="${it.destino === "equipamento" ? "" : "display:none;"}">⚖</button><div class="cmp-it-rat-txt">${cmpDestinoRateioHTML(it)}</div>`
+      : esc(cmpDestinoTxt(it)) + cmpDestinoRateioHTML(it);
     const natCel = ed && _cmpNaturezas.length
       ? `<select class="cmp-it" data-f="natureza_id" style="min-width:150px;max-width:190px;"${it.natureza && !_cmpNatMap[it.natureza_id] ? ` title="Odoo: ${esc(it.natureza)}"` : ""}>${cmpNatOptions(it.natureza_id || "")}</select>`
       : `<span class="meta"${it.natureza ? ` title="Odoo: ${esc(it.natureza)}"` : ""}>${esc(cmpNatTxt(it) || "—")}</span>`;
     const metCel = repo ? `<span class="meta" title="o método entra na saída do estoque">—</span>`
       : ed ? `<select class="cmp-it" data-f="metodo" style="min-width:120px;max-width:140px;">${cmpMetodoOptions(it.metodo || "")}</select>`
       : `<span class="meta">${esc(CMP_METODO_LBL[it.metodo] || "—")}</span>`;
+    // lote S53 (#166): descrição do item livre em textarea que cresce com o texto; % IPI e % ICMS por item; total com IPI
     return `<tr data-idx="${idx}">
-      <td>${it.produto_id ? esc(it.descricao) : (ed ? `<input class="cmp-it" data-f="descricao" value="${esc(it.descricao || "")}" placeholder="descrição do item" style="width:100%;" />` : esc(it.descricao))}${it.produto_id ? "" : ' <span class="meta">livre</span>'}</td>
+      <td>${it.produto_id ? esc(it.descricao) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(it.descricao || "")}</textarea>` : esc(it.descricao))}${it.produto_id ? "" : ' <span class="meta">livre</span>'}</td>
       <td>${ed && !it.produto_id ? `<input class="cmp-it" data-f="unidade" value="${esc(it.unidade || "un")}" style="width:56px;" />` : esc(it.unidade || "un")}</td>
       <td>${ed ? `<input type="number" step="0.001" min="0.001" class="cmp-it" data-f="quantidade" value="${esc(it.quantidade ?? 1)}" style="width:80px;text-align:right;" />` : num(it.quantidade)}</td>
       <td>${ed ? `<input type="number" step="0.01" min="0" class="cmp-it" data-f="valor_unitario" value="${esc(it.valor_unitario ?? 0)}" style="width:105px;text-align:right;" />` : brl(it.valor_unitario)}</td>
-      <td class="num cmp-it-total">${brl(tot)}</td>
+      <td>${ed ? `<input type="number" step="0.01" min="0" max="100" class="cmp-it" data-f="ipi_percentual" value="${esc(it.ipi_percentual ?? 0)}" title="% de IPI: soma ao total e ao custo" style="width:68px;text-align:right;" />` : `<span class="meta">${esc(cmpPct(it.ipi_percentual) || "—")}</span>`}</td>
+      <td>${ed ? `<input type="number" step="0.01" min="0" max="100" class="cmp-it" data-f="icms_percentual" value="${esc(it.icms_percentual ?? 0)}" title="% de ICMS: só informativo" style="width:68px;text-align:right;" />` : `<span class="meta">${esc(cmpPct(it.icms_percentual) || "—")}</span>`}</td>
+      <td class="num cmp-it-total">${cmpItemTotalHTML(it)}</td>
       <td>${ed ? `<select class="cmp-it" data-f="categoria_custo">${cmpCatOptions(it.categoria_custo || "peca")}</select>` : esc(CMP_CAT_LBL[it.categoria_custo] || "—")}</td>
       <td>${tipoCel}</td>
       <td>${destinoCel}${!repo && it.destino === "equipamento" && it.obra_id ? `<div class="meta">obra ${esc(cmpObra(it.obra_id))}</div>` : ""}${externo}</td>
@@ -1429,20 +1508,43 @@ function renderItensPedido(){
   tb.querySelectorAll(".cmp-it").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", e => {
     const tr = e.target.closest("tr"), it = _cmpItens[Number(tr.dataset.idx)], f = e.target.dataset.f, v = e.target.value;
     if(f === "_tipo"){ cmpTrocarTipoItem(it, v); return; }
-    if(f === "destino"){ Object.assign(it, cmpDestinoDiretoDoValor(v)); e.target.classList.toggle("txt-perigo", !v); cmpAplicarMetodoPadrao(it); cmpAtualizarChips(); return; }
+    if(f === "destino"){
+      const tinhaRateio = cmpTemRateio(it);
+      Object.assign(it, cmpDestinoDiretoDoValor(v)); e.target.classList.toggle("txt-perigo", !v);
+      if(tinhaRateio){ it._rateio = null; it._rateioDirty = true; }   // lote S53 (#149): trocar a TAG (ou sair dela) desfaz o rateio
+      const bRat = tr.querySelector(".cmp-it-rat"), tRat = tr.querySelector(".cmp-it-rat-txt");
+      if(bRat) bRat.style.display = it.destino === "equipamento" ? "" : "none";
+      if(tRat) tRat.innerHTML = cmpDestinoRateioHTML(it);
+      cmpAplicarMetodoPadrao(it); cmpAtualizarChips(); return;
+    }
     if(f === "natureza_id"){ it.natureza_id = v || null; it._natAuto = false; return; }
     if(f === "metodo"){ it.metodo = v || null; it._metAuto = false; return; }
     if(f === "categoria_custo" && it._natAuto){   // natureza ainda não escolhida à mão: segue a categoria de custo
       it.categoria_custo = v; it.natureza_id = cmpNatPadrao(cmpItemTipo(it), v); renderItensPedido(); return;
     }
-    if(f === "quantidade" || f === "valor_unitario") it[f] = Number(v || 0);
+    if(["quantidade", "valor_unitario", "ipi_percentual", "icms_percentual"].includes(f)) it[f] = Number(v || 0);
     else it[f] = v;
-    tr.querySelector(".cmp-it-total").textContent = brl(Number(it.quantidade || 0) * Number(it.valor_unitario || 0));
+    if(e.target.tagName === "TEXTAREA") cmpCrescerTextarea(e.target);
+    tr.querySelector(".cmp-it-total").innerHTML = cmpItemTotalHTML(it);
     cmpAtualizarChips();
   }));
+  tb.querySelectorAll("textarea.cmp-it").forEach(cmpCrescerTextarea);
+  tb.querySelectorAll(".cmp-it-rat").forEach(b => b.addEventListener("click", e => cmpAbrirRateio(Number(e.target.closest("tr").dataset.idx))));
   tb.querySelectorAll(".cmp-it-rem").forEach(b => b.addEventListener("click", e => { _cmpItens.splice(Number(e.target.closest("tr").dataset.idx), 1); renderItensPedido(); }));
   cmpAtualizarSbItens();
   cmpAtualizarChips();
+}
+function cmpItemTotalHTML(it){ const ipi = cmpItemIpi(it); return brl(cmpItemTotal(it)) + (ipi ? `<div class="meta" title="IPI incluído no total do item">IPI ${brl(ipi)}</div>` : ""); }
+/* textarea da descrição cresce com o texto (a aba Itens pode estar escondida na hora do render: ativarTabPedido repete) */
+function cmpCrescerTextarea(t){ t.style.height = "auto"; t.style.height = Math.max(34, t.scrollHeight + 2) + "px"; }
+/* lote S53 (#166): rodapé Itens · IPI · Frete · Desconto · Total (IPI, frete e desconto só quando há valor) */
+function cmpRenderRodapeItens(){
+  const tf = $("cmp-itens-rodape"); if(!tf) return;
+  if(!_cmpItens.length){ tf.innerHTML = ""; return; }
+  const itens = cmpSomaItens(_cmpItens), ipi = cmpSomaIpi(_cmpItens), frete = Number($("cmp-frete").value || 0), desc = Number($("cmp-desc").value || 0);
+  const linha = (rot, val, forte) => `<tr><td colspan="6" style="text-align:right;${forte ? "font-weight:700;" : ""}">${rot}</td><td class="num"${forte ? ' style="font-weight:700;"' : ""}>${val}</td><td colspan="7"></td></tr>`;
+  tf.innerHTML = linha("Itens", brl(itens)) + (ipi ? linha("IPI", brl(ipi)) : "") + (frete ? linha("Frete", brl(frete)) : "") + (desc ? linha("Desconto", "− " + brl(desc)) : "")
+    + linha("Total", brl(itens + ipi + frete - desc), true);
 }
 function cmpAtualizarSbItens(){ const sbi = $("sb-cmp-itens"); if(sbi){ sbi.querySelector(".sb-num").textContent = _cmpItens.length; sbi.classList.toggle("zero", !_cmpItens.length); } }
 /* fase 108b: trocar o tipo em rascunho. Reposição: destino estoque, sem método; aplicação direta: destino pelo
@@ -1464,13 +1566,95 @@ function cmpAddItem(p){
   const tipo = p ? cmpTipoPadraoProduto(p) : "aplicacao_direta";
   const d = tipo === "reposicao" ? { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null } : cmpDestinoDiretoPadrao();
   const it = { produto_id: p?.id || null, descricao: p ? `${p.codigo} — ${p.nome}` : "", unidade: p?.unidade || "un", quantidade: 1,
-    valor_unitario: Number(p?.custo_ultimo || 0), categoria_custo: p?.categoria_custo || "peca", ...d, quantidade_recebida: 0,
+    valor_unitario: Number(p?.custo_ultimo || 0), categoria_custo: p?.categoria_custo || "peca", ipi_percentual: 0, icms_percentual: 0, ...d, quantidade_recebida: 0,   // lote S53 (#166)
     _tipo: tipo, natureza_id: null, _natAuto: true, metodo: null, _metAuto: true };
   it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo);
   _cmpItens.push(it);
   renderItensPedido();
   if(tipo === "aplicacao_direta") cmpAplicarMetodoPadrao(it);
-  if(!p){ const inp = $("cmp-itens").querySelector(`tr[data-idx="${_cmpItens.length - 1}"] input[data-f=descricao]`); if(inp) inp.focus(); }
+  if(!p){ const inp = $("cmp-itens").querySelector(`tr[data-idx="${_cmpItens.length - 1}"] textarea[data-f=descricao]`); if(inp) inp.focus(); }
+}
+/* ---------- lote S53 (#149): modal de rateio entre TAGs ----------
+   idx = índice do item em _cmpItens; null = "+ TAGs" do cabeçalho (TAGs padrão dos itens novos). Marcar/desmarcar uma TAG
+   iguala as partes; o % é ajustável à mão e "Igualar" volta a partes iguais. Aplicar normaliza para 100%. */
+function cmpAbrirRateio(idx){
+  if(!cmpEditavel()) return;
+  const it = idx === null ? null : _cmpItens[idx]; if(idx !== null && !it) return;
+  const atual = it ? (cmpTemRateio(it) ? it._rateio : (it.equipamento_id ? [{ equipamento_id: it.equipamento_id, fracao: 1 }] : []))
+                   : (_cmpRatPadrao.length ? _cmpRatPadrao.map(id => ({ equipamento_id: id, fracao: 1 / _cmpRatPadrao.length })) : ($("cmp-equip").value ? [{ equipamento_id: $("cmp-equip").value, fracao: 1 }] : []));
+  _cmpRat = { idx, sel: new Map(atual.map(r => [r.equipamento_id, Math.round(Number(r.fracao) * 10000) / 100])) };
+  $("cmp-rat-titulo").textContent = it ? `Rateio entre TAGs — ${(it.descricao || "item").slice(0, 60)}` : "TAGs padrão dos itens novos";
+  $("cmp-rat-ajuda").textContent = it
+    ? "Marque as TAGs e ajuste os percentuais (partes iguais por padrão). O custo do item cai em cada TAG na proporção e cada TAG pede a assinatura do seu dono do custo. O rateio é gravado no Salvar."
+    : "Os itens novos de aplicação direta nascem rateados entre estas TAGs em partes iguais (a primeira vira a TAG padrão do cabeçalho). Ajuste item a item depois, se precisar.";
+  $("cmp-rat-busca").value = "";
+  cmpRatRender();
+  $("cmp-rat-modal").style.display = "flex";
+  $("cmp-rat-busca").focus();
+}
+function cmpRatRender(){
+  const r = _cmpRat; if(!r) return;
+  const f = cmpNorm($("cmp-rat-busca").value.trim());
+  const lista = _cmpEquips.filter(e => r.sel.has(e.id) || !f || cmpNorm(e.codigo + " " + (e.nome || "")).includes(f));
+  $("cmp-rat-lista").innerHTML = lista.map(e => { const on = r.sel.has(e.id); return `<tr data-eq="${esc(e.id)}"${on ? ' class="sep-ok"' : ""}>
+    <td><input type="checkbox" class="cmp-rat-chk"${on ? " checked" : ""} /></td>
+    <td>TAG ${esc(e.codigo)}${e.nome ? ` <span class="meta">${esc(e.nome)}</span>` : ""}</td>
+    <td>${on ? `<input type="number" class="cmp-rat-pct" min="0.01" max="100" step="0.01" value="${esc(r.sel.get(e.id))}" style="width:90px;text-align:right;" />` : ""}</td></tr>`; }).join("")
+    || `<tr><td colspan="3" class="vazio">Nenhuma TAG com esse texto.</td></tr>`;
+  $("cmp-rat-lista").querySelectorAll(".cmp-rat-chk").forEach(cb => cb.addEventListener("change", () => {
+    const id = cb.closest("tr").dataset.eq;
+    if(cb.checked) r.sel.set(id, 0); else r.sel.delete(id);
+    cmpRatIgualar();
+  }));
+  $("cmp-rat-lista").querySelectorAll(".cmp-rat-pct").forEach(inp => inp.addEventListener("input", () => { r.sel.set(inp.closest("tr").dataset.eq, Number(inp.value || 0)); cmpRatSoma(); }));
+  cmpRatSoma();
+}
+function cmpRatIgualar(){
+  const r = _cmpRat; if(!r) return;
+  const ids = [...r.sel.keys()], n = ids.length;
+  if(n){ const base = Math.floor(10000 / n) / 100, resto = Math.round((100 - base * n) * 100) / 100;
+    ids.forEach((id, i) => r.sel.set(id, i === n - 1 ? Math.round((base + resto) * 100) / 100 : base)); }
+  cmpRatRender();
+}
+function cmpRatSoma(){
+  const r = _cmpRat; if(!r) return;
+  const soma = Math.round([...r.sel.values()].reduce((s, v) => s + Number(v || 0), 0) * 100) / 100;
+  $("cmp-rat-soma").innerHTML = r.sel.size
+    ? `${r.sel.size} TAG(s) · soma <strong>${soma.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</strong>${Math.abs(soma - 100) > 0.01 ? ' <span class="txt-aviso">(ao aplicar, as partes são ajustadas para somar 100%)</span>' : ""}`
+    : "Nenhuma TAG marcada.";
+}
+function cmpRatAplicar(){
+  const r = _cmpRat; if(!r) return;
+  const ids = [...r.sel.keys()].filter(id => Number(r.sel.get(id)) > 0);
+  if(r.sel.size && !ids.length){ aviso("app-aviso", "Os percentuais precisam ser maiores que zero.", "erro"); return; }
+  const soma = ids.reduce((s, id) => s + Number(r.sel.get(id)), 0);
+  const rateio = cmpOrdenarRateio(ids.map(id => ({ equipamento_id: id, fracao: Number(r.sel.get(id)) / soma })));
+  if(r.idx === null){
+    _cmpRatPadrao = rateio.length >= 2 ? rateio.map(x => x.equipamento_id) : [];
+    if(rateio.length) $("cmp-equip").value = rateio[0].equipamento_id;
+    cmpRatPadraoTxt(); cmpAtualizarChips();
+  } else {
+    const it = _cmpItens[r.idx]; if(!it) return;
+    if(!ids.length){ aviso("app-aviso", "Marque ao menos uma TAG.", "erro"); return; }
+    const tinha = cmpTemRateio(it);
+    Object.assign(it, { destino: "equipamento", obra_id: null, equipamento_id: rateio[0].equipamento_id, centro_custo_id: null });
+    it._rateio = rateio.length >= 2 ? rateio : null;
+    it._rateioDirty = it._rateioDirty || tinha || rateio.length >= 2;
+    renderItensPedido();
+  }
+  cmpRatFechar();
+}
+function cmpRatLimpar(){
+  const r = _cmpRat; if(!r) return;
+  if(r.idx === null){ _cmpRatPadrao = []; cmpRatPadraoTxt(); }
+  else { const it = _cmpItens[r.idx]; if(it && cmpTemRateio(it)){ it._rateio = null; it._rateioDirty = true; renderItensPedido(); } }
+  cmpRatFechar();
+}
+function cmpRatFechar(){ _cmpRat = null; if($("cmp-rat-modal")) $("cmp-rat-modal").style.display = "none"; }
+function cmpRatPadraoTxt(){
+  const el = $("cmp-rat-padrao-txt"); if(!el) return;
+  if(_cmpRatPadrao.length >= 2){ el.style.display = ""; el.textContent = "Itens novos rateados em partes iguais: " + _cmpRatPadrao.map(id => "TAG " + (cmpEq(id) || "?")).join(" + "); }
+  else { el.style.display = "none"; el.textContent = ""; }
 }
 async function cmpBuscarProdutos(termo){
   if(!termo || termo.length < 2) return [];
@@ -1590,7 +1774,9 @@ async function salvarPedido(silencioso){
       // fase 65: item importado do Odoo guarda o rateio original ao ser regravado
       natureza: it.natureza || null, centro_custo_externo: it.centro_custo_externo || null, obra_externa: it.obra_externa || null, codigo_externo: it.codigo_externo || null, observacoes: it.observacoes || null,
       // fase 108b: natureza (cadastro) e método; reposição não leva método (entra na saída do estoque). tipo_compra é gerada pelo destino
-      natureza_id: it.natureza_id || null, metodo: (it.destino || "estoque") === "estoque" ? null : (it.metodo || null)
+      natureza_id: it.natureza_id || null, metodo: (it.destino || "estoque") === "estoque" ? null : (it.metodo || null),
+      // lote S53 (#166): % IPI (soma ao total) e % ICMS (informativo)
+      ipi_percentual: Number(it.ipi_percentual || 0), icms_percentual: Number(it.icms_percentual || 0)
     });
   // fase 102: os itens são gravados mantendo o id (as cotações e o item da requisição apontam para eles). Antes apagava
   // e reinseria tudo, e o vínculo requisicao_item_id do item se perdia no primeiro "Salvar".
@@ -1609,10 +1795,20 @@ async function salvarPedido(silencioso){
   if(eUpd){ aviso("app-aviso", "Erro ao salvar itens: " + eUpd.error.message, "erro"); return null; }
   const novos = _cmpItens.map((it, i) => ({ it, i })).filter(x => !manter.has(x.it.id));
   if(novos.length){
-    const { error: eIns } = await sb.from("pedido_compra_itens").insert(novos.map(x => linha(x.it, x.i)));
+    // lote S53 (#149): o insert devolve os ids (por ordem) para o rateio apontar para o item novo
+    const { data: ins, error: eIns } = await sb.from("pedido_compra_itens").insert(novos.map(x => linha(x.it, x.i))).select("id,ordem");
     if(eIns){ aviso("app-aviso", "Erro ao salvar itens: " + eIns.message, "erro"); return null; }
+    (ins || []).forEach(r => { const x = novos.find(n => n.i === r.ordem); if(x) x.it.id = r.id; });
   }
-  if(!silencioso) aviso("app-aviso", "Pedido salvo.", "ok");
+  // lote S53 (#149): rateio dos itens que mudaram (RPC pedido_item_rateio_definir; lista com uma TAG só ou vazia apaga o rateio)
+  for(const it of _cmpItens.filter(x => x.id && x._rateioDirty)){
+    const eqs = cmpTemRateio(it) ? it._rateio.map(r => r.equipamento_id) : (it.destino === "equipamento" && it.equipamento_id ? [it.equipamento_id] : []);
+    const frs = cmpTemRateio(it) ? it._rateio.map(r => r.fracao) : null;
+    const { error: eRat } = await sb.rpc("pedido_item_rateio_definir", { p_item: it.id, p_equipamentos: eqs, p_fracoes: frs });
+    if(eRat){ aviso("app-aviso", `Pedido salvo, mas o rateio de "${it.descricao}" não foi gravado: ` + (eRat.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); }
+    else it._rateioDirty = false;
+  }
+  if(!silencioso && !appAvisoComErro()) aviso("app-aviso", "Pedido salvo.", "ok");
   _cmpEditId = id;
   return id;
 }
@@ -1697,7 +1893,8 @@ function abrirRecebimento(pedido, modo){
       const pend = Number(it.quantidade || 0) - Number(it.quantidade_recebida || 0);
       if(pend <= 0) return;
       _cmpRec.itens.push({ pedido_item_id: it.id, produto_id: it.produto_id, descricao: it.descricao, unidade: it.unidade, pendente: pend, quantidade_nf: pend, valor_unitario_nf: Number(it.valor_unitario || 0),
-        categoria_custo: it.categoria_custo, destino: it.destino, obra_id: it.obra_id, equipamento_id: it.equipamento_id, centro_custo_id: it.centro_custo_id || null });
+        categoria_custo: it.categoria_custo, destino: it.destino, obra_id: it.obra_id, equipamento_id: it.equipamento_id, centro_custo_id: it.centro_custo_id || null,
+        ipi_percentual: Number(it.ipi_percentual || 0), icms_percentual: Number(it.icms_percentual || 0) });   // lote S53 (#166): copiados do item do pedido (o XML sobrepõe)
     });
   }
   renderItensRecebimento();
@@ -1732,7 +1929,7 @@ function renderItensRecebimento(){
       <td class="num">${_cmpRec?.modo === "compra_direta" ? `<select class="cmp-ri" data-f="categoria_custo" style="max-width:120px;">${cmpCatOptions(it.categoria_custo || "peca")}</select>` : it.pendente != null ? num(it.pendente) : "—"}</td>
       <td><input type="number" step="0.001" min="0" class="cmp-ri" data-f="quantidade_nf" value="${esc(it.quantidade_nf ?? 0)}" style="width:80px;text-align:right;" /></td>
       <td><input type="number" step="0.0001" min="0" class="cmp-ri" data-f="valor_unitario_nf" value="${esc(it.valor_unitario_nf ?? 0)}" style="width:100px;text-align:right;" /></td>
-      <td class="num cmp-ri-total">${brl(Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0))}</td>
+      <td class="num cmp-ri-total">${cmpRiTotalHTML(it)}</td>
       ${cmpRecTipoDestinoCel(it)}
       <td><button type="button" class="btn-sec btn-sm cmp-ri-rem" title="tirar da nota">×</button></td>
     </tr>`).join("");
@@ -1740,7 +1937,7 @@ function renderItensRecebimento(){
     const tr = e.target.closest("tr"), it = _cmpRec.itens[Number(tr.dataset.idx)], f = e.target.dataset.f;
     if(f === "destino"){ Object.assign(it, cmpDestinoDoValor(e.target.value)); renderItensRecebimento(); return; }   // fase 108b: o tipo acompanha
     else if(f === "descricao" || f === "categoria_custo") it[f] = e.target.value; else it[f] = Number(e.target.value || 0);
-    tr.querySelector(".cmp-ri-total").textContent = brl(Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0));
+    tr.querySelector(".cmp-ri-total").innerHTML = cmpRiTotalHTML(it);
     cmpRecSoma();
   }));
   tb.querySelectorAll(".cmp-ri-rem").forEach(b => b.addEventListener("click", e => { _cmpRec.itens.splice(Number(e.target.closest("tr").dataset.idx), 1); renderItensRecebimento(); }));
@@ -1750,6 +1947,8 @@ function renderItensRecebimento(){
 /* Fase 108b: tipo de compra e destino na linha da nota. Item ligado ao pedido mostra o tipo aprovado e não deixa
    trocar; item fora do pedido (nota sem pedido, compra direta, item a mais no XML) escolhe o destino. Reposição sem
    produto do catálogo avisa já na linha (a confirmação recusa, como a RPC). */
+/* lote S53 (#166): total da linha da nota e, abaixo, o % de IPI do item (do pedido ou do XML), que entra no custo em vw_custos */
+function cmpRiTotalHTML(it){ return brl(Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0)) + (Number(it.ipi_percentual) ? `<div class="meta" title="IPI do item (do pedido ou do XML da NF): entra no custo">IPI ${esc(cmpPct(it.ipi_percentual))}</div>` : ""); }
 function cmpRecTipoDestinoCel(it){
   const tipo = it.destino === "estoque" ? "reposicao" : "aplicacao_direta";
   const alerta = tipo === "reposicao" && !it.produto_id ? '<div class="meta txt-perigo">reposição sem produto do catálogo: case com um produto</div>'
@@ -1830,7 +2029,8 @@ async function confirmarRecebimento(){
     quantidade_nf: Number(it.quantidade_nf), valor_unitario_nf: Number(it.valor_unitario_nf || 0), quantidade_aceita: Number(it.quantidade_nf),
     categoria_custo: it.categoria_custo || null, destino: it.destino || "estoque", obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null,
     centro_custo_id: it.centro_custo_id || null,
-    codigo_fornecedor: it.codigo_fornecedor || null, ean: it.ean || null, ncm: it.ncm || null, cfop: it.cfop || null, casamento: it.casamento || null
+    codigo_fornecedor: it.codigo_fornecedor || null, ean: it.ean || null, ncm: it.ncm || null, cfop: it.cfop || null, casamento: it.casamento || null,
+    ipi_percentual: Number(it.ipi_percentual || 0), icms_percentual: Number(it.icms_percentual || 0)   // lote S53 (#166)
   })));
   if(eIt){ await sb.from("recebimentos").delete().eq("id", rec.id); aviso("app-aviso", "Erro nos itens do recebimento: " + eIt.message, "erro"); return; }
   const { error: eRpc } = await sb.rpc("recebimento_confirmar", { p_id: rec.id });
@@ -1991,9 +2191,10 @@ function cmpLerXmlNfe(text){
   if(!inf) throw new Error("Não é um XML de NF-e (infNFe não encontrado). Eventos e cancelamentos não servem aqui.");
   const ide = first(inf, "ide"), emit = first(inf, "emit"), dest = first(inf, "dest"), tot = first(inf, "ICMSTot"), ender = first(emit, "enderEmit");
   const chave = (inf.getAttribute("Id") || "").replace(/^NFe/i, "") || g(doc, "chNFe");
-  const itens = [...inf.getElementsByTagNameNS("*", "det")].map(d => { const p = first(d, "prod"); return {
+  const itens = [...inf.getElementsByTagNameNS("*", "det")].map(d => { const p = first(d, "prod"), imp = first(d, "imposto"); return {
     nItem: d.getAttribute("nItem"), cProd: g(p, "cProd"), cEAN: g(p, "cEAN") || g(p, "cEANTrib"), xProd: g(p, "xProd"), ncm: g(p, "NCM"), cfop: g(p, "CFOP"),
-    uCom: g(p, "uCom"), qCom: Number(g(p, "qCom") || 0), vUnCom: Number(g(p, "vUnCom") || 0), vProd: Number(g(p, "vProd") || 0) }; });
+    uCom: g(p, "uCom"), qCom: Number(g(p, "qCom") || 0), vUnCom: Number(g(p, "vUnCom") || 0), vProd: Number(g(p, "vProd") || 0),
+    pIPI: Number(g(first(imp, "IPI"), "pIPI") || 0), pICMS: Number(g(first(imp, "ICMS"), "pICMS") || 0) }; });   // lote S53 (#166): % por item (IPITrib / ICMSxx)
   const duplicatas = [...inf.getElementsByTagNameNS("*", "dup")].map(d => ({ n: g(d, "nDup"), vencimento: g(d, "dVenc"), valor: Number(g(d, "vDup") || 0) })).filter(d => d.vencimento && d.valor > 0);
   return {
     chave, numero: g(ide, "nNF"), serie: g(ide, "serie"), emissao: (g(ide, "dhEmi") || g(ide, "dEmi")).slice(0, 10), natureza: g(ide, "natOp"),
@@ -2024,6 +2225,8 @@ function cmpLigarItemAoPedido(it, pend){
   it.pedido_item_id = p.id; it.pendente = Number(p.quantidade || 0) - Number(p.quantidade_recebida || 0);
   it.destino = p.destino || it.destino; it.obra_id = p.obra_id || null; it.equipamento_id = p.equipamento_id || null;
   if(p.categoria_custo) it.categoria_custo = p.categoria_custo;
+  if(!Number(it.ipi_percentual)) it.ipi_percentual = Number(p.ipi_percentual || 0);     // lote S53 (#166): XML sem o imposto → o do pedido
+  if(!Number(it.icms_percentual)) it.icms_percentual = Number(p.icms_percentual || 0);
   if(!it.produto_id && p.produto_id){ it.produto_id = p.produto_id; it.produto_txt = p.descricao; it.casamento = "pedido"; }
   if(!it.casamento) it.casamento = "pedido";
   p._usado = true;
@@ -2065,7 +2268,7 @@ async function cmpImportarXml(file){
     return { pedido_item_id: null, produto_id: prod?.id || null, produto_txt: prod ? `${prod.codigo} — ${prod.nome}` : "", casamento: cas, livre: false,
       descricao: d.xProd, codigo_fornecedor: d.cProd || null, ean: eanOk, ncm: d.ncm || null, cfop: d.cfop || null,
       unidade: (d.uCom || "un").toLowerCase().slice(0, 8), pendente: null, quantidade_nf: d.qCom, valor_unitario_nf: d.vUnCom,
-      categoria_custo: prod?.categoria_custo || "peca", ...destPadrao };
+      categoria_custo: prod?.categoria_custo || "peca", ipi_percentual: d.pIPI || 0, icms_percentual: d.pICMS || 0, ...destPadrao };   // lote S53 (#166)
   });
   const pend = cmpPedidoPendentes(); pend.forEach(p => p._usado = false);
   _cmpRec.itens.forEach(it => cmpLigarItemAoPedido(it, pend));
@@ -2177,7 +2380,10 @@ async function cmpPdfPedido(){
   const p = _cmpAtual; if(!p?.id) return;
   const f = _cmpFornMap[p.fornecedor_id] || {};
   const itens = _cmpItens;
-  const total = itens.reduce((s, i) => s + Number(i.quantidade || 0) * Number(i.valor_unitario || 0), 0) + Number(p.frete || 0) - Number(p.desconto || 0);
+  // lote S53 (#166): total com IPI (itens + IPI + frete − desconto, como o banco); colunas % IPI / % ICMS e a linha do IPI
+  const totItens = cmpSomaItens(itens), totIpi = cmpSomaIpi(itens);
+  const total = totItens + totIpi + Number(p.frete || 0) - Number(p.desconto || 0);
+  const cel = (txt, extra) => `<td style="border:1px solid #ccd;padding:5px;${extra || ""}">${txt}</td>`;
   // lote S41 (#36): logo oficial e selo ISO pelo helper do core.js; a margem passou do padding para o html2pdf
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#111;">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1B5FA8;padding-bottom:8px;">
@@ -2189,10 +2395,10 @@ async function cmpPdfPedido(){
       <td style="vertical-align:top;"><strong>Entrega</strong><br>${p.local_entrega === "obra" ? "Direto na obra: " + esc(cmpObra(p.obra_id)) : "Base CGL — Itabira/MG"}${p.equipamento_id ? "<br>Equipamento: TAG " + esc(cmpEq(p.equipamento_id)) : ""}<br><strong>Condição de pagamento:</strong> ${esc(p.condicao_pagamento || "a combinar")}</td>
     </tr></table>
     <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
-      <thead><tr style="background:#eef3fa;"><th style="border:1px solid #ccd;padding:5px;text-align:left;">#</th><th style="border:1px solid #ccd;padding:5px;text-align:left;">Descrição</th><th style="border:1px solid #ccd;padding:5px;">Un</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Qtd</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Unitário</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Total</th></tr></thead>
-      <tbody>${itens.map((i, k) => `<tr><td style="border:1px solid #ccd;padding:5px;">${k + 1}</td><td style="border:1px solid #ccd;padding:5px;">${esc(i.descricao)}</td><td style="border:1px solid #ccd;padding:5px;text-align:center;">${esc(i.unidade || "un")}</td><td style="border:1px solid #ccd;padding:5px;text-align:right;">${num(i.quantidade)}</td><td style="border:1px solid #ccd;padding:5px;text-align:right;">${brl(i.valor_unitario)}</td><td style="border:1px solid #ccd;padding:5px;text-align:right;">${brl(Number(i.quantidade || 0) * Number(i.valor_unitario || 0))}</td></tr>`).join("")}</tbody>
-      <tfoot>${Number(p.frete) ? `<tr><td colspan="5" style="padding:4px;text-align:right;">Frete</td><td style="padding:4px;text-align:right;">${brl(p.frete)}</td></tr>` : ""}${Number(p.desconto) ? `<tr><td colspan="5" style="padding:4px;text-align:right;">Desconto</td><td style="padding:4px;text-align:right;">− ${brl(p.desconto)}</td></tr>` : ""}
-        <tr><td colspan="5" style="padding:6px;text-align:right;font-weight:700;">TOTAL</td><td style="padding:6px;text-align:right;font-weight:700;">${brl(total)}</td></tr></tfoot>
+      <thead><tr style="background:#eef3fa;"><th style="border:1px solid #ccd;padding:5px;text-align:left;">#</th><th style="border:1px solid #ccd;padding:5px;text-align:left;">Descrição</th><th style="border:1px solid #ccd;padding:5px;">Un</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Qtd</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Unitário</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">% IPI</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">% ICMS</th><th style="border:1px solid #ccd;padding:5px;text-align:right;">Total com IPI</th></tr></thead>
+      <tbody>${itens.map((i, k) => `<tr>${cel(k + 1)}${cel(esc(i.descricao) + (cmpTemRateio(i) ? `<div style="font-size:10px;color:#444;">Rateio: ${esc(cmpRateioTxt(i))}</div>` : ""))}${cel(esc(i.unidade || "un"), "text-align:center;")}${cel(num(i.quantidade), "text-align:right;")}${cel(brl(i.valor_unitario), "text-align:right;")}${cel(cmpPct(i.ipi_percentual) || "—", "text-align:right;")}${cel(cmpPct(i.icms_percentual) || "—", "text-align:right;")}${cel(brl(cmpItemTotal(i)), "text-align:right;")}</tr>`).join("")}</tbody>
+      <tfoot><tr><td colspan="7" style="padding:4px;text-align:right;">Itens</td><td style="padding:4px;text-align:right;">${brl(totItens)}</td></tr>${totIpi ? `<tr><td colspan="7" style="padding:4px;text-align:right;">IPI</td><td style="padding:4px;text-align:right;">${brl(totIpi)}</td></tr>` : ""}${Number(p.frete) ? `<tr><td colspan="7" style="padding:4px;text-align:right;">Frete</td><td style="padding:4px;text-align:right;">${brl(p.frete)}</td></tr>` : ""}${Number(p.desconto) ? `<tr><td colspan="7" style="padding:4px;text-align:right;">Desconto</td><td style="padding:4px;text-align:right;">− ${brl(p.desconto)}</td></tr>` : ""}
+        <tr><td colspan="7" style="padding:6px;text-align:right;font-weight:700;">TOTAL</td><td style="padding:6px;text-align:right;font-weight:700;">${brl(total)}</td></tr></tfoot>
     </table>
     ${p.observacoes ? `<p style="margin-top:10px;"><strong>Observações:</strong> ${esc(p.observacoes).replace(/\n/g, "<br>")}</p>` : ""}
     <p style="margin-top:14px;font-size:11px;color:#444;">Favor mencionar o número do pedido na nota fiscal. Entregas na base: seg–sex 7h–17h. ${p.aprovador ? "Aprovado por " + esc(p.aprovador.nome) + (p.aprovado_em ? " em " + dataBR(String(p.aprovado_em).slice(0, 10)) : "") + "." : ""}</p>
@@ -2260,6 +2466,15 @@ function ligarCompras(){
     if(f?.prazo_entrega_dias && !$("cmp-prev").value){ const d = new Date(); d.setDate(d.getDate() + Number(f.prazo_entrega_dias)); $("cmp-prev").value = d.toISOString().slice(0, 10); cmpAtualizarChips(); } });
   cmpLigarBusca("cmp-busca-prod", "cmp-res-prod", p => cmpAddItem(p));
   $("btn-cmp-item-livre")?.addEventListener("click", () => cmpAddItem(null));
+  // lote S53 (#149): rateio entre TAGs (modal) e "+ TAGs" do cabeçalho; trocar a TAG do cabeçalho à mão desfaz o padrão
+  $("btn-cmp-rat-padrao")?.addEventListener("click", () => cmpAbrirRateio(null));
+  $("cmp-equip")?.addEventListener("change", () => { if(_cmpRatPadrao.length && _cmpRatPadrao[0] !== $("cmp-equip").value){ _cmpRatPadrao = []; cmpRatPadraoTxt(); } });
+  $("btn-cmp-rat-fechar")?.addEventListener("click", cmpRatFechar);
+  $("btn-cmp-rat-ok")?.addEventListener("click", cmpRatAplicar);
+  $("btn-cmp-rat-igualar")?.addEventListener("click", cmpRatIgualar);
+  $("btn-cmp-rat-limpar")?.addEventListener("click", cmpRatLimpar);
+  $("cmp-rat-busca")?.addEventListener("input", debounce(cmpRatRender, 150));
+  $("cmp-rat-modal")?.addEventListener("click", e => { if(e.target.id === "cmp-rat-modal") cmpRatFechar(); });
   ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-cot-forn"].forEach(id => cmpCampoFornecedor(id));   // lote S43 (#53): fornecedor com busca e chip; fase 102: cotação
   // fase 102: cotações e novo produto a partir do pedido (#160)
   $("btn-cmp-cot-salvar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-cot-salvar", cmpSalvarCotacao));

@@ -6,6 +6,9 @@
    obra pede depois (hoje pelo grupo do WhatsApp) segue o mesmo caminho: pedido → separação → baixa.
    "Entregar" registra quem levou. A saída direta do balcão (fase 78) continua para a urgência sem lista.
    Painel no padrão Serviços (lista / por status), ficha no padrão Odoo. Prefixo sep-.
+   Lote S53 (27/10/2026, #64): a busca de item da ficha e do "Pedido da obra" procura também nas peças de acessório
+   ativas (marcação ou tipo, filtro por família); a peça entra com quantidade 1 e sem saldo de estoque, e ao marcar
+   "separado" vai para a obra/TAG da separação (separacao_marcar). Não é importação: os acessórios já estão no app.
    ==================================================================== */
 
 let _sepView = "lista";
@@ -26,8 +29,9 @@ const SEP_ORIGEM = { mobilizacao: "Mobilização", pedido_obra: "Pedido da obra"
 // lote S48 (#107): "*" traz valor_total quando a migration 20261022_loteS48_b estiver aplicada (sem ela, a tela segue sem valor)
 const SEP_SELECT = "*,"
   + "solicitante:profiles!separacoes_solicitante_id_fkey(nome),responsavel:profiles!separacoes_responsavel_id_fkey(nome),retirante:funcionarios(nome),itens:separacao_itens(id,separado)";
-const SEP_ITEM_SELECT = "*,produto:produtos(codigo,nome,unidade,estoque_atual,controle_reposicao),acessorio:acessorios(marcacao,tipo,local_tipo,local_obra_id)";
+const SEP_ITEM_SELECT = "*,produto:produtos(codigo,nome,unidade,estoque_atual,controle_reposicao),acessorio:acessorios(marcacao,tipo,familia,local_tipo,local_obra_id,local_equipamento_id,local_descricao)";
 const SEP_PROD_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,codigo_barras";
+const SEP_ACE_COLS = "id,marcacao,familia,tipo,diametro_mm,local_tipo,local_obra_id,local_equipamento_id,local_descricao,condicao";   // lote S53 (#64)
 
 /* quem separa e entrega = quem opera compras/estoque + auxiliar de almoxarifado (almoxarifado_pode_operar() no banco, fase 90) */
 function sepPodeOperar(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "gestor_acessorios", "engenheiro", "logistica", "financeiro", "mecanico", "gestor_frota", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
@@ -264,7 +268,7 @@ function sepBaixaTxt(i){
   if(!i.separado){
     if(i.produto){ const falta = Number(i.quantidade_pedida) > Number(i.produto.estoque_atual || 0);
       return `<span class="meta">saldo ${num(i.produto.estoque_atual || 0)} ${esc(i.produto.unidade || "un")}${falta ? (i.produto.controle_reposicao ? ' · <span class="txt-perigo">insuficiente</span>' : " · vai ficar negativo") : ""}</span>`; }
-    if(i.acessorio) return `<span class="meta">${esc(typeof aceOnde === "function" ? aceOnde(i.acessorio) : (i.acessorio.local_tipo || ""))}</span>`;
+    if(i.acessorio) return `<span class="meta">${esc(sepAceOnde(i.acessorio))}</span>`;
     return "";
   }
   if(i.movimentacao_estoque_id) return `<span class="tag verde">saída registrada</span> <span class="meta">${dataBR(i.separado_em)}</span>`;
@@ -327,6 +331,16 @@ async function sepAddProduto(p){
                : await sb.from("separacao_itens").insert({ separacao_id: s.id, produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade_pedida: q, ordem: 2000 + _sepItens.length });
   if(r.error){ aviso("app-aviso", "Item não adicionado: " + r.error.message, "erro"); return; }
   $("sep-prod-qtd").value = 1;
+  await abrirSeparacao(s.id);
+}
+/* lote S53 (#64): peça de acessório escolhida na busca entra como linha própria (acessorio_id, quantidade 1, sem saldo);
+   ao marcar, separacao_marcar leva a peça para a obra da separação (ou para a TAG, quando a separação não tem obra) */
+async function sepAddAcessorio(a){
+  const s = _sepAtual; if(!s || !a) return;
+  if(_sepItens.some(i => i.acessorio_id === a.id && !i.separado)){ aviso("app-aviso", `A peça ${a.marcacao} já está nesta lista.`, "erro"); return; }
+  if(!s.obra_id && !s.equipamento_id){ aviso("app-aviso", "Esta separação não tem obra nem TAG: a peça não teria para onde ir.", "erro"); return; }
+  const { error } = await sb.from("separacao_itens").insert({ separacao_id: s.id, acessorio_id: a.id, descricao: `${a.marcacao} — ${sepAceDescr(a)}`, unidade: "un", quantidade_pedida: 1, ordem: 2000 + _sepItens.length });
+  if(error){ aviso("app-aviso", "Peça não adicionada: " + error.message, "erro"); return; }
   await abrirSeparacao(s.id);
 }
 async function sepAddLivre(){
@@ -436,24 +450,66 @@ async function sepBuscarProduto(termo){
   const { data } = await sb.from("produtos").select(SEP_PROD_COLS).eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
   return data || [];
 }
-/* Enter no campo (leitor de código de barras manda Enter): código ou código de barras exato escolhe direto */
-function sepLigarBusca(inp, lista, aoEscolher){
+/* lote S53 (#64): peças de acessório ativas pela marcação (BA10) ou pelo tipo ("bomba" → bomba_argamassa, bomba_agua),
+   com filtro de família; peça perdida não entra. ACE_TIPO_LBL vem de acessorios.js (carregado junto com todos os módulos). */
+async function sepBuscarAcessorios(termo, familia){
+  const t = termo.replace(/[%,()]/g, " ").trim(); if(t.length < 2) return [];
+  const ts = sepSemAcento(t);
+  const tipos = typeof ACE_TIPO_LBL === "object" ? Object.keys(ACE_TIPO_LBL).filter(k => sepSemAcento(ACE_TIPO_LBL[k]).includes(ts) || k.includes(ts.replace(/\s+/g, "_"))) : [];
+  let q = sb.from("acessorios").select(SEP_ACE_COLS).eq("ativo", true).neq("local_tipo", "perdido");
+  q = tipos.length ? q.or(`marcacao.ilike.%${t}%,tipo.in.(${tipos.join(",")})`) : q.ilike("marcacao", `%${t}%`);
+  if(familia) q = q.eq("familia", familia);
+  const { data, error } = await q.order("marcacao").limit(25);
+  if(error) console.warn("acessorios:", error.message);
+  return data || [];
+}
+function sepAceDescr(a){ const p = [(typeof ACE_TIPO_LBL === "object" && ACE_TIPO_LBL[a.tipo]) || a.tipo || "peça"]; if(a.diametro_mm) p.push(`Ø${a.diametro_mm}`); return p.join(" "); }
+function sepFamiliaLbl(f){ return (typeof ACE_FAMILIA_LBL === "object" && ACE_FAMILIA_LBL[f]) || f || ""; }
+/* onde a peça está, com os nomes de obra/TAG da base de Separações (aceOnde depende do cadastro de Acessórios já carregado) */
+function sepAceOnde(a){
+  if(typeof aceOnde === "function" && typeof _aceEq === "object" && _aceEq && Object.keys(_aceEq).length) return aceOnde(a);
+  const d = a.local_descricao ? ` · ${a.local_descricao}` : "";
+  switch(a.local_tipo){
+    case "patio":       return "Pátio" + d;
+    case "oficina":     return "Oficina" + d;
+    case "fornecedor":  return "Fornecedor" + d;
+    case "equipamento": return "TAG " + (sepEq(a.local_equipamento_id) || "?") + d;
+    case "obra":        return (sepObra(a.local_obra_id) || "Obra") + (a.local_equipamento_id ? " · TAG " + sepEq(a.local_equipamento_id) : "") + d;
+    case "em_transito": return "Em trânsito" + (a.local_obra_id ? " → " + sepObra(a.local_obra_id) : "") + d;
+    case "perdido":     return "Perdido";
+    default:            return "Não localizado" + d;
+  }
+}
+/* Enter no campo (leitor de código de barras manda Enter): código ou código de barras exato escolhe direto.
+   opts (lote S53, #64): { familia: () => valor do filtro, aoEscolherAcessorio(a) } liga a busca também às peças. */
+function sepLigarBusca(inp, lista, aoEscolher, opts){
   if(!inp || !lista || inp.dataset.ligado) return; inp.dataset.ligado = "1";
-  let res = [];
+  const comPecas = !!(opts && typeof opts.aoEscolherAcessorio === "function");
+  const familia = () => (opts && typeof opts.familia === "function" ? opts.familia() : "") || "";
+  let res = [], resA = [];
   const mostrar = () => {
-    lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("")
-      : `<div class="resultado-item vazio">Nenhum produto com esse código ou nome.</div>`;
+    lista.innerHTML = (res.length || resA.length)
+      ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("")
+        + resA.map(a => `<div class="resultado-item" data-ace="${esc(a.id)}" title="peça de acessório: entra com quantidade 1 e vai para a obra/TAG da separação ao marcar"><span class="tag cinza">peça</span> <strong>${esc(a.marcacao)}</strong> — ${esc(sepAceDescr(a))} <span class="meta">· ${esc(sepFamiliaLbl(a.familia))}</span> <span class="meta" style="float:right;">${esc(sepAceOnde(a))}</span></div>`).join("")
+      : `<div class="resultado-item vazio">${comPecas ? "Nenhum produto nem peça com esse código, nome ou marcação." : "Nenhum produto com esse código ou nome."}</div>`;
     lista.style.display = "";
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => { const p = res.find(x => x.id === d.dataset.id); lista.style.display = "none"; inp.value = ""; aoEscolher(p); }));
+    lista.querySelectorAll(".resultado-item[data-ace]").forEach(d => d.addEventListener("click", () => { const a = resA.find(x => x.id === d.dataset.ace); lista.style.display = "none"; inp.value = ""; opts.aoEscolherAcessorio(a); }));
   };
-  inp.addEventListener("input", debounce(async () => { const t = inp.value.trim(); if(t.length < 2){ lista.style.display = "none"; return; } res = await sepBuscarProduto(t); mostrar(); }, 250));
+  const buscar = async t => { [res, resA] = await Promise.all([sepBuscarProduto(t), comPecas ? sepBuscarAcessorios(t, familia()) : Promise.resolve([])]); };
+  inp.addEventListener("input", debounce(async () => { const t = inp.value.trim(); if(t.length < 2){ lista.style.display = "none"; return; } await buscar(t); mostrar(); }, 250));
   inp.addEventListener("keydown", async e => {
     if(e.key !== "Enter") return; e.preventDefault();
     const t = inp.value.trim(); if(!t) return;
     const x = t.replace(/[,()]/g, " ");
     const { data } = await sb.from("produtos").select(SEP_PROD_COLS).eq("ativo", true).or(`codigo.eq.${x},codigo_barras.eq.${x}`).limit(2);
     let p = (data || []).length === 1 ? data[0] : null;
-    if(!p){ res = await sepBuscarProduto(t); if(res.length === 1) p = res[0]; else { mostrar(); return; } }
+    if(!p){
+      await buscar(t);
+      if(res.length === 1 && !resA.length) p = res[0];
+      else if(!res.length && resA.length === 1){ lista.style.display = "none"; inp.value = ""; opts.aoEscolherAcessorio(resA[0]); return; }
+      else { mostrar(); return; }
+    }
     lista.style.display = "none"; inp.value = ""; aoEscolher(p);
   });
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 200));
@@ -479,9 +535,11 @@ function sepPedRenderItens(){
   const tb = $("sep-ped-itens"); if(!tb || !_sepPed) return;
   if(!_sepPed.itens.length){ tb.innerHTML = `<tr><td colspan="4" class="vazio">Nenhum item. Busque no catálogo ou escreva um item livre.</td></tr>`; return; }
   tb.innerHTML = _sepPed.itens.map((i, idx) => `<tr data-idx="${idx}">
-    <td>${i.produto ? `<strong>${esc(i.produto.codigo)}</strong> ${esc(i.produto.nome)} <span class="meta">saldo ${num(i.produto.estoque_atual || 0)}</span>` : `${esc(i.descricao)} <span class="meta">(item livre)</span>`}</td>
-    <td><input class="sep-ped-un" value="${esc(i.unidade)}" style="width:56px;" ${i.produto ? "disabled" : ""} /></td>
-    <td><input type="number" class="sep-ped-q" value="${esc(i.quantidade)}" min="0.001" step="0.001" style="width:86px;text-align:right;" /></td>
+    <td>${i.produto ? `<strong>${esc(i.produto.codigo)}</strong> ${esc(i.produto.nome)} <span class="meta">saldo ${num(i.produto.estoque_atual || 0)}</span>`
+      : i.acessorio ? `<span class="tag cinza">peça</span> <strong>${esc(i.acessorio.marcacao)}</strong> ${esc(sepAceDescr(i.acessorio))} <span class="meta">· ${esc(sepAceOnde(i.acessorio))}</span>`
+      : `${esc(i.descricao)} <span class="meta">(item livre)</span>`}</td>
+    <td><input class="sep-ped-un" value="${esc(i.unidade)}" style="width:56px;" ${i.produto || i.acessorio ? "disabled" : ""} /></td>
+    <td><input type="number" class="sep-ped-q" value="${esc(i.quantidade)}" min="0.001" step="0.001" style="width:86px;text-align:right;" ${i.acessorio ? 'disabled title="peça de acessório entra sempre com 1"' : ""} /></td>
     <td class="col-acao"><button type="button" class="btn-sec btn-sm sep-ped-rem" title="tirar">×</button></td></tr>`).join("");
   tb.querySelectorAll(".sep-ped-q").forEach(el => el.addEventListener("change", e => { _sepPed.itens[Number(e.target.closest("tr").dataset.idx)].quantidade = Number(e.target.value || 0); }));
   tb.querySelectorAll(".sep-ped-un").forEach(el => el.addEventListener("input", e => { _sepPed.itens[Number(e.target.closest("tr").dataset.idx)].unidade = e.target.value; }));
@@ -491,6 +549,13 @@ function sepPedAddProduto(p){
   if(!p || !_sepPed) return;
   const ja = _sepPed.itens.find(i => i.produto && i.produto.id === p.id);
   if(ja) ja.quantidade = Number(ja.quantidade || 0) + 1; else _sepPed.itens.push({ produto: p, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade: 1 });
+  sepPedRenderItens();
+}
+/* lote S53 (#64): peça de acessório no pedido da obra (uma linha por peça, quantidade 1) */
+function sepPedAddAcessorio(a){
+  if(!a || !_sepPed) return;
+  if(_sepPed.itens.some(i => i.acessorio && i.acessorio.id === a.id)){ aviso("app-aviso", `A peça ${a.marcacao} já está na lista.`, "erro"); return; }
+  _sepPed.itens.push({ produto: null, acessorio: a, descricao: `${a.marcacao} — ${sepAceDescr(a)}`, unidade: "un", quantidade: 1 });
   sepPedRenderItens();
 }
 function sepPedAddLivre(){
@@ -508,7 +573,8 @@ async function salvarPedidoMaterial(){
     observacoes: $("sep-ped-obs").value.trim() || null, responsavel_id: _sepPlantao || null, solicitante_id: usuarioAtual.id };
   const { data: s, error } = await sb.from("separacoes").insert(reg).select("id,numero").single();
   if(error){ aviso("app-aviso", "Pedido não enviado: " + error.message, "erro"); return; }
-  const { error: eIt } = await sb.from("separacao_itens").insert(itens.map((i, n) => ({ separacao_id: s.id, produto_id: i.produto ? i.produto.id : null, descricao: i.descricao, unidade: (i.unidade || "un").trim() || "un", quantidade_pedida: Number(i.quantidade), ordem: n + 1 })));
+  const { error: eIt } = await sb.from("separacao_itens").insert(itens.map((i, n) => ({ separacao_id: s.id, produto_id: i.produto ? i.produto.id : null, acessorio_id: i.acessorio ? i.acessorio.id : null,   // lote S53 (#64)
+    descricao: i.descricao, unidade: (i.unidade || "un").trim() || "un", quantidade_pedida: i.acessorio ? 1 : Number(i.quantidade), ordem: n + 1 })));
   if(eIt){ await sb.from("separacoes").update({ status: "cancelada", observacoes: "itens não gravados: " + eIt.message }).eq("id", s.id); aviso("app-aviso", "Erro nos itens: " + eIt.message, "erro"); return; }
   aviso("app-aviso", `Pedido ${s.numero} enviado ao almoxarifado${_sepPlantao ? " (" + sepPerfil(_sepPlantao) + ")" : ""}.`, "ok");
   fecharPedidoMaterial();
@@ -540,11 +606,11 @@ function ligarSeparacoes(){
   $("btn-sep-cancelar")?.addEventListener("click", sepCancelar);
   $("btn-sep-imprimir")?.addEventListener("click", () => comBotaoTravado("btn-sep-imprimir", sepImprimir));
   sepLigarRetirante();
-  sepLigarBusca($("sep-prod-busca"), $("sep-prod-res"), p => sepAddProduto(p));
+  sepLigarBusca($("sep-prod-busca"), $("sep-prod-res"), p => sepAddProduto(p), { familia: () => $("sep-fam")?.value, aoEscolherAcessorio: a => sepAddAcessorio(a) });   // lote S53 (#64): peças também
   $("btn-sep-livre-add")?.addEventListener("click", sepAddLivre);
   $("sep-livre-desc")?.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); sepAddLivre(); } });
   // modal: pedido da obra
-  sepLigarBusca($("sep-ped-busca"), $("sep-ped-res"), p => sepPedAddProduto(p));
+  sepLigarBusca($("sep-ped-busca"), $("sep-ped-res"), p => sepPedAddProduto(p), { familia: () => $("sep-ped-fam")?.value, aoEscolherAcessorio: a => sepPedAddAcessorio(a) });   // lote S53 (#64)
   $("btn-sep-ped-livre")?.addEventListener("click", sepPedAddLivre);
   $("sep-ped-livre")?.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); sepPedAddLivre(); } });
   $("btn-sep-ped-fechar")?.addEventListener("click", fecharPedidoMaterial);

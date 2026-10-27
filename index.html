@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="app-versao" content="cc99b60" />
+<meta name="app-versao" content="a878db5" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=cc99b60" />
+<link rel="stylesheet" href="css/estilo.css?v=a878db5" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -1556,11 +1556,11 @@
               <tbody id="sep-itens"></tbody></table></div>
             <div id="sep-resumo-destino"></div>
             <div class="grade" id="sep-itens-add" style="margin-top:10px;">
-              <div class="campo largo"><label>+ Produto do catálogo (Enter adiciona)</label>
-                <input id="sep-prod-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+              <div class="campo largo"><label>+ Produto do catálogo ou peça de acessório (Enter adiciona)</label>
+                <div style="display:flex;gap:4px;"><select id="sep-fam" style="width:130px;flex:none;" title="Família da peça: filtra só as peças de acessório (lote S53, #64)"><option value="">Peças: todas</option><option value="raiz">Raiz</option><option value="helice">Hélice</option><option value="secante">Secante</option><option value="trado">Trado</option><option value="comum">Comum</option></select><input id="sep-prod-busca" placeholder="código, código de barras ou nome do produto; marcação ou tipo da peça (ex.: BA10, bomba)…" autocomplete="off" style="flex:1;min-width:0;" /></div>
                 <div id="sep-prod-res" class="autocomplete-lista" style="display:none;"></div>
               </div>
-              <div class="campo"><label>Qtd</label><input type="number" id="sep-prod-qtd" min="0.001" step="0.001" value="1" /></div>
+              <div class="campo"><label>Qtd</label><input type="number" id="sep-prod-qtd" min="0.001" step="0.001" value="1" title="quantidade do produto; peça de acessório entra sempre com 1" /></div>
               <div class="campo largo"><label>+ Item livre (sem catálogo)</label><input id="sep-livre-desc" placeholder="descrição; o almoxarife casa com o produto ao separar" /></div>
               <div class="campo"><label>Qtd / un</label><div style="display:flex;gap:4px;"><input type="number" id="sep-livre-qtd" min="0.001" step="0.001" value="1" style="width:80px;" /><input id="sep-livre-un" value="un" style="width:60px;" /><button type="button" class="btn-sec btn-sm" id="btn-sep-livre-add">+</button></div></div>
             </div>
@@ -1687,13 +1687,13 @@
           <div class="odoo-body">
             <div class="odoo-tab ativa" data-tab="cabecalho">
               <div class="grade">
-                <div class="campo largo"><label>Fornecedor *</label><select id="cmp-forn"></select></div>
+                <div class="campo largo"><label>Fornecedor <span class="meta" title="lote S53 (#163): o pedido pode nascer em cotação sem fornecedor; ele sai da cotação escolhida e é obrigatório para enviar à aprovação">(sai das cotações; obrigatório para aprovar)</span></label><select id="cmp-forn"></select></div>
                 <div class="campo"><label>Data do pedido</label><input type="date" id="cmp-data" /></div>
                 <div class="campo"><label>Previsão de entrega</label><input type="date" id="cmp-prev" /></div>
                 <div class="campo"><label>Condição de pagamento</label><input id="cmp-cond" placeholder="ex.: 28 dias, 30/60, à vista" list="cmp-cond-lista" /><datalist id="cmp-cond-lista"><option value="À vista"></option><option value="28 dias"></option><option value="30 dias"></option><option value="30/60 dias"></option><option value="30/60/90 dias"></option><option value="Cartão"></option></datalist></div>
                 <div class="campo"><label>Local de entrega</label><select id="cmp-local"><option value="base">Base Itabira</option><option value="obra">Direto na obra</option></select></div>
                 <div class="campo"><label>Obra (destino padrão da aplicação direta)</label><select id="cmp-obra"></select></div>
-                <div class="campo"><label>TAG (destino padrão da aplicação direta)</label><select id="cmp-equip"></select></div>
+                <div class="campo"><label>TAG (destino padrão da aplicação direta)</label><div style="display:flex;gap:4px;"><select id="cmp-equip" style="flex:1;min-width:0;"></select><button type="button" class="btn-sec btn-sm" id="btn-cmp-rat-padrao" title="Mais de uma TAG: os itens novos de aplicação direta nascem rateados entre elas em partes iguais (lote S53, #149)">+ TAGs</button></div><span class="meta" id="cmp-rat-padrao-txt" style="display:none;"></span></div>
                 <div class="campo"><label>Setor / obra interna solicitante</label><select id="cmp-centro" title="Identifica quem pediu. Item para o almoxarifado leva este centro só como identificação; o custo entra na saída do estoque."></select></div>
                 <div class="campo"><label>Responsável pelo recebimento</label><select id="cmp-resp-receb" title="Quem registra o recebimento (serviço: com foto ou documento). Padrão: o solicitante. O comprador e a diretoria podem trocar a qualquer momento."></select></div>
                 <div class="campo"><label>Frete (R$)</label><input type="number" id="cmp-frete" min="0" step="0.01" /></div>
@@ -1707,10 +1707,11 @@
               <div class="tabela-rola">
                 <table class="itens-tabela cmp-itens-tabela">
                   <thead><tr>
-                    <th>Item</th><th style="width:70px;">Un</th><th style="width:90px;">Qtd</th><th style="width:120px;">Unitário</th><th class="num" style="width:120px;">Total</th>
-                    <th style="width:130px;">Categoria</th><th style="width:150px;" title="Reposição de estoque: entra no almoxarifado, custo na saída. Aplicação direta: custo na obra, TAG ou centro no recebimento.">Tipo de compra</th><th style="width:170px;">Destino</th><th style="width:170px;" title="natureza do gasto (plano do Odoo)">Natureza</th><th style="width:130px;" title="método (padrão pelo tipo de serviço da obra)">Método</th><th class="num" style="width:80px;" title="quantidade já recebida">Receb.</th><th class="col-acao"></th>
+                    <th style="min-width:260px;">Item</th><th style="width:70px;">Un</th><th style="width:90px;">Qtd</th><th style="width:120px;">Unitário</th><th style="width:78px;" title="% de IPI do item: soma ao total do pedido e ao custo no recebimento (lote S53, #166)">% IPI</th><th style="width:78px;" title="% de ICMS do item, só informativo: não altera o total">% ICMS</th><th class="num" style="width:120px;" title="total do item com IPI">Total</th>
+                    <th style="width:130px;">Categoria</th><th style="width:150px;" title="Reposição de estoque: entra no almoxarifado, custo na saída. Aplicação direta: custo na obra, TAG ou centro no recebimento.">Tipo de compra</th><th style="width:170px;" title="Item com destino TAG pode ser rateado entre equipamentos (⚖)">Destino</th><th style="width:170px;" title="natureza do gasto (plano do Odoo)">Natureza</th><th style="width:130px;" title="método (padrão pelo tipo de serviço da obra)">Método</th><th class="num" style="width:80px;" title="quantidade já recebida">Receb.</th><th class="col-acao"></th>
                   </tr></thead>
                   <tbody id="cmp-itens"></tbody>
+                  <tfoot id="cmp-itens-rodape"></tfoot>
                 </table>
               </div>
               <div class="grade" style="margin-top:12px;" id="cmp-itens-add">
@@ -1725,7 +1726,7 @@
 
             <!-- fase 102 (#91, etapa 3): cotações do pedido; o formulário abre por "+ Nova cotação" ou ✏️ -->
             <div class="odoo-tab" data-tab="cotacoes">
-              <p class="ajuda-campo">Uma cotação por fornecedor, com o preço de cada item, prazo, frete e condição. O menor preço de cada item fica marcado. "Fechar com este fornecedor" copia fornecedor, preços, frete, prazo e condição para o pedido, descarta as outras e volta o pedido a rascunho para você conferir e enviar à aprovação.</p>
+              <p class="ajuda-campo">Uma cotação por fornecedor, com o preço de cada item (e, se o fornecedor informar, % IPI e % ICMS), prazo, frete e condição. O menor preço de cada item fica marcado. "Fechar com este fornecedor" copia fornecedor, preços, impostos, frete, prazo e condição para o pedido e descarta as outras; com a caixa "enviar para aprovação" marcada o pedido já segue para a aprovação, desmarcada ele volta a rascunho para você conferir.</p>
               <div id="cmp-cot-lista"><p class="vazio">—</p></div>
               <div class="card compacto" id="cmp-cot-form" style="display:none;margin-top:14px;">
                 <h4 id="cmp-cot-form-titulo" style="margin:0 0 8px;font-size:var(--txt-md);">Nova cotação</h4>
@@ -1739,7 +1740,7 @@
                   <div class="campo largo"><label>Proposta do fornecedor (vai para Anexos como orçamento)</label><input type="file" id="cmp-cot-anexo" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx,.txt" /></div>
                 </div>
                 <div class="tabela-rola" style="margin-top:8px;">
-                  <table class="itens-tabela"><thead><tr><th>Item</th><th class="num" style="width:110px;">Qtd</th><th style="width:150px;">Preço unitário (R$)</th><th class="num" style="width:120px;">Total</th></tr></thead><tbody id="cmp-cot-itens"></tbody></table>
+                  <table class="itens-tabela"><thead><tr><th>Item</th><th class="num" style="width:110px;">Qtd</th><th style="width:150px;">Preço unitário (R$)</th><th style="width:90px;" title="% de IPI cotado (opcional; vazio mantém o do item)">% IPI</th><th style="width:90px;" title="% de ICMS cotado (opcional, informativo)">% ICMS</th><th class="num" style="width:120px;" title="total com IPI">Total</th></tr></thead><tbody id="cmp-cot-itens"></tbody></table>
                 </div>
                 <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-cmp-cot-cancelar">Cancelar</button><button type="button" class="btn" id="btn-cmp-cot-salvar">💾 Salvar cotação</button></div>
               </div>
@@ -1873,8 +1874,19 @@
         <div class="modal-caixa" style="max-width:820px;">
           <div class="modal-topo"><h3 id="req-ped-titulo">Aprovar requisição</h3><button type="button" class="btn-sec" id="btn-req-ped-fechar">×</button></div>
           <div id="req-ped-resumo"></div>
-          <div class="grade"><div class="campo largo"><label>Fornecedor do pedido (opcional)</label><select id="req-ped-forn"></select><span class="meta" id="req-ped-forn-ajuda">Sugerido pelo fornecedor padrão dos produtos. Vazio: o pedido nasce em rascunho e o fornecedor sai das cotações.</span></div></div>
+          <div class="grade"><div class="campo largo"><label>Fornecedor do pedido (opcional)</label><select id="req-ped-forn"></select><span class="meta" id="req-ped-forn-ajuda">Sugerido pelo fornecedor padrão dos produtos. Vazio: o pedido nasce em cotação e o fornecedor sai da cotação escolhida.</span></div></div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-req-ped-gerar">✅ Aprovar</button></div>
+        </div>
+      </div>
+      <!-- lote S53 (#149): rateio de um item com destino TAG entre equipamentos (ou as TAGs padrão dos itens novos) -->
+      <div class="modal-fundo" id="cmp-rat-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:640px;">
+          <div class="modal-topo"><h3 id="cmp-rat-titulo">Rateio entre TAGs</h3><button type="button" class="btn-sec btn-sm" id="btn-cmp-rat-fechar">✕</button></div>
+          <p class="meta" id="cmp-rat-ajuda"></p>
+          <div class="campo"><input id="cmp-rat-busca" placeholder="filtrar TAG por código ou nome…" autocomplete="off" /></div>
+          <div class="tabela-rola" style="max-height:50vh;overflow:auto;"><table class="itens-tabela"><thead><tr><th style="width:36px;"></th><th>TAG</th><th style="width:110px;">%</th></tr></thead><tbody id="cmp-rat-lista"></tbody></table></div>
+          <div class="lista-topo compacta"><span class="meta" id="cmp-rat-soma">—</span><button type="button" class="btn-sec btn-sm" id="btn-cmp-rat-igualar" style="margin-left:auto;" title="partes iguais entre as TAGs marcadas">Igualar</button></div>
+          <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-cmp-rat-limpar" title="fica só a primeira TAG, sem rateio">Sem rateio</button><button type="button" class="btn" id="btn-cmp-rat-ok">Aplicar</button></div>
         </div>
       </div>
 
@@ -5878,8 +5890,8 @@
           <div class="campo"><label>TAG</label><select id="sep-ped-equip"></select></div>
           <div class="campo"><label>Precisa até</label><input type="date" id="sep-ped-prazo" /></div>
           <div class="campo largo"><label>Observações</label><input id="sep-ped-obs" placeholder="ex.: mandar no caminhão de quinta" /></div>
-          <div class="campo largo"><label>Produto do catálogo (Enter adiciona)</label>
-            <input id="sep-ped-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
+          <div class="campo largo"><label>Produto do catálogo ou peça de acessório (Enter adiciona)</label>
+            <div style="display:flex;gap:4px;"><select id="sep-ped-fam" style="width:130px;flex:none;" title="Família da peça: filtra só as peças de acessório (lote S53, #64)"><option value="">Peças: todas</option><option value="raiz">Raiz</option><option value="helice">Hélice</option><option value="secante">Secante</option><option value="trado">Trado</option><option value="comum">Comum</option></select><input id="sep-ped-busca" placeholder="código, código de barras ou nome do produto; marcação ou tipo da peça…" autocomplete="off" style="flex:1;min-width:0;" /></div>
             <div id="sep-ped-res" class="autocomplete-lista" style="display:none;"></div>
           </div>
           <div class="campo"><label>Item livre (sem catálogo)</label><div style="display:flex;gap:4px;"><input id="sep-ped-livre" placeholder="o que precisa" style="flex:1;" /><button type="button" class="btn-sec btn-sm" id="btn-sep-ped-livre">+</button></div></div>
@@ -5969,53 +5981,53 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=cc99b60"></script>
+<script src="js/core.js?v=a878db5"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=cc99b60"></script>
+<script src="js/historico.js?v=a878db5"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=cc99b60"></script>
-<script src="js/fiscal_ncm.js?v=cc99b60"></script>
+<script src="js/fiscal.js?v=a878db5"></script>
+<script src="js/fiscal_ncm.js?v=a878db5"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=cc99b60"></script>
-<script src="js/fornecedores.js?v=cc99b60"></script>
-<script src="js/apropriacoes.js?v=cc99b60"></script>
-<script src="js/funcionarios.js?v=cc99b60"></script>
-<script src="js/rh_documentos.js?v=cc99b60"></script>
-<script src="js/servicos.js?v=cc99b60"></script>
-<script src="js/produtos.js?v=cc99b60"></script>
-<script src="js/estoque.js?v=cc99b60"></script>
-<script src="js/separacoes.js?v=cc99b60"></script>
-<script src="js/epi.js?v=cc99b60"></script>
-<script src="js/compras.js?v=cc99b60"></script>
-<script src="js/requisicoes.js?v=cc99b60"></script>
-<script src="js/orcamentos.js?v=cc99b60"></script>
-<script src="js/propostas.js?v=cc99b60"></script>
-<script src="js/contratos.js?v=cc99b60"></script>
-<script src="js/contas_pagar.js?v=cc99b60"></script>
-<script src="js/centros_custo.js?v=cc99b60"></script>
-<script src="js/carteira.js?v=cc99b60"></script>
-<script src="js/obras.js?v=cc99b60"></script>
-<script src="js/frota.js?v=cc99b60"></script>
-<script src="js/viagens.js?v=cc99b60"></script>
-<script src="js/equipamentos.js?v=cc99b60"></script>
-<script src="js/vendas_bens.js?v=cc99b60"></script>
-<script src="js/acessorios.js?v=cc99b60"></script>
-<script src="js/reparos.js?v=cc99b60"></script>
-<script src="js/manutencao.js?v=cc99b60"></script>
-<script src="js/fabricacao.js?v=cc99b60"></script>
-<script src="js/mobilizacoes.js?v=cc99b60"></script>
-<script src="js/estacas.js?v=cc99b60"></script>
-<script src="js/obra_abas.js?v=cc99b60"></script>
-<script src="js/medicoes.js?v=cc99b60"></script>
-<script src="js/movimentacoes.js?v=cc99b60"></script>
-<script src="js/rdo.js?v=cc99b60"></script>
-<script src="js/rdo_import_maya.js?v=cc99b60"></script>
-<script src="js/usuarios.js?v=cc99b60"></script>
-<script src="js/chamados.js?v=cc99b60"></script>
-<script src="js/dashboard.js?v=cc99b60"></script>
-<script src="js/rh_horas.js?v=cc99b60"></script>
-<script src="js/patrimonio.js?v=cc99b60"></script>
+<script src="js/clientes.js?v=a878db5"></script>
+<script src="js/fornecedores.js?v=a878db5"></script>
+<script src="js/apropriacoes.js?v=a878db5"></script>
+<script src="js/funcionarios.js?v=a878db5"></script>
+<script src="js/rh_documentos.js?v=a878db5"></script>
+<script src="js/servicos.js?v=a878db5"></script>
+<script src="js/produtos.js?v=a878db5"></script>
+<script src="js/estoque.js?v=a878db5"></script>
+<script src="js/separacoes.js?v=a878db5"></script>
+<script src="js/epi.js?v=a878db5"></script>
+<script src="js/compras.js?v=a878db5"></script>
+<script src="js/requisicoes.js?v=a878db5"></script>
+<script src="js/orcamentos.js?v=a878db5"></script>
+<script src="js/propostas.js?v=a878db5"></script>
+<script src="js/contratos.js?v=a878db5"></script>
+<script src="js/contas_pagar.js?v=a878db5"></script>
+<script src="js/centros_custo.js?v=a878db5"></script>
+<script src="js/carteira.js?v=a878db5"></script>
+<script src="js/obras.js?v=a878db5"></script>
+<script src="js/frota.js?v=a878db5"></script>
+<script src="js/viagens.js?v=a878db5"></script>
+<script src="js/equipamentos.js?v=a878db5"></script>
+<script src="js/vendas_bens.js?v=a878db5"></script>
+<script src="js/acessorios.js?v=a878db5"></script>
+<script src="js/reparos.js?v=a878db5"></script>
+<script src="js/manutencao.js?v=a878db5"></script>
+<script src="js/fabricacao.js?v=a878db5"></script>
+<script src="js/mobilizacoes.js?v=a878db5"></script>
+<script src="js/estacas.js?v=a878db5"></script>
+<script src="js/obra_abas.js?v=a878db5"></script>
+<script src="js/medicoes.js?v=a878db5"></script>
+<script src="js/movimentacoes.js?v=a878db5"></script>
+<script src="js/rdo.js?v=a878db5"></script>
+<script src="js/rdo_import_maya.js?v=a878db5"></script>
+<script src="js/usuarios.js?v=a878db5"></script>
+<script src="js/chamados.js?v=a878db5"></script>
+<script src="js/dashboard.js?v=a878db5"></script>
+<script src="js/rh_horas.js?v=a878db5"></script>
+<script src="js/patrimonio.js?v=a878db5"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=cc99b60"></script>
+<script src="js/init.js?v=a878db5"></script>
 </body>
 </html>
