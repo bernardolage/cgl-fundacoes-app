@@ -145,12 +145,15 @@ function renderEquipamentos(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   // fase 96: visão Vendas (js/vendas_bens.js) troca indicadores, filtros e título do painel
   if(_eqpView === "vendas" && typeof vbRenderPainel !== "function") _eqpView = "kanban";
-  const ehVendas = _eqpView === "vendas";
-  [["eqp-indicadores", !ehVendas], ["eqp-filtros", !ehVendas], ["vb-indicadores", ehVendas], ["vb-filtros", ehVendas]].forEach(([id, ver]) => { const el = $(id); if(el) el.style.display = ver ? "" : "none"; });
-  const tit = $("eqp-painel-titulo"); if(tit) tit.textContent = ehVendas ? "Vendas de bens" : "Máquinas";
-  const bn = $("btn-eqp-novo"); if(bn) bn.style.display = (!ehVendas && eqpPodeEditar()) ? "" : "none";
+  if(_eqpView === "cpb" && typeof cpbRenderPainel !== "function") _eqpView = "kanban";   // fase 107a: js/computadores_bordo.js
+  const ehVendas = _eqpView === "vendas", ehCpb = _eqpView === "cpb";
+  [["eqp-indicadores", !ehVendas && !ehCpb], ["eqp-filtros", !ehVendas && !ehCpb], ["vb-indicadores", ehVendas], ["vb-filtros", ehVendas], ["cpb-filtros", ehCpb]].forEach(([id, ver]) => { const el = $(id); if(el) el.style.display = ver ? "" : "none"; });
+  const tit = $("eqp-painel-titulo"); if(tit) tit.textContent = ehVendas ? "Vendas de bens" : ehCpb ? "Computadores de bordo" : "Máquinas";
+  const bn = $("btn-eqp-novo"); if(bn) bn.style.display = (!ehVendas && !ehCpb && eqpPodeEditar()) ? "" : "none";
+  if(!ehCpb){ ["btn-cpb-novo", "btn-cpb-descobrir"].forEach(id => { const el = $(id); if(el) el.style.display = "none"; }); }
   document.querySelectorAll("#eqp-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _eqpView));
   if(ehVendas){ vbRenderPainel(); return; }
+  if(ehCpb){ cpbRenderPainel(); return; }
   eqpRenderKpis();
   document.querySelectorAll("#eqp-painel .ind[data-kpi]").forEach(el => el.classList.toggle("ativo", el.dataset.kpi === _eqpKpi));
   const dados = eqpFiltradas();
@@ -172,6 +175,7 @@ function eqpRenderKpis(){
   const temNcm = _eqpRegistros.length > 0 && Object.prototype.hasOwnProperty.call(_eqpRegistros[0], "ncm");
   const box = $("eqp-kpi-semncm-box"); if(box) box.style.display = temNcm ? "" : "none";
   if(temNcm) set("eqp-kpi-semncm", _eqpRegistros.filter(eqpSemNcm).length);
+  if(typeof cpbAtualizarKpi === "function") cpbAtualizarKpi();   // fase 107a: CPU com calibração vencida
 }
 /* fase 75: perfuratriz ou bate-estaca sem o código do Geodigitus/Maya ("Para regularizar") */
 function eqpSemCodExt(e){ return ["perfuratriz", "bate_estaca"].includes(e.tipo) && !String(e.codigo_externo || "").trim(); }
@@ -219,6 +223,7 @@ function renderEquipamentosLista(dados){
 /* ---------- ficha ---------- */
 function mostrarPainelEquipamentos(){
   $("eqp-ficha").style.display = "none";
+  if($("cpb-ficha")) $("cpb-ficha").style.display = "none";   // fase 107a
   $("eqp-painel").style.display = "";
   _eqpAtual = null; _eqpEditId = null;
   if(typeof ocultarHistorico === "function") ocultarHistorico("eqp-chatter");
@@ -246,6 +251,7 @@ function abrirFichaEquipamento(e){
   _eqpAtual = e; _eqpEditId = e.id || null;
   const novo = !e.id;
   $("eqp-painel").style.display = "none";
+  if($("cpb-ficha")) $("cpb-ficha").style.display = "none";   // fase 107a
   $("eqp-ficha").style.display = "";
   $("eqp-ficha-titulo").textContent = novo ? "Novo equipamento" : eqpTag(e);
   // fase 96: bem vendido fica só para consulta (o estado volta só cancelando a venda, na aba Venda)
@@ -280,6 +286,14 @@ function abrirFichaEquipamento(e){
   $("eqp-diam-max").value = e.diametro_max_mm ?? ""; $("eqp-prof-max").value = e.profundidade_max_m ?? "";
   $("eqp-pino").value = e.pino_trado_mm ?? ""; $("eqp-obs-ace").value = e.obs_acessorios || "";
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("eqp", "equipamento", e, pode);   // fase 105a: aba Fiscal (NCM)
+  // fase 107a: tipo de serviço do diário (equipamentos.tipo_servico_padrao; o campo só aparece com a coluna no banco)
+  const temTipoServ = Object.prototype.hasOwnProperty.call(e, "tipo_servico_padrao") || (_eqpRegistros[0] && Object.prototype.hasOwnProperty.call(_eqpRegistros[0], "tipo_servico_padrao"));
+  if($("eqp-tipo-servico-campo")) $("eqp-tipo-servico-campo").style.display = temTipoServ ? "" : "none";
+  if(temTipoServ && $("eqp-tipo-servico") && typeof TIPO_SERVICO === "object"){
+    $("eqp-tipo-servico").innerHTML = `<option value="">— sem tipo (não recebe estacas do Geodigitus) —</option>` + Object.entries(TIPO_SERVICO).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
+    $("eqp-tipo-servico").value = e.tipo_servico_padrao || "";
+  }
+  if(typeof cpbPreencherMaquina === "function") cpbPreencherMaquina(e);   // fase 107a: chip CPU e bloco Computador de bordo
 
   // chips
   $("eqp-chip-tag").textContent = e.codigo || "—";
@@ -597,6 +611,7 @@ async function salvarEquipamento(){
   const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("eqp") : null;
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabEquipamento("fiscal"); return; }
   if(fis) Object.assign(reg, fis);
+  if($("eqp-tipo-servico-campo") && $("eqp-tipo-servico-campo").style.display !== "none") reg.tipo_servico_padrao = $("eqp-tipo-servico").value || null;   // fase 107a
   const atual = _eqpAtual || {};
   const mudouLocal = _eqpEditId && (atual.localizacao_tipo !== reg.localizacao_tipo || (atual.localizacao_obra_id || null) !== reg.localizacao_obra_id || (atual.localizacao_descricao || null) !== reg.localizacao_descricao);
   if(mudouLocal) reg.localizacao_atualizada_em = new Date().toISOString();

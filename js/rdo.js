@@ -277,6 +277,11 @@ function rdoFiltrados(){
 
 /* ---------- Render ---------- */
 function renderRDO(){
+  // fase 107a: visão "Chegadas do Geodigitus" (js/geodigitus.js) troca os filtros e o conteúdo do painel
+  const ehGeo = _rdoView === "geo" && typeof geoRenderPainel === "function";
+  if($("rdo-filtros")) $("rdo-filtros").style.display = ehGeo ? "none" : "";
+  if($("geo-filtros")) $("geo-filtros").style.display = ehGeo ? "" : "none";
+  if(ehGeo){ geoRenderPainel(); return; }
   const dados = rdoFiltrados();
   const cont = $("rdo-contador");
   if(cont) cont.textContent = `${dados.length} de ${_rdos.length}`;
@@ -460,6 +465,8 @@ async function abrirRDO(id){
   $("rdo-obs").value              = data.observacoes || "";
 
   _rdoExecucoes  = (execs.data || []).map(e => ({ ...e, _solo: [], _just: [] }));
+  // fase 107a: badge "Geodigitus" e sobreconsumo das execuções que vieram do computador de bordo
+  if(typeof geoCarregarExecs === "function") geoCarregarExecs(_rdoExecucoes).then(tem => { if(tem && rdoEditId === id) geoAplicarBadgesExec(_rdoExecucoes); });
   _rdoEquipe     = equipe.data || [];
   _rdoRaizEquipe = _rdoEquipe.map(e => ({ funcionario_id: e.funcionario_id, nome_avulso: e.nome_avulso }));
   _rdoRaizDados  = dadosRaiz.data || null;
@@ -661,7 +668,7 @@ function renderExecucoes(){
     const bltAberto = (_rdoBoletimAberto === idx);
     const bltStyle = bltAberto ? 'background:#EBF2FB;color:var(--marca-600);border-color:var(--marca-600);font-weight:700;' : '';
     return `<tr data-idx="${idx}">
-      <td><input type="text" class="ex-num col-md" value="${esc(e.estaca_numero||"")}" /></td>
+      <td><input type="text" class="ex-num col-md" value="${esc(e.estaca_numero||"")}" />${/* html */ typeof geoBadgeExec === "function" ? geoBadgeExec(e) : ""}</td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-diam" step="0.1" min="0" value="${esc(e.diametro_mm ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pproj" step="0.01" min="0" value="${esc(e.profundidade_projeto ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" data-auto="${esc(e._pexecAuto ?? "")}" style="width:75px;" title="Metros perfurados neste dia (o que a medição soma) = Acum. − De. Pode corrigir à mão" /></td>
@@ -3398,6 +3405,28 @@ function parseCSVLine(linha){
   return result;
 }
 
+/* fase 107a: grava as execuções do import uma a uma pela RPC rdo_import_execucao_conciliar (regra 1: o Geodigitus é a fonte
+   primária de hélice e secante; o Maya, o CSV e a IA complementam). Devolve os ids alinhados às linhas (null = não inserida).
+   Sem a migration da 107a (RPC inexistente), cai no insert em lote de antes. */
+async function rdoGravarExecucoesImport(rdoId, exs, dia){
+  const out = { ids: [], inseridas: 0, puladasGeo: 0, conciliadas: 0 };
+  for(const linha of exs){
+    const { rdo_id, ...resto } = linha;
+    const { data, error } = await sb.rpc("rdo_import_execucao_conciliar", { p_rdo: rdoId, p_linha: resto });
+    if(error){
+      if(["PGRST202", "42883"].includes(error.code) && !out.ids.length){
+        const r = await sb.from("rdo_execucao_estaca").insert(exs).select("id");
+        if(r.error) throw new Error(`Execuções de ${dia}: ${r.error.message}`);
+        return { ids: (r.data || []).map(x => x.id), inseridas: exs.length, puladasGeo: 0, conciliadas: 0 };
+      }
+      throw new Error(`Estaca ${linha.estaca_numero || "?"} de ${dia}: ${error.message}`);
+    }
+    if(data?.acao === "inserida"){ out.ids.push(data.id); out.inseridas++; }
+    else { out.ids.push(null); if(data?.acao === "pulada_geodigitus") out.puladasGeo++; else out.conciliadas++; }
+  }
+  return out;
+}
+
 async function confirmarImportCSV(){
   if(!_csvParsed){ aviso("app-aviso","Processe o arquivo primeiro.","erro"); return; }
   lerConferenciaIA(); // import por IA: o que está na tabela de conferência é o que vale
@@ -3489,7 +3518,7 @@ async function confirmarImportCSV(){
       const atual = principalDoDia[g.dia];
       if(!atual || g.linhas.length > atual.n || (g.linhas.length === atual.n && g.eq && !atual.eq)) principalDoDia[g.dia] = { k: g.eq || "", eq: g.eq, n: g.linhas.length };
     });
-    let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0, totalSemMaq = 0;
+    let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0, totalSemMaq = 0, totalGeo = 0, totalConc = 0;
     for(const g of grupos){
       const dia = g.dia, ests = g.linhas, eqId = g.eq;
       const ehPrincipal = (principalDoDia[dia] || {}).k === (eqId || "");
@@ -3558,9 +3587,11 @@ async function confirmarImportCSV(){
           origem_dados: e.origem_dados || "csv_geodigitus"
         };
       });
-      const { data: execIds, error: errEx } = exs.length ? await sb.from("rdo_execucao_estaca").insert(exs).select("id") : { data: [], error: null };
-      if(errEx){ throw new Error(`Execuções de ${dia}: ${errEx.message}`); }
-      totalExecs += exs.length;
+      // fase 107a: cada execução pela RPC rdo_import_execucao_conciliar (a mesma da sync do Geodigitus): concilia com a da
+      // obra no mesmo dia e número, pula a que já veio do Geodigitus; só a inserida agora recebe os trechos de solo
+      const gx = await rdoGravarExecucoesImport(rdoId, exs, dia);
+      const execIds = gx.ids.map(id => id ? { id } : null);
+      totalExecs += gx.inseridas; totalGeo += gx.puladasGeo; totalConc += gx.conciliadas;
       // Trechos de solo/ferramenta → rdo_raiz_solo (por execução)
       const solos = [];
       ests.forEach((e, i) => {
@@ -3622,7 +3653,7 @@ async function confirmarImportCSV(){
         if(errAb) console.warn("Abastecimento de " + dia + " não gravado:", errAb.message);
       }
     }
-    aviso("app-aviso", `✅ Importado: ${totalRdos} diário(s) novo(s) em ${dias.length} dia(s), ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.${totalSemMaq ? ` ⚠️ ${totalSemMaq} diário(s) sem máquina — informe a máquina no cabeçalho (Para regularizar).` : ""}`, "ok");
+    aviso("app-aviso", `✅ Importado: ${totalRdos} diário(s) novo(s) em ${dias.length} dia(s), ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.${totalGeo ? ` ${totalGeo} estaca(s) já vieram do Geodigitus (não duplicadas).` : ""}${totalConc ? ` ${totalConc} estaca(s) conciliada(s) com o que já estava no diário.` : ""}${totalSemMaq ? ` ⚠️ ${totalSemMaq} diário(s) sem máquina — informe a máquina no cabeçalho (Para regularizar).` : ""}`, "ok");
     fecharModalImportCSV();
     await carregarRDO();
   } catch(err){

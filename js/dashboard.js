@@ -29,7 +29,8 @@ const DASH_NIVEL = {
 const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", compras: "Compras",
   mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado", oficina: "Oficina", manutencao: "Manutenção",
   rh: "RH",   // fase 93a: plano de cargos (vw_sc_regularizar_rh)
-  sesmt: "SESMT" };   // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt)
+  sesmt: "SESMT",   // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt)
+  geodigitus: "Geodigitus" };   // fase 107a: computador de bordo e estacas do S3 (vw_sc_regularizar_geo)
 /* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
    "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
    As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
@@ -139,6 +140,7 @@ async function carregarDashboard(){
     dashPodeVerSeguranca() ? dashCarregarSeguranca() : Promise.resolve(),   // fase 99b
     dashPodeVerEpi() ? dashCarregarEpi() : Promise.resolve(),               // fase 100
     dashPodeVerSst() ? dashCarregarSst() : Promise.resolve(),               // fase 109d
+    (typeof geoPodeVerCard === "function" && geoPodeVerCard()) ? geoCarregarCardSala() : Promise.resolve(),   // fase 107a: card Geodigitus
     dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
     dashEhDiretoria() ? carregarDashIA() : Promise.resolve()
   ]);
@@ -349,11 +351,13 @@ async function dashCarregarRegularizar(){
   // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt; só quem vê EPI consulta)
   // fase 109d: ocorrências de SST sem classificação, ação do plano vencida (o responsável da ação pode ser qualquer usuário, por isso
   // todo mundo consulta; a view devolve só o que a RLS deixa) e sem eficácia verificada (vw_sc_regularizar_sst_ocorrencias)
-  const [dados, fin, man, rh, rhh, sesmt, sst] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  // fase 107a: computador de bordo e estacas do Geodigitus (vw_sc_regularizar_geo; a view devolve a cada um só o papel dele)
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
-    dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*"))]);
+    dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
+    dashLer("vw_sc_regularizar_geo", q => q.select("*"))]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   const n = p => _dashReg.filter(a => a.papel === p).length;
   if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
@@ -489,6 +493,16 @@ async function dashAbrirRegularizar(a){
                   sem_jornada:     { aba: "parametros", foco: "obr-jornada-entrada" },
                   sem_estacas:     { aba: "estacas", foco: null },
                   obra_sem_ibge:   { aba: "endereco", foco: "obr-cep" } };   // fase 105a: o CEP preenche o IBGE
+  // fase 107a: Geodigitus. cpu_* e sync parada → ficha da CPU (uma só) ou visão Computadores de bordo filtrada;
+  // geodigitus_estaca_* e diário finalizado → Chegadas do Geodigitus filtrada pela situação (uma só com diário abre o RDO)
+  if(a.setor === "geodigitus"){
+    if(/^cpu_/.test(a.filtro || "") || a.filtro === "geodigitus_sync_parado"){
+      if(!irParaSecao("equipamentos")) return;
+      if(a.registro_id && a.filtro !== "cpu_imei_desconhecido" && typeof cpbAbrir === "function") cpbAbrir(a.registro_id);
+      else if(typeof cpbAbrirPainel === "function") cpbAbrirPainel(a.filtro);
+    } else if(irParaSecao("rdo") && typeof geoAbrirPreset === "function") geoAbrirPreset(a.filtro, a.registro_id || null);
+    return;
+  }
   if(a.secao === "obras" && FICHA[a.filtro]){
     const f = FICHA[a.filtro];
     if(ids.length === 1){ await dashAbrirObra(ids[0], f.aba); obrFocarCampo(f.foco); return; }

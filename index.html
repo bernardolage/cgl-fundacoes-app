@@ -8,17 +8,17 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="8d130be" />
+<meta name="app-versao" content="b10ceb2" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=8d130be" />
+<link rel="stylesheet" href="css/estilo.css?v=b10ceb2" />
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=8d130be"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=8d130be"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=8d130be"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=b10ceb2"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=b10ceb2"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=b10ceb2"></script>
 </head>
 <body>
 
@@ -341,6 +341,15 @@
           <button type="button" class="dash-origem" id="btn-dash-sst-abrir">abrir ocorrências ›</button>
         </div>
         <div id="dash-sst"><p class="vazio">Carregando…</p></div>
+      </div>
+
+      <!-- Geodigitus (fase 107a): última sincronização, estacas de hoje, pendências, CPUs, MB no mês × cota (js/geodigitus.js) -->
+      <div class="card compacto" id="dash-geo-card" style="display:none;">
+        <div class="dash-bloco-topo">
+          <h3>🛰️ Geodigitus</h3>
+          <button type="button" class="dash-origem" id="btn-dash-geo-abrir">abrir chegadas ›</button>
+        </div>
+        <div id="dash-geo"><p class="vazio">Carregando…</p></div>
       </div>
 
       <!-- Abas: frota, obras em execução, operadores, produção -->
@@ -3181,19 +3190,48 @@
             <div class="serv-views">
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban (por tipo)</button>
+              <button type="button" class="serv-view-btn" data-view="geo" title="Fase 107a: estacas que chegaram do computador de bordo (Geodigitus), com a situação de cada uma">Chegadas do Geodigitus</button>
             </div>
             <button type="button" class="btn-sec" id="btn-importar-csv-painel">📄 Importar arquivo</button>
             <button type="button" class="btn" id="btn-novo-rdo">+ Novo</button>
           </div>
-          <div class="serv-filtros">
+          <div class="serv-filtros" id="rdo-filtros">
             <input id="rdo-busca" placeholder="Buscar por obra, data, tipo..." />
             <select id="rdo-f-obra"></select>
             <select id="rdo-f-tipo"></select>
             <select id="rdo-f-maquina" title="Fase 94: um diário por máquina"></select>
             <select id="rdo-f-status"></select>
           </div>
+          <!-- fase 107a: filtros da visão Chegadas do Geodigitus (js/geodigitus.js) -->
+          <div class="serv-filtros" id="geo-filtros" style="display:none;">
+            <input id="geo-busca" placeholder="Buscar estaca, obra digitada na CPU, máquina, IMEI…" />
+            <input type="date" id="geo-f-dia" title="Dia do arquivo (fim da concretagem)" />
+            <select id="geo-f-maq"><option value="">Todas as máquinas</option></select>
+            <select id="geo-f-sit">
+              <option value="">Todas as situações</option>
+              <option value="pendentes">Só pendentes</option>
+              <option value="pendente_maquina">Sem máquina</option>
+              <option value="pendente_obra">Sem obra</option>
+              <option value="pendente_estaca">Estaca a vincular</option>
+              <option value="pendente_rdo_finalizado">Diário finalizado</option>
+              <option value="vinculada">No diário</option>
+              <option value="conciliada">Conciliada</option>
+              <option value="ignorada">Ignorada</option>
+            </select>
+            <button type="button" class="btn-sec" id="btn-geo-atualizar">🔄 Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-geo-sincronizar" style="display:none;" title="Lê no balde da Geodigitus os arquivos de hoje e dos dias anteriores de todas as CPUs ativas e vinculadas; cria/atualiza diários em rascunho">⬇️ Sincronizar agora</button>
+          </div>
           <div id="rdo-conteudo"></div>
           <table style="display:none;"><tbody id="tab-rdo"></tbody></table>
+        </div>
+      </div>
+
+      <!-- fase 107a: Definir obra / Vincular estaca de uma chegada do Geodigitus -->
+      <div class="modal-fundo" id="geo-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:620px;">
+          <div class="modal-topo"><h3 id="geo-modal-titulo">Geodigitus</h3><button type="button" class="btn-sec" id="btn-geo-modal-fechar">×</button></div>
+          <div id="geo-modal-corpo"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-geo-modal-ok">💾 Gravar</button></div>
         </div>
       </div>
 
@@ -3528,6 +3566,8 @@
           <div class="ind ind-click" data-kpi="sem_cod_ext" title="Perfuratrizes e bate-estacas sem o código do Geodigitus/Maya"><div class="num" id="eqp-kpi-semext">—</div><div class="rot">Sem código externo</div></div>
           <!-- fase 105a: a NF-e de remessa exige NCM; aparece depois da migration (coluna equipamentos.ncm) -->
           <div class="ind ind-click" data-kpi="sem_ncm" id="eqp-kpi-semncm-box" style="display:none;" title="Máquinas em mobilização ativa (em preparação, em trânsito ou em obra) sem NCM: a remessa exige"><div class="num" id="eqp-kpi-semncm">—</div><div class="rot">Em mobilização sem NCM</div></div>
+          <!-- fase 107a: computador de bordo Geodigitus ativo com calibração vencida ou sem certificado (abre a visão Computadores de bordo) -->
+          <div class="ind ind-click" id="eqp-kpi-cpu-box" style="display:none;" title="Fase 107a: CPU Geodigitus ativa com certificado de calibração vencido ou sem certificado"><div class="num" id="eqp-kpi-cpu">—</div><div class="rot">CPU com calibração vencida</div></div>
         </div>
         <!-- fase 96: indicadores da visão Vendas (js/vendas_bens.js) -->
         <div class="indicadores" id="vb-indicadores" style="display:none;"></div>
@@ -3539,9 +3579,11 @@
               <button type="button" class="serv-view-btn ativo" data-view="kanban">Por status</button>
               <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="vendas" id="eqp-view-vendas" title="Fase 96: equipamentos e veículos vendidos, parcelas e saldo a receber">Vendas</button>
+              <button type="button" class="serv-view-btn" data-view="cpb" id="eqp-view-cpb" title="Fase 107a: computadores de bordo Geodigitus (CPU Saci, IMEI), vínculo com a máquina, calibração e sincronização">Computadores de bordo</button>
             </div>
             <button type="button" class="btn-sec" id="btn-eqp-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
             <button type="button" class="btn" id="btn-eqp-novo" style="display:none;">+ Novo equipamento</button>
+            <button type="button" class="btn" id="btn-cpb-novo" style="display:none;">+ Novo computador de bordo</button>
           </div>
           <div class="serv-filtros" id="eqp-filtros">
             <input id="eqp-busca" placeholder="Buscar TAG, nome, marca, modelo, nº de série…" />
@@ -3558,6 +3600,13 @@
             <select id="vb-f-comprador"><option value="">Todos os compradores</option></select>
             <select id="vb-f-pend"><option value="">Pendência</option></select>
             <button type="button" class="btn-sec" id="btn-vb-exportar" title="Vendas filtradas e as parcelas delas">⬇️ Exportar .xlsx</button>
+          </div>
+          <!-- fase 107a: filtros da visão Computadores de bordo (js/computadores_bordo.js) -->
+          <div class="serv-filtros" id="cpb-filtros" style="display:none;">
+            <input id="cpb-busca" placeholder="Buscar IMEI, nº de série, máquina…" />
+            <select id="cpb-f-status"><option value="">Todos os status</option><option value="ativo">Ativo</option><option value="reserva">Reserva</option><option value="manutencao">Em manutenção</option><option value="baixado">Baixado</option></select>
+            <select id="cpb-f-cal"><option value="">Calibração</option><option value="vencida">Vencida ou sem certificado</option><option value="vence_30_dias">Vence em 30 dias</option><option value="vigente">Vigente</option></select>
+            <button type="button" class="btn-sec" id="btn-cpb-descobrir" style="display:none;" title="Lista as pastas do balde da Geodigitus e registra IMEIs novos como pendência (não cadastra nada sozinho)">🔎 Descobrir IMEIs</button>
           </div>
           <div id="eqp-conteudo"><p class="vazio">Carregando…</p></div>
         </div>
@@ -3594,6 +3643,7 @@
             <div class="chip"><span>Horímetro</span><strong id="eqp-chip-hor">—</strong></div>
             <div class="chip"><span>Encaixe / Ø máx.</span><strong id="eqp-chip-tec">—</strong></div>
             <div class="chip" id="eqp-chip-trab-box" style="display:none;" title="Fase 101 (#109): obra e condutor do vínculo de trabalho (aba Máquinas da obra). Onde está continua vindo da mobilização"><span>Trabalha em</span><strong id="eqp-chip-trab">—</strong></div>
+            <div class="chip" id="eqp-chip-cpu-box" style="display:none;" title="Fase 107a: computador de bordo Geodigitus vinculado hoje"><span>Computador de bordo</span><strong id="eqp-chip-cpu">—</strong></div>
           </div>
 
           <div class="odoo-smart-buttons">
@@ -3634,6 +3684,7 @@
                 <div class="campo"><label>Data de aquisição</label><input type="date" id="eqp-aquisicao" /></div>
                 <div class="campo"><label>Valor de aquisição (R$)</label><input type="number" id="eqp-valor" min="0" step="0.01" /></div>
                 <div class="campo"><label>Código externo</label><input id="eqp-cod-ext" placeholder="Ex.: código no Odoo" /></div>
+                <div class="campo" id="eqp-tipo-servico-campo" style="display:none;" title="Fase 107a: tipo do diário que esta máquina abre (sincronização do Geodigitus e diário do operador). Sem tipo, a máquina não recebe estacas do computador de bordo"><label>Tipo de serviço do diário</label><select id="eqp-tipo-servico"></select></div>
                 <div class="campo"><label class="check-inline"><input type="checkbox" id="eqp-ativo" checked /> Ativo</label></div>
               </div>
               <h3 class="titulo-bloco">Localização</h3>
@@ -3654,6 +3705,9 @@
               <div class="grade" style="margin-top:8px;">
                 <div class="campo largo"><label>Observações</label><textarea id="eqp-obs" rows="3"></textarea></div>
               </div>
+              <!-- fase 107a: computador de bordo Geodigitus vinculado (js/computadores_bordo.js) -->
+              <h3 class="titulo-bloco eqp-so-existente">Computador de bordo</h3>
+              <div id="eqp-cpb-bloco" class="eqp-so-existente"></div>
             </div>
 
             <div class="odoo-tab" data-tab="tecnica">
@@ -3690,6 +3744,103 @@
             <div class="odoo-tab" data-tab="custos"><div id="eqp-custos"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="venda"><div id="eqp-venda"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="timeline"><div id="eqp-chatter"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- fase 107a: ficha do computador de bordo Geodigitus (CPU Saci) — js/computadores_bordo.js -->
+      <div id="cpb-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-cpb-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-cpb-salvar">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-cpb-sincronizar" style="display:none;" title="Lê no balde da Geodigitus os arquivos de hoje e dos dias anteriores desta CPU e cria/atualiza os diários em rascunho">🔄 Sincronizar agora</button>
+            </div>
+            <div class="actions-right"><strong id="cpb-ficha-titulo">Novo computador de bordo</strong></div>
+          </div>
+
+          <div class="odoo-statusbar" id="cpb-statusbar" title="Status — clique para mudar">
+            <div class="stage" data-status="ativo">Ativo</div>
+            <div class="stage" data-status="reserva" title="CPU de reserva: entra numa máquina quando a titular quebra (cada uso vira um vínculo)">Reserva</div>
+            <div class="stage" data-status="manutencao">Em manutenção</div>
+            <div class="stage" data-status="baixado">Baixado</div>
+          </div>
+
+          <div class="odoo-contexto">
+            <div class="chip"><span>IMEI</span><strong id="cpb-chip-imei">—</strong></div>
+            <div class="chip"><span>Máquina atual</span><strong id="cpb-chip-maq">—</strong></div>
+            <div class="chip"><span>Calibração até</span><strong id="cpb-chip-cal">—</strong></div>
+            <div class="chip"><span>Sincronização</span><strong id="cpb-chip-sync">—</strong></div>
+          </div>
+
+          <div class="odoo-smart-buttons cpb-so-existente">
+            <button type="button" class="sb-btn" id="sb-cpb-est" data-goto-tab="sincronizacao"><span class="sb-num">0</span><span class="sb-icon">📍</span><span class="sb-lbl">estacas sincronizadas</span></button>
+            <button type="button" class="sb-btn" id="sb-cpb-vinc" data-goto-tab="vinculos"><span class="sb-num">0</span><span class="sb-icon">🔗</span><span class="sb-lbl">vínculos</span></button>
+            <button type="button" class="sb-btn" id="sb-cpb-cert" data-goto-tab="calibracao"><span class="sb-num">0</span><span class="sb-icon">📜</span><span class="sb-lbl">certificados</span></button>
+          </div>
+
+          <div class="odoo-notebook" id="cpb-notebook">
+            <button type="button" data-tab="dados" class="ativo">Dados</button>
+            <button type="button" data-tab="vinculos" class="cpb-so-existente">Vínculos</button>
+            <button type="button" data-tab="calibracao" class="cpb-so-existente">Calibração</button>
+            <button type="button" data-tab="sincronizacao" class="cpb-so-existente">Sincronização</button>
+            <button type="button" data-tab="timeline" class="cpb-so-existente">Timeline</button>
+          </div>
+
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="dados">
+              <div class="grade">
+                <div class="campo"><label>IMEI *</label><input id="cpb-imei" inputmode="numeric" maxlength="15" placeholder="15 dígitos" /></div>
+                <div class="campo"><label>Nº de série</label><input id="cpb-serie" placeholder="Ex.: 41282, 01-045" /></div>
+                <div class="campo"><label>Fabricante</label><input id="cpb-fabricante" /></div>
+                <div class="campo"><label>Modelo</label><input id="cpb-modelo" /></div>
+                <div class="campo" title="Pasta sob c/cgl/ no balde da Geodigitus (h = estacas de hélice no formato binário documentado)"><label>Pasta no balde</label><input id="cpb-pasta" /></div>
+                <div class="campo largo"><label>Observações</label><textarea id="cpb-obs" rows="3"></textarea></div>
+              </div>
+            </div>
+
+            <div class="odoo-tab" data-tab="vinculos">
+              <p class="texto-apoio">A estaca é atribuída à máquina em que a CPU estava na data. Um vínculo por vez: encerre o atual (data de fim) antes de abrir outro; o banco recusa períodos sobrepostos para a mesma CPU e para a mesma máquina.</p>
+              <div id="cpb-vinc-atual-bloco" style="display:none;">
+                <div class="grade">
+                  <div class="campo"><label>Encerrar o vínculo atual em</label><input type="date" id="cpb-vinc-fim-data" /></div>
+                  <div class="campo largo"><label>Motivo</label><input id="cpb-vinc-fim-motivo" placeholder="Ex.: CPU foi para a oficina; máquina quebrou" /></div>
+                </div>
+                <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-cpb-vinc-encerrar">Encerrar vínculo</button></div>
+              </div>
+              <div id="cpb-vinc-novo-bloco" style="display:none;">
+                <div class="grade">
+                  <div class="campo largo"><label>Máquina</label><select id="cpb-vinc-maq"></select></div>
+                  <div class="campo"><label>Início</label><input type="date" id="cpb-vinc-inicio" /></div>
+                  <div class="campo largo"><label>Motivo</label><input id="cpb-vinc-motivo" placeholder="Ex.: CPU titular da máquina; reserva no lugar da CPU quebrada" /></div>
+                </div>
+                <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cpb-vinc-iniciar">Iniciar vínculo</button></div>
+              </div>
+              <div id="cpb-vinc-lista"><p class="vazio">—</p></div>
+            </div>
+
+            <div class="odoo-tab" data-tab="calibracao">
+              <div id="cpb-cal-form">
+                <div class="grade">
+                  <div class="campo"><label>Nº do certificado</label><input id="cpb-cal-numero" /></div>
+                  <div class="campo"><label>Laboratório</label><input id="cpb-cal-lab" /></div>
+                  <div class="campo"><label>Emitido em</label><input type="date" id="cpb-cal-emitido" /></div>
+                  <div class="campo"><label>Válido até *</label><input type="date" id="cpb-cal-valido" /></div>
+                  <div class="campo largo"><label>Arquivo (PDF ou imagem)</label><input type="file" id="cpb-cal-arquivo" accept=".pdf,.jpg,.jpeg,.png,.webp" /></div>
+                  <div class="campo largo"><label>Observações</label><input id="cpb-cal-obs" /></div>
+                </div>
+                <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cpb-cal-salvar">📜 Registrar certificado</button></div>
+              </div>
+              <div id="cpb-cal-lista"><p class="vazio">—</p></div>
+            </div>
+
+            <div class="odoo-tab" data-tab="sincronizacao">
+              <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-cpb-sincronizar2">🔄 Sincronizar agora</button></div>
+              <div id="cpb-sync-info"><p class="vazio">—</p></div>
+            </div>
+
+            <div class="odoo-tab" data-tab="timeline"><div id="cpb-chatter"></div></div>
           </div>
         </div>
       </div>
@@ -6199,6 +6350,23 @@
         <!-- fase 105a: dados fiscais da empresa (empresa_config.fiscal_*). Grava quem passa em fiscal_pode_emitir() (diretor aqui;
              gestor de acessórios, financeiro e logística pela visão Pendências fiscais de Clientes); o admin só consulta -->
         <div class="card" id="usr-fiscal-card" style="display:none;"><div id="usr-fe"></div></div>
+
+        <!-- fase 107a: parâmetros do Geodigitus (empresa_config.geodigitus_*), só diretor e admin (js/geodigitus.js) -->
+        <div class="card" id="usr-geo-card" style="display:none;">
+          <div class="lista-topo"><h3>Geodigitus (computador de bordo pelo S3)</h3></div>
+          <p class="texto-apoio">As chaves de acesso ao balde ficam só nos secrets da function geodigitus-sync, e o segredo do agendamento no vault: nunca aqui. Ligue a sincronização só depois das CPUs vinculadas às máquinas e do tipo de serviço das máquinas conferido.</p>
+          <div class="grade">
+            <div class="campo largo"><label class="check-inline"><input type="checkbox" id="usr-geo-ativo" /> Sincronização automática ligada (a cada 15 min das 6h às 20h, seg a sáb; de hora em hora fora disso)</label></div>
+            <div class="campo"><label>Usuário no balde</label><input id="usr-geo-usuario" /></div>
+            <div class="campo"><label>Região</label><input id="usr-geo-regiao" /></div>
+            <div class="campo"><label>Dias para trás em cada rodada</label><input type="number" id="usr-geo-dias" min="0" max="30" step="1" /></div>
+            <div class="campo"><label>Teto de requisições por rodada</label><input type="number" id="usr-geo-maxreq" min="5" max="2000" step="1" /></div>
+            <div class="campo"><label>Cota de tráfego no mês (MB)</label><input type="number" id="usr-geo-cota" min="0" step="1" placeholder="perguntar à Geodigitus" /></div>
+            <div class="campo"><label>Alerta de sobreconsumo (%)</label><input type="number" id="usr-geo-alerta" min="0" max="500" step="0.1" /></div>
+            <div class="campo" title="Estaca com fim de concretagem antes desta hora entra no diário noturno do dia anterior, se ele existir"><label>Fim do turno noturno</label><input type="time" id="usr-geo-noturno" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-usr-geo-salvar">💾 Salvar parâmetros do Geodigitus</button></div>
+        </div>
       </div>
 
       <!-- Ficha -->
@@ -6418,56 +6586,58 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=8d130be"></script>
+<script src="js/core.js?v=b10ceb2"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=8d130be"></script>
+<script src="js/historico.js?v=b10ceb2"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=8d130be"></script>
-<script src="js/fiscal_ncm.js?v=8d130be"></script>
+<script src="js/fiscal.js?v=b10ceb2"></script>
+<script src="js/fiscal_ncm.js?v=b10ceb2"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=8d130be"></script>
-<script src="js/fornecedores.js?v=8d130be"></script>
-<script src="js/apropriacoes.js?v=8d130be"></script>
-<script src="js/funcionarios.js?v=8d130be"></script>
-<script src="js/rh_documentos.js?v=8d130be"></script>
-<script src="js/servicos.js?v=8d130be"></script>
-<script src="js/produtos.js?v=8d130be"></script>
-<script src="js/estoque.js?v=8d130be"></script>
-<script src="js/separacoes.js?v=8d130be"></script>
-<script src="js/epi.js?v=8d130be"></script>
-<script src="js/compras.js?v=8d130be"></script>
-<script src="js/requisicoes.js?v=8d130be"></script>
-<script src="js/orcamentos.js?v=8d130be"></script>
-<script src="js/propostas.js?v=8d130be"></script>
-<script src="js/contratos.js?v=8d130be"></script>
-<script src="js/contas_pagar.js?v=8d130be"></script>
-<script src="js/centros_custo.js?v=8d130be"></script>
-<script src="js/carteira.js?v=8d130be"></script>
-<script src="js/obras.js?v=8d130be"></script>
-<script src="js/frota.js?v=8d130be"></script>
-<script src="js/viagens.js?v=8d130be"></script>
-<script src="js/equipamentos.js?v=8d130be"></script>
-<script src="js/vendas_bens.js?v=8d130be"></script>
-<script src="js/acessorios.js?v=8d130be"></script>
-<script src="js/reparos.js?v=8d130be"></script>
-<script src="js/manutencao.js?v=8d130be"></script>
-<script src="js/fabricacao.js?v=8d130be"></script>
-<script src="js/mobilizacoes.js?v=8d130be"></script>
-<script src="js/estacas.js?v=8d130be"></script>
-<script src="js/obra_abas.js?v=8d130be"></script>
-<script src="js/medicoes.js?v=8d130be"></script>
-<script src="js/movimentacoes.js?v=8d130be"></script>
-<script src="js/rdo.js?v=8d130be"></script>
-<script src="js/rdo_import_maya.js?v=8d130be"></script>
-<script src="js/usuarios.js?v=8d130be"></script>
-<script src="js/chamados.js?v=8d130be"></script>
-<script src="js/dashboard.js?v=8d130be"></script>
-<script src="js/rh_horas.js?v=8d130be"></script>
-<script src="js/sesmt.js?v=8d130be"></script>
-<script src="js/patrimonio.js?v=8d130be"></script>
+<script src="js/clientes.js?v=b10ceb2"></script>
+<script src="js/fornecedores.js?v=b10ceb2"></script>
+<script src="js/apropriacoes.js?v=b10ceb2"></script>
+<script src="js/funcionarios.js?v=b10ceb2"></script>
+<script src="js/rh_documentos.js?v=b10ceb2"></script>
+<script src="js/servicos.js?v=b10ceb2"></script>
+<script src="js/produtos.js?v=b10ceb2"></script>
+<script src="js/estoque.js?v=b10ceb2"></script>
+<script src="js/separacoes.js?v=b10ceb2"></script>
+<script src="js/epi.js?v=b10ceb2"></script>
+<script src="js/compras.js?v=b10ceb2"></script>
+<script src="js/requisicoes.js?v=b10ceb2"></script>
+<script src="js/orcamentos.js?v=b10ceb2"></script>
+<script src="js/propostas.js?v=b10ceb2"></script>
+<script src="js/contratos.js?v=b10ceb2"></script>
+<script src="js/contas_pagar.js?v=b10ceb2"></script>
+<script src="js/centros_custo.js?v=b10ceb2"></script>
+<script src="js/carteira.js?v=b10ceb2"></script>
+<script src="js/obras.js?v=b10ceb2"></script>
+<script src="js/frota.js?v=b10ceb2"></script>
+<script src="js/viagens.js?v=b10ceb2"></script>
+<script src="js/equipamentos.js?v=b10ceb2"></script>
+<script src="js/vendas_bens.js?v=b10ceb2"></script>
+<script src="js/acessorios.js?v=b10ceb2"></script>
+<script src="js/reparos.js?v=b10ceb2"></script>
+<script src="js/manutencao.js?v=b10ceb2"></script>
+<script src="js/fabricacao.js?v=b10ceb2"></script>
+<script src="js/mobilizacoes.js?v=b10ceb2"></script>
+<script src="js/estacas.js?v=b10ceb2"></script>
+<script src="js/obra_abas.js?v=b10ceb2"></script>
+<script src="js/medicoes.js?v=b10ceb2"></script>
+<script src="js/movimentacoes.js?v=b10ceb2"></script>
+<script src="js/rdo.js?v=b10ceb2"></script>
+<script src="js/rdo_import_maya.js?v=b10ceb2"></script>
+<script src="js/geodigitus.js?v=b10ceb2"></script>
+<script src="js/computadores_bordo.js?v=b10ceb2"></script>
+<script src="js/usuarios.js?v=b10ceb2"></script>
+<script src="js/chamados.js?v=b10ceb2"></script>
+<script src="js/dashboard.js?v=b10ceb2"></script>
+<script src="js/rh_horas.js?v=b10ceb2"></script>
+<script src="js/sesmt.js?v=b10ceb2"></script>
+<script src="js/patrimonio.js?v=b10ceb2"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=8d130be"></script>
+<script src="js/sesmt_ocorrencias.js?v=b10ceb2"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=8d130be"></script>
+<script src="js/init.js?v=b10ceb2"></script>
 </body>
 </html>

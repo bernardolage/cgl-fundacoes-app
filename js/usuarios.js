@@ -52,6 +52,7 @@ async function carregarUsuarios(){
   carregarPoliticaSessaoCard();
   carregarPalavrasEtapaCard();   // fase 94
   carregarFiscalEmpresaCard();   // fase 105a
+  if(typeof geoEmpresaCarregarCard === "function") geoEmpresaCarregarCard();   // fase 107a: parâmetros do Geodigitus
 }
 
 /* ---------- Dados fiscais da empresa (fase 105a) ----------
