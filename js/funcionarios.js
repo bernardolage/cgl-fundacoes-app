@@ -1351,9 +1351,22 @@ function funcAcessoListaCargos(cargos, conjuncao){
   return r.length > 1 ? r.slice(0, -1).join(", ") + " " + conjuncao + " " + r[r.length - 1] : (r[0] || "");
 }
 /* criador com setor do usuário logado (almoxarife, gestor de manutenção) ou null (rh/admin/diretor e os demais) */
-function funcAcessoCriador(){ return (usuarioAtual && FUNC_ACESSO_CRIADORES[usuarioAtual.cargo]) || null; }
+/* fase 93d (28/10/2026, decisão do Bernardo): acesso extra "login_funcionario" (Isaque, testando o diário do operador): cria o
+   login e define nova senha de operador, encarregado e mecânico em qualquer setor; não desativa nem reativa; sem MFA (não vê o
+   CPF). O cargo vale primeiro; a function convidar-usuario confere de novo (extra vigente: temModuloExtra). */
+const FUNC_ACESSO_CRIADOR_EXTRA = {
+  setor: null, exclui: null, cargos: ["operador", "encarregado", "mecanico"],
+  ajuda: "Com o acesso extra de login de funcionário você cria o login com o perfil <em>Operador</em>, <em>Encarregado</em> ou <em>Mecânico</em>, de qualquer setor; desativar e reativar ficam com o RH e a administração."
+};
+function funcAcessoCriador(){
+  if(!usuarioAtual) return null;
+  if(FUNC_ACESSO_CRIADORES[usuarioAtual.cargo]) return FUNC_ACESSO_CRIADORES[usuarioAtual.cargo];
+  if(typeof temModuloExtra === "function" && temModuloExtra("login_funcionario")) return FUNC_ACESSO_CRIADOR_EXTRA;
+  return null;
+}
 function funcAcessoNoSetor(cr){
   if(!cr) return false;
+  if(!cr.setor) return true;   // fase 93d: criador pelo acesso extra não tem setor
   let d = (_depts || []).find(x => x.id === ($("func-departamento")?.value || ""));
   if(d && cr.exclui && cr.exclui.test(funcAcessoNorm(d.nome))) return false;   // hotfix 145: o Almoxarife da MANUTENÇÃO não é do gestor
   for(let nivel = 0; d && nivel < 2; nivel++){
@@ -1377,7 +1390,7 @@ function funcAcessoAplicarVisibilidade(){
 async function funcAcessoCarregar(){
   const cont = $("func-acesso-conteudo");
   if(!cont) return;
-  if(!funcAcessoPodeVer()){ cont.innerHTML = `<p class="vazio">Só RH, administração e diretoria cuidam do login do funcionário (o almoxarife, da equipe do almoxarifado; o gestor de manutenção, da equipe da manutenção).</p>`; return; }
+  if(!funcAcessoPodeVer()){ cont.innerHTML = `<p class="vazio">Só RH, administração e diretoria cuidam do login do funcionário (o almoxarife, da equipe do almoxarifado; o gestor de manutenção, da equipe da manutenção; quem tem o acesso extra de login de funcionário, operadores, encarregados e mecânicos).</p>`; return; }
   if(!funcEditId){ cont.innerHTML = `<p class="vazio">Salve o funcionário primeiro; depois crie o login aqui.</p>`; return; }
   if(_funcAcesso.funcionarioId !== funcEditId) _funcAcesso = { funcionarioId: funcEditId, perfil: null, modo: null };
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;

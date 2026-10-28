@@ -392,7 +392,9 @@ const USR_MODULOS_EXTRAS = [
   { id: "compras", el: "usr-extra-cmp", rotulo: "Compras (requisição e recebimento de NF, sem alçada)" },
   // fase 109a (D1): a Iasmym (engenheiro) opera o SESMT; compras_sesmt é reservado para a 109e (Layane)
   { id: "sesmt", el: "usr-extra-sesmt", rotulo: "SESMT (catálogo, matriz, documentos de segurança, programas legais)" },
-  { id: "compras_sesmt", el: "usr-extra-compsesmt", rotulo: "Compras do SESMT (fase 109e; ainda sem efeito)" }
+  { id: "compras_sesmt", el: "usr-extra-compsesmt", rotulo: "Compras do SESMT (fase 109e; ainda sem efeito)" },
+  // fase 93d (28/10/2026): o Isaque cria o login por CPF de operador, encarregado e mecânico para testar o diário do operador
+  { id: "login_funcionario", el: "usr-extra-loginfunc", rotulo: "Login de funcionário (cria e redefine a senha de operador, encarregado e mecânico; não desativa; sem ver o CPF)" }
 ];
 function usrGarantirChecksExtras(){
   const campo = $("usr-extra-orc")?.closest(".campo"); if(!campo) return;
