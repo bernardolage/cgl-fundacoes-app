@@ -1064,7 +1064,7 @@ function abrirFichaPedido(p){
   _cmpCotacoes = []; _cmpCotEdit = null; _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };   // fase 102
   if($("cmp-cot-form")) $("cmp-cot-form").style.display = "none";
   $("cmp-alcada-info").textContent = cmpPodeOperar()
-    ? `Sua alçada de aprovação: ${cmpAlcadaTxt()}. A aprovação tem duas chaves: a alçada pelo valor e, para cada obra, TAG ou centro com item de aplicação direta, o dono do custo (engenheiro responsável da obra, gestor de manutenção ou de frota, responsável do centro). Reposição de estoque só pede a alçada.`
+    ? `Sua alçada de aprovação: ${cmpAlcadaTxt()}. A aprovação de compras é do aprovador definido pela diretoria; pedido acima do limite pede também a diretoria; cada obra, TAG ou centro com item de aplicação direta pede o dono do custo (engenheiro responsável da obra, gestor de manutenção ou de frota, responsável do centro). Reposição de estoque só pede a aprovação de compras.`
     : cmpPodeReceber()
     ? `Você recebe notas e abre requisições; a aprovação é do comprador e do dono do custo.`   // lote S55 (#180): módulo extra compras
     : `Você vê este pedido porque é dono do custo de um destino dele. Confira os itens e use "Assinar" para a sua chave.`;
@@ -1193,7 +1193,8 @@ async function cmpCarregarAprovacoes(id){
 }
 /* rótulo de uma chave já assinada (a view só traz as pendentes, com o rótulo do banco) */
 function cmpChaveRotulo(a){
-  if(a.chave === "alcada") return "alçada de valor";
+  if(a.chave === "alcada") return "aprovação de compras";   // hotfix 192: rótulo do banco com aprovador configurado
+  if(a.chave === "diretoria") return "diretoria";   // hotfix 192: pedido acima do limite
   const d = { destino: a.destino_tipo, obra_id: a.destino_tipo === "obra" ? a.destino_id : null, equipamento_id: a.destino_tipo === "equipamento" ? a.destino_id : null, centro_custo_id: a.destino_tipo === "centro_custo" ? a.destino_id : null };
   return "dono do custo · " + cmpDestinoTxt(d);
 }
