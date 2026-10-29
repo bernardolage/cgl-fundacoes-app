@@ -24,6 +24,9 @@ let _balFuncs = null;              // funcionários ativos (busca do retirante)
 let _balHoje = [];                 // saídas de hoje
 let _balDestinoOrigem = "";        // fase 108c: quem preencheu o destino ("", "sugestao", "alocacao", "manual")
 let _balAlocCache = {};            // fase 108c: funcionario_id -> resposta de estoque_destino_epi
+let _balS56 = false;               // lote S56 (#202): migration loteS56a aplicada (acessório como destino da saída)
+let _balAceMap = {};               // lote S56 (#202): acessorio_id -> { marcacao, familia }
+const BAL_ACE_FAM = { helice: "Hélice contínua", raiz: "estaca raiz", secante: "Hélice secante", trado: "Trado", comum: "Comum" };
 
 const EST_TIPO_LBL = { entrada: "Entrada", saida: "Saída", ajuste: "Ajuste", devolucao: "Devolução", transferencia: "Transferência" };
 const EST_TIPO_COR = { entrada: "verde", saida: "ambar", ajuste: "azul", devolucao: "verde", transferencia: "cinza" };
@@ -49,12 +52,14 @@ function estChipOdoo(p){
 async function carregarEstoque(force){
   if(!$("est-reposicao")) return;
   if(force || !_estCarregado){
-    const [fo, ob, eq, cc] = await Promise.all([
+    const [fo, ob, eq, cc, s56] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").in("status", ["em_andamento","planejada","paralisada"]).order("codigo", { ascending: false }),
       sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).not("tipo", "in", "(caminhao,veiculo)").order("codigo"),
-      sb.from("centros_custo").select("id,nome,tipo").eq("ativo", true).order("tipo", { ascending: false }).order("nome")   // fase 76
+      sb.from("centros_custo").select("id,nome,tipo").eq("ativo", true).order("tipo", { ascending: false }).order("nome"),   // fase 76
+      sb.from("movimentacoes_estoque").select("destino_acessorio_id").limit(1)   // lote S56: a coluna diz se a migration loteS56a está no banco
     ]);
+    _balS56 = !s56.error;
     _estCentros = cc.data || [];
     $("ent-fornecedor").innerHTML = '<option value="">— não informado —</option>' + (fo.data || []).map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}</option>`).join("");
     _estObras = ob.data || []; _estEquips = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
@@ -93,7 +98,8 @@ function balPreencherDestino(){
   sel.innerHTML = `<option value="">— obra, TAG ou setor —</option>`
     + `<optgroup label="Obra em andamento">${obras.map(o => `<option value="obra:${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("")}</optgroup>`
     + `<optgroup label="TAG">${_estEquips.map(e => `<option value="eq:${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("")}</optgroup>`
-    + `<optgroup label="Setor">${grupo("setor")}</optgroup><optgroup label="Obra interna">${grupo("obra_interna")}</optgroup>`;
+    + `<optgroup label="Setor">${grupo("setor")}</optgroup><optgroup label="Obra interna">${grupo("obra_interna")}</optgroup>`
+    + (_balS56 ? `<optgroup label="Acessório" data-ace="1"><option value="ac:">Acessório… (buscar)</option></optgroup>` : "");   // lote S56 (#202)
   const met = $("bal-metodo");   // fase 108c
   if(met) met.innerHTML = `<option value="">— sem método —</option>` + BAL_METODOS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
   balAplicarMetodo();
@@ -160,7 +166,43 @@ async function balAtualizarDestinoAloc(){
   box.innerHTML = txt + (manual ? ' · <span class="txt-aviso">destino trocado à mão</span>' : "");
   box.style.display = "";
 }
+/* ---------- lote S56 (#202): acessório como destino da saída ----------
+   "Acessório… (buscar)" no destino abre a busca logo abaixo (marcação ou jogo); o escolhido vira uma opção do grupo e vai
+   para estoque_saida_registrar como { acessorio_id } (movimentacoes_estoque.destino_acessorio_id; custo na ficha da peça). */
+function balAceRotulo(a){ return a ? `Acessório ${a.marcacao}${BAL_ACE_FAM[a.familia] ? " · " + BAL_ACE_FAM[a.familia] : ""}` : "Acessório"; }
+function balGarantirAce(a){
+  const sel = $("bal-destino"), g = sel?.querySelector("optgroup[data-ace]"); if(!sel || !g || !a) return;
+  _balAceMap[a.id] = a;
+  const v = "ac:" + a.id;
+  if(![...sel.options].some(o => o.value === v)){ const o = document.createElement("option"); o.value = v; o.textContent = balAceRotulo(a); g.appendChild(o); }
+  sel.value = v;
+}
+function balAceMostrar(on){
+  const c = $("bal-ace-campo"); if(!c) return;
+  c.style.display = on ? "" : "none";
+  if(on){ $("bal-ace-busca").value = ""; $("bal-ace-res").style.display = "none"; $("bal-ace-busca").focus(); }
+}
+async function balAceBuscar(){
+  const t = ($("bal-ace-busca")?.value || "").replace(/[%,()"]/g, " ").trim(), res = $("bal-ace-res"); if(!res) return;
+  if(t.length < 2){ res.style.display = "none"; return; }
+  const { data, error } = await sb.from("acessorios").select("id,marcacao,familia,jogo").eq("ativo", true).or(`marcacao.ilike.%${t}%,jogo.ilike.%${t}%`).order("marcacao").limit(30);
+  if(($("bal-ace-busca")?.value || "").replace(/[%,()"]/g, " ").trim() !== t) return;
+  const lst = error ? [] : (data || []);
+  res.innerHTML = lst.map(a => `<div class="resultado-item" data-id="${esc(a.id)}"><strong>${esc(a.marcacao)}</strong> <span class="meta">${esc(BAL_ACE_FAM[a.familia] || a.familia || "")}${a.jogo ? " · jogo " + esc(a.jogo) : ""}</span></div>`).join("")
+    || `<div class="resultado-item vazio">Nenhum acessório ativo com esse texto.</div>`;
+  res.style.display = "";
+  res.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", e => {
+    e.preventDefault();
+    const a = lst.find(x => x.id === d.dataset.id); if(!a) return;
+    balGarantirAce(a); balAceMostrar(false); _balDestinoOrigem = "manual"; balAplicarMetodo(); balAtualizarDestinoAloc();
+  }));
+}
+/* valor do select de destino → p_destino das RPCs */
+function balDestinoDoValor(dv){
+  return dv.startsWith("obra:") ? { obra_id: dv.slice(5) } : dv.startsWith("eq:") ? { equipamento_id: dv.slice(3) } : dv.startsWith("ac:") ? { acessorio_id: dv.slice(3) } : { centro_custo_id: dv.slice(3) };
+}
 function balDestinoTxt(m){
+  if(m.destino_acessorio_id) return balAceRotulo(_balAceMap[m.destino_acessorio_id]);   // lote S56 (#202)
   if(m.obra_id){ const o = _estObras.find(x => x.id === m.obra_id); return "Obra " + (o ? o.codigo : ((typeof mapaObras === "object" && mapaObras && mapaObras[m.obra_id]) || "")); }
   if(m.equipamento_id){ const e = _estEquips.find(x => x.id === m.equipamento_id); return "TAG " + (e ? e.codigo : ""); }
   if(m.centro_custo_id){ const c = _estCentros.find(x => x.id === m.centro_custo_id); return c ? c.nome : "Setor"; }
@@ -251,10 +293,11 @@ async function registrarSaidaBalcao(){
   if(!_balRetirante && $("bal-retirante").value.trim()){ aviso("app-aviso", "Escolha quem retira na lista de nomes (ou apague o campo).", "erro"); $("bal-retirante").focus(); return; }
   if(!_balRetirante && epis.length){ aviso("app-aviso", `Informe quem retira: ${epis.map(i => i.p.codigo).join(", ")} ${epis.length > 1 ? "são EPI ou uniforme" : "é EPI ou uniforme"} e a entrega vai para a ficha do colaborador.`, "erro"); $("bal-retirante").focus(); return; }
   const dv = $("bal-destino").value;
-  if(!dv){ aviso("app-aviso", "Escolha o destino: obra, TAG ou setor.", "erro"); $("bal-destino").focus(); return; }
+  if(!dv){ aviso("app-aviso", "Escolha o destino: obra, TAG, setor ou acessório.", "erro"); $("bal-destino").focus(); return; }
+  if(dv === "ac:"){ aviso("app-aviso", "Escolha o acessório na busca abaixo do destino.", "erro"); balAceMostrar(true); return; }   // lote S56 (#202)
   if(!_balItens.length){ aviso("app-aviso", "Adicione pelo menos um item.", "erro"); $("bal-item").focus(); return; }
   if(_balItens.some(i => !(Number(i.quantidade) > 0))){ aviso("app-aviso", "Há item sem quantidade.", "erro"); return; }
-  const destino = dv.startsWith("obra:") ? { obra_id: dv.slice(5) } : dv.startsWith("eq:") ? { equipamento_id: dv.slice(3) } : { centro_custo_id: dv.slice(3) };
+  const destino = balDestinoDoValor(dv);   // lote S56 (#202): + acessório
   const met = $("bal-metodo")?.value || "";
   if(met && destino.obra_id) destino.metodo = met;   // fase 108c: método opcional, só com obra
   const itens = _balItens.slice(), retirante = _balRetirante;
@@ -266,7 +309,7 @@ async function registrarSaidaBalcao(){
   if(error){ aviso("app-aviso", "Saída não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   const ids = data || [], n = ids.length;
   aviso("app-aviso", `Saída registrada: ${n} item(ns)${retirante ? " para " + retirante.nome : ""} · ${$("bal-destino").selectedOptions[0]?.textContent || ""}.`, "ok");
-  _balItens = []; _balRetirante = null; $("bal-retirante").value = ""; $("bal-doc").value = ""; $("bal-destino").value = "";
+  _balItens = []; _balRetirante = null; $("bal-retirante").value = ""; $("bal-doc").value = ""; $("bal-destino").value = ""; balAceMostrar(false);
   _balDestinoOrigem = ""; _balAlocCache = {}; $("bal-destino").querySelector("optgroup[data-aloc]")?.remove(); balAplicarMetodo();   // fase 108c
   renderBalItens();
   // fase 100: EPI entregue a uma pessoa → assinatura do recebimento na tela (o RPC devolve os ids na ordem dos itens)
@@ -286,12 +329,14 @@ async function carregarSaidasHoje(){
   const saidas = cols => sb.from("movimentacoes_estoque").select(cols).eq("tipo", "saida").gte("created_at", desde).order("created_at", { ascending: false }).limit(300);
   const semColuna = r => r.error && ["42703", "PGRST204"].includes(r.error.code);
   let [sa, es] = await Promise.all([
-    saidas(COLS + ",funcionario_id,assinatura_em,corrige_de"),   // fase 100: quem recebeu e assinatura do EPI; lote S52: correção
+    saidas(COLS + ",funcionario_id,assinatura_em,corrige_de" + (_balS56 ? ",destino_acessorio_id" : "")),   // fase 100: quem recebeu e assinatura do EPI; lote S52: correção; lote S56: acessório
     sb.from("movimentacoes_estoque").select("estorno_de").not("estorno_de", "is", null).gte("created_at", desde)
   ]);
   if(semColuna(sa)) sa = await saidas(COLS + ",funcionario_id,assinatura_em");   // migration do lote S52 ainda não aplicada
   if(semColuna(sa)) sa = await saidas(COLS);   // migration da fase 100 ainda não aplicada
   if(sa.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(sa.error.message)}</p>`; return; }
+  const aceIds = [...new Set((sa.data || []).map(m => m.destino_acessorio_id).filter(id => id && !_balAceMap[id]))];   // lote S56 (#202)
+  if(aceIds.length){ const { data: ac } = await sb.from("acessorios").select("id,marcacao,familia").in("id", aceIds); (ac || []).forEach(x => { _balAceMap[x.id] = x; }); }
   const estornadas = new Set((es.data || []).map(e => e.estorno_de));
   const corrigidas = new Set((sa.data || []).map(m => m.corrige_de).filter(Boolean));   // lote S52 (#167): original de uma correção de hoje
   _balHoje = (sa.data || []).map(m => ({ ...m, estornada: estornadas.has(m.id), corrigida: corrigidas.has(m.id) }));
@@ -303,11 +348,12 @@ async function carregarSaidasHoje(){
    estoque_saida_corrigir (estorno da original + saída nova com corrige_de). Retirante não muda: para trocar quem retirou,
    desfazer e lançar de novo. */
 let _balEdit = null;   // id da saída em edição na lista de hoje
-function balDestinoValor(m){ return m.obra_id ? "obra:" + m.obra_id : m.equipamento_id ? "eq:" + m.equipamento_id : m.centro_custo_id ? "cc:" + m.centro_custo_id : ""; }
+function balDestinoValor(m){ return m.destino_acessorio_id ? "ac:" + m.destino_acessorio_id : m.obra_id ? "obra:" + m.obra_id : m.equipamento_id ? "eq:" + m.equipamento_id : m.centro_custo_id ? "cc:" + m.centro_custo_id : ""; }
 function balDestinoOptions(atual, rotuloAtual){
   const sel = $("bal-destino"); if(!sel) return "";
   const clone = sel.cloneNode(true);
   clone.querySelector("optgroup[data-aloc]")?.remove();
+  clone.querySelector('option[value="ac:"]')?.remove();   // lote S56 (#202): na edição fica o acessório atual (ou os já escolhidos no balcão)
   if(atual && ![...clone.options].some(o => o.value === atual)){   // obra fora de "em andamento": entra para não perder o destino atual
     const o = document.createElement("option"); o.value = atual; o.textContent = rotuloAtual || "destino atual";
     clone.insertBefore(o, clone.children[1] || null);
@@ -332,8 +378,8 @@ async function balSalvarEdicao(id){
   const qtd = Number($("bal-ed-qtd")?.value || 0);
   if(!(qtd > 0)){ aviso("app-aviso", "Informe a quantidade.", "erro"); $("bal-ed-qtd")?.focus(); return; }
   const dv = $("bal-ed-destino")?.value || "";
-  if(!dv){ aviso("app-aviso", "Escolha o destino: obra, TAG ou setor.", "erro"); $("bal-ed-destino")?.focus(); return; }
-  const destino = dv.startsWith("obra:") ? { obra_id: dv.slice(5) } : dv.startsWith("eq:") ? { equipamento_id: dv.slice(3) } : { centro_custo_id: dv.slice(3) };
+  if(!dv){ aviso("app-aviso", "Escolha o destino: obra, TAG, setor ou acessório.", "erro"); $("bal-ed-destino")?.focus(); return; }
+  const destino = balDestinoDoValor(dv);   // lote S56 (#202)
   const { error } = await sb.rpc("estoque_saida_corrigir", { p_id: id, p_quantidade: qtd, p_destino: destino,
     p_documento: ($("bal-ed-doc")?.value || "").trim(), p_observacoes: ($("bal-ed-obs")?.value || "").trim() });
   if(error){ aviso("app-aviso", "Não foi possível corrigir: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
@@ -803,7 +849,9 @@ function ligarEstoque(){
   // fase 78: saída no balcão
   balLigarRetirante();
   // fase 108c: destino escolhido à mão vence o da alocação; método só com obra
-  $("bal-destino")?.addEventListener("change", () => { _balDestinoOrigem = "manual"; balAplicarMetodo(); balAtualizarDestinoAloc(); });
+  $("bal-destino")?.addEventListener("change", () => { _balDestinoOrigem = "manual"; balAceMostrar($("bal-destino").value === "ac:"); balAplicarMetodo(); balAtualizarDestinoAloc(); });
+  $("bal-ace-busca")?.addEventListener("input", debounce(balAceBuscar, 250));   // lote S56 (#202)
+  $("bal-ace-busca")?.addEventListener("blur", () => setTimeout(() => { if($("bal-ace-res")) $("bal-ace-res").style.display = "none"; }, 200));
   $("bal-item")?.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); balEnter(); } });
   $("bal-item")?.addEventListener("input", debounce(async () => { const t = $("bal-item").value.trim(); if(t.length < 2){ $("bal-item-res").style.display = "none"; return; } balMostrarLista(await balBuscar(t)); }, 250));
   $("bal-item")?.addEventListener("blur", () => setTimeout(() => { if($("bal-item-res")) $("bal-item-res").style.display = "none"; }, 200));

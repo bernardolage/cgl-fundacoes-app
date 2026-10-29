@@ -20,6 +20,71 @@ const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_min
 /* Lote S55 (#175, decisão do Bernardo de 27/10/2026): serviço consumido (frete, hospedagem, locação, serviço de terceiro) é
    produto com tipo_item = "servico": sem estoque, sem reposição e sempre aplicação direta (o banco força pelo gatilho
    trg_produtos_tipo_item). Não confundir com o módulo Serviços (js/servicos.js), catálogo do que a CGL executa. */
+/* Lote S56b (29/10/2026): #197 código automático no produto novo = iniciais do nome + número global (RPC produto_gerar_codigo,
+   sequência a partir de 6721, padrão da planilha do almoxarifado: MPB6692, FHD6720); a pessoa troca as letras, nunca o número;
+   códigos existentes não mudam e o banco barra código repetido. #199 NCM (8 dígitos) obrigatório no produto novo do tipo
+   produto (serviço consumido dispensa); produto antigo sem NCM salva com aviso. Importações não passam por aqui. */
+let _prodCodNum = null;        // número reservado pelo gerador para o produto novo (texto, ex.: "6721")
+let _prodCodManual = false;    // gerador indisponível (banco sem a migration do lote S56b): código digitado como antes
+function prodCodLetras(v){ return String(v || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\d+$/, "").replace(/[^A-Z]/g, "").slice(0, 6); }
+function prodCodInfo(){
+  const el = $("prod-codigo-info"); if(!el) return;
+  el.textContent = prodEditId ? "" : _prodCodManual ? "Gerador indisponível até a atualização do banco: digite o código."
+    : _prodCodNum ? `Número ${_prodCodNum} reservado: troque só as letras, se quiser.` : "Automático: iniciais do nome + próximo número (gera ao salvar ou no Gerar).";
+}
+/* no produto novo com número reservado, o campo é sempre letras + número */
+function prodCodNormalizar(){
+  if(prodEditId || _prodCodNum == null) return;
+  const el = $("prod-codigo"); if(!el) return;
+  el.value = (prodCodLetras(el.value) || "P") + _prodCodNum;
+}
+/* reserva o número (ou, com número já reservado, só refaz as letras pelo nome). novo = true descarta o número (colisão). */
+async function prodGerarCodigo(novo){
+  if(prodEditId) return false;
+  const nome = ($("prod-nome")?.value || "").trim();
+  if(!nome){ aviso("app-aviso", "Informe o nome antes de gerar o código.", "erro"); ativarTabProd("geral"); return false; }
+  const cat = $("prod-categoria")?.value || null;
+  if(_prodCodNum != null && !novo){
+    const { data, error } = await sb.rpc("produto_codigo_letras", { p_nome: nome, p_categoria_id: cat });
+    if(!error && data) $("prod-codigo").value = String(data) + _prodCodNum;
+    prodCodNormalizar(); prodCodInfo();
+    return true;
+  }
+  const digitadas = novo ? prodCodLetras($("prod-codigo").value) : "";
+  const { data, error } = await sb.rpc("produto_gerar_codigo", { p_categoria_id: cat, p_nome: nome });
+  if(error){
+    if(error.code === "PGRST202" || /produto_gerar_codigo/.test(error.message || "")){
+      _prodCodManual = true; prodCodInfo();
+      aviso("app-aviso", "O gerador de código chega com a atualização do banco: digite o código.", "aviso");
+      return false;
+    }
+    aviso("app-aviso", "Não foi possível gerar o código: " + error.message, "erro");
+    return false;
+  }
+  const m = String(data || "").match(/^([A-Z]*)(\d+)$/);
+  if(!m){ aviso("app-aviso", "O gerador devolveu um código inesperado: " + String(data || ""), "erro"); return false; }
+  _prodCodNum = m[2];
+  $("prod-codigo").value = (digitadas || m[1]) + m[2];
+  prodCodInfo();
+  return true;
+}
+/* código do produto novo na hora de gravar: gera se ainda não tem número; nunca aceita número digitado */
+async function prodCodigoParaSalvar(){
+  const el = $("prod-codigo");
+  const txt = (el.value || "").trim().toUpperCase();
+  if(_prodCodManual){
+    if(!txt){ aviso("app-aviso", "Informe o código.", "erro"); ativarTabProd("geral"); return null; }
+    return txt;
+  }
+  if(_prodCodNum == null){
+    if(/\d/.test(txt)){ aviso("app-aviso", "O número do código é automático: deixe só as letras (ou apague) e salve.", "erro"); ativarTabProd("geral"); return null; }
+    if(txt) el.value = prodCodLetras(txt);
+    const digitadas = prodCodLetras(el.value);
+    if(!(await prodGerarCodigo(false))) return null;   // sem gerador: a pessoa digita o código e salva de novo
+    if(digitadas){ el.value = digitadas + _prodCodNum; prodCodInfo(); }
+  } else prodCodNormalizar();
+  return el.value.trim();
+}
 function prodTagServico(p){ return p && p.tipo_item === "servico" ? ' <span class="tag azul" title="Serviço consumido: aplicação direta, sem estoque">serviço</span>' : ""; }
 
 /* ---------- Categorias ---------- */
@@ -290,6 +355,9 @@ function novoProduto(){
   ["prod-codigo","prod-nome","prod-codbarras","prod-refext","prod-localizacao","prod-descricao"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
   _prodCatOriginal = null;
+  _prodCodNum = null; _prodCodManual = false;   // lote S56b (#197)
+  if($("prod-codigo")) $("prod-codigo").placeholder = "automático";
+  if($("btn-prod-gerar-cod")) $("btn-prod-gerar-cod").style.display = "";
   prodMontarSelectCategoria("");   // lote S51: o SESMT escolhe entre as categorias dele
   if($("prod-tipo-compra")) $("prod-tipo-compra").value = "";   // fase 108b
   prodAtualizarTipoCompra();
@@ -303,6 +371,7 @@ function novoProduto(){
   prodAplicarPerfil();   // lote S51 (produto novo: sem Excluir)
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });   // fase 105a
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
+  prodCodInfo();
 }
 
 async function abrirProduto(id){
@@ -310,6 +379,10 @@ async function abrirProduto(id){
   const { data, error } = await sb.from("produtos").select("*").eq("id",id).single();
   if(error){ aviso("app-aviso","Erro ao abrir produto: "+error.message,"erro"); return; }
   $("prod-codigo").value      = data.codigo || "";
+  _prodCodNum = null; _prodCodManual = false;   // lote S56b (#197): código existente não muda pelo gerador
+  $("prod-codigo").placeholder = "";
+  if($("btn-prod-gerar-cod")) $("btn-prod-gerar-cod").style.display = "none";
+  prodCodInfo();
   $("prod-nome").value        = data.nome || "";
   _prodCatOriginal = data.categoria_id || null;
   prodMontarSelectCategoria(data.categoria_id || "");   // lote S51 (SESMT: só as categorias dele + a do produto)
@@ -416,8 +489,9 @@ function ativarTabProd(nome){
 
 /* ---------- Salvar / excluir ---------- */
 async function salvarProduto(){
-  if(!$("prod-codigo").value.trim() || !$("prod-nome").value.trim()){
-    aviso("app-aviso","Informe código e nome.","erro");
+  // lote S56b (#197): no produto novo o código sai do gerador (só o nome é obrigatório aqui)
+  if(!$("prod-nome").value.trim() || (prodEditId && !$("prod-codigo").value.trim())){
+    aviso("app-aviso", prodEditId ? "Informe código e nome." : "Informe o nome (o código sai das iniciais dele).", "erro");
     ativarTabProd("geral");
     return;
   }
@@ -451,6 +525,12 @@ async function salvarProduto(){
   // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
   const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("prod") : null;
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabProd("fiscal"); return; }
+  // lote S56b (#199, D-199a): produto novo exige NCM; serviço consumido dispensa; produto antigo sem NCM salva com aviso
+  if(fis && !prodEditId && reg.tipo_item !== "servico" && !fis.ncm){
+    aviso("app-aviso", "Informe o NCM do produto (8 dígitos, ex.: 8431.43.10): é obrigatório no cadastro novo. Serviço consumido dispensa.", "erro");
+    ativarTabProd("fiscal"); $("prod-ncm")?.focus(); return;
+  }
+  const semNcm = !!fis && !!prodEditId && reg.tipo_item !== "servico" && !fis.ncm;
   if(fis) Object.assign(reg, fis);
   // lote S51 (#150): o SESMT grava só produto que era e continua numa categoria do SESMT (o banco confere igual)
   const perfil = prodPerfilEdicao();
@@ -458,11 +538,22 @@ async function salvarProduto(){
   if(perfil === "sesmt" && (!prodCategoriaEhSesmt(reg.categoria_id) || (prodEditId && !prodCategoriaEhSesmt(_prodCatOriginal)))){
     aviso("app-aviso", PROD_MSG_SO_SESMT, "erro"); ativarTabProd("geral"); return;
   }
+  if(!prodEditId){   // lote S56b (#197): reserva o número só depois de tudo validado
+    const cod = await prodCodigoParaSalvar();
+    if(!cod) return;
+    reg.codigo = cod;
+  }
   let result;
   if(prodEditId){
     result = await sb.from("produtos").update(reg).eq("id", prodEditId).select().single();
   } else {
     result = await sb.from("produtos").insert(reg).select().single();
+  }
+  if(result.error && !prodEditId && !_prodCodManual && result.error.code === "23505" && /codigo/i.test(result.error.message || "")){
+    // lote S56b (#197): número tomado entre a reserva e o insert — gera outro e pede para salvar de novo
+    _prodCodNum = null;
+    if(await prodGerarCodigo(true)) aviso("app-aviso", `Código já existe: gerei outro (${$("prod-codigo").value}). Confira e salve de novo.`, "aviso");
+    return;
   }
   if(result.error){
     // recusa da policy do SESMT: no insert vem 42501; no update de produto fora do SESMT nenhuma linha volta (PGRST116).
@@ -478,7 +569,7 @@ async function salvarProduto(){
   prodEditId = result.data.id;
   _prodCatOriginal = result.data.categoria_id || null;
   prodAplicarPerfil();
-  aviso("app-aviso","Produto salvo.","ok");
+  aviso("app-aviso", semNcm ? "Produto salvo. Sem NCM: preencha quando souber (aba Fiscal)." : "Produto salvo.", semNcm ? "aviso" : "ok");   // lote S56b (#199)
   await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
   await abrirProduto(prodEditId);
@@ -544,6 +635,8 @@ function ligarProdutos(){
   $("btn-salvar-prod")?.addEventListener("click", () => comBotaoTravado("btn-salvar-prod", salvarProduto));
   $("btn-excluir-prod")?.addEventListener("click", excluirProduto);
   $("btn-nova-cat")?.addEventListener("click", criarNovaCategoria);
+  $("btn-prod-gerar-cod")?.addEventListener("click", () => comBotaoTravado("btn-prod-gerar-cod", () => prodGerarCodigo(false)));   // lote S56b (#197)
+  $("prod-codigo")?.addEventListener("blur", prodCodNormalizar);
   $("prod-categoria")?.addEventListener("change", prodAtualizarTipoCompra);   // fase 108b
   $("prod-cat-tipo-compra")?.addEventListener("change", () => prodSalvarTipoCategoria());
 

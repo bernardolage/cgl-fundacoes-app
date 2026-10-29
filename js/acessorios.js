@@ -945,6 +945,9 @@ function abrirFichaAcessorio(a){
   const irmaos = a.jogo ? _aceRegistros.filter(x => x.familia === a.familia && x.jogo === a.jogo && x.id !== a.id) : [];
   setSb("sb-ace-jogo", irmaos.length);
   aceRenderJogo(a, irmaos);
+  setSb("sb-ace-custos", 0);   // lote S56 (#202): aba Custos (compra, saída de estoque e avulso do jogo)
+  if(novo){ const cc = $("ace-custos-lista"); if(cc) cc.innerHTML = `<p class="vazio">A peça ainda não foi salva.</p>`; }
+  else aceRenderCustos(a);
   setSb("sb-ace-hist", 0); setSb("sb-ace-rep", 0); setSb("sb-ace-compat", 0);
   $("ace-hist-lista").innerHTML = `<p class="vazio">${novo ? "A peça ainda não foi salva." : "Carregando…"}</p>`;
   $("ace-rep-lista").innerHTML = `<p class="vazio">${novo ? "A peça ainda não foi salva." : "Carregando…"}</p>`;
@@ -1046,7 +1049,6 @@ function aceRenderJogo(a, irmaos){
   const c = $("ace-jogo-lista");
   const btn = $("btn-ace-mover-jogo"); if(btn) btn.style.display = (a.jogo && acePodeEditar()) ? "" : "none";
   if(!a.jogo){ c.innerHTML = `<p class="vazio">Peça avulsa (sem jogo). Informe o jogo nos dados técnicos para agrupá-la.</p>`; return; }
-  aceRenderCustosJogo(a.jogo);
   const todos = [a, ...irmaos].sort((x, y) => (x.seq_no_jogo || 0) - (y.seq_no_jogo || 0) || aceOrdMarc(x, y));
   const locais = new Set(todos.map(aceColKey));
   c.innerHTML = (locais.size > 1 ? `<p class="meta" style="color:var(--perigo);">⚠️ O jogo <strong>${esc(a.jogo)}</strong> está separado em ${locais.size} lugares.</p>` : `<p class="meta">Jogo <strong>${esc(a.jogo)}</strong> completo no mesmo lugar.</p>`) +
@@ -1054,20 +1056,35 @@ function aceRenderJogo(a, irmaos){
     <tbody>${todos.map(x => `<tr class="linha-clicavel" data-id="${esc(x.id)}" ${x.id === a.id ? 'style="background:var(--bg-body);"' : ""}><td>${esc(x.seq_no_jogo ?? "")}</td><td><strong>${esc(x.marcacao)}</strong></td><td>${esc(aceDescr(x))}</td><td>${tagStatus("acessorio", x.condicao)}</td><td>${esc(aceOnde(x))}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
-/* custos lançados contra o jogo (reformas, fretes…) — custos_avulsos.acessorio_jogo */
-async function aceRenderCustosJogo(jogo){
-  const c = $("ace-jogo-custos"); if(!c) return;
+/* Lote S56 (#202): aba Custos da peça. Lê vw_custos (compra com destino no acessório, saída de estoque para ele e custo
+   avulso do jogo: acessorio_id = peça ou acessorio_jogo = jogo). Sem as colunas novas (migration loteS56a não aplicada)
+   volta ao que havia: custos_avulsos do jogo. "+ Custo do jogo" continua lançando contra o jogo. */
+const ACE_CUSTO_ORIGEM_LBL = { compra: "Compra", estoque: "Saída de estoque", avulso: "Avulso (jogo)", pedido_externo: "Pedido Odoo", reparo: "Reparo" };
+async function aceRenderCustos(a){
+  const c = $("ace-custos-lista"); if(!c || !a?.id) return;
   c.innerHTML = `<p class="vazio">Carregando custos…</p>`;
-  const { data, error } = await sb.from("custos_avulsos").select("id,data,categoria,descricao,valor,documento,fornecedor_id").eq("acessorio_jogo", jogo).order("data", { ascending: false });
-  if(error){ c.innerHTML = `<p class="vazio">Erro ao ler custos: ${esc(error.message)}</p>`; return; }
-  const podeLancar = typeof abrirCustoAvulso === "function" && !!usuarioAtual;
+  const filtro = `acessorio_id.eq.${a.id}` + (a.jogo ? `,acessorio_jogo.eq.${JSON.stringify(String(a.jogo))}` : "");
+  let r = await sb.from("vw_custos").select("origem,origem_id,data,fornecedor_id,categoria,descricao,quantidade,valor,documento,acessorio_id,acessorio_jogo").or(filtro).order("data", { ascending: false }).limit(500);
+  let antigo = false;
+  if(r.error && r.error.code === "42703"){   // vw_custos ainda sem acessorio_id/acessorio_jogo: só os avulsos do jogo, como antes
+    antigo = true;
+    r = a.jogo ? await sb.from("custos_avulsos").select("data,categoria,descricao,valor,documento,fornecedor_id").eq("acessorio_jogo", a.jogo).order("data", { ascending: false }) : { data: [] };
+    if(!r.error) r.data = (r.data || []).map(x => ({ ...x, origem: "avulso", acessorio_jogo: a.jogo }));
+  }
+  if(_aceAtual?.id !== a.id) return;
+  if(r.error){ c.innerHTML = `<p class="vazio">Erro ao ler custos: ${esc(r.error.message)}</p>`; return; }
+  const data = r.data || [];
+  const b = $("sb-ace-custos"); if(b){ b.querySelector(".sb-num").textContent = data.length; b.classList.toggle("zero", !data.length); }
+  const podeLancar = typeof abrirCustoAvulso === "function" && !!usuarioAtual && !!a.jogo;
   const forn = id => (typeof mapaFornecedores !== "undefined" && mapaFornecedores?.[id]) || "";
-  const total = (data || []).reduce((s, x) => s + Number(x.valor || 0), 0);
-  c.innerHTML = `<div class="lista-topo" style="margin-top:14px;"><h3>Custos do jogo</h3><span class="meta" style="margin-left:8px;">${data?.length ? brl(total) : ""}</span>${podeLancar ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-jogo-custo" style="margin-left:auto;">＋ Custo</button>` : ""}</div>` +
-    (!data?.length ? `<p class="vazio">Nenhum custo lançado contra o jogo ${esc(jogo)} (reformas, fretes…).</p>` :
-    `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Descrição</th><th>Fornecedor</th><th>Documento</th><th class="num">Valor</th></tr></thead>
-     <tbody>${data.map(x => `<tr><td>${dataBR(x.data)}</td><td>${esc(x.descricao)}</td><td>${esc(forn(x.fornecedor_id) || "—")}</td><td>${esc(x.documento || "—")}</td><td class="num">${brl(x.valor)}</td></tr>`).join("")}</tbody></table></div>`);
-  $("btn-ace-jogo-custo")?.addEventListener("click", () => abrirCustoAvulso({ acessorio_jogo: jogo }, () => aceRenderCustosJogo(jogo)));
+  const total = data.reduce((s, x) => s + Number(x.valor || 0), 0);
+  const ref = x => x.acessorio_id === a.id ? "esta peça" : x.acessorio_jogo ? "jogo " + x.acessorio_jogo : "—";
+  c.innerHTML = `<div class="lista-topo"><h3>Custos</h3><span class="meta" style="margin-left:8px;">${data.length ? brl(total) : ""}</span>${podeLancar ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-jogo-custo" style="margin-left:auto;" title="custo avulso contra o jogo (reforma, frete…)">＋ Custo do jogo</button>` : ""}</div>`
+    + `<p class="ajuda-campo">Compras e saídas de estoque com destino nesta peça${a.jogo ? ` e custos avulsos do jogo ${esc(a.jogo)}` : ""}.${antigo ? " Até a atualização do banco, só os avulsos do jogo." : ""}</p>`
+    + (!data.length ? `<p class="vazio">Nenhum custo lançado para esta peça${a.jogo ? " nem para o jogo" : ""}.</p>` :
+    `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Descrição</th><th>Fornecedor</th><th>Documento</th><th>Lançado em</th><th class="num">Valor</th></tr></thead>
+     <tbody>${data.map(x => `<tr><td>${dataBR(x.data)}</td><td>${esc(ACE_CUSTO_ORIGEM_LBL[x.origem] || x.origem || "—")}</td><td>${esc(x.descricao || "—")}</td><td>${esc(forn(x.fornecedor_id) || "—")}</td><td>${esc(x.documento || "—")}</td><td class="meta">${esc(ref(x))}</td><td class="num">${brl(x.valor)}</td></tr>`).join("")}</tbody></table></div>`);
+  $("btn-ace-jogo-custo")?.addEventListener("click", () => abrirCustoAvulso({ acessorio_jogo: a.jogo }, () => aceRenderCustos(a)));
 }
 
 const ACE_STAGES = ["sem_avaliacao","sem_marcacao","bom_estado","precisa_manutencao","em_manutencao","baixado"];

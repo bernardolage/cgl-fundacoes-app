@@ -42,6 +42,12 @@ const RHD_MODELOS = {
   admissao_prorrogacao:       { rg: "RG 5.6",  titulo: "Termo de prorrogação do contrato de experiência", rev: "01 – 20/10/2023", rotulo: "Prorrogação do contrato de experiência (RG 5.6)", arquivo: "prorrogacao-experiencia" },
   admissao_contrato_trabalho: { rg: "RG 5.7",  titulo: "Contrato de trabalho",                 rev: "01 – 20/10/2023", rotulo: "Contrato de trabalho — retorno após 12 meses (RG 5.7)", arquivo: "contrato-de-trabalho" }
 };
+/* lote S56c (#188): documentos de admissão que NÃO são gerados pelo app, só anexados (PDF já assinado). O tipo começa por
+   "admissao_", então a policy func_docs_admissao_so_rh já restringe a leitura ao RH e à diretoria. */
+const RHD_ANEXOS = {
+  admissao_contrato_pj: { rotulo: "Contrato PJ", arquivo: "contrato-pj" }
+};
+let _rhdTemAnexoPj = true;   // false quando o banco ainda não tem o valor admissao_contrato_pj (migration loteS56c0)
 /* contrato que a admissão pede, pelo tipo_documento */
 const RHD_CONTRATO_POR_TIPO = { padrao: "admissao_contrato", ajudante_soldador: "admissao_contrato_ajudante", retorno_12_meses: "admissao_contrato_trabalho" };
 
@@ -413,7 +419,7 @@ let _rhdFuncId = null;
 let _rhdAlvo = null;        // documento do modal da D4Sign
 
 function rhdNomeArquivo(tipo, nome){
-  const m = RHD_MODELOS[tipo];
+  const m = RHD_MODELOS[tipo] || RHD_ANEXOS[tipo] || { arquivo: "documento" };
   const slug = String(nome || "funcionario").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
   return `${m.arquivo}_${slug}_${hojeISO()}.pdf`;
 }
@@ -485,12 +491,56 @@ async function rhdCarregar(funcionarioId){
   if(!_rhdFuncId || typeof funcVeSensivel !== "function" || !funcVeSensivel()){ cont.innerHTML = ""; return; }
   const [adm, docs] = await Promise.all([
     rhdAdmissaoAtual(_rhdFuncId),
-    // tipo é enum: filtra pela lista (like exigiria cast no banco)
-    sb.from("funcionario_documentos").select("*").eq("funcionario_id", _rhdFuncId).in("tipo", Object.keys(RHD_MODELOS)).order("gerado_em", { ascending: false })
+    // tipo é enum: filtra pela lista (like exigiria cast no banco); lote S56c: + os anexados (contrato PJ)
+    rhdLerDocs(true)
   ]);
   _rhdAdm = adm;
   _rhdDocs = docs.error ? [] : (docs.data || []);
   rhdRender();
+}
+async function rhdLerDocs(comAnexos){
+  const tipos = Object.keys(RHD_MODELOS).concat(comAnexos && _rhdTemAnexoPj ? Object.keys(RHD_ANEXOS) : []);
+  const r = await sb.from("funcionario_documentos").select("*").eq("funcionario_id", _rhdFuncId).in("tipo", tipos)
+    .order("gerado_em", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
+  // banco sem o valor novo do enum (22P02 invalid input value): lê só os gerados e esconde o anexo
+  if(r.error && comAnexos && _rhdTemAnexoPj && /admissao_contrato_pj|invalid input value|22P02/i.test((r.error.message || "") + (r.error.code || ""))){
+    _rhdTemAnexoPj = false;
+    return rhdLerDocs(false);
+  }
+  return r;
+}
+
+/* lote S56c (#188): anexar o contrato PJ assinado (PDF) ao arquivo do funcionário, no bucket privado rh-documentos */
+async function rhdAnexarContratoPj(file){
+  if(!file || !_rhdFuncId) return;
+  const ext = extensaoArquivo(file);
+  if(ext !== "pdf"){ aviso("rhd-aviso", "Anexe o contrato PJ em PDF.", "erro"); return; }
+  const mime = mimeDoArquivo(file, ext);   // regra de upload do projeto: MIME pela extensão e corpo reembalado em Blob
+  const path = `${_rhdFuncId}/admissao_contrato_pj_${Date.now()}.${ext}`;
+  aviso("rhd-aviso", "Enviando o contrato PJ…", "aviso");
+  const { error: upErr } = await sb.storage.from("rh-documentos").upload(path, new Blob([file], { type: mime }), { contentType: mime, upsert: false });
+  if(upErr){ aviso("rhd-aviso", "Upload do contrato falhou: " + upErr.message, "erro"); return; }
+  const fim = $("func-pj-vig-fim")?.value || null;
+  const reg = {
+    funcionario_id: _rhdFuncId, tipo: "admissao_contrato_pj", descricao: RHD_ANEXOS.admissao_contrato_pj.rotulo,
+    emissao: hojeISO(), validade: fim, storage_path: path,
+    gerado_por: usuarioAtual?.id || null,
+    observacoes: `Contrato PJ anexado em ${dataBR(hojeISO())}${fim ? ` (vigência até ${dataBR(fim)})` : ""}.`
+  };
+  const { error } = await sb.from("funcionario_documentos").insert(reg);
+  if(error){
+    await sb.storage.from("rh-documentos").remove([path]).catch(() => null);
+    aviso("rhd-aviso", "Arquivo enviado, mas a linha do documento não foi gravada: " + error.message, "erro");
+    return;
+  }
+  await rhdCarregar(_rhdFuncId);
+  if(typeof carregarDocsFuncionario === "function") carregarDocsFuncionario();
+  aviso("rhd-aviso", "Contrato PJ anexado ao arquivo do funcionário.", "ok");
+}
+
+/* lote S56c (#188): o botão de anexar só aparece com o tipo de contrato PJ na ficha, banco com o enum novo e usuário que escreve */
+function rhdPodeAnexarPj(){
+  return _rhdTemAnexoPj && !!_rhdFuncId && $("func-tipo-contrato")?.value === "pj" && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
 }
 
 function rhdRender(){
@@ -503,13 +553,13 @@ function rhdRender(){
     : `<p class="meta">Sem admissão registrada no app. Use <strong>Admitir</strong> no painel (ou gere a ficha com os dados do cadastro: os campos do contrato saem em branco).</p>`;
   const opcoes = Object.entries(RHD_MODELOS).map(([k, m]) => `<option value="${esc(k)}">${esc(m.rotulo)}</option>`).join("");
   const linhas = _rhdDocs.map(d => `<tr>
-      <td><strong>${esc(d.descricao || RHD_MODELOS[d.tipo]?.rotulo || d.tipo)}</strong><div class="meta">${esc(RHD_MODELOS[d.tipo]?.rg || "")}</div></td>
+      <td><strong>${esc(d.descricao || RHD_MODELOS[d.tipo]?.rotulo || RHD_ANEXOS[d.tipo]?.rotulo || d.tipo)}</strong><div class="meta">${esc(RHD_MODELOS[d.tipo]?.rg || (RHD_ANEXOS[d.tipo] ? "anexado" + (d.validade ? " · vigência até " + dataBR(d.validade) : "") : ""))}</div></td>
       <td>${d.gerado_em ? dataHoraBR(d.gerado_em) : dataBR(d.emissao) || "—"}</td>
       <td>${rhdTagAssinatura(d.assinatura_status)}${d.data_envio_assinatura ? `<div class="meta">enviado ${dataBR(d.data_envio_assinatura.slice(0, 10))}${Array.isArray(d.assinatura_signatarios) ? " para " + esc(d.assinatura_signatarios.map(s => s.email).join(", ")) : ""}</div>` : ""}${d.assinado_em ? `<div class="meta">assinado ${dataBR(d.assinado_em.slice(0, 10))}</div>` : ""}</td>
       <td style="white-space:nowrap;">
         ${d.storage_path ? `<button type="button" class="btn-sec btn-sm rhd-baixar" data-id="${esc(d.id)}">⬇️ PDF</button>` : ""}
         ${d.arquivo_assinado_path ? `<button type="button" class="btn-sec btn-sm rhd-baixar-assinado" data-id="${esc(d.id)}">✓ Assinado</button>` : ""}
-        ${d.storage_path && ["nao_iniciada", "cancelada"].includes(d.assinatura_status || "nao_iniciada") ? `<button type="button" class="btn-sec btn-sm rhd-assinar" data-id="${esc(d.id)}">✍️ Enviar para assinatura</button>` : ""}
+        ${d.storage_path && !RHD_ANEXOS[d.tipo] && ["nao_iniciada", "cancelada"].includes(d.assinatura_status || "nao_iniciada") ? `<button type="button" class="btn-sec btn-sm rhd-assinar" data-id="${esc(d.id)}">✍️ Enviar para assinatura</button>` : ""}
         ${["enviada", "parcial"].includes(d.assinatura_status) ? `<button type="button" class="btn-sec btn-sm rhd-status" data-id="${esc(d.id)}" title="Consulta manual — gasta 1 requisição da cota">🔄 Atualizar status</button>` : ""}
         ${!ehSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm rhd-excluir" data-id="${esc(d.id)}" style="color:var(--perigo);">Excluir</button>` : ""}
       </td>
@@ -520,6 +570,7 @@ function rhdRender(){
         <select id="rhd-modelo">${opcoes}</select>
         <button type="button" class="btn-sec btn-sm" id="btn-rhd-previa" title="Abre o texto em HTML numa aba, para conferir contra o Word">👁️ Prévia</button>
         <button type="button" class="btn-sec btn-sm" id="btn-rhd-gerar">📄 Gerar PDF</button>
+        ${rhdPodeAnexarPj() ? `<button type="button" class="btn-sec btn-sm" id="btn-rhd-anexar-pj" title="PDF do contrato PJ assinado (só RH e diretoria leem). A vigência fica na aba Profissional.">📎 Anexar contrato PJ</button><input type="file" id="rhd-pj-arquivo" accept=".pdf,application/pdf" style="display:none;" />` : ""}
         <button type="button" class="btn btn-sm" id="btn-rhd-gerar-admissao" ${a ? "" : "disabled"} title="Ficha cadastral + o contrato que o tipo da admissão pede">📄 Gerar os da admissão</button>
       </div>
     </div>
@@ -531,6 +582,8 @@ function rhdRender(){
     <p class="meta">Texto transcrito dos modelos Word do Departamento Pessoal (RG 5.17, 5.4, 5.5, 5.6 e 5.7). O envio para assinatura usa 4 das 10 requisições/hora da D4Sign; o status volta sozinho pelo webhook.</p>`;
   if(a) $("rhd-modelo").value = RHD_CONTRATO_POR_TIPO[a.tipo_documento] || "admissao_contrato";
 
+  $("btn-rhd-anexar-pj")?.addEventListener("click", () => $("rhd-pj-arquivo")?.click());   // lote S56c (#188)
+  $("rhd-pj-arquivo")?.addEventListener("change", (ev) => { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if(f) comBotaoTravado("btn-rhd-anexar-pj", () => rhdAnexarContratoPj(f)); });
   $("btn-rhd-previa")?.addEventListener("click", () => rhdVisualizar($("rhd-modelo").value, _rhdFuncId, _rhdAdm?.id).catch(e => aviso("rhd-aviso", e.message || String(e), "erro")));
   $("btn-rhd-gerar")?.addEventListener("click", () => comBotaoTravado("btn-rhd-gerar", async () => {
     try {

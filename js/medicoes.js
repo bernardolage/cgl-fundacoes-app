@@ -505,6 +505,15 @@ const SINAL_MODELOS = {
   cliente:      "Boletim do cliente (sinal já consumido no quadro dele; sem desconto)"
 };
 const medValorEfetivo = (m) => Number(m.valor_final) || Number(m.valor_medido) || 0;
+/* lote S56c (#183): medição aprovada, faturada ou recebida com valor efetivo zero não grava. Igual ao gatilho
+   trg_medicoes_zz_valor_zero: só barra a medição nova, a troca de status ou a queda do valor; a medição já gravada assim
+   (8678-2026 nº 1, 7515-2025 BM03) continua editável sem mudar o status (D-183a). Devolve a mensagem ou null. */
+const MED_MSG_VALOR_ZERO = "Medição com valor zero não pode ser aprovada nem faturada. Confira os itens.";
+function medTravaValorZero(status, valorNovo, original){
+  if(!["aprovada", "faturada", "recebida"].includes(status) || Number(valorNovo) > 0) return null;
+  if(original && original.status === status && Number(valorNovo || 0) >= medValorEfetivo(original)) return null;
+  return MED_MSG_VALOR_ZERO;
+}
 async function calcularSaldoSinalObra(obraId, excluirMedId){
   if(!obraId) return null;
   const [obraRes, medsRes] = await Promise.all([
@@ -984,6 +993,9 @@ async function salvarMedicao(novoStatus){
     observacoes: $("med-obs").value.trim() || null
     // valor_final é recalculado por trigger no banco
   };
+  // lote S56c (#183): a mesma trava do gatilho trg_medicoes_zz_valor_zero, antes de gravar
+  const msgZero = medTravaValorZero(reg.status, valorFinal, medEditId ? _medAtual : null);
+  if(msgZero){ aviso("app-aviso", msgZero, "erro"); ativarTabMed("geral"); return; }
   if(typeof medPmLerCampos === "function") Object.assign(reg, medPmLerCampos());   // fase 98: só financeiro/admin/diretor mandam a permuta
   Object.assign(reg, medEquipParaGravar("med-equip"));   // fase 101 (#94): máquina da medição
   // fase 105c: retenções federais (só depois da migration) e medição travada pela NFS-e emitida pelo app
@@ -2063,7 +2075,7 @@ function medImpAtualizarTotais(){
     <div class="ind"><div class="num">${brl(t.subtotal)}<small>${esc(t.itens)} item(ns)${t.travados ? ` · ${esc(t.travados)} 🔒 do boletim` : ""}${subLido != null ? ` · PDF ${brl(subLido)}` : ""}</small></div><div class="rot"${destaque(difSub)}>${(difSub != null && Math.abs(difSub) > 0.5) ? `Subtotal · dif. ${brl(difSub)} contra o PDF` : "Subtotal"}</div></div>
     <div class="ind"><div class="num">${t.descSinal ? "− " + brl(t.descSinal) : "—"}</div><div class="rot">Desconto do sinal</div></div>
     <div class="ind"><div class="num">${t.acresc ? "+ " + brl(t.acresc) : "—"}</div><div class="rot">Acréscimos</div></div>
-    <div class="ind"><div class="num">${brl(t.valorFinal)}<small>${t.mult !== 100 ? `${num(t.mult)}% do subtotal · ` : ""}${(isFinite(vfLido) && vfLido > 0) ? `PDF ${brl(vfLido)}` : "PDF sem valor final"}</small></div><div class="rot"${destaque(difVF)}>${(difVF != null && Math.abs(difVF) > 0.5) ? `Valor final · dif. ${brl(difVF)} contra o PDF` : "Valor final"}</div></div>
+    <div class="ind"><div class="num">${brl(t.valorFinal)}<small>${t.mult !== 100 ? `${num(t.mult)}% do subtotal · ` : ""}${(isFinite(vfLido) && vfLido > 0) ? `PDF ${brl(vfLido)}` : "PDF sem valor final"}</small></div><div class="rot"${t.valorFinal > 0 ? destaque(difVF) : ' style="color:var(--perigo);"'}>${!(t.valorFinal > 0) ? "Valor final zero: não grava aprovada" : (difVF != null && Math.abs(difVF) > 0.5) ? `Valor final · dif. ${brl(difVF)} contra o PDF` : "Valor final"}</div></div>
     <div class="ind"><div class="num">${brl(t.liquido)}<small>− retenção ${brl(t.retV)} − ISS ${t.issRetido ? brl(t.issV) : "não retido"}</small></div><div class="rot">Líquido a receber</div></div>`;
 }
 
@@ -2076,6 +2088,7 @@ async function medImpConfirmar(){
   if(medImpChecarDuplicado()){ aviso("med-imp-aviso", `Já existe a medição ${numero} nesta obra. Altere o número ou pule o arquivo.`, "erro"); return; }
   const t = medImpCalcular();
   if(!t || !t.itens){ aviso("med-imp-aviso", "Nenhum item para gravar.", "erro"); return; }
+  if(!(t.valorFinal > 0)){ aviso("med-imp-aviso", MED_MSG_VALOR_ZERO, "erro"); return; }   // lote S56c (#183): o import grava aprovada
   const semDesc = st.itens.filter(it => !it.removido && !it.descricao).length;
   if(semDesc){ aviso("med-imp-aviso", `${semDesc} item(ns) sem descrição.`, "erro"); return; }
   const naoConf = st.itens.filter(it => !it.removido && !it.conferido).length;

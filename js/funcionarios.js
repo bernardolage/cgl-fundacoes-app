@@ -29,7 +29,8 @@ const DOC_TIPO_LABEL = {
   // fase 93a: PDFs de admissão gerados pelo app (js/rh_documentos.js); ficam no bloco próprio da aba Documentos
   admissao_ficha:"Ficha cadastral (RG 5.17)", admissao_contrato:"Documentos admissionais (RG 5.4)",
   admissao_contrato_ajudante:"Documentos admissionais — ajudante (RG 5.5)", admissao_prorrogacao:"Prorrogação de experiência (RG 5.6)",
-  admissao_contrato_trabalho:"Contrato de trabalho (RG 5.7)"
+  admissao_contrato_trabalho:"Contrato de trabalho (RG 5.7)",
+  admissao_contrato_pj:"Contrato PJ"   // lote S56c (#188): anexado, só RH e diretoria leem
 };
 /* fase 93a: campos sensíveis novos da ficha de registro — id do input → coluna de funcionarios_sensiveis */
 const FUNC_SENS_CAMPOS_93A = [
@@ -80,6 +81,25 @@ function cnhStatus(validade){
   if(dias < 0)   return `<span class="tag vermelho" title="${dataBR(validade)}">CNH vencida</span>`;
   if(dias <= 90) return `<span class="tag ambar" title="${dataBR(validade)}">CNH vence em ${dias}d</span>`;
   return "";
+}
+
+/* lote S56c (#188): vigência do contrato PJ — tag no padrão da CNH (30 dias âmbar, 15 dias e vencido vermelho,
+   iguais aos ramos 91/92 de vw_sc_regularizar_rh) e campos visíveis só com tipo de contrato PJ */
+function pjVigenciaStatus(f){
+  if(!f || f.tipo_contrato !== "pj" || !f.pj_vigencia_fim) return "";
+  const fim = String(f.pj_vigencia_fim).slice(0, 10);
+  const dias = Math.round((new Date(fim + "T00:00:00") - new Date(hojeISO() + "T00:00:00")) / 864e5);
+  if(dias < 0)   return ` <span class="tag vermelho" title="Contrato PJ venceu em ${dataBR(fim)}">contrato PJ vencido</span>`;
+  if(dias <= 15) return ` <span class="tag vermelho" title="Contrato PJ vence em ${dataBR(fim)}">contrato vence em ${dias}d</span>`;
+  if(dias <= 30) return ` <span class="tag ambar" title="Contrato PJ vence em ${dataBR(fim)}">contrato vence em ${dias}d</span>`;
+  return "";
+}
+let _funcTemPjVig = false;   // a coluna funcionarios.pj_vigencia_fim já existe (select("*") da ficha)
+function funcPjVigVisibilidade(){
+  const pj = $("func-tipo-contrato")?.value === "pj";
+  document.querySelectorAll("#func-ficha .func-pj-vig").forEach(el => { el.style.display = pj ? "" : "none"; });
+  // botão "Anexar contrato PJ" do bloco de admissão (js/rh_documentos.js), só se o bloco já é deste funcionário
+  if(typeof rhdRender === "function" && typeof _rhdFuncId !== "undefined" && funcEditId && _rhdFuncId === funcEditId && $("func-rh-docs")?.innerHTML) rhdRender();
 }
 
 /* foto_url antiga (URL pública completa) ou path dentro do bucket → path */
@@ -393,12 +413,13 @@ function novoFuncionario(){
     "func-nome","func-cpf","func-rg","func-nascimento","func-matricula","func-funcao",
     "func-admissao","func-demissao","func-salario","func-email","func-telefone",
     "func-cep","func-logradouro","func-numero","func-complemento","func-bairro",
-    "func-cidade","func-obs","func-cnh-validade",
+    "func-cidade","func-obs","func-cnh-validade","func-pj-vig-inicio","func-pj-vig-fim",
     "func-emerg-nome","func-emerg-tel","func-emerg-parentesco",
     "func-pix","func-gratificacao","func-insalubridade","func-periculosidade","func-ajuda-mensal","func-contrib-sindical"
   ].forEach(k => { const el=$(k); if(el) el.value=""; });
   $("func-status").value         = "ativo";
   $("func-tipo-contrato").value  = "clt";
+  funcPjVigVisibilidade();   // lote S56c (#188)
   $("func-departamento").value   = "";
   $("func-supervisor").value     = "";
   $("func-cnh-categoria").value  = "";
@@ -449,6 +470,11 @@ async function abrirFuncionario(id){
   $("func-obs").value         = data.observacoes||"";
   $("func-ativo").checked     = data.ativo!==false;
   $("func-tipo-contrato").value  = data.tipo_contrato||"clt";
+  // lote S56c (#188): vigência do contrato PJ (colunas novas; banco sem a migration → campos vazios)
+  if($("func-pj-vig-inicio")) $("func-pj-vig-inicio").value = (data.pj_vigencia_inicio||"").slice(0,10);
+  if($("func-pj-vig-fim"))    $("func-pj-vig-fim").value    = (data.pj_vigencia_fim||"").slice(0,10);
+  _funcTemPjVig = Object.prototype.hasOwnProperty.call(data, "pj_vigencia_fim");
+  funcPjVigVisibilidade();
   $("func-departamento").value   = data.departamento_id||"";
   $("func-supervisor").value     = data.supervisor_id||"";
   $("func-cnh-categoria").value  = data.cnh_categoria||"";
@@ -488,7 +514,7 @@ function abrirFichaFuncVisual(f){
   $("func-ficha-depto-chip").textContent     = deptNome(f.departamento_id);
   $("func-ficha-matricula-chip").textContent = f.matricula||"—";
   $("func-ficha-admissao-chip").textContent  = dataBR(f.data_admissao);
-  $("func-ficha-contrato-chip").innerHTML    = tagContrato(f.tipo_contrato);
+  $("func-ficha-contrato-chip").innerHTML    = tagContrato(f.tipo_contrato) + pjVigenciaStatus(f);   // lote S56c (#188)
   $("func-ficha-status-chip").innerHTML      = tagStatus("funcionario",f.status);
 
   atualizarStatusbarFunc(f.status);
@@ -723,6 +749,12 @@ async function salvarFuncionario(novoStatus){
     ciclo_baixada_dias:   $("func-ciclo-baixada")?.value!=="" ? Number($("func-ciclo-baixada").value) : 90,
     observacao_logistica: $("func-obs-logistica")?.value.trim()||null,
   };
+  // lote S56c (#188): vigência do contrato PJ, só com tipo PJ (CLT não mexe nas datas guardadas)
+  if(reg.tipo_contrato === "pj"){
+    const ini = $("func-pj-vig-inicio")?.value || null, fim = $("func-pj-vig-fim")?.value || null;
+    if(ini && fim && fim < ini){ aviso("app-aviso", "O fim da vigência do contrato PJ não pode ser antes do início.", "erro"); ativarTabFunc("profissional"); return; }
+    if(_funcTemPjVig || ini || fim){ reg.pj_vigencia_inicio = ini; reg.pj_vigencia_fim = fim; }
+  }
 
   let result;
   if(funcEditId) result = await sb.from("funcionarios").update(reg).eq("id",funcEditId).select().single();
@@ -775,6 +807,7 @@ function ligarFuncionarios(){
   });
 
   $("func-he-competencia")?.addEventListener("change", renderFuncionarios);
+  $("func-tipo-contrato")?.addEventListener("change", funcPjVigVisibilidade);   // lote S56c (#188)
   ["func-busca","func-f-status","func-f-contrato"].forEach(id => {
     const el=$(id);
     if(el) el.addEventListener(id==="func-busca"?"input":"change", id==="func-busca" ? debounce(renderFuncionarios) : renderFuncionarios);

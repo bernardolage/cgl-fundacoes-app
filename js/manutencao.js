@@ -9,6 +9,10 @@
    ajuste manual pela RPC equipamento_ajustar_leitura). Prefixo man-.
    Permissões espelham o banco: manutencao_pode_operar() (admin, engenheiro, mecânico, gestor_frota,
    logística, gestor_manutencao; diretor sempre); peças também pelo almoxarifado; checklist também pelo campo.
+   Lote S56b (29/10/2026): #194 só o almoxarifado dá baixa das peças (almoxarifado_baixa_pecas(): almoxarife, auxiliar,
+   admin; diretor), a OS pode ser concluída com baixa pendente e a pendência vai para a fila do almoxarifado (chip
+   "Baixa pendente" na lista e na ficha); #193 a OS preventiva gera a separação do kit (smart-button "Separação"): a peça
+   que está na separação sai pela separação, não pelo "Dar baixa".
    ==================================================================== */
 
 let _manView = "os";
@@ -37,6 +41,9 @@ let _manCheckItens = [];
 let _manCheckOrigem = null;   // função a chamar ao fechar o modal do checklist (quem abriu redesenha)
 let _manLeituraEq = null;
 let _manAnexoUrl = {};
+let _manPendBaixa = {};       // lote S56b (#194): id da OS -> peças de estoque sem baixa
+let _manSeps = [];            // lote S56b (#193): separações da OS aberta (separacoes.manutencao_id)
+let _manMatSep = {};          // lote S56b (#193): id do material -> { numero, status, separado } do item de separação
 
 const MAN_STATUS = { agendada: ["Aberta", "azul"], em_andamento: ["Em execução", "ambar"], concluida: ["Concluída", "verde"], cancelada: ["Cancelada", "cinza"] };
 const MAN_STAGES = ["agendada", "em_andamento", "concluida"];
@@ -56,6 +63,14 @@ const MAN_ANEXO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png"
 function manPodeEditar(){ return !!usuarioAtual && !ehSomenteLeitura() && ["admin", "diretor", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"].includes(usuarioAtual.cargo); }
 /* peças: manutencao_pode_operar() ou almoxarifado_pode_operar() (= compras_pode_operar() ou auxiliar de almoxarifado) */
 function manPodeMateriais(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["comprador", "almoxarife", "auxiliar_almoxarifado", "gestor_acessorios", "logistica", "financeiro"].includes(usuarioAtual.cargo)); }
+/* lote S56b (#194): só o almoxarifado dá baixa (espelho de almoxarifado_baixa_pecas(): almoxarife, auxiliar de almoxarifado,
+   admin; diretor). Lançar a peça na OS continua por manPodeMateriais(). */
+function manBaixaPode(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
+/* peça de estoque ainda sem saída (a que o almoxarifado precisa baixar) */
+function manMatPendente(i){ return i.tipo === "consumo" && i.origem === "app" && !i.movimentacao_estoque_id && !!i.produto_id; }
+/* pendente e numa separação viva: sai pela separação */
+function manMatNaSeparacao(i){ const x = _manMatSep[i.id]; return !!x && !x.separado && ["aberta", "em_separacao", "separada"].includes(x.status); }
+function manTagBaixaPend(n){ return n ? `<span class="tag ambar" title="Peças de estoque lançadas na OS e ainda sem baixa: o almoxarifado dá baixa">Baixa pendente (${esc(n)})</span>` : ""; }
 function manPodeChecklist(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["encarregado", "operador", "logistica", "assistente_engenharia", "gestor_acessorios"].includes(usuarioAtual.cargo)); }
 
 /* ---------- utilitários ---------- */
@@ -143,6 +158,7 @@ async function carregarManutencao(force){
   renderManutencao();
 }
 async function manFetchOS(){
+  manFetchPendBaixa();   // lote S56b (#194): em paralelo; redesenha a lista quando chega
   const dias = Number($("man-f-periodo")?.value || 0);
   const corte = dias ? dataLocalISO(new Date(Date.now() - dias * 864e5)) : null;
   _manOS = await manTodas((de, ate) => {
@@ -150,6 +166,15 @@ async function manFetchOS(){
     if(corte) q = q.or(`data_prevista.gte.${corte},data_inicio.gte.${corte},created_at.gte.${corte},status.in.(agendada,em_andamento)`);
     return q;
   });
+}
+/* lote S56b (#194): peças de estoque sem baixa, por OS (chip "Baixa pendente" da lista) */
+async function manFetchPendBaixa(){
+  const linhas = await manTodas((de, ate) => sb.from("manutencao_materiais").select("manutencao_id").eq("tipo", "consumo").eq("origem", "app")
+    .not("produto_id", "is", null).is("movimentacao_estoque_id", null).order("manutencao_id").range(de, ate));
+  const m = {};
+  linhas.forEach(r => { m[r.manutencao_id] = (m[r.manutencao_id] || 0) + 1; });
+  _manPendBaixa = m;
+  if(_manView === "os" && $("man-ficha")?.style.display === "none") renderManOS();
 }
 async function manFetchPrev(){
   _manPrev = await manTodas((de, ate) => sb.from("vw_manutencao_preventiva").select("*").order("codigo").order("ordem").range(de, ate));
@@ -242,6 +267,7 @@ function renderManOS(){
           <div class="serv-kan-card-nome"><strong>${esc(m.numero || "")}</strong> <span class="meta">${dataBR(m.data_prevista)}${manAtrasada(m) ? ' · <span class="tag vermelho">atrasada</span>' : ""}</span></div>
           <div>${esc(manEqTxt(m.equipamento ? { codigo: m.equipamento.codigo, nome: m.equipamento.nome } : null))}</div><div class="meta">${esc(m.descricao || "")}</div>
           <div class="meta" style="display:flex;justify-content:space-between;"><span>${esc(MAN_TIPO[m.tipo] || "")}${m.setor ? " · " + esc(MAN_SETOR[m.setor] || m.setor) : ""}</span><strong>${brl(m.custo_real)}</strong></div>
+          ${m.status !== "cancelada" && _manPendBaixa[m.id] ? `<div>${manTagBaixaPend(_manPendBaixa[m.id])}</div>` : ""}
         </div>`).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
     cont.innerHTML = `<div class="tabela-rola"><table>
@@ -251,7 +277,7 @@ function renderManOS(){
         <td>${dataBR(m.data_prevista)}${manAtrasada(m) ? ' <span class="tag vermelho" title="data prevista vencida">!</span>' : ""}</td>
         <td>${m.equipamento_id ? linkEquipamento(m.equipamento_id, m.equipamento?.codigo || "TAG") : "—"} <span class="meta">${esc(m.equipamento?.nome || "")}</span></td>
         <td>${esc(MAN_TIPO[m.tipo] || m.tipo)}</td><td>${esc(MAN_SETOR[m.setor] || "—")}</td><td>${esc(m.descricao || "")}</td><td class="meta">${esc(manFunc(m.responsavel_id))}</td>
-        <td class="num">${manDias(m) ?? "—"}</td><td class="num">${brl(m.custo_real)}</td><td>${manTag(m.status)}</td></tr>`).join("")}</tbody></table></div>`;
+        <td class="num">${manDias(m) ?? "—"}</td><td class="num">${brl(m.custo_real)}</td><td>${manTag(m.status)}${m.status !== "cancelada" && _manPendBaixa[m.id] ? " " + manTagBaixaPend(_manPendBaixa[m.id]) : ""}</td></tr>`).join("")}</tbody></table></div>`;
   }
 }
 
@@ -685,9 +711,21 @@ async function abrirManutencao(id){
     sb.from("checklists").select("id,data,resultado,horimetro,itens:checklist_itens(situacao)").eq("manutencao_id", id).order("data", { ascending: false })
   ]);
   if(m.error || !m.data){ aviso("app-aviso", "Não foi possível abrir a OS" + (m.error ? ": " + m.error.message : "."), "erro"); return; }
+  await manCarregarSeparacaoOS(id, mt.data || []);   // lote S56b (#193)
   manAbrirFicha(m.data, at.data || [], hs.data || [], mt.data || [], ax.data || [], ck.data || []);
 }
+/* lote S56b (#193): separação do kit da OS preventiva e o item de cada material. Sem a migration (coluna ausente) fica vazio. */
+async function manCarregarSeparacaoOS(id, mats){
+  _manSeps = []; _manMatSep = {};
+  const [sp, it] = await Promise.all([
+    sb.from("separacoes").select("id,numero,status").eq("manutencao_id", id).order("created_at"),
+    mats.length ? sb.from("separacao_itens").select("manutencao_material_id,separado,separacao:separacoes(numero,status)").in("manutencao_material_id", mats.map(i => i.id)) : Promise.resolve({ data: [] })
+  ]);
+  if(!sp.error) _manSeps = sp.data || [];
+  if(!it.error) (it.data || []).forEach(r => { if(r.manutencao_material_id && r.separacao) _manMatSep[r.manutencao_material_id] = { numero: r.separacao.numero, status: r.separacao.status, separado: r.separado }; });
+}
 function manAbrirFicha(m, ativs, horas, mats, anexos, checks){
+  if(!m.id){ _manSeps = []; _manMatSep = {}; }   // lote S56b: OS nova não herda a separação da anterior
   _manAtual = m; _manAtivs = ativs; _manHoras = horas; _manMats = mats; _manAnexos = anexos; _manChecksOS = checks;
   $("man-painel").style.display = "none"; $("man-ficha").style.display = "";
   const novo = !m.id, pode = manPodeEditar() && m.status !== "cancelada";
@@ -733,16 +771,32 @@ function manAtualizarCabecalho(){
   $("man-chip-resp").textContent = manFunc(m.responsavel_id) || "—";
   $("man-chip-dias").textContent = manDias(m) ?? "—";
   $("man-chip-origem").style.display = m.origem === "planilha" ? "" : "none"; $("man-chip-origem-txt").textContent = m.codigo_externo ? "OS " + m.codigo_externo : "RG 3.1";
-  const pendBaixa = _manMats.some(i => i.tipo === "consumo" && i.origem === "app" && !i.movimentacao_estoque_id && i.produto_id);
+  // lote S56b (#194/#193): o "Dar baixa" é do almoxarifado e só para a peça que não está numa separação viva
+  const pend = _manMats.filter(manMatPendente), pendSep = pend.filter(manMatNaSeparacao), pendBaixa = pend.length > pendSep.length;
   const mostra = { "btn-man-salvar": pode && st !== "cancelada", "btn-man-iniciar": pode && !novo && st === "agendada", "btn-man-concluir": pode && !novo && ["agendada", "em_andamento"].includes(st),
     "btn-man-cancelar": pode && !novo && ["agendada", "em_andamento"].includes(st), "btn-man-reabrir": pode && !novo && st === "concluida",
-    "btn-man-baixa": manPodeMateriais() && !novo && st !== "cancelada" && m.origem === "app" && pendBaixa, "btn-man-imprimir": !novo };
+    "btn-man-baixa": manBaixaPode() && !novo && st !== "cancelada" && m.origem === "app" && pendBaixa, "btn-man-imprimir": !novo };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   const sb2 = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n || n === "R$ 0,00" || n === "—"); } };
   sb2("sb-man-equip", e?.codigo || "—"); sb2("sb-man-ativ", _manAtivs.length);
   sb2("sb-man-plano", (m.plano_item_ids || []).length || _manAtivs.filter(a => a.plano_item_id).length);
   sb2("sb-man-check", _manChecksOS.length + (m.checklist_id && !_manChecksOS.some(c => c.id === m.checklist_id) ? 1 : 0));
   sb2("sb-man-custo", brl(m.custo_real || 0));
+  // lote S56b (#193): smart-button da separação do kit (só na preventiva)
+  const sep = _manSeps.find(x => x.status !== "cancelada") || _manSeps[_manSeps.length - 1] || null;
+  const bSep = $("sb-man-sep");
+  if(bSep){
+    bSep.style.display = !novo && m.tipo === "preventiva" && sep ? "" : "none";
+    bSep.dataset.sep = sep ? sep.id : "";
+    bSep.querySelector(".sb-num").textContent = sep ? sep.numero : "—";
+    bSep.querySelector(".sb-lbl").textContent = sep ? "separação · " + (sep.status === "em_separacao" ? "em separação" : sep.status) : "separação";
+  }
+  // lote S56b (#194): chip "Baixa pendente" para todos que leem a OS
+  const chipB = $("man-chip-baixa-box");
+  if(chipB){
+    chipB.style.display = !novo && st !== "cancelada" && pend.length ? "" : "none";
+    $("man-chip-baixa").innerHTML = pend.length ? manTagBaixaPend(pend.length) + (pendSep.length ? ` <span class="meta">${esc(pendSep.length)} na separação</span>` : "") : "—";
+  }
   $("man-ativ-add").style.display = pode && !novo && st !== "cancelada" ? "" : "none";
   $("man-horas-add").style.display = pode && !novo && st !== "cancelada" ? "" : "none";
   $("man-mats-add").style.display = manPodeMateriais() && !novo && st !== "cancelada" ? "" : "none";
@@ -818,8 +872,8 @@ async function manAcao(acao){
     upd.data_conclusao = m.data_conclusao || hojeISO();
     const pendAt = _manAtivs.filter(a => a.situacao === "pendente").length;
     if(pendAt && !confirm(`${pendAt} atividade(s) ainda pendente(s). Concluir assim mesmo? (os itens do plano só são marcados pelas atividades executadas)`)) return;
-    const pend = _manMats.filter(i => i.tipo === "consumo" && i.origem === "app" && !i.movimentacao_estoque_id && i.produto_id).length;
-    if(pend && !confirm(`${pend} peça(s) consumida(s) ainda sem baixa no estoque. Concluir assim mesmo? (dá para dar baixa depois)`)) return;
+    const pend = _manMats.filter(manMatPendente).length;
+    if(pend && !confirm(`${pend} peça(s) consumida(s) ainda sem baixa no estoque. Concluir assim mesmo? (a baixa é do almoxarifado: a OS fica na fila dele até a baixa)`)) return;
     const hor = $("man-hor").value === "" ? null : Number($("man-hor").value);
     if(hor == null && !confirm("Sem horímetro na OS a máquina não ganha leitura e o plano usa o horímetro atual. Concluir assim mesmo?")) return;
     if(hor != null) upd.horimetro_km = hor;
@@ -947,7 +1001,9 @@ function manRenderMats(){
   if(!_manMats.length){ tb.innerHTML = `<tr><td colspan="8" class="vazio">${_manAtual?.id ? "Nenhuma peça lançada." : "Salve a OS para lançar peças."}</td></tr>`; return; }
   tb.innerHTML = _manMats.map(i => {
     const baixa = i.movimentacao_estoque_id ? '<span class="tag verde">baixada no estoque</span>' : i.origem === "planilha" ? '<span class="tag cinza" title="histórico da planilha: não mexe no estoque">planilha</span>'
-      : i.tipo === "retirada" ? '<span class="meta">—</span>' : !i.produto_id ? '<span class="meta" title="sem produto no catálogo: só texto">sem cadastro</span>' : '<span class="tag ambar">pendente</span>';
+      : i.tipo === "retirada" ? '<span class="meta">—</span>' : !i.produto_id ? '<span class="meta" title="sem produto no catálogo: só texto">sem cadastro</span>'
+      : manMatNaSeparacao(i) ? `<span class="tag azul" title="Sai pela separação do kit: o almoxarifado marca separado e a baixa entra aqui">na separação ${esc(_manMatSep[i.id].numero)}</span>`
+      : '<span class="tag ambar" title="O almoxarifado dá baixa (botão Dar baixa das peças)">pendente</span>';   // lote S56b (#193/#194)
     return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, i.descricao) : esc(i.descricao)}${i.codigo_peca ? ` <span class="meta">${esc(i.codigo_peca)}</span>` : ""}${i.plano_item_id ? ' <span class="tag azul" title="kit do item do plano">kit</span>' : ""}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td>
       <td class="num">${brl(i.custo_unitario)}</td><td class="num">${brl(Number(i.quantidade) * Number(i.custo_unitario))}</td><td>${i.tipo === "retirada" ? "Retirada" : "Consumo"}</td><td>${baixa}</td>
       <td>${pode && !i.movimentacao_estoque_id ? `<button type="button" class="btn-sec btn-sm txt-perigo man-mat-rem" data-id="${esc(i.id)}" title="remover">×</button>` : ""}</td></tr>`; }).join("");
@@ -1227,6 +1283,10 @@ function ligarManutencao(){
   $("btn-man-imprimir")?.addEventListener("click", () => comBotaoTravado("btn-man-imprimir", manImprimirOS));
   document.querySelectorAll("#man-notebook button").forEach(b => b.addEventListener("click", () => manAtivarTab(b.dataset.tab)));
   document.querySelectorAll("#man-ficha .sb-btn[data-goto-tab]").forEach(b => b.addEventListener("click", () => manAtivarTab(b.dataset.gotoTab)));
+  $("sb-man-sep")?.addEventListener("click", () => {   // lote S56b (#193)
+    const id = $("sb-man-sep").dataset.sep;
+    if(id && irParaSecao("separacoes") && typeof abrirSeparacao === "function") abrirSeparacao(id);
+  });
   $("sb-man-equip")?.addEventListener("click", () => { if(_manAtual?.equipamento_id && irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(_manAtual.equipamento_id); });
   document.querySelectorAll("#man-statusbar .stage").forEach(el => el.addEventListener("click", () => {
     const novo = el.dataset.status; if(!_manAtual || !manPodeEditar()) return;

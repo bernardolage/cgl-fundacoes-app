@@ -9,6 +9,8 @@
    Lote S53 (27/10/2026, #64): a busca de item da ficha e do "Pedido da obra" procura também nas peças de acessório
    ativas (marcação ou tipo, filtro por família); a peça entra com quantidade 1 e sem saldo de estoque, e ao marcar
    "separado" vai para a obra/TAG da separação (separacao_marcar). Não é importação: os acessórios já estão no app.
+   Lote S56b (29/10/2026, #193): a OS preventiva gera a separação do kit (origem "manutencao", sem obra, TAG da OS,
+   separacoes.manutencao_id); marcar "separado" dá a baixa da peça na própria OS (manutencao_materiais.movimentacao_estoque_id).
    ==================================================================== */
 
 let _sepView = "lista";
@@ -17,6 +19,7 @@ let _sepAtual = null;            // separação aberta na ficha
 let _sepItens = [];
 let _sepObras = [], _sepEquips = [], _sepPerfis = [], _sepFuncs = [];
 let _sepCarregado = false;
+let _sepOS = {};                 // lote S56b (#193): id da OS -> número (separação nascida da OS preventiva)
 let _sepPreset = "";             // filtro vindo da Sala de Comando: "vencidas" | "sem_resp"
 let _sepRetirante = null;        // funcionário escolhido na entrega
 let _sepPed = null;              // modal "pedido da obra": { itens: [{ produto, descricao, unidade, quantidade }] }
@@ -25,7 +28,7 @@ let _sepCentros = [];            // lote S48 (#107): centros de custo (setor / o
 
 const SEP_STATUS = { aberta: ["Aberta", "azul"], em_separacao: ["Em separação", "ambar"], separada: ["Separada", "verde"], entregue: ["Entregue", "cinza"], cancelada: ["Cancelada", "cinza"] };
 const SEP_STAGES = ["aberta", "em_separacao", "separada", "entregue"];
-const SEP_ORIGEM = { mobilizacao: "Mobilização", pedido_obra: "Pedido da obra", requisicao: "Requisição" };   // fase 102 (#143): separação nascida da requisição
+const SEP_ORIGEM = { mobilizacao: "Mobilização", pedido_obra: "Pedido da obra", requisicao: "Requisição", manutencao: "OS" };   // fase 102 (#143): requisição; lote S56b (#193): OS preventiva
 // lote S48 (#107): "*" traz valor_total quando a migration 20261022_loteS48_b estiver aplicada (sem ela, a tela segue sem valor)
 const SEP_SELECT = "*,"
   + "solicitante:profiles!separacoes_solicitante_id_fkey(nome),responsavel:profiles!separacoes_responsavel_id_fkey(nome),retirante:funcionarios(nome),itens:separacao_itens(id,separado)";
@@ -42,6 +45,20 @@ function sepObra(id){ const o = _sepObras.find(x => x.id === id); return o ? o.c
 function sepObraNome(id){ const o = _sepObras.find(x => x.id === id); return o ? o.nome : ""; }
 function sepEq(id){ const e = _sepEquips.find(x => x.id === id); return e ? e.codigo : ""; }
 function sepPerfil(id){ const p = _sepPerfis.find(x => x.id === id); return p ? p.nome : ""; }
+/* lote S56b (#193): "OS-2026-00012" da separação nascida da OS preventiva ("" nas outras) */
+function sepOSNum(s){ return s && s.manutencao_id ? (_sepOS[s.manutencao_id] || "OS") : ""; }
+function sepOSLink(s){ return s && s.manutencao_id ? linkManutencao(s.manutencao_id, sepOSNum(s)) : ""; }
+/* destino da separação para o card e o título: obra; sem obra, "OS-… · TAG x" (ou só a TAG) */
+function sepDestinoCurto(s){
+  if(s.obra_id) return sepObra(s.obra_id) || "—";
+  return [sepOSNum(s), s.equipamento_id ? "TAG " + (sepEq(s.equipamento_id) || "?") : ""].filter(Boolean).join(" · ") || "—";
+}
+async function sepCarregarOS(lista){
+  const ids = [...new Set((lista || []).map(s => s.manutencao_id).filter(id => id && !_sepOS[id]))];
+  if(!ids.length) return;
+  const { data } = await sb.from("manutencoes").select("id,numero").in("id", ids);
+  (data || []).forEach(m => { _sepOS[m.id] = m.numero || "OS"; });
+}
 function sepProgresso(s){ const its = s.itens || []; return { n: its.length, ok: its.filter(i => i.separado).length }; }
 function sepAberta(s){ return ["aberta", "em_separacao", "separada"].includes(s.status); }
 function sepVencida(s){ return !!s.prazo && s.prazo < hojeISO() && sepAberta(s); }
@@ -146,6 +163,7 @@ async function sepFetch(){
   const { data, error } = await q;
   if(error){ aviso("app-aviso", "Erro ao carregar separações: " + error.message, "erro"); _sepLista = []; return; }
   _sepLista = data || [];
+  await sepCarregarOS(_sepLista);   // lote S56b (#193)
 }
 /* almoxarife de plantão = responsável padrão dos pedidos da obra (empresa_config.almoxarife_padrao_id); diretoria altera */
 function sepRenderPlantao(){
@@ -177,7 +195,7 @@ function sepFiltrados(){
     if(minhas && !sepMinha(s)) return false;
     if(_sepPreset === "vencidas" && !sepVencida(s)) return false;
     if(_sepPreset === "sem_resp" && (s.responsavel_id || !sepAberta(s))) return false;
-    if(q && ![s.numero, sepObra(s.obra_id), sepObraNome(s.obra_id), sepEq(s.equipamento_id), s.responsavel?.nome, s.solicitante?.nome, s.observacoes].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
+    if(q && ![s.numero, sepObra(s.obra_id), sepObraNome(s.obra_id), sepEq(s.equipamento_id), sepOSNum(s), s.responsavel?.nome, s.solicitante?.nome, s.observacoes].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
     return true;
   });
 }
@@ -196,7 +214,7 @@ function renderSeparacoes(){
       return `<div class="serv-kan-col"><div class="serv-kan-col-head">${sepTag(st)} <span class="contador">${its.length}</span></div>
         ${its.slice(0, 200).map(s => { const p = sepProgresso(s); return `<div class="serv-kan-card" data-id="${esc(s.id)}">
           <div class="serv-kan-card-nome"><strong>${esc(s.numero)}</strong> <span class="meta">${esc(SEP_ORIGEM[s.origem_tipo] || "")}</span></div>
-          <div>${esc(sepObra(s.obra_id) || "—")}${s.equipamento_id ? ` · TAG ${esc(sepEq(s.equipamento_id))}` : ""}</div>
+          <div>${s.obra_id ? esc(sepObra(s.obra_id) || "—") + (s.equipamento_id ? ` · TAG ${esc(sepEq(s.equipamento_id))}` : "") : esc(sepDestinoCurto(s))}</div>
           <div class="meta">${esc(p.ok)} de ${esc(p.n)} separado(s)${s.responsavel ? " · " + esc(s.responsavel.nome) : " · sem responsável"}</div>
           ${verValor && s.valor_total != null ? `<div class="meta">valor ${brl(s.valor_total)}</div>` : ""}
           ${s.prazo ? `<div class="meta">prazo ${dataBR(s.prazo)}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}</div>` : ""}
@@ -206,7 +224,7 @@ function renderSeparacoes(){
       <thead><tr><th>Nº</th><th>Criada</th><th>Origem</th><th>Obra</th><th>TAG</th><th>Pedido por</th><th>Responsável</th><th>Prazo</th><th class="num">Itens</th>${verValor ? '<th class="num">Valor</th>' : ""}<th>Status</th></tr></thead>
       <tbody>${dados.map(s => { const p = sepProgresso(s); return `<tr class="linha-clicavel" data-id="${esc(s.id)}">
         <td><strong>${esc(s.numero)}</strong></td><td>${dataBR(s.created_at)}</td><td>${esc(SEP_ORIGEM[s.origem_tipo] || s.origem_tipo)}</td>
-        <td>${linkObra(s.obra_id, sepObra(s.obra_id) || "—")}</td><td>${s.equipamento_id ? linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id)) : '<span class="meta">—</span>'}</td>
+        <td>${s.obra_id || !s.manutencao_id ? linkObra(s.obra_id, sepObra(s.obra_id) || "—") : /* html */ sepOSLink(s)}</td><td>${s.equipamento_id ? linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id)) : '<span class="meta">—</span>'}</td>
         <td class="meta">${esc(s.solicitante?.nome || "—")}</td><td>${s.responsavel ? esc(s.responsavel.nome) : '<span class="tag ambar">sem responsável</span>'}</td>
         <td>${s.prazo ? dataBR(s.prazo) : "—"}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}</td>
         <td class="num">${esc(p.ok)} / ${esc(p.n)}</td>${verValor ? `<td class="num">${s.valor_total != null ? brl(s.valor_total) : "—"}</td>` : ""}<td>${sepTag(s.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
@@ -224,6 +242,7 @@ async function abrirSeparacao(id){
   ]);
   if(s.error || !s.data){ aviso("app-aviso", "Não foi possível abrir a separação" + (s.error ? ": " + s.error.message : "."), "erro"); return; }
   _sepAtual = s.data; _sepItens = it.data || [];
+  await sepCarregarOS([_sepAtual]);   // lote S56b (#193)
   $("sep-painel").style.display = "none"; $("sep-ficha").style.display = "";
   $("sep-entrega").style.display = "none"; _sepRetirante = null; $("sep-retirante").value = "";
   $("sep-resp").value = _sepAtual.responsavel_id || ""; $("sep-prazo").value = _sepAtual.prazo || ""; $("sep-obs").value = _sepAtual.observacoes || "";
@@ -234,13 +253,14 @@ async function abrirSeparacao(id){
 function sepAtualizarCabecalho(){
   const s = _sepAtual; if(!s) return;
   const st = s.status, pode = sepPodeEditar(s), opera = sepPodeOperar(), ok = _sepItens.filter(i => i.separado).length, fim = ["entregue", "cancelada"].includes(st);
-  $("sep-ficha-titulo").textContent = `${s.numero} · ${sepObra(s.obra_id) || ""}${st === "cancelada" ? " · cancelada" : ""}`;
+  $("sep-ficha-titulo").textContent = `${s.numero} · ${s.obra_id ? sepObra(s.obra_id) || "" : sepDestinoCurto(s)}${st === "cancelada" ? " · cancelada" : ""}`;
   document.querySelectorAll("#sep-statusbar .stage").forEach(el => {
     el.classList.remove("atual", "passada");
     const i = SEP_STAGES.indexOf(st), j = SEP_STAGES.indexOf(el.dataset.status);
     if(st !== "cancelada"){ if(j === i) el.classList.add("atual"); else if(j < i) el.classList.add("passada"); }
   });
-  $("sep-chip-origem").innerHTML = s.origem_tipo === "mobilizacao" && s.mobilizacao_id ? `<a href="#" id="sep-chip-mob-link" title="abrir a mobilização">Mobilização</a>` : esc(SEP_ORIGEM[s.origem_tipo] || "—");
+  $("sep-chip-origem").innerHTML = s.origem_tipo === "mobilizacao" && s.mobilizacao_id ? `<a href="#" id="sep-chip-mob-link" title="abrir a mobilização">Mobilização</a>`
+    : s.manutencao_id ? `${esc(SEP_ORIGEM.manutencao)} ${/* html */ sepOSLink(s)}` : esc(SEP_ORIGEM[s.origem_tipo] || "—");   // lote S56b (#193): link para a OS
   $("sep-chip-mob-link")?.addEventListener("click", e => { e.preventDefault(); if(irParaSecao("mobilizacoes") && typeof abrirMobilizacao === "function") abrirMobilizacao(s.mobilizacao_id); });
   $("sep-chip-obra").innerHTML = linkObra(s.obra_id, sepObra(s.obra_id) || "—");
   $("sep-chip-tag").innerHTML = s.equipamento_id ? linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id)) : "—";
@@ -426,7 +446,7 @@ async function sepImprimir(){
     <table style="width:100%;border-collapse:collapse;margin:8px 0 12px;"><tr>
       <td style="padding:3px;"><b>Obra:</b> ${esc(sepObra(s.obra_id))} ${esc(sepObraNome(s.obra_id))}</td>
       <td style="padding:3px;"><b>TAG:</b> ${esc(sepEq(s.equipamento_id) || "—")}</td>
-      <td style="padding:3px;"><b>Origem:</b> ${esc(SEP_ORIGEM[s.origem_tipo] || "")}</td></tr><tr>
+      <td style="padding:3px;"><b>Origem:</b> ${esc(SEP_ORIGEM[s.origem_tipo] || "")}${s.manutencao_id ? " " + esc(sepOSNum(s)) : ""}</td></tr><tr>
       <td style="padding:3px;"><b>Pedido por:</b> ${esc(s.solicitante?.nome || "—")} em ${dataBR(s.created_at)}</td>
       <td style="padding:3px;"><b>Responsável:</b> ${esc(s.responsavel?.nome || "—")}</td>
       <td style="padding:3px;"><b>Prazo:</b> ${s.prazo ? dataBR(s.prazo) : "—"}</td></tr></table>

@@ -32,10 +32,15 @@ const OBR_CON_DOC_CONF = {
 function obrValor(o){ return Number((o && (o.financeiro ? o.financeiro.valor_contratado : o.valor_contratado)) || 0); }   // obras_financeiro: embed na ficha, coluna da view na lista
 
 /* ---------- Carga ---------- */
+const OBR_COLS_LISTA = "id,codigo,nome,cliente_id,contrato_id,status,valor_contratado,data_inicio,data_fim_prevista,responsavel_id,cidade,uf";   // valor_contratado: coluna da view lida de obras_financeiro (fase 90)
 async function carregarObras(){
-  const { data, error } = await sb.from("vw_obras_controle")
-    .select("id,codigo,nome,cliente_id,contrato_id,status,valor_contratado,data_inicio,data_fim_prevista,responsavel_id,cidade,uf")   // valor_contratado: coluna da view lida de obras_financeiro (fase 90)
+  // lote S56c (#174): término da obra (real > previsto > calculado) vem da view; banco sem a migration → lê como antes
+  let { data, error } = await sb.from("vw_obras_controle")
+    .select(OBR_COLS_LISTA + ",data_termino,termino_origem")
     .order("codigo");
+  if(error && /data_termino|termino_origem|column/i.test(error.message || "")){
+    ({ data, error } = await sb.from("vw_obras_controle").select(OBR_COLS_LISTA).order("codigo"));
+  }
   if(error){
     _obrRegistros = [];
   } else {
@@ -141,6 +146,42 @@ function renderObras(opts){
   }
 }
 
+/* lote S56c (#174): término da obra — real; senão o previsto ("prev."); senão, em obra concluída, o calculado ("calc.":
+   último RDO ou fim da última medição, vw_obras_controle). */
+const OBR_TERMINO_ORIGEM = {
+  real: { sufixo: "",      xlsx: "real",       titulo: "" },
+  prev: { sufixo: "prev.", xlsx: "previsto",   titulo: "previsto no cadastro da obra" },
+  calc: { sufixo: "calc.", xlsx: "calculado",  titulo: "calculado: último RDO ou fim da última medição (a obra está sem data de término)" }
+};
+function obrTerminoHtml(o){
+  if(!o || !o.data_termino) return '<span class="meta">—</span>';
+  const og = OBR_TERMINO_ORIGEM[o.termino_origem] || OBR_TERMINO_ORIGEM.real;
+  return `${dataBR(o.data_termino)}${og.sufixo ? ` <span class="meta" title="${esc(og.titulo)}">${esc(og.sufixo)}</span>` : ""}`;
+}
+
+/* lote S56c (#174): .xlsx das obras visíveis (mesmos filtros e colunas da lista) */
+function obrExportarXlsx(){
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
+  const dados = obrFiltradas();
+  if(!dados.length){ aviso("app-aviso", "Nenhuma obra na lista para exportar.", "aviso"); return; }
+  const comValor = podeVerValorObra();
+  const dt = (s) => s ? new Date(String(s).slice(0, 10) + "T00:00:00") : null;
+  const rot = (st) => (STATUS.obra && STATUS.obra[st] && STATUS.obra[st].label) || st || "";
+  const cab = ["Código", "Nome", "Cliente", "Cidade/UF", "Início", "Término", "Origem do término", "Status"].concat(comValor ? ["Valor contratado"] : []);
+  const aoa = [cab].concat(dados.map(o => [
+    o.codigo || "", o.nome || "", mapaClientes[o.cliente_id] || "",
+    (o.cidade || "") + (o.uf ? "/" + o.uf.toUpperCase() : ""),
+    dt(o.data_inicio), dt(o.data_termino),
+    o.data_termino ? (OBR_TERMINO_ORIGEM[o.termino_origem] || OBR_TERMINO_ORIGEM.real).xlsx : "",
+    rot(o.status)
+  ].concat(comValor ? [obrValor(o)] : [])));
+  const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true, dateNF: "dd/mm/yyyy" });
+  ws["!cols"] = [{ wch: 12 }, { wch: 40 }, { wch: 32 }, { wch: 22 }, { wch: 11 }, { wch: 11 }, { wch: 16 }, { wch: 14 }].concat(comValor ? [{ wch: 16 }] : []);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "OBRAS");
+  XLSX.writeFile(wb, `obras-${hojeISO()}.xlsx`);
+}
+
 function renderObrasLista(dados){
   const cont = $("obr-conteudo");
   if(!cont) return;
@@ -155,13 +196,14 @@ function renderObrasLista(dados){
     <td>${esc(mapaClientes[o.cliente_id] || "—")}</td>
     <td>${esc((o.cidade||"") + (o.uf ? "/" + o.uf.toUpperCase() : ""))}</td>
     <td>${dataBR(o.data_inicio)}</td>
+    <td>${obrTerminoHtml(o)}</td>
     <td>${tagStatus("obra", o.status)}</td>
     ${comValor ? `<td class="num">${brl(obrValor(o))}</td>` : ""}
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
       <th>Código</th><th>Nome</th><th>Cliente</th><th>Cidade/UF</th>
-      <th>Início</th><th>Status</th>${comValor ? '<th class="num">Valor contratado</th>' : ""}
+      <th>Início</th><th>Término</th><th>Status</th>${comValor ? '<th class="num">Valor contratado</th>' : ""}
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 }
@@ -785,6 +827,7 @@ function ligarObras(){
   });
 
   $("btn-nova-obra")?.addEventListener("click", novaObra);
+  $("btn-obr-xlsx")?.addEventListener("click", obrExportarXlsx);   // lote S56c (#174)
   $("btn-voltar-obra")?.addEventListener("click", mostrarPainelObra);
   $("btn-salvar-obra")?.addEventListener("click", () => comBotaoTravado("btn-salvar-obra", () => salvarObra()));
   $("btn-excluir-obra")?.addEventListener("click", excluirObra);

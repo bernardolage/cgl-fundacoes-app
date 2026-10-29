@@ -8,17 +8,17 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="b10ceb2" />
+<meta name="app-versao" content="42b64e9" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=b10ceb2" />
+<link rel="stylesheet" href="css/estilo.css?v=42b64e9" />
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=b10ceb2"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=b10ceb2"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=b10ceb2"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=42b64e9"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=42b64e9"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=42b64e9"></script>
 </head>
 <body>
 
@@ -869,6 +869,8 @@
                     <option value="terceirizado">Terceirizado</option>
                   </select>
                 </div>
+                <div class="campo func-pj-vig" style="display:none;"><label>Vigência do contrato PJ: início</label><input id="func-pj-vig-inicio" type="date" /></div>
+                <div class="campo func-pj-vig" style="display:none;"><label>Vigência do contrato PJ: fim</label><input id="func-pj-vig-fim" type="date" title="30 e 15 dias antes do fim vira aviso no Para regularizar do RH. O contrato assinado vai em Documentos → Anexar contrato PJ." /></div>
                 <div class="campo"><label>Situação</label><select id="func-status"></select></div>
                 <div class="campo"><label>Data de admissão</label><input id="func-admissao" type="date" /></div>
                 <div class="campo"><label>Data de demissão</label><input id="func-demissao" type="date" /></div>
@@ -1313,7 +1315,9 @@
           <div class="odoo-body">
             <div class="odoo-tab ativa" data-tab="geral">
               <div class="grade">
-                <div class="campo"><label>Código *</label><input id="prod-codigo" required /></div>
+                <!-- lote S56b (#197): no produto novo o código é automático (iniciais do nome + número global); edita só as letras -->
+                <div class="campo"><label>Código <button type="button" class="link-mini" id="btn-prod-gerar-cod" title="Gera o código pelas iniciais do nome e o próximo número livre (a partir de 6721)">Gerar</button></label>
+                  <input id="prod-codigo" autocomplete="off" /><span class="meta" id="prod-codigo-info"></span></div>
                 <div class="campo"><label>Nome *</label><input id="prod-nome" required /></div>
                 <div class="campo"><label>Categoria
                   <button type="button" class="link-mini" id="btn-nova-cat">+ nova</button></label>
@@ -1388,6 +1392,11 @@
           <div class="campo"><label>Destino *</label><select id="bal-destino"><option value="">— obra, TAG ou setor —</option></select>
             <!-- fase 108c: com EPI na lista e quem retira escolhido, o destino vem da alocação (ou SESMT); trocar à mão vence -->
             <div id="bal-destino-aloc" class="meta" style="display:none;margin-top:4px;"></div>
+            <!-- lote S56 (#202): busca do acessório de destino -->
+            <div id="bal-ace-campo" style="display:none;margin-top:4px;position:relative;">
+              <input id="bal-ace-busca" placeholder="acessório: marcação ou jogo (≥ 2 letras)…" autocomplete="off" />
+              <div id="bal-ace-res" class="autocomplete-lista" style="display:none;"></div>
+            </div>
           </div>
           <div class="campo"><label>Método <span class="meta">(opcional, só obra)</span></label><select id="bal-metodo" disabled><option value="">— sem método —</option></select></div>
           <div class="campo"><label>Documento / observação</label><input id="bal-doc" placeholder="ex.: requisição, OS, 'reposição da caixa da 02-HM'" /></div>
@@ -1546,7 +1555,7 @@
           <div class="serv-filtros">
             <input id="sep-busca" placeholder="Buscar nº, obra, TAG, responsável…" />
             <select id="sep-f-status"><option value="_abertas">Abertas</option><option value="">Todos os status</option><option value="aberta">Aberta</option><option value="em_separacao">Em separação</option><option value="separada">Separada</option><option value="entregue">Entregue</option><option value="cancelada">Cancelada</option></select>
-            <select id="sep-f-origem"><option value="">Origem</option><option value="mobilizacao">Mobilização</option><option value="pedido_obra">Pedido da obra</option></select>
+            <select id="sep-f-origem"><option value="">Origem</option><option value="mobilizacao">Mobilização</option><option value="pedido_obra">Pedido da obra</option><option value="manutencao">OS (preventiva)</option></select>
             <select id="sep-f-resp"><option value="">Responsável</option></select>
             <select id="sep-f-obra"><option value="">Obra</option></select>
             <label class="meta" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sep-f-minhas" /> só as minhas</label>
@@ -1715,6 +1724,8 @@
           </div>
           <!-- fase 108b: "Falta assinar" (chaves pendentes e quem assina), só em aguardando aprovação -->
           <div id="cmp-aprov-falta" style="display:none;"></div>
+          <!-- lote S56 (#174): data do pedido fora do período da obra (só aviso) -->
+          <div id="cmp-periodo-aviso" style="display:none;"></div>
 
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-cmp-itens" data-goto-tab="itens"><span class="sb-num">0</span><span class="sb-icon">📦</span><span class="sb-lbl">itens</span></button>
@@ -1748,6 +1759,9 @@
                 <div class="campo"><label>Responsável pelo recebimento</label><select id="cmp-resp-receb" title="Quem registra o recebimento (serviço: com foto ou documento). Padrão: o solicitante. O comprador e a diretoria podem trocar a qualquer momento."></select></div>
                 <div class="campo"><label>Frete (R$)</label><input type="number" id="cmp-frete" min="0" step="0.01" /></div>
                 <div class="campo"><label>Desconto (R$)</label><input type="number" id="cmp-desc" min="0" step="0.01" /></div>
+                <!-- lote S56 (#162): NF já informada pelo fornecedor; (#203): km do veículo na leitura oficial. Editáveis em qualquer status vivo -->
+                <div class="campo"><label>NF informada <span class="meta" title="Número da NF que o fornecedor já passou, antes do recebimento. Grava ao sair do campo, em qualquer status do pedido.">(antes do recebimento)</span></label><input id="cmp-nf-inf" maxlength="60" placeholder="ex.: 185" autocomplete="off" /></div>
+                <div class="campo" id="cmp-km-campo" style="display:none;"><label>km do veículo <span class="meta" title="Vai para as leituras da TAG (origem compra). km menor que a última leitura é recusado: corrija pelo ajuste manual da manutenção.">(leitura da TAG)</span></label><input type="number" id="cmp-km" min="0" step="1" /><span class="meta" id="cmp-km-dica"></span></div>
                 <div class="campo largo"><label>Observações (saem no PDF)</label><textarea id="cmp-obs" rows="2"></textarea></div>
               </div>
               <p class="meta" id="cmp-alcada-info"></p>
@@ -1846,12 +1860,16 @@
               <input type="file" id="cmp-rec-anexos" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" />
               <span class="meta">Sem o XML, o número da NF e o PDF ou a foto da nota são obrigatórios. O XML importado já fica guardado no recebimento.</span></div>
           </div>
+          <!-- lote S56 (#174): data do recebimento fora do período da obra (só aviso) -->
+          <div id="cmp-rec-periodo-aviso" style="display:none;margin-top:8px;"></div>
           <div class="tabela-rola" style="margin-top:8px;">
             <table class="itens-tabela">
-              <thead><tr><th>Item</th><th style="width:70px;">Un</th><th class="num" style="width:90px;" title="pendente no pedido" id="cmp-rec-th-pend">Pendente</th><th style="width:90px;">Qtd NF</th><th style="width:110px;">Unit. NF</th><th class="num" style="width:110px;">Total</th><th style="width:130px;">Tipo de compra</th><th style="width:200px;">Destino</th><th class="col-acao"></th></tr></thead>
+              <thead><tr><th>Item</th><th style="width:70px;">Un</th><th class="num" style="width:90px;" title="pendente no pedido" id="cmp-rec-th-pend">Pendente</th><th style="width:90px;">Qtd NF</th><th style="width:110px;">Unit. NF</th><th style="width:120px;display:none;" id="cmp-rec-th-fator" title="Lote S56 (#205): a NF vem em outra unidade; fator = quantas unidades do item vêm em 1 da NF (caixa com 12 = 12)">Fator</th><th class="num" style="width:110px;">Total</th><th style="width:130px;">Tipo de compra</th><th style="width:200px;">Destino</th><th class="col-acao"></th></tr></thead>
               <tbody id="cmp-rec-itens"></tbody>
             </table>
           </div>
+          <!-- lote S56 (#205): linhas do XML sem item do pedido -->
+          <div id="cmp-rec-sobras" style="display:none;margin-top:8px;"></div>
           <div class="grade" style="margin-top:10px;" id="cmp-rec-add">
             <div class="campo largo"><label>+ Item da nota fora do pedido</label>
               <input id="cmp-rec-busca" placeholder="produto do catálogo (≥ 2 letras)…" autocomplete="off" />
@@ -1937,7 +1955,7 @@
           <div class="modal-topo"><h3 id="cmp-rat-titulo">Rateio entre TAGs</h3><button type="button" class="btn-sec btn-sm" id="btn-cmp-rat-fechar">✕</button></div>
           <p class="meta" id="cmp-rat-ajuda"></p>
           <div class="campo"><input id="cmp-rat-busca" placeholder="filtrar TAG por código ou nome…" autocomplete="off" /></div>
-          <div class="tabela-rola" style="max-height:50vh;overflow:auto;"><table class="itens-tabela"><thead><tr><th style="width:36px;"></th><th>TAG</th><th style="width:110px;">%</th></tr></thead><tbody id="cmp-rat-lista"></tbody></table></div>
+          <div class="tabela-rola" style="max-height:50vh;overflow:auto;"><table class="itens-tabela"><thead><tr><th style="width:36px;"></th><th>TAG</th><th style="width:110px;">%</th><th style="width:130px;display:none;" id="cmp-rat-th-rs" title="Lote S56 (#209): valor do item que cai na TAG">R$</th></tr></thead><tbody id="cmp-rat-lista"></tbody></table></div>
           <div class="lista-topo compacta"><span class="meta" id="cmp-rat-soma">—</span><button type="button" class="btn-sec btn-sm" id="btn-cmp-rat-igualar" style="margin-left:auto;" title="partes iguais entre as TAGs marcadas">Igualar</button></div>
           <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-cmp-rat-limpar" title="fica só a primeira TAG, sem rateio">Sem rateio</button><button type="button" class="btn" id="btn-cmp-rat-ok">Aplicar</button></div>
         </div>
@@ -1954,11 +1972,22 @@
             <div class="campo largo"><label>Nome *</label><input id="cmp-prod-nome" placeholder="ex.: MANGUEIRA HIDRÁULICA 1/2 R2 · FRETE CARRETA CARGA SECA" /></div>
             <div class="campo"><label>Categoria</label><select id="cmp-prod-cat"></select></div>
             <div class="campo"><label>Unidade</label><select id="cmp-prod-un"></select></div>
-            <div class="campo"><label>NCM (opcional)</label><input id="cmp-prod-ncm" placeholder="8 dígitos" maxlength="10" /></div>
-            <div class="campo"><label>Código (opcional)</label><input id="cmp-prod-cod" placeholder="vazio = CGL-00001…" /></div>
+            <!-- lote S56 (#199): NCM obrigatório no produto (serviço dispensa); (#197): código gerado no banco -->
+            <div class="campo"><label id="cmp-prod-ncm-lbl">NCM *</label><input id="cmp-prod-ncm" placeholder="8 dígitos (ex.: 8431.43.10)" maxlength="10" /></div>
+            <div class="campo"><label>Código</label><input id="cmp-prod-cod" placeholder="automático" disabled title="Gerado ao cadastrar: iniciais do nome + número sequencial (ex.: MPB6721)" /></div>
           </div>
           <p class="meta" id="cmp-prod-tipo-info"></p>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-cmp-prod-salvar">💾 Cadastrar e usar no pedido</button></div>
+        </div>
+      </div>
+
+      <!-- lote S56 (#202): acessório como destino do custo (item do pedido, linha da nota e serviço) -->
+      <div class="modal-fundo" id="cmp-ace-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:680px;">
+          <div class="modal-topo"><h3>Acessório de destino do custo</h3><button type="button" class="btn-sec btn-sm" id="btn-cmp-ace-fechar">✕</button></div>
+          <p class="meta">O custo cai na ficha do acessório. Dono do custo: o responsável pelos acessórios da família (estaca raiz: Walison; Hélice contínua, Hélice secante e trado: Lucas); família comum: gestor de acessórios.</p>
+          <div class="campo"><input id="cmp-ace-busca" placeholder="marcação ou jogo (≥ 2 letras)…" autocomplete="off" /></div>
+          <div class="tabela-rola" style="max-height:50vh;overflow:auto;"><table class="itens-tabela"><thead><tr><th>Marcação</th><th>Família</th><th>Jogo</th><th>Onde está</th></tr></thead><tbody id="cmp-ace-lista"></tbody></table></div>
         </div>
       </div>
 
@@ -2564,6 +2593,7 @@
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
             </div>
+            <button type="button" class="btn-sec" id="btn-obr-xlsx" title="Planilha .xlsx com as obras da lista (filtros aplicados), com o término e a origem dele">⬇ Exportar .xlsx</button>
             <button type="button" class="btn" id="btn-nova-obra">+ Nova</button>
           </div>
           <div class="serv-filtros">
@@ -4036,6 +4066,7 @@
             <div class="chip"><span>Responsável</span><strong id="man-chip-resp">—</strong></div>
             <div class="chip"><span>Dias em aberto</span><strong id="man-chip-dias">—</strong></div>
             <div class="chip" id="man-chip-origem" style="display:none;"><span>Planilha</span><strong id="man-chip-origem-txt">—</strong></div>
+            <div class="chip" id="man-chip-baixa-box" style="display:none;" title="Peças de estoque lançadas na OS e ainda sem baixa: quem dá baixa é o almoxarifado"><span>Baixa</span><strong id="man-chip-baixa">—</strong></div>
           </div>
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-man-equip"><span class="sb-num">—</span><span class="sb-icon">🚜</span><span class="sb-lbl">equipamento</span></button>
@@ -4043,6 +4074,7 @@
             <button type="button" class="sb-btn" data-goto-tab="atividades" id="sb-man-plano"><span class="sb-num">0</span><span class="sb-icon">🗓️</span><span class="sb-lbl">itens do plano</span></button>
             <button type="button" class="sb-btn" data-goto-tab="checklist" id="sb-man-check"><span class="sb-num">0</span><span class="sb-icon">✅</span><span class="sb-lbl">checklist</span></button>
             <button type="button" class="sb-btn" data-goto-tab="materiais" id="sb-man-custo"><span class="sb-num">R$ 0</span><span class="sb-icon">💰</span><span class="sb-lbl">custo</span></button>
+            <button type="button" class="sb-btn" id="sb-man-sep" style="display:none;" title="Separação do kit de peças da preventiva (Separações)"><span class="sb-num">—</span><span class="sb-icon">📦</span><span class="sb-lbl">separação</span></button>
           </div>
           <div class="odoo-notebook" id="man-notebook">
             <button type="button" data-tab="geral" class="ativo">Geral</button>
@@ -4483,6 +4515,7 @@
             <button type="button" class="sb-btn" id="sb-ace-hist" data-goto-tab="historico"><span class="sb-num">0</span><span class="sb-icon">🕓</span><span class="sb-lbl">histórico</span></button>
             <button type="button" class="sb-btn" id="sb-ace-rep" data-goto-tab="reparos"><span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">reparos</span></button>
             <button type="button" class="sb-btn" id="sb-ace-jogo" data-goto-tab="jogo"><span class="sb-num">0</span><span class="sb-icon">🧩</span><span class="sb-lbl">no jogo</span></button>
+            <button type="button" class="sb-btn" id="sb-ace-custos" data-goto-tab="custos" title="Compras, saídas de estoque e custos do jogo"><span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">custos</span></button>
             <button type="button" class="sb-btn" id="sb-ace-compat" data-goto-tab="dados"><span class="sb-num">0</span><span class="sb-icon">🚜</span><span class="sb-lbl">compatível</span></button>
           </div>
 
@@ -4492,6 +4525,7 @@
             <button type="button" data-tab="jogo">Jogo</button>
             <button type="button" data-tab="historico">Histórico</button>
             <button type="button" data-tab="reparos">Reparos</button>
+            <button type="button" data-tab="custos">Custos</button>
             <button type="button" data-tab="fotos">Fotos</button>
             <button type="button" data-tab="obs">Observações</button>
           </div>
@@ -4529,8 +4563,8 @@
             <div class="odoo-tab" data-tab="jogo">
               <div class="lista-topo"><h3>Peças do mesmo jogo</h3><button type="button" class="btn-sec btn-sm" id="btn-ace-mover-jogo" style="margin-left:auto;">📍 Mover o jogo inteiro</button></div>
               <div id="ace-jogo-lista"><p class="vazio">—</p></div>
-              <div id="ace-jogo-custos"></div>
             </div>
+            <div class="odoo-tab" data-tab="custos"><div id="ace-custos-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="historico">
               <div id="ace-hist-lista"><p class="vazio">—</p></div>
             </div>
@@ -6586,58 +6620,58 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=b10ceb2"></script>
+<script src="js/core.js?v=42b64e9"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=b10ceb2"></script>
+<script src="js/historico.js?v=42b64e9"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=b10ceb2"></script>
-<script src="js/fiscal_ncm.js?v=b10ceb2"></script>
+<script src="js/fiscal.js?v=42b64e9"></script>
+<script src="js/fiscal_ncm.js?v=42b64e9"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=b10ceb2"></script>
-<script src="js/fornecedores.js?v=b10ceb2"></script>
-<script src="js/apropriacoes.js?v=b10ceb2"></script>
-<script src="js/funcionarios.js?v=b10ceb2"></script>
-<script src="js/rh_documentos.js?v=b10ceb2"></script>
-<script src="js/servicos.js?v=b10ceb2"></script>
-<script src="js/produtos.js?v=b10ceb2"></script>
-<script src="js/estoque.js?v=b10ceb2"></script>
-<script src="js/separacoes.js?v=b10ceb2"></script>
-<script src="js/epi.js?v=b10ceb2"></script>
-<script src="js/compras.js?v=b10ceb2"></script>
-<script src="js/requisicoes.js?v=b10ceb2"></script>
-<script src="js/orcamentos.js?v=b10ceb2"></script>
-<script src="js/propostas.js?v=b10ceb2"></script>
-<script src="js/contratos.js?v=b10ceb2"></script>
-<script src="js/contas_pagar.js?v=b10ceb2"></script>
-<script src="js/centros_custo.js?v=b10ceb2"></script>
-<script src="js/carteira.js?v=b10ceb2"></script>
-<script src="js/obras.js?v=b10ceb2"></script>
-<script src="js/frota.js?v=b10ceb2"></script>
-<script src="js/viagens.js?v=b10ceb2"></script>
-<script src="js/equipamentos.js?v=b10ceb2"></script>
-<script src="js/vendas_bens.js?v=b10ceb2"></script>
-<script src="js/acessorios.js?v=b10ceb2"></script>
-<script src="js/reparos.js?v=b10ceb2"></script>
-<script src="js/manutencao.js?v=b10ceb2"></script>
-<script src="js/fabricacao.js?v=b10ceb2"></script>
-<script src="js/mobilizacoes.js?v=b10ceb2"></script>
-<script src="js/estacas.js?v=b10ceb2"></script>
-<script src="js/obra_abas.js?v=b10ceb2"></script>
-<script src="js/medicoes.js?v=b10ceb2"></script>
-<script src="js/movimentacoes.js?v=b10ceb2"></script>
-<script src="js/rdo.js?v=b10ceb2"></script>
-<script src="js/rdo_import_maya.js?v=b10ceb2"></script>
-<script src="js/geodigitus.js?v=b10ceb2"></script>
-<script src="js/computadores_bordo.js?v=b10ceb2"></script>
-<script src="js/usuarios.js?v=b10ceb2"></script>
-<script src="js/chamados.js?v=b10ceb2"></script>
-<script src="js/dashboard.js?v=b10ceb2"></script>
-<script src="js/rh_horas.js?v=b10ceb2"></script>
-<script src="js/sesmt.js?v=b10ceb2"></script>
-<script src="js/patrimonio.js?v=b10ceb2"></script>
+<script src="js/clientes.js?v=42b64e9"></script>
+<script src="js/fornecedores.js?v=42b64e9"></script>
+<script src="js/apropriacoes.js?v=42b64e9"></script>
+<script src="js/funcionarios.js?v=42b64e9"></script>
+<script src="js/rh_documentos.js?v=42b64e9"></script>
+<script src="js/servicos.js?v=42b64e9"></script>
+<script src="js/produtos.js?v=42b64e9"></script>
+<script src="js/estoque.js?v=42b64e9"></script>
+<script src="js/separacoes.js?v=42b64e9"></script>
+<script src="js/epi.js?v=42b64e9"></script>
+<script src="js/compras.js?v=42b64e9"></script>
+<script src="js/requisicoes.js?v=42b64e9"></script>
+<script src="js/orcamentos.js?v=42b64e9"></script>
+<script src="js/propostas.js?v=42b64e9"></script>
+<script src="js/contratos.js?v=42b64e9"></script>
+<script src="js/contas_pagar.js?v=42b64e9"></script>
+<script src="js/centros_custo.js?v=42b64e9"></script>
+<script src="js/carteira.js?v=42b64e9"></script>
+<script src="js/obras.js?v=42b64e9"></script>
+<script src="js/frota.js?v=42b64e9"></script>
+<script src="js/viagens.js?v=42b64e9"></script>
+<script src="js/equipamentos.js?v=42b64e9"></script>
+<script src="js/vendas_bens.js?v=42b64e9"></script>
+<script src="js/acessorios.js?v=42b64e9"></script>
+<script src="js/reparos.js?v=42b64e9"></script>
+<script src="js/manutencao.js?v=42b64e9"></script>
+<script src="js/fabricacao.js?v=42b64e9"></script>
+<script src="js/mobilizacoes.js?v=42b64e9"></script>
+<script src="js/estacas.js?v=42b64e9"></script>
+<script src="js/obra_abas.js?v=42b64e9"></script>
+<script src="js/medicoes.js?v=42b64e9"></script>
+<script src="js/movimentacoes.js?v=42b64e9"></script>
+<script src="js/rdo.js?v=42b64e9"></script>
+<script src="js/rdo_import_maya.js?v=42b64e9"></script>
+<script src="js/geodigitus.js?v=42b64e9"></script>
+<script src="js/computadores_bordo.js?v=42b64e9"></script>
+<script src="js/usuarios.js?v=42b64e9"></script>
+<script src="js/chamados.js?v=42b64e9"></script>
+<script src="js/dashboard.js?v=42b64e9"></script>
+<script src="js/rh_horas.js?v=42b64e9"></script>
+<script src="js/sesmt.js?v=42b64e9"></script>
+<script src="js/patrimonio.js?v=42b64e9"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=b10ceb2"></script>
+<script src="js/sesmt_ocorrencias.js?v=42b64e9"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=b10ceb2"></script>
+<script src="js/init.js?v=42b64e9"></script>
 </body>
 </html>
