@@ -704,7 +704,7 @@ async function cmpFetchPedidos(){
     if(!r.error) r.data.forEach(p => { if(!porId[p.id]){ p.itens = null; porId[p.id] = p; prim.data.push(p); } });
   }
   const abertos = prim.data.filter(p => CMP_ABERTOS.includes(p.status));
-  const [it, pr, ap, nfs] = await Promise.all([
+  const [it, nfs, pr, ap] = await Promise.all([   // hotfix 192c: mesma ordem do array (o S52 pôs as NFs em 2º e trocou para receber e aprovação)
     cmpFetchItens(abertos.map(p => p.id)),
     cmpFetchNfs(prim.data.map(p => p.id)),   // lote S52 (#162): NFs dos recebimentos da 1ª carga (abertos + 30 dias)
     sb.from("vw_compras_para_receber").select("pedido_id,responsavel_recebimento_id,responsavel_nome,dias_desde_envio,tem_servico,tem_evidencia"),   // fase 78
