@@ -1126,7 +1126,7 @@ async function abrirPedido(id){
 }
 function cmpEditavel(){ return cmpPodeOperar() && (_cmpAtual?.status || "rascunho") === "rascunho"; }
 function abrirFichaPedido(p){
-  _cmpAtual = p; _cmpEditId = p.id || null;
+  _cmpAtual = p; _cmpEditId = p.id || null; cmpLigarModo(null);   // fase 132a
   const novo = !p.id;
   $("cmp-painel").style.display = "none"; $("cmp-ficha").style.display = "";
   $("cmp-ficha-titulo").textContent = novo ? "Novo pedido" : `${p.numero} · ${p.fornecedor?.razao_social || cmpForn(p.fornecedor_id) || "sem fornecedor"}`;
@@ -1428,7 +1428,7 @@ function cmpAtualizarBotoes(){
     "btn-cmp-conferir": !novo && !leitura && _cmpConfAtual.pode && _cmpConfAtual.lista.some(r => r.pendente),   // fase 102
     "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180): módulo extra compras recebe
     "btn-cmp-receber-servico": cmpPodeReceberServico(),
-    "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && ["aguardando_aprovacao","aprovado","em_cotacao"].includes(st),
+    "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && (st === "em_cotacao" || (["aguardando_aprovacao","aprovado"].includes(st) && usuarioAtual?.cargo === "diretor")),   // hotfix 192e: depois do envio para aprovação, só a diretoria
     "btn-cmp-pdf-sem-valor": !novo && st !== "cancelado" && st !== "em_cotacao",   // lote S55 (#179): em cotação o PDF já é a solicitação
     "btn-cmp-cancelar": pode && !novo && !["recebido","cancelado"].includes(st) };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
@@ -1686,6 +1686,35 @@ function cmpPodeCadastrarProduto(){
 /* Lote S55 (#175): o cadastro rápido ganha o tipo (produto / serviço consumido) e serve ao pedido (destino "pedido", padrão)
    e ao recebimento (destino "rec": a linha da nota que não casou com nada). Serviço: unidade sugerida vb, aplicação direta. */
 let _cmpProdDestino = "pedido";
+/* Fase 132a: item livre (antigo) ligado a um produto do catálogo sem refazer a linha. _cmpLigarIdx = índice do item em
+   _cmpItens enquanto a busca "+ Adicionar produto do catálogo" está em modo de ligar; o produto escolhido (ou cadastrado
+   pelo "+ Novo produto") entra naquela linha, que mantém quantidade, unidade, preço, IPI, ICMS, destino e natureza. */
+let _cmpLigarIdx = null;
+function cmpLigarModo(idx){
+  _cmpLigarIdx = idx;
+  const it = idx === null ? null : _cmpItens[idx], txt = $("cmp-ligar-txt");
+  if(txt){ txt.style.display = it ? "" : "none"; txt.textContent = it ? `Ligando ao catálogo: "${String(it.descricao || "").slice(0, 70)}". Escolha o produto na busca ou use "+ Novo produto"; apague a busca para cancelar.` : ""; }
+}
+function cmpLigarCatalogo(idx){
+  const it = _cmpItens[idx]; if(!cmpEditavel() || !it || it.produto_id) return;
+  cmpLigarModo(idx);
+  const inp = $("cmp-busca-prod"); if(!inp) return;
+  inp.value = String(it.descricao || "").replace(/s+/g, " ").trim().slice(0, 40);
+  inp.scrollIntoView({ block: "center" }); inp.focus();
+  inp.dispatchEvent(new Event("input", { bubbles: true }));
+}
+/* produto escolhido ou cadastrado: liga ao item em modo de ligar, senão vira linha nova */
+function cmpProdutoEscolhido(p){
+  const idx = _cmpLigarIdx; cmpLigarModo(null);
+  const it = idx === null ? null : _cmpItens[idx];
+  if(!it || it.produto_id){ cmpAddItem(p); return; }
+  if(!p?.id) return;
+  if(p.unidade) _cmpProdUn[p.id] = p.unidade;
+  _cmpProdSrv[p.id] = p.tipo_item === "servico";
+  Object.assign(it, { produto_id: p.id, descricao: `${p.codigo} — ${p.nome}` });
+  renderItensPedido();
+  aviso("app-aviso", `Item ligado a ${p.codigo} — ${p.nome}${p.tipo_item === "servico" ? "" : ": já dá para escolher Reposição de estoque"}. Salve o pedido para gravar.`, "ok");
+}
 async function cmpAbrirProdutoRapido(tipo, destino){
   _cmpProdDestino = destino === "rec" ? "rec" : "pedido";
   if(!cmpPodeCadastrarProduto() || (_cmpProdDestino === "pedido" && !cmpEditavel()) || (_cmpProdDestino === "rec" && !_cmpRec)) return;
@@ -1747,6 +1776,7 @@ async function cmpSalvarProdutoRapido(){
     return;
   }
   if($("cmp-busca-prod")){ $("cmp-busca-prod").value = ""; if($("cmp-res-prod")){ $("cmp-res-prod").innerHTML = ""; $("cmp-res-prod").style.display = "none"; } }
+  if(_cmpLigarIdx !== null){ cmpProdutoEscolhido(data); return; }   // fase 132a: cadastrado para ligar ao item livre
   cmpAddItem(data);
   aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído no pedido. Salve o pedido para gravar o item.`, "ok");
 }
@@ -1775,7 +1805,7 @@ function renderItensPedido(){
     const tipo = cmpItemTipo(it), repo = tipo === "reposicao", srv = cmpProdutoEhServico(it);
     const externo = it.obra_externa || it.centro_custo_externo ? `<div class="meta" title="rateio do Odoo sem cadastro no app">${esc([it.obra_externa, it.centro_custo_externo].filter(Boolean).join(" · "))}</div>` : "";
     // lote S55 (#175): serviço consumido nunca é reposição (o banco recusa destino estoque)
-    const semEstoque = !it.produto_id ? ' disabled title="item sem produto do catálogo não entra no estoque"' : srv ? ' disabled title="serviço consumido não entra no estoque"' : "";
+    const semEstoque = !it.produto_id ? ' disabled title="item sem produto do catálogo não entra no estoque: use 🔗 Ligar ao catálogo"' : srv ? ' disabled title="serviço consumido não entra no estoque"' : "";
     const tipoCel = ed
       ? `<select class="cmp-it" data-f="_tipo" style="min-width:140px;max-width:160px;"><option value="reposicao"${repo ? " selected" : ""}${semEstoque}>${esc(CMP_TIPO_LBL.reposicao)}</option><option value="aplicacao_direta"${repo ? "" : " selected"}>${esc(CMP_TIPO_LBL.aplicacao_direta)}</option></select>`
       : cmpTipoTag(tipo);
@@ -1792,7 +1822,7 @@ function renderItensPedido(){
       : `<span class="meta">${esc(CMP_METODO_LBL[it.metodo] || "—")}</span>`;
     // lote S53 (#166): descrição do item livre em textarea que cresce com o texto; % IPI e % ICMS por item; total com IPI
     return `<tr data-idx="${idx}">
-      <td>${it.produto_id ? esc(it.descricao) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(it.descricao || "")}</textarea>` : esc(it.descricao))}${it.produto_id ? (srv ? cmpTagServico({ tipo_item: "servico" }) : "") : ' <span class="meta" title="item livre anterior ao lote S55: continua editável">livre (antigo)</span>'}</td>
+      <td>${it.produto_id ? esc(it.descricao) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(it.descricao || "")}</textarea>` : esc(it.descricao))}${it.produto_id ? (srv ? cmpTagServico({ tipo_item: "servico" }) : "") : ' <span class="meta" title="item livre anterior ao lote S55: continua editável">livre (antigo)</span>' + (ed ? ' <button type="button" class="btn-sec btn-sm cmp-it-ligar" title="Trocar este item livre por um produto do catálogo (quantidade, preço e destino ficam); depois dá para escolher Reposição de estoque">🔗 Ligar ao catálogo</button>' : "")}</td>
       <td>${cmpUnidadeCelula(it, ed)}</td>
       <td>${ed ? `<input type="number" step="0.001" min="0.001" class="cmp-it" data-f="quantidade" value="${esc(it.quantidade ?? 1)}" style="width:80px;text-align:right;" />` : num(it.quantidade)}</td>
       <td>${ed ? `<input type="number" step="0.01" min="0" class="cmp-it" data-f="valor_unitario" value="${esc(it.valor_unitario ?? 0)}" style="width:105px;text-align:right;" />` : brl(it.valor_unitario)}</td>
@@ -1842,6 +1872,7 @@ function renderItensPedido(){
     cmpAtualizarChips();
   }));
   tb.querySelectorAll("textarea.cmp-it").forEach(cmpCrescerTextarea);
+  tb.querySelectorAll(".cmp-it-ligar").forEach(b => b.addEventListener("click", e => cmpLigarCatalogo(Number(e.target.closest("tr").dataset.idx))));   // fase 132a
   tb.querySelectorAll(".cmp-it-rat").forEach(b => b.addEventListener("click", e => cmpAbrirRateio(Number(e.target.closest("tr").dataset.idx))));
   tb.querySelectorAll(".cmp-it-rem").forEach(b => b.addEventListener("click", e => { _cmpItens.splice(Number(e.target.closest("tr").dataset.idx), 1); renderItensPedido(); }));
   cmpAtualizarSbItens();
@@ -3092,7 +3123,8 @@ function ligarCompras(){
   ["cmp-frete","cmp-desc"].forEach(id => $(id)?.addEventListener("input", cmpAtualizarChips));
   $("cmp-forn")?.addEventListener("change", () => { const f = _cmpFornMap[$("cmp-forn").value]; if(f?.condicao_pagamento_padrao && !$("cmp-cond").value) $("cmp-cond").value = f.condicao_pagamento_padrao;
     if(f?.prazo_entrega_dias && !$("cmp-prev").value){ const d = new Date(); d.setDate(d.getDate() + Number(f.prazo_entrega_dias)); $("cmp-prev").value = d.toISOString().slice(0, 10); cmpAtualizarChips(); } });
-  cmpLigarBusca("cmp-busca-prod", "cmp-res-prod", p => cmpAddItem(p));
+  cmpLigarBusca("cmp-busca-prod", "cmp-res-prod", p => cmpProdutoEscolhido(p));   // fase 132a: ou liga ao item livre
+  $("cmp-busca-prod")?.addEventListener("input", e => { if(!e.target.value.trim() && _cmpLigarIdx !== null) cmpLigarModo(null); });
   // lote S55 (#175): "+ Item livre" saiu (btn-cmp-item-livre); no lugar, "+ Cadastrar serviço" (mesmo modal do cadastro rápido)
   $("btn-cmp-srv-novo")?.addEventListener("click", () => cmpAbrirProdutoRapido("servico"));
   $("btn-cmp-rec-prod-novo")?.addEventListener("click", () => cmpAbrirProdutoRapido("produto", "rec"));
