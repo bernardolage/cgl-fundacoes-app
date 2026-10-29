@@ -8,17 +8,17 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="d8847a7" />
+<meta name="app-versao" content="eadb925" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=d8847a7" />
+<link rel="stylesheet" href="css/estilo.css?v=eadb925" />
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=d8847a7"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=d8847a7"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=d8847a7"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=eadb925"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=eadb925"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=eadb925"></script>
 </head>
 <body>
 
@@ -1254,6 +1254,8 @@
             <div class="serv-views">
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban (por categoria)</button>
+              <!-- hotfix saída sem custo (29/10/2026): saídas de estoque gravadas a R$ 0,00 (vw_estoque_saidas_sem_custo) -->
+              <button type="button" class="serv-view-btn" data-view="saidas_sem_custo" id="prod-view-ssc" style="display:none;">Saídas sem custo <span class="contador" id="prod-ssc-cont"></span></button>
             </div>
             <button type="button" class="btn" id="btn-novo-produto">+ Novo</button>
           </div>
@@ -1265,6 +1267,7 @@
               <option value="baixo">Abaixo do mínimo</option>
               <option value="zero">Estoque zero</option>
               <option value="positivo">Estoque > 0</option>
+              <option value="sem_custo">Sem custo (com saldo)</option>
               <option value="inativos">Inativos</option>
             </select>
             <!-- lote S55 (#175): produto × serviço consumido (frete, hospedagem, locação…) -->
@@ -1275,6 +1278,7 @@
             </select>
           </div>
           <div id="prod-modo" class="meta" style="margin:0 0 8px;"></div>
+          <input type="file" id="prod-custo-arq" accept=".xlsx,.xls,.csv" style="display:none;" />
           <div id="prod-conteudo"></div>
           <table style="display:none;"><tbody id="tab-produtos"></tbody></table>
         </div>
@@ -1299,7 +1303,8 @@
             <div class="chip"><span>Nome</span><strong id="prod-ficha-nome-chip">—</strong></div>
             <div class="chip"><span>Categoria</span><strong id="prod-ficha-categoria-chip">—</strong></div>
             <div class="chip"><span>Estoque</span><strong id="prod-ficha-estoque-chip">—</strong></div>
-            <div class="chip"><span>Custo</span><strong id="prod-ficha-custo-chip">R$ 0,00</strong></div>
+            <div class="chip"><span>Custo</span><strong id="prod-ficha-custo-chip">R$ 0,00</strong>
+              <button type="button" class="link-mini" id="btn-prod-definir-custo" style="display:none;" title="Produto sem custo: informe o custo unitário; as saídas a R$ 0,00 dele são revaloradas">Definir custo</button></div>
             <div class="chip"><span>Inventário</span><strong id="prod-ficha-conf-chip">—</strong></div>
           </div>
 
@@ -6620,58 +6625,58 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=d8847a7"></script>
+<script src="js/core.js?v=eadb925"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=d8847a7"></script>
+<script src="js/historico.js?v=eadb925"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=d8847a7"></script>
-<script src="js/fiscal_ncm.js?v=d8847a7"></script>
+<script src="js/fiscal.js?v=eadb925"></script>
+<script src="js/fiscal_ncm.js?v=eadb925"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=d8847a7"></script>
-<script src="js/fornecedores.js?v=d8847a7"></script>
-<script src="js/apropriacoes.js?v=d8847a7"></script>
-<script src="js/funcionarios.js?v=d8847a7"></script>
-<script src="js/rh_documentos.js?v=d8847a7"></script>
-<script src="js/servicos.js?v=d8847a7"></script>
-<script src="js/produtos.js?v=d8847a7"></script>
-<script src="js/estoque.js?v=d8847a7"></script>
-<script src="js/separacoes.js?v=d8847a7"></script>
-<script src="js/epi.js?v=d8847a7"></script>
-<script src="js/compras.js?v=d8847a7"></script>
-<script src="js/requisicoes.js?v=d8847a7"></script>
-<script src="js/orcamentos.js?v=d8847a7"></script>
-<script src="js/propostas.js?v=d8847a7"></script>
-<script src="js/contratos.js?v=d8847a7"></script>
-<script src="js/contas_pagar.js?v=d8847a7"></script>
-<script src="js/centros_custo.js?v=d8847a7"></script>
-<script src="js/carteira.js?v=d8847a7"></script>
-<script src="js/obras.js?v=d8847a7"></script>
-<script src="js/frota.js?v=d8847a7"></script>
-<script src="js/viagens.js?v=d8847a7"></script>
-<script src="js/equipamentos.js?v=d8847a7"></script>
-<script src="js/vendas_bens.js?v=d8847a7"></script>
-<script src="js/acessorios.js?v=d8847a7"></script>
-<script src="js/reparos.js?v=d8847a7"></script>
-<script src="js/manutencao.js?v=d8847a7"></script>
-<script src="js/fabricacao.js?v=d8847a7"></script>
-<script src="js/mobilizacoes.js?v=d8847a7"></script>
-<script src="js/estacas.js?v=d8847a7"></script>
-<script src="js/obra_abas.js?v=d8847a7"></script>
-<script src="js/medicoes.js?v=d8847a7"></script>
-<script src="js/movimentacoes.js?v=d8847a7"></script>
-<script src="js/rdo.js?v=d8847a7"></script>
-<script src="js/rdo_import_maya.js?v=d8847a7"></script>
-<script src="js/geodigitus.js?v=d8847a7"></script>
-<script src="js/computadores_bordo.js?v=d8847a7"></script>
-<script src="js/usuarios.js?v=d8847a7"></script>
-<script src="js/chamados.js?v=d8847a7"></script>
-<script src="js/dashboard.js?v=d8847a7"></script>
-<script src="js/rh_horas.js?v=d8847a7"></script>
-<script src="js/sesmt.js?v=d8847a7"></script>
-<script src="js/patrimonio.js?v=d8847a7"></script>
+<script src="js/clientes.js?v=eadb925"></script>
+<script src="js/fornecedores.js?v=eadb925"></script>
+<script src="js/apropriacoes.js?v=eadb925"></script>
+<script src="js/funcionarios.js?v=eadb925"></script>
+<script src="js/rh_documentos.js?v=eadb925"></script>
+<script src="js/servicos.js?v=eadb925"></script>
+<script src="js/produtos.js?v=eadb925"></script>
+<script src="js/estoque.js?v=eadb925"></script>
+<script src="js/separacoes.js?v=eadb925"></script>
+<script src="js/epi.js?v=eadb925"></script>
+<script src="js/compras.js?v=eadb925"></script>
+<script src="js/requisicoes.js?v=eadb925"></script>
+<script src="js/orcamentos.js?v=eadb925"></script>
+<script src="js/propostas.js?v=eadb925"></script>
+<script src="js/contratos.js?v=eadb925"></script>
+<script src="js/contas_pagar.js?v=eadb925"></script>
+<script src="js/centros_custo.js?v=eadb925"></script>
+<script src="js/carteira.js?v=eadb925"></script>
+<script src="js/obras.js?v=eadb925"></script>
+<script src="js/frota.js?v=eadb925"></script>
+<script src="js/viagens.js?v=eadb925"></script>
+<script src="js/equipamentos.js?v=eadb925"></script>
+<script src="js/vendas_bens.js?v=eadb925"></script>
+<script src="js/acessorios.js?v=eadb925"></script>
+<script src="js/reparos.js?v=eadb925"></script>
+<script src="js/manutencao.js?v=eadb925"></script>
+<script src="js/fabricacao.js?v=eadb925"></script>
+<script src="js/mobilizacoes.js?v=eadb925"></script>
+<script src="js/estacas.js?v=eadb925"></script>
+<script src="js/obra_abas.js?v=eadb925"></script>
+<script src="js/medicoes.js?v=eadb925"></script>
+<script src="js/movimentacoes.js?v=eadb925"></script>
+<script src="js/rdo.js?v=eadb925"></script>
+<script src="js/rdo_import_maya.js?v=eadb925"></script>
+<script src="js/geodigitus.js?v=eadb925"></script>
+<script src="js/computadores_bordo.js?v=eadb925"></script>
+<script src="js/usuarios.js?v=eadb925"></script>
+<script src="js/chamados.js?v=eadb925"></script>
+<script src="js/dashboard.js?v=eadb925"></script>
+<script src="js/rh_horas.js?v=eadb925"></script>
+<script src="js/sesmt.js?v=eadb925"></script>
+<script src="js/patrimonio.js?v=eadb925"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=d8847a7"></script>
+<script src="js/sesmt_ocorrencias.js?v=eadb925"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=d8847a7"></script>
+<script src="js/init.js?v=eadb925"></script>
 </body>
 </html>

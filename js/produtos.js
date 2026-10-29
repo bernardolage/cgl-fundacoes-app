@@ -157,6 +157,7 @@ async function carregarProdutos(){
   if(fCat) q = q.eq("categoria_id", fCat);
   if(fTipo) q = q.eq("tipo_item", fTipo);   // lote S55 (#175): Produtos / Serviços consumidos
   if(fEst === "zero") q = q.lte("estoque_atual", 0);
+  else if(fEst === "sem_custo") q = q.gt("estoque_atual", 0).lte("custo_ultimo", 0);   // hotfix saída sem custo: o saneamento
   else if(fEst === "positivo") q = q.gt("estoque_atual", 0);
   else if(baixo) q = q.gt("estoque_minimo", 0);           // o banco não compara duas colunas: traz os que têm mínimo e filtra abaixo
   else if(prodModoPadrao()) q = q.gt("estoque_atual", 0);  // sem busca nem filtro: os que giram (com saldo)
@@ -172,6 +173,7 @@ async function carregarProdutos(){
     _prodTotalFiltro = baixo ? _produtos.length : (res.count || 0);
   }
   renderProdutos();
+  prodContarSaidasSemCusto();   // hotfix saída sem custo: contador da visão "Saídas sem custo"
   // o select escondido da entrada de estoque (#ent-produto) é preenchido por estSelecionarProduto (estoque.js),
   // que já busca no servidor; não é mais alimentado daqui
 }
@@ -185,6 +187,11 @@ function renderProdModo(){
   const termo = prodTermo(), total = _prodTotalFiltro, n = _produtos.length;
   if(termo || $("prod-f-categoria")?.value || $("prod-f-estoque")?.value || $("prod-f-tipo")?.value){
     el.innerHTML = total > n ? `Mostrando ${n} de ${num(total)} resultado(s): refine a busca para ver os outros.` : "";
+    // hotfix saída sem custo: a lista do saneamento sai em .xlsx (com a coluna Custo em branco) e volta pela importação
+    if($("prod-f-estoque")?.value === "sem_custo"){
+      el.innerHTML += `${el.innerHTML ? " " : ""}${num(total)} produto(s) com saldo sem custo · <a href="#" data-prod-modo="sc-xlsx">⬇ Baixar .xlsx para preencher</a>` +
+        (prodPodeDefinirCusto() ? ` · <a href="#" data-prod-modo="sc-importar">⬆ Importar custos (.xlsx)</a>` : "");
+    }
     return;
   }
   const off = 'style="opacity:.5;pointer-events:none;"';
@@ -221,6 +228,10 @@ function renderProdutos(){
   const dados = prodFiltrados();
   const cont = $("prod-contador");
   if(cont) cont.textContent = `${num(_prodTotalFiltro)} de ${num(_prodTotalAtivos ?? _prodTotalFiltro)}`;   // N da consulta, de M ativos
+  // hotfix saída sem custo: a visão das saídas não usa a busca nem os filtros de produto
+  const ssc = _prodView === "saidas_sem_custo";
+  document.querySelectorAll("#prod-painel .serv-filtros, #prod-modo").forEach(el => { el.style.display = ssc ? "none" : ""; });
+  if(ssc){ prodRenderSaidasSemCusto(); return; }
   renderProdModo();
   if(_prodView === "kanban") renderProdKanban(dados);
   else                       renderProdLista(dados);
@@ -299,6 +310,146 @@ function renderProdKanban(dados){
     </div>`;
   }).join("");
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
+}
+
+/* ---------- Hotfix saída sem custo (29/10/2026, decisões do Bernardo D-1 e D-2) ----------
+   A saída de estoque de produto sem custo gravava R$ 0,00. Quem pode (produtos_write: diretor, admin, almoxarife, comprador,
+   gestor de acessórios; espelha produto_pode_definir_custo()) define o custo do produto sem custo e o banco revalora as saídas a
+   R$ 0,00 dele. Visão "Saídas sem custo" (vw_estoque_saidas_sem_custo); filtro "Sem custo (com saldo)" com .xlsx para preencher e
+   importação da planilha (produto_definir_custo_lote). Sem a migration a visão não aparece. */
+let _prodSsc = [];          // linhas de vw_estoque_saidas_sem_custo
+let _prodSscTem = null;     // a view existe? (null = ainda não consultou)
+function prodPodeDefinirCusto(){ return prodPerfilEdicao() === "tudo"; }
+/* "12,50", "R$ 1.234,56" ou 12.5 → número; vazio ou texto → NaN */
+function prodNumeroBR(v){
+  if(typeof v === "number") return v;
+  let t = String(v ?? "").replace(/R\$|\s/g, "");
+  if(t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  return t === "" ? NaN : Number(t);
+}
+/* pede o custo unitário e grava pela RPC; true quando gravou. Usada pela ficha, pela visão e pelo balcão (estoque.js) */
+async function prodDefinirCusto(p){
+  if(!p || !p.id) return false;
+  if(!prodPodeDefinirCusto()){ aviso("app-aviso", `${p.codigo || "?"} — ${p.nome || ""} está sem custo. Peça ao almoxarife ou a Compras o custo dele.`, "erro"); return false; }
+  const resp = prompt(`Custo unitário de ${p.codigo || "?"} — ${p.nome || ""} (R$ por ${p.unidade || "un"}).\nAs saídas a R$ 0,00 deste produto passam a usar este custo.`, "");
+  if(resp === null) return false;
+  const custo = prodNumeroBR(resp);
+  if(!(custo > 0)){ aviso("app-aviso", "Informe um custo unitário maior que zero (ex.: 12,50).", "erro"); return false; }
+  const { data, error } = await sb.rpc("produto_definir_custo", { p_produto: p.id, p_custo: Math.round(custo * 100) / 100, p_obs: null });
+  if(error){ aviso("app-aviso", "Custo não gravado: " + error.message, "erro"); return false; }
+  const n = Number(data?.revaloradas || 0);
+  aviso("app-aviso", `Custo de ${p.codigo || "?"} gravado: ${brl(data?.custo ?? custo)}` + (n ? ` · ${n} saída(s) a R$ 0,00 revalorada(s).` : "."), "ok");
+  return true;
+}
+async function prodContarSaidasSemCusto(){
+  const btn = $("prod-view-ssc"); if(!btn || _prodSscTem === false) return;
+  const { count, error } = await sb.from("vw_estoque_saidas_sem_custo").select("id", { count: "exact", head: true });
+  if(error){ _prodSscTem = false; btn.style.display = "none"; return; }   // migration do hotfix ainda não aplicada
+  _prodSscTem = true; btn.style.display = "";
+  $("prod-ssc-cont").textContent = count ? `(${num(count)})` : "";
+}
+/* atalho da Sala de Comando ("Saídas de estoque sem custo") */
+function prodAbrirSaidasSemCusto(){
+  mostrarPainelProd();
+  document.querySelectorAll("#prod-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === "saidas_sem_custo"));
+  _prodView = "saidas_sem_custo";
+  renderProdutos();
+  prodContarSaidasSemCusto();
+}
+async function prodRenderSaidasSemCusto(){
+  const cont = $("prod-conteudo"); if(!cont) return;
+  cont.innerHTML = `<p class="vazio">Carregando…</p>`;
+  const { data, error } = await sb.from("vw_estoque_saidas_sem_custo").select("*").order("data", { ascending: false }).limit(1000);
+  if(_prodView !== "saidas_sem_custo") return;
+  if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler as saídas sem custo: ${esc(error.message)}</p>`; return; }
+  _prodSsc = data || [];
+  const pode = prodPodeDefinirCusto();
+  const nProd = new Set(_prodSsc.map(r => r.produto_id)).size;
+  const nComCusto = new Set(_prodSsc.filter(r => r.produto_tem_custo).map(r => r.produto_id)).size;
+  if($("prod-ssc-cont")) $("prod-ssc-cont").textContent = _prodSsc.length ? `(${num(_prodSsc.length)})` : "";
+  const revTodos = pode && nComCusto ? ` · <a href="#" data-ssc-acao="revalorar-todos" title="Esses produtos ganharam custo depois da saída">Revalorar ${num(nComCusto)} produto(s) que já têm custo</a>` : "";
+  const topo = `<div class="meta" style="margin:0 0 8px;">${num(_prodSsc.length)} saída(s) a R$ 0,00 · ${num(nProd)} produto(s)` +
+    (_prodSsc.length ? ` · <a href="#" data-ssc-acao="xlsx">⬇ Exportar .xlsx</a>` : "") + revTodos +
+    (pode ? "" : ` · quem define o custo é o almoxarife ou Compras`) + `</div>`;
+  if(!_prodSsc.length){ cont.innerHTML = topo + `<p class="vazio">✅ Nenhuma saída de estoque a R$ 0,00.</p>`; return; }
+  const linhasSsc = _prodSsc.map(r => {
+    const acao = !pode ? "" : r.produto_tem_custo
+      ? `<button type="button" class="btn-sec btn-sm" data-ssc-revalorar="${esc(r.produto_id)}" title="O produto já tem custo: grava o custo atual nas saídas a R$ 0,00 dele">Revalorar</button>`
+      : `<button type="button" class="btn-sec btn-sm" data-ssc-definir="${esc(r.produto_id)}">Definir custo</button>`;
+    return `<tr>
+      <td>${dataBR(dataLocalISO(r.data))}</td>
+      <td><strong>${esc(r.codigo)}</strong> — ${esc(r.produto)}${r.produto_tem_custo ? ' <span class="tag verde" title="O produto já tem custo; falta revalorar a saída">tem custo</span>' : ""}</td>
+      <td class="num">${num(r.quantidade)} <span class="meta">${esc(r.unidade || "un")}</span></td>
+      <td>${esc(r.destino || "—")}</td>
+      <td>${esc(r.retirante || "—")}</td>
+      <td>${esc(r.documento || "—")}</td>
+      <td>${esc(r.registrado_por_nome || "—")}</td>
+      <td>${/* html */ acao}</td>
+    </tr>`;
+  }).join("");
+  cont.innerHTML = topo + (_prodSsc.length >= 1000 ? `<p class="meta">Mostrando as 1.000 mais recentes.</p>` : "") +
+    `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Produto</th><th class="num">Qtd</th><th>Destino</th><th>Retirou</th><th>Documento</th><th>Registrado por</th><th></th></tr></thead>
+    <tbody>${/* html */ linhasSsc}</tbody></table></div>`;
+}
+async function prodSscDefinir(id){
+  const r = _prodSsc.find(x => x.produto_id === id); if(!r) return;
+  if(await prodDefinirCusto({ id, codigo: r.codigo, nome: r.produto, unidade: r.unidade })) await prodRenderSaidasSemCusto();
+}
+async function prodSscRevalorar(id){
+  const { data, error } = await sb.rpc("estoque_revalorar_saidas_sem_custo", { p_produto: id || null });
+  if(error){ aviso("app-aviso", "Não revalorou: " + error.message, "erro"); return; }
+  aviso("app-aviso", `${num(data?.revaloradas || 0)} saída(s) revalorada(s) pelo custo atual (${num(data?.produtos || 0)} produto(s)).`, "ok");
+  await prodRenderSaidasSemCusto();
+}
+function prodSscExportar(){
+  const rows = _prodSsc.map(r => ({ "Data": dataBR(dataLocalISO(r.data)), "Código": r.codigo, "Produto": r.produto, "Unidade": r.unidade,
+    "Quantidade": Number(r.quantidade || 0), "Destino": r.destino || "", "Retirou": r.retirante || "", "Documento": r.documento || "",
+    "Registrado por": r.registrado_por_nome || "", "Produto já tem custo": r.produto_tem_custo ? "sim" : "não" }));
+  const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "SAIDAS SEM CUSTO");
+  XLSX.writeFile(wb, `saidas-sem-custo-${hojeISO()}.xlsx`);
+}
+/* todos os produtos ativos com saldo e sem custo (páginas de 1.000), com a coluna Custo em branco para a importação */
+async function prodSemCustoExportar(){
+  const lista = [];
+  for(let de = 0; ; de += 1000){
+    const { data, error } = await sb.from("produtos").select("codigo,nome,unidade,estoque_atual,categoria_id").eq("ativo", true)
+      .gt("estoque_atual", 0).lte("custo_ultimo", 0).order("codigo").range(de, de + 999);
+    if(error){ aviso("app-aviso", "Não consegui listar os produtos sem custo: " + error.message, "erro"); return; }
+    lista.push(...(data || []));
+    if(!data || data.length < 1000) break;
+  }
+  const rows = lista.map(p => ({ "Código": p.codigo, "Nome": p.nome, "Unidade": p.unidade, "Saldo": Number(p.estoque_atual || 0),
+    "Categoria": _prodCategorias[p.categoria_id] || "", "Custo": "" }));
+  const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "SEM CUSTO");
+  XLSX.writeFile(wb, `produtos-sem-custo-${hojeISO()}.xlsx`);
+}
+/* planilha com as colunas Código e Custo (a do "Baixar .xlsx" serve); só produto sem custo recebe, o resto volta no resumo */
+async function prodImportarCustos(file){
+  if(!file) return;
+  if(!prodPodeDefinirCusto()){ aviso("app-aviso", "Seu perfil não define o custo do produto.", "erro"); return; }
+  let planilha;
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false });
+    planilha = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+  } catch(e){ aviso("app-aviso", "Não consegui ler a planilha: " + e.message, "erro"); return; }
+  const norm = k => String(k || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const campo = (o, nomes) => { const k = Object.keys(o).find(x => nomes.includes(norm(x))); return k ? o[k] : ""; };
+  const itens = planilha.map(o => ({ codigo: String(campo(o, ["codigo", "cod"]) ?? "").trim(), custo: campo(o, ["custo", "custo unitario", "valor unitario"]) }))
+    .filter(i => i.codigo && String(i.custo).trim() !== "")
+    .map(i => { const n = prodNumeroBR(i.custo); return { codigo: i.codigo, custo: isNaN(n) ? String(i.custo) : String(n) }; });
+  if(!itens.length){ aviso("app-aviso", "A planilha não tem linhas com Código e Custo preenchidos.", "erro"); return; }
+  if(!confirm(`Gravar o custo de ${itens.length} produto(s)?\nSó os que estão sem custo recebem; as saídas a R$ 0,00 deles são revaloradas.`)) return;
+  const tot = { definidos: 0, revaloradas: 0, ignorados: [], nao_achados: [], invalidos: [] };
+  for(let i = 0; i < itens.length; i += 2000){
+    const { data, error } = await sb.rpc("produto_definir_custo_lote", { p_itens: itens.slice(i, i + 2000) });
+    if(error){ aviso("app-aviso", `A importação parou na linha ${i + 1}: ${error.message}`, "erro"); break; }
+    tot.definidos += Number(data?.definidos || 0); tot.revaloradas += Number(data?.revaloradas || 0);
+    ["ignorados", "nao_achados", "invalidos"].forEach(k => tot[k].push(...(data?.[k] || [])));
+  }
+  const resumo = (t, a) => a.length ? ` · ${t} (${a.length}): ${a.slice(0, 15).join(", ")}${a.length > 15 ? "…" : ""}` : "";
+  aviso("app-aviso", `Custos gravados em ${tot.definidos} produto(s), ${tot.revaloradas} saída(s) revalorada(s)` + resumo("já tinham custo", tot.ignorados) +
+    resumo("código não achado", tot.nao_achados) + resumo("custo inválido", tot.invalidos), tot.nao_achados.length || tot.invalidos.length ? "aviso" : "ok");
+  await carregarProdutos();
 }
 
 /* ---------- Painel <-> Ficha ---------- */
@@ -445,6 +596,8 @@ function abrirFichaProdVisual(p){
   $("prod-ficha-categoria-chip").textContent = _prodCategorias[p.categoria_id] || "—";
   $("prod-ficha-estoque-chip").textContent = `${num(p.estoque_atual||0)} ${p.unidade||"un"}`;
   $("prod-ficha-custo-chip").textContent = brl(p.custo_ultimo||0);
+  const bdc = $("btn-prod-definir-custo");   // hotfix saída sem custo: só produto salvo, sem custo, e quem pode
+  if(bdc) bdc.style.display = prodEditId && !(Number(p.custo_ultimo) > 0) && p.tipo_item !== "servico" && prodPodeDefinirCusto() ? "" : "none";
   const conf = p.inventario_conferido;
   $("prod-ficha-conf-chip").innerHTML = conf
     ? '<span class="tag verde">Conferido</span>'
@@ -623,9 +776,26 @@ function ligarProdutos(){
     else if(m === "saldo"){ _prodTodos = false; _prodPagina = 0; }
     else if(m === "ant"){ if(_prodPagina > 0) _prodPagina--; }
     else if(m === "prox"){ if((_prodPagina + 1) * PROD_PAGINA < _prodTotalFiltro) _prodPagina++; }
+    else if(m === "sc-xlsx"){ prodSemCustoExportar(); return; }          // hotfix saída sem custo
+    else if(m === "sc-importar"){ $("prod-custo-arq")?.click(); return; }
     carregarProdutos();
   });
+  $("prod-custo-arq")?.addEventListener("change", async e => { const f = e.target.files?.[0]; e.target.value = ""; await prodImportarCustos(f); });
+  $("btn-prod-definir-custo")?.addEventListener("click", () => comBotaoTravado("btn-prod-definir-custo", async () => {
+    const p = { id: prodEditId, codigo: $("prod-codigo").value, nome: $("prod-nome").value, unidade: $("prod-unidade").value };
+    if(await prodDefinirCusto(p)) await abrirProduto(prodEditId);
+  }));
   $("prod-conteudo")?.addEventListener("click", (e) => {
+    // hotfix saída sem custo: ações da visão "Saídas sem custo"
+    const sd = e.target.closest("[data-ssc-definir]"); if(sd){ prodSscDefinir(sd.dataset.sscDefinir); return; }
+    const sr = e.target.closest("[data-ssc-revalorar]"); if(sr){ prodSscRevalorar(sr.dataset.sscRevalorar); return; }
+    const sa = e.target.closest("[data-ssc-acao]");
+    if(sa){
+      e.preventDefault();
+      if(sa.dataset.sscAcao === "xlsx") prodSscExportar();
+      else if(sa.dataset.sscAcao === "revalorar-todos" && confirm("Gravar o custo atual nas saídas a R$ 0,00 de todos os produtos que já têm custo?")) prodSscRevalorar(null);
+      return;
+    }
     const tr = e.target.closest(".linha-clicavel");
     if(tr && tr.dataset.id) abrirProduto(tr.dataset.id);
   });

@@ -276,8 +276,10 @@ function renderBalItens(){
   balAtualizarDestinoAloc();   // fase 108c: EPI entrou ou saiu da lista
   if(!_balItens.length){ tb.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum item. Bipe ou busque acima.</td></tr>`; return; }
   tb.innerHTML = _balItens.map((it, i) => { const saldo = Number(it.p.estoque_atual || 0), falta = Number(it.quantidade || 0) > saldo;
+    // hotfix saída sem custo: produto sem custo sai a R$ 0,00 (ou é recusado com a trava ligada)
+    const semCusto = !(Number(it.p.custo_ultimo) > 0) ? ' <span class="tag ambar" title="Produto sem custo: a saída vai a R$ 0,00, ou é recusada com a trava ligada. Quem define o custo é o almoxarife ou Compras.">sem custo</span>' : "";
     return `<tr data-i="${i}" class="${falta && it.p.controle_reposicao ? "est-rep-critico" : ""}">
-      <td><strong>${esc(it.p.codigo)}</strong></td><td>${esc(it.p.nome)}${balEhEpi(it.p) ? (it.p.categoria_custo === "uniforme" ? ' <span class="tag cinza" title="uniforme: exige quem retira e entra na ficha do colaborador">uniforme</span>' : ' <span class="tag azul" title="EPI: exige quem retira e entra na ficha de EPI do colaborador">EPI</span>') : ""}</td>
+      <td><strong>${esc(it.p.codigo)}</strong></td><td>${esc(it.p.nome)}${balEhEpi(it.p) ? (it.p.categoria_custo === "uniforme" ? ' <span class="tag cinza" title="uniforme: exige quem retira e entra na ficha do colaborador">uniforme</span>' : ' <span class="tag azul" title="EPI: exige quem retira e entra na ficha de EPI do colaborador">EPI</span>') : ""}${/* html */ semCusto}</td>
       <td class="num">${num(saldo)} <span class="meta">${esc(it.p.unidade || "un")}</span>${falta ? `<div class="meta ${it.p.controle_reposicao ? "txt-perigo" : ""}">${it.p.controle_reposicao ? "saldo insuficiente" : "vai ficar negativo"}</div>` : ""}</td>
       <td><input type="number" class="bal-q" step="0.001" min="0.001" value="${esc(it.quantidade)}" style="width:86px;text-align:right;" /></td>
       <td><input class="bal-o" value="${esc(it.observacoes || "")}" placeholder="opcional" style="width:100%;" /></td>
@@ -306,7 +308,22 @@ async function registrarSaidaBalcao(){
     p_itens: itens.map(i => ({ produto_id: i.p.id, quantidade: Number(i.quantidade), observacoes: i.observacoes || null })),
     p_documento: $("bal-doc").value.trim() || null
   });
-  if(error){ aviso("app-aviso", "Saída não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  if(error){
+    // hotfix saída sem custo: a trava recusou um item sem custo (hint sem_custo:<produto_id>). Quem pode define o custo e a
+    // saída é repetida; quem não pode recebe o recado para o almoxarife ou Compras.
+    const semCusto = String(error.hint || "").match(/^sem_custo:([0-9a-f-]{36})$/i);
+    const it = semCusto ? itens.find(x => x.p.id === semCusto[1]) : null;
+    if(it && typeof prodDefinirCusto === "function"){
+      if(await prodDefinirCusto(it.p)){
+        const { data: pr } = await sb.from("produtos").select("custo_ultimo").eq("id", it.p.id).maybeSingle();
+        it.p.custo_ultimo = pr?.custo_ultimo ?? it.p.custo_ultimo;
+        renderBalItens();
+        return registrarSaidaBalcao();
+      }
+      return;
+    }
+    aviso("app-aviso", "Saída não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return;
+  }
   const ids = data || [], n = ids.length;
   aviso("app-aviso", `Saída registrada: ${n} item(ns)${retirante ? " para " + retirante.nome : ""} · ${$("bal-destino").selectedOptions[0]?.textContent || ""}.`, "ok");
   _balItens = []; _balRetirante = null; $("bal-retirante").value = ""; $("bal-doc").value = ""; $("bal-destino").value = ""; balAceMostrar(false);

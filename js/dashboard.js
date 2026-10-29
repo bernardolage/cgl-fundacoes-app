@@ -665,6 +665,9 @@ async function dashAbrirAcao(a){
       if(typeof _fabPreset !== "undefined") _fabPreset = id ? "" : "em_producao";
       if(irParaSecao("fabricacao") && id && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
       break;
+    case "produtos": // hotfix saída sem custo (29/10/2026): "Saídas de estoque sem custo" → Produtos › Saídas sem custo
+      if(irParaSecao("produtos") && /sem custo/i.test(a.titulo || "") && typeof prodAbrirSaidasSemCusto === "function") prodAbrirSaidasSemCusto();
+      break;
     case "manutencao": // fase 92: preventiva vencida/vencendo → visão Preventivas (uma TAG abre o plano dela)
       if(!irParaSecao("manutencao")) break;
       if(typeof manAbrirPreset === "function") manAbrirPreset(a.nivel === "critico" ? "preventivas_critico" : "preventivas_atencao", a.equipamento_id || null);
