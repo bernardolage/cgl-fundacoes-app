@@ -9,17 +9,17 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="d39abde" />
+<meta name="app-versao" content="e796d34" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=d39abde" />
+<link rel="stylesheet" href="css/estilo.css?v=e796d34" />
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=d39abde"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=d39abde"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=d39abde"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=e796d34"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=e796d34"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=e796d34"></script>
 </head>
 <body>
 
@@ -743,6 +743,9 @@
               <button type="button" class="serv-view-btn" data-view="epi" style="display:none;" title="Gasto de EPI e uniforme por colaborador, por obra e por item; trocas vencidas (fase 100)">EPI</button>
             </div>
             <button type="button" class="btn-sec func-sens" id="btn-admitir-func" title="Admissão em etapas: dados pessoais → documentos → contrato → benefícios; gera a ficha e os contratos em PDF" style="margin-left:8px;">📋 Admitir</button>
+            <!-- hotfix 224: funcionários novos pela planilha da folha, lida no navegador (js/funcionarios_importar.js) -->
+            <input type="file" id="func-imp-arquivo" accept=".xls,.xlsx,.csv" style="display:none;" />
+            <button type="button" class="btn-sec func-sens" id="btn-func-importar" title="Cadastrar funcionários novos a partir da planilha &quot;Empregados em Excel&quot; da folha. A planilha é lida aqui no navegador." style="margin-left:4px;">📥 Importar planilha</button>
             <button type="button" class="btn" id="btn-novo-funcionario">+ Novo</button>
           </div>
           <div class="serv-filtros">
@@ -1073,6 +1076,25 @@
       <!-- Admissão em etapas (fase 93a, chamado #69): dados pessoais → documentos → contrato → benefícios.
            Só RH/diretoria (botão "Admitir" tem classe func-sens). Grava funcionarios + funcionarios_sensiveis + admissoes
            e abre a ficha na aba Documentos para gerar os PDFs. Prefixo adm-. -->
+      <!-- hotfix 224: prévia da planilha de funcionários novos -->
+      <div class="modal-fundo" id="func-imp-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:1000px;">
+          <div class="modal-topo"><h3>Importar funcionários da planilha</h3><button type="button" class="btn-sec" id="btn-func-imp-fechar">×</button></div>
+          <p class="meta" id="func-imp-info">A planilha é lida aqui no navegador e não sai deste computador. Confira cada linha antes de cadastrar.</p>
+          <div id="func-imp-aviso" class="aviso"></div>
+          <div class="tabela-rola" style="margin-top:8px;">
+            <table class="itens-tabela">
+              <thead><tr><th style="width:32px;"><input type="checkbox" id="func-imp-todos" title="Marcar todos os novos" /></th><th>Nome</th><th>Função</th><th style="width:100px;">Admissão</th><th style="width:130px;">CPF</th><th>Situação</th><th style="width:150px;"></th></tr></thead>
+              <tbody id="func-imp-linhas"></tbody>
+            </table>
+          </div>
+          <p class="meta" style="margin-top:8px;">Cadastrar cria o funcionário, os dados sensíveis e a admissão em rascunho. Os PDFs da admissão saem depois pela aba Documentos da ficha, ou use "Abrir na admissão" para o fluxo completo de um funcionário.</p>
+          <div class="form-acoes compacta" style="justify-content:space-between;align-items:center;">
+            <span class="meta" id="func-imp-contagem"></span>
+            <button type="button" class="btn" id="btn-func-imp-gravar" disabled>Cadastrar selecionados</button>
+          </div>
+        </div>
+      </div>
       <div id="func-adm" style="display:none;">
         <div class="odoo-sheet">
           <div class="odoo-actions-header">
@@ -6646,59 +6668,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=d39abde"></script>
+<script src="js/core.js?v=e796d34"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=d39abde"></script>
+<script src="js/historico.js?v=e796d34"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=d39abde"></script>
-<script src="js/fiscal_ncm.js?v=d39abde"></script>
+<script src="js/fiscal.js?v=e796d34"></script>
+<script src="js/fiscal_ncm.js?v=e796d34"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=d39abde"></script>
-<script src="js/fornecedores.js?v=d39abde"></script>
-<script src="js/apropriacoes.js?v=d39abde"></script>
-<script src="js/funcionarios.js?v=d39abde"></script>
-<script src="js/rh_documentos.js?v=d39abde"></script>
-<script src="js/servicos.js?v=d39abde"></script>
-<script src="js/produtos.js?v=d39abde"></script>
-<script src="js/estoque.js?v=d39abde"></script>
-<script src="js/separacoes.js?v=d39abde"></script>
-<script src="js/epi.js?v=d39abde"></script>
-<script src="js/compras.js?v=d39abde"></script>
-<script src="js/requisicoes.js?v=d39abde"></script>
-<script src="js/orcamentos.js?v=d39abde"></script>
-<script src="js/propostas.js?v=d39abde"></script>
-<script src="js/contratos.js?v=d39abde"></script>
-<script src="js/contas_pagar.js?v=d39abde"></script>
-<script src="js/centros_custo.js?v=d39abde"></script>
-<script src="js/carteira.js?v=d39abde"></script>
-<script src="js/obras.js?v=d39abde"></script>
-<script src="js/frota.js?v=d39abde"></script>
-<script src="js/viagens.js?v=d39abde"></script>
-<script src="js/equipamentos.js?v=d39abde"></script>
-<script src="js/vendas_bens.js?v=d39abde"></script>
-<script src="js/acessorios.js?v=d39abde"></script>
-<script src="js/reparos.js?v=d39abde"></script>
-<script src="js/manutencao.js?v=d39abde"></script>
-<script src="js/fabricacao.js?v=d39abde"></script>
-<script src="js/mobilizacoes.js?v=d39abde"></script>
-<script src="js/estacas.js?v=d39abde"></script>
-<script src="js/obra_abas.js?v=d39abde"></script>
-<script src="js/medicoes.js?v=d39abde"></script>
-<script src="js/movimentacoes.js?v=d39abde"></script>
-<script src="js/rdo_import_rg113.js?v=d39abde"></script>
-<script src="js/rdo.js?v=d39abde"></script>
-<script src="js/rdo_import_maya.js?v=d39abde"></script>
-<script src="js/geodigitus.js?v=d39abde"></script>
-<script src="js/computadores_bordo.js?v=d39abde"></script>
-<script src="js/usuarios.js?v=d39abde"></script>
-<script src="js/chamados.js?v=d39abde"></script>
-<script src="js/dashboard.js?v=d39abde"></script>
-<script src="js/rh_horas.js?v=d39abde"></script>
-<script src="js/sesmt.js?v=d39abde"></script>
-<script src="js/patrimonio.js?v=d39abde"></script>
+<script src="js/clientes.js?v=e796d34"></script>
+<script src="js/fornecedores.js?v=e796d34"></script>
+<script src="js/apropriacoes.js?v=e796d34"></script>
+<script src="js/funcionarios.js?v=e796d34"></script>
+<script src="js/funcionarios_importar.js?v=e796d34"></script>
+<script src="js/rh_documentos.js?v=e796d34"></script>
+<script src="js/servicos.js?v=e796d34"></script>
+<script src="js/produtos.js?v=e796d34"></script>
+<script src="js/estoque.js?v=e796d34"></script>
+<script src="js/separacoes.js?v=e796d34"></script>
+<script src="js/epi.js?v=e796d34"></script>
+<script src="js/compras.js?v=e796d34"></script>
+<script src="js/requisicoes.js?v=e796d34"></script>
+<script src="js/orcamentos.js?v=e796d34"></script>
+<script src="js/propostas.js?v=e796d34"></script>
+<script src="js/contratos.js?v=e796d34"></script>
+<script src="js/contas_pagar.js?v=e796d34"></script>
+<script src="js/centros_custo.js?v=e796d34"></script>
+<script src="js/carteira.js?v=e796d34"></script>
+<script src="js/obras.js?v=e796d34"></script>
+<script src="js/frota.js?v=e796d34"></script>
+<script src="js/viagens.js?v=e796d34"></script>
+<script src="js/equipamentos.js?v=e796d34"></script>
+<script src="js/vendas_bens.js?v=e796d34"></script>
+<script src="js/acessorios.js?v=e796d34"></script>
+<script src="js/reparos.js?v=e796d34"></script>
+<script src="js/manutencao.js?v=e796d34"></script>
+<script src="js/fabricacao.js?v=e796d34"></script>
+<script src="js/mobilizacoes.js?v=e796d34"></script>
+<script src="js/estacas.js?v=e796d34"></script>
+<script src="js/obra_abas.js?v=e796d34"></script>
+<script src="js/medicoes.js?v=e796d34"></script>
+<script src="js/movimentacoes.js?v=e796d34"></script>
+<script src="js/rdo_import_rg113.js?v=e796d34"></script>
+<script src="js/rdo.js?v=e796d34"></script>
+<script src="js/rdo_import_maya.js?v=e796d34"></script>
+<script src="js/geodigitus.js?v=e796d34"></script>
+<script src="js/computadores_bordo.js?v=e796d34"></script>
+<script src="js/usuarios.js?v=e796d34"></script>
+<script src="js/chamados.js?v=e796d34"></script>
+<script src="js/dashboard.js?v=e796d34"></script>
+<script src="js/rh_horas.js?v=e796d34"></script>
+<script src="js/sesmt.js?v=e796d34"></script>
+<script src="js/patrimonio.js?v=e796d34"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=d39abde"></script>
+<script src="js/sesmt_ocorrencias.js?v=e796d34"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=d39abde"></script>
+<script src="js/init.js?v=e796d34"></script>
 </body>
 </html>
