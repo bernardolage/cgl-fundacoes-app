@@ -1444,7 +1444,7 @@ function cmpAtualizarBotoes(){
   const mostra = { "btn-cmp-salvar": pode && st === "rascunho", "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
     "btn-cmp-cotacao": pode && st === "rascunho" && !novo && !leitura,   // fase 102: rascunho → em cotação
     "btn-cmp-conferir": !novo && !leitura && _cmpConfAtual.pode && _cmpConfAtual.lista.some(r => r.pendente),   // fase 102
-    "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180): módulo extra compras recebe
+    "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && cmpPodeLancarNf() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180); hotfix 221: a NF é do financeiro, quem recebe usa "Receber material"
     "btn-cmp-receber-material": cmpPodeReceber() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S57a (#221): material sem a NF
     "btn-cmp-receber-servico": cmpPodeReceberServico(),
     "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && (st === "em_cotacao" || (["aguardando_aprovacao","aprovado"].includes(st) && usuarioAtual?.cargo === "diretor")),   // hotfix 192e: depois do envio para aprovação, só a diretoria
@@ -1464,6 +1464,7 @@ function ativarTabPedido(nome){
   if(nome === "itens") $("cmp-itens")?.querySelectorAll("textarea.cmp-it").forEach(cmpCrescerTextarea);   // lote S53 (#166): a aba escondida não media o texto
 }
 async function cmpCarregarFilhas(id){
+  const bLanc0 = $("btn-cmp-lancar-nf"); if(bLanc0){ bLanc0.style.display = "none"; bLanc0.dataset.rec = ""; }   // hotfix 221: some até carregar os recebimentos deste pedido
   const [rec, tit] = await Promise.all([
     sb.from("recebimentos").select("id,status,tipo,nf_numero,nf_serie,nf_chave,nf_data_emissao,fornecedor_id,data_recebimento,total_nf,frete,vencimento,parcelas,observacoes,itens:recebimento_itens(id,descricao,unidade,quantidade_aceita,valor_unitario_nf,destino,obra_id,equipamento_id,centro_custo_id,destino_acessorio_id),anexos:recebimento_anexos(id,nome,storage_path)").eq("pedido_id", id).order("data_recebimento", { ascending: false }),
     sb.from("titulos_pagar").select("*, recebimento:recebimentos!inner(pedido_id)").eq("recebimento.pedido_id", id).order("vencimento"),
@@ -1485,6 +1486,10 @@ async function cmpCarregarFilhas(id){
     if(cmpPodeReceber() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo);">↩ Estornar</button>`);
     return b.join(" ");
   };
+  // hotfix 221: "🧾 Lançar NF" também no topo da ficha, para o financeiro, enquanto houver material recebido sem NF
+  const bLanc = $("btn-cmp-lancar-nf");
+  const semNf = verTit && cmpPodeLancarNf() ? recs.filter(r => r.status === "confirmado" && r.tipo !== "servico" && !(titsPorRec[r.id] || []).length) : [];
+  if(bLanc){ bLanc.style.display = semNf.length ? "" : "none"; bLanc.dataset.rec = semNf.length ? semNf[semNf.length - 1].id : ""; }   // o mais antigo
   $("cmp-rec-lista").innerHTML = rec.error ? `<p class="vazio">Erro: ${esc(rec.error.message)}</p>` : !recs.length ? `<p class="vazio">Nenhum recebimento. Use "Receber material" ou "Receber NF" quando a mercadoria chegar.</p>` :
     recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}${r.status === "confirmado" && !r.nf_numero && r.tipo !== "servico" && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="tag ambar">aguardando NF</span>' : ""}</h3>
       <span style="margin-left:auto;">${/* html */ acoesRec(r)} ${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
@@ -2401,6 +2406,11 @@ async function cmpAcao(acao){
   if(acao === "pdf_sem_valor"){ return cmpPdfPedido(true); }   // lote S55 (#179)
   if(acao === "receber"){ return abrirRecebimento(_cmpAtual); }
   if(acao === "receber_material"){ return abrirRecebimento(_cmpAtual, "material"); }   // lote S57a (#221)
+  if(acao === "lancar_nf"){   // hotfix 221: o recebimento de material mais antigo ainda sem NF
+    const id = $("btn-cmp-lancar-nf")?.dataset.rec, r = id && (_cmpRecsAtual || []).find(x => x.id === id);
+    if(!r){ aviso("app-aviso", "Nenhum material recebido aguardando NF neste pedido. Veja a aba Recebimentos.", "aviso"); return; }
+    return abrirLancarNf(r.id);
+  }
   if(acao === "receber_servico"){ return abrirReceberServico(); }   // fase 78
   if(acao === "conferir"){ return cmpConferirRecebimentos(); }      // fase 102
   let id = _cmpEditId;
