@@ -2247,11 +2247,15 @@ function parseSoftSaci(text){
 async function processarCSV(){
   const inp = $("csv-arquivo");
   if($("csv-aviso")){ $("csv-aviso").textContent = ""; $("csv-aviso").className = "aviso"; }
-  if(!inp.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo.","erro"); if($("csv-aviso")) aviso("csv-aviso","Selecione um arquivo (PDF, foto, XLSX do Maya, CSV ou TXT).","erro"); return; }
+  if(!inp.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo.","erro"); if($("csv-aviso")) aviso("csv-aviso","Selecione um arquivo (PDF, foto, XLSX do Maya ou RG 11.3 da raiz, CSV ou TXT).","erro"); return; }
   const file = inp.files[0];
   const mediaIA = _ehArquivoIA(file);
   if(mediaIA){ await processarArquivoIA(file, mediaIA); return; }
-  if(typeof _ehArquivoXlsx === "function" && _ehArquivoXlsx(file)){ await processarArquivoXlsxMaya(file); return; } // Relatório Diário do Maya (.xlsx)
+  if(typeof _ehArquivoXlsx === "function" && _ehArquivoXlsx(file)){
+    // lote S57 (#220): a planilha RG 11.3 da estaca raiz (aba SEPARADOS) tem leitor próprio; o resto segue para o Maya
+    if(typeof processarArquivoXlsxRG113 === "function" && await processarArquivoXlsxRG113(file)) return;
+    await processarArquivoXlsxMaya(file); return; // Relatório Diário do Maya (.xlsx)
+  }
   _iaExtras = null; _iaOrigem = null;
   const text = await file.text();
   const formato = detectarFormatoArquivo(text);
@@ -2415,7 +2419,9 @@ async function montarPreviewDias(data, origem, obraSel){
         justificativa: (Array.isArray(d.justificativa) ? d.justificativa : [])
           .map(j => ({ h_inicial: j.h_inicial || null, h_final: j.h_final || null, motivo: (j.motivo || "").trim() || null }))
           .filter(j => j.h_inicial || j.h_final || j.motivo),
-        injecao, responsavel_diario: d.responsavel || null, responsavel_sugerido_id: null
+        injecao, responsavel_diario: d.responsavel || null, responsavel_sugerido_id: null,
+        raiz_dados: d.raiz_dados || null,   // lote S57 (#220): local e bloco do RG 11.3 → rdo_raiz_dados
+        maquina_dia: (d.equipamento_texto || d.maquina || "").trim() || null   // lote S57: máquina do dia sem estaca (só o RG 11.3 usa)
       };
       // chamado #30: rdo.responsavel_id aponta para profiles; o funcionário sugerido só pré-seleciona o nome
       // no select da conferência, e o nome escolhido vai para as observações do RDO
@@ -2465,6 +2471,8 @@ async function montarPreviewDias(data, origem, obraSel){
           maquina_codigo: maq || (maqSugerida && !_csvMaqEstrito ? maqSugerida.codigo : ""),
           equipamento_id: (rdoCasarMaquinaImport(maq) || (!maq && !_csvMaqEstrito ? maqSugerida : null) || {}).id || null,
           observacoes: e.observacoes || null,
+          // lote S57 (#220): nº do boletim físico (coluna RDO do RG 11.3)
+          numero_boletim_fisico: e.numero_boletim_fisico != null && String(e.numero_boletim_fisico).trim() ? String(e.numero_boletim_fisico).trim() : null,
           origem_dados: origem
         });
       });
@@ -2618,7 +2626,13 @@ function rdoDiariosImport(){
       const eq = rdoMaqDaLinhaImport(r);
       (grupos[eq || ""] = grupos[eq || ""] || { dia, eq, linhas: [] }).linhas.push(r);
     });
-    if(!Object.keys(grupos).length) grupos[""] = { dia, eq: null, linhas: [] };
+    if(!Object.keys(grupos).length){
+      // lote S57 (#220): no RG 11.3 a máquina é a do diário inteiro (coluna EQUIPAMENTO): o dia sem estaca vai para o diário
+      // dela, e não para um diário sem máquina em "Para regularizar"
+      const maqDia = _iaOrigem === "xlsx_rg113" ? (_iaExtras?.[dia]?.maquina_dia || "") : "";
+      const eqDia = maqDia ? ((rdoCasarMaquinaImport(maqDia) || {}).id || _csvMapaManual[maqDia] || null) : null;
+      grupos[""] = { dia, eq: eqDia, linhas: [] };
+    }
     Object.values(grupos).forEach(g => out.push(g));
   });
   return out;
@@ -3321,6 +3335,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
     : formato === "ia_pdf" ? "🤖 <strong>Lido por IA</strong> de um PDF — confira a tabela abaixo antes de importar"
     : formato === "ia_foto" ? "🤖 <strong>Lido por IA</strong> de uma foto/scan — confira a tabela abaixo antes de importar"
     : formato === "xlsx_maya" ? "📊 <strong>Planilha do Maya</strong> (Relatório Diário .xlsx) — estacas, observações e ocorrências; confira a tabela abaixo antes de importar"
+    : formato === "xlsx_rg113" ? "📊 <strong>Planilha RG 11.3</strong> (diário de estaca raiz .xlsx, aba SEPARADOS) — trechos, injeção, atividades hora a hora e equipe; confira a tabela abaixo antes de importar"
     : "📄 <strong>Formato detectado:</strong> Geodigitus (CSV)";
   const blocoFormato = `<div style="background:#eef2f6;border-left:3px solid var(--txt-fraco);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-xs);color:#495057;">${fmtLbl}</div>`;
 
@@ -3427,6 +3442,63 @@ async function rdoGravarExecucoesImport(rdoId, exs, dia){
   return out;
 }
 
+/* lote S57 (#220): no RG 11.3, a estaca que já tem execução no mesmo dia da obra (lida antes por PDF ou lançada à mão)
+   não ganha uma segunda. A RPC rdo_import_execucao_conciliar só concilia com a do Geodigitus e inseriria outra linha;
+   aqui a execução existente só recebe o que está vazio nela (campos, observação nova e, se ela não tiver nenhum, os
+   trechos de solo). A do Geodigitus segue para a RPC (pulada lá). Devolve { indices, conciliadas, trechos }. */
+async function rdoRg113ConciliarExistentes(obraId, dia, exs, ests){
+  const out = { indices: new Set(), conciliadas: 0, trechos: 0 };
+  const { data: ja, error } = await sb.from("rdo_execucao_estaca")
+    .select("id,rdo_id,estaca_numero,estaca_numero_corrigido,modalidade_execucao,origem_dados,estaca_id,diametro_mm,profundidade_executada,perfuracao_de_m,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,inclinacao,numero_boletim_fisico,equipamento_id,observacoes,rdo!inner(obra_id,data)")
+    .eq("rdo.obra_id", obraId).eq("rdo.data", dia);
+  if(error) throw new Error(`Execuções já gravadas em ${dia}: ${error.message}`);
+  if(!ja || !ja.length) return out;
+  const chave = (n, m) => normalizarNumeroEstaca(n || "") + "|" + (m || "furo_normal");
+  const CAMPOS = ["estaca_id", "diametro_mm", "profundidade_executada", "perfuracao_de_m", "perfuracao_ate_m", "perfuracao_inicio",
+    "perfuracao_fim", "inclinacao", "numero_boletim_fisico", "equipamento_id"];
+  for(let i = 0; i < exs.length; i++){
+    const x = exs[i];
+    const alvo = ja.find(j => chave(j.estaca_numero_corrigido || j.estaca_numero, j.modalidade_execucao) === chave(x.estaca_numero, x.modalidade_execucao));
+    if(!alvo || alvo.origem_dados === "geodigitus_s3") continue;
+    const upd = {};
+    CAMPOS.forEach(c => { if((alvo[c] == null || alvo[c] === "") && x[c] != null && x[c] !== "") upd[c] = x[c]; });
+    if(x.observacoes && !String(alvo.observacoes || "").includes(x.observacoes)) upd.observacoes = alvo.observacoes ? alvo.observacoes + "\n" + x.observacoes : x.observacoes;
+    if(Object.keys(upd).length){
+      const { error: eUp } = await sb.from("rdo_execucao_estaca").update(upd).eq("id", alvo.id);
+      if(eUp) console.warn(`Estaca ${x.estaca_numero} de ${dia} não completada:`, eUp.message);
+    }
+    const trechos = (ests[i] && ests[i].trechos) || [];
+    if(trechos.length){
+      const { count } = await sb.from("rdo_raiz_solo").select("id", { count: "exact", head: true }).eq("execucao_id", alvo.id);
+      if(count === 0){
+        const { error: eSolo } = await sb.from("rdo_raiz_solo").insert(trechos.map((t, ti) => ({ rdo_id: alvo.rdo_id, execucao_id: alvo.id, ordem: ti + 1,
+          inicio_ml: t.de ?? null, final_ml: t.ate ?? null, classificacao: t.solo || null, ferramenta: t.ferramenta || null })));
+        if(eSolo) console.warn(`Trechos de ${x.estaca_numero} de ${dia} não gravados:`, eSolo.message);
+        else out.trechos += trechos.length;
+      }
+    }
+    out.indices.add(i); out.conciliadas++;
+  }
+  return out;
+}
+/* lote S57 (#220): rdo_raiz_dados (1 por diário) recebe local e bloco da planilha; o que já está preenchido fica */
+async function rdoCompletarRaizDados(rdoId, rd, dia){
+  const { data: atual, error } = await sb.from("rdo_raiz_dados").select("id,local_obra,bloco").eq("rdo_id", rdoId).maybeSingle();
+  if(error){ console.warn("Dados da raiz de " + dia + ":", error.message); return; }
+  if(!atual){
+    const { error: eIns } = await sb.from("rdo_raiz_dados").insert({ rdo_id: rdoId, local_obra: rd.local_obra || null, bloco: rd.bloco || null });
+    if(eIns) console.warn("Dados da raiz de " + dia + " não gravados:", eIns.message);
+    return;
+  }
+  const upd = {};
+  if(!atual.local_obra && rd.local_obra) upd.local_obra = rd.local_obra;
+  if(!atual.bloco && rd.bloco) upd.bloco = rd.bloco;
+  if(Object.keys(upd).length){
+    const { error: eUp } = await sb.from("rdo_raiz_dados").update(upd).eq("id", atual.id);
+    if(eUp) console.warn("Dados da raiz de " + dia + " não completados:", eUp.message);
+  }
+}
+
 async function confirmarImportCSV(){
   if(!_csvParsed){ aviso("app-aviso","Processe o arquivo primeiro.","erro"); return; }
   lerConferenciaIA(); // import por IA: o que está na tabela de conferência é o que vale
@@ -3525,7 +3597,17 @@ async function confirmarImportCSV(){
       // Upsert do RDO (cria se não existe): chave obra + data + tipo + máquina
       let qEx = sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", dia).eq("tipo_servico", tipo);
       qEx = eqId ? qEx.eq("equipamento_id", eqId) : qEx.is("equipamento_id", null);
-      const { data: rdoExist } = await qEx.maybeSingle();
+      let { data: rdoExist } = await qEx.maybeSingle();
+      // lote S57 (#220): no RG 11.3, o diário do dia lido antes (PDF) sem máquina é o mesmo diário da TAG da planilha:
+      // reaproveita e completa a máquina, em vez de abrir um segundo diário no dia
+      if(!rdoExist && eqId && _iaOrigem === "xlsx_rg113"){
+        const { data: rdoSemMaqDia } = await sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", dia).eq("tipo_servico", tipo).is("equipamento_id", null).limit(1);
+        if(rdoSemMaqDia && rdoSemMaqDia.length){
+          rdoExist = rdoSemMaqDia[0];
+          const { error: eMaq } = await sb.from("rdo").update({ equipamento_id: eqId }).eq("id", rdoExist.id).is("equipamento_id", null);
+          if(eMaq) console.warn("Máquina do diário de " + dia + " não completada:", eMaq.message);
+        }
+      }
       let rdoId;
       if(rdoExist){
         rdoId = rdoExist.id;
@@ -3583,15 +3665,23 @@ async function confirmarImportCSV(){
           equipamento_id: equipId || eqId,   // fase 94: a linha herda a máquina do diário
           maquina_codigo: e.maquina_codigo,
           observacoes: e.observacoes,
+          numero_boletim_fisico: e.numero_boletim_fisico || null,   // lote S57 (#220)
           modalidade_execucao: e.modalidade_execucao || "furo_normal",
           origem_dados: e.origem_dados || "csv_geodigitus"
         };
       });
+      // lote S57 (#220): o RG 11.3 concilia antes com a execução que o dia já tem (lida por PDF ou lançada à mão)
+      const rc = _iaOrigem === "xlsx_rg113" ? await rdoRg113ConciliarExistentes(obra_id, dia, exs, ests) : { indices: new Set(), conciliadas: 0, trechos: 0 };
+      const idxNovos = exs.map((_, i) => i).filter(i => !rc.indices.has(i));
       // fase 107a: cada execução pela RPC rdo_import_execucao_conciliar (a mesma da sync do Geodigitus): concilia com a da
       // obra no mesmo dia e número, pula a que já veio do Geodigitus; só a inserida agora recebe os trechos de solo
-      const gx = await rdoGravarExecucoesImport(rdoId, exs, dia);
-      const execIds = gx.ids.map(id => id ? { id } : null);
-      totalExecs += gx.inseridas; totalGeo += gx.puladasGeo; totalConc += gx.conciliadas;
+      const gx = await rdoGravarExecucoesImport(rdoId, idxNovos.map(i => exs[i]), dia);
+      const execIds = [];
+      idxNovos.forEach((i, k) => { execIds[i] = gx.ids[k] ? { id: gx.ids[k] } : null; });
+      totalExecs += gx.inseridas; totalGeo += gx.puladasGeo; totalConc += gx.conciliadas + rc.conciliadas; totalTrechos += rc.trechos;
+      // lote S57 (#220): local e bloco do RG 11.3 → rdo_raiz_dados do diário principal do dia (só completa o que está vazio)
+      const rdIA = _iaExtras?.[dia]?.raiz_dados;
+      if(rdIA && ehPrincipal && (rdIA.local_obra || rdIA.bloco)) await rdoCompletarRaizDados(rdoId, rdIA, dia);
       // Trechos de solo/ferramenta → rdo_raiz_solo (por execução)
       const solos = [];
       ests.forEach((e, i) => {
@@ -3643,7 +3733,13 @@ async function confirmarImportCSV(){
         if(eqA) return eqA === eqId || (ehPrincipal && !grupos.some(x => x.dia === dia && x.eq === eqA));
         return ehPrincipal;
       });
-      if(abIA.length && !rdoExist){
+      // lote S57 (#220): no RG 11.3 o diário reaproveitado (lido por PDF) sem nenhum abastecimento recebe o da planilha
+      let abNoReaproveitado = false;
+      if(abIA.length && rdoExist && _iaOrigem === "xlsx_rg113"){
+        const { count: nAb } = await sb.from("rdo_abastecimento").select("id", { count: "exact", head: true }).eq("rdo_id", rdoId);
+        abNoReaproveitado = nAb === 0;
+      }
+      if(abIA.length && (!rdoExist || abNoReaproveitado)){
         const linhasAb = abIA.map((a, i) => {
           return { rdo_id: rdoId, equipamento_id: maqAbast(a) || eqId || null, maquina_codigo: a.maquina || null,
             combustivel: a.combustivel || "diesel", quantidade: a.quantidade ?? null, unidade: a.unidade || "L", horimetro: a.horimetro ?? null,

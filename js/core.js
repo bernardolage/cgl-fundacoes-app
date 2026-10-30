@@ -985,11 +985,13 @@ function temModuloExtra(modulo){
   const ate = usuarioAtual.modulos_extras_ate;
   return !ate || String(ate).slice(0, 10) >= (typeof hojeISO === "function" ? hojeISO() : new Date().toISOString().slice(0, 10));
 }
-function podeVerOrcamentos(){ return podeVerComercial() || temModuloExtra("orcamentos"); }
+// Lote S57b (#211): o extra "orcamentos_leitura" abre a tela só para ler (Pedro e Sergio); a escrita continua no
+// cargo comercial/admin/diretor ou no extra "orcamentos" (orcPodeEditar em js/orcamentos.js; a RLS barra no banco).
+function podeVerOrcamentos(){ return podeVerComercial() || temModuloExtra("orcamentos") || temModuloExtra("orcamentos_leitura"); }
 /* Lote S55 (#180): seção do menu que um módulo extra libera mesmo quando o cargo a esconde (SECOES_OCULTAS_POR_CARGO).
    Orçamentos já fazia isso por podeVerOrcamentos (hotfix 113); Compras entra pelo módulo "compras" (Maria Eduarda:
    requisição e recebimento de NF). Entradas novas aqui, sem reestruturar (a fase 109a também acrescenta). */
-const SECOES_POR_MODULO_EXTRA = { orcamentos: "orcamentos", compras: "compras" };
+const SECOES_POR_MODULO_EXTRA = { orcamentos: "orcamentos", orcamentos_leitura: "orcamentos", compras: "compras" };
 function secaoLiberadaPorExtra(secao){
   return Object.entries(SECOES_POR_MODULO_EXTRA).some(([modulo, sec]) => sec === secao && temModuloExtra(modulo));
 }
@@ -1413,8 +1415,13 @@ function iniciarVerificacaoVersao(){
   document.querySelectorAll(APP_MODAIS).forEach(m => obs.observe(m, { attributes: true, attributeFilter: ["style", "class"] }));
 
   verificarVersaoApp();
-  setInterval(verificarVersaoApp, APP_VERSAO_INTERVALO_MS);
-  document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") verificarVersaoApp(30000); });
+  // lote S57b (#218): o mesmo timer de 5 min e a volta à aba atualizam o badge de menções do item Início (js/dashboard.js)
+  setInterval(() => { verificarVersaoApp(); if(typeof dashAtualizarBadgeMencoes === "function") dashAtualizarBadgeMencoes(); }, APP_VERSAO_INTERVALO_MS);
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState !== "visible") return;
+    verificarVersaoApp(30000);
+    if(typeof dashAtualizarBadgeMencoes === "function") dashAtualizarBadgeMencoes();
+  });
 }
 
 /* Na carga (antes do login): index.html velho vindo do cache com versao.json já novo → recarrega uma

@@ -7,6 +7,99 @@ let _fornecedores = [];
 let _fornView     = "lista";
 let fornEditId    = null;
 
+/* ====================================================================
+   Lote S57b (#216): CPF/CNPJ só com dígitos (o banco normaliza e confere: fornecedores_cpf_cnpj_formato),
+   duplicidade conferida ao sair do campo e ao salvar (CNPJ/CPF igual bloqueia; mesma raiz de 8 dígitos pergunta,
+   por causa das filiais) e dados do CNPJ pela BrasilAPI (fiscalBuscarCnpj em js/fiscal.js; só CNPJ, CPF nunca sai).
+   ==================================================================== */
+let _fornDocDupId      = null;   // fornecedor que já tem este documento (bloqueia o salvar)
+let _fornRaizConfirmada = "";    // CNPJ cuja raiz repetida o usuário já confirmou
+function fornDocDigitos(){ return ($("forn-doc")?.value || "").replace(/\D/g, ""); }
+function fornFormatarDoc(doc){
+  const d = String(doc || "").replace(/\D/g, "");
+  if(d.length === 14) return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  if(d.length === 11) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  return doc || "";
+}
+function fornDocStatus(txt, tipo){
+  const el = $("forn-doc-status"); if(!el) return;
+  el.textContent = txt || "";
+  el.classList.toggle("txt-perigo", tipo === "erro");
+}
+function fornMostrarDup(f){
+  _fornDocDupId = f ? f.id : null;
+  const box = $("forn-doc-dup"); if(!box) return;
+  box.style.display = f ? "" : "none";
+  const t = $("forn-doc-dup-txt");
+  if(t) t.textContent = f ? `Já existe "${f.razao_social}" com este ${fornDocDigitos().length === 14 ? "CNPJ" : "CPF"}. Não dá para cadastrar de novo.` : "";
+}
+/* Confere no banco (o documento é gravado só com dígitos). Devolve false quando o salvar deve parar:
+   documento igual (bloqueia) ou mesma raiz de CNPJ sem confirmação. Só confere se o documento mudou. */
+async function fornConferirDuplicidade(){
+  const d = fornDocDigitos();
+  const el = $("forn-doc");
+  fornMostrarDup(null);
+  if(!(d.length === 11 || d.length === 14) || (el && el.dataset.original === d)) return true;
+  let q = sb.from("fornecedores").select("id,razao_social,cpf_cnpj")
+    .like("cpf_cnpj", (d.length === 14 ? d.slice(0, 8) : d) + "%").limit(20);
+  if(fornEditId) q = q.neq("id", fornEditId);
+  const { data, error } = await q;
+  if(error) return true;   // sem conferência aqui; o índice único do banco segura o documento igual
+  const iguais = (data || []).filter(f => f.cpf_cnpj === d);
+  if(iguais.length){ fornMostrarDup(iguais[0]); return false; }
+  const raiz = d.length === 14 ? (data || []).filter(f => String(f.cpf_cnpj || "").length === 14) : [];
+  if(raiz.length && _fornRaizConfirmada !== d){
+    if(!confirm(`Já existe ${raiz[0].razao_social} com a mesma raiz de CNPJ (filial?). Cadastrar mesmo assim?`)){
+      fornDocStatus("Mesma raiz de CNPJ de outro fornecedor: confira antes de salvar.", "erro");
+      return false;
+    }
+    _fornRaizConfirmada = d;
+  }
+  return true;
+}
+/* BrasilAPI: preenche só os campos vazios. forcar = botão (busca de novo o mesmo CNPJ). */
+async function fornBuscarCnpj(forcar){
+  const d = fornDocDigitos();
+  const el = $("forn-doc");
+  if(d.length !== 14){
+    if(forcar) fornDocStatus(d.length === 11 ? "CPF não é consultado fora do app; preencha os dados à mão." : "Informe o CNPJ com 14 dígitos.", "erro");
+    return;
+  }
+  if(!forcar && el && el.dataset.ultimo === d) return;
+  if(el) el.dataset.ultimo = d;
+  if(typeof fiscalBuscarCnpj !== "function") return;
+  fornDocStatus("Buscando o CNPJ na BrasilAPI…");
+  const r = await fiscalBuscarCnpj(d);
+  if(r.erro){ fornDocStatus(r.erro, "erro"); return; }
+  const pos = (id, v) => { const c = $(id); if(!c || !v || String(c.value || "").trim()) return; c.value = v; };
+  pos("forn-razao", r.razao_social);
+  pos("forn-fantasia", r.nome_fantasia);
+  pos("forn-cep", r.cep);
+  pos("forn-logradouro", r.logradouro);
+  pos("forn-numero", r.numero);
+  pos("forn-complemento", r.complemento);
+  pos("forn-bairro", r.bairro);
+  pos("forn-cidade", r.cidade);
+  if($("forn-uf") && !$("forn-uf").value && r.uf && [...$("forn-uf").options].some(o => o.value === r.uf)) $("forn-uf").value = r.uf;
+  pos("forn-tel", r.telefone);
+  pos("forn-email", r.email);
+  if($("forn-tipo") && $("forn-tipo").value !== "juridica") $("forn-tipo").value = "juridica";
+  if(!r.ativa){
+    fornDocStatus(`Atenção: situação cadastral na Receita = ${r.situacao}.`, "erro");
+    aviso("app-aviso", `CNPJ com situação cadastral "${r.situacao}" na Receita. Confira antes de comprar deste fornecedor.`, "aviso");
+  } else {
+    fornDocStatus(`${r.razao_social || "CNPJ encontrado"} · situação ${r.situacao || "ativa"} (campos vazios preenchidos)`);
+  }
+}
+async function fornAoSairDoDoc(){
+  const d = fornDocDigitos();
+  const el = $("forn-doc");
+  if(el && (d.length === 11 || d.length === 14)) el.value = fornFormatarDoc(d);
+  fornDocStatus("");
+  if(!(await fornConferirDuplicidade())) return;
+  await fornBuscarCnpj(false);
+}
+
 /* ---------- Carga ---------- */
 async function carregarListaFornecedores(){
   const { data, error } = await sb.from("fornecedores")
@@ -26,7 +119,7 @@ function fornFiltrados(){
     if(fAtivo === "inativos" && f.ativo !== false) return false;
     if(fCat && (f.categoria||"").toLowerCase() !== fCat) return false;
     if(termo){
-      const alvo = `${f.razao_social||""} ${f.nome_fantasia||""} ${f.cpf_cnpj||""} ${f.cidade||""} ${f.categoria||""}`.toLowerCase();
+      const alvo = `${f.razao_social||""} ${f.nome_fantasia||""} ${f.cpf_cnpj||""} ${fornFormatarDoc(f.cpf_cnpj)} ${f.cidade||""} ${f.categoria||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -65,7 +158,7 @@ function renderFornLista(dados){
   }
   const linhas = dados.map(f => `<tr class="linha-clicavel" data-id="${esc(f.id)}">
     <td>${esc(f.razao_social)} ${tagSituacao(f.ativo)}</td>
-    <td>${esc(f.cpf_cnpj||"—")}</td>
+    <td>${esc(fornFormatarDoc(f.cpf_cnpj)||"—")}</td>
     <td>${esc([f.cidade,(f.uf||"").toUpperCase()].filter(Boolean).join("/")||"—")}</td>
     <td>${esc(f.categoria||"—")}</td>
     <td>${esc(f.telefone||"—")}</td>
@@ -95,7 +188,7 @@ function renderFornKanban(dados){
       <div class="serv-kan-card linha-clicavel" data-id="${esc(f.id)}">
         <div class="serv-kan-card-nome">${esc(f.razao_social)}</div>
         <div class="serv-kan-card-meta">
-          <span class="meta">${esc(f.cpf_cnpj || "—")}</span>
+          <span class="meta">${esc(fornFormatarDoc(f.cpf_cnpj) || "—")}</span>
         </div>
         <div class="serv-kan-card-rod">
           <span>${esc(f.cidade || "—")}</span>
@@ -124,6 +217,8 @@ function novoFornecedor(){
    "forn-bairro","forn-cidade","forn-uf","forn-obs"].forEach(k => { const el = $(k); if(el) el.value = ""; });
   $("forn-tipo").value = "juridica";
   $("forn-ativo").checked = true;
+  $("forn-doc").dataset.original = ""; $("forn-doc").dataset.ultimo = "";   // lote S57b (#216)
+  _fornRaizConfirmada = ""; fornMostrarDup(null); fornDocStatus("");
   $("btn-excluir-forn").style.display = "none";
   abrirFichaFornVisual({ razao_social: "(novo)", tipo_pessoa: "juridica", ativo: true });
   if(typeof ocultarHistorico === "function") ocultarHistorico("forn-historico");
@@ -136,7 +231,10 @@ async function abrirFornecedor(id){
   $("forn-tipo").value        = data.tipo_pessoa || "juridica";
   $("forn-razao").value       = data.razao_social || "";
   $("forn-fantasia").value    = data.nome_fantasia || "";
-  $("forn-doc").value         = data.cpf_cnpj || "";
+  $("forn-doc").value         = fornFormatarDoc(data.cpf_cnpj);   // lote S57b (#216): grava só dígitos, mostra com máscara
+  $("forn-doc").dataset.original = String(data.cpf_cnpj || "").replace(/\D/g, "");
+  $("forn-doc").dataset.ultimo   = $("forn-doc").dataset.original;
+  _fornRaizConfirmada = ""; fornMostrarDup(null); fornDocStatus("");
   $("forn-ie").value          = data.inscricao_estadual || "";
   $("forn-email").value       = data.email || "";
   $("forn-tel").value         = data.telefone || "";
@@ -161,7 +259,7 @@ function abrirFichaFornVisual(f){
   $("forn-ficha").style.display = "";
 
   $("forn-ficha-nome").textContent = f.razao_social || "(novo)";
-  $("forn-ficha-doc-chip").textContent = f.cpf_cnpj || "—";
+  $("forn-ficha-doc-chip").textContent = fornFormatarDoc(f.cpf_cnpj) || "—";
   $("forn-ficha-categoria-chip").textContent = f.categoria || "—";
   $("forn-ficha-cidade-chip").textContent = f.cidade
     ? `${f.cidade}${f.uf ? "/" + f.uf.toUpperCase() : ""}`
@@ -369,11 +467,20 @@ function ativarTabForn(nome){
 /* ---------- Salvar / excluir ---------- */
 async function salvarFornecedor(){
   if(!$("forn-razao").value.trim()){ aviso("app-aviso","Informe a razão social.","erro"); ativarTabForn("geral"); return; }
+  // lote S57b (#216): só dígitos, 11 (CPF) ou 14 (CNPJ); documento repetido não grava
+  const doc = fornDocDigitos();
+  if(doc && doc.length !== 11 && doc.length !== 14){
+    aviso("app-aviso","CPF com 11 dígitos ou CNPJ com 14 dígitos.","erro"); ativarTabForn("geral"); return;
+  }
+  if(!(await fornConferirDuplicidade())){
+    aviso("app-aviso", _fornDocDupId ? "Já existe um fornecedor com esse CPF/CNPJ: abra o existente." : "Confira o CNPJ antes de salvar.", "erro");
+    ativarTabForn("geral"); return;
+  }
   const reg = {
     tipo_pessoa:        $("forn-tipo").value,
     razao_social:       $("forn-razao").value.trim(),
     nome_fantasia:      $("forn-fantasia").value.trim() || null,
-    cpf_cnpj:           $("forn-doc").value.trim() || null,
+    cpf_cnpj:           doc || null,
     inscricao_estadual: $("forn-ie").value.trim() || null,
     email:              $("forn-email").value.trim() || null,
     telefone:           $("forn-tel").value.trim() || null,
@@ -447,6 +554,13 @@ function ligarFornecedores(){
   $("btn-voltar-forn")?.addEventListener("click", mostrarPainelForn);
   $("btn-salvar-forn")?.addEventListener("click", () => comBotaoTravado("btn-salvar-forn", salvarFornecedor));
   $("btn-excluir-forn")?.addEventListener("click", excluirFornecedor);
+  // lote S57b (#216): CNPJ → duplicidade + BrasilAPI
+  $("forn-doc")?.addEventListener("blur", fornAoSairDoDoc);
+  $("forn-doc")?.addEventListener("input", () => { fornMostrarDup(null); fornDocStatus(""); });
+  $("btn-forn-cnpj")?.addEventListener("click", async () => {
+    if(await fornConferirDuplicidade()) await fornBuscarCnpj(true);
+  });
+  $("btn-forn-abrir-dup")?.addEventListener("click", () => { if(_fornDocDupId) abrirFornecedor(_fornDocDupId); });
 
   document.querySelectorAll("#forn-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabForn(b.dataset.tab));

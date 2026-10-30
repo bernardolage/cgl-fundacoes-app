@@ -4,21 +4,22 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <!-- fase 99a (OWASP A03/A05): o navegador só roda script deste site (nada inline, nada de CDN) e só conversa com o
-     próprio site, o projeto Supabase e a ViaCEP (CEP do cadastro fiscal, fase 105a; acrescentada no merge de 27/10).
+     próprio site, o projeto Supabase, a ViaCEP (CEP do cadastro fiscal, fase 105a; acrescentada no merge de 27/10) e a
+     BrasilAPI (CNPJ do fornecedor, lote S57b #216: só o CNPJ de 14 dígitos sai do app, CPF nunca).
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="bb7ccb6" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
+<meta name="app-versao" content="80472bb" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=bb7ccb6" />
+<link rel="stylesheet" href="css/estilo.css?v=80472bb" />
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=bb7ccb6"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=bb7ccb6"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=bb7ccb6"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=80472bb"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=80472bb"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=80472bb"></script>
 </head>
 <body>
 
@@ -80,7 +81,7 @@
     <nav class="sidebar-nav">
       <button data-secao="inicio" class="ativo">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
-        <span>Início</span>
+        <span>Início</span> <span id="nav-inicio-badge" class="conf-badge"></span>
       </button>
       <button data-secao="clientes">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -257,6 +258,12 @@
           <span class="dash-topo-sub" id="dash-atualizado">—</span>
           <button type="button" class="btn-sec btn-sm" id="btn-dash-recarregar" title="Recarregar a Sala de Comando">🔄</button>
         </div>
+      </div>
+
+      <!-- lote S57b (#218): menções "@usuário" não lidas, em destaque (some com zero; saiu da Minha fila) -->
+      <div class="card compacto aviso atencao" id="dash-mencoes" style="display:none;">
+        <div class="lista-topo"><h3>💬 Você foi mencionado <span id="dash-mencoes-cont" class="contador"></span></h3></div>
+        <div id="dash-mencoes-lista"></div>
       </div>
 
       <!-- Faixa de indicadores do período -->
@@ -662,7 +669,12 @@
                 </div>
                 <div class="campo"><label>Razão social / Nome *</label><input id="forn-razao" required /></div>
                 <div class="campo"><label>Nome fantasia</label><input id="forn-fantasia" /></div>
-                <div class="campo"><label>CPF / CNPJ</label><input id="forn-doc" /></div>
+                <!-- lote S57b (#216): CNPJ busca os dados na BrasilAPI e confere duplicidade; grava só dígitos -->
+                <div class="campo"><label for="forn-doc">CPF / CNPJ</label>
+                  <div style="display:flex;gap:6px;"><input id="forn-doc" style="flex:1;" inputmode="numeric" placeholder="só números ou com máscara" /><button type="button" class="btn-sec btn-sm" id="btn-forn-cnpj" title="Preenche razão social, endereço, telefone e e-mail vazios pela BrasilAPI (só CNPJ)">🔎 Buscar CNPJ</button></div>
+                  <span class="meta" id="forn-doc-status"></span>
+                  <div class="aviso erro" id="forn-doc-dup" style="display:none;"><span id="forn-doc-dup-txt"></span> <button type="button" class="btn-sec btn-sm" id="btn-forn-abrir-dup">Abrir o existente</button></div>
+                </div>
                 <div class="campo"><label>Inscrição estadual</label><input id="forn-ie" /></div>
                 <div class="campo"><label>Categoria</label><input id="forn-categoria" placeholder="ex.: Diesel, Locação..." /></div>
                 <div class="campo"><label>Situação</label>
@@ -1644,7 +1656,7 @@
           <div class="ind ind-click" data-kpi="em_cotacao" title="Pedidos em cotação com fornecedores"><div class="num" id="cmp-kpi-cotacao">—</div><div class="rot">Em cotação</div><div class="meta" id="cmp-kpi-cotacao-sub"></div></div>
           <div class="ind ind-click" data-kpi="aprovar" title="Pedidos com chave de aprovação pendente; entre parênteses, os que têm chave que você assina (fase 108b)"><div class="num" id="cmp-kpi-aprovar" style="color:var(--marca-600);">—</div><div class="rot">Aguardando aprovação <span id="cmp-kpi-aprovar-meus"></span></div><div class="meta" id="cmp-kpi-aprovar-sub"></div></div>
           <div class="ind ind-click" data-kpi="entrega" title="Aprovados, enviados e parcialmente recebidos, mais os recebidos pelo almoxarifado que esperam a conferência de quem pediu"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando recebimento</div><div class="meta" id="cmp-kpi-entrega-sub"></div></div>
-          <div class="ind ind-click" data-kpi="financeiro" title="Recebidos e conferidos, com título a pagar ainda não exportado ao financeiro (NF recebida e programação de pagamento)"><div class="num" id="cmp-kpi-financeiro">—</div><div class="rot">Financeiro</div><div class="meta" id="cmp-kpi-financeiro-sub"></div></div>
+          <div class="ind ind-click" data-kpi="financeiro" title="Material recebido aguardando a NF (o financeiro lança a nota e os títulos) e recebidos com título a pagar ainda não exportado ao financeiro"><div class="num" id="cmp-kpi-financeiro">—</div><div class="rot">Financeiro</div><div class="meta" id="cmp-kpi-financeiro-sub"></div></div>
           <div class="ind ind-click" data-kpi="abertos" title="Todos os pedidos que ainda não terminaram: rascunho, cotação, aprovação, recebimento, conferência e financeiro"><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div><div class="meta" id="cmp-kpi-valor"></div></div>
           <div class="ind ind-click" data-kpi="finalizados" title="Recebidos, conferidos e com os títulos exportados, no período escolhido abaixo"><div class="num" id="cmp-kpi-finalizados">—</div><div class="rot">Pedidos finalizados</div><div class="meta" id="cmp-kpi-finalizados-sub"></div></div>
         </div>
@@ -1693,7 +1705,8 @@
               <button type="button" class="btn btn-sucesso cmp-acao" id="btn-cmp-conferir" data-acao="conferir" style="display:none;" title="Quem fez a requisição confere o material recebido pelo almoxarifado (fase 102)">✔ Recebi e conferi</button>
               <button type="button" class="btn btn-sucesso cmp-acao" id="btn-cmp-aprovar" data-acao="aprovar">👍 Aprovar</button>
               <button type="button" class="btn cmp-acao" id="btn-cmp-enviado" data-acao="enviado">📤 Enviado ao fornecedor</button>
-              <button type="button" class="btn cmp-acao" id="btn-cmp-receber" data-acao="receber">📥 Receber NF</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-receber-material" data-acao="receber_material" title="O material chegou e a NF ainda não (ou fica com o financeiro): dá entrada no estoque ou no destino e baixa o pedido; a NF e os títulos o financeiro lança depois (lote S57a, #221)">📦 Receber material</button>
+              <button type="button" class="btn cmp-acao" id="btn-cmp-receber" data-acao="receber" title="Material e NF de uma vez, com a nota na mão: estoque/custo, baixa do pedido e títulos a pagar">📥 Receber NF</button>
               <button type="button" class="btn cmp-acao" id="btn-cmp-receber-servico" data-acao="receber_servico" title="Serviço executado: registra com foto ou documento (fase 78)">🧰 Receber serviço</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf" data-acao="pdf">🖨️ PDF do pedido</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf-sem-valor" data-acao="pdf_sem_valor" style="display:none;" title="Itens, unidades e quantidades sem preço, IPI, total nem aprovador: para pedir preço ao fornecedor (lote S55, #179)">🧾 PDF sem valores</button>
@@ -1975,7 +1988,9 @@
           <div class="grade grade-3">
             <!-- lote S55 (#175): produto ou serviço consumido (frete, hospedagem, locação…) -->
             <div class="campo"><label>Tipo</label><select id="cmp-prod-tipo"><option value="produto">Produto</option><option value="servico">Serviço consumido</option></select></div>
-            <div class="campo largo"><label>Nome *</label><input id="cmp-prod-nome" placeholder="ex.: MANGUEIRA HIDRÁULICA 1/2 R2 · FRETE CARRETA CARGA SECA" /></div>
+            <div class="campo largo"><label>Nome *</label><input id="cmp-prod-nome" placeholder="ex.: MANGUEIRA HIDRÁULICA 1/2 R2 · FRETE CARRETA CARGA SECA" autocomplete="off" />
+              <!-- lote S57a (#210): já cadastrados parecidos com o nome (clique usa o existente; Cadastrar continua ativo) -->
+              <div class="autocomplete-lista" id="cmp-prod-sugest" style="display:none;"></div></div>
             <div class="campo"><label>Categoria</label><select id="cmp-prod-cat"></select></div>
             <div class="campo"><label>Unidade</label><select id="cmp-prod-un"></select></div>
             <!-- lote S56 (#199): NCM obrigatório no produto (serviço dispensa); (#197): código gerado no banco -->
@@ -2062,6 +2077,8 @@
               <strong id="orc-ficha-titulo" class="ficha-titulo">Novo orçamento</strong>
             </div>
           </div>
+          <!-- lote S57b (#211): acesso só de leitura (módulo extra orcamentos_leitura) -->
+          <div id="orc-aviso-leitura" class="aviso atencao" style="display:none;">🔒 Somente leitura: você pode consultar a proposta, gerar o PDF e ver os vínculos, mas não alterar.</div>
 
           <div class="odoo-statusbar" id="orc-statusbar">
             <div class="stage" data-status="rascunho">Rascunho</div>
@@ -3496,7 +3513,7 @@
       <div id="csv-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:820px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
           <div class="modal-topo">
-            <h3 class="titulo-linha">📄 Importar diário (PDF, foto, planilha do Maya ou arquivo do equipamento)</h3>
+            <h3 class="titulo-linha">📄 Importar diário (PDF, foto, planilha do Maya ou RG 11.3, ou arquivo do equipamento)</h3>
             <button type="button" class="btn-sec" id="btn-fechar-csv">×</button>
           </div>
           <p class="texto-apoio">
@@ -3504,13 +3521,14 @@
             <br>• <strong>PDF ou foto do diário</strong> (.pdf, .jpg, .png) — digital ou preenchido à mão. A IA lê cabeçalho, equipe e estacas; você <strong>confere e corrige</strong> numa tabela antes de gravar.
             <br>• <strong>Relatório Diário do Maya</strong> (.xlsx) — blocos <code>Estacas</code>, <code>Observações</code> e <code>Ocorrências</code> exatamente como o Maya exporta. Observações entram na estaca; ocorrências, período do operador e almoço entram no RDO do dia; dias só com ocorrência viram RDO sem estacas.
             <br>• <strong>Blocos complementares na mesma planilha</strong> (qualquer aba, mesmo padrão: título na coluna A, cabeçalho e linhas) — <code>Abastecimento</code>: <code>Data | Máquina | Combustível | Quantidade (L) | Horímetro | Observação</code> · <code>Fim do Expediente</code>: <code>Data | Hora | Descrição</code>. É o que o Maya não traz e hoje é lançado à mão.
+            <br>• <strong>RG 11.3 — diário de estaca raiz</strong> (.xlsx) — aba <code>SEPARADOS</code> (cabeçalho com <code>NOME ESTACA</code> e <code>D P M O</code>). Cada linha com início e fim vira atividade hora a hora; as linhas <code>PROF</code> viram trechos de solo da estaca e as <code>sim</code>, injeção. Dia que já tem diário (lido por PDF) é completado, sem estaca repetida. A coluna MEDIÇÃO fica de fora.
             <br>• <strong>Geodigitus</strong> (.csv) — cabeçalho <code>DATA;OBRA;ESTACA;PROFUNDIDADE_EXECUTADA;...;MAQUINA;OBSERVACAO</code>
             <br>• <strong>SoftSaci V7.x</strong> (.txt) — relatório sintético com colunas <code>Contrato | Obra | Estaca | Data | Ini.P | Ini.C | Fim C | Diam | Comp | V.Conc | Supercon | Incli</code>
             <br><br>O sistema agrupa por data e cria 1 RDO por dia (na obra detectada). Estacas existentes na obra são marcadas como executadas.
           </p>
           <div class="grade">
             <div class="campo largo">
-              <label>Arquivo (PDF, foto, XLSX do Maya, CSV ou TXT)</label>
+              <label>Arquivo (PDF, foto, XLSX do Maya ou RG 11.3, CSV ou TXT)</label>
               <input id="csv-arquivo" type="file" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,.csv,.txt,text/csv,text/plain" />
             </div>
           </div>
@@ -6449,6 +6467,7 @@
                 <!-- hotfix 113: módulo liberado além do cargo, com validade (só diretoria/admin gravam) -->
                 <div class="campo"><label>Acesso extra</label>
                   <label class="check-inline"><input type="checkbox" id="usr-extra-orc" /> Orçamentos (além do cargo)</label>
+                  <label class="check-inline"><input type="checkbox" id="usr-extra-orcleit" /> Orçamentos (somente leitura)</label>
                 </div>
                 <div class="campo"><label>Acesso extra válido até</label><input id="usr-extra-ate" type="date" title="Vazio = sem prazo" /></div>
               </div>
@@ -6626,58 +6645,59 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=bb7ccb6"></script>
+<script src="js/core.js?v=80472bb"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=bb7ccb6"></script>
+<script src="js/historico.js?v=80472bb"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=bb7ccb6"></script>
-<script src="js/fiscal_ncm.js?v=bb7ccb6"></script>
+<script src="js/fiscal.js?v=80472bb"></script>
+<script src="js/fiscal_ncm.js?v=80472bb"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=bb7ccb6"></script>
-<script src="js/fornecedores.js?v=bb7ccb6"></script>
-<script src="js/apropriacoes.js?v=bb7ccb6"></script>
-<script src="js/funcionarios.js?v=bb7ccb6"></script>
-<script src="js/rh_documentos.js?v=bb7ccb6"></script>
-<script src="js/servicos.js?v=bb7ccb6"></script>
-<script src="js/produtos.js?v=bb7ccb6"></script>
-<script src="js/estoque.js?v=bb7ccb6"></script>
-<script src="js/separacoes.js?v=bb7ccb6"></script>
-<script src="js/epi.js?v=bb7ccb6"></script>
-<script src="js/compras.js?v=bb7ccb6"></script>
-<script src="js/requisicoes.js?v=bb7ccb6"></script>
-<script src="js/orcamentos.js?v=bb7ccb6"></script>
-<script src="js/propostas.js?v=bb7ccb6"></script>
-<script src="js/contratos.js?v=bb7ccb6"></script>
-<script src="js/contas_pagar.js?v=bb7ccb6"></script>
-<script src="js/centros_custo.js?v=bb7ccb6"></script>
-<script src="js/carteira.js?v=bb7ccb6"></script>
-<script src="js/obras.js?v=bb7ccb6"></script>
-<script src="js/frota.js?v=bb7ccb6"></script>
-<script src="js/viagens.js?v=bb7ccb6"></script>
-<script src="js/equipamentos.js?v=bb7ccb6"></script>
-<script src="js/vendas_bens.js?v=bb7ccb6"></script>
-<script src="js/acessorios.js?v=bb7ccb6"></script>
-<script src="js/reparos.js?v=bb7ccb6"></script>
-<script src="js/manutencao.js?v=bb7ccb6"></script>
-<script src="js/fabricacao.js?v=bb7ccb6"></script>
-<script src="js/mobilizacoes.js?v=bb7ccb6"></script>
-<script src="js/estacas.js?v=bb7ccb6"></script>
-<script src="js/obra_abas.js?v=bb7ccb6"></script>
-<script src="js/medicoes.js?v=bb7ccb6"></script>
-<script src="js/movimentacoes.js?v=bb7ccb6"></script>
-<script src="js/rdo.js?v=bb7ccb6"></script>
-<script src="js/rdo_import_maya.js?v=bb7ccb6"></script>
-<script src="js/geodigitus.js?v=bb7ccb6"></script>
-<script src="js/computadores_bordo.js?v=bb7ccb6"></script>
-<script src="js/usuarios.js?v=bb7ccb6"></script>
-<script src="js/chamados.js?v=bb7ccb6"></script>
-<script src="js/dashboard.js?v=bb7ccb6"></script>
-<script src="js/rh_horas.js?v=bb7ccb6"></script>
-<script src="js/sesmt.js?v=bb7ccb6"></script>
-<script src="js/patrimonio.js?v=bb7ccb6"></script>
+<script src="js/clientes.js?v=80472bb"></script>
+<script src="js/fornecedores.js?v=80472bb"></script>
+<script src="js/apropriacoes.js?v=80472bb"></script>
+<script src="js/funcionarios.js?v=80472bb"></script>
+<script src="js/rh_documentos.js?v=80472bb"></script>
+<script src="js/servicos.js?v=80472bb"></script>
+<script src="js/produtos.js?v=80472bb"></script>
+<script src="js/estoque.js?v=80472bb"></script>
+<script src="js/separacoes.js?v=80472bb"></script>
+<script src="js/epi.js?v=80472bb"></script>
+<script src="js/compras.js?v=80472bb"></script>
+<script src="js/requisicoes.js?v=80472bb"></script>
+<script src="js/orcamentos.js?v=80472bb"></script>
+<script src="js/propostas.js?v=80472bb"></script>
+<script src="js/contratos.js?v=80472bb"></script>
+<script src="js/contas_pagar.js?v=80472bb"></script>
+<script src="js/centros_custo.js?v=80472bb"></script>
+<script src="js/carteira.js?v=80472bb"></script>
+<script src="js/obras.js?v=80472bb"></script>
+<script src="js/frota.js?v=80472bb"></script>
+<script src="js/viagens.js?v=80472bb"></script>
+<script src="js/equipamentos.js?v=80472bb"></script>
+<script src="js/vendas_bens.js?v=80472bb"></script>
+<script src="js/acessorios.js?v=80472bb"></script>
+<script src="js/reparos.js?v=80472bb"></script>
+<script src="js/manutencao.js?v=80472bb"></script>
+<script src="js/fabricacao.js?v=80472bb"></script>
+<script src="js/mobilizacoes.js?v=80472bb"></script>
+<script src="js/estacas.js?v=80472bb"></script>
+<script src="js/obra_abas.js?v=80472bb"></script>
+<script src="js/medicoes.js?v=80472bb"></script>
+<script src="js/movimentacoes.js?v=80472bb"></script>
+<script src="js/rdo_import_rg113.js?v=80472bb"></script>
+<script src="js/rdo.js?v=80472bb"></script>
+<script src="js/rdo_import_maya.js?v=80472bb"></script>
+<script src="js/geodigitus.js?v=80472bb"></script>
+<script src="js/computadores_bordo.js?v=80472bb"></script>
+<script src="js/usuarios.js?v=80472bb"></script>
+<script src="js/chamados.js?v=80472bb"></script>
+<script src="js/dashboard.js?v=80472bb"></script>
+<script src="js/rh_horas.js?v=80472bb"></script>
+<script src="js/sesmt.js?v=80472bb"></script>
+<script src="js/patrimonio.js?v=80472bb"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=bb7ccb6"></script>
+<script src="js/sesmt_ocorrencias.js?v=80472bb"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=bb7ccb6"></script>
+<script src="js/init.js?v=80472bb"></script>
 </body>
 </html>

@@ -11,6 +11,27 @@ let orcEditId   = null;
 
 const ORC_STAGES = ["rascunho","enviado","em_negociacao","aprovado"];
 
+/* Lote S57b (#211): quem grava orçamento. Espelha orcamentos_write do banco (has_role admin/comercial, diretor pelo
+   has_role, ou o módulo extra "orcamentos"); o auditor nunca. Quem só tem o extra "orcamentos_leitura" (Pedro e
+   Sergio) abre a tela para ler: botões de gravação escondidos, campos travados, statusbar e kanban sem ação. */
+function orcPodeEditar(){
+  if(!usuarioAtual || ehSomenteLeitura()) return false;
+  return ["diretor", "admin", "comercial"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
+}
+const ORC_BOTOES_ESCRITA = ["btn-novo-orcamento", "btn-salvar-orc", "btn-excluir-orc", "btn-orc-nova-revisao",
+  "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente"];
+/* Só trava quando não pode editar; para quem edita os botões seguem as regras de exibição de cada um. */
+function orcAplicarModoLeitura(){
+  const pode = orcPodeEditar();
+  const faixa = $("orc-aviso-leitura");
+  if(faixa) faixa.style.display = pode ? "none" : "";
+  if(pode) return;
+  ORC_BOTOES_ESCRITA.forEach(id => { const b = $(id); if(b) b.style.display = "none"; });
+  document.querySelectorAll("#orc-ficha .odoo-tab input, #orc-ficha .odoo-tab select, #orc-ficha .odoo-tab textarea")
+    .forEach(el => { el.disabled = true; });
+  document.querySelectorAll("#orc-itens .btn-rem, #orc-itens .it-cat-all").forEach(b => { b.style.display = "none"; });
+}
+
 /* ---------- Cache do catálogo ---------- */
 let _orcCatOptions  = '<option value="">— item livre (digitar) —</option>';
 let _orcVarById     = {};
@@ -695,6 +716,8 @@ function renderOrcamentos(){
   const dados = orcFiltrados();
   const cont = $("orc-contador");
   if(cont) cont.textContent = `${dados.length} de ${_orcamentos.length}`;
+  const btnNovo = $("btn-novo-orcamento");   // lote S57b (#211)
+  if(btnNovo) btnNovo.style.display = orcPodeEditar() ? "" : "none";
   if(_orcView === "kanban") renderOrcKanban(dados);
   else                       renderOrcLista(dados);
   const legacy = $("tab-orcamentos");
@@ -771,6 +794,7 @@ function renderOrcKanban(dados){
     </div>`;
   }).join("");
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
+  if(!orcPodeEditar()) return;   // lote S57b (#211): só leitura não arrasta
   habilitarDragKanban({
     container: "#orc-conteudo .serv-kanban",
     tabela: "orcamentos",
@@ -912,6 +936,7 @@ function abrirFichaOrcVisual(o){
 
   atualizarStatusbarOrc(o.status);
   atualizarAcoesOrc(o);
+  orcAplicarModoLeitura();   // lote S57b (#211)
   // Carrega smart-buttons + revisões + vínculos em paralelo
   if(orcEditId) carregarAbasOrc(o);
   else zerarAbasOrc();
@@ -927,7 +952,7 @@ async function atualizarAcoesOrc(o){
   if(!btnObra) return;
   btnObra.style.display = "none";
   if(hint) hint.textContent = "";
-  if(!orcEditId) return;
+  if(!orcEditId || !orcPodeEditar()) return;   // lote S57b (#211): só leitura não cria obra
 
   if(o.status !== "aprovado"){
     if(hint) hint.textContent = `Botão "Criar obra" aparece quando status = aprovado (atual: ${o.status}).`;
@@ -1393,6 +1418,7 @@ async function orcSalvarNovoCliente(){
 
 /* ---------- Salvar / excluir ---------- */
 async function salvarOrcamento(novoStatus){
+  if(!orcPodeEditar()){ aviso("app-aviso", "Seu acesso a Orçamentos é só de leitura.", "erro"); return; }   // lote S57b (#211)
   const cliente_id = $("orc-cliente").value;
   if(!cliente_id){ aviso("app-aviso","Selecione o cliente.","erro"); ativarTabOrc("geral"); return; }
 
@@ -1510,6 +1536,7 @@ async function salvarOrcamento(novoStatus){
 }
 
 async function excluirOrcamento(){
+  if(!orcPodeEditar()) return;   // lote S57b (#211)
   if(!orcEditId) return;
   if(!confirm("Excluir este orçamento e seus itens?")) return;
   await sb.from("orcamento_itens").delete().eq("orcamento_id", orcEditId);
@@ -1631,6 +1658,7 @@ function ligarOrcamentos(){
   });
   document.querySelectorAll("#orc-statusbar .stage").forEach(el => {
     el.addEventListener("click", async () => {
+      if(!orcPodeEditar()) return;   // lote S57b (#211): só leitura não muda o status
       const novo = el.dataset.status;
       if(!orcEditId){
         $("orc-status").value = novo;

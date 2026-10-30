@@ -122,6 +122,48 @@ function fiscalLigarCep(ids){
   const b = $(ids.botao); if(b) b.addEventListener("click", () => buscar(true));
 }
 
+/* ---------- CNPJ → dados cadastrais (BrasilAPI) — lote S57b (#216, D-216a) ----------
+   Direto do navegador, como a ViaCEP (CSP connect-src libera https://brasilapi.com.br). Só pessoa jurídica com
+   14 dígitos: CPF nunca sai do app. Devolve { erro } ou os campos já no formato da tela (UF minúscula, CEP 00000-000,
+   situação cadastral; "ativa" = false vira aviso na tela). */
+async function fiscalBuscarCnpj(cnpj){
+  const d = String(cnpj || "").replace(/\D/g, "");
+  if(d.length !== 14) return { erro: "A consulta é só para CNPJ com 14 dígitos." };
+  const ctl = typeof AbortController === "function" ? new AbortController() : null;
+  const tempo = ctl ? setTimeout(() => ctl.abort(), 6000) : null;
+  try {
+    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`, ctl ? { signal: ctl.signal } : undefined);
+    if(r.status === 404) return { erro: "CNPJ não encontrado na Receita. Confira o número ou preencha à mão." };
+    if(r.status === 400) return { erro: "CNPJ inválido. Confira os dígitos." };
+    if(!r.ok) return { erro: `A BrasilAPI respondeu ${r.status}. Preencha à mão.` };
+    const j = await r.json();
+    if(!j || !j.cnpj) return { erro: "Resposta vazia da BrasilAPI. Preencha à mão." };
+    const txt = (v) => String(v == null ? "" : v).trim();
+    const cepD = txt(j.cep).replace(/\D/g, "");
+    const tipoLog = txt(j.descricao_tipo_de_logradouro);
+    const log = txt(j.logradouro);
+    const telD = txt(j.ddd_telefone_1).replace(/\D/g, "");
+    const situacao = txt(j.descricao_situacao_cadastral);
+    return {
+      razao_social:  txt(j.razao_social),
+      nome_fantasia: txt(j.nome_fantasia),
+      cep:           cepD.length === 8 ? cepD.slice(0, 5) + "-" + cepD.slice(5) : "",
+      logradouro:    tipoLog && log && !log.toUpperCase().startsWith(tipoLog.toUpperCase()) ? `${tipoLog} ${log}` : log,
+      numero:        txt(j.numero),
+      complemento:   txt(j.complemento),
+      bairro:        txt(j.bairro),
+      cidade:        txt(j.municipio),
+      uf:            txt(j.uf).toLowerCase(),
+      telefone:      telD.length >= 10 ? `(${telD.slice(0, 2)}) ${telD.slice(2, -4)}-${telD.slice(-4)}` : "",
+      email:         txt(j.email).toLowerCase(),
+      situacao:      situacao,
+      ativa:         !situacao || situacao.toUpperCase() === "ATIVA"
+    };
+  } catch(e){
+    return { erro: "Sem acesso à BrasilAPI agora. Preencha os dados à mão." };
+  } finally { if(tempo) clearTimeout(tempo); }
+}
+
 /* ---------- Dados fiscais da empresa (empresa_config.fiscal_*) ---------- */
 const FISCAL_REGIMES = { simples_nacional: "Simples Nacional", lucro_presumido: "Lucro presumido", lucro_real: "Lucro real" };
 const FISCAL_EMPRESA_COLS = "fiscal_cnpj,fiscal_razao_social,fiscal_ie,fiscal_im,fiscal_regime_tributario,fiscal_cnae,fiscal_codigo_servico,fiscal_item_lc116,fiscal_iss_aliquota,fiscal_nfe_serie,fiscal_nfe_proximo_numero,fiscal_nfse_serie,fiscal_nfse_proximo_numero,fiscal_ambiente,fiscal_contador_email";

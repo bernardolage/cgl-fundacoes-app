@@ -16,6 +16,7 @@ let _dashViagens = [];     // viagens planejadas e em trânsito (fase 89, aba Fr
 let _dashObrasAnd = [];    // vw_sc_obra_andamento
 let _dashAcoes = [];       // vw_sc_acoes
 let _dashFila = [];        // vw_sc_minha_fila
+let _dashMencoes = [];     // vw_sc_minha_fila_mencoes (lote S57b, #218: card no topo, fora da Minha fila)
 let _dashReg = [];         // vw_sc_regularizar (fase 75)
 let _dashObraMat = {};     // vw_sc_obra_material (fase 83): obra_id → separações abertas
 let _dashFrotaFiltro = "todas";
@@ -289,11 +290,39 @@ async function dashCarregarFila(){
   const [dados, sep, menc] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*"))]);
   if(!dados) return;
   if(typeof histMencoesPendentesDefinir === "function") histMencoesPendentesDefinir((menc || []).map(m => m.registro_id));
-  _dashFila = dados.concat(sep || [], menc || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
+  if(menc) dashRenderMencoes(menc);   // lote S57b (#218): menções no card do topo e no badge do menu, não na fila
+  _dashFila = dados.concat(sep || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
     ? _dashFila.map((a, i) => dashChamadoEsperando(a) || dashChamadoConfirmar(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
     : `<p class="vazio">Nada esperando por você.</p>`;
+}
+/* Lote S57b (#218): "Você foi mencionado (N)" no topo do Início (entre o cabeçalho e a faixa) e badge no item Início do
+   menu. Some com N = 0; ao abrir a ficha, historico.js marca como lida e chama dashCarregarFila, que refaz os dois. */
+function dashRenderMencoes(menc){
+  _dashMencoes = (menc || []).slice().sort((a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0));
+  dashBadgeMencoes(_dashMencoes.length);
+  const card = $("dash-mencoes");
+  if(!card) return;
+  card.style.display = _dashMencoes.length ? "" : "none";
+  if($("dash-mencoes-cont")) $("dash-mencoes-cont").textContent = _dashMencoes.length ? `(${_dashMencoes.length})` : "";
+  const lista = $("dash-mencoes-lista");
+  if(lista) lista.innerHTML = _dashMencoes.map((a, i) => `<div class="dash-pendencia-item clicavel" data-menc="${i}" title="Abrir o registro com a conversa">
+      <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
+      <span class="dash-pend-seta">›</span>
+    </div>`).join("");
+}
+function dashBadgeMencoes(n){
+  const b = $("nav-inicio-badge");
+  if(!b) return;
+  b.textContent = n > 0 ? String(n) : "";
+  b.title = n > 0 ? `${n} menção(ões) não lida(s)` : "";
+}
+/* Timer de 5 min (core.js) e volta à aba: só a contagem, sem refazer o Início */
+async function dashAtualizarBadgeMencoes(){
+  if(typeof usuarioAtual === "undefined" || !usuarioAtual || typeof sb === "undefined") return;
+  const { count, error } = await sb.from("vw_sc_minha_fila_mencoes").select("registro_id", { count: "exact", head: true });
+  if(!error) dashBadgeMencoes(count || 0);
 }
 /* Lote S47: chamado esperando a minha resposta (ramo 41 de vw_sc_minha_fila) mostra a pergunta e, quando há
    resposta sugerida, aprova com um clique (RPC chamado_aprovar, que aplica o status sugerido). */
@@ -822,6 +851,7 @@ function ligarSalaDeComando(){
     const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]);
   });
   $("dash-regularizar")?.addEventListener("click", (e) => { const el = e.target.closest("[data-reg]"); if(el) dashAbrirRegularizar(_dashReg[Number(el.dataset.reg)]); });
+  $("dash-mencoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-menc]"); if(el) dashAbrirMencao(_dashMencoes[Number(el.dataset.menc)]); });   // lote S57b (#218)
   $("dash-seguranca")?.addEventListener("click", (e) => { const el = e.target.closest(".clicavel[data-seg]"); if(el) dashAbrirSeguranca(_dashSeg[Number(el.dataset.seg)]); });   // fase 99b
   $("dash-notebook")?.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-tab]");
