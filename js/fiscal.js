@@ -125,17 +125,31 @@ function fiscalLigarCep(ids){
 /* ---------- CNPJ → dados cadastrais (BrasilAPI) — lote S57b (#216, D-216a) ----------
    Direto do navegador, como a ViaCEP (CSP connect-src libera https://brasilapi.com.br). Só pessoa jurídica com
    14 dígitos: CPF nunca sai do app. Devolve { erro } ou os campos já no formato da tela (UF minúscula, CEP 00000-000,
-   situação cadastral; "ativa" = false vira aviso na tela). */
+   situação cadastral; "ativa" = false vira aviso na tela).
+   hotfix 225: CNPJ fora do cache da BrasilAPI passa de 6 s; prazo de 15 s, uma nova tentativa em falha de rede ou 5xx
+   e mensagem própria para demora, sem internet e limite de consultas (429). */
+async function fiscalCnpjFetch(d){
+  const ctl = typeof AbortController === "function" ? new AbortController() : null;
+  const tempo = ctl ? setTimeout(() => ctl.abort(), 15000) : null;
+  try { return await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`, ctl ? { signal: ctl.signal } : undefined); }
+  finally { if(tempo) clearTimeout(tempo); }
+}
 async function fiscalBuscarCnpj(cnpj){
   const d = String(cnpj || "").replace(/\D/g, "");
   if(d.length !== 14) return { erro: "A consulta é só para CNPJ com 14 dígitos." };
-  const ctl = typeof AbortController === "function" ? new AbortController() : null;
-  const tempo = ctl ? setTimeout(() => ctl.abort(), 6000) : null;
+  if(typeof navigator !== "undefined" && navigator.onLine === false) return { erro: "Sem internet agora. Preencha os dados à mão ou tente de novo." };
   try {
-    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`, ctl ? { signal: ctl.signal } : undefined);
+    let r;
+    try { r = await fiscalCnpjFetch(d); if(r.status >= 500) throw new Error("http " + r.status); }
+    catch(e1){
+      if(e1 && e1.name === "AbortError") throw e1;
+      await new Promise(ok => setTimeout(ok, 1500));
+      r = await fiscalCnpjFetch(d);
+    }
     if(r.status === 404) return { erro: "CNPJ não encontrado na Receita. Confira o número ou preencha à mão." };
     if(r.status === 400) return { erro: "CNPJ inválido. Confira os dígitos." };
-    if(!r.ok) return { erro: `A BrasilAPI respondeu ${r.status}. Preencha à mão.` };
+    if(r.status === 429) return { erro: "A BrasilAPI limitou as consultas por alguns minutos. Tente de novo daqui a pouco ou preencha à mão." };
+    if(!r.ok) return { erro: `A BrasilAPI respondeu ${r.status}. Tente de novo em instantes ou preencha à mão.` };
     const j = await r.json();
     if(!j || !j.cnpj) return { erro: "Resposta vazia da BrasilAPI. Preencha à mão." };
     const txt = (v) => String(v == null ? "" : v).trim();
@@ -160,8 +174,9 @@ async function fiscalBuscarCnpj(cnpj){
       ativa:         !situacao || situacao.toUpperCase() === "ATIVA"
     };
   } catch(e){
-    return { erro: "Sem acesso à BrasilAPI agora. Preencha os dados à mão." };
-  } finally { if(tempo) clearTimeout(tempo); }
+    if(e && e.name === "AbortError") return { erro: "A BrasilAPI demorou mais de 15 s para responder. Clique em \"Buscar CNPJ\" de novo ou preencha à mão." };
+    return { erro: "Sem acesso à BrasilAPI agora (rede ou bloqueio no computador). Clique em \"Buscar CNPJ\" de novo ou preencha à mão." };
+  }
 }
 
 /* ---------- Dados fiscais da empresa (empresa_config.fiscal_*) ---------- */

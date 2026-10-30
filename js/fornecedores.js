@@ -70,7 +70,8 @@ async function fornBuscarCnpj(forcar){
   if(typeof fiscalBuscarCnpj !== "function") return;
   fornDocStatus("Buscando o CNPJ na BrasilAPI…");
   const r = await fiscalBuscarCnpj(d);
-  if(r.erro){ fornDocStatus(r.erro, "erro"); return; }
+  // hotfix 225: depois de erro, sair do campo de novo volta a consultar
+  if(r.erro){ if(el) delete el.dataset.ultimo; fornDocStatus(r.erro, "erro"); return; }
   const pos = (id, v) => { const c = $(id); if(!c || !v || String(c.value || "").trim()) return; c.value = v; };
   pos("forn-razao", r.razao_social);
   pos("forn-fantasia", r.nome_fantasia);

@@ -1,1 +1,1 @@
-{"versao":"80472bb","publicado_em":"2026-10-30T02:22:31Z","mensagem":"lote S57: estorno e lançar NF em Compras, Orçamentos só leitura, CNPJ pela BrasilAPI, menções no Início e RG 11.3 no RDO"}
+{"versao":"f20dac2","publicado_em":"2026-10-30T18:22:07Z","mensagem":"hotfix 225: busca do CNPJ do fornecedor com prazo de 15 s, nova tentativa e mensagem do motivo"}
