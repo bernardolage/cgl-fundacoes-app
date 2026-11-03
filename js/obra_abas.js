@@ -549,7 +549,6 @@ async function carregarMedicoesDaObra(obraId){
     $("btn-medic-importar")?.addEventListener("click", () => abrirImportBoletimPDF(obraId));
     return;
   }
-  obrMedPorMaquina(obraId);   // fase 101 (#94)
   const tipoLbl = { sinal_contratual: "Sinal", quinzenal: "Quinzenal", final: "Final", avulsa: "Avulsa" };
   const linhas = data.map(m => `<tr class="linha-clicavel" data-id="${esc(m.id)}">
     <td>${esc(m.numero)}${m.origem === "importada_pdf" ? ' <span title="Importada do boletim (PDF)">📄</span>' : ""}</td>
@@ -570,6 +569,7 @@ async function carregarMedicoesDaObra(obraId){
       <thead><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>%</th><th>Status</th><th title="Documento fiscal da medição (aba Geral)">NF/RR</th><th class="num" title="Abatimento do sinal contratual nesta medição">Sinal abatido</th><th class="num">Valor</th></tr></thead>
       <tbody>${/* html */ linhas}</tbody></table></div>
   `;
+  obrMedPorMaquina(obraId);   // fase 101 (#94); depois do innerHTML: lê #obr-medic-maq, que nasce nele
   $("btn-medic-nova")?.addEventListener("click", abrirMedicaoPraObra);
   $("btn-medic-importar")?.addEventListener("click", () => abrirImportBoletimPDF(obraId));
   cont.querySelectorAll(".linha-clicavel").forEach(tr => {
@@ -605,10 +605,9 @@ async function obrMedPorMaquina(obraId){
   box.innerHTML = `<details class="obr-medic-maq" ${linhas.some(o => o.id) ? "open" : ""} style="margin:0 0 14px;">
     <summary style="cursor:pointer;font-size:var(--txt-sm);font-weight:600;">🛠️ Por máquina <span class="meta" style="font-weight:400;">receita medida (item com TAG, senão a máquina da medição) × custo da TAG nesta obra</span></summary>
     <div class="tabela-rola" style="margin-top:6px;"><table>
-      <thead><tr><th>Máquina</th><th class="num">Medições</th><th class="num">Receita medida</th><th class="num" title="vw_custos: peças, combustível, manutenção, deslocamento… lançados para a TAG nesta obra">Custo na obra</th><th class="num">Resultado</th></tr></thead>
+      <thead><tr><th>Máquina</th><th class="num">Medições</th><th class="num">Receita medida</th><th class="num" title="vw_custos: peças, combustível, manutenção, deslocamento… lançados para a TAG nesta obra">Custo na obra</th></tr></thead>
       <tbody>${linhas.map(o => `<tr><td>${o.id ? `<strong>${esc(cod(o))}</strong>` : '<span class="tag ambar" title="Item sem TAG em medição sem máquina: escolha a máquina na ficha da medição">sem máquina</span>'}</td>
-        <td class="num">${o.meds.size || "—"}</td><td class="num">${brl(o.receita)}</td><td class="num">${o.custo ? brl(o.custo) : "—"}</td>
-        <td class="num${o.receita - o.custo < 0 ? " txt-perigo" : ""}">${o.id ? brl(o.receita - o.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>
+        <td class="num">${o.meds.size || "—"}</td><td class="num">${brl(o.receita)}</td><td class="num">${o.custo ? brl(o.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>
   </details>`;
 }
 
