@@ -6,6 +6,8 @@
    gratificação e adicionais (apropriacao_parametros) + lançamentos variáveis do mês
    (folha_lancamentos). O rateio por obra usa os DIAS DE PRESENÇA NO RDO; sem RDO usa a
    alocação vigente; sem nada vai para ADM/PÁTIO. Tudo roda em fn_apropriar_competencia().
+   Quadro do mês (hotfix quadro-competencia): presença no RDO do mês, ou admissão e demissão que caem no mês (sem data de demissão,
+   vale estar ativo hoje). Os valores são os da ficha de hoje e do mês inteiro: não há histórico de salário.
    Competência pode ser fechada (fn_fechar_competencia); só diretor reabre.
    A leitura da planilha antiga fica só como CARGA INICIAL da ficha (banco/salário/benefícios),
    lida no navegador com SheetJS — dados sensíveis não passam por servidor nosso.
@@ -44,7 +46,7 @@ function apropOpcoesMes(){
 function apropResumoCalculo(res){
   if(!res) return "";
   // lote S54 (#178): ausencias_rdo = linhas do RDO com Falta, Folga, DSR ou Atestado, que não contam como presença
-  return `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${esc(res.funcionarios)} funcionários · ${esc(res.com_rdo)} com presença em RDO · ${esc(res.por_alocacao)} pela alocação · ${esc(res.sem_obra)} sem obra (ADM/PÁTIO) · ${esc(res.linhas)} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${esc(res.sem_ficha)} ativo(s) sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${esc(res.presencas_sem_cadastro)} nome(s) no RDO sem cadastro</span>` : ""}${res.ausencias_rdo ? ` · ${Number(res.ausencias_rdo)} ausência(s) no RDO (Falta, Folga, DSR, Atestado) não contadas` : ""}</p>`;
+  return `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${esc(res.funcionarios)} funcionários · ${esc(res.com_rdo)} com presença em RDO · ${esc(res.por_alocacao)} pela alocação · ${esc(res.sem_obra)} sem obra (ADM/PÁTIO) · ${esc(res.linhas)} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${esc(res.sem_ficha)} no quadro do mês sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${esc(res.presencas_sem_cadastro)} nome(s) no RDO sem cadastro</span>` : ""}${res.ausencias_rdo ? ` · ${Number(res.ausencias_rdo)} ausência(s) no RDO (Falta, Folga, DSR, Atestado) não contadas` : ""}${res.fora_admissao ? ` · ${Number(res.fora_admissao)} fora por admissão depois do mês` : ""}${res.presenca_inativos ? ` · ${Number(res.presenca_inativos)} inativo(s) incluído(s) pela presença no RDO` : ""}${res.sem_admissao ? ` · <span class="txt-perigo">${Number(res.sem_admissao)} incluído(s) sem data de admissão no cadastro</span>` : ""}${res.inativos_sem_data ? ` · <span class="txt-perigo">${Number(res.inativos_sem_data)} inativo(s) fora por falta da data de demissão no cadastro</span>` : ""}</p>`;
 }
 /* tabela "Custo de mão de obra por obra / centro de custo" (linhas de vw_custo_mao_obra_por_obra) */
 function apropTabelaObras(linhas, tot, obraDe){
@@ -244,6 +246,9 @@ async function renderFuncApropTotais(){
 
 /* ---------- ações ---------- */
 async function apropCalcular(){
+  // não há histórico de salário: mês passado é calculado com a ficha de hoje e substitui as linhas gravadas
+  if(_aprop.comp < hojeISO().slice(0, 7) + "-01"
+     && !confirm(`Os salários e benefícios usados são os de hoje, não os de ${apropCompLabel(_aprop.comp)}. As linhas atuais do mês serão substituídas. Calcular?`)) return;
   const { data, error } = await sb.rpc("fn_apropriar_competencia", { p_comp: _aprop.comp });
   if(error){ aviso("app-aviso", "Erro ao apropriar: " + error.message, "erro"); return; }
   _aprop.res = data;
