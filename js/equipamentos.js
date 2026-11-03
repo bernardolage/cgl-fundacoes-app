@@ -56,7 +56,83 @@ function eqpOrd(a, b){ return String(a.codigo).localeCompare(String(b.codigo), "
 function eqpNumAce(e){ return Number(e._ace) || 0; }
 
 /* ---------- carga ---------- */
+/* ---------- visão Horímetro semanal (lote S58, #232) ----------
+   Grava em equipamento_leituras com origem "semanal", que só sobe (fn_equipamento_leitura_aplicar): valor menor fica marcado e
+   não é gravado; a correção para baixo segue pelo Ajustar, com motivo. Inclui caminhões e veículos, que o resto do painel não lista. */
+let _eqpSem = [], _eqpSemOk = false, _eqpSemData = {}, _eqpSemValores = {};
+function eqpSemUsaKm(e){ return ["caminhao", "veiculo"].includes(e.tipo) || (e.km != null && e.horimetro == null); }
+function eqpSemPode(){ return eqpPodeManutencao() && !ehSomenteLeitura(); }
+function eqpSemAtual(e){ return eqpSemUsaKm(e) ? e.km : e.horimetro; }
+async function eqpSemCarregar(){
+  const cont = $("eqp-conteudo"); if(!cont) return;
+  cont.innerHTML = `<p class="vazio">Carregando leituras…</p>`;
+  const { data, error } = await sb.from("equipamentos").select("id,codigo,nome,tipo,horimetro,km,status").eq("ativo", true).order("codigo");
+  if(_eqpView !== "semanal") return;   // trocou de visão enquanto carregava
+  if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
+  _eqpSem = (data || []).filter(e => !EQP_FORA_OPERACAO.includes(e.status)).sort(eqpOrd);
+  // data da última leitura de cada máquina: a API devolve no máximo 1.000 linhas por vez
+  _eqpSemData = {};
+  for(let de = 0; de < 50000; de += 1000){
+    const { data: lei, error: e2 } = await sb.from("equipamento_leituras").select("equipamento_id,data").order("data", { ascending: false }).order("id").range(de, de + 999);
+    if(e2) break;
+    (lei || []).forEach(l => { if(!_eqpSemData[l.equipamento_id]) _eqpSemData[l.equipamento_id] = l.data; });
+    if((lei || []).length < 1000) break;
+  }
+  _eqpSemOk = true;
+  if(_eqpView === "semanal") eqpSemRender();
+}
+function eqpSemMarcar(linha, e){
+  const v = _eqpSemValores[e.id], atual = eqpSemAtual(e);
+  const menor = v !== undefined && v !== "" && atual != null && Number(v) < Number(atual);
+  const msg = linha.querySelector(".eqp-sem-msg"); if(msg) msg.textContent = menor ? "menor que a atual: não será gravada; use Ajustar" : "";
+}
+function eqpSemRender(){
+  const cont = $("eqp-conteudo"); if(!cont) return;
+  const q = ($("eqp-sem-busca")?.value || "").trim().toLowerCase(), grupo = $("eqp-sem-grupo")?.value || "";
+  const veic = e => ["caminhao", "veiculo"].includes(e.tipo);
+  const linhas = _eqpSem.filter(e => (!grupo || (grupo === "veiculos") === veic(e)) && (!q || `${e.codigo} ${e.nome || ""}`.toLowerCase().includes(q)));
+  $("eqp-contador").textContent = `${linhas.length} de ${_eqpSem.length}`;
+  const pode = eqpSemPode();
+  const bs = $("btn-eqp-sem-salvar"); if(bs) bs.style.display = pode ? "" : "none";
+  if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma máquina com esses filtros.</p>`; return; }
+  const tipoTxt = t => ({ caminhao: "Caminhão", veiculo: "Veículo" })[t] || EQP_TIPO_LBL[t] || t || "";
+  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Preencha só as máquinas lidas na semana. A leitura só sobe; valor menor que o atual não é gravado e a correção é pelo Ajustar, com motivo.</p>
+    <div class="tabela-rola"><table><thead><tr><th>TAG</th><th>Equipamento</th><th class="num">Última leitura</th><th>Data</th><th>Leitura nova</th><th class="col-acao"></th></tr></thead>
+    <tbody>${linhas.map(e => { const km = eqpSemUsaKm(e), un = km ? "km" : "h", atual = eqpSemAtual(e); return `<tr data-eq="${esc(e.id)}">
+      <td><strong>${esc(e.codigo)}</strong></td><td>${esc(e.nome || "")} <span class="meta">${esc(tipoTxt(e.tipo))}</span></td>
+      <td class="num">${atual != null ? esc(num(atual)) + " " + esc(un) : "—"}</td>
+      <td class="meta">${_eqpSemData[e.id] ? dataBR(_eqpSemData[e.id]) : "—"}</td>
+      <td><input type="number" class="eqp-sem-val" min="0" step="0.1" style="width:110px;text-align:right;" value="${esc(_eqpSemValores[e.id] ?? "")}" ${pode ? "" : "disabled"} /> <span class="meta">${esc(un)}</span> <span class="meta txt-perigo eqp-sem-msg"></span></td>
+      <td class="col-acao">${pode ? '<button type="button" class="btn-sec btn-sm eqp-sem-ajustar" title="Correção com motivo, inclusive para baixo">Ajustar</button>' : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
+  cont.querySelectorAll("tr[data-eq]").forEach(tr => {
+    const e = _eqpSem.find(x => x.id === tr.dataset.eq); if(!e) return;
+    eqpSemMarcar(tr, e);
+    tr.querySelector(".eqp-sem-val")?.addEventListener("input", ev => { _eqpSemValores[e.id] = ev.target.value; eqpSemMarcar(tr, e); });
+    tr.querySelector(".eqp-sem-ajustar")?.addEventListener("click", () => { if(typeof manLeituraAbrir === "function") manLeituraAbrir(e); });
+  });
+}
+async function eqpSemSalvar(){
+  if(!eqpSemPode()){ aviso("app-aviso", "Seu perfil não lança leitura de horímetro.", "erro"); return; }
+  const novas = [], menores = [], salvos = [];
+  _eqpSem.forEach(e => {
+    const v = _eqpSemValores[e.id];
+    if(v === undefined || v === "") return;
+    const n = Number(v), atual = eqpSemAtual(e), km = eqpSemUsaKm(e);
+    if(!(n >= 0)) return;
+    if(atual != null && n < Number(atual)){ menores.push(e.codigo); return; }
+    novas.push({ equipamento_id: e.id, data: hojeISO(), horimetro: km ? null : n, km: km ? n : null, origem: "semanal", autor_id: usuarioAtual.id });
+    salvos.push(e.id);
+  });
+  if(!novas.length){ aviso("app-aviso", menores.length ? `Nada gravado: valor menor que o atual em ${menores.join(", ")}. Use Ajustar.` : "Preencha ao menos uma leitura.", "erro"); return; }
+  const { error } = await sb.from("equipamento_leituras").insert(novas);
+  if(error){ aviso("app-aviso", "Leituras não gravadas: " + error.message, "erro"); return; }
+  salvos.forEach(id => { delete _eqpSemValores[id]; });
+  aviso("app-aviso", `${novas.length} leitura(s) gravada(s).${menores.length ? ` Não gravadas, valor menor que o atual: ${menores.join(", ")}. Use Ajustar.` : ""}`, menores.length ? "aviso" : "ok");
+  await carregarEquipamentos(true);
+}
+
 async function carregarEquipamentos(force){
+  if(force) _eqpSemOk = false;
   const cont = $("eqp-conteudo");
   if(!cont) return;
   if(force || !_eqpCarregado){
@@ -144,16 +220,18 @@ function eqpFiltradas(){
 function renderEquipamentos(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   // fase 96: visão Vendas (js/vendas_bens.js) troca indicadores, filtros e título do painel
+  const ehSem = _eqpView === "semanal";   // lote S58 (#232)
   if(_eqpView === "vendas" && typeof vbRenderPainel !== "function") _eqpView = "kanban";
   if(_eqpView === "cpb" && typeof cpbRenderPainel !== "function") _eqpView = "kanban";   // fase 107a: js/computadores_bordo.js
   const ehVendas = _eqpView === "vendas", ehCpb = _eqpView === "cpb";
-  [["eqp-indicadores", !ehVendas && !ehCpb], ["eqp-filtros", !ehVendas && !ehCpb], ["vb-indicadores", ehVendas], ["vb-filtros", ehVendas], ["cpb-filtros", ehCpb]].forEach(([id, ver]) => { const el = $(id); if(el) el.style.display = ver ? "" : "none"; });
-  const tit = $("eqp-painel-titulo"); if(tit) tit.textContent = ehVendas ? "Vendas de bens" : ehCpb ? "Computadores de bordo" : "Máquinas";
-  const bn = $("btn-eqp-novo"); if(bn) bn.style.display = (!ehVendas && !ehCpb && eqpPodeEditar()) ? "" : "none";
+  [["eqp-indicadores", !ehVendas && !ehCpb && !ehSem], ["eqp-filtros", !ehVendas && !ehCpb && !ehSem], ["eqp-sem-filtros", ehSem], ["vb-indicadores", ehVendas], ["vb-filtros", ehVendas], ["cpb-filtros", ehCpb]].forEach(([id, ver]) => { const el = $(id); if(el) el.style.display = ver ? "" : "none"; });
+  const tit = $("eqp-painel-titulo"); if(tit) tit.textContent = ehVendas ? "Vendas de bens" : ehCpb ? "Computadores de bordo" : ehSem ? "Horímetro semanal" : "Máquinas";
+  const bn = $("btn-eqp-novo"); if(bn) bn.style.display = (!ehVendas && !ehCpb && !ehSem && eqpPodeEditar()) ? "" : "none";
   if(!ehCpb){ ["btn-cpb-novo", "btn-cpb-descobrir"].forEach(id => { const el = $(id); if(el) el.style.display = "none"; }); }
   document.querySelectorAll("#eqp-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _eqpView));
   if(ehVendas){ vbRenderPainel(); return; }
   if(ehCpb){ cpbRenderPainel(); return; }
+  if(ehSem){ if(_eqpSemOk) eqpSemRender(); else eqpSemCarregar(); return; }
   eqpRenderKpis();
   document.querySelectorAll("#eqp-painel .ind[data-kpi]").forEach(el => el.classList.toggle("ativo", el.dataset.kpi === _eqpKpi));
   const dados = eqpFiltradas();
@@ -706,6 +784,9 @@ function ligarEquipamentos(){
   $("eqp-busca")?.addEventListener("input", debounce(renderEquipamentos));
   $("btn-eqp-atualizar")?.addEventListener("click", () => carregarEquipamentos(true));
   $("btn-eqp-novo")?.addEventListener("click", novoEquipamento);
+  $("eqp-sem-busca")?.addEventListener("input", debounce(eqpSemRender));   // lote S58 (#232)
+  $("eqp-sem-grupo")?.addEventListener("change", eqpSemRender);
+  $("btn-eqp-sem-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-sem-salvar", eqpSemSalvar));
   $("eqp-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a.link-obra")) return;
     const el = e.target.closest("[data-id]");

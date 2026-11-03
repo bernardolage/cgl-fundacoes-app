@@ -448,6 +448,7 @@ function renderizarItens(){
     const [tipoMestre, idMestre] = movItemChave(it);
     const ncm = fis.ncm ? (typeof ncmFormatar === "function" ? ncmFormatar(fis.ncm) : fis.ncm) : "";
     const ncmCel = !_movNcmOk ? '<span class="meta">—</span>'
+      : !trava && idMestre && podeEmitirFiscal() ? `<input class="mov-ncm-edit${ncm ? "" : " txt-perigo"}" data-idx="${idx}" value="${esc(ncm)}" placeholder="sem NCM" maxlength="10" style="width:100px;" title="O NCM é do cadastro: vale para as próximas notas. Nota já emitida não muda." />`   // lote S58 (#239)
       : ncm ? esc(ncm)
       : `<a href="#" class="mov-sem-ncm txt-perigo" data-tipo="${esc(tipoMestre)}" data-id="${esc(idMestre)}" title="Sem NCM a NF-e não sai: abre a aba Fiscal do cadastro">sem NCM</a>`;
     const sug = !trava && !(Number(it.valor_unitario) > 0) && fis.sug > 0
@@ -488,6 +489,7 @@ function renderizarItens(){
     const fis = it ? movItemFiscal(it) : {};
     if(it && fis.sug > 0){ it.valor_unitario = fis.sug; renderizarItens(); }
   }));
+  tb.querySelectorAll(".mov-ncm-edit").forEach(inp => inp.addEventListener("change", (e) => movNcmSalvar(Number(e.target.dataset.idx), e.target)));   // lote S58 (#239)
   tb.querySelectorAll(".mov-sem-ncm").forEach(a => a.addEventListener("click", (e) => {
     e.preventDefault();
     movAbrirFiscalItem(a.dataset.tipo, a.dataset.id);
@@ -542,6 +544,7 @@ async function buscarProdutos(termo){
   if(!termo || termo.length < 2) return [];
   const { data } = await sb.from("produtos")
     .select("id,codigo,nome,unidade,custo_ultimo")
+    .eq("ativo", true)   // lote S58 (#237)
     .ilike("nome", "%"+termo+"%")
     .limit(20);
   return data || [];
@@ -1011,8 +1014,10 @@ async function movCarregarFiscalItens(lista){
   const ids = { equipamento: new Set(), acessorio: new Set(), produto: new Set() };
   itens.forEach(it => { const [t, id] = movItemChave(it); if(id) ids[t].add(id); });
   await Promise.all(Object.entries(ids).filter(([, s]) => s.size).map(async ([t, s]) => {
-    const { data } = await sb.from(MOV_TABELA_MESTRE[t]).select("id,ncm,unidade_comercial").in("id", [...s]);
-    (data || []).forEach(r => { const k = `${t}:${r.id}`; _movFiscalItens[k] = { ...(_movFiscalItens[k] || {}), ncm: r.ncm, ucom: r.unidade_comercial }; });
+    // lote S58 (#239): o modelo liga as linhas que podem receber o mesmo NCM
+    const extra = t === "acessorio" ? ",modelo_id" : t === "equipamento" ? ",modelo" : "";
+    const { data } = await sb.from(MOV_TABELA_MESTRE[t]).select("id,ncm,unidade_comercial" + extra).in("id", [...s]);
+    (data || []).forEach(r => { const k = `${t}:${r.id}`; _movFiscalItens[k] = { ...(_movFiscalItens[k] || {}), ncm: r.ncm, ucom: r.unidade_comercial, modelo: r.modelo_id || r.modelo || null }; });
   }));
   if(movItensTravados()) return;
   await Promise.all(itens.filter(it => !(Number(it.valor_unitario) > 0)).map(it => movSugerirValor(it)));
@@ -1024,6 +1029,40 @@ async function movCompletarNovos(novos){
   await movCarregarFiscalItens(novos);
   if(movimentacaoAtual !== doc) return;
   novos.forEach(it => { const f = movItemFiscal(it); if(!(Number(it.valor_unitario) > 0) && f.sug > 0) it.valor_unitario = f.sug; });
+  renderizarItens();
+}
+/* lote S58 (#239): corrige o NCM na linha, pela RPC que grava só esse campo no cadastro (fiscal_pode_emitir). Linha de nota não
+   emitida que já traz o NCM gravado acompanha a troca, porque a emissão prefere o NCM do item ao do cadastro. */
+function movNcmAplicarLocal(chave, d){
+  if(_movFiscalItens[chave]) _movFiscalItens[chave].ncm = d;
+  itensAtuais.forEach(o => { const [t, id] = movItemChave(o); if(`${t}:${id}` === chave && o.ncm) o.ncm = d; });
+}
+async function movNcmGravar(t, id, d){
+  const { error } = await sb.rpc("fiscal_item_definir_ncm", { p_tipo: t, p_id: id, p_ncm: d });
+  if(error){ aviso("app-aviso", "NCM não gravado: " + error.message.replace(/^.*?: /, ""), "erro"); return false; }
+  movNcmAplicarLocal(`${t}:${id}`, d);
+  return true;
+}
+async function movNcmSalvar(idx, inp){
+  const it = itensAtuais[idx]; if(!it) return;
+  const [t, id] = movItemChave(it);
+  const atual = String(movItemFiscal(it).ncm || "").replace(/\D/g, "");
+  const d = String(inp.value || "").replace(/\D/g, "");
+  if(!d || d === atual){ renderizarItens(); return; }
+  if(d.length !== 8){ aviso("app-aviso", "NCM tem 8 dígitos (ex.: 8431.43.10).", "erro"); inp.focus(); return; }
+  if(!(await movNcmGravar(t, id, d))){ renderizarItens(); return; }
+  const fmt = typeof ncmFormatar === "function" ? ncmFormatar(d) : d;
+  const modelo = (_movFiscalItens[`${t}:${id}`] || {}).modelo;
+  const iguais = new Map();
+  if(modelo) itensAtuais.forEach(o => {
+    const [t2, id2] = movItemChave(o);
+    if(t2 === t && id2 !== id && (_movFiscalItens[`${t2}:${id2}`] || {}).modelo === modelo && !movItemFiscal(o).ncm) iguais.set(id2, o);
+  });
+  let extras = 0;
+  if(iguais.size && confirm(`Aplicar o NCM ${fmt} também às ${iguais.size} outra(s) linha(s) do mesmo modelo que estão sem NCM?`)){
+    for(const id2 of iguais.keys()){ if(await movNcmGravar(t, id2, d)) extras++; }
+  }
+  aviso("app-aviso", `NCM ${fmt} gravado no cadastro${extras ? ` e em mais ${extras} item(ns) do mesmo modelo` : ""}. Vale para as próximas notas; nota já emitida não muda.`, "ok");
   renderizarItens();
 }
 /* "sem NCM": abre o cadastro na aba Fiscal (mesmo caminho do Para regularizar da 105a) */

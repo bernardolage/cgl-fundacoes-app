@@ -1236,7 +1236,8 @@ function linkReparo(id, texto){ return linkCadastro("reparo", id, texto, "Abrir 
 function linkFabricacao(id, texto){ return linkCadastro("fabricacao", id, texto, "Abrir a ordem de fabricação"); }   // fase 84
 function linkViagem(id, texto){ return linkCadastro("viagem", id, texto, "Abrir a viagem (Logística)"); }   // fase 89
 function linkManutencao(id, texto){ return linkCadastro("manutencao", id, texto, "Abrir a OS de manutenção"); }   // fase 92
-const LINK_CAD_SECAO = { acessorio: "acessorios", equipamento: "equipamentos", produto: "produtos", movimentacao: "movimentacoes", reparo: "reparos", fabricacao: "fabricacao", viagem: "frota", manutencao: "manutencao" };
+function linkSeparacao(id, texto){ return linkCadastro("separacao", id, texto, "Abrir a separação"); }   // lote S58 (#233)
+const LINK_CAD_SECAO = { acessorio: "acessorios", equipamento: "equipamentos", produto: "produtos", movimentacao: "movimentacoes", reparo: "reparos", fabricacao: "fabricacao", viagem: "frota", manutencao: "manutencao", separacao: "separacoes" };
 document.addEventListener("click", async (e) => {
   const a = e.target && e.target.closest ? e.target.closest("a.link-cad") : null;
   if(!a) return;
@@ -1259,6 +1260,7 @@ document.addEventListener("click", async (e) => {
   else if(tipo === "fabricacao" && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
   else if(tipo === "viagem" && typeof abrirViagem === "function") abrirViagem(id, null);
   else if(tipo === "manutencao" && typeof abrirManutencao === "function") abrirManutencao(id);   // fase 92
+  else if(tipo === "separacao" && typeof abrirSeparacao === "function") abrirSeparacao(id);   // lote S58 (#233)
 }, true);
 
 /* ====================== ATUALIZAÇÃO AUTOMÁTICA DO APP (fase 86) ======================

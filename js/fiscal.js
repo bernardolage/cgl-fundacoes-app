@@ -170,6 +170,7 @@ async function fiscalBuscarCnpj(cnpj){
       uf:            txt(j.uf).toLowerCase(),
       telefone:      telD.length >= 10 ? `(${telD.slice(0, 2)}) ${telD.slice(2, -4)}-${telD.slice(-4)}` : "",
       email:         txt(j.email).toLowerCase(),
+      ibge:          /^\d{7}$/.test(txt(j.codigo_municipio_ibge)) ? txt(j.codigo_municipio_ibge) : "",   // lote S58 (#228)
       situacao:      situacao,
       ativa:         !situacao || situacao.toUpperCase() === "ATIVA"
     };

@@ -105,6 +105,7 @@ async function carregarCategorias(){
 const PROD_CATEGORIAS_SESMT = ["EPI", "EPI / UNIFORMES", "UNIFORMES", "DOCUMENTACAO SESMT", "EXAMES SESMT"];
 const PROD_MSG_SO_SESMT = "Seu perfil edita só produtos do SESMT (EPI, uniformes, documentação e exames).";
 let _prodCatOriginal = null;   // categoria do produto aberto, como veio do banco (o SESMT só grava se ela for do SESMT)
+let _prodAtivo = true;         // lote S58 (#237): situação do produto aberto; decide entre Arquivar e Reativar
 function prodCategoriaEhSesmt(catId){
   return !!catId && PROD_CATEGORIAS_SESMT.includes(String(_prodCategorias[catId] || "").trim().toUpperCase());
 }
@@ -143,6 +144,8 @@ function prodAplicarPerfil(){
   const novo = $("btn-novo-produto"); if(novo) novo.style.display = perfil ? "" : "none";
   const salvar = $("btn-salvar-prod"); if(salvar) salvar.style.display = perfil ? "" : "none";
   const excluir = $("btn-excluir-prod"); if(excluir) excluir.style.display = (perfil === "tudo" && prodEditId) ? "" : "none";
+  const arq = $("btn-arquivar-prod");   // lote S58 (#237)
+  if(arq){ arq.style.display = (perfil === "tudo" && prodEditId) ? "" : "none"; arq.textContent = _prodAtivo ? "📦 Arquivar" : "♻️ Reativar"; }
   const novaCat = $("btn-nova-cat"); if(novaCat) novaCat.style.display = prodPodeEditarCategoria() && !ehSomenteLeitura() ? "" : "none";
 }
 
@@ -519,6 +522,7 @@ function novoProduto(){
   $("prod-conferido").checked = true;
   if($("prod-tipo-item")) $("prod-tipo-item").value = "produto";   // lote S55 (#175)
   prodAplicarTipoItem();
+  _prodAtivo = true;
   prodAplicarPerfil();   // lote S51 (produto novo: sem Excluir)
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });   // fase 105a
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
@@ -529,6 +533,7 @@ async function abrirProduto(id){
   prodEditId = id;
   const { data, error } = await sb.from("produtos").select("*").eq("id",id).single();
   if(error){ aviso("app-aviso","Erro ao abrir produto: "+error.message,"erro"); return; }
+  _prodAtivo = data.ativo !== false;   // lote S58 (#237)
   $("prod-codigo").value      = data.codigo || "";
   _prodCodNum = null; _prodCodManual = false;   // lote S56b (#197): código existente não muda pelo gerador
   $("prod-codigo").placeholder = "";
@@ -602,7 +607,7 @@ function abrirFichaProdVisual(p){
   $("prod-ficha-conf-chip").innerHTML = conf
     ? '<span class="tag verde">Conferido</span>'
     : '<span class="tag ambar">⚠ A conferir</span>';
-  $("prod-ficha-titulo").textContent = (prodEditId ? `${p.codigo} — ${p.nome}` : "Novo produto") + (p.tipo_item === "servico" ? " · serviço consumido" : "");   // lote S55 (#175)
+  $("prod-ficha-titulo").textContent = (prodEditId ? `${p.codigo} — ${p.nome}` : "Novo produto") + (p.tipo_item === "servico" ? " · serviço consumido" : "") + (p.ativo === false ? " · arquivado" : "");   // lote S55 (#175); lote S58 (#237)
 
   ativarTabProd("geral");
 }
@@ -678,12 +683,8 @@ async function salvarProduto(){
   // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
   const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("prod") : null;
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabProd("fiscal"); return; }
-  // lote S56b (#199, D-199a): produto novo exige NCM; serviço consumido dispensa; produto antigo sem NCM salva com aviso
-  if(fis && !prodEditId && reg.tipo_item !== "servico" && !fis.ncm){
-    aviso("app-aviso", "Informe o NCM do produto (8 dígitos, ex.: 8431.43.10): é obrigatório no cadastro novo. Serviço consumido dispensa.", "erro");
-    ativarTabProd("fiscal"); $("prod-ncm")?.focus(); return;
-  }
-  const semNcm = !!fis && !!prodEditId && reg.tipo_item !== "servico" && !fis.ncm;
+  // lote S58 (#238): NCM opcional no cadastro, com aviso ao salvar; a cobrança é na emissão. Serviço consumido dispensa
+  const semNcm = !!fis && reg.tipo_item !== "servico" && !fis.ncm;
   if(fis) Object.assign(reg, fis);
   // lote S51 (#150): o SESMT grava só produto que era e continua numa categoria do SESMT (o banco confere igual)
   const perfil = prodPerfilEdicao();
@@ -722,7 +723,7 @@ async function salvarProduto(){
   prodEditId = result.data.id;
   _prodCatOriginal = result.data.categoria_id || null;
   prodAplicarPerfil();
-  aviso("app-aviso", semNcm ? "Produto salvo. Sem NCM: preencha quando souber (aba Fiscal)." : "Produto salvo.", semNcm ? "aviso" : "ok");   // lote S56b (#199)
+  aviso("app-aviso", semNcm ? "Produto salvo sem NCM: a nota fiscal só sai com o código (aba Fiscal ou na linha da movimentação)." : "Produto salvo.", semNcm ? "aviso" : "ok");   // lote S56b (#199)
   await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
   await abrirProduto(prodEditId);
@@ -738,6 +739,37 @@ async function excluirProduto(){
     return;
   }
   aviso("app-aviso","Produto excluído.","ok");
+  await carregarProdutos();
+  if(typeof carregarDashboard === "function") await carregarDashboard();
+  mostrarPainelProd();
+}
+
+/* lote S58 (#237): arquivar tira o produto das buscas e mantém o histórico; pedido antigo continua mostrando o nome.
+   Com saldo não arquiva (o saldo sumiria das listas de estoque). O saldo é relido do banco na hora. */
+async function arquivarProduto(){
+  if(!prodEditId) return;
+  if(prodPerfilEdicao() !== "tudo"){ aviso("app-aviso", "Seu perfil não arquiva produtos: peça ao almoxarifado.", "erro"); return; }
+  const id = prodEditId;
+  if(!_prodAtivo){
+    const { error } = await sb.from("produtos").update({ ativo: true }).eq("id", id);
+    if(error){ aviso("app-aviso", "Não foi possível reativar: " + error.message, "erro"); return; }
+    _prodTotalAtivos = null;
+    aviso("app-aviso", "Produto reativado: volta às buscas de Compras, Separação e Movimentações.", "ok");
+    await carregarProdutos();
+    await abrirProduto(id);
+    return;
+  }
+  const { data: p, error: e1 } = await sb.from("produtos").select("codigo,nome,unidade,estoque_atual").eq("id", id).single();
+  if(e1){ aviso("app-aviso", "Não foi possível conferir o saldo: " + e1.message, "erro"); return; }
+  if(Number(p.estoque_atual || 0) !== 0){
+    aviso("app-aviso", `Não arquivado: ${p.codigo} tem ${num(p.estoque_atual)} ${p.unidade || "un"} em estoque. Zere o saldo antes de arquivar.`, "erro");
+    return;
+  }
+  if(!confirm(`Arquivar ${p.codigo} — ${p.nome}?\n\nSai das buscas de Compras, Separação e Movimentações. Pedidos antigos continuam mostrando o nome, e dá para reativar depois.`)) return;
+  const { error } = await sb.from("produtos").update({ ativo: false }).eq("id", id);
+  if(error){ aviso("app-aviso", "Não foi possível arquivar: " + error.message, "erro"); return; }
+  _prodTotalAtivos = null;
+  aviso("app-aviso", "Produto arquivado. Ele aparece no filtro de inativos.", "ok");
   await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
   mostrarPainelProd();
@@ -804,6 +836,7 @@ function ligarProdutos(){
   $("btn-voltar-prod")?.addEventListener("click", mostrarPainelProd);
   $("btn-salvar-prod")?.addEventListener("click", () => comBotaoTravado("btn-salvar-prod", salvarProduto));
   $("btn-excluir-prod")?.addEventListener("click", excluirProduto);
+  $("btn-arquivar-prod")?.addEventListener("click", () => comBotaoTravado("btn-arquivar-prod", arquivarProduto));   // lote S58 (#237)
   $("btn-nova-cat")?.addEventListener("click", criarNovaCategoria);
   $("btn-prod-gerar-cod")?.addEventListener("click", () => comBotaoTravado("btn-prod-gerar-cod", () => prodGerarCodigo(false)));   // lote S56b (#197)
   $("prod-codigo")?.addEventListener("blur", prodCodNormalizar);

@@ -28,7 +28,7 @@ let _sepCentros = [];            // lote S48 (#107): centros de custo (setor / o
 
 const SEP_STATUS = { aberta: ["Aberta", "azul"], em_separacao: ["Em separação", "ambar"], separada: ["Separada", "verde"], entregue: ["Entregue", "cinza"], cancelada: ["Cancelada", "cinza"] };
 const SEP_STAGES = ["aberta", "em_separacao", "separada", "entregue"];
-const SEP_ORIGEM = { mobilizacao: "Mobilização", pedido_obra: "Pedido da obra", requisicao: "Requisição", manutencao: "OS" };   // fase 102 (#143): requisição; lote S56b (#193): OS preventiva
+const SEP_ORIGEM = { mobilizacao: "Mobilização", pedido_obra: "Pedido da obra", requisicao: "Requisição", manutencao: "Manutenção" };   // fase 102 (#143): requisição; lote S56b (#193): OS preventiva
 // lote S48 (#107): "*" traz valor_total quando a migration 20261022_loteS48_b estiver aplicada (sem ela, a tela segue sem valor)
 const SEP_SELECT = "*,"
   + "solicitante:profiles!separacoes_solicitante_id_fkey(nome),responsavel:profiles!separacoes_responsavel_id_fkey(nome),retirante:funcionarios(nome),itens:separacao_itens(id,separado)";
@@ -152,6 +152,7 @@ async function carregarSeparacoes(force){
   const cont = $("sep-conteudo"); if(!cont) return;
   await sepCarregarBase(force);
   $("btn-sep-novo").style.display = sepPodePedir() ? "" : "none";
+  if($("btn-sep-novo-man")) $("btn-sep-novo-man").style.display = sepPodePedir() ? "" : "none";   // lote S58 (#234)
   sepRenderPlantao();
   await sepFetch();
   renderSeparacoes();
@@ -204,27 +205,32 @@ function renderSeparacoes(){
   document.querySelectorAll("#sep-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _sepView));
   const dados = sepFiltrados();
   const verValor = sepPodeVerValor() && _sepLista.some(s => s.valor_total != null);   // lote S48 (#107)
+  const soMan = $("sep-f-origem")?.value === "manutencao";   // lote S58 (#234): atalho Manutenção, com a TAG em destaque
+  $("btn-sep-so-man")?.classList.toggle("ativo", soMan);
   $("sep-contador").textContent = `${dados.length} de ${_sepLista.length}`;
   const preset = _sepPreset ? `<p class="meta">Filtro da Sala de Comando: <strong>${_sepPreset === "vencidas" ? "prazo vencido" : "sem responsável"}</strong> · <a href="#" id="sep-preset-off">limpar</a></p>` : "";
   if(!dados.length){
-    cont.innerHTML = preset + `<p class="vazio">Nenhuma separação com esses filtros.${sepPodePedir() ? ' Use "+ Pedido da obra" ou "Gerar separação" na mobilização.' : ""}</p>`;
+    cont.innerHTML = preset + `<p class="vazio">Nenhuma separação com esses filtros.${sepPodePedir() ? ' Use "+ Pedido da obra", "+ Pedido da manutenção" ou "Gerar separação" na mobilização.' : ""}</p>`;
   } else if(_sepView === "kanban"){
     const cols = SEP_STAGES.concat(dados.some(s => s.status === "cancelada") ? ["cancelada"] : []);
     cont.innerHTML = preset + `<div class="serv-kanban">${cols.map(st => { const its = dados.filter(s => s.status === st);
       return `<div class="serv-kan-col"><div class="serv-kan-col-head">${sepTag(st)} <span class="contador">${its.length}</span></div>
         ${its.slice(0, 200).map(s => { const p = sepProgresso(s); return `<div class="serv-kan-card" data-id="${esc(s.id)}">
           <div class="serv-kan-card-nome"><strong>${esc(s.numero)}</strong> <span class="meta">${esc(SEP_ORIGEM[s.origem_tipo] || "")}</span></div>
-          <div>${s.obra_id ? esc(sepObra(s.obra_id) || "—") + (s.equipamento_id ? ` · TAG ${esc(sepEq(s.equipamento_id))}` : "") : esc(sepDestinoCurto(s))}</div>
+          <div>${soMan && s.equipamento_id ? `<strong>TAG ${esc(sepEq(s.equipamento_id))}</strong>${s.obra_id ? " · " + esc(sepObra(s.obra_id) || "—") : ""}` : s.obra_id ? esc(sepObra(s.obra_id) || "—") + (s.equipamento_id ? ` · TAG ${esc(sepEq(s.equipamento_id))}` : "") : esc(sepDestinoCurto(s))}</div>
           <div class="meta">${esc(p.ok)} de ${esc(p.n)} separado(s)${s.responsavel ? " · " + esc(s.responsavel.nome) : " · sem responsável"}</div>
           ${verValor && s.valor_total != null ? `<div class="meta">valor ${brl(s.valor_total)}</div>` : ""}
           ${s.prazo ? `<div class="meta">prazo ${dataBR(s.prazo)}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}</div>` : ""}
         </div>`; }).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
     cont.innerHTML = preset + `<div class="tabela-rola"><table>
-      <thead><tr><th>Nº</th><th>Criada</th><th>Origem</th><th>Obra</th><th>TAG</th><th>Pedido por</th><th>Responsável</th><th>Prazo</th><th class="num">Itens</th>${verValor ? '<th class="num">Valor</th>' : ""}<th>Status</th></tr></thead>
-      <tbody>${dados.map(s => { const p = sepProgresso(s); return `<tr class="linha-clicavel" data-id="${esc(s.id)}">
+      <thead><tr><th>Nº</th><th>Criada</th><th>Origem</th>${soMan ? "<th>TAG</th><th>Obra / OS</th>" : "<th>Obra</th><th>TAG</th>"}<th>Pedido por</th><th>Responsável</th><th>Prazo</th><th class="num">Itens</th>${verValor ? '<th class="num">Valor</th>' : ""}<th>Status</th></tr></thead>
+      <tbody>${dados.map(s => { const p = sepProgresso(s);
+        const celObra = `<td>${s.obra_id || !s.manutencao_id ? linkObra(s.obra_id, sepObra(s.obra_id) || "—") : /* html */ sepOSLink(s)}</td>`;
+        const celTag = `<td>${s.equipamento_id ? (soMan ? `<strong>${linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id))}</strong>` : linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id))) : '<span class="meta">—</span>'}</td>`;
+        return `<tr class="linha-clicavel" data-id="${esc(s.id)}">
         <td><strong>${esc(s.numero)}</strong></td><td>${dataBR(s.created_at)}</td><td>${esc(SEP_ORIGEM[s.origem_tipo] || s.origem_tipo)}</td>
-        <td>${s.obra_id || !s.manutencao_id ? linkObra(s.obra_id, sepObra(s.obra_id) || "—") : /* html */ sepOSLink(s)}</td><td>${s.equipamento_id ? linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id)) : '<span class="meta">—</span>'}</td>
+        ${/* html */ soMan ? celTag + celObra : celObra + celTag}
         <td class="meta">${esc(s.solicitante?.nome || "—")}</td><td>${s.responsavel ? esc(s.responsavel.nome) : '<span class="tag ambar">sem responsável</span>'}</td>
         <td>${s.prazo ? dataBR(s.prazo) : "—"}${sepVencida(s) ? ' <span class="tag vermelho">vencido</span>' : ""}</td>
         <td class="num">${esc(p.ok)} / ${esc(p.n)}</td>${verValor ? `<td class="num">${s.valor_total != null ? brl(s.valor_total) : "—"}</td>` : ""}<td>${sepTag(s.status)}</td></tr>`; }).join("")}</tbody></table></div>`;
@@ -260,7 +266,7 @@ function sepAtualizarCabecalho(){
     if(st !== "cancelada"){ if(j === i) el.classList.add("atual"); else if(j < i) el.classList.add("passada"); }
   });
   $("sep-chip-origem").innerHTML = s.origem_tipo === "mobilizacao" && s.mobilizacao_id ? `<a href="#" id="sep-chip-mob-link" title="abrir a mobilização">Mobilização</a>`
-    : s.manutencao_id ? `${esc(SEP_ORIGEM.manutencao)} ${/* html */ sepOSLink(s)}` : esc(SEP_ORIGEM[s.origem_tipo] || "—");   // lote S56b (#193): link para a OS
+    : s.manutencao_id ? `OS ${/* html */ sepOSLink(s)}` : esc(SEP_ORIGEM[s.origem_tipo] || "—");   // lote S56b (#193): link para a OS
   $("sep-chip-mob-link")?.addEventListener("click", e => { e.preventDefault(); if(irParaSecao("mobilizacoes") && typeof abrirMobilizacao === "function") abrirMobilizacao(s.mobilizacao_id); });
   $("sep-chip-obra").innerHTML = linkObra(s.obra_id, sepObra(s.obra_id) || "—");
   $("sep-chip-tag").innerHTML = s.equipamento_id ? linkEquipamento(s.equipamento_id, sepEq(s.equipamento_id)) : "—";
@@ -535,11 +541,15 @@ function sepLigarBusca(inp, lista, aoEscolher, opts){
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 200));
 }
 
-/* ---------- pedido da obra (ficha da obra, RDO, "+ Pedido da obra") ---------- */
+/* ---------- pedido da obra (ficha da obra, RDO, "+ Pedido da obra") e da manutenção (lote S58, #234: TAG obrigatória, obra opcional, sem OS) ---------- */
 async function abrirPedidoMaterial(pre){
   if(!sepPodePedir()){ aviso("app-aviso", "Seu perfil não pede material ao almoxarifado.", "erro"); return; }
   await sepCarregarBase(false);
-  _sepPed = { itens: [] };
+  const manut = !!pre?.manutencao;
+  _sepPed = { itens: [], manut };
+  $("sep-ped-titulo").textContent = manut ? "Pedir material para a manutenção" : "Pedir material ao almoxarifado";
+  $("sep-ped-obra-lbl").textContent = manut ? "Obra (opcional)" : "Obra *";
+  $("sep-ped-equip-lbl").textContent = manut ? "TAG *" : "TAG";
   const obraPre = pre?.obra_id || "";
   $("sep-ped-obra").innerHTML = `<option value="">— obra —</option>` + _sepObras.filter(o => ["em_andamento", "planejada", "paralisada"].includes(o.status) || o.id === obraPre).map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
   $("sep-ped-equip").innerHTML = `<option value="">— nenhuma —</option>` + _sepEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
@@ -586,10 +596,12 @@ function sepPedAddLivre(){
 }
 async function salvarPedidoMaterial(){
   if(!_sepPed) return;
-  const obra = $("sep-ped-obra").value; if(!obra){ aviso("app-aviso", "Escolha a obra.", "erro"); $("sep-ped-obra").focus(); return; }
+  const manut = !!_sepPed.manut, obra = $("sep-ped-obra").value, tag = $("sep-ped-equip").value;
+  if(manut && !tag){ aviso("app-aviso", "Escolha a TAG.", "erro"); $("sep-ped-equip").focus(); return; }
+  if(!manut && !obra){ aviso("app-aviso", "Escolha a obra.", "erro"); $("sep-ped-obra").focus(); return; }
   const itens = _sepPed.itens.filter(i => Number(i.quantidade) > 0);
   if(!itens.length){ aviso("app-aviso", "Adicione ao menos um item com quantidade.", "erro"); return; }
-  const reg = { origem_tipo: "pedido_obra", obra_id: obra, equipamento_id: $("sep-ped-equip").value || null, prazo: $("sep-ped-prazo").value || null,
+  const reg = { origem_tipo: manut ? "manutencao" : "pedido_obra", obra_id: obra || null, equipamento_id: tag || null, prazo: $("sep-ped-prazo").value || null,
     observacoes: $("sep-ped-obs").value.trim() || null, responsavel_id: _sepPlantao || null, solicitante_id: usuarioAtual.id };
   const { data: s, error } = await sb.from("separacoes").insert(reg).select("id,numero").single();
   if(error){ aviso("app-aviso", "Pedido não enviado: " + error.message, "erro"); return; }
@@ -617,6 +629,8 @@ function ligarSeparacoes(){
   $("sep-f-status")?.addEventListener("change", async () => { await sepFetch(); renderSeparacoes(); });
   $("btn-sep-atualizar")?.addEventListener("click", () => carregarSeparacoes(true));
   $("btn-sep-novo")?.addEventListener("click", () => abrirPedidoMaterial());
+  $("btn-sep-novo-man")?.addEventListener("click", () => abrirPedidoMaterial({ manutencao: true }));   // lote S58 (#234)
+  $("btn-sep-so-man")?.addEventListener("click", () => { const f = $("sep-f-origem"); if(f) f.value = f.value === "manutencao" ? "" : "manutencao"; renderSeparacoes(); });
   $("btn-sep-voltar")?.addEventListener("click", async () => { mostrarPainelSeparacoes(); await sepFetch(); renderSeparacoes(); });
   $("btn-sep-salvar")?.addEventListener("click", () => comBotaoTravado("btn-sep-salvar", salvarSeparacao));
   $("btn-sep-iniciar")?.addEventListener("click", () => comBotaoTravado("btn-sep-iniciar", sepIniciar));

@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="99e5be7" />
+<meta name="app-versao" content="080210a" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=99e5be7" />
+<link rel="stylesheet" href="css/estilo.css?v=080210a" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=99e5be7"></script>
+<script src="js/tema.js?v=080210a"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=99e5be7"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=99e5be7"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=99e5be7"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=080210a"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=080210a"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=080210a"></script>
 </head>
 <body>
 
@@ -532,7 +532,9 @@
                 </div>
                 <div class="campo"><label>Nome / Razão social *</label><input id="cli-nome" required /></div>
                 <div class="campo"><label>Nome fantasia</label><input id="cli-fantasia" /></div>
-                <div class="campo"><label>CPF / CNPJ</label><input id="cli-doc" placeholder="00.000.000/0000-00" /><span class="meta" id="cli-doc-status"></span></div>
+                <div class="campo"><label>CPF / CNPJ</label>
+                  <div style="display:flex;gap:6px;"><input id="cli-doc" style="flex:1;" placeholder="00.000.000/0000-00" /><button type="button" class="btn-sec btn-sm" id="btn-cli-cnpj" title="Preenche razão social, endereço, telefone e e-mail vazios pela BrasilAPI (só CNPJ)">🔎 Buscar CNPJ</button></div>
+                  <span class="meta" id="cli-doc-status"></span></div>
                 <div class="campo"><label>Situação</label>
                   <label class="check-inline"><input type="checkbox" id="cli-ativo" /> Cliente ativo</label>
                 </div>
@@ -1332,6 +1334,7 @@
             <div class="actions-left">
               <button type="button" class="btn-sec" id="btn-voltar-prod">&larr; Voltar</button>
               <button type="button" class="btn" id="btn-salvar-prod">💾 Salvar</button>
+              <button type="button" class="btn-sec" id="btn-arquivar-prod" style="display:none;" title="Tira o produto das buscas sem apagar o histórico. Só com saldo zero.">📦 Arquivar</button>
               <button type="button" class="btn-sec acao-perigo" id="btn-excluir-prod">🗑️ Excluir</button>
             </div>
             <div class="actions-right">
@@ -1594,14 +1597,16 @@
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Por status</button>
             </div>
+            <div class="serv-views"><button type="button" class="serv-view-btn" id="btn-sep-so-man" title="Só os pedidos da manutenção, com a TAG em destaque">Manutenção</button></div>
             <span class="meta" id="sep-plantao" style="margin-left:auto;"></span>
             <button type="button" class="btn-sec" id="btn-sep-atualizar">🔄 Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-sep-novo-man" style="display:none;" title="Pedido com TAG, sem precisar de obra nem de OS">+ Pedido da manutenção</button>
             <button type="button" class="btn" id="btn-sep-novo" style="display:none;">+ Pedido da obra</button>
           </div>
           <div class="serv-filtros">
             <input id="sep-busca" placeholder="Buscar nº, obra, TAG, responsável…" />
             <select id="sep-f-status"><option value="_abertas">Abertas</option><option value="">Todos os status</option><option value="aberta">Aberta</option><option value="em_separacao">Em separação</option><option value="separada">Separada</option><option value="entregue">Entregue</option><option value="cancelada">Cancelada</option></select>
-            <select id="sep-f-origem"><option value="">Origem</option><option value="mobilizacao">Mobilização</option><option value="pedido_obra">Pedido da obra</option><option value="manutencao">OS (preventiva)</option></select>
+            <select id="sep-f-origem"><option value="">Origem</option><option value="mobilizacao">Mobilização</option><option value="pedido_obra">Pedido da obra</option><option value="requisicao">Requisição</option><option value="manutencao">Manutenção</option></select>
             <select id="sep-f-resp"><option value="">Responsável</option></select>
             <select id="sep-f-obra"><option value="">Obra</option></select>
             <label class="meta" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sep-f-minhas" /> só as minhas</label>
@@ -2023,8 +2028,8 @@
               <div class="autocomplete-lista" id="cmp-prod-sugest" style="display:none;"></div></div>
             <div class="campo"><label>Categoria</label><select id="cmp-prod-cat"></select></div>
             <div class="campo"><label>Unidade</label><select id="cmp-prod-un"></select></div>
-            <!-- lote S56 (#199): NCM obrigatório no produto (serviço dispensa); (#197): código gerado no banco -->
-            <div class="campo"><label id="cmp-prod-ncm-lbl">NCM *</label><input id="cmp-prod-ncm" placeholder="8 dígitos (ex.: 8431.43.10)" maxlength="10" /></div>
+            <!-- lote S58 (#238): NCM opcional, cobrado na emissão; lote S56 (#197): código gerado no banco -->
+            <div class="campo"><label id="cmp-prod-ncm-lbl">NCM (opcional)</label><input id="cmp-prod-ncm" placeholder="8 dígitos (ex.: 8431.43.10)" maxlength="10" /></div>
             <div class="campo"><label>Código</label><input id="cmp-prod-cod" placeholder="automático" disabled title="Gerado ao cadastrar: iniciais do nome + número sequencial (ex.: MPB6721)" /></div>
           </div>
           <p class="meta" id="cmp-prod-tipo-info"></p>
@@ -3662,6 +3667,7 @@
             <div class="serv-views" id="eqp-views">
               <button type="button" class="serv-view-btn ativo" data-view="kanban">Por status</button>
               <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="semanal" title="Lote S58: lançar o horímetro e o km da semana, máquina por máquina">Horímetro semanal</button>
               <button type="button" class="serv-view-btn" data-view="vendas" id="eqp-view-vendas" title="Fase 96: equipamentos e veículos vendidos, parcelas e saldo a receber">Vendas</button>
               <button type="button" class="serv-view-btn" data-view="cpb" id="eqp-view-cpb" title="Fase 107a: computadores de bordo Geodigitus (CPU Saci, IMEI), vínculo com a máquina, calibração e sincronização">Computadores de bordo</button>
             </div>
@@ -3676,6 +3682,12 @@
             <select id="eqp-f-local"><option value="">Onde está</option></select>
             <select id="eqp-f-obra"><option value="">Obra</option></select>
             <label class="check-inline"><input type="checkbox" id="eqp-f-inativos" /> mostrar inativos</label>
+          </div>
+          <!-- lote S58 (#232): filtros da visão Horímetro semanal -->
+          <div class="serv-filtros" id="eqp-sem-filtros" style="display:none;">
+            <input id="eqp-sem-busca" placeholder="Buscar TAG ou nome…" />
+            <select id="eqp-sem-grupo"><option value="">Máquinas e caminhões</option><option value="maquinas">Só máquinas</option><option value="veiculos">Só caminhões e veículos</option></select>
+            <button type="button" class="btn" id="btn-eqp-sem-salvar" style="display:none;">💾 Salvar leituras</button>
           </div>
           <div class="serv-filtros" id="vb-filtros" style="display:none;">
             <input id="vb-busca" placeholder="Buscar venda, TAG, placa, comprador, NF…" />
@@ -4271,18 +4283,6 @@
       </div>
 
       <!-- ajuste manual de horímetro / km -->
-      <div class="modal-fundo" id="man-leitura-modal" style="display:none;">
-        <div class="modal-caixa" style="max-width:520px;">
-          <div class="modal-topo"><h3 id="man-leitura-titulo">Ajustar horímetro / km</h3><button type="button" class="btn-sec" id="btn-man-leitura-fechar">×</button></div>
-          <p class="meta">O sistema só sobe o horímetro e o km sozinho (RDO, OS, checklist, viagem). Para corrigir um erro de digitação ou a troca do horímetro, informe o valor certo e o motivo: fica registrado como leitura manual.</p>
-          <div class="grade">
-            <div class="campo"><label>Horímetro (h)</label><input type="number" id="man-l-hor" step="0.1" min="0" /></div>
-            <div class="campo"><label>km</label><input type="number" id="man-l-km" step="1" min="0" /></div>
-            <div class="campo largo"><label>Motivo *</label><input id="man-l-motivo" placeholder="ex.: operador digitou 15.821 em vez de 1.582 no RDO de 19/10" /></div>
-          </div>
-          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-man-leitura-salvar">💾 Registrar ajuste</button></div>
-        </div>
-      </div>
     </section>
 
     <section class="secao" id="sec-frota">
@@ -6574,14 +6574,27 @@
         </div>
       </div>
     </div>
+    <!-- lote S58 (#232): ajuste de leitura fora de sec-manutencao: abre também de Equipamentos, onde a seção de Manutenção fica escondida -->
+    <div class="modal-fundo" id="man-leitura-modal" style="display:none;">
+      <div class="modal-caixa" style="max-width:520px;">
+        <div class="modal-topo"><h3 id="man-leitura-titulo">Ajustar horímetro / km</h3><button type="button" class="btn-sec" id="btn-man-leitura-fechar">×</button></div>
+        <p class="meta">O sistema só sobe o horímetro e o km sozinho (RDO, OS, checklist, viagem). Para corrigir um erro de digitação ou a troca do horímetro, informe o valor certo e o motivo: fica registrado como leitura manual.</p>
+        <div class="grade">
+          <div class="campo"><label>Horímetro (h)</label><input type="number" id="man-l-hor" step="0.1" min="0" /></div>
+          <div class="campo"><label>km</label><input type="number" id="man-l-km" step="1" min="0" /></div>
+          <div class="campo largo"><label>Motivo *</label><input id="man-l-motivo" placeholder="ex.: operador digitou 15.821 em vez de 1.582 no RDO de 19/10" /></div>
+        </div>
+        <div class="form-acoes compacta"><button type="button" class="btn" id="btn-man-leitura-salvar">💾 Registrar ajuste</button></div>
+      </div>
+    </div>
     <!-- fase 83: pedido de material ao almoxarifado (abre da ficha da obra, do RDO e de Separações; fora das seções porque elas se escondem) -->
     <div class="modal-fundo" id="sep-ped-modal" style="display:none;">
       <div class="modal-caixa" style="max-width:780px;">
-        <div class="modal-topo"><h3>Pedir material ao almoxarifado</h3><button type="button" class="btn-sec btn-sm" id="btn-sep-ped-fechar">✕</button></div>
+        <div class="modal-topo"><h3 id="sep-ped-titulo">Pedir material ao almoxarifado</h3><button type="button" class="btn-sec btn-sm" id="btn-sep-ped-fechar">✕</button></div>
         <p class="meta">Substitui o pedido pelo grupo do WhatsApp: vira uma lista de separação para <strong id="sep-ped-resp">—</strong>, com baixa automática ao separar. Acompanhe em Separações.</p>
         <div class="grade grade-3">
-          <div class="campo"><label>Obra *</label><select id="sep-ped-obra"></select></div>
-          <div class="campo"><label>TAG</label><select id="sep-ped-equip"></select></div>
+          <div class="campo"><label id="sep-ped-obra-lbl">Obra *</label><select id="sep-ped-obra"></select></div>
+          <div class="campo"><label id="sep-ped-equip-lbl">TAG</label><select id="sep-ped-equip"></select></div>
           <div class="campo"><label>Precisa até</label><input type="date" id="sep-ped-prazo" /></div>
           <div class="campo largo"><label>Observações</label><input id="sep-ped-obs" placeholder="ex.: mandar no caminhão de quinta" /></div>
           <div class="campo largo"><label>Produto do catálogo ou peça de acessório (Enter adiciona)</label>
@@ -6675,60 +6688,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=99e5be7"></script>
+<script src="js/core.js?v=080210a"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=99e5be7"></script>
+<script src="js/historico.js?v=080210a"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=99e5be7"></script>
-<script src="js/fiscal_ncm.js?v=99e5be7"></script>
+<script src="js/fiscal.js?v=080210a"></script>
+<script src="js/fiscal_ncm.js?v=080210a"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=99e5be7"></script>
-<script src="js/fornecedores.js?v=99e5be7"></script>
-<script src="js/apropriacoes.js?v=99e5be7"></script>
-<script src="js/funcionarios.js?v=99e5be7"></script>
-<script src="js/funcionarios_importar.js?v=99e5be7"></script>
-<script src="js/rh_documentos.js?v=99e5be7"></script>
-<script src="js/servicos.js?v=99e5be7"></script>
-<script src="js/produtos.js?v=99e5be7"></script>
-<script src="js/estoque.js?v=99e5be7"></script>
-<script src="js/separacoes.js?v=99e5be7"></script>
-<script src="js/epi.js?v=99e5be7"></script>
-<script src="js/compras.js?v=99e5be7"></script>
-<script src="js/requisicoes.js?v=99e5be7"></script>
-<script src="js/orcamentos.js?v=99e5be7"></script>
-<script src="js/propostas.js?v=99e5be7"></script>
-<script src="js/contratos.js?v=99e5be7"></script>
-<script src="js/contas_pagar.js?v=99e5be7"></script>
-<script src="js/centros_custo.js?v=99e5be7"></script>
-<script src="js/carteira.js?v=99e5be7"></script>
-<script src="js/obras.js?v=99e5be7"></script>
-<script src="js/frota.js?v=99e5be7"></script>
-<script src="js/viagens.js?v=99e5be7"></script>
-<script src="js/equipamentos.js?v=99e5be7"></script>
-<script src="js/vendas_bens.js?v=99e5be7"></script>
-<script src="js/acessorios.js?v=99e5be7"></script>
-<script src="js/reparos.js?v=99e5be7"></script>
-<script src="js/manutencao.js?v=99e5be7"></script>
-<script src="js/fabricacao.js?v=99e5be7"></script>
-<script src="js/mobilizacoes.js?v=99e5be7"></script>
-<script src="js/estacas.js?v=99e5be7"></script>
-<script src="js/obra_abas.js?v=99e5be7"></script>
-<script src="js/medicoes.js?v=99e5be7"></script>
-<script src="js/movimentacoes.js?v=99e5be7"></script>
-<script src="js/rdo_import_rg113.js?v=99e5be7"></script>
-<script src="js/rdo.js?v=99e5be7"></script>
-<script src="js/rdo_import_maya.js?v=99e5be7"></script>
-<script src="js/geodigitus.js?v=99e5be7"></script>
-<script src="js/computadores_bordo.js?v=99e5be7"></script>
-<script src="js/usuarios.js?v=99e5be7"></script>
-<script src="js/chamados.js?v=99e5be7"></script>
-<script src="js/dashboard.js?v=99e5be7"></script>
-<script src="js/rh_horas.js?v=99e5be7"></script>
-<script src="js/sesmt.js?v=99e5be7"></script>
-<script src="js/patrimonio.js?v=99e5be7"></script>
+<script src="js/clientes.js?v=080210a"></script>
+<script src="js/fornecedores.js?v=080210a"></script>
+<script src="js/apropriacoes.js?v=080210a"></script>
+<script src="js/funcionarios.js?v=080210a"></script>
+<script src="js/funcionarios_importar.js?v=080210a"></script>
+<script src="js/rh_documentos.js?v=080210a"></script>
+<script src="js/servicos.js?v=080210a"></script>
+<script src="js/produtos.js?v=080210a"></script>
+<script src="js/estoque.js?v=080210a"></script>
+<script src="js/separacoes.js?v=080210a"></script>
+<script src="js/epi.js?v=080210a"></script>
+<script src="js/compras.js?v=080210a"></script>
+<script src="js/requisicoes.js?v=080210a"></script>
+<script src="js/orcamentos.js?v=080210a"></script>
+<script src="js/propostas.js?v=080210a"></script>
+<script src="js/contratos.js?v=080210a"></script>
+<script src="js/contas_pagar.js?v=080210a"></script>
+<script src="js/centros_custo.js?v=080210a"></script>
+<script src="js/carteira.js?v=080210a"></script>
+<script src="js/obras.js?v=080210a"></script>
+<script src="js/frota.js?v=080210a"></script>
+<script src="js/viagens.js?v=080210a"></script>
+<script src="js/equipamentos.js?v=080210a"></script>
+<script src="js/vendas_bens.js?v=080210a"></script>
+<script src="js/acessorios.js?v=080210a"></script>
+<script src="js/reparos.js?v=080210a"></script>
+<script src="js/manutencao.js?v=080210a"></script>
+<script src="js/fabricacao.js?v=080210a"></script>
+<script src="js/mobilizacoes.js?v=080210a"></script>
+<script src="js/estacas.js?v=080210a"></script>
+<script src="js/obra_abas.js?v=080210a"></script>
+<script src="js/medicoes.js?v=080210a"></script>
+<script src="js/movimentacoes.js?v=080210a"></script>
+<script src="js/rdo_import_rg113.js?v=080210a"></script>
+<script src="js/rdo.js?v=080210a"></script>
+<script src="js/rdo_import_maya.js?v=080210a"></script>
+<script src="js/geodigitus.js?v=080210a"></script>
+<script src="js/computadores_bordo.js?v=080210a"></script>
+<script src="js/usuarios.js?v=080210a"></script>
+<script src="js/chamados.js?v=080210a"></script>
+<script src="js/dashboard.js?v=080210a"></script>
+<script src="js/rh_horas.js?v=080210a"></script>
+<script src="js/sesmt.js?v=080210a"></script>
+<script src="js/patrimonio.js?v=080210a"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=99e5be7"></script>
+<script src="js/sesmt_ocorrencias.js?v=080210a"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=99e5be7"></script>
+<script src="js/init.js?v=080210a"></script>
 </body>
 </html>

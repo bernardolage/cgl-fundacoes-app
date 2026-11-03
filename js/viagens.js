@@ -465,7 +465,7 @@ function vgLigarBuscaProduto(){
     t = setTimeout(async () => {
       const termo = inp.value.trim();
       if(termo.length < 2){ lista.innerHTML = ""; lista.style.display = "none"; return; }
-      const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,custo_ultimo").or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%`).limit(20);
+      const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,custo_ultimo").eq("ativo", true).or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%`).limit(20);   // lote S58 (#237): ativo
       const res = data || [];
       lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <em>(${esc(p.unidade)})</em></div>`).join("") : `<div class="resultado-item vazio">Nenhum produto encontrado.</div>`;
       lista.style.display = "";

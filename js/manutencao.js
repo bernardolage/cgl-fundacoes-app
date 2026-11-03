@@ -323,16 +323,28 @@ function renderManPreventivas(){
       <td>${t.proximo ? `${esc(manAtividadeTxt(t.proximo))} <span class="meta">· ${esc(manRestanteTxt(t.proximo))}</span>` : "—"}</td>
       <td>${t.semPlano ? "—" : manTagSem(t.pior)}</td>
       <td class="col-acao" style="white-space:nowrap;">${t.semPlano ? (pode ? `<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">+ Plano</button>` : "") :
-        `${pode && (t.n.critico || t.n.atencao) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(t.equipamento_id)}" title="Abre a OS preventiva com os itens vencidos e em atenção e o kit de peças">⚙ Gerar OS</button> ` : ""}<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">Plano</button>`}</td>
+        `${pode && (t.n.critico || t.n.atencao) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(t.equipamento_id)}" title="Abre a OS preventiva com os itens vencidos e em atenção; o kit de peças vira a separação do almoxarifado">⚙ Gerar OS e separação</button> ` : ""}<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">Plano</button>`}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
 async function manGerarPreventiva(eqId, itemIds){
   if(!manPodeEditar()) return;
   const e = manEq(eqId);
-  if(!confirm(`Gerar a OS preventiva da TAG ${e ? e.codigo : ""} com os itens ${itemIds ? "escolhidos" : "vencidos e em atenção"} e o kit de peças de cada um?`)) return;
+  // lote S58 (#233): diz antes quantos itens têm kit com produto; a separação nasce do gatilho dos materiais (lote S56b)
+  const { data: vencendo } = await sb.from("vw_manutencao_preventiva").select("item_id,semaforo").eq("equipamento_id", eqId);
+  const ids = (vencendo || []).filter(i => itemIds ? itemIds.includes(i.item_id) : ["critico", "atencao"].includes(i.semaforo)).map(i => i.item_id);
+  const { data: kits } = ids.length ? await sb.from("manutencao_plano_materiais").select("plano_item_id").in("plano_item_id", ids).not("produto_id", "is", null) : { data: [] };
+  const comKit = new Set((kits || []).map(k => k.plano_item_id)).size;
+  if(!confirm(`Gerar a OS preventiva e a separação da TAG ${e ? e.codigo : ""}?\n\n${ids.length} item(ns) ${itemIds ? "escolhidos" : "vencidos e em atenção"}: ${comKit} com kit de peças e ${ids.length - comKit} sem kit.`)) return;
   const { data, error } = await sb.rpc("manutencao_gerar_preventiva", { p_equipamento_id: eqId, p_item_ids: itemIds || null });
   if(error){ aviso("app-aviso", "Não foi possível gerar a OS: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
-  aviso("app-aviso", "OS preventiva aberta com os itens do plano e o kit de peças.", "ok");
+  const { data: seps } = await sb.from("separacoes").select("id,numero").eq("manutencao_id", data).neq("status", "cancelada").limit(1);
+  const sep = (seps || [])[0];
+  if(sep){
+    aviso("app-aviso", "OS preventiva aberta e separação enviada ao almoxarifado:", "ok");
+    $("app-aviso").insertAdjacentHTML("beforeend", " " + linkSeparacao(sep.id, sep.numero));
+  } else {
+    aviso("app-aviso", "OS preventiva aberta sem separação: nenhum item tem kit com produto.", "aviso");
+  }
   await manFetchOS(); manRenderKpis();
   abrirManutencao(data);
 }
@@ -381,7 +393,7 @@ async function renderManPlano(){
       ${pode ? `<div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-man-pl-salvar">💾 Salvar cabeçalho</button></div>` : ""}
     </div>
     <div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Itens do plano</h3>
-      ${pode ? `<button type="button" class="btn btn-sm" id="btn-man-item-novo" style="margin-left:auto;">+ Item</button> ${_manPlanoItens.some(i => ["critico", "atencao"].includes(i.semaforo)) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(eqId)}">⚙ Gerar OS dos vencidos</button>` : ""}` : ""}
+      ${pode ? `<button type="button" class="btn btn-sm" id="btn-man-item-novo" style="margin-left:auto;">+ Item</button> ${_manPlanoItens.some(i => ["critico", "atencao"].includes(i.semaforo)) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(eqId)}">⚙ Gerar OS e separação dos vencidos</button>` : ""}` : ""}
     </div>
     <div class="tabela-rola"><table>
       <thead><tr><th style="width:36px;">#</th><th>Componente</th><th>Operação</th><th>Setor</th><th class="num">Periodicidade</th><th class="num">Última</th><th class="num">Próxima</th><th>Restante</th><th>Semáforo</th><th class="num">Kit</th><th class="col-acao"></th></tr></thead>
@@ -1178,12 +1190,12 @@ async function manRenderResumoEquipamento(e, containerId){
   const n = { critico: 0, atencao: 0, ok: 0, sem_base: 0 }; itens.forEach(i => n[i.semaforo] = (n[i.semaforo] || 0) + 1);
   const pior = ["critico", "atencao", "sem_base", "ok"].find(s => n[s] > 0);
   const pode = manPodeEditar();
-  const orig = { rdo_abastecimento: "abastecimento do RDO", os: "OS concluída", checklist: "checklist", manual: "ajuste manual", viagem: "chegada de viagem", planilha: "planilha do Bruno" };
+  const orig = { rdo_abastecimento: "abastecimento do RDO", os: "OS concluída", checklist: "checklist", manual: "ajuste manual", viagem: "chegada de viagem", planilha: "planilha do Bruno", semanal: "leitura semanal" };
   const prox = itens.filter(i => i.restante != null).sort((a, b) => Number(a.restante) - Number(b.restante)).slice(0, 5);
   box.innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Plano preventivo</h3>
       <span style="margin-left:8px;">${itens.length ? manTagSem(pior) : '<span class="tag cinza">sem plano</span>'}</span>
       <span class="meta" style="margin-left:8px;">${itens.length ? `${itens.length} itens · ${esc(n.critico)} crítico(s), ${esc(n.atencao)} em atenção` : ""}</span>
-      ${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">${itens.length ? "Abrir plano" : "+ Criar plano"}</button>${itens.length && (n.critico || n.atencao) ? ` <button type="button" class="btn btn-sm" id="btn-eqp-man-gerar">⚙ Gerar OS preventiva</button>` : ""}` : (itens.length ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">Ver plano</button>` : "")}
+      ${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">${itens.length ? "Abrir plano" : "+ Criar plano"}</button>${itens.length && (n.critico || n.atencao) ? ` <button type="button" class="btn btn-sm" id="btn-eqp-man-gerar">⚙ Gerar OS e separação</button>` : ""}` : (itens.length ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">Ver plano</button>` : "")}
     </div>
     ${prox.length ? `<div class="tabela-rola"><table><thead><tr><th>Item</th><th class="num">Periodicidade</th><th class="num">Próxima</th><th>Restante</th><th>Semáforo</th></tr></thead>
       <tbody>${prox.map(i => `<tr><td>${esc(manAtividadeTxt(i))}</td><td class="num">${esc(manPer(i))}</td><td class="num">${esc(manProxTxt(i))}</td><td>${esc(manRestanteTxt(i))}</td><td>${manTagSem(i.semaforo)}</td></tr>`).join("")}</tbody></table></div>` : ""}

@@ -1806,8 +1806,6 @@ function cmpProdUsarExistente(p){
   aviso("app-aviso", `${p.codigo} — ${p.nome} (já cadastrado) incluído no pedido. Salve o pedido para gravar o item.`, "ok");
 }
 function cmpProdTipoInfo(){
-  // lote S56 (#199): NCM obrigatório no produto; serviço consumido dispensa
-  const lblNcm = $("cmp-prod-ncm-lbl"); if(lblNcm) lblNcm.textContent = $("cmp-prod-tipo")?.value === "servico" ? "NCM (opcional)" : "NCM *";
   const info = $("cmp-prod-tipo-info"); if(!info) return;
   if($("cmp-prod-tipo")?.value === "servico"){   // lote S55 (#175)
     info.textContent = "Serviço consumido (frete, hospedagem, locação, serviço de terceiro): aplicação direta, sem estoque; unidade sugerida vb, diária, h ou km. Não é o módulo Serviços (o que a CGL executa).";
@@ -1830,8 +1828,8 @@ async function cmpSalvarProdutoRapido(){
   if(!nome){ aviso("app-aviso", "Informe o nome do produto.", "erro"); $("cmp-prod-nome").focus(); return; }
   const ncm = $("cmp-prod-ncm").value.replace(/\D/g, "");
   const tipo = $("cmp-prod-tipo")?.value === "servico" ? "servico" : "produto";   // lote S55 (#175)
-  // lote S56 (#199): produto novo exige NCM de 8 dígitos (mesma mensagem do banco); serviço consumido dispensa
-  if(tipo === "produto" && ncm.length !== 8){ aviso("app-aviso", "Informe o NCM do produto (8 dígitos, ex.: 8431.43.10): é obrigatório no cadastro novo. Serviço consumido dispensa.", "erro"); $("cmp-prod-ncm").focus(); return; }
+  // lote S58 (#238): NCM opcional, com aviso ao salvar; quando informado, 8 dígitos (o banco confere igual). A cobrança é na emissão
+  const semNcm = tipo === "produto" && !ncm ? " Sem NCM: a nota fiscal só sai com o código." : "";
   if(ncm && ncm.length !== 8){ aviso("app-aviso", "NCM tem 8 dígitos (ex.: 8431.43.10).", "erro"); return; }
   // lote S56 (#197): código automático (iniciais do nome + número global, gerado no banco): p_codigo vai sempre nulo
   const { data, error } = await sb.rpc("produto_cadastro_rapido", { p_nome: nome, p_categoria_id: $("cmp-prod-cat").value || null, p_unidade: $("cmp-prod-un").value || "un",
@@ -1841,13 +1839,13 @@ async function cmpSalvarProdutoRapido(){
   if(_cmpProdDestino === "rec" && _cmpRec){
     if($("cmp-rec-busca")){ $("cmp-rec-busca").value = ""; if($("cmp-rec-res")){ $("cmp-rec-res").innerHTML = ""; $("cmp-rec-res").style.display = "none"; } }
     cmpRecAddItem(data);
-    aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído na nota.`, "ok");
+    aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído na nota.${semNcm}`, semNcm ? "aviso" : "ok");
     return;
   }
   if($("cmp-busca-prod")){ $("cmp-busca-prod").value = ""; if($("cmp-res-prod")){ $("cmp-res-prod").innerHTML = ""; $("cmp-res-prod").style.display = "none"; } }
-  if(_cmpLigarIdx !== null){ cmpProdutoEscolhido(data); return; }   // fase 132a: cadastrado para ligar ao item livre
+  if(_cmpLigarIdx !== null){ cmpProdutoEscolhido(data); if(semNcm) aviso("app-aviso", `Produto ${data.codigo} cadastrado.${semNcm}`, "aviso"); return; }   // fase 132a: cadastrado para ligar ao item livre
   cmpAddItem(data);
-  aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído no pedido. Salve o pedido para gravar o item.`, "ok");
+  aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído no pedido. Salve o pedido para gravar o item.${semNcm}`, semNcm ? "aviso" : "ok");
 }
 
 /* itens */
@@ -3128,14 +3126,14 @@ async function cmpImportarXml(file){
   }
   // casamento de produtos: código do fornecedor → EAN → pedido
   // lote S56 (#205): o código aprendido traz também o fator e a unidade do fornecedor (sem a migration, só o produto)
-  const codSel = "codigo_fornecedor,produto:produtos(id,codigo,nome,unidade,custo_ultimo,categoria_custo)";
+  const codSel = "codigo_fornecedor,produto:produtos(id,codigo,nome,unidade,custo_ultimo,categoria_custo,ativo)";   // lote S58 (#237): arquivado não casa
   const [cod0, ean] = await Promise.all([
     forn ? sb.from("produto_fornecedor_codigos").select(codSel + ",fator_conversao,unidade_fornecedor").eq("fornecedor_id", forn.id) : Promise.resolve({ data: [] }),
-    (() => { const eans = nf.itens.map(i => i.cEAN).filter(e => e && !/sem\s*gtin/i.test(e)); return eans.length ? sb.from("produtos").select("id,codigo,nome,unidade,custo_ultimo,categoria_custo,codigo_barras").in("codigo_barras", eans) : Promise.resolve({ data: [] }); })()
+    (() => { const eans = nf.itens.map(i => i.cEAN).filter(e => e && !/sem\s*gtin/i.test(e)); return eans.length ? sb.from("produtos").select("id,codigo,nome,unidade,custo_ultimo,categoria_custo,codigo_barras").eq("ativo", true).in("codigo_barras", eans) : Promise.resolve({ data: [] }); })()
   ]);
   const cod = cod0.error && forn ? await sb.from("produto_fornecedor_codigos").select(codSel).eq("fornecedor_id", forn.id) : cod0;
   const mapCod = {}, mapFator = {};
-  (cod.data || []).forEach(c => { if(c.produto){ mapCod[c.codigo_fornecedor] = c.produto; mapFator[c.codigo_fornecedor] = { fator: Number(c.fator_conversao || 0), un: c.unidade_fornecedor || null }; } });
+  (cod.data || []).forEach(c => { if(c.produto && c.produto.ativo !== false){ mapCod[c.codigo_fornecedor] = c.produto; mapFator[c.codigo_fornecedor] = { fator: Number(c.fator_conversao || 0), un: c.unidade_fornecedor || null }; } });
   const mapEan = {}; (ean.data || []).forEach(p => mapEan[p.codigo_barras] = p);
   const destPadrao = cmpDestinoDoValor(_cmpRec.pedido ? cmpDestinoPadraoDe(_cmpRec.pedido) : "estoque");
   _cmpRec._xmlMap = { cod: mapCod, ean: mapEan, fator: mapFator, destPadrao };

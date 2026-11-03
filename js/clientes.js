@@ -353,6 +353,38 @@ function ativarTabCli(nome){
   });
 }
 
+/* lote S58 (#228): BrasilAPI preenche só campo vazio, com a mesma regra de Fornecedores. CPF não sai do app. */
+async function cliBuscarCnpj(){
+  const st = $("cli-doc-status");
+  const msg = (txt, erro) => { if(st){ st.textContent = txt || ""; st.classList.toggle("txt-perigo", !!erro); } };
+  const d = ($("cli-doc")?.value || "").replace(/\D/g, "");
+  if(d.length !== 14){ msg(d.length === 11 ? "CPF não é consultado fora do app; preencha os dados à mão." : "Informe o CNPJ com 14 dígitos.", true); return; }
+  msg("Buscando o CNPJ na BrasilAPI…");
+  const r = await fiscalBuscarCnpj(d);
+  if(r.erro){ msg(r.erro, true); return; }
+  const pos = (id, v) => { const c = $(id); if(!c || !v || String(c.value || "").trim()) return; c.value = v; };
+  pos("cli-nome", r.razao_social);
+  pos("cli-fantasia", r.nome_fantasia);
+  pos("cli-cep", r.cep);
+  pos("cli-logradouro", r.logradouro);
+  pos("cli-numero", r.numero);
+  pos("cli-complemento", r.complemento);
+  pos("cli-bairro", r.bairro);
+  pos("cli-cidade", r.cidade);
+  if($("cli-uf") && !$("cli-uf").value && r.uf && [...$("cli-uf").options].some(o => o.value === r.uf)) $("cli-uf").value = r.uf;
+  pos("cli-ibge", r.ibge);
+  pos("cli-tel", r.telefone);
+  pos("cli-email", r.email);
+  if($("cli-tipo").value !== "juridica") $("cli-tipo").value = "juridica";
+  cliAtualizarFiscal();
+  if(!r.ativa){
+    msg(`Atenção: situação cadastral na Receita = ${r.situacao}.`, true);
+    aviso("app-aviso", `CNPJ com situação cadastral "${r.situacao}" na Receita. Confira antes de seguir com este cliente.`, "aviso");
+  } else {
+    msg(`${r.razao_social || "CNPJ encontrado"} · situação ${r.situacao || "ativa"} (campos vazios preenchidos)`);
+  }
+}
+
 /* ---------- Salvar / excluir ---------- */
 async function salvarCliente(){
   if(!$("cli-nome").value.trim()){ aviso("app-aviso","Informe o nome/razão social.","erro"); ativarTabCli("geral"); return; }
@@ -470,6 +502,7 @@ function ligarClientes(){
   $("btn-voltar-cli")?.addEventListener("click", mostrarPainelCli);
   $("btn-salvar-cli")?.addEventListener("click", () => comBotaoTravado("btn-salvar-cli", salvarCliente));
   $("btn-excluir-cli")?.addEventListener("click", excluirCliente);
+  $("btn-cli-cnpj")?.addEventListener("click", () => comBotaoTravado("btn-cli-cnpj", cliBuscarCnpj));   // lote S58 (#228)
 
   document.querySelectorAll("#cli-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabCli(b.dataset.tab));
