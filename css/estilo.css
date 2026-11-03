@@ -24,6 +24,8 @@
   --marca-600: #3BA7AC;   /* TEAL do site CGL — ações, links, aba ativa, foco (Variante A, 01/09/2026) */
   --marca-700: #2E8A8E;   /* pressionado */
   --marca-900: #1B3F42;   /* teal escuro — títulos, barra lateral, banner */
+  --marca-txt: var(--marca-900);   /* fase 138: teal de TEXTO (título, rótulo, link escuro). No escuro vira um teal claro;
+                                      --marca-900 continua sendo o FUNDO da barra lateral e dos chips nos dois temas */
 
   --marca-laranja: #FF9318;   /* LARANJA do site CGL — destaque de marca: item ativo, CTA, realce */
 
@@ -50,6 +52,7 @@
   --sucesso:     #2D7D46;
   --sucesso-bg:  #e6f4ea;
   --sucesso-txt: #1b5e2a;
+  --sucesso-claro: #2EC787;   /* fase 138: ponta clara do gradiente da barra de progresso da planta */
 
   --perigo:      #C0392B;
   --perigo-bg:   #fdecec;
@@ -72,6 +75,21 @@
      estes dois não têm equivalente semântico na paleta de interface. */
   --estaca-prevista: #B4B2A9;   /* ainda não executada — cinza terroso */
   --estaca-hoje:     #378ADD;   /* executada hoje — realce no mapa */
+
+  /* ---- Traços da planta de estacas (fase 138): malha forte, contorno de bloco, linha de cota ---- */
+  --planta-grid:  #d3dbe4;
+  --planta-bloco: #b8c4d0;
+  --planta-cota:  #9aa8b6;
+  --tooltip-bg:   rgba(26, 46, 68, 0.95);   /* tooltip da estaca (texto em --txt-sobre) */
+
+  /* ---- Documento, não tela (fase 138): o que vira PNG/PDF sai sempre em papel branco e tinta escura,
+     nos dois temas (assinatura do EPI). Nunca redefinir no bloco escuro. ---- */
+  --doc-papel: #ffffff;
+  --doc-tinta: #0f172a;
+
+  /* ---- Tela de login (fase 138): o fundo em gradiente é escuro nos dois temas; só o card troca ---- */
+  --login-card:       rgba(255, 255, 255, 0.95);
+  --login-card-borda: rgba(255, 255, 255, 0.8);
 
   /* ---- Escala de espaçamento (múltiplos de 4) ---- */
   --esp-1: 4px;
@@ -133,6 +151,81 @@
   --text-sec: var(--txt-sec);   /* alinhado ao PT (era --txt-fraco: cores diferentes p/ o mesmo nome) */
 }
 
+/* --------------------------------------------------------------------
+   TEMA ESCURO (fase 138, FO-01)
+
+   Segundo bloco de tokens, aplicado quando js/tema.js (no <head>) carimba
+   data-theme="escuro" no <html>. Só tokens: nenhuma regra de componente
+   usa [data-theme] como seletor. Marca (--marca-600/700/laranja), cores
+   sólidas dos estados, --estaca-hoje, --doc-* e espaçamento/tipografia
+   ficam iguais nos dois temas. Contraste conferido por
+   scripts/checar-contraste.js (WCAG AA, 4,5:1).
+
+   No escuro as superfícies afundam a partir do cartão (--sup-0 > --sup-2 >
+   --sup-3 > --sup-1), a mesma relação do claro, onde são mais escuras que o
+   branco; é o que mantém --marca-600 legível como texto sobre todas elas.
+
+   Intencionalmente fixos nos dois temas (não viram token): o gradiente do
+   fundo do login (já é escuro), os véus de modal rgba(15,23,42,…) e
+   rgba(0,0,0,…), as sombras soltas rgba(0,0,0,…) e os realces
+   rgba(255,255,255,…) da barra lateral sobre --marca-900.
+   -------------------------------------------------------------------- */
+:root[data-theme="escuro"] {
+  color-scheme: dark;   /* select, input de data, scrollbar e <dialog> nativos acompanham */
+
+  /* ---- Marca: só os realces claros ---- */
+  --marca-50:  #15302f;
+  --marca-100: #1b3d3d;
+  --marca-200: #2a5c5e;
+  --marca-txt: #A8DFE1;
+
+  /* ---- Superfícies ---- */
+  --sup-0: #1e293b;
+  --sup-1: #0f172a;
+  --sup-2: #192235;   /* bloco sutil: afunda em relação ao cartão, como no claro (mais escuro que --sup-0) */
+  --sup-3: #141c2c;   /* cabeçalho de tabela e faixa: mais fundo ainda; --marca-600 como texto fica ≥ 4,5:1 sobre ele */
+
+  /* ---- Traços ---- */
+  --borda:       #334155;
+  --borda-forte: #475569;
+
+  /* ---- Texto ---- */
+  --txt:       #f1f5f9;
+  --txt-sec:   #cbd5e1;
+  --txt-fraco: #a3b0c2;
+  --txt-sutil: #64748b;
+  --txt-sobre: #ffffff;
+
+  /* ---- Estados: fundo / texto sobre o fundo (a cor sólida não muda) ---- */
+  --sucesso-bg:  #14301d;
+  --sucesso-txt: #86efac;
+  --perigo-bg:   #3a1a17;
+  --perigo-txt:  #fca5a5;
+  --aviso-bg:    #3a2e0a;
+  --aviso-txt:   #fcd34d;
+  --info-bg:     #15283f;
+  --info-txt:    #93c5fd;
+  --neutro-bg:   #2a3444;
+  --neutro-txt:  #cbd5e1;
+
+  /* ---- Domínio e traços da planta ---- */
+  --estaca-prevista: #6b6a63;
+  --planta-grid:  #3b4a5e;
+  --planta-bloco: #4b5b70;
+  --planta-cota:  #5e6e84;
+  --tooltip-bg:   rgba(15, 23, 42, 0.96);
+
+  /* ---- Login ---- */
+  --login-card:       rgba(30, 41, 59, 0.95);
+  --login-card-borda: rgba(255, 255, 255, 0.12);
+
+  /* ---- Profundidade: sombra mais funda sobre fundo escuro ---- */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45), 0 2px 4px -2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-premium: 0 20px 25px -5px rgba(0, 0, 0, 0.45), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+}
+
 /* Reset Geral */
 * {
   box-sizing: border-box;
@@ -175,20 +268,20 @@ input, select, textarea {
 h2 {
   font-size: var(--txt-xl);
   font-weight: 700;
-  color: var(--marca-900);
+  color: var(--marca-txt);
   letter-spacing: -0.015em;
   margin: 0 0 var(--esp-5);
 }
 h3 {
   font-size: 16px;
   font-weight: 700;
-  color: var(--marca-900);
+  color: var(--marca-txt);
   margin: 0 0 var(--esp-4);
 }
 h4 {
   font-size: var(--txt-md);
   font-weight: 700;
-  color: var(--marca-900);
+  color: var(--marca-txt);
   margin: 0 0 var(--esp-2);
 }
 
@@ -213,7 +306,7 @@ h4 {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at top right, #1e293b 0%, #0f172a 100%);
+  background: radial-gradient(circle at top right, #1e293b 0%, #0f172a 100%);   /* fixo nos dois temas: o login é escuro desde sempre */
   padding: 24px;
   position: relative;
   overflow: hidden;
@@ -241,9 +334,9 @@ h4 {
 }
 
 .login-card {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--login-card);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--login-card-borda);
   border-radius: var(--radius-lg);
   padding: 40px 32px;
   width: 100%;
@@ -267,7 +360,7 @@ h4 {
 .login-card h1 {
   font-size: 26px;
   font-weight: 700;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
   text-align: center;
 }
 .login-card .sub {
@@ -286,7 +379,7 @@ h4 {
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 6px;
-  color: var(--azul-primary);
+  color: var(--marca-txt);
 }
 .campo input, .campo select, .campo textarea {
   width: 100%;
@@ -361,7 +454,7 @@ h4 {
 
 .btn-sec {
   background: var(--sup-0);
-  color: var(--azul-primary);
+  color: var(--marca-txt);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: 10px 18px;
@@ -421,7 +514,7 @@ h4 {
 #app-sidebar {
   width: 280px;
   height: 100vh;          /* a rolagem da sidebar fica dentro de .sidebar-nav */
-  background-color: var(--azul-primary-dark);
+  background-color: var(--marca-900);   /* fundo: fica teal escuro nos dois temas (fase 138) */
   color: var(--sup-3);
   display: flex;
   flex-direction: column;
@@ -578,7 +671,7 @@ h4 {
 
 #btn-menu-toggle {
   display: none;
-  color: var(--azul-primary);
+  color: var(--marca-txt);
 }
 #btn-menu-toggle svg {
   width: 24px;
@@ -588,7 +681,7 @@ h4 {
 #app-secao-titulo {
   font-size: 22px;
   font-weight: 700;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
 }
 
 #app-viewport main {
@@ -627,7 +720,7 @@ h4 {
 .card h3 {
   font-size: 16px;
   font-weight: 700;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
   margin-bottom: 18px;
   display: flex;
   align-items: center;
@@ -757,7 +850,7 @@ td.num, th.num {
 .ind .num {
   font-size: 28px;
   font-weight: 800;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
   line-height: 1.2;
 }
 .ind .rot {
@@ -874,7 +967,7 @@ td.num, th.num {
   text-align: right;
   font-size: 16px;
   font-weight: 700;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
 }
 .itens-total span {
   color: var(--aviso-txt);
@@ -983,7 +1076,7 @@ td.num, th.num {
 .serv-view-btn:hover { color: var(--azul-accent); }
 .serv-view-btn.ativo {
   background: var(--sup-0);
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
   box-shadow: var(--shadow-sm);
 }
 
@@ -1028,7 +1121,7 @@ td.num, th.num {
 .serv-kan-col-head {
   font-size: 13px;
   font-weight: 700;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1073,7 +1166,7 @@ td.num, th.num {
 .serv-cat-head {
   font-size: 15px;
   font-weight: 700;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1103,7 +1196,7 @@ td.num, th.num {
 .serv-serv-head strong {
   display: block;
   font-size: 14px;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
 }
 .serv-caminho {
   display: block;
@@ -1144,7 +1237,7 @@ td.num, th.num {
 .historico h3 {
   font-size: 16px;
   font-weight: 700;
-  color: var(--azul-primary-dark);
+  color: var(--marca-txt);
   margin-bottom: 14px;
 }
 .hist-compositor {
@@ -1325,7 +1418,7 @@ td.num, th.num {
 .dash-card-num {
   font-size: 22px;
   font-weight: 700;
-  color: var(--marca-900);
+  color: var(--marca-txt);
   line-height: 1.1;
 }
 .dash-card-sub {
@@ -1517,7 +1610,7 @@ td.num, th.num {
   color: var(--txt-fraco); text-transform: uppercase; letter-spacing: 0.4px;
 }
 .odoo-contexto .chip strong {
-  font-size: 14px; color: var(--marca-900);
+  font-size: 14px; color: var(--marca-txt);
 }
 /* Lote S40 (#31): chip de alerta na ficha (ex.: obra sem jornada no RDO) */
 .odoo-contexto .chip.chip-aviso {
@@ -1654,7 +1747,7 @@ a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus
 }
 .planta-progresso-barra #planta-progresso-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--sucesso), #2EC787);
+  background: linear-gradient(90deg, var(--sucesso), var(--sucesso-claro));
   width: 0%;
   transition: width .3s;
 }
@@ -1668,7 +1761,7 @@ a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus
 /* Tooltip da estaca (no canto da planta) */
 #est-planta-tooltip {
   position: absolute;
-  background: rgba(26,46,68,0.95);
+  background: var(--tooltip-bg);
   color: var(--txt-sobre);
   font-size: 11px;
   padding: 6px 10px;
@@ -1785,7 +1878,7 @@ a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus
   border-radius: 6px;
   padding: 10px 14px;
 }
-.tl-titulo { font-weight: 600; font-size: 13px; color: var(--marca-900); }
+.tl-titulo { font-weight: 600; font-size: 13px; color: var(--marca-txt); }
 .tl-meta { font-size: 12px; color: var(--txt-sec); margin-top: 2px; }
 .tl-data { font-size: 11px; color: var(--txt-sutil); margin-top: 4px; }
 .tl-autor {
@@ -1850,15 +1943,15 @@ a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus
   border-left: 3px solid transparent;
   line-height: 1.3;
 }
-.func-dept-item:hover { background: #eef3fa; }
+.func-dept-item:hover { background: var(--sup-2); }
 .func-dept-item.ativo {
-  background: #e6eef8;
+  background: var(--marca-50);
   color: var(--marca-600);
   font-weight: 600;
   border-left-color: var(--marca-600);
 }
 .func-dept-item .dept-count {
-  background: #e4e8ee;
+  background: var(--sup-3);
   color: var(--txt-fraco);
   font-size: 10px;
   font-weight: 600;
@@ -1866,7 +1959,7 @@ a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus
   padding: 1px 6px;
   flex-shrink: 0;
 }
-.func-dept-item.ativo .dept-count { background: #c5d9f0; color: var(--marca-600); }
+.func-dept-item.ativo .dept-count { background: var(--marca-100); color: var(--marca-600); }
 .func-dept-item.dept-filho { padding-left: 22px; }
 .func-dept-item.dept-neto  { padding-left: 34px; font-size: 11px; }
 .func-conteudo-wrap { flex: 1; min-width: 0; padding: 8px; }
@@ -2184,7 +2277,7 @@ tr.rhh-liberada td { color: var(--txt-sec); }
 .ficha-titulo {
   font-size: var(--txt-lg);
   font-weight: 700;
-  color: var(--marca-900);
+  color: var(--marca-txt);
 }
 
 /* Linha explicativa sob um título de bloco */
@@ -2650,13 +2743,13 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* ---- Planta de estacas em escala real: malha, eixos, blocos, cotas, escala ---- */
 #est-planta-svg .planta-grid { stroke: var(--sup-3); stroke-width: 0.6; }
-#est-planta-svg .planta-grid.forte { stroke: #d3dbe4; stroke-width: 0.9; }
+#est-planta-svg .planta-grid.forte { stroke: var(--planta-grid); stroke-width: 0.9; }
 #est-planta-svg .planta-eixo { font-size: 7px; fill: var(--txt-fraco); pointer-events: none; }
-#est-planta-svg .planta-bloco { fill: none; stroke: #b8c4d0; stroke-width: 0.9; stroke-dasharray: 3 2; }
+#est-planta-svg .planta-bloco { fill: none; stroke: var(--planta-bloco); stroke-width: 0.9; stroke-dasharray: 3 2; }
 #est-planta-svg .planta-bloco-lbl { font-size: 8px; fill: var(--txt-sec); font-weight: 600; pointer-events: none; }
-#est-planta-svg .planta-cota { stroke: #9aa8b6; stroke-width: 0.7; stroke-dasharray: 2 2; }
+#est-planta-svg .planta-cota { stroke: var(--planta-cota); stroke-width: 0.7; stroke-dasharray: 2 2; }
 #est-planta-svg .planta-cota.perigo { stroke: var(--perigo); stroke-width: 1.4; stroke-dasharray: none; }
-#est-planta-svg .planta-cota-txt { font-size: 7.5px; fill: var(--txt-sec); text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 2.5px; }
+#est-planta-svg .planta-cota-txt { font-size: 7.5px; fill: var(--txt-sec); text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: var(--sup-0); stroke-width: 2.5px; }
 #est-planta-svg .planta-cota-txt.perigo { fill: var(--perigo); font-weight: 700; }
 #est-planta-svg .planta-escala { stroke: var(--txt); stroke-width: 1.2; }
 #est-planta-svg .planta-norte { fill: var(--txt); }
@@ -2695,7 +2788,7 @@ input:disabled, select:disabled, textarea:disabled {
 .raiz-tabela { font-size: var(--txt-xs); border-collapse: collapse; white-space: nowrap; }
 .raiz-tabela th, .raiz-tabela td { padding: 4px 6px; border-bottom: 1px solid var(--sup-3); }
 .raiz-tabela thead th { position: sticky; top: 0; background: var(--sup-3); z-index: 1; }
-.raiz-tabela .raiz-cab-grupo th { background: var(--marca-100); color: var(--marca-900); text-align: center; letter-spacing: .3px; }
+.raiz-tabela .raiz-cab-grupo th { background: var(--marca-100); color: var(--marca-txt); text-align: center; letter-spacing: .3px; }
 .raiz-tabela tr.raiz-grupo td { background: var(--marca-50); font-weight: 600; color: var(--marca-700); }
 .raiz-tabela tr.ok td:nth-child(2) { color: var(--sucesso); }
 .raiz-tabela tr.perigo td:nth-child(2) { color: var(--perigo); }
@@ -2715,7 +2808,7 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-card-titulo { font-weight: 600; line-height: 1.3; margin-bottom: 6px; }
 .mob-card-chips, .mob-drawer-sub { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; align-items: center; }
 .mob-chip { display: inline-block; border: 1px solid var(--borda); border-radius: 10px; padding: 1px 8px; font-size: var(--txt-xs); color: var(--txt-sec); background: var(--sup-1); }
-.mob-chip.tag { background: var(--marca-900); color: #fff; border-color: var(--marca-900); font-weight: 600; }
+.mob-chip.tag { background: var(--marca-900); color: var(--txt-sobre); border-color: var(--marca-900); font-weight: 600; }
 .mob-chip.st { background: var(--marca-50); border-color: var(--marca-100); color: var(--marca-700); }
 .mob-chip.ok { background: var(--sucesso-bg); color: var(--sucesso); border-color: transparent; }
 .mob-chip.perigo { background: var(--perigo-bg); color: var(--perigo); border-color: transparent; }
@@ -2764,6 +2857,11 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* ---------- fase 42: chamados ---------- */
 .header-direita { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* fase 138: botão sol/lua do tema. O JS (aplicarTema) mostra o ícone do tema para o qual o botão leva. */
+.btn-tema { padding: 4px 8px !important; line-height: 0; }
+.btn-tema svg { width: 16px; height: 16px; }
+.btn-tema-login { position: absolute; top: 16px; right: 16px; z-index: 10; }
 .cham-contexto { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; font-size: var(--txt-xs); }
 .cham-contexto .chip { background: var(--sup-2); border: 1px solid var(--borda-forte); border-radius: 12px; padding: 2px 10px; color: var(--txt-sec); }
 .cham-contexto .chip strong { color: var(--txt); }
@@ -2777,7 +2875,7 @@ input:disabled, select:disabled, textarea:disabled {
 .cham-comentario.sistema { border-left-color: var(--marca-600); font-style: italic; }
 .cham-status-bar { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .cham-status-bar .stage { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--borda-forte); font-size: var(--txt-xs); cursor: pointer; background: var(--sup-1); }
-.cham-status-bar .stage.atual { background: var(--marca-600); color: #fff; border-color: var(--marca-600); cursor: default; }
+.cham-status-bar .stage.atual { background: var(--marca-600); color: var(--txt-sobre); border-color: var(--marca-600); cursor: default; }
 .cham-status-bar .stage[aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
 @media (max-width: 720px){ #btn-reportar-problema span { display: none; } }
 

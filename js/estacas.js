@@ -3235,7 +3235,7 @@ async function confirmarReconciliacao(){
       : `<div style="font-size:var(--txt-sm);margin-top:4px;color:var(--txt-sec);">As estacas previstas correspondentes foram marcadas como <strong>executada</strong> automaticamente.</div>`;
     const banner = `
       <div style="background:${esc(cor)};border-left:4px solid ${borda};padding:14px 18px;margin-bottom:14px;border-radius:4px;">
-        <div style="font-size:var(--txt-base);font-weight:600;color:var(--marca-900);">${icone} ${titulo}</div>
+        <div style="font-size:var(--txt-base);font-weight:600;color:var(--marca-txt);">${icone} ${titulo}</div>
         ${/* html */ detalhe}
       </div>`;
     cont.insertAdjacentHTML("afterbegin", banner);

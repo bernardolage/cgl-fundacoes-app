@@ -543,15 +543,24 @@ async function pdfGerar(elemento, opcoes = {}){
   await pdfCarregarImagem(PDF_LOGO_SRC).catch(() => null);
   const selo = await pdfCarregarImagem(PDF_SELO_SRC, 300).catch(() => null);
   elemento.querySelectorAll(".pdf-rodape").forEach(n => n.remove());
-  await html2pdf().set({
-    margin:      margem,
-    filename:    opcoes.filename || "documento.pdf",
-    image:       { type: "jpeg", quality: 0.95 },
-    // lote S42 (L3): letterRendering desenha letra por letra e embaralhava "NBR-7212 e NBR-12.655" na quebra de linha
-    html2canvas: { scale: 2, useCORS: true, letterRendering: false, width: largPx },
-    jsPDF:       { unit: "mm", format: "a4", orientation: "portrait" },
-    pagebreak:   { mode: ["css", "legacy"], avoid: ["tr", "p", "li", ".nao-quebrar"] }
-  }).from(elemento).toPdf().get("pdf").then(pdf => pdfCarimbarRodape(pdf, selo, margem)).save();
+  /* fase 138: o PDF sai sempre claro. O container usa var(--…) e resolveria pelos tokens do tema da tela;
+     força o claro no <html> enquanto o html2canvas fotografa e restaura o tema no finally, mesmo com erro. */
+  const temaAntes = document.documentElement.dataset.theme;
+  document.documentElement.dataset.theme = "claro";
+  try{
+    await html2pdf().set({
+      margin:      margem,
+      filename:    opcoes.filename || "documento.pdf",
+      image:       { type: "jpeg", quality: 0.95 },
+      // lote S42 (L3): letterRendering desenha letra por letra e embaralhava "NBR-7212 e NBR-12.655" na quebra de linha
+      html2canvas: { scale: 2, useCORS: true, letterRendering: false, width: largPx },
+      jsPDF:       { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak:   { mode: ["css", "legacy"], avoid: ["tr", "p", "li", ".nao-quebrar"] }
+    }).from(elemento).toPdf().get("pdf").then(pdf => pdfCarimbarRodape(pdf, selo, margem)).save();
+  }finally{
+    if(temaAntes) document.documentElement.dataset.theme = temaAntes;
+    else delete document.documentElement.dataset.theme;
+  }
 }
 
 /* Debounce para campos de busca: re-renderizar a lista inteira a cada tecla
@@ -769,6 +778,45 @@ $("btn-ver-senha").addEventListener("click", ()=>{
   $("btn-ver-senha").textContent = oculto ? "ocultar" : "mostrar";
 });
 
+/* ===== fase 138: tema claro/escuro (FO-01) =====
+   js/tema.js (no <head>) já carimbou data-theme="escuro" no <html> antes da primeira pintura; aqui ficam a troca
+   pelo botão e a gravação. Preferência por navegador em localStorage "cgl-tema" (claro | escuro), nada no banco.
+   O tema é só tokens em css/estilo.css: nenhum módulo decide cor por JS (lê o token por getComputedStyle se precisar). */
+const TEMA_CHAVE = "cgl-tema";
+function temaAtual(){ return document.documentElement.dataset.theme === "escuro" ? "escuro" : "claro"; }
+/* carimba o <html>, grava a escolha e sincroniza os botões (ícone, title e aria-pressed) */
+function aplicarTema(tema){
+  const escuro = tema === "escuro";
+  if(escuro) document.documentElement.dataset.theme = "escuro";
+  else delete document.documentElement.dataset.theme;   // o claro é o padrão do CSS: sem atributo
+  try{ localStorage.setItem(TEMA_CHAVE, escuro ? "escuro" : "claro"); }
+  catch(_){ /* storage bloqueado: a escolha vale até recarregar */ }
+  temaSincronizarBotoes();
+}
+function temaSincronizarBotoes(){
+  const escuro = temaAtual() === "escuro";
+  const titulo = escuro ? "Mudar para o tema claro" : "Mudar para o tema escuro";
+  document.querySelectorAll(".btn-tema").forEach(btn => {
+    btn.setAttribute("aria-pressed", escuro ? "true" : "false");
+    btn.title = titulo;
+    btn.setAttribute("aria-label", titulo);
+    // o ícone é o do tema para o qual o botão leva: no escuro mostra o sol, no claro a lua
+    const sol = btn.querySelector(".tema-sol"), lua = btn.querySelector(".tema-lua");
+    if(sol) sol.style.display = escuro ? "" : "none";
+    if(lua) lua.style.display = escuro ? "none" : "";
+  });
+}
+/* liga o clique dos botões (#btn-tema no cabeçalho, #btn-tema-login no login); idempotente, chamado na carga e em iniciarApp() */
+function ligarTema(){
+  document.querySelectorAll(".btn-tema").forEach(btn => {
+    if(btn.dataset.temaLigado) return;
+    btn.dataset.temaLigado = "1";
+    btn.addEventListener("click", () => aplicarTema(temaAtual() === "escuro" ? "claro" : "escuro"));
+  });
+  temaSincronizarBotoes();
+}
+ligarTema();   // tela de login: antes de autenticar
+
 $("btn-sair").addEventListener("click", async ()=>{
   appLimparSujo();   // fase 86: sair abandona o que estava na tela
   _polSaindo = true; // fase 87: saída voluntária, sem aviso de "sessão encerrada" na tela de login
@@ -825,6 +873,7 @@ async function iniciarApp(){
   const ehDiretorOuAdmin = perfil && ["diretor","admin"].includes(perfil.cargo);
 
   aplicarMenuPorCargo(perfil);
+  ligarTema();   // fase 138: botão do cabeçalho em dia com o tema carimbado pelo tema.js
 
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";

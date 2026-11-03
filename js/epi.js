@@ -88,15 +88,19 @@ function epiModalAssinatura(){
   m.querySelector("#btn-epi-ass-salvar").addEventListener("click", e => comBotaoTravado(e.currentTarget, epiSalvarAssinatura));
   return m;
 }
-/* o canvas é dimensionado ao abrir (largura real × devicePixelRatio) e a tinta é o token --txt */
+/* o canvas é dimensionado ao abrir (largura real × devicePixelRatio). Fase 138: a assinatura é documento, não tela:
+   fundo pintado com --doc-papel e tinta --doc-tinta nos dois temas, para o PNG guardado sair branco com traço escuro */
 function epiLimparCanvas(){
   const cv = $("epi-ass-canvas"); if(!cv) return;
   const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
   cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
   const ctx = cv.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const tokens = getComputedStyle(document.documentElement);
+  ctx.fillStyle = tokens.getPropertyValue("--doc-papel").trim() || "white";
+  ctx.fillRect(0, 0, r.width, r.height);
   ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round";
-  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--txt").trim() || "black";
+  ctx.strokeStyle = tokens.getPropertyValue("--doc-tinta").trim() || "black";
   if(_epiAss) _epiAss.riscos = 0;
 }
 /* itens: [{ id (saída), descricao }]; aoConcluir(assinou: boolean) */
