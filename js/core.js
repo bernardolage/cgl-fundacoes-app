@@ -563,6 +563,19 @@ async function pdfGerar(elemento, opcoes = {}){
   }
 }
 
+/* A API devolve no máximo 1.000 linhas por leitura, sem aviso, mesmo com .limit() maior. montar() traz select, filtros e a ordem
+   da tela; chave (coluna ou lista de colunas, tem de ser única) desempata para as páginas serem estáveis. Uma página de cada vez. */
+async function lerTudo(montar, chave = "id"){
+  const out = [];
+  for(let de = 0; out.length === de; de += 1000){
+    const q = [].concat(chave).reduce((b, c) => b.order(c), montar());
+    const r = await q.range(de, de + 999);
+    if(r.error) return { data: [], error: r.error };
+    out.push(...(r.data || []));
+  }
+  return { data: out, error: null };
+}
+
 /* Debounce para campos de busca: re-renderizar a lista inteira a cada tecla
    travava nas listas grandes (produtos, estacas). 150 ms é imperceptível. */
 function debounce(fn, ms = 150){

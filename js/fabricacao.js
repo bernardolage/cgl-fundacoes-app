@@ -331,7 +331,7 @@ async function fabRenderMarcacoes(n){
 }
 async function fabSugerirMarcacoes(mod, n){
   if(!mod) return [];
-  const { data } = await sb.from("acessorios").select("marcacao").eq("familia", mod.familia).eq("tipo", mod.tipo).limit(3000);
+  const { data } = await lerTudo(() => sb.from("acessorios").select("marcacao").eq("familia", mod.familia).eq("tipo", mod.tipo));
   const grupos = {};
   (data || []).forEach(a => { const m = String(a.marcacao || "").trim().match(/^(.*?)(\d+)$/); if(!m) return; const g = grupos[m[1]] = grupos[m[1]] || { n: 0, max: 0 }; g.n++; g.max = Math.max(g.max, Number(m[2])); });
   const melhor = Object.entries(grupos).sort((a, b) => b[1].n - a[1].n)[0];

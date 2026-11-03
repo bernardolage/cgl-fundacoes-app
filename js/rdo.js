@@ -252,7 +252,7 @@ async function carregarRDO(){
       Object.entries(TIPO_SERVICO).map(([v,o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
   }
   // Busca RDOs + execuções agregadas via view
-  const { data, error } = await sb.from("vw_rdo_resumo").select("*").order("data", { ascending:false });
+  const { data, error } = await lerTudo(() => sb.from("vw_rdo_resumo").select("*").order("data", { ascending:false }));
   _rdos = error ? [] : (data || []);
   renderRDO();
 }
@@ -1599,7 +1599,7 @@ async function rdoDiametrosServico(obraId, tipoServico){
 async function rdoGarantirDiametros(obraId, tipoServico, execs){
   const falta = () => execs.filter(e => e.estaca_numero && e.modalidade_execucao !== "refuro" && !(Number(e.diametro_mm) > 0));
   if(!falta().length) return true;
-  const { data: ests } = await sb.from("estacas").select("id,numero,diametro_mm").eq("obra_id", obraId).limit(5000);
+  const { data: ests } = await lerTudo(() => sb.from("estacas").select("id,numero,diametro_mm").eq("obra_id", obraId));
   const porId = new Map((ests || []).map(s => [s.id, s]));
   const porNum = new Map();
   (ests || []).forEach(s => { const k = normalizarNumeroEstaca(s.numero || ""); porNum.set(k, porNum.has(k) ? null : s); }); // número repetido em locais diferentes: não adivinha
@@ -3131,7 +3131,7 @@ async function rdoRenderSugestoesEstacas(obraId){
   if(!box) return;
   box.innerHTML = "";
   if(!obraId || !_csvParsed || typeof estNormalizarNome !== "function") return;
-  const { data: ests } = await sb.from("estacas").select("id,numero,bloco").eq("obra_id", obraId).limit(5000);
+  const { data: ests } = await lerTudo(() => sb.from("estacas").select("id,numero,bloco").eq("obra_id", obraId));
   const lista = ests || [];
   if(!lista.length) return;
   const exatos = new Set(lista.map(e => normalizarNumeroEstaca(e.numero || "")));
@@ -3583,7 +3583,7 @@ async function confirmarImportCSV(){
       }
     }
     // Estacas cadastradas na obra: vínculo por número + agrupamento (bloco) feito aqui
-    const { data: estacasObra } = await sb.from("estacas").select("id,numero,bloco,local").eq("obra_id", obra_id).limit(5000);
+    const { data: estacasObra } = await lerTudo(() => sb.from("estacas").select("id,numero,bloco,local").eq("obra_id", obra_id));
     const estsObra = estacasObra || [];
     // lote S46 (#96): execução importada sem Ø recebe o Ø do serviço da obra quando ele é único
     const diamsServ = await rdoDiametrosServico(obra_id, tipo);

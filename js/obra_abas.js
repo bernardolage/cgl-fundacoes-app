@@ -584,7 +584,7 @@ async function obrMedPorMaquina(obraId){
   const box = $("obr-medic-maq");
   if(!box || !(typeof podeVerValorObra === "function" && podeVerValorObra())) return;
   const [rec, cus] = await Promise.all([
-    sb.from("vw_equipamento_receita").select("equipamento_id,equipamento_codigo,valor,medicao_id").eq("obra_id", obraId),
+    lerTudo(() => sb.from("vw_equipamento_receita").select("equipamento_id,equipamento_codigo,valor,medicao_id").eq("obra_id", obraId), ["medicao_id", "item_id"]),   // a view não tem id; medição + item é único
     sb.from("vw_custos").select("equipamento_id,valor").eq("obra_id", obraId).not("equipamento_id", "is", null)
   ]);
   if(obraId !== obraEditId || rec.error) return;
@@ -1068,7 +1068,7 @@ async function carregarTimelineDaObra(obraId){
     sb.from("medicoes").select("id,numero,data_medicao,valor_medido,status,criado_por").eq("obra_id", obraId).order("data_medicao", { ascending: false }),
     sb.from("ocorrencias").select("id,data,tipo,gravidade,status,descricao").eq("obra_id", obraId).order("data", { ascending: false }),
     sb.from("obras_documentos").select("id,nome,categoria,created_at,origem,enviado_por").eq("obra_id", obraId).order("created_at", { ascending: false }),
-    sb.from("estacas").select("id,numero,data_execucao,alterada_em,alterada_por,alteracao_motivo,operador_id").eq("obra_id", obraId).eq("status","executada").not("data_execucao","is",null).order("data_execucao", { ascending: false }),
+    lerTudo(() => sb.from("estacas").select("id,numero,data_execucao,alterada_em,alterada_por,alteracao_motivo,operador_id").eq("obra_id", obraId).eq("status","executada").not("data_execucao","is",null).order("data_execucao", { ascending: false })),
     sb.from("obras_comentarios").select("id,texto,autor_id,responsavel_id,resolvido,resolvido_em,resolvido_por,created_at").eq("obra_id", obraId).order("created_at", { ascending: false }),
     sb.from("profiles").select("id,nome,email").eq("ativo", true).order("nome")
   ]);

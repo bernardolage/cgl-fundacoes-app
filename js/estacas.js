@@ -273,10 +273,10 @@ async function carregarEstacasDaObra(obraId){
   }
   estCarregarTolerancia(); // hotfix 15b: tolerância do destaque executada × projeto
   const [estsRes, execsRes, equipsRes, obraRes] = await Promise.all([
-    sb.from("estacas")
+    lerTudo(() => sb.from("estacas")
       .select("id,numero,tipo,status,diametro_mm,profundidade_m,profundidade_executada_m,projeto_pendente,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local")
       .eq("obra_id", obraId)
-      .order("numero"),
+      .order("numero")),
     // hotfix carga do banco: a view parte de rdo; o !inner varria todas as execuções a cada abertura
     sb.from("vw_rdo_execucoes_obra")
       .select("estaca_id, modalidade_execucao, obra_id")
@@ -2357,17 +2357,6 @@ let _confRefuradas = [];  // estacas com status='refugada' (na tela, "Refurada")
 let _confAlteradas = [];  // estacas com 2+ execuções: [{ estaca, execs:[...] }]
 let _confAbaAtual = "orfas";
 
-/* hotfix Conferência: a API devolve no máximo 1.000 linhas por leitura, mesmo com .limit() maior */
-async function confLerTudo(montar){
-  const out = [];
-  for(let de = 0; out.length === de; de += 1000){
-    const r = await montar().order("id").range(de, de + 999);
-    if(r.error) return { data: [], error: r.error };
-    out.push(...(r.data || []));
-  }
-  return { data: out, error: null };
-}
-
 function confSuspeitas(alteradas){
   return alteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
 }
@@ -2377,12 +2366,12 @@ async function confCarregarDados(obraId){
   const COLS_RDO = "rdo_id,obra_id,data,rdo_equipamento_id";
   const execsDaObra = (cols) => sb.from("vw_rdo_execucoes_obra").select(`${cols},${COLS_RDO}`).eq("obra_id", obraId);
   const [orfasRes, estsRes, vinculadasRes] = await Promise.all([
-    confLerTudo(() => execsDaObra("id,estaca_numero,diametro_mm,perfuracao_inicio,profundidade_executada,equipamento_id").is("estaca_id", null)),
-    confLerTudo(() => sb.from("estacas")
+    lerTudo(() => execsDaObra("id,estaca_numero,diametro_mm,perfuracao_inicio,profundidade_executada,equipamento_id").is("estaca_id", null)),
+    lerTudo(() => sb.from("estacas")
       .select("id,numero,bloco,local,tipo,diametro_mm,profundidade_m,status,data_execucao,observacoes")
       .eq("obra_id", obraId)
       .order("numero")),
-    confLerTudo(() => execsDaObra("id,estaca_id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao").not("estaca_id", "is", null))
+    lerTudo(() => execsDaObra("id,estaca_id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao").not("estaca_id", "is", null))
   ]);
   const estacas = estsRes.data;
 
@@ -2856,7 +2845,8 @@ async function moverExecucoesPraOutraObra(){
   if(!confirm(`Mover todos os RDOs (e execuções) desta obra pra "${mapaObras[novaObraId]}"?\n\nVai recasar estacas automaticamente após o move.`)) return;
 
   // 1. Move todos os RDOs pra nova obra
-  const { data: rdos, error: errRdo } = await sb.from("rdo").select("id").eq("obra_id", obraEditId);
+  const obraOrigem = obraEditId;
+  const { data: rdos, error: errRdo } = await lerTudo(() => sb.from("rdo").select("id").eq("obra_id", obraOrigem));
   if(errRdo || !rdos || !rdos.length){
     aviso("app-aviso","Não foi possível listar RDOs desta obra.","erro");
     return;
@@ -3371,7 +3361,7 @@ async function estvCarregar(obraId){
   };
   const [execsRes, estsRes, medRes, eqRes] = await Promise.all([
     lerExecs(),
-    sb.from("estacas").select("id,numero,bloco,local,status,profundidade_m,diametro_mm,projeto_pendente").eq("obra_id", obraId).order("numero").limit(5000),
+    lerTudo(() => sb.from("estacas").select("id,numero,bloco,local,status,profundidade_m,diametro_mm,projeto_pendente").eq("obra_id", obraId).order("numero")),
     sb.rpc("estacas_medidas", { p_obra: obraId }),
     _equipamentosCache.length ? Promise.resolve({ data: _equipamentosCache }) : sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo")
   ]);

@@ -62,7 +62,7 @@ function apropSomaObras(linhas){
 async function apropCarregar(comp){
   const mes = comp.slice(0, 7);
   const [f, c, p, l, pa, fe] = await Promise.all([
-    sb.from("folha_apropriacoes").select("funcionario_id,obra_id,centro_custo,rubrica,valor,origem_import").eq("competencia", comp).limit(20000),
+    lerTudo(() => sb.from("folha_apropriacoes").select("funcionario_id,obra_id,centro_custo,rubrica,valor,origem_import").eq("competencia", comp)),
     sb.from("vw_custo_mao_obra_por_obra").select("obra_id,centro_custo,salarios,beneficios,encargos,total").eq("competencia", comp),
     sb.from("vw_presencas_rdo_mes").select("funcionario_id,obra_id,dias").eq("competencia", comp),
     sb.from("folha_lancamentos").select("id,funcionario_id,rubrica,valor,obra_id,observacoes").eq("competencia", comp).order("created_at"),

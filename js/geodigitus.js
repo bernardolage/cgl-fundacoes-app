@@ -365,7 +365,7 @@ async function geoAbrirModal(tipo, g){
   } else {
     const obra = g.obra_id;
     if(!obra){ corpo.innerHTML = `<p class="vazio">Defina a obra antes de vincular a estaca.</p>`; return; }
-    const { data } = await sb.from("estacas").select("id,numero,local,bloco,status,diametro_mm").eq("obra_id", obra).order("numero").limit(5000);
+    const { data } = await lerTudo(() => sb.from("estacas").select("id,numero,local,bloco,status,diametro_mm").eq("obra_id", obra).order("numero"));
     const cands = new Set(g.candidatos || []);
     const lista = (data || []).sort((a, b) => (cands.has(b.id) - cands.has(a.id)) || String(a.numero).localeCompare(String(b.numero), "pt-BR", { numeric: true }));
     corpo.innerHTML = `<p class="meta">Número no computador de bordo: <strong>${esc(g.numero_txt || "—")}</strong>${g.refuro ? " (Refurada: vincule à estaca original)" : ""}. ${cands.size > 1 ? `${esc(cands.size)} estacas com esse número em locais diferentes da obra: escolha o local certo.` : ""}</p>

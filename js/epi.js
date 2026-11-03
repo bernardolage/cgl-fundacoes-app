@@ -319,14 +319,15 @@ async function epiRelCarregar(alvoId){
   if(_epiRel.de > _epiRel.ate){ corpo.innerHTML = `<p class="vazio">O início do período é depois do fim.</p>`; return; }
   corpo.innerHTML = `<p class="vazio">Carregando…</p>`;
   const v = _epiRel.visao;
-  let q;
-  if(v === "vencidas") q = sb.from("vw_epi_saidas").select("*").eq("troca_vencida", true).eq("funcionario_ativo", true).order("troca_prevista").limit(5000);
-  else if(v === "conferencia") q = sb.from("vw_epi_conferencia").select("*").order("categoria_sugerida", { nullsFirst: false }).order("nome").limit(5000);
-  else {
-    q = sb.from("vw_epi_saidas").select("*").gte("data_entrega", _epiRel.de + "-01").lte("data_entrega", epiFimDoMes(_epiRel.ate)).order("data_entrega").limit(20000);
-    if(v === "sem_pessoa") q = q.is("funcionario_id", null).eq("categoria", "epi");
-  }
-  const { data, error } = await q;
+  const de = _epiRel.de + "-01", ate = epiFimDoMes(_epiRel.ate);
+  let montar;
+  if(v === "vencidas") montar = () => sb.from("vw_epi_saidas").select("*").eq("troca_vencida", true).eq("funcionario_ativo", true).order("troca_prevista");
+  else if(v === "conferencia") montar = () => sb.from("vw_epi_conferencia").select("*").order("categoria_sugerida", { nullsFirst: false }).order("nome");
+  else montar = () => {
+    const q = sb.from("vw_epi_saidas").select("*").gte("data_entrega", de).lte("data_entrega", ate).order("data_entrega");
+    return v === "sem_pessoa" ? q.is("funcionario_id", null).eq("categoria", "epi") : q;
+  };
+  const { data, error } = await lerTudo(montar);
   if(error){ corpo.innerHTML = `<p class="vazio">${esc(epiViewAusente(error) ? EPI_MSG_MIGRATION : "Não foi possível carregar: " + error.message)}</p>`; return; }
   _epiRel.dados = data || [];
   epiRelDesenhar(alvoId);
