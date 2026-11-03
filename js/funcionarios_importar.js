@@ -109,7 +109,6 @@ function funcImpCpfValido(c){
   return dv(9) === Number(c[9]) && dv(10) === Number(c[10]);
 }
 function funcImpCpfMascara(c){ return c && c.length === 11 ? `***.***.*${c.slice(7, 9)}-${c.slice(9)}` : "—"; }
-function funcImpCpfFormatado(c){ return `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6, 9)}-${c.slice(9)}`; }
 /* opção das listas do assistente: casa pelas 4 primeiras letras (Solteiro → Solteiro(a), PARDA → Parda) */
 function funcImpOpcao(v, opcoes){
   const n = funcImpNorm(v);
@@ -172,7 +171,8 @@ function funcImpLerPlanilha(wb){
       nascimento: funcImpData(g(r, "nascimento")),
       naturalidade: funcImpJunta(g(r, "nasc_cidade"), funcImpUf(g(r, "nasc_uf"))),
       logradouro: funcImpTxt(g(r, "logradouro")), numero: funcImpTxt(g(r, "numero")), complemento: funcImpTxt(g(r, "complemento")),
-      bairro: funcImpTxt(g(r, "bairro")), cep: funcImpDigitos(g(r, "cep"), 8), cidade: funcImpTxt(g(r, "cidade")), uf: funcImpUf(g(r, "uf")),
+      // hotfix 224b: o enum uf do banco é minúsculo ("mg"); maiúscula é recusada e derruba a gravação dos sensíveis inteira
+      bairro: funcImpTxt(g(r, "bairro")), cep: funcImpDigitos(g(r, "cep"), 8), cidade: funcImpTxt(g(r, "cidade")), uf: funcImpUf(g(r, "uf"))?.toLowerCase() || null,
       telefone: funcImpTxt(g(r, "celular")),
       titulo: funcImpDigitos(g(r, "titulo")), zona: funcImpTxt(g(r, "zona")), secao: funcImpTxt(g(r, "secao")),
       ctps: funcImpTxt(g(r, "ctps")), ctps_serie: funcImpJunta(g(r, "ctps_serie"), funcImpUf(g(r, "ctps_uf"))),
@@ -194,14 +194,13 @@ function funcImpLerPlanilha(wb){
 
 /* ---------- situação de cada linha ---------- */
 async function funcImpClassificar(linhas){
-  // CPF: lê de funcionarios_sensiveis só o id dos CPFs que estão na planilha (com e sem pontuação)
+  // CPF: confere pela RPC (POST), nunca por filtro de consulta: GET leva o CPF na URL, e a URL fica nos logs da API (hotfix 224b)
   const cpfs = [...new Set(linhas.filter(l => l.cpf && l.situacao !== "incompleto").map(l => l.cpf))];
   const porCpf = {};
-  for(let k = 0; k < cpfs.length; k += 100){
-    const lote = cpfs.slice(k, k + 100);
-    const { data, error } = await sb.from("funcionarios_sensiveis").select("funcionario_id,cpf").in("cpf", lote.concat(lote.map(funcImpCpfFormatado)));
+  if(cpfs.length){
+    const { data, error } = await sb.rpc("funcionarios_cpfs_cadastrados", { p_cpfs: cpfs });
     if(error) throw new Error("Não consegui conferir os CPFs já cadastrados: " + error.message);
-    (data || []).forEach(x => { porCpf[String(x.cpf || "").replace(/\D/g, "")] = x.funcionario_id; });
+    (data || []).forEach(x => { porCpf[x.cpf] = x.funcionario_id; });
   }
   const vistos = new Set();
   for(const l of linhas){

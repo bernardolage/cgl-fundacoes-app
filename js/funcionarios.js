@@ -1294,8 +1294,15 @@ async function funcAdmConcluir(){
   };
   const r2 = await sb.from("funcionarios_sensiveis").upsert(sens, { onConflict: "funcionario_id" });
   if(r2.error){
-    aviso("app-aviso", /cpf/i.test(r2.error.message) ? "J\u00e1 existe um funcion\u00e1rio com este CPF (o cadastro ficou sem os dados sens\u00edveis)." : "Funcion\u00e1rio criado, mas os dados sens\u00edveis n\u00e3o foram gravados: " + r2.error.message, "erro");
-    await carregarFuncionarios(); await abrirFuncionario(id); return;
+    // hotfix 224b: desfaz o cadastro e fica no assistente; abrir a ficha vazia obrigava a digitar tudo de novo
+    const base = /cpf/i.test(r2.error.message) ? "J\u00e1 existe um funcion\u00e1rio com este CPF." : "Os dados sens\u00edveis foram recusados: " + r2.error.message;
+    const desfez = await sb.from("funcionarios").delete().eq("id", id);
+    if(desfez.error){
+      aviso("app-aviso", base + " O cadastro ficou criado sem os dados sens\u00edveis; confira a ficha.", "erro");
+      await carregarFuncionarios(); await abrirFuncionario(id); return;
+    }
+    aviso("adm-aviso", base + " Nada foi gravado: os dados continuam aqui para corrigir e concluir de novo.", "erro");
+    return;
   }
   const adm = {
     funcionario_id: id, data_admissao: v("adm-data"), funcao: funcPadronizarFuncao(v("adm-funcao")) || null, cbo: v("adm-cbo"), salario: n("adm-salario"),
