@@ -386,6 +386,14 @@ function mostrarPainelRDO(){
   if(_rdoVoltarPara){
     const obraId = _rdoVoltarPara; _rdoVoltarPara = null;
     irParaSecao("obras");
+    // hotfix carga do banco: obra já aberta só mostra a aba RDOs e atualiza contagens; reabrir custava cerca de 65 requisições
+    if(typeof obraEditId !== "undefined" && obraEditId === obraId && $("obr-ficha")?.style.display !== "none"){
+      _obrEstacasDesatualizadas = true;
+      ativarTabObra("rdos");
+      carregarRDOsDaObra(obraId);
+      carregarAbasObra(obraId);
+      return;
+    }
     if(typeof abrirObra === "function") Promise.resolve(abrirObra(obraId)).then(() => { if(typeof ativarTabObra === "function") ativarTabObra("rdos"); });
   }
 }
@@ -755,9 +763,9 @@ async function rdoAcumAnteriorDaEstaca(numero){
   const obraId = $("rdo-obra")?.value, data = $("rdo-data")?.value;
   if(!obraId || !data || !numero) return null;
   const padrao = String(numero).trim().replace(/[\\%_]/g, "\\$&"); // ilike sem curinga: \, % e _ literais
-  let q = sb.from("rdo_execucao_estaca")
-    .select("perfuracao_ate_m,profundidade_executada,modalidade_execucao,rdo:rdo_id!inner(obra_id,data)")
-    .eq("rdo.obra_id", obraId).lt("rdo.data", data).ilike("estaca_numero", padrao);
+  let q = sb.from("vw_rdo_execucoes_obra")
+    .select("perfuracao_ate_m,profundidade_executada,modalidade_execucao")
+    .eq("obra_id", obraId).lt("data", data).ilike("estaca_numero", padrao);
   if(rdoEditId) q = q.neq("rdo_id", rdoEditId);
   const { data: linhas, error } = await q;
   if(error) return null;

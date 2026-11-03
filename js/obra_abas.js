@@ -10,6 +10,7 @@ let _obrRdoFiltroMaq = "";   // fase 94 (#77): filtro de máquina da aba RDOs ("
 let _obrRdoFiltroObra = null; // obra a que o filtro pertence: trocar de obra zera o filtro (salvo o preset do Início para a mesma obra)
 
 /* ---------- Despachante: carrega tudo quando a obra abre ---------- */
+let _obrEstacasDesatualizadas = false;   // hotfix carga do banco: a aba Estacas recarrega no próximo clique
 async function carregarAbasObra(obraId){
   if(!obraId) return;
   // Em paralelo, busca as contagens pra smart-buttons.
@@ -24,7 +25,7 @@ async function carregarAbasObra(obraId){
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("status", "executada"),
     sb.from("mobilizacoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId).neq("status", "cancelada"),
     sb.from("acessorios").select("id", { count: "exact", head: true }).eq("local_obra_id", obraId).eq("local_tipo", "obra").eq("ativo", true),   // fase 80
-    sb.from("rdo_execucao_estaca").select("id, rdo:rdo_id!inner(obra_id)", { count: "exact", head: true }).is("estaca_id", null).eq("rdo.obra_id", obraId),   // fase 94: execuções do campo sem par
+    sb.from("vw_rdo_execucoes_obra").select("id", { count: "exact", head: true }).is("estaca_id", null).eq("obra_id", obraId),   // fase 94: execuções do campo sem par
     sb.from("vw_obra_equipamentos").select("equipamento_id,vigente").eq("obra_id", obraId)   // fase 101: máquinas da obra (erro = migration ainda não aplicada)
   ]);
   // Guarda de corrida: outra obra foi aberta enquanto esta carregava → descarta
@@ -646,11 +647,11 @@ async function carregarRDOsDaObra(obraId){
   // Resumo dos RDOs + execuções por rdo (pra contar vinculadas)
   const [resumoRes, execsRes, injRes] = await Promise.all([
     sb.from("vw_rdo_resumo").select("*").eq("obra_id", obraId).order("data", { ascending: false }),
-    // !inner + eq: só execuções desta obra (antes vinha a tabela inteira)
-    sb.from("rdo_execucao_estaca").select("rdo_id, estaca_id, rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId),
+    // hotfix carga do banco: a view parte de rdo; o !inner varria todas as execuções a cada abertura
+    sb.from("vw_rdo_execucoes_obra").select("rdo_id, estaca_id, obra_id").eq("obra_id", obraId),
     // fase 101 (#99): injeção do dia nos RDOs de raiz (cimento, areia, água, m³ injetado); erro = migration ainda não aplicada
-    sb.from("rdo_execucao_estaca").select("rdo_id,consumo_cimento_raiz,consumo_cimento_unidade,consumo_areia_raiz,consumo_areia_unidade,agua_l,volume_injetado_m3,rdo:rdo_id!inner(obra_id,tipo_servico)")
-      .eq("rdo.obra_id", obraId).eq("rdo.tipo_servico", "estaca_raiz")
+    sb.from("vw_rdo_execucoes_obra").select("rdo_id,consumo_cimento_raiz,consumo_cimento_unidade,consumo_areia_raiz,consumo_areia_unidade,agua_l,volume_injetado_m3")
+      .eq("obra_id", obraId).eq("tipo_servico", "estaca_raiz")
   ]);
   const injPorRdo = {};
   if(!injRes.error && typeof rdoTotaisInjecao === "function"){
@@ -664,7 +665,7 @@ async function carregarRDOsDaObra(obraId){
   // Mapa rdo_id -> { total, vinculadas }
   const vincPorRdo = {};
   (execsRes.data || []).forEach(e => {
-    if(!e.rdo || e.rdo.obra_id !== obraId) return;
+    if(e.obra_id !== obraId) return;
     if(!vincPorRdo[e.rdo_id]) vincPorRdo[e.rdo_id] = { total: 0, vinculadas: 0 };
     vincPorRdo[e.rdo_id].total++;
     if(e.estaca_id) vincPorRdo[e.rdo_id].vinculadas++;
@@ -1401,6 +1402,7 @@ function ligarAbasObra(){
       else if(tab === "maquinas") carregarMaquinasDaObra(obraEditId);   // fase 101
       else if(tab === "medicoes") carregarMedicoesDaObra(obraEditId);
       else if(tab === "rdos") carregarRDOsDaObra(obraEditId);
+      else if(tab === "estacas" && _obrEstacasDesatualizadas){ _obrEstacasDesatualizadas = false; carregarEstacasDaObra(obraEditId); }   // hotfix carga do banco: voltou de um RDO sem reabrir a obra
       else if(tab === "vincular" && typeof estvCarregar === "function") estvCarregar(obraEditId);   // fase 94 (#80)
       else if(tab === "documentos"){ carregarDocumentosDaObra(obraEditId); if(typeof sstObraProgramasRender === "function") sstObraProgramasRender(obraEditId); }   // fase 109a: bloco Programas legais
       else if(tab === "timeline") carregarTimelineDaObra(obraEditId);

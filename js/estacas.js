@@ -277,11 +277,10 @@ async function carregarEstacasDaObra(obraId){
       .select("id,numero,tipo,status,diametro_mm,profundidade_m,profundidade_executada_m,projeto_pendente,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local")
       .eq("obra_id", obraId)
       .order("numero"),
-    // !inner + eq no join: filtra por obra NO SERVIDOR (antes baixava a tabela
-    // inteira de execuções e filtrava no navegador a cada abertura)
-    sb.from("rdo_execucao_estaca")
-      .select("estaca_id, modalidade_execucao, rdo:rdo_id!inner(obra_id)")
-      .eq("rdo.obra_id", obraId)
+    // hotfix carga do banco: a view parte de rdo; o !inner varria todas as execuções a cada abertura
+    sb.from("vw_rdo_execucoes_obra")
+      .select("estaca_id, modalidade_execucao, obra_id")
+      .eq("obra_id", obraId)
       .not("estaca_id", "is", null),
     sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo"),
     sb.from("obras").select("distancia_minima_estacas,fator_dist_diametro,fator_dist_diametro_escavada,fator_dist_locacao,unidade_coordenadas").eq("id", obraId).single()
@@ -305,7 +304,7 @@ async function carregarEstacasDaObra(obraId){
   // Conta execuções por estaca pra detectar "ALTERADO" (refuros, casamentos errados)
   const contExec = {};
   (execsRes.data || []).forEach(re => {
-    if(!re.rdo || re.rdo.obra_id !== obraId) return;
+    if(re.obra_id !== obraId) return;
     if(!contExec[re.estaca_id]) contExec[re.estaca_id] = { total: 0, refuros: 0 };
     contExec[re.estaca_id].total++;
     if(re.modalidade_execucao === "refuro") contExec[re.estaca_id].refuros++;
@@ -429,11 +428,12 @@ function _raizTag(exec){
 
 async function carregarAcompanhamentoRaiz(){
   if(!obraEditId) return null;
-  const { data: execs, error } = await sb.from("rdo_execucao_estaca")
-    .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo:rdo_id!inner(obra_id,data)")
-    .eq("rdo.obra_id", obraEditId)
+  const { data: execs, error } = await sb.from("vw_rdo_execucoes_obra")
+    .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo_id,obra_id,data,rdo_equipamento_id")
+    .eq("obra_id", obraEditId)
     .order("perfuracao_inicio", { ascending: true });
   if(error){ aviso("app-aviso", "Não foi possível carregar as execuções: " + error.message, "erro"); return null; }
+  (execs || []).forEach(execComRdo);
   const ids = (execs || []).map(e => e.id);
   let solos = [], meds = [];
   if(ids.length){
@@ -2366,10 +2366,10 @@ async function carregarContagemReconciliacao(obraId){
 
   // Conta os 3 tipos de problemas em paralelo
   const [orfasRes, estsRes] = await Promise.all([
-    sb.from("rdo_execucao_estaca").select("id, rdo:rdo_id(obra_id)").is("estaca_id", null),
+    sb.from("vw_rdo_execucoes_obra").select("id, obra_id").is("estaca_id", null).eq("obra_id", obraId),   // hotfix carga do banco: lia as execuções sem estaca de todas as obras a cada abertura
     sb.from("estacas").select("numero,status").eq("obra_id", obraId)
   ]);
-  const orfas = (orfasRes.data || []).filter(r => r.rdo && r.rdo.obra_id === obraId);
+  const orfas = orfasRes.data || [];
   const ests = estsRes.data || [];
   // Duplicadas: grupos com mesmo número literal
   const cont = {};
@@ -3281,6 +3281,8 @@ function estvConfianca(campo, projeto){
   return scoreSimilaridade(a, b) >= 0.6 ? "parecida" : null;
 }
 function estvNorm(s){ return normalizarNumeroEstacaEstacas(s || ""); }
+/* hotfix carga do banco: linha de vw_rdo_execucoes_obra no formato que as telas já liam (x.rdo) */
+function execComRdo(x){ x.rdo = { id: x.rdo_id, obra_id: x.obra_id, data: x.data, equipamento_id: x.rdo_equipamento_id }; return x; }
 function estvMaquina(x){
   const id = x.equipamento_id || (x.rdo && x.rdo.equipamento_id);
   const q = id ? _equipamentosCache.find(e => e.id === id) : null;
@@ -3332,9 +3334,9 @@ async function estvCarregar(obraId){
   _estvObra = obraId;
   cont.innerHTML = `<p class="vazio">Carregando...</p>`;
   // lote S49 (#130): desvinculo_manual só existe depois da migration 20261022_loteS49_vincular_estacas; sem ela, lê sem a coluna
-  const COLS_EXEC = "id,estaca_id,estaca_numero,estaca_numero_corrigido,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,rdo:rdo_id!inner(id,obra_id,data,equipamento_id)";
+  const COLS_EXEC = "id,estaca_id,estaca_numero,estaca_numero_corrigido,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,rdo_id,obra_id,data,rdo_equipamento_id";
   const lerExecs = async () => {
-    const ler = (cols) => sb.from("rdo_execucao_estaca").select(cols).eq("rdo.obra_id", obraId).limit(5000);
+    const ler = (cols) => sb.from("vw_rdo_execucoes_obra").select(cols).eq("obra_id", obraId).limit(5000);
     const r = await ler(COLS_EXEC + ",desvinculo_manual");
     return r.error && /desvinculo_manual/i.test(r.error.message || "") ? ler(COLS_EXEC) : r;
   };
@@ -3347,7 +3349,7 @@ async function estvCarregar(obraId){
   if(obraId !== obraEditId) return; // outra obra aberta no meio
   if(execsRes.error || estsRes.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc((execsRes.error || estsRes.error).message)}</p>`; return; }
   if(!_equipamentosCache.length && eqRes.data) _equipamentosCache = eqRes.data;
-  _estvExecs = (execsRes.data || []).filter(x => x.rdo && x.rdo.obra_id === obraId);
+  _estvExecs = (execsRes.data || []).filter(x => x.obra_id === obraId).map(execComRdo);
   _estvEstacas = estsRes.data || [];
   _estvMedidas = new Set(medRes.error ? [] : (medRes.data || []));
   estvRender();
