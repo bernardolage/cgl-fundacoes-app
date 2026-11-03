@@ -2353,9 +2353,79 @@ let _recOrfas = [];      // execuções órfãs
 let _recPrevs = [];      // estacas previstas da obra
 let _recVinculos = {};   // { execucao_id: estaca_id_escolhida }
 let _confDuplicadas = []; // grupos: [{ numero, estacas:[...] }, ...]
-let _confRefuradas = [];  // estacas com status='refurada'
+let _confRefuradas = [];  // estacas com status='refugada' (na tela, "Refurada")
 let _confAlteradas = [];  // estacas com 2+ execuções: [{ estaca, execs:[...] }]
 let _confAbaAtual = "orfas";
+
+/* hotfix Conferência: a API devolve no máximo 1.000 linhas por leitura, mesmo com .limit() maior */
+async function confLerTudo(montar){
+  const out = [];
+  for(let de = 0; out.length === de; de += 1000){
+    const r = await montar().order("id").range(de, de + 999);
+    if(r.error) return { data: [], error: r.error };
+    out.push(...(r.data || []));
+  }
+  return { data: out, error: null };
+}
+
+function confSuspeitas(alteradas){
+  return alteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
+}
+
+/* hotfix Conferência: leitura e conta únicas do botão e das abas */
+async function confCarregarDados(obraId){
+  const COLS_RDO = "rdo_id,obra_id,data,rdo_equipamento_id";
+  const execsDaObra = (cols) => sb.from("vw_rdo_execucoes_obra").select(`${cols},${COLS_RDO}`).eq("obra_id", obraId);
+  const [orfasRes, estsRes, vinculadasRes] = await Promise.all([
+    confLerTudo(() => execsDaObra("id,estaca_numero,diametro_mm,perfuracao_inicio,profundidade_executada,equipamento_id").is("estaca_id", null)),
+    confLerTudo(() => sb.from("estacas")
+      .select("id,numero,bloco,local,tipo,diametro_mm,profundidade_m,status,data_execucao,observacoes")
+      .eq("obra_id", obraId)
+      .order("numero")),
+    confLerTudo(() => execsDaObra("id,estaca_id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao").not("estaca_id", "is", null))
+  ]);
+  const estacas = estsRes.data;
+
+  // Detecta duplicadas pela IDENTIDADE da estaca (fase 42b): local + bloco + número,
+  // a mesma chave única do banco (estacas_obra_local_bloco_numero_key). E1 do bloco B404
+  // e E1 do bloco B405 são estacas distintas — antes agrupava só pelo número e acusava
+  // "E1 aparece 242×" numa obra com 1 E1 por bloco (15/09/2026). Nome LITERAL (UPPER + trim):
+  // BB1.1 e B1.1 continuam distintas.
+  const grupos = {};
+  estacas.forEach(e => {
+    const k = [(e.local||"").trim().toUpperCase(), (e.bloco||"").trim().toUpperCase(), (e.numero||"").trim().toUpperCase()].join("|");
+    if(!grupos[k]) grupos[k] = [];
+    grupos[k].push(e);
+  });
+  const duplicadas = Object.values(grupos)
+    .filter(ests => ests.length > 1)
+    .map(ests => ({ numero: (ests[0].numero||"").trim().toUpperCase(), bloco: ests[0].bloco || "", local: ests[0].local || "", estacas: ests }));
+
+  // Estacas alteradas (2+ execuções) — agrupar todas execs por estaca_id e filtrar
+  const porEstaca = {};
+  vinculadasRes.data.map(execComRdo).forEach(re => {
+    if(!porEstaca[re.estaca_id]) porEstaca[re.estaca_id] = [];
+    porEstaca[re.estaca_id].push(re);
+  });
+  const alteradas = Object.entries(porEstaca)
+    .filter(([_, execs]) => execs.length > 1)
+    .map(([estId, execs]) => {
+      const estaca = estacas.find(p => p.id === estId);
+      // Ordena por data (mais antiga primeiro)
+      execs.sort((a,b) => (a.perfuracao_inicio||"").localeCompare(b.perfuracao_inicio||""));
+      return { estaca, execs };
+    })
+    .filter(g => g.estaca); // ignora se a estaca já foi deletada
+
+  return {
+    orfas: orfasRes.data.map(execComRdo),
+    estacas,
+    duplicadas,
+    refuradas: estacas.filter(e => e.status === "refugada"),
+    alteradas,
+    erros: { orfas: orfasRes.error, estacas: estsRes.error, vinculadas: vinculadasRes.error }
+  };
+}
 
 async function carregarContagemReconciliacao(obraId){
   const btn = $("btn-est-reconciliar");
@@ -2364,25 +2434,24 @@ async function carregarContagemReconciliacao(obraId){
   if(!obraId){ btn.style.display = "none"; return; }
   btn.style.display = "";
 
-  // Conta os 3 tipos de problemas em paralelo
-  const [orfasRes, estsRes] = await Promise.all([
-    sb.from("vw_rdo_execucoes_obra").select("id, obra_id").is("estaca_id", null).eq("obra_id", obraId),   // hotfix carga do banco: lia as execuções sem estaca de todas as obras a cada abertura
-    sb.from("estacas").select("numero,status").eq("obra_id", obraId)
-  ]);
-  const orfas = orfasRes.data || [];
-  const ests = estsRes.data || [];
-  // Duplicadas: grupos com mesmo número literal
-  const cont = {};
-  ests.forEach(e => {
-    const k = (e.numero||"").trim().toUpperCase();
-    cont[k] = (cont[k]||0) + 1;
-  });
-  const dups = Object.values(cont).filter(c => c > 1).reduce((s,c) => s + c, 0);
-  // Refuradas
-  const refs = ests.filter(e => e.status === "refurada").length;
+  const dados = await confCarregarDados(obraId);
+  if(obraId !== obraEditId) return; // outra obra aberta no meio
+  confPintarBotao(dados);
+}
 
-  const total = orfas.length + dups + refs;
+/* Órfãs + alteradas suspeitas + duplicadas reais. Refurada é estado final válido: fica só na aba. */
+function confPintarBotao(dados){
   const badge = $("est-reconciliar-badge");
+  const btn = $("btn-est-reconciliar");
+  const erro = dados.erros.orfas || dados.erros.estacas || dados.erros.vinculadas;
+  if(btn) btn.title = erro ? "Não foi possível conferir: " + erro.message : "";
+  if(erro){
+    // Leitura falhou: sem número nem ✓, para não parecer que está tudo certo
+    if(badge) badge.style.display = "none";
+    return;
+  }
+  const dups = dados.duplicadas.reduce((s,g) => s + g.estacas.length, 0);
+  const total = dados.orfas.length + confSuspeitas(dados.alteradas) + dups;
   if(total){
     // Há pendências: badge vermelho com número
     if(badge){
@@ -2407,65 +2476,22 @@ async function abrirModalReconciliacao(){
   });
   $("est-reconciliar-modal").style.display = "flex";
 
-  // Busca tudo em paralelo
-  const [orfasRes, estsRes, todasExecsRes] = await Promise.all([
-    sb.from("rdo_execucao_estaca")
-      .select("id, estaca_numero, diametro_mm, perfuracao_inicio, profundidade_executada, equipamento_id, rdo:rdo_id(obra_id)")
-      .is("estaca_id", null),
-    sb.from("estacas")
-      .select("id, numero, bloco, local, tipo, diametro_mm, profundidade_m, status, data_execucao, observacoes")
-      .eq("obra_id", obraEditId)
-      .order("numero"),
-    sb.from("rdo_execucao_estaca")
-      .select("id, estaca_id, estaca_numero, perfuracao_inicio, profundidade_executada, volume_concreto_m3, modalidade_execucao, rdo:rdo_id(obra_id, data)")
-      .not("estaca_id", "is", null)
-  ]);
+  const obraId = obraEditId;
+  const dados = await confCarregarDados(obraId);
+  if(obraId !== obraEditId) return; // outra obra aberta no meio
 
   // Tratamento de erro visível (antes era silencioso e zerava _recPrevs)
-  if(orfasRes.error){ aviso("app-aviso","Erro ao carregar órfãs: "+orfasRes.error.message,"erro"); }
-  if(estsRes.error){ aviso("app-aviso","Erro ao carregar previstas: "+estsRes.error.message,"erro"); }
+  if(dados.erros.orfas){ aviso("app-aviso","Erro ao carregar órfãs: "+dados.erros.orfas.message,"erro"); }
+  if(dados.erros.estacas){ aviso("app-aviso","Erro ao carregar previstas: "+dados.erros.estacas.message,"erro"); }
+  if(dados.erros.vinculadas){ aviso("app-aviso","Erro ao carregar execuções: "+dados.erros.vinculadas.message,"erro"); }
 
-  const orfas = (orfasRes.data || []).filter(r => r.rdo && r.rdo.obra_id === obraEditId);
-  const previstas = estsRes.data || [];
-
-  _recOrfas = orfas;
-  _recPrevs = previstas;
+  _recOrfas = dados.orfas;
+  _recPrevs = dados.estacas;
   _recVinculos = {};
-
-  // Detecta duplicadas pela IDENTIDADE da estaca (fase 42b): local + bloco + número,
-  // a mesma chave única do banco (estacas_obra_local_bloco_numero_key). E1 do bloco B404
-  // e E1 do bloco B405 são estacas distintas — antes agrupava só pelo número e acusava
-  // "E1 aparece 242×" numa obra com 1 E1 por bloco (15/09/2026). Nome LITERAL (UPPER + trim):
-  // BB1.1 e B1.1 continuam distintas.
-  const grupos = {};
-  previstas.forEach(e => {
-    const k = [(e.local||"").trim().toUpperCase(), (e.bloco||"").trim().toUpperCase(), (e.numero||"").trim().toUpperCase()].join("|");
-    if(!grupos[k]) grupos[k] = [];
-    grupos[k].push(e);
-  });
-  _confDuplicadas = Object.values(grupos)
-    .filter(ests => ests.length > 1)
-    .map(ests => ({ numero: (ests[0].numero||"").trim().toUpperCase(), bloco: ests[0].bloco || "", local: ests[0].local || "", estacas: ests }));
-
-  // Refuradas
-  _confRefuradas = previstas.filter(e => e.status === "refurada");
-
-  // Estacas alteradas (2+ execuções) — agrupar todas execs por estaca_id e filtrar
-  const execsDestaObra = (todasExecsRes.data || []).filter(e => e.rdo && e.rdo.obra_id === obraEditId);
-  const porEstaca = {};
-  execsDestaObra.forEach(re => {
-    if(!porEstaca[re.estaca_id]) porEstaca[re.estaca_id] = [];
-    porEstaca[re.estaca_id].push(re);
-  });
-  _confAlteradas = Object.entries(porEstaca)
-    .filter(([_, execs]) => execs.length > 1)
-    .map(([estId, execs]) => {
-      const estaca = previstas.find(p => p.id === estId);
-      // Ordena por data (mais antiga primeiro)
-      execs.sort((a,b) => (a.perfuracao_inicio||"").localeCompare(b.perfuracao_inicio||""));
-      return { estaca, execs };
-    })
-    .filter(g => g.estaca); // ignora se a estaca já foi deletada
+  _confDuplicadas = dados.duplicadas;
+  _confRefuradas = dados.refuradas;
+  _confAlteradas = dados.alteradas;
+  confPintarBotao(dados);
 
   // Atualiza badges das abas
   atualizarBadgesConferencia();
@@ -2476,7 +2502,7 @@ async function abrirModalReconciliacao(){
   renderizarRefuradas();
   // Abre na primeira aba que tem algo a conferir (antes ficava na última aba usada,
   // então a obra seguinte abria direto em "duplicadas" mesmo sem duplicata).
-  const altSuspeitas = _confAlteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
+  const altSuspeitas = confSuspeitas(_confAlteradas);
   _confAbaAtual = _recOrfas.length ? "orfas" : altSuspeitas ? "alteradas" : _confDuplicadas.length ? "duplicadas" : _confRefuradas.length ? "refuradas" : "orfas";
   ativarConfAba(_confAbaAtual);
 }
@@ -2489,7 +2515,7 @@ function atualizarBadgesConferencia(){
     el.classList.toggle("zero", n === 0);
   };
   set("conf-tab-orfas-badge", _recOrfas.length);
-  set("conf-tab-alt-badge",  _confAlteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length); // só conta as suspeitas (sem refuro explícito)
+  set("conf-tab-alt-badge",  confSuspeitas(_confAlteradas)); // só conta as suspeitas (sem refuro explícito)
   set("conf-tab-dups-badge", _confDuplicadas.reduce((s,g) => s + g.estacas.length, 0));
   set("conf-tab-ref-badge", _confRefuradas.length);
 }
@@ -3072,7 +3098,7 @@ async function excluirEstacaDuplicada(id, num){
 }
 
 /* ====================================================================
-   ABA REFURADAS — estacas com status=refurada
+   ABA REFURADAS — estacas com status=refugada
    ==================================================================== */
 
 function renderizarRefuradas(){
@@ -3082,6 +3108,10 @@ function renderizarRefuradas(){
     cont.innerHTML = `<p class="vazio">🎉 Não há estacas refuradas nesta obra.</p>`;
     return;
   }
+  const ro = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+  const acoes = (e) => ro ? "" : `
+      <button type="button" class="btn-sec btn-sm btn-ref-substituir" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">➕ Criar substituta</button>
+      <button type="button" class="btn-sec btn-sm btn-ref-restaurar" data-id="${esc(e.id)}" title="Voltar para 'prevista'">↩️ Restaurar</button>`;
   const linhas = _confRefuradas.map(e => `<tr data-id="${esc(e.id)}">
     <td><strong>${esc(e.numero)}</strong></td>
     <td>${esc(extrairBloco(e)||"—")}</td>
@@ -3089,10 +3119,7 @@ function renderizarRefuradas(){
     <td class="num">${e.profundidade_m!=null ? num(e.profundidade_m) + " m" : "—"}</td>
     <td>${dataBR(e.data_execucao)}</td>
     <td>${esc(e.observacoes || "—")}</td>
-    <td class="col-acao">
-      <button type="button" class="btn-sec btn-sm btn-ref-substituir" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">➕ Criar substituta</button>
-      <button type="button" class="btn-sec btn-sm btn-ref-restaurar" data-id="${esc(e.id)}" title="Voltar para 'prevista'">↩️ Restaurar</button>
-    </td>
+    <td class="col-acao">${/* html */ acoes(e)}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
@@ -3119,6 +3146,8 @@ async function criarSubstitutaRefurada(idOriginal, numOriginal){
   const reg = {
     obra_id: obraEditId,
     numero: novoNorm,
+    local: original.local,
+    bloco: original.bloco,
     tipo: original.tipo || "outro",
     status: "prevista",
     diametro_mm: original.diametro_mm,
