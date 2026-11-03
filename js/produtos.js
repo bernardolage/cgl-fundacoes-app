@@ -366,6 +366,8 @@ async function prodRenderSaidasSemCusto(){
   if(_prodView !== "saidas_sem_custo") return;
   if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler as saídas sem custo: ${esc(error.message)}</p>`; return; }
   _prodSsc = data || [];
+  const vinculos = await carregarVinculosSaida(_prodSsc.map(r => r.id));   // lote S59
+  if(_prodView !== "saidas_sem_custo") return;
   const pode = prodPodeDefinirCusto();
   const nProd = new Set(_prodSsc.map(r => r.produto_id)).size;
   const nComCusto = new Set(_prodSsc.filter(r => r.produto_tem_custo).map(r => r.produto_id)).size;
@@ -385,7 +387,7 @@ async function prodRenderSaidasSemCusto(){
       <td class="num">${num(r.quantidade)} <span class="meta">${esc(r.unidade || "un")}</span></td>
       <td>${esc(r.destino || "—")}</td>
       <td>${esc(r.retirante || "—")}</td>
-      <td>${esc(r.documento || "—")}</td>
+      <td>${linkDocumentoSaida(r, vinculos.get(r.id)) || "—"}</td>
       <td>${esc(r.registrado_por_nome || "—")}</td>
       <td>${/* html */ acao}</td>
     </tr>`;

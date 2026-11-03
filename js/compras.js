@@ -3256,7 +3256,7 @@ async function custosRender(containerId, filtro, cbTotal){
   const nomeEq = id => cmpEq(id) || (typeof aceEqTag === "function" ? aceEqTag(id) : "");
   c.innerHTML = `
     <div class="lista-topo compacta"><h3>Custos <span class="meta">${linhas.length} lançamento(s)</span></h3>
-      <strong style="margin-left:auto;">Total ${brl(total)}</strong>
+      <strong style="margin-left:auto;" data-val-sens>Total ${brl(total)}</strong>
       ${pode ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-av">＋ Custo avulso</button>` : ""}
       ${linhas.length ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-xls">📊 Excel</button>` : ""}
     </div>

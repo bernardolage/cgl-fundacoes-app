@@ -830,6 +830,92 @@ function ligarTema(){
 }
 ligarTema();   // tela de login: antes de autenticar
 
+/* lote S59 (D7, D8): os valores em dinheiro de KPIs e totais abrem cobertos, para todos os cargos; cada janela nova abre oculta.
+   Proteção contra quem olha a tela, não controle de acesso. O texto continua no DOM dentro do .val-sens, então PDF e .xlsx não mudam. */
+const VAL_SENS_CHAVE = "cgl_valores_visiveis";
+const VAL_SENS_ZONAS = ".ind, .dash-card, .custos-resumo, .sb-num, tfoot, #pat-conteudo, [data-val-sens]";
+const VAL_SENS_FORA = ".val-sens, svg, option, select, textarea, script, style";
+const VAL_SENS_RE = /(?:[-−+]\s*)?R\$\s*[-−]?\s*\d[\d.,]*(?:\s*(?:mil|mi)\b)?/g;
+const VAL_SENS_TEM = /R\$\s*[-−]?\s*\d/;
+let _valSensVisivel = false, _valSensPend = new Set(), _valSensRaf = 0;
+
+function valSensTitulo(el){
+  const t = el.getAttribute("title");
+  if(t && t.includes("R$") && el.closest(VAL_SENS_ZONAS)){ el.dataset.valTitle = t; el.removeAttribute("title"); }
+}
+function valSensTexto(no){
+  const pai = no.parentElement, s = no.nodeValue;
+  if(!pai || !VAL_SENS_TEM.test(s) || pai.closest(VAL_SENS_FORA) || !pai.closest(VAL_SENS_ZONAS)) return;
+  const frag = document.createDocumentFragment();
+  let pos = 0;
+  for(const m of s.matchAll(VAL_SENS_RE)){
+    if(m.index > pos) frag.append(s.slice(pos, m.index));
+    const barra = document.createElement("span");
+    barra.className = "val-sens";
+    barra.textContent = m[0];
+    frag.append(barra);
+    pos = m.index + m[0].length;
+  }
+  if(pos < s.length) frag.append(s.slice(pos));
+  no.replaceWith(frag);
+}
+function valSensCobrir(no){
+  if(!no.isConnected) return;
+  if(no.nodeType === Node.TEXT_NODE){ valSensTexto(no); return; }
+  if(no.nodeType !== Node.ELEMENT_NODE) return;
+  valSensTitulo(no);
+  no.querySelectorAll("[title]").forEach(valSensTitulo);
+  const textos = [], w = document.createTreeWalker(no, NodeFilter.SHOW_TEXT);
+  while(w.nextNode()) if(VAL_SENS_TEM.test(w.currentNode.nodeValue)) textos.push(w.currentNode);
+  textos.forEach(valSensTexto);
+}
+const _valSensObs = new MutationObserver(lista => {
+  lista.forEach(m => {
+    if(m.type === "attributes") valSensTitulo(m.target);
+    else if(m.type === "characterData") _valSensPend.add(m.target);
+    else m.addedNodes.forEach(n => _valSensPend.add(n));
+  });
+  if(!_valSensPend.size || _valSensRaf) return;
+  _valSensRaf = requestAnimationFrame(() => {
+    const nos = [..._valSensPend];
+    _valSensPend.clear();
+    _valSensRaf = 0;
+    nos.forEach(valSensCobrir);
+  });
+});
+function valSensAplicar(visivel){
+  _valSensVisivel = visivel;
+  document.body.classList.toggle("valores-ocultos", !visivel);
+  if(visivel){
+    _valSensObs.disconnect();
+    cancelAnimationFrame(_valSensRaf);
+    _valSensRaf = 0;
+    _valSensPend.clear();
+    document.querySelectorAll("[data-val-title]").forEach(el => { el.setAttribute("title", el.dataset.valTitle); delete el.dataset.valTitle; });
+  } else {
+    valSensCobrir(document.body);
+    _valSensObs.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["title"] });
+  }
+  const btn = $("btn-val-sens");
+  if(btn){
+    const rotulo = visivel ? "Ocultar valores" : "Mostrar valores";
+    btn.querySelector("span").textContent = rotulo;
+    btn.title = rotulo;
+    btn.setAttribute("aria-label", rotulo);
+    btn.setAttribute("aria-pressed", String(visivel));
+  }
+}
+function ligarValSens(){
+  let visivel = false;
+  try { visivel = sessionStorage.getItem(VAL_SENS_CHAVE) === "1"; } catch(_){}
+  valSensAplicar(visivel);
+  $("btn-val-sens")?.addEventListener("click", () => {
+    valSensAplicar(!_valSensVisivel);
+    try { if(_valSensVisivel) sessionStorage.setItem(VAL_SENS_CHAVE, "1"); else sessionStorage.removeItem(VAL_SENS_CHAVE); } catch(_){}
+  });
+}
+ligarValSens();
+
 $("btn-sair").addEventListener("click", async ()=>{
   appLimparSujo();   // fase 86: sair abandona o que estava na tela
   _polSaindo = true; // fase 87: saída voluntária, sem aviso de "sessão encerrada" na tela de login
@@ -1250,6 +1336,25 @@ function linkFabricacao(id, texto){ return linkCadastro("fabricacao", id, texto,
 function linkViagem(id, texto){ return linkCadastro("viagem", id, texto, "Abrir a viagem (Logística)"); }   // fase 89
 function linkManutencao(id, texto){ return linkCadastro("manutencao", id, texto, "Abrir a OS de manutenção"); }   // fase 92
 function linkSeparacao(id, texto){ return linkCadastro("separacao", id, texto, "Abrir a separação"); }   // lote S58 (#233)
+/* lote S59: documento da saída de estoque. Com vínculo em vw_estoque_saida_vinculo vira link com o número; sem vínculo (ou sem leitura da
+   origem, a RLS não devolve a linha) fica o texto gravado na saída. */
+function linkDocumentoSaida(mov, vinculo){
+  const v = vinculo || {};
+  return v.tipo === "manutencao" ? linkManutencao(v.ref_id, v.numero)
+    : v.tipo === "reparo" ? linkReparo(v.ref_id, v.numero)
+    : v.tipo === "fabricacao" ? linkFabricacao(v.ref_id, v.numero)
+    : v.tipo === "separacao" ? linkSeparacao(v.ref_id, v.numero)
+    : esc(mov.documento || "");
+}
+async function carregarVinculosSaida(ids){
+  const mapa = new Map(), lista = [...new Set(ids.filter(Boolean))];
+  for(let i = 0; i < lista.length; i += 300){   // .in() recusa mais de ~630 UUIDs
+    const { data, error } = await sb.from("vw_estoque_saida_vinculo").select("movimentacao_id,tipo,ref_id,numero").in("movimentacao_id", lista.slice(i, i + 300));
+    if(error){ console.warn("vínculo das saídas:", error.message); return mapa; }
+    (data || []).forEach(v => mapa.set(v.movimentacao_id, v));
+  }
+  return mapa;
+}
 const LINK_CAD_SECAO = { acessorio: "acessorios", equipamento: "equipamentos", produto: "produtos", movimentacao: "movimentacoes", reparo: "reparos", fabricacao: "fabricacao", viagem: "frota", manutencao: "manutencao", separacao: "separacoes" };
 document.addEventListener("click", async (e) => {
   const a = e.target && e.target.closest ? e.target.closest("a.link-cad") : null;
@@ -1542,7 +1647,10 @@ function polStore(){ return lembrarAtivo() ? localStorage : sessionStorage; }
 function polLer(chave){ try { return polStore().getItem(chave); } catch(_){ return null; } }
 function polGravar(chave, valor){ try { polStore().setItem(chave, valor); } catch(_){} }
 function polApagar(chave){ try { localStorage.removeItem(chave); sessionStorage.removeItem(chave); } catch(_){} }
-function polSessaoLimpar(){ polApagar("cgl_login_em"); polApagar("cgl_ultima_atividade"); lembrarApagar(); }
+function polSessaoLimpar(){
+  polApagar("cgl_login_em"); polApagar("cgl_ultima_atividade"); lembrarApagar();
+  try { sessionStorage.removeItem(VAL_SENS_CHAVE); } catch(_){}   // lote S59: quem entrar depois nesta janela encontra os valores cobertos
+}
 function polIsento(){ return ehSomenteLeitura(); }
 
 /* prazos da empresa; sem leitura (rede, RLS) ficam os padrões */

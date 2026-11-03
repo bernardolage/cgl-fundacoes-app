@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="c002a99" />
+<meta name="app-versao" content="6d19e24" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=c002a99" />
+<link rel="stylesheet" href="css/estilo.css?v=6d19e24" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=c002a99"></script>
+<script src="js/tema.js?v=6d19e24"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=c002a99"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=c002a99"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=c002a99"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=6d19e24"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=6d19e24"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=6d19e24"></script>
 </head>
 <body>
 
@@ -241,6 +241,8 @@
       <div class="header-direita">
         <!-- fase 138: tema claro/escuro (ícone do tema para o qual o botão leva; aplicarTema em core.js) -->
         <button type="button" class="btn-sec btn-sm btn-tema" id="btn-tema" aria-pressed="false" title="Mudar para o tema escuro" aria-label="Mudar para o tema escuro"><svg class="tema-lua" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg><svg class="tema-sol" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg></button>
+        <!-- lote S59: cobre os valores de KPIs e totais; estado e cobertura em ligarValSens (core.js) -->
+        <button type="button" class="btn-sec btn-sm" id="btn-val-sens" aria-pressed="false" title="Mostrar valores" aria-label="Mostrar valores">👁 <span>Mostrar valores</span></button>
         <button type="button" class="btn-sec btn-sm" id="btn-reportar-problema" title="Abre um chamado já com o módulo, a obra e o registro que estão na tela">💡 <span>Relatar problema ou melhoria</span></button>
       </div>
     </header>
@@ -248,7 +250,7 @@
       <div id="app-aviso" class="aviso" style="max-width:none;"></div>
 
     <!-- INÍCIO -->
-    <section class="secao ativa" id="sec-inicio">
+    <section class="secao ativa" id="sec-inicio" data-val-sens>
       <!-- Fase 63: Sala de Comando. Ordem: cabeçalho, faixa, exige ação/minha fila, abas, resumo antigo -->
       <div class="dash-topo">
         <div>
@@ -1459,7 +1461,7 @@
             <tbody id="bal-itens"><tr><td colspan="6" class="vazio">Nenhum item. Bipe ou busque acima.</td></tr></tbody></table>
         </div>
         <div class="form-acoes compacta"><button type="button" class="btn" id="btn-bal-registrar">📤 Registrar saída</button></div>
-        <div class="lista-topo compacta" style="margin-top:10px;"><h3>Saídas de hoje <span id="bal-hoje-contador" class="contador"></span></h3><span class="meta">desfazer vale por 10 minutos</span></div>
+        <div class="lista-topo compacta" style="margin-top:10px;"><h3>Saídas de hoje <span id="bal-hoje-contador" class="contador" data-val-sens></span></h3><span class="meta">desfazer vale por 10 minutos</span></div>
         <div id="bal-hoje"><p class="vazio">—</p></div>
       </div>
 
@@ -2401,7 +2403,7 @@
             <div class="chip"><span>Tipo</span><strong id="ccu-chip-tipo">—</strong></div>
             <div class="chip"><span>Departamento</span><strong id="ccu-chip-dep">—</strong></div>
             <div class="chip"><span>Responsável</span><strong id="ccu-chip-resp">—</strong></div>
-            <div class="chip"><span>Custo</span><strong id="ccu-chip-custo">—</strong></div>
+            <div class="chip"><span>Custo</span><strong id="ccu-chip-custo" data-val-sens>—</strong></div>
           </div>
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-ccu-custos" data-goto-tab="custos"><span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">no período</span></button>
@@ -4981,7 +4983,7 @@
             <div class="odoo-tab" data-tab="componentes">
               <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Componente</th><th style="width:60px;">Un</th><th class="num" style="width:90px;">Previsto</th><th class="num" style="width:90px;">Consumido</th><th class="num" style="width:110px;">Custo unit.</th><th class="num" style="width:110px;">Total</th><th style="width:150px;">Baixa</th><th class="col-acao"></th></tr></thead>
                 <tbody id="fab-itens"></tbody></table></div>
-              <div id="fab-itens-total" class="meta" style="margin:6px 0;"></div>
+              <div id="fab-itens-total" class="meta" data-val-sens style="margin:6px 0;"></div>
               <div class="grade" id="fab-itens-add" style="margin-top:10px;">
                 <div class="campo largo"><label>+ Componente do catálogo</label>
                   <input id="fab-comp-busca" placeholder="código, código de barras ou nome (≥ 2 letras)…" autocomplete="off" />
@@ -6171,12 +6173,11 @@
     <section class="secao" id="sec-patrimonio">
       <h2>Patrimônio</h2>
       <div id="pat-painel">
-        <p class="texto-apoio compacto">Valor de mercado dos bens próprios na opinião da diretoria, por ano de referência. Os bens vêm dos cadastros de Equipamentos, Logística e Acessórios (este módulo não cadastra nem retira máquina, veículo ou acessório); imóveis, usina e grupos globais nascem aqui. Veículo sem avaliação vale a FIPE do cadastro.</p>
+        <p class="texto-apoio compacto">Valor de mercado dos bens próprios na opinião da diretoria. Cada bem vale a última avaliação até receber outra. Os bens vêm dos cadastros de Equipamentos, Logística e Acessórios (este módulo não cadastra nem retira máquina, veículo ou acessório); imóveis, usina e grupos globais nascem aqui. Veículo sem avaliação vale a FIPE do cadastro.</p>
         <div class="indicadores">
           <div class="ind"><div class="num" id="pat-kpi-total">—</div><div class="rot" id="pat-kpi-total-rot">Patrimônio</div></div>
-          <div class="ind"><div class="num" id="pat-kpi-var">—</div><div class="rot" id="pat-kpi-var-rot">Contra o ano anterior</div></div>
-          <div class="ind ind-click" id="pat-kpi-sem-card" title="Ver só os bens sem valor no ano"><div class="num" id="pat-kpi-sem" style="color:var(--perigo);">—</div><div class="rot" id="pat-kpi-sem-rot">Sem valor</div></div>
-          <div class="ind"><div class="num" id="pat-kpi-bens">—</div><div class="rot">Bens próprios ativos</div></div>
+          <div class="ind ind-click" id="pat-kpi-sem-card" title="Ver só os bens sem valor"><div class="num" id="pat-kpi-sem" style="color:var(--perigo);">—</div><div class="rot" id="pat-kpi-sem-rot">Sem valor</div></div>
+          <div class="ind"><div class="num" id="pat-kpi-bens">—</div><div class="rot">Bens</div></div>
         </div>
         <div class="card">
           <div class="lista-topo">
@@ -6186,12 +6187,11 @@
               <button type="button" class="serv-view-btn" data-view="vendas" title="Vendas de bens: abre a visão Vendas de Equipamentos (fase 96)">Vendas</button>
               <button type="button" class="serv-view-btn" data-view="resumo">Resumo</button>
             </div>
-            <button type="button" class="btn-sec" id="btn-pat-exportar" style="margin-left:auto;" title="Planilha do ano escolhido, no leiaute da AVALIAÇÃO DOS EQUIPAMENTOS (todos os grupos, sem filtro)">⬇️ Exportar .xlsx</button>
+            <button type="button" class="btn-sec" id="btn-pat-exportar" style="margin-left:auto;" title="Planilha com o valor vigente, no leiaute da AVALIAÇÃO DOS EQUIPAMENTOS (todos os grupos, sem filtro)">⬇️ Exportar .xlsx</button>
             <button type="button" class="btn btn-novo" id="btn-pat-novo" style="display:none;" title="Imóvel da empresa ou em permuta, usina ou grupo global (o que não existe em outro módulo)">+ Novo bem</button>
           </div>
           <div class="serv-filtros" id="pat-filtros">
             <input id="pat-busca" placeholder="Buscar por TAG, descrição, série, placa ou modelo..." />
-            <select id="pat-f-ano" title="Ano de referência da avaliação"></select>
             <select id="pat-f-grupo"></select>
             <label class="check-inline" id="pat-f-sem-rot"><input type="checkbox" id="pat-f-sem" /> só sem valor</label>
           </div>
@@ -6199,8 +6199,20 @@
         </div>
       </div>
 
+      <!-- lote S59 (D12): lista para o diretor conferir antes de trocar a verba pelos preços dos modelos -->
+      <div class="modal-fundo" id="pat-troca-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:980px;">
+          <div class="modal-topo"><h3>Trocar a verba pelos preços dos modelos</h3><button type="button" class="btn-sec" id="btn-pat-troca-fechar" aria-label="Fechar">×</button></div>
+          <p class="meta">Cada modelo marcado recebe a avaliação do ano corrente com as peças de hoje e o preço da lista. A verba sai do total e a avaliação dela fica no histórico. O preço não muda nada em medição nem em nota fiscal, e se corrige depois, na célula.</p>
+          <div id="pat-troca-lista"></div>
+          <p class="meta" id="pat-troca-resumo"></p>
+          <div id="pat-troca-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-pat-troca-gravar">Gravar os preços e retirar a verba</button></div>
+        </div>
+      </div>
+
       <!-- Ficha do bem: avaliação do ano, histórico, cadastro do bem avulso e titularidade do equipamento -->
-      <div id="pat-ficha" style="display:none;">
+      <div id="pat-ficha" data-val-sens style="display:none;">
         <div class="odoo-sheet">
           <div class="odoo-actions-header">
             <div class="actions-left">
@@ -6693,60 +6705,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=c002a99"></script>
+<script src="js/core.js?v=6d19e24"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=c002a99"></script>
+<script src="js/historico.js?v=6d19e24"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=c002a99"></script>
-<script src="js/fiscal_ncm.js?v=c002a99"></script>
+<script src="js/fiscal.js?v=6d19e24"></script>
+<script src="js/fiscal_ncm.js?v=6d19e24"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=c002a99"></script>
-<script src="js/fornecedores.js?v=c002a99"></script>
-<script src="js/apropriacoes.js?v=c002a99"></script>
-<script src="js/funcionarios.js?v=c002a99"></script>
-<script src="js/funcionarios_importar.js?v=c002a99"></script>
-<script src="js/rh_documentos.js?v=c002a99"></script>
-<script src="js/servicos.js?v=c002a99"></script>
-<script src="js/produtos.js?v=c002a99"></script>
-<script src="js/estoque.js?v=c002a99"></script>
-<script src="js/separacoes.js?v=c002a99"></script>
-<script src="js/epi.js?v=c002a99"></script>
-<script src="js/compras.js?v=c002a99"></script>
-<script src="js/requisicoes.js?v=c002a99"></script>
-<script src="js/orcamentos.js?v=c002a99"></script>
-<script src="js/propostas.js?v=c002a99"></script>
-<script src="js/contratos.js?v=c002a99"></script>
-<script src="js/contas_pagar.js?v=c002a99"></script>
-<script src="js/centros_custo.js?v=c002a99"></script>
-<script src="js/carteira.js?v=c002a99"></script>
-<script src="js/obras.js?v=c002a99"></script>
-<script src="js/frota.js?v=c002a99"></script>
-<script src="js/viagens.js?v=c002a99"></script>
-<script src="js/equipamentos.js?v=c002a99"></script>
-<script src="js/vendas_bens.js?v=c002a99"></script>
-<script src="js/acessorios.js?v=c002a99"></script>
-<script src="js/reparos.js?v=c002a99"></script>
-<script src="js/manutencao.js?v=c002a99"></script>
-<script src="js/fabricacao.js?v=c002a99"></script>
-<script src="js/mobilizacoes.js?v=c002a99"></script>
-<script src="js/estacas.js?v=c002a99"></script>
-<script src="js/obra_abas.js?v=c002a99"></script>
-<script src="js/medicoes.js?v=c002a99"></script>
-<script src="js/movimentacoes.js?v=c002a99"></script>
-<script src="js/rdo_import_rg113.js?v=c002a99"></script>
-<script src="js/rdo.js?v=c002a99"></script>
-<script src="js/rdo_import_maya.js?v=c002a99"></script>
-<script src="js/geodigitus.js?v=c002a99"></script>
-<script src="js/computadores_bordo.js?v=c002a99"></script>
-<script src="js/usuarios.js?v=c002a99"></script>
-<script src="js/chamados.js?v=c002a99"></script>
-<script src="js/dashboard.js?v=c002a99"></script>
-<script src="js/rh_horas.js?v=c002a99"></script>
-<script src="js/sesmt.js?v=c002a99"></script>
-<script src="js/patrimonio.js?v=c002a99"></script>
+<script src="js/clientes.js?v=6d19e24"></script>
+<script src="js/fornecedores.js?v=6d19e24"></script>
+<script src="js/apropriacoes.js?v=6d19e24"></script>
+<script src="js/funcionarios.js?v=6d19e24"></script>
+<script src="js/funcionarios_importar.js?v=6d19e24"></script>
+<script src="js/rh_documentos.js?v=6d19e24"></script>
+<script src="js/servicos.js?v=6d19e24"></script>
+<script src="js/produtos.js?v=6d19e24"></script>
+<script src="js/estoque.js?v=6d19e24"></script>
+<script src="js/separacoes.js?v=6d19e24"></script>
+<script src="js/epi.js?v=6d19e24"></script>
+<script src="js/compras.js?v=6d19e24"></script>
+<script src="js/requisicoes.js?v=6d19e24"></script>
+<script src="js/orcamentos.js?v=6d19e24"></script>
+<script src="js/propostas.js?v=6d19e24"></script>
+<script src="js/contratos.js?v=6d19e24"></script>
+<script src="js/contas_pagar.js?v=6d19e24"></script>
+<script src="js/centros_custo.js?v=6d19e24"></script>
+<script src="js/carteira.js?v=6d19e24"></script>
+<script src="js/obras.js?v=6d19e24"></script>
+<script src="js/frota.js?v=6d19e24"></script>
+<script src="js/viagens.js?v=6d19e24"></script>
+<script src="js/equipamentos.js?v=6d19e24"></script>
+<script src="js/vendas_bens.js?v=6d19e24"></script>
+<script src="js/acessorios.js?v=6d19e24"></script>
+<script src="js/reparos.js?v=6d19e24"></script>
+<script src="js/manutencao.js?v=6d19e24"></script>
+<script src="js/fabricacao.js?v=6d19e24"></script>
+<script src="js/mobilizacoes.js?v=6d19e24"></script>
+<script src="js/estacas.js?v=6d19e24"></script>
+<script src="js/obra_abas.js?v=6d19e24"></script>
+<script src="js/medicoes.js?v=6d19e24"></script>
+<script src="js/movimentacoes.js?v=6d19e24"></script>
+<script src="js/rdo_import_rg113.js?v=6d19e24"></script>
+<script src="js/rdo.js?v=6d19e24"></script>
+<script src="js/rdo_import_maya.js?v=6d19e24"></script>
+<script src="js/geodigitus.js?v=6d19e24"></script>
+<script src="js/computadores_bordo.js?v=6d19e24"></script>
+<script src="js/usuarios.js?v=6d19e24"></script>
+<script src="js/chamados.js?v=6d19e24"></script>
+<script src="js/dashboard.js?v=6d19e24"></script>
+<script src="js/rh_horas.js?v=6d19e24"></script>
+<script src="js/sesmt.js?v=6d19e24"></script>
+<script src="js/patrimonio.js?v=6d19e24"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=c002a99"></script>
+<script src="js/sesmt_ocorrencias.js?v=6d19e24"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=c002a99"></script>
+<script src="js/init.js?v=6d19e24"></script>
 </body>
 </html>

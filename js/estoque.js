@@ -11,6 +11,7 @@ let _estTipo = "entrada";          // tipo do movimento em edição
 let _estProd = null;               // produto escolhido no formulário
 let _estHist = [];                 // últimos movimentos
 let _estHistTipo = "";             // filtro do histórico
+let _estHistVinculos = new Map();  // lote S59: saída → OS, reparo, ordem ou separação
 let _estRep = [];                  // itens controlados
 let _estProdMap = {};              // id -> produto (para o histórico)
 let _estObras = [];
@@ -22,6 +23,7 @@ let _balItens = [];                // fase 78: itens da saída no balcão [{ p, 
 let _balRetirante = null;          // funcionário que retira
 let _balFuncs = null;              // funcionários ativos (busca do retirante)
 let _balHoje = [];                 // saídas de hoje
+let _balHojeVinculos = new Map();  // lote S59: saída → OS, reparo, ordem ou separação
 let _balDestinoOrigem = "";        // fase 108c: quem preencheu o destino ("", "sugestao", "alocacao", "manual")
 let _balAlocCache = {};            // fase 108c: funcionario_id -> resposta de estoque_destino_epi
 let _balS56 = false;               // lote S56 (#202): migration loteS56a aplicada (acessório como destino da saída)
@@ -358,6 +360,7 @@ async function carregarSaidasHoje(){
   const corrigidas = new Set((sa.data || []).map(m => m.corrige_de).filter(Boolean));   // lote S52 (#167): original de uma correção de hoje
   _balHoje = (sa.data || []).map(m => ({ ...m, estornada: estornadas.has(m.id), corrigida: corrigidas.has(m.id) }));
   if(_balEdit && !_balHoje.some(m => m.id === _balEdit)) _balEdit = null;
+  _balHojeVinculos = await carregarVinculosSaida(_balHoje.map(m => m.id));
   renderSaidasHoje();
 }
 /* lote S52 (#167, Julio): "✎ Editar" a saída em até 10 min, nas mesmas condições do Desfazer (e não para EPI já assinado).
@@ -434,7 +437,7 @@ function renderSaidasHoje(){
         <td>${esc(m.produto ? m.produto.codigo + " — " + m.produto.nome : "—")}${balMovEhEpi(m) ? (m.categoria_custo === "uniforme" ? ' <span class="tag cinza">uniforme</span>' : ' <span class="tag azul">EPI</span>') : ""}${assinaTag(m)}${m.estornada ? "" : marca(m)}</td>
         <td class="num">${num(Math.abs(m.quantidade || 0))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${brl(Math.abs(Number(m.quantidade || 0)) * Number(m.custo_unitario || 0))}</td>
-        <td>${esc(balDestinoTxt(m))}</td><td class="meta">${esc([m.documento, m.observacoes].filter(Boolean).join(" · "))}</td>
+        <td>${esc(balDestinoTxt(m))}</td><td class="meta">${/* html */ [linkDocumentoSaida(m, _balHojeVinculos.get(m.id)), esc(m.observacoes || "")].filter(Boolean).join(" · ")}</td>
         <td style="white-space:nowrap;">${m.estornada ? marca(m) : podeDesfazer ? `${podeEditar ? `<button type="button" class="btn-sec btn-sm bal-editar" data-id="${esc(m.id)}" title="corrigir quantidade, destino, documento ou observação (até 10 min)">✎ Editar</button> ` : ""}<button type="button" class="btn-sec btn-sm bal-desfazer" data-id="${esc(m.id)}" title="desfazer (até 10 min)">↩ Desfazer</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
   cont.querySelectorAll(".bal-editar").forEach(b => b.addEventListener("click", () => { _balEdit = b.dataset.id; renderSaidasHoje(); $("bal-ed-qtd")?.focus(); }));
   cont.querySelectorAll(".bal-ed-cancelar").forEach(b => b.addEventListener("click", () => { _balEdit = null; renderSaidasHoje(); }));
@@ -809,6 +812,7 @@ async function carregarUltimasEntradas(){
   const { data, error } = await q;
   _estHist = error ? [] : (data || []);
   if(error) console.warn("movimentos de estoque:", error.message);
+  _estHistVinculos = await carregarVinculosSaida(_estHist.filter(m => m.tipo === "saida").map(m => m.id));
   renderUltimasEntradas();
 }
 function renderUltimasEntradas(){
@@ -837,7 +841,7 @@ function renderUltimasEntradas(){
         <td class="num">${m.tipo === "saida" || q < 0 ? "−" : (m.tipo === "ajuste" ? "+" : "")}${num(Math.abs(q))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${m.custo_unitario ? brl(m.custo_unitario) : "—"}</td>
         <td>${m.tipo === "entrada" ? esc(destino) : esc(destino)}</td>
-        <td>${esc(m.documento || "—")}</td>
+        <td>${linkDocumentoSaida(m, _estHistVinculos.get(m.id)) || "—"}</td>
         <td class="meta">${esc(m.observacoes || "")}</td>
       </tr>`; }).join("")}</tbody></table></div>`;
 }

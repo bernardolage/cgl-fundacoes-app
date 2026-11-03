@@ -2877,7 +2877,7 @@ input:disabled, select:disabled, textarea:disabled {
 .cham-status-bar .stage { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--borda-forte); font-size: var(--txt-xs); cursor: pointer; background: var(--sup-1); }
 .cham-status-bar .stage.atual { background: var(--marca-600); color: var(--txt-sobre); border-color: var(--marca-600); cursor: default; }
 .cham-status-bar .stage[aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
-@media (max-width: 720px){ #btn-reportar-problema span { display: none; } }
+@media (max-width: 720px){ #btn-reportar-problema span, #btn-val-sens span { display: none; } }
 
 /* ---------- fase 48: anexos do chamado ---------- */
 .cham-anexo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
@@ -3071,3 +3071,13 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .epi-rel tfoot td { background: var(--sup-2); border-top: 2px solid var(--borda-forte); }
 .dash-epi-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--esp-3); }
 .dash-epi-grade .dash-card-num { font-size: var(--txt-xl); }
+
+/* ---- Lote S59: ocultar valores. Barra de tamanho fixo, sem desfoque: o tamanho do número já diria a ordem de grandeza. Só na tela,
+   e nunca dentro da cópia que o html2pdf fotografa (.html2pdf__container): PDF sai com os valores. ---- */
+@media screen {
+  body.valores-ocultos .val-sens:not(.html2pdf__container *) {
+    display: inline-block; width: 5em; height: .8em; overflow: hidden; white-space: nowrap;
+    color: transparent !important; background: var(--borda-forte); border-radius: var(--radius-sm); user-select: none;
+  }
+}
+#btn-val-sens[aria-pressed="true"] { border-color: var(--marca-600); color: var(--marca-600); }

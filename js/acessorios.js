@@ -1079,7 +1079,7 @@ async function aceRenderCustos(a){
   const forn = id => (typeof mapaFornecedores !== "undefined" && mapaFornecedores?.[id]) || "";
   const total = data.reduce((s, x) => s + Number(x.valor || 0), 0);
   const ref = x => x.acessorio_id === a.id ? "esta peça" : x.acessorio_jogo ? "jogo " + x.acessorio_jogo : "—";
-  c.innerHTML = `<div class="lista-topo"><h3>Custos</h3><span class="meta" style="margin-left:8px;">${data.length ? brl(total) : ""}</span>${podeLancar ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-jogo-custo" style="margin-left:auto;" title="custo avulso contra o jogo (reforma, frete…)">＋ Custo do jogo</button>` : ""}</div>`
+  c.innerHTML = `<div class="lista-topo"><h3>Custos</h3><span class="meta" style="margin-left:8px;" data-val-sens>${data.length ? brl(total) : ""}</span>${podeLancar ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-jogo-custo" style="margin-left:auto;" title="custo avulso contra o jogo (reforma, frete…)">＋ Custo do jogo</button>` : ""}</div>`
     + `<p class="ajuda-campo">Compras e saídas de estoque com destino nesta peça${a.jogo ? ` e custos avulsos do jogo ${esc(a.jogo)}` : ""}.${antigo ? " Até a atualização do banco, só os avulsos do jogo." : ""}</p>`
     + (!data.length ? `<p class="vazio">Nenhum custo lançado para esta peça${a.jogo ? " nem para o jogo" : ""}.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Descrição</th><th>Fornecedor</th><th>Documento</th><th>Lançado em</th><th class="num">Valor</th></tr></thead>
