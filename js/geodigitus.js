@@ -549,10 +549,12 @@ async function geoCarregarCardSala(){
       ${item("Pendências", String(pend.count ?? 0), "sem máquina, obra, estaca ou diário", "pendentes", pend.count ? "ambar" : "")}
       ${item("CPUs", String(cs.length), `${falha} com falha · ${calib} calibração vencida`, "cpb", (falha || calib) ? "vermelho" : "")}
       ${item("Tráfego no mês", `${geoNum(mb, 1)} MB`, cota ? `cota ${geoNum(cota, 0)} MB (${geoNum(mb / cota * 100, 0)}%)` : "cota não informada", null, cota && mb > cota * 0.8 ? "ambar" : "")}
-    </div>`;
+    </div>
+    <p class="meta geo-card-rodape"><button type="button" class="dash-origem" data-geo-card="maquinas" title="Aba Máquinas hoje da Sala de Comando (fase 139)">Máquinas hoje ›</button></p>`;
 }
 function geoCliqueCard(alvo){
   if(alvo === "cpb"){ if(irParaSecao("equipamentos") && typeof cpbAbrirPainel === "function") cpbAbrirPainel(""); return; }
+  if(alvo === "maquinas"){ if(typeof dmhAbrirAba === "function") dmhAbrirAba(); return; }   // fase 139: link para a aba Máquinas hoje
   if(irParaSecao("rdo")) geoAbrirPreset(alvo === "pendentes" ? "" : "todas", null).then(() => {
     if(alvo === "chegadas"){ if($("geo-f-sit")) $("geo-f-sit").value = ""; if($("geo-f-dia")) $("geo-f-dia").value = hojeISO(); geoRenderPainel(); }
   });

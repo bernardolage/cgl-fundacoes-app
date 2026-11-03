@@ -691,7 +691,7 @@ async function carregarDetalhesExecucaoMed(){
 
   const linhas = lista.map((e,i) => {
     const isRef = e.modalidade_execucao === "refuro";
-    const num = e.estaca_numero || e.estaca?.numero || "—";
+    const numEstaca = e.estaca_numero || e.estaca?.numero || "—";   // hotfix medicoes-num: "num" sombreava o helper num() do core.js
     const diam = e.estaca?.diametro_mm || "—";
     const data = e.rdo?.data ? dataBR(e.rdo.data) : "—";
     // Horário do RDO é gravado "sem fuso" (naive); fatiar a string mostra o que foi
@@ -699,7 +699,7 @@ async function carregarDetalhesExecucaoMed(){
     const hora = e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(11,16) : "—";
     return `<tr ${isRef ? 'style="background:var(--aviso-bg);"' : ""}>
       <td style="text-align:center;">${i+1}</td>
-      <td><strong>${esc(num)}</strong>${isRef ? ' <span class="badge-alterado" style="background:var(--aviso-bg);color:var(--aviso-txt);border-color:var(--aviso);">REFURO</span>' : ""}</td>
+      <td><strong>${esc(numEstaca)}</strong>${isRef ? ' <span class="badge-alterado" style="background:var(--aviso-bg);color:var(--aviso-txt);border-color:var(--aviso);">REFURO</span>' : ""}</td>
       <td>${esc(data)} <small style="color:var(--txt-sutil);">${esc(hora)}</small></td>
       <td class="num">${esc(diam)}</td>
       <td class="num">${num(e.profundidade_executada||0)} m</td>

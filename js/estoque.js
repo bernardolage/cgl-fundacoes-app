@@ -831,7 +831,8 @@ function renderUltimasEntradas(){
     <thead><tr><th>Data</th><th>Tipo</th><th>Produto</th><th class="num">Qtd</th><th class="num">Custo unit.</th><th>Fornecedor / destino</th><th>Documento</th><th>Obs.</th></tr></thead>
     <tbody>${filtradas.map(m => {
       const d = new Date(m.data_movimentacao);
-      const destino = m.tipo === "entrada" ? (mapaFornecedores[m.fornecedor_id] || "—")
+      // hotfix estoque-link: o fragmento já sai escapado (linkObra + esc) e vai direto na célula; só o fornecedor é valor cru
+      const destino = m.tipo === "entrada" ? esc(mapaFornecedores[m.fornecedor_id] || "—")
         : [m.obra_id ? linkObra(m.obra_id, obraTxt(m.obra_id) || "obra") : "", m.equipamento_id ? "TAG " + esc(eqTxt(m.equipamento_id)) : ""].filter(Boolean).join(" · ") || "—";
       const q = Number(m.quantidade || 0);
       return `<tr>
@@ -840,7 +841,7 @@ function renderUltimasEntradas(){
         <td>${esc(prodTxt(m))}</td>
         <td class="num">${m.tipo === "saida" || q < 0 ? "−" : (m.tipo === "ajuste" ? "+" : "")}${num(Math.abs(q))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${m.custo_unitario ? brl(m.custo_unitario) : "—"}</td>
-        <td>${m.tipo === "entrada" ? esc(destino) : esc(destino)}</td>
+        <td>${/* html */ destino}</td>
         <td>${linkDocumentoSaida(m, _estHistVinculos.get(m.id)) || "—"}</td>
         <td class="meta">${esc(m.observacoes || "")}</td>
       </tr>`; }).join("")}</tbody></table></div>`;

@@ -133,6 +133,7 @@ async function carregarDashboard(){
 
   // 2ª onda: abas e o resumo do fim da página
   await Promise.all([
+    dmhCarregar(),                 // fase 139: aba Máquinas hoje
     dashCarregarObrasAndamento(),
     carregarDashGraficoProducao(),
     carregarDashTopObras(),
@@ -707,6 +708,144 @@ async function dashAbrirAcao(a){
   }
 }
 
+/* ---------- Aba Máquinas hoje (fase 139, FO-03 + FO-12) ----------
+   Um card por perfuratriz de vw_sc_maquinas_hoje (uma linha por máquina de vw_sc_frota, já calculada no banco):
+   obra, produção do dia, última estaca CONCLUÍDA (a CPU Saci só grava depois da concretagem: não existe "perfurando
+   agora"), próxima da sequência, operador do RDO, CPU e o alerta "sem chegada" (só com o sync ligado, 134c).
+   Carimbo "retrato às HH:MM" = hora em que a view foi lida. Tela cheia = requestFullscreen do painel com refresh a cada
+   empresa_config.maquinas_hoje_refresh_s; sair da tela cheia desliga o refresh. Prefixo dmh-. */
+let _dmh = [];               // vw_sc_maquinas_hoje
+let _dmhTipo = "";           // filtro por tipo de serviço da máquina
+let _dmhBusca = "";          // busca por código ou nome
+let _dmhTimer = null;        // setInterval do refresh em tela cheia
+let _dmhRefreshS = 120;      // empresa_config.maquinas_hoje_refresh_s
+let _dmhSyncAtivo = false;   // empresa_config.geodigitus_sync_ativo
+let _dmhCargaN = 0;
+const DMH_TIPO = { helice_continua: "Hélice contínua", trado_mecanizado: "Trado mecanizado", estaca_raiz: "Estaca raiz", helice_secante: "Hélice secante" };
+const DMH_LOCAL = { base: "na base", em_transito: "em trânsito", fornecedor_manutencao: "em manutenção no fornecedor", cliente: "no cliente", vendido: "vendida", obra: "sem obra" };
+const DMH_SYNC = { pronto: "sync ok", aguardando: "sync aguardando", sincronizando: "sincronizando", faltam_arquivos: "faltam arquivos", falha: "falha no sync", configurando_acesso: "configurando acesso" };
+const DMH_CALIB = { vence_30_dias: "calibração vence em 30 d", vencida: "calibração vencida", sem_certificado: "sem certificado de calibração" };
+const dmhHora = (ts) => ts ? new Date(ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—";
+const dmhDuracao = (min) => min == null ? "—" : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
+// ordem da grade: alerta, produzindo, parada/sem produção, sem obra; depois por código
+const dmhOrdem = (m) => m.alerta_sem_chegada ? 0 : m.situacao === "produzindo" ? 1 : m.situacao === "parada" ? 2 : m.situacao === "sem_producao" ? 3 : 4;
+
+async function dmhCarregar(){
+  const cont = $("dmh-conteudo");
+  if(!cont) return;
+  const carga = ++_dmhCargaN;
+  const [res, cfg] = await Promise.all([
+    sb.from("vw_sc_maquinas_hoje").select("*"),
+    sb.from("empresa_config").select("maquinas_hoje_refresh_s,geodigitus_sync_ativo").eq("id", 1).maybeSingle()
+  ]);
+  if(carga !== _dmhCargaN) return;
+  if(res.error){
+    const semView = ["42P01", "PGRST205", "PGRST200", "42703"].includes(res.error.code);
+    cont.innerHTML = `<p class="vazio">${semView ? "Máquinas hoje ainda não disponível (a migration da fase 139 não foi aplicada)." : "Não foi possível carregar as máquinas: " + esc(res.error.message)}</p>`;
+    return;
+  }
+  _dmh = res.data || [];
+  if(!cfg.error && cfg.data){
+    _dmhRefreshS = Math.max(30, Number(cfg.data.maquinas_hoje_refresh_s) || 120);
+    _dmhSyncAtivo = !!cfg.data.geodigitus_sync_ativo;
+  }
+  const retrato = _dmh[0]?.retrato_em ? new Date(_dmh[0].retrato_em) : new Date();
+  if($("dmh-retrato")) $("dmh-retrato").textContent = "retrato às " + retrato.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  renderDmh();
+}
+
+function renderDmh(){
+  const cont = $("dmh-conteudo");
+  if(!cont) return;
+  const busca = _dmhBusca.trim().toLowerCase();
+  const lista = _dmh
+    .filter(m => !_dmhTipo || m.tipo_servico_padrao === _dmhTipo)
+    .filter(m => !busca || `${m.codigo || ""} ${m.nome || ""}`.toLowerCase().includes(busca))
+    .sort((a, b) => (dmhOrdem(a) - dmhOrdem(b)) || String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR", { numeric: true }));
+  if(!lista.length){ cont.innerHTML = `<p class="vazio">${_dmh.length ? "Nenhuma máquina com este filtro." : "Nenhuma perfuratriz ativa na frota."}</p>`; return; }
+  cont.innerHTML = lista.map(dmhCard).join("");
+}
+
+function dmhCard(m){
+  const s = DASH_SITUACAO[m.situacao] || { label: m.situacao, cor: "cinza" };
+  const semObra = !m.obra_id;
+  const alerta = !!m.alerta_sem_chegada;
+  return `<div class="dash-card dmh-card${alerta ? " dmh-alerta" : ""}${semObra ? " dmh-sem-obra" : ""}" data-eqp="${esc(m.equipamento_id)}" title="Abrir a ficha da máquina">
+    <div class="dmh-cab"><span class="dmh-cod">${esc(m.codigo || "—")}</span><span class="meta dmh-nome">${esc(m.nome || "")}</span><span class="tag ${esc(s.cor)}">${esc(alerta ? "Sem chegada" : s.label)}</span></div>
+    <div class="dmh-linha dmh-obra">${m.obra_id ? linkObra(m.obra_id, `${m.obra_codigo || ""} · ${m.obra_nome || ""}`) : `<span class="meta">${esc(DMH_LOCAL[m.localizacao_tipo] || "sem obra")}${m.ultimo_lancamento ? ` · último RDO ${dataBR(m.ultimo_lancamento)}` : ""}</span>`}${m.tipo_servico_padrao ? ` <span class="meta">· ${esc(DMH_TIPO[m.tipo_servico_padrao] || m.tipo_servico_padrao)}</span>` : ""}</div>
+    ${semObra ? "" : `<div class="dmh-linha"><span class="dmh-rot">hoje</span> ${dmhLinhaHoje(m)}</div>
+    <div class="dmh-linha"><span class="dmh-rot">última</span> ${dmhLinhaUltima(m)}</div>
+    <div class="dmh-linha"><span class="dmh-rot">próxima</span> ${dmhLinhaProxima(m)}</div>`}
+    <div class="dmh-linha"><span class="dmh-rot">operador</span> ${m.operador_nome ? `${esc(m.operador_nome)}${m.operador_origem === "ultimo" ? ` <span class="meta">(último, sem RDO hoje)</span>` : ""}` : `<span class="meta">—</span>`}</div>
+    <div class="dmh-rodape">${dmhRodape(m)}</div>
+  </div>`;
+}
+function dmhLinhaHoje(m){
+  if(!Number(m.estacas_hoje) && !Number(m.refuros_hoje) && !Number(m.metros_hoje)) return `<span class="meta">sem RDO hoje${m.ultimo_lancamento ? ` · último RDO ${dataBR(m.ultimo_lancamento)}` : ""}</span>`;
+  const periodo = m.primeiro_inicio_hoje && m.ultimo_fim_hoje ? ` · ${dmhHora(m.primeiro_inicio_hoje)}–${dmhHora(m.ultimo_fim_hoje)}` : "";
+  return `<span class="dmh-num">${esc(m.estacas_hoje)}</span> estaca${Number(m.estacas_hoje) === 1 ? "" : "s"}${Number(m.refuros_hoje) ? ` · ${esc(m.refuros_hoje)} refurada${Number(m.refuros_hoje) === 1 ? "" : "s"}` : ""} · <span class="dmh-num">${num(m.metros_hoje)}</span> m${periodo}`;
+}
+function dmhLinhaUltima(m){
+  if(!m.ultima_estaca_origem) return `<span class="meta">${Number(m.estacas_hoje) ? "estacas do RDO sem horário" : "nenhuma concluída hoje"}</span>`;
+  return `<strong>${esc(m.ultima_estaca_numero || "?")}</strong>${m.ultima_estaca_prof_m != null ? ` · ${num(m.ultima_estaca_prof_m)} m` : ""} · concluída às <span class="dmh-num">${dmhHora(m.ultima_estaca_fim)}</span> <span class="meta">(${m.ultima_estaca_origem === "geodigitus" ? "CPU" : "RDO"})</span>`;
+}
+function dmhLinhaProxima(m){
+  if(!m.proxima_estaca_id) return `<span class="meta">nenhuma prevista</span>`;
+  return `<strong>${esc(m.proxima_estaca_numero || "?")}</strong>${m.proxima_diametro_mm ? ` · Ø ${num(m.proxima_diametro_mm)}` : ""}${m.proxima_prof_m != null ? ` · ${num(m.proxima_prof_m)} m` : ""} <span class="meta">· faltam ${esc(m.faltam_previstas)}${m.proxima_origem === "obra" ? " · sem sequência da máquina" : ""}</span>`;
+}
+function dmhRodape(m){
+  if(!m.cpu_id) return `<span class="meta">sem computador de bordo</span>`;
+  const cpu = `CPU …${esc(String(m.cpu_imei || "").slice(-4))} · ${esc(DMH_SYNC[m.cpu_sync_estado] || m.cpu_sync_estado || "—")}${DMH_CALIB[m.cpu_calibracao_situacao] ? ` · <span class="txt-aviso">${esc(DMH_CALIB[m.cpu_calibracao_situacao])}</span>` : ""}`;
+  if(m.alerta_sem_chegada) return `${cpu}<br><span class="dmh-aviso">⚠ sem chegada há ${esc(m.minutos_sem_chegada == null ? "mais de 7 dias" : dmhDuracao(Number(m.minutos_sem_chegada)))}</span>`;
+  if(!_dmhSyncAtivo) return `${cpu}<br>sync desligado · última sincronização ${m.cpu_ultima_sync ? esc(dataHoraBR(m.cpu_ultima_sync)) : "nunca"}`;
+  return `${cpu}<br>última chegada ${m.ultima_chegada_em ? esc(dataHoraBR(m.ultima_chegada_em)) : "— (nada nos últimos 7 dias)"}`;
+}
+
+function dmhAbrirAba(){
+  if(!irParaSecao("inicio")) return;
+  document.querySelector('#dash-notebook button[data-tab="maquinas"]')?.click();
+  $("dash-notebook")?.scrollIntoView({ behavior: "smooth" });
+}
+function dmhTelaCheia(){
+  const el = $("dmh-painel");
+  if(!el) return;
+  if(document.fullscreenElement){ document.exitFullscreen?.(); return; }
+  if(!el.requestFullscreen){ aviso("app-aviso", "Este navegador não permite tela cheia por aqui.", "aviso"); return; }
+  el.requestFullscreen().catch(e => aviso("app-aviso", "Tela cheia indisponível: " + e.message, "erro"));
+}
+function dmhAoMudarTelaCheia(){
+  const el = $("dmh-painel");
+  if(!el) return;
+  const cheia = document.fullscreenElement === el;
+  el.classList.toggle("dmh-cheia", cheia);
+  if($("dmh-tela-cheia")) $("dmh-tela-cheia").textContent = cheia ? "✕ Sair da tela cheia" : "⛶ Tela cheia";
+  if(_dmhTimer){ clearInterval(_dmhTimer); _dmhTimer = null; }
+  if(cheia){
+    _dmhTimer = setInterval(() => { console.info(`Máquinas hoje: refresh automático em tela cheia (${_dmhRefreshS} s)`); dmhCarregar(); }, _dmhRefreshS * 1000);
+    console.info(`Máquinas hoje: tela cheia ligada, refresh a cada ${_dmhRefreshS} s`);
+  } else {
+    console.info("Máquinas hoje: tela cheia desligada, refresh parado");
+  }
+}
+function ligarDmh(){
+  $("dmh-filtros")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tipo]");
+    if(!b) return;
+    _dmhTipo = b.dataset.tipo || "";
+    document.querySelectorAll("#dmh-filtros [data-tipo]").forEach(x => x.classList.toggle("ativo", x === b));
+    renderDmh();
+  });
+  $("dmh-busca")?.addEventListener("input", debounce(() => { _dmhBusca = $("dmh-busca").value || ""; renderDmh(); }, 150));
+  $("dmh-atualizar")?.addEventListener("click", () => comBotaoTravado("dmh-atualizar", dmhCarregar));
+  $("dmh-tela-cheia")?.addEventListener("click", dmhTelaCheia);
+  document.addEventListener("fullscreenchange", dmhAoMudarTelaCheia);
+  $("dmh-conteudo")?.addEventListener("click", (e) => {
+    if(e.target.closest("a.link-obra")) return;   // o link da obra tem handler global
+    const card = e.target.closest("[data-eqp]");
+    if(card && irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(card.dataset.eqp);
+  });
+}
+
 /* ---------- Aba Frota ---------- */
 function renderDashFrota(){
   const cont = $("dash-frota");
@@ -868,6 +1007,7 @@ function ligarSalaDeComando(){
     renderDashFrota();
   });
   $("dash-frota-ordem")?.addEventListener("change", renderDashFrota);
+  ligarDmh();   // fase 139: aba Máquinas hoje
   $("dash-frota")?.addEventListener("click", (e) => {
     if(e.target.closest("a.link-obra")) return; // o link da obra tem handler global
     const tv = e.target.closest("tr[data-vg]");   // fase 89: viagem abre a ficha em Logística

@@ -3081,3 +3081,38 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
   }
 }
 #btn-val-sens[aria-pressed="true"] { border-color: var(--marca-600); color: var(--marca-600); }
+/* ---- Fase 139: Maquinas hoje na Sala de Comando (js/dashboard.js, prefixo dmh-). Grade de cards sobre .dash-cards;
+   .dmh-cheia e o estado do painel em requestFullscreen (so o painel aparece: cards e numeros maiores, refresh automatico). ---- */
+.dmh-painel { background: var(--sup-0); }
+.dmh-topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2) var(--esp-3); margin-bottom: var(--esp-3); }
+.dmh-busca { flex: 1 1 180px; min-width: 140px; padding: 7px 10px; border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); font-size: var(--txt-sm); }
+.dmh-busca:focus { outline: none; border-color: var(--marca-600); }
+.dmh-retrato { font-size: var(--txt-sm); color: var(--txt-fraco); margin-left: auto; white-space: nowrap; }
+.dmh-grade { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+.dmh-legenda { margin: var(--esp-3) 0 0; }
+.dmh-card { display: flex; flex-direction: column; gap: 4px; cursor: pointer; border-left: 4px solid var(--borda-forte); transition: var(--transition-rapido); }
+.dmh-card:hover { background: var(--sup-2); box-shadow: var(--shadow-sm); }
+.dmh-card.dmh-alerta { border-left-color: var(--aviso); background: var(--aviso-bg); }
+.dmh-card.dmh-sem-obra { background: var(--sup-3); border-left-color: var(--borda); color: var(--txt-fraco); }
+.dmh-cab { display: flex; align-items: center; gap: var(--esp-2); flex-wrap: wrap; }
+.dmh-cod { font-size: var(--txt-lg); font-weight: 700; color: var(--marca-txt); }
+.dmh-sem-obra .dmh-cod { color: var(--txt-sec); }
+.dmh-cab .tag { margin-left: auto; }
+.dmh-linha { font-size: var(--txt-md); line-height: 1.4; }
+.dmh-rot { display: inline-block; min-width: 64px; font-size: var(--txt-xs); text-transform: uppercase; letter-spacing: 0.5px; color: var(--txt-fraco); }
+.dmh-num { font-weight: 700; color: var(--marca-txt); }
+.dmh-rodape { margin-top: auto; padding-top: var(--esp-2); border-top: 1px solid var(--borda); font-size: var(--txt-xs); color: var(--txt-fraco); line-height: 1.5; }
+.dmh-aviso { color: var(--aviso-txt); font-weight: 700; }
+@media (max-width: 600px) { .dmh-grade { grid-template-columns: 1fr; } .dmh-retrato { margin-left: 0; } }
+/* tela cheia: o navegador mostra so o painel (menu e cabecalho ficam fora); aqui so o tamanho muda */
+.dmh-cheia { padding: var(--esp-5); overflow: auto; background: var(--sup-1); }
+.dmh-cheia .dmh-grade { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--esp-4); }
+.dmh-cheia .dmh-card { padding: var(--esp-4) var(--esp-5); gap: 6px; }
+.dmh-cheia .dmh-cod { font-size: var(--txt-xl); }
+.dmh-cheia .dmh-linha { font-size: var(--txt-lg); }
+.dmh-cheia .dmh-num { font-size: 22px; }
+.dmh-cheia .dmh-rot { min-width: 78px; font-size: var(--txt-sm); }
+.dmh-cheia .dmh-rodape { font-size: var(--txt-sm); }
+.dmh-cheia .dmh-legenda { display: none; }
+.geo-card-rodape { margin: var(--esp-2) 0 0; }
+@media (max-width: 600px) { .dmh-topo .serv-views { flex-wrap: wrap; } }
