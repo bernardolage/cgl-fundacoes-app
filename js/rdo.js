@@ -301,7 +301,7 @@ function renderRDOLista(dados){
   const linhas = dados.map(r => {
     const t = TIPO_SERVICO[r.tipo_servico] || { label: r.tipo_servico, icone: "" };
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
-      <td>${dataBR(r.data)}</td>
+      <td>${dataBR(r.data)}${/* html */ rdoTagTurno(r)}</td>
       <td>${linkObra(r.obra_id)}</td>
       <td>${esc(t.icone)} ${esc(t.label)}</td>
       <td>${rdoCelulaMaquina(r)}</td>
@@ -412,6 +412,7 @@ async function novoRDO(){
   if($("rdo-feriado")) $("rdo-feriado").checked = false;
   $("rdo-tipo-servico").value = "helice_continua";
   if($("rdo-equipamento")) $("rdo-equipamento").value = "";   // fase 94
+  if($("rdo-turno")) $("rdo-turno").value = "diurno";   // fase 134b
   _rdoMaqOriginal = null;
   $("rdo-status").value = "rascunho";
   $("rdo-responsavel").value = "";
@@ -459,6 +460,7 @@ async function abrirRDO(id){
   if($("rdo-feriado")) $("rdo-feriado").checked = !!data.feriado;
   $("rdo-tipo-servico").value     = data.tipo_servico || "helice_continua";
   if($("rdo-equipamento")) $("rdo-equipamento").value = data.equipamento_id || "";   // fase 94
+  if($("rdo-turno")) $("rdo-turno").value = data.turno_campo || "diurno";   // fase 134b: período nulo conta como diurno
   _rdoMaqOriginal = data.equipamento_id || null;   // fase 101: trocar a máquina leva junto as execuções que eram dela
   $("rdo-status").value           = data.status || "rascunho";
   $("rdo-responsavel").value      = data.responsavel_id || "";
@@ -528,7 +530,10 @@ function abrirFichaRDOVisual(rdo){
   const metragem = _rdoExecucoes.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
   $("rdo-ficha-metragem-chip").textContent = `${num(metragem)} m`;
   const maqTit = rdo.equipamento_id ? (_rdoEquipsCache.find(q => q.id === rdo.equipamento_id) || {}).codigo : null;
-  $("rdo-ficha-titulo").textContent = rdoEditId ? `RDO ${dataBR(rdo.data)}${maqTit ? " · " + maqTit : ""}` : "Novo RDO";
+  const noturno = rdo.turno_campo === "noturno";   // fase 134b: período na ficha
+  $("rdo-ficha-titulo").textContent = rdoEditId ? `RDO ${dataBR(rdo.data)}${noturno ? " · Noturno" : ""}${maqTit ? " · " + maqTit : ""}` : "Novo RDO";
+  const chipTurno = $("rdo-ficha-turno-chip");
+  if(chipTurno){ chipTurno.querySelector("strong").textContent = noturno ? "Noturno" : "Diurno"; chipTurno.classList.toggle("chip-aviso", noturno); }
   rdoAtualizarChipMaquina(rdo.equipamento_id || null);   // fase 94: chip da máquina, aviso e botão "Dividir por máquina"
   // fase 83: pedido de material ao almoxarifado a partir do RDO (encarregado em campo)
   const bPed = $("btn-rdo-pedir-material");
@@ -562,9 +567,10 @@ async function atualizarVizinhosRDO(rdo){
   }
 
   // Busca todos os RDOs da mesma obra+tipo ordenados por data
-  let q = sb.from("rdo").select("id,data").eq("obra_id", rdo.obra_id).eq("tipo_servico", rdo.tipo_servico);
+  let q = sb.from("rdo").select("id,data,turno_campo").eq("obra_id", rdo.obra_id).eq("tipo_servico", rdo.tipo_servico);
   q = rdo.equipamento_id ? q.eq("equipamento_id", rdo.equipamento_id) : q.is("equipamento_id", null);   // fase 94: anterior/próximo da mesma máquina
-  const { data, error } = await q.order("data", { ascending: true });
+  // fase 134b: no mesmo dia o diurno (ou sem período) vem antes do noturno
+  const { data, error } = await q.order("data", { ascending: true }).order("turno_campo", { ascending: true, nullsFirst: true });
   if(error || !data){
     btnAnt.style.display = "none";
     btnProx.style.display = "none";
@@ -584,11 +590,12 @@ async function atualizarVizinhosRDO(rdo){
   btnProx.style.display = "";
   btnAnt.disabled = !_rdoVizinhos.anterior;
   btnProx.disabled = !_rdoVizinhos.proximo;
+  const rotVz = (v) => `${dataBR(v.data)}${v.turno_campo === "noturno" ? " (noturno)" : ""}`;   // fase 134b
   btnAnt.title = _rdoVizinhos.anterior
-    ? `Anterior: ${dataBR(_rdoVizinhos.anterior.data)}`
+    ? `Anterior: ${rotVz(_rdoVizinhos.anterior)}`
     : "Não há RDO anterior";
   btnProx.title = _rdoVizinhos.proximo
-    ? `Próximo: ${dataBR(_rdoVizinhos.proximo.data)}`
+    ? `Próximo: ${rotVz(_rdoVizinhos.proximo)}`
     : "Não há próximo RDO";
   if(posLabel) posLabel.textContent = total > 1 ? `${_rdoVizinhos.indice} de ${total}` : "";
 }
@@ -1640,6 +1647,7 @@ async function salvarRDO(novoStatus){
     data:             dataRDO,
     tipo_servico:     tipo,
     equipamento_id:   $("rdo-equipamento")?.value || null,   // fase 94 (#77): um diário por máquina
+    turno_campo:      $("rdo-turno")?.value || "diurno",      // fase 134b: período na chave do diário (nulo = diurno)
     status:           novoStatus || $("rdo-status").value || "rascunho",
     responsavel_id:   $("rdo-responsavel").value || null,
     local:            $("rdo-local")?.value.trim() || null,
@@ -1678,7 +1686,7 @@ async function salvarRDO(novoStatus){
     if(error){
       const m = (error.message||"").toLowerCase();
       if(m.includes("duplicate"))
-        aviso("app-aviso","Já existe um diário desta máquina (ou sem máquina) nesta obra, data e tipo de serviço. Abra o existente pela lista ou troque a máquina.","erro");
+        aviso("app-aviso",`Já existe um diário ${$("rdo-turno")?.value === "noturno" ? "noturno" : "diurno"} desta máquina (ou sem máquina) nesta obra, data e tipo de serviço. Abra o existente pela lista, troque a máquina ou o período.`,"erro");
       else
         aviso("app-aviso","Erro ao salvar: "+error.message,"erro");
       return;
@@ -1708,7 +1716,7 @@ async function salvarRDO(novoStatus){
     if(error){
       const m = (error.message||"").toLowerCase();
       if(m.includes("duplicate"))
-        aviso("app-aviso","Já existe um diário desta máquina (ou sem máquina) nesta obra, data e tipo de serviço. Abra o existente pela lista ou troque a máquina.","erro");
+        aviso("app-aviso",`Já existe um diário ${$("rdo-turno")?.value === "noturno" ? "noturno" : "diurno"} desta máquina (ou sem máquina) nesta obra, data e tipo de serviço. Abra o existente pela lista, troque a máquina ou o período.`,"erro");
       else
         aviso("app-aviso","Erro ao salvar: "+error.message,"erro");
       return;
@@ -1884,6 +1892,10 @@ async function salvarRDO(novoStatus){
 }
 
 /* fase 94 (#77): chip da máquina do diário, aviso de "sem máquina" e botão "Dividir por máquina" */
+/* fase 134b: etiqueta do diário noturno nas listas (período nulo = diurno, sem etiqueta) */
+function rdoTagTurno(r){
+  return r && r.turno_campo === "noturno" ? ' <span class="tag azul" title="Diário do período noturno (fase 134b): a mesma máquina pode ter o diurno no mesmo dia">Noturno</span>' : "";
+}
 function rdoCelulaMaquina(r){
   return r.equipamento_id
     ? esc(r.maquina || (_rdoEquipsCache.find(q => q.id === r.equipamento_id) || {}).codigo || "?")
@@ -2434,7 +2446,10 @@ async function montarPreviewDias(data, origem, obraSel){
       // chamado #30: rdo.responsavel_id aponta para profiles; o funcionário sugerido só pré-seleciona o nome
       // no select da conferência, e o nome escolhido vai para as observações do RDO
       ex.responsavel_sugerido_id = iaSugerirResponsavel(ex);
-      _iaExtras[d.data] = ex;
+      // fase 134b: o RG 11.3 manda turno_campo por dia; dia noturno vira chave própria (um diário para cada período)
+      ex.turno_campo = d.turno_campo === "noturno" ? "noturno" : "diurno";
+      const chaveDia = rdoDiaChave(d.data, ex.turno_campo);
+      _iaExtras[chaveDia] = ex;
       (d.estacas || []).forEach(e => {
         // fase 101: v3.5 manda equipamento_texto (como está no documento); v3.4 só maquina
         const maq = (e.equipamento_texto || e.maquina || d.equipamento_texto || d.maquina || "").trim();
@@ -2449,7 +2464,8 @@ async function montarPreviewDias(data, origem, obraSel){
         // maxAte só vira metragem do dia quando os trechos não têm "de" (estaca de um dia, a partir de 0).
         const acumulada = numOrNull(e.profundidade_acumulada_m) ?? maxAte;
         registros.push({
-          data_dia: d.data,
+          data_dia: chaveDia,
+          turno_campo: ex.turno_campo,   // fase 134b
           obra_csv: d.obra || "",
           estaca_numero: ref.nomeBase,
           agrupamento: (e.agrupamento || "").trim() || null,
@@ -2488,7 +2504,7 @@ async function montarPreviewDias(data, origem, obraSel){
     // Lote S40 (#34): dia sem estaca (mobilização, chuva, manutenção, aguardando frente...) também é
     // RDO válido. Vira RDO só com cabeçalho, equipe, ocorrências e abastecimento, sem execução.
     const diasComEstaca = new Set(registros.map(r => r.data_dia));
-    dias.forEach(d => { if(d.data && !diasComEstaca.has(d.data) && _iaExtras[d.data]) _iaExtras[d.data].sem_estacas = true; });
+    dias.forEach(d => { const k = rdoDiaChave(d.data, d.turno_campo); if(d.data && !diasComEstaca.has(k) && _iaExtras[k]) _iaExtras[k].sem_estacas = true; });
 
     await continuarProcessamentoImport(registros, dias[0].obra || "", origem);
 
@@ -2608,6 +2624,11 @@ function iaInjecaoDaEstaca(injecao, numero, agrupamento){
   return cands.find(j => normalizarAgrupamento(j.agrupamento) === a) || cands[0];
 }
 /* Dias da importação: os que têm estacas + os marcados como "só ocorrência" (planilha do Maya) */
+/* fase 134b: a chave do dia na importação leva o período ("AAAA-MM-DD" = diurno, "AAAA-MM-DD@noturno" = noturno), para a
+   planilha RG 11.3 com os dois períodos abrir um diário para cada um. Tudo que trata a chave como data passa por rdoDiaData. */
+const rdoDiaChave = (data, turno) => turno === "noturno" ? data + "@noturno" : data;
+const rdoDiaData = (chave) => String(chave || "").slice(0, 10);
+const rdoDiaTurno = (chave) => String(chave || "").endsWith("@noturno") ? "noturno" : "diurno";
 function diasImportacao(){
   const s = new Set(Object.keys(_csvParsed || {}));
   Object.entries(_iaExtras || {}).forEach(([d, ex]) => { if(ex && ex.sem_estacas) s.add(d); });
@@ -2760,8 +2781,9 @@ function iaRecalcularHorasLinha(tr, dia, soVazias){
     ["hora_entrada","hora_saida","horas_normais","horas_50","horas_100"].forEach(k => { const el = g(k); if(el){ el.value = ""; el.dataset.auto = "1"; } });
     return;
   }
-  const r = calcularHorasEquipe(dia, g("hora_entrada")?.value, g("hora_saida")?.value, _iaJornadaObra, g("intervalo_minutos")?.value, iaDiaFeriado(dia));
-  if(r && rdoSemHE(st, dia, iaDiaFeriado(dia))) r.horas_100 = 0;
+  // fase 134b: a chave do bloco pode levar o período; a jornada e o feriado olham a data
+  const r = calcularHorasEquipe(rdoDiaData(dia), g("hora_entrada")?.value, g("hora_saida")?.value, _iaJornadaObra, g("intervalo_minutos")?.value, iaDiaFeriado(dia));
+  if(r && rdoSemHE(st, rdoDiaData(dia), iaDiaFeriado(dia))) r.horas_100 = 0;
   ["horas_normais","horas_50","horas_100"].forEach(k => {
     const el = g(k); if(!el) return;
     if(soVazias && el.value !== "" && el.dataset.auto !== "1") return;
@@ -2809,7 +2831,7 @@ function renderConferenciaIA(resp){
       `<optgroup label="Outros do cadastro">${_rdoFuncs.filter(f => !idsEquipe.has(f.id)).map(f => `<option value="${esc(f.nome)}"${f.id===idSugerido?" selected":""}>${esc(f.nome)}</option>`).join("")}</optgroup>`;
     const maqDia = rdoResumoMaquinasDia(dia);   // fase 94: um diário por máquina
     html += `<div class="ia-dia" data-dia="${esc(dia)}">
-      <div class="ia-dia-titulo">📅 ${dataBR(dia)}${maqDia ? ` <span class="meta csv-maq-dia" data-dia="${esc(dia)}" style="font-weight:400;">· ${maqDia}</span>` : ""}</div>
+      <div class="ia-dia-titulo">📅 ${dataBR(rdoDiaData(dia))}${rdoDiaTurno(dia) === "noturno" ? ` <span class="tag azul" title="Fase 134b: período noturno da planilha; vira um diário próprio no mesmo dia">Noturno</span>` : ""}${maqDia ? ` <span class="meta csv-maq-dia" data-dia="${esc(dia)}" style="font-weight:400;">· ${maqDia}</span>` : ""}</div>
       <div class="grade ia-cab">
         <div class="campo"><label>Tempo manhã</label><select data-cab="tempo_manha">${tempoOpts(ex.tempo_manha)}</select></div>
         <div class="campo"><label>Tempo tarde</label><select data-cab="tempo_tarde">${tempoOpts(ex.tempo_tarde)}</select></div>
@@ -3034,7 +3056,7 @@ function renderConferenciaIA(resp){
 function lerConferenciaIA(){
   if(!_iaExtras) return;
   const num = (x) => (x === "" || x == null) ? null : (isFinite(Number(x)) ? Number(x) : null);
-  const ts = (dia, hhmm) => hhmm ? `${dia}T${hhmm}:00` : null;
+  const ts = (dia, hhmm) => hhmm ? `${rdoDiaData(dia)}T${hhmm}:00` : null;   // fase 134b: a chave pode levar o período
   document.querySelectorAll(".ia-dia").forEach(bloco => {
     const dia = bloco.dataset.dia;
     const orig = _csvParsed[dia] || [];
@@ -3364,7 +3386,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   dias.forEach(d => {
     const ests = porDia[d] || []; // dia só com ocorrência (planilha do Maya) não tem estacas
     html += `<div style="margin-bottom:8px;border:1px solid var(--borda-forte);border-radius:4px;padding:8px 10px;">
-      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(d)} — ${ests.length ? `${ests.length} estaca${ests.length>1?"s":""}` : "sem estacas (só ocorrência/equipe)"} <span class="meta csv-maq-dia" data-dia="${esc(d)}" style="font-weight:400;">${ests.length ? "· " + rdoResumoMaquinasDia(d) : ""}</span></div>
+      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(rdoDiaData(d))}${rdoDiaTurno(d) === "noturno" ? " · noturno" : ""} — ${ests.length ? `${ests.length} estaca${ests.length>1?"s":""}` : "sem estacas (só ocorrência/equipe)"} <span class="meta csv-maq-dia" data-dia="${esc(d)}" style="font-weight:400;">${ests.length ? "· " + rdoResumoMaquinasDia(d) : ""}</span></div>
       <div class="meta">${ests.map(e=>esc(e.estaca_numero)).slice(0,10).join(", ")}${ests.length>10?` +${ests.length-10}`:""}</div>
     </div>`;
   });
@@ -3601,15 +3623,19 @@ async function confirmarImportCSV(){
     let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0, totalSemMaq = 0, totalGeo = 0, totalConc = 0;
     for(const g of grupos){
       const dia = g.dia, ests = g.linhas, eqId = g.eq;
+      // fase 134b: a chave do dia leva o período; o diário é procurado por obra + data + tipo + máquina + período
+      const diaData = rdoDiaData(dia), turnoDia = rdoDiaTurno(dia);
+      const porTurno = (q) => turnoDia === "noturno" ? q.eq("turno_campo", "noturno") : q.or("turno_campo.is.null,turno_campo.eq.diurno");
       const ehPrincipal = (principalDoDia[dia] || {}).k === (eqId || "");
-      // Upsert do RDO (cria se não existe): chave obra + data + tipo + máquina
-      let qEx = sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", dia).eq("tipo_servico", tipo);
+      // Upsert do RDO (cria se não existe): chave obra + data + tipo + máquina + período. Com dois diários no dia o maybeSingle
+      // falharia sem o período na busca.
+      let qEx = porTurno(sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", diaData).eq("tipo_servico", tipo));
       qEx = eqId ? qEx.eq("equipamento_id", eqId) : qEx.is("equipamento_id", null);
       let { data: rdoExist } = await qEx.maybeSingle();
       // lote S57 (#220): no RG 11.3, o diário do dia lido antes (PDF) sem máquina é o mesmo diário da TAG da planilha:
       // reaproveita e completa a máquina, em vez de abrir um segundo diário no dia
       if(!rdoExist && eqId && _iaOrigem === "xlsx_rg113"){
-        const { data: rdoSemMaqDia } = await sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", dia).eq("tipo_servico", tipo).is("equipamento_id", null).limit(1);
+        const { data: rdoSemMaqDia } = await porTurno(sb.from("rdo").select("id").eq("obra_id", obra_id).eq("data", diaData).eq("tipo_servico", tipo)).is("equipamento_id", null).limit(1);
         if(rdoSemMaqDia && rdoSemMaqDia.length){
           rdoExist = rdoSemMaqDia[0];
           const { error: eMaq } = await sb.from("rdo").update({ equipamento_id: eqId }).eq("id", rdoExist.id).is("equipamento_id", null);
@@ -3622,7 +3648,8 @@ async function confirmarImportCSV(){
       } else {
         const ex = _iaExtras?.[dia];
         const reg = {
-          obra_id, data: dia, tipo_servico: tipo, equipamento_id: eqId,
+          obra_id, data: diaData, tipo_servico: tipo, equipamento_id: eqId,
+          turno_campo: turnoDia,   // fase 134b
           status: "rascunho", responsavel_id: responsavel,
           producao_dia_m: ests.reduce((s,e) => s + (e.profundidade_executada||0), 0),
           ...(ex && ehPrincipal ? {
@@ -3679,7 +3706,8 @@ async function confirmarImportCSV(){
         };
       });
       // lote S57 (#220): o RG 11.3 concilia antes com a execução que o dia já tem (lida por PDF ou lançada à mão)
-      const rc = _iaOrigem === "xlsx_rg113" ? await rdoRg113ConciliarExistentes(obra_id, dia, exs, ests) : { indices: new Set(), conciliadas: 0, trechos: 0 };
+      // fase 134b: concilia no dia da obra, entre diurno e noturno (é a mesma estaca no mesmo dia)
+      const rc = _iaOrigem === "xlsx_rg113" ? await rdoRg113ConciliarExistentes(obra_id, diaData, exs, ests) : { indices: new Set(), conciliadas: 0, trechos: 0 };
       const idxNovos = exs.map((_, i) => i).filter(i => !rc.indices.has(i));
       // fase 107a: cada execução pela RPC rdo_import_execucao_conciliar (a mesma da sync do Geodigitus): concilia com a da
       // obra no mesmo dia e número, pula a que já veio do Geodigitus; só a inserida agora recebe os trechos de solo
@@ -3729,7 +3757,7 @@ async function confirmarImportCSV(){
           funcao_no_dia: p.funcao_no_dia || (p.funcionario_id ? null : "outro"),
           hora_entrada: p.hora_entrada || null, hora_saida: p.hora_saida || null, intervalo_minutos: p.intervalo_minutos ?? null,
           horas_normais: p.horas_normais, horas_50: p.horas_50, horas_100: p.horas_100, ordem: i + 1,
-          ...(rdoStatusDia(p.status_dia) ? { status_dia: p.status_dia } : {}) }, dia, feriadoDia));
+          ...(rdoStatusDia(p.status_dia) ? { status_dia: p.status_dia } : {}) }, diaData, feriadoDia));
         const { error: errEq } = await sb.from("rdo_equipe").insert(linhas);
         if(errEq) console.warn("Equipe de " + dia + " não gravada:", errEq.message);
       }

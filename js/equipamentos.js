@@ -540,13 +540,13 @@ async function eqpCarregarRdos(e){
   const porObra = {};
   lista.forEach(r => { const o = porObra[r.obra_id] || (porObra[r.obra_id] = { n: 0, m: 0, ini: r.data, fim: r.data }); o.n++; o.m += Number(r.metragem_total || 0); if(r.data < o.ini) o.ini = r.data; if(r.data > o.fim) o.fim = r.data; });
   const resumo = Object.entries(porObra).sort((a, b) => String(b[1].fim).localeCompare(String(a[1].fim)))
-    .map(([oid, o]) => `<span class="mob-chip">${linkObra(oid, eqpObra(oid) || "obra")} · ${o.n} RDO${o.n === 1 ? "" : "s"} · ${num(o.m)} m · ${dataBR(o.ini)}–${dataBR(o.fim)}</span>`).join(" ");
+    .map(([oid, o]) => `<span class="mob-chip">${linkObra(oid, eqpObra(oid) || "obra")} · ${esc(o.n)} RDO${o.n === 1 ? "" : "s"} · ${num(o.m)} m · ${dataBR(o.ini)}–${dataBR(o.fim)}</span>`).join(" ");
   cont.innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">RDOs desta máquina <span class="contador">${lista.length}</span></h3>
       <span class="meta" style="margin-left:auto;">Total ${num(lista.reduce((s, r) => s + Number(r.metragem_total || 0), 0))} m</span></div>
     <div style="margin:6px 0 10px;">${resumo}</div>
     <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Obra</th><th>Tipo</th><th title="diário = máquina no cabeçalho; execução = linha desta máquina em diário de outra (ou sem máquina)">Vínculo</th><th class="num">Estacas</th><th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th></tr></thead>
     <tbody>${lista.map(r => `<tr class="linha-clicavel" data-rdo="${esc(r.id)}"><td>${dataBR(r.data)}</td><td>${linkObra(r.obra_id, eqpObra(r.obra_id) || "obra")}</td>
-      <td>${esc(EQP_RDO_TIPO[r.tipo_servico] || r.tipo_servico || "")}</td><td>${esc(r.origem)}</td><td class="num">${r.qtd_estacas_executadas || 0}</td>
+      <td>${esc(EQP_RDO_TIPO[r.tipo_servico] || r.tipo_servico || "")}</td><td>${esc(r.origem)}</td><td class="num">${esc(r.qtd_estacas_executadas || 0)}</td>
       <td class="num">${num(r.metragem_total || 0)} m</td><td class="num">${r.concreto_total_m3 != null ? num(r.concreto_total_m3) + " m³" : "—"}</td><td>${tagStatus("rdo", r.status)}</td></tr>`).join("")}</tbody></table></div>`;
   cont.querySelectorAll("tr[data-rdo]").forEach(tr => tr.addEventListener("click", ev => {
     if(ev.target.closest("a")) return;

@@ -131,7 +131,7 @@ function cmpEtapaExtra(p){
   const partes = [];
   if(["aguardando_conferencia","aguardando_nf","financeiro"].includes(et)) partes.push(cmpEtapaTag(et));
   if(e && Number(e.conferencias_vencidas) > 0) partes.push(`<span class="tag vermelho" title="o solicitante não conferiu o recebimento no prazo; o pedido seguiu com aviso">sem conferência</span>`);
-  return partes.join(" ");
+  return /* html */ partes.join(" ");
 }
 // Depois de aprovado, o pedido ou aguarda recebimento ou terminou (06/10/2026). Atraso só conta aqui:
 // rascunho e cotação não têm entrega a atrasar.
@@ -272,7 +272,7 @@ function cmpDestinoRateioHTML(it){ return cmpTemRateio(it) ? `<div class="meta" 
 function cmpOrdenarRateio(lista){ return lista.sort((a, b) => (cmpEq(a.equipamento_id) || "").localeCompare(cmpEq(b.equipamento_id) || "", "pt-BR")); }
 /* fase 108b: tipo de compra do item. _tipo = escolha na tela (rascunho); tipo_compra = coluna gerada do banco */
 function cmpItemTipo(it){ return it._tipo || it.tipo_compra || (it.destino === "estoque" ? "reposicao" : "aplicacao_direta"); }
-function cmpTipoTag(t){ return `<span class="tag ${CMP_TIPO_COR[t] || "cinza"}">${esc(CMP_TIPO_LBL[t] || t)}</span>`; }
+function cmpTipoTag(t){ return `<span class="tag ${esc(CMP_TIPO_COR[t] || "cinza")}">${esc(CMP_TIPO_LBL[t] || t)}</span>`; }
 /* "3 reposição · 2 aplicação direta" (chip da ficha) */
 function cmpTipoResumo(itens){
   if(!itens || !itens.length) return "";
@@ -467,7 +467,7 @@ function cmpRenderAnexosPedido(){
   if(!_cmpAnexos.length){ cont.innerHTML = `<p class="vazio">Nenhum anexo${cmpPodeAnexoFinanceiro() ? "" : " visível para o seu perfil"}.</p>`; return; }
   cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Tipo</th><th>Arquivo</th><th>Tamanho</th><th>Enviado por</th><th>Em</th><th class="col-acao"></th></tr></thead><tbody>${
     _cmpAnexos.map(a => { const t = CMP_ANX_TIPO[a.tipo] || [a.tipo, "cinza"]; return `<tr data-id="${esc(a.id)}">
-      <td><span class="tag ${t[1]}">${esc(t[0])}</span></td>
+      <td><span class="tag ${esc(t[1])}">${esc(t[0])}</span></td>
       <td>${(a.mime_type || "").startsWith("image/") ? "🖼️" : "📄"} ${esc(a.nome)}</td>
       <td class="meta">${a.tamanho ? Math.max(1, Math.round(Number(a.tamanho) / 1024)) + " KB" : "—"}</td>
       <td class="meta">${esc(a.enviado?.nome || "—")}</td>
@@ -982,7 +982,7 @@ const _cmpOrdem = ordenarTabela({
 }, { chave: "cmp-ordem", padrao: { col: "data", dir: "desc" } });
 function renderComprasLista(dados){
   dados = _cmpOrdem.aplicar(dados);
-  const th = (col, rot, extra) => _cmpOrdem.th(col, rot, extra);
+  const th = (col, rot, extra) => /* html */ _cmpOrdem.th(col, rot, extra);
   $("cmp-conteudo").innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>${th("numero", "Número")}${th("data", "Data")}${th("fornecedor", "Fornecedor")}${th("nf", "NF", { title: "nº da NF dos recebimentos do pedido" })}${th("destino", "Destino")}${th("tipo", "Tipo de compra")}<th class="num">Itens</th>${th("total", "Total", { cls: "num" })}${th("previsao", "Previsão")}${th("status", "Status")}<th>Para receber com</th></tr></thead>
     <tbody>${dados.map(p => `<tr class="linha-clicavel${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
@@ -1424,7 +1424,7 @@ function cmpRenderFaltaAssinar(){
   const pend = a.pend.map(k => `<li><strong>${esc(k.quem_assina || k.chave)}</strong>: ${esc(cmpNomesCurtos(k.assinantes_nomes, 4))}${k.eu_assino ? ' <span class="tag verde">você assina</span>' : ""}</li>`).join("");
   const feitas = a.assinadas.map(k => `${esc(cmpChaveRotulo(k))} (${esc(k.aprovador?.nome || "—")}${k.aprovado_em ? ", " + dataBR(String(k.aprovado_em).slice(0, 10)) : ""})`).join("; ");
   el.innerHTML = `<div class="con-alerta"><span class="con-alerta-icone">✍️</span><div>
-    <strong>${a.pend.length ? "Falta assinar" : "Nenhuma chave pendente"}</strong>${a.pend.length ? `<ul>${pend}</ul>` : ""}
+    <strong>${a.pend.length ? "Falta assinar" : "Nenhuma chave pendente"}</strong>${a.pend.length ? `<ul>${/* html */ pend}</ul>` : ""}
     ${feitas ? `<div class="meta">Assinado: ${feitas}</div>` : ""}</div></div>`;
   el.style.display = "";
 }
@@ -1584,12 +1584,12 @@ function renderCotacoes(){
   itens.forEach(it => { const ps = vivas.map(c => cmpCotPreco(c, it.id)).filter(v => v !== null); if(ps.length) melhor[it.id] = Math.min(...ps); });
   const totais = _cmpCotacoes.map(cmpCotTotal), menorTotal = Math.min(...vivas.map(cmpCotTotal));
   const th = _cmpCotacoes.map(c => { const s = CMP_COT_STATUS[c.status] || [c.status, "cinza"];
-    return `<th class="num" style="min-width:150px;"><div>${esc(c.fornecedor?.razao_social || cmpForn(c.fornecedor_id) || "?")}</div><span class="tag ${s[1]}">${esc(s[0])}</span></th>`; }).join("");
+    return `<th class="num" style="min-width:150px;"><div>${esc(c.fornecedor?.razao_social || cmpForn(c.fornecedor_id) || "?")}</div><span class="tag ${esc(s[1])}">${esc(s[0])}</span></th>`; }).join("");
   const linhas = itens.map(it => `<tr><td>${esc(it.descricao)}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>${
     _cmpCotacoes.map(c => { const v = cmpCotPreco(c, it.id); const ehMelhor = v !== null && c.status !== "descartada" && v === melhor[it.id] && vivas.length > 1;
       const ci = cmpCotItem(c, it.id), imp = ci ? [ci.ipi_percentual !== null && ci.ipi_percentual !== undefined ? "IPI " + cmpPct(ci.ipi_percentual) : "", ci.icms_percentual !== null && ci.icms_percentual !== undefined ? "ICMS " + cmpPct(ci.icms_percentual) : ""].filter(Boolean).join(" · ") : "";   // lote S53 (#166)
       return `<td class="num">${v === null ? '<span class="meta">não cotou</span>' : `${brl(v)}<div class="meta">${brl(Math.round(v * Number(it.quantidade || 0) * 100) / 100)}${imp ? " · " + esc(imp) : ""}</div>`}${ehMelhor ? ' <span class="tag verde" title="menor preço deste item entre as cotações">melhor</span>' : ""}</td>`; }).join("")}</tr>`).join("");
-  const rodape = (rot, fn) => `<tr><th colspan="2" style="text-align:right;">${rot}</th>${_cmpCotacoes.map(fn).join("")}</tr>`;
+  const rodape = (rot, fn) => `<tr><th colspan="2" style="text-align:right;">${esc(rot)}</th>${/* html */ _cmpCotacoes.map(fn).join("")}</tr>`;
   const comIpi = _cmpCotacoes.some(c => cmpCotIpi(c) > 0);
   cont.innerHTML = topo + `<div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Item</th><th class="num">Qtd</th>${th}</tr></thead><tbody>${linhas}</tbody>
     <tfoot>
@@ -2039,7 +2039,7 @@ function cmpRenderRodapeItens(){
   const tf = $("cmp-itens-rodape"); if(!tf) return;
   if(!_cmpItens.length){ tf.innerHTML = ""; return; }
   const itens = cmpSomaItens(_cmpItens), ipi = cmpSomaIpi(_cmpItens), frete = Number($("cmp-frete").value || 0), desc = Number($("cmp-desc").value || 0);
-  const linha = (rot, val, forte) => `<tr><td colspan="6" style="text-align:right;${forte ? "font-weight:700;" : ""}">${rot}</td><td class="num"${forte ? ' style="font-weight:700;"' : ""}>${val}</td><td colspan="7"></td></tr>`;
+  const linha = (rot, val, forte) => `<tr><td colspan="6" style="text-align:right;${forte ? "font-weight:700;" : ""}">${esc(rot)}</td><td class="num"${forte ? ' style="font-weight:700;"' : ""}>${esc(val)}</td><td colspan="7"></td></tr>`;
   tf.innerHTML = linha("Itens", brl(itens)) + (ipi ? linha("IPI", brl(ipi)) : "") + (frete ? linha("Frete", brl(frete)) : "") + (desc ? linha("Desconto", "− " + brl(desc)) : "")
     + linha("Total", brl(itens + ipi + frete - desc), true);
 }
@@ -3293,7 +3293,7 @@ async function cmpPdfPedido(semValores){
   // lote S53 (#166): total com IPI (itens + IPI + frete − desconto, como o banco); colunas % IPI / % ICMS e a linha do IPI
   const totItens = cmpSomaItens(itens), totIpi = cmpSomaIpi(itens);
   const total = totItens + totIpi + Number(p.frete || 0) - Number(p.desconto || 0);
-  const cel = (txt, extra) => `<td style="border:1px solid #ccd;padding:5px;${extra || ""}">${txt}</td>`;
+  const cel = (txt, extra) => `<td style="border:1px solid #ccd;padding:5px;${esc(extra || "")}">${/* html */ txt}</td>`;
   const th = (txt, extra) => `<th style="border:1px solid #ccd;padding:5px;${esc(extra || "")}">${esc(txt)}</th>`;
   const titulo = semValores ? (cotacao ? `SOLICITAÇÃO DE COTAÇÃO ${esc(p.numero)}` : `PEDIDO DE COMPRA ${esc(p.numero)} — sem valores`) : `PEDIDO DE COMPRA ${esc(p.numero)}`;
   const temForn = !!(f.razao_social);

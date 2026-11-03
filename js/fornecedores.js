@@ -354,9 +354,9 @@ function fornPaginacao(chave, total){
   if(total <= FORN_PAG) return "";
   const p = _fornPag[chave], de = p * FORN_PAG + 1, ate = Math.min(total, (p + 1) * FORN_PAG);
   return `<div class="meta" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;">
-    <button type="button" class="btn-sec btn-sm" data-forn-pag="${chave}" data-dir="-1" ${p === 0 ? "disabled" : ""}>‹ anteriores</button>
-    <span>${de}–${ate} de ${total}</span>
-    <button type="button" class="btn-sec btn-sm" data-forn-pag="${chave}" data-dir="1" ${ate >= total ? "disabled" : ""}>próximos ›</button></div>`;
+    <button type="button" class="btn-sec btn-sm" data-forn-pag="${esc(chave)}" data-dir="-1" ${p === 0 ? "disabled" : ""}>‹ anteriores</button>
+    <span>${esc(de)}–${esc(ate)} de ${esc(total)}</span>
+    <button type="button" class="btn-sec btn-sm" data-forn-pag="${esc(chave)}" data-dir="1" ${ate >= total ? "disabled" : ""}>próximos ›</button></div>`;
 }
 function fornLigarPaginacao(cont, recarregar){
   cont.querySelectorAll("[data-forn-pag]").forEach(b => b.addEventListener("click", () => {
@@ -428,7 +428,7 @@ async function carregarNotasDoFornecedor(fornecedorId){
   fornSmartButton("sb-forn-titulos", rt.error ? 0 : (rt.count || 0));
   const docPedido = (x) => x.pedido_id ? fornPedidoLink(x.pedido_id, x.pedido?.numero) : (x.contrato?.numero ? `contrato ${esc(x.contrato.numero)}` : "—");
   const STATUS_REC = { rascunho: "Rascunho", confirmado: "Confirmada", cancelado: "Cancelada" };
-  let html = `<h4 class="titulo-bloco" style="margin-top:0;">Notas fiscais recebidas (${rn.count || 0})</h4>`;
+  let html = `<h4 class="titulo-bloco" style="margin-top:0;">Notas fiscais recebidas (${esc(rn.count || 0)})</h4>`;
   if(rn.error) html += `<p class="vazio">Erro: ${esc(rn.error.message)}</p>`;
   else if(!(rn.data || []).length) html += `<p class="vazio">Nenhuma nota fiscal recebida deste fornecedor.</p>`;
   else html += `<div class="tabela-rola"><table>
@@ -440,13 +440,13 @@ async function carregarNotasDoFornecedor(fornecedorId){
       ${verValor ? `<td class="num">${brl(r.total_nf)}</td>` : ""}</tr>`).join("")}</tbody></table></div>${fornPaginacao("notas", rn.count || 0)}`;
   if(verValor){
     const docTit = (t) => t.recebimento?.pedido_id ? fornPedidoLink(t.recebimento.pedido_id, t.recebimento.pedido?.numero) : (t.contrato?.numero ? `contrato ${esc(t.contrato.numero)}` : esc(t.origem || "—"));
-    html += `<h4 class="titulo-bloco">Títulos a pagar (${rt.count || 0})</h4>`;
+    html += `<h4 class="titulo-bloco">Títulos a pagar (${esc(rt.count || 0)})</h4>`;
     if(rt.error) html += `<p class="vazio">Erro: ${esc(rt.error.message)}</p>`;
     else if(!(rt.data || []).length) html += `<p class="vazio">Nenhum título deste fornecedor.</p>`;
     else html += `<div class="tabela-rola"><table>
       <thead><tr><th>NF</th><th>Parcela</th><th>Vencimento</th><th>Origem</th><th>Exportado</th><th class="num">Valor</th></tr></thead>
       <tbody>${rt.data.map(t => `<tr>
-        <td>${esc(t.nf_numero || "—")}</td><td>${t.parcela ? `${t.parcela}/${t.total_parcelas || "?"}` : "—"}</td>
+        <td>${esc(t.nf_numero || "—")}</td><td>${t.parcela ? `${esc(t.parcela)}/${esc(t.total_parcelas || "?")}` : "—"}</td>
         <td>${dataBR(t.vencimento)}</td><td>${docTit(t)}</td>
         <td>${t.exportado_em ? dataBR(String(t.exportado_em).slice(0, 10)) : '<span class="tag ambar">a exportar</span>'}</td>
         <td class="num">${brl(t.valor)}</td></tr>`).join("")}</tbody></table></div>${fornPaginacao("titulos", rt.count || 0)}`;

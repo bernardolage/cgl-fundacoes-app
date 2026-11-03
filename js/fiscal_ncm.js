@@ -146,15 +146,15 @@ function fiscalItemMontar(pref){
   if(!box || box.dataset.montado) return;
   box.dataset.montado = "1";
   box.innerHTML = `<p class="texto-apoio compacto">NCM, unidade e valor que a NF-e de remessa usa (fase 105). O NCM mais seguro é o da nota de compra do bem; na dúvida, o contador confirma.</p>
-    <p class="meta" id="${pref}-fiscal-aviso" style="display:none;"></p>
+    <p class="meta" id="${esc(pref)}-fiscal-aviso" style="display:none;"></p>
     <div class="grade">
       <div class="campo"><label>NCM</label>
-        <div class="forn-campo"><input id="${pref}-ncm" placeholder="8 dígitos, ou busque: perfuratriz, bomba…" autocomplete="off" />
-          <div class="autocomplete-lista" id="${pref}-ncm-lista" style="display:none;"></div></div>
-        <span class="meta" id="${pref}-ncm-desc"></span></div>
-      <div class="campo"><label>Unidade comercial</label><input id="${pref}-ucom" maxlength="6" placeholder="UN" title="Unidade da NF-e (até 6 letras ou dígitos). Vazio = UN (produto: a unidade do cadastro)" /></div>
-      <div class="campo"><label>Valor unitário para remessa (R$)</label><input id="${pref}-vrem" type="number" min="0" step="0.01" placeholder="vazio = sugerido" />
-        <span class="meta" id="${pref}-vrem-sug"></span></div>
+        <div class="forn-campo"><input id="${esc(pref)}-ncm" placeholder="8 dígitos, ou busque: perfuratriz, bomba…" autocomplete="off" />
+          <div class="autocomplete-lista" id="${esc(pref)}-ncm-lista" style="display:none;"></div></div>
+        <span class="meta" id="${esc(pref)}-ncm-desc"></span></div>
+      <div class="campo"><label>Unidade comercial</label><input id="${esc(pref)}-ucom" maxlength="6" placeholder="UN" title="Unidade da NF-e (até 6 letras ou dígitos). Vazio = UN (produto: a unidade do cadastro)" /></div>
+      <div class="campo"><label>Valor unitário para remessa (R$)</label><input id="${esc(pref)}-vrem" type="number" min="0" step="0.01" placeholder="vazio = sugerido" />
+        <span class="meta" id="${esc(pref)}-vrem-sug"></span></div>
     </div>`;
   const inp = $(`${pref}-ncm`), lista = $(`${pref}-ncm-lista`), desc = $(`${pref}-ncm-desc`);
   const fechar = () => { lista.style.display = "none"; lista.innerHTML = ""; };

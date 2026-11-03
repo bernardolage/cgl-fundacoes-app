@@ -2854,7 +2854,12 @@ async function moverExecucoesPraOutraObra(){
   const { error: errMove } = await sb.from("rdo")
     .update({ obra_id: novaObraId })
     .in("id", rdos.map(r => r.id));
-  if(errMove){ aviso("app-aviso","Erro ao mover: "+errMove.message,"erro"); return; }
+  if(errMove){
+    // fase 134b: a chave do diário é obra + data + tipo + máquina + período; a obra de destino pode já ter um diário igual
+    const dup = /duplicate/i.test(errMove.message || "");
+    aviso("app-aviso", dup ? "Nada foi movido: a obra de destino já tem um diário da mesma máquina, data, tipo de serviço e período. Junte ou exclua o diário repetido antes de mover." : "Erro ao mover: " + errMove.message, "erro");
+    return;
+  }
 
   // 2. Chama a RPC pra limpar estaca_id (que apontava pra obra antiga) e recasar com a nova
   const { data: result, error: errRpc } = await sb.rpc("recasar_execucoes_obra", { p_obra_id: novaObraId });

@@ -153,7 +153,7 @@ let _rephPeriodo = "";         // "de|ate" da última carga
 const REPH_ORIGEM = { reparo: ["RP", "Reparo"], fabricacao: ["OF", "Fabricação"], manutencao: ["OS", "Manutenção"] };
 function rephHmin(h){
   const t = Math.round(Number(h || 0) * 60), neg = t < 0, a = Math.abs(t);
-  return `${neg ? "-" : ""}${Math.floor(a / 60)}:${String(a % 60).padStart(2, "0")}`;
+  return `${neg ? "-" : ""}${Math.floor(a / 60)}:${esc(String(a % 60).padStart(2, "0"))}`;
 }
 function rephMesISO(d){ return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function rephPeriodoPadrao(){
@@ -253,13 +253,13 @@ function rephRender(){
         <td>${dataBR(l.data)}</td><td><span class="tag cinza">${esc(REPH_ORIGEM[l.origem]?.[0] || l.origem)}</span> ${rephOrdemLink(l)}${l.hora_extra ? ' <span class="tag ambar" title="hora extra (fabricação)">HE</span>' : ""}</td>
         <td class="meta">${esc(l.ordem_descricao || "")}</td><td>${dataBR(l.ordem_abertura)}</td><td>${hr(l)}</td>
         <td class="num">${num(l.horas)}</td><td class="num">${rephHmin(l.horas)}</td><td class="meta">${esc(l.observacao || "")}${l.codigo_externo ? (l.observacao ? " · " : "") + "Odoo" : ""}</td></tr>`).join("")}</tbody>
-      <tfoot><tr><th colspan="5">${r.ordens.size} ordem(ns) · ${r.n} lançamento(s)</th><th class="num">${num(r.horas)}</th><th class="num">${rephHmin(r.horas)}</th><th></th></tr></tfoot></table></div></td></tr>`;
+      <tfoot><tr><th colspan="5">${r.ordens.size} ordem(ns) · ${esc(r.n)} lançamento(s)</th><th class="num">${num(r.horas)}</th><th class="num">${rephHmin(r.horas)}</th><th></th></tr></tfoot></table></div></td></tr>`;
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr><th>Colaborador</th><th>Departamento</th><th class="num">Ordens</th><th class="num">Horas</th><th class="num">Horas (h:min)</th><th class="num" title="hora extra, só nas ordens de fabricação">HE (h)</th></tr></thead>
     <tbody>${res.map(r => `<tr class="linha-clicavel reph-linha" data-chave="${esc(r.chave)}" title="${_rephAberto === r.chave ? "fechar o detalhe" : "ver as ordens e os lançamentos"}">
         <td><strong>${esc(r.nome)}</strong></td><td class="meta">${esc(r.dep)}</td><td class="num">${r.ordens.size}</td>
         <td class="num">${num(r.horas)}</td><td class="num">${rephHmin(r.horas)}</td><td class="num">${r.he ? num(r.he) : '<span class="meta">—</span>'}</td></tr>${_rephAberto === r.chave ? detalhe(r) : ""}`).join("")}</tbody>
-    <tfoot><tr><th>Total · ${res.length} colaborador(es)</th><th></th><th class="num">${totOrd}</th><th class="num">${num(tot)}</th><th class="num">${rephHmin(tot)}</th><th class="num">${totHe ? num(totHe) : "—"}</th></tr></tfoot></table></div>
+    <tfoot><tr><th>Total · ${res.length} colaborador(es)</th><th></th><th class="num">${esc(totOrd)}</th><th class="num">${num(tot)}</th><th class="num">${rephHmin(tot)}</th><th class="num">${totHe ? num(totHe) : "—"}</th></tr></tfoot></table></div>
     <p class="meta" style="margin-top:6px;">Período ${dataBR(de)} a ${dataBR(ate)} · ${linhas.length} lançamento(s). O almoço já está descontado (lançamento que atravessa 12:00–13:00 perde 1 h); "—" em início–fim é lançamento do Odoo só com a duração. Sem valores: o custo da hora fica na ficha de cada ordem.</p>`;
 }
 function rephExportar(){
@@ -285,7 +285,7 @@ function rephExportar(){
 function repRenderContagem(dados){
   const el = $("rep-st-chips"); if(!el) return;
   const n = dados.length;
-  el.innerHTML = `<strong>${n} ${n === 1 ? "reparo" : "reparos"}</strong>`
+  el.innerHTML = `<strong>${esc(n)} ${n === 1 ? "reparo" : "reparos"}</strong>`
     + REP_STAGES.concat(["cancelado"]).map(st => `<span>${repTag(st)}<span class="contador">${dados.filter(r => r.status === st).length}</span></span>`).join("");
 }
 

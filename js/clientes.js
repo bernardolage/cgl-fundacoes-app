@@ -222,7 +222,7 @@ async function renderCliFiscal(){
     ? `<p class="meta">O NCM de máquinas e acessórios chega com a atualização do banco da fase 105a.</p>`
     : itensSem.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Item</th><th>Tipo</th><th>Mobilização (obra)</th></tr></thead>
-      <tbody>${itensSem.map(i => `<tr><td>${i.link}</td><td>${esc(i.tipo)}</td><td>${obrasTxt(i.id) || "—"}</td></tr>`).join("")}</tbody></table></div>
+      <tbody>${itensSem.map(i => `<tr><td>${/* html */ i.link}</td><td>${esc(i.tipo)}</td><td>${obrasTxt(i.id) || "—"}</td></tr>`).join("")}</tbody></table></div>
       <p class="meta">Abra a ficha e preencha a aba Fiscal. A carga em lote por tipo de máquina está em docs/cargas/ncm-equipamentos.md (depois do OK do contador).</p>`
     : `<p class="vazio">Todas as máquinas e acessórios em mobilização ativa têm NCM.</p>`;
 

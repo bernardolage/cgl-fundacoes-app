@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="fba4fe7" />
+<meta name="app-versao" content="c002a99" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=fba4fe7" />
+<link rel="stylesheet" href="css/estilo.css?v=c002a99" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=fba4fe7"></script>
+<script src="js/tema.js?v=c002a99"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=fba4fe7"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=fba4fe7"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=fba4fe7"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=c002a99"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=c002a99"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=c002a99"></script>
 </head>
 <body>
 
@@ -3302,6 +3302,7 @@
               <option value="pendente_obra">Sem obra</option>
               <option value="pendente_estaca">Estaca a vincular</option>
               <option value="pendente_rdo_finalizado">Diário finalizado</option>
+              <option value="pendente_turno">Aguardando o turno</option>
               <option value="vinculada">No diário</option>
               <option value="conciliada">Conciliada</option>
               <option value="ignorada">Ignorada</option>
@@ -3357,6 +3358,7 @@
             <div class="chip"><span>Estacas</span><strong id="rdo-ficha-execs-chip">0</strong></div>
             <div class="chip"><span>Metragem</span><strong id="rdo-ficha-metragem-chip">0 m</strong></div>
             <div class="chip" id="rdo-ficha-maquina-chip" title="Fase 94: um diário por máquina na mesma obra e data"><span>Máquina</span><strong>—</strong></div>
+            <div class="chip" id="rdo-ficha-turno-chip" title="Fase 134b: diurno ou noturno; a mesma máquina pode ter os dois diários no mesmo dia"><span>Período</span><strong>Diurno</strong></div>
             <div class="chip chip-aviso" id="rdo-ficha-jornada-chip" style="display:none;" title="Lote S40 (#31): a HE é calculada pela jornada padrão da empresa até a obra ter jornada própria"><span>Jornada</span><strong>Obra sem jornada; usando padrão da empresa · <a href="#" id="rdo-ficha-jornada-link">cadastrar em Parâmetros</a></strong></div>
           </div>
 
@@ -3378,6 +3380,7 @@
                 <div class="campo"><label>Feriado?</label><label class="meta" style="display:flex;align-items:center;gap:6px;min-height:34px;cursor:pointer;" title="Regra RH 11/09/2026: em feriado, sábado e domingo toda hora trabalhada é HE 100%"><input type="checkbox" id="rdo-feriado" /> Dia de feriado (tudo HE 100%)</label></div>
                 <div class="campo"><label>Tipo de serviço *</label><select id="rdo-tipo-servico" required></select></div>
                 <div class="campo"><label>Máquina</label><select id="rdo-equipamento" title="Fase 94 (#77): cada máquina tem o seu diário na mesma obra e data. Sem máquina (equipe de apoio) o diário entra em Para regularizar até alguém informar."></select><span class="meta" id="rdo-equipamento-aviso"></span></div>
+                <div class="campo"><label>Período</label><select id="rdo-turno" title="Fase 134b: a mesma máquina pode ter um diário diurno e um noturno no mesmo dia, cada um com a sua equipe. Diário sem período conta como diurno."><option value="diurno">Diurno</option><option value="noturno">Noturno</option></select></div>
                 <div class="campo"><label>Status</label><select id="rdo-status"></select></div>
                 <div class="campo"><label>Responsável</label><select id="rdo-responsavel"><option value="">— não informado —</option></select></div>
                 <div class="campo"><label>Local / frente</label><input id="rdo-local" list="rdo-local-lista" placeholder="ex.: PONTILHÃO 17C (locais da obra)" /><datalist id="rdo-local-lista"></datalist></div>
@@ -6451,7 +6454,9 @@
             <div class="campo"><label>Teto de requisições por rodada</label><input type="number" id="usr-geo-maxreq" min="5" max="2000" step="1" /></div>
             <div class="campo"><label>Cota de tráfego no mês (MB)</label><input type="number" id="usr-geo-cota" min="0" step="1" placeholder="perguntar à Geodigitus" /></div>
             <div class="campo"><label>Alerta de sobreconsumo (%)</label><input type="number" id="usr-geo-alerta" min="0" max="500" step="0.1" /></div>
-            <div class="campo" title="Estaca com fim de concretagem antes desta hora entra no diário noturno do dia anterior, se ele existir"><label>Fim do turno noturno</label><input type="time" id="usr-geo-noturno" /></div>
+            <div class="campo" title="Fase 134b: estaca iniciada a partir desta hora é candidata ao diário noturno"><label>Início do turno noturno</label><input type="time" id="usr-geo-noturno-ini" /></div>
+            <div class="campo" title="Fase 134b: a noite fecha neste horário; estaca iniciada antes dele pertence à noite do dia anterior"><label>Fim do turno noturno</label><input type="time" id="usr-geo-noturno" /></div>
+            <div class="campo" title="Fase 134b (decisão do Bernardo): a noite só vira diário noturno quando, do início da primeira estaca ao fim da última, passa destas horas; até isso é hora extra no diurno"><label>Noturno só acima de (horas)</label><input type="number" id="usr-geo-noturno-minh" min="0" max="12" step="0.5" /></div>
           </div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-usr-geo-salvar">💾 Salvar parâmetros do Geodigitus</button></div>
         </div>
@@ -6688,60 +6693,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=fba4fe7"></script>
+<script src="js/core.js?v=c002a99"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=fba4fe7"></script>
+<script src="js/historico.js?v=c002a99"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=fba4fe7"></script>
-<script src="js/fiscal_ncm.js?v=fba4fe7"></script>
+<script src="js/fiscal.js?v=c002a99"></script>
+<script src="js/fiscal_ncm.js?v=c002a99"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=fba4fe7"></script>
-<script src="js/fornecedores.js?v=fba4fe7"></script>
-<script src="js/apropriacoes.js?v=fba4fe7"></script>
-<script src="js/funcionarios.js?v=fba4fe7"></script>
-<script src="js/funcionarios_importar.js?v=fba4fe7"></script>
-<script src="js/rh_documentos.js?v=fba4fe7"></script>
-<script src="js/servicos.js?v=fba4fe7"></script>
-<script src="js/produtos.js?v=fba4fe7"></script>
-<script src="js/estoque.js?v=fba4fe7"></script>
-<script src="js/separacoes.js?v=fba4fe7"></script>
-<script src="js/epi.js?v=fba4fe7"></script>
-<script src="js/compras.js?v=fba4fe7"></script>
-<script src="js/requisicoes.js?v=fba4fe7"></script>
-<script src="js/orcamentos.js?v=fba4fe7"></script>
-<script src="js/propostas.js?v=fba4fe7"></script>
-<script src="js/contratos.js?v=fba4fe7"></script>
-<script src="js/contas_pagar.js?v=fba4fe7"></script>
-<script src="js/centros_custo.js?v=fba4fe7"></script>
-<script src="js/carteira.js?v=fba4fe7"></script>
-<script src="js/obras.js?v=fba4fe7"></script>
-<script src="js/frota.js?v=fba4fe7"></script>
-<script src="js/viagens.js?v=fba4fe7"></script>
-<script src="js/equipamentos.js?v=fba4fe7"></script>
-<script src="js/vendas_bens.js?v=fba4fe7"></script>
-<script src="js/acessorios.js?v=fba4fe7"></script>
-<script src="js/reparos.js?v=fba4fe7"></script>
-<script src="js/manutencao.js?v=fba4fe7"></script>
-<script src="js/fabricacao.js?v=fba4fe7"></script>
-<script src="js/mobilizacoes.js?v=fba4fe7"></script>
-<script src="js/estacas.js?v=fba4fe7"></script>
-<script src="js/obra_abas.js?v=fba4fe7"></script>
-<script src="js/medicoes.js?v=fba4fe7"></script>
-<script src="js/movimentacoes.js?v=fba4fe7"></script>
-<script src="js/rdo_import_rg113.js?v=fba4fe7"></script>
-<script src="js/rdo.js?v=fba4fe7"></script>
-<script src="js/rdo_import_maya.js?v=fba4fe7"></script>
-<script src="js/geodigitus.js?v=fba4fe7"></script>
-<script src="js/computadores_bordo.js?v=fba4fe7"></script>
-<script src="js/usuarios.js?v=fba4fe7"></script>
-<script src="js/chamados.js?v=fba4fe7"></script>
-<script src="js/dashboard.js?v=fba4fe7"></script>
-<script src="js/rh_horas.js?v=fba4fe7"></script>
-<script src="js/sesmt.js?v=fba4fe7"></script>
-<script src="js/patrimonio.js?v=fba4fe7"></script>
+<script src="js/clientes.js?v=c002a99"></script>
+<script src="js/fornecedores.js?v=c002a99"></script>
+<script src="js/apropriacoes.js?v=c002a99"></script>
+<script src="js/funcionarios.js?v=c002a99"></script>
+<script src="js/funcionarios_importar.js?v=c002a99"></script>
+<script src="js/rh_documentos.js?v=c002a99"></script>
+<script src="js/servicos.js?v=c002a99"></script>
+<script src="js/produtos.js?v=c002a99"></script>
+<script src="js/estoque.js?v=c002a99"></script>
+<script src="js/separacoes.js?v=c002a99"></script>
+<script src="js/epi.js?v=c002a99"></script>
+<script src="js/compras.js?v=c002a99"></script>
+<script src="js/requisicoes.js?v=c002a99"></script>
+<script src="js/orcamentos.js?v=c002a99"></script>
+<script src="js/propostas.js?v=c002a99"></script>
+<script src="js/contratos.js?v=c002a99"></script>
+<script src="js/contas_pagar.js?v=c002a99"></script>
+<script src="js/centros_custo.js?v=c002a99"></script>
+<script src="js/carteira.js?v=c002a99"></script>
+<script src="js/obras.js?v=c002a99"></script>
+<script src="js/frota.js?v=c002a99"></script>
+<script src="js/viagens.js?v=c002a99"></script>
+<script src="js/equipamentos.js?v=c002a99"></script>
+<script src="js/vendas_bens.js?v=c002a99"></script>
+<script src="js/acessorios.js?v=c002a99"></script>
+<script src="js/reparos.js?v=c002a99"></script>
+<script src="js/manutencao.js?v=c002a99"></script>
+<script src="js/fabricacao.js?v=c002a99"></script>
+<script src="js/mobilizacoes.js?v=c002a99"></script>
+<script src="js/estacas.js?v=c002a99"></script>
+<script src="js/obra_abas.js?v=c002a99"></script>
+<script src="js/medicoes.js?v=c002a99"></script>
+<script src="js/movimentacoes.js?v=c002a99"></script>
+<script src="js/rdo_import_rg113.js?v=c002a99"></script>
+<script src="js/rdo.js?v=c002a99"></script>
+<script src="js/rdo_import_maya.js?v=c002a99"></script>
+<script src="js/geodigitus.js?v=c002a99"></script>
+<script src="js/computadores_bordo.js?v=c002a99"></script>
+<script src="js/usuarios.js?v=c002a99"></script>
+<script src="js/chamados.js?v=c002a99"></script>
+<script src="js/dashboard.js?v=c002a99"></script>
+<script src="js/rh_horas.js?v=c002a99"></script>
+<script src="js/sesmt.js?v=c002a99"></script>
+<script src="js/patrimonio.js?v=c002a99"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=fba4fe7"></script>
+<script src="js/sesmt_ocorrencias.js?v=c002a99"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=fba4fe7"></script>
+<script src="js/init.js?v=c002a99"></script>
 </body>
 </html>

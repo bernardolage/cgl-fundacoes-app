@@ -8,6 +8,7 @@
 let _obrAbasContagens = { estacas: 0, equipamentos: 0, mobilizacoes: 0, rdos: 0, raiz: 0, medicoes: 0, documentos: 0 };
 let _obrRdoFiltroMaq = "";   // fase 94 (#77): filtro de máquina da aba RDOs ("" todas · "sem" sem máquina · uuid); o Início define "sem"
 let _obrRdoFiltroObra = null; // obra a que o filtro pertence: trocar de obra zera o filtro (salvo o preset do Início para a mesma obra)
+let _obrRdoFiltroTurno = "";  // fase 134b: filtro de período da aba RDOs ("" todos · diurno · noturno)
 
 /* ---------- Despachante: carrega tudo quando a obra abre ---------- */
 let _obrEstacasDesatualizadas = false;   // hotfix carga do banco: a aba Estacas recarrega no próximo clique
@@ -241,7 +242,7 @@ async function carregarMaquinasDaObra(obraId){
     if(o.origem === "mobilizacao")
       return `<span class="mob-chip" title="Mobilização ${esc(o.mob_status || "")}: é ela que diz onde a máquina está">🚚 mobilização${o.papel === "apoio" ? " (apoio)" : ""} · desde ${d(o.de)}</span>`;
     if(o.origem === "rdo")
-      return `<span class="mob-chip" title="Diários e execuções desta máquina na obra nos últimos 60 dias">📋 ${o.qtd_rdos || 0} RDO${o.qtd_rdos === 1 ? "" : "s"} · ${num(o.metros || 0)} m · ${d(o.de)}–${d(o.ate)}</span>`;
+      return `<span class="mob-chip" title="Diários e execuções desta máquina na obra nos últimos 60 dias">📋 ${esc(o.qtd_rdos || 0)} RDO${o.qtd_rdos === 1 ? "" : "s"} · ${num(o.metros || 0)} m · ${d(o.de)}–${d(o.ate)}</span>`;
     return `<span class="mob-chip${o.vigente ? "" : " meta"}" title="${esc(o.observacao || "Vínculo manual")}">✍️ manual · ${d(o.de)}–${d(o.ate)}${o.condutor_nome ? " · condutor " + esc(o.condutor_nome) : ""}${o.vigente ? "" : " (encerrado)"}
       ${pode ? `<button type="button" class="btn-rem" data-maq-acao="${o.vigente ? "encerrar" : "excluir"}" data-maq-id="${esc(o.referencia_id)}" title="${o.vigente ? "Encerrar o vínculo hoje" : "Excluir o vínculo"}">${o.vigente ? "⏹" : "&times;"}</button>` : ""}</span>`;
   };
@@ -678,12 +679,16 @@ async function carregarRDOsDaObra(obraId){
   };
 
   // fase 94 (#77): um diário por máquina — filtro por máquina, coluna Máquina e aviso dos diários sem máquina
-  if(_obrRdoFiltroObra !== obraId){ _obrRdoFiltroMaq = ""; _obrRdoFiltroObra = obraId; }
+  if(_obrRdoFiltroObra !== obraId){ _obrRdoFiltroMaq = ""; _obrRdoFiltroTurno = ""; _obrRdoFiltroObra = obraId; }
   const maquinas = [...new Map(todos.filter(r => r.equipamento_id).map(r => [r.equipamento_id, r.maquina || "?"])).entries()]
     .sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR", { numeric: true }));
   const semMaq = todos.filter(r => !r.equipamento_id).length;
   if(_obrRdoFiltroMaq && _obrRdoFiltroMaq !== "sem" && !maquinas.some(([id]) => id === _obrRdoFiltroMaq)) _obrRdoFiltroMaq = "";
-  const data = todos.filter(r => _obrRdoFiltroMaq === "sem" ? !r.equipamento_id : (!_obrRdoFiltroMaq || r.equipamento_id === _obrRdoFiltroMaq));
+  // fase 134b: filtro de período (diário sem período conta como diurno)
+  const turnoDe = (r) => r.turno_campo === "noturno" ? "noturno" : "diurno";
+  const noturnos = todos.filter(r => turnoDe(r) === "noturno").length;
+  const data = todos.filter(r => (_obrRdoFiltroMaq === "sem" ? !r.equipamento_id : (!_obrRdoFiltroMaq || r.equipamento_id === _obrRdoFiltroMaq))
+    && (!_obrRdoFiltroTurno || turnoDe(r) === _obrRdoFiltroTurno));
   // fase 101 (#85): "atribuir máquina" em lote aos diários sem máquina (RPC rdo_atribuir_maquina; mesmos cargos de rdo_write)
   const atribuiLote = !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado"].includes(usuarioAtual.cargo);
 
@@ -695,6 +700,11 @@ async function carregarRDOsDaObra(obraId){
         <option value="sem"${_obrRdoFiltroMaq === "sem" ? " selected" : ""}>Sem máquina${semMaq ? ` (${semMaq})` : ""}</option>
         ${maquinas.map(([id, cod]) => `<option value="${esc(id)}"${_obrRdoFiltroMaq === id ? " selected" : ""}>${esc(cod)}</option>`).join("")}
       </select>
+      <select id="obr-rdo-f-turno" title="Fase 134b: a mesma máquina pode ter um diário diurno e um noturno no mesmo dia" style="max-width:190px;">
+        <option value="">Todos os períodos</option>
+        <option value="diurno"${_obrRdoFiltroTurno === "diurno" ? " selected" : ""}>Diurno</option>
+        <option value="noturno"${_obrRdoFiltroTurno === "noturno" ? " selected" : ""}>Noturno${noturnos ? ` (${noturnos})` : ""}</option>
+      </select>
       <button type="button" class="btn" id="btn-rdo-novo">+ Novo RDO</button>
     </div>
     ${semMaq ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:8px 12px;margin-bottom:10px;font-size:var(--txt-sm);">
@@ -705,10 +715,13 @@ async function carregarRDOsDaObra(obraId){
         <button type="button" class="btn btn-sm" id="btn-obr-rdo-atribuir">Atribuir máquina aos marcados</button>
       </div>` : ""}
     </div>` : ""}`;
-  const ligarFiltroMaq = () => $("obr-rdo-f-maq")?.addEventListener("change", (ev) => { _obrRdoFiltroMaq = ev.target.value; carregarRDOsDaObra(obraId); });
+  const ligarFiltroMaq = () => {
+    $("obr-rdo-f-maq")?.addEventListener("change", (ev) => { _obrRdoFiltroMaq = ev.target.value; carregarRDOsDaObra(obraId); });
+    $("obr-rdo-f-turno")?.addEventListener("change", (ev) => { _obrRdoFiltroTurno = ev.target.value; carregarRDOsDaObra(obraId); });   // fase 134b
+  };
 
   if(!data || !data.length){
-    cont.innerHTML = `${header}<p class="vazio">${todos.length ? "Nenhum RDO para esta máquina." : "Nenhum RDO registrado."}</p>`;
+    cont.innerHTML = `${header}<p class="vazio">${todos.length ? "Nenhum RDO para esta máquina ou período." : "Nenhum RDO registrado."}</p>`;
     $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
     ligarFiltroMaq();
     if(semMaq && atribuiLote) obrRdoLigarAtribuir(obraId);
@@ -744,6 +757,7 @@ async function carregarRDOsDaObra(obraId){
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
       <td>${atribuiLote && !r.equipamento_id ? `<input type="checkbox" class="obr-rdo-sel" data-rdo="${esc(r.id)}" title="Marcar para atribuir máquina" /> ` : ""}${dataBR(r.data)}</td>
       <td>${r.equipamento_id ? esc(r.maquina || "?") : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho">sem máquina</span>'}</td>
+      <td>${turnoDe(r) === "noturno" ? '<span class="tag azul" title="Diário do período noturno (fase 134b)">Noturno</span>' : "Diurno"}</td>
       <td>${esc(lblsTipo[r.tipo_servico] || r.tipo_servico)}</td>
       <td>${esc(r.qtd_estacas_executadas || 0)}</td>
       <td title="${esc(tituloVinc)}" style="color:${corVinc};font-weight:600;">
@@ -758,7 +772,7 @@ async function carregarRDOsDaObra(obraId){
   cont.innerHTML = `${header}${grafico}
     <div class="tabela-rola"><table>
       <thead><tr>
-        <th>Data</th><th title="Fase 94: um diário por máquina">Máquina</th><th>Tipo de serviço</th><th>Estacas</th>
+        <th>Data</th><th title="Fase 94: um diário por máquina">Máquina</th><th title="Fase 134b: diurno ou noturno; a mesma máquina pode ter os dois no mesmo dia">Período</th><th>Tipo de serviço</th><th>Estacas</th>
         <th title="Execuções vinculadas a estacas cadastradas / total de execuções">Vinculadas</th>
         <th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th>
       </tr></thead>
@@ -1447,12 +1461,12 @@ async function obrPmCarregar(obraId){
     if(podeOp){
       const { data: lista } = await sb.from("vw_permutas").select("id,numero,cliente_nome,percentual_padrao,status").order("numero");
       if(obraId !== obraEditId) return;
-      opts = (lista || []).filter(p => p.status !== "quitada").map(p => `<option value="${esc(p.id)}" data-pct="${p.percentual_padrao ?? ""}">${esc(p.numero)} · ${esc(p.cliente_nome || "")}${p.percentual_padrao != null ? " · " + num(p.percentual_padrao) + "%" : ""}</option>`).join("");
+      opts = (lista || []).filter(p => p.status !== "quitada").map(p => `<option value="${esc(p.id)}" data-pct="${esc(p.percentual_padrao ?? "")}">${esc(p.numero)} · ${esc(p.cliente_nome || "")}${p.percentual_padrao != null ? " · " + num(p.percentual_padrao) + "%" : ""}</option>`).join("");
     }
     box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4>
       <p class="meta">Obra sem permuta: as medições são recebidas em dinheiro.</p>
       ${podeOp ? `<div class="grade">
-        <div class="campo largo"><label>Permuta</label><select id="obr-pm-permuta"><option value="">— escolher —</option>${opts}</select></div>
+        <div class="campo largo"><label>Permuta</label><select id="obr-pm-permuta"><option value="">— escolher —</option>${/* html */ opts}</select></div>
         <div class="campo"><label>% da medição em permuta</label><input id="obr-pm-pct" type="number" step="0.01" min="0" max="100" placeholder="vazio = padrão" /></div>
       </div>
       <div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn-sec" id="btn-obr-pm-ligar">🔗 Ligar a obra à permuta</button>
@@ -1464,7 +1478,7 @@ async function obrPmCarregar(obraId){
   if(obraId !== obraEditId) return;
   if(!p){ box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4><p class="vazio">Permuta ligada não encontrada.</p>`; return; }
   const pct = pc.percentual ?? p.percentual_padrao;
-  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${lbl}</span><strong>${val}</strong></div>`;
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
   const ST = { a_formalizar: ["A formalizar", "cinza"], em_execucao: ["Em execução", "azul"], quitada: ["Quitada", "verde"], excedida: ["Excedida", "vermelho"], vencida: ["Vencida", "vermelho"] };
   const st = ST[p.status] || [p.status, "cinza"];
   box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4>
@@ -1478,7 +1492,7 @@ async function obrPmCarregar(obraId){
       ${chip("Saldo do imóvel", `<span class="${Number(p.saldo) < -1 ? "txt-perigo" : ""}">${p.saldo != null ? brl(p.saldo) : "—"}</span>`)}
       ${p.executar_ate ? chip("Executar até", dataBR(p.executar_ate)) : ""}
       ${chip("Instrumento", esc(p.instrumento_tipo || "—") + (p.instrumento_assinado ? "" : ' <span class="txt-perigo">(sem assinatura)</span>'))}
-      ${chip("Status", `<span class="tag ${st[1]}">${esc(st[0])}</span>`)}
+      ${chip("Status", `<span class="tag ${esc(st[1])}">${esc(st[0])}</span>`)}
     </div>
     ${podeOp ? `<div class="form-acoes compacta" style="justify-content:flex-start;">
       <button type="button" class="btn-sec" id="btn-obr-pm-pct" title="% das medições novas desta obra (as já lançadas mudam na própria medição)">% desta obra</button>

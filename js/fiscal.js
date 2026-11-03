@@ -221,7 +221,7 @@ async function fiscalEmpresaRender(pref){
   const e = data || {};
   _fiscalEmpresa[pref] = e;
   const pode = typeof podeEmitirFiscal === "function" && podeEmitirFiscal();
-  const id = s => `${pref}-${s}`;
+  const id = s => `${esc(pref)}-${esc(s)}`;
   const v = x => esc(x == null ? "" : x);
   const pend = fiscalEmpresaPendencias(e);
   const amb = e.fiscal_ambiente || "homologacao";
@@ -236,7 +236,7 @@ async function fiscalEmpresaRender(pref){
       <div class="campo largo"><label>Razão social</label><input id="${id("razao")}" value="${v(e.fiscal_razao_social)}" /></div>
       <div class="campo"><label>Inscrição estadual</label><input id="${id("ie")}" value="${v(e.fiscal_ie)}" /></div>
       <div class="campo"><label>Inscrição municipal</label><input id="${id("im")}" value="${v(e.fiscal_im)}" /></div>
-      <div class="campo"><label>Regime tributário</label><select id="${id("regime")}"><option value="">— não informado —</option>${Object.entries(FISCAL_REGIMES).map(([k, t]) => `<option value="${k}" ${e.fiscal_regime_tributario === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
+      <div class="campo"><label>Regime tributário</label><select id="${id("regime")}"><option value="">— não informado —</option>${Object.entries(FISCAL_REGIMES).map(([k, t]) => `<option value="${esc(k)}" ${e.fiscal_regime_tributario === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
       <div class="campo"><label>CNAE principal</label><input id="${id("cnae")}" value="${v(e.fiscal_cnae)}" placeholder="0000-0/00" /></div>
       <div class="campo"><label>Código de serviço municipal</label><input id="${id("codserv")}" value="${v(e.fiscal_codigo_servico)}" placeholder="lista do município (Itabira)" /></div>
       <div class="campo"><label>Item da LC 116</label><input id="${id("lc116")}" value="${v(e.fiscal_item_lc116 || "7.02")}" placeholder="7.02" title="Fundações = 7.02" /></div>
@@ -263,16 +263,16 @@ async function fiscalEmpresaRender(pref){
 /* ---------- Fase 105b: NF-e de remessa e retorno (campos da empresa) ---------- */
 const FISCAL_CST_SUGESTOES = [["41", "não tributada (regime normal)"], ["50", "suspensão (regime normal)"], ["90", "outras (regime normal)"], ["400", "não tributada pelo Simples (CSOSN)"], ["900", "outras do Simples (CSOSN)"]];
 function fiscalEmpresaHtml105b(pref, e){
-  const id = s => `${pref}-${s}`;
+  const id = s => `${esc(pref)}-${esc(s)}`;
   const v = x => esc(x == null ? "" : x);
   const uf = String(e.fiscal_uf || "").toUpperCase();
   return `<h3 class="titulo-bloco">NF-e de remessa e retorno (fase 105b)</h3>
     <p class="nota">Sem destaque de ICMS. O contador define CST/CSOSN, CFOPs e o texto legal antes da primeira nota; item com CFOP próprio usa o dele.</p>
     <div class="grade">
-      <div class="campo"><label>UF da sede</label><select id="${id("uf")}"><option value="">—</option>${UFS.map(u => `<option value="${u.toLowerCase()}" ${uf === u ? "selected" : ""}>${u}</option>`).join("")}</select></div>
+      <div class="campo"><label>UF da sede</label><select id="${id("uf")}"><option value="">—</option>${UFS.map(u => `<option value="${esc(u.toLowerCase())}" ${uf === u ? "selected" : ""}>${esc(u)}</option>`).join("")}</select></div>
       <div class="campo"><label>Município da sede (IBGE)</label><input id="${id("mun")}" maxlength="7" value="${v(e.fiscal_codigo_municipio)}" placeholder="3131703 = Itabira" /></div>
       <div class="campo"><label>CST/CSOSN do ICMS</label><input id="${id("cst")}" maxlength="3" list="${id("cst-lista")}" value="${v(e.fiscal_cst_icms_remessa)}" placeholder="41 (normal) ou 400 (Simples)" />
-        <datalist id="${id("cst-lista")}">${FISCAL_CST_SUGESTOES.map(([c, t]) => `<option value="${c}">${esc(t)}</option>`).join("")}</datalist></div>
+        <datalist id="${id("cst-lista")}">${FISCAL_CST_SUGESTOES.map(([c, t]) => `<option value="${esc(c)}">${esc(t)}</option>`).join("")}</datalist></div>
       <div class="campo"><label>CST PIS/COFINS na remessa</label><input id="${id("pis-rem")}" maxlength="2" value="${v(e.fiscal_cst_pis_cofins_remessa)}" placeholder="49" title="49 = outras operações de saída" /></div>
       <div class="campo"><label>CST PIS/COFINS no retorno</label><input id="${id("pis-ret")}" maxlength="2" value="${v(e.fiscal_cst_pis_cofins_retorno)}" placeholder="98" title="98 = outras operações de entrada" /></div>
       <div class="campo"><label>CFOP remessa dentro da UF</label><input id="${id("cfop-rd")}" maxlength="4" value="${v(e.fiscal_cfop_remessa_dentro_uf)}" placeholder="5949" /></div>
@@ -320,7 +320,7 @@ function fiscalEmpresaValores105b(pref){
 const FISCAL_NFSE_NATUREZAS = [["1", "1 — tributação no município"], ["2", "2 — tributação fora do município"], ["3", "3 — isenção"],
   ["4", "4 — imune"], ["5", "5 — suspensa por decisão judicial"], ["6", "6 — suspensa por procedimento administrativo"]];
 function fiscalEmpresaHtml105c(pref, e){
-  const id = s => `${pref}-${s}`;
+  const id = s => `${esc(pref)}-${esc(s)}`;
   const v = x => esc(x == null ? "" : x);
   const modelo = e.fiscal_nfse_modelo === "nfse" ? "nfse" : "nfsen";
   const ambNac = e.fiscal_nfse_ambiente_nacional === true;
@@ -344,7 +344,7 @@ function fiscalEmpresaHtml105c(pref, e){
         <option value="false" ${opt === "false" ? "selected" : ""}>Não</option></select></div>
       <div class="campo"><label>Natureza (leiaute municipal)</label><select id="${id("nfse-natureza")}" title="Só no provedor municipal (v2/nfse); o leiaute nacional não usa">
         <option value="">Automática (1 na sede, 2 fora)</option>
-        ${FISCAL_NFSE_NATUREZAS.map(([c, t]) => `<option value="${c}" ${e.fiscal_nfse_natureza_operacao === c ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
+        ${FISCAL_NFSE_NATUREZAS.map(([c, t]) => `<option value="${esc(c)}" ${e.fiscal_nfse_natureza_operacao === c ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
       <div class="campo"><label>IBS/CBS da NFS-e: CST</label><input id="${id("nfse-ibs-cst")}" maxlength="3" value="${v(e.fiscal_nfse_ibs_cbs_cst)}" placeholder="vazio = sem o grupo" /></div>
       <div class="campo"><label>IBS/CBS da NFS-e: classificação</label><input id="${id("nfse-ibs-class")}" maxlength="6" value="${v(e.fiscal_nfse_ibs_cbs_cclass)}" placeholder="6 dígitos (cClassTrib)" /></div>
       <div class="campo largo"><label>Municípios liberados (IBGE da obra)</label><input id="${id("nfse-munis")}" value="${v(munis)}" placeholder="3131703, 3136207" title="Local da prestação em que o app emite. Conferidos na Focus em 22/10/2026: Itabira (3131703) e João Monlevade (3136207). Fora da lista: emitir pela prefeitura." /></div>
@@ -403,7 +403,7 @@ async function fiscalChamarFocus(acao, corpo){
    Focus (API de Empresas). Nada disso é gravado no banco, em log ou no console; o app guarda só a validade. Envio só pelo
    diretor (decisão 2); consulta da validade e registro do webhook por quem emite. */
 function fiscalCertificadoHtml(pref, e, pode){
-  const id = s => `${pref}-${s}`;
+  const id = s => `${esc(pref)}-${esc(s)}`;
   const diretor = !!usuarioAtual && usuarioAtual.cargo === "diretor";
   const val = e.fiscal_certificado_validade;
   const vencido = val && String(val).slice(0, 10) < hojeISO();
@@ -426,7 +426,7 @@ function fiscalCertificadoHtml(pref, e, pode){
     <p class="nota">O arquivo e a senha vão direto para a Focus pela função do servidor e não ficam guardados no app; fica só a validade. O webhook é registrado por ambiente: ao virar para produção, registre de novo.</p>`;
 }
 function fiscalCertificadoLigar(pref){
-  const id = s => `${pref}-${s}`;
+  const id = s => `${esc(pref)}-${esc(s)}`;
   $(id("cert-enviar"))?.addEventListener("click", () => comBotaoTravado(id("cert-enviar"), () => fiscalCertificadoEnviar(pref)));
   $(id("cert-status"))?.addEventListener("click", () => comBotaoTravado(id("cert-status"), async () => {
     const r = await fiscalChamarFocus("certificado_status");

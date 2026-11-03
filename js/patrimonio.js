@@ -141,7 +141,7 @@ function patEstadoHtml(b){
     return partes.map(p => {
       const [cond, n] = p.split(":");
       const o = (STATUS.acessorio || {})[cond] || (cond === "perdido" ? (STATUS.acessorio_local || {}).perdido : null);
-      return `<span class="tag ${o ? o.cor : "cinza"}" title="${esc(o ? o.label : cond)}">${esc(o ? o.label : cond)} · ${esc(n)}</span>`;
+      return `<span class="tag ${esc(o ? o.cor : "cinza")}" title="${esc(o ? o.label : cond)}">${esc(o ? o.label : cond)} · ${esc(n)}</span>`;
     }).join(" ");
   }
   const tag = b.titularidade_bem ? `<span class="tag ${b.titularidade_bem === "permuta" ? "ambar" : "verde"}">${esc(b.titularidade_bem === "permuta" ? "Permuta" : "Empresa")}</span>` : "—";
@@ -345,7 +345,7 @@ function renderPatAvaliacao(dados){
   };
   /* sublinha de cabeçalho por grupo da Contagem Geral (CAMISAS, HASTES…) dentro de "Acessórios das raízes", com subtotal */
   const cabecalhoSub = (nome, n, pecas, sem, tot) => `<tr class="pat-grupo" title="Linha da Contagem Geral do módulo Acessórios (grupo de contagem do modelo)"><td colspan="5" style="padding-left:28px;"><em>${esc(nome)}</em>
-        <span class="meta">· ${n} ${n === 1 ? "modelo" : "modelos"} · ${num(pecas)} ${pecas === 1 ? "peça" : "peças"}${sem ? ` · <span class="txt-perigo">${sem} sem valor</span>` : ""}</span></td>
+        <span class="meta">· ${esc(n)} ${n === 1 ? "modelo" : "modelos"} · ${num(pecas)} ${pecas === 1 ? "peça" : "peças"}${sem ? ` · <span class="txt-perigo">${esc(sem)} sem valor</span>` : ""}</span></td>
       <td class="num"><strong>${brl(tot)}</strong></td><td colspan="2"></td></tr>`;
   const corpo = grupos.map(g => {
     let sub = 0, sem = 0;
@@ -366,7 +366,7 @@ function renderPatAvaliacao(dados){
     total += sub; semTotal += sem;
     return `<tr class="pat-grupo"><td colspan="5"><strong>${esc(patRotuloGrupo(g.grupo))}</strong>
         <span class="meta">· ${g.bens.length} ${g.bens.length === 1 ? "bem" : "bens"}${sem ? ` · <span class="txt-perigo">${sem} sem valor</span>` : ""}</span></td>
-      <td class="num"><strong>${brl(sub)}</strong></td><td colspan="2"></td></tr>${partes.join("")}`;
+      <td class="num"><strong>${brl(sub)}</strong></td><td colspan="2"></td></tr>${/* html */ partes.join("")}`;
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table class="pat-tabela">
     <thead><tr>
@@ -375,7 +375,7 @@ function renderPatAvaliacao(dados){
     </tr></thead>
     <tbody>${corpo}</tbody>
     <tfoot><tr><td colspan="5"><strong>Total ${esc(ano)}${$("pat-busca").value || $("pat-f-grupo").value || $("pat-f-sem").checked ? " (filtro)" : ""}</strong>
-      ${semTotal ? `<span class="meta">· ${semTotal} sem valor</span>` : ""}</td>
+      ${semTotal ? `<span class="meta">· ${esc(semTotal)} sem valor</span>` : ""}</td>
       <td class="num"><strong>${brl(total)}</strong></td><td colspan="2"></td></tr></tfoot>
   </table></div>`;
 }

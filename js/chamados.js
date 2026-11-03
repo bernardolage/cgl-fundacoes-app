@@ -405,7 +405,7 @@ function renderFichaChamado(erroComentarios){
         .replace(/\[sugere:\s*([a-z_]+)\]/gi, (_m, st) => `<span class="tag cinza">ao aprovar: ${esc(CHAM_SUGERE[st.toLowerCase()] || st)}</span>`);
       const corPref = (p) => /^(resposta|confirmado)/i.test(p) ? "verde" : /^duplicado/i.test(p) ? "cinza" : /^(pergunta|reaberto)/i.test(p) ? "ambar" : "azul";
       // o botão antigo "Aprovar resposta" só existe antes da migration do lote S47 (depois, o bloco "Esperando" aprova)
-      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${corPref(pref[1])}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) && !chamTemEspera(c) && !chamSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">✅ Aprovar resposta</button>` : ""}</div>`;
+      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${corPref(pref[1])}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${/* html */ corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) && !chamTemEspera(c) && !chamSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">✅ Aprovar resposta</button>` : ""}</div>`;
     }).join("") : `<p class="vazio">Sem comentários ainda. A triagem diária (18h) registra aqui o andamento.</p>`}</div>
     <div class="campo largo" style="margin-top:10px;"><label>Comentar</label><textarea id="cham-novo-comentario" rows="3" placeholder="${podeTriar ? "Registre a triagem, a decisão ou a resolução. Prefixe com [resolução] para destacar." : "Complemente o chamado (mais detalhes, prints descritos, o que mudou)."}"></textarea></div>
     <div id="cham-ficha-aviso" class="aviso"></div>
@@ -517,7 +517,7 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
         <div class="campo" id="cham-perg-usuario-campo" style="display:none;"><label for="cham-perg-usuario">Pessoa</label>
           <select id="cham-perg-usuario"><option value="">Carregando…</option></select></div>
         <div class="campo"><label for="cham-perg-sugere">Ao aprovar, vai para</label>
-          <select id="cham-perg-sugere">${Object.entries(CHAM_SUGERE).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
+          <select id="cham-perg-sugere">${Object.entries(CHAM_SUGERE).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></div>
         <div class="campo largo"><label for="cham-perg-texto">Pergunta ou resposta sugerida</label>
           <textarea id="cham-perg-texto" rows="3" placeholder="Pergunta: o que falta para seguir. Para uma resposta pronta que a pessoa só aprova, comece com [resposta sugerida]."></textarea></div>
       </div>
@@ -525,7 +525,7 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
         <span class="meta">Prazo: 5 dias úteis. Entra na Minha fila de quem responde.</span></div>
     </details>`;
   }
-  return html;
+  return /* html */ html;
 }
 let _chamUsuariosAtivos = null;
 async function chamAtualizarPerguntarUsuario(){

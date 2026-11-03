@@ -14,7 +14,10 @@
      • INJEÇÃO = sim                   → injeção da estaca (saco, volume e pressão em 0 = sem consumo)
      • outro texto em INJEÇÃO          → observação da estaca
      • ABASTECIMENTO > 0               → abastecimento do dia (litros)
-   Fica fora: MEDIÇÃO (é da medição), as abas Planilha1 e DADOS. Período diferente de DIURNO só avisa.
+   Fica fora: MEDIÇÃO (é da medição), as abas Planilha1 e DADOS.
+   Fase 134b: a coluna PERÍODO define turno_campo (diurno/noturno) de cada linha; coluna vazia usa o nome do arquivo
+   ("noturno"/"noite" no nome = noturno). Planilha com os dois períodos no mesmo dia separa as linhas e abre um diário para
+   cada um (chave "AAAA-MM-DD@noturno" do pipeline, rdoDiaChave em rdo.js), com aviso na prévia.
    Depende de SheetJS (XLSX) e dos utilitários de rdo_import_maya.js (mayaNorm, mayaDataISO, mayaIntervaloAlmoco),
    usados só em tempo de execução.
    ==================================================================== */
@@ -108,8 +111,12 @@ function rg113Uniao(trechos){
   return { metros: iv.length ? rg113R2(total) : null, sobrepoe };
 }
 
-/* wb (SheetJS lido com cellDates: true) → { dias[], ... } no contrato v3 */
-function rg113ParaDias(wb){
+/* fase 134b: período da linha (coluna PERÍODO) ou do nome do arquivo; texto fora de diurno/noturno fica como diurno e avisa */
+const rg113TurnoDe = (txt) => /noturn|noite/i.test(String(txt || "")) ? "noturno" : "diurno";
+const rg113TurnoReconhecido = (txt) => /^\s*(diurno|dia|noturno|noite)\s*$/i.test(String(txt || ""));
+
+/* wb (SheetJS lido com cellDates: true) → { dias[], ... } no contrato v3. nomeArquivo decide o período das linhas sem PERÍODO. */
+function rg113ParaDias(wb, nomeArquivo){
   const det = rg113Detectar(wb);
   if(!det) throw new Error("Não encontrei a aba SEPARADOS (cabeçalho com \"NOME ESTACA\" e \"D P M O\") na planilha RG 11.3.");
   const { linhas, cab, linhaCab } = det;
@@ -127,10 +134,12 @@ function rg113ParaDias(wb){
   const cel = (r, k) => C[k] >= 0 ? r[C[k]] : null;
 
   const dias = {};
-  const dia = (iso) => (dias[iso] = dias[iso] || { data: iso, obra: "", tipo_servico: "estaca_raiz", maquina: null, tempo_manha: null, tempo_tarde: null,
+  const turnoArquivo = rg113TurnoDe(nomeArquivo);
+  // fase 134b: um "dia" por data E período; a chave do pipeline (rdoDiaChave) separa os dois diários do mesmo dia
+  const dia = (iso, turno) => (dias[iso + "|" + turno] = dias[iso + "|" + turno] || { data: iso, turno_campo: turno, obra: "", tipo_servico: "estaca_raiz", maquina: null, tempo_manha: null, tempo_tarde: null,
     responsavel: null, atividades: null, observacoes: null, almoco_inicio: null, almoco_fim: null, intervalo_minutos: null,
     equipe: [], injecao: [], estacas: [], abastecimentos: [], justificativa: [], raiz_dados: null,
-    _nomes: [], _obs: [], _ent: null, _sai: null, _ests: {}, _bol: [], _locais: [], _blocos: [], _periodos: [] });
+    _nomes: [], _obs: [], _ent: null, _sai: null, _ests: {}, _bol: [], _locais: [], _blocos: [], _periodosEstranhos: [] });
   const addU = (arr, v) => { if(v && !arr.includes(v)) arr.push(v); };
   let nLinhas = 0, nFora = 0;
 
@@ -140,11 +149,11 @@ function rg113ParaDias(wb){
     // linha-modelo da planilha (data 00/01/1900, fórmula sem lançamento) sai calada; sem data e com conteúdo, avisa
     if(!iso){ if(!rg113Txt(cel(r, "data")) && !rg113EhData(cel(r, "data")) && r.some(c => rg113Txt(c))) nFora++; continue; }
     nLinhas++;
-    const d = dia(iso);
+    const per = rg113Txt(cel(r, "periodo"));
+    const d = dia(iso, per ? rg113TurnoDe(per) : turnoArquivo);
+    if(per && !rg113TurnoReconhecido(per)) addU(d._periodosEstranhos, per);
     const hi = rg113Hora(cel(r, "ini")), hf = rg113Hora(cel(r, "fim"));
     const desc = rg113Txt(cel(r, "desc")), dpmo = rg113Txt(cel(r, "dpmo"));
-    const per = rg113Txt(cel(r, "periodo"));
-    if(per && mayaNorm(per) !== "diurno") addU(d._periodos, per);
     const eqp = rg113Txt(cel(r, "equip"));
     if(eqp && !d.maquina) d.maquina = eqp;
     if(hi || hf){
@@ -194,14 +203,20 @@ function rg113ParaDias(wb){
     }
   }
 
-  const lista = Object.values(dias).sort((a, b) => a.data.localeCompare(b.data));
+  // diurno antes do noturno no mesmo dia
+  const lista = Object.values(dias).sort((a, b) => a.data.localeCompare(b.data) || (a.turno_campo === "noturno" ? 1 : 0) - (b.turno_campo === "noturno" ? 1 : 0));
   if(!lista.length) throw new Error("A aba SEPARADOS não tem linhas com data.");
   const duvidas = [];
   const injSemConsumo = [];
   const maxAnterior = {};   // estaca → { ate, dia }: maior profundidade já perfurada em dia anterior (reperfuração)
+  // fase 134b: dia com os dois períodos vira dois diários; o noturno ainda não foi conferido com planilha real
+  const diasDuplos = lista.filter(d => d.turno_campo === "noturno" && lista.some(o => o.data === d.data && o.turno_campo === "diurno")).map(d => rg113DataBR(d.data));
+  if(diasDuplos.length) duvidas.push(`${diasDuplos.join(", ")}: diurno e noturno na mesma planilha; abre um diário para cada período, com a equipe de cada um`);
+  const nNoturno = lista.filter(d => d.turno_campo === "noturno").length;
+  if(nNoturno) duvidas.push(`${nNoturno} dia(s) no período noturno${turnoArquivo === "noturno" && !lista.some(d => d.turno_campo === "diurno") ? " (pelo nome do arquivo)" : ""}: o leitor foi conferido só com o diurno; confira data e metragem antes de gravar`);
   lista.forEach(d => {
     d.equipe = d._nomes.map(nome => ({ nome, funcao: null, hora_entrada: d._ent, hora_saida: d._sai, horas_normais: null, horas_50: null, horas_100: null }));
-    if(d._periodos.length) duvidas.push(`${rg113DataBR(d.data)}: período ${d._periodos.join("/")} (o leitor foi conferido só com o diurno)`);
+    if(d._periodosEstranhos.length) duvidas.push(`${rg113DataBR(d.data)}: período "${d._periodosEstranhos.join("/")}" não reconhecido (tratado como ${d.turno_campo})`);
     Object.values(d._ests).forEach(e => {
       const u = rg113Uniao(e.trechos);
       if(u.sobrepoe) duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: trechos sobrepostos (reperfuração); metragem do dia pela união (${rg113M(u.metros)} m)`);
@@ -244,7 +259,7 @@ function rg113ParaDias(wb){
       d.sem_estacas = true;
     }
     d.raiz_dados = (d._locais.length || d._blocos.length) ? { local_obra: d._locais.join(", ") || null, bloco: d._blocos.join(", ") || null } : null;
-    ["_nomes", "_obs", "_ent", "_sai", "_ests", "_bol", "_locais", "_blocos", "_periodos"].forEach(k => delete d[k]);
+    ["_nomes", "_obs", "_ent", "_sai", "_ests", "_bol", "_locais", "_blocos", "_periodosEstranhos"].forEach(k => delete d[k]);
   });
   if(injSemConsumo.length) duvidas.push(`${injSemConsumo.length} injeção(ões) sem consumo na planilha (saco, volume e pressão em 0): ${injSemConsumo.join(", ")}`);
 
@@ -254,8 +269,9 @@ function rg113ParaDias(wb){
   return {
     dias: lista, manuscrito: false, confianca: "alta", duvidas,
     origem_label: "📊 Planilha RG 11.3 (diário de estaca raiz, aba SEPARADOS)",
-    observacoes: `${nLinhas} linha(s) em ${lista.length} dia(s), de ${dataBRrg(lista[0].data)} a ${dataBRrg(lista[lista.length - 1].data)}; ` +
-      `${nEst} estaca(s)-dia em ${lista.length - nSem} dia(s)` +
+    observacoes: `${nLinhas} linha(s) em ${lista.length} diário(s), de ${dataBRrg(lista[0].data)} a ${dataBRrg(lista[lista.length - 1].data)}` +
+      (nNoturno ? ` (${nNoturno} noturno${nNoturno > 1 ? "s" : ""})` : "") + `; ` +
+      `${nEst} estaca(s)-dia em ${lista.length - nSem} diário(s)` +
       (nSem ? `, ${nSem} dia(s) sem estaca (viram RDO só com atividades e equipe)` : "") +
       (nAbast ? `, ${nAbast} abastecimento(s)` : "") +
       (nFora ? ` · ${nFora} linha(s) sem data válida ignoradas` : "") + ". MEDIÇÃO fica de fora (é da medição)."
@@ -274,7 +290,7 @@ async function processarArquivoXlsxRG113(file){
   const txtBtn = btn ? btn.textContent : "";
   if(btn){ btn.disabled = true; btn.textContent = "📊 Lendo o RG 11.3…"; }
   try {
-    const data = rg113ParaDias(wb);
+    const data = rg113ParaDias(wb, file && file.name);   // fase 134b: o nome do arquivo decide o período das linhas sem PERÍODO
     _iaOrigem = "xlsx_rg113";
     const obraSel = $("rdo-obra")?.value || null;
     await montarPreviewDias(data, "xlsx_rg113", obraSel);

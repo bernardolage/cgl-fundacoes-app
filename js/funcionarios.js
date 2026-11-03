@@ -1491,7 +1491,7 @@ function renderFuncAcesso(){
     }
     cont.innerHTML = `<div class="meta bloco" style="margin-bottom:12px;"><span class="tag cinza">Sem login</span> Este funcionário ainda não entra no sistema.</div>
       ${!funcAtivo ? `<p class="vazio">Funcionário inativo ou demitido não recebe login.</p>` : !opera ? `<p class="vazio">Usuário de revisão não cria login.</p>` : `
-      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ? cr.ajuda : "Operadores e ajudantes têm o perfil <em>Operador</em>, encarregados o perfil <em>Encarregado</em>, soldadores, mecânicos e apontadores o perfil <em>Mecânico</em>, o pessoal do almoxarifado o perfil <em>Auxiliar de almoxarifado</em>; outra função pede o perfil aqui. Nas telas aparece a função do cadastro; o perfil decide o que ele acessa."}</p>
+      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ? /* html */ cr.ajuda : "Operadores e ajudantes têm o perfil <em>Operador</em>, encarregados o perfil <em>Encarregado</em>, soldadores, mecânicos e apontadores o perfil <em>Mecânico</em>, o pessoal do almoxarifado o perfil <em>Auxiliar de almoxarifado</em>; outra função pede o perfil aqui. Nas telas aparece a função do cadastro; o perfil decide o que ele acessa."}</p>
       <div class="grade">${/* html */ selCargo}</div>
       ${funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar")}`}`;
     return;

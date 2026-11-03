@@ -321,7 +321,7 @@ async function movTranspEscolher(f){
 }
 function ligarBuscaTransportadora(){
   const ufSel = $("mov-transp-uf");
-  if(ufSel && !ufSel.options.length) ufSel.innerHTML = `<option value="">—</option>` + UFS.map(u => `<option value="${u.toLowerCase()}">${u}</option>`).join("");
+  if(ufSel && !ufSel.options.length) ufSel.innerHTML = `<option value="">—</option>` + UFS.map(u => `<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
   const inp = $("mov-transp-busca"), lista = $("mov-transp-lista");
   if(!inp || !lista || inp.dataset.ligado) return;
   inp.dataset.ligado = "1";

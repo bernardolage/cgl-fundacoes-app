@@ -469,7 +469,7 @@ let _prodTemEpi = false;
 function prodPreencherCatCusto(valor){
   const sel = $("prod-cat-custo"); if(!sel) return;
   const lbl = typeof CMP_CAT_LBL === "object" ? CMP_CAT_LBL : {};
-  sel.innerHTML = `<option value="">— não definida —</option>` + Object.entries(lbl).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  sel.innerHTML = `<option value="">— não definida —</option>` + Object.entries(lbl).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
   sel.value = valor || "";
 }
 function prodAplicarCamposEpi(){

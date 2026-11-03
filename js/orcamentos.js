@@ -757,16 +757,16 @@ function renderOrcLista(dados){
     const chaves = [...grupos.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b, "pt-BR"));
     corpo = chaves.map(k => {
       const g = _orcConcorrencias.find(c => orcConcChave(c.nome) === k);
-      const rot = k ? `${esc(g ? g.nome : grupos.get(k)[0].concorrencia)} · ${esc(g ? orcConcResumo(g) : "")}` : "Sem concorrência";
-      return `<tr class="orc-grupo-conc"><td colspan="${nCols}">${rot}</td></tr>` + grupos.get(k).map(linha).join("");
+      const rot = k ? `${g ? g.nome : grupos.get(k)[0].concorrencia} · ${g ? orcConcResumo(g) : ""}` : "Sem concorrência";
+      return `<tr class="orc-grupo-conc"><td colspan="${nCols}">${esc(rot)}</td></tr>` + grupos.get(k).map(linha).join("");
     }).join("");
   } else corpo = ordenados.map(linha).join("");
-  const th = (col, rot, extra) => _orcOrdem.th(col, rot, extra);
+  const th = (col, rot, extra) => /* html */ _orcOrdem.th(col, rot, extra);
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
       ${th("numero", "Número")}${th("cliente", "Cliente")}${comConc ? th("concorrencia", "Concorrência") : ""}${th("tipo", "Tipo · Porte")}${th("data", "Data")}${th("validade", "Validade")}${th("status", "Status")}${th("valor", "Valor c/ ISS", { cls: "num", title: "Total da proposta com ISS por dentro (lote S44, #65)" })}
     </tr></thead>
-    <tbody>${corpo}</tbody></table></div>`;
+    <tbody>${/* html */ corpo}</tbody></table></div>`;
 }
 
 function renderOrcKanban(dados){
@@ -1369,7 +1369,7 @@ function orcAbrirNovoCliente(){
   ["orc-cli-nome","orc-cli-doc","orc-cli-contato","orc-cli-tel","orc-cli-email","orc-cli-cidade"].forEach(id => { const el = $(id); if(el) el.value = ""; });
   if($("orc-cli-tipo")) $("orc-cli-tipo").value = "juridica";
   const uf = $("orc-cli-uf");
-  if(uf && !uf.options.length) uf.innerHTML = `<option value="">—</option>` + UFS.map(u => `<option value="${u.toLowerCase()}">${u}</option>`).join("");
+  if(uf && !uf.options.length) uf.innerHTML = `<option value="">—</option>` + UFS.map(u => `<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
   if(uf) uf.value = "";
   $("orc-cli-modal").style.display = "flex";
   $("orc-cli-nome")?.focus();

@@ -38,7 +38,7 @@ function apropCompPadrao(){ const d = new Date(); d.setDate(1); d.setMonth(d.get
 function apropOpcoesMes(){
   const opcoes = []; const d = new Date(); d.setDate(1);
   for(let i = 0; i < 18; i++){ const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; opcoes.push(`<option value="${esc(v)}" ${v === _aprop.comp ? "selected" : ""}>${apropCompLabel(v)}</option>`); d.setMonth(d.getMonth() - 1); }
-  return opcoes.join("");
+  return /* html */ opcoes.join("");
 }
 /* linha "Último cálculo" (só contagens e o total da competência) */
 function apropResumoCalculo(res){
@@ -139,7 +139,7 @@ async function renderFuncAprop(){
     <div class="tabela-rola" style="margin-bottom:14px;"><table>
       <thead><tr><th>Funcionário</th><th class="num">Salários</th><th class="num">Benefícios</th><th class="num">Encargos</th><th class="num">Total</th><th>Rateio</th><th>Presença no RDO</th></tr></thead>
       <tbody>${listaFiltrada.map(a => `<tr><td>${esc(a.nome)}</td><td class="num">${apropMoeda(a.sal)}</td><td class="num">${apropMoeda(a.ben)}</td><td class="num">${apropMoeda(a.enc)}</td><td class="num"><strong>${apropMoeda(a.total)}</strong></td>
-          <td class="meta">${esc([...a.destinos].join(" · "))} <em>(${[...a.fonte].map(f => FONTE_LBL[f] || f).join(", ")})</em></td><td class="meta">${esc((presPorFunc.get(a.id) || []).join(" · ") || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="vazio">—</td></tr>`}</tbody>
+          <td class="meta">${esc([...a.destinos].join(" · "))} <em>(${[...a.fonte].map(f => esc(FONTE_LBL[f] || f)).join(", ")})</em></td><td class="meta">${esc((presPorFunc.get(a.id) || []).join(" · ") || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="vazio">—</td></tr>`}</tbody>
     </table></div>
 
     <details style="margin-bottom:12px;"><summary style="cursor:pointer;"><strong>Lançamentos do mês</strong> <span class="meta">(${_aprop.lanc.length}) — HE, prêmio, 13º, férias, rescisão, descontos…</span></summary>

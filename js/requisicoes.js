@@ -74,11 +74,11 @@ function reqDestinoHTML(d){
   if(d.tipo === "separacao"){
     const s = REQ_SEP_STATUS[d.status] || [d.status, "cinza"];
     const rot = `${esc(d.numero)} · ${esc(s[0])}`;
-    return `<span class="tag ${s[1]}" title="separação do almoxarifado (${d.itens} item(ns))">📦 ${reqPodeAbrirSecao("separacoes") ? `<a href="#" class="req-sep" data-sep="${esc(d.destino_id)}">${rot}</a>` : rot}</span>`;
+    return `<span class="tag ${esc(s[1])}" title="separação do almoxarifado (${esc(d.itens)} item(ns))">📦 ${reqPodeAbrirSecao("separacoes") ? `<a href="#" class="req-sep" data-sep="${esc(d.destino_id)}">${rot}</a>` : rot}</span>`;
   }
   const et = (typeof CMP_ETAPA === "object" && CMP_ETAPA[d.etapa]) || { label: d.etapa || d.status, cor: "cinza" };
   const rot = `${esc(d.numero)} · ${esc(et.label)}`;
-  return `<span class="tag ${et.cor}" title="pedido de compra (${d.itens} item(ns))">🛒 ${reqLePedidos() ? `<a href="#" class="req-pedido" data-pedido="${esc(d.destino_id)}">${rot}</a>` : rot}</span>`
+  return `<span class="tag ${esc(et.cor)}" title="pedido de compra (${esc(d.itens)} item(ns))">🛒 ${reqLePedidos() ? `<a href="#" class="req-pedido" data-pedido="${esc(d.destino_id)}">${rot}</a>` : rot}</span>`
     + (d.pode_conferir ? ` <span class="tag ambar" title="o almoxarifado recebeu: confira o material">confira o recebimento</span>` : "")
     + (Number(d.conferencias_vencidas) > 0 ? ` <span class="tag vermelho" title="recebimento sem conferência no prazo">sem conferência</span>` : "")
     + (d.conferido_em ? ` <span class="meta">conferido por ${esc(d.conferido_por_nome || "?")} em ${dataBR(dataLocalISO(new Date(d.conferido_em)))}</span>` : "");
@@ -216,7 +216,7 @@ function reqItemDestinoTxt(it){
     const temDisp = /dispon/.test(pv.motivo || "");
     const saldo = pv.estoque_atual !== null && pv.estoque_atual !== undefined && (!temDisp || Number(pv.disponivel) !== Number(pv.estoque_atual)) ? `saldo ${num(pv.estoque_atual)}` : "";
     const dest = pv.destino === "separacao" ? '<span class="tag verde">separação</span>' : pv.destino === "pedido" ? '<span class="tag azul">compra</span>' : '<span class="tag cinza">atendido</span>';
-    return `${dest} <span class="meta">${esc([saldo, pv.motivo].filter(Boolean).join(" · "))}</span>`;
+    return `${/* html */ dest} <span class="meta">${esc([saldo, pv.motivo].filter(Boolean).join(" · "))}</span>`;
   }
   if(it.separacao_item_id) return '<span class="tag verde">separação</span>';
   if(it.pedido_item_id) return '<span class="tag azul">compra</span>';
@@ -319,7 +319,7 @@ async function reqAbrirAprovar(ids, modo){
   sel.value = reqFornecedorSugerido(ids, linhas.filter(l => l.destino === "pedido").map(l => l.requisicao_item_id));
   const nomeItem = l => { const r = reqs.find(x => x.id === l.requisicao_id); const it = (r?.itens || []).find(i => i.id === l.requisicao_item_id); return it ? reqItemNome(it) : "item"; };
   const numReq = l => (reqs.find(x => x.id === l.requisicao_id) || {}).numero || "";
-  $("req-ped-resumo").innerHTML = `<p class="meta">${reqs.length} requisição(ões): ${reqs.map(r => esc(r.numero)).join(", ")}. ${compra ? "Todos os itens pendentes vão para um pedido de compra." : `${nSep} item(ns) vão para a <strong>separação</strong> do almoxarifado (têm saldo) e ${nPed} para um <strong>pedido de compra</strong>.`} Sem fornecedor o pedido nasce <strong>em cotação</strong> (o fornecedor sai da cotação escolhida); com fornecedor nasce em rascunho. O preço começa no último custo do produto; o comprador ajusta, cota e envia para aprovação.</p>
+  $("req-ped-resumo").innerHTML = `<p class="meta">${reqs.length} requisição(ões): ${reqs.map(r => esc(r.numero)).join(", ")}. ${compra ? "Todos os itens pendentes vão para um pedido de compra." : `${nSep} item(ns) vão para a <strong>separação</strong> do almoxarifado (têm saldo) e ${esc(nPed)} para um <strong>pedido de compra</strong>.`} Sem fornecedor o pedido nasce <strong>em cotação</strong> (o fornecedor sai da cotação escolhida); com fornecedor nasce em rascunho. O preço começa no último custo do produto; o comprador ajusta, cota e envia para aprovação.</p>
     ${linhas.length ? `<div class="tabela-rola"><table><thead><tr><th>Requisição</th><th>Item</th><th class="num">Qtd</th><th class="num">Disponível</th><th>Destino</th></tr></thead><tbody>${linhas.map(l => `<tr>
       <td>${esc(numReq(l))}</td><td>${esc(nomeItem(l))}</td><td class="num">${num(l.quantidade)}</td>
       <td class="num">${l.disponivel === null || l.disponivel === undefined ? "—" : num(l.disponivel)}</td>

@@ -100,8 +100,8 @@ function sepDestinoOptions(i, s){
   const eq = _sepEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)}${e.nome ? " — " + esc(e.nome) : ""}</option>`).join("");
   const cc = _sepCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(c.nome)}</option>`).join("");
   return `<option value=""${sel ? "" : " selected"}>da separação (${esc(sepDestinoSeparacao(s))})</option>`
-    + (ob ? `<optgroup label="Outra obra">${ob}</optgroup>` : "") + (eq ? `<optgroup label="TAG">${eq}</optgroup>` : "")
-    + (cc ? `<optgroup label="Setor / obra interna">${cc}</optgroup>` : "");
+    + (ob ? `<optgroup label="Outra obra">${/* html */ ob}</optgroup>` : "") + (eq ? `<optgroup label="TAG">${/* html */ eq}</optgroup>` : "")
+    + (cc ? `<optgroup label="Setor / obra interna">${/* html */ cc}</optgroup>` : "");
 }
 async function sepMudarDestino(itemId, valor){
   const { error } = await sb.from("separacao_itens").update(sepDestinoDoValor(valor || "")).eq("id", itemId);
@@ -123,7 +123,7 @@ function sepRenderResumoDestino(){
   if(grupos.size < 2 && !valor){ el.innerHTML = ""; return; }
   el.innerHTML = `<div class="card compacto" style="margin-top:12px;"><h4 style="margin:0 0 6px;font-size:var(--txt-md);">Por destino</h4>
     <table><thead><tr><th>Destino</th><th class="num">Itens</th>${valor ? '<th class="num">Valor</th>' : ""}</tr></thead><tbody>
-    ${[...grupos.values()].map(g => `<tr><td>${esc(g.txt)}</td><td class="num">${g.n}</td>${valor ? `<td class="num">${brl(g.v)}</td>` : ""}</tr>`).join("")}
+    ${[...grupos.values()].map(g => `<tr><td>${esc(g.txt)}</td><td class="num">${esc(g.n)}</td>${valor ? `<td class="num">${brl(g.v)}</td>` : ""}</tr>`).join("")}
     </tbody>${valor ? `<tfoot><tr><th>Total</th><th class="num">${_sepItens.length}</th><th class="num">${brl(Number(s.valor_total ?? [...grupos.values()].reduce((t, g) => t + g.v, 0)))}</th></tr></tfoot>` : ""}</table></div>`;
 }
 

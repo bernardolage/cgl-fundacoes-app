@@ -563,7 +563,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
     </div>`;
 
   if(!data || !data.length){
-    cont.innerHTML = `${aditivos}${uploader}<p class="vazio">Nenhum arquivo anexado ainda.</p>`;
+    cont.innerHTML = `${/* html */ aditivos}${uploader}<p class="vazio">Nenhum arquivo anexado ainda.</p>`;
     $(`btn-${px}-enviar`)?.addEventListener("click", () => enviarDocumentoContrato(contratoId, conf));
     return;
   }
@@ -583,7 +583,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
     </tr>`;
   }).join("");
 
-  cont.innerHTML = `${aditivos}${uploader}<div class="tabela-rola"><table>
+  cont.innerHTML = `${/* html */ aditivos}${uploader}<div class="tabela-rola"><table>
     <thead><tr><th>Arquivo</th><th>Tipo</th><th>Descrição</th><th>Tamanho</th><th>Enviado em</th><th class="col-acao"></th></tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 

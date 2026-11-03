@@ -101,7 +101,7 @@ function balPreencherDestino(){
     + `<optgroup label="Setor">${grupo("setor")}</optgroup><optgroup label="Obra interna">${grupo("obra_interna")}</optgroup>`
     + (_balS56 ? `<optgroup label="Acessório" data-ace="1"><option value="ac:">Acessório… (buscar)</option></optgroup>` : "");   // lote S56 (#202)
   const met = $("bal-metodo");   // fase 108c
-  if(met) met.innerHTML = `<option value="">— sem método —</option>` + BAL_METODOS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
+  if(met) met.innerHTML = `<option value="">— sem método —</option>` + BAL_METODOS.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
   balAplicarMetodo();
 }
 /* fase 108c: método só faz sentido com destino obra */
@@ -376,7 +376,7 @@ function balDestinoOptions(atual, rotuloAtual){
     clone.insertBefore(o, clone.children[1] || null);
   }
   [...clone.options].forEach(o => { if(o.value === atual) o.setAttribute("selected", ""); else o.removeAttribute("selected"); });   // atributo: innerHTML não leva a propriedade
-  return clone.innerHTML;
+  return /* html */ clone.innerHTML;   // serializado pelo navegador: já escapado
 }
 function balEditarHTML(m){
   const atual = balDestinoValor(m);

@@ -35,7 +35,7 @@ function epiViewAusente(error){ return !!error && ["42P01", "PGRST205", "42703",
 const EPI_MSG_MIGRATION = "O controle de EPI por colaborador entra quando a migration da fase 100 for aplicada no banco.";
 function epiNorm(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 function epiMesChave(iso){ return String(iso || "").slice(0, 7); }
-function epiMesRotulo(chave){ const [a, m] = chave.split("-"); return `${EPI_MES_LBL[Number(m) - 1]}/${a.slice(2)}`; }
+function epiMesRotulo(chave){ const [a, m] = chave.split("-"); return `${esc(EPI_MES_LBL[Number(m) - 1])}/${esc(a.slice(2))}`; }
 function epiMesesEntre(de, ate){
   const r = []; let [a, m] = de.split("-").map(Number); const [a2, m2] = ate.split("-").map(Number);
   while((a < a2 || (a === a2 && m <= m2)) && r.length < 36){ r.push(`${a}-${String(m).padStart(2, "0")}`); m++; if(m > 12){ m = 1; a++; } }
@@ -175,7 +175,7 @@ function renderEpiFicha(){
   const ano = dataLocalISO(new Date(Date.now() - 365 * 864e5));
   const vencidas = L.filter(r => r.troca_vencida).length;
   const pend = L.filter(r => r.categoria === "epi" && !r.assinatura_em && !r.epi_devolvido_em);
-  const chip = (n, rot, cor) => `<div class="chip"><span>${esc(rot)}</span><strong>${cor ? `<span class="tag ${cor}">${n}</span>` : n}</strong></div>`;
+  const chip = (n, rot, cor) => `<div class="chip"><span>${esc(rot)}</span><strong>${cor ? `<span class="tag ${esc(cor)}">${esc(n)}</span>` : esc(n)}</strong></div>`;
   cont.innerHTML = `<div class="odoo-contexto" style="margin:0 0 10px;">
       ${chip(L.length, "Entregas")}
       ${chip(brl(L.filter(r => r.data_entrega >= ano).reduce((s, r) => s + Number(r.valor || 0), 0)), "Gasto em 12 meses")}
@@ -258,7 +258,7 @@ async function epiGerarFichaPdf(funcionarioId){
       usá-los apenas para a finalidade a que se destinam, responsabilizar-me pela guarda e conservação, comunicar qualquer alteração que os torne
       impróprios para uso e devolvê-los quando solicitado, ciente de que a recusa injustificada ao uso constitui ato faltoso (NR-6, item 6.7.1, e CLT, art. 158).</p>
     <table style="width:100%;border-collapse:collapse;">
-      <thead><tr>${["Data", "Qtd", "Item", "CA", "Troca prevista", "Devolução", "Assinatura"].map(t => `<th style="${cel}font-weight:700;text-align:left;">${t}</th>`).join("")}</tr></thead>
+      <thead><tr>${["Data", "Qtd", "Item", "CA", "Troca prevista", "Devolução", "Assinatura"].map(t => `<th style="${cel}font-weight:700;text-align:left;">${esc(t)}</th>`).join("")}</tr></thead>
       <tbody>${(linhas || []).map((r, i) => `<tr>
         <td style="${cel}white-space:nowrap;">${dataBR(r.data_entrega)}</td>
         <td style="${cel}text-align:right;">${num(r.quantidade)} ${esc(r.unidade || "")}</td>
@@ -266,7 +266,7 @@ async function epiGerarFichaPdf(funcionarioId){
         <td style="${cel}">${esc(r.ca || "—")}</td>
         <td style="${cel}white-space:nowrap;">${r.troca_prevista ? dataBR(r.troca_prevista) : "—"}</td>
         <td style="${cel}white-space:nowrap;">${r.epi_devolvido_em ? dataBR(r.epi_devolvido_em) : ""}</td>
-        <td style="${cel}width:38mm;height:11mm;">${imgs[i] ? `<img src="${imgs[i]}" alt="" style="display:block;max-height:10mm;max-width:36mm;">` : ""}</td>
+        <td style="${cel}width:38mm;height:11mm;">${imgs[i] ? `<img src="${esc(imgs[i])}" alt="" style="display:block;max-height:10mm;max-width:36mm;">` : ""}</td>
       </tr>`).join("")}</tbody></table>
     <p style="font-size:7.5pt;margin:2mm 0 0;">Gerado pelo Controle CGL em ${dataBR(hojeISO())}. Assinaturas colhidas na tela no momento da entrega; as em branco estão pendentes.</p>
   </div>`;
@@ -291,7 +291,7 @@ function epiRenderRelatorio(alvoId){
   epiRelPeriodoPadrao();
   cont.innerHTML = `<div class="epi-rel">
       <div class="lista-topo compacta">
-        <div class="serv-views">${EPI_VISOES.map(([v, l]) => `<button type="button" class="serv-view-btn${v === _epiRel.visao ? " ativo" : ""}" data-epi-visao="${v}">${esc(l)}</button>`).join("")}</div>
+        <div class="serv-views">${EPI_VISOES.map(([v, l]) => `<button type="button" class="serv-view-btn${v === _epiRel.visao ? " ativo" : ""}" data-epi-visao="${esc(v)}">${esc(l)}</button>`).join("")}</div>
         <button type="button" class="btn-sec btn-sm" data-epi-xlsx="1" style="margin-left:auto;">⬇ Exportar .xlsx</button>
       </div>
       <div class="serv-filtros">
@@ -421,7 +421,7 @@ function epiRelDesenhar(alvoId){
         <td>${marca ? `<select data-epi-cat="${esc(r.id)}"><option value=""${!r.categoria_atual || !EPI_CAT_LBL[r.categoria_atual] ? " selected" : ""}>${r.categoria_atual && !EPI_CAT_LBL[r.categoria_atual] ? esc(r.categoria_atual) : "—"}</option><option value="epi"${r.categoria_atual === "epi" ? " selected" : ""}>EPI</option><option value="uniforme"${r.categoria_atual === "uniforme" ? " selected" : ""}>Uniforme</option></select>${r.confere ? "" : ' <span class="tag ambar" title="diferente da sugestão">≠</span>'}`
               : esc(EPI_CAT_LBL[r.categoria_atual] || r.categoria_atual || "—")}</td>
         <td>${editaProd ? `<input data-epi-ca="${esc(r.id)}" value="${esc(r.ca || "")}" placeholder="nº do CA" style="width:90px;" />` : esc(r.ca || "—")}</td>
-        <td class="num">${editaProd ? `<input type="number" min="1" max="3650" step="1" data-epi-val="${esc(r.id)}" value="${esc(r.epi_validade_dias ?? "")}" style="width:72px;text-align:right;" />` : (r.epi_validade_dias ?? "—")}</td></tr>`).join("")}</tbody></table></div>`}`;
+        <td class="num">${editaProd ? `<input type="number" min="1" max="3650" step="1" data-epi-val="${esc(r.id)}" value="${esc(r.epi_validade_dias ?? "")}" style="width:72px;text-align:right;" />` : esc(r.epi_validade_dias ?? "—")}</td></tr>`).join("")}</tbody></table></div>`}`;
   }
 }
 async function epiRelClique(e, alvoId){

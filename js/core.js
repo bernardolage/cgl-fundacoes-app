@@ -623,7 +623,7 @@ function ordenarTabela(colunas, estado){
       const s = atual.col === col ? (atual.dir === "desc" ? "descending" : "ascending") : "none";
       const cls = extra && extra.cls ? " " + extra.cls : "";
       const tit = extra && extra.title ? extra.title + " · " : "";
-      return `<th class="th-ordena${cls}" data-ordena="${esc(col)}" aria-sort="${s}" tabindex="0" title="${esc(tit)}Clique para ordenar (de novo inverte)">${esc(rotulo)}</th>`;
+      return `<th class="th-ordena${esc(cls)}" data-ordena="${esc(col)}" aria-sort="${esc(s)}" tabindex="0" title="${esc(tit)}Clique para ordenar (de novo inverte)">${esc(rotulo)}</th>`;
     },
     alternar(col){
       if(!colunas[col]) return;

@@ -335,7 +335,7 @@ function dashLinhaFilaChamado(a, i){
   const sugerida = dashChamadoEsperando(a) && /^Resposta sugerida:/.test(a.detalhe || "") && !leitura;
   const confirmar = dashChamadoConfirmar(a) && !leitura;
   return `<div class="dash-pendencia-item clicavel" data-fila="${i}" title="Abrir o chamado">
-      <span class="tag ${n.cor}">${esc(n.label)}</span>
+      <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}
         <div class="dash-fila-acoes">
           ${sugerida ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-aprovar="${i}" title="Envia a resposta sugerida em seu nome">✅ Aprovar</button>` : ""}
@@ -432,7 +432,7 @@ async function dashCarregarSeguranca(){
   const porTipo = {};
   _dashSeg.forEach(a => { porTipo[a.tipo] = (porTipo[a.tipo] || 0) + 1; });
   if($("dash-seg-cont")) $("dash-seg-cont").innerHTML = Object.keys(DASH_SEG_TIPO).filter(t => porTipo[t])
-    .map(t => `<span class="tag ${t === "sem_mfa" || t === "leitura_sensivel" ? "ambar" : "cinza"}">${porTipo[t]} ${esc(DASH_SEG_TIPO[t].toLowerCase())}</span>`).join(" ");
+    .map(t => `<span class="tag ${t === "sem_mfa" || t === "leitura_sensivel" ? "ambar" : "cinza"}">${esc(porTipo[t])} ${esc(DASH_SEG_TIPO[t].toLowerCase())}</span>`).join(" ");
   if(!_dashSeg.length){ cont.innerHTML = `<p class="vazio">✅ Nenhum alerta de segurança.</p>`; return; }
   cont.innerHTML = _dashSeg.map((a, i) => {
     const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
@@ -441,7 +441,7 @@ async function dashCarregarSeguranca(){
     const clic = !!a.usuario_id && ["sem_mfa", "convite_pendente", "troca_cargo", "sessoes_encerradas"].includes(a.tipo);
     const quando = a.quando ? new Date(a.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
     return `<div class="dash-pendencia-item${clic ? " clicavel" : ""}" data-seg="${i}"${clic ? ' title="Abrir em Usuários"' : ""}>
-      <span class="tag ${n.cor}">${esc(n.label)}</span>
+      <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(DASH_SEG_TIPO[a.tipo] || a.tipo)}</strong>${quem ? ` · ${esc(quem)}` : ""}
         <div class="meta" title="${esc(a.detalhe || "")}">${esc(a.detalhe || "")}${quando ? ` · ${esc(quando)}` : ""}</div></div>
       ${clic ? '<span class="dash-pend-seta">›</span>' : ""}
@@ -465,8 +465,8 @@ async function dashCarregarEpi(){
   const k = (data || [])[0];
   if(!k){ card.style.display = "none"; return; }
   const ant = Number(k.gasto_mes_anterior || 0), mes = Number(k.gasto_mes || 0);
-  const item = (rot, valor, sub, visao, cor) => `<div class="dash-card${visao ? " clicavel" : ""}"${visao ? ` data-epi-visao="${visao}" title="Abrir no relatório de EPI"` : ""}>
-      <div class="dash-card-rot">${esc(rot)}</div><div class="dash-card-num">${cor ? `<span class="tag ${cor}">${valor}</span>` : valor}</div><div class="dash-card-sub">${sub}</div></div>`;
+  const item = (rot, valor, sub, visao, cor) => `<div class="dash-card${visao ? " clicavel" : ""}"${visao ? ` data-epi-visao="${esc(visao)}" title="Abrir no relatório de EPI"` : ""}>
+      <div class="dash-card-rot">${esc(rot)}</div><div class="dash-card-num">${cor ? `<span class="tag ${esc(cor)}">${esc(valor)}</span>` : esc(valor)}</div><div class="dash-card-sub">${esc(sub)}</div></div>`;
   cont.innerHTML = `<div class="dash-epi-grade">
       ${item("Gasto no mês", brl(mes), ant ? `mês anterior ${brl(ant)}` : "sem gasto no mês anterior", "pessoa")}
       ${item("Entregas no mês", String(k.entregas_mes || 0), `${k.pessoas_mes || 0} colaborador(es)`, "pessoa")}

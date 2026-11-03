@@ -456,7 +456,7 @@ function rhhTemColsStatus(){ return _rhhMes.length > 0 && Object.prototype.hasOw
 function rhhColsStatus(){ return rhhTemColsStatus() ? RHH_COLS_STATUS.filter(c => !c.opc || Object.prototype.hasOwnProperty.call(_rhhMes[0], c.c)) : []; }
 function rhhCelStatus(col, v){
   const n = Number(v || 0);
-  if(!col.h) return n ? String(n) : "—";
+  if(!col.h) return n ? esc(n) : "—";
   if(col.c === "saldo_he_folga" && n < 0) return `<span class="txt-perigo">${esc(rhhHz(n))}</span>`;
   return rhhH(n);
 }
