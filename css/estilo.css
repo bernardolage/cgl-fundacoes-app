@@ -1370,9 +1370,10 @@ td.num, th.num {
 }
 .dash-origem { background: none; border: 0; padding: 0; margin-top: var(--esp-1); color: var(--marca-600); font-size: var(--txt-xs); cursor: pointer; }
 .dash-origem:hover { text-decoration: underline; }
-.dash-duas-col { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--esp-4); margin-bottom: var(--esp-4); align-items: start; }
-.dash-duas-col-inv { grid-template-columns: 1fr 1.5fr; }
-@media (max-width: 900px) { .dash-duas-col, .dash-duas-col-inv { grid-template-columns: 1fr; } }
+/* minmax(0, …): sem isso a descrição em nowrap de .dash-acao-txt .meta alarga a coluna e o Início ganha rolagem lateral */
+.dash-duas-col { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--esp-4); margin-bottom: var(--esp-4); align-items: start; }
+.dash-duas-col-inv { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); }
+@media (max-width: 900px) { .dash-duas-col, .dash-duas-col-inv { grid-template-columns: minmax(0, 1fr); } }
 .dash-duas-col h3, .dash-bloco-topo h3 { font-size: var(--txt-md); margin: 0 0 var(--esp-2); }
 .dash-bloco-topo { display: flex; align-items: baseline; justify-content: space-between; gap: var(--esp-2); flex-wrap: wrap; }
 .dash-setor + .dash-setor { margin-top: var(--esp-2); }
@@ -2792,7 +2793,7 @@ input:disabled, select:disabled, textarea:disabled {
 .cham-perguntar { border-left-color: var(--marca-600); background: var(--sup-2); }
 .cham-perguntar summary { cursor: pointer; font-weight: 600; }
 .cham-perguntar .grade { margin-top: 8px; }
-.dash-fila-acoes { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.dash-fila-acoes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: var(--esp-1); }
 /* Lote S47 (#112): cabeçalho de tabela que ordena (ordenarTabela em core.js) */
 th.th-ordena { cursor: pointer; user-select: none; white-space: nowrap; }
 th.th-ordena:hover { color: var(--marca-700); }

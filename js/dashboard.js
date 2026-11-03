@@ -269,7 +269,7 @@ function dashLinhaAcao(a, i, tipo){
   return `<div class="dash-pendencia-item clicavel" data-${esc(tipo)}="${i}" title="Abrir">
       <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(dashTituloAcao(a.titulo))}</strong>${a.quantidade > 1 ? ` <span class="contador">(${esc(a.quantidade)})</span>` : ""}
-        ${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
+        ${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}</div>
       <span class="dash-pend-seta">›</span>
     </div>`;
 }
@@ -308,7 +308,7 @@ function dashRenderMencoes(menc){
   if($("dash-mencoes-cont")) $("dash-mencoes-cont").textContent = _dashMencoes.length ? `(${_dashMencoes.length})` : "";
   const lista = $("dash-mencoes-lista");
   if(lista) lista.innerHTML = _dashMencoes.map((a, i) => `<div class="dash-pendencia-item clicavel" data-menc="${i}" title="Abrir o registro com a conversa">
-      <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
+      <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}</div>
       <span class="dash-pend-seta">›</span>
     </div>`).join("");
 }
@@ -336,12 +336,13 @@ function dashLinhaFilaChamado(a, i){
   const confirmar = dashChamadoConfirmar(a) && !leitura;
   return `<div class="dash-pendencia-item clicavel" data-fila="${i}" title="Abrir o chamado">
       <span class="tag ${n.cor}">${esc(n.label)}</span>
-      <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
-      <span class="dash-fila-acoes">
-        ${sugerida ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-aprovar="${i}" title="Envia a resposta sugerida em seu nome">✅ Aprovar</button>` : ""}
-        ${confirmar ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-confirmar="${i}" title="Registra que a correção funcionou">✅ Funcionou</button>` : ""}
-        <button type="button" class="btn-sec btn-sm" data-fila-abrir="${i}">Abrir</button>
-      </span>
+      <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}
+        <div class="dash-fila-acoes">
+          ${sugerida ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-aprovar="${i}" title="Envia a resposta sugerida em seu nome">✅ Aprovar</button>` : ""}
+          ${confirmar ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-confirmar="${i}" title="Registra que a correção funcionou">✅ Funcionou</button>` : ""}
+          <button type="button" class="btn-sec btn-sm" data-fila-abrir="${i}">Abrir</button>
+        </div>
+      </div>
     </div>`;
 }
 async function dashConfirmarChamadoFila(a){
@@ -397,7 +398,7 @@ async function dashCarregarRegularizar(){
   cont.innerHTML = _dashReg.length
     ? _dashReg.map((a, i) => `<div class="dash-pendencia-item clicavel" data-reg="${i}" title="Abrir a tela para corrigir">
         <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong> <span class="contador">(${esc(a.quantidade)})</span> ${/* html */ DASH_REG_PAPEL[a.papel]?.tag || ""}
-          ${a.detalhe ? `<div class="meta">${esc(a.detalhe)}</div>` : ""}</div>
+          ${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}</div>
         <span class="dash-pend-seta">›</span>
       </div>`).join("")
     : `<p class="vazio">Nada para regularizar.</p>`;
@@ -442,7 +443,7 @@ async function dashCarregarSeguranca(){
     return `<div class="dash-pendencia-item${clic ? " clicavel" : ""}" data-seg="${i}"${clic ? ' title="Abrir em Usuários"' : ""}>
       <span class="tag ${n.cor}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(DASH_SEG_TIPO[a.tipo] || a.tipo)}</strong>${quem ? ` · ${esc(quem)}` : ""}
-        <div class="meta">${esc(a.detalhe || "")}${quando ? ` · ${esc(quando)}` : ""}</div></div>
+        <div class="meta" title="${esc(a.detalhe || "")}">${esc(a.detalhe || "")}${quando ? ` · ${esc(quando)}` : ""}</div></div>
       ${clic ? '<span class="dash-pend-seta">›</span>' : ""}
     </div>`;
   }).join("");
