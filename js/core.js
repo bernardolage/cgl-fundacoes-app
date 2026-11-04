@@ -586,6 +586,46 @@ async function lerTudo(montar, chave = "id"){
   return { data: out, error: null };
 }
 
+/* Fase 141: chips de motivo. Botões role="radio" dentro de um role="radiogroup": clique, setas, Home/End, Espaço e Enter.
+   opcoes: [{ valor, rotulo }]. Devolve { get valor(), definir(v) }; aoMudar(v) roda só quando a pessoa escolhe. */
+const MOTIVOS_REFURADA = [
+  { valor: "obstrucao", rotulo: "Obstrução" }, { valor: "desmoronamento", rotulo: "Desmoronamento" }, { valor: "desvio_locacao", rotulo: "Desvio de locação" },
+  { valor: "ferramenta_quebrou", rotulo: "Ferramenta quebrou" }, { valor: "maquina_parou", rotulo: "Máquina parou" }, { valor: "projeto_alterado", rotulo: "Projeto alterado" },
+  { valor: "erro_operacional", rotulo: "Erro operacional" }, { valor: "teste", rotulo: "Teste" }, { valor: "outro", rotulo: "Outro" }
+];
+function motivoRefuradaLbl(v){ return (MOTIVOS_REFURADA.find(m => m.valor === v) || {}).rotulo || v || ""; }
+function chipsMotivo(container, opcoes, valor, aoMudar){
+  let atual = valor ?? null;
+  container.setAttribute("role", "radiogroup");
+  container.classList.add("chips-motivo");
+  container.innerHTML = opcoes.map(o => `<button type="button" class="chip-motivo" role="radio" data-valor="${esc(o.valor)}">${esc(o.rotulo)}</button>`).join("");
+  const botoes = [...container.querySelectorAll(".chip-motivo")];
+  const pintar = () => {
+    const temEscolha = botoes.some(b => b.dataset.valor === atual);
+    botoes.forEach((b, i) => {
+      const on = b.dataset.valor === atual;
+      b.setAttribute("aria-checked", on ? "true" : "false");
+      b.tabIndex = on || (!temEscolha && i === 0) ? 0 : -1;
+    });
+  };
+  const escolher = (b) => { atual = b.dataset.valor; pintar(); if(aoMudar) aoMudar(atual); };
+  container.onclick = (e) => { const b = e.target.closest(".chip-motivo"); if(b && !b.disabled) escolher(b); };
+  container.onkeydown = (e) => {
+    const i = botoes.indexOf(document.activeElement);
+    if(i < 0) return;
+    let alvo = null;
+    if(e.key === "ArrowRight" || e.key === "ArrowDown") alvo = botoes[(i + 1) % botoes.length];
+    else if(e.key === "ArrowLeft" || e.key === "ArrowUp") alvo = botoes[(i - 1 + botoes.length) % botoes.length];
+    else if(e.key === "Home") alvo = botoes[0];
+    else if(e.key === "End") alvo = botoes[botoes.length - 1];
+    else if(e.key === " " || e.key === "Enter"){ e.preventDefault(); escolher(botoes[i]); return; }
+    if(!alvo) return;
+    e.preventDefault(); alvo.focus(); escolher(alvo);
+  };
+  pintar();
+  return { get valor(){ return atual; }, definir(v){ atual = v ?? null; pintar(); } };
+}
+
 /* Debounce para campos de busca: re-renderizar a lista inteira a cada tecla
    travava nas listas grandes (produtos, estacas). 150 ms é imperceptível. */
 function debounce(fn, ms = 150){

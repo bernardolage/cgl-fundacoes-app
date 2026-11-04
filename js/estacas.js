@@ -2335,10 +2335,19 @@ function fecharModalExecucao(){
   _estExecId = null;
 }
 
-async function salvarExecucao(novoStatus){
+/* fase 141: Refurada só com motivo. Quem escolhe Refurada no campo Status e salva também passa pelo modal. */
+let _estRfChips = null;
+function abrirModalRefurar(){
   if(!_estExecId) return;
-  const reg = {
-    status: novoStatus || $("exec-status").value,
+  const e = _estacas.find(x => x.id === _estExecId);
+  $("est-rf-titulo").textContent = "Refurar estaca " + (e?.numero || "");
+  _estRfChips = chipsMotivo($("est-rf-motivo"), MOTIVOS_REFURADA, null);
+  $("est-rf-obs").value = "";
+  $("est-refurar-modal").style.display = "flex";
+}
+function fecharModalRefurar(){ $("est-refurar-modal").style.display = "none"; }
+function execCamposDoModal(){
+  return {
     data_execucao: $("exec-data").value || null,
     profundidade_m: $("exec-profundidade").value !== "" ? Number($("exec-profundidade").value) : null,
     volume_concreto_m3: $("exec-volume").value !== "" ? Number($("exec-volume").value) : null,
@@ -2346,6 +2355,28 @@ async function salvarExecucao(novoStatus){
     operador_id: $("exec-operador").value || null,
     observacoes: $("exec-obs").value.trim() || null
   };
+}
+async function salvarRefurar(){
+  const id = _estExecId, motivo = _estRfChips?.valor, obs = $("est-rf-obs").value.trim();
+  if(!id) return;
+  if(!motivo){ aviso("app-aviso", "Escolha o motivo da Refurada.", "erro"); return; }
+  if(motivo === "outro" && obs.length < 5){ aviso("app-aviso", "Com o motivo Outro, escreva o que houve (ao menos 5 caracteres).", "erro"); $("est-rf-obs").focus(); return; }
+  // o que estava preenchido na execução vale; o status é da RPC, que também grava o motivo e o histórico
+  const { error: errCampos } = await sb.from("estacas").update(execCamposDoModal()).eq("id", id);
+  if(errCampos){ aviso("app-aviso", "Erro ao salvar: " + errCampos.message, "erro"); return; }
+  const { data, error } = await sb.rpc("estaca_refurar", { p_estaca: id, p_motivo: motivo, p_obs: obs || null });
+  if(error){ aviso("app-aviso", "Não foi possível refurar: " + error.message, "erro"); return; }
+  aviso("app-aviso", `Estaca ${(_estacas.find(e => e.id === id) || {}).numero || ""} refurada: ${motivoRefuradaLbl(motivo)}.`, "ok");
+  fecharModalRefurar();
+  fecharModalExecucao();
+  await carregarEstacasDaObra(obraEditId);
+  if(typeof aceSugerirRetirada === "function") aceSugerirRetirada(data?.sugerir_retirada);
+}
+async function salvarExecucao(novoStatus){
+  if(!_estExecId) return;
+  const statusNovo = novoStatus || $("exec-status").value;
+  if(statusNovo === "refugada" && (_estacas.find(e => e.id === _estExecId) || {}).status !== "refugada") return abrirModalRefurar();
+  const reg = { status: statusNovo, ...execCamposDoModal() };
   const { error } = await sb.from("estacas").update(reg).eq("id", _estExecId);
   if(error){ aviso("app-aviso","Erro ao salvar: "+error.message,"erro"); return; }
   aviso("app-aviso", `Estaca ${(_estacas.find(e=>e.id===_estExecId)||{}).numero || ""} atualizada.`, "ok");
@@ -2364,6 +2395,7 @@ let _confDuplicadas = []; // grupos: [{ numero, estacas:[...] }, ...]
 let _confRefuradas = [];  // estacas com status='refugada' (na tela, "Refurada")
 let _confAlteradas = [];  // estacas com 2+ execuções: [{ estaca, execs:[...] }]
 let _confAbaAtual = "orfas";
+let _confTemMotivo = false; // fase 141: vw_estacas_refuradas disponível
 
 function confSuspeitas(alteradas){
   return alteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
@@ -2373,15 +2405,19 @@ function confSuspeitas(alteradas){
 async function confCarregarDados(obraId){
   const COLS_RDO = "rdo_id,obra_id,data,rdo_equipamento_id";
   const execsDaObra = (cols) => sb.from("vw_rdo_execucoes_obra").select(`${cols},${COLS_RDO}`).eq("obra_id", obraId);
-  const [orfasRes, estsRes, vinculadasRes] = await Promise.all([
+  const [orfasRes, estsRes, vinculadasRes, refRes] = await Promise.all([
     lerTudo(() => execsDaObra("id,estaca_numero,diametro_mm,perfuracao_inicio,profundidade_executada,equipamento_id").is("estaca_id", null)),
     lerTudo(() => sb.from("estacas")
       .select("id,numero,bloco,local,tipo,diametro_mm,profundidade_m,status,data_execucao,observacoes")
       .eq("obra_id", obraId)
       .order("numero")),
-    lerTudo(() => execsDaObra("id,estaca_id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao").not("estaca_id", "is", null))
+    lerTudo(() => execsDaObra("id,estaca_id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao").not("estaca_id", "is", null)),
+    // fase 141: motivo e substituta da Refurada; sem a migration a aba segue sem a coluna
+    lerTudo(() => sb.from("vw_estacas_refuradas").select("estaca_id,motivo,refuro_obs,substituta_id,substituta_numero,maquina").eq("obra_id", obraId), "estaca_id")
   ]);
   const estacas = estsRes.data;
+  _confTemMotivo = !refRes.error;
+  (refRes.data || []).forEach(r => { const e = estacas.find(x => x.id === r.estaca_id); if(e) e.ref = r; });
 
   // Detecta duplicadas pela IDENTIDADE da estaca (fase 42b): local + bloco + número,
   // a mesma chave única do banco (estacas_obra_local_bloco_numero_key). E1 do bloco B404
@@ -3123,13 +3159,14 @@ function renderizarRefuradas(){
     <td class="num">${e.diametro_mm!=null ? num(e.diametro_mm) : "—"}</td>
     <td class="num">${e.profundidade_m!=null ? num(e.profundidade_m) + " m" : "—"}</td>
     <td>${dataBR(e.data_execucao)}</td>
+    <td>${e.ref?.motivo ? `<span class="tag ambar">${esc(motivoRefuradaLbl(e.ref.motivo))}</span>` : `<span class="meta">sem motivo</span>`}${e.ref?.refuro_obs ? `<div class="meta">${esc(e.ref.refuro_obs)}</div>` : ""}${e.ref?.substituta_numero ? `<div class="meta">Substituta: ${esc(e.ref.substituta_numero)}</div>` : ""}</td>
     <td>${esc(e.observacoes || "—")}</td>
     <td class="col-acao">${/* html */ acoes(e)}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
       <th>Nº</th><th>Bloco</th><th class="num">Ø</th><th class="num">Profund.</th>
-      <th>Data</th><th>Observação</th><th class="col-acao"></th>
+      <th>Data</th><th>Motivo</th><th>Observação</th><th class="col-acao"></th>
     </tr></thead>
     <tbody>${/* html */ linhas}</tbody></table></div>`;
 
@@ -3159,6 +3196,7 @@ async function criarSubstitutaRefurada(idOriginal, numOriginal){
     profundidade_m: original.profundidade_m,  // copia profundidade projetada
     observacoes: `Substituta de ${numOriginal} (refurada)` + (original.observacoes ? ` · ${original.observacoes}` : "")
   };
+  if(_confTemMotivo) reg.substituta_de_id = idOriginal;
   const { error } = await sb.from("estacas").insert(reg);
   if(error){
     if((error.message||"").toLowerCase().includes("duplicate"))
@@ -3176,7 +3214,8 @@ async function restaurarRefurada(id){
   if(!confirm("Restaurar esta estaca para status 'prevista'? Use só se a refuração foi marcada por engano.")) return;
   const { error } = await sb.from("estacas").update({
     status: "prevista",
-    data_execucao: null
+    data_execucao: null,
+    ...(_confTemMotivo ? { refuro_motivo: null, refuro_obs: null } : {})
   }).eq("id", id);
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   aviso("app-aviso","Estaca restaurada para prevista.","ok");
@@ -3913,10 +3952,9 @@ function ligarEstacas(){
     }
     salvarExecucao("executada");
   });
-  $("btn-exec-refugar")?.addEventListener("click", () => {
-    if(!confirm("Marcar esta estaca como REFURADA?")) return;
-    salvarExecucao("refugada");
-  });
+  $("btn-exec-refurar")?.addEventListener("click", abrirModalRefurar);
+  $("btn-est-rf-fechar")?.addEventListener("click", fecharModalRefurar);
+  $("btn-est-rf-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rf-salvar", salvarRefurar));
 }
 
 if(document.readyState === "loading"){

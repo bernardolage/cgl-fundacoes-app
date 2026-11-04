@@ -399,12 +399,14 @@ async function dashCarregarRegularizar(){
   // fase 109d: ocorrências de SST sem classificação, ação do plano vencida (o responsável da ação pode ser qualquer usuário, por isso
   // todo mundo consulta; a view devolve só o que a RLS deixa) e sem eficácia verificada (vw_sc_regularizar_sst_ocorrencias)
   // fase 107a: computador de bordo e estacas do Geodigitus (vw_sc_regularizar_geo; a view devolve a cada um só o papel dele)
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  // fase 141: peça de desgaste perto do fim da vida (vw_sc_regularizar_ace; a view devolve a cada um só o papel dele)
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
-    dashLer("vw_sc_regularizar_geo", q => q.select("*"))]);
+    dashLer("vw_sc_regularizar_geo", q => q.select("*")),
+    dashLer("vw_sc_regularizar_ace", q => q.select("*"))]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   const n = p => _dashReg.filter(a => a.papel === p).length;
   if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
@@ -580,6 +582,13 @@ async function dashAbrirRegularizar(a){
       abrirAcessorio(a.registro_id);
       if(typeof ativarTabAcessorio === "function") ativarTabAcessorio("fiscal");
     }
+  } else if(a.filtro === "acessorio_vida_alerta"){ // fase 141: uma peça abre a aba Vida útil; várias, a visão Vida útil por modelo
+    if(typeof aceRenderVidaUtil !== "function") return;
+    _aceFamilia = ""; _aceView = "vida"; _aceVidaAba = "modelo";
+    if(!irParaSecao("acessorios") || !a.registro_id) return;
+    for(let i = 0; i < 80 && !_aceCarregado; i++) await new Promise(r => setTimeout(r, 250));
+    abrirAcessorio(a.registro_id);
+    ativarTabAcessorio("vida");
   } else if(a.secao === "acessorios"){
     // o clique no menu carrega e desenha (carregarAcessorios): o filtro vai antes
     if(typeof renderAcessoriosContagem !== "function") return;

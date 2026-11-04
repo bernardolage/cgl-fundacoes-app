@@ -5,7 +5,8 @@
      Resolver de novo e Ignorar; Ver estacas abre as linhas com as ações de cada estaca. Fase 134b: Mudar período do grupo
      (diurno/noturno, com prévia e motivo, RPCs geodigitus_periodo_previa e geodigitus_definir_periodo_grupo), situação
      "Aguardando o turno" (pendente_turno: a noite ainda não se decidiu; Resolver de novo chama geodigitus_turnos_reavaliar)
-     e a etiqueta do período no grupo e na estaca.
+     e a etiqueta do período no grupo e na estaca. Fase 141: chegada "a confirmar" (vw_geodigitus_estacas), com o bloco
+     "O que foi?" e chips (geodigitus_confirmar, prévia em geodigitus_confirmar_previa).
      Tudo grava pelas RPCs geodigitus_* (rdo_pode_operar() no banco: admin, engenheiro, assistente de engenharia,
      encarregado; diretor). As tabelas geodigitus_* só a service role grava.
    - Badge "Geodigitus" e sobreconsumo na execução do RDO (geoBadgeExec, chamado por renderExecucoes em rdo.js).
@@ -34,7 +35,15 @@ const GEO_SITUACAO_COR = {
 const GEO_TURNO_LBL = { diurno: "Diurno", noturno: "Noturno" };
 const GEO_PENDENTES = ["pendente_maquina", "pendente_obra", "pendente_estaca", "pendente_rdo_finalizado"];
 const GEO_FILTRO_SIT = { geodigitus_estaca_sem_maquina: "pendente_maquina", geodigitus_estaca_sem_obra: "pendente_obra",
-  geodigitus_estaca_sem_cadastro: "pendente_estaca", geodigitus_rdo_finalizado: "pendente_rdo_finalizado" };
+  geodigitus_estaca_sem_cadastro: "pendente_estaca", geodigitus_rdo_finalizado: "pendente_rdo_finalizado", geodigitus_estaca_a_confirmar: "a_confirmar" };
+// fase 141: o que a chegada pode ter sido e por que ela pede confirmação
+const GEO_CONFIRMACOES = [
+  { valor: "refuro", rotulo: "Refuro" }, { valor: "teste", rotulo: "Teste de máquina" }, { valor: "ok_arquivo", rotulo: "Está certa" },
+  { valor: "duplicada", rotulo: "Duplicada" }, { valor: "outro", rotulo: "Outro" }
+];
+const GEO_RAZAO_LBL = { arquivo_incompleto: "arquivo sem o fim da perfuração", refuro: "número de refuro", raso: "menos de 1 m", repetida: "mesmo número no dia" };
+const geoRazoesTxt = (g) => (g.razoes || []).map(r => GEO_RAZAO_LBL[r] || r).join(", ");
+const geoConfirmacaoLbl = (g) => (GEO_CONFIRMACOES.find(c => c.valor === g.confirmacao)?.rotulo || g.confirmacao) + (g.confirmacao_motivo ? " · " + motivoRefuradaLbl(g.confirmacao_motivo) : "");
 
 /* espelha rdo_pode_operar() do banco */
 function geoPodeOperar(){
@@ -59,6 +68,12 @@ async function geoCarregar(force){
   if(error){ _geoIndisponivel = geoIndisp(error); _geoDados = []; if(!_geoIndisponivel) aviso("app-aviso", "Não foi possível carregar as chegadas do Geodigitus: " + error.message, "erro"); return _geoDados; }
   _geoIndisponivel = false;
   _geoDados = data || [];
+  // fase 141: a leitura é à parte; sem a migration, a tela segue sem a confirmação
+  const conf = await lerTudo(() => sb.from("vw_geodigitus_estacas").select("id,a_confirmar,razoes,confirmacao,confirmacao_motivo,confirmacao_obs").or("a_confirmar.eq.true,confirmacao.not.is.null"));
+  if(!conf.error){
+    const porId = new Map(conf.data.map(c => [c.id, c]));
+    _geoDados.forEach(g => { const c = porId.get(g.id); if(c) Object.assign(g, c); });
+  }
   geoPreencherFiltroMaquina();
   return _geoDados;
 }
@@ -76,7 +91,7 @@ function geoFiltradas(){
   return (_geoDados || []).filter(g => {
     if(dia && geoDia(g) !== dia) return false;
     if(maq === "sem" ? g.equipamento_id : (maq && g.equipamento_id !== maq)) return false;
-    if(sit === "pendentes" ? !GEO_PENDENTES.includes(g.situacao) : (sit && g.situacao !== sit)) return false;
+    if(sit === "a_confirmar" ? !g.a_confirmar : sit === "pendentes" ? !GEO_PENDENTES.includes(g.situacao) : (sit && g.situacao !== sit)) return false;
     if(!q) return true;
     return `${g.numero_txt || ""} ${g.obra_txt || ""} ${g.contrato_txt || ""} ${g.obra?.codigo || ""} ${g.obra?.nome || ""} ${g.obra_sugerida?.codigo || ""} ${g.equipamento?.codigo || ""} ${g.arquivo?.imei || ""}`.toLowerCase().includes(q);
   });
@@ -155,6 +170,8 @@ function geoAcoesGrupoHTML(gr){
   if(pode && vivas.length) b.push(botao("g-obra", gr.obra_id ? "Trocar obra" : "Definir obra"));
   const vincular = gr.estacas.filter(geoParaVincular).length;
   if(pode && vincular) b.push(botao("g-estaca", "Vincular estacas (" + vincular + ")"));
+  const aConfirmar = gr.estacas.filter(g => g.a_confirmar).length;
+  if(pode && aConfirmar) b.push(botao("g-confirmar", "O que foi? (" + aConfirmar + ")"));   // fase 141
   if(gr.estacas.some(g => g.rdo_id)) b.push(botao("g-rdo", "Abrir RDO"));
   if(pode && vivas.some(geoParaPeriodo)) b.push(botao("g-periodo", "Mudar período"));   // fase 134b
   if(pode && gr.estacas.some(geoParaResolver)) b.push(botao("g-resolver", "Resolver de novo"));
@@ -165,7 +182,7 @@ function geoLinhasEstacasHTML(gr){
   return `<div class="tabela-rola"><table>
     <thead><tr><th>Estaca</th><th class="num">Ø (mm)</th><th class="num">Prof. (m)</th><th class="num">Volume (m³)</th><th>Sobreconsumo</th><th>Perfuração</th><th>Concretagem</th><th>Situação</th><th></th></tr></thead>
     <tbody>${gr.estacas.map(g => `<tr data-geo-linha="${esc(g.id)}">
-      <td><strong>${esc(g.numero_txt || "—")}</strong>${g.refuro ? ` <span class="tag ambar">Refurada</span>` : ""}${g.profundidade_m != null && Number(g.profundidade_m) < 1 ? ` <span class="tag ambar" title="Profundidade abaixo de 1 m. Nada é ignorado sozinho.">conferir: parece teste</span>` : ""}${g.estaca?.numero ? `<div class="meta">${esc(g.estaca.numero)}${g.estaca.local ? " · " + esc(g.estaca.local) : ""}</div>` : (g.candidatos?.length > 1 ? `<div class="meta">${esc(g.candidatos.length)} candidatas</div>` : "")}</td>
+      <td><strong>${esc(g.numero_txt || "—")}</strong>${g.refuro ? ` <span class="tag ambar">Refurada</span>` : ""}${g.profundidade_m != null && Number(g.profundidade_m) < 1 ? ` <span class="tag ambar" title="Profundidade abaixo de 1 m. Nada é ignorado sozinho.">conferir: parece teste</span>` : ""}${g.a_confirmar ? ` <span class="tag ambar" title="${esc(geoRazoesTxt(g))}">a confirmar</span>` : ""}${g.confirmacao ? `<div class="meta" title="${esc(g.confirmacao_obs || "")}">Confirmada: ${esc(geoConfirmacaoLbl(g))}</div>` : ""}${g.estaca?.numero ? `<div class="meta">${esc(g.estaca.numero)}${g.estaca.local ? " · " + esc(g.estaca.local) : ""}</div>` : (g.candidatos?.length > 1 ? `<div class="meta">${esc(g.candidatos.length)} candidatas</div>` : "")}</td>
       <td class="num">${esc(geoNum(g.diametro_mm, 0))}</td>
       <td class="num">${esc(geoNum(g.profundidade_m))}</td>
       <td class="num">${esc(geoNum(g.volume_concreto_m3, 3))}</td>
@@ -194,6 +211,7 @@ async function geoRenderPainel(){
       const contratos = geoDistintos(gr.estacas.map(g => g.contrato_txt));
       const avisos = geoDistintos(gr.estacas.flatMap(g => g.avisos || []));
       const teste = gr.estacas.filter(g => g.profundidade_m != null && Number(g.profundidade_m) < 1).length;
+      const aConfirmar = gr.estacas.filter(g => g.a_confirmar).length;
       const sit = geoSituacaoGrupo(gr.estacas);
       const soma = (campo) => gr.estacas.reduce((s, g) => s + Number(g[campo] || 0), 0);
       // fase 134b: período dos diários do grupo (o mesmo dia pode ter diurno e noturno)
@@ -209,6 +227,7 @@ async function geoRenderPainel(){
         <td class="num">${esc(geoNum(soma("volume_concreto_m3"), 3))}</td>
         <td><span class="tag ${esc(sit.cor)}">${esc(sit.texto)}</span>
           ${teste ? `<div><span class="tag ambar" title="Profundidade abaixo de 1 m. Nada é ignorado sozinho.">conferir: parece teste (${esc(teste)})</span></div>` : ""}
+          ${aConfirmar ? `<div><span class="tag ambar" title="Arquivo sem o fim da perfuração, número de refuro, menos de 1 m ou o mesmo número no dia">a confirmar (${esc(aConfirmar)})</span></div>` : ""}
           ${avisos.length ? `<div class="meta">⚠️ ${esc(avisos.join(" · "))}</div>` : ""}</td>
         <td class="col-acao">${/* html */ geoAcoesGrupoHTML(gr)}</td>
       </tr>${_geoAbertos.has(gr.chave) ? `<tr data-geo-grupo-aberto="${esc(gr.chave)}"><td colspan="9">${/* html */ geoLinhasEstacasHTML(gr)}</td></tr>` : ""}`;
@@ -228,7 +247,11 @@ async function geoAbrirPreset(filtro, geoId){
   if(geoId){
     await geoCarregar(false);
     const g = (_geoDados || []).find(x => x.id === geoId);
-    if(g?.rdo_id && g.situacao === "pendente_rdo_finalizado" && typeof abrirRDO === "function") abrirRDO(g.rdo_id);
+    if(filtro === "geodigitus_estaca_a_confirmar"){   // fase 141: uma só abre direto o "O que foi?"
+      await geoRenderPainel();
+      const gr = (_geoGrupos || []).find(x => x.estacas.some(e => e.id === geoId));
+      if(gr && geoPodeOperar()) geoAbrirModalGrupo("g-confirmar", gr);
+    } else if(g?.rdo_id && g.situacao === "pendente_rdo_finalizado" && typeof abrirRDO === "function") abrirRDO(g.rdo_id);
   }
 }
 
@@ -302,6 +325,28 @@ async function geoAbrirModalGrupo(acao, gr){
       }).join("")}</tbody></table></div>`;
     return;
   }
+  if(acao === "g-confirmar"){
+    // fase 141: "O que foi?". Tudo ou nada; teste e duplicada desfazem a execução da chegada, com prévia antes
+    const lista = gr.estacas.filter(g => g.a_confirmar);
+    _geoModal = { tipo: "grupo_confirmar", grupo: gr, geos: lista.map(g => g.id), impedido: false };
+    $("geo-modal-titulo").textContent = "O que foi? · " + lista.length + " estaca(s)";
+    corpo.innerHTML = `<p class="meta">${esc(rotulo)}. Marque as estacas que tiveram o mesmo motivo; as outras continuam a confirmar.</p>
+      <div class="grade">
+        <div class="campo largo">${lista.map(g => `<label class="check-inline"><input type="checkbox" data-geo-conf="${esc(g.id)}" checked /> <strong>${esc(g.numero_txt || "—")}</strong> <span class="meta">${esc(geoNum(g.profundidade_m))} m · ${esc(geoRazoesTxt(g))}</span></label>`).join("")}</div>
+        <div class="campo largo"><label id="geo-conf-lbl">O que foi?</label><div id="geo-conf-chips" aria-labelledby="geo-conf-lbl"></div></div>
+        <div class="campo largo" id="geo-conf-motivo-campo" style="display:none;"><label id="geo-conf-motivo-lbl">Motivo do refuro</label><div id="geo-conf-motivo" aria-labelledby="geo-conf-motivo-lbl"></div></div>
+        <div class="campo largo"><label>Observação</label><input id="geo-conf-obs" placeholder="Com a opção Outro, escreva o que houve" /></div>
+        <div class="campo largo" id="geo-modal-previa"></div>
+      </div>`;
+    const m = _geoModal;
+    m.chipMotivo = chipsMotivo($("geo-conf-motivo"), MOTIVOS_REFURADA, null, geoPreviaConfirmar);
+    m.chipConf = chipsMotivo($("geo-conf-chips"), GEO_CONFIRMACOES, null, (v) => {
+      $("geo-conf-motivo-campo").style.display = v === "refuro" ? "" : "none";
+      geoPreviaConfirmar();
+    });
+    corpo.querySelectorAll("[data-geo-conf]").forEach(c => c.addEventListener("change", geoPreviaConfirmar));
+    return;
+  }
   if(acao === "g-periodo"){
     // fase 134b: Mudar período do grupo. Mesmas travas da troca de obra; a data de cada estaca segue a regra do período
     // (noturno: início antes do fim da noite pertence ao dia anterior; diurno: a data do próprio início).
@@ -368,10 +413,43 @@ async function geoPreviaPeriodo(){
       ${vazios.length ? `Ficam vazios e saem: ${esc(vazios.map(d => dataBR(d.data) + " " + (GEO_TURNO_LBL[d.turno] || d.turno).toLowerCase() + " (" + d.obra + ")").join(", "))}.` : "Nenhum diário sai."}</p>
     ${imp.length ? `<p class="meta"><span class="tag vermelho">Nada será gravado</span> enquanto houver impedimento:</p><ul class="meta">${imp.map(i => `<li><strong>${esc(i.numero || "?")}</strong>: ${esc(i.motivo)}</li>`).join("")}</ul>` : ""}`;
 }
+/* fase 141: prévia do "O que foi?": não grava; refeita a cada escolha */
+const geoConfMarcadas = () => [...document.querySelectorAll("#geo-modal-corpo [data-geo-conf]:checked")].map(c => c.dataset.geoConf);
+async function geoPreviaConfirmar(){
+  const m = _geoModal, alvo = $("geo-modal-previa");
+  if(!m || !alvo) return;
+  const conf = m.chipConf?.valor, geos = geoConfMarcadas(), chave = conf + "|" + geos.join(",");
+  m.impedido = false; m.chavePrevia = chave;
+  if(!conf || !geos.length){ alvo.innerHTML = ""; return; }
+  alvo.innerHTML = `<p class="meta">Conferindo…</p>`;
+  const { data, error } = await sb.rpc("geodigitus_confirmar_previa", { p_geos: geos, p_confirmacao: conf, p_motivo: m.chipMotivo?.valor || null });
+  if(_geoModal !== m || m.chavePrevia !== chave) return;
+  if(error){ m.impedido = true; alvo.innerHTML = `<p class="vazio">Não foi possível conferir: ${esc(error.message)}</p>`; return; }
+  const imp = data.impedimentos || [], vazios = data.diarios_vazios || [];
+  m.impedido = imp.length > 0;
+  const partes = [`<strong>${esc(data.estacas)}</strong> estaca(s)`];
+  if(["teste", "duplicada"].includes(conf)) partes.push(`saem da conta: <strong>${esc(data.execucoes_apagar)}</strong> execução(ões) apagada(s)`, vazios.length ? `ficam vazios e saem: ${esc(vazios.map(d => dataBR(d.data) + " (" + d.obra + ")").join(", "))}` : "nenhum diário sai");
+  if(conf === "refuro") partes.push(`motivo gravado em <strong>${esc(data.execucoes_motivo)}</strong> execução(ões)`);
+  if(conf === "ok_arquivo" || conf === "outro") partes.push("só fica registrado; o diário não muda");
+  alvo.innerHTML = `<p class="meta">${/* html */ partes.join(" · ")}.</p>
+    ${Number(data.refuro_sem_modalidade) ? `<p class="meta">⚠️ ${esc(data.refuro_sem_modalidade)} execução(ões) seguem como furo normal no diário; a modalidade não muda por aqui.</p>` : ""}
+    ${imp.length ? `<p class="meta"><span class="tag vermelho">Nada será gravado</span> enquanto houver impedimento:</p><ul class="meta">${imp.map(i => `<li><strong>${esc(i.numero || "?")}</strong>: ${esc(i.motivo)}</li>`).join("")}</ul>` : ""}`;
+}
 async function geoConfirmarGrupo(){
   const m = _geoModal;
   let r, msg;
-  if(m.tipo === "grupo_periodo"){
+  if(m.tipo === "grupo_confirmar"){
+    const conf = m.chipConf?.valor, motivo = m.chipMotivo?.valor || null, obs = ($("geo-conf-obs")?.value || "").trim(), geos = geoConfMarcadas();
+    if(!geos.length){ aviso("app-aviso", "Marque ao menos uma estaca.", "erro"); return; }
+    if(!conf){ aviso("app-aviso", "Escolha o que foi.", "erro"); return; }
+    if(conf === "refuro" && !motivo){ aviso("app-aviso", "Escolha o motivo do refuro.", "erro"); return; }
+    if((conf === "outro" || (conf === "refuro" && motivo === "outro")) && obs.length < 5){ aviso("app-aviso", "Com a opção Outro, escreva o que houve (ao menos 5 caracteres).", "erro"); return; }
+    if(m.impedido){ aviso("app-aviso", "Há impedimentos na prévia: nada foi gravado.", "erro"); return; }
+    r = await sb.rpc("geodigitus_confirmar", { p_geos: geos, p_confirmacao: conf, p_motivo: conf === "refuro" ? motivo : null, p_obs: obs || null });
+    const d = r.data || {};
+    msg = `${d.confirmadas || 0} estaca(s) confirmada(s)${d.execucoes_apagadas ? ` · ${d.execucoes_apagadas} execução(ões) saíram da conta` : ""}${d.motivos_gravados ? ` · motivo em ${d.motivos_gravados} execução(ões)` : ""}${d.diarios_removidos ? ` · ${d.diarios_removidos} diário(s) vazio(s) removido(s)` : ""}.`;
+    if(!r.error && d.sugerir_retirada?.length && typeof aceSugerirRetirada === "function") setTimeout(() => aceSugerirRetirada(d.sugerir_retirada), 0);
+  } else if(m.tipo === "grupo_periodo"){
     const turno = geoTurnoEscolhido();
     if(!turno){ aviso("app-aviso", "Escolha o período.", "erro"); return; }
     if(m.impedido){ aviso("app-aviso", "Há impedimentos na prévia: nada foi gravado.", "erro"); return; }

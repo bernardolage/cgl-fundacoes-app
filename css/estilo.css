@@ -2807,6 +2807,18 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-card:hover, .mob-card:focus-visible { box-shadow: 0 2px 8px color-mix(in srgb, var(--txt) 15%, transparent); }
 .mob-card-titulo { font-weight: 600; line-height: 1.3; margin-bottom: 6px; }
 .mob-card-chips, .mob-drawer-sub { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; align-items: center; }
+/* fase 141: chips de motivo (chipsMotivo, core.js) */
+.chips-motivo { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-motivo { min-height: 36px; padding: 6px 12px; border: 1px solid var(--borda); border-radius: 18px; background: var(--sup-1); color: var(--txt-sec); font: inherit; font-size: var(--txt-sm); cursor: pointer; }
+.chip-motivo:hover { border-color: var(--marca-600); color: var(--txt); }
+.chip-motivo[aria-checked="true"] { background: var(--marca-900); border-color: var(--marca-900); color: var(--txt-sobre); font-weight: 600; }
+.chip-motivo:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
+/* fase 141: barra metros ÷ mediana da peça instalada */
+.ace-vida-barra { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+.ace-vida-barra > .trilha { flex: 1; height: 8px; border-radius: 4px; background: var(--borda); overflow: hidden; }
+.ace-vida-barra > .trilha > div { height: 100%; background: var(--marca-600); }
+.ace-vida-barra.alerta > .trilha > div { background: var(--aviso); }
+.ace-vida-barra.fim > .trilha > div { background: var(--perigo); }
 .mob-chip { display: inline-block; border: 1px solid var(--borda); border-radius: 10px; padding: 1px 8px; font-size: var(--txt-xs); color: var(--txt-sec); background: var(--sup-1); }
 .mob-chip.tag { background: var(--marca-900); color: var(--txt-sobre); border-color: var(--marca-900); font-weight: 600; }
 .mob-chip.st { background: var(--marca-50); border-color: var(--marca-100); color: var(--marca-700); }

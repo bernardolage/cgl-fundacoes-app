@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="12194bd" />
+<meta name="app-versao" content="d53edb2" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=12194bd" />
+<link rel="stylesheet" href="css/estilo.css?v=d53edb2" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=12194bd"></script>
+<script src="js/tema.js?v=d53edb2"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=12194bd"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=12194bd"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=12194bd"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=d53edb2"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=d53edb2"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=d53edb2"></script>
 </head>
 <body>
 
@@ -3177,9 +3177,22 @@
           <div class="form-acoes" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
             <button type="button" class="btn" id="btn-exec-iniciar" style="background:var(--aviso);">▶ Iniciar execução</button>
             <button type="button" class="btn btn-sucesso" id="btn-exec-concluir">✅ Marcar executada</button>
-            <button type="button" class="btn-sec acao-perigo" id="btn-exec-refugar">✗ Refugar</button>
+            <button type="button" class="btn-sec acao-perigo" id="btn-exec-refurar">✗ Refurar</button>
             <button type="button" class="btn-sec" id="btn-exec-salvar">💾 Salvar</button>
           </div>
+        </div>
+      </div>
+
+      <!-- fase 141: Refurar com motivo por chips -->
+      <div id="est-refurar-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:520px;width:92%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha" id="est-rf-titulo">Refurar estaca</h3><button type="button" class="btn-sec" id="btn-est-rf-fechar">×</button></div>
+          <p class="meta">A estaca fica como Refurada. O motivo vai para a estaca e para as execuções de refuro dela.</p>
+          <div class="grade">
+            <div class="campo largo"><label id="est-rf-motivo-lbl">Motivo *</label><div id="est-rf-motivo" aria-labelledby="est-rf-motivo-lbl"></div></div>
+            <div class="campo largo"><label>Observação</label><input id="est-rf-obs" placeholder="Com o motivo Outro, escreva o que houve" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-est-rf-salvar">✗ Refurar</button></div>
         </div>
       </div>
 
@@ -3378,6 +3391,7 @@
             <select id="geo-f-sit">
               <option value="">Todas as situações</option>
               <option value="pendentes">Só pendentes</option>
+              <option value="a_confirmar">A confirmar</option>
               <option value="pendente_maquina">Sem máquina</option>
               <option value="pendente_obra">Sem obra</option>
               <option value="pendente_estaca">Estaca a vincular</option>
@@ -4593,6 +4607,7 @@
               <button type="button" class="serv-view-btn ativo" data-view="kanban">Onde está</button>
               <button type="button" class="serv-view-btn" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="contagem">Contagem</button>
+              <button type="button" class="serv-view-btn" data-view="vida" title="Quanto cada modelo e marca aguentou, peças instaladas e consumo por 1.000 m">Vida útil por modelo</button>
             </div>
             <button type="button" class="btn-sec" id="btn-ace-atualizar" style="margin-left:auto;">🔄 Atualizar</button>
             <button type="button" class="btn-sec" id="btn-ace-modelo" style="display:none;">+ Modelo</button>
@@ -4615,6 +4630,8 @@
             <button type="button" class="btn-sec btn-sm" data-acao="obra">📦 Enviar para obra</button>
             <button type="button" class="btn-sec btn-sm" data-acao="patio">↩️ Retornar ao pátio</button>
             <button type="button" class="btn-sec btn-sm" data-acao="mover">📍 Mover…</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="instalar">⚙️ Instalar na máquina</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="retirar">⏏️ Retirar</button>
             <button type="button" class="btn-sec btn-sm" data-acao="reparo">🔧 Abrir reparo</button>
             <button type="button" class="btn-sec btn-sm" data-acao="condicao">✅ Condição…</button>
             <button type="button" class="btn-sec btn-sm" data-acao="perda" style="color:var(--perigo);">⚠️ Registrar perda</button>
@@ -4632,6 +4649,8 @@
               <button type="button" class="btn-sec" id="btn-ace-voltar">← Voltar</button>
               <button type="button" class="btn" id="btn-ace-salvar">💾 Salvar</button>
               <button type="button" class="btn-sec ace-so-existente" id="btn-ace-mover">📍 Mover</button>
+              <button type="button" class="btn-sec" id="btn-ace-instalar" style="display:none;" title="Conta a vida da peça a partir desta data. Mover para a máquina não conta: ela pode ir como reserva.">⚙️ Instalar na máquina</button>
+              <button type="button" class="btn-sec" id="btn-ace-retirar" style="display:none;">⏏️ Retirar</button>
               <button type="button" class="btn-sec ace-so-existente" id="btn-ace-reparo">🔧 Abrir reparo</button>
               <button type="button" class="btn-sec ace-so-existente" id="btn-ace-perda" style="color:var(--perigo);">⚠️ Perda</button>
               <button type="button" class="btn-sec ace-so-existente" id="btn-ace-excluir" style="color:var(--perigo);">🗑️ Excluir</button>
@@ -4655,6 +4674,7 @@
             <div class="chip"><span>Ø / medida</span><strong id="ace-chip-medida">—</strong></div>
             <div class="chip"><span>Onde está</span><strong id="ace-chip-onde">—</strong></div>
             <div class="chip"><span>Pertence</span><strong id="ace-chip-pertence">—</strong></div>
+            <div class="chip" id="ace-chip-inst" style="display:none;"><span>Instalada</span><strong id="ace-chip-inst-txt">—</strong></div>
             <div class="chip"><span>Condição</span><strong id="ace-chip-cond">—</strong></div>
             <div class="chip"><span>Valor de reposição</span><strong id="ace-chip-valor">—</strong></div>
             <div class="chip" id="ace-chip-fab" style="display:none;" title="Peça fabricada na oficina (fase 84)"><span>Fabricada na</span><strong id="ace-chip-fab-txt">—</strong></div>
@@ -4662,6 +4682,7 @@
 
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-ace-hist" data-goto-tab="historico"><span class="sb-num">0</span><span class="sb-icon">🕓</span><span class="sb-lbl">histórico</span></button>
+            <button type="button" class="sb-btn" id="sb-ace-vida" data-goto-tab="vida" title="Instalações e retiradas da peça"><span class="sb-num">0</span><span class="sb-icon">⚙️</span><span class="sb-lbl">vidas</span></button>
             <button type="button" class="sb-btn" id="sb-ace-rep" data-goto-tab="reparos"><span class="sb-num">0</span><span class="sb-icon">🔧</span><span class="sb-lbl">reparos</span></button>
             <button type="button" class="sb-btn" id="sb-ace-jogo" data-goto-tab="jogo"><span class="sb-num">0</span><span class="sb-icon">🧩</span><span class="sb-lbl">no jogo</span></button>
             <button type="button" class="sb-btn" id="sb-ace-custos" data-goto-tab="custos" title="Compras, saídas de estoque e custos do jogo"><span class="sb-num">0</span><span class="sb-icon">💰</span><span class="sb-lbl">custos</span></button>
@@ -4673,6 +4694,7 @@
             <button type="button" data-tab="fiscal" title="Fase 105a: NCM, unidade e valor da NF-e de remessa">Fiscal</button>
             <button type="button" data-tab="jogo">Jogo</button>
             <button type="button" data-tab="historico">Histórico</button>
+            <button type="button" data-tab="vida">Vida útil</button>
             <button type="button" data-tab="reparos">Reparos</button>
             <button type="button" data-tab="custos">Custos</button>
             <button type="button" data-tab="fotos">Fotos</button>
@@ -4701,6 +4723,8 @@
                 <div class="campo"><label>Detalhe</label><input id="ace-detalhe" placeholder="Bits, Unha, Com U, Pino 28…" /></div>
                 <div class="campo"><label>Peso (kg)</label><input type="number" id="ace-peso" min="0" step="0.1" /></div>
                 <div class="campo"><label>Nº de série</label><input id="ace-serie" /></div>
+                <div class="campo"><label>Marca</label><input id="ace-marca" list="ace-marcas" placeholder="Fabricante da peça" /><datalist id="ace-marcas"></datalist></div>
+                <div class="campo"><label>Origem (de quem veio)</label><select id="ace-origem-forn"></select></div>
                 <div class="campo"><label>Pertence ao equipamento</label><select id="ace-padrao"></select></div>
                 <div class="campo largo"><label>Também compatível com (Ctrl+clique para vários)</label><select id="ace-compat" multiple size="4"></select></div>
                 <div class="campo"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="ace-ativo" checked /> Peça ativa no cadastro</label></div>
@@ -4716,6 +4740,9 @@
             <div class="odoo-tab" data-tab="custos"><div id="ace-custos-lista"><p class="vazio">—</p></div></div>
             <div class="odoo-tab" data-tab="historico">
               <div id="ace-hist-lista"><p class="vazio">—</p></div>
+            </div>
+            <div class="odoo-tab" data-tab="vida">
+              <div id="ace-vida-lista"><p class="vazio">—</p></div>
             </div>
             <div class="odoo-tab" data-tab="reparos">
               <div id="ace-rep-lista"><p class="vazio">—</p></div>
@@ -4757,6 +4784,37 @@
             <div class="campo largo"><label>Observação</label><input id="ace-mv-obs" placeholder="Vai para o histórico de cada peça" /></div>
           </div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-mv-salvar">📍 Confirmar</button></div>
+        </div>
+      </div>
+
+      <!-- fase 141: instalar na máquina -->
+      <div id="ace-inst-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:560px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha">Instalar na máquina</h3><button type="button" class="btn-sec" id="btn-ace-in-fechar">×</button></div>
+          <p class="meta" id="ace-in-resumo"></p>
+          <p class="ajuda-campo">A vida da peça conta a partir desta data. Para a foto inicial, use a data em que ela entrou na máquina.</p>
+          <div class="grade">
+            <div class="campo"><label>Máquina (TAG) *</label><input id="ace-in-equip" list="ace-in-equips" placeholder="Digite a TAG" autocomplete="off" /><datalist id="ace-in-equips"></datalist></div>
+            <div class="campo"><label>Data da instalação *</label><input type="date" id="ace-in-data" /></div>
+            <div class="campo largo"><label>Observação</label><input id="ace-in-obs" placeholder="Vai para o histórico de cada peça" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-in-salvar">⚙️ Instalar</button></div>
+        </div>
+      </div>
+
+      <!-- fase 141: retirar da máquina -->
+      <div id="ace-ret-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:600px;width:95%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha">Retirar da máquina</h3><button type="button" class="btn-sec" id="btn-ace-rt-fechar">×</button></div>
+          <p class="meta" id="ace-rt-resumo"></p>
+          <div class="grade">
+            <div class="campo largo"><label id="ace-rt-motivo-lbl">Motivo *</label><div id="ace-rt-motivo" aria-labelledby="ace-rt-motivo-lbl"></div></div>
+            <div class="campo largo"><label id="ace-rt-destino-lbl">Para onde vai</label><div id="ace-rt-destino" aria-labelledby="ace-rt-destino-lbl"></div></div>
+            <div class="campo"><label>Data da retirada *</label><input type="date" id="ace-rt-data" /></div>
+            <div class="campo"><label>Local / detalhe</label><input id="ace-rt-desc" placeholder="Ex.: prateleira 3" /></div>
+            <div class="campo largo"><label>Observação</label><input id="ace-rt-obs" placeholder="Com o motivo Outro, escreva o que houve" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ace-rt-salvar">⏏️ Retirar</button></div>
         </div>
       </div>
 
@@ -6714,6 +6772,15 @@
         <div class="form-acoes compacta"><button type="button" class="btn" id="btn-sep-ped-salvar">📦 Enviar pedido</button></div>
       </div>
     </div>
+
+    <!-- fase 141: ferramenta quebrou com peça instalada: sugere a retirada, peça por peça, sem retirar sozinho (abre de Estacas e das Chegadas; fora das seções porque elas se escondem) -->
+    <div class="modal-fundo" id="ace-sug-modal" style="display:none;">
+      <div class="modal-caixa" style="max-width:560px;">
+        <div class="modal-topo"><h3>Retirar a peça que quebrou?</h3><button type="button" class="btn-sec btn-sm" id="btn-ace-sug-fechar">✕</button></div>
+        <p class="meta">Estas peças estavam instaladas na máquina naquele dia. Nada foi retirado: escolha a que quebrou.</p>
+        <div id="ace-sug-lista"></div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -6795,60 +6862,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=12194bd"></script>
+<script src="js/core.js?v=d53edb2"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=12194bd"></script>
+<script src="js/historico.js?v=d53edb2"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=12194bd"></script>
-<script src="js/fiscal_ncm.js?v=12194bd"></script>
+<script src="js/fiscal.js?v=d53edb2"></script>
+<script src="js/fiscal_ncm.js?v=d53edb2"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=12194bd"></script>
-<script src="js/fornecedores.js?v=12194bd"></script>
-<script src="js/apropriacoes.js?v=12194bd"></script>
-<script src="js/funcionarios.js?v=12194bd"></script>
-<script src="js/funcionarios_importar.js?v=12194bd"></script>
-<script src="js/rh_documentos.js?v=12194bd"></script>
-<script src="js/servicos.js?v=12194bd"></script>
-<script src="js/produtos.js?v=12194bd"></script>
-<script src="js/estoque.js?v=12194bd"></script>
-<script src="js/separacoes.js?v=12194bd"></script>
-<script src="js/epi.js?v=12194bd"></script>
-<script src="js/compras.js?v=12194bd"></script>
-<script src="js/requisicoes.js?v=12194bd"></script>
-<script src="js/orcamentos.js?v=12194bd"></script>
-<script src="js/propostas.js?v=12194bd"></script>
-<script src="js/contratos.js?v=12194bd"></script>
-<script src="js/contas_pagar.js?v=12194bd"></script>
-<script src="js/centros_custo.js?v=12194bd"></script>
-<script src="js/carteira.js?v=12194bd"></script>
-<script src="js/obras.js?v=12194bd"></script>
-<script src="js/frota.js?v=12194bd"></script>
-<script src="js/viagens.js?v=12194bd"></script>
-<script src="js/equipamentos.js?v=12194bd"></script>
-<script src="js/vendas_bens.js?v=12194bd"></script>
-<script src="js/acessorios.js?v=12194bd"></script>
-<script src="js/reparos.js?v=12194bd"></script>
-<script src="js/manutencao.js?v=12194bd"></script>
-<script src="js/fabricacao.js?v=12194bd"></script>
-<script src="js/mobilizacoes.js?v=12194bd"></script>
-<script src="js/estacas.js?v=12194bd"></script>
-<script src="js/obra_abas.js?v=12194bd"></script>
-<script src="js/medicoes.js?v=12194bd"></script>
-<script src="js/movimentacoes.js?v=12194bd"></script>
-<script src="js/rdo_import_rg113.js?v=12194bd"></script>
-<script src="js/rdo.js?v=12194bd"></script>
-<script src="js/rdo_import_maya.js?v=12194bd"></script>
-<script src="js/geodigitus.js?v=12194bd"></script>
-<script src="js/computadores_bordo.js?v=12194bd"></script>
-<script src="js/usuarios.js?v=12194bd"></script>
-<script src="js/chamados.js?v=12194bd"></script>
-<script src="js/dashboard.js?v=12194bd"></script>
-<script src="js/rh_horas.js?v=12194bd"></script>
-<script src="js/sesmt.js?v=12194bd"></script>
-<script src="js/patrimonio.js?v=12194bd"></script>
+<script src="js/clientes.js?v=d53edb2"></script>
+<script src="js/fornecedores.js?v=d53edb2"></script>
+<script src="js/apropriacoes.js?v=d53edb2"></script>
+<script src="js/funcionarios.js?v=d53edb2"></script>
+<script src="js/funcionarios_importar.js?v=d53edb2"></script>
+<script src="js/rh_documentos.js?v=d53edb2"></script>
+<script src="js/servicos.js?v=d53edb2"></script>
+<script src="js/produtos.js?v=d53edb2"></script>
+<script src="js/estoque.js?v=d53edb2"></script>
+<script src="js/separacoes.js?v=d53edb2"></script>
+<script src="js/epi.js?v=d53edb2"></script>
+<script src="js/compras.js?v=d53edb2"></script>
+<script src="js/requisicoes.js?v=d53edb2"></script>
+<script src="js/orcamentos.js?v=d53edb2"></script>
+<script src="js/propostas.js?v=d53edb2"></script>
+<script src="js/contratos.js?v=d53edb2"></script>
+<script src="js/contas_pagar.js?v=d53edb2"></script>
+<script src="js/centros_custo.js?v=d53edb2"></script>
+<script src="js/carteira.js?v=d53edb2"></script>
+<script src="js/obras.js?v=d53edb2"></script>
+<script src="js/frota.js?v=d53edb2"></script>
+<script src="js/viagens.js?v=d53edb2"></script>
+<script src="js/equipamentos.js?v=d53edb2"></script>
+<script src="js/vendas_bens.js?v=d53edb2"></script>
+<script src="js/acessorios.js?v=d53edb2"></script>
+<script src="js/reparos.js?v=d53edb2"></script>
+<script src="js/manutencao.js?v=d53edb2"></script>
+<script src="js/fabricacao.js?v=d53edb2"></script>
+<script src="js/mobilizacoes.js?v=d53edb2"></script>
+<script src="js/estacas.js?v=d53edb2"></script>
+<script src="js/obra_abas.js?v=d53edb2"></script>
+<script src="js/medicoes.js?v=d53edb2"></script>
+<script src="js/movimentacoes.js?v=d53edb2"></script>
+<script src="js/rdo_import_rg113.js?v=d53edb2"></script>
+<script src="js/rdo.js?v=d53edb2"></script>
+<script src="js/rdo_import_maya.js?v=d53edb2"></script>
+<script src="js/geodigitus.js?v=d53edb2"></script>
+<script src="js/computadores_bordo.js?v=d53edb2"></script>
+<script src="js/usuarios.js?v=d53edb2"></script>
+<script src="js/chamados.js?v=d53edb2"></script>
+<script src="js/dashboard.js?v=d53edb2"></script>
+<script src="js/rh_horas.js?v=d53edb2"></script>
+<script src="js/sesmt.js?v=d53edb2"></script>
+<script src="js/patrimonio.js?v=d53edb2"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=12194bd"></script>
+<script src="js/sesmt_ocorrencias.js?v=d53edb2"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=12194bd"></script>
+<script src="js/init.js?v=d53edb2"></script>
 </body>
 </html>

@@ -45,17 +45,30 @@ const ACE_TIPO_LBL = {
   trava: "Trava", transferidor: "Transferidor", trado_mecanizado: "Trado mecanizado", tubo: "Tubo", twister: "Twister", cacamba: "Caçamba",
   haste: "Haste", camisa: "Camisa / revestimento", coroa: "Coroa", tricone: "Tricone", flange: "Flange", martelo: "Martelo / bit", bit: "Bit",
   rosca: "Rosca", bomba_argamassa: "Bomba de argamassa", bomba_agua: "Bomba d'água", misturador: "Misturador", mangote: "Mangote",
-  painel_eletrico: "Painel elétrico", caixa_dagua: "Caixa d'água", amortecedor: "Amortecedor", pescador: "Pescador", ferramenta: "Ferramenta", outro: "Outro"
+  painel_eletrico: "Painel elétrico", caixa_dagua: "Caixa d'água", amortecedor: "Amortecedor", pescador: "Pescador", dente: "Dente", unha: "Unha", broca: "Broca", ferramenta: "Ferramenta", outro: "Outro"
 };
 const ACE_TIPOS_FAMILIA = {
-  helice:  ["segmento","ponta","prolonga","guia","curva","caixa_redutora","trava","transferidor","tubo","twister","cacamba","ferramenta","outro"],
-  secante: ["segmento","ponta","prolonga","guia","curva","caixa_redutora","trava","tubo","ferramenta","outro"],
-  trado:   ["trado_mecanizado","segmento","ponta","prolonga","caixa_redutora","ferramenta","outro"],
-  raiz:    ["haste","camisa","coroa","tricone","flange","martelo","bit","rosca","bomba_argamassa","bomba_agua","misturador","mangote","painel_eletrico","caixa_dagua","amortecedor","pescador","ferramenta","outro"],
+  helice:  ["segmento","ponta","prolonga","guia","curva","caixa_redutora","trava","transferidor","tubo","twister","cacamba","dente","unha","ferramenta","outro"],
+  secante: ["segmento","ponta","prolonga","guia","curva","caixa_redutora","trava","tubo","dente","unha","ferramenta","outro"],
+  trado:   ["trado_mecanizado","segmento","ponta","prolonga","caixa_redutora","dente","unha","broca","ferramenta","outro"],
+  raiz:    ["haste","camisa","coroa","tricone","flange","martelo","bit","rosca","bomba_argamassa","bomba_agua","misturador","mangote","painel_eletrico","caixa_dagua","amortecedor","pescador","broca","ferramenta","outro"],
   comum:   Object.keys(ACE_TIPO_LBL)
 };
 const ACE_ACOPL_LBL = { czm: "CZM", hg: "HG", soilmec: "Soilmec", cgl: "CGL", ek: "EK", api: "API", outro: "Outro" };
-const ACE_EVENTO_LBL = { localizacao: "Localização", condicao: "Condição", reparo: "Reparo", perda: "Perda", observacao: "Conferência / nota", importacao: "Importação" };
+const ACE_EVENTO_LBL = { localizacao: "Localização", condicao: "Condição", reparo: "Reparo", perda: "Perda", observacao: "Conferência / nota", importacao: "Importação", instalacao: "Instalação", retirada: "Retirada" };
+// fase 141: motivo da retirada e para onde a peça vai
+const ACE_MOTIVO_RETIRADA = [
+  { valor: "quebrou", rotulo: "Quebrou" }, { valor: "desgaste", rotulo: "Desgaste" }, { valor: "preventiva", rotulo: "Preventiva" },
+  { valor: "troca_obra", rotulo: "Troca de obra" }, { valor: "reparo", rotulo: "Reparo" }, { valor: "outro", rotulo: "Outro" }
+];
+const ACE_DESTINO_RETIRADA = [ { valor: "patio", rotulo: "Pátio" }, { valor: "oficina", rotulo: "Oficina" }, { valor: "equipamento", rotulo: "Fica na máquina" } ];
+const aceMotivoLbl = (v) => (ACE_MOTIVO_RETIRADA.find(m => m.valor === v) || {}).rotulo || v || "";
+// fase 141: sem a migration 141b, a lista segue funcionando com as colunas antigas
+const ACE_COLS_VIDA = "marca,origem_fornecedor_id,instalado_equipamento_id,instalado_em,";
+let _aceSemVida = false;
+let _aceVida = null;        // { vidas, resumo, consumo, pct, minimo } da visão Vida útil
+let _aceVidaAba = "modelo"; // modelo | consumo
+let _aceRtMotivo = null, _aceRtDestino = null;
 const ACE_REPARO_TIPOS = { recuperacao_estrutural: "Recuperação estrutural", solda: "Solda", corte: "Corte", usinagem: "Usinagem", fabricacao_peca: "Fabricação de peça", pintura: "Pintura", outro: "Outro" };
 const ACE_REPARO_STATUS = { aberto: "Aberto", em_execucao: "Em execução", concluido: "Concluído", cancelado: "Cancelado" };
 const ACE_LOCAIS_MOVER = ["patio","oficina","equipamento","obra","em_transito","fornecedor","desconhecido"];
@@ -123,10 +136,11 @@ function aceChaveFamilia(){ return "ace_familia_" + (usuarioAtual?.id || "anon")
 
 /* ---------- carga ---------- */
 async function aceFetchTodos(){
-  const cols = "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,ordem_fabricacao_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia,peso_kg,preco_origem,preco_atualizado_em)";
+  const cols = (_aceSemVida ? "" : ACE_COLS_VIDA) + "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,ordem_fabricacao_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia,peso_kg,preco_origem,preco_atualizado_em)";
   const tudo = []; const passo = 1000;
   for(let de = 0; ; de += passo){
     const { data, error } = await sb.from("acessorios").select(cols).order("marcacao").range(de, de + passo - 1);
+    if(error && error.code === "42703" && !_aceSemVida){ _aceSemVida = true; return aceFetchTodos(); }
     if(error) throw error;
     tudo.push(...(data || []));
     if(!data || data.length < passo) break;
@@ -183,6 +197,7 @@ async function carregarAcessorios(force){
       _aceEq = {}; _aceEquips.forEach(e => _aceEq[e.id] = e);
       _aceForns = fo.data || [];
       _aceContagem = null;
+      _aceVida = null;
       _aceCarregado = true;
       _aceSel = new Set([..._aceSel].filter(id => _aceRegistros.some(a => a.id === id)));
       acePreencherSelectsFixos();
@@ -220,7 +235,7 @@ function aceInvalidar(){ _aceCarregado = false; _aceCatalogoEm = 0; }
 /* recarrega só algumas peças (depois de uma ação) e re-renderiza */
 async function aceRefetch(ids){
   if(!ids || !ids.length) return;
-  const cols = "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,ordem_fabricacao_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia)";
+  const cols = (_aceSemVida ? "" : ACE_COLS_VIDA) + "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,ordem_fabricacao_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia)";
   const { data, error } = await sb.from("acessorios").select(cols).in("id", ids);
   if(error){ aviso("app-aviso", "Erro ao atualizar a lista: " + error.message, "erro"); return; }
   (data || []).forEach(n => {
@@ -230,6 +245,7 @@ async function aceRefetch(ids){
   ids.forEach(id => { if(!(data || []).some(n => n.id === id)) _aceRegistros = _aceRegistros.filter(a => a.id !== id); });
   Object.assign(_aceValor, await aceFetchValor(ids));
   _aceContagem = null;
+  _aceVida = null;
   renderAcessorios();
   if(_aceAtual && ids.includes(_aceAtual.id)){
     const n = _aceRegistros.find(a => a.id === _aceAtual.id);
@@ -245,7 +261,8 @@ function acePreencherSelectsFixos(){
   const optObra = `<option value="">— selecione —</option>` + obras.map(([id, rot]) => `<option value="${esc(id)}">${esc(rot)}</option>`).join("");
   const mo = $("ace-mv-obra"); if(mo) mo.innerHTML = optObra;
   const optForn = `<option value="">— selecione —</option>` + _aceForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}</option>`).join("");
-  ["ace-mv-forn","ace-rp-forn"].forEach(id => { const el = $(id); if(el) el.innerHTML = optForn; });
+  ["ace-mv-forn","ace-rp-forn","ace-origem-forn"].forEach(id => { const el = $(id); if(el) el.innerHTML = optForn; });
+  const dlEq = $("ace-in-equips"); if(dlEq) dlEq.innerHTML = _aceEquips.filter(e => e.ativo !== false).map(e => `<option value="${esc(e.codigo)}">${esc(e.nome || "")}</option>`).join("");
   const fam = Object.entries(ACE_FAMILIA_LBL).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   ["ace-familia","ace-md-familia"].forEach(id => { const el = $(id); if(el) el.innerHTML = fam; });
   const ac = $("ace-acopl"); if(ac) ac.innerHTML = `<option value="">—</option>` + Object.entries(ACE_ACOPL_LBL).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
@@ -339,9 +356,10 @@ function renderAcessorios(){
   document.querySelectorAll("#ace-familias .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.familia === (_aceFamilia || "")));
   document.querySelectorAll("#ace-painel .ind[data-kpi]").forEach(el => el.style.outline = (el.dataset.kpi === _aceKpi && _aceKpi) ? "2px solid var(--marca-600)" : "");
   aceRenderKpis();
-  const filtros = $("ace-filtros"); if(filtros) filtros.style.display = _aceView === "contagem" ? "none" : "";
+  const filtros = $("ace-filtros"); if(filtros) filtros.style.display = ["contagem", "vida"].includes(_aceView) ? "none" : "";
   aceRenderSelecao();
   if(_aceView === "contagem") return renderAcessoriosContagem();
+  if(_aceView === "vida") return aceRenderVidaUtil();
   const dados = aceFiltradas().sort(aceOrdMarc);
   const c = $("ace-contador"); if(c) c.textContent = `${dados.length} de ${aceDaFamilia().filter(a => a.ativo !== false).length}`;
   if(_aceView === "lista") renderAcessoriosLista(dados); else renderAcessoriosKanban(dados);
@@ -505,7 +523,7 @@ function aceExportarContagem(linhas, grupos, tot, verTot){
 function aceRenderSelecao(){
   const box = $("ace-selecao"); if(!box) return;
   const n = _aceSel.size;
-  box.style.display = (n && acePodeEditar() && _aceView !== "contagem") ? "flex" : "none";
+  box.style.display = (n && acePodeEditar() && !["contagem", "vida"].includes(_aceView)) ? "flex" : "none";
   const t = $("ace-selecao-n"); if(t) t.textContent = `${n} peça${n === 1 ? "" : "s"} selecionada${n === 1 ? "" : "s"}`;
 }
 function aceToggleSel(id, on){ if(on) _aceSel.add(id); else _aceSel.delete(id); }
@@ -600,6 +618,174 @@ async function salvarMoverAcessorios(){
   const ids = _aceAcaoIds.slice(); _aceAcaoIds = [];
   ids.forEach(id => _aceSel.delete(id));
   await aceRefetch(ids);
+}
+
+/* ---------- fase 141: instalar e retirar (a vida da peça) ---------- */
+function abrirInstalarAcessorios(ids){
+  if(!acePodeEditar()){ aviso("app-aviso", "Seu perfil não instala acessórios.", "erro"); return; }
+  if(!ids.length) return;
+  if(_aceSemVida){ aviso("app-aviso", "Instalar na máquina ainda não está disponível: falta a atualização do banco.", "erro"); return; }
+  const regs = ids.map(id => _aceRegistros.find(a => a.id === id)).filter(Boolean);
+  const ja = regs.filter(a => a.instalado_equipamento_id);
+  if(ja.length){ aviso("app-aviso", `Já instalada: ${ja.map(a => a.marcacao + " em " + aceEqTag(a.instalado_equipamento_id)).join(", ")}. Retire antes de instalar em outra máquina.`, "erro"); return; }
+  _aceAcaoIds = ids;
+  $("ace-in-resumo").textContent = aceResumoIds(ids);
+  // peças já na mesma máquina vêm com a TAG preenchida
+  const tags = [...new Set(regs.map(a => a.local_equipamento_id).filter(Boolean))];
+  $("ace-in-equip").value = tags.length === 1 && regs.every(a => a.local_equipamento_id) ? aceEqTag(tags[0]) : "";
+  $("ace-in-data").value = hojeISO(); $("ace-in-data").max = hojeISO();
+  $("ace-in-obs").value = "";
+  $("ace-inst-modal").style.display = "flex";
+}
+function fecharInstalarAcessorios(){ $("ace-inst-modal").style.display = "none"; }
+async function salvarInstalarAcessorios(){
+  const tag = $("ace-in-equip").value.trim().toUpperCase();
+  if(!tag){ aviso("app-aviso", "Informe a TAG da máquina.", "erro"); $("ace-in-equip").focus(); return; }
+  const eq = _aceEquips.find(e => String(e.codigo).toUpperCase() === tag);
+  if(!eq){ aviso("app-aviso", `Não há máquina com a TAG ${tag}. Escolha da lista.`, "erro"); $("ace-in-equip").focus(); return; }
+  const dia = $("ace-in-data").value;
+  if(!dia){ aviso("app-aviso", "Informe a data da instalação.", "erro"); return; }
+  const { data, error } = await sb.rpc("acessorios_instalar", { p_ids: _aceAcaoIds, p_equipamento: eq.id, p_data: dia, p_obs: $("ace-in-obs").value.trim() || null });
+  if(error){ console.error("acessorios_instalar:", error); aviso("app-aviso", "Não foi possível instalar: " + aceMsgRpc(error), "erro"); return; }
+  aviso("app-aviso", `${data?.instaladas || 0} peça(s) instalada(s) em ${eq.codigo}.`, "ok");
+  fecharInstalarAcessorios();
+  const ids = _aceAcaoIds.slice(); _aceAcaoIds = [];
+  ids.forEach(id => _aceSel.delete(id));
+  await aceRefetch(ids);
+}
+/* mensagem de regra levantada pela RPC passa como está; erro técnico não aparece cru (hotfix 33) */
+function aceMsgRpc(error){
+  return ACE_ERROS_TECNICOS.includes(error.code) || /permission denied/i.test(error.message || "") ? "avise a diretoria (erro técnico registrado)." : error.message;
+}
+function abrirRetirarAcessorios(ids){
+  if(!acePodeEditar()){ aviso("app-aviso", "Seu perfil não retira acessórios.", "erro"); return; }
+  if(!ids.length) return;
+  const regs = ids.map(id => _aceRegistros.find(a => a.id === id)).filter(Boolean);
+  const fora = regs.filter(a => !a.instalado_equipamento_id);
+  if(fora.length){ aviso("app-aviso", `Não está instalada em máquina: ${fora.map(a => a.marcacao).join(", ")}.`, "erro"); return; }
+  _aceAcaoIds = ids;
+  const tags = [...new Set(regs.map(a => aceEqTag(a.instalado_equipamento_id)))];
+  $("ace-rt-resumo").textContent = `${aceResumoIds(ids)} · instalada(s) em ${tags.join(", ")}`;
+  _aceRtMotivo = chipsMotivo($("ace-rt-motivo"), ACE_MOTIVO_RETIRADA, null);
+  _aceRtDestino = chipsMotivo($("ace-rt-destino"), ACE_DESTINO_RETIRADA, "patio");
+  const min = regs.map(a => a.instalado_em).filter(Boolean).sort().pop() || "";
+  $("ace-rt-data").value = hojeISO(); $("ace-rt-data").max = hojeISO(); $("ace-rt-data").min = min;
+  $("ace-rt-desc").value = ""; $("ace-rt-obs").value = "";
+  $("ace-ret-modal").style.display = "flex";
+}
+function fecharRetirarAcessorios(){ $("ace-ret-modal").style.display = "none"; }
+async function salvarRetirarAcessorios(){
+  const motivo = _aceRtMotivo?.valor, obs = $("ace-rt-obs").value.trim(), dia = $("ace-rt-data").value;
+  if(!motivo){ aviso("app-aviso", "Escolha o motivo da retirada.", "erro"); return; }
+  if(motivo === "outro" && obs.length < 5){ aviso("app-aviso", "Com o motivo Outro, escreva o que houve (ao menos 5 caracteres).", "erro"); $("ace-rt-obs").focus(); return; }
+  if(!dia){ aviso("app-aviso", "Informe a data da retirada.", "erro"); return; }
+  const { data, error } = await sb.rpc("acessorios_retirar", { p_ids: _aceAcaoIds, p_motivo: motivo, p_data: dia, p_obs: obs || null, p_para_local: _aceRtDestino?.valor || "patio", p_para_descricao: $("ace-rt-desc").value.trim() || null });
+  if(error){ console.error("acessorios_retirar:", error); aviso("app-aviso", "Não foi possível retirar: " + aceMsgRpc(error), "erro"); return; }
+  aviso("app-aviso", `${data?.retiradas || 0} peça(s) retirada(s) · ${num(data?.metros)} m em diários finalizados.`, "ok");
+  fecharRetirarAcessorios();
+  const ids = _aceAcaoIds.slice(); _aceAcaoIds = [];
+  ids.forEach(id => _aceSel.delete(id));
+  await aceRefetch(ids);
+}
+/* Refurar e Chegadas: ferramenta quebrou com peça instalada sugere a retirada; um clique por peça, nunca automático */
+function aceSugerirRetirada(pecas){
+  if(!pecas || !pecas.length) return;
+  const pode = acePodeEditar(), lista = $("ace-sug-lista");
+  lista.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Peça</th><th>Tipo</th><th>Máquina</th><th></th></tr></thead><tbody>${pecas.map(p => `<tr data-sug="${esc(p.id)}">
+      <td><strong>${esc(p.marcacao)}</strong></td><td>${esc(ACE_TIPO_LBL[p.tipo] || p.tipo || "—")}</td><td>${esc(p.maquina || "—")}</td>
+      <td class="col-acao">${pode ? `<button type="button" class="btn-sec btn-sm" data-sug-retirar="${esc(p.id)}">⏏️ Retirar: quebrou</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    + (pode ? "" : `<p class="ajuda-campo">Seu perfil não retira peças: avise o responsável pelos acessórios.</p>`);
+  $("ace-sug-modal").style.display = "flex";
+}
+async function aceSugRetirar(b, id){
+  await comBotaoTravado(b, async () => {
+    const { error } = await sb.rpc("acessorios_retirar", { p_ids: [id], p_motivo: "quebrou" });
+    if(error){ aviso("app-aviso", "Não foi possível retirar: " + aceMsgRpc(error), "erro"); return; }
+    b.closest("tr").remove();
+    aviso("app-aviso", "Peça retirada com o motivo Quebrou.", "ok");
+    aceInvalidar();
+    if(!$("ace-sug-lista").querySelector("tr[data-sug]")) $("ace-sug-modal").style.display = "none";
+  });
+}
+
+/* ---------- fase 141: visão Vida útil por modelo ---------- */
+const aceMediana = (v) => { const o = [...v].sort((a, b) => a - b), m = Math.floor(o.length / 2); return !o.length ? null : o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2; };
+const aceM = (v) => `${num(Math.round(Number(v || 0)))} m`;
+/* metros que contam (RDO finalizado) + o que ainda está em diário não finalizado, sempre separado */
+function aceVidaMetrosTxt(v){
+  return `${esc(aceM(v.metros))}${Number(v.metros_rascunho) > 0 ? ` <span class="meta">+ ${esc(aceM(v.metros_rascunho))} em diários não finalizados</span>` : ""}`;
+}
+async function aceCarregarVida(){
+  const [vidas, resumo, consumo, cfg] = await Promise.all([
+    lerTudo(() => sb.from("vw_acessorio_vidas").select("instalacao_evento_id,acessorio_id,marcacao,familia,tipo,modelo_id,modelo,marca,maquina,de,ate,aberta,dias,metros,estacas,metros_rascunho,ativo,conta_desgaste"), "instalacao_evento_id"),
+    sb.from("vw_acessorio_vida_resumo").select("modelo_id,modelo,medida,tipo,familia,marca,vidas_encerradas,metros_medio,metros_mediana,metros_min,metros_max,pct_quebrou,vidas_abertas,metros_rascunho_encerradas"),
+    lerTudo(() => sb.from("vw_acessorio_consumo_sku").select("produto_id,codigo,nome,diametro_mm,equipamento_id,maquina,mes,unidades,metros,metros_rascunho,consumo_por_1000m,fornecedor"), ["produto_id", "equipamento_id", "mes"]),
+    sb.from("empresa_config").select("acessorio_vida_alerta_pct,acessorio_vida_min_amostras").limit(1).maybeSingle()
+  ]);
+  const erro = vidas.error || resumo.error || consumo.error;
+  return { erro, vidas: vidas.data || [], resumo: resumo.data || [], consumo: consumo.data || [], pct: cfg.data?.acessorio_vida_alerta_pct ?? 80, minimo: cfg.data?.acessorio_vida_min_amostras ?? 3 };
+}
+/* mesma regra do aviso (vw_sc_regularizar_ace): mediana do modelo × marca; com poucas vidas, a do modelo */
+function aceVidaMedianaDe(d, v){
+  if(!v.modelo_id) return null;
+  const enc = d.vidas.filter(x => x.conta_desgaste && !x.aberta && x.modelo_id === v.modelo_id);
+  const daMarca = enc.filter(x => (x.marca || null) === (v.marca || null));
+  if(daMarca.length >= d.minimo) return aceMediana(daMarca.map(x => Number(x.metros)));
+  return enc.length >= d.minimo ? aceMediana(enc.map(x => Number(x.metros))) : null;
+}
+function aceVidaBarraHTML(d, v){
+  const med = aceVidaMedianaDe(d, v);
+  if(!(med > 0)) return `<span class="meta">sem vidas suficientes (mínimo ${esc(d.minimo)})</span>`;
+  const pct = Number(v.metros) / med * 100, cls = pct >= 100 ? " fim" : pct >= d.pct ? " alerta" : "";
+  return `<div class="ace-vida-barra${esc(cls)}" title="${esc(aceM(v.metros))} de ${esc(aceM(med))} (mediana)"><div class="trilha"><div style="width:${esc(Math.min(100, Math.round(pct)))}%;"></div></div><span class="meta">${esc(Math.round(pct))}%</span></div>`;
+}
+async function aceRenderVidaUtil(){
+  const cont = $("ace-conteudo");
+  if(!_aceVida){
+    cont.innerHTML = `<p class="vazio">Carregando a vida útil…</p>`;
+    _aceVida = await aceCarregarVida();
+    if(_aceView !== "vida") return;
+  }
+  const d = _aceVida;
+  if(d.erro){ const falta = ["42P01", "PGRST205"].includes(d.erro.code); cont.innerHTML = `<p class="vazio">${falta ? "A vida útil ainda não está disponível: falta a atualização do banco." : "Erro ao ler a vida útil: " + esc(d.erro.message)}</p>`; _aceVida = null; return; }
+  const daFam = (x) => !_aceFamilia || x.familia === _aceFamilia;
+  const resumo = d.resumo.filter(daFam).sort((a, b) => String(a.modelo || "").localeCompare(String(b.modelo || ""), "pt-BR", { numeric: true }) || String(a.marca || "").localeCompare(String(b.marca || ""), "pt-BR"));
+  const abertas = d.vidas.filter(v => v.aberta && v.ativo && v.conta_desgaste && daFam(v)).sort((a, b) => Number(b.metros) - Number(a.metros));
+  const c = $("ace-contador"); if(c) c.textContent = _aceVidaAba === "consumo" ? `${d.consumo.length} linha(s)` : `${resumo.length} modelo(s) · ${abertas.length} instalada(s)`;
+  const toggle = `<div class="serv-views" id="ace-vida-abas" style="margin-bottom:10px;">
+    <button type="button" class="serv-view-btn${_aceVidaAba === "modelo" ? " ativo" : ""}" data-vida-aba="modelo">Por modelo e marca</button>
+    <button type="button" class="serv-view-btn${_aceVidaAba === "consumo" ? " ativo" : ""}" data-vida-aba="consumo">Consumo por 1.000 m</button></div>`;
+  if(_aceVidaAba === "consumo"){
+    const linhas = [...d.consumo].sort((a, b) => String(b.mes).localeCompare(String(a.mes)) || String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
+    cont.innerHTML = toggle + `<p class="ajuda-campo">Pontas e caçambas de unha e de bits que saem por quantidade: unidades que saíram para a TAG ÷ metros perfurados pela TAG no mês, só com diário finalizado.</p>` + (!linhas.length ? `<p class="vazio">Nenhuma saída desses itens para máquina.</p>` :
+      `<div class="tabela-rola"><table><thead><tr><th>Mês</th><th>Item</th><th class="num">Ø (mm)</th><th>Máquina</th><th class="num">Unidades</th><th>Metros</th><th class="num">Por 1.000 m</th><th>Fornecedor</th></tr></thead>
+      <tbody>${linhas.map(l => `<tr><td>${esc(String(l.mes).slice(5, 7) + "/" + String(l.mes).slice(0, 4))}</td><td><strong>${esc(l.codigo)}</strong> <span class="meta">${esc(l.nome || "")}</span></td><td class="num">${esc(l.diametro_mm ?? "—")}</td><td>${esc(l.maquina || "—")}</td><td class="num">${esc(num(l.unidades))}</td><td>${/* html */ aceVidaMetrosTxt(l)}</td><td class="num">${l.consumo_por_1000m != null ? esc(num(l.consumo_por_1000m)) : "—"}</td><td>${esc(l.fornecedor || "—")}</td></tr>`).join("")}</tbody></table></div>`);
+    return;
+  }
+  cont.innerHTML = toggle + `<p class="ajuda-campo">Metros da máquina entre a instalação e a retirada, com refuro e só com diário finalizado. Instalar conta a vida; mover para a máquina não conta.</p>`
+    + `<div class="tabela-rola" style="margin-bottom:14px;"><table><thead><tr><th>Modelo</th><th>Marca</th><th class="num">Vidas</th><th class="num">Mediana</th><th class="num">Média</th><th class="num">Mín.</th><th class="num">Máx.</th><th class="num">% quebrou</th><th class="num">Instaladas</th></tr></thead>
+      <tbody>${resumo.map(r => `<tr><td><strong>${esc(r.modelo || ACE_TIPO_LBL[r.tipo] || r.tipo)}</strong>${r.medida && r.medida !== "-" ? ` <span class="meta">${esc(r.medida)}</span>` : ""}</td><td>${esc(r.marca || "sem marca")}</td><td class="num">${esc(r.vidas_encerradas)}</td>
+        <td class="num">${r.metros_mediana != null ? esc(aceM(r.metros_mediana)) : "—"}</td><td class="num">${r.metros_medio != null ? esc(aceM(r.metros_medio)) : "—"}</td><td class="num">${r.metros_min != null ? esc(aceM(r.metros_min)) : "—"}</td><td class="num">${r.metros_max != null ? esc(aceM(r.metros_max)) : "—"}</td>
+        <td class="num">${r.pct_quebrou != null ? esc(num(r.pct_quebrou)) + "%" : "—"}</td><td class="num">${esc(r.vidas_abertas)}</td></tr>`).join("") || `<tr><td colspan="9" class="vazio">Nenhuma instalação registrada nesta família.</td></tr>`}</tbody></table></div>`
+    + `<h4 style="margin:0 0 6px;">Peças instaladas hoje</h4>`
+    + (!abertas.length ? `<p class="vazio">Nenhuma peça de desgaste instalada nesta família.</p>` :
+      `<div class="tabela-rola"><table><thead><tr><th>Peça</th><th>Modelo</th><th>Marca</th><th>Máquina</th><th>Desde</th><th>Metros</th><th class="num">Estacas</th><th>Metros ÷ mediana</th></tr></thead>
+      <tbody>${abertas.map(v => `<tr class="linha-clicavel" data-id="${esc(v.acessorio_id)}"><td><strong>${esc(v.marcacao)}</strong></td><td>${esc(v.modelo || ACE_TIPO_LBL[v.tipo] || v.tipo)}</td><td>${esc(v.marca || "sem marca")}</td><td>${esc(v.maquina || "—")}</td><td>${dataBR(v.de)}</td><td>${/* html */ aceVidaMetrosTxt(v)}</td><td class="num">${esc(v.estacas)}</td><td>${/* html */ aceVidaBarraHTML(d, v)}</td></tr>`).join("")}</tbody></table></div>`);
+}
+/* aba Vida útil da ficha: uma linha do tempo por instalação */
+async function aceCarregarVidasFicha(a){
+  const c = $("ace-vida-lista"); if(!c) return;
+  const r = await lerTudo(() => sb.from("vw_acessorio_vidas").select("instalacao_evento_id,maquina,obras,de,ate,aberta,dias,metros,estacas,metros_rascunho,estacas_rascunho,motivo_codigo,observacao,conta_desgaste").eq("acessorio_id", a.id), "instalacao_evento_id");
+  if(_aceAtual?.id !== a.id) return;
+  if(r.error){ c.innerHTML = `<p class="vazio">${["42P01", "PGRST205"].includes(r.error.code) ? "A vida útil ainda não está disponível: falta a atualização do banco." : "Erro: " + esc(r.error.message)}</p>`; return; }
+  const vidas = r.data.sort((x, y) => String(y.de).localeCompare(String(x.de)));
+  const b = $("sb-ace-vida"); if(b){ b.querySelector(".sb-num").textContent = vidas.length; b.classList.toggle("zero", !vidas.length); }
+  if(!vidas.length){ c.innerHTML = `<p class="vazio">Nenhuma instalação registrada. A vida começa em Instalar na máquina, que aceita data passada.</p>`; return; }
+  const desgaste = vidas[0].conta_desgaste;
+  c.innerHTML = (desgaste ? "" : `<p class="ajuda-campo">Este tipo não entra no resumo por modelo; as instalações ficam só aqui.</p>`) + `<div class="tl-lista">${vidas.map(v => `<div class="tl-item"><div class="tl-icone">${v.aberta ? "⚙️" : "⏏️"}</div><div class="tl-conteudo">
+      <div class="tl-titulo">${esc(v.maquina || "Máquina")} <span class="tl-data meta">${dataBR(v.de)} a ${v.aberta ? "hoje" : dataBR(v.ate)} · ${esc(v.dias)} dia(s)</span></div>
+      <div>${/* html */ aceVidaMetrosTxt(v)} · ${esc(v.estacas)} estaca(s)${v.aberta ? ' · <span class="tag azul">instalada</span>' : ` · ${esc(aceMotivoLbl(v.motivo_codigo))}`}</div>
+      ${(v.obras || []).length ? `<div class="meta">Obras: ${esc(v.obras.join(", "))}</div>` : ""}${v.observacao ? `<div class="meta">${esc(v.observacao)}</div>` : ""}</div></div>`).join("")}</div>`;
 }
 
 function abrirPerdaAcessorios(ids){
@@ -920,6 +1106,8 @@ function abrirFichaAcessorio(a){
   $("ace-comp").value = a.comprimento_m ?? ""; $("ace-tubo").value = a.tubo_mm ?? "";
   $("ace-detalhe").value = a.detalhe || ""; $("ace-peso").value = a.peso_kg ?? ""; $("ace-serie").value = a.numero_serie || "";
   $("ace-padrao").value = a.equipamento_padrao_id || "";
+  $("ace-marca").value = a.marca || ""; $("ace-origem-forn").value = a.origem_fornecedor_id || "";
+  const dlM = $("ace-marcas"); if(dlM) dlM.innerHTML = [...new Set(_aceRegistros.map(x => x.marca).filter(Boolean))].sort().map(m => `<option value="${esc(m)}"></option>`).join("");
   $("ace-ativo").checked = a.ativo !== false;
   $("ace-obs").value = a.observacoes || "";
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("ace", "acessorio", a, pode);   // fase 105a: aba Fiscal (NCM lido à parte)
@@ -934,6 +1122,11 @@ function abrirFichaAcessorio(a){
   $("ace-chip-medida").textContent = aceMedida(a) || "—";
   $("ace-chip-onde").textContent = a.id ? aceOnde(a) : "Pátio";
   $("ace-chip-pertence").textContent = a.equipamento_padrao_id ? "TAG " + aceEqTag(a.equipamento_padrao_id) : "—";
+  $("ace-chip-inst").style.display = a.instalado_equipamento_id ? "" : "none";
+  $("ace-chip-inst-txt").textContent = a.instalado_equipamento_id ? `TAG ${aceEqTag(a.instalado_equipamento_id)} desde ${dataBR(a.instalado_em)}` : "—";
+  const inst = !!a.instalado_equipamento_id, comVida = !novo && pode && !_aceSemVida;
+  $("btn-ace-instalar").style.display = comVida && !inst && a.local_tipo !== "perdido" ? "" : "none";
+  $("btn-ace-retirar").style.display = comVida && inst ? "" : "none";
   $("ace-chip-cond").innerHTML = tagStatus("acessorio", a.condicao);
   $("ace-chip-valor").innerHTML = a.id ? aceValorTxt(a) : "—";
   aceChipFabricacao(a);
@@ -950,10 +1143,11 @@ function abrirFichaAcessorio(a){
   setSb("sb-ace-custos", 0);   // lote S56 (#202): aba Custos (compra, saída de estoque e avulso do jogo)
   if(novo){ const cc = $("ace-custos-lista"); if(cc) cc.innerHTML = `<p class="vazio">A peça ainda não foi salva.</p>`; }
   else aceRenderCustos(a);
-  setSb("sb-ace-hist", 0); setSb("sb-ace-rep", 0); setSb("sb-ace-compat", 0);
+  setSb("sb-ace-hist", 0); setSb("sb-ace-rep", 0); setSb("sb-ace-compat", 0); setSb("sb-ace-vida", 0);
+  $("ace-vida-lista").innerHTML = `<p class="vazio">${novo ? "A peça ainda não foi salva." : "Carregando…"}</p>`;
   $("ace-hist-lista").innerHTML = `<p class="vazio">${novo ? "A peça ainda não foi salva." : "Carregando…"}</p>`;
   $("ace-rep-lista").innerHTML = `<p class="vazio">${novo ? "A peça ainda não foi salva." : "Carregando…"}</p>`;
-  if(!novo) aceCarregarFilhas(a);
+  if(!novo){ aceCarregarFilhas(a); aceCarregarVidasFicha(a); }
   if(!novo && typeof montarHistorico === "function") montarHistorico("acessorios", a.id, "ace-chatter");
   else if(typeof ocultarHistorico === "function") ocultarHistorico("ace-chatter");
   ativarTabAcessorio("dados");
@@ -972,7 +1166,7 @@ async function aceChipFabricacao(a){
 
 async function aceCarregarFilhas(a){
   const [ev, rep, comp, mov] = await Promise.all([
-    sb.from("acessorio_eventos").select("id,tipo,data,de_local_tipo,de_ref_id,de_descricao,para_local_tipo,para_ref_id,para_descricao,de_condicao,para_condicao,observacao,autor_nome,movimentacao_id,reparo_id").eq("acessorio_id", a.id).order("data", { ascending: false }).limit(300),
+    sb.from("acessorio_eventos").select((_aceSemVida ? "" : "motivo_codigo,metros_vida,estacas_vida,") + "id,tipo,data,de_local_tipo,de_ref_id,de_descricao,para_local_tipo,para_ref_id,para_descricao,de_condicao,para_condicao,observacao,autor_nome,movimentacao_id,reparo_id").eq("acessorio_id", a.id).order("data", { ascending: false }).limit(300),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,observacoes").eq("acessorio_id", a.id).order("data_abertura", { ascending: false }),
     sb.from("acessorio_equipamentos").select("equipamento_id").eq("acessorio_id", a.id),
     // fase 80: remessas e retornos em que a peça foi, com link de volta para a movimentação; fase 89: e a viagem que levou cada nota
@@ -1017,11 +1211,12 @@ function aceRenderHistorico(evs, err, movs){
   if(err){ c.innerHTML = `<p class="vazio">Erro: ${esc(err.message)}</p>`; return; }
   const movById = {}; (movs || []).forEach(m => movById[m.id] = m);
   if(!evs.length){ c.innerHTML = aceMovsHTML(movs) + `<p class="vazio">Sem eventos.</p>`; return; }
-  const icone = { localizacao: "📍", condicao: "🔩", reparo: "🔧", perda: "⚠️", observacao: "📝", importacao: "📥" };
+  const icone = { localizacao: "📍", condicao: "🔩", reparo: "🔧", perda: "⚠️", observacao: "📝", importacao: "📥", instalacao: "⚙️", retirada: "⏏️" };
   c.innerHTML = aceMovsHTML(movs) + `<div class="tl-lista">${evs.map(e => {
     let txt = "";
     if(e.tipo === "importacao") txt = `Cadastro importado · ${esc(aceRefLabel(e.para_local_tipo, e.para_ref_id, e.para_descricao))}${e.para_condicao ? " · " + esc(aceLbl("acessorio", e.para_condicao)) : ""}`;
-    else if(["localizacao","perda","observacao"].includes(e.tipo)) txt = `${e.de_local_tipo ? esc(aceRefLabel(e.de_local_tipo, e.de_ref_id, e.de_descricao)) + " → " : ""}${esc(aceRefLabel(e.para_local_tipo, e.para_ref_id, e.para_descricao))}`;
+    else if(e.tipo === "retirada") txt = `${esc(aceRefLabel(e.de_local_tipo, e.de_ref_id, e.de_descricao))} → ${esc(aceRefLabel(e.para_local_tipo, e.para_ref_id, e.para_descricao))} · ${esc(aceMotivoLbl(e.motivo_codigo))}${e.metros_vida != null ? ` · ${esc(aceM(e.metros_vida))} · ${esc(e.estacas_vida ?? 0)} estaca(s)` : ""}`;
+    else if(["localizacao","perda","observacao","instalacao"].includes(e.tipo)) txt = `${e.de_local_tipo ? esc(aceRefLabel(e.de_local_tipo, e.de_ref_id, e.de_descricao)) + " → " : ""}${esc(aceRefLabel(e.para_local_tipo, e.para_ref_id, e.para_descricao))}`;
     else txt = `${esc(aceLbl("acessorio", e.de_condicao))} → ${esc(aceLbl("acessorio", e.para_condicao))}`;
     return `<div class="tl-item"><div class="tl-icone">${esc(icone[e.tipo] || "•")}</div><div class="tl-conteudo">
       <div class="tl-titulo">${esc(ACE_EVENTO_LBL[e.tipo] || e.tipo)} <span class="tl-data meta">${aceQuando(e.data)}</span></div>
@@ -1112,6 +1307,7 @@ async function salvarAcessorio(){
     detalhe: $("ace-detalhe").value.trim() || null, peso_kg: n($("ace-peso").value), numero_serie: $("ace-serie").value.trim() || null,
     equipamento_padrao_id: $("ace-padrao").value || null, ativo: $("ace-ativo").checked, observacoes: $("ace-obs").value.trim() || null
   };
+  if(!_aceSemVida){ reg.marca = $("ace-marca").value.trim().toUpperCase() || null; reg.origem_fornecedor_id = $("ace-origem-forn").value || null; }
   if(!reg.marcacao){ aviso("app-aviso", "Informe a marcação da peça.", "erro"); $("ace-marcacao").focus(); return; }
   if(!reg.tipo){ aviso("app-aviso", "Informe o tipo.", "erro"); return; }
   // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
@@ -1169,6 +1365,8 @@ function ligarAcessorios(){
 
   // conteúdo: cliques em pills, linhas, checkboxes
   $("ace-conteudo")?.addEventListener("click", e => {
+    const abaVida = e.target.closest("[data-vida-aba]");
+    if(abaVida){ _aceVidaAba = abaVida.dataset.vidaAba; aceRenderVidaUtil(); return; }
     const pill = e.target.closest(".ace-pill");
     if(pill){
       if(e.ctrlKey || e.metaKey){ aceToggleSel(pill.dataset.id, !_aceSel.has(pill.dataset.id)); renderAcessorios(); }
@@ -1204,6 +1402,8 @@ function ligarAcessorios(){
       case "obra":     abrirMoverAcessorios(ids, { tipo: "obra" }); break;
       case "patio":    abrirMoverAcessorios(ids, { tipo: "patio" }); break;
       case "mover":    abrirMoverAcessorios(ids, {}); break;
+      case "instalar": abrirInstalarAcessorios(ids); break;
+      case "retirar":  abrirRetirarAcessorios(ids); break;
       case "reparo":   abrirReparoAcessorios(ids); break;
       case "condicao": abrirCondicaoAcessorios(ids); break;
       case "perda":    abrirPerdaAcessorios(ids); break;
@@ -1221,6 +1421,8 @@ function ligarAcessorios(){
   $("btn-ace-salvar")?.addEventListener("click", () => comBotaoTravado("btn-ace-salvar", salvarAcessorio));
   $("btn-ace-excluir")?.addEventListener("click", excluirAcessorio);
   $("btn-ace-mover")?.addEventListener("click", () => _aceAtual?.id && abrirMoverAcessorios([_aceAtual.id], {}));
+  $("btn-ace-instalar")?.addEventListener("click", () => _aceAtual?.id && abrirInstalarAcessorios([_aceAtual.id]));
+  $("btn-ace-retirar")?.addEventListener("click", () => _aceAtual?.id && abrirRetirarAcessorios([_aceAtual.id]));
   $("btn-ace-reparo")?.addEventListener("click", () => _aceAtual?.id && abrirReparoAcessorios([_aceAtual.id]));
   $("btn-ace-perda")?.addEventListener("click", () => _aceAtual?.id && abrirPerdaAcessorios([_aceAtual.id]));
   $("btn-ace-mover-jogo")?.addEventListener("click", () => {
@@ -1252,6 +1454,12 @@ function ligarAcessorios(){
     const eqs = _aceEquips.filter(e => e.localizacao_tipo === "obra" && e.localizacao_obra_id === obraId);
     if(eqs.length === 1) $("ace-mv-equip").value = eqs[0].id;
   });
+  $("btn-ace-in-fechar")?.addEventListener("click", fecharInstalarAcessorios);
+  $("btn-ace-in-salvar")?.addEventListener("click", () => comBotaoTravado("btn-ace-in-salvar", salvarInstalarAcessorios));
+  $("btn-ace-rt-fechar")?.addEventListener("click", fecharRetirarAcessorios);
+  $("btn-ace-rt-salvar")?.addEventListener("click", () => comBotaoTravado("btn-ace-rt-salvar", salvarRetirarAcessorios));
+  $("btn-ace-sug-fechar")?.addEventListener("click", () => { $("ace-sug-modal").style.display = "none"; });
+  $("ace-sug-lista")?.addEventListener("click", e => { const b = e.target.closest("[data-sug-retirar]"); if(b) aceSugRetirar(b, b.dataset.sugRetirar); });
   $("btn-ace-pd-fechar")?.addEventListener("click", fecharPerdaAcessorios);
   $("btn-ace-pd-salvar")?.addEventListener("click", () => comBotaoTravado("btn-ace-pd-salvar", salvarPerdaAcessorios));
   $("btn-ace-cd-fechar")?.addEventListener("click", fecharCondicaoAcessorios);
