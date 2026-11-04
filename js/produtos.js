@@ -534,6 +534,7 @@ function novoProduto(){
 async function abrirProduto(id){
   prodEditId = id;
   const { data, error } = await sb.from("produtos").select("*").eq("id",id).single();
+  if(prodEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(error){ aviso("app-aviso","Erro ao abrir produto: "+error.message,"erro"); return; }
   _prodAtivo = data.ativo !== false;   // lote S58 (#237)
   $("prod-codigo").value      = data.codigo || "";

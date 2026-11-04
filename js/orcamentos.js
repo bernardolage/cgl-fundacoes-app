@@ -853,6 +853,7 @@ function novoOrcamento(){
 async function abrirOrcamento(id){
   orcEditId = id;
   const { data:o, error } = await sb.from("orcamentos").select("*").eq("id",id).single();
+  if(orcEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(error){ aviso("app-aviso","Erro ao abrir o orçamento: "+error.message,"erro"); return; }
   $("orc-numero").value         = o.numero || "";
   $("orc-cliente").value        = o.cliente_id || "";

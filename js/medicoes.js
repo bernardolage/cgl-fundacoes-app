@@ -2164,7 +2164,12 @@ async function medImpConfirmar(){
   if(insIt.error || insIt.semTrava){
     // semTrava: banco sem as colunas do hotfix 93 e item com o total do boletim → não grava um total diferente do escolhido
     if(insIt.semTrava) await sb.from("medicao_itens").delete().eq("medicao_id", medId);
-    await sb.from("medicoes").delete().eq("id", medId);
+    // fase 142 (EST-04): .select() porque a RLS recusa o delete sem erro, com 0 linhas
+    const desfez = await sb.from("medicoes").delete().eq("id", medId).select("id");
+    if(desfez.error || !desfez.data?.length){
+      aviso("med-imp-aviso", "Não foi possível gravar os itens e a medição não foi desfeita: confira antes de importar de novo." + (desfez.error ? " " + desfez.error.message : ""), "erro");
+      return;
+    }
     if(storagePath) await sb.storage.from("obras-documentos").remove([storagePath]);
     aviso("med-imp-aviso", insIt.error
       ? "Não foi possível gravar os itens (a medição foi desfeita): " + insIt.error.message

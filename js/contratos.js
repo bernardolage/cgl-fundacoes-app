@@ -281,6 +281,7 @@ async function novoContrato(){
 async function abrirContrato(id){
   conEditId = id;
   const { data:c, error } = await sb.from("contratos").select("*").eq("id",id).single();
+  if(conEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(error){ aviso("app-aviso","Erro ao abrir contrato: "+error.message,"erro"); return; }
   $("con-numero").value = c.numero || "";
   $("con-fornecedor").value = c.fornecedor_id || "";

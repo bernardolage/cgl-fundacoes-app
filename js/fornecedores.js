@@ -228,6 +228,7 @@ function novoFornecedor(){
 async function abrirFornecedor(id){
   fornEditId = id;
   const { data, error } = await sb.from("fornecedores").select("*").eq("id",id).single();
+  if(fornEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(error){ aviso("app-aviso","Erro ao abrir fornecedor: "+error.message,"erro"); return; }
   $("forn-tipo").value        = data.tipo_pessoa || "juridica";
   $("forn-razao").value       = data.razao_social || "";

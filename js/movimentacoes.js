@@ -791,7 +791,13 @@ function coletarDadosForm(){
 }
 
 /* ---------- Salvar (cabeçalho + itens) ---------- */
-async function salvarMovimentacao(novoStatus){
+/* Fase 142 (UX-01): uma gravação por vez; quem chega com outra em andamento espera a mesma e recebe o mesmo retorno. */
+let _movSalvando = null;
+function salvarMovimentacao(novoStatus){
+  if(!_movSalvando) _movSalvando = movSalvarAgora(novoStatus).finally(() => { _movSalvando = null; });
+  return _movSalvando;
+}
+async function movSalvarAgora(novoStatus){
   if(!itensAtuais.length){
     aviso("app-aviso","Adicione pelo menos um item.", "erro");
     ativarTab("itens");
@@ -1399,23 +1405,23 @@ function ligarFichaMovimentacao(){
   $("btn-mov-ace-sug-nenhum")?.addEventListener("click", () => movSugMarcar(false));
   $("btn-mov-ace-sug-add")?.addEventListener("click", movSugAdicionar);
 
-  $("btn-salvar-rascunho")?.addEventListener("click", () => salvarMovimentacao(movimentacaoAtual?.status || "rascunho"));
+  $("btn-salvar-rascunho")?.addEventListener("click", () => comBotaoTravado("btn-salvar-rascunho", () => salvarMovimentacao(movimentacaoAtual?.status || "rascunho")));
   $("btn-marcar-emitida")?.addEventListener("click", async () => {
     if(!$("mov-nf-numero").value){
       aviso("app-aviso","Informe o número da NF-e antes de marcar como emitida.","erro");
       ativarTab("fiscal");
       return;
     }
-    await salvarMovimentacao("emitida");
+    await comBotaoTravado("btn-marcar-emitida", () => salvarMovimentacao("emitida"));
   });
-  $("btn-marcar-transito")?.addEventListener("click", () => salvarMovimentacao("em_transito"));
+  $("btn-marcar-transito")?.addEventListener("click", () => comBotaoTravado("btn-marcar-transito", () => salvarMovimentacao("em_transito")));
   $("btn-marcar-recebida")?.addEventListener("click", async () => {
     if(!confirm("Marcar como RECEBIDA? Isso atualiza a localização dos equipamentos e acessórios automaticamente.")) return;
-    await salvarMovimentacao("recebida");
+    await comBotaoTravado("btn-marcar-recebida", () => salvarMovimentacao("recebida"));
   });
   $("btn-cancelar")?.addEventListener("click", async () => {
     if(!confirm("Cancelar esta movimentação?")) return;
-    await salvarMovimentacao("cancelada");
+    await comBotaoTravado("btn-cancelar", () => salvarMovimentacao("cancelada"));
   });
 
   $("btn-sugerir-fiscais")?.addEventListener("click", sugerirDadosFiscais);

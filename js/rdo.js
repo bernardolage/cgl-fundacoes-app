@@ -444,6 +444,7 @@ async function abrirRDO(id){
     // chamado #5: atividades hora-a-hora do dia (linhas sem execucao_id; as com execucao_id são as paradas do boletim raiz)
     sb.from("rdo_raiz_justificativa").select("id,ordem,h_inicial,h_final,motivo").eq("rdo_id", id).is("execucao_id", null).order("ordem")
   ]);
+  if(rdoEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(rdo.error){ aviso("app-aviso","Erro: "+rdo.error.message,"erro"); return; }
   // Se a leitura das execuções/equipe falhar (rede, RLS), NÃO abrir a ficha:
   // salvarRDO faz delete+insert dos filhos e reinseriria um array vazio,
@@ -1632,7 +1633,14 @@ async function rdoGarantirDiametros(obraId, tipoServico, execs){
 }
 
 /* ---------- Salvar / excluir ---------- */
-async function salvarRDO(novoStatus){
+/* Fase 142 (UX-01): uma gravação por vez, porque ela apaga e reinsere os filhos. Salvar, Finalizar e a statusbar passam por aqui;
+   quem chega com outra em andamento espera a mesma, sem gravar de novo. Não cobre duas abas nem duas pessoas (DAD-01). */
+let _rdoSalvando = null;
+function salvarRDO(novoStatus){
+  if(!_rdoSalvando) _rdoSalvando = rdoSalvarAgora(novoStatus).finally(() => { _rdoSalvando = null; });
+  return _rdoSalvando;
+}
+async function rdoSalvarAgora(novoStatus){
   const obra_id = $("rdo-obra").value;
   if(!obra_id){ aviso("app-aviso","Selecione a obra.","erro"); ativarTabRDO("cabecalho"); return; }
   const dataRDO = $("rdo-data").value;
@@ -1871,22 +1879,24 @@ async function salvarRDO(novoStatus){
   }
 
   // Insere cabeçalho do dia (Raiz)
+  let rdoRaizErro = null;   // fase 142 (EST-04): falha aqui não pode virar "salvo com sucesso"
   if(tipo === "estaca_raiz"){
     const folha   = $("rdo-raiz-folha")?.value.trim()   || null;
     const projeto = $("rdo-raiz-projeto")?.value.trim() || null;
     const local   = $("rdo-raiz-local")?.value.trim()   || null;
     const bloco   = $("rdo-raiz-bloco")?.value.trim()   || null;
     if(folha || projeto || local || bloco){
-      await sb.from("rdo_raiz_dados").insert({
+      ({ error: rdoRaizErro } = await sb.from("rdo_raiz_dados").insert({
         rdo_id: savedId, folha, projeto, local_obra: local, bloco
-      });
+      }));
     }
     // solo/just já inseridos por execucao_id na seção acima
   }
 
   $("btn-excluir-rdo").style.display = "";
   $("rdo-status").value = reg.status;
-  aviso("app-aviso","RDO salvo com sucesso.","ok");
+  if(rdoRaizErro) aviso("app-aviso", "RDO salvo, mas os dados da raiz não foram gravados: " + rdoRaizErro.message, "erro");
+  else aviso("app-aviso","RDO salvo com sucesso.","ok");
   await carregarRDO();
   await abrirRDO(savedId);
 }
@@ -1978,7 +1988,7 @@ function ligarRDO(){
   $("btn-voltar-rdo")?.addEventListener("click", mostrarPainelRDO);
   document.querySelectorAll(".sidebar-nav button[data-secao]").forEach(b => b.addEventListener("click", () => { _rdoVoltarPara = null; })); // chamado #8: navegação manual esquece a obra de origem
   $("btn-salvar-rdo")?.addEventListener("click", () => comBotaoTravado("btn-salvar-rdo", () => salvarRDO()));
-  $("btn-finalizar-rdo")?.addEventListener("click", () => salvarRDO("finalizado"));
+  $("btn-finalizar-rdo")?.addEventListener("click", () => comBotaoTravado("btn-finalizar-rdo", () => salvarRDO("finalizado")));
   $("btn-excluir-rdo")?.addEventListener("click", excluirRDO);
   $("btn-add-execucao")?.addEventListener("click", adicionarExecucao);
   $("btn-add-raiz-solo")?.addEventListener("click", adicionarRaizSolo);

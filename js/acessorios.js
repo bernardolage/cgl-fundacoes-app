@@ -778,10 +778,12 @@ async function salvarReparoAcessorios(){
   const { data, error } = await sb.from("reparos_caldeiraria").insert(linhas).select("id");
   if(error){ aviso("app-aviso", "Erro ao abrir reparo: " + error.message, "erro"); return; }
   // peça vai para a oficina (trigger). Se é no fornecedor, move para lá.
+  let erroMover = null;   // fase 142 (EST-04)
   if(local === "fornecedor"){
-    await sb.rpc("acessorios_mover", { p_ids: _aceAcaoIds, p_local_tipo: "fornecedor", p_fornecedor_id: fornId, p_obs: "Enviada para reparo: " + desc, p_data: aceDataISOparaTS($("ace-rp-data").value) });
+    ({ error: erroMover } = await sb.rpc("acessorios_mover", { p_ids: _aceAcaoIds, p_local_tipo: "fornecedor", p_fornecedor_id: fornId, p_obs: "Enviada para reparo: " + desc, p_data: aceDataISOparaTS($("ace-rp-data").value) }));
   }
-  aviso("app-aviso", `${(data || []).length} reparo(s) aberto(s).`, "ok");
+  if(erroMover) aviso("app-aviso", "Reparo aberto, mas a peça não foi movida para o fornecedor: " + erroMover.message, "erro");
+  else aviso("app-aviso", `${(data || []).length} reparo(s) aberto(s).`, "ok");
   fecharReparoAcessorios();
   const ids = _aceAcaoIds.slice(); _aceAcaoIds = [];
   ids.forEach(id => _aceSel.delete(id));

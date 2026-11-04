@@ -269,6 +269,7 @@ function novoCliente(){
 async function abrirCliente(id, aba){
   cliEditId = id;
   const { data, error } = await sb.from("clientes").select("*").eq("id",id).single();
+  if(cliEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(error){ aviso("app-aviso","Erro ao abrir cliente: "+error.message,"erro"); return; }
   _cliTemFiscal = Object.prototype.hasOwnProperty.call(data, "codigo_ibge");
   _cliDocOriginal = data.cpf_cnpj || "";

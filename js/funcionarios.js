@@ -442,6 +442,7 @@ function novoFuncionario(){
 async function abrirFuncionario(id){
   funcEditId = id;
   const { data, error } = await sb.from("funcionarios").select("*").eq("id",id).single();
+  if(funcEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(error){ aviso("app-aviso","Erro ao abrir funcionário: "+error.message,"erro"); return; }
 
   $("func-nome").value        = data.nome||"";
@@ -719,7 +720,13 @@ async function funcBloqueiaHomonimo(nome){
   return null; // homônimo legítimo: CPFs diferentes
 }
 
-async function salvarFuncionario(novoStatus){
+/* Fase 142 (UX-01): uma gravação por vez; quem chega com outra em andamento espera a mesma. */
+let _funcSalvando = null;
+function salvarFuncionario(novoStatus){
+  if(!_funcSalvando) _funcSalvando = funcSalvarAgora(novoStatus).finally(() => { _funcSalvando = null; });
+  return _funcSalvando;
+}
+async function funcSalvarAgora(novoStatus){
   if(!$("func-nome").value.trim()){
     aviso("app-aviso","Informe o nome.","erro"); ativarTabFunc("pessoais"); return;
   }
@@ -827,7 +834,7 @@ function ligarFuncionarios(){
 
   $("btn-novo-funcionario")?.addEventListener("click", novoFuncionario);
   $("btn-voltar-func")?.addEventListener("click", mostrarPainelFunc);
-  $("btn-salvar-func")?.addEventListener("click", () => salvarFuncionario());
+  $("btn-salvar-func")?.addEventListener("click", () => comBotaoTravado("btn-salvar-func", () => salvarFuncionario()));
   $("btn-excluir-func")?.addEventListener("click", excluirFuncionario);
 
   document.querySelectorAll("#func-notebook button").forEach(b => {

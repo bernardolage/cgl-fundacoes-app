@@ -969,14 +969,19 @@ async function manAtivAdd(){
   const ordem = _manAtivs.length ? Math.max(..._manAtivs.map(a => a.ordem)) + 1 : 1;
   const { error } = await sb.from("manutencao_atividades").insert({ manutencao_id: _manAtual.id, ordem, setor: it?.setor || $("man-a-setor").value || null, atividade: texto, situacao: "pendente", plano_item_id: itemId });
   if(error){ aviso("app-aviso", "Não foi possível adicionar: " + error.message, "erro"); return; }
+  let erroKit = null;   // fase 142 (EST-04)
   if(it){ // kit do item vira material da OS
-    const { data: kit } = await sb.from("manutencao_plano_materiais").select("produto_id,descricao,codigo_peca,quantidade,produto:produtos(codigo,nome,unidade,custo_ultimo)").eq("plano_item_id", itemId);
-    if(kit?.length) await sb.from("manutencao_materiais").insert(kit.map(k => ({ manutencao_id: _manAtual.id, produto_id: k.produto_id, descricao: k.produto ? `${k.produto.codigo} — ${k.produto.nome}` : k.descricao, unidade: k.produto?.unidade || "un", quantidade: k.quantidade, custo_unitario: Number(k.produto?.custo_ultimo || 0), codigo_peca: k.codigo_peca, plano_item_id: itemId, origem: "app" })));
-    const ids = new Set(_manAtual.plano_item_ids || []); ids.add(itemId);
-    await sb.from("manutencoes").update({ plano_item_ids: [...ids] }).eq("id", _manAtual.id);
+    const { data: kit, error: erroLeitura } = await sb.from("manutencao_plano_materiais").select("produto_id,descricao,codigo_peca,quantidade,produto:produtos(codigo,nome,unidade,custo_ultimo)").eq("plano_item_id", itemId);
+    erroKit = erroLeitura;
+    if(!erroKit && kit?.length) ({ error: erroKit } = await sb.from("manutencao_materiais").insert(kit.map(k => ({ manutencao_id: _manAtual.id, produto_id: k.produto_id, descricao: k.produto ? `${k.produto.codigo} — ${k.produto.nome}` : k.descricao, unidade: k.produto?.unidade || "un", quantidade: k.quantidade, custo_unitario: Number(k.produto?.custo_ultimo || 0), codigo_peca: k.codigo_peca, plano_item_id: itemId, origem: "app" }))));
+    if(!erroKit){
+      const ids = new Set(_manAtual.plano_item_ids || []); ids.add(itemId);
+      ({ error: erroKit } = await sb.from("manutencoes").update({ plano_item_ids: [...ids] }).eq("id", _manAtual.id));
+    }
   }
   $("man-a-texto").value = ""; $("man-a-plano").value = "";
   await abrirManutencao(_manAtual.id); manAtivarTab("atividades");
+  if(erroKit) aviso("app-aviso", "Atividade adicionada, mas o kit de materiais não foi: " + erroKit.message, "erro");
 }
 
 /* mão de obra */

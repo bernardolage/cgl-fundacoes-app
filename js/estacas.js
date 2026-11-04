@@ -3011,14 +3011,16 @@ async function marcarComoRefuro(execId){
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
 
   // Registra alteração manual na estaca
+  let erroRegistro = null;   // fase 142 (EST-04)
   if(execData?.estaca_id){
-    await sb.rpc("registrar_alteracao_estaca", {
+    ({ error: erroRegistro } = await sb.rpc("registrar_alteracao_estaca", {
       p_estaca_id: execData.estaca_id,
       p_motivo: "Execução marcada como REFURO via Conferência"
-    });
+    }));
   }
 
-  aviso("app-aviso","Execução marcada como refuro e registrada como alteração.","ok");
+  if(erroRegistro) aviso("app-aviso", "Refuro marcado, mas o registro da alteração na estaca falhou: " + erroRegistro.message, "erro");
+  else aviso("app-aviso","Execução marcada como refuro e registrada como alteração.","ok");
   await abrirModalReconciliacao();
   if(typeof carregarEstacasDaObra === "function") await carregarEstacasDaObra(obraEditId);
 }

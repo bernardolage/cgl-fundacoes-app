@@ -386,7 +386,7 @@ function sugerirNumeros(){
 /* Fase 86: só um salvar que passou libera a atualização do app (limpa a marca de formulário sujo):
    botão de gravação (id ou texto), fn resolvida sem exceção e nenhum aviso de erro visível depois dela
    (validação que avisa e retorna). Gerar PDF, importar, exportar e buscar nunca limpam. */
-const BOTAO_GRAVACAO_RE = /salvar|gravar|confirmar|aprovar|concluir|enviar|registrar|lan[cç]ar|marcar|baixa|receber|entregar/i;
+const BOTAO_GRAVACAO_RE = /salvar|gravar|confirmar|aprovar|concluir|finalizar|enviar|registrar|lan[cç]ar|marcar|baixa|receber|entregar/i;
 async function comBotaoTravado(btnOuId, fn){
   const b = typeof btnOuId === "string" ? $(btnOuId) : btnOuId;
   if(b){

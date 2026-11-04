@@ -127,18 +127,19 @@ function capBaixarCsv(lista, nomeArquivo){
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = nomeArquivo; a.click();
 }
 
-/* Fase 58: a exportação vira um lote (quem, quando, quantos, arquivo); cada título aponta para o lote */
+/* Fase 58: a exportação vira um lote (quem, quando, quantos, arquivo); cada título aponta para o lote.
+   Fase 142 (DAD-03): grava primeiro, em uma transação, e baixa depois. Se o download falhar, o lote baixa o mesmo arquivo de novo;
+   antes, cancelar ou falhar deixava pendente um título que já estava num arquivo, e ele saía de novo no próximo. */
 async function exportarTitulos(){
   const pend = _capTitulos.filter(t => !t.exportado_em);
   if(!pend.length) return;
   const arquivo = `titulos_a_pagar_${hojeISO()}_${new Date().toTimeString().slice(0, 5).replace(":", "")}.csv`;
-  capBaixarCsv(pend, arquivo);
-  if(!confirm(`Arquivo ${arquivo} gerado com ${pend.length} título(s). Marcar como exportados? (Ficam registrados como um lote na visão Exportações.)`)) return;
-  const { data: lote, error: eLote } = await sb.from("titulos_exportacoes").insert({ quantidade: pend.length, valor_total: Number(capSoma(pend).toFixed(2)), arquivo }).select("id").single();
-  if(eLote){ aviso("app-aviso", "Arquivo gerado, mas o lote não foi registrado: " + eLote.message, "erro"); return; }
-  const { error } = await sb.from("titulos_pagar").update({ exportado_em: new Date().toISOString(), exportacao_id: lote.id }).in("id", pend.map(t => t.id));
-  if(error){ aviso("app-aviso", "Arquivo gerado, mas não marcou como exportado: " + error.message, "erro"); return; }
-  aviso("app-aviso", `${pend.length} título(s) exportado(s) no lote ${arquivo}.`, "ok");
+  if(!confirm(`Exportar ${pend.length} título(s)? Depois de confirmar, eles ficam registrados como um lote na visão Exportações e o arquivo ${arquivo} é gerado.`)) return;
+  const { data: lote, error } = await sb.rpc("titulos_exportar_lote", { p_ids: pend.map(t => t.id), p_arquivo: arquivo });
+  if(error){ aviso("app-aviso", "Não foi possível exportar; nenhum arquivo foi gerado: " + error.message, "erro"); return; }
+  const marcados = new Set(lote?.ids || []);
+  capBaixarCsv(pend.filter(t => marcados.has(t.id)), arquivo);   // só o que este lote marcou: outra pessoa pode ter exportado parte
+  aviso("app-aviso", `${marcados.size} título(s) exportado(s) no lote ${arquivo}. Se o arquivo não baixar, ele está na visão Exportações.`, "ok");
   renderContratos();
 }
 
