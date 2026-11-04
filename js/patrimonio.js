@@ -125,9 +125,26 @@ function patPrecoSugerido(b){
 function patSugestaoHtml(b){
   const s = patPrecoSugerido(b);
   if(!s) return "";
+  // aceitar a sugestão na linha: só o diretor, e só com peça contável (o total é peças × preço)
+  const k = patChave(b);
+  const usar = patPodeEditar() && Number(patBemPorChave(k)?.quantidade || 0) > 0
+    ? ` <button type="button" class="btn-sec btn-sm pat-usar-sugestao" data-k="${esc(k)}" title="Grava a avaliação deste ano com este preço por peça; depois é só clicar na célula para mudar">✓ Usar</button>`
+    : "";
   return s.origem === "planilha"
-    ? `<div class="meta" title="Preço de referência do modelo (módulo Acessórios): só sugestão, nunca gravada sozinha">sugestão ${brl(s.preco)}/peça</div>`
-    : `<div class="meta" title="Preço estimado por peça parecida: só sugestão, nunca gravada sozinha">similar a… ${brl(s.preco)}/peça<br>${esc(s.referencia)}</div>`;
+    ? `<div class="meta" title="Preço de referência do modelo (módulo Acessórios): só sugestão, nunca gravada sozinha">sugestão ${brl(s.preco)}/peça${/* html */ usar}</div>`
+    : `<div class="meta" title="Preço estimado por peça parecida: só sugestão, nunca gravada sozinha">similar a… ${brl(s.preco)}/peça${/* html */ usar}<br>${esc(s.referencia)}</div>`;
+}
+/* aceita a sugestão da linha: grava como a troca da verba, com a origem nas observações. A verba só sai pela troca ou pela ficha */
+async function patUsarSugestao(btn){
+  const b = patBemPorChave(btn.dataset.k), s = b && patPrecoSugerido(b);
+  if(!s || !patPodeEditar()) return;
+  await comBotaoTravado(btn, async () => {
+    const ok = await patGravarAvaliacao(b, patAnoCorrente(), {
+      valor_unitario: s.preco, quantidade: Number(b.quantidade || 0), bem_rotulo: b.descricao,
+      observacoes: s.origem === "planilha" ? "planilha" : `similar a: ${s.referencia}`
+    });
+    if(ok) await carregarPatrimonio();
+  });
 }
 /* ordenação da Avaliação: dentro do grupo, para os subtotais continuarem valendo */
 const _patOrdem = ordenarTabela({
@@ -388,6 +405,8 @@ function renderPatAvaliacao(dados){
 
 /* clique no painel: célula de valor (diretor) edita na linha; o resto da linha abre a ficha do bem */
 function patCliqueConteudo(e){
+  const usar = e.target.closest(".pat-usar-sugestao");
+  if(usar){ e.stopPropagation(); patUsarSugestao(usar); return; }
   const cel = e.target.closest(".pat-editavel");
   if(cel && patPodeEditar()){ e.stopPropagation(); patEditarInline(cel); return; }
   if(e.target.closest("input, button, a")) return;
