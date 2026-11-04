@@ -13,8 +13,10 @@
    (viagens.transportador_id/placa/motorista, sem caminhão nem km). Valor, vencimento e documento ficam
    em viagem_fretes (1:1), que só pode_ler_contas_pagar() lê: o embed frete:viagem_fretes(...) vem nulo
    para os demais e a tela mostra só o frete_status (texto). O custo é direto e gera o título a pagar.
+   Fase 118a (04/11/2026): visão Abastecimentos, só leitura, do cartão da PlusFrota (frota_abastecimentos, gravada só pela
+   function plusfrota-sync). Não entra em custo nem em km da máquina: isso é a 118b.
    ==================================================================== */
-let _frotaView = "viagens";          // viagens | veiculos | documentos
+let _frotaView = "viagens";          // viagens | veiculos | documentos | abastecimentos
 let _frotaModo = "lista";            // lista | kanban (visão Viagens)
 let _frotaVeic = [];                 // equipamentos tipo caminhao/veiculo
 let _frotaEquipOutros = [];          // demais equipamentos (atendidos, itens)
@@ -57,6 +59,9 @@ function logPodeOperar(){ return !!usuarioAtual && !ehSomenteLeitura() && VG_LOG
 function frotaPodeEditar(){
   return !!usuarioAtual && !ehSomenteLeitura() && ["admin", "diretor", "rh", "logistica", "encarregado", "engenheiro", "mecanico", "gestor_frota"].includes(usuarioAtual.cargo);
 }
+/* fase 118a: mesmas listas de frota_abast_pode_ler() e frota_abast_pode_sync(); diretor entra por has_role() lá e aqui na lista */
+function frotaPodeVerAbast(){ return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_frota", "financeiro", "auditor"].includes(usuarioAtual.cargo); }
+function frotaPodeSyncAbast(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "logistica", "gestor_frota"].includes(usuarioAtual.cargo); }
 function frotaMoeda(v){ return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function frotaNum(v, d = 0){ return Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: d, minimumFractionDigits: d }); }
 function frotaMesAtual(){ return hojeISO().slice(0, 7); }
@@ -100,6 +105,7 @@ async function carregarFrota(force){
     frotaPreencherSelects();
     _frotaViagens = { chave: null, dados: [] };
     _frotaDocs = null;
+    _frotaAbast = { chave: null, dados: [], rodadas: [] };
   }
   // Mês inicial: o atual só se tiver lançamento; senão o último mês com viagem (a planilha foi importada até
   // jul/2026 e a tela abria em setembro vazio — parecia que nada tinha subido).
@@ -127,7 +133,13 @@ function frotaPreencherSelects(){
 function renderFrota(){
   document.querySelectorAll("#sec-frota .serv-view-btn[data-view]").forEach(b => b.classList.toggle("ativo", b.dataset.view === _frotaView));
   document.querySelectorAll("#frota-modos .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.modo === _frotaModo));
-  const ehViagens = _frotaView === "viagens";
+  const podeAbast = frotaPodeVerAbast();
+  if(_frotaView === "abastecimentos" && !podeAbast) _frotaView = "viagens";
+  const ehViagens = _frotaView === "viagens", ehAbast = _frotaView === "abastecimentos";
+  const btnAbast = $("frota-view-abast"); if(btnAbast) btnAbast.style.display = podeAbast ? "" : "none";
+  const filtrosAb = $("frota-filtros-abast"); if(filtrosAb) filtrosAb.style.display = ehAbast ? "contents" : "none";
+  const modosAb = $("frota-abast-modos"); if(modosAb) modosAb.style.display = ehAbast ? "" : "none";
+  document.querySelectorAll("#frota-abast-modos .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.abmodo === _frotaAbastModo));
   const filtros = $("frota-filtros-viagens"); if(filtros) filtros.style.display = ehViagens ? "contents" : "none";
   const modos = $("frota-modos"); if(modos) modos.style.display = ehViagens ? "" : "none";
   const btnNova = $("btn-frota-nova-viagem"); if(btnNova) btnNova.style.display = (ehViagens && logPodeOperar()) ? "" : "none";
@@ -135,6 +147,7 @@ function renderFrota(){
   frotaKpisFixos();
   if(_frotaView === "veiculos") renderFrotaVeiculos();
   else if(_frotaView === "documentos") renderFrotaDocumentos();
+  else if(ehAbast) renderFrotaAbast();
   else renderFrotaViagens();
 }
 function frotaKpi(id, v){ const el = $(id); if(el) el.textContent = v; }
@@ -479,11 +492,184 @@ function mostrarPainelFrota(recarregar){
   else renderFrota();
 }
 
+/* ---------- visão Abastecimentos (fase 118a) ---------- */
+let _frotaAbast = { chave: null, dados: [], rodadas: [] };
+let _frotaAbastModo = "lancamentos";  // lancamentos | colaborador
+let _frotaAbastMesPosto = false;      // o mês atual só é posto na primeira abertura; depois, vazio quer dizer todo o histórico
+
+const FROTA_ABAST_SELECT = "id,data,data_hora,placa,equipamento_id,funcionario_id,motorista_nome,ctipoproduto,cproduto,litros,valor,valor_litro,km_rodado,km_litro,credenciado,funcionario:funcionarios(nome),veic:equipamentos(codigo)";
+/* odômetro digitado errado: fora disto o km não entra em R$/km nem em km/l */
+const FROTA_ABAST_KM_MAX = 3000, FROTA_ABAST_KML_MAX = 40;
+
+function frotaAbastEhCombustivel(l){ return l.ctipoproduto === "COMBUSTÍVEIS"; }
+function frotaAbastKmSuspeito(l){ return Number(l.km_rodado) > FROTA_ABAST_KM_MAX || Number(l.km_litro) > FROTA_ABAST_KML_MAX; }
+function frotaAbastKmValido(l){ return frotaAbastEhCombustivel(l) && Number(l.km_rodado) > 0 && !frotaAbastKmSuspeito(l); }
+function frotaAbastMotorista(l){ return l.funcionario?.nome || l.motorista_nome || "—"; }
+function frotaAbastVeiculo(l){ return l.veic?.codigo ? `${l.veic.codigo} · ${l.placa || ""}` : (l.placa || "—"); }
+
+function frotaAbastPreencherFiltros(){
+  const manter = (id, vazio, itens) => {
+    const sel = $(id); if(!sel) return;
+    const v = sel.value;
+    sel.innerHTML = `<option value="">${esc(vazio)}</option>` + itens.map(([val, rot]) => `<option value="${esc(val)}">${esc(rot)}</option>`).join("");
+    sel.value = itens.some(([val]) => val === v) ? v : "";
+  };
+  const unicos = (par) => [...new Map(_frotaAbast.dados.map(par).filter(([k]) => k)).entries()].sort((a, b) => a[1].localeCompare(b[1], "pt-BR"));
+  manter("frota-a-veiculo", "Todos os veículos", unicos(l => [l.placa, frotaAbastVeiculo(l)]));
+  manter("frota-a-motorista", "Todos os motoristas", unicos(l => [frotaAbastMotorista(l), frotaAbastMotorista(l)]));
+  manter("frota-a-produto", "Todos os produtos", unicos(l => [l.cproduto, l.cproduto]));
+}
+
+function frotaAbastFiltrados(){
+  const termo = ($("frota-busca")?.value || "").trim().toLowerCase();
+  const veic = $("frota-a-veiculo")?.value || "", mot = $("frota-a-motorista")?.value || "", prod = $("frota-a-produto")?.value || "";
+  const semVeic = !!$("frota-a-semveic")?.checked;
+  return _frotaAbast.dados.filter(l => {
+    if(veic && l.placa !== veic) return false;
+    if(mot && frotaAbastMotorista(l) !== mot) return false;
+    if(prod && l.cproduto !== prod) return false;
+    if(semVeic && l.equipamento_id) return false;
+    if(termo && !`${frotaAbastVeiculo(l)} ${frotaAbastMotorista(l)} ${l.credenciado || ""} ${l.cproduto || ""}`.toLowerCase().includes(termo)) return false;
+    return true;
+  });
+}
+
+/* comparação justa (decisão 10 da spec): só combustível com km confiável entra em R$/km e km/l */
+function frotaAbastTotais(lista){
+  const t = { n: lista.length, litros: 0, valor: 0, comb: 0, kmOk: 0, km: 0, valorKm: 0, litrosKm: 0 };
+  lista.forEach(l => {
+    t.litros += Number(l.litros || 0);
+    t.valor += Number(l.valor || 0);
+    if(frotaAbastEhCombustivel(l)) t.comb++;
+    if(frotaAbastKmValido(l)){ t.kmOk++; t.km += Number(l.km_rodado); t.valorKm += Number(l.valor || 0); t.litrosKm += Number(l.litros || 0); }
+  });
+  return t;
+}
+function frotaAbastPorColaborador(lista){
+  const grupos = new Map();
+  lista.forEach(l => {
+    const k = l.funcionario_id || "";
+    if(!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(l);
+  });
+  const linhas = [...grupos.entries()].map(([id, ls]) => {
+    const t = frotaAbastTotais(ls);
+    return { ...t, id, nome: id ? (ls[0].funcionario?.nome || ls[0].motorista_nome || "Colaborador") : "Sem colaborador no app", rsKm: t.km ? t.valorKm / t.km : null, kmL: t.litrosKm ? t.km / t.litrosKm : null, incompleto: t.kmOk * 2 < t.comb || !t.kmOk };
+  });
+  // maior R$/km primeiro; km incompleto fica fora da ordenação, abaixo; "Sem colaborador" por último
+  const peso = g => !g.id ? 2 : (g.incompleto ? 1 : 0);
+  return linhas.sort((a, b) => peso(a) - peso(b) || (peso(a) === 0 ? b.rsKm - a.rsKm : b.valor - a.valor));
+}
+
+function frotaAbastRodapeHtml(){
+  const boa = _frotaAbast.rodadas.find(r => r.fim && !r.erro);
+  const quando = boa ? new Date(boa.fim) : null;
+  const atrasada = !quando || (Date.now() - quando.getTime()) > 2 * 86400000;
+  const hora = quando ? `${dataBR(dataLocalISO(quando)).slice(0, 5)} ${esc(quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }))}` : "—";
+  return `<div class="meta" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;">
+    <span>Atualizado em ${/* html */ hora}</span>
+    ${atrasada ? `<span class="tag ambar">Sem rodada bem-sucedida há mais de 2 dias</span>` : ""}
+    ${frotaPodeSyncAbast() ? `<button type="button" class="btn-sec" id="btn-frota-abast-sync" style="margin-left:auto;">Sincronizar agora</button>` : ""}
+  </div>`;
+}
+
+function frotaAbastKpisHtml(lista){
+  const t = frotaAbastTotais(lista);
+  const placasSem = new Set(lista.filter(l => !l.equipamento_id && l.placa).map(l => l.placa)).size;
+  return `<div class="indicadores">
+    <div class="ind"><div class="num">${frotaNum(t.litros)}</div><div class="rot">Litros</div></div>
+    <div class="ind"><div class="num">${frotaMoeda(t.valor)}</div><div class="rot">Valor</div></div>
+    <div class="ind"><div class="num">${t.litros ? frotaMoeda(t.valor / t.litros) : "—"}</div><div class="rot">R$/litro médio</div></div>
+    <div class="ind"><div class="num">${frotaNum(t.n)}</div><div class="rot">Abastecimentos</div></div>
+    <div class="ind"><div class="num">${frotaNum(placasSem)}</div><div class="rot">Placas sem veículo no app</div></div>
+  </div>`;
+}
+
+function frotaAbastLancamentosHtml(lista){
+  const t = frotaAbastTotais(lista);
+  const km = lista.reduce((s, l) => s + (frotaAbastEhCombustivel(l) && !frotaAbastKmSuspeito(l) ? Number(l.km_rodado || 0) : 0), 0);
+  return `<div class="tabela-rola"><table>
+    <thead><tr><th>Data</th><th>Veículo</th><th>Motorista</th><th>Posto</th><th>Produto</th><th class="num">Litros</th><th class="num">R$/l</th><th class="num">Valor</th><th class="num">km</th><th class="num">km/l</th></tr></thead>
+    <tbody>${lista.map(l => `<tr>
+      <td>${dataBR(l.data)}</td>
+      <td>${l.equipamento_id ? esc(frotaAbastVeiculo(l)) : `${esc(l.placa || "—")} <span class="tag ambar">Sem veículo no app</span>`}</td>
+      <td>${esc(frotaAbastMotorista(l))}${l.funcionario_id ? "" : ` <span class="meta">(sem colaborador)</span>`}</td>
+      <td>${esc(l.credenciado || "—")}</td><td>${esc(l.cproduto || "—")}</td>
+      <td class="num">${frotaNum(l.litros, 2)}</td><td class="num">${l.valor_litro != null ? frotaMoeda(l.valor_litro) : "—"}</td><td class="num">${frotaMoeda(l.valor)}</td>
+      <td class="num">${frotaAbastKmSuspeito(l) ? `<span class="tag ambar" title="Fora da conta de R$/km e km/l">km suspeito</span>` : (Number(l.km_rodado) > 0 ? frotaNum(l.km_rodado) : "—")}</td>
+      <td class="num">${!frotaAbastKmSuspeito(l) && Number(l.km_litro) > 0 ? frotaNum(l.km_litro, 2) : "—"}</td>
+    </tr>`).join("") || `<tr><td colspan="10" class="vazio">Nenhum abastecimento nesse filtro.</td></tr>`}</tbody>
+    <tfoot><tr><td colspan="5">Total</td><td class="num">${frotaNum(t.litros, 2)}</td><td class="num">${t.litros ? frotaMoeda(t.valor / t.litros) : "—"}</td><td class="num">${frotaMoeda(t.valor)}</td><td class="num">${frotaNum(km)}</td><td class="num">${t.litrosKm ? frotaNum(t.km / t.litrosKm, 2) : "—"}</td></tr></tfoot>
+  </table></div>`;
+}
+
+function frotaAbastColaboradorHtml(lista){
+  const grupos = frotaAbastPorColaborador(lista);
+  const t = frotaAbastTotais(lista);
+  return `<p class="meta" style="margin:0 0 8px;">Ordenado pelo maior R$/km. Abastecimento lançado no código de outro motorista conta para o dono do código. Caminhão e veículo leve têm R$/km diferentes: para comparar, filtre o veículo. Odômetro acima de ${frotaNum(FROTA_ABAST_KM_MAX)} km ou ${frotaNum(FROTA_ABAST_KML_MAX)} km/l fica fora da conta.</p>
+  <div class="tabela-rola"><table>
+    <thead><tr><th>Colaborador</th><th class="num">Abastecimentos</th><th class="num">Litros</th><th class="num">Valor</th><th class="num">km rodado</th><th class="num">R$/km</th><th class="num">km/l</th></tr></thead>
+    <tbody>${grupos.map(g => `<tr>
+      <td>${esc(g.nome)}${g.id && g.incompleto ? ` <span class="tag ambar" title="km faltando na maioria das linhas de combustível; fora da ordenação">km incompleto</span>` : ""}</td>
+      <td class="num">${frotaNum(g.n)}</td><td class="num">${frotaNum(g.litros, 2)}</td><td class="num" data-val-sens>${frotaMoeda(g.valor)}</td>
+      <td class="num">${g.km ? frotaNum(g.km) : "—"}</td><td class="num" data-val-sens>${g.rsKm != null ? frotaMoeda(g.rsKm) : "—"}</td><td class="num">${g.kmL != null ? frotaNum(g.kmL, 2) : "—"}</td>
+    </tr>`).join("") || `<tr><td colspan="7" class="vazio">Nenhum abastecimento nesse filtro.</td></tr>`}</tbody>
+    <tfoot><tr><td>Total</td><td class="num">${frotaNum(t.n)}</td><td class="num">${frotaNum(t.litros, 2)}</td><td class="num">${frotaMoeda(t.valor)}</td><td class="num">${frotaNum(t.km)}</td><td class="num">${t.km ? frotaMoeda(t.valorKm / t.km) : "—"}</td><td class="num">${t.litrosKm ? frotaNum(t.km / t.litrosKm, 2) : "—"}</td></tr></tfoot>
+  </table></div>`;
+}
+
+async function renderFrotaAbast(){
+  const cont = $("frota-conteudo");
+  const mesEl = $("frota-a-mes");
+  if(mesEl && !_frotaAbastMesPosto){ _frotaAbastMesPosto = true; if(!mesEl.value) mesEl.value = frotaMesAtual(); }
+  const mes = mesEl?.value || "";
+  const chave = mes || "todos";
+  if(_frotaAbast.chave !== chave){
+    cont.innerHTML = `<p class="vazio">Carregando abastecimentos…</p>`;
+    const [ab, ro] = await Promise.all([
+      lerTudo(() => {
+        let q = sb.from("frota_abastecimentos").select(FROTA_ABAST_SELECT);
+        if(mes) q = q.gte("data", mes + "-01").lte("data", dataLocalISO(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0)));
+        return q;
+      }),
+      sb.from("frota_abastecimentos_sync").select("fim,erro").order("inicio", { ascending: false }).limit(30)
+    ]);
+    if(_frotaView !== "abastecimentos" || ($("frota-a-mes")?.value || "todos") !== chave) return;   // o filtro mudou durante a leitura
+    if(ab.error){ cont.innerHTML = `<p class="vazio">Erro ao carregar abastecimentos: ${esc(ab.error.message)}</p>`; return; }
+    _frotaAbast = {
+      chave,
+      dados: ab.data.sort((a, b) => String(b.data_hora || b.data).localeCompare(String(a.data_hora || a.data))),
+      rodadas: ro.data || [],
+    };
+    frotaAbastPreencherFiltros();
+  }
+  const lista = frotaAbastFiltrados();
+  const c = $("frota-contador"); if(c) c.textContent = `${lista.length} de ${_frotaAbast.dados.length}`;
+  cont.innerHTML = frotaAbastKpisHtml(lista)
+    + (_frotaAbastModo === "colaborador" ? frotaAbastColaboradorHtml(lista) : frotaAbastLancamentosHtml(lista))
+    + frotaAbastRodapeHtml();
+  $("btn-frota-abast-sync")?.addEventListener("click", () => comBotaoTravado("btn-frota-abast-sync", frotaAbastSincronizar));
+}
+
+async function frotaAbastSincronizar(){
+  if(!frotaPodeSyncAbast()) return;
+  const { data, error } = await sb.functions.invoke("plusfrota-sync", { body: { acao: "sincronizar" } });
+  if(error){
+    let msg = error.message;
+    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){ /* corpo não é JSON */ }
+    aviso("app-aviso", "Sincronização: " + msg, "erro"); return;
+  }
+  aviso("app-aviso", `Sincronização: ${Number(data?.lidas || 0)} lida(s), ${Number(data?.novas || 0)} nova(s), ${Number(data?.atualizadas || 0)} atualizada(s)${data?.ok ? "" : ". A rodada teve erro; a próxima cobre os últimos 7 dias"}.`, data?.ok ? "ok" : "aviso");
+  _frotaAbast.chave = null;
+  renderFrota();
+}
+
 /* ---------- ligação ---------- */
 function ligarFrota(){
   document.querySelectorAll("#sec-frota .serv-view-btn[data-view]").forEach(b => b.addEventListener("click", () => { _frotaView = b.dataset.view; _frotaTipoFiltro = ""; renderFrota(); }));
   document.querySelectorAll("#frota-modos .serv-view-btn").forEach(b => b.addEventListener("click", () => { _frotaModo = b.dataset.modo; renderFrota(); }));
-  ["frota-f-mes", "frota-f-caminhao", "frota-f-obra", "frota-f-finalidade", "frota-f-status", "frota-f-nota"].forEach(id => $(id)?.addEventListener("change", renderFrota));
+  ["frota-f-mes", "frota-f-caminhao", "frota-f-obra", "frota-f-finalidade", "frota-f-status", "frota-f-nota", "frota-a-mes", "frota-a-veiculo", "frota-a-motorista", "frota-a-produto", "frota-a-semveic"].forEach(id => $(id)?.addEventListener("change", renderFrota));
+  document.querySelectorAll("#frota-abast-modos .serv-view-btn").forEach(b => b.addEventListener("click", () => { _frotaAbastModo = b.dataset.abmodo; renderFrota(); }));
   $("frota-busca")?.addEventListener("input", debounce(renderFrota));
   $("btn-frota-atualizar")?.addEventListener("click", () => carregarFrota(true));
   $("btn-frota-nova-viagem")?.addEventListener("click", () => { if(typeof novaViagem === "function") novaViagem(); });
