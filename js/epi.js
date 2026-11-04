@@ -361,7 +361,7 @@ function epiRelDesenhar(alvoId){
       { "Total": Number(g.total.toFixed(2)), "Entregas": g.qtd },
       v === "pessoa" ? { "Média da função": Number((mediaFuncao[g.funcao] || 0).toFixed(2)) } : {}));
     if(!lista.length){ corpo.innerHTML = `<p class="vazio">Nenhuma entrega${v === "pessoa" ? " com colaborador" : ""} no período.</p>`; return; }
-    corpo.innerHTML = `<p class="meta" style="margin:0 0 6px;"><strong>${brl(totalGeral)}</strong> em ${lista.length} ${v === "pessoa" ? "colaborador(es)" : "destino(s)"} no período${semPessoa ? ` · ${brl(semPessoa)} em saídas sem pessoa (veja "Sem pessoa")` : ""}${v === "pessoa" ? " · clique no nome para abrir a ficha de EPI" : ""}</p>
+    corpo.innerHTML = `<p class="meta" style="margin:0 0 6px;" data-val-sens><strong>${brl(totalGeral)}</strong> em ${lista.length} ${v === "pessoa" ? "colaborador(es)" : "destino(s)"} no período${semPessoa ? ` · ${brl(semPessoa)} em saídas sem pessoa (veja "Sem pessoa")` : ""}${v === "pessoa" ? " · clique no nome para abrir a ficha de EPI" : ""}</p>
       <div class="tabela-rola"><table>
         <thead><tr><th>${v === "pessoa" ? "Colaborador" : "Obra / destino"}</th>${v === "pessoa" ? "<th>Função</th>" : ""}${meses.map(m => `<th class="num">${epiMesRotulo(m)}</th>`).join("")}<th class="num">Total</th>${v === "pessoa" ? '<th class="num" title="Total médio por pessoa da mesma função no período">Média da função</th><th class="num">vs média</th>' : ""}</tr></thead>
         <tbody>${lista.map(g => { const med = mediaFuncao[g.funcao] || 0, dif = med ? (g.total / med - 1) * 100 : 0;

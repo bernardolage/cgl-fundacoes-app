@@ -955,7 +955,7 @@ function renderComprasKanban(dados){
   const cols = CMP_STAGES.concat(dados.some(p => p.status === "cancelado") ? ["cancelado"] : []);
   $("cmp-conteudo").innerHTML = `<div class="serv-kanban">${cols.map(st => {
     const its = dados.filter(p => p.status === st);
-    return `<div class="serv-kan-col" data-status="${esc(st)}"><div class="serv-kan-col-head">${cmpTag(st)} <span class="contador">${its.length}</span>${its.length ? ` <span class="meta">${brl(its.reduce((s, p) => s + Number(p.total || 0), 0))}</span>` : ""}</div>
+    return `<div class="serv-kan-col" data-status="${esc(st)}"><div class="serv-kan-col-head">${cmpTag(st)} <span class="contador">${its.length}</span>${its.length ? ` <span class="meta" data-val-sens>${brl(its.reduce((s, p) => s + Number(p.total || 0), 0))}</span>` : ""}</div>
       ${its.map(cmpCardHTML).join("") || `<p class="vazio">—</p>`}</div>`; }).join("")}</div>`;
 }
 /* lote S49 (#132, Fabrício): a lista de pedidos ordena pelo cabeçalho (ordenarTabela do core.js, o mesmo da lista de

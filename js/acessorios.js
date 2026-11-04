@@ -447,13 +447,13 @@ async function renderAcessoriosContagem(opts){
       <td>${esc(l.descricao)}</td><td>${esc(l.medida && l.medida !== "-" ? l.medida : "")}</td>
       <td class="num"><strong>${esc(l.cadastrados)}</strong></td><td class="num">${esc(l.em_estoque)}</td><td class="num">${esc(l.em_obra)}</td><td class="num">${esc(l.em_manutencao)}</td><td class="num">${esc(l.perdas)}</td><td class="num">${esc(l.sem_marcacao)}</td>
       <td class="num">${l.preco_referencia != null ? brl(l.preco_referencia) : '<span class="meta">—</span>'} ${precoTag(l)}</td>${verTot ? `<td class="num">${brl(l.valor_reposicao)}</td>` : ""}</tr>`;
-  const sub = (g, arr) => { const t = soma(arr); return `<tr style="background:var(--bg-body);font-weight:600;"><td colspan="2">Subtotal ${esc(g)}</td>${cols.map(k => `<td class="num">${esc(t[k])}</td>`).join("")}<td></td>${verTot ? `<td class="num">${brl(t.valor_total)}</td>` : ""}</tr>`; };
+  const sub = (g, arr) => { const t = soma(arr); return `<tr style="background:var(--bg-body);font-weight:600;"><td colspan="2">Subtotal ${esc(g)}</td>${cols.map(k => `<td class="num">${esc(t[k])}</td>`).join("")}<td></td>${verTot ? `<td class="num" data-val-sens>${brl(t.valor_total)}</td>` : ""}</tr>`; };
   const tot = soma(linhas);
   const semPreco = linhas.filter(l => !l.preco_referencia).length, estim = linhas.filter(l => l.preco_origem === "estimativa").length, venc = linhas.filter(l => l.preco_vencido).length;
   const sucPreco = _aceSucata[0];
   cont.innerHTML = `
     <div class="meta" style="margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <strong style="font-size:14px;color:var(--txt);">${verTot ? "Valor de reposição" : "Contagem"}${_aceFamilia ? " · " + esc(ACE_FAMILIA_LBL[_aceFamilia]) : ""}${verTot ? ": " + brl(tot.valor_total) : ""}</strong>
+      <strong style="font-size:14px;color:var(--txt);" data-val-sens>${verTot ? "Valor de reposição" : "Contagem"}${_aceFamilia ? " · " + esc(ACE_FAMILIA_LBL[_aceFamilia]) : ""}${verTot ? ": " + brl(tot.valor_total) : ""}</strong>
       ${semPreco ? `<span class="tag ambar">${semPreco} modelo(s) sem preço</span>` : ""}${estim ? `<span class="tag ambar">${esc(estim)} estimado(s)</span>` : ""}${venc ? `<span class="tag ambar">${esc(venc)} vencido(s)</span>` : ""}
       <label class="check-inline" title="Mostrar só os modelos sem preço de reposição"><input type="checkbox" id="ace-f-sem-preco" ${_aceSoSemPreco ? "checked" : ""} /> só sem preço</label>
       <span>Sucata: ${sucPreco ? `${brl(sucPreco.preco_kg)}/kg (${esc(String(sucPreco.competencia).slice(5, 7))}/${esc(String(sucPreco.competencia).slice(0, 4))})` : '<span class="tag ambar">sem preço do kg</span>'}</span>
