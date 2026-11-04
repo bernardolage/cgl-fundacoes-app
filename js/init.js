@@ -12,6 +12,8 @@ montarSelects();
 /* Arranque: primeiro consome um token que tenha vindo no hash (magic link /
    convite / recuperação), depois verifica a sessão e entra no app. */
 (async () => {
+  // fase 143: o link de primeiro acesso abre a tela dele no lugar do login, mesmo com sessão aberta no aparelho
+  if(_primeiroAcessoToken !== null){ abrirPrimeiroAcesso(); return; }
   await consumirTokenDoHash();
   const { data:{ session } } = await sb.auth.getSession();
   if(session) iniciarApp();

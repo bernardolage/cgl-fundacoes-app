@@ -55,6 +55,16 @@ const _hashChegada = location.hash || "";
 /* recovery/invite/signup abrem o diálogo de senha; magiclink também, porque
    é o que usamos quando o reset por e-mail está no limite */
 const _chegouPorConvite = /type=(invite|recovery|signup|magiclink)/.test(_hashChegada);
+/* Fase 143: link de primeiro acesso (#primeiro-acesso=<token>). O token fica só em memória e sai do endereço na hora, para não
+   ficar no histórico. Pontuação colada no fim vem do texto da mensagem, e o token não tem esses caracteres. */
+const _primeiroAcessoToken = (() => {
+  const m = /^#primeiro-acesso=(.*)$/.exec(_hashChegada);
+  if(!m) return null;
+  history.replaceState(null, "", location.pathname + location.search);
+  return m[1].slice(0, 200).replace(/[.,;:!?)\]]+$/, "");
+})();
+/* link colado numa aba com o app já aberto só troca o #, sem carregar a página */
+window.addEventListener("hashchange", () => { if(location.hash.startsWith("#primeiro-acesso=")) location.reload(); });
 
 /* Consome o token que vem no hash (#access_token=...&refresh_token=...) e
    estabelece a sessão explicitamente. Não dependemos do detectSessionInUrl
@@ -734,7 +744,7 @@ $("form-login").addEventListener("submit", async (e)=>{
   btn.disabled = false; btn.textContent = "Entrar";
   if(error){
     const m = (error.message||"").toLowerCase();
-    if(m.includes("invalid login")) aviso("login-aviso", loginPareceCpf($("login-email").value) ? "CPF ou senha inválidos. Sem a senha, peça uma nova ao RH." : "E-mail ou senha inválidos.","erro");
+    if(m.includes("invalid login")) aviso("login-aviso", loginPareceCpf($("login-email").value) ? "CPF ou senha inválidos. Sem a senha, peça ao RH um link de acesso." : "E-mail ou senha inválidos.","erro");
     else if(m.includes("banned")) aviso("login-aviso","Seu usuário está desativado. Fale com a diretoria.","erro");
     else aviso("login-aviso","Falha no login: "+(error.message||"erro desconhecido"),"erro");
     return;
@@ -757,7 +767,7 @@ $("btn-esqueci-senha")?.addEventListener("click", async ()=>{
   const email = $("login-email").value.trim().toLowerCase();
   // fase 93b: login por CPF não tem caixa postal; a senha nova vem do RH (aba Acesso da ficha do funcionário)
   if(loginPareceCpf(email) || emailEhLoginCpf(email)){
-    aviso("login-aviso","Quem entra com o CPF não redefine a senha por e-mail: peça uma nova senha ao RH.","aviso");
+    aviso("login-aviso","Quem entra com o CPF não redefine a senha por e-mail: peça ao RH um link de acesso.","aviso");
     return;
   }
   if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
@@ -789,6 +799,85 @@ $("btn-ver-senha").addEventListener("click", ()=>{
   const oculto = inp.type === "password";
   inp.type = oculto ? "text" : "password";
   $("btn-ver-senha").textContent = oculto ? "ocultar" : "mostrar";
+});
+
+/* ===== fase 143: tela de primeiro acesso =====
+   Abre no lugar do login, mesmo com sessão aberta no aparelho. Abrir não gasta o link: só "Criar minha senha" consome. Depois de
+   criar, a pessoa entra pela tela normal, com CPF e senha nova. A function pública primeiro-acesso confere tudo de novo. */
+async function paChamar(corpo){
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/primeiro-acesso`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY },
+    body: JSON.stringify(Object.assign({ token: _primeiroAcessoToken }, corpo))
+  });
+  return resp.json().catch(() => ({}));
+}
+/* "conferindo" | "form" | "invalido" | "rede" */
+function paEstado(estado){
+  $("pa-form").style.display = estado === "form" ? "" : "none";
+  $("btn-pa-tentar").style.display = estado === "rede" ? "" : "none";
+  $("btn-pa-entrar").style.display = estado === "invalido" || estado === "rede" ? "" : "none";
+  if(estado === "invalido" || estado === "rede") $("pa-validade").textContent = "";
+  if(estado === "conferindo") aviso("pa-aviso", "Conferindo o link…", "aviso");
+}
+function paLinkNaoVale(msg){
+  $("pa-titulo").textContent = "Link de acesso";
+  aviso("pa-aviso", msg || "Este link não vale mais. Peça outro ao RH.", "erro");
+  paEstado("invalido");
+}
+async function paConferir(){
+  paEstado("conferindo");
+  let r;
+  try { r = await paChamar({ acao: "conferir" }); }
+  catch(_){ aviso("pa-aviso", "Sem conexão para conferir o link. Tente de novo; abrir o link não o gasta.", "erro"); paEstado("rede"); return; }
+  if(r.ok){
+    $("pa-titulo").textContent = r.primeiro_nome ? `Olá, ${r.primeiro_nome}. Crie sua senha` : "Crie sua senha";
+    $("pa-validade").textContent = r.expira_em ? `Este link vale até ${dataHoraBR(r.expira_em)}.` : "";
+    $("pa-aviso").textContent = ""; $("pa-aviso").className = "aviso";
+    paEstado("form");
+    $("pa-cpf").focus();
+    return;
+  }
+  if(r.link_invalido){ paLinkNaoVale(r.error); return; }
+  aviso("pa-aviso", r.error || "Não foi possível conferir o link agora. Tente de novo.", "erro");
+  paEstado("rede");
+}
+function abrirPrimeiroAcesso(){
+  $("form-login").style.display = "none";
+  $("pa-tela").style.display = "";
+  paConferir();
+}
+async function paCriarSenha(){
+  const cpf = $("pa-cpf").value.replace(/\D/g, ""), senha = $("pa-senha").value, senha2 = $("pa-senha2").value;
+  if(cpf.length !== 11){ aviso("pa-aviso", "Digite os 11 números do seu CPF.", "erro"); return; }
+  if(senha.length < 8){ aviso("pa-aviso", "A senha precisa de pelo menos 8 caracteres.", "erro"); return; }
+  if(senha !== senha2){ aviso("pa-aviso", "As senhas não conferem.", "erro"); return; }
+  if(senha.replace(/\D/g, "") === cpf){ aviso("pa-aviso", "A senha não pode ser o próprio CPF.", "erro"); return; }
+  let r;
+  try { r = await paChamar({ acao: "criar_senha", cpf, senha }); }
+  catch(_){ aviso("pa-aviso", "Sem conexão. A senha não foi criada, e o link continua valendo. Tente de novo.", "erro"); return; }
+  if(r.link_invalido){ paLinkNaoVale(r.error); return; }
+  if(!r.ok){ aviso("pa-aviso", r.error || "Não foi possível criar a senha. Tente de novo.", "erro"); return; }
+  // sessão de outra pessoa aberta neste aparelho: sai só daqui, para a tela de entrada aparecer
+  try { await sb.auth.signOut({ scope: "local" }); } catch(_){}
+  $("pa-tela").style.display = "none";
+  $("pa-senha").value = ""; $("pa-senha2").value = "";
+  $("form-login").style.display = "";
+  $("login-email").value = cpf;
+  aviso("login-aviso", "Senha criada. Entre com seu CPF e a senha nova.", "ok");
+  $("login-senha").focus();
+}
+$("pa-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  comBotaoTravado("btn-pa-criar", paCriarSenha);
+});
+$("btn-pa-tentar").addEventListener("click", paConferir);
+$("btn-pa-entrar").addEventListener("click", () => location.replace(location.pathname + location.search));
+$("btn-pa-ver-senha").addEventListener("click", () => {
+  const inp = $("pa-senha");
+  const oculto = inp.type === "password";
+  inp.type = oculto ? "text" : "password";
+  $("btn-pa-ver-senha").textContent = oculto ? "ocultar" : "mostrar";
 });
 
 /* ===== fase 138: tema claro/escuro (FO-01) =====
@@ -1597,7 +1686,7 @@ function iniciarVerificacaoVersao(){
    vez com ?v=<versao>. Chegada por convite/recuperação fica de fora para não perder o token do hash
    (a verificação normal cuida depois do login). Roda aqui porque precisa ser o mais cedo possível. */
 (async function verificarVersaoNaCarga(){
-  if(!appVersaoAtiva() || _chegouPorConvite) return;
+  if(!appVersaoAtiva() || _chegouPorConvite || _primeiroAcessoToken !== null) return;   // fase 143: recarregar perderia o token
   const info = await lerVersaoPublicada();
   if(!info || info.versao === APP_VERSAO) return;
   let tentativa = null;

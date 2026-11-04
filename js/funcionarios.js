@@ -1353,11 +1353,14 @@ async function funcAdmConcluir(){
    do cadastro (tabela CARGO_POR_FUNCAO na function) ou escolhido no select. Desativar o funcionário (status
    Demitido, data de demissão ou inativo) desativa o login por gatilho no banco.
    Bloco independente do resto do arquivo: só a linha de plumbing em carregarFuncionarios() o chama.
+   Fase 143 (04/11/2026): o caminho principal é o link de primeiro acesso, enviado por WhatsApp sem integração; a senha provisória
+   continua como segunda opção, para quem não tem celular.
    Hotfix 147 (chamado #147, decisão do Bernardo de 23/10): o que aparece do funcionário é a função cadastrada pelo RH;
    o cargo de permissão do login chama-se "Perfil de acesso" nas telas (o enum e o nome `cargo` no código não mudam).
    ==================================================================== */
 const FUNC_ACESSO_CARGOS = { operador: "Operador", encarregado: "Encarregado", mecanico: "Mecânico", auxiliar_almoxarifado: "Auxiliar de almoxarifado" };
-let _funcAcesso = { funcionarioId: null, perfil: null, modo: null };   // modo: null | "senha" (formulário de nova senha aberto)
+/* fase 143: link = situação do link pendente, lida da function; gerado = link que acabou de sair, só em memória e só nesta tela */
+let _funcAcesso = { funcionarioId: null, perfil: null, modo: null, link: null, gerado: null };   // modo: null | "senha" (formulário de senha aberto)
 
 /* Fase 100 (chamado #102) e hotfix 145 (chamado #145): criadores de login com setor. Cada um cria o login e define
    nova senha só da equipe dele; não desativa nem reativa (RH e administração), não vê o CPF e não passa por MFA.
@@ -1439,7 +1442,7 @@ async function funcAcessoCarregar(){
   if(!cont) return;
   if(!funcAcessoPodeVer()){ cont.innerHTML = `<p class="vazio">Só RH, administração e diretoria cuidam do login do funcionário (o almoxarife, da equipe do almoxarifado; o gestor de manutenção, da equipe da manutenção; quem tem o acesso extra de login de funcionário, operadores, encarregados e mecânicos).</p>`; return; }
   if(!funcEditId){ cont.innerHTML = `<p class="vazio">Salve o funcionário primeiro; depois crie o login aqui.</p>`; return; }
-  if(_funcAcesso.funcionarioId !== funcEditId) _funcAcesso = { funcionarioId: funcEditId, perfil: null, modo: null };
+  if(_funcAcesso.funcionarioId !== funcEditId) _funcAcesso = { funcionarioId: funcEditId, perfil: null, modo: null, link: null, gerado: null };
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
   const { data, error } = await sb.from("profiles")
     .select("id,nome,cargo,ativo,login_cpf,senha_provisoria,created_at")
@@ -1450,7 +1453,23 @@ async function funcAcessoCarregar(){
     return;
   }
   _funcAcesso.perfil = data || null;
+  _funcAcesso.link = null;
   renderFuncAcesso();
+  funcAcessoLerLink(funcEditId);
+}
+
+/* fase 143: situação do link, pela function (a tabela é fechada). Falhou? A aba segue sem o chip. */
+async function funcAcessoLerLink(id){
+  const p = _funcAcesso.perfil;
+  _funcAcesso.link = null;
+  if(!p || p.login_cpf !== true || p.ativo === false || !funcAcessoPodeOperar()) return;
+  const cr = funcAcessoCriador();
+  if(cr && !cr.cargos.includes(p.cargo)) return;
+  let r = null;
+  try { r = await funcAcessoChamar({ acao: "status_link_funcionario" }); } catch(_){ return; }
+  if(funcEditId !== id || _funcAcesso.funcionarioId !== id || !r?.situacao) return;
+  _funcAcesso.link = r;
+  if(!_funcAcesso.modo) renderFuncAcesso();
 }
 
 function funcAcessoSenhaHtml(idSufixo, rotuloBotao, idBotao){
@@ -1462,6 +1481,109 @@ function funcAcessoSenhaHtml(idSufixo, rotuloBotao, idBotao){
     </div>
     <p class="meta bloco">A senha é provisória: no primeiro acesso o sistema obriga a troca. Repasse ao funcionário junto com a orientação "entre com o CPF, só números". A senha não fica guardada aqui.</p>
     <div class="form-acoes compacta"><button type="button" class="btn" id="${esc(idBotao)}">${esc(rotuloBotao)}</button>${_funcAcesso.modo === "senha" ? ' <button type="button" class="btn-sec" id="btn-func-acesso-cancelar">Cancelar</button>' : ""}</div>`;
+}
+
+/* ---------- fase 143: link de primeiro acesso ---------- */
+function funcAcessoMensagem(g){
+  const [dia, hora] = dataHoraBR(g.expira_em).split(" ");
+  const ola = g.primeiro_nome ? `Olá, ${g.primeiro_nome}.` : "Olá.";
+  return `${ola} Para criar sua senha do sistema da CGL, abra este link, que vale até ${dia} às ${hora}: ${g.link}. Depois, entre com seu CPF, só números, e a senha que você criou.`;
+}
+/* telefone da ficha com o 55 do Brasil; sem número aproveitável, o WhatsApp pede o contato */
+function funcAcessoTelefoneWhats(){
+  const d = String($("func-telefone")?.value || "").replace(/\D/g, "").replace(/^0+/, "");
+  if(d.length === 10 || d.length === 11) return "55" + d;
+  if((d.length === 12 || d.length === 13) && d.startsWith("55")) return d;
+  return "";
+}
+function funcAcessoLinkGeradoHtml(){
+  const g = _funcAcesso.gerado;
+  if(!g) return "";
+  const msg = funcAcessoMensagem(g);
+  const tel = funcAcessoTelefoneWhats();
+  const url = `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`;
+  return `<div class="bloco" style="margin-bottom:12px;">
+      <div class="campo"><label for="func-acesso-msg">Mensagem para o funcionário</label>
+        <textarea id="func-acesso-msg" rows="4" readonly>${esc(msg)}</textarea></div>
+      <p class="meta bloco">⚠️ O link só aparece agora; perdeu, gere outro. Quem envia é você, pelo seu aparelho. ${tel
+        ? `Confira o número antes de enviar: <strong>${esc($("func-telefone")?.value || "")}</strong>.`
+        : "Sem telefone válido na ficha: escolha o contato no WhatsApp."}</p>
+      <div class="form-acoes compacta">
+        <button type="button" class="btn" id="btn-func-acesso-copiar">📋 Copiar mensagem</button>
+        <a class="btn-sec" href="${esc(url)}" target="_blank" rel="noopener">💬 Abrir no WhatsApp</a>
+      </div>
+    </div>`;
+}
+function funcAcessoLinkChip(){
+  const l = _funcAcesso.link;
+  if(l?.situacao === "pendente") return ` <span class="tag ambar">Aguardando primeiro acesso até ${esc(dataHoraBR(l.expira_em))}</span>`;
+  if(l?.situacao === "vencido") return ` <span class="tag vermelho">Link vencido</span>`;
+  return "";
+}
+/* cargo escolhido na tela: "" = automático pela função; null = faltou escolher (já avisou). A function confere de novo. */
+function funcAcessoCargoEscolhido(){
+  const cr = funcAcessoCriador();
+  const cargo = $("func-acesso-cargo")?.value || "";
+  if(cr && cr.cargos.length === 1) return cr.cargos[0];
+  if(cr && cargo && !cr.cargos.includes(cargo)){
+    aviso("func-acesso-aviso", `Escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Perfil de acesso".`, "erro");
+    return null;
+  }
+  if(cr && !cargo && !cr.cargos.includes(funcAcessoCargoPelaFuncao($("func-funcao")?.value))){
+    aviso("func-acesso-aviso", `A função deste funcionário não tem perfil automático: escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Perfil de acesso".`, "erro");
+    $("func-acesso-cargo")?.focus();
+    return null;
+  }
+  return cargo;
+}
+async function funcAcessoCriarComLink(){
+  if(!funcAcessoPodeOperar() || !funcEditId) return;
+  const cargo = funcAcessoCargoEscolhido();
+  if(cargo === null) return;
+  try {
+    const r = await funcAcessoChamar({ acao: "criar_login_funcionario", sem_senha: true, cargo: cargo || undefined });
+    if(r.link){
+      _funcAcesso.gerado = r;
+      aviso("func-acesso-aviso", `Login criado com o perfil ${FUNC_ACESSO_CARGOS[r.cargo] || r.cargo}. Envie o link ao funcionário.`, "ok");
+    } else {
+      aviso("func-acesso-aviso", "Login criado, mas o link não foi gerado. Use \"Gerar link de acesso\".", "erro");
+    }
+  } catch(err){
+    aviso("func-acesso-aviso", err.body?.cargo_indefinido ? err.message + " Escolha em \"Perfil de acesso\"." : err.message, "erro");
+    return;
+  }
+  _funcAcesso.modo = null;
+  await funcAcessoCarregar();
+}
+async function funcAcessoGerarLink(){
+  if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
+  if(_funcAcesso.link?.situacao === "pendente" && !confirm("Gerar outro link? O anterior deixa de valer.")) return;
+  try {
+    _funcAcesso.gerado = await funcAcessoChamar({ acao: "gerar_link_funcionario" });
+    aviso("func-acesso-aviso", "Link gerado. Envie ao funcionário.", "ok");
+  } catch(err){ aviso("func-acesso-aviso", err.message, "erro"); return; }
+  await funcAcessoCarregar();
+}
+async function funcAcessoCancelarLink(){
+  if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
+  if(!confirm("Cancelar o link de acesso? Ele deixa de valer na hora.")) return;
+  try {
+    await funcAcessoChamar({ acao: "revogar_link_funcionario" });
+    _funcAcesso.gerado = null;
+    aviso("func-acesso-aviso", "Link cancelado.", "ok");
+  } catch(err){ aviso("func-acesso-aviso", err.message, "erro"); return; }
+  await funcAcessoCarregar();
+}
+async function funcAcessoCopiarMensagem(){
+  const el = $("func-acesso-msg");
+  if(!el) return;
+  try {
+    await navigator.clipboard.writeText(el.value);
+    aviso("func-acesso-aviso", "Mensagem copiada.", "ok");
+  } catch(_){
+    el.focus(); el.select();
+    aviso("func-acesso-aviso", "Não foi possível copiar sozinho: a mensagem está selecionada, copie com Ctrl+C.", "aviso");
+  }
 }
 
 function renderFuncAcesso(){
@@ -1500,15 +1622,21 @@ function renderFuncAcesso(){
       ${!funcAtivo ? `<p class="vazio">Funcionário inativo ou demitido não recebe login.</p>` : !opera ? `<p class="vazio">Usuário de revisão não cria login.</p>` : `
       <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ? /* html */ cr.ajuda : "Operadores e ajudantes têm o perfil <em>Operador</em>, encarregados o perfil <em>Encarregado</em>, soldadores, mecânicos e apontadores o perfil <em>Mecânico</em>, o pessoal do almoxarifado o perfil <em>Auxiliar de almoxarifado</em>; outra função pede o perfil aqui. Nas telas aparece a função do cadastro; o perfil decide o que ele acessa."}</p>
       <div class="grade">${/* html */ selCargo}</div>
-      ${funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar")}`}`;
+      ${_funcAcesso.modo === "senha" ? funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar") : `
+      <p class="meta bloco">O funcionário cria a própria senha pelo link, que você envia por WhatsApp. Vale 72 horas e uma vez só. Sem celular, use a senha provisória.</p>
+      <div class="form-acoes compacta">
+        <button type="button" class="btn" id="btn-func-acesso-criar-link">🔗 Criar login e gerar link</button>
+        <button type="button" class="btn-sec" id="btn-func-acesso-abrir-provisoria">Usar senha provisória</button>
+      </div>`}`}`;
     return;
   }
   // fase 100 / hotfix 145: o criador com setor só mexe em login com os cargos que ele dá e não desativa/reativa
   const operaEste = opera && (!cr || cr.cargos.includes(p.cargo));
   const situacao = p.ativo === false ? `<span class="tag vermelho">Login desativado</span>`
-    : p.senha_provisoria ? `<span class="tag ambar">Senha provisória</span> <span class="tag verde">Login ativo</span>`
-    : `<span class="tag verde">Login ativo</span>`;
-  cont.innerHTML = `<div class="odoo-contexto" style="margin:0 0 12px;">
+    : p.senha_provisoria ? `<span class="tag ambar">Senha provisória</span> <span class="tag verde">Login ativo</span>${/* html */ funcAcessoLinkChip()}`
+    : `<span class="tag verde">Login ativo</span>${/* html */ funcAcessoLinkChip()}`;
+  const linkPendente = _funcAcesso.link?.situacao === "pendente";
+  cont.innerHTML = `${/* html */ funcAcessoLinkGeradoHtml()}<div class="odoo-contexto" style="margin:0 0 12px;">
       <div class="chip"><span>Situação</span><strong>${situacao}</strong></div>
       <div class="chip"><span>Login</span><strong>CPF do funcionário</strong></div>
       <div class="chip"><span>Função</span><strong>${esc(($("func-funcao")?.value || "").trim() || "—")}</strong></div>
@@ -1517,15 +1645,18 @@ function renderFuncAcesso(){
     </div>
     <p class="meta bloco" style="margin-bottom:12px;">${p.ativo === false
       ? "O funcionário não consegue entrar. Reativar libera o acesso de novo (com a senha de antes ou uma nova)."
-      : p.senha_provisoria ? "Ele ainda não trocou a senha provisória: no primeiro acesso o sistema obriga a troca."
-      : "Senha já trocada pelo funcionário. Sem a senha, defina uma nova aqui e repasse."}${cr && !operaEste ? ` Este login não tem o perfil ${esc(funcAcessoListaCargos(cr.cargos, "nem"))}: quem cuida dele é o RH ou a administração.` : ""}</p>
+      : linkPendente ? "Ele cria a senha pelo link. Enquanto não usar, a senha de antes continua valendo, se houver."
+      : p.senha_provisoria ? "Ele ainda não criou a própria senha: gere um link de acesso ou defina uma senha provisória."
+      : "Senha já trocada pelo funcionário. Sem a senha, gere um link de acesso."}${cr && !operaEste ? ` Este login não tem o perfil ${esc(funcAcessoListaCargos(cr.cargos, "nem"))}: quem cuida dele é o RH ou a administração.` : ""}</p>
     ${!operaEste ? "" : cr && p.ativo === false ? `<p class="vazio">Login desativado: reativar fica com o RH ou a administração.</p>` : _funcAcesso.modo === "senha"
       ? funcAcessoSenhaHtml("-nova", p.ativo === false ? "✅ Reativar com esta senha" : "🔑 Definir nova senha", p.ativo === false ? "btn-func-acesso-reativar-senha" : "btn-func-acesso-nova-senha-ok")
       : `<div class="form-acoes compacta">
           ${p.ativo === false
             ? `<button type="button" class="btn" id="btn-func-acesso-reativar" ${funcAtivo ? "" : 'disabled title="Reative o cadastro do funcionário antes"'}>✅ Reativar login</button>
                <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha" ${funcAtivo ? "" : "disabled"}>🔑 Reativar com nova senha</button>`
-            : `<button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha">🔑 Nova senha</button>
+            : `<button type="button" class="btn" id="btn-func-acesso-gerar-link" ${funcAtivo ? "" : "disabled"}>🔗 Gerar link de acesso</button>
+               <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha">🔑 Nova senha</button>
+               ${linkPendente ? '<button type="button" class="btn-sec" id="btn-func-acesso-cancelar-link">Cancelar link</button>' : ""}
                ${cr ? "" : '<button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo);">⛔ Desativar login</button>'}`}
         </div>`}`;
 }
@@ -1558,16 +1689,8 @@ async function funcAcessoCriar(){
   if(!senha) return;
   // fase 100: cargo travado para o almoxarife; hotfix 145: o gestor de manutenção escolhe entre os cargos dele e,
   // quando o cargo automático pela função não é um deles, a escolha é obrigatória (não vai vazio para a function)
-  const cr = funcAcessoCriador();
-  let cargo = $("func-acesso-cargo")?.value || "";
-  if(cr && cr.cargos.length === 1) cargo = cr.cargos[0];
-  else if(cr && cargo && !cr.cargos.includes(cargo)){
-    aviso("func-acesso-aviso", `Escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Perfil de acesso".`, "erro"); return;
-  } else if(cr && !cargo && !cr.cargos.includes(funcAcessoCargoPelaFuncao($("func-funcao")?.value))){
-    aviso("func-acesso-aviso", `A função deste funcionário não tem perfil automático: escolha ${funcAcessoListaCargos(cr.cargos, "ou")} em "Perfil de acesso".`, "erro");
-    $("func-acesso-cargo")?.focus();
-    return;
-  }
+  const cargo = funcAcessoCargoEscolhido();
+  if(cargo === null) return;
   try {
     const r = await funcAcessoChamar({ acao: "criar_login_funcionario", senha, cargo: cargo || undefined });
     aviso("func-acesso-aviso", `Login criado com o perfil ${FUNC_ACESSO_CARGOS[r.cargo] || r.cargo}. Repasse ao funcionário: entrar com o CPF (só números) e a senha que você digitou; o sistema pede a troca no primeiro acesso.`, "ok");
@@ -1620,6 +1743,7 @@ function ligarFuncAcesso(){
   document.querySelector('#func-notebook button[data-tab="acesso"]')?.addEventListener("click", () => {
     const av = $("func-acesso-aviso"); if(av){ av.textContent = ""; av.className = "aviso"; }
     _funcAcesso.modo = null;
+    _funcAcesso.gerado = null;   // fase 143: o link gerado não volta a aparecer
     funcAcessoCarregar();
   });
   $("func-acesso-conteudo")?.addEventListener("click", (e) => {
@@ -1630,7 +1754,12 @@ function ligarFuncAcesso(){
     switch(b.id){
       case "btn-func-acesso-criar":          comBotaoTravado(b, funcAcessoCriar); break;
       case "btn-func-acesso-abrir-senha":    _funcAcesso.modo = "senha"; renderFuncAcesso(); $("func-acesso-senha-nova")?.focus(); break;
-      case "btn-func-acesso-cancelar":       _funcAcesso.modo = null; renderFuncAcesso(); break;
+      case "btn-func-acesso-cancelar":       { const c = $("func-acesso-cargo")?.value; _funcAcesso.modo = null; renderFuncAcesso(); if(c && $("func-acesso-cargo")) $("func-acesso-cargo").value = c; break; }
+      case "btn-func-acesso-abrir-provisoria": { const c = $("func-acesso-cargo")?.value; _funcAcesso.modo = "senha"; renderFuncAcesso(); if(c && $("func-acesso-cargo")) $("func-acesso-cargo").value = c; $("func-acesso-senha")?.focus(); break; }
+      case "btn-func-acesso-criar-link":     comBotaoTravado(b, funcAcessoCriarComLink); break;
+      case "btn-func-acesso-gerar-link":     comBotaoTravado(b, funcAcessoGerarLink); break;
+      case "btn-func-acesso-cancelar-link":  comBotaoTravado(b, funcAcessoCancelarLink); break;
+      case "btn-func-acesso-copiar":         funcAcessoCopiarMensagem(); break;
       case "btn-func-acesso-nova-senha-ok":  comBotaoTravado(b, funcAcessoNovaSenha); break;
       case "btn-func-acesso-desativar":      comBotaoTravado(b, funcAcessoDesativar); break;
       case "btn-func-acesso-reativar":       comBotaoTravado(b, () => funcAcessoReativar(false)); break;
