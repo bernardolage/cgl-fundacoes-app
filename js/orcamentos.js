@@ -1329,7 +1329,7 @@ function orcSimRender(r, diametro){
   if(!alvo) return;
   if(usar){ usar.style.display = "none"; delete usar.dataset.prazo; }
   if(r.erro){ alvo.innerHTML = `<p class="nota">${esc(r.erro)}</p>`; return; }
-  const avisos = (r.avisos || []).map(a => `<p class="nota">${esc(a)}</p>`).join("");
+  const avisos = (r.avisos || []).filter(a => !/^Sem histórico/.test(a)).map(a => `<p class="nota">${esc(a)}</p>`).join("");
   if(r.sem_historico){ alvo.innerHTML = `<p><strong>Sem histórico:</strong> não há produção deste tipo de serviço para estimar o prazo.</p>${avisos}`; return; }
   const dias = Number(r.dias_uteis);
   const origem = (ORC_SIM_ORIGEM[r.ritmo_origem] || (() => ""))(diametro);

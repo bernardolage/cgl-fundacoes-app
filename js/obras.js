@@ -549,7 +549,11 @@ function obrRitmoTitulo(a){
     return "Ritmo das máquinas em obra: " + base.map(b => `${b.codigo} ${num(b.m_dia)} m/dia (${b.dias_base} dia${Number(b.dias_base) === 1 ? "" : "s"} de base)`).join("; ");
   }
   if(a.ritmo_origem === "obra") return "Sem máquina em obra com RDO finalizado: usa a média dos últimos 14 dias com RDO da obra";
-  return "Precisa de ritmo (máquina em obra com RDO finalizado, ou 3 dias com RDO) e de metros faltando (profundidade das estacas ou meta na aba Parâmetros)";
+  return "";
+}
+function obrSemPrevisaoTitulo(a){
+  if(!Number(a.faltam_metros)) return "Sem metros faltando: falta a profundidade das estacas no cadastro ou a meta de metros na aba Parâmetros";
+  return "Sem ritmo: precisa de máquina em obra com RDO finalizado, ou de 3 dias com RDO na obra";
 }
 function obrTextoPrevisao(a){
   const fe = Number(a.faltam_estacas) || 0, fm = Number(a.faltam_metros) || 0;
@@ -575,7 +579,7 @@ async function obrCarregarPrevisaoChip(obraId){
   if(error) console.error("Previsão da obra:", error);
   if(error || !data || obraId !== obraEditId) return;
   el.textContent = obrTextoPrevisao(data);
-  el.title = obrRitmoTitulo(data);
+  el.title = data.previsao_termino ? obrRitmoTitulo(data) : obrSemPrevisaoTitulo(data);
   box.style.display = "";
 }
 
@@ -677,8 +681,8 @@ function preencherParametrosObra(d){
   set("obr-jornada-sex-saida",   hhmm(d.jornada_sexta_saida));
   set("obr-iss-pct",             d.iss_percentual ?? 5);
   set("obr-cno",                 d.cno || "");                 // fase 93c: CNO do cliente (alocação mensal do RH)
-  set("obr-meta-estacas",        d.meta_estacas ?? "");        // fase 140 (decisão 3)
-  set("obr-meta-metros",         d.meta_metros ?? "");
+  set("obr-meta-estacas",        d.meta_estacas || "");        // fase 140 (decisão 3): 0 no banco = sem meta
+  set("obr-meta-metros",         d.meta_metros || "");
   set("obr-conc-tipo",           d.concretagem_tipo_padrao || "");
   set("obr-conc-fornecedor",     d.concreto_fornecedor || "");
   set("obr-conc-traco",          d.traco_kg_cimento_m3 ?? OBR_PARAM_DEFAULTS.traco_kg_cimento_m3);
@@ -700,8 +704,8 @@ function lerParametrosObra(){
     jornada_sexta_saida:    t("obr-jornada-sex-saida"),
     iss_percentual:         n("obr-iss-pct", 5), // ISS do município (16/09/2026): a medição herda
     cno:                    ($("obr-cno")?.value || "").trim() || null,   // fase 93c
-    meta_estacas:           n("obr-meta-estacas", null) == null ? null : Math.round(n("obr-meta-estacas", null)),   // fase 140 (decisão 3)
-    meta_metros:            n("obr-meta-metros", null),
+    meta_estacas:           Math.round(n("obr-meta-estacas", 0)),   // fase 140 (decisão 3): colunas NOT NULL, vazio grava 0
+    meta_metros:            n("obr-meta-metros", 0),
     concretagem_tipo_padrao: t("obr-conc-tipo"),
     concreto_fornecedor:     t("obr-conc-fornecedor"),
     traco_kg_cimento_m3:  n("obr-conc-traco", OBR_PARAM_DEFAULTS.traco_kg_cimento_m3),

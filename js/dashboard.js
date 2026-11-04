@@ -955,7 +955,7 @@ function renderDashObrasAndamento(){
         <td class="num">${o.m_dia != null && Number(o.m_dia) > 0 ? num(o.m_dia) : '<span class="meta">—</span>'}</td>
         <td class="num">${Number(o.m_dia_maquinas) > 0 ? `<span title="${esc(obrRitmoTitulo(o))}">${num(o.m_dia_maquinas)}${o.ritmo_origem === "obra" ? ' <span class="meta">(obra)</span>' : ""}</span>` : '<span class="meta">—</span>'}</td>
         <td class="num">${prodPer[o.obra_id] ? `${num(prodPer[o.obra_id])} m` : '<span class="meta">—</span>'}</td>
-        <td>${o.previsao_termino ? `${dataBR(o.previsao_termino)}${folga != null ? ` <span class="tag ${folga < 0 ? "vermelho" : "verde"}">${folga < 0 ? Math.abs(folga) + " d atrasada" : esc(folga) + " d de folga"}</span>` : ""}` : `<span class="meta" title="${esc(obrRitmoTitulo(o))}">sem dados</span>`}</td>
+        <td>${o.previsao_termino ? `${dataBR(o.previsao_termino)}${folga != null ? ` <span class="tag ${folga < 0 ? "vermelho" : "verde"}">${folga < 0 ? Math.abs(folga) + " d atrasada" : esc(folga) + " d de folga"}</span>` : ""}` : `<span class="meta" title="${esc(obrSemPrevisaoTitulo(o))}">sem dados</span>`}</td>
         <td>${o.ultimo_rdo ? dataBR(o.ultimo_rdo) : '<span class="meta">sem RDO</span>'}${o.dias_sem_lancamento != null ? ` <span class="meta">(${esc(o.dias_sem_lancamento)} d)</span>` : ""}</td>
         <td>${o.parada ? '<span class="tag ambar">parada</span> ' : ""}${o.pronta_baixa ? '<span class="tag verde">pronta p/ baixa</span> ' : ""}${o.sem_previstas ? '<span class="tag cinza">sem previstas</span> ' : ""}${_dashObraMat[o.obra_id] ? `<span class="tag ambar" title="separações abertas no almoxarifado (fase 83)">material pedido (${esc(_dashObraMat[o.obra_id].itens_pendentes)})</span>` : ""}</td>
       </tr>`;
