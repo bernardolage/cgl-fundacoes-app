@@ -546,7 +546,7 @@ async function dashAbrirRegularizar(a){
     if(typeof _obrRdoFiltroMaq !== "undefined"){ _obrRdoFiltroMaq = "sem"; _obrRdoFiltroObra = a.obra_id || null; }
     if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
     else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
-  } else if(a.secao === "obras" && a.filtro === "estaca_por_observacao"){ // fase 94 (#75): um só → abre o RDO; vários → aba RDOs da obra
+  } else if(a.secao === "obras" && (a.filtro === "estaca_por_observacao" || a.filtro === "rdo_sem_equipe")){ // fase 94 (#75) e aviso de RDO sem equipe: um só → abre o RDO; vários → aba RDOs da obra
     if(a.registro_id && irParaSecao("rdo") && typeof abrirRDO === "function") abrirRDO(a.registro_id);
     else if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
     else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
