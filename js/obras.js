@@ -516,6 +516,7 @@ function abrirFichaObra(obra){
     ? `${obra.cidade}${obra.uf ? "/" + obra.uf.toUpperCase() : ""}`
     : "—";
   $("obr-ficha-titulo").textContent = obra.codigo ? `${obra.codigo} — ${obra.nome}` : "Nova obra";
+  obrCarregarPrevisaoChip(obra.id);   // fase 140
 
   atualizarStatusbarObra(obra.status);
   obrAtualizarConcluir(obra);   // lote S44 (L9): "Concluir obra" para o financeiro
@@ -538,6 +539,44 @@ function abrirFichaObra(obra){
   if(typeof carregarAbasObra === "function"){
     carregarAbasObra(obraEditId);
   }
+}
+
+/* ---------- Fase 140 (decisão 8): chip "faltam N estacas · M m · termina ~DD/MM (D d de folga)" ----------
+   Lê vw_sc_obra_andamento por obra_id; a view só traz obra em andamento: nas demais o chip fica escondido. Sem valor financeiro. */
+function obrRitmoTitulo(a){
+  const base = Array.isArray(a.ritmo_base) ? a.ritmo_base : [];
+  if(a.ritmo_origem === "maquinas" && base.length){
+    return "Ritmo das máquinas em obra: " + base.map(b => `${b.codigo} ${num(b.m_dia)} m/dia (${b.dias_base} dia${Number(b.dias_base) === 1 ? "" : "s"} de base)`).join("; ");
+  }
+  if(a.ritmo_origem === "obra") return "Sem máquina em obra com RDO finalizado: usa a média dos últimos 14 dias com RDO da obra";
+  return "Precisa de ritmo (máquina em obra com RDO finalizado, ou 3 dias com RDO) e de metros faltando (profundidade das estacas ou meta na aba Parâmetros)";
+}
+function obrTextoPrevisao(a){
+  const fe = Number(a.faltam_estacas) || 0, fm = Number(a.faltam_metros) || 0;
+  if(a.sem_previstas && !fm) return "sem previstas: informe a meta na aba Parâmetros";
+  const partes = [];
+  if(fe > 0) partes.push(`faltam ${fe.toLocaleString("pt-BR")} estaca${fe === 1 ? "" : "s"}`);
+  if(fm > 0) partes.push(`${Math.round(fm).toLocaleString("pt-BR")} m`);
+  if(a.previsao_termino){
+    const folga = a.folga_dias == null ? "" : Number(a.folga_dias) < 0 ? ` (${Math.abs(a.folga_dias)} d de atraso)` : ` (${a.folga_dias} d de folga)`;
+    partes.push(`termina ~${dataBR(a.previsao_termino).slice(0, 5)}${folga}`);
+  } else if(fe > 0 || fm > 0){
+    partes.push(fm > 0 ? "sem ritmo para prever" : "sem metros para prever");
+  }
+  return partes.join(" · ") || "nada faltando";
+}
+async function obrCarregarPrevisaoChip(obraId){
+  const box = $("obr-ficha-previsao-chip-box"), el = $("obr-ficha-previsao-chip");
+  if(!box || !el) return;
+  box.style.display = "none";
+  if(!obraId) return;
+  const { data, error } = await sb.from("vw_sc_obra_andamento")
+    .select("faltam_estacas,faltam_metros,previsao_termino,folga_dias,sem_previstas,ritmo_origem,ritmo_base").eq("obra_id", obraId).maybeSingle();
+  if(error) console.error("Previsão da obra:", error);
+  if(error || !data || obraId !== obraEditId) return;
+  el.textContent = obrTextoPrevisao(data);
+  el.title = obrRitmoTitulo(data);
+  box.style.display = "";
 }
 
 function atualizarStatusbarObra(st){
@@ -638,6 +677,8 @@ function preencherParametrosObra(d){
   set("obr-jornada-sex-saida",   hhmm(d.jornada_sexta_saida));
   set("obr-iss-pct",             d.iss_percentual ?? 5);
   set("obr-cno",                 d.cno || "");                 // fase 93c: CNO do cliente (alocação mensal do RH)
+  set("obr-meta-estacas",        d.meta_estacas ?? "");        // fase 140 (decisão 3)
+  set("obr-meta-metros",         d.meta_metros ?? "");
   set("obr-conc-tipo",           d.concretagem_tipo_padrao || "");
   set("obr-conc-fornecedor",     d.concreto_fornecedor || "");
   set("obr-conc-traco",          d.traco_kg_cimento_m3 ?? OBR_PARAM_DEFAULTS.traco_kg_cimento_m3);
@@ -659,6 +700,8 @@ function lerParametrosObra(){
     jornada_sexta_saida:    t("obr-jornada-sex-saida"),
     iss_percentual:         n("obr-iss-pct", 5), // ISS do município (16/09/2026): a medição herda
     cno:                    ($("obr-cno")?.value || "").trim() || null,   // fase 93c
+    meta_estacas:           n("obr-meta-estacas", null) == null ? null : Math.round(n("obr-meta-estacas", null)),   // fase 140 (decisão 3)
+    meta_metros:            n("obr-meta-metros", null),
     concretagem_tipo_padrao: t("obr-conc-tipo"),
     concreto_fornecedor:     t("obr-conc-fornecedor"),
     traco_kg_cimento_m3:  n("obr-conc-traco", OBR_PARAM_DEFAULTS.traco_kg_cimento_m3),

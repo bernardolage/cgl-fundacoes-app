@@ -19,6 +19,7 @@ let _dashFila = [];        // vw_sc_minha_fila
 let _dashMencoes = [];     // vw_sc_minha_fila_mencoes (lote S57b, #218: card no topo, fora da Minha fila)
 let _dashReg = [];         // vw_sc_regularizar (fase 75)
 let _dashObraMat = {};     // vw_sc_obra_material (fase 83): obra_id → separações abertas
+let _dashRitmo = {};       // vw_sc_ritmo_maquina (fase 140): equipamento_id → linha agregada da máquina
 let _dashFrotaFiltro = "todas";
 let _dashCargaN = 0;       // descarta resposta de carga antiga quando o período muda no meio
 const DASH_NIVEL = {
@@ -87,7 +88,18 @@ async function dashLer(fonte, ajustar, alvo){
     if(el) el.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message || "erro")}).</p>`;
     return null;
   }
+  if(alvo) dashCarimbo(alvo);
   return data || [];
+}
+/* Fase 140 (FO-12): carimbo "atualizado às HH:MM" no topo de cada bloco da Sala, só depois de ler sem erro */
+const dashHoraAgora = () => "atualizado às " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+function dashCarimbo(alvo){
+  const el = $(alvo);
+  const topo = el?.parentElement?.querySelector(":scope > .dash-bloco-topo");
+  if(!topo || el.textContent.includes("Não foi possível carregar")) return;
+  let c = topo.querySelector(".dmh-retrato");
+  if(!c){ c = document.createElement("span"); c.className = "dmh-retrato"; topo.appendChild(c); }
+  c.textContent = dashHoraAgora();
 }
 /* fase 99b (decisão 4): "Medido no período" e "A receber" são somatórios financeiros: podeVerKpiFinanceiro() (core.js) =
    diretor, financeiro e auditor (o admin saiu em 21/10/2026). O argumento é a regra anterior, que volta se KPI_FIN_RESTRITO = false
@@ -128,12 +140,13 @@ async function carregarDashboard(){
   await Promise.all([soAlmox ? null : carregarDashFaixa(carga), dashCarregarAcoes(), dashCarregarFila(), soAlmox ? null : dashCarregarRegularizar()]);
   if(carga !== _dashCargaN) return;
   console.info(`Início: 1ª onda em ${Math.round(performance.now() - t0)} ms`);
-  if($("dash-atualizado")) $("dash-atualizado").textContent = "atualizado às " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if($("dash-atualizado")) $("dash-atualizado").textContent = dashHoraAgora();
   if(soAlmox){ ligarCliquesDashboard(); return; }   // fase 90: sem abas, resumo nem atividade para o auxiliar
 
   // 2ª onda: abas e o resumo do fim da página
   await Promise.all([
     dmhCarregar(),                 // fase 139: aba Máquinas hoje
+    dashCarregarRitmo(),           // fase 140: coluna Ritmo da aba Frota
     dashCarregarObrasAndamento(),
     carregarDashGraficoProducao(),
     carregarDashTopObras(),
@@ -147,6 +160,7 @@ async function carregarDashboard(){
     dashEhDiretoria() ? carregarDashIA() : Promise.resolve()
   ]);
   if(carga !== _dashCargaN) return;
+  ["dash-seguranca", "dash-epi", "dash-sst", "dash-geo"].forEach(dashCarimbo);   // fase 140 (FO-12): cards com leitura própria
   renderDashFrota();
   await renderDashOperadores();
 
@@ -178,6 +192,8 @@ async function carregarDashFaixa(carga){
   ]);
   if(carga !== _dashCargaN) return;
   _dashProd = prod || []; _dashFrota = frota || []; _dashObrasAnd = obras || []; _dashViagens = viagens || [];
+  if(frota && $("dash-frota-carimbo")) $("dash-frota-carimbo").textContent = dashHoraAgora();   // fase 140 (FO-12)
+  if(obras && $("dash-obras-carimbo")) $("dash-obras-carimbo").textContent = dashHoraAgora();
   const set = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   const vazio = (id, cond) => { const el = $(id); if(el) el.classList.toggle("dash-num-vazio", !!cond); };
   const quando = DASH_PERIODOS[_dashPeriodo];
@@ -847,6 +863,13 @@ function ligarDmh(){
 }
 
 /* ---------- Aba Frota ---------- */
+/* Fase 140: ritmo da máquina = metros perfurados por dia nos últimos dias com RDO finalizado (refuro conta; empresa_config.ritmo_dias_base) */
+async function dashCarregarRitmo(){
+  const d = await dashLer("vw_sc_ritmo_maquina", q => q.select("equipamento_id,m_dia,dias_base,primeiro_dia,ultimo_dia").is("tipo_servico", null).is("faixa_diametro", null).not("equipamento_id", "is", null));
+  if(!d) return;
+  _dashRitmo = {};
+  d.forEach(r => { _dashRitmo[r.equipamento_id] = r; });
+}
 function renderDashFrota(){
   const cont = $("dash-frota");
   if(!cont) return;
@@ -874,16 +897,17 @@ function renderDashFrota(){
     : `<p class="meta" style="margin:0 0 8px;">🚚 Logística: nenhuma viagem em trânsito agora.</p>`;
   if(!lista.length){ cont.innerHTML = blocoVg + `<p class="vazio">Nenhuma máquina com este filtro.</p>`; return; }
   cont.innerHTML = blocoVg + `<div class="tabela-rola"><table class="dash-tabela">
-    <thead><tr><th>Máquina</th><th>Situação</th><th>Obra</th><th>Último lançamento</th><th class="num" title="Intervalo mediano entre estacas: precisa de horário de perfuração nos RDOs">Ritmo</th><th class="num">Período</th><th class="num">Mês</th><th class="num">Horímetro</th><th>Manutenção</th></tr></thead>
+    <thead><tr><th>Máquina</th><th>Situação</th><th>Obra</th><th>Último lançamento</th><th class="num" title="Metros perfurados por dia trabalhado, nos últimos dias com RDO finalizado (refuro conta)">Ritmo</th><th class="num">Período</th><th class="num">Mês</th><th class="num">Horímetro</th><th>Manutenção</th></tr></thead>
     <tbody>${lista.map(f => {
       const s = DASH_SITUACAO[f.situacao] || { label: f.situacao, cor: "cinza" };
       const per = prodPer[f.equipamento_id];
+      const rit = _dashRitmo[f.equipamento_id];
       return `<tr class="linha-clicavel" data-eqp="${esc(f.equipamento_id)}">
         <td><strong>${esc(f.codigo || "—")}</strong> <span class="meta">${esc(f.nome || "")}</span></td>
         <td><span class="tag ${esc(s.cor)}">${esc(s.label)}</span>${f.situacao === "parada" && f.dias_sem_lancar != null ? ` <span class="meta">há ${esc(f.dias_sem_lancar)} d</span>` : ""}</td>
         <td>${f.obra_id ? linkObra(f.obra_id, f.obra_codigo || mapaObras[f.obra_id]) : '<span class="meta">—</span>'}</td>
         <td>${f.ultimo_lancamento ? `${dataBR(f.ultimo_lancamento)} <span class="meta">(${esc(f.dias_sem_lancar)} d)</span>` : '<span class="meta">nunca</span>'}</td>
-        <td class="num"><span class="meta">sem horário</span></td>
+        <td class="num">${rit ? `<span title="Base: ${esc(rit.dias_base)} dia(s) com RDO finalizado, de ${dataBR(rit.primeiro_dia)} a ${dataBR(rit.ultimo_dia)}">${num(rit.m_dia)} m/dia <span class="meta">(${esc(rit.dias_base)} d)</span></span>` : '<span class="meta">sem base</span>'}</td>
         <td class="num">${per ? `${num(per.m)} m · ${esc(per.e)} est.` : '<span class="meta">—</span>'}</td>
         <td class="num">${Number(f.metros_mes) > 0 ? `${num(f.metros_mes)} m · ${esc(f.estacas_mes)} est.` : '<span class="meta">—</span>'}</td>
         <td class="num">${f.horimetro != null ? num(f.horimetro) : '<span class="meta">—</span>'}</td>
@@ -919,7 +943,7 @@ function renderDashObrasAndamento(){
   const lista = [..._dashObrasAnd].sort((a, b) => (pins.has(b.obra_id) - pins.has(a.obra_id)) || ((a.dias_sem_lancamento ?? 9999) - (b.dias_sem_lancamento ?? 9999)) || String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
   if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma obra em andamento.</p>`; return; }
   cont.innerHTML = `<div class="tabela-rola"><table class="dash-tabela">
-    <thead><tr><th style="width:28px;"></th><th>Obra</th><th>Estacas exec. / prev.</th><th class="num">m/dia</th><th class="num">Produção ${esc(DASH_PERIODOS[_dashPeriodo])}</th><th>Previsão de término</th><th>Última atividade</th><th></th></tr></thead>
+    <thead><tr><th style="width:28px;"></th><th>Obra</th><th>Estacas exec. / prev.</th><th class="num">Faltam</th><th class="num">m/dia</th><th class="num" title="Soma do ritmo das máquinas em obra; sem máquina com histórico, a média da obra">Ritmo (máquinas)</th><th class="num">Produção ${esc(DASH_PERIODOS[_dashPeriodo])}</th><th title="Em dias úteis da obra: pula fim de semana e feriado">Previsão de término</th><th>Última atividade</th><th></th></tr></thead>
     <tbody>${lista.map(o => {
       const pct = Math.min(100, Number(o.percentual) || 0);
       const folga = o.folga_dias;
@@ -927,9 +951,11 @@ function renderDashObrasAndamento(){
         <td><button type="button" class="dash-pin${pins.has(o.obra_id) ? " ativo" : ""}" data-pin="${esc(o.obra_id)}" title="${pins.has(o.obra_id) ? "Desafixar" : "Fixar no topo"}">${pins.has(o.obra_id) ? "★" : "☆"}</button></td>
         <td><strong>${esc(o.codigo || "")}</strong> <span class="meta">${esc((o.nome || "").slice(0, 40))}</span></td>
         <td>${o.previstas > 0 ? `${esc(o.executadas)} / ${esc(o.previstas)} <span class="meta">(${num(pct)}%)</span><div class="dash-barra"><div style="width:${pct}%"></div></div>` : '<span class="meta">sem previstas</span>'}${o.refuradas ? ` <span class="meta">· ${esc(o.refuradas)} refurada(s)</span>` : ""}</td>
+        <td class="num">${Number(o.faltam_estacas) > 0 || Number(o.faltam_metros) > 0 ? `${esc(o.faltam_estacas)} est.${Number(o.faltam_metros) > 0 ? ` · ${num(Math.round(o.faltam_metros))} m` : ""}` : '<span class="meta">—</span>'}</td>
         <td class="num">${o.m_dia != null && Number(o.m_dia) > 0 ? num(o.m_dia) : '<span class="meta">—</span>'}</td>
+        <td class="num">${Number(o.m_dia_maquinas) > 0 ? `<span title="${esc(obrRitmoTitulo(o))}">${num(o.m_dia_maquinas)}${o.ritmo_origem === "obra" ? ' <span class="meta">(obra)</span>' : ""}</span>` : '<span class="meta">—</span>'}</td>
         <td class="num">${prodPer[o.obra_id] ? `${num(prodPer[o.obra_id])} m` : '<span class="meta">—</span>'}</td>
-        <td>${o.previsao_termino ? `${dataBR(o.previsao_termino)}${folga != null ? ` <span class="tag ${folga < 0 ? "vermelho" : "verde"}">${folga < 0 ? Math.abs(folga) + " d atrasada" : esc(folga) + " d de folga"}</span>` : ""}` : `<span class="meta" title="Precisa de 3 dias com RDO, ritmo maior que zero e metros faltando">sem dados</span>`}</td>
+        <td>${o.previsao_termino ? `${dataBR(o.previsao_termino)}${folga != null ? ` <span class="tag ${folga < 0 ? "vermelho" : "verde"}">${folga < 0 ? Math.abs(folga) + " d atrasada" : esc(folga) + " d de folga"}</span>` : ""}` : `<span class="meta" title="${esc(obrRitmoTitulo(o))}">sem dados</span>`}</td>
         <td>${o.ultimo_rdo ? dataBR(o.ultimo_rdo) : '<span class="meta">sem RDO</span>'}${o.dias_sem_lancamento != null ? ` <span class="meta">(${esc(o.dias_sem_lancamento)} d)</span>` : ""}</td>
         <td>${o.parada ? '<span class="tag ambar">parada</span> ' : ""}${o.pronta_baixa ? '<span class="tag verde">pronta p/ baixa</span> ' : ""}${o.sem_previstas ? '<span class="tag cinza">sem previstas</span> ' : ""}${_dashObraMat[o.obra_id] ? `<span class="tag ambar" title="separações abertas no almoxarifado (fase 83)">material pedido (${esc(_dashObraMat[o.obra_id].itens_pendentes)})</span>` : ""}</td>
       </tr>`;

@@ -19,7 +19,7 @@ function orcPodeEditar(){
   return ["diretor", "admin", "comercial"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
 }
 const ORC_BOTOES_ESCRITA = ["btn-novo-orcamento", "btn-salvar-orc", "btn-excluir-orc", "btn-orc-nova-revisao",
-  "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente"];
+  "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente", "btn-orc-sim-usar"];
 /* Só trava quando não pode editar; para quem edita os botões seguem as regras de exibição de cada um. */
 function orcAplicarModoLeitura(){
   const pode = orcPodeEditar();
@@ -924,6 +924,7 @@ function abrirFichaOrcVisual(o){
   $("orc-painel").style.display = "none";
   $("orc-ficha").style.display = "";
 
+  orcSimPreparar(o);   // fase 140c
   $("orc-ficha-numero").textContent = o.numero || "(novo)";
   if($("orc-ficha-revisao-chip")) $("orc-ficha-revisao-chip").textContent = `Rev ${o.numero_revisao || "00"}`;
   $("orc-ficha-cliente-chip").textContent = mapaClientes[o.cliente_id] || "—";
@@ -1254,7 +1255,130 @@ function atualizarStatusbarOrc(st){
   });
 }
 
+/* ---------- Fase 140c: simulador "Prazo estimado" ----------
+   Entradas pré-preenchidas pelos itens (o que o usuário editou não é sobrescrito) e cálculo só no banco (orcamento_simular_prazo).
+   A máquina fica em dataset.id: quem salva antes da lista carregar não apaga a FK. O PDF não muda: "Usar no prazo" só preenche
+   o campo Prazo de execução, gravado no Salvar da ficha. */
+const ORC_SIM_TIPOS = { helice: "helice_continua", trado: "trado_mecanizado", raiz: "estaca_raiz", secante: "helice_secante" };
+const ORC_SIM_CAMPOS = ["orc-sim-estacas", "orc-sim-metros", "orc-sim-diametro", "orc-sim-prof"];
+let _orcSimMaquinas = null;
+const orcSimRotulo = (m) => `${m.codigo || ""} — ${m.nome || ""}`;
+async function orcSimCarregarMaquinas(){
+  if(_orcSimMaquinas) return _orcSimMaquinas;
+  const { data, error } = await sb.from("equipamentos").select("id,codigo,nome,ativo").eq("tipo", "perfuratriz").order("codigo");
+  if(error){ console.error("Simulador:", error); return []; }
+  _orcSimMaquinas = data || [];
+  const dl = $("orc-sim-maquinas");
+  if(dl) dl.innerHTML = _orcSimMaquinas.filter(m => m.ativo !== false).map(m => `<option value="${esc(orcSimRotulo(m))}"></option>`).join("");
+  return _orcSimMaquinas;
+}
+async function orcSimPreparar(o){
+  ORC_SIM_CAMPOS.concat("orc-sim-tipo").forEach(id => { const el = $(id); if(el){ el.value = ""; delete el.dataset.editado; } });
+  if($("orc-sim-tipo")) $("orc-sim-tipo").value = ORC_SIM_TIPOS[o.tipo_proposta] || "helice_continua";
+  if($("orc-sim-inicio")) $("orc-sim-inicio").value = o.inicio_desejado || "";
+  if($("orc-sim-resultado")) $("orc-sim-resultado").innerHTML = "";
+  if($("btn-orc-sim-usar")) $("btn-orc-sim-usar").style.display = "none";
+  const inp = $("orc-sim-maquina");
+  if(!inp) return;
+  const id = o.equipamento_previsto_id || "";
+  inp.dataset.id = id;
+  inp.value = "";
+  const lista = await orcSimCarregarMaquinas();
+  const m = lista.find(x => x.id === id);
+  if(m && inp.dataset.id === id) inp.value = orcSimRotulo(m);
+}
+/* Soma dos itens: estacas = itens em un que são estaca (descrição com "estaca" ou Ø), metros = itens em m; Ø = o mais frequente nas descrições */
+function orcSimDoItens(){
+  const linhas = [...document.querySelectorAll("#orc-itens tr")].map(tr => ({
+    desc: tr.querySelector(".it-desc")?.value || "",
+    un: tr.querySelector(".it-un")?.value || "",
+    qtd: Number(tr.querySelector(".it-qtd")?.value || 0)
+  }));
+  const somar = (lista) => lista.reduce((s, l) => s + l.qtd, 0);
+  const estacas = somar(linhas.filter(l => l.un === "un" && /estaca|Ø/i.test(l.desc)));
+  const metros = somar(linhas.filter(l => l.un === "m"));
+  const contagem = {};
+  linhas.forEach(l => { const m = /[Øø]\s*(\d{2,4})/.exec(l.desc); if(m) contagem[m[1]] = (contagem[m[1]] || 0) + 1; });
+  const diam = Object.keys(contagem).sort((a, b) => contagem[b] - contagem[a])[0];
+  const preencher = (id, v) => { const el = $(id); if(el && !el.dataset.editado) el.value = v ? v : ""; };
+  preencher("orc-sim-estacas", estacas ? Math.round(estacas) : "");
+  preencher("orc-sim-metros", metros ? Math.round(metros * 100) / 100 : "");
+  preencher("orc-sim-diametro", diam || "");
+  if($("orc-sim-tipo") && !$("orc-sim-tipo").dataset.editado) $("orc-sim-tipo").value = ORC_SIM_TIPOS[$("orc-tipo-proposta")?.value] || $("orc-sim-tipo").value;
+}
+function orcSimMaquinaEscolhida(){
+  const id = $("orc-sim-maquina")?.dataset.id || "";
+  return id && _orcSimMaquinas ? _orcSimMaquinas.find(m => m.id === id) : null;
+}
+/* Campo do PDF vazio recebe a máquina escolhida ao salvar; quem escreveu à mão mantém o texto */
+function orcSimEquipamentoConsiderado(){
+  const m = orcSimMaquinaEscolhida();
+  const texto = m ? (m.nome || m.codigo || "") : "";
+  if(texto && $("orc-equipamento")) $("orc-equipamento").value = texto;
+  return texto;
+}
+const orcSimPrazoTexto = (d) => d === 1 ? "~1 dia útil" : `~${d} dias úteis`;
+const ORC_SIM_ORIGEM = {
+  maquina_faixa: (d) => `desta máquina${d ? ` para Ø ${d}` : ""}`,
+  maquina: () => "desta máquina neste tipo de serviço, sem base para este Ø",
+  frota_faixa: (d) => `da frota${d ? ` para Ø ${d}` : ""}`,
+  frota: () => "da frota neste tipo de serviço"
+};
+function orcSimRender(r, diametro){
+  const alvo = $("orc-sim-resultado"), usar = $("btn-orc-sim-usar");
+  if(!alvo) return;
+  if(usar){ usar.style.display = "none"; delete usar.dataset.prazo; }
+  if(r.erro){ alvo.innerHTML = `<p class="nota">${esc(r.erro)}</p>`; return; }
+  const avisos = (r.avisos || []).map(a => `<p class="nota">${esc(a)}</p>`).join("");
+  if(r.sem_historico){ alvo.innerHTML = `<p><strong>Sem histórico:</strong> não há produção deste tipo de serviço para estimar o prazo.</p>${avisos}`; return; }
+  const dias = Number(r.dias_uteis);
+  const origem = (ORC_SIM_ORIGEM[r.ritmo_origem] || (() => ""))(diametro);
+  const ritmo = `Ritmo histórico ${esc(origem)}: <strong>${num(r.ritmo_m_dia)} m/dia útil</strong> (${esc(r.ritmo_dias_base)} dia${Number(r.ritmo_dias_base) === 1 ? "" : "s"} de base), ${num(r.metros)} m → <strong>${esc(orcSimPrazoTexto(dias))}</strong>.`;
+  const fila = r.obra_atual_codigo && r.obra_atual_termino
+    ? `A máquina está na obra ${esc(r.obra_atual_codigo)} com término previsto em ${dataBR(r.obra_atual_termino)} + ${esc(r.mobilizacao_dias)} dias de mobilização → pode começar em <strong>${dataBR(r.inicio_possivel)}</strong> e terminar em <strong>${dataBR(r.termino_estimado)}</strong>.`
+    : `${r.obra_atual_codigo ? `A máquina está na obra ${esc(r.obra_atual_codigo)}. ` : ""}Pode começar em <strong>${dataBR(r.inicio_possivel)}</strong> e terminar em <strong>${dataBR(r.termino_estimado)}</strong>.`;
+  alvo.innerHTML = `<p>${/* html */ ritmo}</p><p>${/* html */ fila}</p>${/* html */ avisos}`;
+  if(usar && orcPodeEditar()){
+    usar.dataset.prazo = orcSimPrazoTexto(dias);
+    usar.style.display = "";
+  }
+}
+async function orcSimular(){
+  orcSimDoItens();
+  const valor = (id) => { const v = Number(String($(id)?.value || "").replace(",", ".")); return isFinite(v) && v > 0 ? v : null; };
+  const estacas = valor("orc-sim-estacas"), diametro = valor("orc-sim-diametro");
+  const { data, error } = await sb.rpc("orcamento_simular_prazo", {
+    p_orcamento: orcEditId || null,
+    p_estacas: estacas == null ? null : Math.round(estacas),
+    p_metros: valor("orc-sim-metros"),
+    p_diametro: diametro,
+    p_prof_media: valor("orc-sim-prof"),
+    p_tipo: $("orc-sim-tipo")?.value || null,
+    p_equipamento: $("orc-sim-maquina")?.dataset.id || null,
+    p_inicio: $("orc-sim-inicio")?.value || null
+  });
+  if(error){ aviso("app-aviso", "Não foi possível simular: " + error.message, "erro"); return; }
+  orcSimRender(data, diametro);
+}
+function ligarOrcSimulador(){
+  ORC_SIM_CAMPOS.concat("orc-sim-tipo").forEach(id => $(id)?.addEventListener("input", (e) => { e.target.dataset.editado = "1"; }));
+  $("orc-sim-maquina")?.addEventListener("focus", orcSimCarregarMaquinas);
+  $("orc-sim-maquina")?.addEventListener("input", (e) => {
+    const m = (_orcSimMaquinas || []).find(x => orcSimRotulo(x) === e.target.value);
+    e.target.dataset.id = m ? m.id : "";
+  });
+  $("btn-orc-sim-simular")?.addEventListener("click", () => comBotaoTravado("btn-orc-sim-simular", orcSimular));
+  $("btn-orc-sim-usar")?.addEventListener("click", (e) => {
+    const campo = $("orc-prazo");
+    if(!campo || !e.currentTarget.dataset.prazo) return;
+    campo.value = e.currentTarget.dataset.prazo;
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+    aviso("app-aviso", `Prazo de execução preenchido com "${e.currentTarget.dataset.prazo}". Clique em Salvar para gravar; dá para editar antes.`, "ok");
+  });
+}
+
 function ativarTabOrc(nome){
+  if(nome === "proposta") orcSimDoItens();   // fase 140c
   document.querySelectorAll("#orc-notebook button").forEach(b => {
     b.classList.toggle("ativo", b.dataset.tab === nome);
   });
@@ -1468,7 +1592,9 @@ async function salvarOrcamento(novoStatus){
     cidade_emissao:             "Itabira/MG", // chamado #9 (Thales, aprovado pelo Bernardo em 16/09/2026): campo saiu da tela; a proposta é sempre emitida na sede
     referencia_obra:            $("orc-ref-obra").value.trim() || null,
     escopo_servicos:            $("orc-escopo").value || null,
-    equipamento_considerado:    $("orc-equipamento").value.trim() || null,
+    equipamento_considerado:    $("orc-equipamento").value.trim() || orcSimEquipamentoConsiderado() || null,   // fase 140c: vazio recebe a máquina prevista
+    equipamento_previsto_id:    $("orc-sim-maquina")?.dataset.id || null,
+    inicio_desejado:            $("orc-sim-inicio")?.value || null,
     iss_percentual:             Number($("orc-iss-perc").value || 5),
     iss_por_dentro:             $("orc-iss-pdentro").checked,
     validade_dias:              Number($("orc-validade-dias").value || 30),
@@ -1576,6 +1702,7 @@ function ligarOrcamentos(){
   $("btn-salvar-orc")?.addEventListener("click", () => comBotaoTravado("btn-salvar-orc", () => salvarOrcamento()));
   $("btn-excluir-orc")?.addEventListener("click", excluirOrcamento);
   $("btn-add-item")?.addEventListener("click", adicionarItem);
+  ligarOrcSimulador();   // fase 140c
 
   // Filtro do catálogo (aba Modelo → aba Itens) e validade derivada
   ["orc-tipo-obra","orc-porte","orc-faixa"].forEach(id => $(id)?.addEventListener("change", atualizarFiltroCatalogoOrc));

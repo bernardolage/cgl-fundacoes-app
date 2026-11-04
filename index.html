@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="ce6665a" />
+<meta name="app-versao" content="3cc085f" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=ce6665a" />
+<link rel="stylesheet" href="css/estilo.css?v=3cc085f" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=ce6665a"></script>
+<script src="js/tema.js?v=3cc085f"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=ce6665a"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=ce6665a"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=ce6665a"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=3cc085f"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=3cc085f"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=3cc085f"></script>
 </head>
 <body>
 
@@ -406,10 +406,12 @@
               <button type="button" class="serv-view-btn" data-filtro="manut">Com manutenção</button>
             </div>
             <select id="dash-frota-ordem" aria-label="Ordenar frota"><option value="atencao">Atenção primeiro</option><option value="nome">Por código</option></select>
+            <span class="dmh-retrato" id="dash-frota-carimbo"></span>
           </div>
           <div id="dash-frota"><p class="vazio">Carregando…</p></div>
         </div>
         <div class="odoo-tab" data-tab="obras">
+          <div class="serv-filtros"><span class="dmh-retrato" id="dash-obras-carimbo"></span></div>
           <div id="dash-obras-and"><p class="vazio">Carregando…</p></div>
         </div>
         <div class="odoo-tab" data-tab="operadores">
@@ -2295,6 +2297,28 @@
                 <div class="campo"><label>Prazo de execução (vai nas Condições Gerais)</label><input id="orc-prazo" placeholder='ex.: 22 dias trabalhados' /></div>
                 <div class="campo"><label>Local de execução (vai nas Condições Gerais)</label><input id="orc-local" placeholder='ex.: Belo Horizonte / MG' /></div>
               </div>
+              <h4 class="titulo-bloco" style="margin-top:16px;">Prazo estimado <small class="meta">(pelo histórico de produção da máquina; só a frase de "Usar no prazo" vai para a proposta)</small></h4>
+              <div class="grade">
+                <div class="campo"><label>Estacas</label><input id="orc-sim-estacas" type="number" step="1" min="0" title="Soma dos itens em un que são estaca; pode editar" /></div>
+                <div class="campo"><label>Metros</label><input id="orc-sim-metros" type="number" step="0.01" min="0" title="Soma dos itens em m; pode editar. Vazio = estacas × profundidade média" /></div>
+                <div class="campo"><label>Ø (mm)</label><input id="orc-sim-diametro" type="number" step="1" min="0" title="Vem do Ø escrito nos itens; pode editar" /></div>
+                <div class="campo"><label>Profundidade média (m)</label><input id="orc-sim-prof" type="number" step="0.01" min="0" /></div>
+                <div class="campo"><label>Tipo de serviço</label>
+                  <select id="orc-sim-tipo">
+                    <option value="helice_continua">Hélice contínua</option>
+                    <option value="trado_mecanizado">Trado mecanizado</option>
+                    <option value="estaca_raiz">Estaca raiz</option>
+                    <option value="helice_secante">Hélice secante</option>
+                  </select>
+                </div>
+                <div class="campo"><label>Máquina prevista</label><input id="orc-sim-maquina" list="orc-sim-maquinas" autocomplete="off" placeholder="digite o código ou o nome" /><datalist id="orc-sim-maquinas"></datalist></div>
+                <div class="campo"><label>Início desejado</label><input id="orc-sim-inicio" type="date" /></div>
+              </div>
+              <div class="form-acoes compacta">
+                <button type="button" class="btn-sec" id="btn-orc-sim-simular">Simular</button>
+                <button type="button" class="btn-sec" id="btn-orc-sim-usar" style="display:none;">Usar no prazo de execução</button>
+              </div>
+              <div id="orc-sim-resultado"></div>
             </div>
 
             <div class="odoo-tab" data-tab="adicionais">
@@ -2718,6 +2742,7 @@
             <div class="chip"><span>Status</span><strong id="obr-ficha-status-chip">—</strong></div>
             <div class="chip" id="obr-ficha-valor-chip-box"><span>Valor contratado</span><strong id="obr-ficha-valor-chip">R$ 0,00</strong></div>
             <div class="chip"><span>Cidade</span><strong id="obr-ficha-cidade-chip">—</strong></div>
+            <div class="chip" id="obr-ficha-previsao-chip-box" style="display:none;"><span>Previsão</span><strong id="obr-ficha-previsao-chip">—</strong></div>
           </div>
 
           <!-- Smart buttons (Odoo style) -->
@@ -2815,6 +2840,11 @@
                 <div class="campo"><label>ISS do município (%)</label><input id="obr-iss-pct" type="number" step="0.01" min="0" max="100" value="5" title="Alíquota de ISS da cidade da obra. Toda NF tem ISS; as medições desta obra herdam este valor (financeiro, 16/09/2026)" /></div>
                 <div class="campo"><label>CNO <small style="font-weight:400;color:var(--txt-fraco);">(Cadastro Nacional de Obras do cliente)</small></label><input id="obr-cno" maxlength="20" placeholder="00.000.00000/00" title="CNO do cliente para esta obra. Vai na alocação mensal de cada funcionário que o RH manda ao contador (fase 93c, #73)" /></div>
               </div>
+              <h4 class="titulo-bloco" style="margin-top:16px;">Metas de produção <small class="meta">(valem quando faltam estacas ou profundidade no cadastro; base da previsão de término)</small></h4>
+              <div class="grade">
+                <div class="campo"><label>Meta de estacas</label><input id="obr-meta-estacas" type="number" step="1" min="0" title="Vale como previstas quando a obra não tem estacas cadastradas" /></div>
+                <div class="campo"><label>Meta de metros</label><input id="obr-meta-metros" type="number" step="0.01" min="0" title="Vale quando as estacas da obra não têm profundidade de projeto: sem isso não há metros faltando nem previsão de término" /></div>
+              </div>
               <h4 class="titulo-bloco" style="margin-top:16px;">Concretagem <small class="meta">(cálculo automático do volume no RDO)</small></h4>
               <div class="grade">
                 <div class="campo"><label>Tipo padrão</label>
@@ -2885,6 +2915,7 @@
                 <div class="ind"><div class="num" id="est-stat-pct">0%</div><div class="rot">% avanço</div></div>
                 <div class="ind"><div class="num" id="est-stat-metragem">0 m</div><div class="rot">Metragem executada</div></div>
               </div>
+              <p class="nota" id="est-stat-faltam" style="margin:-8px 0 12px;"></p>
 
               <div class="lista-topo" style="border-bottom:none;">
                 <h3 class="titulo-linha">Estacas da obra</h3>
@@ -6738,60 +6769,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=ce6665a"></script>
+<script src="js/core.js?v=3cc085f"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=ce6665a"></script>
+<script src="js/historico.js?v=3cc085f"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=ce6665a"></script>
-<script src="js/fiscal_ncm.js?v=ce6665a"></script>
+<script src="js/fiscal.js?v=3cc085f"></script>
+<script src="js/fiscal_ncm.js?v=3cc085f"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=ce6665a"></script>
-<script src="js/fornecedores.js?v=ce6665a"></script>
-<script src="js/apropriacoes.js?v=ce6665a"></script>
-<script src="js/funcionarios.js?v=ce6665a"></script>
-<script src="js/funcionarios_importar.js?v=ce6665a"></script>
-<script src="js/rh_documentos.js?v=ce6665a"></script>
-<script src="js/servicos.js?v=ce6665a"></script>
-<script src="js/produtos.js?v=ce6665a"></script>
-<script src="js/estoque.js?v=ce6665a"></script>
-<script src="js/separacoes.js?v=ce6665a"></script>
-<script src="js/epi.js?v=ce6665a"></script>
-<script src="js/compras.js?v=ce6665a"></script>
-<script src="js/requisicoes.js?v=ce6665a"></script>
-<script src="js/orcamentos.js?v=ce6665a"></script>
-<script src="js/propostas.js?v=ce6665a"></script>
-<script src="js/contratos.js?v=ce6665a"></script>
-<script src="js/contas_pagar.js?v=ce6665a"></script>
-<script src="js/centros_custo.js?v=ce6665a"></script>
-<script src="js/carteira.js?v=ce6665a"></script>
-<script src="js/obras.js?v=ce6665a"></script>
-<script src="js/frota.js?v=ce6665a"></script>
-<script src="js/viagens.js?v=ce6665a"></script>
-<script src="js/equipamentos.js?v=ce6665a"></script>
-<script src="js/vendas_bens.js?v=ce6665a"></script>
-<script src="js/acessorios.js?v=ce6665a"></script>
-<script src="js/reparos.js?v=ce6665a"></script>
-<script src="js/manutencao.js?v=ce6665a"></script>
-<script src="js/fabricacao.js?v=ce6665a"></script>
-<script src="js/mobilizacoes.js?v=ce6665a"></script>
-<script src="js/estacas.js?v=ce6665a"></script>
-<script src="js/obra_abas.js?v=ce6665a"></script>
-<script src="js/medicoes.js?v=ce6665a"></script>
-<script src="js/movimentacoes.js?v=ce6665a"></script>
-<script src="js/rdo_import_rg113.js?v=ce6665a"></script>
-<script src="js/rdo.js?v=ce6665a"></script>
-<script src="js/rdo_import_maya.js?v=ce6665a"></script>
-<script src="js/geodigitus.js?v=ce6665a"></script>
-<script src="js/computadores_bordo.js?v=ce6665a"></script>
-<script src="js/usuarios.js?v=ce6665a"></script>
-<script src="js/chamados.js?v=ce6665a"></script>
-<script src="js/dashboard.js?v=ce6665a"></script>
-<script src="js/rh_horas.js?v=ce6665a"></script>
-<script src="js/sesmt.js?v=ce6665a"></script>
-<script src="js/patrimonio.js?v=ce6665a"></script>
+<script src="js/clientes.js?v=3cc085f"></script>
+<script src="js/fornecedores.js?v=3cc085f"></script>
+<script src="js/apropriacoes.js?v=3cc085f"></script>
+<script src="js/funcionarios.js?v=3cc085f"></script>
+<script src="js/funcionarios_importar.js?v=3cc085f"></script>
+<script src="js/rh_documentos.js?v=3cc085f"></script>
+<script src="js/servicos.js?v=3cc085f"></script>
+<script src="js/produtos.js?v=3cc085f"></script>
+<script src="js/estoque.js?v=3cc085f"></script>
+<script src="js/separacoes.js?v=3cc085f"></script>
+<script src="js/epi.js?v=3cc085f"></script>
+<script src="js/compras.js?v=3cc085f"></script>
+<script src="js/requisicoes.js?v=3cc085f"></script>
+<script src="js/orcamentos.js?v=3cc085f"></script>
+<script src="js/propostas.js?v=3cc085f"></script>
+<script src="js/contratos.js?v=3cc085f"></script>
+<script src="js/contas_pagar.js?v=3cc085f"></script>
+<script src="js/centros_custo.js?v=3cc085f"></script>
+<script src="js/carteira.js?v=3cc085f"></script>
+<script src="js/obras.js?v=3cc085f"></script>
+<script src="js/frota.js?v=3cc085f"></script>
+<script src="js/viagens.js?v=3cc085f"></script>
+<script src="js/equipamentos.js?v=3cc085f"></script>
+<script src="js/vendas_bens.js?v=3cc085f"></script>
+<script src="js/acessorios.js?v=3cc085f"></script>
+<script src="js/reparos.js?v=3cc085f"></script>
+<script src="js/manutencao.js?v=3cc085f"></script>
+<script src="js/fabricacao.js?v=3cc085f"></script>
+<script src="js/mobilizacoes.js?v=3cc085f"></script>
+<script src="js/estacas.js?v=3cc085f"></script>
+<script src="js/obra_abas.js?v=3cc085f"></script>
+<script src="js/medicoes.js?v=3cc085f"></script>
+<script src="js/movimentacoes.js?v=3cc085f"></script>
+<script src="js/rdo_import_rg113.js?v=3cc085f"></script>
+<script src="js/rdo.js?v=3cc085f"></script>
+<script src="js/rdo_import_maya.js?v=3cc085f"></script>
+<script src="js/geodigitus.js?v=3cc085f"></script>
+<script src="js/computadores_bordo.js?v=3cc085f"></script>
+<script src="js/usuarios.js?v=3cc085f"></script>
+<script src="js/chamados.js?v=3cc085f"></script>
+<script src="js/dashboard.js?v=3cc085f"></script>
+<script src="js/rh_horas.js?v=3cc085f"></script>
+<script src="js/sesmt.js?v=3cc085f"></script>
+<script src="js/patrimonio.js?v=3cc085f"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=ce6665a"></script>
+<script src="js/sesmt_ocorrencias.js?v=3cc085f"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=ce6665a"></script>
+<script src="js/init.js?v=3cc085f"></script>
 </body>
 </html>

@@ -596,17 +596,25 @@ async function renderAcompanhamentoRaiz(){
 function renderEstacas(){
   atualizarFiltroLocal();
   atualizarBotaoRaiz();
-  // Mini-stats — contagem literal (todas as estacas cadastradas contam, incluindo BB)
-  const total = _estacas.length;
+  // Mini-stats. Fase 140 (decisão 3), regra única de avanço, a mesma de vw_sc_obra_andamento e vw_obra_producao:
+  // executadas ÷ (previstas − refuradas). Toda estaca cadastrada conta (inclusive BB), só a refurada sai; obra sem estaca
+  // cadastrada usa a meta da aba Parâmetros.
+  const refuradas = _estacas.filter(e => e.status === "refugada").length;
+  const total = (_estacas.length - refuradas) || (Number($("obr-meta-estacas")?.value) || 0);
   const exec  = _estacas.filter(e => e.status === "executada").length;
   const metragem = _estacas
     .filter(e => e.status === "executada")
     .reduce((s, e) => s + (Number(e.profundidade_executada_m ?? e.profundidade_m) || 0), 0); // hotfix 15b: executada; sem execução vinculada, o cadastro
-  const pct = total ? Math.round((exec / total) * 100) : 0;
+  const pct = total ? Math.round((exec / total) * 1000) / 10 : 0;
   $("est-stat-total").textContent      = total;
   $("est-stat-executadas").textContent = exec;
-  $("est-stat-pct").textContent        = `${pct}%`;
+  $("est-stat-pct").textContent        = `${num(pct)}%`;
   $("est-stat-metragem").textContent   = `${num(metragem)} m`;
+  // Linha "faltam": metros pelas estacas pendentes do projeto; sem profundidade no cadastro, meta de metros menos o executado
+  const faltamN = Math.max(total - exec, 0);
+  const pendentesM = _estacas.filter(e => e.status !== "executada" && e.status !== "refugada").reduce((s, e) => s + (Number(e.profundidade_m) || 0), 0);
+  const faltamM = pendentesM > 0 ? pendentesM : Math.max((Number($("obr-meta-metros")?.value) || 0) - metragem, 0);
+  if($("est-stat-faltam")) $("est-stat-faltam").textContent = total ? `faltam ${faltamN}${faltamM > 0 ? ` · ${num(Math.round(faltamM))} m` : ""}${refuradas ? ` · ${refuradas} refurada${refuradas === 1 ? "" : "s"} fora da conta` : ""}` : "";
 
   // Toggle vistas
   const wrapLista  = $("est-conteudo");
