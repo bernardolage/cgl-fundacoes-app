@@ -8,7 +8,7 @@
      Funcionários (visão "EPI", para o RH, que não tem Estoque no menu). Gasto por pessoa por mês com a média da
      função, por obra, por item, trocas vencidas, saídas sem pessoa e a conferência das categorias; .xlsx.
    - Card EPI da Sala de Comando (vw_sc_epi) e "Para regularizar" do SESMT (vw_sc_regularizar_sesmt, dashboard.js).
-   Quem vê (podeVerEpi = pode_ver_epi() no banco): diretor, admin, almoxarife, sesmt, rh e auditor. O encarregado
+   Quem vê (podeVerEpi = pode_ver_epi() no banco): diretor, admin, almoxarife, sesmt, rh, auditor e o módulo extra sesmt (fase 144-0). O encarregado
    não vê (decisão 3); o auxiliar de almoxarifado entrega e colhe a assinatura no balcão, sem relatório (valores).
    Tudo lê das views da fase 100: sem a migration (view inexistente) as telas mostram aviso, sem quebrar.
    Prefixo dos IDs: epi-. Depende em tempo de execução de estoque.js (balCarregarFuncionarios, estPodeEditar),
@@ -22,15 +22,16 @@ const EPI_VISOES = [
 ];
 const EPI_MES_LBL = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
-function podeVerEpi(){ return !!usuarioAtual && ["diretor", "admin", "almoxarife", "sesmt", "rh", "auditor"].includes(usuarioAtual.cargo); }
+function podeVerEpi(){ return !!usuarioAtual && (["diretor", "admin", "almoxarife", "sesmt", "rh", "auditor"].includes(usuarioAtual.cargo) || temModuloExtra("sesmt")); }
 /* entrega, assinatura, devolução e "informar quem recebeu" (epi_pode_operar no banco: quem movimenta estoque + sesmt) */
 function epiPodeOperar(){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return false;
-  return (typeof estPodeEditar === "function" && estPodeEditar()) || usuarioAtual.cargo === "sesmt";
+  return (typeof estPodeEditar === "function" && estPodeEditar()) || usuarioAtual.cargo === "sesmt" || temModuloExtra("sesmt");
 }
 /* marcar EPI/uniforme na conferência (epi_marcar_produtos) e CA/validade (produtos_write) */
-function epiPodeMarcar(){ return !!usuarioAtual && ["diretor", "admin", "almoxarife", "sesmt"].includes(usuarioAtual.cargo); }
-function epiPodeEditarProduto(){ return !!usuarioAtual && ["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios"].includes(usuarioAtual.cargo); }
+function epiPodeMarcar(){ return !!usuarioAtual && (["diretor", "admin", "almoxarife", "sesmt"].includes(usuarioAtual.cargo) || sstPodeOperar()); }
+/* fase 144-0: CA e validade também pelo SESMT, como o banco já permite (produto_sesmt_pode_editar: cargo sesmt ou extra produtos_sesmt) */
+function epiPodeEditarProduto(){ return !!usuarioAtual && !ehSomenteLeitura() && (["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios", "sesmt"].includes(usuarioAtual.cargo) || temModuloExtra("produtos_sesmt")); }
 function epiViewAusente(error){ return !!error && ["42P01", "PGRST205", "42703", "PGRST204"].includes(error.code); }
 const EPI_MSG_MIGRATION = "O controle de EPI por colaborador entra quando a migration da fase 100 for aplicada no banco.";
 function epiNorm(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
