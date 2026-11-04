@@ -11,6 +11,7 @@
    Quem vê (podeVerEpi = pode_ver_epi() no banco): diretor, admin, almoxarife, sesmt, rh, auditor e o módulo extra sesmt (fase 144-0). O encarregado
    não vê (decisão 3); o auxiliar de almoxarifado entrega e colhe a assinatura no balcão, sem relatório (valores).
    Tudo lê das views da fase 100: sem a migration (view inexistente) as telas mostram aviso, sem quebrar.
+   Fase 144-0b: o SESMT registra a entrega no balcão, só com EPI e uniforme (balSoEpi em estoque.js).
    Prefixo dos IDs: epi-. Depende em tempo de execução de estoque.js (balCarregarFuncionarios, estPodeEditar),
    funcionarios.js (funcEditId, abrirFuncionario, _depts) e core.js.
    ==================================================================== */

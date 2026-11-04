@@ -42,6 +42,9 @@ function estPodeEditar(){
   // fase 90: auxiliar de almoxarifado (equipe do Julio) dá baixa, devolve e conta (movimentacoes_estoque_write no banco)
   return !!usuarioAtual && ["admin","diretor","almoxarife","comprador","gestor_acessorios","logistica","auxiliar_almoxarifado"].includes(usuarioAtual.cargo);
 }
+/* fase 144-0b: o SESMT (cargo ou módulo extra) usa o balcão só para EPI e uniforme. estPodeEditar() não muda, porque libera o resto do
+   Estoque; a regra vale de novo no banco (estoque_saida_registrar). */
+function balSoEpi(){ return !estPodeEditar() && typeof sstPodeOperar === "function" && sstPodeOperar(); }
 function estProdTxt(p){ return p ? `${p.codigo} — ${p.nome}` : "—"; }
 /* fase 81: saldo acertado pela sincronização com o Odoo (scripts/importar-odoo-compras.js estoque) */
 function estChipOdoo(p){
@@ -71,12 +74,18 @@ async function carregarEstoque(force){
   }
   const pode = estPodeEditar();
   ["btn-registrar-entrada","btn-est-controlar"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
-  if($("bal-card")) $("bal-card").style.display = pode ? "" : "none";
+  const soEpi = balSoEpi();   // fase 144-0b
+  if($("bal-card")) $("bal-card").style.display = pode || soEpi ? "" : "none";
+  if(soEpi){
+    if($("bal-titulo")) $("bal-titulo").textContent = "Saída de EPI e uniforme";
+    if($("bal-ajuda")) $("bal-ajuda").textContent = "entrega ao colaborador: o custo cai na obra, na TAG ou no setor e o item vai para a ficha de EPI de quem retira";
+    if($("bal-item")) $("bal-item").placeholder = "bipe o código ou digite um EPI ou uniforme…";
+  }
   if($("est-dev-card")) $("est-dev-card").style.display = pode ? "" : "none";   // fase 83
   estAplicarTipo();
   // fase 100: relatório de EPI por colaborador e por obra (js/epi.js), só para quem vê
   if(typeof epiAplicarVisibilidade === "function"){ epiAplicarVisibilidade(); if(podeVerEpi()) epiRenderRelatorio("epi-conteudo"); }
-  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), pode ? carregarSaidasHoje() : null]);
+  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), pode || soEpi ? carregarSaidasHoje() : null]);
 }
 
 /* ---------- Saída no balcão (fase 78) ----------
@@ -101,7 +110,7 @@ function balPreencherDestino(){
     + `<optgroup label="Obra em andamento">${obras.map(o => `<option value="obra:${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("")}</optgroup>`
     + `<optgroup label="TAG">${_estEquips.map(e => `<option value="eq:${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("")}</optgroup>`
     + `<optgroup label="Setor">${grupo("setor")}</optgroup><optgroup label="Obra interna">${grupo("obra_interna")}</optgroup>`
-    + (_balS56 ? `<optgroup label="Acessório" data-ace="1"><option value="ac:">Acessório… (buscar)</option></optgroup>` : "");   // lote S56 (#202)
+    + (_balS56 && !balSoEpi() ? `<optgroup label="Acessório" data-ace="1"><option value="ac:">Acessório… (buscar)</option></optgroup>` : "");   // lote S56 (#202)
   const met = $("bal-metodo");   // fase 108c
   if(met) met.innerHTML = `<option value="">— sem método —</option>` + BAL_METODOS.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
   balAplicarMetodo();
@@ -245,9 +254,10 @@ function balEhEpi(p){ return balEhEpiAloc(p); }   // fase 100 → hotfix 168 (#1
 function balMovEhEpi(m){ return !!m && (["epi", "uniforme"].includes(m.categoria_custo) || ["epi", "uniforme"].includes(m.produto?.categoria_custo)); }
 async function balBuscar(termo){
   const t = termo.replace(/[%,()]/g, " ").trim(); if(t.length < 2) return [];
+  const soEpi = balSoEpi();   // fase 144-0b: a regra de EPI combina categoria e marcação, então filtra aqui, com folga na leitura
   const { data } = await sb.from("produtos").select(BAL_COLS).eq("ativo", true).eq("tipo_item", "produto")   // lote S55 (#175): serviço consumido não passa pelo balcão
-    .or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
-  return data || [];
+    .or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(soEpi ? 500 : 25);
+  return soEpi ? (data || []).filter(balEhEpi).slice(0, 25) : (data || []);
 }
 /* Enter no campo (leitor de código de barras manda Enter): código ou código de barras exato adiciona direto */
 async function balEnter(){
@@ -260,12 +270,13 @@ async function balEnter(){
 function balMostrarLista(res){
   const lista = $("bal-item-res"); if(!lista) return;
   lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}${p.controle_reposicao ? " · reposição" : ""}</span></div>`).join("")
-    : `<div class="resultado-item vazio">Nenhum produto com esse código ou nome.</div>`;
+    : `<div class="resultado-item vazio">${balSoEpi() ? "Nenhum EPI ou uniforme com esse código ou nome." : "Nenhum produto com esse código ou nome."}</div>`;
   lista.style.display = "";
   lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => balAddItem(res.find(x => x.id === d.dataset.id))));
 }
 function balAddItem(p){
   if(!p) return;
+  if(balSoEpi() && !balEhEpi(p)){ aviso("app-aviso", `O balcão do SESMT é só para EPI e uniforme: ${p.codigo} não é.`, "erro"); return; }   // fase 144-0b
   const ja = _balItens.find(i => i.p.id === p.id);
   if(ja) ja.quantidade = Number(ja.quantidade || 0) + 1; else _balItens.push({ p, quantidade: 1, observacoes: "" });
   const inp = $("bal-item"); inp.value = ""; $("bal-item-res").style.display = "none"; inp.focus();
@@ -291,7 +302,7 @@ function renderBalItens(){
   tb.querySelectorAll(".bal-rem").forEach(el => el.addEventListener("click", e => { _balItens.splice(Number(e.target.closest("tr").dataset.i), 1); renderBalItens(); }));
 }
 async function registrarSaidaBalcao(){
-  if(!estPodeEditar()){ aviso("app-aviso", "Seu perfil não movimenta estoque.", "erro"); return; }
+  if(!estPodeEditar() && !balSoEpi()){ aviso("app-aviso", "Seu perfil não movimenta estoque.", "erro"); return; }
   // fase 100: quem retira só é obrigatório com EPI na lista (o banco confere de novo)
   const epis = _balItens.filter(i => balEhEpi(i.p));
   if(!_balRetirante && $("bal-retirante").value.trim()){ aviso("app-aviso", "Escolha quem retira na lista de nomes (ou apague o campo).", "erro"); $("bal-retirante").focus(); return; }
@@ -359,6 +370,7 @@ async function carregarSaidasHoje(){
   const estornadas = new Set((es.data || []).map(e => e.estorno_de));
   const corrigidas = new Set((sa.data || []).map(m => m.corrige_de).filter(Boolean));   // lote S52 (#167): original de uma correção de hoje
   _balHoje = (sa.data || []).map(m => ({ ...m, estornada: estornadas.has(m.id), corrigida: corrigidas.has(m.id) }));
+  if(balSoEpi()) _balHoje = _balHoje.filter(balMovEhEpi);   // fase 144-0b
   if(_balEdit && !_balHoje.some(m => m.id === _balEdit)) _balEdit = null;
   _balHojeVinculos = await carregarVinculosSaida(_balHoje.map(m => m.id));
   renderSaidasHoje();
@@ -430,7 +442,7 @@ function renderSaidasHoje(){
   cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Hora</th><th>Retirante</th><th>Item</th><th class="num">Qtd</th><th class="num">Custo</th><th>Destino</th><th>Documento / obs.</th><th></th></tr></thead>
     <tbody>${_balHoje.map(m => { const min = (Date.now() - new Date(m.created_at).getTime()) / 60000;
       const podeDesfazer = !m.estornada && min < 10 && (m.registrado_por === usuarioAtual?.id || admin);
-      const podeEditar = podeDesfazer && !m.assinatura_em;
+      const podeEditar = podeDesfazer && !m.assinatura_em && !balSoEpi();   // fase 144-0b: o SESMT desfaz e lança de novo
       if(_balEdit === m.id && podeEditar) return `<tr><td>${hora(m)}</td>${balEditarHTML(m)}</tr>`;
       return `<tr${m.estornada ? ' class="meta" style="text-decoration:line-through;"' : ""}>
         <td>${hora(m)}</td><td>${esc(m.retirante?.nome || "—")}</td>
