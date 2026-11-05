@@ -1231,14 +1231,69 @@ if (overlay) {
   overlay.addEventListener("click", closeSidebar);
 }
 
+// O código que veio do Odoo (ODOO-009464) não aparece colado no nome do produto: continua na busca, na coluna Código, na ficha e na exportação.
+// semCodOdoo limpa a descrição já gravada; código próprio (sem ODOO-) continua aparecendo.
+function semCodOdoo(txt){ return String(txt ?? "").replace(/^ODOO-\d+\s*[—·-]\s*/, ""); }
+function prodTxt(p){
+  if(!p) return "";
+  const cod = String(p.codigo || "");
+  return cod && !cod.startsWith("ODOO-") ? `${cod} — ${p.nome || ""}` : (p.nome || "");
+}
+// Lista de busca: nome repetido na mesma lista mostra o código, para não escolher o produto errado
+function prodBuscaHtml(p, lista){
+  const cod = String(p.codigo || "");
+  const repetido = !!lista && lista.filter(x => x.nome === p.nome).length > 1;
+  const mostra = cod && (!cod.startsWith("ODOO-") || repetido);
+  return `<span title="${esc(cod)}">${mostra ? `<strong>${esc(cod)}</strong> — ` : ""}${esc(p.nome)}</span>`;
+}
+
+// fase 148: o texto de abertura de cada tela (.ajuda-tela) fica fechado e abre pelo "?" ao lado do título
+function ajudaTelaAtualizar(secEl){
+  const btn = $("btn-ajuda-tela");
+  if(!btn) return;
+  const p = secEl ? secEl.querySelector(".ajuda-tela") : null;
+  btn.hidden = !p;
+  btn.setAttribute("aria-expanded", p && p.classList.contains("aberta") ? "true" : "false");
+}
+$("btn-ajuda-tela")?.addEventListener("click", () => {
+  const p = document.querySelector(".secao.ativa .ajuda-tela");
+  if(!p) return;
+  const aberta = p.classList.toggle("aberta");
+  $("btn-ajuda-tela").setAttribute("aria-expanded", aberta ? "true" : "false");
+});
+
+// fase 148: menu só com ícones em tela grande; a escolha fica neste navegador
+const MENU_RECOLHIDO_CHAVE = "cgl_menu_recolhido";
+function menuRecolher(sim){
+  const btn = $("btn-menu-recolher");
+  if(!btn) return;
+  $("tela-app")?.classList.toggle("menu-recolhido", sim);
+  const txt = sim ? "Abrir o menu" : "Recolher o menu";
+  btn.setAttribute("aria-pressed", sim ? "true" : "false");
+  btn.setAttribute("aria-label", txt);
+  btn.title = txt;
+}
+try { menuRecolher(localStorage.getItem(MENU_RECOLHIDO_CHAVE) === "1"); } catch(_){}
+$("btn-menu-recolher")?.addEventListener("click", () => {
+  const sim = !$("tela-app")?.classList.contains("menu-recolhido");
+  menuRecolher(sim);
+  try { localStorage.setItem(MENU_RECOLHIDO_CHAVE, sim ? "1" : "0"); } catch(_){}
+});
+// recolhido, o nome do módulo aparece ao parar o mouse (o rótulo pode mudar por cargo, então é lido na hora)
+document.querySelector(".sidebar-nav")?.addEventListener("mouseover", ev => {
+  const b = ev.target.closest("button");
+  if(b) b.title = $("tela-app")?.classList.contains("menu-recolhido") ? (b.querySelector("span")?.textContent || "").trim() : "";
+});
+
 // Navegação entre seções. ativarSecao(secao, botao) é o que o clique no menu faz; a fase 89 usa a
 // mesma função para seções SEM item no menu (Movimentações de Ativos virou ficha do documento da viagem).
 function ativarSecao(secao, b){
   if(document.body.classList.contains("mfa-obrigatorio")) return;   // fase 87: menu travado até concluir o MFA
   if(document.body.classList.contains("senha-provisoria")) return;  // fase 93b: idem até trocar a senha provisória
   if(b){
-    document.querySelectorAll(".sidebar-nav button").forEach(x=>x.classList.remove("ativo"));
+    document.querySelectorAll(".sidebar-nav button").forEach(x=>{ x.classList.remove("ativo"); x.removeAttribute("aria-current"); });
     b.classList.add("ativo");
+    b.setAttribute("aria-current", "page");
   }
   document.querySelectorAll(".secao").forEach(s=>s.classList.remove("ativa"));
 
@@ -1263,9 +1318,12 @@ function ativarSecao(secao, b){
   if(titulo && $("app-secao-titulo")) {
     $("app-secao-titulo").textContent = titulo;
   }
+  ajudaTelaAtualizar(secEl);
 
   closeSidebar();
 }
+// fase 147: o link "Pular para o conteúdo" leva o foco sem mexer no endereço
+$("btn-pular-conteudo")?.addEventListener("click", ev=>{ ev.preventDefault(); $("app-conteudo")?.focus(); });
 document.querySelectorAll(".sidebar-nav button").forEach(b=>{
   b.addEventListener("click", ()=> ativarSecao(b.dataset.secao, b));
 });

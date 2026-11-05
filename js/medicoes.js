@@ -2079,7 +2079,7 @@ function medImpAtualizarTotais(){
     <div class="ind"><div class="num">${brl(t.subtotal)}<small>${esc(t.itens)} item(ns)${t.travados ? ` · ${esc(t.travados)} 🔒 do boletim` : ""}${subLido != null ? ` · PDF ${brl(subLido)}` : ""}</small></div><div class="rot"${destaque(difSub)}>${(difSub != null && Math.abs(difSub) > 0.5) ? `Subtotal · dif. ${brl(difSub)} contra o PDF` : "Subtotal"}</div></div>
     <div class="ind"><div class="num">${t.descSinal ? "− " + brl(t.descSinal) : "—"}</div><div class="rot">Desconto do sinal</div></div>
     <div class="ind"><div class="num">${t.acresc ? "+ " + brl(t.acresc) : "—"}</div><div class="rot">Acréscimos</div></div>
-    <div class="ind"><div class="num">${brl(t.valorFinal)}<small>${t.mult !== 100 ? `${num(t.mult)}% do subtotal · ` : ""}${(isFinite(vfLido) && vfLido > 0) ? `PDF ${brl(vfLido)}` : "PDF sem valor final"}</small></div><div class="rot"${t.valorFinal > 0 ? destaque(difVF) : ' style="color:var(--perigo);"'}>${!(t.valorFinal > 0) ? "Valor final zero: não grava aprovada" : (difVF != null && Math.abs(difVF) > 0.5) ? `Valor final · dif. ${brl(difVF)} contra o PDF` : "Valor final"}</div></div>
+    <div class="ind"><div class="num">${brl(t.valorFinal)}<small>${t.mult !== 100 ? `${num(t.mult)}% do subtotal · ` : ""}${(isFinite(vfLido) && vfLido > 0) ? `PDF ${brl(vfLido)}` : "PDF sem valor final"}</small></div><div class="rot"${t.valorFinal > 0 ? destaque(difVF) : ' style="color:var(--perigo-txt);"'}>${!(t.valorFinal > 0) ? "Valor final zero: não grava aprovada" : (difVF != null && Math.abs(difVF) > 0.5) ? `Valor final · dif. ${brl(difVF)} contra o PDF` : "Valor final"}</div></div>
     <div class="ind"><div class="num">${brl(t.liquido)}<small>− retenção ${brl(t.retV)} − ISS ${t.issRetido ? brl(t.issV) : "não retido"}</small></div><div class="rot">Líquido a receber</div></div>`;
 }
 
@@ -2437,8 +2437,8 @@ async function medRecebRenderIndicadores(){
   cont.style.display = "";
   cont.innerHTML = `
     <div class="ind ind-click${fAtivo === "a_receber" ? " ativo" : ""}" data-receb="a_receber" title="Medições com NF emitida e ainda não recebidas, pelo líquido a receber (valor final − retenção − ISS retido − retenções federais) menos o já recebido. Clique para filtrar."><div class="num">${brl(soma(aRec))}</div><div class="rot">A receber · ${aRec.length} NF(s)</div></div>
-    <div class="ind ind-click${fAtivo === "vencida" ? " ativo" : ""}" data-receb="vencida" title="Vencimento da NF já passou e o recebimento não está completo. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(soma(venc))}</div><div class="rot">Vencidas · ${venc.length} NF(s)</div></div>
-    <div class="ind" title="Recebimentos confirmados pelo financeiro no mês corrente (aba NF/Recebimento das medições)"><div class="num" style="color:var(--sucesso);">${brl(_medRecebMes.total)}</div><div class="rot">Recebido no mês · ${esc(_medRecebMes.n)} lançamento(s)</div></div>`;
+    <div class="ind ind-click${fAtivo === "vencida" ? " ativo" : ""}" data-receb="vencida" title="Vencimento da NF já passou e o recebimento não está completo. Clique para filtrar."><div class="num" style="color:var(--perigo-txt);">${brl(soma(venc))}</div><div class="rot">Vencidas · ${venc.length} NF(s)</div></div>
+    <div class="ind" title="Recebimentos confirmados pelo financeiro no mês corrente (aba NF/Recebimento das medições)"><div class="num" style="color:var(--sucesso-txt);">${brl(_medRecebMes.total)}</div><div class="rot">Recebido no mês · ${esc(_medRecebMes.n)} lançamento(s)</div></div>`;
 }
 
 /* ---------- visão Caução ---------- */
@@ -2528,9 +2528,9 @@ function medCauRenderIndicadores(){
   cont.style.display = "";
   cont.innerHTML = `
     <div class="ind" title="Retenção lançada nas NFs do ano ${esc(anoSel)} (DÉBITO da planilha + medições com retenção)"><div class="num">${brl(retidoAno)}</div><div class="rot">Retido em ${esc(anoSel)} · ${regs.filter(c => String(c.ano) === anoSel).length} NF(s)</div></div>
-    <div class="ind" title="Devolvido pelos clientes em ${esc(anoSel)} (crédito = devolvido + juros − descontos, pela data da devolução)"><div class="num" style="color:var(--sucesso);">${brl(devAno)}</div><div class="rot">Devolvido em ${esc(anoSel)}</div></div>
-    <div class="ind ind-click${stAtivo === "em_aberto" ? " ativo" : ""}" data-cau-st="em_aberto" title="Saldo a receber das cauções abertas e parciais, todos os anos. Clique para filtrar."><div class="num" style="color:var(--aviso);">${brl(saldo(abertas))}</div><div class="rot">Em aberto · ${abertas.length} NF(s) · ${new Set(abertas.map(medCauClienteChave)).size} cliente(s)</div></div>
-    <div class="ind ind-click${stAtivo === "vencidas" ? " ativo" : ""}" data-cau-st="vencidas" title="Previsão de devolução (NF + prazo da obra ou da empresa) já passou. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(saldo(vencidas))}</div><div class="rot">Vencidas · ${vencidas.length} NF(s)</div></div>`;
+    <div class="ind" title="Devolvido pelos clientes em ${esc(anoSel)} (crédito = devolvido + juros − descontos, pela data da devolução)"><div class="num" style="color:var(--sucesso-txt);">${brl(devAno)}</div><div class="rot">Devolvido em ${esc(anoSel)}</div></div>
+    <div class="ind ind-click${stAtivo === "em_aberto" ? " ativo" : ""}" data-cau-st="em_aberto" title="Saldo a receber das cauções abertas e parciais, todos os anos. Clique para filtrar."><div class="num" style="color:var(--aviso-txt);">${brl(saldo(abertas))}</div><div class="rot">Em aberto · ${abertas.length} NF(s) · ${new Set(abertas.map(medCauClienteChave)).size} cliente(s)</div></div>
+    <div class="ind ind-click${stAtivo === "vencidas" ? " ativo" : ""}" data-cau-st="vencidas" title="Previsão de devolução (NF + prazo da obra ou da empresa) já passou. Clique para filtrar."><div class="num" style="color:var(--perigo-txt);">${brl(saldo(vencidas))}</div><div class="rot">Vencidas · ${vencidas.length} NF(s)</div></div>`;
 }
 function renderMedCauLista(dados){
   const cont = $("med-conteudo");
@@ -3033,9 +3033,9 @@ function medPmRenderIndicadores(){
   cont.style.display = "";
   cont.innerHTML = `
     <div class="ind" title="Soma dos tetos das permutas (valor dos imóveis ou parte do preço paga em serviços)"><div class="num">${brl(regs.reduce((s, p) => s + (Number(p.valor_imovel) || 0), 0))}</div><div class="rot">Imóveis · ${regs.length} permuta(s)</div></div>
-    <div class="ind" title="Crédito de serviços gerado: medições do app aprovadas/faturadas/recebidas + histórico da planilha"><div class="num" style="color:var(--sucesso);">${brl(regs.reduce((s, p) => s + (Number(p.credito) || 0), 0))}</div><div class="rot">Crédito gerado</div></div>
-    <div class="ind" title="Teto − crédito das permutas ainda não quitadas"><div class="num" style="color:var(--aviso);">${brl(saldo)}</div><div class="rot">Saldo a executar · ${abertas.length} permuta(s)</div></div>
-    <div class="ind ind-click${pAtivo === "credito_excedente" ? " ativo" : ""}" data-pm-pend="credito_excedente" title="Crédito acima do valor do imóvel: negociar o acerto. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(exced)}</div><div class="rot">Excedente</div></div>
+    <div class="ind" title="Crédito de serviços gerado: medições do app aprovadas/faturadas/recebidas + histórico da planilha"><div class="num" style="color:var(--sucesso-txt);">${brl(regs.reduce((s, p) => s + (Number(p.credito) || 0), 0))}</div><div class="rot">Crédito gerado</div></div>
+    <div class="ind" title="Teto − crédito das permutas ainda não quitadas"><div class="num" style="color:var(--aviso-txt);">${brl(saldo)}</div><div class="rot">Saldo a executar · ${abertas.length} permuta(s)</div></div>
+    <div class="ind ind-click${pAtivo === "credito_excedente" ? " ativo" : ""}" data-pm-pend="credito_excedente" title="Crédito acima do valor do imóvel: negociar o acerto. Clique para filtrar."><div class="num" style="color:var(--perigo-txt);">${brl(exced)}</div><div class="rot">Excedente</div></div>
     <div class="ind ind-click${pAtivo === "prazo_90_dias" ? " ativo" : ""}" data-pm-pend="prazo_90_dias" title="Prazo para executar vencido ou em até 90 dias. Clique para filtrar."><div class="num">${prazo.length}</div><div class="rot">Prazo em 90 dias</div></div>
     <div class="ind ind-click${pAtivo === "nf_a_emitir" ? " ativo" : ""}" data-pm-pend="nf_a_emitir" title="Medições e lançamentos com crédito de permuta sem NF. Clique para filtrar."><div class="num">${nfs.length}</div><div class="rot">NF a emitir · ${brl(nfs.reduce((s, x) => s + (Number(x.valor) || 0), 0))}</div></div>`;
 }

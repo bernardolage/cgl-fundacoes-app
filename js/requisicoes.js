@@ -53,7 +53,7 @@ function reqDestino(r){
   if(r.centro_custo_id) return (typeof cmpCentro === "function" && cmpCentro(r.centro_custo_id)) || "Setor";   // fase 102
   return r.equipamento_id ? "TAG " + (cmpEq(r.equipamento_id) || "?") : r.obra_id ? (cmpObra(r.obra_id) || "obra") : "Estoque (reposição da base)";
 }
-function reqItemNome(it){ return it.produto ? `${it.produto.codigo} — ${it.produto.nome}` : (it.descricao || "item"); }
+function reqItemNome(it){ return it.produto ? `${prodTxt(it.produto)}` : (it.descricao || "item"); }
 /* lote S55 (#175): serviço consumido é produto com tipo_item = "servico" (tag na linha) */
 function reqTagServico(it){ return it.produto && it.produto.tipo_item === "servico" ? ' <span class="tag azul" title="Serviço consumido: aplicação direta, sem estoque">serviço</span>' : ""; }
 /* fase 102: a seção está no menu deste cargo? (abrir o pedido ou a separação a partir da requisição) */
@@ -261,7 +261,7 @@ function reqRenderItens(){
   const nova = !_reqAtual;
   if(!_reqItens.length){ tb.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum item. Busque o produto acima (serviço consumido também é produto; fora do catálogo, peça o cadastro ao almoxarifado ou ao comprador).</td></tr>`; return; }
   tb.innerHTML = _reqItens.map((it, idx) => `<tr data-idx="${idx}">
-    <td>${it.produto_id ? `<strong>${esc(it.produto?.codigo || "")}</strong> ${esc(it.produto?.nome || it.descricao || "")}${reqTagServico(it)}` : esc(it.descricao || "item")}</td>
+    <td>${it.produto_id ? `${esc(it.produto ? prodTxt(it.produto) : semCodOdoo(it.descricao))}${reqTagServico(it)}` : esc(semCodOdoo(it.descricao) || "item")}</td>
     <td class="num">${nova ? `<input type="number" data-f="quantidade_solicitada" value="${esc(it.quantidade_solicitada ?? 1)}" min="0" step="0.001" style="width:90px;text-align:right;" />` : num(it.quantidade_solicitada)}${!nova && it.quantidade_atendida ? ` <span class="meta">(atendido ${num(it.quantidade_atendida)})</span>` : ""}</td>
     <td>${nova ? `<input type="text" data-f="unidade" value="${esc(it.unidade || it.produto?.unidade || "un")}" style="width:60px;" />` : esc(it.unidade || "un")}</td>
     <td>${reqItemDestinoTxt(it)}</td>
@@ -273,7 +273,7 @@ function reqRenderItens(){
 function reqAddItem(p){
   if(!p?.id) return;   // lote S55 (#175): sem item livre; o banco também recusa (trg_requisicao_item_produto)
   if(_reqItens.some(i => i.produto_id === p.id)){ aviso("app-aviso", "Esse produto já está na requisição.", "erro"); return; }
-  _reqItens.push({ produto_id: p.id, produto: { codigo: p.codigo, nome: p.nome, unidade: p.unidade, estoque_atual: p.estoque_atual, tipo_item: p.tipo_item }, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade_solicitada: 1 });
+  _reqItens.push({ produto_id: p.id, produto: { codigo: p.codigo, nome: p.nome, unidade: p.unidade, estoque_atual: p.estoque_atual, tipo_item: p.tipo_item }, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade_solicitada: 1 });
   reqRenderItens();
   if($("req-busca")) $("req-busca").value = "";
 }

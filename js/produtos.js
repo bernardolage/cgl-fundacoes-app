@@ -308,7 +308,7 @@ function renderProdKanban(dados){
     const cards = itens.map(p => {
       const baixo = Number(p.estoque_atual) <= Number(p.estoque_minimo);
       return `<div class="serv-kan-card linha-clicavel" data-id="${esc(p.id)}">
-        <div class="serv-kan-card-nome">${esc(p.codigo)} · ${esc(p.nome)}${prodTagServico(p)}</div>
+        <div class="serv-kan-card-nome">${esc(prodTxt(p))}${prodTagServico(p)}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">${num(p.estoque_atual)} ${esc(p.unidade)}</span>
           ${baixo ? '<span class="tag vermelho" style="font-size:var(--txt-xs);">baixo</span>' : ''}
@@ -348,8 +348,8 @@ function prodNumeroBR(v){
 /* pede o custo unitário e grava pela RPC; true quando gravou. Usada pela ficha, pela visão e pelo balcão (estoque.js) */
 async function prodDefinirCusto(p){
   if(!p || !p.id) return false;
-  if(!prodPodeDefinirCusto()){ aviso("app-aviso", `${p.codigo || "?"} — ${p.nome || ""} está sem custo. Peça ao almoxarife ou a Compras o custo dele.`, "erro"); return false; }
-  const resp = prompt(`Custo unitário de ${p.codigo || "?"} — ${p.nome || ""} (R$ por ${p.unidade || "un"}).\nAs saídas a R$ 0,00 deste produto passam a usar este custo.`, "");
+  if(!prodPodeDefinirCusto()){ aviso("app-aviso", `${prodTxt(p)} está sem custo. Peça ao almoxarife ou a Compras o custo dele.`, "erro"); return false; }
+  const resp = prompt(`Custo unitário de ${prodTxt(p)} (R$ por ${p.unidade || "un"}).\nAs saídas a R$ 0,00 deste produto passam a usar este custo.`, "");
   if(resp === null) return false;
   const custo = prodNumeroBR(resp);
   if(!(custo > 0)){ aviso("app-aviso", "Informe um custo unitário maior que zero (ex.: 12,50).", "erro"); return false; }
@@ -630,7 +630,7 @@ function abrirFichaProdVisual(p){
   $("prod-ficha-conf-chip").innerHTML = conf
     ? '<span class="tag verde">Conferido</span>'
     : '<span class="tag ambar">⚠ A conferir</span>';
-  $("prod-ficha-titulo").textContent = (prodEditId ? `${p.codigo} — ${p.nome}` : "Novo produto") + (p.tipo_item === "servico" ? " · serviço consumido" : "") + (p.ativo === false ? " · arquivado" : "");   // lote S55 (#175); lote S58 (#237)
+  $("prod-ficha-titulo").textContent = (prodEditId ? `${prodTxt(p)}` : "Novo produto") + (p.tipo_item === "servico" ? " · serviço consumido" : "") + (p.ativo === false ? " · arquivado" : "");   // lote S55 (#175); lote S58 (#237)
 
   ativarTabProd("geral");
 }

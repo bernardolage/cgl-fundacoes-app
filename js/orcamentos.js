@@ -1049,7 +1049,7 @@ function renderizarRevisoesOrc(revs, atual){
   const linhas = revs.map(r => {
     const ehAtual = r.id === atual.id;
     return `<tr class="${ehAtual ? "" : "linha-clicavel"}" data-id="${esc(r.id)}" style="${ehAtual ? "background:var(--info-bg);" : ""}">
-      <td><strong>Rev ${esc(r.numero_revisao||"00")}</strong> ${ehAtual ? '<span class="badge-alterado" style="background:var(--marca-600);color:var(--txt-sobre);border-color:var(--marca-600);">ATUAL</span>' : ""}</td>
+      <td><strong>Rev ${esc(r.numero_revisao||"00")}</strong> ${ehAtual ? '<span class="badge-alterado" style="background:var(--acao);color:var(--txt-sobre);border-color:var(--acao);">ATUAL</span>' : ""}</td>
       <td>${tagStatus("orcamento", r.status)}</td>
       <td class="num" title="sem ISS: ${brl(r.valor_total||0)}">${brl(orcTotalComIss(r))}</td>
       <td>${dataBR(r.data_orcamento)}</td>

@@ -91,7 +91,7 @@ function renderCliLista(dados){
     <td>${esc(c.tipo_pessoa === "fisica" ? "Pessoa Física" : "Pessoa Jurídica")}</td>
     <td>${esc([c.cidade,(c.uf||"").toUpperCase()].filter(Boolean).join("/")||"—")}</td>
     <td>${esc(c.telefone||"—")}</td>
-    <td>${esc(c.email||"—")}</td>
+    <td class="td-email" title="${esc(c.email||"")}">${esc(c.email||"—")}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>

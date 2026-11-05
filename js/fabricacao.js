@@ -40,7 +40,7 @@ function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanic
 function fabEhDiretoria(){ return !!usuarioAtual && ["admin", "diretor"].includes(usuarioAtual.cargo); }
 function fabSt(st){ return st === "planejada" ? "rascunho" : st; }   // valor antigo do enum (fase 6) lido como rascunho
 function fabTag(st){ const o = FAB_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
-function fabProdTxt(o){ return o.produto ? `${o.produto.codigo} — ${o.produto.nome}` : (o.descricao || "—"); }
+function fabProdTxt(o){ return o.produto ? `${prodTxt(o.produto)}` : (o.descricao || "—"); }
 function fabProdLink(o){ return o.produto_id ? linkProduto(o.produto_id, fabProdTxt(o)) : esc(o.descricao || "—"); }
 function fabDestinoTxt(o){
   if(o.destino === "obra") return "Obra " + (o.obra ? o.obra.codigo : "—");
@@ -195,7 +195,7 @@ function abrirFichaFabricacao(o, itens, horas){
   $("fab-painel").style.display = "none"; $("fab-ficha").style.display = "";
   const novo = !o.id, pode = fabPodeEditar(), fechada = ["concluida", "cancelada"].includes(o.status);
   $("fab-ficha-titulo").textContent = novo ? "Nova ordem de fabricação" : `${o.numero} · ${fabProdTxt(o)}`;
-  $("fab-prod-busca").value = _fabProd ? `${_fabProd.codigo} — ${_fabProd.nome}` : "";
+  $("fab-prod-busca").value = _fabProd ? `${prodTxt(_fabProd)}` : "";
   $("fab-prod-info").textContent = _fabProd ? `Unidade do catálogo: ${_fabProd.unidade}${o.produto && o.produto.estoque_atual != null ? ` · em estoque: ${num(o.produto.estoque_atual)}` : ""}` : "Sem produto do catálogo, descreva o que vai ser feito.";
   $("fab-desc").value = o.descricao || ""; $("fab-qtd").value = o.quantidade ?? 1; $("fab-qtd-prod").value = Number(o.quantidade_produzida) > 0 ? o.quantidade_produzida : "";
   $("fab-unidade").value = o.unidade || "un"; if($("fab-unidade").value !== (o.unidade || "un")) $("fab-unidade").value = "un";
@@ -369,7 +369,7 @@ function fabRenderItens(){
     const prev = Number(i.quantidade_prevista || 0), cons = Number(i.quantidade_consumida || 0), cu = Number(i.custo_unitario || 0);
     const baixa = i.movimentacao_estoque_id ? '<span class="tag verde">baixado no estoque</span>' : i.codigo_externo ? '<span class="tag cinza">baixa no Odoo</span>'
       : !i.produto_id ? '<span class="meta">sem produto</span>' : cons >= prev && prev > 0 ? '<span class="tag verde">consumido</span>' : '<span class="tag ambar">pendente</span>';
-    return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, i.descricao) : esc(i.descricao)}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(prev)}</td><td class="num">${num(cons)}</td>
+    return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, semCodOdoo(i.descricao)) : esc(semCodOdoo(i.descricao))}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(prev)}</td><td class="num">${num(cons)}</td>
       <td class="num">${brl(cu)}</td><td class="num">${brl((cons > 0 ? cons : prev) * cu)}${cons > 0 ? "" : ' <span class="meta">prev.</span>'}</td><td>${baixa}</td>
       <td>${pode && !i.movimentacao_estoque_id && !i.codigo_externo ? `<button type="button" class="btn-sec btn-sm fab-item-rem" data-id="${esc(i.id)}" title="remover">×</button>` : ""}</td></tr>`; }).join("");
   const prevTot = _fabItens.reduce((t, i) => t + Number(i.quantidade_prevista || 0) * Number(i.custo_unitario || 0), 0);
@@ -384,7 +384,7 @@ async function fabAddItem(p){
   if(!_fabAtual?.id || !p) return;
   const qtd = Number($("fab-comp-qtd").value || 1);
   if(!(qtd > 0)){ aviso("app-aviso", "Informe a quantidade prevista.", "erro"); return; }
-  const { error } = await sb.from("fabricacao_itens").insert({ ordem_id: _fabAtual.id, produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un",
+  const { error } = await sb.from("fabricacao_itens").insert({ ordem_id: _fabAtual.id, produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un",
     quantidade_prevista: qtd, custo_unitario: Number(p.custo_ultimo || 0) });
   if(error){ aviso("app-aviso", "Não foi possível lançar o componente: " + error.message, "erro"); return; }
   $("fab-comp-qtd").value = 1;
@@ -514,7 +514,7 @@ async function fabMdAbrir(id){
   _fabMd = m; _fabMdProd = m.produto_id ? { id: m.produto_id, codigo: m.produto?.codigo || "", nome: m.produto?.nome || "" } : null;
   $("fab-md-form").style.display = "";
   $("fab-md-nome").value = m.nome || ""; $("fab-md-base").value = m.quantidade_base || 1; $("fab-md-ativo").checked = m.ativo !== false;
-  $("fab-md-prod-busca").value = _fabMdProd ? `${_fabMdProd.codigo} — ${_fabMdProd.nome}` : ""; $("fab-md-prod-info").textContent = m.codigo_externo ? `Lista do Odoo (mrp.bom ${m.codigo_externo})` : "";
+  $("fab-md-prod-busca").value = _fabMdProd ? `${prodTxt(_fabMdProd)}` : ""; $("fab-md-prod-info").textContent = m.codigo_externo ? `Lista do Odoo (mrp.bom ${m.codigo_externo})` : "";
   const pode = fabPodeEditar();
   ["fab-md-nome", "fab-md-base", "fab-md-ativo", "fab-md-prod-busca"].forEach(i => $(i).disabled = !pode);
   $("btn-fab-md-salvar").style.display = pode ? "" : "none";
@@ -528,7 +528,7 @@ async function fabMdAbrir(id){
 function fabMdRenderItens(){
   const tb = $("fab-md-itens"), pode = fabPodeEditar();
   if(!_fabMd?.id){ tb.innerHTML = `<tr><td colspan="4" class="vazio">Salve a lista para acrescentar componentes.</td></tr>`; return; }
-  tb.innerHTML = _fabMdItens.map(i => `<tr><td>${i.produto_id ? linkProduto(i.produto_id, i.descricao || "produto") : esc(i.descricao || "")}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade_por_unidade)}</td>
+  tb.innerHTML = _fabMdItens.map(i => `<tr><td>${i.produto_id ? linkProduto(i.produto_id, semCodOdoo(i.descricao) || "produto") : esc(semCodOdoo(i.descricao) || "")}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade_por_unidade)}</td>
       <td>${pode ? `<button type="button" class="btn-sec btn-sm fab-md-rem" data-id="${esc(i.id)}" title="remover">×</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="4" class="vazio">Nenhum componente na lista.</td></tr>`;
   tb.querySelectorAll(".fab-md-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("fabricacao_modelo_itens").delete().eq("id", b.dataset.id);
@@ -550,7 +550,7 @@ async function fabMdAddItem(p){
   if(!_fabMd?.id || !p) return;
   const qtd = Number($("fab-md-comp-qtd").value || 1);
   if(!(qtd > 0)){ aviso("app-aviso", "Informe a quantidade.", "erro"); return; }
-  const { error } = await sb.from("fabricacao_modelo_itens").insert({ modelo_id: _fabMd.id, produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade_por_unidade: qtd, ordem: _fabMdItens.length + 1 });
+  const { error } = await sb.from("fabricacao_modelo_itens").insert({ modelo_id: _fabMd.id, produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade_por_unidade: qtd, ordem: _fabMdItens.length + 1 });
   if(error){ aviso("app-aviso", "Não foi possível acrescentar: " + error.message, "erro"); return; }
   $("fab-md-comp-qtd").value = 1;
   await fabMdAbrir(_fabMd.id);
@@ -564,12 +564,12 @@ function fabLigarBuscaProduto(inpId, listaId, aoEscolher, limparAoEscolher){
     if(t.length < 2){ lista.style.display = "none"; return; }
     const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
     const res = data || [];
-    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
+    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
       || `<div class="resultado-item vazio">Nenhum produto.</div>`;
     lista.style.display = "";
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => {
       ev.preventDefault(); const p = res.find(x => x.id === d.dataset.id); lista.style.display = "none";
-      inp.value = limparAoEscolher ? "" : `${p.codigo} — ${p.nome}`; aoEscolher(p);
+      inp.value = limparAoEscolher ? "" : `${prodTxt(p)}`; aoEscolher(p);
     }));
   }, 250));
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 150));

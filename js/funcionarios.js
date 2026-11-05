@@ -1657,7 +1657,7 @@ function renderFuncAcesso(){
             : `<button type="button" class="btn" id="btn-func-acesso-gerar-link" ${funcAtivo ? "" : "disabled"}>🔗 Gerar link de acesso</button>
                <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha">🔑 Nova senha</button>
                ${linkPendente ? '<button type="button" class="btn-sec" id="btn-func-acesso-cancelar-link">Cancelar link</button>' : ""}
-               ${cr ? "" : '<button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo);">⛔ Desativar login</button>'}`}
+               ${cr ? "" : '<button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo-txt);">⛔ Desativar login</button>'}`}
         </div>`}`;
 }
 

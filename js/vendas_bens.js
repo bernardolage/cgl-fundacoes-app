@@ -162,8 +162,8 @@ function vbRenderIndicadores(lista){
   el.innerHTML = `
     <div class="ind ind-click${anoSel === String(ano) ? " ativo" : ""}" data-vb-kpi="ano" data-ano="${ano}" title="Valor das vendas com data em ${ano} (canceladas fora). Clique para filtrar o ano."><div class="num">${brl(soma(doAno, "valor_venda"))}</div><div class="rot">Vendido em ${ano} · ${doAno.length} bem(ns)</div></div>
     <div class="ind ind-click${st === "abertas" ? " ativo" : ""}" data-vb-kpi="abertas" title="Valor da venda menos o recebido, nas vendas em andamento e atrasadas. Clique para filtrar."><div class="num">${brl(soma(abertas, "saldo"))}</div><div class="rot">A receber · ${abertas.length} venda(s)</div></div>
-    <div class="ind ind-click${st === "atrasada" ? " ativo" : ""}" data-vb-kpi="atrasada" title="Parcelas com vencimento passado e sem recebimento completo. Clique para filtrar."><div class="num" style="color:var(--perigo);">${brl(soma(venc, "valor_vencido"))}</div><div class="rot">Vencido · ${venc.length} venda(s)</div></div>
-    <div class="ind ind-click${st === "quitada" ? " ativo" : ""}" data-vb-kpi="quitada" title="Vendas com o valor inteiro recebido. Clique para filtrar."><div class="num" style="color:var(--sucesso);">${quit.length}</div><div class="rot">Quitadas · ${quit.filter(v => Number(v.ano) === ano).length} em ${ano}</div></div>`;
+    <div class="ind ind-click${st === "atrasada" ? " ativo" : ""}" data-vb-kpi="atrasada" title="Parcelas com vencimento passado e sem recebimento completo. Clique para filtrar."><div class="num" style="color:var(--perigo-txt);">${brl(soma(venc, "valor_vencido"))}</div><div class="rot">Vencido · ${venc.length} venda(s)</div></div>
+    <div class="ind ind-click${st === "quitada" ? " ativo" : ""}" data-vb-kpi="quitada" title="Vendas com o valor inteiro recebido. Clique para filtrar."><div class="num" style="color:var(--sucesso-txt);">${quit.length}</div><div class="rot">Quitadas · ${quit.filter(v => Number(v.ano) === ano).length} em ${ano}</div></div>`;
 }
 async function vbRenderPainel(){
   const cont = $("eqp-conteudo"); if(!cont) return;
@@ -742,7 +742,7 @@ async function vbRenderCarteira(contId){
     <div class="indicadores" style="margin-bottom:12px;">
       <div class="ind"><div class="num">${doAno.length}</div><div class="rot">Bens vendidos em ${ano}</div></div>
       <div class="ind"><div class="num">${brl(soma(doAno, "valor_venda"))}</div><div class="rot">Valor vendido</div></div>
-      <div class="ind"><div class="num" style="color:var(--sucesso);">${brl(soma(doAno, "recebido"))}</div><div class="rot">Recebido</div></div>
+      <div class="ind"><div class="num" style="color:var(--sucesso-txt);">${brl(soma(doAno, "recebido"))}</div><div class="rot">Recebido</div></div>
       <div class="ind"><div class="num" style="color:var(--aviso-txt);">${brl(soma(doAno, "saldo"))}</div><div class="rot">Saldo a receber</div></div>
       <div class="ind" title="Valor da venda − valor de aquisição, só nas vendas com os dois valores"><div class="num">${brl(soma(comRes, "resultado"))}</div><div class="rot">Resultado contra a aquisição${doAno.length - comRes.length ? ` · ${doAno.length - comRes.length} sem valor de aquisição` : ""}</div></div>
     </div>

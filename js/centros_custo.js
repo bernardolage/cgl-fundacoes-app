@@ -192,7 +192,7 @@ async function ccuCarregarPedidos(id){
     <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Pedido</th><th>Fornecedor</th><th>Item</th><th class="num">Qtd</th><th class="num">Valor</th><th>Destino</th><th>Status</th></tr></thead>
     <tbody>${itens.map(i => `<tr class="linha-clicavel" data-pedido="${esc(i.pedido?.id || "")}"><td>${dataBR(i.pedido?.data_pedido)}</td>
       <td><strong>${esc(i.pedido?.numero || "")}</strong>${i.pedido?.codigo_externo ? ` <span class="meta">${esc(i.pedido.codigo_externo)}</span>` : ""}</td>
-      <td>${esc(i.pedido?.fornecedor?.razao_social || "—")}</td><td>${esc(i.descricao)}</td><td class="num">${num(i.quantidade)}</td><td class="num">${brl(i.valor_total)}</td>
+      <td>${esc(i.pedido?.fornecedor?.razao_social || "—")}</td><td>${esc(semCodOdoo(i.descricao))}</td><td class="num">${num(i.quantidade)}</td><td class="num">${brl(i.valor_total)}</td>
       <td>${i.destino === "estoque" ? '<span class="tag cinza">almoxarifado</span>' : '<span class="tag azul">custo</span>'}</td>
       <td>${typeof cmpTag === "function" ? cmpTag(i.pedido?.status) : esc(i.pedido?.status || "")}</td></tr>`).join("")}</tbody></table></div>
     ${itens.length === 500 ? `<p class="meta">Mostrando os 500 mais recentes.</p>` : ""}`;

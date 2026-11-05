@@ -184,7 +184,7 @@ function renderCartContratos(dados, pendMap){
       <td class="cart-cliente" title="${esc(c.cliente || "")}">${esc(c.cliente || "—")}</td>
       <td>${tagAssinatura(c.assinatura_status)}</td>
       <td class="num" title="${brl(c.valor_original)}">${brlInt(c.valor_original)}</td>
-      <td class="num" style="color:var(--sucesso);" title="${brl(c.aditivos_assinados)}">${Number(c.aditivos_assinados) ? brlInt(c.aditivos_assinados) : "—"}</td>
+      <td class="num" style="color:var(--sucesso-txt);" title="${brl(c.aditivos_assinados)}">${Number(c.aditivos_assinados) ? brlInt(c.aditivos_assinados) : "—"}</td>
       <td class="num" title="${brl(c.valor_vigente)}"><strong>${brlInt(c.valor_vigente)}</strong>${c.valor_provisorio ? ' <span class="con-dias-tag" title="valor provisório">≈</span>' : ""}</td>
       <td>${pend.map(p => cartTagPend(p, true)).join(" ") || '<span class="meta">—</span>'}</td>
     </tr>`;

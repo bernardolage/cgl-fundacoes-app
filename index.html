@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="0c995c1" />
+<meta name="app-versao" content="167dd47" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=0c995c1" />
+<link rel="stylesheet" href="css/estilo.css?v=167dd47" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=0c995c1"></script>
+<script src="js/tema.js?v=167dd47"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=0c995c1"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=0c995c1"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=0c995c1"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=167dd47"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=167dd47"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=167dd47"></script>
 </head>
 <body>
 
@@ -103,14 +103,16 @@
 
 <!-- ============ APLICAÇÃO ============ -->
 <div id="tela-app">
+  <a href="#app-conteudo" class="pular-conteudo" id="btn-pular-conteudo">Pular para o conteúdo</a>
   <!-- BARRA LATERAL (SIDEBAR) -->
   <aside id="app-sidebar">
     <div class="sidebar-header">
       <div class="marca">CGL <span>Fundações</span></div>
       <button id="btn-menu-close" class="mobile-only" aria-label="Fechar Menu">&times;</button>
+      <button type="button" id="btn-menu-recolher" class="menu-recolher" aria-pressed="false" aria-label="Recolher o menu" title="Recolher o menu"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
     </div>
     <nav class="sidebar-nav">
-      <button data-secao="inicio" class="ativo">
+      <button data-secao="inicio" class="ativo" aria-current="page">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
         <span>Início</span> <span id="nav-inicio-badge" class="conf-badge"></span>
       </button>
@@ -263,6 +265,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
         <h1 id="app-secao-titulo">Início</h1>
+        <button type="button" class="ajuda-tela-btn" id="btn-ajuda-tela" hidden aria-expanded="false" aria-label="Sobre esta tela" title="Sobre esta tela">?</button>
       </div>
       <div class="header-direita">
         <!-- fase 138: tema claro/escuro (ícone do tema para o qual o botão leva; aplicarTema em core.js) -->
@@ -272,7 +275,7 @@
         <button type="button" class="btn-sec btn-sm" id="btn-reportar-problema" title="Abre um chamado já com o módulo, a obra e o registro que estão na tela">💡 <span>Relatar problema ou melhoria</span></button>
       </div>
     </header>
-    <main>
+    <main id="app-conteudo" tabindex="-1">
       <div id="app-aviso" class="aviso" style="max-width:none;"></div>
 
     <!-- INÍCIO -->
@@ -833,7 +836,7 @@
             <div class="actions-left">
               <button type="button" class="btn-sec" id="btn-voltar-func">&larr; Voltar</button>
               <button type="button" class="btn" id="btn-salvar-func">💾 Salvar</button>
-              <button type="button" class="btn-sec" id="btn-excluir-func" style="color:var(--perigo);display:none;">🗑️ Excluir</button>
+              <button type="button" class="btn-sec" id="btn-excluir-func" style="color:var(--perigo-txt);display:none;">🗑️ Excluir</button>
             </div>
             <div class="actions-right">
               <button type="button" class="sb-btn" id="func-sb-docs" style="display:none;" title="Ver documentos">
@@ -1475,7 +1478,7 @@
     <!-- ENTRADA DE ESTOQUE -->
     <section class="secao" id="sec-estoque">
       <h2>Estoque</h2>
-      <p class="texto-apoio">Entradas, saídas e ajustes por quantidade, e a lista de reposição dos itens controlados (pontas e caçambas das estacas escavadas, bits, unhas). Peças com marcação ficam em Acessórios.</p>
+      <p class="texto-apoio ajuda-tela">Entradas, saídas e ajustes por quantidade, e a lista de reposição dos itens controlados (pontas e caçambas das estacas escavadas, bits, unhas). Peças com marcação ficam em Acessórios.</p>
 
       <!-- fase 78: saída no balcão (retirante + destino, vários itens); fase 100 (#97): é a tela única de saída —
            "Quem retira" obrigatório só quando há EPI na lista; com EPI, a assinatura do recebimento abre em seguida -->
@@ -1642,7 +1645,7 @@
     <section class="secao" id="sec-separacoes">
       <div id="sep-painel">
         <h2>Separações</h2>
-        <p class="texto-apoio">Lista de separação do almoxarifado: o que a mobilização leva (kit de acessórios e materiais) e o que a obra pede depois. Marcar o item dá a baixa na hora; "Entregar" registra quem levou. Urgência sem lista continua na saída de balcão do Estoque.</p>
+        <p class="texto-apoio ajuda-tela">Lista de separação do almoxarifado: o que a mobilização leva (kit de acessórios e materiais) e o que a obra pede depois. Marcar o item dá a baixa na hora; "Entregar" registra quem levou. Urgência sem lista continua na saída de balcão do Estoque.</p>
         <div class="card">
           <div class="lista-topo">
             <h3>Separações <span id="sep-contador" class="contador"></span></h3>
@@ -1678,7 +1681,7 @@
               <button type="button" class="btn" id="btn-sep-iniciar" title="assume a separação (fica com você se não tiver responsável)">▶ Iniciar separação</button>
               <button type="button" class="btn btn-sucesso" id="btn-sep-entregar" title="registra quem levou o material">🚚 Entregar</button>
               <button type="button" class="btn-sec" id="btn-sep-imprimir">🖨️ Imprimir lista</button>
-              <button type="button" class="btn-sec" id="btn-sep-cancelar" style="color:var(--perigo);">✕ Cancelar</button>
+              <button type="button" class="btn-sec" id="btn-sep-cancelar" style="color:var(--perigo-txt);">✕ Cancelar</button>
             </div>
             <div class="actions-right"><strong id="sep-ficha-titulo">Separação</strong></div>
           </div>
@@ -1734,14 +1737,14 @@
     <section class="secao" id="sec-compras">
       <div id="cmp-painel">
         <h2>Compras</h2>
-        <p class="texto-apoio">Pedido de compra com aprovação em duas chaves (alçada pelo valor e dono do custo) e recebimento da nota. Cada item é <strong>reposição de estoque</strong> (entra no almoxarifado; o custo aparece na saída) ou <strong>aplicação direta</strong> (o custo cai na obra, na TAG ou no centro no recebimento). Os títulos a pagar gerados pelas notas ficam em Contratos &amp; Contas a pagar. O processo segue as etapas: requisição → estoque (separação) ou compra → cotações → aprovação → recebimento conferido por quem pediu → financeiro.</p>
-        <div id="cmp-odoo-sync" class="meta" style="display:none;margin:0 0 10px;" title="Espelho do Odoo até o corte (fase 81): pedidos, fornecedores, catálogo, preços e saldo de estoque copiados todo dia às 05:30"></div>
+        <p class="texto-apoio ajuda-tela">Pedido de compra com aprovação em duas chaves (alçada pelo valor e dono do custo) e recebimento da nota. Cada item é <strong>reposição de estoque</strong> (entra no almoxarifado; o custo aparece na saída) ou <strong>aplicação direta</strong> (o custo cai na obra, na TAG ou no centro no recebimento). Os títulos a pagar gerados pelas notas ficam em Contratos &amp; Contas a pagar. O processo segue as etapas: requisição → estoque (separação) ou compra → cotações → aprovação → recebimento conferido por quem pediu → financeiro.</p>
+        <div id="cmp-odoo-sync" class="meta" style="display:none;margin:0 0 4px;" title="Espelho do Odoo até o corte (fase 81): pedidos, fornecedores, catálogo, preços e saldo de estoque copiados todo dia às 05:30"></div>
 
         <!-- fase 102 (#92): cartões na sequência do processo do Fabrício; cada um filtra a lista (valores só para quem lê contas a pagar) -->
         <div class="indicadores">
-          <div class="ind ind-click" data-kpi="requisicoes" title="Requisições esperando a decisão de Compras (estoque ou compra)"><div class="num" id="cmp-kpi-req" style="color:var(--aviso);">—</div><div class="rot">Requisição pendente</div></div>
+          <div class="ind ind-click" data-kpi="requisicoes" title="Requisições esperando a decisão de Compras (estoque ou compra)"><div class="num" id="cmp-kpi-req" style="color:var(--aviso-txt);">—</div><div class="rot">Requisição pendente</div></div>
           <div class="ind ind-click" data-kpi="em_cotacao" title="Pedidos em cotação com fornecedores"><div class="num" id="cmp-kpi-cotacao">—</div><div class="rot">Em cotação</div><div class="meta" id="cmp-kpi-cotacao-sub"></div></div>
-          <div class="ind ind-click" data-kpi="aprovar" title="Pedidos com chave de aprovação pendente; entre parênteses, os que têm chave que você assina (fase 108b)"><div class="num" id="cmp-kpi-aprovar" style="color:var(--marca-600);">—</div><div class="rot">Aguardando aprovação <span id="cmp-kpi-aprovar-meus"></span></div><div class="meta" id="cmp-kpi-aprovar-sub"></div></div>
+          <div class="ind ind-click" data-kpi="aprovar" title="Pedidos com chave de aprovação pendente; entre parênteses, os que têm chave que você assina (fase 108b)"><div class="num" id="cmp-kpi-aprovar" style="color:var(--acao-txt);">—</div><div class="rot">Aguardando aprovação <span id="cmp-kpi-aprovar-meus"></span></div><div class="meta" id="cmp-kpi-aprovar-sub"></div></div>
           <div class="ind ind-click" data-kpi="entrega" title="Aprovados, enviados e parcialmente recebidos, mais os recebidos pelo almoxarifado que esperam a conferência de quem pediu"><div class="num" id="cmp-kpi-entrega">—</div><div class="rot">Aguardando recebimento</div><div class="meta" id="cmp-kpi-entrega-sub"></div></div>
           <div class="ind ind-click" data-kpi="financeiro" title="Material recebido aguardando a NF (o financeiro lança a nota e os títulos) e recebidos com título a pagar ainda não exportado ao financeiro"><div class="num" id="cmp-kpi-financeiro">—</div><div class="rot">Financeiro</div><div class="meta" id="cmp-kpi-financeiro-sub"></div></div>
           <div class="ind ind-click" data-kpi="abertos" title="Todos os pedidos que ainda não terminaram: rascunho, cotação, aprovação, recebimento, conferência e financeiro"><div class="num" id="cmp-kpi-abertos">—</div><div class="rot">Pedidos em aberto</div><div class="meta" id="cmp-kpi-valor"></div></div>
@@ -1799,7 +1802,7 @@
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf" data-acao="pdf">🖨️ PDF do pedido</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-pdf-sem-valor" data-acao="pdf_sem_valor" style="display:none;" title="Itens, unidades e quantidades sem preço, IPI, total nem aprovador: para pedir preço ao fornecedor (lote S55, #179)">🧾 PDF sem valores</button>
               <button type="button" class="btn-sec cmp-acao" id="btn-cmp-voltar-rascunho" data-acao="rascunho">↩ Voltar a rascunho</button>
-              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-cancelar" data-acao="cancelar" style="color:var(--perigo);">✕ Cancelar pedido</button>
+              <button type="button" class="btn-sec cmp-acao" id="btn-cmp-cancelar" data-acao="cancelar" style="color:var(--perigo-txt);">✕ Cancelar pedido</button>
             </div>
             <div class="actions-right"><strong id="cmp-ficha-titulo">Novo pedido</strong></div>
           </div>
@@ -2038,7 +2041,7 @@
           </div>
           <div class="tabela-rola"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th>Un</th><th id="req-th-estoque" title="saldo do produto e destino na aprovação (fase 102)">Estoque e destino</th><th class="col-acao"></th></tr></thead><tbody id="req-itens"></tbody></table></div>
           <div class="form-acoes compacta">
-            <button type="button" class="btn-sec" id="btn-req-cancelar" style="display:none;color:var(--perigo);">✕ Cancelar requisição</button>
+            <button type="button" class="btn-sec" id="btn-req-cancelar" style="display:none;color:var(--perigo-txt);">✕ Cancelar requisição</button>
             <button type="button" class="btn-sec" id="btn-req-rejeitar" style="display:none;">👎 Rejeitar</button>
             <button type="button" class="btn-sec" id="btn-req-estoque" style="display:none;" title="Já atendida à mão (saída de balcão): marca sem gerar separação nem pedido">📦 Atendida pelo estoque</button>
             <button type="button" class="btn-sec" id="btn-req-pedido" style="display:none;" title="Manda tudo para compra, mesmo o que tem no estoque">🛒 Só compra</button>
@@ -2431,7 +2434,7 @@
       <!-- Fase 76: centros de custo internos (setores e obras internas) -->
       <div id="ccu-painel">
         <h2>Centros de custo</h2>
-        <p class="texto-apoio">Setores da empresa e obras internas: o custo que não é de obra de cliente nem de máquina. Cada setor liga-se a um departamento, para ver o custo e a equipe juntos. Compra para o almoxarifado leva o setor só como identificação; o custo entra quando o material sai do estoque.</p>
+        <p class="texto-apoio ajuda-tela">Setores da empresa e obras internas: o custo que não é de obra de cliente nem de máquina. Cada setor liga-se a um departamento, para ver o custo e a equipe juntos. Compra para o almoxarifado leva o setor só como identificação; o custo entra quando o material sai do estoque.</p>
         <div class="indicadores">
           <div class="ind"><div class="num" id="ccu-kpi-setores">—</div><div class="rot">Setores no período</div></div>
           <div class="ind"><div class="num" id="ccu-kpi-obras">—</div><div class="rot">Obras internas no período</div></div>
@@ -2517,11 +2520,11 @@
 
       <!-- Painel (fase 55: contratos de fornecedor + títulos a pagar + lançamentos avulsos) -->
       <div id="con-painel">
-        <p class="texto-apoio">Contratos com fornecedores (locação, seguro, prestação de serviço…) e o que a CGL tem a pagar: títulos gerados pelo recebimento das notas em Compras e lançamentos avulsos (multa, IPVA…). O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</p>
+        <p class="texto-apoio ajuda-tela">Contratos com fornecedores (locação, seguro, prestação de serviço…) e o que a CGL tem a pagar: títulos gerados pelo recebimento das notas em Compras e lançamentos avulsos (multa, IPVA…). O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</p>
         <div class="indicadores" id="cap-indicadores">
           <div class="ind ind-click" data-kpi="titulos"><div class="num" id="cap-kpi-titulos">—</div><div class="rot">Títulos a exportar</div></div>
           <div class="ind ind-click" data-kpi="titulos"><div class="num" id="cap-kpi-titulos-valor">—</div><div class="rot">Valor a exportar</div></div>
-          <div class="ind ind-click" data-kpi="vencidos"><div class="num" id="cap-kpi-vencidos" style="color:var(--perigo);">—</div><div class="rot">Vencidos sem exportar</div></div>
+          <div class="ind ind-click" data-kpi="vencidos"><div class="num" id="cap-kpi-vencidos" style="color:var(--perigo-txt);">—</div><div class="rot">Vencidos sem exportar</div></div>
           <div class="ind ind-click" data-kpi="30"><div class="num" id="cap-kpi-30">—</div><div class="rot">A vencer em 30 dias</div></div>
           <div class="ind ind-click" data-kpi="contratos"><div class="num" id="cap-kpi-contratos">—</div><div class="rot">Contratos vencendo</div></div>
         </div>
@@ -2678,13 +2681,13 @@
     <!-- CARTEIRA — Controle de Contratos & Pendências (views vw_controle_contratos / vw_pendencias_contratos) -->
     <section class="secao" id="sec-carteira">
       <h2>Controle de Contratos &amp; Pendências</h2>
-      <p class="texto-apoio">Valor vigente = valor original + aditivos <strong>assinados</strong>. Aditivo sem prova de assinatura aparece como pendência e não soma. As pendências são calculadas dos dados: corrigido o cadastro, a linha some sozinha.</p>
+      <p class="texto-apoio ajuda-tela">Valor vigente = valor original + aditivos <strong>assinados</strong>. Aditivo sem prova de assinatura aparece como pendência e não soma. As pendências são calculadas dos dados: corrigido o cadastro, a linha some sozinha.</p>
 
       <div class="indicadores">
         <div class="ind"><div class="num" id="cart-kpi-qtd">—</div><div class="rot">Contratos</div></div>
         <div class="ind"><div class="num" id="cart-kpi-vigente">—</div><div class="rot">Carteira vigente</div></div>
-        <div class="ind"><div class="num" id="cart-kpi-assinada" style="color:var(--sucesso);">—</div><div class="rot">Com assinatura</div></div>
-        <div class="ind ind-click" id="cart-card-sem" title="Ver a fila de contratos sem prova de assinatura"><div class="num" id="cart-kpi-sem" style="color:var(--perigo);">—</div><div class="rot">Sem prova de assinatura</div></div>
+        <div class="ind"><div class="num" id="cart-kpi-assinada" style="color:var(--sucesso-txt);">—</div><div class="rot">Com assinatura</div></div>
+        <div class="ind ind-click" id="cart-card-sem" title="Ver a fila de contratos sem prova de assinatura"><div class="num" id="cart-kpi-sem" style="color:var(--perigo-txt);">—</div><div class="rot">Sem prova de assinatura</div></div>
         <div class="ind ind-click" id="cart-card-pend" title="Ver todas as pendências"><div class="num" id="cart-kpi-pend" style="color:var(--aviso-txt);">—</div><div class="rot" id="cart-kpi-pend-rot">Pendências</div></div>
       </div>
 
@@ -3698,14 +3701,14 @@
     <!-- MOBILIZAÇÕES (quadro obra × equipamento) -->
     <section class="secao" id="sec-mobilizacoes">
       <h2>Mobilizações</h2>
-      <p class="texto-apoio">Um card por obra × equipamento, nas mesmas colunas do quadro antigo. A coluna é calculada pelo status da mobilização, da obra e das medições: ninguém arrasta card. Cada setor marca as suas pendências em <strong>Minhas pendências</strong>.</p>
+      <p class="texto-apoio ajuda-tela">Um card por obra × equipamento, nas mesmas colunas do quadro antigo. A coluna é calculada pelo status da mobilização, da obra e das medições: ninguém arrasta card. Cada setor marca as suas pendências em <strong>Minhas pendências</strong>.</p>
 
       <div class="indicadores">
         <div class="ind"><div class="num" id="mob-kpi-ativas">—</div><div class="rot">Mobilizações ativas</div></div>
         <div class="ind"><div class="num" id="mob-kpi-maquinas">—</div><div class="rot">Máquinas em obra</div></div>
         <div class="ind"><div class="num" id="mob-kpi-pend" style="color:var(--aviso-txt);">—</div><div class="rot">Pendências abertas</div></div>
-        <div class="ind"><div class="num" id="mob-kpi-atrasadas" style="color:var(--perigo);">—</div><div class="rot">Cards com pendência atrasada</div></div>
-        <div class="ind ind-click" id="mob-kpi-card-minhas" title="Ver as pendências do meu setor"><div class="num" id="mob-kpi-minhas" style="color:var(--marca-600);">—</div><div class="rot">Minhas pendências</div></div>
+        <div class="ind"><div class="num" id="mob-kpi-atrasadas" style="color:var(--perigo-txt);">—</div><div class="rot">Cards com pendência atrasada</div></div>
+        <div class="ind ind-click" id="mob-kpi-card-minhas" title="Ver as pendências do meu setor"><div class="num" id="mob-kpi-minhas" style="color:var(--acao-txt);">—</div><div class="rot">Minhas pendências</div></div>
       </div>
 
       <div class="card">
@@ -3756,14 +3759,14 @@
     <section class="secao" id="sec-equipamentos">
       <div id="eqp-painel">
         <h2>Equipamentos</h2>
-        <p class="texto-apoio">Máquinas de produção (perfuratrizes, bate-estacas, bombas, compressores, geradores) com ficha técnica, onde estão, mobilizações, remessas e os acessórios de cada uma. Caminhões e veículos ficam na Frota.</p>
+        <p class="texto-apoio ajuda-tela">Máquinas de produção (perfuratrizes, bate-estacas, bombas, compressores, geradores) com ficha técnica, onde estão, mobilizações, remessas e os acessórios de cada uma. Caminhões e veículos ficam na Frota.</p>
 
         <div class="indicadores" id="eqp-indicadores">
           <div class="ind ind-click" data-kpi=""><div class="num" id="eqp-kpi-total">—</div><div class="rot">Ativos</div></div>
           <div class="ind ind-click" data-kpi="obra"><div class="num" id="eqp-kpi-obra">—</div><div class="rot">Em obra</div></div>
           <div class="ind ind-click" data-kpi="base"><div class="num" id="eqp-kpi-base">—</div><div class="rot">Na base</div></div>
           <div class="ind ind-click" data-kpi="transito"><div class="num" id="eqp-kpi-transito">—</div><div class="rot">Em trânsito</div></div>
-          <div class="ind ind-click" data-kpi="manutencao"><div class="num" id="eqp-kpi-manut" style="color:var(--marca-600);">—</div><div class="rot">Em manutenção</div></div>
+          <div class="ind ind-click" data-kpi="manutencao"><div class="num" id="eqp-kpi-manut" style="color:var(--acao-txt);">—</div><div class="rot">Em manutenção</div></div>
           <div class="ind ind-click" data-kpi="acessorios"><div class="num" id="eqp-kpi-ace">—</div><div class="rot">Acessórios nas máquinas</div></div>
           <div class="ind ind-click" data-kpi="sem_cod_ext" title="Perfuratrizes e bate-estacas sem o código do Geodigitus/Maya"><div class="num" id="eqp-kpi-semext">—</div><div class="rot">Sem código externo</div></div>
           <!-- fase 105a: a NF-e de remessa exige NCM; aparece depois da migration (coluna equipamentos.ncm) -->
@@ -4164,14 +4167,14 @@
     <section class="secao" id="sec-manutencao">
       <div id="man-painel">
         <h2>Manutenção</h2>
-        <p class="texto-apoio">Ordens de serviço das máquinas, caminhões e veículos (atividades, mão de obra, peças com baixa no estoque), plano preventivo de cada TAG com o semáforo pelo horímetro/km que o RDO e as viagens informam, e o checklist antes de mobilizar. Reparos de acessórios continuam em Reparos.</p>
+        <p class="texto-apoio ajuda-tela">Ordens de serviço das máquinas, caminhões e veículos (atividades, mão de obra, peças com baixa no estoque), plano preventivo de cada TAG com o semáforo pelo horímetro/km que o RDO e as viagens informam, e o checklist antes de mobilizar. Reparos de acessórios continuam em Reparos.</p>
         <div class="indicadores" id="man-indicadores">
           <div class="ind ind-click" data-kpi="abertas"><div class="num" id="man-kpi-abertas">—</div><div class="rot">OS abertas</div></div>
-          <div class="ind ind-click" data-kpi="atrasadas"><div class="num" id="man-kpi-atrasadas" style="color:var(--perigo);">—</div><div class="rot">OS atrasadas</div></div>
+          <div class="ind ind-click" data-kpi="atrasadas"><div class="num" id="man-kpi-atrasadas" style="color:var(--perigo-txt);">—</div><div class="rot">OS atrasadas</div></div>
           <div class="ind ind-click" data-kpi="concluidas_mes"><div class="num" id="man-kpi-concluidas">—</div><div class="rot">Concluídas no mês</div></div>
           <div class="ind"><div class="num" id="man-kpi-custo">—</div><div class="rot">Custo no mês</div></div>
-          <div class="ind ind-click" data-kpi="prev_critico"><div class="num" id="man-kpi-critico" style="color:var(--perigo);">—</div><div class="rot">Preventivas vencidas</div></div>
-          <div class="ind ind-click" data-kpi="prev_atencao"><div class="num" id="man-kpi-atencao" style="color:var(--aviso);">—</div><div class="rot">Preventivas em atenção</div></div>
+          <div class="ind ind-click" data-kpi="prev_critico"><div class="num" id="man-kpi-critico" style="color:var(--perigo-txt);">—</div><div class="rot">Preventivas vencidas</div></div>
+          <div class="ind ind-click" data-kpi="prev_atencao"><div class="num" id="man-kpi-atencao" style="color:var(--aviso-txt);">—</div><div class="rot">Preventivas em atenção</div></div>
         </div>
         <div class="card">
           <div class="lista-topo">
@@ -4227,7 +4230,7 @@
               <button type="button" class="btn-sec man-acao" id="btn-man-baixa" data-acao="baixa" title="Gera a saída de estoque das peças consumidas que ainda não tiveram baixa">📦 Dar baixa das peças</button>
               <button type="button" class="btn-sec" id="btn-man-imprimir" title="Imprime a OS no leiaute do modelo da manutenção">🖨️ Imprimir OS</button>
               <button type="button" class="btn-sec man-acao" id="btn-man-reabrir" data-acao="em_andamento">↩ Reabrir</button>
-              <button type="button" class="btn-sec man-acao acao-perigo" id="btn-man-cancelar" data-acao="cancelada" style="color:var(--perigo);">✕ Cancelar</button>
+              <button type="button" class="btn-sec man-acao acao-perigo" id="btn-man-cancelar" data-acao="cancelada" style="color:var(--perigo-txt);">✕ Cancelar</button>
             </div>
             <div class="actions-right"><strong id="man-ficha-titulo">Nova OS</strong></div>
           </div>
@@ -4403,12 +4406,12 @@
 
       <!-- ===== Painel (fase 89): viagens, veículos e documentos — js/frota.js ===== -->
       <div id="frota-painel">
-        <p class="texto-apoio">A viagem é o registro central da logística: caminhão, motorista, origem → destino, km e custo (km rodado × R$/km do caminhão), com os itens transportados, as notas de remessa e retorno e o MDF-e como documentos dela. A mobilização gera a viagem; a localização da máquina continua vindo do status da mobilização. O km atual do veículo acompanha a última chegada registrada. Frete feito por transportador de fora é viagem com a finalidade <strong>Frete terceirizado</strong> (fase 130): transportador, valor combinado e vencimento no lugar de caminhão e km; o custo é direto, gera o título em Contas a pagar e cai nas obras atendidas; CT-e, NF de simples remessa e MDF-e do transportador ficam anexados à viagem.</p>
+        <p class="texto-apoio ajuda-tela">A viagem é o registro central da logística: caminhão, motorista, origem → destino, km e custo (km rodado × R$/km do caminhão), com os itens transportados, as notas de remessa e retorno e o MDF-e como documentos dela. A mobilização gera a viagem; a localização da máquina continua vindo do status da mobilização. O km atual do veículo acompanha a última chegada registrada. Frete feito por transportador de fora é viagem com a finalidade <strong>Frete terceirizado</strong> (fase 130): transportador, valor combinado e vencimento no lugar de caminhão e km; o custo é direto, gera o título em Contas a pagar e cai nas obras atendidas; CT-e, NF de simples remessa e MDF-e do transportador ficam anexados à viagem.</p>
 
         <div class="indicadores">
           <div class="ind"><div class="num" id="frota-kpi-viagens">—</div><div class="rot">Viagens no período</div></div>
           <div class="ind"><div class="num" id="frota-kpi-km">—</div><div class="rot">km rodados</div></div>
-          <div class="ind"><div class="num" id="frota-kpi-valor" style="color:var(--marca-600);">—</div><div class="rot">Custo da frota própria</div></div>
+          <div class="ind"><div class="num" id="frota-kpi-valor" style="color:var(--acao-txt);">—</div><div class="rot">Custo da frota própria</div></div>
           <div class="ind" title="Viagens com finalidade Frete terceirizado no período; o valor pago a transportadores aparece só para quem lê Contas a pagar"><div class="num" id="frota-kpi-frete">—</div><div class="rot">Fretes terceirizados</div></div>
           <div class="ind ind-click" id="frota-kpi-card-transito" title="Viagens em trânsito agora (clique para filtrar)"><div class="num" id="frota-kpi-transito">—</div><div class="rot">Em trânsito agora</div></div>
           <div class="ind ind-click" id="frota-kpi-card-notas" title="Notas em rascunho ou emitidas que ainda não estão em nenhuma viagem (clique para ver)"><div class="num" id="frota-kpi-notas">—</div><div class="rot">Notas sem viagem</div></div>
@@ -4597,16 +4600,16 @@
     <section class="secao" id="sec-acessorios">
       <div id="ace-painel">
         <h2>Acessórios</h2>
-        <p class="texto-apoio">Peças com identidade (marcação): segmentos, pontas, caixas e prolongas de hélice; hastes, camisas, coroas, martelos e bombas de raiz. Onde está cada peça, em que condição e o histórico de cada movimento. Substitui as planilhas CONTROLE_ACESSORIOS_OBRA (hélice) e ESTOQUE DE ACESSÓRIOS DE ESTACA RAIZ (raiz).</p>
+        <p class="texto-apoio ajuda-tela">Peças com identidade (marcação): segmentos, pontas, caixas e prolongas de hélice; hastes, camisas, coroas, martelos e bombas de raiz. Onde está cada peça, em que condição e o histórico de cada movimento. Substitui as planilhas CONTROLE_ACESSORIOS_OBRA (hélice) e ESTOQUE DE ACESSÓRIOS DE ESTACA RAIZ (raiz).</p>
 
         <div class="indicadores">
           <div class="ind ind-click" data-kpi=""><div class="num" id="ace-kpi-total">—</div><div class="rot">Cadastradas</div></div>
           <div class="ind ind-click" data-kpi="estoque"><div class="num" id="ace-kpi-estoque">—</div><div class="rot">Em estoque (pátio · oficina · máquina)</div></div>
           <div class="ind ind-click" data-kpi="obra"><div class="num" id="ace-kpi-obra">—</div><div class="rot">Em obra / em trânsito</div></div>
-          <div class="ind ind-click" data-kpi="manutencao"><div class="num" id="ace-kpi-manut" style="color:var(--marca-600);">—</div><div class="rot">Em manutenção</div></div>
+          <div class="ind ind-click" data-kpi="manutencao"><div class="num" id="ace-kpi-manut" style="color:var(--acao-txt);">—</div><div class="rot">Em manutenção</div></div>
           <div class="ind ind-click" data-kpi="atencao"><div class="num" id="ace-kpi-atencao">—</div><div class="rot">Precisam de atenção</div></div>
           <div class="ind ind-click" data-kpi="perdido"><div class="num" id="ace-kpi-perdido">—</div><div class="rot">Perdidas</div></div>
-          <div class="ind" title="Soma do valor de reposição das peças ativas da família (preço do modelo × fator da condição; sucata = peso × R$/kg)"><div class="num" id="ace-kpi-valor" style="color:var(--marca-700);">—</div><div class="rot">Valor de reposição</div></div>
+          <div class="ind" title="Soma do valor de reposição das peças ativas da família (preço do modelo × fator da condição; sucata = peso × R$/kg)"><div class="num" id="ace-kpi-valor" style="color:var(--acao-txt);">—</div><div class="rot">Valor de reposição</div></div>
         </div>
 
         <div class="card">
@@ -4650,7 +4653,7 @@
             <button type="button" class="btn-sec btn-sm" data-acao="retirar">⏏️ Retirar</button>
             <button type="button" class="btn-sec btn-sm" data-acao="reparo">🔧 Abrir reparo</button>
             <button type="button" class="btn-sec btn-sm" data-acao="condicao">✅ Condição…</button>
-            <button type="button" class="btn-sec btn-sm" data-acao="perda" style="color:var(--perigo);">⚠️ Registrar perda</button>
+            <button type="button" class="btn-sec btn-sm" data-acao="perda" style="color:var(--perigo-txt);">⚠️ Registrar perda</button>
             <button type="button" class="btn-sec btn-sm" data-acao="limpar" style="margin-left:auto;">Limpar seleção</button>
           </div>
           <div id="ace-conteudo"><p class="vazio">Carregando…</p></div>
@@ -4668,8 +4671,8 @@
               <button type="button" class="btn-sec" id="btn-ace-instalar" style="display:none;" title="Conta a vida da peça a partir desta data. Mover para a máquina não conta: ela pode ir como reserva.">⚙️ Instalar na máquina</button>
               <button type="button" class="btn-sec" id="btn-ace-retirar" style="display:none;">⏏️ Retirar</button>
               <button type="button" class="btn-sec ace-so-existente" id="btn-ace-reparo">🔧 Abrir reparo</button>
-              <button type="button" class="btn-sec ace-so-existente" id="btn-ace-perda" style="color:var(--perigo);">⚠️ Perda</button>
-              <button type="button" class="btn-sec ace-so-existente" id="btn-ace-excluir" style="color:var(--perigo);">🗑️ Excluir</button>
+              <button type="button" class="btn-sec ace-so-existente" id="btn-ace-perda" style="color:var(--perigo-txt);">⚠️ Perda</button>
+              <button type="button" class="btn-sec ace-so-existente" id="btn-ace-excluir" style="color:var(--perigo-txt);">🗑️ Excluir</button>
             </div>
             <div class="actions-right"><img id="ace-capa" class="ace-capa" alt="" style="display:none;" /><strong id="ace-ficha-titulo">Nova peça</strong></div>
           </div>
@@ -4923,7 +4926,7 @@
     <section class="secao" id="sec-reparos">
       <div id="rep-painel">
         <h2>Reparos</h2>
-        <p class="texto-apoio">Reparo de acessório ou TAG na oficina: quem trabalhou (início e fim), as peças consumidas (com baixa no estoque) e o custo real que sai disso. Inclui o histórico do Odoo e os reparos da planilha de acessórios.</p>
+        <p class="texto-apoio ajuda-tela">Reparo de acessório ou TAG na oficina: quem trabalhou (início e fim), as peças consumidas (com baixa no estoque) e o custo real que sai disso. Inclui o histórico do Odoo e os reparos da planilha de acessórios.</p>
         <div class="card">
           <div class="lista-topo">
             <h3>Reparos <span id="rep-contador" class="contador"></span></h3>
@@ -4967,7 +4970,7 @@
               <button type="button" class="btn btn-sucesso rep-acao" id="btn-rep-concluir" data-acao="concluido">✅ Concluir</button>
               <button type="button" class="btn-sec rep-acao" id="btn-rep-baixa" data-acao="baixa" title="Gera a saída de estoque das peças consumidas que ainda não tiveram baixa">📦 Dar baixa das peças</button>
               <button type="button" class="btn-sec" id="btn-rep-imprimir" style="display:none;" title="Documento para a oficina, sem valores">🖨️ Imprimir</button>
-              <button type="button" class="btn-sec rep-acao" id="btn-rep-cancelar" data-acao="cancelado" style="color:var(--perigo);">✕ Cancelar</button>
+              <button type="button" class="btn-sec rep-acao" id="btn-rep-cancelar" data-acao="cancelado" style="color:var(--perigo-txt);">✕ Cancelar</button>
             </div>
             <div class="actions-right"><strong id="rep-ficha-titulo">Novo reparo</strong></div>
           </div>
@@ -5052,7 +5055,7 @@
     <section class="secao" id="sec-fabricacao">
       <div id="fab-painel">
         <h2>Fabricação</h2>
-        <p class="texto-apoio">Ordem de fabricação da oficina: o que vai ser feito e quanto, os componentes consumidos do estoque, as horas por funcionário e centro de trabalho (com hora extra) e o custo real. Concluída, dá entrada no estoque ou cria a peça com marcação em Acessórios. Inclui o histórico do Odoo (WH/MO).</p>
+        <p class="texto-apoio ajuda-tela">Ordem de fabricação da oficina: o que vai ser feito e quanto, os componentes consumidos do estoque, as horas por funcionário e centro de trabalho (com hora extra) e o custo real. Concluída, dá entrada no estoque ou cria a peça com marcação em Acessórios. Inclui o histórico do Odoo (WH/MO).</p>
         <div class="card">
           <div class="lista-topo">
             <h3>Ordens de fabricação <span id="fab-contador" class="contador"></span></h3>
@@ -5090,7 +5093,7 @@
               <button type="button" class="btn-sec fab-acao" id="btn-fab-aplicar" data-acao="aplicar" title="Preenche os componentes pela lista de materiais, multiplicada pela quantidade da ordem">📋 Aplicar lista</button>
               <button type="button" class="btn-sec fab-acao" id="btn-fab-consumir" data-acao="consumir" title="Gera a saída de estoque dos componentes ainda sem baixa">📦 Consumir componentes</button>
               <button type="button" class="btn btn-sucesso fab-acao" id="btn-fab-concluir" data-acao="concluir" title="Fecha com o custo real e dá entrada no que foi produzido">✅ Concluir</button>
-              <button type="button" class="btn-sec fab-acao" id="btn-fab-cancelar" data-acao="cancelada" style="color:var(--perigo);">✕ Cancelar</button>
+              <button type="button" class="btn-sec fab-acao" id="btn-fab-cancelar" data-acao="cancelada" style="color:var(--perigo-txt);">✕ Cancelar</button>
             </div>
             <div class="actions-right"><strong id="fab-ficha-titulo">Nova ordem</strong></div>
           </div>
@@ -5900,7 +5903,7 @@
     <section class="secao" id="sec-sesmt">
       <div id="sst-painel">
         <h2>SESMT</h2>
-        <p class="texto-apoio">Segurança e saúde no trabalho: o catálogo de requisitos (treinamentos, exames, documentos, programas legais), a matriz do que cada função, GHE, método, equipamento, cliente ou obra exige, a situação de cada pessoa calculada pelo banco e os programas legais das obras. Documento de saúde (ASO, exame) só com MFA.</p>
+        <p class="texto-apoio ajuda-tela">Segurança e saúde no trabalho: o catálogo de requisitos (treinamentos, exames, documentos, programas legais), a matriz do que cada função, GHE, método, equipamento, cliente ou obra exige, a situação de cada pessoa calculada pelo banco e os programas legais das obras. Documento de saúde (ASO, exame) só com MFA.</p>
         <div class="card">
           <div class="lista-topo">
             <h3>Segurança do trabalho <span id="sst-contador" class="contador"></span></h3>
@@ -5940,7 +5943,7 @@
             <div class="actions-left">
               <button type="button" class="btn-sec" id="btn-sst-req-voltar">← Voltar</button>
               <button type="button" class="btn" id="btn-sst-req-salvar">💾 Salvar</button>
-              <button type="button" class="btn-sec" id="btn-sst-req-excluir" style="color:var(--perigo);">🗑️ Excluir</button>
+              <button type="button" class="btn-sec" id="btn-sst-req-excluir" style="color:var(--perigo-txt);">🗑️ Excluir</button>
             </div>
             <div class="actions-right"><strong id="sst-req-titulo">Novo requisito</strong></div>
           </div>
@@ -6003,7 +6006,7 @@
             <div class="actions-left">
               <button type="button" class="btn-sec" id="btn-sst-prog-voltar">← Voltar</button>
               <button type="button" class="btn" id="btn-sst-prog-salvar">💾 Salvar</button>
-              <button type="button" class="btn-sec" id="btn-sst-prog-excluir" style="color:var(--perigo);">🗑️ Excluir</button>
+              <button type="button" class="btn-sec" id="btn-sst-prog-excluir" style="color:var(--perigo-txt);">🗑️ Excluir</button>
             </div>
             <div class="actions-right"><strong id="sst-prog-titulo">Novo programa legal</strong></div>
           </div>
@@ -6051,7 +6054,7 @@
     <section class="secao" id="sec-rhh">
       <h2>Horas e alocação</h2>
       <div id="rhh-painel">
-        <p class="texto-apoio">As horas da equipe saem do Diário de Obra (entrada e saída de cada um; a HE 100 % e as noturnas de 22h às 5h são calculadas) e as horas de viagem são lançadas pelo próprio funcionário. O <strong>engenheiro responsável da obra ou o gestor do serviço</strong> libera por quinzena; só o que está liberado entra no fechamento do mês e em <strong>Lançar na folha</strong> (RH, com MFA). A <strong>alocação por obra</strong> mostra onde cada um esteve no mês, com o CNO do cliente, para a mobilização conferir e o RH exportar.</p>
+        <p class="texto-apoio ajuda-tela">As horas da equipe saem do Diário de Obra (entrada e saída de cada um; a HE 100 % e as noturnas de 22h às 5h são calculadas) e as horas de viagem são lançadas pelo próprio funcionário. O <strong>engenheiro responsável da obra ou o gestor do serviço</strong> libera por quinzena; só o que está liberado entra no fechamento do mês e em <strong>Lançar na folha</strong> (RH, com MFA). A <strong>alocação por obra</strong> mostra onde cada um esteve no mês, com o CNO do cliente, para a mobilização conferir e o RH exportar.</p>
 
         <div class="indicadores">
           <div class="ind"><div class="num" id="rhh-kpi-linhas">—</div><div class="rot">Lançamentos no período</div></div>
@@ -6340,10 +6343,10 @@
     <section class="secao" id="sec-patrimonio">
       <h2>Patrimônio</h2>
       <div id="pat-painel">
-        <p class="texto-apoio compacto">Valor de mercado dos bens próprios na opinião da diretoria. Cada bem vale a última avaliação até receber outra. Os bens vêm dos cadastros de Equipamentos, Logística e Acessórios (este módulo não cadastra nem retira máquina, veículo ou acessório); imóveis, usina e grupos globais nascem aqui. Veículo sem avaliação vale a FIPE do cadastro.</p>
+        <p class="texto-apoio compacto ajuda-tela">Valor de mercado dos bens próprios na opinião da diretoria. Cada bem vale a última avaliação até receber outra. Os bens vêm dos cadastros de Equipamentos, Logística e Acessórios (este módulo não cadastra nem retira máquina, veículo ou acessório); imóveis, usina e grupos globais nascem aqui. Veículo sem avaliação vale a FIPE do cadastro.</p>
         <div class="indicadores">
           <div class="ind"><div class="num" id="pat-kpi-total">—</div><div class="rot" id="pat-kpi-total-rot">Patrimônio</div></div>
-          <div class="ind ind-click" id="pat-kpi-sem-card" title="Ver só os bens sem valor"><div class="num" id="pat-kpi-sem" style="color:var(--perigo);">—</div><div class="rot" id="pat-kpi-sem-rot">Sem valor</div></div>
+          <div class="ind ind-click" id="pat-kpi-sem-card" title="Ver só os bens sem valor"><div class="num" id="pat-kpi-sem" style="color:var(--perigo-txt);">—</div><div class="rot" id="pat-kpi-sem-rot">Sem valor</div></div>
           <div class="ind"><div class="num" id="pat-kpi-bens">—</div><div class="rot">Bens</div></div>
         </div>
         <div class="card">
@@ -6468,15 +6471,15 @@
     <!-- ============ CHAMADOS (fase 42) ============ -->
     <section class="secao" id="sec-chamados">
       <h2>Chamados</h2>
-      <p class="texto-apoio">Problemas, dúvidas e sugestões de melhoria no sistema. Abra pelo botão <strong>💡 Relatar problema ou melhoria</strong> em qualquer tela (o chamado já sai com módulo, obra e registro) ou por <strong>+ Novo chamado</strong>. Sem chat ao vivo: a triagem automática roda de segunda a sexta às 18h, classifica (prioridade, esforço, faixa) e comenta; a correção entra por uma fase, lote ou hotfix e a resolução fica registrada no próprio chamado. Correção de código e restauração de dado não passam por validação prévia; mudança de valor, regra, estrutura ou exclusão de dado só com validação da diretoria.</p>
+      <p class="texto-apoio ajuda-tela">Problemas, dúvidas e sugestões de melhoria no sistema. Abra pelo botão <strong>💡 Relatar problema ou melhoria</strong> em qualquer tela (o chamado já sai com módulo, obra e registro) ou por <strong>+ Novo chamado</strong>. Sem chat ao vivo: a triagem automática roda de segunda a sexta às 18h, classifica (prioridade, esforço, faixa) e comenta; a correção entra por uma fase, lote ou hotfix e a resolução fica registrada no próprio chamado. Correção de código e restauração de dado não passam por validação prévia; mudança de valor, regra, estrutura ou exclusão de dado só com validação da diretoria.</p>
 
       <div class="indicadores">
-        <div class="ind ind-click" data-cham-status="aberto"><div class="num" id="cham-kpi-aberto" style="color:var(--perigo);">—</div><div class="rot">Abertos</div></div>
+        <div class="ind ind-click" data-cham-status="aberto"><div class="num" id="cham-kpi-aberto" style="color:var(--perigo-txt);">—</div><div class="rot">Abertos</div></div>
         <div class="ind ind-click" data-cham-status="em_analise"><div class="num" id="cham-kpi-analise" style="color:var(--aviso-txt);">—</div><div class="rot">Em análise</div></div>
-        <div class="ind ind-click" data-cham-status="minha_resposta" title="Chamados esperando a sua resposta (lote S47)"><div class="num" id="cham-kpi-validacao" style="color:var(--marca-600);">—</div><div class="rot">Esperando minha resposta</div></div>
-        <div class="ind ind-click" data-cham-status="resolvido"><div class="num" id="cham-kpi-resolvido" style="color:var(--sucesso);">—</div><div class="rot">Resolvidos (30 dias)</div></div>
+        <div class="ind ind-click" data-cham-status="minha_resposta" title="Chamados esperando a sua resposta (lote S47)"><div class="num" id="cham-kpi-validacao" style="color:var(--acao-txt);">—</div><div class="rot">Esperando minha resposta</div></div>
+        <div class="ind ind-click" data-cham-status="resolvido"><div class="num" id="cham-kpi-resolvido" style="color:var(--sucesso-txt);">—</div><div class="rot">Resolvidos (30 dias)</div></div>
         <div class="ind ind-click" data-cham-status="resolvidos_sem_confirmacao" title="Resolvidos há menos de 7 dias ainda sem o 'Funcionou' do autor (lote S55)" style="display:none;"><div class="num" id="cham-kpi-semconf" style="color:var(--aviso-txt);">—</div><div class="rot">Sem confirmação</div></div>
-        <div class="ind ind-click" data-cham-prioridade="1" title="Prioridade 1 (bloqueia operação) aberto ou em análise"><div class="num" id="cham-kpi-p1" style="color:var(--perigo);">—</div><div class="rot">P1 abertos</div></div>
+        <div class="ind ind-click" data-cham-prioridade="1" title="Prioridade 1 (bloqueia operação) aberto ou em análise"><div class="num" id="cham-kpi-p1" style="color:var(--perigo-txt);">—</div><div class="rot">P1 abertos</div></div>
       </div>
 
       <div class="card">
@@ -6823,7 +6826,7 @@
       <span id="mfa-secret-text" style="font-family:monospace; font-size:var(--txt-base); letter-spacing:2px;"></span>
     </div>
     <button type="button" id="btn-mfa-mostrar-codigo"
-            style="font-size:var(--txt-sm); background:none; border:none; color:var(--marca-600); cursor:pointer;
+            style="font-size:var(--txt-sm); background:none; border:none; color:var(--acao-txt); cursor:pointer;
                    margin-bottom:18px; padding:0; display:block; text-decoration:underline;">
       Não consigo escanear — mostrar chave manual
     </button>
@@ -6881,60 +6884,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=0c995c1"></script>
+<script src="js/core.js?v=167dd47"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=0c995c1"></script>
+<script src="js/historico.js?v=167dd47"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=0c995c1"></script>
-<script src="js/fiscal_ncm.js?v=0c995c1"></script>
+<script src="js/fiscal.js?v=167dd47"></script>
+<script src="js/fiscal_ncm.js?v=167dd47"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=0c995c1"></script>
-<script src="js/fornecedores.js?v=0c995c1"></script>
-<script src="js/apropriacoes.js?v=0c995c1"></script>
-<script src="js/funcionarios.js?v=0c995c1"></script>
-<script src="js/funcionarios_importar.js?v=0c995c1"></script>
-<script src="js/rh_documentos.js?v=0c995c1"></script>
-<script src="js/servicos.js?v=0c995c1"></script>
-<script src="js/produtos.js?v=0c995c1"></script>
-<script src="js/estoque.js?v=0c995c1"></script>
-<script src="js/separacoes.js?v=0c995c1"></script>
-<script src="js/epi.js?v=0c995c1"></script>
-<script src="js/compras.js?v=0c995c1"></script>
-<script src="js/requisicoes.js?v=0c995c1"></script>
-<script src="js/orcamentos.js?v=0c995c1"></script>
-<script src="js/propostas.js?v=0c995c1"></script>
-<script src="js/contratos.js?v=0c995c1"></script>
-<script src="js/contas_pagar.js?v=0c995c1"></script>
-<script src="js/centros_custo.js?v=0c995c1"></script>
-<script src="js/carteira.js?v=0c995c1"></script>
-<script src="js/obras.js?v=0c995c1"></script>
-<script src="js/frota.js?v=0c995c1"></script>
-<script src="js/viagens.js?v=0c995c1"></script>
-<script src="js/equipamentos.js?v=0c995c1"></script>
-<script src="js/vendas_bens.js?v=0c995c1"></script>
-<script src="js/acessorios.js?v=0c995c1"></script>
-<script src="js/reparos.js?v=0c995c1"></script>
-<script src="js/manutencao.js?v=0c995c1"></script>
-<script src="js/fabricacao.js?v=0c995c1"></script>
-<script src="js/mobilizacoes.js?v=0c995c1"></script>
-<script src="js/estacas.js?v=0c995c1"></script>
-<script src="js/obra_abas.js?v=0c995c1"></script>
-<script src="js/medicoes.js?v=0c995c1"></script>
-<script src="js/movimentacoes.js?v=0c995c1"></script>
-<script src="js/rdo_import_rg113.js?v=0c995c1"></script>
-<script src="js/rdo.js?v=0c995c1"></script>
-<script src="js/rdo_import_maya.js?v=0c995c1"></script>
-<script src="js/geodigitus.js?v=0c995c1"></script>
-<script src="js/computadores_bordo.js?v=0c995c1"></script>
-<script src="js/usuarios.js?v=0c995c1"></script>
-<script src="js/chamados.js?v=0c995c1"></script>
-<script src="js/dashboard.js?v=0c995c1"></script>
-<script src="js/rh_horas.js?v=0c995c1"></script>
-<script src="js/sesmt.js?v=0c995c1"></script>
-<script src="js/patrimonio.js?v=0c995c1"></script>
+<script src="js/clientes.js?v=167dd47"></script>
+<script src="js/fornecedores.js?v=167dd47"></script>
+<script src="js/apropriacoes.js?v=167dd47"></script>
+<script src="js/funcionarios.js?v=167dd47"></script>
+<script src="js/funcionarios_importar.js?v=167dd47"></script>
+<script src="js/rh_documentos.js?v=167dd47"></script>
+<script src="js/servicos.js?v=167dd47"></script>
+<script src="js/produtos.js?v=167dd47"></script>
+<script src="js/estoque.js?v=167dd47"></script>
+<script src="js/separacoes.js?v=167dd47"></script>
+<script src="js/epi.js?v=167dd47"></script>
+<script src="js/compras.js?v=167dd47"></script>
+<script src="js/requisicoes.js?v=167dd47"></script>
+<script src="js/orcamentos.js?v=167dd47"></script>
+<script src="js/propostas.js?v=167dd47"></script>
+<script src="js/contratos.js?v=167dd47"></script>
+<script src="js/contas_pagar.js?v=167dd47"></script>
+<script src="js/centros_custo.js?v=167dd47"></script>
+<script src="js/carteira.js?v=167dd47"></script>
+<script src="js/obras.js?v=167dd47"></script>
+<script src="js/frota.js?v=167dd47"></script>
+<script src="js/viagens.js?v=167dd47"></script>
+<script src="js/equipamentos.js?v=167dd47"></script>
+<script src="js/vendas_bens.js?v=167dd47"></script>
+<script src="js/acessorios.js?v=167dd47"></script>
+<script src="js/reparos.js?v=167dd47"></script>
+<script src="js/manutencao.js?v=167dd47"></script>
+<script src="js/fabricacao.js?v=167dd47"></script>
+<script src="js/mobilizacoes.js?v=167dd47"></script>
+<script src="js/estacas.js?v=167dd47"></script>
+<script src="js/obra_abas.js?v=167dd47"></script>
+<script src="js/medicoes.js?v=167dd47"></script>
+<script src="js/movimentacoes.js?v=167dd47"></script>
+<script src="js/rdo_import_rg113.js?v=167dd47"></script>
+<script src="js/rdo.js?v=167dd47"></script>
+<script src="js/rdo_import_maya.js?v=167dd47"></script>
+<script src="js/geodigitus.js?v=167dd47"></script>
+<script src="js/computadores_bordo.js?v=167dd47"></script>
+<script src="js/usuarios.js?v=167dd47"></script>
+<script src="js/chamados.js?v=167dd47"></script>
+<script src="js/dashboard.js?v=167dd47"></script>
+<script src="js/rh_horas.js?v=167dd47"></script>
+<script src="js/sesmt.js?v=167dd47"></script>
+<script src="js/patrimonio.js?v=167dd47"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=0c995c1"></script>
+<script src="js/sesmt_ocorrencias.js?v=167dd47"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=0c995c1"></script>
+<script src="js/init.js?v=167dd47"></script>
 </body>
 </html>

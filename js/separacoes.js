@@ -286,9 +286,9 @@ function sepAtualizarCabecalho(){
   $("sep-itens-add").style.display = pode && !fim ? "" : "none";
 }
 function sepItemNome(i){
-  if(i.produto_id) return `${linkProduto(i.produto_id, i.produto ? i.produto.codigo : "produto")} ${esc(i.produto ? i.produto.nome : i.descricao)}`;
-  if(i.acessorio_id) return `${linkAcessorio(i.acessorio_id, i.acessorio?.marcacao || "peça")} <span class="meta">${esc(i.descricao)}</span>`;
-  return `${esc(i.descricao)} <span class="tag ambar" title="pedido sem produto do catálogo: case com um produto antes de separar">item livre</span>`;
+  if(i.produto_id) return `${linkProduto(i.produto_id, i.produto ? prodTxt(i.produto) : semCodOdoo(i.descricao) || "produto")}`;
+  if(i.acessorio_id) return `${linkAcessorio(i.acessorio_id, i.acessorio?.marcacao || "peça")} <span class="meta">${esc(semCodOdoo(i.descricao))}</span>`;
+  return `${esc(semCodOdoo(i.descricao))} <span class="tag ambar" title="pedido sem produto do catálogo: case com um produto antes de separar">item livre</span>`;
 }
 function sepBaixaTxt(i){
   if(!i.separado){
@@ -354,7 +354,7 @@ async function sepAddProduto(p){
   const q = Number($("sep-prod-qtd").value || 1); if(!(q > 0)){ aviso("app-aviso", "Quantidade inválida.", "erro"); return; }
   const ja = _sepItens.find(i => i.produto_id === p.id && !i.separado);
   const r = ja ? await sb.from("separacao_itens").update({ quantidade_pedida: Number(ja.quantidade_pedida) + q }).eq("id", ja.id)
-               : await sb.from("separacao_itens").insert({ separacao_id: s.id, produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade_pedida: q, ordem: 2000 + _sepItens.length });
+               : await sb.from("separacao_itens").insert({ separacao_id: s.id, produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade_pedida: q, ordem: 2000 + _sepItens.length });
   if(r.error){ aviso("app-aviso", "Item não adicionado: " + r.error.message, "erro"); return; }
   $("sep-prod-qtd").value = 1;
   await abrirSeparacao(s.id);
@@ -382,7 +382,7 @@ async function sepAddLivre(){
 /* item livre → produto do catálogo (o texto pedido fica na observação) */
 async function sepCasarItem(itemId, p){
   const i = _sepItens.find(x => x.id === itemId); if(!i || !p) return;
-  const { error } = await sb.from("separacao_itens").update({ produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || i.unidade || "un",
+  const { error } = await sb.from("separacao_itens").update({ produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || i.unidade || "un",
     observacoes: [i.observacoes, "pedido como: " + i.descricao].filter(Boolean).join(" · ") }).eq("id", itemId);
   if(error){ aviso("app-aviso", "Não foi possível casar o item: " + error.message, "erro"); return; }
   await abrirSeparacao(_sepAtual.id);
@@ -445,7 +445,7 @@ async function sepImprimir(){
   const s = _sepAtual; if(!s) return;
   const td = "border:1px solid;padding:4px;";
   const linhas = _sepItens.map((i, n) => `<tr><td style="${td}text-align:center;">${i.separado ? "☑" : "☐"}</td><td style="${td}text-align:center;">${n + 1}</td>
-    <td style="${td}">${esc(i.acessorio ? i.acessorio.marcacao + " · " : "")}${esc(i.produto ? i.produto.codigo + " — " + i.produto.nome : i.descricao)}${i.observacoes ? `<br><small>${esc(i.observacoes)}</small>` : ""}${sepItemTemDestino(i) ? `<br><small>destino: ${esc(sepDestinoTxt(i, s))}</small>` : ""}</td>
+    <td style="${td}">${esc(i.acessorio ? i.acessorio.marcacao + " · " : "")}${esc(i.produto ? prodTxt(i.produto) : i.descricao)}${i.observacoes ? `<br><small>${esc(i.observacoes)}</small>` : ""}${sepItemTemDestino(i) ? `<br><small>destino: ${esc(sepDestinoTxt(i, s))}</small>` : ""}</td>
     <td style="${td}text-align:right;">${num(i.quantidade_pedida)} ${esc(i.unidade || "un")}</td><td style="${td}width:70px;"></td></tr>`).join("");
   const html = `<div style="font-family:'Open Sans',Arial,sans-serif;font-size:11px;">
     ${typeof pdfCabecalhoHTML === "function" ? pdfCabecalhoHTML("Lista de separação", s.numero) : `<h2>Lista de separação ${esc(s.numero)}</h2>`}
@@ -515,7 +515,7 @@ function sepLigarBusca(inp, lista, aoEscolher, opts){
   let res = [], resA = [];
   const mostrar = () => {
     lista.innerHTML = (res.length || resA.length)
-      ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("")
+      ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("")
         + resA.map(a => `<div class="resultado-item" data-ace="${esc(a.id)}" title="peça de acessório: entra com quantidade 1 e vai para a obra/TAG da separação ao marcar"><span class="tag cinza">peça</span> <strong>${esc(a.marcacao)}</strong> — ${esc(sepAceDescr(a))} <span class="meta">· ${esc(sepFamiliaLbl(a.familia))}</span> <span class="meta" style="float:right;">${esc(sepAceOnde(a))}</span></div>`).join("")
       : `<div class="resultado-item vazio">${comPecas ? "Nenhum produto nem peça com esse código, nome ou marcação." : "Nenhum produto com esse código ou nome."}</div>`;
     lista.style.display = "";
@@ -567,7 +567,7 @@ function sepPedRenderItens(){
   tb.innerHTML = _sepPed.itens.map((i, idx) => `<tr data-idx="${idx}">
     <td>${i.produto ? `<strong>${esc(i.produto.codigo)}</strong> ${esc(i.produto.nome)} <span class="meta">saldo ${num(i.produto.estoque_atual || 0)}</span>`
       : i.acessorio ? `<span class="tag cinza">peça</span> <strong>${esc(i.acessorio.marcacao)}</strong> ${esc(sepAceDescr(i.acessorio))} <span class="meta">· ${esc(sepAceOnde(i.acessorio))}</span>`
-      : `${esc(i.descricao)} <span class="meta">(item livre)</span>`}</td>
+      : `${esc(semCodOdoo(i.descricao))} <span class="meta">(item livre)</span>`}</td>
     <td><input class="sep-ped-un" value="${esc(i.unidade)}" style="width:56px;" ${i.produto || i.acessorio ? "disabled" : ""} /></td>
     <td><input type="number" class="sep-ped-q" value="${esc(i.quantidade)}" min="0.001" step="0.001" style="width:86px;text-align:right;" ${i.acessorio ? 'disabled title="peça de acessório entra sempre com 1"' : ""} /></td>
     <td class="col-acao"><button type="button" class="btn-sec btn-sm sep-ped-rem" title="tirar">×</button></td></tr>`).join("");
@@ -578,7 +578,7 @@ function sepPedRenderItens(){
 function sepPedAddProduto(p){
   if(!p || !_sepPed) return;
   const ja = _sepPed.itens.find(i => i.produto && i.produto.id === p.id);
-  if(ja) ja.quantidade = Number(ja.quantidade || 0) + 1; else _sepPed.itens.push({ produto: p, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade: 1 });
+  if(ja) ja.quantidade = Number(ja.quantidade || 0) + 1; else _sepPed.itens.push({ produto: p, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade: 1 });
   sepPedRenderItens();
 }
 /* lote S53 (#64): peça de acessório no pedido da obra (uma linha por peça, quantidade 1) */

@@ -561,7 +561,7 @@ function rhdRender(){
         ${d.arquivo_assinado_path ? `<button type="button" class="btn-sec btn-sm rhd-baixar-assinado" data-id="${esc(d.id)}">✓ Assinado</button>` : ""}
         ${d.storage_path && !RHD_ANEXOS[d.tipo] && ["nao_iniciada", "cancelada"].includes(d.assinatura_status || "nao_iniciada") ? `<button type="button" class="btn-sec btn-sm rhd-assinar" data-id="${esc(d.id)}">✍️ Enviar para assinatura</button>` : ""}
         ${["enviada", "parcial"].includes(d.assinatura_status) ? `<button type="button" class="btn-sec btn-sm rhd-status" data-id="${esc(d.id)}" title="Consulta manual — gasta 1 requisição da cota">🔄 Atualizar status</button>` : ""}
-        ${!ehSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm rhd-excluir" data-id="${esc(d.id)}" style="color:var(--perigo);">Excluir</button>` : ""}
+        ${!ehSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm rhd-excluir" data-id="${esc(d.id)}" style="color:var(--perigo-txt);">Excluir</button>` : ""}
       </td>
     </tr>`).join("");
   cont.innerHTML = `<div class="lista-topo compacta">

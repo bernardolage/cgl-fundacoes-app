@@ -507,7 +507,7 @@ async function manItemMatsCarregar(){
   _manItemMats = data || [];
   const pode = manPodeEditar();
   $("man-i-mats").innerHTML = _manItemMats.map(m => `<tr><td>${esc(m.descricao)}</td><td class="meta">${esc(m.codigo_peca || "—")}</td><td class="num">${num(m.quantidade)}</td>
-    <td>${m.produto_id ? linkProduto(m.produto_id, m.produto ? `${m.produto.codigo} — ${m.produto.nome}` : "produto") : '<span class="tag ambar" title="sem par no catálogo: não dá baixa no estoque">sem cadastro</span>'}</td>
+    <td>${m.produto_id ? linkProduto(m.produto_id, m.produto ? `${prodTxt(m.produto)}` : "produto") : '<span class="tag ambar" title="sem par no catálogo: não dá baixa no estoque">sem cadastro</span>'}</td>
     <td>${pode ? `<button type="button" class="btn-sec btn-sm txt-perigo man-i-mat-rem" data-id="${esc(m.id)}">×</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="5" class="vazio">Sem peças no kit.</td></tr>`;
   $("man-i-mats").querySelectorAll(".man-i-mat-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("manutencao_plano_materiais").delete().eq("id", b.dataset.id);
@@ -519,7 +519,7 @@ async function manItemMatAdd(produto){
   if(!_manItemEdit) return;
   const qtd = Number($("man-i-mat-qtd").value || 1);
   const reg = { plano_item_id: _manItemEdit.item_id, quantidade: qtd > 0 ? qtd : 1, produto_id: produto ? produto.id : null,
-    descricao: produto ? `${produto.codigo} — ${produto.nome}` : $("man-i-mat-desc").value.trim(), codigo_peca: $("man-i-mat-cod").value.trim() || null };
+    descricao: produto ? `${prodTxt(produto)}` : $("man-i-mat-desc").value.trim(), codigo_peca: $("man-i-mat-cod").value.trim() || null };
   if(!reg.descricao){ aviso("app-aviso", "Informe a peça (do catálogo ou a descrição).", "erro"); return; }
   const { error } = await sb.from("manutencao_plano_materiais").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível adicionar: " + error.message, "erro"); return; }
@@ -635,13 +635,13 @@ function manCheckRender(){
     </div>
     <p class="meta">OK = em condições · Não ok = precisa de correção (vira atividade de OS) · N/A = não se aplica. ${semResp ? `<strong>${esc(semResp)}</strong> item(ns) sem resposta.` : "Todos respondidos."}</p>
     <div class="tabela-rola" style="max-height:52vh;"><table class="itens-tabela"><thead><tr><th style="width:36px;">#</th><th>Item a verificar</th><th style="width:220px;">Situação</th><th>Observação</th></tr></thead>
-      <tbody>${_manCheckItens.map(i => `<tr data-ci="${esc(i.id)}"><td>${esc(i.ordem)}</td><td>${esc(i.descricao)}${i.atividade_id ? ' <span class="tag azul" title="já virou atividade da OS">na OS</span>' : ""}</td>
+      <tbody>${_manCheckItens.map(i => `<tr data-ci="${esc(i.id)}"><td>${esc(i.ordem)}</td><td>${esc(semCodOdoo(i.descricao))}${i.atividade_id ? ' <span class="tag azul" title="já virou atividade da OS">na OS</span>' : ""}</td>
         <td><div class="serv-views">${[["ok", "OK"], ["nao_ok", "Não ok"], ["nao_aplicavel", "N/A"]].map(([v, l]) => `<button type="button" class="serv-view-btn man-ck-sit${i.situacao === v ? " ativo" : ""}" data-ci="${esc(i.id)}" data-v="${esc(v)}" ${podeEd ? "" : "disabled"}>${esc(l)}</button>`).join("")}</div></td>
         <td><input class="man-ck-obs" data-ci="${esc(i.id)}" value="${esc(i.observacao || "")}" ${podeEd ? "" : "disabled"} /></td></tr>`).join("")}</tbody></table></div>
     <div class="grade" style="margin-top:8px;"><div class="campo largo"><label>Observações gerais</label><input id="man-ck-obsg" value="${esc(c.observacoes || "")}" ${podeEd ? "" : "disabled"} /></div></div>
     <div class="form-acoes compacta" style="display:flex;gap:8px;flex-wrap:wrap;">
       ${podeEd && semAtiv.length ? `<button type="button" class="btn" id="btn-man-ck-os">⚙ Gerar OS corretiva (${semAtiv.length} item(ns) não ok)</button>` : ""}
-      ${podeEd && c.resultado !== "reprovado" ? `<button type="button" class="btn-sec acao-perigo" id="btn-man-ck-reprovar" style="color:var(--perigo);">✕ Reprovar equipamento</button>` : ""}
+      ${podeEd && c.resultado !== "reprovado" ? `<button type="button" class="btn-sec acao-perigo" id="btn-man-ck-reprovar" style="color:var(--perigo-txt);">✕ Reprovar equipamento</button>` : ""}
       ${podeEd && c.resultado === "reprovado" ? `<button type="button" class="btn-sec" id="btn-man-ck-reabrir">↩ Reabrir avaliação</button>` : ""}
       <button type="button" class="btn-sec" id="btn-man-ck-fechar2">Fechar</button>
     </div>`;
@@ -973,7 +973,7 @@ async function manAtivAdd(){
   if(it){ // kit do item vira material da OS
     const { data: kit, error: erroLeitura } = await sb.from("manutencao_plano_materiais").select("produto_id,descricao,codigo_peca,quantidade,produto:produtos(codigo,nome,unidade,custo_ultimo)").eq("plano_item_id", itemId);
     erroKit = erroLeitura;
-    if(!erroKit && kit?.length) ({ error: erroKit } = await sb.from("manutencao_materiais").insert(kit.map(k => ({ manutencao_id: _manAtual.id, produto_id: k.produto_id, descricao: k.produto ? `${k.produto.codigo} — ${k.produto.nome}` : k.descricao, unidade: k.produto?.unidade || "un", quantidade: k.quantidade, custo_unitario: Number(k.produto?.custo_ultimo || 0), codigo_peca: k.codigo_peca, plano_item_id: itemId, origem: "app" }))));
+    if(!erroKit && kit?.length) ({ error: erroKit } = await sb.from("manutencao_materiais").insert(kit.map(k => ({ manutencao_id: _manAtual.id, produto_id: k.produto_id, descricao: k.produto ? `${prodTxt(k.produto)}` : k.descricao, unidade: k.produto?.unidade || "un", quantidade: k.quantidade, custo_unitario: Number(k.produto?.custo_ultimo || 0), codigo_peca: k.codigo_peca, plano_item_id: itemId, origem: "app" }))));
     if(!erroKit){
       const ids = new Set(_manAtual.plano_item_ids || []); ids.add(itemId);
       ({ error: erroKit } = await sb.from("manutencoes").update({ plano_item_ids: [...ids] }).eq("id", _manAtual.id));
@@ -1021,7 +1021,7 @@ function manRenderMats(){
       : i.tipo === "retirada" ? '<span class="meta">—</span>' : !i.produto_id ? '<span class="meta" title="sem produto no catálogo: só texto">sem cadastro</span>'
       : manMatNaSeparacao(i) ? `<span class="tag azul" title="Sai pela separação do kit: o almoxarifado marca separado e a baixa entra aqui">na separação ${esc(_manMatSep[i.id].numero)}</span>`
       : '<span class="tag ambar" title="O almoxarifado dá baixa (botão Dar baixa das peças)">pendente</span>';   // lote S56b (#193/#194)
-    return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, i.descricao) : esc(i.descricao)}${i.codigo_peca ? ` <span class="meta">${esc(i.codigo_peca)}</span>` : ""}${i.plano_item_id ? ' <span class="tag azul" title="kit do item do plano">kit</span>' : ""}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td>
+    return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, semCodOdoo(i.descricao)) : esc(semCodOdoo(i.descricao))}${i.codigo_peca ? ` <span class="meta">${esc(i.codigo_peca)}</span>` : ""}${i.plano_item_id ? ' <span class="tag azul" title="kit do item do plano">kit</span>' : ""}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td>
       <td class="num">${brl(i.custo_unitario)}</td><td class="num">${brl(Number(i.quantidade) * Number(i.custo_unitario))}</td><td>${i.tipo === "retirada" ? "Retirada" : "Consumo"}</td><td>${baixa}</td>
       <td>${pode && !i.movimentacao_estoque_id ? `<button type="button" class="btn-sec btn-sm txt-perigo man-mat-rem" data-id="${esc(i.id)}" title="remover">×</button>` : ""}</td></tr>`; }).join("");
   tb.querySelectorAll(".man-mat-rem").forEach(b => b.addEventListener("click", async () => {
@@ -1034,7 +1034,7 @@ async function manAddMat(p, textoLivre){
   if(!_manAtual?.id) return;
   const qtd = Number($("man-prod-qtd").value || 1);
   if(!(qtd > 0)){ aviso("app-aviso", "Informe a quantidade.", "erro"); return; }
-  const reg = p ? { manutencao_id: _manAtual.id, produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade: qtd, custo_unitario: Number(p.custo_ultimo || 0), tipo: $("man-prod-tipo").value, origem: "app" }
+  const reg = p ? { manutencao_id: _manAtual.id, produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade: qtd, custo_unitario: Number(p.custo_ultimo || 0), tipo: $("man-prod-tipo").value, origem: "app" }
     : { manutencao_id: _manAtual.id, produto_id: null, descricao: textoLivre, unidade: "un", quantidade: qtd, custo_unitario: 0, tipo: $("man-prod-tipo").value, origem: "app" };
   if(!reg.descricao){ aviso("app-aviso", "Informe a peça.", "erro"); return; }
   const { error } = await sb.from("manutencao_materiais").insert(reg);
@@ -1144,7 +1144,7 @@ async function manImprimirOS(){
       <td style="${td}">${esc(manFunc(a.executante_id) || a.executante_nome || "")}</td><td style="${td}">${esc(manAtivDiaHora(a.data_inicio, a.inicio, ""))}</td><td style="${td}">${esc(manAtivDiaHora(a.data_fim, a.fim, ""))}</td></tr>`).join("")).join("");   // lote S54 (#169): dia e hora
   const vazias = Math.max(0, 8 - _manAtivs.length);
   const linhasVazias = Array.from({ length: vazias }, (_, i) => `<tr><td style="${td}text-align:center;">${_manAtivs.length + i + 1}</td><td style="${td}">&nbsp;</td><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td></tr>`).join("");
-  const mats = _manMats.map((i, k) => `<tr><td style="${td}text-align:center;">${k + 1}</td><td style="${td}">${esc(i.descricao)}${i.codigo_peca ? " · " + esc(i.codigo_peca) : ""}</td><td style="${td}text-align:right;">${num(i.quantidade)} ${esc(i.unidade || "un")}</td><td style="${td}">${i.movimentacao_estoque_id ? "baixado no estoque" : i.tipo === "retirada" ? "retirada" : ""}</td></tr>`).join("")
+  const mats = _manMats.map((i, k) => `<tr><td style="${td}text-align:center;">${k + 1}</td><td style="${td}">${esc(semCodOdoo(i.descricao))}${i.codigo_peca ? " · " + esc(i.codigo_peca) : ""}</td><td style="${td}text-align:right;">${num(i.quantidade)} ${esc(i.unidade || "un")}</td><td style="${td}">${i.movimentacao_estoque_id ? "baixado no estoque" : i.tipo === "retirada" ? "retirada" : ""}</td></tr>`).join("")
     + Array.from({ length: Math.max(0, 4 - _manMats.length) }, (_, k) => `<tr><td style="${td}text-align:center;">${_manMats.length + k + 1}</td><td style="${td}">&nbsp;</td><td style="${td}"></td><td style="${td}"></td></tr>`).join("");
   const horas = _manHoras.map(h => `<tr><td style="${td}">${esc(manFunc(h.funcionario_id) || h.funcionario_nome || "")}</td><td style="${td}">${dataBR(h.data)}</td><td style="${td}">${h.inicio ? esc(String(h.inicio).slice(0, 5)) : ""}</td><td style="${td}">${h.fim ? esc(String(h.fim).slice(0, 5)) : ""}</td><td style="${td}text-align:right;">${num(h.horas)}</td></tr>`).join("");
   const el = document.createElement("div");
@@ -1253,7 +1253,7 @@ function manLigarBuscaProduto(inpId, listaId, aoEscolher){
     if(t.length < 2){ lista.style.display = "none"; return; }
     const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
     const res = data || [];
-    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
+    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
       || `<div class="resultado-item vazio">Nenhum produto.</div>`;
     lista.style.display = "";
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => { ev.preventDefault(); inp.value = ""; lista.style.display = "none"; aoEscolher(res.find(x => x.id === d.dataset.id)); }));

@@ -571,7 +571,7 @@ function configurarBuscaProdutos(){
       } else {
         lista.innerHTML = resultados.map(p => `
           <div class="resultado-item" data-id="${esc(p.id)}" data-nome="${esc(p.nome)}" data-unid="${esc(p.unidade)}" data-custo="${esc(p.custo_ultimo)}">
-            <strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <em>(${esc(p.unidade)})</em>
+            ${/* html */ prodBuscaHtml(p, resultados)} <em>(${esc(p.unidade)})</em>
           </div>
         `).join("");
         lista.querySelectorAll(".resultado-item").forEach(div => {

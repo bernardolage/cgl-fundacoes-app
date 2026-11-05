@@ -934,7 +934,7 @@ async function carregarDocumentosDaObra(obraId){
         : boletim ? '<span class="tag azul" style="font-size:var(--txt-xs);" title="PDF da medição importada; abre também pela ficha da medição">boletim</span>' : "";
       return `<tr>
         <td>${isImg ? '🖼️' : '📄'} ${esc(d.nome)} ${origemBadge}</td>
-        <td>${esc(d.descricao||"—")}</td>
+        <td>${esc(semCodOdoo(d.descricao)||"—")}</td>
         <td>${tamKB}</td>
         <td>${new Date(d.created_at).toLocaleDateString("pt-BR")}</td>
         <td class="col-acao">
@@ -944,7 +944,7 @@ async function carregarDocumentosDaObra(obraId){
       </tr>`;
     }).join("");
     return `<div style="margin-bottom:14px;">
-      <h4 style="font-size:var(--txt-sm);color:var(--marca-600);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px;">${esc(cat)} (${docs.length})</h4>
+      <h4 style="font-size:var(--txt-sm);color:var(--acao-txt);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px;">${esc(cat)} (${docs.length})</h4>
       <div class="tabela-rola"><table>
         <thead><tr><th>Arquivo</th><th>Descrição</th><th>Tamanho</th><th>Enviado em</th><th class="col-acao"></th></tr></thead>
         <tbody>${/* html */ linhas}</tbody></table></div>

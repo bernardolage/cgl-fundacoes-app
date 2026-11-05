@@ -462,7 +462,7 @@ async function renderAcessoriosContagem(opts){
   const grupos = new Map();
   linhas.forEach(l => { const g = l.grupo_contagem || "SEM GRUPO"; if(!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(l); });
   const linha = (l) => `<tr class="linha-clicavel" data-modelo="${esc(l.modelo_id)}">
-      <td>${esc(l.descricao)}</td><td>${esc(l.medida && l.medida !== "-" ? l.medida : "")}</td>
+      <td>${esc(semCodOdoo(l.descricao))}</td><td>${esc(l.medida && l.medida !== "-" ? l.medida : "")}</td>
       <td class="num"><strong>${esc(l.cadastrados)}</strong></td><td class="num">${esc(l.em_estoque)}</td><td class="num">${esc(l.em_obra)}</td><td class="num">${esc(l.em_manutencao)}</td><td class="num">${esc(l.perdas)}</td><td class="num">${esc(l.sem_marcacao)}</td>
       <td class="num">${l.preco_referencia != null ? brl(l.preco_referencia) : '<span class="meta">—</span>'} ${precoTag(l)}</td>${verTot ? `<td class="num">${brl(l.valor_reposicao)}</td>` : ""}</tr>`;
   const sub = (g, arr) => { const t = soma(arr); return `<tr style="background:var(--bg-body);font-weight:600;"><td colspan="2">Subtotal ${esc(g)}</td>${cols.map(k => `<td class="num">${esc(t[k])}</td>`).join("")}<td></td>${verTot ? `<td class="num" data-val-sens>${brl(t.valor_total)}</td>` : ""}</tr>`; };
@@ -913,7 +913,7 @@ async function aceRenderFotos(a){
       <a href="${esc(urls[i])}" target="_blank" rel="noopener"><img src="${esc(urls[i])}" alt="${esc(f.legenda || "")}" loading="lazy" data-path="${esc(f.storage_path)}" data-falha="ace-foto" /></a>
       <div class="ace-foto-rod"><span><span class="tag ${f.tipo === "descarte" ? "vermelho" : f.tipo === "avaria" ? "ambar" : "cinza"}">${esc(ACE_FOTO_TIPO_LBL[f.tipo] || f.tipo)}</span>${f.capa ? ' <span class="tag azul">capa</span>' : ""} <span class="meta">${dataBR(String(f.created_at).slice(0, 10))}</span></span>
         ${f.legenda ? `<span>${esc(f.legenda)}</span>` : ""}
-        ${pode ? `<span class="acoes">${f.capa ? "" : `<button type="button" class="btn-sec btn-sm" data-ft-capa="${esc(f.id)}">★ capa</button>`}<button type="button" class="btn-sec btn-sm" data-ft-del="${esc(f.id)}" data-path="${esc(f.storage_path)}" style="color:var(--perigo);">✕</button></span>` : ""}
+        ${pode ? `<span class="acoes">${f.capa ? "" : `<button type="button" class="btn-sec btn-sm" data-ft-capa="${esc(f.id)}">★ capa</button>`}<button type="button" class="btn-sec btn-sm" data-ft-del="${esc(f.id)}" data-path="${esc(f.storage_path)}" style="color:var(--perigo-txt);">✕</button></span>` : ""}
       </div></div>`).join("");
   c.querySelectorAll("[data-ft-capa]").forEach(b => b.addEventListener("click", async () => {
     await sb.from("acessorio_fotos").update({ capa: false }).eq("acessorio_id", a.id);
@@ -1233,7 +1233,7 @@ function aceRenderReparos(reps, err){
     <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${r.status === "concluido" ? "verde" : r.status === "cancelado" ? "cinza" : "ambar"}">${esc(ACE_REPARO_STATUS[r.status] || r.status)}</span></td>
       <td>${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_inicio)}</td><td>${dataBR(r.data_conclusao)}</td><td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td>
       <td class="meta">${esc((r.observacoes || "").replace(/^\[import raiz\]\s*/, ""))}</td>
-      ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="em_execucao">▶ Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="concluido">✅ Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="cancelado" style="color:var(--perigo);">✖</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
+      ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="em_execucao">▶ Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="concluido">✅ Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="cancelado" style="color:var(--perigo-txt);">✖</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum reparo registrado para esta peça.</p>`);
   $("btn-ace-rep-novo")?.addEventListener("click", () => abrirReparoAcessorios([_aceAtual.id]));
   c.querySelectorAll("button[data-rep]").forEach(b => b.addEventListener("click", () => {
@@ -1248,7 +1248,7 @@ function aceRenderJogo(a, irmaos){
   if(!a.jogo){ c.innerHTML = `<p class="vazio">Peça avulsa (sem jogo). Informe o jogo nos dados técnicos para agrupá-la.</p>`; return; }
   const todos = [a, ...irmaos].sort((x, y) => (x.seq_no_jogo || 0) - (y.seq_no_jogo || 0) || aceOrdMarc(x, y));
   const locais = new Set(todos.map(aceColKey));
-  c.innerHTML = (locais.size > 1 ? `<p class="meta" style="color:var(--perigo);">⚠️ O jogo <strong>${esc(a.jogo)}</strong> está separado em ${locais.size} lugares.</p>` : `<p class="meta">Jogo <strong>${esc(a.jogo)}</strong> completo no mesmo lugar.</p>`) +
+  c.innerHTML = (locais.size > 1 ? `<p class="meta" style="color:var(--perigo-txt);">⚠️ O jogo <strong>${esc(a.jogo)}</strong> está separado em ${locais.size} lugares.</p>` : `<p class="meta">Jogo <strong>${esc(a.jogo)}</strong> completo no mesmo lugar.</p>`) +
     `<div class="tabela-rola"><table><thead><tr><th>#</th><th>Marcação</th><th>Modelo</th><th>Condição</th><th>Onde está</th></tr></thead>
     <tbody>${todos.map(x => `<tr class="linha-clicavel" data-id="${esc(x.id)}" ${x.id === a.id ? 'style="background:var(--bg-body);"' : ""}><td>${esc(x.seq_no_jogo ?? "")}</td><td><strong>${esc(x.marcacao)}</strong></td><td>${esc(aceDescr(x))}</td><td>${tagStatus("acessorio", x.condicao)}</td><td>${esc(aceOnde(x))}</td></tr>`).join("")}</tbody></table></div>`;
 }
@@ -1280,7 +1280,7 @@ async function aceRenderCustos(a){
     + `<p class="ajuda-campo">Compras e saídas de estoque com destino nesta peça${a.jogo ? ` e custos avulsos do jogo ${esc(a.jogo)}` : ""}.${antigo ? " Até a atualização do banco, só os avulsos do jogo." : ""}</p>`
     + (!data.length ? `<p class="vazio">Nenhum custo lançado para esta peça${a.jogo ? " nem para o jogo" : ""}.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Descrição</th><th>Fornecedor</th><th>Documento</th><th>Lançado em</th><th class="num">Valor</th></tr></thead>
-     <tbody>${data.map(x => `<tr><td>${dataBR(x.data)}</td><td>${esc(ACE_CUSTO_ORIGEM_LBL[x.origem] || x.origem || "—")}</td><td>${esc(x.descricao || "—")}</td><td>${esc(forn(x.fornecedor_id) || "—")}</td><td>${esc(x.documento || "—")}</td><td class="meta">${esc(ref(x))}</td><td class="num">${brl(x.valor)}</td></tr>`).join("")}</tbody></table></div>`);
+     <tbody>${data.map(x => `<tr><td>${dataBR(x.data)}</td><td>${esc(ACE_CUSTO_ORIGEM_LBL[x.origem] || x.origem || "—")}</td><td>${esc(semCodOdoo(x.descricao) || "—")}</td><td>${esc(forn(x.fornecedor_id) || "—")}</td><td>${esc(x.documento || "—")}</td><td class="meta">${esc(ref(x))}</td><td class="num">${brl(x.valor)}</td></tr>`).join("")}</tbody></table></div>`);
   $("btn-ace-jogo-custo")?.addEventListener("click", () => abrirCustoAvulso({ acessorio_jogo: a.jogo }, () => aceRenderCustos(a)));
 }
 

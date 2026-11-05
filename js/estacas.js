@@ -1008,7 +1008,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   // Barra de reorganização de colunas
   const reorganizador = `
     <div style="background:#f0f7ff;border:1px solid #b6d4f5;border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-      <div style="font-size:var(--txt-sm);color:var(--marca-600);margin-bottom:8px;font-weight:600;">🔀 Reorganizar colunas (se a IA interpretou errado)</div>
+      <div style="font-size:var(--txt-sm);color:var(--acao-txt);margin-bottom:8px;font-weight:600;">🔀 Reorganizar colunas (se a IA interpretou errado)</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
         <div>
           <label class="meta bloco">Coluna A</label>
@@ -1031,7 +1031,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
             ${Object.entries(COLUNAS_LBL).map(([v,l],i) => `<option value="${esc(v)}" ${i===1?"selected":""}>${esc(l)}</option>`).join("")}
           </select>
         </div>
-        <button type="button" class="btn" id="btn-reorg-aplicar" style="padding:5px 12px;background:var(--marca-600);">Aplicar</button>
+        <button type="button" class="btn" id="btn-reorg-aplicar" style="padding:5px 12px;">Aplicar</button>
         <button type="button" class="btn-sec" id="btn-reorg-rapido" style="padding:5px 12px;" title="Atalho: troca Nº e ${esc(rotuloAgrupamento())}">↔ Trocar Nº ↔ ${esc(rotuloAgrupamento())}</button>
       </div>
     </div>`;
@@ -2951,7 +2951,7 @@ function renderizarAlteradas(){
       const data = re.perfuracao_inicio ? dataBR(re.perfuracao_inicio) : "—"; // sem conversão de fuso
       const tag = re.modalidade_execucao === "refuro"
         ? `<span class="rec-badge rec-badge-alta">REFURO</span>`
-        : (idx === 0 ? `<span class="rec-badge" style="background:var(--info-bg);color:var(--marca-600);">furo original</span>` : `<span class="rec-badge rec-badge-baixa">extra</span>`);
+        : (idx === 0 ? `<span class="rec-badge" style="background:var(--info-bg);color:var(--acao-txt);">furo original</span>` : `<span class="rec-badge rec-badge-baixa">extra</span>`);
       // Select só com estacas AINDA PREVISTAS (não faz sentido realocar pra uma já executada)
       const optsPrev = _recPrevs
         .filter(p => p.id !== g.estaca.id && p.status === "prevista")
@@ -2963,7 +2963,7 @@ function renderizarAlteradas(){
              <option value="">— manter aqui —</option>
              ${optsPrev}
            </select>
-           <button type="button" class="btn btn-sm btn-alt-realocar" data-exec-id="${esc(re.id)}" data-estaca-orig="${esc(g.estaca.id)}" style="background:var(--marca-600);">→ Realocar</button>`;
+           <button type="button" class="btn btn-sm btn-alt-realocar" data-exec-id="${esc(re.id)}" data-estaca-orig="${esc(g.estaca.id)}">→ Realocar</button>`;
       return `<tr>
         <td>${/* html */ tag}</td>
         <td>${esc(data)}</td>
@@ -3509,7 +3509,7 @@ function estvRender(){
     <div class="ind"><div class="num">${_estvEstacas.length}</div><div class="rot">Estacas do projeto</div></div>
     <div class="ind"><div class="num">${execs.length}</div><div class="rot">Execuções do campo</div></div>
     <div class="ind"><div class="num">${execs.length - orfas.length}</div><div class="rot">Vinculadas</div></div>
-    <div class="ind"><div class="num"${orfas.length ? ' style="color:var(--perigo);"' : ""}>${orfas.length}</div><div class="rot">Sem par (órfãs)</div></div>
+    <div class="ind"><div class="num"${orfas.length ? ' style="color:var(--perigo-txt);"' : ""}>${orfas.length}</div><div class="rot">Sem par (órfãs)</div></div>
     <div class="ind"><div class="num"${revisar.length ? ' style="color:var(--aviso-txt);"' : ""}>${revisar.length}</div><div class="rot">A revisar</div></div>
     <div class="ind"><div class="num">${semExec.length}</div><div class="rot">Projeto sem execução</div></div>
   </div>`;

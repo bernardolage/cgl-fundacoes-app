@@ -163,7 +163,7 @@ function renderFornLista(dados){
     <td>${esc([f.cidade,(f.uf||"").toUpperCase()].filter(Boolean).join("/")||"—")}</td>
     <td>${esc(f.categoria||"—")}</td>
     <td>${esc(f.telefone||"—")}</td>
-    <td>${esc(f.email||"—")}</td>
+    <td class="td-email" title="${esc(f.email||"")}">${esc(f.email||"—")}</td>
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>

@@ -393,8 +393,8 @@ function vgAtivarTab(nome){
 function vgItemNome(it){
   if(it.acessorio_id) return "⚙️ " + linkAcessorio(it.acessorio_id, it.descricao);
   if(it.equipamento_id) return "🔧 " + linkEquipamento(it.equipamento_id, it.descricao);
-  if(it.produto_id) return "📦 " + linkProduto(it.produto_id, it.descricao);
-  return esc(it.descricao || "item");
+  if(it.produto_id) return "📦 " + linkProduto(it.produto_id, semCodOdoo(it.descricao));
+  return esc(semCodOdoo(it.descricao) || "item");
 }
 function vgRenderItens(){
   const box = $("vg-itens"); if(!box) return;
@@ -467,11 +467,11 @@ function vgLigarBuscaProduto(){
       if(termo.length < 2){ lista.innerHTML = ""; lista.style.display = "none"; return; }
       const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,custo_ultimo").eq("ativo", true).or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%`).limit(20);   // lote S58 (#237): ativo
       const res = data || [];
-      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <em>(${esc(p.unidade)})</em></div>`).join("") : `<div class="resultado-item vazio">Nenhum produto encontrado.</div>`;
+      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <em>(${esc(p.unidade)})</em></div>`).join("") : `<div class="resultado-item vazio">Nenhum produto encontrado.</div>`;
       lista.style.display = "";
       lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => {
         const p = res.find(x => x.id === d.dataset.id); inp.value = ""; lista.innerHTML = ""; lista.style.display = "none";
-        if(p) vgAddItem({ produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", valor_unitario: Number(p.custo_ultimo || 0) });
+        if(p) vgAddItem({ produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", valor_unitario: Number(p.custo_ultimo || 0) });
       }));
     }, 250);
   });
@@ -875,7 +875,7 @@ async function vgRomaneio(){
   const movLbl = (typeof MOV_TIPOS === "object" && MOV_TIPOS) || {};
   const td = "border:1px solid #777;padding:4px 5px;vertical-align:top;";
   const tipoItem = it => it.acessorio_id ? "Acessório" : it.equipamento_id ? "Equipamento (TAG)" : it.produto_id ? "Produto" : "Item";
-  const linhas = itens.map((it, n) => `<tr><td style="${td}text-align:center;">${n + 1}</td><td style="${td}">${esc(tipoItem(it))}</td><td style="${td}">${esc(it.descricao || "")}</td>
+  const linhas = itens.map((it, n) => `<tr><td style="${td}text-align:center;">${n + 1}</td><td style="${td}">${esc(tipoItem(it))}</td><td style="${td}">${esc(semCodOdoo(it.descricao) || "")}</td>
     <td style="${td}text-align:right;">${num(it.quantidade)} ${esc(it.unidade || "un")}</td><td style="${td}">${esc([it.numero_serie, it.chassi].filter(Boolean).join(" · ") || "")}</td>
     <td style="${td}">${it.mov.interna ? "—" : esc(it.mov.nf_numero ? "NF " + it.mov.nf_numero : it.mov.numero)}</td><td style="${td}width:46px;"></td></tr>`).join("")
     || `<tr><td colspan="7" style="${td}text-align:center;color:#666;">Nenhum item lançado na viagem.</td></tr>`;

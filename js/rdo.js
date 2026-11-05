@@ -359,7 +359,7 @@ function renderRDOKanban(dados){
         <div class="serv-kan-card-nome">${esc(mapaObras[g.obra_id]||"(sem obra)")}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">📋 ${r.length} RDO${r.length>1?'s':''} · ${qtdEstacas} estaca${qtdEstacas>1?'s':''}</span>
-          <span style="font-size:var(--txt-xs);color:var(--marca-600);display:block;">${esc(periodo)}</span>
+          <span style="font-size:var(--txt-xs);color:var(--acao-txt);display:block;">${esc(periodo)}</span>
         </div>
         <div class="serv-kan-card-rod">
           <span>${num(metragem)} m</span>
@@ -682,7 +682,7 @@ function renderExecucoes(){
   tb.innerHTML = _rdoExecucoes.map((e, idx) => {
     const showHelice = ["helice_continua","helice_secante"].includes(tipo);
     const bltAberto = (_rdoBoletimAberto === idx);
-    const bltStyle = bltAberto ? 'background:#EBF2FB;color:var(--marca-600);border-color:var(--marca-600);font-weight:700;' : '';
+    const bltStyle = bltAberto ? 'background:var(--info-bg);color:var(--acao-txt);border-color:var(--marca-600);font-weight:700;' : '';
     return `<tr data-idx="${idx}">
       <td><input type="text" class="ex-num col-md" value="${esc(e.estaca_numero||"")}" />${/* html */ typeof geoBadgeExec === "function" ? geoBadgeExec(e) : ""}</td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-diam" step="0.1" min="0" value="${esc(e.diametro_mm ?? "")}" style="width:75px;" /></td>
@@ -3396,7 +3396,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   dias.forEach(d => {
     const ests = porDia[d] || []; // dia só com ocorrência (planilha do Maya) não tem estacas
     html += `<div style="margin-bottom:8px;border:1px solid var(--borda-forte);border-radius:4px;padding:8px 10px;">
-      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--marca-600);">📅 ${dataBR(rdoDiaData(d))}${rdoDiaTurno(d) === "noturno" ? " · noturno" : ""} — ${ests.length ? `${ests.length} estaca${ests.length>1?"s":""}` : "sem estacas (só ocorrência/equipe)"} <span class="meta csv-maq-dia" data-dia="${esc(d)}" style="font-weight:400;">${ests.length ? "· " + rdoResumoMaquinasDia(d) : ""}</span></div>
+      <div style="font-weight:600;font-size:var(--txt-sm);color:var(--acao-txt);">📅 ${dataBR(rdoDiaData(d))}${rdoDiaTurno(d) === "noturno" ? " · noturno" : ""} — ${ests.length ? `${ests.length} estaca${ests.length>1?"s":""}` : "sem estacas (só ocorrência/equipe)"} <span class="meta csv-maq-dia" data-dia="${esc(d)}" style="font-weight:400;">${ests.length ? "· " + rdoResumoMaquinasDia(d) : ""}</span></div>
       <div class="meta">${ests.map(e=>esc(e.estaca_numero)).slice(0,10).join(", ")}${ests.length>10?` +${ests.length-10}`:""}</div>
     </div>`;
   });

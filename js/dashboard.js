@@ -1233,7 +1233,7 @@ async function carregarDashTopObras(){
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
         <strong>${i+1}.</strong> ${esc(o.codigo)} <span style="color:var(--txt-sutil);">·</span> ${esc((o.nome||"").slice(0,30))}${(o.nome||"").length>30?"…":""}
       </div>
-      ${mostraValor ? `<strong style="color:var(--sucesso);">${brl(o.valor)}</strong>` : ""}
+      ${mostraValor ? `<strong style="color:var(--sucesso-txt);">${brl(o.valor)}</strong>` : ""}
     </div>`).join("")}</div>`;
   cont.querySelectorAll(".dash-linha-obra[data-obra-id]").forEach(el => {
     el.addEventListener("click", () => dashAbrirObra(el.dataset.obraId));

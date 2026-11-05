@@ -363,7 +363,7 @@ async function repImprimir(){
   const th = td + "background:#ddd;font-weight:700;";
   const tipo = [...$("rep-tipo").options].find(o => o.value === r.tipo_servico)?.text || r.tipo_servico || "";
   const nomeF = id => repResp(id) || "—";
-  const pecas = _repItens.map((i, k) => `<tr><td style="${td}text-align:center;">${k + 1}</td><td style="${td}">${esc(i.descricao || "")}</td><td style="${td}">${esc(i.unidade || "un")}</td><td style="${td}text-align:right;">${num(i.quantidade)}</td><td style="${td}">${i.tipo === "retirada" ? "Retirada" : "Consumo"}</td></tr>`).join("")
+  const pecas = _repItens.map((i, k) => `<tr><td style="${td}text-align:center;">${k + 1}</td><td style="${td}">${esc(semCodOdoo(i.descricao) || "")}</td><td style="${td}">${esc(i.unidade || "un")}</td><td style="${td}text-align:right;">${num(i.quantidade)}</td><td style="${td}">${i.tipo === "retirada" ? "Retirada" : "Consumo"}</td></tr>`).join("")
     || `<tr><td style="${td}" colspan="5">Nenhuma peça lançada.</td></tr>`;
   const hora = h => h ? esc(String(h).slice(0, 5)) : "";
   const horas = _repHoras.map(h => `<tr><td style="${td}">${esc(nomeF(h.funcionario_id))}</td><td style="${td}">${dataBR(h.data)}</td><td style="${td}">${hora(h.inicio)}</td><td style="${td}">${hora(h.fim)}</td><td style="${td}text-align:right;">${num(h.horas)}</td></tr>`).join("")
@@ -447,7 +447,7 @@ function repRenderItens(){
   tb.innerHTML = _repItens.map(i => {
     const baixa = i.movimentacao_estoque_id ? '<span class="tag verde">baixada no estoque</span>' : i.codigo_externo ? '<span class="tag cinza">baixa no Odoo</span>'
       : i.tipo === "retirada" ? '<span class="meta">—</span>' : !i.produto_id ? '<span class="meta">sem produto</span>' : '<span class="tag ambar">pendente</span>';
-    return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, i.descricao) : esc(i.descricao)}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td>
+    return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, semCodOdoo(i.descricao)) : esc(semCodOdoo(i.descricao))}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td>
       <td class="num">${brl(i.custo_unitario)}</td><td class="num">${brl(Number(i.quantidade) * Number(i.custo_unitario))}</td><td>${i.tipo === "retirada" ? "Retirada" : "Consumo"}</td><td>${baixa}</td>
       <td>${pode && !i.movimentacao_estoque_id && !i.codigo_externo ? `<button type="button" class="btn-sec btn-sm rep-item-rem" data-id="${esc(i.id)}" title="remover">×</button>` : ""}</td></tr>`; }).join("");
   tb.querySelectorAll(".rep-item-rem").forEach(b => b.addEventListener("click", async () => {
@@ -460,7 +460,7 @@ async function repAddItem(p){
   if(!_repAtual?.id || !p) return;
   const qtd = Number($("rep-prod-qtd").value || 1);
   if(!(qtd > 0)){ aviso("app-aviso", "Informe a quantidade.", "erro"); return; }
-  const { error } = await sb.from("reparo_itens").insert({ reparo_id: _repAtual.id, produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un",
+  const { error } = await sb.from("reparo_itens").insert({ reparo_id: _repAtual.id, produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un",
     quantidade: qtd, custo_unitario: Number(p.custo_ultimo || 0), tipo: $("rep-prod-tipo").value });
   if(error){ aviso("app-aviso", "Não foi possível lançar a peça: " + error.message, "erro"); return; }
   $("rep-prod-qtd").value = 1;
@@ -551,7 +551,7 @@ function repLigarBuscaProduto(){
     if(t.length < 2){ lista.style.display = "none"; return; }
     const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
     const res = data || [];
-    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
+    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
       || `<div class="resultado-item vazio">Nenhum produto.</div>`;
     lista.style.display = "";
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => { ev.preventDefault(); inp.value = ""; lista.style.display = "none"; repAddItem(res.find(x => x.id === d.dataset.id)); }));

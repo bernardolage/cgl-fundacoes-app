@@ -45,7 +45,7 @@ function estPodeEditar(){
 /* fase 144-0b: o SESMT (cargo ou módulo extra) usa o balcão só para EPI e uniforme. estPodeEditar() não muda, porque libera o resto do
    Estoque; a regra vale de novo no banco (estoque_saida_registrar). */
 function balSoEpi(){ return !estPodeEditar() && typeof sstPodeOperar === "function" && sstPodeOperar(); }
-function estProdTxt(p){ return p ? `${p.codigo} — ${p.nome}` : "—"; }
+function estProdTxt(p){ return p ? `${prodTxt(p)}` : "—"; }
 /* fase 81: saldo acertado pela sincronização com o Odoo (scripts/importar-odoo-compras.js estoque) */
 function estChipOdoo(p){
   if(!p || !p.odoo_saldo_em) return "";
@@ -269,7 +269,7 @@ async function balEnter(){
 }
 function balMostrarLista(res){
   const lista = $("bal-item-res"); if(!lista) return;
-  lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}${p.controle_reposicao ? " · reposição" : ""}</span></div>`).join("")
+  lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}${p.controle_reposicao ? " · reposição" : ""}</span></div>`).join("")
     : `<div class="resultado-item vazio">${balSoEpi() ? "Nenhum EPI ou uniforme com esse código ou nome." : "Nenhum produto com esse código ou nome."}</div>`;
   lista.style.display = "";
   lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => balAddItem(res.find(x => x.id === d.dataset.id))));
@@ -346,7 +346,7 @@ async function registrarSaidaBalcao(){
   const assinar = retirante ? itens.map((it, k) => ({ it, id: ids[k] })).filter(x => x.id && balEhEpi(x.it.p)) : [];
   if(assinar.length && typeof epiAbrirAssinatura === "function"){
     epiAbrirAssinatura({ funcionarioId: retirante.id, funcionarioNome: retirante.nome,
-      itens: assinar.map(x => ({ id: x.id, descricao: `${num(x.it.quantidade)} ${x.it.p.unidade || "un"} · ${x.it.p.codigo} — ${x.it.p.nome}` })),
+      itens: assinar.map(x => ({ id: x.id, descricao: `${num(x.it.quantidade)} ${x.it.p.unidade || "un"} · ${prodTxt(x.it.p)}` })),
       aoConcluir: () => carregarSaidasHoje() });
   }
   if(typeof carregarProdutos === "function") carregarProdutos();
@@ -397,7 +397,7 @@ function balEditarHTML(m){
   const atual = balDestinoValor(m);
   return `<td colspan="6">
       <div class="grade grade-3" style="margin:2px 0;">
-        <div class="campo"><label>Item</label><div><strong>${esc(m.produto?.codigo || "")}</strong> — ${esc(m.produto?.nome || "")}${m.retirante?.nome ? ` <span class="meta">· retirante ${esc(m.retirante.nome)} (não muda)</span>` : ""}</div></div>
+        <div class="campo"><label>Item</label><div>${esc(prodTxt(m.produto))}${m.retirante?.nome ? ` <span class="meta">· retirante ${esc(m.retirante.nome)} (não muda)</span>` : ""}</div></div>
         <div class="campo"><label>Quantidade <span class="meta">(${esc(m.produto?.unidade || "un")})</span></label><input type="number" id="bal-ed-qtd" step="0.001" min="0.001" value="${esc(Math.abs(m.quantidade || 0))}" style="width:110px;text-align:right;" /></div>
         <div class="campo"><label>Destino</label><select id="bal-ed-destino">${balDestinoOptions(atual, balDestinoTxt(m))}</select></div>
         <div class="campo"><label>Documento</label><input id="bal-ed-doc" value="${esc(m.documento || "")}" placeholder="Saída no balcão" /></div>
@@ -446,7 +446,7 @@ function renderSaidasHoje(){
       if(_balEdit === m.id && podeEditar) return `<tr><td>${hora(m)}</td>${balEditarHTML(m)}</tr>`;
       return `<tr${m.estornada ? ' class="meta" style="text-decoration:line-through;"' : ""}>
         <td>${hora(m)}</td><td>${esc(m.retirante?.nome || "—")}</td>
-        <td>${esc(m.produto ? m.produto.codigo + " — " + m.produto.nome : "—")}${balMovEhEpi(m) ? (m.categoria_custo === "uniforme" ? ' <span class="tag cinza">uniforme</span>' : ' <span class="tag azul">EPI</span>') : ""}${assinaTag(m)}${m.estornada ? "" : marca(m)}</td>
+        <td>${esc(m.produto ? prodTxt(m.produto) : "—")}${balMovEhEpi(m) ? (m.categoria_custo === "uniforme" ? ' <span class="tag cinza">uniforme</span>' : ' <span class="tag azul">EPI</span>') : ""}${assinaTag(m)}${m.estornada ? "" : marca(m)}</td>
         <td class="num">${num(Math.abs(m.quantidade || 0))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${brl(Math.abs(Number(m.quantidade || 0)) * Number(m.custo_unitario || 0))}</td>
         <td>${esc(balDestinoTxt(m))}</td><td class="meta">${/* html */ [linkDocumentoSaida(m, _balHojeVinculos.get(m.id)), esc(m.observacoes || "")].filter(Boolean).join(" · ")}</td>
@@ -459,7 +459,7 @@ function renderSaidasHoje(){
     // junta as entregas de EPI do mesmo colaborador ainda sem assinatura (uma assinatura para o lote do dia)
     const lote = _balHoje.filter(x => !x.estornada && x.funcionario_id === m.funcionario_id && balMovEhEpi(x) && !x.assinatura_em);
     epiAbrirAssinatura({ funcionarioId: m.funcionario_id, funcionarioNome: m.retirante?.nome,
-      itens: lote.map(x => ({ id: x.id, descricao: `${num(Math.abs(x.quantidade || 0))} ${x.produto?.unidade || ""} · ${x.produto?.codigo} — ${x.produto?.nome}` })),
+      itens: lote.map(x => ({ id: x.id, descricao: `${num(Math.abs(x.quantidade || 0))} ${x.produto?.unidade || ""} · ${prodTxt(x.produto)}` })),
       aoConcluir: () => carregarSaidasHoje() });
   }));
   cont.querySelectorAll(".bal-desfazer").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, async () => {
@@ -490,7 +490,7 @@ async function devAbrir(){
 }
 function devMostrarLista(res){
   const lista = $("est-dev-item-res"); if(!lista) return;
-  lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("")
+  lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("")
     : `<div class="resultado-item vazio">Nenhum produto com esse código ou nome.</div>`;
   lista.style.display = "";
   lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => devAddItem(res.find(x => x.id === d.dataset.id))));
@@ -595,7 +595,7 @@ function estMostrarProdInfo(){
   const el = $("est-prod-info"); if(!el) return;
   if(!_estProd){ el.textContent = ""; return; }
   const p = _estProd;
-  el.innerHTML = `<strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} · estoque atual <strong>${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</strong>` +
+  el.innerHTML = `${/* html */ prodBuscaHtml(p)} · estoque atual <strong>${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</strong>` +
     (p.custo_ultimo ? ` · último custo ${brl(p.custo_ultimo)}` : "") +
     (p.controle_reposicao ? ` · <span class="tag azul">reposição</span> mín. ${num(p.estoque_minimo || 0)} · ideal ${p.estoque_ideal != null ? num(p.estoque_ideal) : "—"}` : "") +
     estChipOdoo(p) +
@@ -618,7 +618,7 @@ function estLigarBuscaProduto(inpId, listaId, aoEscolher){
       const termo = inp.value.trim();
       if(termo.length < 2){ lista.innerHTML = ""; lista.style.display = "none"; return; }
       const res = await estBuscarProdutos(termo);
-      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}${p.controle_reposicao ? " · reposição" : ""}</span></div>`).join("")
+      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}${p.controle_reposicao ? " · reposição" : ""}</span></div>`).join("")
         : `<div class="resultado-item vazio">Nenhum produto encontrado. Cadastre em Produtos.</div>`;
       lista.style.display = "";
       lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => {
@@ -845,7 +845,7 @@ function renderUltimasEntradas(){
   const termo = ($("ent-busca")?.value || "").trim().toLowerCase();
   const obraTxt = id => { const o = _estObras.find(x => x.id === id); return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); };
   const eqTxt = id => { const e = _estEquips.find(x => x.id === id); return e ? e.codigo : ""; };
-  const prodTxt = m => m.produto ? `${m.produto.codigo} — ${m.produto.nome}` : (_estProdMap[m.produto_id] || "—");
+  const prodTxt = m => m.produto ? `${prodTxt(m.produto)}` : (_estProdMap[m.produto_id] || "—");
   const filtradas = _estHist.filter(m => {
     if(!termo) return true;
     return [prodTxt(m), mapaFornecedores[m.fornecedor_id], obraTxt(m.obra_id), m.equipamento_id ? "tag " + eqTxt(m.equipamento_id) : "", EST_TIPO_LBL[m.tipo], m.documento, m.observacoes].filter(Boolean).join(" ").toLowerCase().includes(termo);
@@ -882,7 +882,7 @@ function ligarEstoque(){
   estLigarBuscaProduto("est-busca-prod", "est-res-prod", estSelecionarProduto);
   estLigarBuscaProduto("est-ctrl-busca", "est-ctrl-res", p => {
     _estCtrlProd = p;
-    $("est-ctrl-info").innerHTML = `<strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} · atual ${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}${p.controle_reposicao ? " · já controlado (vai atualizar mínimo/ideal)" : ""}`;
+    $("est-ctrl-info").innerHTML = `${/* html */ prodBuscaHtml(p)} · atual ${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}${p.controle_reposicao ? " · já controlado (vai atualizar mínimo/ideal)" : ""}`;
     $("est-ctrl-min").value = p.estoque_minimo ?? ""; $("est-ctrl-ideal").value = p.estoque_ideal ?? "";
   });
   $("est-busca-prod")?.addEventListener("input", () => { if(_estProd && $("est-busca-prod").value !== estProdTxt(_estProd)) estSelecionarProduto(null); });

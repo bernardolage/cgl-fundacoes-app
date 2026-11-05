@@ -130,7 +130,7 @@ async function renderFuncAprop(){
       <div class="ind"><div class="num">${apropMoeda(tot.sal)}</div><div class="rot">Salários</div></div>
       <div class="ind"><div class="num">${apropMoeda(tot.ben)}</div><div class="rot">Benefícios</div></div>
       <div class="ind"><div class="num">${apropMoeda(tot.enc)}</div><div class="rot">Encargos</div></div>
-      <div class="ind"><div class="num" style="color:var(--marca-600);">${apropMoeda(tot.total)}</div><div class="rot">Custo total da folha</div></div>
+      <div class="ind"><div class="num" style="color:var(--acao-txt);">${apropMoeda(tot.total)}</div><div class="rot">Custo total da folha</div></div>
       <div class="ind"><div class="num" style="color:${semObra ? "var(--aviso-txt)" : "inherit"};">${apropMoeda(semObra)}</div><div class="rot">Sem obra (ADM/PÁTIO)</div></div>
     </div>
     ${semFicha.length ? `<p class="txt-perigo" style="margin:0 0 10px;">⚠️ ${semFicha.length} funcionário(s) ativo(s) ficaram fora por não terem salário na ficha: ${semFicha.slice(0, 12).map(f => `<a href="#" class="aprop-abrir-func" data-id="${esc(f.id)}">${esc(f.nome)}</a>`).join(", ")}${semFicha.length > 12 ? "…" : ""}</p>` : ""}
@@ -227,7 +227,7 @@ async function renderFuncApropTotais(){
       <div class="ind"><div class="num">${apropMoeda(tot.sal)}</div><div class="rot">Salários</div></div>
       <div class="ind"><div class="num">${apropMoeda(tot.ben)}</div><div class="rot">Benefícios</div></div>
       <div class="ind"><div class="num">${apropMoeda(tot.enc)}</div><div class="rot">Encargos</div></div>
-      <div class="ind"><div class="num" style="color:var(--marca-600);">${apropMoeda(tot.total)}</div><div class="rot">Custo total da folha</div></div>
+      <div class="ind"><div class="num" style="color:var(--acao-txt);">${apropMoeda(tot.total)}</div><div class="rot">Custo total da folha</div></div>
       <div class="ind"><div class="num" style="color:${semObra ? "var(--aviso-txt)" : "inherit"};">${apropMoeda(semObra)}</div><div class="rot">Sem obra (ADM/PÁTIO)</div></div>
     </div>
     ${apropTabelaObras(linhas, tot, obraDe)}

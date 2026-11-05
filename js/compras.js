@@ -1124,6 +1124,7 @@ async function abrirPedido(id){
   if(it.error){ aviso("app-aviso", "Itens não carregaram: " + it.error.message, "erro"); return; }
   // fase 108b: natureza e método já gravados não são trocados pelo padrão quando o comprador muda o tipo ou o destino
   const itens = (it.data || []).map(({ produto, funcionario, ...i }) => {
+    i.descricao = semCodOdoo(i.descricao);   // descrição antiga, gravada com o código do Odoo
     if(i.produto_id && produto?.unidade) _cmpProdUn[i.produto_id] = produto.unidade;   // lote S54 (#170)
     if(i.produto_id) _cmpProdSrv[i.produto_id] = produto?.tipo_item === "servico";    // lote S55 (#175)
     return { ...i, _funcNome: funcionario?.nome || null, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo };
@@ -1525,7 +1526,7 @@ async function cmpCarregarFilhas(id){
     if(r.status !== "confirmado") return "";
     const ts = titsPorRec[r.id] || [], b = [];
     if(verTit && cmpPodeLancarNf() && !ts.length) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-lancar" data-rec="${esc(r.id)}" title="Lança a NF deste material recebido (número, chave, vencimentos ou XML) e gera os títulos a pagar">🧾 Lançar NF</button>`);
-    if(cmpPodeReceber() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo);">↩ Estornar</button>`);
+    if(cmpPodeReceber() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo-txt);">↩ Estornar</button>`);
     return b.join(" ");
   };
   // hotfix 221: "🧾 Lançar NF" também no topo da ficha, para o financeiro, enquanto houver material recebido sem NF
@@ -1535,7 +1536,7 @@ async function cmpCarregarFilhas(id){
   $("cmp-rec-lista").innerHTML = rec.error ? `<p class="vazio">Erro: ${esc(rec.error.message)}</p>` : !recs.length ? `<p class="vazio">Nenhum recebimento. Use "Receber material" ou "Receber NF" quando a mercadoria chegar.</p>` :
     recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}${r.status === "confirmado" && !r.nf_numero && r.tipo !== "servico" && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="tag ambar">aguardando NF</span>' : ""}</h3>
       <span style="margin-left:auto;">${/* html */ acoesRec(r)} ${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
-      <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${cmpBrl4(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table>
+      <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(semCodOdoo(i.descricao))}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${cmpBrl4(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table>
       ${r.observacoes ? `<p class="meta" style="margin:6px 0 0;">${esc(r.observacoes)}</p>` : ""}
       ${cmpConferenciaLinha(r.id)}
       ${(r.anexos || []).length ? `<div class="meta" style="margin-top:6px;">📎 ${r.anexos.map(a => `<a href="#" class="cmp-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}">${esc(a.nome)}</a>`).join(" · ")}</div>` : ""}</div>`).join("");
@@ -1627,7 +1628,7 @@ function renderCotacoes(){
   const totais = _cmpCotacoes.map(cmpCotTotal), menorTotal = Math.min(...vivas.map(cmpCotTotal));
   const th = _cmpCotacoes.map(c => { const s = CMP_COT_STATUS[c.status] || [c.status, "cinza"];
     return `<th class="num" style="min-width:150px;"><div>${esc(c.fornecedor?.razao_social || cmpForn(c.fornecedor_id) || "?")}</div><span class="tag ${esc(s[1])}">${esc(s[0])}</span></th>`; }).join("");
-  const linhas = itens.map(it => `<tr><td>${esc(it.descricao)}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>${
+  const linhas = itens.map(it => `<tr><td>${esc(semCodOdoo(it.descricao))}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>${
     _cmpCotacoes.map(c => { const v = cmpCotPreco(c, it.id); const ehMelhor = v !== null && c.status !== "descartada" && v === melhor[it.id] && vivas.length > 1;
       const ci = cmpCotItem(c, it.id), imp = ci ? [ci.ipi_percentual !== null && ci.ipi_percentual !== undefined ? "IPI " + cmpPct(ci.ipi_percentual) : "", ci.icms_percentual !== null && ci.icms_percentual !== undefined ? "ICMS " + cmpPct(ci.icms_percentual) : ""].filter(Boolean).join(" · ") : "";   // lote S53 (#166)
       return `<td class="num">${v === null ? '<span class="meta">não cotou</span>' : `${brl(v)}<div class="meta">${brl(Math.round(v * Number(it.quantidade || 0) * 100) / 100)}${imp ? " · " + esc(imp) : ""}</div>`}${ehMelhor ? ' <span class="tag verde" title="menor preço deste item entre as cotações">melhor</span>' : ""}</td>`; }).join("")}</tr>`).join("");
@@ -1662,7 +1663,7 @@ function cmpAbrirCotacao(c){
   // lote S53 (#166): % IPI / % ICMS por item (opcionais; vazio mantém o % que o item do pedido já tem, mostrado no placeholder)
   const pctVal = (ci, campo) => ci && ci[campo] !== null && ci[campo] !== undefined ? esc(ci[campo]) : "";
   $("cmp-cot-itens").innerHTML = itens.map(it => { const v = c ? cmpCotPreco(c, it.id) : null, ci = c ? cmpCotItem(c, it.id) : null;
-    return `<tr data-item="${esc(it.id)}"><td>${esc(it.descricao)}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>
+    return `<tr data-item="${esc(it.id)}"><td>${esc(semCodOdoo(it.descricao))}</td><td class="num">${num(it.quantidade)} <span class="meta">${esc(it.unidade || "un")}</span></td>
       <td><input type="number" class="cmp-cot-preco" step="0.0001" min="0" value="${v === null ? "" : esc(v)}" placeholder="não cotou" style="width:120px;text-align:right;" /></td>
       <td><input type="number" class="cmp-cot-ipi" step="0.01" min="0" max="100" value="${pctVal(ci, "ipi_percentual")}" placeholder="${esc(it.ipi_percentual ?? 0)}" title="% de IPI cotado; vazio mantém o do item" style="width:76px;text-align:right;" /></td>
       <td><input type="number" class="cmp-cot-icms" step="0.01" min="0" max="100" value="${pctVal(ci, "icms_percentual")}" placeholder="${esc(it.icms_percentual ?? 0)}" title="% de ICMS cotado (informativo)" style="width:76px;text-align:right;" /></td>
@@ -1791,9 +1792,9 @@ function cmpProdutoEscolhido(p){
   if(!p?.id) return;
   if(p.unidade) _cmpProdUn[p.id] = p.unidade;
   _cmpProdSrv[p.id] = p.tipo_item === "servico";
-  Object.assign(it, { produto_id: p.id, descricao: `${p.codigo} — ${p.nome}` });
+  Object.assign(it, { produto_id: p.id, descricao: `${prodTxt(p)}` });
   renderItensPedido();
-  aviso("app-aviso", `Item ligado a ${p.codigo} — ${p.nome}${p.tipo_item === "servico" ? "" : ": já dá para escolher Reposição de estoque"}. Salve o pedido para gravar.`, "ok");
+  aviso("app-aviso", `Item ligado a ${prodTxt(p)}${p.tipo_item === "servico" ? "" : ": já dá para escolher Reposição de estoque"}. Salve o pedido para gravar.`, "ok");
 }
 async function cmpAbrirProdutoRapido(tipo, destino){
   _cmpProdDestino = destino === "rec" ? "rec" : "pedido";
@@ -1829,7 +1830,7 @@ async function cmpProdSugerir(){
   if(seq !== _cmpProdSugSeq) return;   // resposta de uma digitação antiga
   if(!res.length){ lista.innerHTML = ""; lista.style.display = "none"; return; }
   lista.innerHTML = `<div class="resultado-item vazio">Já cadastrados parecidos — clique para usar</div>`
-    + res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)}${cmpTagServico(p)} <span class="meta" style="float:right;">${esc(p.unidade || "un")}</span></div>`).join("");
+    + res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)}${cmpTagServico(p)} <span class="meta" style="float:right;">${esc(p.unidade || "un")}</span></div>`).join("");
   lista.style.display = "";
   lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => cmpProdUsarExistente(res.find(x => x.id === d.dataset.id))));
 }
@@ -1839,13 +1840,13 @@ function cmpProdUsarExistente(p){
   if(_cmpProdDestino === "rec" && _cmpRec){
     if($("cmp-rec-busca")){ $("cmp-rec-busca").value = ""; if($("cmp-rec-res")){ $("cmp-rec-res").innerHTML = ""; $("cmp-rec-res").style.display = "none"; } }
     cmpRecAddItem(p);
-    aviso("app-aviso", `${p.codigo} — ${p.nome} (já cadastrado) incluído na nota.`, "ok");
+    aviso("app-aviso", `${prodTxt(p)} (já cadastrado) incluído na nota.`, "ok");
     return;
   }
   if($("cmp-busca-prod")){ $("cmp-busca-prod").value = ""; if($("cmp-res-prod")){ $("cmp-res-prod").innerHTML = ""; $("cmp-res-prod").style.display = "none"; } }
   if(_cmpLigarIdx !== null){ cmpProdutoEscolhido(p); return; }
   cmpAddItem(p);
-  aviso("app-aviso", `${p.codigo} — ${p.nome} (já cadastrado) incluído no pedido. Salve o pedido para gravar o item.`, "ok");
+  aviso("app-aviso", `${prodTxt(p)} (já cadastrado) incluído no pedido. Salve o pedido para gravar o item.`, "ok");
 }
 function cmpProdTipoInfo(){
   const info = $("cmp-prod-tipo-info"); if(!info) return;
@@ -1881,13 +1882,13 @@ async function cmpSalvarProdutoRapido(){
   if(_cmpProdDestino === "rec" && _cmpRec){
     if($("cmp-rec-busca")){ $("cmp-rec-busca").value = ""; if($("cmp-rec-res")){ $("cmp-rec-res").innerHTML = ""; $("cmp-rec-res").style.display = "none"; } }
     cmpRecAddItem(data);
-    aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído na nota.${semNcm}`, semNcm ? "aviso" : "ok");
+    aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${prodTxt(data)} cadastrado e incluído na nota.${semNcm}`, semNcm ? "aviso" : "ok");
     return;
   }
   if($("cmp-busca-prod")){ $("cmp-busca-prod").value = ""; if($("cmp-res-prod")){ $("cmp-res-prod").innerHTML = ""; $("cmp-res-prod").style.display = "none"; } }
   if(_cmpLigarIdx !== null){ cmpProdutoEscolhido(data); if(semNcm) aviso("app-aviso", `Produto ${data.codigo} cadastrado.${semNcm}`, "aviso"); return; }   // fase 132a: cadastrado para ligar ao item livre
   cmpAddItem(data);
-  aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${data.codigo} — ${data.nome} cadastrado e incluído no pedido. Salve o pedido para gravar o item.${semNcm}`, semNcm ? "aviso" : "ok");
+  aviso("app-aviso", `${tipo === "servico" ? "Serviço" : "Produto"} ${prodTxt(data)} cadastrado e incluído no pedido. Salve o pedido para gravar o item.${semNcm}`, semNcm ? "aviso" : "ok");
 }
 
 /* itens */
@@ -1937,7 +1938,7 @@ function renderItensPedido(){
       : `<span class="meta">${esc(CMP_METODO_LBL[it.metodo] || "—")}</span>`;
     // lote S53 (#166): descrição do item livre em textarea que cresce com o texto; % IPI e % ICMS por item; total com IPI
     return `<tr data-idx="${idx}">
-      <td>${it.produto_id ? esc(it.descricao) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(it.descricao || "")}</textarea>` : esc(it.descricao))}${it.produto_id ? (srv ? cmpTagServico({ tipo_item: "servico" }) : "") : ' <span class="meta" title="item livre anterior ao lote S55: continua editável">livre (antigo)</span>' + (ed ? ' <button type="button" class="btn-sec btn-sm cmp-it-ligar" title="Trocar este item livre por um produto do catálogo (quantidade, preço e destino ficam); depois dá para escolher Reposição de estoque">🔗 Ligar ao catálogo</button>' : "")}${/* html */ cmpItemExtrasHTML(it, ed)}</td>
+      <td>${it.produto_id ? esc(semCodOdoo(it.descricao)) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(semCodOdoo(it.descricao) || "")}</textarea>` : esc(semCodOdoo(it.descricao)))}${it.produto_id ? (srv ? cmpTagServico({ tipo_item: "servico" }) : "") : ' <span class="meta" title="item livre anterior ao lote S55: continua editável">livre (antigo)</span>' + (ed ? ' <button type="button" class="btn-sec btn-sm cmp-it-ligar" title="Trocar este item livre por um produto do catálogo (quantidade, preço e destino ficam); depois dá para escolher Reposição de estoque">🔗 Ligar ao catálogo</button>' : "")}${/* html */ cmpItemExtrasHTML(it, ed)}</td>
       <td>${cmpUnidadeCelula(it, ed)}</td>
       <td>${ed ? `<input type="number" step="any" min="0.001" class="cmp-it" data-f="quantidade" value="${esc(it.quantidade ?? 1)}" title="gravada com 3 casas" style="width:80px;text-align:right;" />` : num(it.quantidade)}</td>
       <td>${ed ? `<input type="number" step="0.0001" min="0" class="cmp-it" data-f="valor_unitario" value="${esc(it.valor_unitario ?? 0)}" title="até 4 casas" style="width:105px;text-align:right;" />` : cmpBrl4(it.valor_unitario)}</td>
@@ -2118,7 +2119,7 @@ function cmpAddItem(p){
   // fase 108b: o produto sugere o tipo (produto → categoria → aplicação direta)
   const tipo = srv ? "aplicacao_direta" : cmpTipoPadraoProduto(p);
   const d = tipo === "reposicao" ? { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null, destino_acessorio_id: null } : cmpDestinoDiretoPadrao();
-  const it = { produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", quantidade: 1,
+  const it = { produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade: 1,
     valor_unitario: Number(p.custo_ultimo || 0), categoria_custo: p.categoria_custo || (srv ? "servico_terceiro" : "peca"), ipi_percentual: 0, icms_percentual: 0, ...d, quantidade_recebida: 0,   // lote S53 (#166)
     _tipo: tipo, natureza_id: null, _natAuto: true, metodo: null, _metAuto: true };
   it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo);
@@ -2303,7 +2304,7 @@ function cmpLigarBusca(inpId, listaId, aoEscolher){
       const termo = inp.value.trim();
       if(termo.length < 2){ lista.innerHTML = ""; lista.style.display = "none"; return; }
       const res = await cmpBuscarProdutos(termo);
-      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)}${cmpTagServico(p)} <span class="meta" style="float:right;">${p.tipo_item === "servico" ? "" : "estoque " + num(p.estoque_atual || 0) + " "}${esc(p.unidade || "un")}${p.custo_ultimo ? " · último " + brl(p.custo_ultimo) : ""}</span></div>`).join("")
+      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)}${cmpTagServico(p)} <span class="meta" style="float:right;">${p.tipo_item === "servico" ? "" : "estoque " + num(p.estoque_atual || 0) + " "}${esc(p.unidade || "un")}${p.custo_ultimo ? " · último " + brl(p.custo_ultimo) : ""}</span></div>`).join("")
         : `<div class="resultado-item vazio">Nenhum produto. Cadastre em Produtos ou use "+ Novo produto" / "+ Cadastrar serviço" (serviço consumido também é produto).</div>`;   // lote S55 (#175)
       lista.style.display = "";
       lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => { const p = res.find(x => x.id === d.dataset.id); inp.value = ""; lista.innerHTML = ""; lista.style.display = "none"; aoEscolher(p); }));
@@ -2695,7 +2696,7 @@ function cmpRiLinhaLivreDoXml(d){
   let prod = mapCod[d.cProd] || null, cas = prod ? "codigo" : null;
   const eanOk = d.cEAN && !/sem\s*gtin/i.test(d.cEAN) ? d.cEAN : null;
   if(!prod && eanOk && mapEan[eanOk]){ prod = mapEan[eanOk]; cas = "ean"; }
-  return { pedido_item_id: null, produto_id: prod?.id || null, produto_txt: prod ? `${prod.codigo} — ${prod.nome}` : "", casamento: cas, livre: false,
+  return { pedido_item_id: null, produto_id: prod?.id || null, produto_txt: prod ? `${prodTxt(prod)}` : "", casamento: cas, livre: false,
     descricao: d.xProd, codigo_fornecedor: d.cProd || null, ean: eanOk, ncm: d.ncm || null, cfop: d.cfop || null,
     unidade: (d.uCom || "un").toLowerCase().slice(0, 8), pendente: null, quantidade_nf: d.qCom, valor_unitario_nf: d.vUnCom,
     categoria_custo: prod?.categoria_custo || "peca", ipi_percentual: d.pIPI || 0, icms_percentual: d.pICMS || 0, ...(m.destPadrao || { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null, destino_acessorio_id: null }) };   // lote S53 (#166)
@@ -2724,7 +2725,7 @@ function renderItensRecebimento(){
   const tb = $("cmp-rec-itens"); const its = _cmpRec?.itens || [];
   if(_cmpRec?.modo === "lancar_nf"){   // lote S57a (#221): itens já recebidos, só leitura
     if($("cmp-rec-th-fator")) $("cmp-rec-th-fator").style.display = "none";
-    tb.innerHTML = its.length ? its.map(it => `<tr><td><strong>${esc(it.descricao)}</strong></td><td>${esc(it.unidade || "un")}</td><td class="num">—</td>
+    tb.innerHTML = its.length ? its.map(it => `<tr><td><strong>${esc(semCodOdoo(it.descricao))}</strong></td><td>${esc(it.unidade || "un")}</td><td class="num">—</td>
       <td class="num">${num(it.quantidade_nf)}</td><td class="num">${cmpBrl4(it.valor_unitario_nf)}</td><td class="num">${brl(Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0))}</td>
       <td>${cmpTipoTag(it.destino === "estoque" ? "reposicao" : "aplicacao_direta")}</td><td class="meta">${esc(cmpDestinoTxt(it))}</td><td></td></tr>`).join("")
       : `<tr><td colspan="9" class="vazio">Sem itens.</td></tr>`;
@@ -2736,7 +2737,7 @@ function renderItensRecebimento(){
   if($("cmp-rec-th-fator")) $("cmp-rec-th-fator").style.display = comFator ? "" : "none";
   if(!its.length){ tb.innerHTML = `<tr><td colspan="10" class="vazio">${_cmpRec?.pedido ? "Tudo deste pedido já foi recebido. Adicione itens fora do pedido se a nota trouxer." : "Adicione os itens da nota."}</td></tr>`; }
   else tb.innerHTML = its.map((it, idx) => { const xml = it.quantidade_xml != null; return `<tr data-idx="${idx}">
-      <td>${it.livre && !it.produto_id ? `<input class="cmp-ri" data-f="descricao" value="${esc(it.descricao || "")}" placeholder="descrição na nota" style="width:100%;" />` : `<strong>${esc(it.descricao)}</strong>`}${it.codigo_fornecedor ? ` <span class="meta">cód. ${esc(it.codigo_fornecedor)}</span>` : ""}${cmpRiBadge(it)}
+      <td>${it.livre && !it.produto_id ? `<input class="cmp-ri" data-f="descricao" value="${esc(semCodOdoo(it.descricao) || "")}" placeholder="descrição na nota" style="width:100%;" />` : `<strong>${esc(semCodOdoo(it.descricao))}</strong>`}${it.codigo_fornecedor ? ` <span class="meta">cód. ${esc(it.codigo_fornecedor)}</span>` : ""}${cmpRiBadge(it)}
         ${xml && it.descricao_xml && it.descricao_xml !== it.descricao ? `<div class="meta">NF: ${esc(it.descricao_xml)}</div>` : ""}
         ${it._naoVeio ? `<div class="meta txt-aviso">não veio nesta NF: fica pendente no pedido (informe a quantidade se veio)</div>` : ""}
         ${it.pedido_item_id && it.produto_id && (it.casamento !== "manual" || it._assoc) ? (it.produto_txt && it.produto_txt !== it.descricao ? `<div class="meta">→ ${esc(it.produto_txt)}</div>` : "") : `<div class="cmp-ri-pick"><input class="cmp-ri-prod" placeholder="casar com produto do catálogo…" value="${esc(it.produto_txt || "")}" autocomplete="off" /><div class="autocomplete-lista" style="display:none;"></div></div>`}
@@ -2837,7 +2838,7 @@ function cmpRiPicker(tr, inp){
     t = setTimeout(async () => {
       const termo = inp.value.trim(); if(termo.length < 2){ lista.style.display = "none"; return; }
       const res = await cmpBuscarProdutos(termo);
-      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo)}</strong> — ${esc(p.nome)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("") : `<div class="resultado-item vazio">Nenhum produto. Cadastre em Produtos ou mande para obra, TAG ou setor (aplicação direta).</div>`;
+      lista.innerHTML = res.length ? res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}</span></div>`).join("") : `<div class="resultado-item vazio">Nenhum produto. Cadastre em Produtos ou mande para obra, TAG ou setor (aplicação direta).</div>`;
       lista.style.display = "";
       lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("click", () => {
         const p = res.find(y => y.id === d.dataset.id); const x2 = it(); if(!p || !x2) return;
@@ -2850,7 +2851,7 @@ function cmpRiPicker(tr, inp){
             x2.pedido_item_id = null; x2.pendente = null; x2._assoc = false;
           }
         }
-        x2.produto_id = p.id; x2.produto_txt = `${p.codigo} — ${p.nome}`; x2.casamento = "manual"; if(!x2.categoria_custo || x2.categoria_custo === "peca") x2.categoria_custo = p.categoria_custo || "peca";
+        x2.produto_id = p.id; x2.produto_txt = `${prodTxt(p)}`; x2.casamento = "manual"; if(!x2.categoria_custo || x2.categoria_custo === "peca") x2.categoria_custo = p.categoria_custo || "peca";
         if(x2.livre && (!x2.descricao || !x2.descricao.trim())) x2.descricao = x2.produto_txt;
         if(_cmpRec.pedido && !x2.pedido_item_id) cmpLigarItemAoPedido(x2, cmpPedidoPendentes());
         renderItensRecebimento();
@@ -2876,7 +2877,7 @@ function cmpRecAddItem(p){
   const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv;
   const d = _cmpRec.pedido ? cmpDestinoDoValor(cmpDestinoPadraoDe(_cmpRec.pedido)) : { destino: "estoque", obra_id: null, equipamento_id: null };
   if(srv && d.destino === "estoque"){ d.destino = "obra"; d.obra_id = _cmpRec.pedido?.obra_id || null; }
-  _cmpRec.itens.push({ pedido_item_id: null, produto_id: p.id, produto_txt: `${p.codigo} — ${p.nome}`, casamento: "manual", livre: false, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un", pendente: null, quantidade_nf: 1,
+  _cmpRec.itens.push({ pedido_item_id: null, produto_id: p.id, produto_txt: `${prodTxt(p)}`, casamento: "manual", livre: false, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", pendente: null, quantidade_nf: 1,
     valor_unitario_nf: Number(p.custo_ultimo || 0), categoria_custo: p.categoria_custo || (srv ? "servico_terceiro" : "peca"), ...d });
   renderItensRecebimento();
 }
@@ -3037,7 +3038,7 @@ function fecharReceberServico(){ $("cmp-srv-modal").style.display = "none"; _cmp
 function renderServicoItens(){
   const tb = $("cmp-srv-itens"); const its = _cmpSrv?.itens || [];
   tb.innerHTML = its.map((it, i) => `<tr data-i="${i}">
-    <td><strong>${esc(it.descricao)}</strong> <span class="meta">${esc(CMP_CAT_LBL[it.categoria_custo] || "")}</span></td>
+    <td><strong>${esc(semCodOdoo(it.descricao))}</strong> <span class="meta">${esc(CMP_CAT_LBL[it.categoria_custo] || "")}</span></td>
     <td class="num">${num(it.pendente)} <span class="meta">${esc(it.unidade)}</span></td>
     <td><input type="number" class="cmp-srv-q" step="any" min="0" value="${esc(it.quantidade)}" style="width:80px;text-align:right;" /></td>
     <td><input type="number" class="cmp-srv-v" step="0.0001" min="0" value="${esc(it.valor)}" style="width:110px;text-align:right;" /></td>
@@ -3319,7 +3320,7 @@ async function custosRender(containerId, filtro, cbTotal){
     </div>
     <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Categoria</th><th>Descrição</th><th>${filtro.equipamento_id ? "Obra" : filtro.centro_custo_id ? "Obra / TAG" : "TAG"}</th><th>Fornecedor</th><th>Doc.</th><th class="num">Valor</th></tr></thead>
       <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : l.origem === "combustivel" ? "ambar" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}</span></td>
-        <td>${esc(CMP_CAT_LBL[l.categoria] || l.categoria)}</td><td>${esc(l.descricao || "")}</td>
+        <td>${esc(CMP_CAT_LBL[l.categoria] || l.categoria)}</td><td>${esc(semCodOdoo(l.descricao) || "")}</td>
         <td>${filtro.equipamento_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : "—") : filtro.centro_custo_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : esc(nomeEq(l.equipamento_id) || "—")) : esc(nomeEq(l.equipamento_id) || "—")}</td>
         <td>${esc(nomeForn(l.fornecedor_id) || "—")}</td><td class="meta">${esc(l.documento || "")}</td><td class="num">${brl(l.valor)}</td></tr>`).join("")}</tbody></table></div>
     ${linhas.length > 500 ? `<p class="meta">Mostrando 500 de ${linhas.length}. Use o Excel para a lista completa.</p>` : ""}`
@@ -3354,7 +3355,7 @@ async function cmpPdfPedido(semValores){
     ? `<strong>Fornecedor</strong><br>${esc(f.razao_social || "")}<br>${f.cpf_cnpj ? "CNPJ/CPF: " + esc(f.cpf_cnpj) + "<br>" : ""}${esc([f.cidade, f.uf].filter(Boolean).join("/"))}<br>${esc(f.telefone || "")} ${esc(f.email || "")}`
     : `<strong>A quem interessar</strong><br>Pedido em cotação: fornecedor a definir`;
   // lote S57a: observação (#212) e horímetro (#215) sob a descrição; o colaborador não sai (D-212b); unitário com até 4 casas (#181)
-  const descItem = i => esc(i.descricao) + (cmpTemRateio(i) ? `<div style="font-size:10px;color:#444;">Rateio: ${esc(cmpRateioTxt(i))}</div>` : "")
+  const descItem = i => esc(semCodOdoo(i.descricao)) + (cmpTemRateio(i) ? `<div style="font-size:10px;color:#444;">Rateio: ${esc(cmpRateioTxt(i))}</div>` : "")
     + (i.observacoes ? `<div style="font-size:10px;color:#444;">${esc(i.observacoes).replace(/\n/g, "<br>")}</div>` : "")
     + (cmpItemTemHorimetro(i) && i.horimetro !== null && i.horimetro !== undefined && i.horimetro !== "" ? `<div style="font-size:10px;color:#444;">Horímetro: ${esc(Number(i.horimetro).toLocaleString("pt-BR", { maximumFractionDigits: 1 }))} h</div>` : "");
   const linhaItem = (i, k) => semValores

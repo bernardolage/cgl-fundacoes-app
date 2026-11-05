@@ -520,7 +520,7 @@ async function mobRenderMateriais(){
   const its = data || [], pode = mobMatPodeEditar();
   _mobMatN = its.length;
   box.innerHTML = `${its.length ? `<div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Item</th><th style="width:60px;">Un</th><th class="num" style="width:90px;">Qtd</th><th>Obs.</th><th class="col-acao"></th></tr></thead>
-      <tbody>${its.map(i => `<tr><td>${i.produto_id ? `${linkProduto(i.produto_id, i.produto?.codigo || "produto")} ${esc(i.produto?.nome || i.descricao)}` : `${esc(i.descricao)} <span class="meta">(item livre)</span>`}${i.produto ? ` <span class="meta">· saldo ${num(i.produto.estoque_atual || 0)}</span>` : ""}</td>
+      <tbody>${its.map(i => `<tr><td>${i.produto_id ? `${linkProduto(i.produto_id, i.produto ? prodTxt(i.produto) : semCodOdoo(i.descricao) || "produto")}` : `${esc(semCodOdoo(i.descricao))} <span class="meta">(item livre)</span>`}${i.produto ? ` <span class="meta">· saldo ${num(i.produto.estoque_atual || 0)}</span>` : ""}</td>
         <td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td><td class="meta">${esc(i.observacoes || "")}</td>
         <td class="col-acao">${pode ? `<button type="button" class="btn-rem mob-mat-rem" data-id="${esc(i.id)}" title="tirar">&times;</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<p class="vazio">Nenhum material pré-configurado.</p>`}
     ${pode ? `<div class="grade" style="margin-top:6px;">
@@ -532,7 +532,7 @@ async function mobRenderMateriais(){
     if(e2){ aviso("app-aviso", "Não foi possível: " + e2.message, "erro"); return; }
     mobRenderMateriais();
   }));
-  if(pode && typeof sepLigarBusca === "function") sepLigarBusca($("mob-mat-busca"), $("mob-mat-res"), p => mobMatAdd({ produto_id: p.id, descricao: `${p.codigo} — ${p.nome}`, unidade: p.unidade || "un" }));
+  if(pode && typeof sepLigarBusca === "function") sepLigarBusca($("mob-mat-busca"), $("mob-mat-res"), p => mobMatAdd({ produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un" }));
   $("btn-mob-mat-livre")?.addEventListener("click", () => { const d = $("mob-mat-livre").value.trim(); if(d) mobMatAdd({ descricao: d, unidade: "un" }); });
   $("mob-mat-livre")?.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); $("btn-mob-mat-livre")?.click(); } });
 }
