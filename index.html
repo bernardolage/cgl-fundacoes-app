@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="d53edb2" />
+<meta name="app-versao" content="28d3aa3" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=d53edb2" />
+<link rel="stylesheet" href="css/estilo.css?v=28d3aa3" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=d53edb2"></script>
+<script src="js/tema.js?v=28d3aa3"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=d53edb2"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=d53edb2"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=d53edb2"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=28d3aa3"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=28d3aa3"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=28d3aa3"></script>
 </head>
 <body>
 
@@ -3243,7 +3243,8 @@
             <div class="odoo-tab" data-conf-tab="refuradas">
               <p class="texto-apoio">
                 Estacas marcadas como refuradas. Você pode criar uma substituta (mantém o histórico),
-                restaurar para 'prevista' (se foi erro), ou simplesmente revisar/anotar.
+                restaurar para 'prevista' (se foi erro), ou simplesmente revisar/anotar. Abaixo delas, as execuções de refuro
+                de estacas que seguem com outro status, para informar o motivo.
               </p>
               <div id="conf-refuradas-conteudo"><p class="vazio">Carregando...</p></div>
             </div>
@@ -3253,6 +3254,19 @@
           <div style="padding:14px 20px;border-top:1px solid var(--borda);display:flex;gap:8px;flex-wrap:wrap;" id="conf-acoes-rodape">
             <!-- Ações de cada aba são renderizadas dinamicamente -->
           </div>
+        </div>
+      </div>
+
+      <!-- Modal: motivo do refuro (fase 141d). Fica depois da Conferência para abrir por cima dela. -->
+      <div id="est-rm-modal" class="modal-fundo" style="display:none;">
+        <div style="background:var(--sup-0);max-width:520px;width:92%;border-radius:8px;padding:20px;">
+          <div class="modal-topo"><h3 class="titulo-linha" id="est-rm-titulo">Motivo do refuro</h3><button type="button" class="btn-sec" id="btn-est-rm-fechar">×</button></div>
+          <p class="meta">A estaca continua com o status dela. O motivo vai só para as execuções de refuro.</p>
+          <div class="grade">
+            <div class="campo largo"><label id="est-rm-motivo-lbl">Motivo *</label><div id="est-rm-motivo" aria-labelledby="est-rm-motivo-lbl"></div></div>
+            <div class="campo largo"><label>Observação</label><input id="est-rm-obs" placeholder="Com o motivo Outro, escreva o que houve" /></div>
+          </div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-est-rm-salvar">Gravar motivo</button></div>
         </div>
       </div>
 
@@ -6862,60 +6876,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=d53edb2"></script>
+<script src="js/core.js?v=28d3aa3"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=d53edb2"></script>
+<script src="js/historico.js?v=28d3aa3"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=d53edb2"></script>
-<script src="js/fiscal_ncm.js?v=d53edb2"></script>
+<script src="js/fiscal.js?v=28d3aa3"></script>
+<script src="js/fiscal_ncm.js?v=28d3aa3"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=d53edb2"></script>
-<script src="js/fornecedores.js?v=d53edb2"></script>
-<script src="js/apropriacoes.js?v=d53edb2"></script>
-<script src="js/funcionarios.js?v=d53edb2"></script>
-<script src="js/funcionarios_importar.js?v=d53edb2"></script>
-<script src="js/rh_documentos.js?v=d53edb2"></script>
-<script src="js/servicos.js?v=d53edb2"></script>
-<script src="js/produtos.js?v=d53edb2"></script>
-<script src="js/estoque.js?v=d53edb2"></script>
-<script src="js/separacoes.js?v=d53edb2"></script>
-<script src="js/epi.js?v=d53edb2"></script>
-<script src="js/compras.js?v=d53edb2"></script>
-<script src="js/requisicoes.js?v=d53edb2"></script>
-<script src="js/orcamentos.js?v=d53edb2"></script>
-<script src="js/propostas.js?v=d53edb2"></script>
-<script src="js/contratos.js?v=d53edb2"></script>
-<script src="js/contas_pagar.js?v=d53edb2"></script>
-<script src="js/centros_custo.js?v=d53edb2"></script>
-<script src="js/carteira.js?v=d53edb2"></script>
-<script src="js/obras.js?v=d53edb2"></script>
-<script src="js/frota.js?v=d53edb2"></script>
-<script src="js/viagens.js?v=d53edb2"></script>
-<script src="js/equipamentos.js?v=d53edb2"></script>
-<script src="js/vendas_bens.js?v=d53edb2"></script>
-<script src="js/acessorios.js?v=d53edb2"></script>
-<script src="js/reparos.js?v=d53edb2"></script>
-<script src="js/manutencao.js?v=d53edb2"></script>
-<script src="js/fabricacao.js?v=d53edb2"></script>
-<script src="js/mobilizacoes.js?v=d53edb2"></script>
-<script src="js/estacas.js?v=d53edb2"></script>
-<script src="js/obra_abas.js?v=d53edb2"></script>
-<script src="js/medicoes.js?v=d53edb2"></script>
-<script src="js/movimentacoes.js?v=d53edb2"></script>
-<script src="js/rdo_import_rg113.js?v=d53edb2"></script>
-<script src="js/rdo.js?v=d53edb2"></script>
-<script src="js/rdo_import_maya.js?v=d53edb2"></script>
-<script src="js/geodigitus.js?v=d53edb2"></script>
-<script src="js/computadores_bordo.js?v=d53edb2"></script>
-<script src="js/usuarios.js?v=d53edb2"></script>
-<script src="js/chamados.js?v=d53edb2"></script>
-<script src="js/dashboard.js?v=d53edb2"></script>
-<script src="js/rh_horas.js?v=d53edb2"></script>
-<script src="js/sesmt.js?v=d53edb2"></script>
-<script src="js/patrimonio.js?v=d53edb2"></script>
+<script src="js/clientes.js?v=28d3aa3"></script>
+<script src="js/fornecedores.js?v=28d3aa3"></script>
+<script src="js/apropriacoes.js?v=28d3aa3"></script>
+<script src="js/funcionarios.js?v=28d3aa3"></script>
+<script src="js/funcionarios_importar.js?v=28d3aa3"></script>
+<script src="js/rh_documentos.js?v=28d3aa3"></script>
+<script src="js/servicos.js?v=28d3aa3"></script>
+<script src="js/produtos.js?v=28d3aa3"></script>
+<script src="js/estoque.js?v=28d3aa3"></script>
+<script src="js/separacoes.js?v=28d3aa3"></script>
+<script src="js/epi.js?v=28d3aa3"></script>
+<script src="js/compras.js?v=28d3aa3"></script>
+<script src="js/requisicoes.js?v=28d3aa3"></script>
+<script src="js/orcamentos.js?v=28d3aa3"></script>
+<script src="js/propostas.js?v=28d3aa3"></script>
+<script src="js/contratos.js?v=28d3aa3"></script>
+<script src="js/contas_pagar.js?v=28d3aa3"></script>
+<script src="js/centros_custo.js?v=28d3aa3"></script>
+<script src="js/carteira.js?v=28d3aa3"></script>
+<script src="js/obras.js?v=28d3aa3"></script>
+<script src="js/frota.js?v=28d3aa3"></script>
+<script src="js/viagens.js?v=28d3aa3"></script>
+<script src="js/equipamentos.js?v=28d3aa3"></script>
+<script src="js/vendas_bens.js?v=28d3aa3"></script>
+<script src="js/acessorios.js?v=28d3aa3"></script>
+<script src="js/reparos.js?v=28d3aa3"></script>
+<script src="js/manutencao.js?v=28d3aa3"></script>
+<script src="js/fabricacao.js?v=28d3aa3"></script>
+<script src="js/mobilizacoes.js?v=28d3aa3"></script>
+<script src="js/estacas.js?v=28d3aa3"></script>
+<script src="js/obra_abas.js?v=28d3aa3"></script>
+<script src="js/medicoes.js?v=28d3aa3"></script>
+<script src="js/movimentacoes.js?v=28d3aa3"></script>
+<script src="js/rdo_import_rg113.js?v=28d3aa3"></script>
+<script src="js/rdo.js?v=28d3aa3"></script>
+<script src="js/rdo_import_maya.js?v=28d3aa3"></script>
+<script src="js/geodigitus.js?v=28d3aa3"></script>
+<script src="js/computadores_bordo.js?v=28d3aa3"></script>
+<script src="js/usuarios.js?v=28d3aa3"></script>
+<script src="js/chamados.js?v=28d3aa3"></script>
+<script src="js/dashboard.js?v=28d3aa3"></script>
+<script src="js/rh_horas.js?v=28d3aa3"></script>
+<script src="js/sesmt.js?v=28d3aa3"></script>
+<script src="js/patrimonio.js?v=28d3aa3"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=d53edb2"></script>
+<script src="js/sesmt_ocorrencias.js?v=28d3aa3"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=d53edb2"></script>
+<script src="js/init.js?v=28d3aa3"></script>
 </body>
 </html>

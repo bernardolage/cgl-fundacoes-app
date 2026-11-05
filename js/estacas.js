@@ -2396,6 +2396,7 @@ let _confRefuradas = [];  // estacas com status='refugada' (na tela, "Refurada")
 let _confAlteradas = [];  // estacas com 2+ execuções: [{ estaca, execs:[...] }]
 let _confAbaAtual = "orfas";
 let _confTemMotivo = false; // fase 141: vw_estacas_refuradas disponível
+let _confRefuros = [];      // fase 141d: estacas que não são Refuradas, mas têm execução de refuro
 
 function confSuspeitas(alteradas){
   return alteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
@@ -2413,7 +2414,7 @@ async function confCarregarDados(obraId){
       .order("numero")),
     lerTudo(() => execsDaObra("id,estaca_id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao").not("estaca_id", "is", null)),
     // fase 141: motivo e substituta da Refurada; sem a migration a aba segue sem a coluna
-    lerTudo(() => sb.from("vw_estacas_refuradas").select("estaca_id,motivo,refuro_obs,substituta_id,substituta_numero,maquina").eq("obra_id", obraId), "estaca_id")
+    lerTudo(() => sb.from("vw_estacas_refuradas").select("estaca_id,motivo,refuro_obs,substituta_id,substituta_numero,maquina,execucoes_refuro,data_refuro").eq("obra_id", obraId), "estaca_id")
   ]);
   const estacas = estsRes.data;
   _confTemMotivo = !refRes.error;
@@ -2455,6 +2456,7 @@ async function confCarregarDados(obraId){
     estacas,
     duplicadas,
     refuradas: estacas.filter(e => e.status === "refugada"),
+    refuros: estacas.filter(e => e.status !== "refugada" && e.ref?.execucoes_refuro > 0),
     alteradas,
     erros: { orfas: orfasRes.error, estacas: estsRes.error, vinculadas: vinculadasRes.error }
   };
@@ -2523,6 +2525,7 @@ async function abrirModalReconciliacao(){
   _recVinculos = {};
   _confDuplicadas = dados.duplicadas;
   _confRefuradas = dados.refuradas;
+  _confRefuros = dados.refuros;
   _confAlteradas = dados.alteradas;
   confPintarBotao(dados);
 
@@ -2536,7 +2539,7 @@ async function abrirModalReconciliacao(){
   // Abre na primeira aba que tem algo a conferir (antes ficava na última aba usada,
   // então a obra seguinte abria direto em "duplicadas" mesmo sem duplicata).
   const altSuspeitas = confSuspeitas(_confAlteradas);
-  _confAbaAtual = _recOrfas.length ? "orfas" : altSuspeitas ? "alteradas" : _confDuplicadas.length ? "duplicadas" : _confRefuradas.length ? "refuradas" : "orfas";
+  _confAbaAtual = _recOrfas.length ? "orfas" : altSuspeitas ? "alteradas" : _confDuplicadas.length ? "duplicadas" : (_confRefuradas.length || _confRefuros.length) ? "refuradas" : "orfas";
   ativarConfAba(_confAbaAtual);
 }
 
@@ -2550,7 +2553,7 @@ function atualizarBadgesConferencia(){
   set("conf-tab-orfas-badge", _recOrfas.length);
   set("conf-tab-alt-badge",  confSuspeitas(_confAlteradas)); // só conta as suspeitas (sem refuro explícito)
   set("conf-tab-dups-badge", _confDuplicadas.reduce((s,g) => s + g.estacas.length, 0));
-  set("conf-tab-ref-badge", _confRefuradas.length);
+  set("conf-tab-ref-badge", _confRefuradas.length + _confRefuros.length);
 }
 
 function ativarConfAba(nome){
@@ -2581,7 +2584,7 @@ function renderizarAcoesRodape(aba){
   } else if(aba === "duplicadas"){
     rodape.innerHTML = `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0;">Use as ações em cada grupo (manter / excluir / renomear).</p>`;
   } else if(aba === "refuradas"){
-    rodape.innerHTML = `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0;">Use as ações em cada estaca refurada.</p>`;
+    rodape.innerHTML = `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0;">Use as ações de cada linha.</p>`;
   }
 }
 
@@ -3142,11 +3145,42 @@ async function excluirEstacaDuplicada(id, num){
    ABA REFURADAS — estacas com status=refugada
    ==================================================================== */
 
+/* fase 141d: motivo do refuro sem mudar o status da estaca (estaca_refuro_motivo) */
+let _estRmChips = null, _estRmId = null;
+function abrirModalMotivoRefuro(id){
+  const e = _confRefuros.find(x => x.id === id);
+  if(!e) return;
+  _estRmId = id;
+  $("est-rm-titulo").textContent = "Motivo do refuro · estaca " + (e.numero || "");
+  _estRmChips = chipsMotivo($("est-rm-motivo"), MOTIVOS_REFURADA, e.ref.motivo || null);
+  $("est-rm-obs").value = e.ref.refuro_obs || "";
+  $("est-rm-modal").style.display = "flex";
+}
+function fecharModalMotivoRefuro(){ $("est-rm-modal").style.display = "none"; _estRmId = null; }
+async function salvarMotivoRefuro(){
+  const id = _estRmId, motivo = _estRmChips?.valor, obs = $("est-rm-obs").value.trim();
+  if(!id) return;
+  if(!motivo){ aviso("app-aviso", "Escolha o motivo do refuro.", "erro"); return; }
+  if(motivo === "outro" && obs.length < 5){ aviso("app-aviso", "Com o motivo Outro, escreva o que houve (ao menos 5 caracteres).", "erro"); $("est-rm-obs").focus(); return; }
+  const { data, error } = await sb.rpc("estaca_refuro_motivo", { p_estaca: id, p_motivo: motivo, p_obs: obs || null });
+  if(error){ aviso("app-aviso", "Não foi possível gravar o motivo: " + error.message, "erro"); return; }
+  aviso("app-aviso", `Motivo do refuro gravado: ${motivoRefuradaLbl(motivo)}.`, "ok");
+  fecharModalMotivoRefuro();
+  const obraId = obraEditId, dados = await confCarregarDados(obraId);
+  if(obraId === obraEditId){
+    _confRefuradas = dados.refuradas;
+    _confRefuros = dados.refuros;
+    atualizarBadgesConferencia();
+    renderizarRefuradas();
+  }
+  if(typeof aceSugerirRetirada === "function") aceSugerirRetirada(data?.sugerir_retirada);
+}
+
 function renderizarRefuradas(){
   const cont = $("conf-refuradas-conteudo");
   if(!cont) return;
-  if(!_confRefuradas.length){
-    cont.innerHTML = `<p class="vazio">🎉 Não há estacas refuradas nesta obra.</p>`;
+  if(!_confRefuradas.length && !_confRefuros.length){
+    cont.innerHTML = `<p class="vazio">🎉 Não há estacas refuradas nem execuções de refuro nesta obra.</p>`;
     return;
   }
   const ro = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
@@ -3163,13 +3197,35 @@ function renderizarRefuradas(){
     <td>${esc(e.observacoes || "—")}</td>
     <td class="col-acao">${/* html */ acoes(e)}</td>
   </tr>`).join("");
-  cont.innerHTML = `<div class="tabela-rola"><table>
+  // fase 141d: a estaca segue com o status dela e conta no avanço; aqui entra só o motivo do refuro
+  const podeMotivo = typeof geoPodeOperar === "function" && geoPodeOperar();
+  const linhasRefuro = _confRefuros.map(e => `<tr data-id="${esc(e.id)}">
+    <td><strong>${esc(e.numero)}</strong></td>
+    <td>${esc(extrairBloco(e)||"—")}</td>
+    <td>${dataBR(e.ref.data_refuro)}</td>
+    <td>${esc(e.ref.maquina || "—")}</td>
+    <td class="num">${num(e.ref.execucoes_refuro)}</td>
+    <td><span class="tag ${esc((ESTACA_STATUS[e.status] || {}).cor || "cinza")}">${esc((ESTACA_STATUS[e.status] || {}).label || e.status)}</span></td>
+    <td>${e.ref.motivo ? `<span class="tag ambar">${esc(motivoRefuradaLbl(e.ref.motivo))}</span>` : `<span class="meta">sem motivo</span>`}${e.ref.refuro_obs ? `<div class="meta">${esc(e.ref.refuro_obs)}</div>` : ""}</td>
+    <td class="col-acao">${podeMotivo ? `<button type="button" class="btn-sec btn-sm btn-ref-motivo" data-id="${esc(e.id)}">${e.ref.motivo ? "Trocar motivo" : "Informar motivo"}</button>` : ""}</td>
+  </tr>`).join("");
+  cont.innerHTML = `${_confRefuradas.length ? `<div class="tabela-rola"><table>
     <thead><tr>
       <th>Nº</th><th>Bloco</th><th class="num">Ø</th><th class="num">Profund.</th>
       <th>Data</th><th>Motivo</th><th>Observação</th><th class="col-acao"></th>
     </tr></thead>
-    <tbody>${/* html */ linhas}</tbody></table></div>`;
+    <tbody>${/* html */ linhas}</tbody></table></div>` : `<p class="vazio">Nenhuma estaca com status Refurada nesta obra.</p>`}
+    ${_confRefuros.length ? `<h4 class="titulo-linha">Execuções de refuro em estacas que não são Refuradas</h4>
+    <p class="meta">A estaca continua com o status dela e conta no avanço. O motivo fica só nas execuções de refuro.</p>
+    <div class="tabela-rola"><table>
+      <thead><tr>
+        <th>Nº</th><th>Bloco</th><th>Último refuro</th><th>Máquina</th><th class="num">Refuros</th><th>Status</th><th>Motivo</th><th class="col-acao"></th>
+      </tr></thead>
+      <tbody>${/* html */ linhasRefuro}</tbody></table></div>` : ""}`;
 
+  cont.querySelectorAll(".btn-ref-motivo").forEach(b => {
+    b.addEventListener("click", () => abrirModalMotivoRefuro(b.dataset.id));
+  });
   cont.querySelectorAll(".btn-ref-substituir").forEach(b => {
     b.addEventListener("click", () => criarSubstitutaRefurada(b.dataset.id, b.dataset.num));
   });
@@ -3955,6 +4011,8 @@ function ligarEstacas(){
   $("btn-exec-refurar")?.addEventListener("click", abrirModalRefurar);
   $("btn-est-rf-fechar")?.addEventListener("click", fecharModalRefurar);
   $("btn-est-rf-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rf-salvar", salvarRefurar));
+  $("btn-est-rm-fechar")?.addEventListener("click", fecharModalMotivoRefuro);
+  $("btn-est-rm-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rm-salvar", salvarMotivoRefuro));
 }
 
 if(document.readyState === "loading"){
