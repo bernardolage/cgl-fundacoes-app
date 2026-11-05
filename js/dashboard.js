@@ -356,8 +356,8 @@ function dashLinhaFilaChamado(a, i){
       <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}
         <div class="dash-fila-acoes">
-          ${sugerida ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-aprovar="${i}" title="Envia a resposta sugerida em seu nome">✅ Aprovar</button>` : ""}
-          ${confirmar ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-confirmar="${i}" title="Registra que a correção funcionou">✅ Funcionou</button>` : ""}
+          ${sugerida ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-aprovar="${i}" title="Envia a resposta sugerida em seu nome">Aprovar</button>` : ""}
+          ${confirmar ? `<button type="button" class="btn btn-sucesso btn-sm" data-fila-confirmar="${i}" title="Registra que a correção funcionou">Funcionou</button>` : ""}
           <button type="button" class="btn-sec btn-sm" data-fila-abrir="${i}">Abrir</button>
         </div>
       </div>

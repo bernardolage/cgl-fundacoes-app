@@ -557,10 +557,10 @@ function rhdRender(){
       <td>${d.gerado_em ? dataHoraBR(d.gerado_em) : dataBR(d.emissao) || "—"}</td>
       <td>${rhdTagAssinatura(d.assinatura_status)}${d.data_envio_assinatura ? `<div class="meta">enviado ${dataBR(d.data_envio_assinatura.slice(0, 10))}${Array.isArray(d.assinatura_signatarios) ? " para " + esc(d.assinatura_signatarios.map(s => s.email).join(", ")) : ""}</div>` : ""}${d.assinado_em ? `<div class="meta">assinado ${dataBR(d.assinado_em.slice(0, 10))}</div>` : ""}</td>
       <td style="white-space:nowrap;">
-        ${d.storage_path ? `<button type="button" class="btn-sec btn-sm rhd-baixar" data-id="${esc(d.id)}">⬇️ PDF</button>` : ""}
+        ${d.storage_path ? `<button type="button" class="btn-sec btn-sm rhd-baixar" data-id="${esc(d.id)}">PDF</button>` : ""}
         ${d.arquivo_assinado_path ? `<button type="button" class="btn-sec btn-sm rhd-baixar-assinado" data-id="${esc(d.id)}">✓ Assinado</button>` : ""}
-        ${d.storage_path && !RHD_ANEXOS[d.tipo] && ["nao_iniciada", "cancelada"].includes(d.assinatura_status || "nao_iniciada") ? `<button type="button" class="btn-sec btn-sm rhd-assinar" data-id="${esc(d.id)}">✍️ Enviar para assinatura</button>` : ""}
-        ${["enviada", "parcial"].includes(d.assinatura_status) ? `<button type="button" class="btn-sec btn-sm rhd-status" data-id="${esc(d.id)}" title="Consulta manual — gasta 1 requisição da cota">🔄 Atualizar status</button>` : ""}
+        ${d.storage_path && !RHD_ANEXOS[d.tipo] && ["nao_iniciada", "cancelada"].includes(d.assinatura_status || "nao_iniciada") ? `<button type="button" class="btn-sec btn-sm rhd-assinar" data-id="${esc(d.id)}">Enviar para assinatura</button>` : ""}
+        ${["enviada", "parcial"].includes(d.assinatura_status) ? `<button type="button" class="btn-sec btn-sm rhd-status" data-id="${esc(d.id)}" title="Consulta manual — gasta 1 requisição da cota">Atualizar status</button>` : ""}
         ${!ehSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm rhd-excluir" data-id="${esc(d.id)}" style="color:var(--perigo-txt);">Excluir</button>` : ""}
       </td>
     </tr>`).join("");
@@ -568,10 +568,10 @@ function rhdRender(){
       <h3>Documentos de admissão (PDF) <span class="contador">${_rhdDocs.length}</span></h3>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <select id="rhd-modelo">${opcoes}</select>
-        <button type="button" class="btn-sec btn-sm" id="btn-rhd-previa" title="Abre o texto em HTML numa aba, para conferir contra o Word">👁️ Prévia</button>
-        <button type="button" class="btn-sec btn-sm" id="btn-rhd-gerar">📄 Gerar PDF</button>
-        ${rhdPodeAnexarPj() ? `<button type="button" class="btn-sec btn-sm" id="btn-rhd-anexar-pj" title="PDF do contrato PJ assinado (só RH e diretoria leem). A vigência fica na aba Profissional.">📎 Anexar contrato PJ</button><input type="file" id="rhd-pj-arquivo" accept=".pdf,application/pdf" style="display:none;" />` : ""}
-        <button type="button" class="btn btn-sm" id="btn-rhd-gerar-admissao" ${a ? "" : "disabled"} title="Ficha cadastral + o contrato que o tipo da admissão pede">📄 Gerar os da admissão</button>
+        <button type="button" class="btn-sec btn-sm" id="btn-rhd-previa" title="Abre o texto em HTML numa aba, para conferir contra o Word">Prévia</button>
+        <button type="button" class="btn-sec btn-sm" id="btn-rhd-gerar">Gerar PDF</button>
+        ${rhdPodeAnexarPj() ? `<button type="button" class="btn-sec btn-sm" id="btn-rhd-anexar-pj" title="PDF do contrato PJ assinado (só RH e diretoria leem). A vigência fica na aba Profissional.">Anexar contrato PJ</button><input type="file" id="rhd-pj-arquivo" accept=".pdf,application/pdf" style="display:none;" />` : ""}
+        <button type="button" class="btn btn-sm" id="btn-rhd-gerar-admissao" ${a ? "" : "disabled"} title="Ficha cadastral + o contrato que o tipo da admissão pede">Gerar os da admissão</button>
       </div>
     </div>
     ${resumo}

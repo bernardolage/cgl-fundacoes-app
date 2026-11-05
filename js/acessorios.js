@@ -475,8 +475,8 @@ async function renderAcessoriosContagem(opts){
       ${semPreco ? `<span class="tag ambar">${semPreco} modelo(s) sem preço</span>` : ""}${estim ? `<span class="tag ambar">${esc(estim)} estimado(s)</span>` : ""}${venc ? `<span class="tag ambar">${esc(venc)} vencido(s)</span>` : ""}
       <label class="check-inline" title="Mostrar só os modelos sem preço de reposição"><input type="checkbox" id="ace-f-sem-preco" ${_aceSoSemPreco ? "checked" : ""} /> só sem preço</label>
       <span>Sucata: ${sucPreco ? `${brl(sucPreco.preco_kg)}/kg (${esc(String(sucPreco.competencia).slice(5, 7))}/${esc(String(sucPreco.competencia).slice(0, 4))})` : '<span class="tag ambar">sem preço do kg</span>'}</span>
-      ${acePodeEditar() ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-sucata">♻️ Preço da sucata</button>` : ""}
-      <button type="button" class="btn-sec btn-sm" id="btn-ace-xlsx" style="margin-left:auto;">⬇️ Excel</button>
+      ${acePodeEditar() ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-sucata">Preço da sucata</button>` : ""}
+      <button type="button" class="btn-sec btn-sm" id="btn-ace-xlsx" style="margin-left:auto;">Excel</button>
     </div>
     <p class="meta" style="margin:0 0 8px;">${verTot ? "Valor = preço de reposição do modelo × fator da condição (bom estado 100%, precisa/em manutenção 60%, sucata = peso × R$/kg, baixada e perdida zero). " : ""}Clique na linha para editar descrição, grupo, preço e peso do modelo.</p>
     <div class="tabela-rola"><table>
@@ -693,7 +693,7 @@ function aceSugerirRetirada(pecas){
   const pode = acePodeEditar(), lista = $("ace-sug-lista");
   lista.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Peça</th><th>Tipo</th><th>Máquina</th><th></th></tr></thead><tbody>${pecas.map(p => `<tr data-sug="${esc(p.id)}">
       <td><strong>${esc(p.marcacao)}</strong></td><td>${esc(ACE_TIPO_LBL[p.tipo] || p.tipo || "—")}</td><td>${esc(p.maquina || "—")}</td>
-      <td class="col-acao">${pode ? `<button type="button" class="btn-sec btn-sm" data-sug-retirar="${esc(p.id)}">⏏️ Retirar: quebrou</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+      <td class="col-acao">${pode ? `<button type="button" class="btn-sec btn-sm" data-sug-retirar="${esc(p.id)}">Retirar: quebrou</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
     + (pode ? "" : `<p class="ajuda-campo">Seu perfil não retira peças: avise o responsável pelos acessórios.</p>`);
   $("ace-sug-modal").style.display = "flex";
 }
@@ -1228,12 +1228,12 @@ function aceRenderReparos(reps, err){
   const c = $("ace-rep-lista");
   if(err){ c.innerHTML = `<p class="vazio">Erro: ${esc(err.message)}</p>`; return; }
   const pode = acePodeEditar();
-  c.innerHTML = `<div class="lista-topo"><h3>Reparos de caldeiraria</h3>${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-rep-novo" style="margin-left:auto;">🔧 Abrir reparo</button>` : ""}</div>` +
+  c.innerHTML = `<div class="lista-topo"><h3>Reparos de caldeiraria</h3>${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-rep-novo" style="margin-left:auto;">Abrir reparo</button>` : ""}</div>` +
     (reps.length ? `<div class="tabela-rola"><table><thead><tr><th>Abertura</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Custo</th><th>Obs.</th>${pode ? "<th></th>" : ""}</tr></thead>
     <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${r.status === "concluido" ? "verde" : r.status === "cancelado" ? "cinza" : "ambar"}">${esc(ACE_REPARO_STATUS[r.status] || r.status)}</span></td>
       <td>${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_inicio)}</td><td>${dataBR(r.data_conclusao)}</td><td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td>
       <td class="meta">${esc((r.observacoes || "").replace(/^\[import raiz\]\s*/, ""))}</td>
-      ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="em_execucao">▶ Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="concluido">✅ Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="cancelado" style="color:var(--perigo-txt);">✖</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
+      ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="em_execucao">Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="concluido">Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="cancelado" style="color:var(--perigo-txt);">Cancelar</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum reparo registrado para esta peça.</p>`);
   $("btn-ace-rep-novo")?.addEventListener("click", () => abrirReparoAcessorios([_aceAtual.id]));
   c.querySelectorAll("button[data-rep]").forEach(b => b.addEventListener("click", () => {

@@ -323,7 +323,7 @@ function renderManPreventivas(){
       <td>${t.proximo ? `${esc(manAtividadeTxt(t.proximo))} <span class="meta">· ${esc(manRestanteTxt(t.proximo))}</span>` : "—"}</td>
       <td>${t.semPlano ? "—" : manTagSem(t.pior)}</td>
       <td class="col-acao" style="white-space:nowrap;">${t.semPlano ? (pode ? `<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">+ Plano</button>` : "") :
-        `${pode && (t.n.critico || t.n.atencao) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(t.equipamento_id)}" title="Abre a OS preventiva com os itens vencidos e em atenção; o kit de peças vira a separação do almoxarifado">⚙ Gerar OS e separação</button> ` : ""}<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">Plano</button>`}</td>
+        `${pode && (t.n.critico || t.n.atencao) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(t.equipamento_id)}" title="Abre a OS preventiva com os itens vencidos e em atenção; o kit de peças vira a separação do almoxarifado">Gerar OS e separação</button> ` : ""}<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">Plano</button>`}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
 async function manGerarPreventiva(eqId, itemIds){
@@ -390,10 +390,10 @@ async function renderManPlano(){
       <div class="campo"><label>Revisão</label><input id="man-pl-rev" value="${esc(_manPlano.revisao || "")}" ${pode ? "" : "disabled"} /></div>
       <div class="campo"><label>Responsável no sistema</label><select id="man-pl-resp" ${pode ? "" : "disabled"}><option value="">—</option>${_manProfiles.filter(p => ["diretor", "admin", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"].includes(p.cargo)).map(p => `<option value="${esc(p.id)}"${p.id === _manPlano.responsavel_id ? " selected" : ""}>${esc(p.nome)}</option>`).join("")}</select></div>
       <div class="campo largo"><label>Observações</label><input id="man-pl-obs" value="${esc(_manPlano.observacoes || "")}" ${pode ? "" : "disabled"} /></div>
-      ${pode ? `<div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-man-pl-salvar">💾 Salvar cabeçalho</button></div>` : ""}
+      ${pode ? `<div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-man-pl-salvar">Salvar cabeçalho</button></div>` : ""}
     </div>
     <div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Itens do plano</h3>
-      ${pode ? `<button type="button" class="btn btn-sm" id="btn-man-item-novo" style="margin-left:auto;">+ Item</button> ${_manPlanoItens.some(i => ["critico", "atencao"].includes(i.semaforo)) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(eqId)}">⚙ Gerar OS e separação dos vencidos</button>` : ""}` : ""}
+      ${pode ? `<button type="button" class="btn btn-sm" id="btn-man-item-novo" style="margin-left:auto;">+ Item</button> ${_manPlanoItens.some(i => ["critico", "atencao"].includes(i.semaforo)) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(eqId)}">Gerar OS e separação dos vencidos</button>` : ""}` : ""}
     </div>
     <div class="tabela-rola"><table>
       <thead><tr><th style="width:36px;">#</th><th>Componente</th><th>Operação</th><th>Setor</th><th class="num">Periodicidade</th><th class="num">Última</th><th class="num">Próxima</th><th>Restante</th><th>Semáforo</th><th class="num">Kit</th><th class="col-acao"></th></tr></thead>
@@ -640,9 +640,9 @@ function manCheckRender(){
         <td><input class="man-ck-obs" data-ci="${esc(i.id)}" value="${esc(i.observacao || "")}" ${podeEd ? "" : "disabled"} /></td></tr>`).join("")}</tbody></table></div>
     <div class="grade" style="margin-top:8px;"><div class="campo largo"><label>Observações gerais</label><input id="man-ck-obsg" value="${esc(c.observacoes || "")}" ${podeEd ? "" : "disabled"} /></div></div>
     <div class="form-acoes compacta" style="display:flex;gap:8px;flex-wrap:wrap;">
-      ${podeEd && semAtiv.length ? `<button type="button" class="btn" id="btn-man-ck-os">⚙ Gerar OS corretiva (${semAtiv.length} item(ns) não ok)</button>` : ""}
+      ${podeEd && semAtiv.length ? `<button type="button" class="btn" id="btn-man-ck-os">Gerar OS corretiva (${semAtiv.length} item(ns) não ok)</button>` : ""}
       ${podeEd && c.resultado !== "reprovado" ? `<button type="button" class="btn-sec acao-perigo" id="btn-man-ck-reprovar" style="color:var(--perigo-txt);">✕ Reprovar equipamento</button>` : ""}
-      ${podeEd && c.resultado === "reprovado" ? `<button type="button" class="btn-sec" id="btn-man-ck-reabrir">↩ Reabrir avaliação</button>` : ""}
+      ${podeEd && c.resultado === "reprovado" ? `<button type="button" class="btn-sec" id="btn-man-ck-reabrir">Reabrir avaliação</button>` : ""}
       <button type="button" class="btn-sec" id="btn-man-ck-fechar2">Fechar</button>
     </div>`;
   const upd = async (campos) => { const { error } = await sb.from("checklists").update(campos).eq("id", c.id); if(error) aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); };
@@ -1057,7 +1057,7 @@ function manRenderCustos(){
         <p class="meta">Use quando o custo real não sai do serviço, das peças e das horas (OS antiga da planilha).</p>
         ${pode ? `<label class="check-inline"><input type="checkbox" id="man-custo-manual"${m.custo_manual ? " checked" : ""} /> custo manual</label>
           <input type="number" id="man-custo-valor" min="0" step="0.01" value="${esc(m.custo_real || 0)}" style="width:140px;"${m.custo_manual ? "" : " disabled"} />
-          <button type="button" class="btn-sec btn-sm" id="btn-man-custo-salvar">💾 Salvar custo</button>` : ""}
+          <button type="button" class="btn-sec btn-sm" id="btn-man-custo-salvar">Salvar custo</button>` : ""}
       </div></div>
     <p class="meta">Concluída, a OS entra em Custos da TAG em até três linhas: serviço externo, peças e mão de obra. A baixa das peças no estoque não conta de novo.</p>`;
   $("man-custo-manual")?.addEventListener("change", e => { $("man-custo-valor").disabled = !e.target.checked; });
@@ -1200,7 +1200,7 @@ async function manRenderResumoEquipamento(e, containerId){
   box.innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Plano preventivo</h3>
       <span style="margin-left:8px;">${itens.length ? manTagSem(pior) : '<span class="tag cinza">sem plano</span>'}</span>
       <span class="meta" style="margin-left:8px;">${itens.length ? `${itens.length} itens · ${esc(n.critico)} crítico(s), ${esc(n.atencao)} em atenção` : ""}</span>
-      ${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">${itens.length ? "Abrir plano" : "+ Criar plano"}</button>${itens.length && (n.critico || n.atencao) ? ` <button type="button" class="btn btn-sm" id="btn-eqp-man-gerar">⚙ Gerar OS e separação</button>` : ""}` : (itens.length ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">Ver plano</button>` : "")}
+      ${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">${itens.length ? "Abrir plano" : "+ Criar plano"}</button>${itens.length && (n.critico || n.atencao) ? ` <button type="button" class="btn btn-sm" id="btn-eqp-man-gerar">Gerar OS e separação</button>` : ""}` : (itens.length ? `<button type="button" class="btn-sec btn-sm" id="btn-eqp-man-plano" style="margin-left:auto;">Ver plano</button>` : "")}
     </div>
     ${prox.length ? `<div class="tabela-rola"><table><thead><tr><th>Item</th><th class="num">Periodicidade</th><th class="num">Próxima</th><th>Restante</th><th>Semáforo</th></tr></thead>
       <tbody>${prox.map(i => `<tr><td>${esc(manAtividadeTxt(i))}</td><td class="num">${esc(manPer(i))}</td><td class="num">${esc(manProxTxt(i))}</td><td>${esc(manRestanteTxt(i))}</td><td>${manTagSem(i.semaforo)}</td></tr>`).join("")}</tbody></table></div>` : ""}

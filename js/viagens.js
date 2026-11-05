@@ -551,7 +551,7 @@ function vgRenderCusto(){
     ${obras.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Obra</th><th class="num">Fração</th><th class="num">Valor</th><th class="col-acao"></th></tr></thead>
       <tbody>${obras.map(o => `<tr><td>${linkObra(o.obra_id, o.nome)}</td><td class="num">${Math.round(Number(o.fracao) * 100)}%</td><td class="num">${frete && !(fr && fr.valor_frete != null) ? (podeVer ? "—" : '<span class="meta">restrito</span>') : frotaMoeda(valor * Number(o.fracao))}</td>
-        <td class="col-acao"><button type="button" class="btn-sec btn-sm vg-obra-custos" data-obra="${esc(o.obra_id)}" title="Aba Custos da obra">💰 Custos da obra</button></td></tr>`).join("")}</tbody></table></div>`
+        <td class="col-acao"><button type="button" class="btn-sec btn-sm vg-obra-custos" data-obra="${esc(o.obra_id)}" title="Aba Custos da obra">Custos da obra</button></td></tr>`).join("")}</tbody></table></div>`
       : `<p class="vazio">${frete ? "Viagem sem obra: o frete fica sem rateio (o título a pagar nasce sem obra). Defina a obra de destino ou ligue uma nota com destino em obra." : "Viagem sem obra: o custo fica só no caminhão (aba Custos do equipamento). Defina a obra de destino ou ligue uma nota com destino em obra."}</p>`}
     <p class="nota">${frete
       ? 'O frete entra em <code>vw_custos</code> como origem "deslocamento", subtipo <code>frete_terceirizado</code>, com o transportador como fornecedor, sem equipamento e com a fração de cada obra; o valor aparece para quem lê Contas a pagar e para a engenharia (fase 130b). O título a pagar (origem Viagem) nasce com valor maior que zero e vencimento; viagem cancelada apaga o título não exportado.'
@@ -590,7 +590,7 @@ function vgHtmlAnexos(pode){
     ${pode && v.id ? `<div class="grade" style="margin-top:8px;">
       <div class="campo"><label>Tipo</label><select id="vg-anexo-tipo">${Object.entries(VG_ANEXO_TIPOS).map(([k, l]) => `<option value="${esc(k)}"${k === (frete ? "cte" : "comprovante") ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
       <div class="campo largo"><label>Arquivo(s)</label><input type="file" id="vg-anexo-arq" multiple accept=".pdf,.xml,.jpg,.jpeg,.png,.webp" /></div>
-      <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-vg-anexar">📎 Anexar</button></div>
+      <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-vg-anexar">Anexar</button></div>
     </div>` : ""}`;
 }
 function vgLigarAnexos(){
@@ -692,7 +692,7 @@ function vgRenderDocs(){
       ${pode && v.id ? `<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">
         <button type="button" class="btn-sec btn-sm" id="btn-vg-nota-remessa" title="cria a nota de remessa já ligada à viagem, com origem, destino, motorista e placa herdados">+ Nota de remessa</button>
         <button type="button" class="btn-sec btn-sm" id="btn-vg-nota-retorno">+ Nota de retorno</button>
-        <button type="button" class="btn-sec btn-sm" id="btn-vg-vincular" title="nota já criada em Movimentações, ainda sem viagem">🔗 Vincular nota existente</button></span>` : ""}
+        <button type="button" class="btn-sec btn-sm" id="btn-vg-vincular" title="nota já criada em Movimentações, ainda sem viagem">Vincular nota existente</button></span>` : ""}
     </div>
     ${notas.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Nota</th><th>Tipo</th><th>Status</th><th>NF-e</th><th>Chave</th><th class="num">Itens</th><th class="num">Valor</th><th>MDF-e</th><th class="col-acao"></th></tr></thead>
@@ -726,10 +726,10 @@ function vgRenderDocs(){
           <td>${edit ? `<input class="vg-mdfe-chave" data-id="${esc(d.id)}" value="${esc(d.chave_acesso || "")}" placeholder="44 dígitos" maxlength="44" style="width:170px;" />` : `<span class="meta" title="${esc(d.chave_acesso || "")}">${d.chave_acesso ? esc(String(d.chave_acesso).slice(0, 8)) + "…" : "—"}</span>`}</td>
           <td>${edit ? `<input class="vg-mdfe-prot" data-id="${esc(d.id)}" value="${esc(d.protocolo || "")}" style="width:120px;" />` : esc(d.protocolo || "—")}</td>
           <td class="col-acao" style="white-space:nowrap;">${pode ? /* html */ [
-            edit ? `<button type="button" class="btn-sec btn-sm vg-mdfe-salvar" data-id="${esc(d.id)}" title="guardar chave e protocolo">💾</button>` : "",
+            edit ? `<button type="button" class="btn-sec btn-sm vg-mdfe-salvar" data-id="${esc(d.id)}" title="guardar chave e protocolo">Salvar</button>` : "",
             d.status === "rascunho" ? `<button type="button" class="btn-sec btn-sm vg-mdfe-st" data-id="${esc(d.id)}" data-st="emitido" title="marcar como emitido no UniNFe">✓ Emitido</button>` : "",
-            d.status === "emitido" ? `<button type="button" class="btn-sec btn-sm vg-mdfe-st" data-id="${esc(d.id)}" data-st="em_transito">🚛 Trânsito</button>` : "",
-            ["emitido", "em_transito"].includes(d.status) ? `<button type="button" class="btn-sec btn-sm vg-mdfe-st" data-id="${esc(d.id)}" data-st="encerrado" title="encerra o manifesto (chegada)">🔒 Encerrar</button>` : "",
+            d.status === "emitido" ? `<button type="button" class="btn-sec btn-sm vg-mdfe-st" data-id="${esc(d.id)}" data-st="em_transito">Trânsito</button>` : "",
+            ["emitido", "em_transito"].includes(d.status) ? `<button type="button" class="btn-sec btn-sm vg-mdfe-st" data-id="${esc(d.id)}" data-st="encerrado" title="encerra o manifesto (chegada)">Encerrar</button>` : "",
             !["encerrado", "cancelado"].includes(d.status) ? `<button type="button" class="btn-sec btn-sm acao-perigo vg-mdfe-st" data-id="${esc(d.id)}" data-st="cancelado">✗</button>` : ""
           ].join(" ") : ""}</td></tr>`; }).join("")}</tbody></table></div>` : `<p class="vazio">Nenhum MDF-e. O manifesto agrupa as notas emitidas da viagem (frete próprio); "Gerar MDF-e" monta com a placa, o motorista e as UFs.</p>`}
     <p class="nota">NF-e e MDF-e são emitidos no UniNFe; o sistema guarda número, chave, protocolo e PDF. "Dados UniNFe" na ficha da nota monta o texto para digitar lá. Ao concluir a viagem, os MDF-e emitidos ou em trânsito são encerrados.</p>

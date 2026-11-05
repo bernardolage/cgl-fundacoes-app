@@ -384,11 +384,11 @@ function renderFichaChamado(erroComentarios){
     <div class="campo largo"><label>Descrição</label><div class="cham-desc" style="font-size:var(--txt-sm);color:var(--txt);">${esc(c.descricao || "—")}</div></div>
     <h4 class="titulo-bloco" style="margin-top:14px;">📎 Anexos (${_chamAnexos.length})</h4>
     <div id="cham-anexos">${_chamAnexos.length ? _chamAnexos.map(a => `<div class="cham-anexo">
-      <button type="button" class="btn-sec btn-sm btn-cham-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}" title="Baixar">⬇ ${esc(a.nome)}</button>
+      <button type="button" class="btn-sec btn-sm btn-cham-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}" title="Baixar">${esc(a.nome)}</button>
       <span class="meta">${esc(chamTamanho(a.tamanho_bytes))} · ${esc(chamNome(a.enviado_por))} · ${esc(chamDataHora(a.criado_em))}</span>
     </div>`).join("") : `<p class="vazio">Nenhum anexo visível. Os anexos só aparecem para quem enviou, para quem abriu o chamado e para a diretoria.</p>`}</div>
     <div class="cham-anexo-novo"><input type="file" id="cham-anexo-novo" multiple accept="${esc(CHAM_ANEXO_ACCEPT)}" />
-      <button type="button" class="btn-sec btn-sm" id="btn-cham-anexar">📎 Anexar ao chamado</button></div>
+      <button type="button" class="btn-sec btn-sm" id="btn-cham-anexar">Anexar ao chamado</button></div>
     <h4 class="titulo-bloco" style="margin-top:14px;">Andamento (${_chamComentarios.length})</h4>
     ${erroComentarios ? `<p class="vazio">Não foi possível ler os comentários: ${esc(erroComentarios)}</p>` : ""}
     <div id="cham-comentarios">${_chamComentarios.length ? _chamComentarios.map((k, i) => {
@@ -405,13 +405,13 @@ function renderFichaChamado(erroComentarios){
         .replace(/\[sugere:\s*([a-z_]+)\]/gi, (_m, st) => `<span class="tag cinza">ao aprovar: ${esc(CHAM_SUGERE[st.toLowerCase()] || st)}</span>`);
       const corPref = (p) => /^(resposta|confirmado)/i.test(p) ? "verde" : /^duplicado/i.test(p) ? "cinza" : /^(pergunta|reaberto)/i.test(p) ? "ambar" : "azul";
       // o botão antigo "Aprovar resposta" só existe antes da migration do lote S47 (depois, o bloco "Esperando" aprova)
-      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${corPref(pref[1])}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${/* html */ corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) && !chamTemEspera(c) && !chamSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">✅ Aprovar resposta</button>` : ""}</div>`;
+      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${corPref(pref[1])}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${/* html */ corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) && !chamTemEspera(c) && !chamSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">Aprovar resposta</button>` : ""}</div>`;
     }).join("") : `<p class="vazio">Sem comentários ainda. A triagem diária (18h) registra aqui o andamento.</p>`}</div>
     <div class="campo largo" style="margin-top:10px;"><label>Comentar</label><textarea id="cham-novo-comentario" rows="3" placeholder="${podeTriar ? "Registre a triagem, a decisão ou a resolução. Prefixe com [resolução] para destacar." : "Complemente o chamado (mais detalhes, prints descritos, o que mudou)."}"></textarea></div>
     <div id="cham-ficha-aviso" class="aviso"></div>
     <div class="form-acoes compacta">
       <button type="button" class="btn" id="btn-cham-comentar">Enviar comentário</button>
-      ${(podeTriar && c.status !== "resolvido") ? `<button type="button" class="btn btn-sucesso" id="btn-cham-resolver" title="Grava o comentário como [resolução] e marca o chamado como resolvido">✅ Resolver com este comentário</button>` : ""}
+      ${(podeTriar && c.status !== "resolvido") ? `<button type="button" class="btn btn-sucesso" id="btn-cham-resolver" title="Grava o comentário como [resolução] e marca o chamado como resolvido">Resolver com este comentário</button>` : ""}
     </div>`;
 
   $("btn-cham-fechar").addEventListener("click", fecharChamado);
@@ -472,8 +472,8 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
       ${perg ? `<div class="cham-espera-perg"><span class="tag ${perg.sugerida ? "verde" : "ambar"}">${perg.sugerida ? "resposta sugerida" : "pergunta"}</span> ${esc(perg.texto)}</div>` : `<div class="meta">Sem pergunta registrada: veja o andamento abaixo.</div>`}
       ${minha ? (perg && perg.sugerida ? `
         <div class="form-acoes compacta">
-          <button type="button" class="btn btn-sucesso" id="btn-cham-aprovar-enviar" title="Envia a resposta sugerida em seu nome e muda o chamado para ${esc(vai)}">✅ Aprovar e enviar</button>
-          <button type="button" class="btn-sec" id="btn-cham-aprovar-editar">✏️ Editar</button>
+          <button type="button" class="btn btn-sucesso" id="btn-cham-aprovar-enviar" title="Envia a resposta sugerida em seu nome e muda o chamado para ${esc(vai)}">Aprovar e enviar</button>
+          <button type="button" class="btn-sec" id="btn-cham-aprovar-editar">Editar</button>
           <span class="meta">Ao enviar, o chamado vai para <strong>${esc(vai)}</strong>.</span>
         </div>
         <div id="cham-aprovar-edicao" style="display:none;">
@@ -498,8 +498,8 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
         <textarea id="cham-reabrir-texto" rows="2" placeholder="O que continua errado? (obrigatório)"></textarea>
       </div>
       <div class="form-acoes compacta">
-        ${comConfirmacao ? `<button type="button" class="btn btn-sucesso" id="btn-cham-confirmar" title="Registra que a correção funcionou e tira o chamado da sua fila">✅ Funcionou</button>` : ""}
-        <button type="button" class="btn-sec" id="btn-cham-reabrir">${comConfirmacao ? "↩️ Ainda não" : "↩️ Não resolveu"}</button>
+        ${comConfirmacao ? `<button type="button" class="btn btn-sucesso" id="btn-cham-confirmar" title="Registra que a correção funcionou e tira o chamado da sua fila">Funcionou</button>` : ""}
+        <button type="button" class="btn-sec" id="btn-cham-reabrir">${comConfirmacao ? "Ainda não" : "Não resolveu"}</button>
       </div>
     </div>`;
   }

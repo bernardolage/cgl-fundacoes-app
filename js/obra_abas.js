@@ -244,7 +244,7 @@ async function carregarMaquinasDaObra(obraId){
     if(o.origem === "rdo")
       return `<span class="mob-chip" title="Diários e execuções desta máquina na obra nos últimos 60 dias">📋 ${esc(o.qtd_rdos || 0)} RDO${o.qtd_rdos === 1 ? "" : "s"} · ${num(o.metros || 0)} m · ${d(o.de)}–${d(o.ate)}</span>`;
     return `<span class="mob-chip${o.vigente ? "" : " meta"}" title="${esc(o.observacao || "Vínculo manual")}">✍️ manual · ${d(o.de)}–${d(o.ate)}${o.condutor_nome ? " · condutor " + esc(o.condutor_nome) : ""}${o.vigente ? "" : " (encerrado)"}
-      ${pode ? `<button type="button" class="btn-rem" data-maq-acao="${o.vigente ? "encerrar" : "excluir"}" data-maq-id="${esc(o.referencia_id)}" title="${o.vigente ? "Encerrar o vínculo hoje" : "Excluir o vínculo"}">${o.vigente ? "⏹" : "&times;"}</button>` : ""}</span>`;
+      ${pode ? `<button type="button" class="${o.vigente ? "btn-sec btn-sm" : "btn-rem"}" data-maq-acao="${o.vigente ? "encerrar" : "excluir"}" data-maq-id="${esc(o.referencia_id)}" title="${o.vigente ? "Encerrar o vínculo hoje" : "Excluir o vínculo"}">${o.vigente ? "Encerrar" : "&times;"}</button>` : ""}</span>`;
   };
   const tabela = (lista, comCondutor) => `<div class="tabela-rola"><table>
     <thead><tr><th>TAG</th><th>Nome</th><th>Tipo</th>${comCondutor ? "<th>Condutor atual</th>" : ""}<th>Origem do vínculo</th></tr></thead>
@@ -361,9 +361,9 @@ async function obrRenderBensEquip(obraId, naObraLoc){
           <button type="button" class="serv-view-btn${_obrBensNaObraAgora ? " ativo" : ""}" data-f="agora">Na obra agora (${_obrBensEquip.filter(r => r.na_obra_agora).length})</button>
         </div>
         <span style="margin-left:auto;"></span>
-        ${_obrBensEquip.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-bens-eq-csv">⬇ Exportar CSV</button>` : ""}
+        ${_obrBensEquip.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-bens-eq-csv">Exportar CSV</button>` : ""}
         ${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-equip-mov-nova">+ Nova movimentação</button>` : ""}
-        ${typeof sepPodePedir === "function" && sepPodePedir() ? `<button type="button" class="btn btn-sm" id="btn-obr-pedir-material" title="Lista de separação para o almoxarifado (fase 83): substitui o pedido pelo WhatsApp">📦 Pedir material ao almoxarifado</button>` : ""}
+        ${typeof sepPodePedir === "function" && sepPodePedir() ? `<button type="button" class="btn btn-sm" id="btn-obr-pedir-material" title="Lista de separação para o almoxarifado (fase 83): substitui o pedido pelo WhatsApp">Pedir material ao almoxarifado</button>` : ""}
       </div>
       ${lst.length ? `<div class="tabela-rola"><table>
         <thead><tr><th>TAG</th><th>Tipo</th><th>Chegada</th><th>Saída</th><th class="num">Dias na obra</th><th>Situação</th><th class="num">Custo no período</th><th class="num">Metros (RDO)</th><th>Origem</th><th class="col-acao"></th></tr></thead>
@@ -377,7 +377,7 @@ async function obrRenderBensEquip(obraId, naObraLoc){
           <td class="num">${brl(r.custo_periodo)}</td>
           <td class="num">${r.metros_executados != null ? num(r.metros_executados) : "—"}</td>
           <td class="meta">${esc({ mobilizacao: "mobilização", movimentacao: "movimentação", localizacao: "localização" }[r.origem] || r.origem)}</td>
-          <td class="col-acao">${pode && r.na_obra_agora && naObraLoc.some(e => e.id === r.equipamento_id) ? `<button type="button" class="btn-sec btn-sm btn-equip-devolver" data-id="${esc(r.equipamento_id)}" title="Devolver para base">↩ Devolver</button>` : ""}</td>
+          <td class="col-acao">${pode && r.na_obra_agora && naObraLoc.some(e => e.id === r.equipamento_id) ? `<button type="button" class="btn-sec btn-sm btn-equip-devolver" data-id="${esc(r.equipamento_id)}" title="Devolver para base">Devolver</button>` : ""}</td>
         </tr>`).join("")}</tbody>
         <tfoot><tr><td colspan="4"><strong>${lst.length} passagem(ns)</strong></td><td class="num"><strong>${num(diasMaq)}</strong> <span class="meta">dias·máquina</span></td><td></td><td class="num"><strong>${brl(custo)}</strong></td><td class="num">${metros ? num(metros) : ""}</td><td colspan="2"></td></tr></tfoot>
       </table></div>
@@ -426,15 +426,15 @@ async function obrRenderBensAce(obraId){
       <span class="meta">${agora.length} na obra agora${transito.length ? ` · ${transito.length} em trânsito` : ""} · ${passaram.length} passagem(ns) encerrada(s) · ${perdas.length} perda(s)/reparo(s)</span>
     </div>
     <div class="lista-topo compacta" style="border:none;padding:0;"><strong>Na obra agora</strong> <span class="contador">${agora.length}</span>
-      ${agora.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-agora" style="margin-left:auto;">⬇ Exportar CSV</button>` : ""}</div>
+      ${agora.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-agora" style="margin-left:auto;">Exportar CSV</button>` : ""}</div>
     ${blocoAgora || `<p class="vazio">Nenhuma peça registrada na obra.</p>`}
     <div class="lista-topo compacta" style="border:none;padding:0;margin-top:12px;"><strong>Passaram pela obra</strong> <span class="contador">${passaram.length}</span>
-      ${passaram.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-pas" style="margin-left:auto;">⬇ Exportar CSV</button>` : ""}</div>
+      ${passaram.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-pas" style="margin-left:auto;">Exportar CSV</button>` : ""}</div>
     ${passaram.length ? `<div class="tabela-rola"><table><thead><tr><th>Peça</th><th>Descrição</th><th>Entrada</th><th>Saída</th><th class="num">Dias</th></tr></thead>
       <tbody>${passaram.map(r => `<tr><td><strong>${linkAcessorio(r.acessorio_id, r.marcacao)}</strong></td><td>${esc(desc(r))}</td><td>${r.entrada ? dataBR(r.entrada) : "—"}</td><td>${dataBR(r.saida)}</td><td class="num">${esc(r.dias ?? "—")}</td></tr>`).join("")}</tbody></table></div>`
       : `<p class="vazio">Nenhuma peça entrou e saiu desta obra pelos registros de localização.</p>`}
     <div class="lista-topo compacta" style="border:none;padding:0;margin-top:12px;"><strong>Perdas e reparos na obra</strong> <span class="contador">${perdas.length}</span>
-      ${perdas.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-perdas" style="margin-left:auto;">⬇ Exportar CSV</button>` : ""}</div>
+      ${perdas.length ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-ace-csv-perdas" style="margin-left:auto;">Exportar CSV</button>` : ""}</div>
     ${perdas.length ? `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Peça</th><th>Evento</th><th>Para</th><th>Obs.</th><th>Quem</th></tr></thead>
       <tbody>${perdas.map(e => `<tr><td>${dataBR(String(e.data).slice(0, 10))}</td><td><strong>${linkAcessorio(e.acessorio_id, e.acessorio?.marcacao || "peça")}</strong></td><td><span class="tag ${e.tipo === "perda" ? "vermelho" : "ambar"}">${e.tipo === "perda" ? "perda" : "reparo"}</span></td><td class="meta">${esc(e.para_descricao || "")}</td><td class="meta">${esc(e.observacao || "")}</td><td class="meta">${esc(e.autor_nome || "")}</td></tr>`).join("")}</tbody></table></div>`
       : `<p class="vazio">Nenhuma perda ou reparo registrado com origem nesta obra.</p>`}`;
@@ -541,7 +541,7 @@ async function carregarMedicoesDaObra(obraId){
   // fase 88 (#54): boletim já emitido (PDF do Maya ou da planilha) entra conferido e nasce aprovado
   const podeImportar = typeof medImpPodeImportar === "function" && medImpPodeImportar();
   const btnImportar = podeImportar
-    ? `<button type="button" class="btn-sec" id="btn-medic-importar" title="Lê o PDF do boletim que a CGL enviou ao cliente (Maya ou planilha), você confere contra a cascata de preço e a medição nasce aprovada com o PDF anexado">📄 Importar boletim (PDF)</button>`
+    ? `<button type="button" class="btn-sec" id="btn-medic-importar" title="Lê o PDF do boletim que a CGL enviou ao cliente (Maya ou planilha), você confere contra a cascata de preço e a medição nasce aprovada com o PDF anexado">Importar boletim (PDF)</button>`
     : "";
   if(!data || !data.length){
     cont.innerHTML = `${stats}<p class="vazio">Nenhuma medição registrada.<br>
@@ -904,7 +904,7 @@ async function carregarDocumentosDaObra(obraId){
         </div>
       </div>
       <div class="form-acoes">
-        <button type="button" class="btn" id="btn-doc-enviar">📤 Enviar</button>
+        <button type="button" class="btn" id="btn-doc-enviar">Enviar</button>
       </div>
     </div>`;
 
@@ -938,8 +938,8 @@ async function carregarDocumentosDaObra(obraId){
         <td>${tamKB}</td>
         <td>${new Date(d.created_at).toLocaleDateString("pt-BR")}</td>
         <td class="col-acao">
-          <button type="button" class="btn-sec btn-sm btn-doc-baixar" data-path="${esc(d.storage_path)}" data-nome="${esc(d.nome)}" title="Baixar">⬇️</button>
-          ${tituloExcluir ? `<button type="button" class="btn-sec btn-sm btn-doc-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="${esc(tituloExcluir)}">🗑️</button>` : ""}
+          <button type="button" class="btn-sec btn-sm btn-doc-baixar" data-path="${esc(d.storage_path)}" data-nome="${esc(d.nome)}" title="Baixar">Baixar</button>
+          ${tituloExcluir ? `<button type="button" class="btn-sec btn-sm btn-doc-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="${esc(tituloExcluir)}">Excluir</button>` : ""}
         </td>
       </tr>`;
     }).join("");
@@ -1272,7 +1272,7 @@ async function carregarTimelineDaObra(obraId){
       <select id="tl-novo-resp" title="Quem fica responsável por providenciar">
         <option value="">— sem responsável —</option>${opcoesResp}
       </select>
-      <button type="button" class="btn btn-sm" id="btn-tl-comentar">💬 Comentar</button>
+      <button type="button" class="btn btn-sm" id="btn-tl-comentar">Comentar</button>
     </div>`;
 
   if(!eventos.length){
@@ -1469,7 +1469,7 @@ async function obrPmCarregar(obraId){
         <div class="campo largo"><label>Permuta</label><select id="obr-pm-permuta"><option value="">— escolher —</option>${/* html */ opts}</select></div>
         <div class="campo"><label>% da medição em permuta</label><input id="obr-pm-pct" type="number" step="0.01" min="0" max="100" placeholder="vazio = padrão" /></div>
       </div>
-      <div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn-sec" id="btn-obr-pm-ligar">🔗 Ligar a obra à permuta</button>
+      <div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn-sec" id="btn-obr-pm-ligar">Ligar a obra à permuta</button>
         <span class="meta">Permuta nova: Medições › Permutas › + Nova permuta.</span></div>` : ""}`;
     $("btn-obr-pm-ligar")?.addEventListener("click", () => comBotaoTravado("btn-obr-pm-ligar", () => obrPmLigar(obraId)));
     return;

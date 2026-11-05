@@ -341,7 +341,6 @@ function abrirFichaMed(med){
 
   $("med-ficha-numero").textContent = med.numero || "(novo)";
   $("med-ficha-obra-chip").innerHTML = linkObra(med.obra_id); // chamado #4: clicável
-  $("med-ficha-status-chip").innerHTML = tagStatus("medicao", med.status);
   if($("med-ficha-subtotal-chip")) $("med-ficha-subtotal-chip").textContent = brl(med.subtotal||0);
   $("med-ficha-valor-chip").textContent = brl(med.valor_final || med.valor_medido || 0);
   $("med-ficha-titulo").textContent = med.numero ? `Medição ${med.numero}` : "Nova medição";
@@ -743,7 +742,7 @@ async function calcularHoraExtraMedicao(){
   const { data, error } = await sb.rpc("calcular_hora_extra_medicao", {
     p_obra_id: obraId, p_inicio: pIni, p_fim: pFim
   });
-  if(btn){ btn.disabled = false; btn.textContent = "✨ Calcular Hora Extra"; }
+  if(btn){ btn.disabled = false; btn.textContent = "Calcular Hora Extra"; }
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   const r = data?.[0];
   if(!r || (Number(r.valor_total) || 0) === 0){
@@ -775,7 +774,7 @@ async function calcularFatMinimoMedicao(){
   const { data, error } = await sb.rpc("calcular_faturamento_minimo_medicao", {
     p_obra_id: obraId, p_inicio: pIni, p_fim: pFim
   });
-  if(btn){ btn.disabled = false; btn.textContent = "✨ Calcular Fat. Mínimo"; }
+  if(btn){ btn.disabled = false; btn.textContent = "Calcular Fat. Mínimo"; }
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   const r = data?.[0];
   if(!r || (Number(r.valor_total) || 0) === 0){
@@ -823,7 +822,7 @@ async function comporMedicaoSinal(){
   if(btn){ btn.disabled = true; btn.textContent = "Compondo..."; }
 
   const { data, error } = await sb.rpc("compor_medicao_sinal", { p_obra_id: obraId });
-  if(btn){ btn.disabled = false; btn.textContent = "✨ Compor sinal contratual"; }
+  if(btn){ btn.disabled = false; btn.textContent = "Compor sinal contratual"; }
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   if(!data || !data.length){
     aviso("app-aviso","Nenhum item válido no orçamento da obra.","erro");
@@ -870,7 +869,7 @@ async function sugerirItensMedicao(){
     sb.rpc("sugerir_extras_medicao", { p_obra_id: obraId, p_inicio: inicio, p_fim: fim, p_medicao_atual: medEditId || null })
   ]);
 
-  if(btn){ btn.disabled = false; btn.textContent = "✨ Sugerir do período"; }
+  if(btn){ btn.disabled = false; btn.textContent = "Sugerir do período"; }
   if(previewRes.error){ aviso("app-aviso","Erro ao sugerir: "+previewRes.error.message,"erro"); return; }
   // Sem o aviso, um erro aqui deixava a medição sem refuro e sem mobilização, calada (o 42702 durou da fase 18b até este hotfix)
   const erroExtras = extrasRes.error ? ` ⚠️ Refuro e mobilização não vieram (${extrasRes.error.message}): lance à mão.` : "";
@@ -1150,7 +1149,7 @@ async function gerarPDFMedicao(){
     console.error(err);
     aviso("app-aviso", "Erro ao gerar PDF: " + (err.message||err), "erro");
   } finally {
-    if(btn){ btn.disabled = false; btn.textContent = "📄 Gerar PDF"; }
+    if(btn){ btn.disabled = false; btn.textContent = "Gerar PDF"; }
   }
 }
 
@@ -2659,10 +2658,10 @@ function medCauFormHTML(c, pref){
     </div>
     ${c.motivo_baixa ? `<p class="nota">Baixada: ${esc(c.motivo_baixa)}</p>` : ""}
     ${podeOp ? `<div class="form-acoes compacta" style="justify-content:flex-start;">
-      <button type="button" class="btn" id="${esc(pref)}-salvar">💾 Registrar devolução</button>
+      <button type="button" class="btn" id="${esc(pref)}-salvar">Registrar devolução</button>
       ${c.status === "baixada"
-        ? `<button type="button" class="btn-sec" id="${esc(pref)}-reabrir" title="Volta a cobrar: limpa o motivo da baixa">↩ Reabrir</button>`
-        : `<button type="button" class="btn-sec acao-perigo" id="${esc(pref)}-baixar" title="Encerra sem devolução: não é caução, glosa, não precisa cobrar">⛔ Baixar</button>`}
+        ? `<button type="button" class="btn-sec" id="${esc(pref)}-reabrir" title="Volta a cobrar: limpa o motivo da baixa">Reabrir</button>`
+        : `<button type="button" class="btn-sec acao-perigo" id="${esc(pref)}-baixar" title="Encerra sem devolução: não é caução, glosa, não precisa cobrar">Baixar</button>`}
     </div>` : `<p class="nota">Só o financeiro, o admin e a diretoria registram devolução e baixa.</p>`}
     <div id="${esc(pref)}-chatter" class="historico"></div>`;
 }
@@ -2808,7 +2807,7 @@ function renderMedRecebFicha(med){
       <div class="campo largo"><label>Observações</label><input id="med-receb-obs" placeholder="ex.: 2ª parcela, desconto de alimentação…" /></div>
     </div>
     <div class="form-acoes compacta" style="justify-content:flex-start;">
-      <button type="button" class="btn btn-sucesso" id="btn-med-receb-confirmar">✅ Confirmar recebimento</button>
+      <button type="button" class="btn btn-sucesso" id="btn-med-receb-confirmar">Confirmar recebimento</button>
     </div>` : (podeOp && !temNf ? `<p class="nota">Informe o documento fiscal na aba Geral para confirmar recebimentos.</p>`
              : (podeOp ? `<p class="nota">Medição ${esc((STATUS.medicao[med.status] || {}).label || med.status)}: só medição aprovada ou faturada recebe.</p>`
              : `<p class="nota">Só o financeiro, o admin e a diretoria confirmam recebimentos.</p>`))}`;
@@ -3119,15 +3118,15 @@ function medPmRenderFicha(aba){
   }).join("") + (lateral ? `<div class="stage atual cancelada" title="${p.status === "excedida" ? "Crédito acima do valor do imóvel" : "Prazo para executar passou com saldo"}">${esc(MED_PM_STATUS[p.status].label)}</div>` : "");
   const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
   const nMed = _medPmLanc.filter(l => l.origem === "medicao").length, nHist = _medPmLanc.filter(l => l.origem === "historico").length;
-  const sb_ = (id, n, ic, lbl, tab) => `<button type="button" class="sb-btn" data-pm-tab="${esc(tab)}" id="${esc(id)}"><span class="sb-num">${esc(n)}</span><span class="sb-icon">${esc(ic)}</span><span class="sb-lbl">${esc(lbl)}</span></button>`;
-  const abas = [["geral", "📋 Geral"], ["lancamentos", `📊 Lançamentos <span class="conf-badge">${_medPmLanc.length || ""}</span>`], ["contratos", `📑 Contratos <span class="conf-badge">${_medPmContratos.length || ""}</span>`],
-    ["documentos", "📎 Documentos"], ["pendencias", `⚠️ Pendências <span class="conf-badge">${pend.length || ""}</span>`]];
+  const sb_ = (id, n, lbl, tab) => `<button type="button" class="sb-btn" data-pm-tab="${esc(tab)}" id="${esc(id)}"><span class="sb-num">${esc(n)}</span><span class="sb-lbl">${esc(lbl)}</span></button>`;
+  const abas = [["geral", "Geral"], ["lancamentos", `Lançamentos <span class="conf-badge">${_medPmLanc.length || ""}</span>`], ["contratos", `Contratos <span class="conf-badge">${_medPmContratos.length || ""}</span>`],
+    ["documentos", "Documentos"], ["pendencias", `Pendências <span class="conf-badge">${pend.length || ""}</span>`]];
   box.innerHTML = `<div class="odoo-sheet">
     <div class="odoo-actions-header">
       <div class="actions-left">
         <button type="button" class="btn-sec" id="btn-med-pm-voltar">&larr; Voltar</button>
-        ${podeOp ? `<button type="button" class="btn" id="btn-med-pm-salvar">💾 Salvar</button>` : ""}
-        ${podeOp && !_medPmLanc.length && !_medPmContratos.length ? `<button type="button" class="btn-sec acao-perigo" id="btn-med-pm-excluir" title="Só permuta sem contratos nem lançamentos">🗑️ Excluir</button>` : ""}
+        ${podeOp ? `<button type="button" class="btn" id="btn-med-pm-salvar">Salvar</button>` : ""}
+        ${podeOp && !_medPmLanc.length && !_medPmContratos.length ? `<details class="ficha-mais"><summary class="btn-sec">Mais ▾</summary><div class="ficha-mais-menu"><button type="button" class="btn-sec acao-perigo" id="btn-med-pm-excluir" title="Só permuta sem contratos nem lançamentos">Excluir</button></div></details>` : ""}
       </div>
       <div class="actions-right"><strong class="ficha-titulo">Permuta ${esc(p.numero)}</strong></div>
     </div>
@@ -3145,10 +3144,10 @@ function medPmRenderFicha(aba){
       ${chip("Status", medTagPm(p.status))}
     </div>
     <div class="odoo-smart-buttons">
-      ${sb_("sb-med-pm-contratos", _medPmContratos.length, "📑", "contratos", "contratos")}
-      ${sb_("sb-med-pm-medicoes", nMed, "📊", "medições do app", "lancamentos")}
-      ${sb_("sb-med-pm-historico", nHist, "🗂️", "histórico", "lancamentos")}
-      ${sb_("sb-med-pm-pend", pend.length, "⚠️", "pendências", "pendencias")}
+      ${sb_("sb-med-pm-contratos", _medPmContratos.length, "contratos", "contratos")}
+      ${sb_("sb-med-pm-medicoes", nMed, "medições do app", "lancamentos")}
+      ${sb_("sb-med-pm-historico", nHist, "histórico", "lancamentos")}
+      ${sb_("sb-med-pm-pend", pend.length, "pendências", "pendencias")}
     </div>
     <div class="odoo-notebook" id="med-pm-notebook">${abas.map(([t, l]) => `<button type="button" data-tab="${esc(t)}">${/* html */ l}</button>`).join("")}</div>
     <div class="odoo-body">
@@ -3406,7 +3405,7 @@ async function medPmCarregarDocs(p, podeOp){
       <thead><tr><th>Arquivo</th><th>Enviado em</th><th class="col-acao"></th></tr></thead><tbody>${/* html */ linhas}</tbody></table></div>` : `<p class="vazio">Nenhum documento. Anexe o instrumento (contrato de adesão, SCP, CPCV, termo) em PDF.</p>`)}
     ${podeOp ? `<div class="form-acoes compacta" style="justify-content:flex-start;margin-top:10px;">
       <input type="file" id="med-pm-doc-arquivo" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" />
-      <button type="button" class="btn-sec" id="btn-med-pm-doc-enviar">📎 Anexar documento</button>
+      <button type="button" class="btn-sec" id="btn-med-pm-doc-enviar">Anexar documento</button>
       <span class="meta">PDF, JPG ou PNG até 20 MB. O primeiro documento vira o instrumento da permuta.</span></div>` : ""}`;
   box.querySelectorAll("[data-pm-doc]").forEach(a => a.addEventListener("click", async (e) => {
     e.preventDefault();

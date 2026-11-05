@@ -526,7 +526,6 @@ function abrirFichaRDOVisual(rdo){
   $("rdo-ficha-obra-chip").innerHTML = linkObra(rdo.obra_id); // chamado #4: clicável
   $("rdo-ficha-data-chip").textContent = rdo.data ? dataBR(rdo.data) : "—";
   $("rdo-ficha-tipo-chip").textContent = `${t.icone} ${t.label}`;
-  $("rdo-ficha-status-chip").innerHTML = tagStatus("rdo", rdo.status);
   $("rdo-ficha-execs-chip").textContent = _rdoExecucoes.length;
   const metragem = _rdoExecucoes.reduce((s,e) => s + (Number(e.profundidade_executada)||0), 0);
   $("rdo-ficha-metragem-chip").textContent = `${num(metragem)} m`;
@@ -2365,7 +2364,7 @@ function _pdfParaBase64(file){
 async function processarArquivoIA(file, mediaType){
   const btn = $("btn-csv-processar");
   const txtBtn = btn ? btn.textContent : "";
-  if(btn){ btn.disabled = true; btn.textContent = "🤖 Lendo o diário…"; }
+  if(btn){ btn.disabled = true; btn.textContent = "Lendo o diário…"; }
   try {
     const arq = mediaType === "application/pdf" ? await _pdfParaBase64(file) : await _imagemParaBase64Reduzida(file);
     _iaOrigem = mediaType === "application/pdf" ? "ia_pdf" : "ia_foto";
@@ -3355,7 +3354,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
         <code style="background:var(--sup-0);padding:2px 8px;border-radius:3px;border:1px solid var(--borda-forte);min-width:80px;text-align:center;"><strong>${esc(maq)}</strong></code>
         <span style="color:var(--txt-fraco);font-size:var(--txt-xs);">→</span>
         <select class="csv-maq-select" data-maq="${esc(maq)}" style="flex:1;min-width:240px;">${equipOpts}</select>
-        ${alvo ? `<button type="button" class="btn-sec btn-sm csv-maq-usar" data-maq="${esc(maq)}" data-eq="${esc(alvo.id)}" title="${sug.exato ? "O número do documento bate com esta TAG" : "Nenhuma TAG com esse número: esta é a mais próxima"}${_csvMaqObraIds.includes(alvo.id) ? " (máquina da obra)" : ""}. Confira antes de usar.">💡 ${esc(eqSugestaoTxt(sug))} · usar</button>` : ""}
+        ${alvo ? `<button type="button" class="btn-sec btn-sm csv-maq-usar" data-maq="${esc(maq)}" data-eq="${esc(alvo.id)}" title="${sug.exato ? "O número do documento bate com esta TAG" : "Nenhuma TAG com esse número: esta é a mais próxima"}${_csvMaqObraIds.includes(alvo.id) ? " (máquina da obra)" : ""}. Confira antes de usar.">${esc(eqSugestaoTxt(sug))} · usar</button>` : ""}
         <label style="font-size:var(--txt-xs);color:var(--txt-fraco);display:flex;align-items:center;gap:4px;">
           <input type="checkbox" class="csv-maq-salvar" data-maq="${esc(maq)}"${_csvMaqEstrito ? "" : " checked"} />
           Salvar como código externo

@@ -454,7 +454,7 @@ function fabRenderCustos(){
         <p class="meta">Use quando o custo real não sai dos componentes e das horas (serviço externo, ordem antiga).</p>
         ${pode ? `<label class="check-inline"><input type="checkbox" id="fab-custo-manual"${o.custo_manual ? " checked" : ""} /> custo manual</label>
           <input type="number" id="fab-custo-valor" min="0" step="0.01" value="${esc(o.custo_real || 0)}" style="width:140px;"${o.custo_manual ? "" : " disabled"} />
-          <button type="button" class="btn-sec btn-sm" id="btn-fab-custo-salvar">💾 Salvar custo</button>` : ""}
+          <button type="button" class="btn-sec btn-sm" id="btn-fab-custo-salvar">Salvar custo</button>` : ""}
       </div></div>
     <p class="meta">${esc(destinoTxt)} Centros sem custo/h definido entram com zero: a diretoria define em "Centros de trabalho".</p>`;
   $("fab-custo-manual")?.addEventListener("change", e => { $("fab-custo-valor").disabled = !e.target.checked; });
@@ -478,7 +478,7 @@ async function fabAbrirCentros(){
   $("fab-ct-lista").innerHTML = _fabCentros.map(c => `<tr data-id="${esc(c.id)}"><td>${esc(c.nome)}</td><td>${esc(FAB_SETOR_CT[c.setor] || c.setor || "")}</td>
       <td class="num">${pode ? `<input type="number" class="fab-ct-custo" min="0" step="0.01" value="${esc(c.custo_hora || 0)}" style="width:110px;text-align:right;" />` : brl(c.custo_hora)}</td>
       <td>${pode ? `<input type="checkbox" class="fab-ct-ativo"${c.ativo !== false ? " checked" : ""} />` : (c.ativo !== false ? "sim" : "não")}</td>
-      <td>${pode ? `<button type="button" class="btn-sec btn-sm fab-ct-salvar">💾</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="5" class="vazio">Nenhum centro cadastrado.</td></tr>`;
+      <td>${pode ? `<button type="button" class="btn-sec btn-sm fab-ct-salvar">Salvar</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="5" class="vazio">Nenhum centro cadastrado.</td></tr>`;
   $("fab-ct-lista").querySelectorAll(".fab-ct-salvar").forEach(b => b.addEventListener("click", async () => {
     const tr = b.closest("tr"), id = tr.dataset.id;
     const custo = Number(String(tr.querySelector(".fab-ct-custo").value).replace(",", "."));

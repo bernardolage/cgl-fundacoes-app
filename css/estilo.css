@@ -1837,7 +1837,6 @@ a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus
   color: var(--acao-txt);
   line-height: 1;
 }
-.sb-btn .sb-icon { font-size: 16px; margin: 2px 0; }
 .sb-btn .sb-lbl {
   font-size: 10px;
   color: var(--txt-sec);
@@ -3054,6 +3053,8 @@ body.so-leitura [id^="btn-salvar-"],
    (`button.txt-perigo`: documentos da obra, itens, estacas) e todo botão "+ Novo/Nova" das abas e painéis — o id
    sempre tem "-nov" (btn-nova-obra, btn-medic-nova, btn-frota-novo-veic, btn-orc-nova-revisao…). Só <button>: os
    inputs e divs com "nov" no id (senha-nova, cham-anexo-novo, fab-ct-novo) ficam. PDFs e Imprimir (`btn-sec`) continuam. */
+body.so-leitura .ficha-mais,
+body.so-leitura #btn-registrar-entrada,
 body.so-leitura .acao-perigo,
 body.so-leitura button.txt-perigo,
 body.so-leitura button[id*="-nov"],
@@ -3229,4 +3230,47 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 td.num, th.num, tfoot td, .ind .num, .dash-card-num, .dash-tabela .num, .sb-btn .sb-num { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* ---- Fase 149 (lote C da revisão de design) ---- */
+/* Excluir sai de perto de Salvar: fica no menu "Mais" da ficha. Sem item visível, o "Mais" some junto. */
+.ficha-mais { position: relative; }
+.ficha-mais > summary { list-style: none; cursor: pointer; user-select: none; }
+.ficha-mais > summary::-webkit-details-marker { display: none; }
+.ficha-mais-menu {
+  position: absolute; top: calc(100% + var(--esp-1)); left: 0; z-index: 30;
+  display: flex; flex-direction: column; min-width: 140px; padding: var(--esp-1);
+  background: var(--sup-0); border: 1px solid var(--border-color); border-radius: var(--radius-sm); box-shadow: var(--shadow-md);
+}
+.actions-right .ficha-mais-menu { left: auto; right: 0; }
+.ficha-mais-menu button { width: 100%; justify-content: flex-start; text-align: left; white-space: nowrap; background: none; border-color: transparent; }
+.ficha-mais-menu button:hover { background: var(--sup-2); }
+.ficha-mais:not(:has(button:not([style*="display: none"]):not([style*="display:none"]))) { display: none; }
+@media (max-width: 760px) {
+  .ficha-mais[open] { flex-basis: 100%; }   /* no celular abre na linha de baixo: a ficha corta o que passa da borda */
+  .ficha-mais-menu, .actions-right .ficha-mais-menu { position: static; margin-top: var(--esp-1); }
+}
+
+/* Todas as abas à vista: quebram em linhas. No celular continuam rolando de lado. */
+@media (min-width: 761px) {
+  .odoo-notebook { flex-wrap: wrap; overflow-x: visible; }
+  .odoo-notebook button { padding-block: var(--esp-2); }   /* a segunda linha não pode empurrar as estacas para baixo */
+}
+
+/* ---- Fase 150 (lote F da revisão de design): grupos no menu ---- */
+.sidebar-nav { gap: 2px; }
+.sidebar-nav button { padding-block: 9px; }
+.nav-grupo { display: flex; flex-direction: column; gap: 2px; }
+.nav-grupo-titulo {
+  padding: var(--esp-2) var(--esp-4) var(--esp-1);
+  color: var(--menu-txt); font-size: var(--txt-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+}
+/* grupo sem item visível para o cargo some, título junto; o display vem de aplicarMenuPorCargo */
+.nav-grupo:not(:has(button:not([style*="display: none"]):not([style*="display:none"]))) { display: none; }
+@media (min-width: 992px) {
+  #tela-app.menu-recolhido .sidebar-nav button { padding-block: 9px; }
+  #tela-app.menu-recolhido .nav-grupo-titulo {
+    height: 0; margin: var(--esp-2) var(--esp-2); padding: 0; overflow: hidden;
+    border-top: 1px solid color-mix(in srgb, var(--menu-txt) 25%, transparent);
+  }
 }

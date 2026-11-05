@@ -284,7 +284,7 @@ function renderFrotaLista(linhas, mes, tot){
       ${_frotaUltimaData ? `· última concluída em <strong>${dataBR(_frotaUltimaData)}</strong>` : ""}${_frotaUltimaData && String(_frotaUltimaData).slice(0, 7) < frotaMesAtual() ? ` <span class="tag ambar" title="as viagens depois dessa data ainda não foram lançadas no sistema">sem lançamentos depois disso</span>` : ""}
       ${mes && mes !== frotaMesAtual() ? `<button type="button" class="btn-sec btn-sm" id="btn-frota-mes-atual">Mês atual</button>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-frota-12m">Últimos 12 meses</button>
-      <button type="button" class="btn-sec btn-sm" id="btn-frota-csv" style="margin-left:auto;">⬇️ CSV</button></div>
+      <button type="button" class="btn-sec btn-sm" id="btn-frota-csv" style="margin-left:auto;">CSV</button></div>
     <div class="tabela-rola"><table>
       <thead><tr><th>Viagem</th><th>Data</th><th>Status</th><th>Finalidade</th><th>Caminhão / transportador</th><th>Motorista</th><th>Origem → destino</th><th>Notas</th><th class="num">km</th><th class="num">R$/km</th><th class="num">Valor</th></tr></thead>
       <tbody>${linhas.map(d => { const frete = vgEhFrete(d), val = vgValorViagem(d); return `<tr class="linha-clicavel" data-vg="${esc(d.id)}">
@@ -365,7 +365,7 @@ async function renderFrotaDocumentos(){
   cont.innerHTML = `
     <div class="lista-topo compacta" style="border:none;padding:0;"><h4 style="margin:0;font-size:var(--txt-md);">🧾 Notas sem viagem <span class="contador">${notas.length}</span></h4>
       <span class="meta">Nota de remessa ou retorno em rascunho, emitida ou em trânsito que ainda não pertence a nenhuma viagem. O lugar certo de criar a nota é a aba Documentos da viagem.</span>
-      ${typeof podeVerMovimentacoes === "function" && podeVerMovimentacoes() && pode ? `<button type="button" class="btn-sec btn-sm" id="btn-frota-nota-avulsa" style="margin-left:auto;">📄 Nota sem viagem</button>` : ""}
+      ${typeof podeVerMovimentacoes === "function" && podeVerMovimentacoes() && pode ? `<button type="button" class="btn-sec btn-sm" id="btn-frota-nota-avulsa" style="margin-left:auto;">Nota sem viagem</button>` : ""}
     </div>
     ${notas.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Nota</th><th>Tipo</th><th>Status</th><th>NF</th><th>Emissão</th><th>Origem → destino</th><th>Placa · motorista</th><th class="num">Valor</th>${pode ? '<th style="min-width:260px;">Viagem</th>' : ""}</tr></thead>

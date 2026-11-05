@@ -435,7 +435,7 @@ function renderDrawerMob(){
         <div class="campo"><label>Hospedagem por</label>${porQuem("mob-hosp", m.hospedagem_por)}</div>
         <div class="campo largo"><label>Observações</label><textarea id="mob-obs" rows="2">${esc(m.observacoes || "")}</textarea></div>
       </div>
-      ${podeEditar ? `<div class="form-acoes compacta"><button type="button" class="btn" id="btn-mob-salvar">💾 Salvar alterações</button></div>` : ""}
+      ${podeEditar ? `<div class="form-acoes compacta"><button type="button" class="btn" id="btn-mob-salvar">Salvar alterações</button></div>` : ""}
     </div>
 
     <div class="mob-sec"><h4>7 · Pendências por setor <span class="meta">${_mobPendAberta.filter(p => !p.concluida).length} aberta(s) de ${_mobPendAberta.length}</span></h4>
@@ -484,7 +484,7 @@ async function mobRenderViagens(){
   // fase 95: além de operar a viagem, precisa gravar o vínculo em mobilizacoes (senão a viagem nasce órfã)
   const podeProgramar = pode && mobPodeEditar() && !m.viagem_ida_id && ["prevista", "em_preparacao"].includes(m.status);
   box.innerHTML = chip(m.viagem_ida_id, "Viagem de ida") + chip(m.viagem_volta_id, "Viagem de volta")
-    + (podeProgramar ? `<button type="button" class="btn-sec btn-sm" id="btn-mob-programar-viagem" title="cria a viagem de mobilização (planejada) e abre a ficha para pôr caminhão, motorista e data">🚚 Programar viagem</button>` : "")
+    + (podeProgramar ? `<button type="button" class="btn-sec btn-sm" id="btn-mob-programar-viagem" title="cria a viagem de mobilização (planejada) e abre a ficha para pôr caminhão, motorista e data">Programar viagem</button>` : "")
     + (!ids.length && !podeProgramar ? `<span class="meta">Sem viagem gerada.</span>` : "");
   box.querySelectorAll("a[data-vg]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); mobAbrirViagem(a.dataset.vg); }));
   $("btn-mob-programar-viagem")?.addEventListener("click", () => comBotaoTravado("btn-mob-programar-viagem", async () => {
@@ -559,7 +559,7 @@ async function mobRenderSeparacao(){
     $("mob-sep-abrir")?.addEventListener("click", e => { e.preventDefault(); fecharMobilizacao(); if(irParaSecao("separacoes") && typeof abrirSeparacao === "function") abrirSeparacao(s.id); });
   } else {
     box.innerHTML = podePedir
-      ? `<button type="button" class="btn-sec btn-sm" id="btn-mob-sep-gerar" title="cria a lista de separação (kit + materiais) para o almoxarife de plantão">📦 Gerar separação</button> <span class="meta">o almoxarifado separa e dá a baixa; o status da mobilização não muda</span>`
+      ? `<button type="button" class="btn-sec btn-sm" id="btn-mob-sep-gerar" title="cria a lista de separação (kit + materiais) para o almoxarife de plantão">Gerar separação</button> <span class="meta">o almoxarifado separa e dá a baixa; o status da mobilização não muda</span>`
       : `<span class="meta">Sem separação gerada.</span>`;
     $("btn-mob-sep-gerar")?.addEventListener("click", () => comBotaoTravado("btn-mob-sep-gerar", async () => {
       if(mobKitEditavel() && JSON.stringify([..._mobKit].sort()) !== JSON.stringify([...(m.acessorios_ids || [])].sort())){ aviso("app-aviso", "Salve o kit antes de gerar a separação.", "erro"); return; }
@@ -608,7 +608,7 @@ async function mobRenderKit(){
       <div class="grade">
         <div class="campo largo">
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-            <button type="button" class="btn-sec btn-sm" id="btn-mob-kit-sugerir" title="peças da TAG principal, filtradas pelos Ø das estacas">✨ Sugerir kit pela TAG e pelos Ø</button>
+            <button type="button" class="btn-sec btn-sm" id="btn-mob-kit-sugerir" title="peças da TAG principal, filtradas pelos Ø das estacas">Sugerir kit pela TAG e pelos Ø</button>
             <input id="mob-kit-busca" placeholder="adicionar por marcação, jogo ou descrição…" autocomplete="off" style="flex:1;min-width:220px;" />
           </div>
           <div id="mob-kit-res" class="autocomplete-lista" style="display:none;"></div>
@@ -617,7 +617,7 @@ async function mobRenderKit(){
       <div class="mov-ace-sug-lista" id="mob-kit-lista">${kit.length ? mobKitGruposHTML(kit, true) : `<p class="vazio">Nenhuma peça separada ainda.</p>`}</div>
       <div class="form-acoes compacta" style="justify-content:space-between;align-items:center;">
         <span class="meta">${kit.length} peça(s) no kit${_mobKit.length !== kit.length ? ` · ${_mobKit.length - kit.length} não encontrada(s) no cadastro` : ""}</span>
-        <button type="button" class="btn btn-sm" id="btn-mob-kit-salvar">💾 Salvar kit</button>
+        <button type="button" class="btn btn-sm" id="btn-mob-kit-salvar">Salvar kit</button>
       </div>`;
     $("btn-mob-kit-sugerir")?.addEventListener("click", () => comBotaoTravado("btn-mob-kit-sugerir", mobSugerirKit));
     $("btn-mob-kit-salvar")?.addEventListener("click", () => comBotaoTravado("btn-mob-kit-salvar", mobSalvarKit));

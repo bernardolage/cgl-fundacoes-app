@@ -317,7 +317,6 @@ function abrirFichaConVisual(c){
   $("con-ficha-numero").textContent = c.numero || "(novo)";
   $("con-ficha-contraparte-chip").textContent = mapaFornecedores[c.fornecedor_id] || "—";
   $("con-ficha-categoria-chip").textContent = CONTRATO_CATEGORIA[c.categoria] || "—";
-  $("con-ficha-status-chip").innerHTML = tagStatus("contrato", c.status);
   $("con-ficha-valor-chip").textContent = brl(c.valor_total || 0);
   conCarregarTitulos(c.id || null); // fase 56
   const dias = diasParaVencer(c);
@@ -559,7 +558,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
         </div>
       </div>
       <div class="form-acoes">
-        <button type="button" class="btn" id="btn-${esc(px)}-enviar">📤 Enviar</button>
+        <button type="button" class="btn" id="btn-${esc(px)}-enviar">Enviar</button>
       </div>
     </div>`;
 
@@ -578,8 +577,8 @@ async function carregarDocumentosDoContrato(contratoId, opts){
       <td>${tamKB}</td>
       <td>${new Date(d.created_at).toLocaleDateString("pt-BR")}</td>
       <td class="col-acao">
-        <button type="button" class="btn-sec btn-sm doc-con-baixar" data-path="${esc(d.storage_path)}" data-nome="${esc(d.nome)}" title="Baixar">⬇️</button>
-        ${podeExcluir ? `<button type="button" class="btn-sec btn-sm doc-con-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="Excluir">🗑️</button>` : ""}
+        <button type="button" class="btn-sec btn-sm doc-con-baixar" data-path="${esc(d.storage_path)}" data-nome="${esc(d.nome)}" title="Baixar">Baixar</button>
+        ${podeExcluir ? `<button type="button" class="btn-sec btn-sm doc-con-excluir txt-perigo" data-id="${esc(d.id)}" data-path="${esc(d.storage_path)}" title="Excluir">Excluir</button>` : ""}
       </td>
     </tr>`;
   }).join("");
@@ -726,14 +725,14 @@ function renderBlocoAssinatura(contrato, containerId, conf){
       ? new Date(contrato.data_envio_assinatura).toLocaleDateString("pt-BR") : "—"}${
       signatarios ? " para " + esc(signatarios) : ""}</span>`;
   } else if(st === "concluida" && contrato.arquivo_assinado_url){
-    meio = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-baixar-${esc(containerId)}">⬇️ Baixar assinado</button>`;
+    meio = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-baixar-${esc(containerId)}">Baixar assinado</button>`;
   }
 
   let acoes = "";
   if(st === "nao_iniciada" || st === "cancelada"){
-    acoes = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-abrir-${esc(containerId)}">✍️ Enviar para assinatura</button>`;
+    acoes = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-abrir-${esc(containerId)}">Enviar para assinatura</button>`;
   } else if(st === "enviada" || st === "parcial"){
-    acoes = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-status-${esc(containerId)}" title="Consulta manual — gasta 1 requisição da cota">🔄 Atualizar status</button>`;
+    acoes = `<button type="button" class="btn-sec btn-sm" id="btn-d4s-status-${esc(containerId)}" title="Consulta manual — gasta 1 requisição da cota">Atualizar status</button>`;
   }
 
   cont.innerHTML = `<div class="assin-bloco">
@@ -876,7 +875,7 @@ async function conCarregarTitulos(id){
   const tits = data || [];
   setSb(tits.length);
   const hoje = hojeISO();
-  const gerar = `<button type="button" class="btn-sec btn-sm" id="btn-con-gerar-titulos" title="Completa os títulos que faltam até 3 meses à frente (o sistema faz isso sozinho todo dia)">🔄 Gerar títulos agora</button>`;
+  const gerar = `<button type="button" class="btn-sec btn-sm" id="btn-con-gerar-titulos" title="Completa os títulos que faltam até 3 meses à frente (o sistema faz isso sozinho todo dia)">Gerar títulos agora</button>`;
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   if(!tits.length){
     cont.innerHTML = `<div class="lista-topo compacta"><span class="meta">Nenhum título gerado. Confira: status Vigente (ou Renovado), recorrência, valor da parcela (ou total, se única), dia de vencimento e a opção "gera títulos" na aba Financeiro. Títulos de meses anteriores ao atual não são gerados.</span>${gerar}</div>`;

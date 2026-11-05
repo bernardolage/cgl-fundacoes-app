@@ -121,8 +121,8 @@ async function renderRequisicoes(){
   cont.innerHTML = `<div class="lista-topo compacta">
       <span class="meta">Quem precisa pede aqui. Aprovar consulta o estoque: o que tem saldo vira separação no almoxarifado e o resto vira pedido de compra. Quando o almoxarifado recebe, quem pediu confere.</span>
       <select id="req-f-status" style="margin-left:auto;"><option value="">Todos os status</option>${filtros}</select>
-      ${decide ? `<button type="button" class="btn-sec" id="btn-req-gerar" ${_reqSel.size ? "" : "disabled"} title="Tudo para compra, mesmo o que tem no estoque">🛒 Só compra (${_reqSel.size})</button>
-        <button type="button" class="btn" id="btn-req-aprovar-sel" ${_reqSel.size ? "" : "disabled"}>✅ Aprovar ${_reqSel.size} selecionada(s)</button>` : ""}
+      ${decide ? `<button type="button" class="btn-sec" id="btn-req-gerar" ${_reqSel.size ? "" : "disabled"} title="Tudo para compra, mesmo o que tem no estoque">Só compra (${_reqSel.size})</button>
+        <button type="button" class="btn" id="btn-req-aprovar-sel" ${_reqSel.size ? "" : "disabled"}>Aprovar ${_reqSel.size} selecionada(s)</button>` : ""}
     </div>
     ${!_reqLista.length ? `<p class="vazio">${conferir ? "Nenhum recebimento esperando a sua conferência." : `Nenhuma requisição${_reqFiltroSt && REQ_STATUS[_reqFiltroSt] ? " " + esc(REQ_STATUS[_reqFiltroSt][0].toLowerCase()) : ""}. Use "+ Requisição" para pedir material ou serviço.`}</p>` : `<div class="tabela-rola"><table>
     <thead><tr>${decide ? "<th></th>" : ""}<th>Número</th><th>Data</th><th>Quem pediu</th><th>Destino do custo</th><th>Prioridade</th><th>Itens</th><th>Status</th><th>Separação / pedido</th></tr></thead>
@@ -141,8 +141,8 @@ async function renderRequisicoes(){
   cont.querySelectorAll(".req-sel").forEach(cb => cb.addEventListener("change", () => {
     if(cb.checked) _reqSel.add(cb.dataset.id); else _reqSel.delete(cb.dataset.id);
     const n = _reqSel.size, bg = $("btn-req-gerar"), ba = $("btn-req-aprovar-sel");
-    if(bg){ bg.disabled = !n; bg.textContent = `🛒 Só compra (${n})`; }
-    if(ba){ ba.disabled = !n; ba.textContent = `✅ Aprovar ${n} selecionada(s)`; }
+    if(bg){ bg.disabled = !n; bg.textContent = `Só compra (${n})`; }
+    if(ba){ ba.disabled = !n; ba.textContent = `Aprovar ${n} selecionada(s)`; }
   }));
   reqLigarLinksDestino(cont);
 }
@@ -365,7 +365,7 @@ async function reqAbrirAprovar(ids, modo){
 let _reqPedNPed = null;
 function reqPedTextos(){
   const compra = _reqPedModo === "compra", semForn = !$("req-ped-forn").value, vaiPedido = compra || _reqPedNPed === null || _reqPedNPed > 0;
-  $("btn-req-ped-gerar").textContent = compra ? (semForn ? "🛒 Mandar para cotação" : "🛒 Gerar pedido em rascunho") : "✅ Aprovar";
+  $("btn-req-ped-gerar").textContent = compra ? (semForn ? "Mandar para cotação" : "Gerar pedido em rascunho") : "Aprovar";
   $("req-ped-forn-ajuda").textContent = !vaiPedido ? "Nada vai para compra: o fornecedor não é usado."
     : semForn ? "Sem fornecedor: o pedido nasce em cotação; o fornecedor sai da cotação escolhida (aba Cotações do pedido)."
     : "Com fornecedor (sugerido pelo fornecedor padrão dos produtos): o pedido nasce em rascunho; confira os preços e envie para aprovação.";

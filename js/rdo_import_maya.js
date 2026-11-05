@@ -254,7 +254,7 @@ function mayaParaDias(abas){
 async function processarArquivoXlsxMaya(file){
   const btn = $("btn-csv-processar");
   const txtBtn = btn ? btn.textContent : "";
-  if(btn){ btn.disabled = true; btn.textContent = "📊 Lendo a planilha…"; }
+  if(btn){ btn.disabled = true; btn.textContent = "Lendo a planilha…"; }
   try {
     if(typeof XLSX === "undefined") throw new Error("Biblioteca de planilhas não carregou. Recarregue a página e tente de novo.");
     const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false });

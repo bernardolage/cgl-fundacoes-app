@@ -657,7 +657,7 @@ async function ssoCarregarSaude(){
           ${oper ? `<input type="file" data-saude-arq accept="application/pdf,image/*" multiple />` : ""}
         </div>
       </div>
-      ${oper ? `<div class="form-acoes compacta"><button type="button" class="btn" data-saude-salvar="${esc(e.id)}">💾 Salvar saúde</button></div>` : ""}
+      ${oper ? `<div class="form-acoes compacta"><button type="button" class="btn" data-saude-salvar="${esc(e.id)}">Salvar saúde</button></div>` : ""}
     </div>`;
   }).join("");
   cont.querySelectorAll("[data-saude-salvar]").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => ssoSalvarSaude(b.dataset.saudeSalvar))));

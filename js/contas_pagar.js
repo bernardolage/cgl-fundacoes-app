@@ -84,8 +84,8 @@ async function renderTitulosPagar(){
         <option value="30"${_capFiltroVenc === "30" ? " selected" : ""}>Vencem em até 30 dias</option>
       </select>
       <label class="check-inline"><input type="checkbox" id="cap-incluir-exp" ${_capIncluirExp ? "checked" : ""}/> mostrar já exportados</label>
-      ${_capLote ? `<span class="tag azul">Lote de ${esc(capDataHora(_capLote.gerado_em))} <button type="button" class="btn-sec btn-sm" id="btn-cap-lote-sair" title="voltar para todos os títulos">✕</button></span> <button type="button" class="btn-sec" id="btn-cap-lote-baixar">⬇️ Baixar este lote de novo</button>` : ""}
-      ${podeExp && !_capLote ? `<button type="button" class="btn" id="btn-cap-exportar" ${pend.length ? "" : "disabled"}>⬇️ Exportar ${pend.length} não exportado(s) (CSV)</button>` : ""}
+      ${_capLote ? `<span class="tag azul">Lote de ${esc(capDataHora(_capLote.gerado_em))} <button type="button" class="btn-sec btn-sm" id="btn-cap-lote-sair" title="voltar para todos os títulos">✕</button></span> <button type="button" class="btn-sec" id="btn-cap-lote-baixar">Baixar este lote de novo</button>` : ""}
+      ${podeExp && !_capLote ? `<button type="button" class="btn" id="btn-cap-exportar" ${pend.length ? "" : "disabled"}>Exportar ${pend.length} não exportado(s) (CSV)</button>` : ""}
     </div>
     ${!_capTitulos.length ? `<p class="vazio">Nenhum título ${_capIncluirExp ? "" : "pendente de exportação"}${_capFiltroVenc ? " nesse vencimento" : ""}.</p>` : `<div class="tabela-rola"><table>
     <thead><tr><th>Vencimento</th><th>Origem</th><th>Fornecedor</th><th>Documento</th><th>Pedido</th><th>Parcela</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>

@@ -251,7 +251,7 @@ async function fiscalEmpresaRender(pref){
     ${tem105b ? fiscalEmpresaHtml105b(pref, e) : ""}
     ${tem105c ? fiscalEmpresaHtml105c(pref, e) : ""}
     <div class="form-acoes compacta">
-      <button type="button" class="btn" id="${id("salvar")}"${pode ? "" : ' style="display:none;"'}>💾 Salvar dados fiscais</button>
+      <button type="button" class="btn" id="${id("salvar")}"${pode ? "" : ' style="display:none;"'}>Salvar dados fiscais</button>
     </div>
     ${tem105b ? fiscalCertificadoHtml(pref, e, pode) : ""}`;
   box.querySelectorAll("input,select,textarea").forEach(el => { el.disabled = !pode; });
@@ -419,7 +419,7 @@ function fiscalCertificadoHtml(pref, e, pode){
       <div class="campo"><label>Senha do certificado</label><input type="password" id="${id("cert-senha")}" autocomplete="new-password" /></div>
     </div>` : ""}
     <div class="form-acoes compacta">
-      ${diretor ? `<button type="button" class="btn" id="${id("cert-enviar")}">🔐 Enviar certificado à Focus</button>` : ""}
+      ${diretor ? `<button type="button" class="btn" id="${id("cert-enviar")}">Enviar certificado à Focus</button>` : ""}
       ${pode ? `<button type="button" class="btn-sec" id="${id("cert-status")}">Consultar validade</button>
       <button type="button" class="btn-sec" id="${id("webhook")}" title="Registra na Focus o aviso automático de status das notas (ambiente atual)">Registrar webhook</button>` : ""}
     </div>

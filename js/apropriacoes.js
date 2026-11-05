@@ -117,10 +117,10 @@ async function renderFuncAprop(){
     <div class="meta" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
       <label>Competência <select id="aprop-comp">${apropOpcoesMes()}</select></label>
       ${fechada ? `<span class="conf-badge" style="background:var(--sucesso);">Fechada em ${dataBR((_aprop.fech.fechada_em || "").slice(0, 10))}</span>` : `<span class="conf-badge" style="background:var(--aviso);color:var(--aviso-txt);">Aberta</span>`}
-      ${fechada ? (ehDiretor ? `<button type="button" class="btn-sec btn-sm" id="btn-aprop-reabrir">🔓 Reabrir</button>` : "") :
-        `<button type="button" class="btn btn-sm" id="btn-aprop-calcular">⚙️ Calcular apropriação</button>
-         <button type="button" class="btn-sec btn-sm" id="btn-aprop-fechar" ${_aprop.folha.length ? "" : "disabled"}>🔒 Fechar competência</button>`}
-      <button type="button" class="btn-sec btn-sm" id="btn-aprop-csv" ${listaFunc.length ? "" : "disabled"}>⬇️ CSV</button>
+      ${fechada ? (ehDiretor ? `<button type="button" class="btn-sec btn-sm" id="btn-aprop-reabrir">Reabrir</button>` : "") :
+        `<button type="button" class="btn btn-sm" id="btn-aprop-calcular">Calcular apropriação</button>
+         <button type="button" class="btn-sec btn-sm" id="btn-aprop-fechar" ${_aprop.folha.length ? "" : "disabled"}>Fechar competência</button>`}
+      <button type="button" class="btn-sec btn-sm" id="btn-aprop-csv" ${listaFunc.length ? "" : "disabled"}>CSV</button>
       <span style="margin-left:auto;">Rateio pelos dias de presença no RDO → alocação vigente → ADM/PÁTIO</span>
     </div>
     ${apropResumoCalculo(_aprop.res)}
@@ -154,16 +154,16 @@ async function renderFuncAprop(){
       </div>
       <div class="form-acoes compacta"><button type="button" class="btn btn-sm" id="btn-lanc-add" ${fechada ? "disabled" : ""}>+ Lançar</button></div>
       <div class="tabela-rola"><table><thead><tr><th>Funcionário</th><th>Rubrica</th><th class="num">Valor</th><th>Obra</th><th>Obs.</th><th></th></tr></thead>
-        <tbody>${_aprop.lanc.map(l => `<tr><td>${esc(nomeDe(l.funcionario_id))}</td><td>${esc(APROP_RUBRICA_LBL[l.rubrica] || APROP_RUBRICA_AUTO[l.rubrica] || l.rubrica)}</td><td class="num">${Number(l.valor) < 0 ? `<span class="txt-perigo" title="Desconto (valor negativo)">${apropMoeda(l.valor)}</span>` : apropMoeda(l.valor)}</td><td>${esc(l.obra_id ? (mapaObras?.[l.obra_id] || "obra") : "rateio")}</td><td class="meta">${esc(l.observacoes || "")}</td><td>${fechada ? "" : `<button type="button" class="btn-sec btn-sm aprop-lanc-del" data-id="${esc(l.id)}">🗑️</button>`}</td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nenhum lançamento neste mês.</td></tr>`}</tbody></table></div>
+        <tbody>${_aprop.lanc.map(l => `<tr><td>${esc(nomeDe(l.funcionario_id))}</td><td>${esc(APROP_RUBRICA_LBL[l.rubrica] || APROP_RUBRICA_AUTO[l.rubrica] || l.rubrica)}</td><td class="num">${Number(l.valor) < 0 ? `<span class="txt-perigo" title="Desconto (valor negativo)">${apropMoeda(l.valor)}</span>` : apropMoeda(l.valor)}</td><td>${esc(l.obra_id ? (mapaObras?.[l.obra_id] || "obra") : "rateio")}</td><td class="meta">${esc(l.observacoes || "")}</td><td>${fechada ? "" : `<button type="button" class="btn-sec btn-sm aprop-lanc-del" data-id="${esc(l.id)}">Excluir</button>`}</td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nenhum lançamento neste mês.</td></tr>`}</tbody></table></div>
     </details>
 
     <details style="margin-bottom:12px;"><summary style="cursor:pointer;"><strong>Parâmetros de encargos</strong> <span class="meta">(% sobre o salário contábil)</span></summary>
       <div class="grade" style="margin-top:8px;">${_aprop.params.map(p => `<div class="campo"><label>${esc(p.descricao || p.chave)}</label><input type="number" step="0.01" class="aprop-param" data-chave="${esc(p.chave)}" value="${esc(p.valor)}" /></div>`).join("")}</div>
-      <div class="form-acoes compacta"><button type="button" class="btn-sec btn-sm" id="btn-aprop-params">💾 Salvar parâmetros</button></div>
+      <div class="form-acoes compacta"><button type="button" class="btn-sec btn-sm" id="btn-aprop-params">Salvar parâmetros</button></div>
     </details>
 
     <details><summary style="cursor:pointer;"><strong>Carga inicial da ficha</strong> <span class="meta">— só uma vez: lê a planilha antiga (.xlsx) e preenche banco, salário e benefícios de cada funcionário. Depois disso a planilha não é mais necessária.</span></summary>
-      <p class="meta" style="margin:8px 0;"><label class="btn-sec btn-sm" style="cursor:pointer;">⬆️ Escolher planilha FINANCEIRO – APROPRIAÇÕES (.xlsx)<input type="file" id="aprop-arquivo" accept=".xlsx,.xlsm" style="display:none;" /></label> A leitura é feita no seu navegador; os dados vão direto para a ficha sensível.</p>
+      <p class="meta" style="margin:8px 0;"><label class="btn-sec btn-sm" style="cursor:pointer;">Escolher planilha FINANCEIRO – APROPRIAÇÕES (.xlsx)<input type="file" id="aprop-arquivo" accept=".xlsx,.xlsm" style="display:none;" /></label> A leitura é feita no seu navegador; os dados vão direto para a ficha sensível.</p>
     </details>`;
 
   $("aprop-comp")?.addEventListener("change", async e => { _aprop.comp = e.target.value; _aprop.res = null; await renderFuncAprop(); });
@@ -217,8 +217,8 @@ async function renderFuncApropTotais(){
     <div class="meta" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
       <label>Competência <select id="aprop-comp">${apropOpcoesMes()}</select></label>
       ${fechadaEm ? `<span class="conf-badge" style="background:var(--sucesso);">Fechada em ${dataBR(String(fechadaEm).slice(0, 10))}</span>` : `<span class="conf-badge" style="background:var(--aviso);color:var(--aviso-txt);">Aberta</span>`}
-      ${fechadaEm ? "" : `<button type="button" class="btn btn-sm" id="btn-aprop-calcular">⚙️ Calcular apropriação</button>`}
-      <button type="button" class="btn-sec btn-sm" id="btn-aprop-csv" ${linhas.length ? "" : "disabled"}>⬇️ CSV</button>
+      ${fechadaEm ? "" : `<button type="button" class="btn btn-sm" id="btn-aprop-calcular">Calcular apropriação</button>`}
+      <button type="button" class="btn-sec btn-sm" id="btn-aprop-csv" ${linhas.length ? "" : "disabled"}>CSV</button>
       <span style="margin-left:auto;">Rateio pelos dias de presença no RDO → alocação vigente → ADM/PÁTIO</span>
     </div>
     ${apropResumoCalculo(_aprop.res)}

@@ -1023,7 +1023,7 @@ async function renderFuncHE(){
   cont.innerHTML = `<div class="meta" style="margin:0 0 8px;">Competência <strong>${esc(comp)}</strong> · ${linhas.length} colaborador×obra · ${Number(_funcHE.dados.length - nAus)} presenças em RDO${nAus ? ` · ${Number(nAus)} ausência(s) lançada(s) no RDO (Falta, Folga, DSR, Atestado) não contam como dia` : ""}
       ${COLS_ST.length ? `<br>Faltas, Folgas${temMeio ? ", Folga ½" : ""}, DSR, Atestados, Viagem e Treinamento: dias com o status no RDO já liberados para a folha (Horas e alocação). Folga meio período conta como dia (horas trabalhadas da linha; débito de meia jornada no fechamento).` : ""}
       ${semHoras ? `<br><span class="txt-perigo">⚠️ Nenhum RDO desta competência tem entrada/saída ou horas preenchidas — a equipe do RDO precisa registrar os horários para este relatório substituir a planilha.</span>` : ""}
-      <button type="button" class="btn-sec btn-sm" id="btn-func-he-csv" style="margin-left:8px;">⬇️ CSV</button></div>
+      <button type="button" class="btn-sec btn-sm" id="btn-func-he-csv" style="margin-left:8px;">CSV</button></div>
     <div class="tabela-rola"><table>
       <thead><tr><th>Colaborador</th><th>Obra</th><th class="num" title="Dias no RDO; ausências (Falta, Folga, DSR, Atestado) não contam">Dias</th><th class="num">Horas (entrada→saída)</th><th class="num">Normais</th><th class="num">HE 50%</th><th class="num">HE 100%</th><th class="num">Noturnas</th>${COLS_ST.map(([, l]) => `<th class="num" title="Dias com o status no RDO, liberados para a folha">${esc(l)}</th>`).join("")}</tr></thead>
       <tbody>${linhas.map(a => `<tr><td>${esc(a.nome)}</td><td>${linkObra(a.obra_id, a.obra)}</td><td class="num">${a.dias.size}</td><td class="num">${f1(a.pres)}</td><td class="num">${f1(a.hn)}</td><td class="num">${f1(a.h50)}</td><td class="num">${f1(a.h100)}</td><td class="num">${f1(a.hnot)}</td>${COLS_ST.map(([c]) => `<td class="num">${Number(st(a, c)) || "—"}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${Number(nCol)}" class="vazio">Sem presenças em RDO nesta competência.</td></tr>`}</tbody>
@@ -1509,8 +1509,8 @@ function funcAcessoLinkGeradoHtml(){
         ? `Confira o número antes de enviar: <strong>${esc($("func-telefone")?.value || "")}</strong>.`
         : "Sem telefone válido na ficha: escolha o contato no WhatsApp."}</p>
       <div class="form-acoes compacta">
-        <button type="button" class="btn" id="btn-func-acesso-copiar">📋 Copiar mensagem</button>
-        <a class="btn-sec" href="${esc(url)}" target="_blank" rel="noopener">💬 Abrir no WhatsApp</a>
+        <button type="button" class="btn" id="btn-func-acesso-copiar">Copiar mensagem</button>
+        <a class="btn-sec" href="${esc(url)}" target="_blank" rel="noopener">Abrir no WhatsApp</a>
       </div>
     </div>`;
 }
@@ -1625,7 +1625,7 @@ function renderFuncAcesso(){
       ${_funcAcesso.modo === "senha" ? funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar") : `
       <p class="meta bloco">O funcionário cria a própria senha pelo link, que você envia por WhatsApp. Vale 72 horas e uma vez só. Sem celular, use a senha provisória.</p>
       <div class="form-acoes compacta">
-        <button type="button" class="btn" id="btn-func-acesso-criar-link">🔗 Criar login e gerar link</button>
+        <button type="button" class="btn" id="btn-func-acesso-criar-link">Criar login e gerar link</button>
         <button type="button" class="btn-sec" id="btn-func-acesso-abrir-provisoria">Usar senha provisória</button>
       </div>`}`}`;
     return;
@@ -1652,12 +1652,12 @@ function renderFuncAcesso(){
       ? funcAcessoSenhaHtml("-nova", p.ativo === false ? "✅ Reativar com esta senha" : "🔑 Definir nova senha", p.ativo === false ? "btn-func-acesso-reativar-senha" : "btn-func-acesso-nova-senha-ok")
       : `<div class="form-acoes compacta">
           ${p.ativo === false
-            ? `<button type="button" class="btn" id="btn-func-acesso-reativar" ${funcAtivo ? "" : 'disabled title="Reative o cadastro do funcionário antes"'}>✅ Reativar login</button>
-               <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha" ${funcAtivo ? "" : "disabled"}>🔑 Reativar com nova senha</button>`
-            : `<button type="button" class="btn" id="btn-func-acesso-gerar-link" ${funcAtivo ? "" : "disabled"}>🔗 Gerar link de acesso</button>
-               <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha">🔑 Nova senha</button>
+            ? `<button type="button" class="btn" id="btn-func-acesso-reativar" ${funcAtivo ? "" : 'disabled title="Reative o cadastro do funcionário antes"'}>Reativar login</button>
+               <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha" ${funcAtivo ? "" : "disabled"}>Reativar com nova senha</button>`
+            : `<button type="button" class="btn" id="btn-func-acesso-gerar-link" ${funcAtivo ? "" : "disabled"}>Gerar link de acesso</button>
+               <button type="button" class="btn-sec" id="btn-func-acesso-abrir-senha">Nova senha</button>
                ${linkPendente ? '<button type="button" class="btn-sec" id="btn-func-acesso-cancelar-link">Cancelar link</button>' : ""}
-               ${cr ? "" : '<button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo-txt);">⛔ Desativar login</button>'}`}
+               ${cr ? "" : '<button type="button" class="btn-sec acao-perigo" id="btn-func-acesso-desativar" style="color:var(--perigo-txt);">Desativar login</button>'}`}
         </div>`}`;
 }
 

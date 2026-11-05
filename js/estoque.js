@@ -403,7 +403,7 @@ function balEditarHTML(m){
         <div class="campo"><label>Documento</label><input id="bal-ed-doc" value="${esc(m.documento || "")}" placeholder="Saída no balcão" /></div>
         <div class="campo largo"><label>Observação</label><input id="bal-ed-obs" value="${esc(m.observacoes || "")}" placeholder="opcional" /></div>
       </div></td>
-    <td><button type="button" class="btn btn-sm bal-ed-salvar" data-id="${esc(m.id)}">💾 Salvar</button> <button type="button" class="btn-sec btn-sm bal-ed-cancelar">Cancelar</button></td>`;
+    <td><button type="button" class="btn btn-sm bal-ed-salvar" data-id="${esc(m.id)}">Salvar</button> <button type="button" class="btn-sec btn-sm bal-ed-cancelar">Cancelar</button></td>`;
 }
 async function balSalvarEdicao(id){
   const m = _balHoje.find(x => x.id === id); if(!m) return;
@@ -431,7 +431,7 @@ function renderSaidasHoje(){
   // Lote S52: assinado não se edita (desfazer e lançar de novo, colhendo nova assinatura).
   const assinaTag = m => (m.estornada || !balMovEhEpi(m) || !m.funcionario_id) ? ""
     : m.assinatura_em ? ' <span class="tag verde" title="recebimento assinado · para corrigir, desfaça e lance de novo, colhendo nova assinatura">assinado</span>'
-    : ` <button type="button" class="btn-sec btn-sm bal-assinar" data-id="${esc(m.id)}" title="colher a assinatura do recebimento">✍ assinar</button>`;
+    : ` <button type="button" class="btn-sec btn-sm bal-assinar" data-id="${esc(m.id)}" title="colher a assinatura do recebimento">assinar</button>`;
   // lote S52: a original riscada diz "corrigida"; a nova, "correção" apontando para a hora da original
   const marca = m => {
     if(m.estornada) return `<span class="tag cinza">${m.corrigida ? "corrigida" : "desfeita"}</span>`;
@@ -450,7 +450,7 @@ function renderSaidasHoje(){
         <td class="num">${num(Math.abs(m.quantidade || 0))} <span class="meta">${esc(m.produto?.unidade || "")}</span></td>
         <td class="num">${brl(Math.abs(Number(m.quantidade || 0)) * Number(m.custo_unitario || 0))}</td>
         <td>${esc(balDestinoTxt(m))}</td><td class="meta">${/* html */ [linkDocumentoSaida(m, _balHojeVinculos.get(m.id)), esc(m.observacoes || "")].filter(Boolean).join(" · ")}</td>
-        <td style="white-space:nowrap;">${m.estornada ? marca(m) : podeDesfazer ? `${podeEditar ? `<button type="button" class="btn-sec btn-sm bal-editar" data-id="${esc(m.id)}" title="corrigir quantidade, destino, documento ou observação (até 10 min)">✎ Editar</button> ` : ""}<button type="button" class="btn-sec btn-sm bal-desfazer" data-id="${esc(m.id)}" title="desfazer (até 10 min)">↩ Desfazer</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
+        <td style="white-space:nowrap;">${m.estornada ? marca(m) : podeDesfazer ? `${podeEditar ? `<button type="button" class="btn-sec btn-sm bal-editar" data-id="${esc(m.id)}" title="corrigir quantidade, destino, documento ou observação (até 10 min)">✎ Editar</button> ` : ""}<button type="button" class="btn-sec btn-sm bal-desfazer" data-id="${esc(m.id)}" title="desfazer (até 10 min)">Desfazer</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
   cont.querySelectorAll(".bal-editar").forEach(b => b.addEventListener("click", () => { _balEdit = b.dataset.id; renderSaidasHoje(); $("bal-ed-qtd")?.focus(); }));
   cont.querySelectorAll(".bal-ed-cancelar").forEach(b => b.addEventListener("click", () => { _balEdit = null; renderSaidasHoje(); }));
   cont.querySelectorAll(".bal-ed-salvar").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => balSalvarEdicao(b.dataset.id))));
@@ -588,7 +588,7 @@ function estAplicarTipo(){
   $("est-tipo-ajuda").textContent = EST_AJUDA[_estTipo] || "";
   document.querySelectorAll(".est-so-entrada").forEach(el => el.style.display = _estTipo === "entrada" ? "" : "none");
   $("est-qtd-label").textContent = _estTipo === "ajuste" ? "Quantidade contada *" : "Quantidade *";
-  $("btn-registrar-entrada").textContent = _estTipo === "entrada" ? "💾 Registrar entrada" : "💾 Lançar contagem";
+  $("btn-registrar-entrada").textContent = _estTipo === "entrada" ? "Registrar entrada" : "Lançar contagem";
   estMostrarProdInfo();
 }
 function estMostrarProdInfo(){
@@ -754,7 +754,7 @@ function renderReposicao(){
       <td class="num">${pode ? `<input type="number" class="est-rep-ideal" data-id="${esc(p.id)}" value="${esc(p.estoque_ideal ?? "")}" min="0" step="1" style="width:64px;text-align:right;" />` : (p.estoque_ideal != null ? num(p.estoque_ideal) : "—")}</td>
       <td class="num">${ac > 0 ? `<strong>${num(ac)}</strong>` : "—"}</td>
       <td><span class="tag ${esc(cor)}">${esc(sit)}</span></td>
-      ${pode ? `<td style="white-space:nowrap;"><button type="button" class="btn-sec btn-sm" data-mov="entrada" data-id="${esc(p.id)}" title="registrar entrada">＋</button> <button type="button" class="btn-sec btn-sm" data-mov="saida" data-id="${esc(p.id)}" title="registrar saída">－</button> <button type="button" class="btn-sec btn-sm" data-mov="ajuste" data-id="${esc(p.id)}" title="lançar contagem">📋</button> <button type="button" class="btn-sec btn-sm" data-mov="tirar" data-id="${esc(p.id)}" title="tirar da lista de reposição">✕</button></td>` : ""}
+      ${pode ? `<td style="white-space:nowrap;"><button type="button" class="btn-sec btn-sm" data-mov="entrada" data-id="${esc(p.id)}" title="registrar entrada">＋</button> <button type="button" class="btn-sec btn-sm" data-mov="saida" data-id="${esc(p.id)}" title="registrar saída">－</button> <button type="button" class="btn-sec btn-sm" data-mov="ajuste" data-id="${esc(p.id)}" title="lançar contagem">Contagem</button> <button type="button" class="btn-sec btn-sm" data-mov="tirar" data-id="${esc(p.id)}" title="tirar da lista de reposição">✕</button></td>` : ""}
     </tr>`; }).join("")}</tbody></table></div>`;
   cont.querySelectorAll(".est-rep-min, .est-rep-ideal").forEach(inp => inp.addEventListener("change", async () => {
     const campo = inp.classList.contains("est-rep-min") ? "estoque_minimo" : "estoque_ideal";

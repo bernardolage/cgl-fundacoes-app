@@ -299,7 +299,7 @@ async function vbRenderAba(e, contId){
     if(vbPodeLer(e)){ const { data } = await sb.from("vw_vendas_bens").select(VB_HIST_SELECT).eq("equipamento_id", e.id).order("created_at", { ascending: false }); hist = data || []; }
     if(_vbAlvo?.contId !== contId || _vbAlvo?.equipId !== e.id) return;
     cont.innerHTML = `<p class="vazio">Bem da casa: nenhuma venda registrada.</p>
-      ${podeReg ? `<div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn" id="btn-vb-aba-registrar">💰 Registrar venda</button></div>
+      ${podeReg ? `<div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn" id="btn-vb-aba-registrar">Registrar venda</button></div>
       <p class="meta">A venda dá baixa no bem (status Vendido, sai da frota, da manutenção e da mobilização) e abre o acompanhamento das parcelas até a quitação. Aceita data no passado e parcelas já recebidas.</p>` : ""}
       ${vbHistHTML(hist)}`;
     $("btn-vb-aba-registrar")?.addEventListener("click", () => vbAbrirRegistro(e, null));
@@ -339,9 +339,9 @@ function vbHTMLVenda(v, parcelas, e){
   const linhas = parcelas.map(p => {
     const recebida = p.status === "recebida";
     const acoes = [
-      podeRec && !recebida ? `<button type="button" class="btn-sec btn-sm" data-vb-receber="${esc(p.id)}" title="Confirmar o recebimento desta parcela">✅ Receber</button>` : "",
-      (podeRec || (podeReg && !(Number(p.valor_recebido) > 0))) && !recebida ? `<button type="button" class="btn-sec btn-sm" data-vb-editar="${esc(p.id)}" title="Editar vencimento e valor negociados">✏️</button>` : "",
-      podeRec && (Number(p.valor_recebido) > 0 || Number(p.encargos) > 0) ? `<button type="button" class="btn-sec btn-sm" data-vb-estornar="${esc(p.id)}" title="Estornar o recebimento (a parcela volta a aberta)">↩️ Estornar</button>` : "",
+      podeRec && !recebida ? `<button type="button" class="btn-sec btn-sm" data-vb-receber="${esc(p.id)}" title="Confirmar o recebimento desta parcela">Receber</button>` : "",
+      (podeRec || (podeReg && !(Number(p.valor_recebido) > 0))) && !recebida ? `<button type="button" class="btn-sec btn-sm" data-vb-editar="${esc(p.id)}" title="Editar vencimento e valor negociados">Editar</button>` : "",
+      podeRec && (Number(p.valor_recebido) > 0 || Number(p.encargos) > 0) ? `<button type="button" class="btn-sec btn-sm" data-vb-estornar="${esc(p.id)}" title="Estornar o recebimento (a parcela volta a aberta)">Estornar</button>` : "",
       podeReg && !(Number(p.valor_recebido) > 0) && !(Number(p.encargos) > 0) ? `<button type="button" class="btn-sec btn-sm txt-perigo" data-vb-apagar="${esc(p.id)}" title="Apagar a parcela">×</button>` : ""
     ].filter(Boolean).join(" ");
     return `<tr>
@@ -358,11 +358,11 @@ function vbHTMLVenda(v, parcelas, e){
   const veic = e && vbEhVeiculo(e);
   return `
     ${podeReg ? `<div class="form-acoes compacta" style="justify-content:flex-start;margin:0 0 10px;flex-wrap:wrap;">
-      <button type="button" class="btn-sec" id="btn-vb-editar-venda">✏️ Editar venda</button>
-      <button type="button" class="btn-sec" id="btn-vb-contrato-enviar">📎 ${v.contrato_path ? "Trocar contrato" : "Anexar contrato"}</button>
+      <button type="button" class="btn-sec" id="btn-vb-editar-venda">Editar venda</button>
+      <button type="button" class="btn-sec" id="btn-vb-contrato-enviar">${v.contrato_path ? "Trocar contrato" : "Anexar contrato"}</button>
       <input type="file" id="vb-contrato-arquivo" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" style="display:none;" />
-      <button type="button" class="btn-sec" id="btn-vb-cancelar-venda" title="O bem volta ao cadastro; a venda fica no histórico">↩️ Cancelar venda</button>
-      ${!temRecebido ? `<button type="button" class="btn-sec txt-perigo" id="btn-vb-apagar-venda" title="Só sem recebimento confirmado">🗑️ Apagar</button>` : ""}
+      <button type="button" class="btn-sec" id="btn-vb-cancelar-venda" title="O bem volta ao cadastro; a venda fica no histórico">Cancelar venda</button>
+      ${!temRecebido ? `<button type="button" class="btn-sec txt-perigo" id="btn-vb-apagar-venda" title="Só sem recebimento confirmado">Apagar</button>` : ""}
     </div>` : ""}
     <div class="odoo-contexto" style="padding:0 0 12px;">
       ${chip("Venda", esc(v.numero))}
@@ -394,7 +394,7 @@ function vbHTMLVenda(v, parcelas, e){
       <div class="grade grade-3">
         <div class="campo"><label>Comunicação de venda ao Detran em</label><input type="date" id="vb-tr-comunic" value="${esc(v.comunicacao_venda_em || "")}" ${podeReg ? "" : "disabled"} /></div>
         <div class="campo"><label>CRV / ATPV-e entregue ao comprador em</label><input type="date" id="vb-tr-crv" value="${esc(v.crv_entregue_em || "")}" ${podeReg ? "" : "disabled"} /></div>
-        ${podeReg ? `<div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-vb-tr-salvar">💾 Salvar checklist</button></div>` : ""}
+        ${podeReg ? `<div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-vb-tr-salvar">Salvar checklist</button></div>` : ""}
       </div>
       <p class="meta">Enquanto as duas datas não estiverem preenchidas, o veículo aparece no "Para regularizar" do financeiro e do gestor de frota (multa e IPVA continuam no nome da CGL até a comunicação).</p>` : ""}
     ${v.observacoes ? `<h4 class="titulo-bloco" style="margin-top:16px;">Observações</h4><p style="white-space:pre-wrap;margin:0;">${esc(v.observacoes)}</p>` : ""}`;
@@ -473,7 +473,7 @@ function vbAbrirParcela(modo, p){
   const receber = modo === "receber";
   $("vb-parc-receb").style.display = receber ? "" : "none";
   $("vb-parc-edit").style.display = receber ? "none" : "";
-  $("btn-vb-parc-salvar").textContent = receber ? "✅ Confirmar recebimento" : "💾 Salvar parcela";
+  $("btn-vb-parc-salvar").textContent = receber ? "Confirmar recebimento" : "Salvar parcela";
   if(receber){
     const saldo = vbR2(Number(p.valor) - Number(p.valor_recebido));
     $("vb-parc-titulo").textContent = `Receber ${p.numero === 0 ? "a entrada" : "a parcela " + p.numero} · ${v.numero}`;
@@ -592,7 +592,7 @@ async function vbAbrirRegistro(e, venda){
   $("vb-contrato-campo").style.display = venda ? "none" : "";
   $("vb-ja-recebidas").checked = false;
   $("vb-ja-recebidas-campo").style.display = (!venda && vbPodeReceber()) ? "" : "none";
-  $("btn-vb-salvar").textContent = venda ? "💾 Salvar venda" : "💰 Registrar venda";
+  $("btn-vb-salvar").textContent = venda ? "Salvar venda" : "Registrar venda";
   vbToggleForma();
   $("vb-modal").style.display = "flex";
 }

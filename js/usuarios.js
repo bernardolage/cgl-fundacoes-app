@@ -111,7 +111,7 @@ function renderRespServico(){
       <td>${esc(RESP_AREA[r.area] || r.area)}</td><td>${esc(RESP_TIPO[r.tipo_servico] || r.tipo_servico)}</td>
       <td>${esc(r.pessoa?.nome || "—")}${r.pessoa && r.pessoa.ativo === false ? ' <span class="tag cinza">inativo</span>' : ""}</td>
       <td><select data-resp-papel="${esc(r.id)}" title="Trocar o papel">${(RESP_PAPEIS_AREA[r.area] || []).map(p => `<option value="${esc(p)}" ${p === r.papel ? "selected" : ""}>${esc(RESP_PAPEL[p])}</option>`).join("")}</select></td>
-      <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo" data-resp-del="${esc(r.id)}" title="Remover">🗑️</button></td>
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo" data-resp-del="${esc(r.id)}" title="Remover">Remover</button></td>
     </tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum responsável cadastrado: os avisos de cadastro ficam só no total da diretoria.</p>`;
 }
@@ -430,7 +430,7 @@ function novoUsuario(){
   if($("usr-extra-ate")) $("usr-extra-ate").value = "";
   $("btn-reset-senha-usr").style.display = "none";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "none";
-  $("btn-salvar-usr").textContent = "📨 Enviar convite";
+  $("btn-salvar-usr").textContent = "Enviar convite";
   abrirFichaUsrVisual({ nome: "(novo)", cargo: "visualizador", ativo: true });
 }
 
@@ -452,7 +452,7 @@ function abrirUsuario(id){
   if($("usr-extra-ate")) $("usr-extra-ate").value = u.modulos_extras_ate ? String(u.modulos_extras_ate).slice(0, 10) : "";
   $("btn-reset-senha-usr").style.display = u.login_cpf ? "none" : "";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "";   // fase 87
-  $("btn-salvar-usr").textContent = "💾 Salvar alterações";
+  $("btn-salvar-usr").textContent = "Salvar alterações";
   abrirFichaUsrVisual(u);
 }
 

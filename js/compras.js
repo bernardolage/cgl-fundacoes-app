@@ -472,7 +472,7 @@ function cmpRenderAnexosPedido(){
       <td class="meta">${a.tamanho ? Math.max(1, Math.round(Number(a.tamanho) / 1024)) + " KB" : "—"}</td>
       <td class="meta">${esc(a.enviado?.nome || "—")}</td>
       <td class="meta">${dataBR(String(a.created_at || "").slice(0, 10))}</td>
-      <td class="col-acao"><button type="button" class="btn-sec btn-sm cmp-anx-baixar" title="Baixar">⬇️</button>${cmpAnxPodeExcluir(a) ? ` <button type="button" class="btn-sec btn-sm txt-perigo cmp-anx-excluir" title="Excluir">🗑️</button>` : ""}</td></tr>`; }).join("")
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm cmp-anx-baixar" title="Baixar">Baixar</button>${cmpAnxPodeExcluir(a) ? ` <button type="button" class="btn-sec btn-sm txt-perigo cmp-anx-excluir" title="Excluir">Excluir</button>` : ""}</td></tr>`; }).join("")
   }</tbody></table></div>`;
   cont.querySelectorAll(".cmp-anx-baixar").forEach(b => b.addEventListener("click", () => { const a = _cmpAnexos.find(x => x.id === b.closest("tr").dataset.id); if(a) cmpAbrirAnexo(a.storage_path, a.nome); }));
   cont.querySelectorAll(".cmp-anx-excluir").forEach(b => b.addEventListener("click", () => cmpExcluirAnexoPedido(b.closest("tr").dataset.id)));
@@ -1480,7 +1480,7 @@ function cmpAtualizarBotoes(){
   const bAp = $("btn-cmp-aprovar");
   if(bAp && podeAprovar){
     const fecha = minhas.length === pend.length;
-    bAp.textContent = fecha ? "👍 Aprovar" : "✍️ Assinar";
+    bAp.textContent = fecha ? "Aprovar" : "Assinar";
     bAp.title = (fecha ? "Assina e aprova o pedido: " : "Assina a sua chave (o pedido continua aguardando as outras): ") + minhas.map(k => k.quem_assina).join("; ");
   }
   const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
@@ -1497,7 +1497,7 @@ function cmpAtualizarBotoes(){
   // lote S55 (#179): em cotação o botão PDF gera a "Solicitação de cotação" (sem preço, IPI, total nem aprovador)
   const bPdf = $("btn-cmp-pdf");
   if(bPdf){
-    bPdf.textContent = st === "em_cotacao" ? "📄 Solicitação de cotação" : "🖨️ PDF do pedido";
+    bPdf.textContent = st === "em_cotacao" ? "Solicitação de cotação" : "PDF do pedido";
     bPdf.title = st === "em_cotacao" ? "Solicitação de cotação (sem valores): itens, quantidades, prazo e condição desejados" : "";
   }
 }
@@ -1525,8 +1525,8 @@ async function cmpCarregarFilhas(id){
   const acoesRec = r => {
     if(r.status !== "confirmado") return "";
     const ts = titsPorRec[r.id] || [], b = [];
-    if(verTit && cmpPodeLancarNf() && !ts.length) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-lancar" data-rec="${esc(r.id)}" title="Lança a NF deste material recebido (número, chave, vencimentos ou XML) e gera os títulos a pagar">🧾 Lançar NF</button>`);
-    if(cmpPodeReceber() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo-txt);">↩ Estornar</button>`);
+    if(verTit && cmpPodeLancarNf() && !ts.length) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-lancar" data-rec="${esc(r.id)}" title="Lança a NF deste material recebido (número, chave, vencimentos ou XML) e gera os títulos a pagar">Lançar NF</button>`);
+    if(cmpPodeReceber() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo-txt);">Estornar</button>`);
     return b.join(" ");
   };
   // hotfix 221: "🧾 Lançar NF" também no topo da ficha, para o financeiro, enquanto houver material recebido sem NF
@@ -1643,7 +1643,7 @@ function renderCotacoes(){
       ${rodape("Condição", c => `<td class="num">${esc(c.condicao_pagamento || "—")}</td>`)}
       ${rodape("Validade", c => `<td class="num">${c.validade ? dataBR(c.validade) : "—"}</td>`)}
       ${rodape("Proposta", c => `<td class="num">${c.anexo ? `<a href="#" class="cmp-cot-anexo" data-path="${esc(c.anexo.storage_path)}" data-nome="${esc(c.anexo.nome)}">📎 ${esc(c.anexo.nome)}</a>` : "—"}${c.observacoes ? `<div class="meta">${esc(c.observacoes)}</div>` : ""}</td>`)}
-      ${ed ? rodape("", c => `<td class="num" data-cot="${esc(c.id)}">${c.status === "escolhida" ? '<span class="meta">pedido fechado com esta</span><br>' : `<button type="button" class="btn btn-sm cmp-cot-fechar" title="Copia fornecedor, preços, IPI/ICMS, frete, prazo e condição para o pedido; com a caixa 'enviar para aprovação' marcada, já manda para a aprovação">✔ Fechar com este fornecedor</button><br>`}<button type="button" class="btn-sec btn-sm cmp-cot-editar" title="Editar">✏️</button> <button type="button" class="btn-sec btn-sm txt-perigo cmp-cot-excluir" title="Excluir">🗑️</button></td>`) : ""}
+      ${ed ? rodape("", c => `<td class="num" data-cot="${esc(c.id)}">${c.status === "escolhida" ? '<span class="meta">pedido fechado com esta</span><br>' : `<button type="button" class="btn btn-sm cmp-cot-fechar" title="Copia fornecedor, preços, IPI/ICMS, frete, prazo e condição para o pedido; com a caixa 'enviar para aprovação' marcada, já manda para a aprovação">Fechar com este fornecedor</button><br>`}<button type="button" class="btn-sec btn-sm cmp-cot-editar" title="Editar">Editar</button> <button type="button" class="btn-sec btn-sm txt-perigo cmp-cot-excluir" title="Excluir">Excluir</button></td>`) : ""}
     </tfoot></table></div>`;
   ligarTopo();
   cont.querySelectorAll(".cmp-cot-anexo").forEach(a => a.addEventListener("click", e => { e.preventDefault(); cmpAbrirAnexo(a.dataset.path, a.dataset.nome); }));
@@ -1928,7 +1928,7 @@ function renderItensPedido(){
     // lote S53 (#149): destino TAG ganha o botão ⚖ (rateio entre equipamentos) e a linha "+ N TAG(s) (rateio)"
     const destinoCel = repo
       ? `<span class="meta" title="${esc(cmpDicaDestinoEstoque(it))}">${esc(cmpDestinoTxt({ destino: "estoque", centro_custo_id: ed ? $("cmp-centro").value : it.centro_custo_id }))}</span>`
-      : ed ? `<select class="cmp-it${it.destino ? "" : " txt-perigo"}" data-f="destino" style="min-width:150px;max-width:190px;">${cmpDestinoDiretoOptions(cmpDestinoValor(it))}</select> <button type="button" class="btn-sec btn-sm cmp-it-rat" title="Ratear este item entre TAGs (partes iguais, ajustáveis)" style="${it.destino === "equipamento" ? "" : "display:none;"}">⚖</button><div class="cmp-it-rat-txt">${cmpDestinoRateioHTML(it)}</div>`
+      : ed ? `<select class="cmp-it${it.destino ? "" : " txt-perigo"}" data-f="destino" style="min-width:150px;max-width:190px;">${cmpDestinoDiretoOptions(cmpDestinoValor(it))}</select> <button type="button" class="btn-sec btn-sm cmp-it-rat" title="Ratear este item entre TAGs (partes iguais, ajustáveis)" style="${it.destino === "equipamento" ? "" : "display:none;"}">Ratear</button><div class="cmp-it-rat-txt">${cmpDestinoRateioHTML(it)}</div>`
       : esc(cmpDestinoTxt(it)) + cmpDestinoRateioHTML(it);
     const natCel = ed && _cmpNaturezas.length
       ? `<select class="cmp-it" data-f="natureza_id" style="min-width:150px;max-width:190px;"${it.natureza && !_cmpNatMap[it.natureza_id] ? ` title="Odoo: ${esc(it.natureza)}"` : ""}>${cmpNatOptions(it.natureza_id || "")}</select>`
@@ -1938,7 +1938,7 @@ function renderItensPedido(){
       : `<span class="meta">${esc(CMP_METODO_LBL[it.metodo] || "—")}</span>`;
     // lote S53 (#166): descrição do item livre em textarea que cresce com o texto; % IPI e % ICMS por item; total com IPI
     return `<tr data-idx="${idx}">
-      <td>${it.produto_id ? esc(semCodOdoo(it.descricao)) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(semCodOdoo(it.descricao) || "")}</textarea>` : esc(semCodOdoo(it.descricao)))}${it.produto_id ? (srv ? cmpTagServico({ tipo_item: "servico" }) : "") : ' <span class="meta" title="item livre anterior ao lote S55: continua editável">livre (antigo)</span>' + (ed ? ' <button type="button" class="btn-sec btn-sm cmp-it-ligar" title="Trocar este item livre por um produto do catálogo (quantidade, preço e destino ficam); depois dá para escolher Reposição de estoque">🔗 Ligar ao catálogo</button>' : "")}${/* html */ cmpItemExtrasHTML(it, ed)}</td>
+      <td>${it.produto_id ? esc(semCodOdoo(it.descricao)) : (ed ? `<textarea class="cmp-it" data-f="descricao" rows="1" placeholder="descrição do item" style="width:100%;resize:none;overflow:hidden;min-height:34px;">${esc(semCodOdoo(it.descricao) || "")}</textarea>` : esc(semCodOdoo(it.descricao)))}${it.produto_id ? (srv ? cmpTagServico({ tipo_item: "servico" }) : "") : ' <span class="meta" title="item livre anterior ao lote S55: continua editável">livre (antigo)</span>' + (ed ? ' <button type="button" class="btn-sec btn-sm cmp-it-ligar" title="Trocar este item livre por um produto do catálogo (quantidade, preço e destino ficam); depois dá para escolher Reposição de estoque">Ligar ao catálogo</button>' : "")}${/* html */ cmpItemExtrasHTML(it, ed)}</td>
       <td>${cmpUnidadeCelula(it, ed)}</td>
       <td>${ed ? `<input type="number" step="any" min="0.001" class="cmp-it" data-f="quantidade" value="${esc(it.quantidade ?? 1)}" title="gravada com 3 casas" style="width:80px;text-align:right;" />` : num(it.quantidade)}</td>
       <td>${ed ? `<input type="number" step="0.0001" min="0" class="cmp-it" data-f="valor_unitario" value="${esc(it.valor_unitario ?? 0)}" title="até 4 casas" style="width:105px;text-align:right;" />` : cmpBrl4(it.valor_unitario)}</td>
@@ -2534,7 +2534,7 @@ function abrirRecebimento(pedido, modo){
   cmpPeriodoRender("cmp-rec-periodo-aviso", []);
   $("cmp-rec-anexos-campo").style.display = direta ? "" : "none"; $("cmp-rec-anexos").value = "";
   $("cmp-rec-th-pend").textContent = direta ? "Categoria" : "Pendente";
-  $("btn-cmp-rec-confirmar").textContent = direta ? "🧾 Registrar compra" : material ? "📦 Confirmar recebimento do material" : "✅ Confirmar recebimento";
+  $("btn-cmp-rec-confirmar").textContent = direta ? "Registrar compra" : material ? "Confirmar recebimento do material" : "Confirmar recebimento";
   // lote S57a (#206): a quantidade é o que chegou; o que não veio fica pendente
   $("cmp-rec-ajuda").textContent = direta
     ? "Compra já feita, com a nota na mão. Registrar cria o pedido já recebido, dá entrada no almoxarifado (reposição de estoque) ou lança o custo no destino (aplicação direta: obra, TAG ou setor) e gera os títulos a pagar. Acima da sua alçada, vai para aprovação."
@@ -2581,7 +2581,7 @@ function abrirLancarNf(recId){
   $("cmp-rec-anexos-campo").style.display = "none"; $("cmp-rec-anexos").value = "";
   if($("cmp-rec-contrato-campo")) $("cmp-rec-contrato-campo").style.display = "none";
   $("cmp-rec-th-pend").textContent = "Pendente";
-  $("btn-cmp-rec-confirmar").textContent = "🧾 Lançar NF e gerar títulos";
+  $("btn-cmp-rec-confirmar").textContent = "Lançar NF e gerar títulos";
   $("cmp-rec-ajuda").textContent = `Material recebido em ${dataBR(r.data_recebimento)}. Informe a NF (ou importe o XML) e o vencimento: os títulos a pagar nascem agora. Quantidades e valores dos itens não mudam aqui; se a nota não bate com o que chegou, estorne o recebimento e receba de novo.`;
   $("cmp-rec-titulo").textContent = `Lançar NF — pedido ${_cmpAtual.numero}`;
   $("cmp-rec-xml").value = "";
@@ -3312,7 +3312,7 @@ async function custosRender(containerId, filtro, cbTotal){
     <div class="lista-topo compacta"><h3>Custos <span class="meta">${linhas.length} lançamento(s)</span></h3>
       <strong style="margin-left:auto;" data-val-sens>Total ${brl(total)}</strong>
       ${pode ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-av">＋ Custo avulso</button>` : ""}
-      ${linhas.length ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-xls">📊 Excel</button>` : ""}
+      ${linhas.length ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-xls">Excel</button>` : ""}
     </div>
     ${linhas.length ? `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Por categoria</div>${Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="custos-linha"><span>${esc(CMP_CAT_LBL[k] || k)}</span><strong>${brl(v)}</strong></div>`).join("")}</div>

@@ -511,7 +511,7 @@ function repRenderCustos(){
         <p class="meta">Use quando o custo real não sai das peças e das horas (serviço externo, reparo antigo da planilha).</p>
         ${pode ? `<label class="check-inline"><input type="checkbox" id="rep-custo-manual"${r.custo_manual ? " checked" : ""} /> custo manual</label>
           <input type="number" id="rep-custo-valor" min="0" step="0.01" value="${esc(r.custo_real || 0)}" style="width:140px;"${r.custo_manual ? "" : " disabled"} />
-          <button type="button" class="btn-sec btn-sm" id="btn-rep-custo-salvar">💾 Salvar custo</button>` : ""}
+          <button type="button" class="btn-sec btn-sm" id="btn-rep-custo-salvar">Salvar custo</button>` : ""}
       </div></div>
     <p class="meta">Concluído, o reparo entra em Custos da TAG em duas linhas: peças e mão de obra. A baixa das peças no estoque não conta de novo.</p>`;
   $("rep-custo-manual")?.addEventListener("change", e => { $("rep-custo-valor").disabled = !e.target.checked; });

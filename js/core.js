@@ -397,6 +397,16 @@ function sugerirNumeros(){
    botão de gravação (id ou texto), fn resolvida sem exceção e nenhum aviso de erro visível depois dela
    (validação que avisa e retorna). Gerar PDF, importar, exportar e buscar nunca limpam. */
 const BOTAO_GRAVACAO_RE = /salvar|gravar|confirmar|aprovar|concluir|finalizar|enviar|registrar|lan[cç]ar|marcar|baixa|receber|entregar/i;
+/* Fase 149: o menu "Mais" da ficha (<details class="ficha-mais">) fecha ao clicar fora, ao escolher um item e com Esc. */
+document.addEventListener("click", e => {
+  document.querySelectorAll("details.ficha-mais[open]").forEach(d => {
+    if(!d.contains(e.target) || e.target.closest(".ficha-mais-menu")) d.open = false;
+  });
+});
+document.addEventListener("keydown", e => {
+  if(e.key !== "Escape") return;
+  document.querySelectorAll("details.ficha-mais[open]").forEach(d => { d.open = false; d.querySelector("summary")?.focus(); });
+});
 async function comBotaoTravado(btnOuId, fn){
   const b = typeof btnOuId === "string" ? $(btnOuId) : btnOuId;
   if(b){
@@ -2264,7 +2274,7 @@ async function verificarCodigoMFA(){
   } catch(err){
     aviso("mfa-modal-aviso", err.message || "Código inválido. Tente novamente.","erro");
     btn.disabled = false;
-    btn.textContent = "✅ Verificar e ativar";
+    btn.textContent = "Verificar e ativar";
   }
 }
 

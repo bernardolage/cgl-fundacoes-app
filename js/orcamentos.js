@@ -929,7 +929,6 @@ function abrirFichaOrcVisual(o){
   $("orc-ficha-numero").textContent = o.numero || "(novo)";
   if($("orc-ficha-revisao-chip")) $("orc-ficha-revisao-chip").textContent = `Rev ${o.numero_revisao || "00"}`;
   $("orc-ficha-cliente-chip").textContent = mapaClientes[o.cliente_id] || "—";
-  $("orc-ficha-status-chip").innerHTML = tagStatus("orcamento", o.status);
   $("orc-ficha-valor-chip").textContent = brl(orcTotalComIss(o));   // lote S44 (L8): total com ISS, igual ao da proposta
   if($("orc-ficha-validade-chip")) $("orc-ficha-validade-chip").textContent = dataBR(o.validade);
   $("orc-ficha-titulo").textContent = orcEditId ? `Orçamento ${o.numero} · Rev ${o.numero_revisao||"00"}` : "Novo orçamento";

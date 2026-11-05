@@ -288,7 +288,7 @@ async function processarArquivoXlsxRG113(file){
   if(!rg113Detectar(wb)) return false;
   const btn = $("btn-csv-processar");
   const txtBtn = btn ? btn.textContent : "";
-  if(btn){ btn.disabled = true; btn.textContent = "📊 Lendo o RG 11.3…"; }
+  if(btn){ btn.disabled = true; btn.textContent = "Lendo o RG 11.3…"; }
   try {
     const data = rg113ParaDias(wb, file && file.name);   // fase 134b: o nome do arquivo decide o período das linhas sem PERÍODO
     _iaOrigem = "xlsx_rg113";

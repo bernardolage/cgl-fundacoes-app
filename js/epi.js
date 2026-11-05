@@ -63,7 +63,7 @@ function epiModalAssinatura(){
       <div class="meta">Assine com o dedo (celular ou tablet) ou com o mouse, dentro do quadro.</div>
       <div id="epi-ass-aviso" class="aviso"></div>
       <div class="form-acoes compacta">
-        <button type="button" class="btn" id="btn-epi-ass-salvar">✍ Assinar e salvar</button>
+        <button type="button" class="btn" id="btn-epi-ass-salvar">Assinar e salvar</button>
         <button type="button" class="btn-sec" id="btn-epi-ass-limpar">Limpar</button>
         <button type="button" class="btn-sec" id="btn-epi-ass-depois" title="A entrega fica com a assinatura pendente na ficha de EPI">Assinar depois</button>
       </div>
@@ -185,8 +185,8 @@ function renderEpiFicha(){
       ${chip(pend.length, "Sem assinatura", pend.length ? "ambar" : "")}
     </div>
     <div class="form-acoes compacta" style="margin:0 0 10px;">
-      <button type="button" class="btn-sec" id="btn-epi-pdf" ${L.length ? "" : "disabled"}>🖨 Ficha de EPI (PDF)</button>
-      ${opera && pend.length ? `<button type="button" class="btn" id="btn-epi-assinar-pend">✍ Colher assinatura (${pend.length} pendente${pend.length > 1 ? "s" : ""})</button>` : ""}
+      <button type="button" class="btn-sec" id="btn-epi-pdf" ${L.length ? "" : "disabled"}>Ficha de EPI (PDF)</button>
+      ${opera && pend.length ? `<button type="button" class="btn" id="btn-epi-assinar-pend">Colher assinatura (${pend.length} pendente${pend.length > 1 ? "s" : ""})</button>` : ""}
     </div>
     ${!L.length ? `<p class="vazio">Nenhuma entrega de EPI ou uniforme registrada para este colaborador. As entregas entram pela saída do Estoque com "Quem retira".</p>` : `
     <div class="tabela-rola"><table>
@@ -198,12 +198,12 @@ function renderEpiFicha(){
         <td class="num">${num(r.quantidade)} <span class="meta">${esc(r.unidade || "")}</span></td>
         <td class="num">${brl(r.valor)}</td>
         <td>${esc(epiDestino(r))}</td>
-        <td>${r.assinatura_em ? `<button type="button" class="link-mini" data-epi-ver-ass="${i}" title="ver a assinatura">✔ ${dataBR(String(r.assinatura_em).slice(0, 10))}</button>`
+        <td>${r.assinatura_em ? `<button type="button" class="link-mini" data-epi-ver-ass="${i}" title="ver a assinatura">${dataBR(String(r.assinatura_em).slice(0, 10))}</button>`
               : r.epi_devolvido_em ? '<span class="meta">—</span>' : '<span class="tag ambar">pendente</span>'}</td>
         <td>${r.troca_prevista ? dataBR(r.troca_prevista) : '<span class="meta">—</span>'}
             ${r.troca_vencida ? ' <span class="tag vermelho">vencida</span>' : r.substituida ? ' <span class="tag cinza">trocado</span>' : ""}</td>
         <td>${r.epi_devolvido_em ? `${dataBR(r.epi_devolvido_em)}${r.epi_devolucao_obs ? ` <span class="meta">${esc(r.epi_devolucao_obs)}</span>` : ""}`
-              : opera ? `<button type="button" class="btn-sec btn-sm" data-epi-devolver="${i}">↩ Devolver</button>` : '<span class="meta">—</span>'}</td>
+              : opera ? `<button type="button" class="btn-sec btn-sm" data-epi-devolver="${i}">Devolver</button>` : '<span class="meta">—</span>'}</td>
       </tr>`).join("")}</tbody></table></div>`}`;
 }
 async function epiFichaClique(e){
@@ -294,7 +294,7 @@ function epiRenderRelatorio(alvoId){
   cont.innerHTML = `<div class="epi-rel">
       <div class="lista-topo compacta">
         <div class="serv-views">${EPI_VISOES.map(([v, l]) => `<button type="button" class="serv-view-btn${v === _epiRel.visao ? " ativo" : ""}" data-epi-visao="${esc(v)}">${esc(l)}</button>`).join("")}</div>
-        <button type="button" class="btn-sec btn-sm" data-epi-xlsx="1" style="margin-left:auto;">⬇ Exportar .xlsx</button>
+        <button type="button" class="btn-sec btn-sm" data-epi-xlsx="1" style="margin-left:auto;">Exportar .xlsx</button>
       </div>
       <div class="serv-filtros">
         <input data-epi-busca placeholder="Filtrar por colaborador, função, obra ou item…" value="${esc(_epiRel.busca)}" />
@@ -404,7 +404,7 @@ function epiRelDesenhar(alvoId){
     corpo.innerHTML = !L.length ? `<p class="vazio">✅ Nenhuma saída de EPI sem o colaborador no período.</p>` : `<p class="meta" style="margin:0 0 6px;">Saídas de EPI registradas sem quem recebeu (por outra tela ou antes da fase 100). ${opera ? "Informe o colaborador para a entrega entrar na ficha de EPI dele." : ""}</p>
       <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Item</th><th class="num">Qtd</th><th class="num">Valor</th><th>Destino</th><th>Documento</th>${opera ? "<th>Quem recebeu</th>" : ""}</tr></thead>
       <tbody>${L.map((r, i) => `<tr><td>${dataBR(r.data_entrega)}</td><td>${esc(r.produto_nome)}</td><td class="num">${num(r.quantidade)}</td><td class="num">${brl(r.valor)}</td><td>${esc(epiDestino(r))}</td><td class="meta">${esc(r.documento || "")}</td>
-        ${opera ? `<td style="white-space:nowrap;"><input list="epi-func-dl" data-epi-quem="${i}" placeholder="nome do colaborador" style="width:200px;" /> <button type="button" class="btn-sec btn-sm" data-epi-informar="${i}">✔</button></td>` : ""}</tr>`).join("")}</tbody></table></div>
+        ${opera ? `<td style="white-space:nowrap;"><input list="epi-func-dl" data-epi-quem="${i}" placeholder="nome do colaborador" style="width:200px;" /> <button type="button" class="btn-sec btn-sm" data-epi-informar="${i}">Informar</button></td>` : ""}</tr>`).join("")}</tbody></table></div>
       ${opera ? '<datalist id="epi-func-dl"></datalist>' : ""}`;
     if(opera && typeof balCarregarFuncionarios === "function") balCarregarFuncionarios().then(fs => { const dl = $("epi-func-dl"); if(dl) dl.innerHTML = fs.map(f => `<option value="${esc(f.nome)}">${esc(f.funcao || "")}</option>`).join(""); });
     return;
@@ -415,7 +415,7 @@ function epiRelDesenhar(alvoId){
     const div = L.filter(r => !r.confere).length;
     _epiRel.linhasExport = L.map(r => ({ "Código": r.codigo, "Produto": r.nome, "Ativo": r.ativo ? "sim" : "não", "Categoria do Odoo": r.categoria_odoo || "", "Categoria atual": EPI_CAT_LBL[r.categoria_atual] || r.categoria_atual || "", "Sugerida pelo nome": EPI_CAT_LBL[r.categoria_sugerida] || "", "CA": r.ca || "", "Troca a cada (dias)": r.epi_validade_dias ?? "" }));
     corpo.innerHTML = `<p class="meta" style="margin:0 0 6px;">Produtos das categorias do Odoo "EPI / UNIFORMES" e "EPI" e os já marcados. A sugestão vem do nome; quem decide é o almoxarifado (com o SESMT). EPI exige "quem retira" na saída e entra na ficha do colaborador; uniforme entra na ficha quando sai com a pessoa. ${L.length} produto(s), ${div} diferente(s) da sugestão.</p>
-      ${marca && aplicaveis.length ? `<div class="form-acoes compacta" style="margin:0 0 8px;"><button type="button" class="btn" data-epi-aplicar="1">✔ Aplicar sugestões (${aplicaveis.length} sem categoria)</button> <span class="meta">não mexe no que já tem categoria escolhida</span></div>` : ""}
+      ${marca && aplicaveis.length ? `<div class="form-acoes compacta" style="margin:0 0 8px;"><button type="button" class="btn" data-epi-aplicar="1">Aplicar sugestões (${aplicaveis.length} sem categoria)</button> <span class="meta">não mexe no que já tem categoria escolhida</span></div>` : ""}
       ${!L.length ? `<p class="vazio">Nenhum produto nas categorias de EPI.</p>` : `<div class="tabela-rola"><table>
       <thead><tr><th>Código</th><th>Produto</th><th>Categoria do Odoo</th><th>Sugerida</th><th>Categoria</th><th>CA</th><th class="num">Troca a cada (dias)</th></tr></thead>
       <tbody>${L.map(r => `<tr${r.ativo === false ? ' class="meta"' : ""}><td><strong>${esc(r.codigo)}</strong></td><td>${esc(r.nome)}${r.ativo === false ? " (inativo)" : ""}</td><td>${esc(r.categoria_odoo || "—")}</td>

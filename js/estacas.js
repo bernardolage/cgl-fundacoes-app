@@ -344,7 +344,7 @@ function renderAbasLocaisPlanta(){
   if(locais.length < 2 && !(locais.length === 1 && semLocal)){ box.style.display = "none"; box.innerHTML = ""; return; }
   if(!sel.value || (!locais.includes(sel.value))) sel.value = locais[0];
   const opcoes = locais.map(l => ({ v: l, t: l })).concat(semLocal ? [{ v: "__sem__", t: "Sem local" }] : []);
-  box.innerHTML = opcoes.map(o => `<button type="button" class="serv-view-btn${sel.value === o.v ? " ativo" : ""}" data-planta-local="${esc(o.v)}" title="Planta do projeto ${esc(o.t)}">📄 ${esc(o.t)}</button>`).join("");
+  box.innerHTML = opcoes.map(o => `<button type="button" class="serv-view-btn${sel.value === o.v ? " ativo" : ""}" data-planta-local="${esc(o.v)}" title="Planta do projeto ${esc(o.t)}">${esc(o.t)}</button>`).join("");
   box.style.display = "";
   box.querySelectorAll("[data-planta-local]").forEach(b => b.addEventListener("click", () => {
     sel.value = b.dataset.plantaLocal;
@@ -540,7 +540,7 @@ async function renderAcompanhamentoRaiz(){
       <span><strong>${f2(soma("compTotal"))} m</strong> executados (com refuros)</span>
       <span><strong>${f2(soma("revest"))} m</strong> revestimento · <strong>${f2(soma("martelo"))} m</strong> martelo · <strong>${f2(soma("tricone"))} m</strong> tricone</span>
       <span><strong>${f0(soma("sacos"))}</strong> sacos · <strong>${f2(soma("m3"))} m³</strong></span>
-      <button type="button" class="btn-sec btn-sm" id="btn-raiz-csv">⬇️ CSV</button>
+      <button type="button" class="btn-sec btn-sm" id="btn-raiz-csv">CSV</button>
     </div>`;
   if(semFerr) html += `<div class="dist-aviso neutro">ℹ️ ${semFerr} estaca(s) executada(s) sem trechos de solo com ferramenta no RDO — as colunas revestimento/martelo/tricone ficam zeradas até o RDO ser preenchido.</div>`;
 
@@ -557,7 +557,7 @@ async function renderAcompanhamentoRaiz(){
       <td>${esc(l.tagExec || "—")}</td>
       <td>${dt(l.dataInj)}</td><td class="num">${l.sacos != null ? f0(l.sacos) : (l.sacosTxt ? esc(l.sacosTxt) : "—")}</td><td class="num">${f2(l.m3)}</td><td>${esc(l.tagInj || "—")}</td>
       <td>${esc(l.periodo || "—")}</td><td>${esc(l.medicoes || "—")}</td><td class="meta">${esc(l.obs)}</td>
-      <td class="col-acao"><button type="button" class="btn-sec btn-sm raiz-edit" data-num="${esc(l.numero)}" title="abrir estaca">✏️</button></td>
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm raiz-edit" data-num="${esc(l.numero)}" title="abrir estaca">Abrir</button></td>
     </tr>`;
   }).join("");
 
@@ -685,8 +685,8 @@ function renderEstacas(){
       <td>${dataBR(e.data_execucao)}</td>
       <td><span class="tag ${esc(st.cor)}">${esc(st.label)}</span></td>
       <td class="col-acao">
-        <button type="button" class="btn-sec btn-sm est-edit" data-id="${esc(e.id)}">✏️</button>
-        <button type="button" class="btn-sec btn-sm est-del txt-perigo" data-id="${esc(e.id)}">🗑️</button>
+        <button type="button" class="btn-sec btn-sm est-edit" data-id="${esc(e.id)}">Editar</button>
+        <button type="button" class="btn-sec btn-sm est-del txt-perigo" data-id="${esc(e.id)}">Excluir</button>
       </td>
     </tr>`;
   }).join("");
@@ -880,7 +880,7 @@ async function importarEstacasPDF(){
   }
   const btn = $("btn-est-extrair");
   btn.disabled = true;
-  btn.textContent = "🤖 Extraindo... (~30s)";
+  btn.textContent = "Extraindo... (~30s)";
 
   try {
     // Converte PDF → base64 (FileReader é nativo e não estoura a pilha como o
@@ -947,7 +947,7 @@ async function importarEstacasPDF(){
     avisoImport("Erro ao extrair: " + (err?.message || "falha sem mensagem na leitura por IA"),"erro");
   } finally {
     btn.disabled = false;
-    btn.textContent = "🤖 Extrair com IA";
+    btn.textContent = "Extrair com IA";
   }
 }
 
@@ -1032,7 +1032,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
           </select>
         </div>
         <button type="button" class="btn" id="btn-reorg-aplicar" style="padding:5px 12px;">Aplicar</button>
-        <button type="button" class="btn-sec" id="btn-reorg-rapido" style="padding:5px 12px;" title="Atalho: troca Nº e ${esc(rotuloAgrupamento())}">↔ Trocar Nº ↔ ${esc(rotuloAgrupamento())}</button>
+        <button type="button" class="btn-sec" id="btn-reorg-rapido" style="padding:5px 12px;" title="Atalho: troca Nº e ${esc(rotuloAgrupamento())}">Trocar Nº ${esc(rotuloAgrupamento())}</button>
       </div>
     </div>`;
 
@@ -1546,7 +1546,7 @@ function renderDXFConfig(){
       </div>
       <p class="meta" style="margin:8px 0 0;">As coordenadas X/Y do CAD entram como estão; a planta faz a auto-escala. A distância mínima usa esses metros de verdade.</p>
       <div class="form-acoes compacta" style="margin-top:10px;">
-        <button type="button" class="btn" id="btn-dxf-extrair">📐 Extrair estacas</button>
+        <button type="button" class="btn" id="btn-dxf-extrair">Extrair estacas</button>
       </div>
     </div>`;
   box.style.display = "";
@@ -2572,9 +2572,9 @@ function renderizarAcoesRodape(aba){
   if(!rodape) return;
   if(aba === "orfas"){
     rodape.innerHTML = `
-      <button type="button" class="btn-sec" id="btn-est-rec-aplicar-sugestoes" title="Pré-seleciona a sugestão Top em cada linha (você ainda precisa confirmar)">✨ Aplicar todas as sugestões</button>
-      <button type="button" class="btn-sec" id="btn-est-rec-criar-todas" title="Cria as estacas previstas que faltam e vincula as execuções correspondentes">➕ Criar todas as previstas faltantes</button>
-      <button type="button" class="btn" id="btn-est-rec-confirmar" style="background:var(--sucesso);">✅ Confirmar vínculos selecionados</button>
+      <button type="button" class="btn-sec" id="btn-est-rec-aplicar-sugestoes" title="Pré-seleciona a sugestão Top em cada linha (você ainda precisa confirmar)">Aplicar todas as sugestões</button>
+      <button type="button" class="btn-sec" id="btn-est-rec-criar-todas" title="Cria as estacas previstas que faltam e vincula as execuções correspondentes">Criar todas as previstas faltantes</button>
+      <button type="button" class="btn" id="btn-est-rec-confirmar" style="background:var(--sucesso);">Confirmar vínculos selecionados</button>
     `;
     $("btn-est-rec-aplicar-sugestoes")?.addEventListener("click", aplicarTodasSugestoes);
     $("btn-est-rec-criar-todas")?.addEventListener("click", criarTodasPrevistasFaltantes);
@@ -3088,8 +3088,8 @@ function renderizarDuplicadas(){
         <td class="num">${e.profundidade_m!=null ? num(e.profundidade_m) : "—"}</td>
         <td><span class="tag ${esc(stMeta.cor)}">${esc(stMeta.label)}</span></td>
         <td class="col-acao">
-          <button type="button" class="btn-sec btn-sm btn-dup-renomear" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">✏️ Renomear</button>
-          <button type="button" class="btn-sec btn-sm btn-dup-excluir txt-perigo" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">🗑️</button>
+          <button type="button" class="btn-sec btn-sm btn-dup-renomear" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">Renomear</button>
+          <button type="button" class="btn-sec btn-sm btn-dup-excluir txt-perigo" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">Excluir</button>
         </td>
       </tr>`;
     }).join("");
@@ -3185,8 +3185,8 @@ function renderizarRefuradas(){
   }
   const ro = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
   const acoes = (e) => ro ? "" : `
-      <button type="button" class="btn-sec btn-sm btn-ref-substituir" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">➕ Criar substituta</button>
-      <button type="button" class="btn-sec btn-sm btn-ref-restaurar" data-id="${esc(e.id)}" title="Voltar para 'prevista'">↩️ Restaurar</button>`;
+      <button type="button" class="btn-sec btn-sm btn-ref-substituir" data-id="${esc(e.id)}" data-num="${esc(e.numero)}">Criar substituta</button>
+      <button type="button" class="btn-sec btn-sm btn-ref-restaurar" data-id="${esc(e.id)}" title="Voltar para 'prevista'">Restaurar</button>`;
   const linhas = _confRefuradas.map(e => `<tr data-id="${esc(e.id)}">
     <td><strong>${esc(e.numero)}</strong></td>
     <td>${esc(extrairBloco(e)||"—")}</td>
@@ -3522,7 +3522,7 @@ function estvRender(){
     </div>
     ${locais.length > 1 ? `<select id="estv-f-local" title="Mostra nas sugestões só as estacas do projeto deste local/bloco (travessia, bloco, setor)">
       <option value="">Local / bloco: todos</option>${locais.map(l => `<option value="${esc(l)}"${l === _estvFiltroLocal ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>` : ""}
-    ${!ro && altas ? `<button type="button" class="btn-sec btn-sm" id="btn-estv-lote-alta" title="Vincula de uma vez as órfãs cuja melhor sugestão é de alta confiança (igual, só prefixo, só vírgula ou só zeros), única e sem o mesmo nome em outro local/bloco">✨ Vincular ${altas} sugestão(ões) de alta confiança</button>` : ""}
+    ${!ro && altas ? `<button type="button" class="btn-sec btn-sm" id="btn-estv-lote-alta" title="Vincula de uma vez as órfãs cuja melhor sugestão é de alta confiança (igual, só prefixo, só vírgula ou só zeros), única e sem o mesmo nome em outro local/bloco">Vincular ${altas} sugestão(ões) de alta confiança</button>` : ""}
   </div>
   ${!ro && orfas.length ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--sup-2);padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:var(--txt-sm);">
     <span style="color:var(--txt-sec);">Corrigir prefixo em lote:</span>

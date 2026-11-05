@@ -505,7 +505,6 @@ function abrirFichaObra(obra){
   // Chips de contexto
   $("obr-ficha-codigo").textContent = obra.codigo || "(novo)";
   $("obr-ficha-cliente-chip").textContent = mapaClientes[obra.cliente_id] || "—";
-  $("obr-ficha-status-chip").innerHTML = tagStatus("obra", obra.status);
   // fase 90: valor só para quem lê financeiro (obras_financeiro); chip e campo somem para os demais
   const comValor = podeVerValorObra();
   $("obr-ficha-valor-chip").textContent = brl(obrValor(obra));
@@ -644,7 +643,6 @@ async function obrConcluirObra(){
   }
   $("obr-status").value = "concluida";
   $("obr-fim-real").value = data.data_fim_real || fim;
-  $("obr-ficha-status-chip").innerHTML = tagStatus("obra", "concluida");
   atualizarStatusbarObra("concluida");
   obrAtualizarConcluir({ status: "concluida" });
   aviso("app-aviso", "Obra marcada como concluída.", "ok");

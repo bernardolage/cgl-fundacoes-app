@@ -363,10 +363,10 @@ function rhhAtualizarBotoes(){
   const b1 = $("btn-rhh-liberar"), b2 = $("btn-rhh-estornar");
   if(b1){
     b1.disabled = !pend;
-    b1.textContent = pend - bloq ? `✅ Liberar ${pend - bloq} selecionada(s)` : "✅ Liberar selecionadas";
+    b1.textContent = pend - bloq ? `Liberar ${pend - bloq} selecionada(s)` : "Liberar selecionadas";
     b1.title = bloq ? `${bloq} linha(s) selecionada(s) com "Revisar informação" ficam de fora até alguém corrigir no RDO` : "";
   }
-  if(b2){ b2.disabled = !lib; b2.textContent = lib ? `↩ Estornar ${lib}` : "↩ Estornar"; }
+  if(b2){ b2.disabled = !lib; b2.textContent = lib ? `Estornar ${lib}` : "Estornar"; }
   if(_rhhView === "alocacao"){
     const n = [..._rhhSel].filter(k => k.startsWith("a:")).length;
     const c = $("btn-rhh-conferir"), d = $("btn-rhh-desconferir");
@@ -763,7 +763,7 @@ function renderRhv(){
         <td class="num"><strong>${rhhHz(v.horas)}</strong></td>
         <td>${v.veiculo ? esc(v.veiculo.codigo) + (v.veiculo.placa ? ` <span class="meta">${esc(v.veiculo.placa)}</span>` : "") : "—"}${v.viagem_id ? ' <span class="tag azul" title="Casada com uma viagem da Logística (mesmo veículo e dia)">viagem</span>' : ""}</td>
         <td>${sit} ${rastreio}</td>
-        <td class="col-acao">${v.liberado_em || leitura ? "" : `<button type="button" class="btn-sec btn-sm rhv-editar" data-id="${esc(v.id)}" title="Editar">✏️</button> <button type="button" class="btn-sec btn-sm rhv-excluir txt-perigo" data-id="${esc(v.id)}" title="Excluir">×</button>`}</td>
+        <td class="col-acao">${v.liberado_em || leitura ? "" : `<button type="button" class="btn-sec btn-sm rhv-editar" data-id="${esc(v.id)}" title="Editar">Editar</button> <button type="button" class="btn-sec btn-sm rhv-excluir txt-perigo" data-id="${esc(v.id)}" title="Excluir">×</button>`}</td>
       </tr>`;
     }).join("") + `</tbody></table></div>`;
   cont.querySelectorAll(".rhv-editar").forEach(b => b.addEventListener("click", () => rhvEditar(b.dataset.id)));
