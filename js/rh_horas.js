@@ -16,7 +16,7 @@ let _rhhView = "liberar";
 let _rhhEquipe = [];        // rdo_equipe do período (rdo e funcionário embutidos)
 let _rhhViagens = [];       // horas_viagem do período
 let _rhhMes = [];           // vw_rh_horas_mes da competência
-let _rhhAloc = [];          // vw_rh_alocacao_mes da competência
+let _rhhAloc = [];          // vw_rh_alocacao_mes + vw_rh_alocacao_lancada_mes (so_alocacao: true) da competência
 let _rhhPendMes = 0;        // linhas do RDO do mês ainda sem liberação (aviso no fechamento)
 let _rhhCnoDoc = {};        // lote S48 (#122): obra_id → { storage_path, nome } do PDF do CNO mais recente (vw_obra_cno_documento)
 let _rhhPodeLiberar = {};   // obra_id → boolean (rh_horas_liberar no banco)
@@ -508,11 +508,15 @@ async function rhhLancarFolha(){
   });
 }
 
-/* ---------- Alocação por obra (vw_rh_alocacao_mes + rh_alocacoes) ---------- */
+/* ---------- Alocação por obra (vw_rh_alocacao_mes + rh_alocacoes; fase 151d: vw_rh_alocacao_lancada_mes, só para ver) ---------- */
 async function rhhCarregarAlocacao(){
   const { mesIni } = rhhPeriodo();
   const obraId = $("rhh-f-obra")?.value || "";
-  _rhhAloc = await rhhLerTudo("vw_rh_alocacao_mes", q => { let x = q.select("*").eq("competencia", mesIni).order("obra_codigo").order("funcionario"); if(obraId) x = x.eq("obra_id", obraId); return x; });
+  const [doDiario, lancadas] = await Promise.all([
+    rhhLerTudo("vw_rh_alocacao_mes", q => { let x = q.select("*").eq("competencia", mesIni).order("obra_codigo").order("funcionario"); if(obraId) x = x.eq("obra_id", obraId); return x; }),
+    rhhLerTudo("vw_rh_alocacao_lancada_mes", q => { let x = q.select("*").eq("competencia", mesIni).order("obra_codigo").order("funcionario").order("funcionario_id").order("obra_id"); if(obraId) x = x.eq("obra_id", obraId); return x; })
+  ]);
+  _rhhAloc = doDiario.concat(lancadas.map(r => ({ ...r, so_alocacao: true })));
   await rhhCarregarCno(_rhhAloc.map(r => r.obra_id));   // lote S48 (#122)
   renderRhhAlocacao();
 }
@@ -525,6 +529,11 @@ function rhhAlocFiltrada(){
 }
 function rhhDivergencias(r){
   const t = [];
+  if(r.so_alocacao){   // fase 151d
+    t.push(`<span class="tag cinza" title="Alocação lançada na Logística, sem presença em diário nesta obra no mês">sem diário no mês</span>`);
+    if(!r.conferida) t.push(`<span class="tag ambar" title="A Logística ainda não conferiu esta alocação">alocação a conferir</span>`);
+    return /* html */ t.join(" ");
+  }
   if(Number(r.dias_duas_obras) > 0) t.push(`<span class="tag ambar" title="Dias do mês em que o funcionário aparece em diários de duas obras">${esc(r.dias_duas_obras)} dia(s) em 2 obras</span>`);
   if(Number(r.dias_uteis_sem_diario) > 0) t.push(`<span class="tag cinza" title="Dias úteis entre o primeiro e o último diário do mês sem presença em nenhum diário">${esc(r.dias_uteis_sem_diario)} dia(s) útil(eis) sem diário</span>`);
   return /* html */ t.join(" ") || "—";
@@ -536,12 +545,12 @@ function renderRhhAlocacao(){
   if($("rhh-contador")) $("rhh-contador").textContent = `${linhas.length} de ${_rhhAloc.length}`;
   const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   kpi("rhh-kpi-linhas", linhas.length); kpi("rhh-kpi-he", "—"); kpi("rhh-kpi-not", "—"); kpi("rhh-kpi-viag", "—");
-  kpi("rhh-kpi-pend", linhas.filter(r => !r.conferido_em).length);
+  kpi("rhh-kpi-pend", linhas.filter(r => !r.conferido_em && !r.so_alocacao).length);
   const { mesIni } = rhhPeriodo();
   const comp = new Date(mesIni + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma presença em diário em ${esc(comp)}. A alocação nasce da equipe do Diário de Obra.</p>`; return; }
+  if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma presença em diário nem alocação lançada em ${esc(comp)}.</p>`; return; }
   const podeConferir = RHH_CONFERIR_CARGOS.includes(rhhCargo()) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
-  const naoMaterializadas = linhas.filter(r => !r.alocacao_id).length;
+  const naoMaterializadas = linhas.filter(r => !r.alocacao_id && !r.so_alocacao).length;
   let html = naoMaterializadas && podeConferir ? `<p class="nota">${naoMaterializadas} linha(s) ainda não gravadas em rh_alocacoes: "Conferir" grava a competência antes de marcar (ou use "Recalcular alocação").</p>` : "";
   html += `<div class="tabela-rola"><table><thead><tr>
     <th style="width:28px;">${podeConferir ? '<input type="checkbox" id="rhh-sel-todos" title="Selecionar tudo" />' : ""}</th>
@@ -551,18 +560,18 @@ function renderRhhAlocacao(){
   linhas.forEach(r => { const k = r.obra_id || "sem"; if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); });
   for(const [oid, ls] of grupos){
     const g = ls[0];
-    html += `<tr class="rhh-grupo"><td>${podeConferir ? `<input type="checkbox" class="rhh-sel-grupo" data-fid="${esc(oid)}" title="Selecionar a obra inteira" />` : ""}</td>
+    html += `<tr class="rhh-grupo"><td>${podeConferir && ls.some(r => !r.so_alocacao) ? `<input type="checkbox" class="rhh-sel-grupo" data-fid="${esc(oid)}" title="Selecionar a obra inteira" />` : ""}</td>
       <td colspan="8"><strong>${linkObra(g.obra_id, rhhObraTxt(g.obra_id, g.obra_codigo, g.obra_nome))}</strong>
         · CNO ${rhhCnoHTML(g.obra_id, g.cno, true)}
-        <span class="meta">· ${ls.length} funcionário(s), ${ls.filter(r => r.conferido_em).length} conferido(s)</span></td></tr>`;
+        <span class="meta">· ${ls.length} funcionário(s), ${ls.filter(r => r.conferido_em).length} conferido(s)${ls.some(r => r.so_alocacao) ? `, ${ls.filter(r => r.so_alocacao).length} só com alocação` : ""}</span></td></tr>`;
     ls.forEach(r => {
       const k = rhhAlocKey(r);
       html += `<tr data-k="${esc(k)}">
-        <td>${podeConferir ? `<input type="checkbox" class="rhh-sel" data-k="${esc(k)}" data-fid="${esc(oid)}" ${_rhhSel.has(k) ? "checked" : ""} />` : ""}</td>
+        <td>${podeConferir && !r.so_alocacao ? `<input type="checkbox" class="rhh-sel" data-k="${esc(k)}" data-fid="${esc(oid)}" ${_rhhSel.has(k) ? "checked" : ""} />` : ""}</td>
         <td><strong>${esc(r.funcionario)}</strong></td><td class="meta">${esc(r.matricula || "")}</td><td class="meta">${esc(r.funcao || "")}</td>
         <td>${/* html */ rhhPeriodosHTML(r)}</td>
-        <td class="num">${esc(r.dias)}</td><td>${esc(r.equipamento_codigo || "—")}</td><td>${rhhDivergencias(r)}</td>
-        <td>${r.conferido_em ? `<span class="tag verde" title="${esc(r.conferido_por_nome || "")}">conferida ${esc(dataBR(String(r.conferido_em).slice(0, 10)))}</span>` : '<span class="tag cinza">a conferir</span>'}</td></tr>`;
+        <td class="num">${r.so_alocacao ? "—" : esc(r.dias)}</td><td>${esc(r.equipamento_codigo || "—")}</td><td>${rhhDivergencias(r)}</td>
+        <td>${r.so_alocacao ? "—" : r.conferido_em ? `<span class="tag verde" title="${esc(r.conferido_por_nome || "")}">conferida ${esc(dataBR(String(r.conferido_em).slice(0, 10)))}</span>` : '<span class="tag cinza">a conferir</span>'}</td></tr>`;
     });
   }
   html += `</tbody></table></div>`;
@@ -641,8 +650,8 @@ function rhhExportar(){
   } else {
     const linhas = rhhAlocFiltrada();
     if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
-    aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "Primeiro dia", "Último dia", "Dias", "Equipamento", "Dias em 2 obras", "Dias úteis sem diário", "Conferido em", "Conferido por", "Períodos"]]
-      .concat(linhas.map(r => [mes, r.matricula || "", r.funcionario, r.funcao || "", rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome), r.cno || "", dataBR(r.primeiro_dia), dataBR(r.ultimo_dia), num(r.dias), r.equipamento_codigo || "", num(r.dias_duas_obras), num(r.dias_uteis_sem_diario), r.conferido_em ? dataBR(String(r.conferido_em).slice(0, 10)) : "", r.conferido_por_nome || "", (r.periodos || []).map(rhhPeriodoTxt).join("; ")]));
+    aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "Primeiro dia", "Último dia", "Dias", "Equipamento", "Dias em 2 obras", "Dias úteis sem diário", "Conferido em", "Conferido por", "Períodos", "Origem"]]
+      .concat(linhas.map(r => [mes, r.matricula || "", r.funcionario, r.funcao || "", rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome), r.cno || "", dataBR(r.primeiro_dia), dataBR(r.ultimo_dia), r.so_alocacao ? "" : num(r.dias), r.equipamento_codigo || "", r.so_alocacao ? "" : num(r.dias_duas_obras), r.so_alocacao ? "" : num(r.dias_uteis_sem_diario), r.conferido_em ? dataBR(String(r.conferido_em).slice(0, 10)) : "", r.conferido_por_nome || "", (r.periodos || []).map(rhhPeriodoTxt).join("; "), r.so_alocacao ? "Alocação lançada" : "Diário"]));
     nome = `alocacao-obras-${mes}.xlsx`; aba = "ALOCAÇÃO";
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
