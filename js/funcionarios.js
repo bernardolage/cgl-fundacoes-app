@@ -296,7 +296,7 @@ async function carregarFuncionarios(){
   funcAplicarVisibilidadeSensivel();
   if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 93b: aba Acesso só rh/admin/diretor
   if(typeof epiAplicarVisibilidade === "function") epiAplicarVisibilidade();                 // fase 100: visão e aba EPI
-  if(typeof funcLotAplicarVisibilidade === "function") funcLotAplicarVisibilidade();         // fase 151: Conferir lotação
+  if(typeof funcLotAplicarVisibilidade === "function") funcLotAplicarVisibilidade();         // fase 151: Conferir alocação
   const [{ data, error }] = await Promise.all([
     sb.from("funcionarios")
       .select("id,nome,matricula,funcao,data_admissao,status,ativo,telefone,foto_url,departamento_id,tipo_contrato,cnh_validade,categoria_operacional,especialidade,coringa")
@@ -417,8 +417,11 @@ function novoFuncionario(){
     "func-cep","func-logradouro","func-numero","func-complemento","func-bairro",
     "func-cidade","func-obs","func-cnh-validade","func-pj-vig-inicio","func-pj-vig-fim",
     "func-emerg-nome","func-emerg-tel","func-emerg-parentesco",
-    "func-pix","func-gratificacao","func-insalubridade","func-periculosidade","func-ajuda-mensal","func-contrib-sindical"
+    "func-pix","func-gratificacao","func-insalubridade","func-periculosidade","func-ajuda-mensal","func-contrib-sindical",
+    "func-uf","func-estado-origem","func-categoria","func-especialidade","func-obs-logistica"
   ].forEach(k => { const el=$(k); if(el) el.value=""; });
+  if($("func-coringa")) $("func-coringa").checked = false;
+  if($("func-ciclo-baixada")) $("func-ciclo-baixada").value = 90;
   $("func-status").value         = "ativo";
   $("func-tipo-contrato").value  = "clt";
   funcPjVigVisibilidade();   // lote S56c (#188)
@@ -970,7 +973,8 @@ async function renderFuncLogistica(){
         <td>${f.proxima_baixada && !f.em_baixada ? dataBR(f.proxima_baixada) + " " : ""}${/* html */ sem(f)}${f.baixada_acordada ? ' <span class="tag azul">acordada</span>' : ""}</td>
         <td>${/* html */ tagStatus("funcionario", f.status)}</td><td class="meta">${esc(f.observacao_logistica || "")}</td>
         ${pode ? `<td style="white-space:nowrap;">${f.status === "demitido" ? "" : `<button type="button" class="btn-sec btn-sm func-log-mov">Movimentar</button>
-          <button type="button" class="btn-sec btn-sm func-log-bx">${f.em_baixada ? "Registrar retorno" : "Baixada"}</button>`}</td>` : ""}
+          <button type="button" class="btn-sec btn-sm func-log-bx">${f.em_baixada ? "Registrar retorno" : "Baixada"}</button>
+          <button type="button" class="btn-sec btn-sm func-log-upd" title="Situação, avaliação e observação">Atualizar</button>`}</td>` : ""}
       </tr>`).join("") || `<tr><td colspan="${esc(9 + (veAval ? 1 : 0) + (pode ? 1 : 0))}" class="vazio">Ninguém para os filtros.</td></tr>`}</tbody>
     </table></div>`;
   $("func-log-f-baixada")?.addEventListener("change", e => { _funcLogFiltro = e.target.value; renderFuncLogistica(); });
@@ -980,6 +984,7 @@ async function renderFuncLogistica(){
     const f = _funcLog.find(x => x.id === tr.dataset.id); if(!f) return;
     if(b.classList.contains("func-log-mov")) funcMovAbrir(f.id, f.nome);
     else if(b.classList.contains("func-log-bx")) funcBxAbrir(f.id, f.nome, f.baixada_aberta_id || null);
+    else if(b.classList.contains("func-log-upd")) funcUpdAbrir(f.id, f.nome);
   }));
 }
 

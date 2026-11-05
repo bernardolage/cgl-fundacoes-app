@@ -1,7 +1,7 @@
 /* ====================================================================
    Fase 151 (#253 e #131): linha do tempo do funcionário.
    Movimentar (func-mov-), baixada feita ou comprada (func-bx-), aba Linha do tempo e
-   correção de período (func-lt-) e visão Conferir lotação (func-lot-).
+   correção de período (func-lt-) e visão Conferir alocação (func-lot-).
    A logística lança a obra; o diário só confere. Período errado se corrige, nunca se cancela:
    fn_apropriar_competencia lê alocacoes sem olhar status. Nada aqui gera título: a baixada comprada
    e a feita só guardam a decisão, o título é da fase seguinte.
@@ -262,9 +262,9 @@ async function funcLtCarregar(id){
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
   const le = funcPodeLerAvaliacao();
   const [aloc, bx, fn, hist, aval] = await Promise.all([
-    sb.from("alocacoes").select("id,status,data_inicio,data_fim,motivo,observacoes,conferida_em,obra:obras(codigo,nome),equipamento:equipamentos(codigo)").eq("funcionario_id", id),
+    sb.from("alocacoes").select("id,status,data_inicio,data_fim,motivo,observacoes,conferida_em,created_at,obra:obras(codigo,nome),equipamento:equipamentos(codigo)").eq("funcionario_id", id),
     sb.from("funcionario_baixadas").select("*,origem:obras(codigo)").eq("funcionario_id", id),
-    sb.from("funcionario_funcoes").select("id,funcao,data_inicio,data_fim,motivo,observacoes").eq("funcionario_id", id),
+    sb.from("funcionario_funcoes").select("id,funcao,data_inicio,data_fim,motivo,observacoes,created_at").eq("funcionario_id", id),
     le ? sb.from("funcionario_historico").select("*").eq("funcionario_id", id) : Promise.resolve({ data: [] }),
     le ? sb.from("funcionario_avaliacoes").select("*").eq("funcionario_id", id) : Promise.resolve({ data: [] })
   ]);
@@ -273,14 +273,14 @@ async function funcLtCarregar(id){
   if(erro){ cont.innerHTML = `<p class="vazio">Erro: ${esc(erro.message)}</p>`; return; }
   const pode = lotacaoPodeOperar(), ev = [];
   (aloc.data || []).forEach(a => ev.push({
-    data: a.data_inicio, tipo: "Obra", cor: "azul",
+    data: a.data_inicio, em: a.created_at, tipo: "Obra", cor: "azul",
     o_que: (a.obra ? `${a.obra.codigo || ""} · ${a.obra.nome || ""}` : "Sem obra") + (a.equipamento?.codigo ? ` · ${a.equipamento.codigo}` : ""),
     atual: a.status === "ativa",
     detalhe: [`${dataBR(a.data_inicio)} a ${a.data_fim ? dataBR(a.data_fim) : "hoje"}`, FUNC_MOV_MOTIVO[a.motivo], a.conferida_em ? "conferida" : "", a.observacoes].filter(Boolean).join(" · "),
     acao: pode ? `<button type="button" class="btn-sec btn-sm func-lt-corrigir" data-id="${esc(a.id)}">Corrigir</button>` : ""
   }));
   (bx.data || []).forEach(b => ev.push({
-    data: b.data_decisao || b.data_saida || b.data_retorno_real, tipo: "Baixada", cor: "ambar",
+    data: b.data_decisao || b.data_saida || b.data_retorno_real, em: b.created_at, tipo: "Baixada", cor: "ambar",
     o_que: b.decisao === "comprada" ? "Baixada comprada" : b.decisao === "feita" ? "Baixada feita" : "Baixada",
     atual: !!b.data_saida && !b.data_retorno_real,
     detalhe: [b.data_saida ? `Saída ${dataBR(b.data_saida)}` : "", b.data_retorno_prevista ? `previsto ${dataBR(b.data_retorno_prevista)}` : "", b.data_retorno_real ? `retorno ${dataBR(b.data_retorno_real)}` : "",
@@ -288,18 +288,19 @@ async function funcLtCarregar(id){
     acao: pode ? `<button type="button" class="btn-sec btn-sm func-lt-bx" data-id="${esc(b.id)}">Corrigir</button>` : ""
   }));
   (fn.data || []).forEach(f => ev.push({
-    data: f.data_inicio, tipo: "Função", cor: "cinza", o_que: f.funcao, atual: !f.data_fim,
+    data: f.data_inicio, em: f.created_at, tipo: "Função", cor: "cinza", o_que: f.funcao, atual: !f.data_fim,
     detalhe: [FUNC_FF_MOTIVO[f.motivo] || f.motivo, f.observacoes].filter(Boolean).join(" · "), acao: ""
   }));
   (hist.data || []).forEach(h => ev.push({
-    data: dataLocalISO(new Date(h.created_at)), tipo: h.campo === "status" ? "Situação" : "Observação", cor: "cinza",
+    data: dataLocalISO(new Date(h.created_at)), em: h.created_at, tipo: h.campo === "status" ? "Situação" : "Observação", cor: "cinza",
     o_que: h.campo === "status" ? `${STATUS.funcionario?.[h.valor_anterior]?.label || h.valor_anterior || "—"} → ${STATUS.funcionario?.[h.valor_novo]?.label || h.valor_novo || "—"}` : (h.valor_novo || "(apagada)"),
     atual: false, detalhe: [h.campo === "status" ? "" : (h.valor_anterior ? `antes: ${h.valor_anterior}` : ""), h.motivo].filter(Boolean).join(" · "), acao: ""
   }));
   (aval.data || []).forEach(v => ev.push({
-    data: v.data_efeito, tipo: "Avaliação", cor: "cinza", o_que: FUNC_AVAL_LBL[v.avaliacao] || "(sem avaliação)", atual: false, detalhe: v.observacao || "", acao: ""
+    data: v.data_efeito, em: v.created_at, tipo: "Avaliação", cor: "cinza", o_que: FUNC_AVAL_LBL[v.avaliacao] || "(sem avaliação)", atual: false, detalhe: v.observacao || "", acao: ""
   }));
-  ev.sort((a, b) => String(b.data || "").localeCompare(String(a.data || "")));
+  // mais recente primeiro; no mesmo dia, pela hora em que foi lançado (Date, porque as colunas vêm em formatos ISO diferentes)
+  ev.sort((a, b) => String(b.data || "").localeCompare(String(a.data || "")) || (new Date(b.em || 0) - new Date(a.em || 0)));
   $("func-lt-cont").textContent = ev.length ? `${ev.length}` : "";
   cont.innerHTML = ev.length
     ? `<div class="tabela-rola"><table class="func-docs-table">
@@ -315,11 +316,11 @@ async function funcLtCarregar(id){
   cont.querySelectorAll(".func-lt-bx").forEach(b => b.addEventListener("click", () => funcBxAbrir(id, nome, b.dataset.id, true)));
 }
 
-/* ---------- visão Conferir lotação: sugestão do último diário, conferida pela logística ---------- */
+/* ---------- visão Conferir alocação: sugestão do último diário, conferida pela logística ---------- */
 let _funcLotConf = null;
 let _funcLotFiltro = "a_conferir";
 const _funcLotSel = new Set();
-const FUNC_LOT_FILTROS = { a_conferir: "A conferir", todas: "Todas", igual: "Igual ao diário", diferente: "Diário diferente", sem_lotacao: "No diário sem lotação", sem_diario: "Sem diário", obra_encerrada: "Obra encerrada", demitido_com_obra: "Demitido com obra" };
+const FUNC_LOT_FILTROS = { a_conferir: "A conferir", todas: "Todas", igual: "Igual ao diário", diferente: "Diário diferente", sem_lotacao: "No diário sem alocação", sem_diario: "Sem diário", obra_encerrada: "Obra encerrada", demitido_com_obra: "Demitido com obra" };
 
 function funcLotPassaFiltro(r){
   const f = _funcLotFiltro;
@@ -343,7 +344,7 @@ function funcLotUsarDiario(r){
 }
 async function renderFuncLotacao(){
   const cont = $("func-conteudo"); if(!cont) return;
-  if(!lotacaoPodeOperar()){ cont.innerHTML = `<p class="vazio">Sem acesso à conferência de lotação.</p>`; return; }
+  if(!lotacaoPodeOperar()){ cont.innerHTML = `<p class="vazio">Sem acesso à conferência de alocação.</p>`; return; }
   if(!_funcLotConf){
     cont.innerHTML = `<p class="vazio">Carregando conferência…</p>`;
     const { data, error } = await lerTudo(() => sb.from("vw_funcionarios_lotacao_conferir").select("*"), "funcionario_id");
@@ -365,7 +366,7 @@ async function renderFuncLotacao(){
       <span>Sugestão do último diário dos últimos 60 dias. Nada é gravado sem confirmar.</span>
     </div>
     <div class="tabela-rola"><table id="func-lot-tabela">
-      <thead><tr><th style="width:28px;"><input type="checkbox" id="func-lot-todos" title="Selecionar as linhas com confirmação direta" /></th><th>Nome</th><th>Função</th><th>Lotação atual</th><th>Último diário</th><th>Situação</th><th></th></tr></thead>
+      <thead><tr><th style="width:28px;"><input type="checkbox" id="func-lot-todos" title="Selecionar as linhas com confirmação direta" /></th><th>Nome</th><th>Função</th><th>Alocação atual</th><th>Último diário</th><th>Situação</th><th></th></tr></thead>
       <tbody>${lista.map(r => {
         const acao = funcLotAcao(r), s = FUNC_LOT_SITUACAO[r.situacao] || { label: r.situacao, cor: "cinza" };
         return `<tr data-id="${esc(r.funcionario_id)}">
@@ -376,7 +377,7 @@ async function renderFuncLotacao(){
           <td><span class="tag ${esc(s.cor)}">${esc(s.label)}</span>${r.conferida_em ? ` <span class="tag verde">conferido ${dataBR(String(r.conferida_em).slice(0, 10))}</span>` : ""}</td>
           <td style="white-space:nowrap;">
             ${acao === "diario" ? `<button type="button" class="btn btn-sm func-lot-diario" title="Abre período novo com a obra e a TAG do diário">Usar diário</button> ` : ""}
-            ${acao === "manter" || (acao === "diario" && r.alocacao_id) ? `<button type="button" class="btn-sec btn-sm func-lot-manter" title="Confirma a lotação atual, sem abrir período">Manter</button> ` : ""}
+            ${acao === "manter" || (acao === "diario" && r.alocacao_id) ? `<button type="button" class="btn-sec btn-sm func-lot-manter" title="Confirma a alocação atual, sem abrir período">Manter</button> ` : ""}
             ${r.situacao === "demitido_com_obra"
               ? (r.alocacao_id ? `<button type="button" class="btn-sec btn-sm func-lot-encerrar">Encerrar</button>` : "")
               : `<button type="button" class="btn-sec btn-sm func-lot-mov">Movimentar</button>`}
@@ -400,7 +401,7 @@ async function renderFuncLotacao(){
     const b = e.target.closest("button"); if(!b) return;
     const r = _funcLotConf.find(x => x.funcionario_id === b.closest("tr").dataset.id); if(!r) return;
     if(b.classList.contains("func-lot-mov")) funcMovAbrir(r.funcionario_id, r.nome, { motivo: "conferencia" });
-    else if(b.classList.contains("func-lot-encerrar")) funcCorAbrir(r.alocacao_id, hojeISO(), "Demitido: encerrado na conferência de lotação");
+    else if(b.classList.contains("func-lot-encerrar")) funcCorAbrir(r.alocacao_id, hojeISO(), "Demitido: encerrado na conferência de alocação");
     else if(b.classList.contains("func-lot-diario")) comBotaoTravado(b, () => funcLotGravar([r]));
     else if(b.classList.contains("func-lot-manter")) comBotaoTravado(b, () => funcLotManter(r));
   });
@@ -413,7 +414,7 @@ function funcLotAtualizarBotao(){
 async function funcLotManter(r){
   const { error } = await sb.rpc("funcionario_lotacao_confirmar", { p_ids: [r.alocacao_id] });
   if(error){ aviso("app-aviso", "Não foi possível confirmar: " + error.message, "erro"); return; }
-  aviso("app-aviso", `${r.nome}: lotação confirmada.`, "ok");
+  aviso("app-aviso", `${r.nome}: alocação confirmada.`, "ok");
   _funcLog = null; _funcLotConf = null;
   renderFuncLotacao();
 }
@@ -442,7 +443,7 @@ async function funcLotConfirmarSelecionadas(){
   await funcLotGravar(linhas);
 }
 
-/* Sala de Comando → Logística ou Conferir lotação já filtradas */
+/* Sala de Comando → Logística ou Conferir alocação já filtradas */
 function funcAbrirLogisticaPreset(filtro){
   const conf = /^lotacao_/.test(filtro || "");
   _funcView = conf ? "lotacao" : "logistica";
