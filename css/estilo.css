@@ -2592,6 +2592,7 @@ table td:has(> textarea) {
 .eq-func { min-width: 225px; }
 .eq-funcao { min-width: 150px; }
 .ra-mot { min-width: 220px; }
+.prev-input[data-field="numero"] { min-width: 110px; }
 .man-a-f[data-c="atividade"] { min-width: 240px; }
 
 /* Itens da medição: o Ø da descrição e a quantidade com 6 casas. */
@@ -2812,6 +2813,13 @@ input:disabled, select:disabled, textarea:disabled {
 .ia-tabela input, .ia-tabela select { font-size: var(--txt-xs); padding: 3px 5px; min-width: 0; }
 .ia-tabela input[type="time"] { width: 86px; }
 .ia-tabela td { padding: 3px 4px; }
+/* Conferência antes de gravar: o min-width: 0 acima deixava nome e funcionário com
+   32 e 81 px. O que precisa ser lido ganha piso; sem caber, a tabela rola para o lado. */
+.ia-tabela:where(:not(.med-imp-tabela)) select:where(:not([style*="width"])) { min-width: 110px; }
+.ia-tabela input[data-c="estaca_numero"] { min-width: 96px; }
+.ia-tabela input[data-e="nome"] { min-width: 220px; }
+.ia-tabela select[data-e="funcionario_id"] { min-width: 190px; }
+.ia-tabela select[data-e="funcao"] { min-width: 130px; }
 .ia-equipe { margin-top: 8px; }
 .ia-equipe summary { cursor: pointer; font-size: var(--txt-sm); color: var(--txt-sec); }
 
