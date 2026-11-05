@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="47654cc" />
+<meta name="app-versao" content="fc2394a" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=47654cc" />
+<link rel="stylesheet" href="css/estilo.css?v=fc2394a" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=47654cc"></script>
+<script src="js/tema.js?v=fc2394a"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=47654cc"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=47654cc"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=47654cc"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=fc2394a"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=fc2394a"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=fc2394a"></script>
 </head>
 <body>
 
@@ -1228,6 +1228,20 @@
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-func-bx-salvar">Salvar baixada</button></div>
         </div>
       </div>
+      <!-- lote S61 (#269): próxima baixada acordada, com motivo e histórico (funcionario_baixada_acordos) -->
+      <div class="modal-fundo" id="func-ac-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:520px;">
+          <div class="modal-topo"><h3 id="func-ac-titulo">Acordar data da próxima baixada</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <p class="meta" id="func-ac-ciclo"></p>
+          <div class="grade">
+            <div class="campo"><label for="func-ac-data">Próxima baixada acordada</label><input id="func-ac-data" type="date" /></div>
+            <div class="campo largo"><label for="func-ac-motivo">Motivo *</label><input id="func-ac-motivo" placeholder="ex.: combinado com a pessoa para depois da concretagem" /></div>
+          </div>
+          <p class="ajuda-campo">Data vazia desfaz o acordo: a próxima baixada volta a ser contada pelo ciclo. Uma baixada lançada depois encerra o acordo.</p>
+          <div id="func-ac-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-func-ac-salvar">Salvar acordo</button></div>
+        </div>
+      </div>
       <div class="modal-fundo" id="func-lt-upd-modal" style="display:none;">
         <div class="modal-caixa" style="max-width:620px;">
           <div class="modal-topo"><h3 id="func-lt-upd-titulo">Atualizar</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
@@ -1531,6 +1545,7 @@
           <div class="odoo-notebook" id="prod-notebook">
             <button type="button" data-tab="geral" class="ativo">Geral</button>
             <button type="button" data-tab="estoque">Estoque</button>
+            <button type="button" data-tab="movimentos" title="Lote S61 (#268): entradas, saídas e ajustes deste produto, com o saldo depois de cada um">Movimentos <span id="prod-mov-badge" class="aba-badge"></span></button>
             <button type="button" data-tab="identificacao">Identificação</button>
             <button type="button" data-tab="fiscal" title="Fase 105a: NCM, unidade e valor da NF-e de remessa">Fiscal</button>
             <button type="button" data-tab="observacoes">Observações</button>
@@ -1592,6 +1607,7 @@
 
             <!-- fase 84: ordens de fabricação em que o produto é produzido ou consumido -->
             <div class="odoo-tab" data-tab="fabricacoes"><div id="prod-fabricacoes"><p class="vazio">Salve o produto para ver as fabricações.</p></div></div>
+            <div class="odoo-tab" data-tab="movimentos"><div id="prod-movimentos"><p class="vazio">Salve o produto para ver os movimentos.</p></div></div>
           </div>
         </div>
       </div>
@@ -7056,61 +7072,61 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=47654cc"></script>
+<script src="js/core.js?v=fc2394a"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=47654cc"></script>
+<script src="js/historico.js?v=fc2394a"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=47654cc"></script>
-<script src="js/fiscal_ncm.js?v=47654cc"></script>
+<script src="js/fiscal.js?v=fc2394a"></script>
+<script src="js/fiscal_ncm.js?v=fc2394a"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=47654cc"></script>
-<script src="js/fornecedores.js?v=47654cc"></script>
-<script src="js/apropriacoes.js?v=47654cc"></script>
-<script src="js/funcionarios.js?v=47654cc"></script>
-<script src="js/funcionarios_importar.js?v=47654cc"></script>
-<script src="js/funcionarios_lotacao.js?v=47654cc"></script>
-<script src="js/rh_documentos.js?v=47654cc"></script>
-<script src="js/servicos.js?v=47654cc"></script>
-<script src="js/produtos.js?v=47654cc"></script>
-<script src="js/estoque.js?v=47654cc"></script>
-<script src="js/separacoes.js?v=47654cc"></script>
-<script src="js/epi.js?v=47654cc"></script>
-<script src="js/compras.js?v=47654cc"></script>
-<script src="js/requisicoes.js?v=47654cc"></script>
-<script src="js/orcamentos.js?v=47654cc"></script>
-<script src="js/propostas.js?v=47654cc"></script>
-<script src="js/contratos.js?v=47654cc"></script>
-<script src="js/contas_pagar.js?v=47654cc"></script>
-<script src="js/centros_custo.js?v=47654cc"></script>
-<script src="js/carteira.js?v=47654cc"></script>
-<script src="js/obras.js?v=47654cc"></script>
-<script src="js/frota.js?v=47654cc"></script>
-<script src="js/viagens.js?v=47654cc"></script>
-<script src="js/equipamentos.js?v=47654cc"></script>
-<script src="js/vendas_bens.js?v=47654cc"></script>
-<script src="js/acessorios.js?v=47654cc"></script>
-<script src="js/reparos.js?v=47654cc"></script>
-<script src="js/manutencao.js?v=47654cc"></script>
-<script src="js/fabricacao.js?v=47654cc"></script>
-<script src="js/mobilizacoes.js?v=47654cc"></script>
-<script src="js/estacas.js?v=47654cc"></script>
-<script src="js/obra_abas.js?v=47654cc"></script>
-<script src="js/medicoes.js?v=47654cc"></script>
-<script src="js/movimentacoes.js?v=47654cc"></script>
-<script src="js/rdo_import_rg113.js?v=47654cc"></script>
-<script src="js/rdo.js?v=47654cc"></script>
-<script src="js/rdo_import_maya.js?v=47654cc"></script>
-<script src="js/geodigitus.js?v=47654cc"></script>
-<script src="js/computadores_bordo.js?v=47654cc"></script>
-<script src="js/usuarios.js?v=47654cc"></script>
-<script src="js/chamados.js?v=47654cc"></script>
-<script src="js/dashboard.js?v=47654cc"></script>
-<script src="js/rh_horas.js?v=47654cc"></script>
-<script src="js/sesmt.js?v=47654cc"></script>
-<script src="js/patrimonio.js?v=47654cc"></script>
+<script src="js/clientes.js?v=fc2394a"></script>
+<script src="js/fornecedores.js?v=fc2394a"></script>
+<script src="js/apropriacoes.js?v=fc2394a"></script>
+<script src="js/funcionarios.js?v=fc2394a"></script>
+<script src="js/funcionarios_importar.js?v=fc2394a"></script>
+<script src="js/funcionarios_lotacao.js?v=fc2394a"></script>
+<script src="js/rh_documentos.js?v=fc2394a"></script>
+<script src="js/servicos.js?v=fc2394a"></script>
+<script src="js/produtos.js?v=fc2394a"></script>
+<script src="js/estoque.js?v=fc2394a"></script>
+<script src="js/separacoes.js?v=fc2394a"></script>
+<script src="js/epi.js?v=fc2394a"></script>
+<script src="js/compras.js?v=fc2394a"></script>
+<script src="js/requisicoes.js?v=fc2394a"></script>
+<script src="js/orcamentos.js?v=fc2394a"></script>
+<script src="js/propostas.js?v=fc2394a"></script>
+<script src="js/contratos.js?v=fc2394a"></script>
+<script src="js/contas_pagar.js?v=fc2394a"></script>
+<script src="js/centros_custo.js?v=fc2394a"></script>
+<script src="js/carteira.js?v=fc2394a"></script>
+<script src="js/obras.js?v=fc2394a"></script>
+<script src="js/frota.js?v=fc2394a"></script>
+<script src="js/viagens.js?v=fc2394a"></script>
+<script src="js/equipamentos.js?v=fc2394a"></script>
+<script src="js/vendas_bens.js?v=fc2394a"></script>
+<script src="js/acessorios.js?v=fc2394a"></script>
+<script src="js/reparos.js?v=fc2394a"></script>
+<script src="js/manutencao.js?v=fc2394a"></script>
+<script src="js/fabricacao.js?v=fc2394a"></script>
+<script src="js/mobilizacoes.js?v=fc2394a"></script>
+<script src="js/estacas.js?v=fc2394a"></script>
+<script src="js/obra_abas.js?v=fc2394a"></script>
+<script src="js/medicoes.js?v=fc2394a"></script>
+<script src="js/movimentacoes.js?v=fc2394a"></script>
+<script src="js/rdo_import_rg113.js?v=fc2394a"></script>
+<script src="js/rdo.js?v=fc2394a"></script>
+<script src="js/rdo_import_maya.js?v=fc2394a"></script>
+<script src="js/geodigitus.js?v=fc2394a"></script>
+<script src="js/computadores_bordo.js?v=fc2394a"></script>
+<script src="js/usuarios.js?v=fc2394a"></script>
+<script src="js/chamados.js?v=fc2394a"></script>
+<script src="js/dashboard.js?v=fc2394a"></script>
+<script src="js/rh_horas.js?v=fc2394a"></script>
+<script src="js/sesmt.js?v=fc2394a"></script>
+<script src="js/patrimonio.js?v=fc2394a"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=47654cc"></script>
+<script src="js/sesmt_ocorrencias.js?v=fc2394a"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=47654cc"></script>
+<script src="js/init.js?v=fc2394a"></script>
 </body>
 </html>

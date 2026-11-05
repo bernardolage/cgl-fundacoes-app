@@ -970,10 +970,11 @@ async function renderFuncLogistica(){
         <td style="white-space:nowrap;">${esc(f.obra_atual ? f.obra_atual + (f.cidade_atual ? " · " + f.cidade_atual : "") : "—")}</td>
         ${veAval ? `<td>${esc(FUNC_AVAL_LBL[f.avaliacao] || "—")}</td>` : ""}
         <td>${f.ultimo_retorno_baixada ? dataBR(f.ultimo_retorno_baixada) : "—"}</td>
-        <td>${f.proxima_baixada && !f.em_baixada ? dataBR(f.proxima_baixada) + " " : ""}${/* html */ sem(f)}${f.baixada_acordada ? ' <span class="tag azul">acordada</span>' : ""}</td>
+        <td>${f.proxima_baixada && !f.em_baixada ? dataBR(f.proxima_baixada) + " " : ""}${/* html */ sem(f)}${f.baixada_acordada ? ` <span class="tag azul" title="${esc(f.acordo_em ? "Acordada em " + dataBR(String(f.acordo_em).slice(0, 10)) + (f.acordo_motivo ? ": " + f.acordo_motivo : "") : "Data acordada (carga antiga)")}">acordada</span>` : ""}</td>
         <td>${/* html */ tagStatus("funcionario", f.status)}</td><td class="meta">${esc(f.observacao_logistica || "")}</td>
         ${pode ? `<td style="white-space:nowrap;">${f.status === "demitido" ? "" : `<button type="button" class="btn-sec btn-sm func-log-mov">Movimentar</button>
           <button type="button" class="btn-sec btn-sm func-log-bx">${f.em_baixada ? "Registrar retorno" : "Baixada"}</button>
+          <button type="button" class="btn-sec btn-sm func-log-ac" title="Combinar com a pessoa a data da próxima baixada, com motivo (lote S61)">Acordar data</button>
           <button type="button" class="btn-sec btn-sm func-log-upd" title="Situação, avaliação e observação">Atualizar</button>`}</td>` : ""}
       </tr>`).join("") || `<tr><td colspan="${esc(9 + (veAval ? 1 : 0) + (pode ? 1 : 0))}" class="vazio">Ninguém para os filtros.</td></tr>`}</tbody>
     </table></div>`;
@@ -985,6 +986,7 @@ async function renderFuncLogistica(){
     if(b.classList.contains("func-log-mov")) funcMovAbrir(f.id, f.nome);
     else if(b.classList.contains("func-log-bx")) funcBxAbrir(f.id, f.nome, f.baixada_aberta_id || null);
     else if(b.classList.contains("func-log-upd")) funcUpdAbrir(f.id, f.nome);
+    else if(b.classList.contains("func-log-ac")) funcAcAbrir(f);   // lote S61 (#269)
   }));
 }
 

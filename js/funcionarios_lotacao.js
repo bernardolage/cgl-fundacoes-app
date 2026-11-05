@@ -184,6 +184,37 @@ async function funcBxSalvar(){
   await funcLotAposGravar(x.id);
 }
 
+/* ---------- Lote S61 (#269): próxima baixada acordada ----------
+   Só insert em funcionario_baixada_acordos (lotacao_pode_operar() no banco, auditor fora): o último acordo lançado depois da última baixada
+   vale em vw_funcionarios_logistica; data vazia desfaz (volta ao ciclo); baixada lançada depois encerra o acordo. */
+let _funcAc = null;
+async function funcAcAbrir(f){
+  if(!lotacaoPodeOperar() || !f) return;
+  const { data, error } = await sb.from("funcionarios").select("ciclo_baixada_dias").eq("id", f.id).maybeSingle();
+  if(error){ aviso("app-aviso", "Não foi possível abrir: " + error.message, "erro"); return; }
+  _funcAc = { id: f.id, nome: f.nome };
+  const ciclo = data?.ciclo_baixada_dias;
+  const pelaRegra = f.ultimo_retorno_baixada && ciclo != null ? funcLotSomarDias(f.ultimo_retorno_baixada, Number(ciclo)) : null;
+  $("func-ac-titulo").textContent = `Acordar data da próxima baixada: ${f.nome}`;
+  $("func-ac-ciclo").textContent = (pelaRegra ? `Pelo ciclo (${ciclo} dias do último retorno): ${dataBR(pelaRegra)}.` : "Sem baixada registrada: o ciclo ainda não dá data.")
+    + (f.baixada_acordada && f.proxima_baixada ? ` Acordada hoje: ${dataBR(f.proxima_baixada)}${f.acordo_motivo ? " (" + f.acordo_motivo + ")" : ""}.` : "");
+  $("func-ac-data").value = f.baixada_acordada && f.proxima_baixada ? f.proxima_baixada : "";
+  $("func-ac-motivo").value = "";
+  aviso("func-ac-aviso", "", "");
+  $("func-ac-modal").style.display = "flex";
+}
+async function funcAcSalvar(){
+  const x = _funcAc; if(!x) return;
+  const data = $("func-ac-data").value || null, motivo = $("func-ac-motivo").value.trim();
+  if(motivo.length < 5){ aviso("func-ac-aviso", "Informe o motivo (pelo menos 5 letras).", "erro"); $("func-ac-motivo").focus(); return; }
+  if(data && data < hojeISO() && !confirm("A data acordada já passou. Gravar assim mesmo?")) return;
+  const { error } = await sb.from("funcionario_baixada_acordos").insert({ funcionario_id: x.id, data_acordada: data, motivo });
+  if(error){ aviso("func-ac-aviso", "Erro ao gravar: " + error.message, "erro"); return; }
+  $("func-ac-modal").style.display = "none";
+  aviso("app-aviso", data ? `Próxima baixada acordada para ${dataBR(data)}.` : "Acordo desfeito: a próxima baixada volta a ser contada pelo ciclo.", "ok");
+  await funcLotAposGravar(x.id);
+}
+
 /* ---------- Avaliação, situação e observação (quem não tem funcionarios_write também grava) ---------- */
 let _funcUpd = null;
 async function funcUpdAbrir(id, nome){
@@ -456,7 +487,7 @@ function funcAbrirLogisticaPreset(filtro){
 
 /* ---------- listeners ---------- */
 function ligarFuncLotacao(){
-  ["func-mov-modal", "func-bx-modal", "func-lt-upd-modal", "func-lt-cor-modal"].forEach(id => {
+  ["func-mov-modal", "func-bx-modal", "func-ac-modal", "func-lt-upd-modal", "func-lt-cor-modal"].forEach(id => {
     $(id)?.querySelector(".modal-topo button")?.addEventListener("click", () => { $(id).style.display = "none"; });
   });
   ["func-mov-obra", "func-mov-tag", "func-mov-inicio"].forEach(id => $(id)?.addEventListener("change", funcMovResumo));
@@ -466,6 +497,7 @@ function ligarFuncLotacao(){
     if(e.target.value && !$("func-bx-prevista").disabled) $("func-bx-prevista").value = funcLotSomarDias(e.target.value, 7);   // 7 dias corridos, editável
   });
   $("btn-func-bx-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-bx-salvar", funcBxSalvar));
+  $("btn-func-ac-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-ac-salvar", funcAcSalvar));   // lote S61 (#269)
   $("btn-func-lt-upd-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-lt-upd-salvar", funcUpdSalvar));
   $("btn-func-lt-cor-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-lt-cor-salvar", funcCorSalvar));
   const nomeFicha = () => $("func-ficha-nome")?.textContent || "";

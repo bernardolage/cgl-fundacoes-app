@@ -549,6 +549,9 @@ function novoProduto(){
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });   // fase 105a
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
   prodCodInfo();
+  _prodMov = null;   // lote S61 (#268)
+  if($("prod-movimentos")) $("prod-movimentos").innerHTML = '<p class="vazio">Salve o produto para ver os movimentos.</p>';
+  if($("prod-mov-badge")) $("prod-mov-badge").textContent = "";
 }
 
 async function abrirProduto(id){
@@ -588,6 +591,7 @@ async function abrirProduto(id){
   prodAplicarPerfil();   // lote S51: Excluir só no cadastro inteiro
   abrirFichaProdVisual(data);
   prodCarregarFabricacoes(id);
+  prodCarregarMovimentos(id, data);   // lote S61 (#268)
 }
 
 /* fase 84: aba "Fabricações" do produto: ordens em que ele é o produzido e ordens em que entra como componente */
@@ -613,6 +617,106 @@ async function prodCarregarFabricacoes(id){
     (compRows.length ? `<div class="tabela-rola"><table><thead><tr><th>Nº</th><th>Abertura</th><th>Ordem</th><th class="num">Previsto</th><th class="num">Consumido</th><th class="num">Custo unit.</th><th>Status</th></tr></thead><tbody>` +
       compRows.map(i => `<tr><td>${lnk(i.ordem)}</td><td>${dataBR(i.ordem.data_abertura)}</td><td>${esc(i.ordem.descricao || "")}</td><td class="num">${num(i.quantidade_prevista)} ${esc(i.unidade || "")}</td><td class="num">${num(i.quantidade_consumida)}</td><td class="num">${brl(i.custo_unitario)}</td><td>${st(i.ordem.status)}</td></tr>`).join("") + `</tbody></table></div>`
       : `<p class="vazio">Não entra como componente em nenhuma ordem.</p>`);
+}
+
+/* ---------- Lote S61 (#268): movimentos do produto ----------
+   Todos os movimentos de movimentacoes_estoque (lerTudo, sem o corte de 1.000), da mais nova para a mais antiga. O efeito de cada um é o do
+   gatilho aplicar_movimentacao_estoque: entrada e devolução +abs, saída −abs, transferência 0, ajuste com o sinal. D-268a: o saldo de cada
+   linha é calculado de trás para frente a partir do saldo atual (em boa parte dos produtos a soma dos movimentos não bate com o saldo, por
+   carga ou inventário gravado direto); o topo mostra a diferença. D-268b: só quantidade, sem custo. */
+const PROD_MOV_LBL = { entrada: "Entrada", saida: "Saída", ajuste: "Ajuste", devolucao: "Devolução", transferencia: "Transferência" };
+const PROD_MOV_COR = { entrada: "verde", saida: "ambar", ajuste: "azul", devolucao: "verde", transferencia: "cinza" };
+let _prodMov = null;   // { id, produto, linhas, soma, saldo, vinc, tipo, termo }
+function prodMovDelta(m){
+  const q = Number(m.quantidade || 0);
+  return m.tipo === "saida" ? -Math.abs(q) : m.tipo === "transferencia" ? 0 : m.tipo === "ajuste" ? q : Math.abs(q);
+}
+/* texto (busca e planilha) e html (célula, com links já escapados) de "De onde / para onde" */
+function prodMovOrigem(m){
+  if(m.tipo === "entrada" && m.fornecedor) return { txt: m.fornecedor.razao_social || "Fornecedor", html: esc(m.fornecedor.razao_social || "Fornecedor") };
+  const partes = [], txt = [];
+  if(m.obra){ const t = `Obra ${m.obra.codigo || ""}`; partes.push(linkObra(m.obra_id, t)); txt.push(t); }
+  if(m.equipamento){ const t = `TAG ${m.equipamento.codigo || ""}`; partes.push(linkEquipamento(m.equipamento_id, t)); txt.push(t); }
+  if(m.centro){ partes.push(esc(m.centro.nome || "Setor")); txt.push(m.centro.nome || "Setor"); }
+  if(m.acessorio){ const t = `Peça ${m.acessorio.numero_serie || m.acessorio.tipo || ""}`.trim(); partes.push(linkAcessorio(m.destino_acessorio_id, t)); txt.push(t); }
+  if(m.funcionario){ partes.push(esc(m.funcionario.nome || "")); txt.push(m.funcionario.nome || ""); }
+  if(!partes.length && m.fornecedor){ partes.push(esc(m.fornecedor.razao_social || "")); txt.push(m.fornecedor.razao_social || ""); }
+  return { txt: txt.join(" · ") || "—", html: partes.join(" · ") || "—" };
+}
+async function prodCarregarMovimentos(id, produto){
+  const c = $("prod-movimentos"); if(!c) return;
+  c.innerHTML = `<p class="vazio">Carregando…</p>`;
+  const bd0 = $("prod-mov-badge"); if(bd0) bd0.textContent = "";
+  const sel = "id,tipo,quantidade,documento,observacoes,data_movimentacao,created_at,obra_id,equipamento_id,centro_custo_id,destino_acessorio_id,fornecedor_id,funcionario_id,estorno_de,"
+    + "fornecedor:fornecedores(razao_social),obra:obras!fk_mov_estoque_obra(codigo,nome),equipamento:equipamentos!movimentacoes_estoque_equipamento_id_fkey(codigo),"
+    + "centro:centros_custo!movimentacoes_estoque_centro_custo_id_fkey(nome),acessorio:acessorios!movimentacoes_estoque_destino_acessorio_id_fkey(numero_serie,tipo),"
+    + "funcionario:funcionarios!movimentacoes_estoque_funcionario_id_fkey(nome),registrador:profiles!movimentacoes_estoque_registrado_por_fkey(nome)";
+  const r = await lerTudo(() => sb.from("movimentacoes_estoque").select(sel).eq("produto_id", id).order("data_movimentacao").order("created_at"), "id");
+  if(prodEditId !== id) return;   // abriu outra ficha enquanto esta carregava
+  if(r.error){ c.innerHTML = `<p class="vazio">Não foi possível carregar os movimentos: ${esc(r.error.message)}</p>`; return; }
+  const asc = r.data || [];
+  const saldo = Number(produto?.estoque_atual || 0);
+  const soma = asc.reduce((t, m) => t + prodMovDelta(m), 0);
+  // de trás para frente: a mais nova termina no saldo atual
+  let depois = saldo;
+  const linhas = asc.slice().reverse().map(m => { const l = { m, delta: prodMovDelta(m), depois }; depois -= l.delta; return l; });
+  const vinc = await carregarVinculosSaida(asc.filter(m => m.tipo === "saida").map(m => m.id));
+  if(prodEditId !== id) return;
+  _prodMov = { id, produto, linhas, soma, saldo, vinc, tipo: "", termo: "" };
+  const bd = $("prod-mov-badge"); if(bd) bd.textContent = asc.length ? String(asc.length) : "";
+  prodRenderMovimentos();
+}
+function prodMovFiltradas(){
+  const x = _prodMov; if(!x) return [];
+  const termo = (x.termo || "").trim().toLowerCase();
+  return x.linhas.filter(l => (!x.tipo || l.m.tipo === x.tipo)
+    && (!termo || [PROD_MOV_LBL[l.m.tipo], prodMovOrigem(l.m).txt, l.m.documento, x.vinc.get(l.m.id)?.numero, l.m.observacoes, l.m.registrador?.nome]
+      .filter(Boolean).join(" ").toLowerCase().includes(termo)));
+}
+function prodMovSinal(v){ return (v > 0 ? "+" : v < 0 ? "−" : "") + num(Math.abs(v)); }
+function prodMovTabelaHTML(){
+  const x = _prodMov, un = x.produto?.unidade || "un", fil = prodMovFiltradas();
+  if(!x.linhas.length) return `<p class="vazio">Nenhum movimento registrado para este produto.</p>`;
+  if(!fil.length) return `<p class="vazio">Nenhum movimento para o filtro.</p>`;
+  return `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Tipo</th><th class="num">Quantidade</th><th class="num">Saldo depois</th><th>De onde / para onde</th><th>Documento</th><th>Registrado por</th><th>Obs.</th></tr></thead><tbody>`
+    + fil.map(l => { const m = l.m, d = new Date(m.data_movimentacao);
+      return `<tr><td>${isNaN(d) ? "—" : esc(d.toLocaleDateString("pt-BR"))}</td>
+        <td><span class="tag ${esc(PROD_MOV_COR[m.tipo] || "cinza")}">${esc(PROD_MOV_LBL[m.tipo] || m.tipo)}</span>${m.estorno_de ? ' <span class="meta">estorno</span>' : ""}</td>
+        <td class="num">${m.tipo === "transferencia" ? "0 (transferência)" : esc(prodMovSinal(l.delta))} <span class="meta">${esc(un)}</span></td>
+        <td class="num">${esc(num(l.depois))}</td>
+        <td>${/* html */ prodMovOrigem(m).html}</td>
+        <td>${/* html */ linkDocumentoSaida(m, x.vinc.get(m.id)) || "—"}</td>
+        <td>${esc(m.registrador?.nome || "")}</td>
+        <td class="meta">${esc(m.observacoes || "")}</td></tr>`; }).join("") + `</tbody></table></div>`;
+}
+function prodRenderMovimentos(){
+  const c = $("prod-movimentos"), x = _prodMov; if(!c || !x) return;
+  const un = x.produto?.unidade || "un";
+  const dif = Math.round((x.saldo - x.soma) * 1000) / 1000;
+  const tipos = [["", "Todos"], ["entrada", "Entradas"], ["saida", "Saídas"], ["ajuste", "Ajustes"], ["devolucao", "Devoluções"]];
+  c.innerHTML = `<div class="lista-topo compacta">
+      <span>Saldo atual <strong>${esc(num(x.saldo))} ${esc(un)}</strong> · soma dos movimentos <strong>${esc(prodMovSinal(x.soma))} ${esc(un)}</strong></span>
+      <div class="serv-views" id="prod-mov-tipos" style="margin-left:auto;">${tipos.map(([v, t]) => `<button type="button" class="serv-view-btn${x.tipo === v ? " ativo" : ""}" data-tipo="${esc(v)}">${esc(t)}</button>`).join("")}</div>
+      <button type="button" class="btn-sec btn-sm" id="btn-prod-mov-exportar"${x.linhas.length ? "" : " disabled"}>Exportar</button>
+    </div>
+    ${Math.abs(dif) >= 0.001 ? `<div class="dist-aviso neutro">Diferença <strong>${esc(prodMovSinal(dif))} ${esc(un)}</strong>: saldo gravado sem movimento (carga, inventário ou acerto direto). O saldo de cada linha é contado de trás para frente a partir do saldo atual.</div>` : ""}
+    <div class="serv-filtros"><input id="prod-mov-busca" placeholder="Buscar por obra, TAG, pessoa, documento ou observação…" value="${esc(x.termo)}" /></div>
+    <div id="prod-mov-tabela">${/* html */ prodMovTabelaHTML()}</div>`;
+  c.querySelectorAll("#prod-mov-tipos .serv-view-btn").forEach(b => b.addEventListener("click", () => { x.tipo = b.dataset.tipo; prodRenderMovimentos(); }));
+  const busca = $("prod-mov-busca");
+  // só a tabela muda na busca, para o campo não perder o foco
+  busca?.addEventListener("input", debounce(() => { x.termo = busca.value; const t = $("prod-mov-tabela"); if(t) t.innerHTML = prodMovTabelaHTML(); }));
+  $("btn-prod-mov-exportar")?.addEventListener("click", prodExportarMovimentos);
+}
+function prodExportarMovimentos(){
+  const x = _prodMov; if(!x || typeof XLSX === "undefined") return;
+  const un = x.produto?.unidade || "un";
+  const rows = prodMovFiltradas().map(l => ({
+    Data: (l.m.data_movimentacao || "").slice(0, 10), Tipo: PROD_MOV_LBL[l.m.tipo] || l.m.tipo, Quantidade: l.delta, Unidade: un, "Saldo depois": l.depois,
+    "De onde / para onde": prodMovOrigem(l.m).txt, Documento: x.vinc.get(l.m.id)?.numero || l.m.documento || "", "Registrado por": l.m.registrador?.nome || "",
+    "Observação": l.m.observacoes || "" }));
+  const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "MOVIMENTOS");
+  XLSX.writeFile(wb, `movimentos-${String(x.produto?.codigo || "produto").replace(/[^\w.-]+/g, "_")}-${hojeISO()}.xlsx`);
 }
 
 function abrirFichaProdVisual(p){

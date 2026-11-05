@@ -322,14 +322,22 @@ async function carregarEstacasDaObra(obraId){
 }
 
 /* ---------- Render ---------- */
+/* lote S61 (#267): "__sem__" = estacas sem local, na lista e no acompanhamento raiz (as abas da planta ainda voltam ao primeiro local) */
+function estCasaLocal(e, fLocal){
+  if(!fLocal) return true;
+  if(fLocal === "__sem__") return !(e.local || "").trim();
+  return (e.local || "") === fLocal;
+}
 /* Filtro por local (1º nível acima do bloco) — só aparece quando a obra tem locais */
 function atualizarFiltroLocal(){
   const sel = $("est-f-local");
   if(!sel) return;
   const locais = [...new Set(_estacas.map(e => (e.local || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  const semLocal = _estacas.filter(e => !(e.local || "").trim()).length;
   const atual = sel.value;
-  sel.innerHTML = '<option value="">Todos os locais</option>' + locais.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join("");
-  if(locais.includes(atual)) sel.value = atual;
+  sel.innerHTML = '<option value="">Todos os locais</option>' + locais.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join("")
+    + (semLocal ? `<option value="__sem__">Sem local (${esc(semLocal)})</option>` : "");
+  if(locais.includes(atual) || (atual === "__sem__" && semLocal)) sel.value = atual;
   sel.style.display = locais.length ? "" : "none";
 }
 /* Abas de local na planta: aparecem quando a obra tem 2+ locais; a aba seleciona o
@@ -360,7 +368,7 @@ function estacasFiltradasLista(){
   return _estacas.filter(e => {
     if(fStatus && e.status !== fStatus) return false;
     if(fTipo && e.tipo !== fTipo) return false;
-    if(fLocal && (e.local || "") !== fLocal) return false;
+    if(!estCasaLocal(e, fLocal)) return false;
     if(termo && !`${e.numero || ""} ${e.observacoes || ""} ${e.local || ""} ${e.bloco || ""}`.toLowerCase().includes(termo)) return false;
     return true;
   });
@@ -487,7 +495,7 @@ function _raizLinha(est, execs){
   const m3 = execs.reduce((s, x) => s + (num(x.volume_concreto_m3) || 0), 0);
   const meds = [...new Set(execs.flatMap(x => x._meds))];
   return {
-    local: est.local || "", bloco: est.bloco || "", numero: est.numero || "", diametro: est.diametro_mm, estimado: est.profundidade_m,
+    id: est.id, local: est.local || "", bloco: est.bloco || "", numero: est.numero || "", diametro: est.diametro_mm, estimado: est.profundidade_m,
     compFinal: execs.length ? compFinal : null, compTotal: execs.length ? compTotal : null,
     dataExec: ultimo ? (ultimo.perfuracao_fim || ultimo.perfuracao_inicio || ultimo.rdo?.data || null) : null,
     revest: ferr.revestimento, martelo: ferr.martelo, tricone: ferr.tricone, outro: ferr.outro,
@@ -513,7 +521,7 @@ async function renderAcompanhamentoRaiz(){
   const termo   = ($("est-busca")?.value || "").trim().toLowerCase();
   const lista = _estacas.filter(e => e.tipo === "raiz")
     .filter(e => !fStatus || e.status === fStatus)
-    .filter(e => !fLocal || (e.local || "") === fLocal)
+    .filter(e => estCasaLocal(e, fLocal))
     .filter(e => !termo || `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase().includes(termo))
     .filter(e => estFiltroProfRegularizar(e, $("est-f-prof")?.value || ""));
   if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz para os filtros.</p>`; return; }
@@ -547,7 +555,8 @@ async function renderAcompanhamentoRaiz(){
   let localAtual = null;
   const trs = linhas.map(l => {
     let cab = "";
-    if(l.local !== localAtual){ localAtual = l.local; cab = `<tr class="raiz-grupo"><td colspan="19">📍 ${esc(l.local || "Sem local")}</td></tr>`; }
+    if(l.local !== localAtual){ localAtual = l.local; cab = l.local ? `<tr class="raiz-grupo"><td colspan="19">📍 ${esc(l.local)}</td></tr>`
+      : `<tr class="raiz-grupo sem-local"><td colspan="19">📍 Sem local · abra a estaca para informar o local de apropriação</td></tr>`; }   // lote S61 (#267)
     const stCls = l.status === "executada" ? "ok" : (l.status === "refugada" ? "perigo" : "");
     return cab + `<tr class="${stCls}">
       <td>${esc(l.bloco || "—")}</td><td><strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${esc(l.refuros)} refuro(s)">🔄${esc(l.refuros)}</span>` : ""}</td>
@@ -557,7 +566,7 @@ async function renderAcompanhamentoRaiz(){
       <td>${esc(l.tagExec || "—")}</td>
       <td>${dt(l.dataInj)}</td><td class="num">${l.sacos != null ? f0(l.sacos) : (l.sacosTxt ? esc(l.sacosTxt) : "—")}</td><td class="num">${f2(l.m3)}</td><td>${esc(l.tagInj || "—")}</td>
       <td>${esc(l.periodo || "—")}</td><td>${esc(l.medicoes || "—")}</td><td class="meta">${esc(l.obs)}</td>
-      <td class="col-acao"><button type="button" class="btn-sec btn-sm raiz-edit" data-num="${esc(l.numero)}" title="abrir estaca">Abrir</button></td>
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm raiz-edit" data-id="${esc(l.id)}" title="abrir estaca">Abrir</button></td>
     </tr>`;
   }).join("");
 
@@ -576,10 +585,8 @@ async function renderAcompanhamentoRaiz(){
   </table></div>`;
   cont.innerHTML = html;
 
-  cont.querySelectorAll(".raiz-edit").forEach(b => b.addEventListener("click", () => {
-    const e = _estacas.find(x => x.numero === b.dataset.num);
-    if(e) abrirModalEstaca(e.id);
-  }));
+  // lote S61 (#267): pelo id; pelo número abria a estaca de outro local com o mesmo número
+  cont.querySelectorAll(".raiz-edit").forEach(b => b.addEventListener("click", () => abrirModalEstaca(b.dataset.id)));
   $("btn-raiz-csv")?.addEventListener("click", () => {
     const cab = ["Local","Bloco","Estaca","Diametro_mm","Comp_estimado_m","Comp_final_m","Comp_total_exec_m","Data_execucao","Revestimento_m","Martelo_m","Tricone_m","TAG_exec","Data_injecao","Sacos","m3","TAG_injecao","Periodo","Medicao","Observacao"];
     const cel = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
@@ -647,7 +654,7 @@ function renderEstacas(){
     if(fProf === "diferente" && !estProfDiverge(e)) return false;
     if(!estFiltroProfRegularizar(e, fProf)) return false;
     if(fTipo && e.tipo !== fTipo) return false;
-    if(fLocal && (e.local || "") !== fLocal) return false;
+    if(!estCasaLocal(e, fLocal)) return false;
     if(termo){
       const alvo = `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
@@ -849,7 +856,7 @@ async function salvarEstaca(){
   if(result.error){
     const m = (result.error.message||"").toLowerCase();
     if(m.includes("duplicate") || m.includes("unique"))
-      aviso("app-aviso","Já existe uma estaca com esse número nesta obra.","erro");
+      aviso("app-aviso", `Já existe a estaca ${($("est-numero")?.value || "").trim().toUpperCase()} ${($("est-local")?.value || "").trim() ? "no local " + ($("est-local").value || "").trim() : "sem local"} nesta obra.`, "erro");   // lote S61 (#267)
     else
       aviso("app-aviso","Não foi possível salvar: "+result.error.message,"erro");
     return;
@@ -1920,7 +1927,7 @@ function renderPlantaSVG(){
   const filtradas = _estacas.filter(e => {
     if(fStatus && e.status !== fStatus) return false;
     if(fTipo && e.tipo !== fTipo) return false;
-    if(fLocal && (e.local || "") !== fLocal) return false;
+    if(!estCasaLocal(e, fLocal)) return false;
     if(termo){
       const alvo = `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;

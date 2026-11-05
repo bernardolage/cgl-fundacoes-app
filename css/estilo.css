@@ -2845,6 +2845,7 @@ input:disabled, select:disabled, textarea:disabled {
 .raiz-tabela thead th { position: sticky; top: 0; background: var(--sup-3); z-index: 1; }
 .raiz-tabela .raiz-cab-grupo th { background: var(--marca-100); color: var(--marca-txt); text-align: center; letter-spacing: .3px; }
 .raiz-tabela tr.raiz-grupo td { background: var(--marca-50); font-weight: 600; color: var(--acao-txt); }
+.raiz-tabela tr.raiz-grupo.sem-local td { background: var(--aviso-bg); color: var(--aviso-txt); }   /* lote S61 (#267) */
 .raiz-tabela tr.ok td:nth-child(2) { color: var(--sucesso-txt); }
 .raiz-tabela tr.perigo td:nth-child(2) { color: var(--perigo-txt); }
 .raiz-tabela tfoot td { background: var(--sup-2); }
