@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="1c1cd26" />
+<meta name="app-versao" content="c6e5230" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=1c1cd26" />
+<link rel="stylesheet" href="css/estilo.css?v=c6e5230" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=1c1cd26"></script>
+<script src="js/tema.js?v=c6e5230"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=1c1cd26"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=1c1cd26"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=1c1cd26"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=c6e5230"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=c6e5230"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=c6e5230"></script>
 </head>
 <body>
 
@@ -826,6 +826,8 @@
               <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
               <button type="button" class="serv-view-btn" data-view="kanban">Kanban</button>
               <button type="button" class="serv-view-btn" data-view="logistica" title="Onde cada um está, TAG, próxima baixada">Logística</button>
+              <!-- fase 151: sugestão do último diário, conferida pela logística; só lotacaoPodeOperar() -->
+              <button type="button" class="serv-view-btn" data-view="lotacao" style="display:none;" title="Lotação atual comparada com o último diário de cada pessoa">Conferir lotação</button>
               <button type="button" class="serv-view-btn" data-view="he" title="Horas por colaborador e obra a partir dos RDOs">Horas extras</button>
               <!-- lote S51 (#141): func-aprop = diretoria, RH e admin (o admin vê só os totais por obra) -->
               <button type="button" class="serv-view-btn func-aprop" data-view="aprop" title="Apropriação da folha por obra calculada pelo sistema (dias de RDO × custo mensal da ficha)">Apropriações</button>
@@ -912,6 +914,7 @@
             <button type="button" data-tab="pessoais" class="ativo">Dados pessoais</button>
             <button type="button" data-tab="profissional">Profissional</button>
             <button type="button" data-tab="funcoes" title="Histórico de função e próxima mudança pelo plano de cargos (fase 93a)">Funções</button>
+            <button type="button" data-tab="linhatempo" title="Obras, TAGs, baixadas, funções, situação e observação em ordem de data (fase 151)">Linha do tempo</button>
             <button type="button" data-tab="documentos">Documentos</button>
             <button type="button" data-tab="emergencia">Emergência</button>
             <button type="button" data-tab="endereco">Endereço</button>
@@ -1026,7 +1029,6 @@
                 <div class="campo"><label>Estado de origem</label><select id="func-estado-origem"></select></div>
                 <div class="campo"><label>Categoria operacional</label><select id="func-categoria"><option value="">—</option><option value="ajudante">Ajudante</option><option value="operador">Operador</option><option value="bombista">Bombista</option><option value="motorista">Motorista</option><option value="encarregado">Encarregado</option><option value="adm">Administrativo</option><option value="oficina">Oficina</option><option value="outro">Outro</option></select></div>
                 <div class="campo"><label>Especialidade (frente)</label><select id="func-especialidade"><option value="">—</option><option value="helice">Hélice</option><option value="raiz">Raiz</option><option value="secante">Secante</option><option value="trado">Trado</option><option value="munck">Munck</option></select></div>
-                <div class="campo"><label>Avaliação</label><select id="func-avaliacao"><option value="">—</option><option value="novato">Novato</option><option value="bom">Bom</option><option value="muito_bom">Muito bom</option><option value="excelente">Excelente</option><option value="atencao">Atenção</option></select></div>
                 <div class="campo"><label>Coringa</label><label class="check-inline"><input type="checkbox" id="func-coringa" /> atende qualquer frente / encarregado</label></div>
                 <div class="campo"><label>Ciclo de baixada (dias)</label><input id="func-ciclo-baixada" type="number" min="0" step="1" value="90" /></div>
                 <div class="campo largo"><label>Observação logística</label><input id="func-obs-logistica" placeholder="ex.: Está no RJ · aviso 17/08 · vendeu" /></div>
@@ -1081,6 +1083,19 @@
               <div id="func-funcoes-lista"></div>
               <datalist id="func-funcoes-datalist"></datalist>
               <p class="meta">A função da ficha é espelho da última linha deste histórico. A data prevista da próxima mudança sai do plano de cargos (início da função atual + meses da regra); se a função atual começou em outra data, registre uma correção com a data certa.</p>
+            </div>
+
+            <!-- TAB LINHA DO TEMPO (fase 151): conteúdo em js/funcionarios_lotacao.js, lido ao abrir a aba -->
+            <div class="odoo-tab" data-tab="linhatempo">
+              <div class="lista-topo compacta">
+                <h3>Linha do tempo <span id="func-lt-cont" class="contador"></span></h3>
+                <div id="func-lt-acoes" style="display:none;">
+                  <button type="button" class="btn-sec" id="btn-func-lt-mov">Movimentar</button>
+                  <button type="button" class="btn-sec" id="btn-func-lt-bx">Baixada</button>
+                  <button type="button" class="btn-sec" id="btn-func-lt-upd">Atualizar</button>
+                </div>
+              </div>
+              <div id="func-lt-lista"></div>
             </div>
 
             <!-- TAB DOCUMENTOS -->
@@ -1172,6 +1187,75 @@
       <!-- Admissão em etapas (fase 93a, chamado #69): dados pessoais → documentos → contrato → benefícios.
            Só RH/diretoria (botão "Admitir" tem classe func-sens). Grava funcionarios + funcionarios_sensiveis + admissoes
            e abre a ficha na aba Documentos para gerar os PDFs. Prefixo adm-. -->
+      <!-- fase 151: movimentar, baixada, atualizar e corrigir período (js/funcionarios_lotacao.js) -->
+      <div class="modal-fundo" id="func-mov-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:620px;">
+          <div class="modal-topo"><h3 id="func-mov-titulo">Movimentar</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <div class="grade">
+            <div class="campo"><label for="func-mov-obra">Obra</label><select id="func-mov-obra"></select></div>
+            <div class="campo"><label for="func-mov-tag">TAG</label><select id="func-mov-tag"></select></div>
+            <div class="campo"><label for="func-mov-inicio">Início *</label><input id="func-mov-inicio" type="date" /></div>
+            <div class="campo"><label for="func-mov-motivo">Motivo *</label>
+              <select id="func-mov-motivo"><option value="inicio">Início</option><option value="transferencia">Transferência</option><option value="retorno">Retorno à obra</option><option value="troca_tag">Troca de TAG</option><option value="conferencia">Conferência</option></select>
+            </div>
+            <div class="campo largo"><label for="func-mov-obs">Observação</label><input id="func-mov-obs" /></div>
+          </div>
+          <p class="meta" id="func-mov-resumo" style="margin-top:8px;"></p>
+          <div id="func-mov-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-func-mov-salvar">Registrar movimentação</button></div>
+        </div>
+      </div>
+      <div class="modal-fundo" id="func-bx-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:620px;">
+          <div class="modal-topo"><h3 id="func-bx-titulo">Baixada</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <div class="grade">
+            <div class="campo"><label for="func-bx-decisao">Decisão *</label><select id="func-bx-decisao"><option value="feita">Feita</option><option value="comprada">Comprada</option></select></div>
+          </div>
+          <div class="grade" id="func-bx-feita">
+            <div class="campo"><label for="func-bx-saida">Saída *</label><input id="func-bx-saida" type="date" /></div>
+            <div class="campo"><label for="func-bx-prevista">Retorno previsto</label><input id="func-bx-prevista" type="date" /></div>
+            <div class="campo"><label for="func-bx-real">Retorno real</label><input id="func-bx-real" type="date" /></div>
+            <div class="campo"><label for="func-bx-origem">Obra de origem</label><select id="func-bx-origem"></select></div>
+          </div>
+          <div class="grade" id="func-bx-comprada" style="display:none;">
+            <div class="campo"><label for="func-bx-data-decisao">Data da decisão *</label><input id="func-bx-data-decisao" type="date" /></div>
+          </div>
+          <div class="grade">
+            <div class="campo largo"><label for="func-bx-obs">Observação</label><input id="func-bx-obs" /></div>
+            <div class="campo largo" id="func-bx-motivo-campo" style="display:none;"><label for="func-bx-motivo">Motivo da correção *</label><input id="func-bx-motivo" /></div>
+          </div>
+          <div id="func-bx-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-func-bx-salvar">Salvar baixada</button></div>
+        </div>
+      </div>
+      <div class="modal-fundo" id="func-lt-upd-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:620px;">
+          <div class="modal-topo"><h3 id="func-lt-upd-titulo">Atualizar</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <div class="grade">
+            <div class="campo"><label for="func-lt-upd-status">Situação</label><select id="func-lt-upd-status"><option value="ativo">Ativo</option><option value="ferias">Férias</option><option value="afastado">Afastado</option></select>
+              <p class="meta" id="func-lt-upd-demitido" style="display:none;">Demissão e readmissão são do RH, na ficha.</p></div>
+            <div class="campo" id="func-lt-upd-aval-campo"><label for="func-lt-upd-aval">Avaliação</label><select id="func-lt-upd-aval"><option value="">—</option><option value="novato">Novato</option><option value="bom">Bom</option><option value="muito_bom">Muito bom</option><option value="excelente">Excelente</option><option value="atencao">Atenção</option></select></div>
+            <div class="campo largo"><label for="func-lt-upd-obs">Observação logística</label><input id="func-lt-upd-obs" /></div>
+            <div class="campo largo"><label for="func-lt-upd-motivo">Motivo (obrigatório ao mudar a situação)</label><input id="func-lt-upd-motivo" /></div>
+          </div>
+          <div id="func-lt-upd-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-func-lt-upd-salvar">Salvar</button></div>
+        </div>
+      </div>
+      <div class="modal-fundo" id="func-lt-cor-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:620px;">
+          <div class="modal-topo"><h3>Corrigir período</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <div class="grade">
+            <div class="campo"><label for="func-lt-cor-obra">Obra</label><select id="func-lt-cor-obra"></select></div>
+            <div class="campo"><label for="func-lt-cor-tag">TAG</label><select id="func-lt-cor-tag"></select></div>
+            <div class="campo"><label for="func-lt-cor-inicio">Início *</label><input id="func-lt-cor-inicio" type="date" /></div>
+            <div class="campo"><label for="func-lt-cor-fim">Fim (vazio = período atual)</label><input id="func-lt-cor-fim" type="date" /></div>
+            <div class="campo largo"><label for="func-lt-cor-motivo">Motivo *</label><input id="func-lt-cor-motivo" /></div>
+          </div>
+          <div id="func-lt-cor-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-func-lt-cor-salvar">Salvar correção</button></div>
+        </div>
+      </div>
       <!-- hotfix 224: prévia da planilha de funcionários novos -->
       <div class="modal-fundo" id="func-imp-modal" style="display:none;">
         <div class="modal-caixa" style="max-width:1000px;">
@@ -6972,60 +7056,61 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=1c1cd26"></script>
+<script src="js/core.js?v=c6e5230"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=1c1cd26"></script>
+<script src="js/historico.js?v=c6e5230"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=1c1cd26"></script>
-<script src="js/fiscal_ncm.js?v=1c1cd26"></script>
+<script src="js/fiscal.js?v=c6e5230"></script>
+<script src="js/fiscal_ncm.js?v=c6e5230"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=1c1cd26"></script>
-<script src="js/fornecedores.js?v=1c1cd26"></script>
-<script src="js/apropriacoes.js?v=1c1cd26"></script>
-<script src="js/funcionarios.js?v=1c1cd26"></script>
-<script src="js/funcionarios_importar.js?v=1c1cd26"></script>
-<script src="js/rh_documentos.js?v=1c1cd26"></script>
-<script src="js/servicos.js?v=1c1cd26"></script>
-<script src="js/produtos.js?v=1c1cd26"></script>
-<script src="js/estoque.js?v=1c1cd26"></script>
-<script src="js/separacoes.js?v=1c1cd26"></script>
-<script src="js/epi.js?v=1c1cd26"></script>
-<script src="js/compras.js?v=1c1cd26"></script>
-<script src="js/requisicoes.js?v=1c1cd26"></script>
-<script src="js/orcamentos.js?v=1c1cd26"></script>
-<script src="js/propostas.js?v=1c1cd26"></script>
-<script src="js/contratos.js?v=1c1cd26"></script>
-<script src="js/contas_pagar.js?v=1c1cd26"></script>
-<script src="js/centros_custo.js?v=1c1cd26"></script>
-<script src="js/carteira.js?v=1c1cd26"></script>
-<script src="js/obras.js?v=1c1cd26"></script>
-<script src="js/frota.js?v=1c1cd26"></script>
-<script src="js/viagens.js?v=1c1cd26"></script>
-<script src="js/equipamentos.js?v=1c1cd26"></script>
-<script src="js/vendas_bens.js?v=1c1cd26"></script>
-<script src="js/acessorios.js?v=1c1cd26"></script>
-<script src="js/reparos.js?v=1c1cd26"></script>
-<script src="js/manutencao.js?v=1c1cd26"></script>
-<script src="js/fabricacao.js?v=1c1cd26"></script>
-<script src="js/mobilizacoes.js?v=1c1cd26"></script>
-<script src="js/estacas.js?v=1c1cd26"></script>
-<script src="js/obra_abas.js?v=1c1cd26"></script>
-<script src="js/medicoes.js?v=1c1cd26"></script>
-<script src="js/movimentacoes.js?v=1c1cd26"></script>
-<script src="js/rdo_import_rg113.js?v=1c1cd26"></script>
-<script src="js/rdo.js?v=1c1cd26"></script>
-<script src="js/rdo_import_maya.js?v=1c1cd26"></script>
-<script src="js/geodigitus.js?v=1c1cd26"></script>
-<script src="js/computadores_bordo.js?v=1c1cd26"></script>
-<script src="js/usuarios.js?v=1c1cd26"></script>
-<script src="js/chamados.js?v=1c1cd26"></script>
-<script src="js/dashboard.js?v=1c1cd26"></script>
-<script src="js/rh_horas.js?v=1c1cd26"></script>
-<script src="js/sesmt.js?v=1c1cd26"></script>
-<script src="js/patrimonio.js?v=1c1cd26"></script>
+<script src="js/clientes.js?v=c6e5230"></script>
+<script src="js/fornecedores.js?v=c6e5230"></script>
+<script src="js/apropriacoes.js?v=c6e5230"></script>
+<script src="js/funcionarios.js?v=c6e5230"></script>
+<script src="js/funcionarios_importar.js?v=c6e5230"></script>
+<script src="js/funcionarios_lotacao.js?v=c6e5230"></script>
+<script src="js/rh_documentos.js?v=c6e5230"></script>
+<script src="js/servicos.js?v=c6e5230"></script>
+<script src="js/produtos.js?v=c6e5230"></script>
+<script src="js/estoque.js?v=c6e5230"></script>
+<script src="js/separacoes.js?v=c6e5230"></script>
+<script src="js/epi.js?v=c6e5230"></script>
+<script src="js/compras.js?v=c6e5230"></script>
+<script src="js/requisicoes.js?v=c6e5230"></script>
+<script src="js/orcamentos.js?v=c6e5230"></script>
+<script src="js/propostas.js?v=c6e5230"></script>
+<script src="js/contratos.js?v=c6e5230"></script>
+<script src="js/contas_pagar.js?v=c6e5230"></script>
+<script src="js/centros_custo.js?v=c6e5230"></script>
+<script src="js/carteira.js?v=c6e5230"></script>
+<script src="js/obras.js?v=c6e5230"></script>
+<script src="js/frota.js?v=c6e5230"></script>
+<script src="js/viagens.js?v=c6e5230"></script>
+<script src="js/equipamentos.js?v=c6e5230"></script>
+<script src="js/vendas_bens.js?v=c6e5230"></script>
+<script src="js/acessorios.js?v=c6e5230"></script>
+<script src="js/reparos.js?v=c6e5230"></script>
+<script src="js/manutencao.js?v=c6e5230"></script>
+<script src="js/fabricacao.js?v=c6e5230"></script>
+<script src="js/mobilizacoes.js?v=c6e5230"></script>
+<script src="js/estacas.js?v=c6e5230"></script>
+<script src="js/obra_abas.js?v=c6e5230"></script>
+<script src="js/medicoes.js?v=c6e5230"></script>
+<script src="js/movimentacoes.js?v=c6e5230"></script>
+<script src="js/rdo_import_rg113.js?v=c6e5230"></script>
+<script src="js/rdo.js?v=c6e5230"></script>
+<script src="js/rdo_import_maya.js?v=c6e5230"></script>
+<script src="js/geodigitus.js?v=c6e5230"></script>
+<script src="js/computadores_bordo.js?v=c6e5230"></script>
+<script src="js/usuarios.js?v=c6e5230"></script>
+<script src="js/chamados.js?v=c6e5230"></script>
+<script src="js/dashboard.js?v=c6e5230"></script>
+<script src="js/rh_horas.js?v=c6e5230"></script>
+<script src="js/sesmt.js?v=c6e5230"></script>
+<script src="js/patrimonio.js?v=c6e5230"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=1c1cd26"></script>
+<script src="js/sesmt_ocorrencias.js?v=c6e5230"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=1c1cd26"></script>
+<script src="js/init.js?v=c6e5230"></script>
 </body>
 </html>

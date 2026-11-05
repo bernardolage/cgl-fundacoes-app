@@ -560,7 +560,7 @@ function renderRhhAlocacao(){
       html += `<tr data-k="${esc(k)}">
         <td>${podeConferir ? `<input type="checkbox" class="rhh-sel" data-k="${esc(k)}" data-fid="${esc(oid)}" ${_rhhSel.has(k) ? "checked" : ""} />` : ""}</td>
         <td><strong>${esc(r.funcionario)}</strong></td><td class="meta">${esc(r.matricula || "")}</td><td class="meta">${esc(r.funcao || "")}</td>
-        <td>${esc(dataBR(r.primeiro_dia))}${r.ultimo_dia !== r.primeiro_dia ? " – " + esc(dataBR(r.ultimo_dia)) : ""}</td>
+        <td>${/* html */ rhhPeriodosHTML(r)}</td>
         <td class="num">${esc(r.dias)}</td><td>${esc(r.equipamento_codigo || "—")}</td><td>${rhhDivergencias(r)}</td>
         <td>${r.conferido_em ? `<span class="tag verde" title="${esc(r.conferido_por_nome || "")}">conferida ${esc(dataBR(String(r.conferido_em).slice(0, 10)))}</span>` : '<span class="tag cinza">a conferir</span>'}</td></tr>`;
     });
@@ -579,6 +579,13 @@ function renderRhhAlocacao(){
     rhhAtualizarBotoes();
   });
   rhhAtualizarBotoes();
+}
+
+/* fase 151 (#131): vai, sai e volta aparece como períodos separados, um por linha da célula */
+function rhhPeriodoTxt(p){ return dataBR(p.ini) + (p.fim !== p.ini ? " – " + dataBR(p.fim) : ""); }
+function rhhPeriodosHTML(r){
+  if(Array.isArray(r.periodos) && r.periodos.length > 1) return r.periodos.map(p => `<div>${rhhPeriodoTxt(p)}</div>`).join("");
+  return dataBR(r.primeiro_dia) + (r.ultimo_dia !== r.primeiro_dia ? " – " + dataBR(r.ultimo_dia) : "");
 }
 
 async function rhhMaterializar(silencioso){
@@ -634,8 +641,8 @@ function rhhExportar(){
   } else {
     const linhas = rhhAlocFiltrada();
     if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
-    aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "Primeiro dia", "Último dia", "Dias", "Equipamento", "Dias em 2 obras", "Dias úteis sem diário", "Conferido em", "Conferido por"]]
-      .concat(linhas.map(r => [mes, r.matricula || "", r.funcionario, r.funcao || "", rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome), r.cno || "", dataBR(r.primeiro_dia), dataBR(r.ultimo_dia), num(r.dias), r.equipamento_codigo || "", num(r.dias_duas_obras), num(r.dias_uteis_sem_diario), r.conferido_em ? dataBR(String(r.conferido_em).slice(0, 10)) : "", r.conferido_por_nome || ""]));
+    aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "Primeiro dia", "Último dia", "Dias", "Equipamento", "Dias em 2 obras", "Dias úteis sem diário", "Conferido em", "Conferido por", "Períodos"]]
+      .concat(linhas.map(r => [mes, r.matricula || "", r.funcionario, r.funcao || "", rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome), r.cno || "", dataBR(r.primeiro_dia), dataBR(r.ultimo_dia), num(r.dias), r.equipamento_codigo || "", num(r.dias_duas_obras), num(r.dias_uteis_sem_diario), r.conferido_em ? dataBR(String(r.conferido_em).slice(0, 10)) : "", r.conferido_por_nome || "", (r.periodos || []).map(rhhPeriodoTxt).join("; ")]));
     nome = `alocacao-obras-${mes}.xlsx`; aba = "ALOCAÇÃO";
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa);

@@ -32,6 +32,7 @@ const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", c
   mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado", oficina: "Oficina", manutencao: "Manutenção",
   rh: "RH",   // fase 93a: plano de cargos (vw_sc_regularizar_rh)
   sesmt: "SESMT",   // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt)
+  logistica: "Logística",   // fase 151: baixadas e lotação (vw_sc_regularizar_log)
   geodigitus: "Geodigitus" };   // fase 107a: computador de bordo e estacas do S3 (vw_sc_regularizar_geo)
 /* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
    "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
@@ -401,13 +402,15 @@ async function dashCarregarRegularizar(){
   // todo mundo consulta; a view devolve só o que a RLS deixa) e sem eficácia verificada (vw_sc_regularizar_sst_ocorrencias)
   // fase 107a: computador de bordo e estacas do Geodigitus (vw_sc_regularizar_geo; a view devolve a cada um só o papel dele)
   // fase 141: peça de desgaste perto do fim da vida (vw_sc_regularizar_ace; a view devolve a cada um só o papel dele)
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  // fase 151: baixada vencida ou a vencer e diário fora da lotação (vw_sc_regularizar_log; só contagens, logística e diretoria)
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
-    dashLer("vw_sc_regularizar_ace", q => q.select("*"))]);
+    dashLer("vw_sc_regularizar_ace", q => q.select("*")),
+    dashLer("vw_sc_regularizar_log", q => q.select("*"))]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   const n = p => _dashReg.filter(a => a.papel === p).length;
   if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
@@ -614,6 +617,8 @@ async function dashAbrirRegularizar(a){
     else if(typeof manAbrirPreset === "function") manAbrirPreset("os_atrasadas");
   } else if(a.secao === "funcionarios" && /^promocao_/.test(a.filtro || "")){ // fase 93a: visão Funções (plano de cargos) filtrada
     if(irParaSecao("funcionarios") && typeof funcAbrirPromocoes === "function") funcAbrirPromocoes(a.filtro === "promocao_vencida" ? "vencidas" : "60dias");
+  } else if(a.secao === "funcionarios" && /^(baixada_|lotacao_)/.test(a.filtro || "")){ // fase 151: Logística ou Conferir lotação já filtradas
+    if(irParaSecao("funcionarios") && typeof funcAbrirLogisticaPreset === "function") funcAbrirLogisticaPreset(a.filtro);
   } else if(a.secao === "estoque" && /^epi_/.test(a.filtro || "")){ // fase 100: relatório de EPI; troca vencida de uma pessoa só abre a ficha de EPI dela
     if(a.filtro === "epi_vencida" && a.registro_id && typeof epiAbrirFichaFuncionario === "function") epiAbrirFichaFuncionario(a.registro_id);
     else if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio(a.filtro === "epi_vencida" ? "vencidas" : "sem_pessoa");

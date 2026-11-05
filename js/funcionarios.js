@@ -296,9 +296,10 @@ async function carregarFuncionarios(){
   funcAplicarVisibilidadeSensivel();
   if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 93b: aba Acesso só rh/admin/diretor
   if(typeof epiAplicarVisibilidade === "function") epiAplicarVisibilidade();                 // fase 100: visão e aba EPI
+  if(typeof funcLotAplicarVisibilidade === "function") funcLotAplicarVisibilidade();         // fase 151: Conferir lotação
   const [{ data, error }] = await Promise.all([
     sb.from("funcionarios")
-      .select("id,nome,matricula,funcao,data_admissao,status,ativo,telefone,foto_url,departamento_id,tipo_contrato,cnh_validade,categoria_operacional,especialidade,coringa,avaliacao")
+      .select("id,nome,matricula,funcao,data_admissao,status,ativo,telefone,foto_url,departamento_id,tipo_contrato,cnh_validade,categoria_operacional,especialidade,coringa")
       .order("nome"),
     _depts.length ? Promise.resolve() : funcCarregarDepts(),
     _supervisores.length ? Promise.resolve() : funcCarregarSupervisores(),
@@ -342,6 +343,7 @@ function renderFuncionariosAgora(){
   const selComp = $("func-he-competencia"); if(selComp) selComp.style.display = _funcView === "he" ? "" : "none";
   if(_funcView==="kanban") renderFuncKanban(dados);
   else if(_funcView==="logistica") renderFuncLogistica();
+  else if(_funcView==="lotacao") renderFuncLotacao();   // fase 151
   else if(_funcView==="he"){ funcPreencherCompetencias(); renderFuncHE(); }
   else if(_funcView==="aprop") renderFuncAprop();
   else if(_funcView==="promocoes") renderFuncPromocoes();   // fase 93a: plano de cargos
@@ -492,7 +494,6 @@ async function abrirFuncionario(id){
   if($("func-estado-origem")) $("func-estado-origem").value = data.estado_origem||"";
   if($("func-categoria"))     $("func-categoria").value     = data.categoria_operacional||"";
   if($("func-especialidade")) $("func-especialidade").value = data.especialidade||"";
-  if($("func-avaliacao"))     $("func-avaliacao").value     = data.avaliacao||"";
   if($("func-coringa"))       $("func-coringa").checked     = data.coringa===true;
   if($("func-ciclo-baixada")) $("func-ciclo-baixada").value = data.ciclo_baixada_dias??90;
   if($("func-obs-logistica")) $("func-obs-logistica").value = data.observacao_logistica||"";
@@ -523,6 +524,7 @@ function abrirFichaFuncVisual(f){
   if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 100: almoxarife vê a aba Acesso só no setor dele
   if(typeof epiAplicarVisibilidadeFicha === "function") epiAplicarVisibilidadeFicha();       // fase 100: aba EPI (js/epi.js)
   if(typeof sstFichaFuncAplicarVisibilidade === "function") sstFichaFuncAplicarVisibilidade();   // fase 109a: aba Segurança (js/sesmt.js)
+  if(typeof funcLotAplicarVisibilidade === "function") funcLotAplicarVisibilidade();   // fase 151: aba Linha do tempo
 }
 
 /* ---------- foto ---------- */
@@ -751,7 +753,6 @@ async function funcSalvarAgora(novoStatus){
     estado_origem:        $("func-estado-origem")?.value||null,
     categoria_operacional:$("func-categoria")?.value||null,
     especialidade:        $("func-especialidade")?.value||null,
-    avaliacao:            $("func-avaliacao")?.value||null,
     coringa:              !!$("func-coringa")?.checked,
     ciclo_baixada_dias:   $("func-ciclo-baixada")?.value!=="" ? Number($("func-ciclo-baixada").value) : 90,
     observacao_logistica: $("func-obs-logistica")?.value.trim()||null,
@@ -842,6 +843,7 @@ function ligarFuncionarios(){
       ativarTabFunc(b.dataset.tab);
       if(b.dataset.tab==="documentos" && funcEditId) carregarDocsFuncionario();
       if(b.dataset.tab==="funcoes" && funcEditId) funcCarregarFuncoes(funcEditId);   // fase 93a
+      if(b.dataset.tab==="linhatempo" && funcEditId) funcLtCarregar(funcEditId);   // fase 151
     });
   });
 
@@ -912,6 +914,7 @@ if(document.readyState==="loading"){
    ==================================================================== */
 let _funcLog = null;
 let _funcHE  = { comp: null, dados: null };
+let _funcLogFiltro = "";   // fase 151: vencida, a_vencer, em_baixada
 const FUNC_AVAL_LBL = { novato: "Novato", bom: "Bom", muito_bom: "Muito bom", excelente: "Excelente", atencao: "Atenção" };
 
 async function renderFuncLogistica(){
@@ -923,35 +926,61 @@ async function renderFuncLogistica(){
     if(error){ cont.innerHTML = `<p class="vazio">Erro ao carregar: ${esc(error.message)}</p>`; return; }
     _funcLog = data || [];
   }
+  // fase 151: Categoria e Frente saem da vista (continuam na ficha); o âmbar segue empresa_config.baixada_aviso_dias
   const termo = ($("func-busca")?.value || "").trim().toLowerCase();
   const fStatus = $("func-f-status")?.value || "", fContr = $("func-f-contrato")?.value || "";
+  const avisoDias = _funcLog[0]?.baixada_aviso_dias ?? 10;
+  const veAval = funcPodeLerAvaliacao(), pode = lotacaoPodeOperar();
+  const passaBaixada = (f) => !_funcLogFiltro
+    || (_funcLogFiltro === "vencida" && f.dias_para_baixada != null && f.dias_para_baixada < 0)
+    || (_funcLogFiltro === "a_vencer" && f.dias_para_baixada != null && f.dias_para_baixada >= 0 && f.dias_para_baixada <= avisoDias)
+    || (_funcLogFiltro === "em_baixada" && f.em_baixada);
   const lista = _funcLog
     .filter(f => (!fStatus || f.status === fStatus) && (!fContr || f.tipo_contrato === fContr))
-    .filter(f => !termo || `${f.nome} ${f.funcao || ""} ${f.tag_atual || ""} ${f.obra_atual || ""} ${f.categoria_operacional || ""} ${f.especialidade || ""}`.toLowerCase().includes(termo))
+    .filter(passaBaixada)
+    .filter(f => !termo || `${f.nome} ${f.funcao || ""} ${f.tag_atual || ""} ${f.obra_atual || ""}`.toLowerCase().includes(termo))
     .sort((a, b) => (a.dias_para_baixada ?? 9999) - (b.dias_para_baixada ?? 9999) || a.nome.localeCompare(b.nome, "pt-BR"));
-  const sem = (d) => d == null ? `<span class="tag cinza">sem baixada</span>`
-    : d < 0 ? `<span class="tag vermelho">vencida há ${-d} d</span>` : d <= 30 ? `<span class="tag ambar">em ${esc(d)} d</span>` : `<span class="tag verde">em ${esc(d)} d</span>`;
-  const venc = lista.filter(f => f.dias_para_baixada != null && f.dias_para_baixada < 0).length;
-  const prox = lista.filter(f => f.dias_para_baixada != null && f.dias_para_baixada >= 0 && f.dias_para_baixada <= 30).length;
+  const sem = (f) => {
+    const d = f.dias_para_baixada;
+    if(f.status === "demitido") return "";
+    if(f.em_baixada) return `<span class="tag azul">em baixada</span>`;
+    if(d == null) return `<span class="tag cinza">sem baixada</span>`;
+    return d < 0 ? `<span class="tag vermelho">vencida há ${esc(-d)} d</span>` : d <= avisoDias ? `<span class="tag ambar">em ${esc(d)} d</span>` : `<span class="tag verde">em ${esc(d)} d</span>`;
+  };
+  const contam = lista.filter(f => f.status !== "demitido");
+  const venc = contam.filter(f => f.dias_para_baixada != null && f.dias_para_baixada < 0).length;
+  const prox = contam.filter(f => f.dias_para_baixada != null && f.dias_para_baixada >= 0 && f.dias_para_baixada <= avisoDias).length;
+  const demit = lista.length - contam.length;
+  const opcoes = { "": "Todas as baixadas", vencida: "Vencidas", a_vencer: `Vencem em até ${avisoDias} dias`, em_baixada: "Em baixada" };
   cont.innerHTML = `<div class="meta" style="margin:0 0 8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-      <span><strong>${lista.length}</strong> pessoas</span>
-      <span class="tag vermelho">${venc} baixada vencida</span><span class="tag ambar">${prox} em até 30 dias</span>
-      <span>próxima baixada = último retorno + ciclo (padrão 90 d) ou data acordada · clique na linha para abrir a ficha</span>
+      <span><strong>${esc(contam.length)}</strong> pessoas${demit ? ` e ${esc(demit)} demitida(s)` : ""}</span>
+      <span class="tag vermelho">${esc(venc)} baixada vencida</span><span class="tag ambar">${esc(prox)} em até ${esc(avisoDias)} dias</span>
+      <select id="func-log-f-baixada">${Object.entries(opcoes).map(([k, l]) => `<option value="${esc(k)}"${k === _funcLogFiltro ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+      <span>próxima baixada = último retorno ou compra + ciclo (padrão 90 d) ou data acordada · clique na linha para abrir a ficha</span>
     </div>
     <div class="tabela-rola"><table>
-      <thead><tr><th>Nome</th><th>Função</th><th>Categoria</th><th>Frente</th><th>UF</th><th>TAG</th><th>Obra atual</th><th>Aval.</th><th>Últ. retorno</th><th>Próx. baixada</th><th>Situação</th><th>Obs. logística</th></tr></thead>
+      <thead><tr><th>Nome</th><th>Função</th><th>UF</th><th>TAG</th><th>Obra atual</th>${veAval ? "<th>Aval.</th>" : ""}<th>Últ. retorno</th><th>Próx. baixada</th><th>Situação</th><th>Obs. logística</th>${pode ? "<th></th>" : ""}</tr></thead>
       <tbody>${lista.map(f => `<tr class="func-log-row" data-id="${esc(f.id)}">
         <td><strong>${esc(f.nome)}</strong>${f.coringa ? ' <span class="tag azul">coringa</span>' : ""}</td>
-        <td>${esc(f.funcao || "—")}</td><td>${esc(f.categoria_operacional || "—")}</td><td>${esc(f.especialidade || "—")}</td>
-        <td>${esc((f.estado_origem || "").toUpperCase() || "—")}</td><td>${esc(f.tag_atual || "—")}</td>
-        <td>${esc(f.obra_atual ? f.obra_atual + (f.cidade_atual ? " · " + f.cidade_atual : "") : "—")}</td>
-        <td>${esc(FUNC_AVAL_LBL[f.avaliacao] || "—")}</td>
+        <td>${esc(f.funcao || "—")}</td>
+        <td>${esc((f.estado_origem || "").toUpperCase() || "—")}</td><td style="white-space:nowrap;">${esc(f.tag_atual || "—")}</td>
+        <td style="white-space:nowrap;">${esc(f.obra_atual ? f.obra_atual + (f.cidade_atual ? " · " + f.cidade_atual : "") : "—")}</td>
+        ${veAval ? `<td>${esc(FUNC_AVAL_LBL[f.avaliacao] || "—")}</td>` : ""}
         <td>${f.ultimo_retorno_baixada ? dataBR(f.ultimo_retorno_baixada) : "—"}</td>
-        <td>${f.proxima_baixada ? dataBR(f.proxima_baixada) + " " : ""}${sem(f.dias_para_baixada)}${f.baixada_acordada ? ' <span class="tag azul">acordada</span>' : ""}</td>
-        <td>${esc(f.status || "")}</td><td class="meta">${esc(f.observacao_logistica || "")}</td>
-      </tr>`).join("") || `<tr><td colspan="12" class="vazio">Ninguém para os filtros.</td></tr>`}</tbody>
+        <td>${f.proxima_baixada && !f.em_baixada ? dataBR(f.proxima_baixada) + " " : ""}${/* html */ sem(f)}${f.baixada_acordada ? ' <span class="tag azul">acordada</span>' : ""}</td>
+        <td>${/* html */ tagStatus("funcionario", f.status)}</td><td class="meta">${esc(f.observacao_logistica || "")}</td>
+        ${pode ? `<td style="white-space:nowrap;">${f.status === "demitido" ? "" : `<button type="button" class="btn-sec btn-sm func-log-mov">Movimentar</button>
+          <button type="button" class="btn-sec btn-sm func-log-bx">${f.em_baixada ? "Registrar retorno" : "Baixada"}</button>`}</td>` : ""}
+      </tr>`).join("") || `<tr><td colspan="${esc(9 + (veAval ? 1 : 0) + (pode ? 1 : 0))}" class="vazio">Ninguém para os filtros.</td></tr>`}</tbody>
     </table></div>`;
-  cont.querySelectorAll(".func-log-row").forEach(tr => tr.addEventListener("click", () => abrirFuncionario(tr.dataset.id)));
+  $("func-log-f-baixada")?.addEventListener("change", e => { _funcLogFiltro = e.target.value; renderFuncLogistica(); });
+  cont.querySelectorAll(".func-log-row").forEach(tr => tr.addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if(!b) return abrirFuncionario(tr.dataset.id);
+    const f = _funcLog.find(x => x.id === tr.dataset.id); if(!f) return;
+    if(b.classList.contains("func-log-mov")) funcMovAbrir(f.id, f.nome);
+    else if(b.classList.contains("func-log-bx")) funcBxAbrir(f.id, f.nome, f.baixada_aberta_id || null);
+  }));
 }
 
 function funcPreencherCompetencias(){
