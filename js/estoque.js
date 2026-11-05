@@ -713,7 +713,7 @@ function estSituacao(p){
 async function carregarReposicao(){
   const cont = $("est-reposicao"); if(!cont) return;
   const { data, error } = await sb.from("produtos")
-    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,localizacao,odoo_saldo_em,codigo_barras,categoria_custo,categoria:categorias_produto(nome)")
+    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,localizacao,odoo_saldo_em,codigo_barras,categoria_custo,categoria_id,categoria:categorias_produto(nome)")
     .eq("controle_reposicao", true).eq("ativo", true).eq("tipo_item", "produto").order("nome");   // lote S55 (#175): serviço nunca entra na reposição
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   _estRep = data || [];
@@ -722,13 +722,25 @@ async function carregarReposicao(){
 function estRepFiltrados(){
   const q = ($("est-rep-busca")?.value || "").trim().toLowerCase();
   const soFalta = !!$("est-rep-so-falta")?.checked;
-  return _estRep.filter(p => (!q || `${p.codigo} ${p.nome}`.toLowerCase().includes(q)) && (!soFalta || estAComprar(p) > 0));
+  const cat = $("est-rep-categoria")?.value || "";   // lote S60 (#261)
+  return _estRep.filter(p => (!cat || p.categoria_id === cat) && (!q || `${p.codigo} ${p.nome}`.toLowerCase().includes(q)) && (!soFalta || estAComprar(p) > 0));
+}
+/* lote S60 (#261): só as categorias que estão na lista; mantém a escolha a cada render */
+function estRepPreencherCategorias(){
+  const sel = $("est-rep-categoria"); if(!sel) return;
+  const atual = sel.value, cats = new Map();
+  _estRep.forEach(p => { if(p.categoria_id) cats.set(p.categoria_id, p.categoria?.nome || "—"); });
+  sel.innerHTML = `<option value="">Todas as categorias</option>` + [...cats].sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
+    .map(([id, nome]) => `<option value="${esc(id)}">${esc(nome)}</option>`).join("");
+  sel.value = cats.has(atual) ? atual : "";
 }
 function renderReposicao(){
   const cont = $("est-reposicao"); if(!cont) return;
+  estRepPreencherCategorias();
   const lista = estRepFiltrados();
-  const falta = _estRep.filter(p => estAComprar(p) > 0).length;
-  $("est-rep-contador").textContent = `${_estRep.length} item(ns) · ${falta} a repor`;
+  const cat = $("est-rep-categoria")?.value || "", base = cat ? _estRep.filter(p => p.categoria_id === cat) : _estRep;   // lote S60 (#261): o contador acompanha a categoria
+  const falta = base.filter(p => estAComprar(p) > 0).length;
+  $("est-rep-contador").textContent = `${base.length} item(ns) · ${falta} a repor`;
   if(!_estRep.length){ cont.innerHTML = `<p class="vazio">Nenhum item controlado. Use <em>+ Controlar item</em> ou marque "Controlar na lista de reposição" na ficha do produto.</p>`; return; }
   if(!lista.length){ cont.innerHTML = `<p class="vazio">Nada com esse filtro.</p>`; return; }
   const pode = estPodeEditar();
@@ -876,6 +888,8 @@ function ligarEstoque(){
   $("est-busca-prod")?.addEventListener("input", () => { if(_estProd && $("est-busca-prod").value !== estProdTxt(_estProd)) estSelecionarProduto(null); });
   $("est-rep-busca")?.addEventListener("input", debounce(renderReposicao));
   $("est-rep-so-falta")?.addEventListener("change", renderReposicao);
+  $("est-rep-categoria")?.addEventListener("change", renderReposicao);   // lote S60 (#261)
+  $("est-rep-ver-inventario")?.addEventListener("click", e => { e.preventDefault(); prodAbrirInventario($("est-rep-categoria")?.value || ""); });
   $("btn-est-lista-compra")?.addEventListener("click", estGerarListaCompra);
   $("btn-est-controlar")?.addEventListener("click", abrirControlarItem);
   $("btn-est-ctrl-fechar")?.addEventListener("click", fecharControlarItem);

@@ -304,11 +304,12 @@ async function dashCarregarFila(){
   const cont = $("dash-fila");
   if(!cont) return;
   // fase 83: separações; lote S55 (#176): menções "@usuário" não lidas (vw_sc_minha_fila_mencoes, ordem 45; tolerante à ausência da view)
-  const [dados, sep, menc] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*"))]);
+  // fase 146: vw_sc_minha_fila_custo, um cartão por produto que saiu sem custo (só almoxarife e comprador)
+  const [dados, sep, menc, custo] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*")), dashLer("vw_sc_minha_fila_custo", q => q.select("*"))]);
   if(!dados) return;
   if(typeof histMencoesPendentesDefinir === "function") histMencoesPendentesDefinir((menc || []).map(m => m.registro_id));
   if(menc) dashRenderMencoes(menc);   // lote S57b (#218): menções no card do topo e no badge do menu, não na fila
-  _dashFila = dados.concat(sep || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
+  _dashFila = dados.concat(sep || [], custo || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
     ? _dashFila.map((a, i) => dashChamadoEsperando(a) || dashChamadoConfirmar(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
@@ -722,7 +723,8 @@ async function dashAbrirAcao(a){
       if(irParaSecao("fabricacao") && id && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
       break;
     case "produtos": // hotfix saída sem custo (29/10/2026): "Saídas de estoque sem custo" → Produtos › Saídas sem custo
-      if(irParaSecao("produtos") && /sem custo/i.test(a.titulo || "") && typeof prodAbrirSaidasSemCusto === "function") prodAbrirSaidasSemCusto();
+      // fase 146: "Produto saiu sem custo: <código>" abre a lista filtrada naquele produto; o agregado continua abrindo a lista inteira
+      if(irParaSecao("produtos") && /sem custo/i.test(a.titulo || "") && typeof prodAbrirSaidasSemCusto === "function") prodAbrirSaidasSemCusto(/^Produto saiu sem custo/.test(a.titulo || "") ? id : null);
       break;
     case "manutencao": // fase 92: preventiva vencida/vencendo → visão Preventivas (uma TAG abre o plano dela)
       if(!irParaSecao("manutencao")) break;

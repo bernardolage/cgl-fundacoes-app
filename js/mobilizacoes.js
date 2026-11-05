@@ -155,7 +155,9 @@ function cardMobHTML(c){
     : `<span class="meta">sem data prevista</span>`;
   const med = ["finalizada_medicao_pendente", "finalizada"].includes(c.coluna)
     ? `<span class="mob-badge ${Number(c.medicoes_abertas) ? "aviso" : (Number(c.medicoes_faturadas) ? "ok" : "perigo")}">💰 ${Number(c.medicoes_abertas) ? esc(c.medicoes_abertas) + " aberta(s)" : (Number(c.medicoes_faturadas) ? esc(c.medicoes_faturadas) + " faturada(s)" : "sem medição")}</span>` : "";
-  const icone = MOB_TIPO_ICONE[c.tipo_proposta] || "⚙️";
+  const icone = MOB_TIPO_ICONE[c.tipo_servico || c.tipo_proposta] || "⚙️";   // lote S60 (#257): tipo_proposta vem nulo para quem não lê orçamento
+  // lote S60 (#249): vai pelo status da obra, porque a mobilização "prevista" fica em Novo contrato mesmo com a obra concluída
+  const naoEncerrada = c.obra_status === "concluida" && ["em_obra", "prevista"].includes(c.mob_status);
   return `<div class="mob-card" data-id="${esc(c.id)}" style="border-left-color:${esc((MOB_COLUNAS.find(x => x.k === c.coluna) || {}).cor || "var(--sup-3)")}" tabindex="0" role="button" aria-label="Abrir mobilização ${esc(c.titulo_card)}">
     <div class="mob-card-titulo">${esc(icone)} ${esc(c.titulo_card)}</div>
     ${c.obra_codigo && c.obra_id ? `<div class="meta">🏗️ ${linkObra(c.obra_id, `${c.obra_codigo} — ${c.obra_nome || ""}`.trim())}</div>` : ""}
@@ -166,9 +168,15 @@ function cardMobHTML(c){
     </div>
     <div class="mob-card-rodape">
       <span>${quando}</span>
-      ${mobBadgePend(c)}${med}
+      ${mobBadgePend(c)}${med}${naoEncerrada ? `<span class="mob-badge aviso" title="A obra está concluída, mas esta mobilização continua aberta. Enquanto não for encerrada, a máquina segue nesta obra, e as chegadas do Geodigitus avisam sobre isso.">mobilização não encerrada</span>` : ""}
     </div>
   </div>`;
+}
+
+/* lote S60 (#257): dentro da coluna, TAG em ordem crescente; sem TAG (XX) no fim */
+function mobOrdemTag(a, b){
+  if(!a.equipamento_tag || !b.equipamento_tag) return (a.equipamento_tag ? 0 : 1) - (b.equipamento_tag ? 0 : 1);
+  return a.equipamento_tag.localeCompare(b.equipamento_tag, "pt-BR", { numeric: true });
 }
 
 function renderQuadroMob(){
@@ -182,6 +190,7 @@ function renderQuadroMob(){
   const porCol = {};
   MOB_COLUNAS.forEach(c => porCol[c.k] = []);
   dados.forEach(c => (porCol[c.coluna] || (porCol[c.coluna] = [])).push(c));
+  Object.values(porCol).forEach(l => l.sort(mobOrdemTag));
   cont.innerHTML = `<div class="mob-quadro">${MOB_COLUNAS.map(col => {
     const cards = porCol[col.k] || [];
     const colapsada = _mobColapsadas.has(col.k);
@@ -358,7 +367,7 @@ function renderDrawerMob(){
   cont.innerHTML = `
     <div class="mob-drawer-topo">
       <div>
-        <div class="mob-drawer-titulo">${esc(MOB_TIPO_ICONE[c.tipo_proposta] || "⚙️")} ${esc(c.titulo_card || "Mobilização")}</div>
+        <div class="mob-drawer-titulo">${esc(MOB_TIPO_ICONE[c.tipo_servico || c.tipo_proposta] || "⚙️")} ${esc(c.titulo_card || "Mobilização")}</div>
         <div class="mob-drawer-sub">
           <span class="mob-chip st">${esc(MOB_STATUS[m.status] || m.status)}</span>
           <span class="mob-chip" style="border-color:${esc(col.cor || "var(--sup-3)")}">${esc(col.label || "")}</span>

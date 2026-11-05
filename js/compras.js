@@ -1068,6 +1068,7 @@ async function cmpNovaNatureza(){
 
 /* ---------- ficha do pedido ---------- */
 function mostrarPainelCompras(){
+  cmpRascGravar(); _cmpRascBase = null;   // lote S60 (#177): grava o que ainda estava no debounce
   $("cmp-ficha").style.display = "none"; $("cmp-painel").style.display = "";
   _cmpAtual = null; _cmpEditId = null; _cmpItens = [];
   _cmpAprovAtual = { pend: [], assinadas: [], carregado: false };
@@ -1142,6 +1143,46 @@ async function abrirPedido(id){
   await cmpCarregarAces(itens.map(i => i.destino_acessorio_id));   // lote S56 (#202): rótulo do acessório de destino
   abrirFichaPedido(p);
 }
+/* ---------- lote S60 (#177): rascunho local do pedido em rascunho. Nada vai ao banco sem clicar em Salvar; anexos ficam de fora. ---------- */
+let _cmpRascBase = null;   // estado na abertura ou no último salvar; null = esta ficha não guarda rascunho
+function cmpRascChave(id){ return rascunhoChave("pedido", id); }
+function cmpRascEstado(){
+  const ids = _cmpItens.map(i => i.produto_id).filter(Boolean);
+  return { cab: cmpColetarCabecalho(), itens: _cmpItens,
+    un: Object.fromEntries(ids.map(id => [id, _cmpProdUn[id]])), srv: Object.fromEntries(ids.map(id => [id, _cmpProdSrv[id]])) };
+}
+function cmpRascGravar(){
+  if(_cmpRascBase === null || !_cmpAtual || !cmpEditavel()) return;
+  const txt = JSON.stringify(cmpRascEstado()), chave = cmpRascChave(_cmpEditId);
+  if(txt === _cmpRascBase) rascunhoApagar(chave); else rascunhoGuardar(chave, JSON.parse(txt));
+}
+const cmpRascAgendar = debounce(cmpRascGravar, 400);
+function cmpRascOferecer(p){
+  _cmpRascBase = null;
+  if(!cmpEditavel()) return;
+  const base = JSON.stringify(cmpRascEstado()), chave = cmpRascChave(p.id), r = rascunhoLer(chave);
+  if(r){
+    if(confirm(rascunhoPergunta(r.em, p.updated_at, "deste pedido"))) cmpRascRestaurar(r.dados);
+    else rascunhoApagar(chave);
+  }
+  _cmpRascBase = base;
+}
+function cmpRascRestaurar(d){
+  const c = d.cab || {};
+  const campos = { "cmp-forn": c.fornecedor_id, "cmp-data": c.data_pedido, "cmp-prev": c.previsao_entrega, "cmp-cond": c.condicao_pagamento, "cmp-local": c.local_entrega,
+    "cmp-obra": c.obra_id, "cmp-equip": c.equipamento_id, "cmp-centro": c.centro_custo_id, "cmp-resp-receb": c.responsavel_recebimento_id, "cmp-frete": c.frete, "cmp-desc": c.desconto, "cmp-obs": c.observacoes };
+  Object.entries(campos).forEach(([id, v]) => { const el = $(id); if(el) el.value = v ?? ""; });
+  cmpFornAtualizar("cmp-forn");
+  Object.assign(_cmpProdUn, d.un || {}); Object.assign(_cmpProdSrv, d.srv || {});
+  _cmpItens = d.itens || [];
+  renderItensPedido();
+  const aces = _cmpItens.map(i => i.destino_acessorio_id).filter(Boolean);
+  if(aces.length) cmpCarregarAces(aces).then(() => { if(_cmpAtual) renderItensPedido(); });
+}
+function cmpRascDepoisDeSalvar(id){
+  rascunhoApagar(cmpRascChave(id)); rascunhoApagar(cmpRascChave(null));
+  _cmpRascBase = JSON.stringify(cmpRascEstado());
+}
 function cmpEditavel(){ return cmpPodeOperar() && (_cmpAtual?.status || "rascunho") === "rascunho"; }
 function abrirFichaPedido(p){
   _cmpAtual = p; _cmpEditId = p.id || null; cmpLigarModo(null);   // fase 132a
@@ -1192,6 +1233,7 @@ function abrirFichaPedido(p){
   if(!novo){ cmpCarregarFilhas(p.id); cmpCarregarAnexosPedido(p.id); cmpCarregarCotacoes(p.id); }
   if(!novo && typeof montarHistorico === "function") montarHistorico("pedidos_compra", p.id, "cmp-chatter");
   else if(typeof ocultarHistorico === "function") ocultarHistorico("cmp-chatter");
+  cmpRascOferecer(p);   // lote S60 (#177)
   ativarTabPedido(novo ? "cabecalho" : (_cmpItens.length ? "itens" : "cabecalho"));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1445,7 +1487,7 @@ function cmpAtualizarBotoes(){
     "btn-cmp-cotacao": pode && st === "rascunho" && !novo && !leitura,   // fase 102: rascunho → em cotação
     "btn-cmp-conferir": !novo && !leitura && _cmpConfAtual.pode && _cmpConfAtual.lista.some(r => r.pendente),   // fase 102
     "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && cmpPodeLancarNf() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180); hotfix 221: a NF é do financeiro, quem recebe usa "Receber material"
-    "btn-cmp-receber-material": cmpPodeReceber() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S57a (#221): material sem a NF
+    "btn-cmp-receber-material": cmpPodeReceber() && ["aprovado","enviado","parcialmente_recebido"].includes(st) && cmpMateriaisPendentes().length > 0,   // lote S57a (#221): material sem a NF
     "btn-cmp-receber-servico": cmpPodeReceberServico(),
     "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && (st === "em_cotacao" || (["aguardando_aprovacao","aprovado"].includes(st) && usuarioAtual?.cargo === "diretor")),   // hotfix 192e: depois do envio para aprovação, só a diretoria
     "btn-cmp-pdf-sem-valor": !novo && st !== "cancelado" && st !== "em_cotacao",   // lote S55 (#179): em cotação o PDF já é a solicitação
@@ -1865,6 +1907,12 @@ function cmpDestinoDiretoPadrao(){
    almoxarifado (o custo aparece na saída) e não tem método; Aplicação direta: obra, TAG ou centro obrigatório, natureza
    e método (padrão pela obra). Item sem produto do catálogo não entra no estoque: só aplicação direta. Em rascunho o tipo
    troca livre; depois de aprovado o banco trava (gatilho da 108a) e a tela só mostra. */
+/* lote S60 (#266, D-266a): EPI e uniforme entram no estoque; o campo do cabeçalho só identifica para quem é */
+function cmpDicaDestinoEstoque(it){
+  return ["epi", "uniforme"].includes(it.categoria_custo)
+    ? "EPI e uniforme entram no estoque, e o custo aparece na saída. Para identificar quem pediu, escolha o setor em \"Setor / obra interna solicitante\", no cabeçalho: com SESMT, aparece Almoxarifado · p/ SESMT."
+    : "entra no almoxarifado no recebimento; o custo aparece na saída do estoque";
+}
 function renderItensPedido(){
   const tb = $("cmp-itens"); const ed = cmpEditavel();
   if(!_cmpItens.length){ tb.innerHTML = `<tr><td colspan="14" class="vazio">${ed ? "Adicione produtos do catálogo (serviço consumido também é produto)." : "Sem itens."}</td></tr>`; cmpAtualizarSbItens(); cmpAtualizarChips(); return; }   // lote S55 (#175): acabou o item livre
@@ -1878,7 +1926,7 @@ function renderItensPedido(){
       : cmpTipoTag(tipo);
     // lote S53 (#149): destino TAG ganha o botão ⚖ (rateio entre equipamentos) e a linha "+ N TAG(s) (rateio)"
     const destinoCel = repo
-      ? `<span class="meta" title="entra no almoxarifado no recebimento; o custo aparece na saída do estoque">${esc(cmpDestinoTxt({ destino: "estoque", centro_custo_id: ed ? $("cmp-centro").value : it.centro_custo_id }))}</span>`
+      ? `<span class="meta" title="${esc(cmpDicaDestinoEstoque(it))}">${esc(cmpDestinoTxt({ destino: "estoque", centro_custo_id: ed ? $("cmp-centro").value : it.centro_custo_id }))}</span>`
       : ed ? `<select class="cmp-it${it.destino ? "" : " txt-perigo"}" data-f="destino" style="min-width:150px;max-width:190px;">${cmpDestinoDiretoOptions(cmpDestinoValor(it))}</select> <button type="button" class="btn-sec btn-sm cmp-it-rat" title="Ratear este item entre TAGs (partes iguais, ajustáveis)" style="${it.destino === "equipamento" ? "" : "display:none;"}">⚖</button><div class="cmp-it-rat-txt">${cmpDestinoRateioHTML(it)}</div>`
       : esc(cmpDestinoTxt(it)) + cmpDestinoRateioHTML(it);
     const natCel = ed && _cmpNaturezas.length
@@ -2043,7 +2091,9 @@ function cmpRenderRodapeItens(){
   tf.innerHTML = linha("Itens", brl(itens)) + (ipi ? linha("IPI", brl(ipi)) : "") + (frete ? linha("Frete", brl(frete)) : "") + (desc ? linha("Desconto", "− " + brl(desc)) : "")
     + linha("Total", brl(itens + ipi + frete - desc), true);
 }
-function cmpAtualizarSbItens(){ const sbi = $("sb-cmp-itens"); if(sbi){ sbi.querySelector(".sb-num").textContent = _cmpItens.length; sbi.classList.toggle("zero", !_cmpItens.length); } }
+function cmpAtualizarSbItens(){
+  cmpRascAgendar();   // lote S60 (#177): adicionar, remover e trocar item passam por aqui
+  const sbi = $("sb-cmp-itens"); if(sbi){ sbi.querySelector(".sb-num").textContent = _cmpItens.length; sbi.classList.toggle("zero", !_cmpItens.length); } }
 /* fase 108b: trocar o tipo em rascunho. Reposição: destino estoque, sem método; aplicação direta: destino pelo
    cabeçalho (ou a escolher) e método pela obra. A natureza só é recalculada enquanto não foi escolhida à mão. */
 function cmpTrocarTipoItem(it, tipo){
@@ -2396,6 +2446,7 @@ async function salvarPedido(silencioso){
     else it._rateioDirty = false;
   }
   if(!silencioso && !appAvisoComErro()) aviso("app-aviso", "Pedido salvo.", "ok");
+  cmpRascDepoisDeSalvar(id);   // lote S60 (#177)
   _cmpEditId = id;
   return id;
 }
@@ -2957,6 +3008,8 @@ function cmpPodeTrocarResp(){
   return ["admin","diretor","comprador"].includes(usuarioAtual?.cargo) || (!!p.criado_por && p.criado_por === usuarioAtual?.id);
 }
 function cmpServicosPendentes(){ return _cmpItens.filter(i => i.id && cmpItemServico(i) && Number(i.quantidade_recebida || 0) < Number(i.quantidade || 0)); }
+/* lote S60 (#264): "Receber material" só com material a receber. Item sem categoria conta como material, para nunca ficar sem caminho de recebimento */
+function cmpMateriaisPendentes(){ return _cmpItens.filter(i => i.id && !cmpItemServico(i) && Number(i.quantidade_recebida || 0) < Number(i.quantidade || 0)); }
 function cmpPodeReceberServico(){
   const p = _cmpAtual; if(!p?.id || !cmpPodeOperar()) return false;
   if(!["aprovado","enviado","parcialmente_recebido"].includes(p.status) || !cmpServicosPendentes().length) return false;
@@ -3385,6 +3438,7 @@ function ligarCompras(){
   });
 
   // ficha
+  ["input", "change"].forEach(ev => $("cmp-ficha")?.addEventListener(ev, cmpRascAgendar));   // lote S60 (#177)
   $("btn-cmp-voltar")?.addEventListener("click", mostrarPainelCompras);
   $("btn-cmp-salvar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-salvar", async () => { const id = await salvarPedido(false); if(id){ await cmpFetchPedidos(); await abrirPedido(id); } }));
   document.querySelectorAll("#cmp-ficha .cmp-acao").forEach(b => b.addEventListener("click", () => comBotaoTravado(b.id, () => cmpAcao(b.dataset.acao))));

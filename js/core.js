@@ -626,6 +626,37 @@ function chipsMotivo(container, opcoes, valor, aoMudar){
   return { get valor(){ return atual; }, definir(v){ atual = v ?? null; pintar(); } };
 }
 
+/* lote S60 (#177): rascunho local. sessionStorage de propósito: pedido tem preço, e computador compartilhado não deve guardá-lo depois de
+   fechada a janela. Nada vai ao banco; a chave leva o id do usuário, e sair da sessão apaga tudo. */
+const RASCUNHO_PREFIXO = "rascunho:";
+function rascunhoChave(tipo, id){ return `${RASCUNHO_PREFIXO}${usuarioAtual?.id || "anon"}:${tipo}:${id || "novo"}`; }
+function rascunhoGuardar(chave, dados){ try { sessionStorage.setItem(chave, JSON.stringify({ em: new Date().toISOString(), dados })); return true; } catch(_){ return false; } }
+function rascunhoLer(chave){ try { const t = sessionStorage.getItem(chave); return t ? JSON.parse(t) : null; } catch(_){ return null; } }
+function rascunhoApagar(chave){ try { sessionStorage.removeItem(chave); } catch(_){} }
+function rascunhoLimparTodos(){
+  try { Object.keys(sessionStorage).filter(k => k.startsWith(RASCUNHO_PREFIXO)).forEach(k => sessionStorage.removeItem(k)); } catch(_){}
+}
+function rascunhoPergunta(em, alteradoEm, deQue){
+  const hora = iso => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const aviso = alteradoEm && new Date(alteradoEm) > new Date(em) ? `Atenção: o registro foi alterado no banco às ${hora(alteradoEm)}, depois desse rascunho. Restaurar traz o rascunho para a tela; ao salvar, ele substitui o que foi gravado.\n\n` : "";
+  return `${aviso}Há um rascunho de ${hora(em)} ${deQue}, ainda não salvo.\n\nOK: restaurar o rascunho.\nCancelar: descartar.`;
+}
+/* lote S60 (#254): responsável principal e outros responsáveis (funcionarios.id) em reparo e fabricação */
+function respTodos(principal, extras, nomeDe){
+  return [...new Set([principal, ...(extras || [])].filter(Boolean))].map(id => nomeDe(id) || "(inativo)");
+}
+function respResumo(nomes){ return !nomes.length ? "" : nomes.length === 1 ? nomes[0] : `${nomes[0]} + ${nomes.length - 1}`; }
+function respExtrasRender({ wrap, sel, extras, principal, funcs, pode, aoMudar }){
+  const w = $(wrap), s = $(sel); if(!w || !s) return;
+  const nomeDe = id => funcs.find(f => f.id === id)?.nome || "(inativo)";
+  w.innerHTML = extras.filter(id => id !== principal).map(id => `<span class="mob-chip">${esc(nomeDe(id))}${pode ? ` <button type="button" class="forn-chip-x" data-id="${esc(id)}" title="tirar" aria-label="Tirar ${esc(nomeDe(id))}">×</button>` : ""}</span>`).join("") || `<span class="meta">nenhum</span>`;
+  s.innerHTML = `<option value="">+ somar responsável…</option>` + funcs.filter(f => f.id !== principal && !extras.includes(f.id))
+    .map(f => `<option value="${esc(f.id)}">${esc(f.nome)}${f.funcao ? " · " + esc(f.funcao) : ""}</option>`).join("");
+  s.disabled = !pode; s.style.display = pode ? "" : "none";
+  s.onchange = () => { if(s.value) aoMudar([...extras, s.value]); };
+  w.querySelectorAll("button[data-id]").forEach(b => b.addEventListener("click", () => aoMudar(extras.filter(x => x !== b.dataset.id))));
+}
+
 /* Debounce para campos de busca: re-renderizar a lista inteira a cada tecla
    travava nas listas grandes (produtos, estacas). 150 ms é imperceptível. */
 function debounce(fn, ms = 150){
@@ -1049,6 +1080,7 @@ $("btn-sair").addEventListener("click", async ()=>{
   appLimparSujo();   // fase 86: sair abandona o que estava na tela
   _polSaindo = true; // fase 87: saída voluntária, sem aviso de "sessão encerrada" na tela de login
   polSessaoLimpar(); // fase 87: esquece "manter conectado" e os marcos da sessão
+  rascunhoLimparTodos();   // lote S60 (#177)
   await sb.auth.signOut();
   location.reload();
 });
@@ -1880,6 +1912,7 @@ async function sairPorPolitica(motivo, chamarSignOut){
   _polSaindo = true;
   appLimparSujo();
   sessaoGravar("cgl_saida_motivo", motivo);
+  rascunhoLimparTodos();   // lote S60 (#177)
   polSessaoLimpar();
   if(chamarSignOut !== false){ try { await sb.auth.signOut({ scope: "local" }); } catch(_){} }
   location.reload();

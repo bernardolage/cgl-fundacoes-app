@@ -34,7 +34,7 @@ const FAB_STAGES = ["rascunho", "confirmada", "em_producao", "concluida"];
 const FAB_ABERTAS = ["rascunho", "planejada", "confirmada", "em_producao", "pausada"];
 const FAB_DESTINO = { estoque: "Estoque", acessorio: "Acessório", obra: "Obra", equipamento: "TAG", centro_custo: "Centro de custo" };
 const FAB_SETOR_CT = { usinagem: "Usinagem", solda: "Solda", corte: "Corte", manual: "Manual", eletrica: "Elétrica", outro: "Outro" };
-const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_real,custo_componentes,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
+const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_real,custo_componentes,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
 
 function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "logistica", "almoxarife"].includes(usuarioAtual.cargo); }
 function fabEhDiretoria(){ return !!usuarioAtual && ["admin", "diretor"].includes(usuarioAtual.cargo); }
@@ -54,6 +54,12 @@ function fabDestinoLink(o){
   return esc(fabDestinoTxt(o));
 }
 function fabResp(id){ const f = _fabFuncs.find(x => x.id === id); return f ? f.nome : ""; }
+let _fabExtras = [], _fabExtrasPode = false;   // lote S60 (#254): outros responsáveis da ficha aberta
+function fabRespNomes(o){ return respTodos(o.responsavel_id, o.responsaveis_extra_ids, fabResp); }
+function fabRenderExtras(){
+  respExtrasRender({ wrap: "fab-resp-extras", sel: "fab-resp-extra-add", extras: _fabExtras, principal: $("fab-resp").value, funcs: _fabFuncs, pode: _fabExtrasPode,
+    aoMudar: l => { _fabExtras = l; fabRenderExtras(); } });
+}
 function fabCentroNome(id){ const c = _fabCentros.find(x => x.id === id); return c ? c.nome : ""; }
 function fabCentroCusto(id){ const c = _fabCentros.find(x => x.id === id); return c ? Number(c.custo_hora || 0) : 0; }
 function fabDias(o){
@@ -135,7 +141,7 @@ function fabFiltrados(){
   return _fabLista.filter(o => {
     if(st === "_abertas"){ if(!FAB_ABERTAS.includes(o.status)) return false; }
     else if(st && fabSt(o.status) !== st) return false;
-    if(rs && o.responsavel_id !== rs) return false;
+    if(rs && o.responsavel_id !== rs && !(o.responsaveis_extra_ids || []).includes(rs)) return false;
     if(ds && o.destino !== ds) return false;
     if(_fabCentroIds && !_fabCentroIds.has(o.id)) return false;
     if(q && ![o.numero, o.codigo_externo, o.descricao, o.produto?.codigo, o.produto?.nome, o.observacoes, o.equipamento?.codigo, o.obra?.codigo].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
@@ -155,7 +161,7 @@ function renderFabricacao(){
         ${its.slice(0, 200).map(o => `<div class="serv-kan-card" data-id="${esc(o.id)}">
           <div class="serv-kan-card-nome"><strong>${esc(o.numero || "")}</strong> <span class="meta">${dataBR(o.data_abertura)}${o.codigo_externo ? " · " + esc(o.codigo_externo) : ""}</span></div>
           <div>${esc(fabProdTxt(o))}</div><div class="meta">${fabQtdTxt(o)} · ${esc(fabDestinoTxt(o))}</div>
-          <div class="meta" style="display:flex;justify-content:space-between;"><span>${esc(fabResp(o.responsavel_id))}</span><strong>${brl(o.custo_real)}</strong></div>
+          <div class="meta" style="display:flex;justify-content:space-between;"><span title="${esc(fabRespNomes(o).join(", "))}">${esc(respResumo(fabRespNomes(o)))}</span><strong>${brl(o.custo_real)}</strong></div>
         </div>`).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
     cont.innerHTML = `<div class="tabela-rola"><table>
@@ -163,7 +169,7 @@ function renderFabricacao(){
       <tbody>${dados.map(o => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
         <td><strong>${esc(o.numero || "")}</strong>${o.codigo_externo ? ` <span class="meta">${esc(o.codigo_externo)}</span>` : ""}</td><td>${dataBR(o.data_abertura)}</td>
         <td>${fabProdLink(o)}${o.produto && o.descricao && o.descricao !== o.produto.nome ? ` <span class="meta">${esc(o.descricao)}</span>` : ""}</td><td class="num">${fabQtdTxt(o)}</td>
-        <td>${fabDestinoLink(o)}</td><td class="meta">${esc(fabResp(o.responsavel_id))}</td>
+        <td>${fabDestinoLink(o)}</td><td class="meta" title="${esc(fabRespNomes(o).join(", "))}">${esc(respResumo(fabRespNomes(o)))}</td>
         <td class="num">${fabDias(o) ?? "—"}</td><td class="num">${brl(o.custo_real)}</td><td>${fabTag(o.status)}</td></tr>`).join("")}</tbody></table></div>`;
   }
 }
@@ -200,6 +206,7 @@ function abrirFichaFabricacao(o, itens, horas){
   $("fab-obs").value = o.observacoes || "";
   fabDestinoCampos();
   $("fab-ficha").querySelectorAll(".odoo-tab[data-tab=geral] input, .odoo-tab[data-tab=geral] select").forEach(el => el.disabled = !pode || fechada);
+  _fabExtras = (o.responsaveis_extra_ids || []).slice(); _fabExtrasPode = pode && !fechada; fabRenderExtras();   // lote S60 (#254)
   $("fab-h-data").value = hojeISO();
   fabAtualizarCabecalho();
   fabRenderItens(); fabRenderHoras(); fabRenderCustos();
@@ -227,7 +234,7 @@ function fabAtualizarCabecalho(){
   $("fab-chip-prod").innerHTML = novo ? "—" : fabProdLink(o);
   $("fab-chip-qtd").innerHTML = fabQtdTxt(o);
   $("fab-chip-dest").innerHTML = fabDestinoLink(o);
-  $("fab-chip-resp").textContent = fabResp(o.responsavel_id) || "—";
+  $("fab-chip-resp").textContent = respResumo(fabRespNomes(o)) || "—"; $("fab-chip-resp").title = fabRespNomes(o).join(", ");
   $("fab-chip-dias").textContent = novo ? "—" : (fabDias(o) ?? "—");
   $("fab-chip-odoo").style.display = o.codigo_externo ? "" : "none"; $("fab-chip-odoo-txt").textContent = o.codigo_externo || "";
   const pend = fabPendentes().length > 0;
@@ -255,7 +262,7 @@ async function salvarOrdemFabricacao(){
     quantidade_produzida: $("fab-qtd-prod").value === "" ? 0 : Number($("fab-qtd-prod").value), unidade: $("fab-unidade").value || "un", destino,
     obra_id: destino === "obra" ? $("fab-obra").value || null : null, equipamento_id: destino === "equipamento" ? $("fab-equip").value || null : null,
     centro_custo_id: destino === "centro_custo" ? $("fab-centro").value || null : null, acessorio_modelo_id: destino === "acessorio" ? $("fab-acemod").value || null : null,
-    responsavel_id: $("fab-resp").value || null, modelo_id: $("fab-modelo").value || null,
+    responsavel_id: $("fab-resp").value || null, responsaveis_extra_ids: _fabExtras.filter(x => x !== $("fab-resp").value), modelo_id: $("fab-modelo").value || null,
     data_abertura: $("fab-abertura").value || hojeISO(), data_inicio_prevista: $("fab-inicio-prev").value || null, data_inicio: $("fab-inicio").value || null,
     data_conclusao: $("fab-conclusao").value || null, observacoes: $("fab-obs").value.trim() || null };
   const erro = (m) => { aviso("app-aviso", m, "erro"); fabAtivarTab("geral"); return null; };
@@ -586,6 +593,7 @@ function ligarFabricacao(){
     const el = e.target.closest("[data-id]"); if(el) abrirOrdemFabricacao(el.dataset.id);
   });
   $("btn-fab-voltar")?.addEventListener("click", mostrarPainelFabricacao);
+  $("fab-resp")?.addEventListener("change", () => { _fabExtras = _fabExtras.filter(x => x !== $("fab-resp").value); fabRenderExtras(); });   // lote S60 (#254)
   $("btn-fab-salvar")?.addEventListener("click", () => comBotaoTravado("btn-fab-salvar", salvarOrdemFabricacao));
   document.querySelectorAll("#fab-ficha .fab-acao").forEach(b => b.addEventListener("click", () => comBotaoTravado(b.id, () => fabAcao(b.dataset.acao))));
   document.querySelectorAll("#fab-notebook button").forEach(b => b.addEventListener("click", () => fabAtivarTab(b.dataset.tab)));

@@ -90,7 +90,7 @@ async function _obrMobPronto(){
 function _obrMobCardHTML(c, pend){
   const col = (typeof MOB_COLUNAS !== "undefined" ? MOB_COLUNAS : []).find(x => x.k === c.coluna) || {};
   const stLbl = (typeof MOB_STATUS !== "undefined" && MOB_STATUS[c.mob_status]) || c.mob_status || "—";
-  const icone = (typeof MOB_TIPO_ICONE !== "undefined" && MOB_TIPO_ICONE[c.tipo_proposta]) || "⚙️";
+  const icone = (typeof MOB_TIPO_ICONE !== "undefined" && MOB_TIPO_ICONE[c.tipo_servico || c.tipo_proposta]) || "⚙️";
   const setorLbl = (s) => (typeof MOB_SETOR !== "undefined" && MOB_SETOR[s]) || s || "—";
   const d = (v) => v ? dataBR(v) : "—";
   const abertas = pend.filter(p => !p.concluida);

@@ -208,6 +208,21 @@ function renderProdModo(){
   }
 }
 
+/* lote S60 (#261): atalho do Estoque para todo o inventário com saldo, por categoria. Só leitura. */
+async function prodAbrirInventario(categoriaId){
+  const sel = $("prod-f-categoria");
+  if(sel && categoriaId && ![...sel.options].some(o => o.value === categoriaId)){
+    const nome = _estRep.find(p => p.categoria_id === categoriaId)?.categoria?.nome || "";
+    sel.insertAdjacentHTML("beforeend", `<option value="${esc(categoriaId)}">${esc(nome)}</option>`);
+  }
+  if(sel) sel.value = categoriaId;
+  if($("prod-f-estoque")) $("prod-f-estoque").value = "positivo";
+  if($("prod-busca")) $("prod-busca").value = "";
+  if(!irParaSecao("produtos")) return;
+  _prodPagina = 0;
+  await carregarProdutos();
+}
+
 function preencherFiltrosProd(){
   const sel = $("prod-f-categoria");
   if(sel){
@@ -351,8 +366,10 @@ async function prodContarSaidasSemCusto(){
   _prodSscTem = true; btn.style.display = "";
   $("prod-ssc-cont").textContent = count ? `(${num(count)})` : "";
 }
-/* atalho da Sala de Comando ("Saídas de estoque sem custo") */
-function prodAbrirSaidasSemCusto(){
+/* atalho da Sala de Comando ("Saídas de estoque sem custo"). Fase 146: o cartão da Minha fila passa o produto e a lista abre filtrada */
+let _prodSscFiltro = null;
+function prodAbrirSaidasSemCusto(produtoId){
+  _prodSscFiltro = produtoId || null;
   mostrarPainelProd();
   document.querySelectorAll("#prod-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === "saidas_sem_custo"));
   _prodView = "saidas_sem_custo";
@@ -362,7 +379,9 @@ function prodAbrirSaidasSemCusto(){
 async function prodRenderSaidasSemCusto(){
   const cont = $("prod-conteudo"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
-  const { data, error } = await sb.from("vw_estoque_saidas_sem_custo").select("*").order("data", { ascending: false }).limit(1000);
+  let qSsc = sb.from("vw_estoque_saidas_sem_custo").select("*").order("data", { ascending: false }).limit(1000);
+  if(_prodSscFiltro) qSsc = qSsc.eq("produto_id", _prodSscFiltro);   // fase 146
+  const { data, error } = await qSsc;
   if(_prodView !== "saidas_sem_custo") return;
   if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler as saídas sem custo: ${esc(error.message)}</p>`; return; }
   _prodSsc = data || [];
@@ -371,12 +390,13 @@ async function prodRenderSaidasSemCusto(){
   const pode = prodPodeDefinirCusto();
   const nProd = new Set(_prodSsc.map(r => r.produto_id)).size;
   const nComCusto = new Set(_prodSsc.filter(r => r.produto_tem_custo).map(r => r.produto_id)).size;
-  if($("prod-ssc-cont")) $("prod-ssc-cont").textContent = _prodSsc.length ? `(${num(_prodSsc.length)})` : "";
-  const revTodos = pode && nComCusto ? ` · <a href="#" data-ssc-acao="revalorar-todos" title="Esses produtos ganharam custo depois da saída">Revalorar ${num(nComCusto)} produto(s) que já têm custo</a>` : "";
-  const topo = `<div class="meta" style="margin:0 0 8px;">${num(_prodSsc.length)} saída(s) a R$ 0,00 · ${num(nProd)} produto(s)` +
+  if(!_prodSscFiltro && $("prod-ssc-cont")) $("prod-ssc-cont").textContent = _prodSsc.length ? `(${num(_prodSsc.length)})` : "";
+  const faixaFiltro = _prodSscFiltro ? `<div class="meta" style="margin:0 0 8px;">Filtrando um produto · <a href="#" data-ssc-acao="ver-todos">ver todos</a></div>` : "";   // fase 146
+  const revTodos = pode && nComCusto && !_prodSscFiltro ?` · <a href="#" data-ssc-acao="revalorar-todos" title="Esses produtos ganharam custo depois da saída">Revalorar ${num(nComCusto)} produto(s) que já têm custo</a>` : "";
+  const topo = faixaFiltro + `<div class="meta" style="margin:0 0 8px;">${num(_prodSsc.length)} saída(s) a R$ 0,00 · ${num(nProd)} produto(s)` +
     (_prodSsc.length ? ` · <a href="#" data-ssc-acao="xlsx">⬇ Exportar .xlsx</a>` : "") + revTodos +
     (pode ? "" : ` · quem define o custo é o almoxarife ou Compras`) + `</div>`;
-  if(!_prodSsc.length){ cont.innerHTML = topo + `<p class="vazio">✅ Nenhuma saída de estoque a R$ 0,00.</p>`; return; }
+  if(!_prodSsc.length){ cont.innerHTML = topo + `<p class="vazio">✅ ${_prodSscFiltro ? "Este produto não tem mais saída a R$ 0,00." : "Nenhuma saída de estoque a R$ 0,00."}</p>`; return; }
   const linhasSsc = _prodSsc.map(r => {
     const acao = !pode ? "" : r.produto_tem_custo
       ? `<button type="button" class="btn-sec btn-sm" data-ssc-revalorar="${esc(r.produto_id)}" title="O produto já tem custo: grava o custo atual nas saídas a R$ 0,00 dele">Revalorar</button>`
@@ -795,6 +815,7 @@ function ligarProdutos(){
       document.querySelectorAll("#prod-painel .serv-view-btn").forEach(x => x.classList.remove("ativo"));
       b.classList.add("ativo");
       _prodView = b.dataset.view;
+      _prodSscFiltro = null;   // fase 146: clicar na aba sempre mostra a lista inteira
       renderProdutos();
     });
   });
@@ -828,6 +849,7 @@ function ligarProdutos(){
     if(sa){
       e.preventDefault();
       if(sa.dataset.sscAcao === "xlsx") prodSscExportar();
+      else if(sa.dataset.sscAcao === "ver-todos"){ _prodSscFiltro = null; prodRenderSaidasSemCusto(); prodContarSaidasSemCusto(); }   // fase 146
       else if(sa.dataset.sscAcao === "revalorar-todos" && confirm("Gravar o custo atual nas saídas a R$ 0,00 de todos os produtos que já têm custo?")) prodSscRevalorar(null);
       return;
     }

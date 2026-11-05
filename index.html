@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="4e3edcd" />
+<meta name="app-versao" content="0c995c1" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=4e3edcd" />
+<link rel="stylesheet" href="css/estilo.css?v=0c995c1" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=4e3edcd"></script>
+<script src="js/tema.js?v=0c995c1"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=4e3edcd"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=4e3edcd"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=4e3edcd"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=0c995c1"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=0c995c1"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=0c995c1"></script>
 </head>
 <body>
 
@@ -1593,7 +1593,9 @@
         </div>
         <div class="serv-filtros">
           <input id="est-rep-busca" placeholder="Filtrar por código ou nome…" />
+          <select id="est-rep-categoria" aria-label="Filtrar por categoria"><option value="">Todas as categorias</option></select>
           <label class="check-inline"><input type="checkbox" id="est-rep-so-falta" /> só o que falta</label>
+          <a href="#" id="est-rep-ver-inventario" title="Abre Produtos com a categoria escolhida e só o que tem saldo">Ver todo o inventário por categoria</a>
         </div>
         <div id="est-reposicao"><p class="vazio">Carregando…</p></div>
       </div>
@@ -4964,6 +4966,7 @@
               <button type="button" class="btn rep-acao" id="btn-rep-iniciar" data-acao="em_execucao">▶ Iniciar</button>
               <button type="button" class="btn btn-sucesso rep-acao" id="btn-rep-concluir" data-acao="concluido">✅ Concluir</button>
               <button type="button" class="btn-sec rep-acao" id="btn-rep-baixa" data-acao="baixa" title="Gera a saída de estoque das peças consumidas que ainda não tiveram baixa">📦 Dar baixa das peças</button>
+              <button type="button" class="btn-sec" id="btn-rep-imprimir" style="display:none;" title="Documento para a oficina, sem valores">🖨️ Imprimir</button>
               <button type="button" class="btn-sec rep-acao" id="btn-rep-cancelar" data-acao="cancelado" style="color:var(--perigo);">✕ Cancelar</button>
             </div>
             <div class="actions-right"><strong id="rep-ficha-titulo">Novo reparo</strong></div>
@@ -5004,6 +5007,7 @@
                 <div class="campo"><label>Setor</label><select id="rep-setor"><option value="caldeiraria">Caldeiraria</option><option value="usinagem">Usinagem</option><option value="mecanica">Mecânica</option><option value="eletrica">Elétrica</option><option value="pintura">Pintura</option><option value="externo">Externo</option></select></div>
                 <div class="campo"><label>Tipo de serviço</label><select id="rep-tipo"><option value="recuperacao_estrutural">Recuperação estrutural</option><option value="solda">Solda</option><option value="corte">Corte</option><option value="usinagem">Usinagem</option><option value="pintura">Pintura</option><option value="fabricacao_peca">Fabricação de peça</option><option value="outro">Outro</option></select></div>
                 <div class="campo"><label>Responsável</label><select id="rep-resp"></select></div>
+                <div class="campo largo"><label>Outros responsáveis</label><div id="rep-resp-extras" class="mob-card-chips"></div><select id="rep-resp-extra-add" aria-label="Somar responsável"></select></div>
                 <div class="campo largo"><label>Descrição *</label><input id="rep-desc" placeholder="ex.: recuperar dentes e soldar reforço da coroa" /></div>
                 <div class="campo largo"><label>Motivo</label><textarea id="rep-motivo" rows="3" placeholder="o que aconteceu com a peça"></textarea></div>
                 <div class="campo"><label>Abertura</label><input type="date" id="rep-abertura" /></div>
@@ -5134,6 +5138,7 @@
                 <div class="campo" id="fab-c-centro" style="display:none;"><label>Centro de custo *</label><select id="fab-centro"></select></div>
                 <div class="campo largo" id="fab-c-acemod" style="display:none;"><label>Modelo de acessório (o que a peça é)</label><select id="fab-acemod"></select><span class="meta">Ao concluir, cada unidade vira uma peça com marcação, no pátio, em bom estado.</span></div>
                 <div class="campo"><label>Responsável</label><select id="fab-resp"></select></div>
+                <div class="campo largo"><label>Outros responsáveis</label><div id="fab-resp-extras" class="mob-card-chips"></div><select id="fab-resp-extra-add" aria-label="Somar responsável"></select></div>
                 <div class="campo"><label>Lista de materiais</label><select id="fab-modelo"></select></div>
                 <div class="campo"><label>Abertura</label><input type="date" id="fab-abertura" /></div>
                 <div class="campo"><label>Início previsto</label><input type="date" id="fab-inicio-prev" /></div>
@@ -6876,60 +6881,60 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=4e3edcd"></script>
+<script src="js/core.js?v=0c995c1"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=4e3edcd"></script>
+<script src="js/historico.js?v=0c995c1"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=4e3edcd"></script>
-<script src="js/fiscal_ncm.js?v=4e3edcd"></script>
+<script src="js/fiscal.js?v=0c995c1"></script>
+<script src="js/fiscal_ncm.js?v=0c995c1"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=4e3edcd"></script>
-<script src="js/fornecedores.js?v=4e3edcd"></script>
-<script src="js/apropriacoes.js?v=4e3edcd"></script>
-<script src="js/funcionarios.js?v=4e3edcd"></script>
-<script src="js/funcionarios_importar.js?v=4e3edcd"></script>
-<script src="js/rh_documentos.js?v=4e3edcd"></script>
-<script src="js/servicos.js?v=4e3edcd"></script>
-<script src="js/produtos.js?v=4e3edcd"></script>
-<script src="js/estoque.js?v=4e3edcd"></script>
-<script src="js/separacoes.js?v=4e3edcd"></script>
-<script src="js/epi.js?v=4e3edcd"></script>
-<script src="js/compras.js?v=4e3edcd"></script>
-<script src="js/requisicoes.js?v=4e3edcd"></script>
-<script src="js/orcamentos.js?v=4e3edcd"></script>
-<script src="js/propostas.js?v=4e3edcd"></script>
-<script src="js/contratos.js?v=4e3edcd"></script>
-<script src="js/contas_pagar.js?v=4e3edcd"></script>
-<script src="js/centros_custo.js?v=4e3edcd"></script>
-<script src="js/carteira.js?v=4e3edcd"></script>
-<script src="js/obras.js?v=4e3edcd"></script>
-<script src="js/frota.js?v=4e3edcd"></script>
-<script src="js/viagens.js?v=4e3edcd"></script>
-<script src="js/equipamentos.js?v=4e3edcd"></script>
-<script src="js/vendas_bens.js?v=4e3edcd"></script>
-<script src="js/acessorios.js?v=4e3edcd"></script>
-<script src="js/reparos.js?v=4e3edcd"></script>
-<script src="js/manutencao.js?v=4e3edcd"></script>
-<script src="js/fabricacao.js?v=4e3edcd"></script>
-<script src="js/mobilizacoes.js?v=4e3edcd"></script>
-<script src="js/estacas.js?v=4e3edcd"></script>
-<script src="js/obra_abas.js?v=4e3edcd"></script>
-<script src="js/medicoes.js?v=4e3edcd"></script>
-<script src="js/movimentacoes.js?v=4e3edcd"></script>
-<script src="js/rdo_import_rg113.js?v=4e3edcd"></script>
-<script src="js/rdo.js?v=4e3edcd"></script>
-<script src="js/rdo_import_maya.js?v=4e3edcd"></script>
-<script src="js/geodigitus.js?v=4e3edcd"></script>
-<script src="js/computadores_bordo.js?v=4e3edcd"></script>
-<script src="js/usuarios.js?v=4e3edcd"></script>
-<script src="js/chamados.js?v=4e3edcd"></script>
-<script src="js/dashboard.js?v=4e3edcd"></script>
-<script src="js/rh_horas.js?v=4e3edcd"></script>
-<script src="js/sesmt.js?v=4e3edcd"></script>
-<script src="js/patrimonio.js?v=4e3edcd"></script>
+<script src="js/clientes.js?v=0c995c1"></script>
+<script src="js/fornecedores.js?v=0c995c1"></script>
+<script src="js/apropriacoes.js?v=0c995c1"></script>
+<script src="js/funcionarios.js?v=0c995c1"></script>
+<script src="js/funcionarios_importar.js?v=0c995c1"></script>
+<script src="js/rh_documentos.js?v=0c995c1"></script>
+<script src="js/servicos.js?v=0c995c1"></script>
+<script src="js/produtos.js?v=0c995c1"></script>
+<script src="js/estoque.js?v=0c995c1"></script>
+<script src="js/separacoes.js?v=0c995c1"></script>
+<script src="js/epi.js?v=0c995c1"></script>
+<script src="js/compras.js?v=0c995c1"></script>
+<script src="js/requisicoes.js?v=0c995c1"></script>
+<script src="js/orcamentos.js?v=0c995c1"></script>
+<script src="js/propostas.js?v=0c995c1"></script>
+<script src="js/contratos.js?v=0c995c1"></script>
+<script src="js/contas_pagar.js?v=0c995c1"></script>
+<script src="js/centros_custo.js?v=0c995c1"></script>
+<script src="js/carteira.js?v=0c995c1"></script>
+<script src="js/obras.js?v=0c995c1"></script>
+<script src="js/frota.js?v=0c995c1"></script>
+<script src="js/viagens.js?v=0c995c1"></script>
+<script src="js/equipamentos.js?v=0c995c1"></script>
+<script src="js/vendas_bens.js?v=0c995c1"></script>
+<script src="js/acessorios.js?v=0c995c1"></script>
+<script src="js/reparos.js?v=0c995c1"></script>
+<script src="js/manutencao.js?v=0c995c1"></script>
+<script src="js/fabricacao.js?v=0c995c1"></script>
+<script src="js/mobilizacoes.js?v=0c995c1"></script>
+<script src="js/estacas.js?v=0c995c1"></script>
+<script src="js/obra_abas.js?v=0c995c1"></script>
+<script src="js/medicoes.js?v=0c995c1"></script>
+<script src="js/movimentacoes.js?v=0c995c1"></script>
+<script src="js/rdo_import_rg113.js?v=0c995c1"></script>
+<script src="js/rdo.js?v=0c995c1"></script>
+<script src="js/rdo_import_maya.js?v=0c995c1"></script>
+<script src="js/geodigitus.js?v=0c995c1"></script>
+<script src="js/computadores_bordo.js?v=0c995c1"></script>
+<script src="js/usuarios.js?v=0c995c1"></script>
+<script src="js/chamados.js?v=0c995c1"></script>
+<script src="js/dashboard.js?v=0c995c1"></script>
+<script src="js/rh_horas.js?v=0c995c1"></script>
+<script src="js/sesmt.js?v=0c995c1"></script>
+<script src="js/patrimonio.js?v=0c995c1"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=4e3edcd"></script>
+<script src="js/sesmt_ocorrencias.js?v=0c995c1"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=4e3edcd"></script>
+<script src="js/init.js?v=0c995c1"></script>
 </body>
 </html>

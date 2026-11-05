@@ -179,6 +179,7 @@ async function abrirRequisicao(r){
   if($("btn-req-conferir")) $("btn-req-conferir").style.display = "none";
   if($("req-destinos")){ $("req-destinos").style.display = "none"; $("req-destinos").innerHTML = ""; }
   reqRenderItens();
+  reqRascOferecer(nova);   // lote S60 (#177)
   if(nova && !_reqBuscaLigada){ cmpLigarBusca("req-busca", "req-res", p => reqAddItem(p)); _reqBuscaLigada = true; }
   $("cmp-req-modal").style.display = "flex";
   if(nova) return;
@@ -194,7 +195,7 @@ async function abrirRequisicao(r){
   reqRenderDestinos();
   reqRenderItens();
 }
-function fecharRequisicao(){ $("cmp-req-modal").style.display = "none"; _reqAtual = null; _reqItens = []; _reqPrevia = {}; }
+function fecharRequisicao(){ reqRascGravar(); _reqRascBase = null; $("cmp-req-modal").style.display = "none"; _reqAtual = null; _reqItens = []; _reqPrevia = {}; }
 /* fase 102: bloco "Separação / pedido" no topo do modal + "Recebi e conferi" para quem pediu */
 function reqRenderDestinos(){
   const el = $("req-destinos"), r = _reqAtual; if(!el || !r) return;
@@ -226,7 +227,36 @@ function reqItemDestinoTxt(it){
 }
 /* lote S55 (#175): acabou o item livre — todo item é produto do catálogo (serviço consumido também); os antigos sem
    produto continuam renderizando (descrição fixa) */
+/* ---------- lote S60 (#177): rascunho local da requisição nova ---------- */
+let _reqRascBase = null;
+function reqRascChave(){ return rascunhoChave("requisicao", null); }
+function reqRascEstado(){
+  return { obra: $("req-obra").value, equip: $("req-equip").value, centro: $("req-centro").value, reposicao: $("req-reposicao").checked,
+    prioridade: $("req-prioridade").value, just: $("req-just").value, itens: _reqItens };
+}
+function reqRascGravar(){
+  if(_reqRascBase === null || _reqAtual) return;
+  const txt = JSON.stringify(reqRascEstado());
+  if(txt === _reqRascBase) rascunhoApagar(reqRascChave()); else rascunhoGuardar(reqRascChave(), JSON.parse(txt));
+}
+const reqRascAgendar = debounce(reqRascGravar, 400);
+function reqRascOferecer(nova){
+  _reqRascBase = null;
+  if(!nova) return;
+  const base = JSON.stringify(reqRascEstado()), r = rascunhoLer(reqRascChave());
+  if(r){
+    if(confirm(rascunhoPergunta(r.em, null, "de requisição"))){
+      const d = r.dados || {};
+      $("req-obra").value = d.obra || ""; $("req-equip").value = d.equip || ""; $("req-centro").value = d.centro || "";
+      $("req-reposicao").checked = !!d.reposicao; $("req-prioridade").value = d.prioridade || "normal"; $("req-just").value = d.just || "";
+      _reqItens = d.itens || [];
+      reqRenderItens();
+    } else rascunhoApagar(reqRascChave());
+  }
+  _reqRascBase = base;
+}
 function reqRenderItens(){
+  reqRascAgendar();   // lote S60 (#177)
   const tb = $("req-itens"); if(!tb) return;
   const nova = !_reqAtual;
   if(!_reqItens.length){ tb.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum item. Busque o produto acima (serviço consumido também é produto; fora do catálogo, peça o cadastro ao almoxarifado ou ao comprador).</td></tr>`; return; }
@@ -270,6 +300,7 @@ async function salvarRequisicao(){
   if(error){ aviso("app-aviso", "Não foi possível abrir a requisição: " + error.message, "erro"); return; }
   const { error: eIt } = await sb.from("requisicao_itens").insert(itens.map(i => ({ requisicao_id: r.id, produto_id: i.produto_id, unidade: (i.unidade || "un").trim(), quantidade_solicitada: Number(i.quantidade_solicitada) })));   // lote S55: sem descricao (item livre acabou)
   if(eIt){ await sb.from("requisicoes").delete().eq("id", r.id); aviso("app-aviso", "Erro nos itens: " + eIt.message, "erro"); return; }
+  rascunhoApagar(reqRascChave()); _reqRascBase = null;   // lote S60 (#177)
   aviso("app-aviso", `Requisição ${r.numero} aberta. O comprador vê em Compras › Requisições.`, "ok");
   fecharRequisicao();
   if(typeof _cmpView !== "undefined" && $("sec-compras")?.classList.contains("ativa")){ _cmpView = "requisicoes"; await cmpFetchPedidos(); renderCompras(); }
@@ -381,6 +412,7 @@ async function reqCriarDaReposicao(){
 /* ---------- ligação ---------- */
 function ligarRequisicoes(){
   if(!$("cmp-req-modal")) return;
+  ["input", "change"].forEach(ev => $("cmp-req-modal")?.addEventListener(ev, reqRascAgendar));   // lote S60 (#177)
   $("btn-cmp-req-nova")?.addEventListener("click", () => abrirRequisicao(null));
   $("btn-req-fechar")?.addEventListener("click", fecharRequisicao);
   $("btn-req-salvar")?.addEventListener("click", () => comBotaoTravado("btn-req-salvar", salvarRequisicao));

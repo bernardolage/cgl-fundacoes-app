@@ -21,7 +21,7 @@ let _repCarregado = false;
 const REP_STATUS = { aberto: ["Aberto", "azul"], em_execucao: ["Em execução", "ambar"], concluido: ["Concluído", "verde"], cancelado: ["Cancelado", "cinza"] };
 const REP_STAGES = ["aberto", "em_execucao", "concluido"];
 const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: "Mecânica", eletrica: "Elétrica", pintura: "Pintura", externo: "Externo" };
-const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)";
+const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)";
 
 /* lote S45 (L7): `logistica` registra reparo como registra fabricação (fabPodeEditar / fabricacao_pode_operar);
    espelha reparos_caldeiraria_write, reparo_horas_write e reparo_itens_write da migration 20261020_loteS45_hoje_br. */
@@ -34,6 +34,12 @@ function repTag(st){ const o = REP_STATUS[st] || [st, "cinza"]; return `<span cl
 function repAlvoTxt(r){ return r.acessorio ? r.acessorio.marcacao : r.equipamento ? "TAG " + r.equipamento.codigo : "—"; }
 function repAlvoLink(r){ return r.acessorio_id ? linkAcessorio(r.acessorio_id, r.acessorio?.marcacao || "peça") : r.equipamento_id ? linkEquipamento(r.equipamento_id, "TAG " + (r.equipamento?.codigo || "")) : "—"; }
 function repResp(id){ const f = _repFuncs.find(x => x.id === id); return f ? f.nome : ""; }   // responsavel_id → funcionarios
+let _repExtras = [];   // lote S60 (#254): outros responsáveis da ficha aberta
+function repRespNomes(r){ return respTodos(r.responsavel_id, r.responsaveis_extra_ids, repResp); }
+function repRenderExtras(){
+  respExtrasRender({ wrap: "rep-resp-extras", sel: "rep-resp-extra-add", extras: _repExtras, principal: $("rep-resp").value, funcs: _repFuncs, pode: repPodeEditar(),
+    aoMudar: l => { _repExtras = l; repRenderExtras(); } });
+}
 function repDias(r){
   if(!r.data_abertura) return null;
   const fim = r.data_conclusao || hojeISO();
@@ -102,7 +108,7 @@ function repFiltrados(){
     if(st === "_abertos"){ if(!["aberto", "em_execucao"].includes(r.status)) return false; }
     else if(st && r.status !== st) return false;
     if(se && r.setor !== se) return false;
-    if(rs && r.responsavel_id !== rs) return false;
+    if(rs && r.responsavel_id !== rs && !(r.responsaveis_extra_ids || []).includes(rs)) return false;
     if(q && ![r.numero, r.codigo_externo, r.descricao, r.motivo, r.acessorio?.marcacao, r.equipamento?.codigo, r.observacoes].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
     return true;
   });
@@ -133,7 +139,7 @@ function renderReparos(){
       <thead><tr><th>Nº</th><th>Abertura</th><th>Peça / TAG</th><th>Descrição</th><th>Setor</th><th>Responsável</th><th class="num">Dias</th><th class="num">Custo</th><th>Status</th></tr></thead>
       <tbody>${dados.map(r => `<tr class="linha-clicavel" data-id="${esc(r.id)}">
         <td><strong>${esc(r.numero || "")}</strong>${r.codigo_externo ? ` <span class="meta">${esc(r.codigo_externo)}</span>` : ""}</td><td>${dataBR(r.data_abertura)}</td>
-        <td>${repAlvoLink(r)}</td><td>${esc(r.descricao || "")}</td><td>${esc(REP_SETOR[r.setor] || "—")}</td><td class="meta">${esc(repResp(r.responsavel_id))}</td>
+        <td>${repAlvoLink(r)}</td><td>${esc(r.descricao || "")}</td><td>${esc(REP_SETOR[r.setor] || "—")}</td><td class="meta" title="${esc(repRespNomes(r).join(", "))}">${esc(respResumo(repRespNomes(r)))}</td>
         <td class="num">${repDias(r) ?? "—"}</td><td class="num">${brl(r.custo_real)}</td><td>${repTag(r.status)}</td></tr>`).join("")}</tbody></table></div>`;
   }
 }
@@ -315,6 +321,7 @@ function abrirFichaReparo(r, itens, horas){
   $("rep-resp").value = r.responsavel_id || ""; $("rep-desc").value = r.descricao || ""; $("rep-motivo").value = r.motivo || "";
   $("rep-abertura").value = r.data_abertura || ""; $("rep-inicio").value = r.data_inicio || ""; $("rep-conclusao").value = r.data_conclusao || ""; $("rep-obs").value = r.observacoes || "";
   $("rep-ficha").querySelectorAll(".odoo-tab[data-tab=geral] input, .odoo-tab[data-tab=geral] select, .odoo-tab[data-tab=geral] textarea").forEach(el => el.disabled = !pode);
+  _repExtras = (r.responsaveis_extra_ids || []).slice(); repRenderExtras();   // lote S60 (#254)
   $("rep-h-data").value = hojeISO();
   repAtualizarCabecalho();
   repRenderItens(); repRenderHoras(); repRenderCustos();
@@ -332,12 +339,12 @@ function repAtualizarCabecalho(){
   $("rep-chip-num").textContent = r.numero || "(novo)";
   $("rep-chip-alvo").innerHTML = repAlvoLink(r);
   $("rep-chip-setor").textContent = REP_SETOR[r.setor] || "—";
-  $("rep-chip-resp").textContent = repResp(r.responsavel_id) || "—";
+  $("rep-chip-resp").textContent = respResumo(repRespNomes(r)) || "—"; $("rep-chip-resp").title = repRespNomes(r).join(", ");
   $("rep-chip-dias").textContent = repDias(r) ?? "—";
   $("rep-chip-odoo").style.display = r.codigo_externo ? "" : "none"; $("rep-chip-odoo-txt").textContent = r.codigo_externo || "";
   const pendBaixa = _repItens.some(i => i.tipo === "consumo" && !i.movimentacao_estoque_id && !i.codigo_externo && i.produto_id);
   const mostra = { "btn-rep-salvar": pode && st !== "cancelado", "btn-rep-iniciar": pode && !novo && st === "aberto", "btn-rep-concluir": pode && !novo && ["aberto", "em_execucao"].includes(st),
-    "btn-rep-cancelar": pode && !novo && ["aberto", "em_execucao"].includes(st), "btn-rep-baixa": repPodeItens() && !novo && st !== "cancelado" && pendBaixa };
+    "btn-rep-cancelar": pode && !novo && ["aberto", "em_execucao"].includes(st), "btn-rep-baixa": repPodeItens() && !novo && st !== "cancelado" && pendBaixa, "btn-rep-imprimir": !novo };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   const sb2 = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n || n === "R$ 0,00"); } };
   sb2("sb-rep-pecas", _repItens.length); sb2("sb-rep-horas", num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0)));
@@ -349,12 +356,55 @@ function repAtivarTab(nome){
   document.querySelectorAll("#rep-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.tab === nome));
   document.querySelectorAll("#rep-ficha .odoo-tab").forEach(t => t.classList.toggle("ativa", t.dataset.tab === nome));
 }
+/* lote S60 (#251): documento para a oficina, no modelo de manImprimirOS. Sem R$ e sem custo. Hex só aqui, porque o gerador roda fora do CSS do app. */
+async function repImprimir(){
+  const r = _repAtual; if(!r?.id) return;
+  const td = "border:1px solid #444;padding:3px 5px;font-size:10px;vertical-align:top;";
+  const th = td + "background:#ddd;font-weight:700;";
+  const tipo = [...$("rep-tipo").options].find(o => o.value === r.tipo_servico)?.text || r.tipo_servico || "";
+  const nomeF = id => repResp(id) || "—";
+  const pecas = _repItens.map((i, k) => `<tr><td style="${td}text-align:center;">${k + 1}</td><td style="${td}">${esc(i.descricao || "")}</td><td style="${td}">${esc(i.unidade || "un")}</td><td style="${td}text-align:right;">${num(i.quantidade)}</td><td style="${td}">${i.tipo === "retirada" ? "Retirada" : "Consumo"}</td></tr>`).join("")
+    || `<tr><td style="${td}" colspan="5">Nenhuma peça lançada.</td></tr>`;
+  const hora = h => h ? esc(String(h).slice(0, 5)) : "";
+  const horas = _repHoras.map(h => `<tr><td style="${td}">${esc(nomeF(h.funcionario_id))}</td><td style="${td}">${dataBR(h.data)}</td><td style="${td}">${hora(h.inicio)}</td><td style="${td}">${hora(h.fim)}</td><td style="${td}text-align:right;">${num(h.horas)}</td></tr>`).join("")
+    || `<tr><td style="${td}" colspan="5">Nenhuma hora lançada.</td></tr>`;
+  const totalH = _repHoras.reduce((t, h) => t + Number(h.horas || 0), 0);
+  const el = document.createElement("div");
+  el.style.cssText = "font-family:Arial,Helvetica,sans-serif;color:#000;width:100%;";
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
+      <tr><td style="${td}font-size:16px;font-weight:700;text-align:center;" colspan="3">ORDEM DE REPARO<br/><span style="font-size:12px;">${esc(tipo.toUpperCase())}</span></td><td style="${td}font-size:12px;font-weight:700;text-align:center;">${esc(r.numero || "")}</td></tr>
+      <tr><td style="${th}">ALVO</td><td style="${th}">SETOR</td><td style="${th}">STATUS</td><td style="${th}">RESPONSÁVEIS</td></tr>
+      <tr><td style="${td}">${esc(repAlvoTxt(r))}</td><td style="${td}">${esc(REP_SETOR[r.setor] || "")}</td><td style="${td}">${esc(REP_STATUS[r.status]?.[0] || r.status || "")}</td><td style="${td}">${esc(repRespNomes(r).join(", "))}</td></tr>
+      <tr><td style="${th}">ABERTURA</td><td style="${th}">INÍCIO</td><td style="${th}" colspan="2">CONCLUSÃO</td></tr>
+      <tr><td style="${td}">${dataBR(r.data_abertura)}</td><td style="${td}">${dataBR(r.data_inicio)}</td><td style="${td}" colspan="2">${dataBR(r.data_conclusao)}</td></tr>
+      <tr><td style="${th}" colspan="4">DESCRIÇÃO</td></tr>
+      <tr><td style="${td}" colspan="4">${esc(r.descricao || "")}</td></tr>
+      <tr><td style="${th}" colspan="4">MOTIVO</td></tr>
+      <tr><td style="${td}" colspan="4">${esc(r.motivo || "")}${r.observacoes ? `<br/><span style="font-size:9px;">${esc(r.observacoes)}</span>` : ""}</td></tr>
+    </table>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
+      <tr><td style="${th}" colspan="5">PEÇAS</td></tr>
+      <tr><td style="${th}width:30px;">ITEM</td><td style="${th}">DESCRIÇÃO</td><td style="${th}width:40px;">UN</td><td style="${th}width:60px;">QTD</td><td style="${th}width:70px;">TIPO</td></tr>
+      ${/* html */ pecas}
+    </table>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
+      <tr><td style="${th}" colspan="5">APROPRIAÇÃO DE MÃO DE OBRA · TOTAL ${num(totalH)} H</td></tr>
+      <tr><td style="${th}">NOME</td><td style="${th}width:70px;">DATA</td><td style="${th}width:60px;">INÍCIO</td><td style="${th}width:60px;">FIM</td><td style="${th}width:60px;">HORAS</td></tr>
+      ${/* html */ horas}
+    </table>
+    <table style="width:100%;border-collapse:collapse;margin-top:28px;">
+      <tr><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>EXECUTANTE</td><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>RESPONSÁVEL</td></tr>
+    </table>`;
+  try { await pdfGerar(el, { filename: `${r.numero || "reparo"}.pdf` }); }
+  catch(err){ aviso("app-aviso", "Não foi possível gerar o PDF: " + err.message, "erro"); }
+}
 function mostrarPainelReparos(){ $("rep-ficha").style.display = "none"; $("rep-painel").style.display = ""; _repAtual = null; renderReparos(); }
 
 async function salvarReparo(){
   if(!repPodeEditar() || !_repAtual) return null;
   const reg = { acessorio_id: _repAce ? _repAce.id : null, equipamento_id: $("rep-equip").value || null, setor: $("rep-setor").value || null, tipo_servico: $("rep-tipo").value,
-    responsavel_id: $("rep-resp").value || null, descricao: $("rep-desc").value.trim(), motivo: $("rep-motivo").value.trim() || null,
+    responsavel_id: $("rep-resp").value || null, responsaveis_extra_ids: _repExtras.filter(x => x !== $("rep-resp").value), descricao: $("rep-desc").value.trim(), motivo: $("rep-motivo").value.trim() || null,
     data_abertura: $("rep-abertura").value || hojeISO(), data_inicio: $("rep-inicio").value || null, data_conclusao: $("rep-conclusao").value || null, observacoes: $("rep-obs").value.trim() || null };
   if(!reg.descricao){ aviso("app-aviso", "Informe a descrição do reparo.", "erro"); repAtivarTab("geral"); return null; }
   if(!reg.acessorio_id && !reg.equipamento_id){ aviso("app-aviso", "Informe o acessório ou a TAG.", "erro"); repAtivarTab("geral"); return null; }
@@ -533,6 +583,8 @@ function ligarReparos(){
     const el = e.target.closest("[data-id]"); if(el) abrirReparo(el.dataset.id);
   });
   $("btn-rep-voltar")?.addEventListener("click", mostrarPainelReparos);
+  $("btn-rep-imprimir")?.addEventListener("click", () => comBotaoTravado("btn-rep-imprimir", repImprimir));   // lote S60 (#251)
+  $("rep-resp")?.addEventListener("change", () => { _repExtras = _repExtras.filter(x => x !== $("rep-resp").value); repRenderExtras(); });   // lote S60 (#254)
   $("btn-rep-salvar")?.addEventListener("click", () => comBotaoTravado("btn-rep-salvar", salvarReparo));
   document.querySelectorAll("#rep-ficha .rep-acao").forEach(b => b.addEventListener("click", () => comBotaoTravado(b.id, () => repAcao(b.dataset.acao))));
   document.querySelectorAll("#rep-notebook button").forEach(b => b.addEventListener("click", () => repAtivarTab(b.dataset.tab)));
