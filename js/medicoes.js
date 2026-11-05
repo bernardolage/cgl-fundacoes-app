@@ -872,6 +872,8 @@ async function sugerirItensMedicao(){
 
   if(btn){ btn.disabled = false; btn.textContent = "✨ Sugerir do período"; }
   if(previewRes.error){ aviso("app-aviso","Erro ao sugerir: "+previewRes.error.message,"erro"); return; }
+  // Sem o aviso, um erro aqui deixava a medição sem refuro e sem mobilização, calada (o 42702 durou da fase 18b até este hotfix)
+  const erroExtras = extrasRes.error ? ` ⚠️ Refuro e mobilização não vieram (${extrasRes.error.message}): lance à mão.` : "";
 
   const itensBase = (previewRes.data || []).map(d => ({
     descricao: `${d.variante_nome || "Estaca"} (${d.faixa_descricao})`,
@@ -899,7 +901,7 @@ async function sugerirItensMedicao(){
   }));
 
   if(!itensBase.length && !itensExtras.length){
-    aviso("app-aviso","Nada a sugerir no período. Confira datas, RDOs e orçamento da obra.","erro");
+    aviso("app-aviso","Nada a sugerir no período. Confira datas, RDOs e orçamento da obra."+erroExtras,"erro");
     return;
   }
 
@@ -915,7 +917,9 @@ async function sugerirItensMedicao(){
   const semPreco = _medItens.filter(i => !i.valor_unitario).length;
   let msg = `✨ Sugestão: ${partes.join(" + ")}.`;
   if(semPreco) msg += ` ⚠️ ${semPreco} sem preço — ajuste manualmente.`;
-  aviso("app-aviso", msg, semPreco ? "erro" : "ok");
+  if(ref) msg += " ⚠️ Refuro: confirme com o engenheiro da obra antes de cobrar; refuro por responsabilidade da CGL sai da medição.";
+  msg += erroExtras;
+  aviso("app-aviso", msg, semPreco || ref || erroExtras ? "erro" : "ok");
 }
 
 function atualizarStatusbarMed(st){
