@@ -2574,6 +2574,13 @@ table td:has(> textarea) {
   padding: var(--esp-1) var(--esp-2);
 }
 
+/* Itens da medição: o width: 100% acima deixa a tabela encolher o campo e
+   cortar o número (1007,15 aparecia como "10" abaixo de 1.280 px) e o Ø da
+   descrição. Sem caber, a tabela rola para o lado. */
+.mi-desc { min-width: 360px; }
+.mi-qty { min-width: 110px; }
+.mi-unit { min-width: 100px; }
+
 /* ---- Caixa interna dos diálogos (o fundo é .modal-fundo) ---- */
 .modal-caixa {
   background: var(--sup-0);

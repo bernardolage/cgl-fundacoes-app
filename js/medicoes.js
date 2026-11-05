@@ -430,7 +430,7 @@ function renderMedItens(){
       : "";
     return `<tr data-idx="${idx}">
       <td><strong>${idx+1}</strong></td>
-      <td><input type="text" class="mi-desc" value="${esc(it.descricao||"")}" style="min-width:220px;" placeholder="ex.: Estaca Ø400 18-24m" />${lido}</td>
+      <td><input type="text" class="mi-desc" value="${esc(it.descricao||"")}" placeholder="ex.: Estaca Ø400 18-24m" />${lido}</td>
       <td><input type="number" class="mi-qty col-xs" step="any" min="0" value="${esc(medArred6(it.quantidade ?? 0))}" title="Até 6 casas decimais" /></td>
       <td><input type="text" class="mi-uni" value="${esc(it.unidade||"")}" style="width:50px;" placeholder="m/vb/h" /></td>
       <td><input type="number" class="mi-unit col-sm" step="0.01" min="0" value="${esc(it.valor_unitario ?? 0)}" /></td>
