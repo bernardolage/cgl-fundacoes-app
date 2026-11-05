@@ -2574,9 +2574,28 @@ table td:has(> textarea) {
   padding: var(--esp-1) var(--esp-2);
 }
 
-/* Itens da medição: o width: 100% acima deixa a tabela encolher o campo e
-   cortar o número (1007,15 aparecia como "10" abaixo de 1.280 px) e o Ø da
-   descrição. Sem caber, a tabela rola para o lado. */
+/* Piso dos campos em tabela: o width: 100% acima vence .col-* e deixa a tabela
+   encolher o campo até cortar o que está escrito. Sem caber, a tabela rola para
+   o lado. :where() zera a especificidade: a ordem decide aqui, e qualquer classe
+   de módulo manda. Campo com largura própria no style fica como está. */
+:where(table) :where(input[type="text"], input:not([type]), select, textarea):where(:not([style*="width"])) { min-width: 130px; }
+:where(table) :where(input.col-xs, select.col-xs) { min-width: 80px; }
+:where(table) :where(input.col-sm, select.col-sm) { min-width: 110px; }
+:where(table) :where(input.col-md, select.col-md) { min-width: 110px; }
+:where(table) :where(input.col-lg, select.col-lg, input.col-xl, select.col-xl) { min-width: 175px; }
+:where(table) :where(input[type="number"], input[type="time"]):where(:not([style*="width"])) { min-width: 96px; }
+
+/* Campos de texto que precisam de mais que o piso. */
+.it-cat-wrap { min-width: 210px; }
+.it-desc { min-width: 260px; }
+.it-obs { min-width: 180px; }
+.it-un { min-width: 80px; }
+.eq-func { min-width: 225px; }
+.eq-funcao { min-width: 150px; }
+.ra-mot { min-width: 220px; }
+.man-a-f[data-c="atividade"] { min-width: 240px; }
+
+/* Itens da medição: o Ø da descrição e a quantidade com 6 casas. */
 .mi-desc { min-width: 360px; }
 .mi-qty { min-width: 110px; }
 .mi-unit { min-width: 100px; }
