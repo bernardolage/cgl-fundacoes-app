@@ -1525,16 +1525,16 @@ async function cmpCarregarFilhas(id){
   const acoesRec = r => {
     if(r.status !== "confirmado") return "";
     const ts = titsPorRec[r.id] || [], b = [];
-    if(verTit && cmpPodeLancarNf() && !ts.length) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-lancar" data-rec="${esc(r.id)}" title="Lança a NF deste material recebido (número, chave, vencimentos ou XML) e gera os títulos a pagar">Lançar NF</button>`);
+    if(verTit && cmpPodeLancarNf() && !ts.length) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-lancar" data-rec="${esc(r.id)}" title="Lança a NF deste recebimento (número, chave, vencimentos ou XML) e gera os títulos a pagar">Lançar NF</button>`);
     if(cmpPodeReceber() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo-txt);">Estornar</button>`);
     return b.join(" ");
   };
-  // hotfix 221: "🧾 Lançar NF" também no topo da ficha, para o financeiro, enquanto houver material recebido sem NF
+  // hotfix 221: "🧾 Lançar NF" também no topo da ficha, para o financeiro, enquanto houver recebimento sem NF; lote S61a (#265): serviço também
   const bLanc = $("btn-cmp-lancar-nf");
-  const semNf = verTit && cmpPodeLancarNf() ? recs.filter(r => r.status === "confirmado" && r.tipo !== "servico" && !(titsPorRec[r.id] || []).length) : [];
+  const semNf = verTit && cmpPodeLancarNf() ? recs.filter(r => r.status === "confirmado" && !(titsPorRec[r.id] || []).length) : [];
   if(bLanc){ bLanc.style.display = semNf.length ? "" : "none"; bLanc.dataset.rec = semNf.length ? semNf[semNf.length - 1].id : ""; }   // o mais antigo
   $("cmp-rec-lista").innerHTML = rec.error ? `<p class="vazio">Erro: ${esc(rec.error.message)}</p>` : !recs.length ? `<p class="vazio">Nenhum recebimento. Use "Receber material" ou "Receber NF" quando a mercadoria chegar.</p>` :
-    recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}${r.status === "confirmado" && !r.nf_numero && r.tipo !== "servico" && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="tag ambar">aguardando NF</span>' : ""}</h3>
+    recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}${r.status === "confirmado" && !r.nf_numero && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="tag ambar">aguardando NF</span>' : ""}</h3>
       <span style="margin-left:auto;">${/* html */ acoesRec(r)} ${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
       <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(semCodOdoo(i.descricao))}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${cmpBrl4(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table>
       ${r.observacoes ? `<p class="meta" style="margin:6px 0 0;">${esc(r.observacoes)}</p>` : ""}
@@ -2456,9 +2456,9 @@ async function cmpAcao(acao){
   if(acao === "pdf_sem_valor"){ return cmpPdfPedido(true); }   // lote S55 (#179)
   if(acao === "receber"){ return abrirRecebimento(_cmpAtual); }
   if(acao === "receber_material"){ return abrirRecebimento(_cmpAtual, "material"); }   // lote S57a (#221)
-  if(acao === "lancar_nf"){   // hotfix 221: o recebimento de material mais antigo ainda sem NF
+  if(acao === "lancar_nf"){   // hotfix 221: o recebimento mais antigo ainda sem NF (lote S61a: serviço também)
     const id = $("btn-cmp-lancar-nf")?.dataset.rec, r = id && (_cmpRecsAtual || []).find(x => x.id === id);
-    if(!r){ aviso("app-aviso", "Nenhum material recebido aguardando NF neste pedido. Veja a aba Recebimentos.", "aviso"); return; }
+    if(!r){ aviso("app-aviso", "Nenhum recebimento aguardando NF neste pedido. Veja a aba Recebimentos.", "aviso"); return; }
     return abrirLancarNf(r.id);
   }
   if(acao === "receber_servico"){ return abrirReceberServico(); }   // fase 78
@@ -2582,7 +2582,7 @@ function abrirLancarNf(recId){
   if($("cmp-rec-contrato-campo")) $("cmp-rec-contrato-campo").style.display = "none";
   $("cmp-rec-th-pend").textContent = "Pendente";
   $("btn-cmp-rec-confirmar").textContent = "Lançar NF e gerar títulos";
-  $("cmp-rec-ajuda").textContent = `Material recebido em ${dataBR(r.data_recebimento)}. Informe a NF (ou importe o XML) e o vencimento: os títulos a pagar nascem agora. Quantidades e valores dos itens não mudam aqui; se a nota não bate com o que chegou, estorne o recebimento e receba de novo.`;
+  $("cmp-rec-ajuda").textContent = `${r.tipo === "servico" ? "Serviço" : "Material"} recebido em ${dataBR(r.data_recebimento)}. Informe a NF (ou importe o XML) e o vencimento: os títulos a pagar nascem agora. Quantidades e valores dos itens não mudam aqui; se a nota não bate com o que chegou, estorne o recebimento e receba de novo.`;
   $("cmp-rec-titulo").textContent = `Lançar NF — pedido ${_cmpAtual.numero}`;
   $("cmp-rec-xml").value = "";
   $("cmp-rec-xml-info").textContent = "Clique ou arraste o XML aqui. Preenche número, série, chave, emissão, frete, total e duplicatas; os itens recebidos não mudam.";
@@ -3024,13 +3024,12 @@ function abrirReceberServico(){
     const pend = Number(i.quantidade || 0) - Number(i.quantidade_recebida || 0);
     let d = { destino: i.destino, obra_id: i.obra_id || null, equipamento_id: i.equipamento_id || null, centro_custo_id: i.centro_custo_id || null, destino_acessorio_id: i.destino_acessorio_id || null };
     if(d.destino === "estoque") d = cmpDestinoDoValor(cmpDestinoPadraoDe(p));
-    return { pedido_item_id: i.id, descricao: i.descricao, unidade: i.unidade || "un", pendente: pend, quantidade: pend,
+    return { pedido_item_id: i.id, produto_id: i.produto_id || null, descricao: i.descricao, unidade: i.unidade || "un", pendente: pend, quantidade: pend,
       valor: Math.round(pend * Number(i.valor_unitario || 0) * 100) / 100, categoria_custo: i.categoria_custo, ...d };
   }) };
   $("cmp-srv-titulo").textContent = `Receber serviço — pedido ${p.numero}`;
-  $("cmp-srv-data").value = hojeISO(); $("cmp-srv-nf").value = ""; $("cmp-srv-desc").value = ""; $("cmp-srv-anexos").value = "";
-  $("cmp-srv-venc").value = "";
-  if(p.condicao_pagamento && /(\d+)\s*dias?/i.test(p.condicao_pagamento)){ const d = new Date(); d.setDate(d.getDate() + Number(RegExp.$1)); $("cmp-srv-venc").value = dataLocalISO(d); }
+  // lote S61a (#265): o recebimento só confirma a execução; NF e vencimento vão para "Lançar NF"
+  $("cmp-srv-data").value = hojeISO(); $("cmp-srv-desc").value = ""; $("cmp-srv-anexos").value = "";
   renderServicoItens();
   $("cmp-srv-modal").style.display = "flex";
 }
@@ -3066,18 +3065,17 @@ async function confirmarServico(){
     if(cmpDestinoIncompleto(it)){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
     if(Number(it.quantidade) > it.pendente * 1.1 && !confirm(`"${it.descricao}": recebendo ${num(it.quantidade)} e o pedido tem ${num(it.pendente)} pendente. Continuar?`)) return;
   }
-  const venc = $("cmp-srv-venc").value || null;
-  if(!venc && !confirm("Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?")) return;
   const recId = crypto.randomUUID();
   let anexos = [];
   try { anexos = await cmpEnviarAnexos(recId, files); } catch(e){ aviso("app-aviso", e.message || String(e), "erro"); return; }
   const total = Math.round(itens.reduce((t, i) => t + Number(i.valor || 0), 0) * 100) / 100;
   const desfazer = async () => { await sb.from("recebimentos").delete().eq("id", recId); await cmpRemoverAnexos(anexos); };
+  // lote S61a (#265): sem NF nem vencimento, não nasce título; total_nf = valor do serviço (só exibição; o Lançar NF recalcula)
   const { error } = await sb.from("recebimentos").insert({ id: recId, pedido_id: p.id, fornecedor_id: p.fornecedor_id, tipo: "servico",
-    nf_numero: $("cmp-srv-nf").value.trim() || null, data_recebimento: $("cmp-srv-data").value || hojeISO(), vencimento: venc, parcelas: 1, total_nf: total, observacoes: desc });
+    data_recebimento: $("cmp-srv-data").value || hojeISO(), parcelas: 1, total_nf: total, observacoes: desc });
   if(error){ await cmpRemoverAnexos(anexos); aviso("app-aviso", "Erro ao criar o recebimento: " + error.message, "erro"); return; }
   const { error: eIt } = await sb.from("recebimento_itens").insert(itens.map(it => ({
-    recebimento_id: recId, pedido_item_id: it.pedido_item_id, descricao: it.descricao, unidade: it.unidade, quantidade_nf: Number(it.quantidade),
+    recebimento_id: recId, pedido_item_id: it.pedido_item_id, produto_id: it.produto_id || null, descricao: it.descricao, unidade: it.unidade, quantidade_nf: Number(it.quantidade),
     valor_unitario_nf: Math.round(Number(it.valor || 0) / Number(it.quantidade) * 10000) / 10000, quantidade_aceita: Number(it.quantidade),
     categoria_custo: it.categoria_custo || null, destino: it.destino, obra_id: it.obra_id || null, equipamento_id: it.equipamento_id || null,
     centro_custo_id: it.destino === "centro_custo" ? it.centro_custo_id : null,
@@ -3087,7 +3085,7 @@ async function confirmarServico(){
   if(eAn){ await desfazer(); aviso("app-aviso", "Erro ao registrar a evidência: " + eAn.message, "erro"); return; }
   const { error: eRpc } = await sb.rpc("recebimento_confirmar", { p_id: recId });
   if(eRpc){ await desfazer(); aviso("app-aviso", "Serviço não recebido: " + eRpc.message.replace(/^.*?: /, ""), "erro"); return; }
-  aviso("app-aviso", "Serviço recebido com evidência: custo lançado" + (venc ? " e título gerado." : "."), "ok");
+  aviso("app-aviso", "Serviço recebido com evidência: custo lançado. A NF e o título saem em Lançar NF.", "ok");
   fecharReceberServico();
   await cmpFetchPedidos();
   await abrirPedido(p.id);
