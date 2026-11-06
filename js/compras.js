@@ -2517,8 +2517,22 @@ async function cmpAcao(acao){
 const CMP_REC_FISCAIS = ["cmp-rec-nf", "cmp-rec-serie", "cmp-rec-chave", "cmp-rec-emissao", "cmp-rec-frete", "cmp-rec-venc", "cmp-rec-parc", "cmp-rec-total"];
 // fase 152 (D-152a): no Receber material quem recebe pode anotar estes quatro da nota que tem na mão; o financeiro confere no Lançar NF
 const CMP_REC_ANOTAVEIS = ["cmp-rec-nf", "cmp-rec-serie", "cmp-rec-emissao", "cmp-rec-total"];
+/* fase 135b: competência (mês do custo e do título de NF). Acompanha a emissão (ou o recebimento) até a pessoa mudar o campo;
+   aparece no Receber NF e no Lançar NF. No material e na compra direta o banco usa o mês da emissão ou do recebimento. */
+let _cmpRecCompEd = false;
+function cmpRecCompSync(base){
+  const c = $("cmp-rec-comp"); if(!c || _cmpRecCompEd) return;
+  c.value = String($("cmp-rec-emissao").value || base || $("cmp-rec-data").value || hojeISO()).slice(0, 7);
+}
+document.addEventListener("input", e => {
+  const id = e.target?.id;
+  if(id === "cmp-rec-comp") _cmpRecCompEd = !!e.target.value;
+  else if(id === "cmp-rec-emissao" || id === "cmp-rec-data") cmpRecCompSync();
+});
 function cmpRecModoCampos(modo){
   const material = modo === "material", lancar = modo === "lancar_nf";
+  const cc = $("cmp-rec-comp")?.closest(".campo"); if(cc) cc.style.display = material || modo === "compra_direta" ? "none" : "";   // fase 135b
+  _cmpRecCompEd = false;
   CMP_REC_FISCAIS.forEach(id => { const c = $(id)?.closest(".campo"); if(c) c.style.display = material && !CMP_REC_ANOTAVEIS.includes(id) ? "none" : ""; });
   const anot = $("cmp-rec-anot"); if(anot){ anot.textContent = ""; anot.style.display = "none"; }   // fase 152: aviso do modo material ou linha do anotado no Lançar NF
   const z = $("cmp-rec-xml-zona"); if(z) z.style.display = material ? "none" : "";
@@ -2556,6 +2570,7 @@ function abrirRecebimento(pedido, modo){
   cmpRecPreencherContratos(); // fase 57: NF de contrato recorrente (só sem pedido)
   ["cmp-rec-nf","cmp-rec-chave","cmp-rec-emissao","cmp-rec-frete","cmp-rec-venc","cmp-rec-total","cmp-rec-obs"].forEach(id => $(id).value = "");
   $("cmp-rec-serie").value = "1"; $("cmp-rec-parc").value = "1"; $("cmp-rec-data").value = hojeISO();
+  cmpRecCompSync();   // fase 135b
   if(pedido && pedido.condicao_pagamento && /(\d+)\s*dias?/i.test(pedido.condicao_pagamento)){
     const dias = Number(RegExp.$1); const d = new Date(); d.setDate(d.getDate() + dias); $("cmp-rec-venc").value = d.toISOString().slice(0, 10);
     const parc = (pedido.condicao_pagamento.match(/\d+/g) || []).length; if(parc > 1) $("cmp-rec-parc").value = parc;
@@ -2605,6 +2620,7 @@ function abrirLancarNf(recId){
     $("cmp-rec-anot").style.display = "";
   }
   $("cmp-rec-venc").value = ""; $("cmp-rec-parc").value = "1"; $("cmp-rec-obs").value = ""; $("cmp-rec-data").value = r.data_recebimento || hojeISO();
+  cmpRecCompSync(r.data_recebimento);   // fase 135b: mês da emissão anotada ou do recebimento; editável
   const cond = _cmpAtual.condicao_pagamento;
   if(cond && /(\d+)\s*dias?/i.test(cond)){
     const d = new Date(); d.setDate(d.getDate() + Number(RegExp.$1)); $("cmp-rec-venc").value = dataLocalISO(d);
@@ -2622,7 +2638,8 @@ async function cmpConfirmarLancarNf(){
   if(!venc && !dups){ aviso("app-aviso", "Informe o 1º vencimento (ou importe o XML com as duplicatas): sem ele não nasce título a pagar.", "erro"); return; }
   const dados = { nf_numero: nf, nf_serie: $("cmp-rec-serie").value.trim() || null, nf_chave: $("cmp-rec-chave").value.replace(/\D/g, "") || null,
     nf_data_emissao: $("cmp-rec-emissao").value || null, vencimento: venc, parcelas: Math.max(1, Number($("cmp-rec-parc").value || 1)), duplicatas: dups,
-    frete: Number($("cmp-rec-frete").value || 0), total_nf: Number($("cmp-rec-total").value || 0) || null, xml_texto: r.xml?.texto || null };
+    frete: Number($("cmp-rec-frete").value || 0), total_nf: Number($("cmp-rec-total").value || 0) || null, xml_texto: r.xml?.texto || null,
+    competencia: $("cmp-rec-comp")?.value ? $("cmp-rec-comp").value + "-01" : null };   // fase 135b
   // fase 152 (D-152b): número ou total diferentes do anotado avisam e aceitam; o banco grava os dois no histórico (nf_divergente)
   if(r.anot){
     const normNf = v => String(v || "").trim().toUpperCase().replace(/^0+/, "");
@@ -2946,7 +2963,8 @@ async function confirmarRecebimento(){
     nf_chave: material ? null : ($("cmp-rec-chave").value.replace(/\D/g, "") || null), nf_data_emissao: material && !nfNum ? null : ($("cmp-rec-emissao").value || null), data_recebimento: $("cmp-rec-data").value || hojeISO(),
     frete: material ? 0 : Number($("cmp-rec-frete").value || 0), vencimento: venc, parcelas: material ? 1 : Math.max(1, Number($("cmp-rec-parc").value || 1)), total_nf: material && !nfNum ? 0 : Number($("cmp-rec-total").value || 0), observacoes: $("cmp-rec-obs").value.trim() || null,
     duplicatas: dups, xml_texto: material ? null : (r.xml?.texto || null),
-    contrato_id: (!r.pedido && $("cmp-rec-contrato")?.value) || null // fase 57
+    contrato_id: (!r.pedido && $("cmp-rec-contrato")?.value) || null, // fase 57
+    ...(!material && _cmpRecCompEd && $("cmp-rec-comp")?.value ? { competencia: $("cmp-rec-comp").value + "-01" } : {})   // fase 135b
   };
   const { data: rec, error } = await sb.from("recebimentos").insert(cab).select("id").single();
   if(error){ aviso("app-aviso", "Erro ao criar o recebimento: " + error.message, "erro"); return; }
@@ -3184,6 +3202,7 @@ async function cmpImportarXml(file){
   _cmpRec.xml = { texto, chave: nf.chave, nome: file.name }; _cmpRec._pend = null;
   // cabeçalho
   $("cmp-rec-nf").value = nf.numero; $("cmp-rec-serie").value = nf.serie || "1"; $("cmp-rec-chave").value = nf.chave; $("cmp-rec-emissao").value = nf.emissao;
+  cmpRecCompSync();   // fase 135b
   $("cmp-rec-frete").value = nf.totais.vFrete || ""; $("cmp-rec-total").value = nf.totais.vNF || "";
   if(nf.duplicatas.length){ _cmpRec.duplicatas = nf.duplicatas; $("cmp-rec-venc").value = nf.duplicatas[0].vencimento; $("cmp-rec-parc").value = nf.duplicatas.length; }
   else { _cmpRec.duplicatas = null; }
@@ -3315,6 +3334,13 @@ async function salvarCustoAvulso(){
 }
 
 /* ---------- aba Custos (equipamento / obra) — lê vw_custos ---------- */
+/* Fase 135b: no topo, três respostas.
+   - Comprometido (vw_custos_comprometido): pedido aprovado, enviado ou parcial, ainda não recebido.
+   - Por mês: o toggle escolhe Competência (padrão) ou Data do lançamento.
+   - Caixa previsto (vw_custos_caixa_previsto): títulos de NF por mês de vencimento, só para quem lê contas a pagar; é previsão, sem
+     pagamento real.
+   Sem a migration (ou sem leitura), os blocos novos não aparecem e o Por mês usa a data. */
+let _custosMesModo = "competencia";
 async function custosRender(containerId, filtro, cbTotal){
   const c = $(containerId); if(!c) return;
   // 22/09/2026: custos por TAG/obra só para quem opera compras (mesmos cargos que leem as tabelas de custo no banco)
@@ -3322,42 +3348,90 @@ async function custosRender(containerId, filtro, cbTotal){
   if(!cmpPodeOperar()){ if(abaBtn) abaBtn.style.display = "none"; c.innerHTML = `<p class="vazio">Seu perfil não vê custos.</p>`; return; }
   if(abaBtn) abaBtn.style.display = "";
   c.innerHTML = `<p class="vazio">Carregando custos…</p>`;
-  let q = sb.from("vw_custos").select("*").order("data", { ascending: false }).limit(2000);
-  if(filtro.equipamento_id) q = q.eq("equipamento_id", filtro.equipamento_id);
-  if(filtro.obra_id) q = q.eq("obra_id", filtro.obra_id);
-  if(filtro.centro_custo_id) q = q.eq("centro_custo_id", filtro.centro_custo_id);   // fase 76
-  const { data, error } = await q;
+  const aplicar = q => {
+    if(filtro.equipamento_id) q = q.eq("equipamento_id", filtro.equipamento_id);
+    if(filtro.obra_id) q = q.eq("obra_id", filtro.obra_id);
+    if(filtro.centro_custo_id) q = q.eq("centro_custo_id", filtro.centro_custo_id);   // fase 76
+    return q;
+  };
+  const verCaixa = typeof podeVerContasPagar === "function" && podeVerContasPagar();
+  const [rCus, rComp, rCx] = await Promise.all([
+    aplicar(sb.from("vw_custos").select("*").order("data", { ascending: false }).limit(2000)),
+    lerTudo(() => aplicar(sb.from("vw_custos_comprometido").select("pedido_id,pedido_numero,valor")), ["pedido_item_id", "equipamento_id"]),
+    verCaixa ? lerTudo(() => aplicar(sb.from("vw_custos_caixa_previsto").select("mes_vencimento,valor")), ["titulo_id", "recebimento_item_id", "equipamento_id"])
+             : Promise.resolve({ data: [], error: { pulado: true } })
+  ]);
+  const { data, error } = rCus;
   if(error){ c.innerHTML = `<p class="vazio">Erro ao carregar custos: ${esc(error.message)}</p>`; return; }
   const linhas = data || [];
+  const comp = rComp.error ? null : (rComp.data || []);
+  const caixa = rCx.error ? null : (rCx.data || []);
   const total = linhas.reduce((s, l) => s + Number(l.valor || 0), 0);
   if(cbTotal) cbTotal(total);
   const pode = cmpPodeOperar();
+  const mesBR = m => m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : "";
   const porCat = {}; linhas.forEach(l => porCat[l.categoria] = (porCat[l.categoria] || 0) + Number(l.valor || 0));
-  const porMes = {}; linhas.forEach(l => { const m = String(l.data || "").slice(0, 7); porMes[m] = (porMes[m] || 0) + Number(l.valor || 0); });
-  const meses = Object.keys(porMes).sort().reverse().slice(0, 12);
+  const temComp = linhas.some(l => l.competencia !== undefined);
+  const blocoMes = () => {
+    const porComp = temComp && _custosMesModo === "competencia";
+    const porMes = {};
+    linhas.forEach(l => { const m = String((porComp ? l.competencia || l.data : l.data) || "").slice(0, 7); porMes[m] = (porMes[m] || 0) + Number(l.valor || 0); });
+    const meses = Object.keys(porMes).sort().reverse().slice(0, 12);
+    const toggle = temComp ? `<div class="serv-views" role="group" aria-label="Agrupar por mês" style="flex-wrap:wrap;margin:2px 0 6px;">${[["competencia", "Competência"], ["data", "Data do lançamento"]].map(([v, rot]) =>
+      `<button type="button" class="serv-view-btn${_custosMesModo === v ? " ativo" : ""}" data-custos-mes="${esc(v)}" aria-pressed="${_custosMesModo === v}">${esc(rot)}</button>`).join("")}</div>` : "";
+    return `<div class="mov-ace-sug-grupo-t">Por mês</div>${toggle}${meses.map(m => `<div class="custos-linha"><span>${esc(mesBR(m))}</span><strong>${brl(porMes[m])}</strong></div>`).join("")}`;
+  };
+  let blocoComp = "";
+  if(comp){
+    const porPed = {}; comp.forEach(x => { const k = x.pedido_numero || "—"; porPed[k] = (porPed[k] || 0) + Number(x.valor || 0); });
+    const peds = Object.entries(porPed).sort((a, b) => b[1] - a[1]);
+    const totComp = comp.reduce((s, x) => s + Number(x.valor || 0), 0);
+    blocoComp = `<div><div class="mov-ace-sug-grupo-t">Comprometido</div><div class="meta">Contratado, ainda não recebido</div>
+      ${peds.length ? peds.slice(0, 8).map(([k, v]) => `<div class="custos-linha"><span>${esc(k)}</span><strong>${brl(v)}</strong></div>`).join("")
+        + (peds.length > 8 ? `<div class="meta">e mais ${peds.length - 8} pedido(s)</div>` : "")
+        + `<div class="custos-linha"><span>Total comprometido</span><strong>${brl(totComp)}</strong></div>`
+        : `<div class="meta">Nenhum pedido aprovado esperando entrega.</div>`}</div>`;
+  }
+  let blocoCaixa = "";
+  if(caixa){
+    const porVenc = {}; caixa.forEach(x => { const m = String(x.mes_vencimento || "").slice(0, 7); porVenc[m] = (porVenc[m] || 0) + Number(x.valor || 0); });
+    const mesesV = Object.keys(porVenc).sort().reverse().slice(0, 12);
+    blocoCaixa = `<div><div class="mov-ace-sug-grupo-t">Caixa previsto</div><div class="meta">Por vencimento dos títulos de NF</div>
+      ${mesesV.length ? mesesV.map(m => `<div class="custos-linha"><span>${esc(mesBR(m))} <span class="meta">previsto</span></span><strong>${brl(porVenc[m])}</strong></div>`).join("")
+        : `<div class="meta">Nenhum título de NF com vencimento.</div>`}</div>`;
+  }
   const nomeForn = id => (typeof _cmpFornMap === "object" && _cmpFornMap[id]?.razao_social) || (typeof mapaFornecedores === "object" && mapaFornecedores && mapaFornecedores[id]) || "";
   const nomeObra = id => cmpObra(id) || "";
   const nomeEq = id => cmpEq(id) || (typeof aceEqTag === "function" ? aceEqTag(id) : "");
+  const temResumo = linhas.length || (comp && comp.length) || (caixa && caixa.length);
   c.innerHTML = `
     <div class="lista-topo compacta"><h3>Custos <span class="meta">${linhas.length} lançamento(s)</span></h3>
       <strong style="margin-left:auto;" data-val-sens>Total ${brl(total)}</strong>
       ${pode ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-av">＋ Custo avulso</button>` : ""}
       ${linhas.length ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-xls">Excel</button>` : ""}
     </div>
-    ${linhas.length ? `<div class="custos-resumo">
-      <div><div class="mov-ace-sug-grupo-t">Por categoria</div>${Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="custos-linha"><span>${esc(CMP_CAT_LBL[k] || k)}</span><strong>${brl(v)}</strong></div>`).join("")}</div>
-      <div><div class="mov-ace-sug-grupo-t">Por mês</div>${meses.map(m => `<div class="custos-linha"><span>${esc(m.slice(5, 7))}/${esc(m.slice(0, 4))}</span><strong>${brl(porMes[m])}</strong></div>`).join("")}</div>
-    </div>
-    <div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Categoria</th><th>Descrição</th><th>${filtro.equipamento_id ? "Obra" : filtro.centro_custo_id ? "Obra / TAG" : "TAG"}</th><th>Fornecedor</th><th>Doc.</th><th class="num">Valor</th></tr></thead>
+    ${temResumo ? `<div class="custos-resumo">
+      ${/* html */ blocoComp}
+      ${linhas.length ? `<div><div class="mov-ace-sug-grupo-t">Por categoria</div>${Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="custos-linha"><span>${esc(CMP_CAT_LBL[k] || k)}</span><strong>${brl(v)}</strong></div>`).join("")}</div>
+      <div id="${esc(containerId)}-mes">${/* html */ blocoMes()}</div>` : ""}
+      ${/* html */ blocoCaixa}
+    </div>` : ""}
+    ${linhas.length ? `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Categoria</th><th>Descrição</th><th>${filtro.equipamento_id ? "Obra" : filtro.centro_custo_id ? "Obra / TAG" : "TAG"}</th><th>Fornecedor</th><th>Doc.</th><th class="num">Valor</th></tr></thead>
       <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : l.origem === "combustivel" ? "ambar" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}</span></td>
         <td>${esc(CMP_CAT_LBL[l.categoria] || l.categoria)}</td><td>${esc(semCodOdoo(l.descricao) || "")}</td>
         <td>${filtro.equipamento_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : "—") : filtro.centro_custo_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : esc(nomeEq(l.equipamento_id) || "—")) : esc(nomeEq(l.equipamento_id) || "—")}</td>
         <td>${esc(nomeForn(l.fornecedor_id) || "—")}</td><td class="meta">${esc(l.documento || "")}</td><td class="num">${brl(l.valor)}</td></tr>`).join("")}</tbody></table></div>
     ${linhas.length > 500 ? `<p class="meta">Mostrando 500 de ${linhas.length}. Use o Excel para a lista completa.</p>` : ""}`
     : `<p class="vazio">Nenhum custo registrado${filtro.equipamento_id ? " para esta TAG" : filtro.centro_custo_id ? " para este centro" : " para esta obra"}. Os custos nascem do recebimento de compra direta, da saída de estoque, de deslocamentos, manutenções, reparos e lançamentos avulsos.</p>`}`;
+  // fase 135b: o toggle do Por mês redesenha só o bloco
+  $(`${containerId}-mes`)?.addEventListener("click", e => {
+    const b = e.target.closest("[data-custos-mes]"); if(!b) return;
+    _custosMesModo = b.dataset.custosMes;
+    $(`${containerId}-mes`).innerHTML = blocoMes();
+  });
   $(`${containerId}-av`)?.addEventListener("click", () => abrirCustoAvulso({ equipamento_id: filtro.equipamento_id || "", obra_id: filtro.obra_id || "", centro_custo_id: filtro.centro_custo_id || "" }, () => custosRender(containerId, filtro, cbTotal)));
   $(`${containerId}-xls`)?.addEventListener("click", () => {
-    const rows = linhas.map(l => ({ Data: dataBR(l.data), Origem: CMP_ORIGEM_LBL[l.origem] || l.origem, Categoria: CMP_CAT_LBL[l.categoria] || l.categoria, Descrição: l.descricao || "", TAG: nomeEq(l.equipamento_id), Obra: nomeObra(l.obra_id), Fornecedor: nomeForn(l.fornecedor_id), Documento: l.documento || "", Quantidade: Number(l.quantidade || 0), Valor: Number(l.valor || 0) }));
+    const rows = linhas.map(l => ({ Data: dataBR(l.data), "Competência": mesBR(String(l.competencia || "").slice(0, 7)), Origem: CMP_ORIGEM_LBL[l.origem] || l.origem, Categoria: CMP_CAT_LBL[l.categoria] || l.categoria, Descrição: l.descricao || "", TAG: nomeEq(l.equipamento_id), Obra: nomeObra(l.obra_id), Fornecedor: nomeForn(l.fornecedor_id), Documento: l.documento || "", Quantidade: Number(l.quantidade || 0), Valor: Number(l.valor || 0) }));
     if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
     const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "CUSTOS"); XLSX.writeFile(wb, `custos_${hojeISO()}.xlsx`);
   });
