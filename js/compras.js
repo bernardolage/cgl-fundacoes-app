@@ -1534,7 +1534,7 @@ async function cmpCarregarFilhas(id){
   const semNf = verTit && cmpPodeLancarNf() ? recs.filter(r => r.status === "confirmado" && !(titsPorRec[r.id] || []).length) : [];
   if(bLanc){ bLanc.style.display = semNf.length ? "" : "none"; bLanc.dataset.rec = semNf.length ? semNf[semNf.length - 1].id : ""; }   // o mais antigo
   $("cmp-rec-lista").innerHTML = rec.error ? `<p class="vazio">Erro: ${esc(rec.error.message)}</p>` : !recs.length ? `<p class="vazio">Nenhum recebimento. Use "Receber material" ou "Receber NF" quando a mercadoria chegar.</p>` :
-    recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}${r.status === "confirmado" && !r.nf_numero && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="tag ambar">aguardando NF</span>' : ""}</h3>
+    recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""}${r.status === "confirmado" && r.nf_numero && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="meta">(anotada)</span>' : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}${r.status === "confirmado" && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="tag ambar">aguardando NF</span>' : ""}</h3>
       <span style="margin-left:auto;">${/* html */ acoesRec(r)} ${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
       <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(semCodOdoo(i.descricao))}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${cmpBrl4(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table>
       ${r.observacoes ? `<p class="meta" style="margin:6px 0 0;">${esc(r.observacoes)}</p>` : ""}
@@ -2515,9 +2515,12 @@ async function cmpAcao(acao){
    material = só a conferência física (sem NF, chave, emissão, XML, frete, vencimento, parcelas nem total: o financeiro lança
    depois); lancar_nf = só a parte fiscal e financeira de um recebimento já confirmado (itens só leitura). */
 const CMP_REC_FISCAIS = ["cmp-rec-nf", "cmp-rec-serie", "cmp-rec-chave", "cmp-rec-emissao", "cmp-rec-frete", "cmp-rec-venc", "cmp-rec-parc", "cmp-rec-total"];
+// fase 152 (D-152a): no Receber material quem recebe pode anotar estes quatro da nota que tem na mão; o financeiro confere no Lançar NF
+const CMP_REC_ANOTAVEIS = ["cmp-rec-nf", "cmp-rec-serie", "cmp-rec-emissao", "cmp-rec-total"];
 function cmpRecModoCampos(modo){
   const material = modo === "material", lancar = modo === "lancar_nf";
-  CMP_REC_FISCAIS.forEach(id => { const c = $(id)?.closest(".campo"); if(c) c.style.display = material ? "none" : ""; });
+  CMP_REC_FISCAIS.forEach(id => { const c = $(id)?.closest(".campo"); if(c) c.style.display = material && !CMP_REC_ANOTAVEIS.includes(id) ? "none" : ""; });
+  const anot = $("cmp-rec-anot"); if(anot){ anot.textContent = ""; anot.style.display = "none"; }   // fase 152: aviso do modo material ou linha do anotado no Lançar NF
   const z = $("cmp-rec-xml-zona"); if(z) z.style.display = material ? "none" : "";
   ["cmp-rec-data", "cmp-rec-obs"].forEach(id => { const c = $(id)?.closest(".campo"); if(c) c.style.display = lancar ? "none" : ""; });
   const add = $("cmp-rec-add"); if(add) add.style.display = lancar ? "none" : "";
@@ -2541,6 +2544,10 @@ function abrirRecebimento(pedido, modo){
     : material
     ? "Recebimento do material, sem a NF: Quantidade = o que chegou; o que não veio fica pendente para o próximo recebimento. Confirmar dá entrada no almoxarifado ou lança o custo no destino e baixa o pedido; o pedido fica em \"Aguardando NF\" até o financeiro lançar a nota e os títulos (\"🧾 Lançar NF\" na aba Recebimentos)."
     : "Quantidade = o que chegou; o que não veio fica pendente para o próximo recebimento. Confirmar dá entrada no almoxarifado (reposição de estoque) ou lança o custo no destino (aplicação direta), baixa o pedido e cria os títulos a pagar. O tipo de compra dos itens do pedido vem aprovado e não muda aqui.";
+  if(material && $("cmp-rec-anot")){   // fase 152
+    $("cmp-rec-anot").textContent = "Nota na mão (opcional): anote número, série, emissão e total. O financeiro confere ao lançar a NF; o vencimento e o título continuam no \"🧾 Lançar NF\".";
+    $("cmp-rec-anot").style.display = "";
+  }
   $("cmp-rec-xml").value = "";
   $("cmp-rec-xml-info").textContent = "Clique ou arraste o XML aqui. Preenche cabeçalho, duplicatas e itens; casa os produtos por código do fornecedor, EAN e pedido.";
   $("cmp-rec-titulo").textContent = direta ? "Compra direta (nota na mão)" : semPedido ? "Receber NF sem pedido" : material ? `Receber material — pedido ${pedido.numero}` : `Receber NF — pedido ${pedido.numero}`;
@@ -2588,7 +2595,15 @@ function abrirLancarNf(recId){
   $("cmp-rec-xml-info").textContent = "Clique ou arraste o XML aqui. Preenche número, série, chave, emissão, frete, total e duplicatas; os itens recebidos não mudam.";
   $("cmp-rec-forn").value = r.fornecedor_id || _cmpAtual.fornecedor_id || ""; $("cmp-rec-forn").disabled = true; cmpFornAtualizar("cmp-rec-forn");
   $("cmp-rec-nf").value = r.nf_numero || ""; $("cmp-rec-serie").value = r.nf_serie || "1"; $("cmp-rec-chave").value = r.nf_chave || "";
-  $("cmp-rec-emissao").value = r.nf_data_emissao || ""; $("cmp-rec-frete").value = Number(r.frete) ? r.frete : ""; $("cmp-rec-total").value = "";
+  // fase 152 (D-152b): o que quem recebeu anotou (número preenchido) fica guardado para conferir na hora de lançar
+  _cmpRec.anot = r.nf_numero ? { nf: r.nf_numero, serie: r.nf_serie || "", emissao: r.nf_data_emissao || "", total: Number(r.total_nf) > 0 ? Number(r.total_nf) : null } : null;
+  $("cmp-rec-emissao").value = r.nf_data_emissao || ""; $("cmp-rec-frete").value = Number(r.frete) ? r.frete : "";
+  $("cmp-rec-total").value = Number(r.total_nf) > 0 ? r.total_nf : "";   // fase 152: total anotado (ou o valor do serviço); material sem anotação grava 0
+  if(_cmpRec.anot && $("cmp-rec-anot")){
+    const a = _cmpRec.anot;
+    $("cmp-rec-anot").textContent = `Anotado no recebimento: NF ${a.nf}${a.serie ? "/" + a.serie : ""}${a.emissao ? " · emissão " + dataBR(a.emissao) : ""}${a.total != null ? " · " + brl(a.total) : ""}. Confira com a nota antes de lançar.`;
+    $("cmp-rec-anot").style.display = "";
+  }
   $("cmp-rec-venc").value = ""; $("cmp-rec-parc").value = "1"; $("cmp-rec-obs").value = ""; $("cmp-rec-data").value = r.data_recebimento || hojeISO();
   const cond = _cmpAtual.condicao_pagamento;
   if(cond && /(\d+)\s*dias?/i.test(cond)){
@@ -2608,6 +2623,14 @@ async function cmpConfirmarLancarNf(){
   const dados = { nf_numero: nf, nf_serie: $("cmp-rec-serie").value.trim() || null, nf_chave: $("cmp-rec-chave").value.replace(/\D/g, "") || null,
     nf_data_emissao: $("cmp-rec-emissao").value || null, vencimento: venc, parcelas: Math.max(1, Number($("cmp-rec-parc").value || 1)), duplicatas: dups,
     frete: Number($("cmp-rec-frete").value || 0), total_nf: Number($("cmp-rec-total").value || 0) || null, xml_texto: r.xml?.texto || null };
+  // fase 152 (D-152b): número ou total diferentes do anotado avisam e aceitam; o banco grava os dois no histórico (nf_divergente)
+  if(r.anot){
+    const normNf = v => String(v || "").trim().toUpperCase().replace(/^0+/, "");
+    const difs = [];
+    if(normNf(r.anot.nf) !== normNf(nf)) difs.push(`número: anotado ${r.anot.nf}, lançando ${nf}`);
+    if(r.anot.total != null && dados.total_nf != null && Math.round(r.anot.total * 100) !== Math.round(dados.total_nf * 100)) difs.push(`total: anotado ${brl(r.anot.total)}, lançando ${brl(dados.total_nf)}`);
+    if(difs.length && !confirm(`A NF lançada difere do que foi anotado no recebimento:\n- ${difs.join("\n- ")}\n\nVale o que você está lançando e o histórico guarda os dois. Lançar assim mesmo?`)) return;
+  }
   const { data, error } = await sb.rpc("recebimento_lancar_nf", { p_id: r.recId, p_dados: dados });
   if(error){ aviso("app-aviso", "NF não lançada: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   aviso("app-aviso", `NF ${nf} lançada: ${Number(data || 0)} título(s) a pagar gerado(s).`, "ok");
@@ -2908,7 +2931,10 @@ async function confirmarRecebimento(){
   // lote S57a (#206): linha com quantidade e unitário zero (PC-2026-01280: 250 peças entraram a custo zero)
   const zero = itens.filter(it => !(Number(it.valor_unitario_nf) > 0)).length;
   if(zero && !confirm(`${zero} linha(s) com valor zero. Se o item não veio, zere a QUANTIDADE, não o valor. Confirmar mesmo assim?`)) return;
-  const nfNum = material ? null : ($("cmp-rec-nf").value.trim() || null);
+  const nfNum = $("cmp-rec-nf").value.trim() || null;   // fase 152: no modo material é o número anotado (opcional)
+  if(material && !nfNum && ($("cmp-rec-emissao").value || Number($("cmp-rec-total").value || 0))){
+    aviso("app-aviso", "Para anotar a nota, informe o número da NF (ou apague emissão e total).", "erro"); $("cmp-rec-nf").focus(); return;
+  }
   const venc = material ? null : ($("cmp-rec-venc").value || null);
   const dups = !material && Array.isArray(r.duplicatas) && r.duplicatas.length ? r.duplicatas : null;
   if(!material){
@@ -2916,9 +2942,9 @@ async function confirmarRecebimento(){
     if(!venc && !dups && !confirm("Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?")) return;
   }
   const cab = {
-    pedido_id: r.pedido?.id || null, fornecedor_id: forn, nf_numero: nfNum, nf_serie: material ? null : ($("cmp-rec-serie").value.trim() || null),
-    nf_chave: material ? null : ($("cmp-rec-chave").value.replace(/\D/g, "") || null), nf_data_emissao: material ? null : ($("cmp-rec-emissao").value || null), data_recebimento: $("cmp-rec-data").value || hojeISO(),
-    frete: material ? 0 : Number($("cmp-rec-frete").value || 0), vencimento: venc, parcelas: material ? 1 : Math.max(1, Number($("cmp-rec-parc").value || 1)), total_nf: material ? 0 : Number($("cmp-rec-total").value || 0), observacoes: $("cmp-rec-obs").value.trim() || null,
+    pedido_id: r.pedido?.id || null, fornecedor_id: forn, nf_numero: nfNum, nf_serie: material && !nfNum ? null : ($("cmp-rec-serie").value.trim() || null),
+    nf_chave: material ? null : ($("cmp-rec-chave").value.replace(/\D/g, "") || null), nf_data_emissao: material && !nfNum ? null : ($("cmp-rec-emissao").value || null), data_recebimento: $("cmp-rec-data").value || hojeISO(),
+    frete: material ? 0 : Number($("cmp-rec-frete").value || 0), vencimento: venc, parcelas: material ? 1 : Math.max(1, Number($("cmp-rec-parc").value || 1)), total_nf: material && !nfNum ? 0 : Number($("cmp-rec-total").value || 0), observacoes: $("cmp-rec-obs").value.trim() || null,
     duplicatas: dups, xml_texto: material ? null : (r.xml?.texto || null),
     contrato_id: (!r.pedido && $("cmp-rec-contrato")?.value) || null // fase 57
   };
@@ -3030,6 +3056,7 @@ function abrirReceberServico(){
   $("cmp-srv-titulo").textContent = `Receber serviço — pedido ${p.numero}`;
   // lote S61a (#265): o recebimento só confirma a execução; NF e vencimento vão para "Lançar NF"
   $("cmp-srv-data").value = hojeISO(); $("cmp-srv-desc").value = ""; $("cmp-srv-anexos").value = "";
+  ["cmp-srv-nf", "cmp-srv-serie", "cmp-srv-emissao", "cmp-srv-total"].forEach(id => { if($(id)) $(id).value = id === "cmp-srv-serie" ? "1" : ""; });   // fase 152 (D-152d)
   renderServicoItens();
   $("cmp-srv-modal").style.display = "flex";
 }
@@ -3060,6 +3087,9 @@ async function confirmarServico(){
   if(!itens.length){ aviso("app-aviso", "Informe a quantidade recebida de pelo menos um serviço.", "erro"); return; }
   if(!desc){ aviso("app-aviso", "Descreva o que foi executado.", "erro"); $("cmp-srv-desc").focus(); return; }
   if(!files.length){ aviso("app-aviso", "Serviço sem evidência não é recebido: anexe a foto ou o documento do que foi executado.", "erro"); return; }
+  // fase 152 (D-152d): nota anotada opcional; sem número, emissão e total não vão
+  const nfAnot = ($("cmp-srv-nf")?.value || "").trim() || null, totAnot = Number($("cmp-srv-total")?.value || 0);
+  if(!nfAnot && ($("cmp-srv-emissao")?.value || totAnot)){ aviso("app-aviso", "Para anotar a nota, informe o número da NF (ou apague emissão e total).", "erro"); $("cmp-srv-nf").focus(); return; }
   for(const it of itens){
     if(it.destino === "estoque"){ aviso("app-aviso", `"${it.descricao}": serviço não entra no estoque. Escolha a obra, a TAG ou o setor.`, "erro"); return; }
     if(cmpDestinoIncompleto(it)){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
@@ -3070,9 +3100,11 @@ async function confirmarServico(){
   try { anexos = await cmpEnviarAnexos(recId, files); } catch(e){ aviso("app-aviso", e.message || String(e), "erro"); return; }
   const total = Math.round(itens.reduce((t, i) => t + Number(i.valor || 0), 0) * 100) / 100;
   const desfazer = async () => { await sb.from("recebimentos").delete().eq("id", recId); await cmpRemoverAnexos(anexos); };
-  // lote S61a (#265): sem NF nem vencimento, não nasce título; total_nf = valor do serviço (só exibição; o Lançar NF recalcula)
+  // lote S61a (#265): sem vencimento, não nasce título; total_nf = valor do serviço (só exibição; o Lançar NF recalcula)
+  // fase 152 (D-152d): com a nota anotada, número, série, emissão e o total da nota (quando informado) vão para o financeiro conferir
   const { error } = await sb.from("recebimentos").insert({ id: recId, pedido_id: p.id, fornecedor_id: p.fornecedor_id, tipo: "servico",
-    data_recebimento: $("cmp-srv-data").value || hojeISO(), parcelas: 1, total_nf: total, observacoes: desc });
+    data_recebimento: $("cmp-srv-data").value || hojeISO(), parcelas: 1, total_nf: nfAnot && totAnot > 0 ? Math.round(totAnot * 100) / 100 : total, observacoes: desc,
+    nf_numero: nfAnot, nf_serie: nfAnot ? (($("cmp-srv-serie")?.value || "").trim() || null) : null, nf_data_emissao: nfAnot ? ($("cmp-srv-emissao")?.value || null) : null });
   if(error){ await cmpRemoverAnexos(anexos); aviso("app-aviso", "Erro ao criar o recebimento: " + error.message, "erro"); return; }
   const { error: eIt } = await sb.from("recebimento_itens").insert(itens.map(it => ({
     recebimento_id: recId, pedido_item_id: it.pedido_item_id, produto_id: it.produto_id || null, descricao: it.descricao, unidade: it.unidade, quantidade_nf: Number(it.quantidade),

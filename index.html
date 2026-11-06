@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="88640bf" />
+<meta name="app-versao" content="36dd19e" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=88640bf" />
+<link rel="stylesheet" href="css/estilo.css?v=36dd19e" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=88640bf"></script>
+<script src="js/tema.js?v=36dd19e"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=88640bf"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=88640bf"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=88640bf"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=36dd19e"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=36dd19e"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=36dd19e"></script>
 </head>
 <body>
 
@@ -2085,6 +2085,8 @@
         <div class="modal-caixa" style="max-width:1100px;">
           <div class="modal-topo"><h3 id="cmp-rec-titulo">Receber NF</h3><button type="button" class="btn-sec" id="btn-cmp-rec-fechar">×</button></div>
           <p class="meta" id="cmp-rec-ajuda">Confirmar dá entrada no almoxarifado (reposição de estoque) ou lança o custo no destino (aplicação direta), baixa o pedido e cria os títulos a pagar.</p>
+          <!-- fase 152: "Nota na mão (opcional)" no Receber material; no Lançar NF, o que foi anotado no recebimento -->
+          <p class="meta" id="cmp-rec-anot" style="display:none;"></p>
           <div class="cmp-rec-xml" id="cmp-rec-xml-zona">
             <input type="file" id="cmp-rec-xml" accept=".xml,text/xml,application/xml" style="display:none;" />
             <button type="button" class="btn" id="btn-cmp-rec-xml">Importar XML da NF-e</button>
@@ -2138,11 +2140,16 @@
         <div class="modal-caixa" style="max-width:860px;">
           <div class="modal-topo"><h3 id="cmp-srv-titulo">Receber serviço</h3><button type="button" class="btn-sec" id="btn-cmp-srv-fechar">×</button></div>
           <p class="meta">Serviço só é recebido com evidência: foto do que foi feito, relatório, ordem de serviço assinada. O custo vai direto para a obra, a TAG ou o setor; nunca para o estoque.</p>
-          <p class="meta">Aqui só se confirma a execução. A NF e o vencimento são lançados depois, em "Lançar NF", e é lá que nasce o título a pagar.</p>
+          <p class="meta">Aqui só se confirma a execução. A NF e o vencimento são lançados depois, em "Lançar NF", e é lá que nasce o título a pagar. Se a nota já chegou, anote o número: o financeiro confere ao lançar.</p>
           <div class="grade grade-3">
             <div class="campo"><label>Executado em</label><input type="date" id="cmp-srv-data" /></div>
             <div class="campo largo"><label>O que foi executado *</label><input id="cmp-srv-desc" placeholder="ex.: usinagem do eixo da mesa rotativa, entregue e testado na 02-HM" /></div>
             <div class="campo largo"><label>Evidência (foto ou documento) *</label><input type="file" id="cmp-srv-anexos" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" /></div>
+            <!-- fase 152 (D-152d): nota na mão, opcional; o título continua nascendo só no Lançar NF -->
+            <div class="campo"><label for="cmp-srv-nf">NF número <small>(opcional)</small></label><input id="cmp-srv-nf" /></div>
+            <div class="campo"><label for="cmp-srv-serie">Série</label><input id="cmp-srv-serie" /></div>
+            <div class="campo"><label for="cmp-srv-emissao">Emissão</label><input type="date" id="cmp-srv-emissao" /></div>
+            <div class="campo"><label for="cmp-srv-total">Total da NF (R$)</label><input type="number" id="cmp-srv-total" min="0" step="0.01" /></div>
           </div>
           <div class="tabela-rola" style="margin-top:8px;">
             <table class="itens-tabela"><thead><tr><th>Serviço</th><th class="num" style="width:90px;">Pendente</th><th style="width:90px;">Qtd</th><th style="width:120px;">Valor (R$)</th><th style="width:240px;">Custo em</th></tr></thead>
@@ -7071,61 +7078,61 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=88640bf"></script>
+<script src="js/core.js?v=36dd19e"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=88640bf"></script>
+<script src="js/historico.js?v=36dd19e"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=88640bf"></script>
-<script src="js/fiscal_ncm.js?v=88640bf"></script>
+<script src="js/fiscal.js?v=36dd19e"></script>
+<script src="js/fiscal_ncm.js?v=36dd19e"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=88640bf"></script>
-<script src="js/fornecedores.js?v=88640bf"></script>
-<script src="js/apropriacoes.js?v=88640bf"></script>
-<script src="js/funcionarios.js?v=88640bf"></script>
-<script src="js/funcionarios_importar.js?v=88640bf"></script>
-<script src="js/funcionarios_lotacao.js?v=88640bf"></script>
-<script src="js/rh_documentos.js?v=88640bf"></script>
-<script src="js/servicos.js?v=88640bf"></script>
-<script src="js/produtos.js?v=88640bf"></script>
-<script src="js/estoque.js?v=88640bf"></script>
-<script src="js/separacoes.js?v=88640bf"></script>
-<script src="js/epi.js?v=88640bf"></script>
-<script src="js/compras.js?v=88640bf"></script>
-<script src="js/requisicoes.js?v=88640bf"></script>
-<script src="js/orcamentos.js?v=88640bf"></script>
-<script src="js/propostas.js?v=88640bf"></script>
-<script src="js/contratos.js?v=88640bf"></script>
-<script src="js/contas_pagar.js?v=88640bf"></script>
-<script src="js/centros_custo.js?v=88640bf"></script>
-<script src="js/carteira.js?v=88640bf"></script>
-<script src="js/obras.js?v=88640bf"></script>
-<script src="js/frota.js?v=88640bf"></script>
-<script src="js/viagens.js?v=88640bf"></script>
-<script src="js/equipamentos.js?v=88640bf"></script>
-<script src="js/vendas_bens.js?v=88640bf"></script>
-<script src="js/acessorios.js?v=88640bf"></script>
-<script src="js/reparos.js?v=88640bf"></script>
-<script src="js/manutencao.js?v=88640bf"></script>
-<script src="js/fabricacao.js?v=88640bf"></script>
-<script src="js/mobilizacoes.js?v=88640bf"></script>
-<script src="js/estacas.js?v=88640bf"></script>
-<script src="js/obra_abas.js?v=88640bf"></script>
-<script src="js/medicoes.js?v=88640bf"></script>
-<script src="js/movimentacoes.js?v=88640bf"></script>
-<script src="js/rdo_import_rg113.js?v=88640bf"></script>
-<script src="js/rdo.js?v=88640bf"></script>
-<script src="js/rdo_import_maya.js?v=88640bf"></script>
-<script src="js/geodigitus.js?v=88640bf"></script>
-<script src="js/computadores_bordo.js?v=88640bf"></script>
-<script src="js/usuarios.js?v=88640bf"></script>
-<script src="js/chamados.js?v=88640bf"></script>
-<script src="js/dashboard.js?v=88640bf"></script>
-<script src="js/rh_horas.js?v=88640bf"></script>
-<script src="js/sesmt.js?v=88640bf"></script>
-<script src="js/patrimonio.js?v=88640bf"></script>
+<script src="js/clientes.js?v=36dd19e"></script>
+<script src="js/fornecedores.js?v=36dd19e"></script>
+<script src="js/apropriacoes.js?v=36dd19e"></script>
+<script src="js/funcionarios.js?v=36dd19e"></script>
+<script src="js/funcionarios_importar.js?v=36dd19e"></script>
+<script src="js/funcionarios_lotacao.js?v=36dd19e"></script>
+<script src="js/rh_documentos.js?v=36dd19e"></script>
+<script src="js/servicos.js?v=36dd19e"></script>
+<script src="js/produtos.js?v=36dd19e"></script>
+<script src="js/estoque.js?v=36dd19e"></script>
+<script src="js/separacoes.js?v=36dd19e"></script>
+<script src="js/epi.js?v=36dd19e"></script>
+<script src="js/compras.js?v=36dd19e"></script>
+<script src="js/requisicoes.js?v=36dd19e"></script>
+<script src="js/orcamentos.js?v=36dd19e"></script>
+<script src="js/propostas.js?v=36dd19e"></script>
+<script src="js/contratos.js?v=36dd19e"></script>
+<script src="js/contas_pagar.js?v=36dd19e"></script>
+<script src="js/centros_custo.js?v=36dd19e"></script>
+<script src="js/carteira.js?v=36dd19e"></script>
+<script src="js/obras.js?v=36dd19e"></script>
+<script src="js/frota.js?v=36dd19e"></script>
+<script src="js/viagens.js?v=36dd19e"></script>
+<script src="js/equipamentos.js?v=36dd19e"></script>
+<script src="js/vendas_bens.js?v=36dd19e"></script>
+<script src="js/acessorios.js?v=36dd19e"></script>
+<script src="js/reparos.js?v=36dd19e"></script>
+<script src="js/manutencao.js?v=36dd19e"></script>
+<script src="js/fabricacao.js?v=36dd19e"></script>
+<script src="js/mobilizacoes.js?v=36dd19e"></script>
+<script src="js/estacas.js?v=36dd19e"></script>
+<script src="js/obra_abas.js?v=36dd19e"></script>
+<script src="js/medicoes.js?v=36dd19e"></script>
+<script src="js/movimentacoes.js?v=36dd19e"></script>
+<script src="js/rdo_import_rg113.js?v=36dd19e"></script>
+<script src="js/rdo.js?v=36dd19e"></script>
+<script src="js/rdo_import_maya.js?v=36dd19e"></script>
+<script src="js/geodigitus.js?v=36dd19e"></script>
+<script src="js/computadores_bordo.js?v=36dd19e"></script>
+<script src="js/usuarios.js?v=36dd19e"></script>
+<script src="js/chamados.js?v=36dd19e"></script>
+<script src="js/dashboard.js?v=36dd19e"></script>
+<script src="js/rh_horas.js?v=36dd19e"></script>
+<script src="js/sesmt.js?v=36dd19e"></script>
+<script src="js/patrimonio.js?v=36dd19e"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=88640bf"></script>
+<script src="js/sesmt_ocorrencias.js?v=36dd19e"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=88640bf"></script>
+<script src="js/init.js?v=36dd19e"></script>
 </body>
 </html>
