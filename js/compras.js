@@ -2542,7 +2542,7 @@ function abrirRecebimento(pedido, modo){
   $("cmp-rec-ajuda").textContent = direta
     ? "Compra já feita, com a nota na mão. Registrar cria o pedido já recebido, dá entrada no almoxarifado (reposição de estoque) ou lança o custo no destino (aplicação direta: obra, TAG ou setor) e gera os títulos a pagar. Acima da sua alçada, vai para aprovação."
     : material
-    ? "Recebimento do material, sem a NF: Quantidade = o que chegou; o que não veio fica pendente para o próximo recebimento. Confirmar dá entrada no almoxarifado ou lança o custo no destino e baixa o pedido; o pedido fica em \"Aguardando NF\" até o financeiro lançar a nota e os títulos (\"🧾 Lançar NF\" na aba Recebimentos)."
+    ? "Recebimento do material (a NF é opcional): Quantidade = o que chegou; o que não veio fica pendente para o próximo recebimento. Confirmar dá entrada no almoxarifado ou lança o custo no destino e baixa o pedido; o pedido fica em \"Aguardando NF\" até o financeiro lançar a nota e os títulos (\"🧾 Lançar NF\" na aba Recebimentos)."
     : "Quantidade = o que chegou; o que não veio fica pendente para o próximo recebimento. Confirmar dá entrada no almoxarifado (reposição de estoque) ou lança o custo no destino (aplicação direta), baixa o pedido e cria os títulos a pagar. O tipo de compra dos itens do pedido vem aprovado e não muda aqui.";
   if(material && $("cmp-rec-anot")){   // fase 152
     $("cmp-rec-anot").textContent = "Nota na mão (opcional): anote número, série, emissão e total. O financeiro confere ao lançar a NF; o vencimento e o título continuam no \"🧾 Lançar NF\".";
