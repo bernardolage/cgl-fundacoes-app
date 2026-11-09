@@ -427,17 +427,16 @@ const RAIZ_COLUNAS = ["Projeto", "Bloco", "Estaca", "Diâmetro (mm)", "Comprimen
   "Volume de concreto usinado (m³)", "Data da injeção", "Saco (un)", "M³ (in loco)", "TAG", "Turno",
   "Medição", "Observação"];
 
-/* Fase 154: hora e dia no fuso do navegador (Itabira). A API devolve timestamptz em UTC; ler a hora do texto trocava o período
-   de 57 das 111 execuções com hora da 8350-2026 (03:30 virava "06" e saía DIURNO). */
+/* Fase 154: hora e dia como o RDO grava. A tela do RDO e os imports gravam a hora digitada com +00 (hora de parede, sem fuso)
+   e o app a mostra fatiando o texto (rdo.js, medicoes.js, histórico da estaca). Converter para o fuso do navegador atrasava
+   3 h: quem começou às 06:30 aparecia às 03:30, como NOTURNO. */
 function _raizHora(iso){
-  if(!iso) return null;
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? null : d.getHours();
+  const m = /^\d{4}-\d{2}-\d{2}[T ](\d{2}):/.exec(String(iso || ""));
+  return m ? Number(m[1]) : null;
 }
 function _raizDia(iso){
-  if(!iso) return null;
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? null : dataLocalISO(d);
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(iso || ""));
+  return m ? m[1] : null;
 }
 /* período pela hora; sem hora, pelo turno do diário (rdo.turno_campo, fase 129a) */
 function _raizPeriodo(iso, turnoDiario){
@@ -514,8 +513,8 @@ async function carregarAcompanhamentoRaiz(){
     x._turno = _raizPeriodo(x.perfuracao_inicio, x._turnoDiario).toLowerCase();
   });
   // ordem do furo: hora da perfuração; sem hora, o fim do dia do RDO
-  const ordem = (x) => x.perfuracao_inicio ? new Date(x.perfuracao_inicio).getTime() : new Date(`${x.data || "9999-12-31"}T23:59:59`).getTime();
-  execs.sort((a, b) => ordem(a) - ordem(b));
+  const ordem = (x) => x.perfuracao_inicio ? String(x.perfuracao_inicio).slice(0, 19).replace(" ", "T") : `${x.data || "9999-12-31"}T23:59:59`;
+  execs.sort((a, b) => ordem(a).localeCompare(ordem(b)));
 
   const soloPorExec = new Map();
   (sRes.error ? [] : (sRes.data || [])).forEach(s => { if(!soloPorExec.has(s.execucao_id)) soloPorExec.set(s.execucao_id, []); soloPorExec.get(s.execucao_id).push(s); });
