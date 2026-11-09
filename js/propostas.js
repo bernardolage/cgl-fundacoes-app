@@ -480,6 +480,55 @@ function blocoRodapeEmpresa(){
    Implementação em etapas — primeiro HÉLICE completo, depois os demais.
    ==================================================================== */
 
+/* fase 106b: cláusulas que se repetem, iguais, nos RG 11.9 (Trado), 11.10 (Raiz) e 11.11 (Secante).
+   Texto do documento da qualidade, revisão 01 de 03/06/2024 (anexos do chamado #17); erros de digitação
+   corrigidos e listados no PR da 106b. Valores citados (R$ 380,00, R$ 10,00/m³…) são texto contratual. */
+const TXT_RG = {
+  mobTransporte: "Fornecimento e Transporte de equipe e equipamentos necessários para Mobilização e Desmobilização. " +
+    "(O transporte dos equipamentos e materiais será de responsabilidade da CONTRATADA até o limite em que " +
+    "seja tecnicamente e operacionalmente possível o acesso por meio de seus veículos próprios (carros e " +
+    "caminhões). Fica expressamente consignado que tais veículos não são mobilizados para circulação ou " +
+    "operação em áreas industriais, cabendo à CONTRATANTE, quando aplicável, providenciar os meios necessários " +
+    "para o transporte interno, remoção ou acesso complementar aos locais onde os veículos da CONTRATADA não " +
+    "consigam alcançar.).",
+  epi: "Fornecimento de E.P.I para nossos colaboradores. Caso seja exigido EPI específico da área, será de responsabilidade do contratante.",
+  art: "Recolhimento de A.R.T dos serviços executados, conforme regulamentação do CREA.",
+  diario: "Elaboração do Diário de Obra.",
+  encargosTrab: "Pagamento de todos Encargos trabalhistas e sociais, conforme legislação vigente.",
+  locacaoRN: "Locação topográfica e marcação R.N. indicados no projeto de fundações.",
+  controleTec: "Controle tecnológico de todos materiais e normas vigentes.",
+  atestado: "Fornecimento de Atestado de Conclusão dos serviços.",
+  frente: "Fornecimento de frente continua para execução dos serviços.",
+  tapumes: "Execução de tapumes para segurança, equipamentos de segurança coletiva (E.P.C) conforme a NR18.",
+  vigilancia: "Vigilância e Proteção dos Equipamentos/ ferramentas e utensílios alocados na obra.",
+  kitAmbiental: "O fornecimento e a disponibilização de kit(s) de mitigação ambiental, incluindo materiais para contenção de eventuais vazamentos de óleo, combustíveis, graxas ou outros agentes",
+  projetos: "Fornecimento de projetos, sondagens, licenças e/ou autorização pública ou particular, necessárias à execução do serviço.",
+  seguro: "Seguro Geral inclusive seguro de riscos de Engenharia com adicional de responsabilidade civil geral e cruzada contra terceiros, entregues em tempo Hábil ao início das atividades, bem como execução, proteção e escoramento de construção vizinhas.",
+  canteiro: "Canteiro de obra limpo e desimpedido de obstáculos ocultos ou aparentes, nivelado, capacidade de suporte de 2,0kg/cm2, com rampa de acesso para veículos pesados.",
+  munck: "Fornecimento de caminhão munck e PTA para realização da montagem, desmontagem, mudanças de frentes e manutenções preventivas e corretivas.",
+  botaFora: "Bota fora material proveniente da perfuração das estacas.",
+
+  medidas: "Estacas serão medidas do nível do terreno até a cota inferior da estaca.",
+  diarioMedicao: "O Diário de obra será utilizado para Medição.",
+  diarioDigital: "O Diário de Obra será enviado em formato digital, e a Contratante disporá do prazo de 2 (dois) dias úteis, contados a partir do recebimento, para análise e eventual manifestação quanto ao seu conteúdo. Caso não haja qualquer contestação dentro desse prazo, o referido documento será considerado aceito e validado pelas partes.",
+  assinarRdo: "Analisar e assinar diariamente os Diários de Obra (RDO's) da Contratada.",
+  prazoMedicoes: "As medições terão prazo de 4 dias úteis para serem analisadas e aprovadas pela contratante. Após esse período, as mesmas serão consideradas aprovadas e originarão as respectivas notas fiscais/duplicatas.",
+  retencao: "A Contratada não aceitará a aplicação de retenção técnica sobre os valores das medições realizadas. Como alternativa à retenção, a Contratada disponibiliza, mediante solicitação, a apresentação de Seguro Garantia, nos termos da legislação vigente.",
+  /* decisão do Bernardo em 27/10/2026: o RG diz 80%, a proposta passa a dizer 100% (hélice, trado e secante) */
+  bits: "Na escavação em materiais com spt acima de 35 golpes ou ponta de bits, os preços terão acréscimo de 100%.",
+  chuva: "CHUVA: em caso de paralisações das atividades por motivo de chuva intermitente e/ou praça de trabalho saturada, que impossibilite trânsito de equipamentos pesados, será considerado 50% do faturamento mínimo acordado para cobrir despesas da CONTRATADA.",
+  atraso: "O atraso no pagamento pela CONTRATANTE, acarretará a mesma, multa de 2,0% (dois por cento) ao mês, mais juros diários de 0,10% (dez centésimos) ao dia, até o pagamento.",
+  segundoTurno: "Em caso de ser necessário atividades no segundo turno, será cobrado 25% adicionais sobre os valores dos serviços executados.",
+  ajudantesExtras: "Nos casos de eventual demanda da CONTRATANTE por fornecimento de ajudantes-extras para limpeza de terra dos trados, considerar o custo adicional de R$ 10,00/m³ (dez reais por metro cúbico escavado), garantindo-se o mínimo de R$ 420,00 por dia por ajudante-extra disponibilizado pela CONTRATADA.",
+  acesso: "A responsabilidade pelas condições de acesso ao local da obra para fins de mobilização e desmobilização dos equipamentos será da CONTRATANTE, incluindo a garantia de rotas adequadas e liberadas para o tráfego. Caberá à CONTRATANTE providenciar, quando necessário, autorizações, sinalizações, bloqueios de vias e comunicação junto aos órgãos públicos competentes. Eventuais custos, penalidades ou multas decorrentes de restrições de acesso, autuações de trânsito ou ausência das devidas liberações serão de responsabilidade da CONTRATANTE.",
+  frete30: "Em casos em que a mobilização for de responsabilidade da CGL Fundações, o respectivo valor do frete deverá ser faturado diretamente ao Contratante, a fim de evitar a ocorrência de bitributação. Na hipótese de a mobilização ser de responsabilidade da CGL Fundações e o faturamento do frete ocorrer em nome da própria CGL Fundações, o valor correspondente ao custo do frete será acrescido em 30% (trinta por cento), a título de compensação pelos encargos tributários incidentes sobre a operação.",
+  diesel30: "Em casos em que o fornecimento do óleo diesel for de responsabilidade da CGL Fundações, o respectivo valor deverá ser faturado diretamente ao Contratante, a fim de evitar a ocorrência de bitributação. Na hipótese de o fornecimento ser de responsabilidade da CGL Fundações e o faturamento ocorrer em nome da própria CGL Fundações, o valor correspondente ao custo do diesel será acrescido em 30% (trinta por cento), a título de compensação pelos encargos tributários incidentes sobre a operação.",
+  folga: "Os nossos funcionários têm direito a um final de semana livre contando a sexta-feira a cada 30 dias.",
+  acessoMecanico: "Permitir acesso da CONTRATADA por seus representantes e prepostos, empregados ou pessoa por ela indicada (principalmente mecânico) no local da obra, sob pena de incidência do faturamento mínimo dia do equipamento.",
+  dieselVariacao: "Os valores apresentados na presente proposta foram calculados com base nos custos vigentes na data de sua elaboração, especialmente no que se refere ao preço do combustível (diesel), insumo essencial à execução dos serviços. Dessa forma, na hipótese de ocorrência de variações relevantes no preço do diesel, devidamente comprovadas e que impactem diretamente os custos operacionais, os valores contratados poderão ser revistos e ajustados, inclusive após o fechamento da proposta, assinatura do contrato e durante a execução dos serviços.",
+  sobraConcreto: "Aproveitamento do concreto eventualmente não utilizado por defeito de nossos equipamentos, sobras e/ou com tempo de aplicação vencido, sem ônus para a Contratada."
+};
+
 /* Encargos de Responsabilidade — tabela CONTRATANTE | CGL | Não Aplica.
    Cada item: { d: descrição, r: 'CONTRATANTE'|'CGL'|'NAO', destaque?: true,
                 gatilho?: 'diesel'|'hospedagem' (flag que muda a responsabilidade) }
@@ -543,7 +592,8 @@ function criteriosMedicaoHelice(orcamento){
     { t: "O Diário de Obra será enviado em formato digital, e a Contratante disporá do prazo de 2 (dois) dias úteis, contados a partir do recebimento, para análise e eventual manifestação quanto ao seu conteúdo. Caso não haja qualquer contestação dentro desse prazo, o referido documento será considerado aceito e validado pelas partes." },
     { t: "Analisar e assinar diariamente os Diários de Obra (RDO's) da Contratada." },
     { t: "As medições terão prazo de 4 dias úteis para serem analisadas e aprovadas pela contratante. Após esse período, as mesmas serão consideradas aprovadas e originarão as respectivas notas fiscais/duplicatas." },
-    { t: "Na escavação em materiais com spt acima de 35 golpes ou ponta de bits, os preços terão acréscimo de 80%." },
+    /* fase 106b: 80% → 100% (decisão do Bernardo em 27/10/2026, igual à linha de bits a 2×) */
+    { t: TXT_RG.bits },
     { t: "A Contratada não aceitará a aplicação de retenção técnica sobre os valores das medições realizadas. Como alternativa à retenção, a Contratada disponibiliza, mediante solicitação, a apresentação de Seguro Garantia." },
     { t: "No caso da inserção das armaduras se darem com o uso de nossos equipamentos cobraremos de preço de R$ 0,75 por kg levantado." },
     { t: "CHUVA: em caso de paralisações das atividades por motivo de chuva intermitente e/ou praça de trabalho saturada, que impossibilite trânsito de equipamentos pesados, será considerado 50% do faturamento mínimo acordado para cobrir despesas da CONTRATADA." },
@@ -574,6 +624,227 @@ function condicoesGeraisHelice(){
   ];
 }
 
+/* ====================================================================
+   fase 106b: Trado (RG 11.9), Raiz (RG 11.10) e Secante (RG 11.11).
+   Mesma ordem e mesmas colunas do RG (os 5 primeiros encargos são da CGL, o
+   resto da CONTRATANTE, conferido pela posição do X no PDF); destaque = linha em
+   negrito no RG. Gatilhos de diesel, hospedagem e alimentação como na hélice.
+   ==================================================================== */
+
+/* pagamento: condição editada no orçamento ou a cláusula padrão (igual à hélice) */
+function _clausulaPagamento(orcamento){
+  return (orcamento && orcamento.condicoes_pagamento && orcamento.condicoes_pagamento.trim())
+    || textoPagamentoPadrao(orcamento && orcamento.prazo_pagamento_dias, orcamento && orcamento.pagamento_forma);
+}
+
+function encargosTrado(flags){
+  const f = flags || {};
+  return [
+    { d: TXT_RG.mobTransporte, r: "CGL", destaque: true },
+    { d: TXT_RG.epi, r: "CGL" },
+    { d: TXT_RG.art, r: "CGL" },
+    { d: TXT_RG.diario, r: "CGL" },
+    { d: TXT_RG.encargosTrab, r: "CGL" },
+    { d: "Efetuar, com precisão, a locação topográfica das estacas. Realizando pré-furos (embocamentos) com, no mínimo, 40cm de profundidade e diâmetro idêntico ao elemento de fundação a ser executado, conforme previsto em projeto. Não está autorizado execução das estacas SEM o embocamento.", r: "CONTRATANTE" },
+    { d: TXT_RG.controleTec, r: "CONTRATANTE" },
+    { d: "Fornecimento de concreto, bem como montagem e lançamento do aço conforme projeto.", r: "CONTRATANTE" },
+    { d: "Bombeamento do concreto.", r: "CONTRATANTE" },
+    { d: "Remoção dos materiais provenientes das escavações com equipamento mecanizado Retro escavadeira.", r: "CONTRATANTE" },
+    { d: "Fornecimento de 03 (três) ajudantes para limpeza dos trados e outros serviços de remoções de solo.", r: "CONTRATANTE", destaque: true },
+    { d: TXT_RG.atestado, r: "CONTRATANTE" },
+    { d: TXT_RG.frente, r: "CONTRATANTE" },
+    { d: TXT_RG.tapumes, r: "CONTRATANTE" },
+    { d: TXT_RG.vigilancia, r: "CONTRATANTE" },
+    { d: "Fornecimento água, energia elétrica, instalações sanitárias conforme NR18.", r: "CONTRATANTE" },
+    { d: "Hospedagem, alimentação EXTERNA À OBRA para colaboradores.", r: f.cgl_fornece_hospedagem ? "CGL" : "CONTRATANTE", destaque: true },
+    f.cgl_fornece_alimentacao
+      ? { d: "Alimentação para colaboradores dentro do canteiro de obra, por conta da CGL", r: "CGL", destaque: true }
+      : { d: "Alimentação para colaboradores dentro do canteiro de obra", r: "CONTRATANTE", destaque: true },
+    { d: "Fornecimento de Combustível (S10) para os Equipamentos (Media de 80 litros diários)", r: f.cgl_fornece_diesel ? "CGL" : "CONTRATANTE", destaque: true },
+    { d: TXT_RG.kitAmbiental, r: "CONTRATANTE" },
+    { d: TXT_RG.projetos, r: "CONTRATANTE" },
+    { d: TXT_RG.seguro, r: "CONTRATANTE" },
+    { d: TXT_RG.canteiro, r: "CONTRATANTE" },
+    { d: TXT_RG.munck, r: "CONTRATANTE" },
+    { d: TXT_RG.botaFora, r: "CONTRATANTE" }
+  ];
+}
+
+function criteriosMedicaoTrado(orcamento){
+  return [
+    { t: TXT_RG.medidas },
+    { t: TXT_RG.diarioMedicao },
+    { t: TXT_RG.diarioDigital },
+    { t: TXT_RG.assinarRdo },
+    { t: TXT_RG.retencao },
+    { t: "Os preços se referem aos serviços prestados em jornada de trabalho no horário normal segunda à quinta-feira 07:00 as 17:00 e às sextas-feiras, das 7:00 as 16:00 horas. Caso seja feito horas extras o valor será de R$ 380,00 por hora (Equipe)." },
+    { t: TXT_RG.bits },
+    { t: TXT_RG.chuva },
+    { t: TXT_RG.atraso },
+    { t: TXT_RG.prazoMedicoes },
+    { t: TXT_RG.acesso },
+    { t: TXT_RG.frete30 },
+    { t: TXT_RG.diesel30 },
+    { t: TXT_RG.folga },
+    { t: _clausulaPagamento(orcamento), destaque: true },
+    { t: TXT_RG.segundoTurno, destaque: true },
+    { t: TXT_RG.acessoMecanico },
+    { t: TXT_RG.dieselVariacao },
+    { t: "Caso a prestação de serviço do(s) equipamento(s) objeto desta proposta seja mensal, ela será por um período mínimo de 30 (trinta) dias. Caso o período de utilização ultrapasse os 30 dias inicialmente contratados, será cobrado, de forma proporcional, o valor correspondente aos dias excedentes, com base no valor mensal." },
+    { t: "Nos casos de locação de equipamento, a contratada terá direito a 40 horas para realização de manutenções preventivas/corretivas sem ônus para contratada. Caso ultrapasse esses dois dias, tais dias serão descontados proporcionalmente no valor mensal." },
+    { t: TXT_RG.sobraConcreto }
+  ];
+}
+
+/* RG 11.9: as duas cláusulas são as mesmas do RG 11.8 (conferido em 09/11/2026) */
+function condicoesGeraisTrado(){ return condicoesGeraisHelice(); }
+
+function encargosRaiz(flags){
+  const f = flags || {};
+  return [
+    { d: TXT_RG.mobTransporte, r: "CGL", destaque: true },
+    { d: TXT_RG.epi, r: "CGL" },
+    { d: TXT_RG.art, r: "CGL" },
+    { d: TXT_RG.diario, r: "CGL" },
+    { d: TXT_RG.encargosTrab, r: "CGL" },
+    { d: TXT_RG.locacaoRN, r: "CONTRATANTE" },
+    { d: TXT_RG.controleTec, r: "CONTRATANTE" },
+    { d: "Fornecimento dos materiais de consumo das estacas (cimento, aditivo e areia lavada), Colocados ao lado da Bomba de injeção.", r: "CONTRATANTE" },
+    { d: "Remoção dos materiais provenientes das escavações (lama) com equipamento mecanizado Retro escavadeira e ou similar.", r: "CONTRATANTE" },
+    { d: "Fornecimento de 04 (Quatro) ajudantes para limpeza e outros serviços de remoções de solo.", r: "CONTRATANTE" },
+    { d: TXT_RG.atestado, r: "CONTRATANTE" },
+    { d: TXT_RG.frente, r: "CONTRATANTE" },
+    { d: TXT_RG.tapumes, r: "CONTRATANTE" },
+    { d: TXT_RG.vigilancia, r: "CONTRATANTE" },
+    { d: "Fornecimento de água para as perfurações e injeções das estacas em pontos distantes até 10 metros dos locais de utilização, prevendo-se um consumo médio de 30m3/dia por equipamento.", r: "CONTRATANTE" },
+    { d: "Fornecimento de energia elétrica trifásica 220/380V em pontos distantes até 10 metros dos locais de utilização com potência de 130KVA INCLUSIVE LIGAÇÃO E TESTE DOS EQUIPAMENTOS PARA TRABALHO por equipamento de estaca raiz. As instalações sanitárias conforme NR18, será realizada pelo Contratante.", r: "CONTRATANTE" },
+    { d: "Execução de canaletas e poços de decantação para receberem a lama das perfurações das estacas.", r: "CONTRATANTE" },
+    { d: "Fornecimento de ar comprimido para conclusão da estaca quando solicitado em projeto e para perfuração em rocha, por equipamento. Modelo: 1000pcm - 25kg/cm2 - Vazão mínima aberta 17 Bar.", r: "CONTRATANTE" },
+    { d: "Fornecimento de aditivo para perfuração tipo GEO-PLUS E OU BETONITA.", r: "CONTRATANTE" },
+    { d: "Hospedagem (limite de 2 pessoas por quarto) e alimentação externa (café da manhã, almoço e jantar) à obra para colaboradores.", r: f.cgl_fornece_hospedagem ? "CGL" : "CONTRATANTE", destaque: true },
+    f.cgl_fornece_alimentacao
+      ? { d: "Alimentação dentro do canteiro de obras para colaboradores da CONTRATADA, por conta da CGL (equipe de 04 funcionários)", r: "CGL", destaque: true }
+      : { d: "Alimentação dentro do canteiro de obras para colaboradores da CONTRATADA. (equipe de 04 funcionários)", r: "CONTRATANTE", destaque: true },
+    { d: "Fornecimento de Combustível para os Equipamentos (Previsto de 100 a 150 Litros diários)", r: f.cgl_fornece_diesel ? "CGL" : "CONTRATANTE", destaque: true },
+    { d: TXT_RG.kitAmbiental, r: "CONTRATANTE" },
+    { d: TXT_RG.projetos, r: "CONTRATANTE" },
+    { d: TXT_RG.seguro, r: "CONTRATANTE" },
+    { d: "Carreta prancha e caminhão munck para deslocamento entre as frentes de serviço", r: "CONTRATANTE" },
+    { d: TXT_RG.munck, r: "CONTRATANTE" },
+    { d: "Fornecimento de armadura e/ou tubo perdido. Caso haja concretagem do tubo/estaca, o valor do tubo \"perdido\" será ressarcido à CONTRATADA nas medições.", r: "CONTRATANTE" },
+    { d: TXT_RG.canteiro, r: "CONTRATANTE" },
+    { d: TXT_RG.botaFora, r: "CONTRATANTE" }
+  ];
+}
+
+/* RG 11.10 não tem a cláusula de bits (a raiz cobra rocha pelo preço de 2ª categoria do quadro) */
+function criteriosMedicaoRaiz(orcamento){
+  return [
+    { t: TXT_RG.medidas },
+    { t: TXT_RG.diarioMedicao },
+    { t: TXT_RG.diarioDigital },
+    { t: TXT_RG.assinarRdo },
+    { t: TXT_RG.prazoMedicoes },
+    { t: TXT_RG.retencao },
+    { t: "No caso da inserção das armaduras se darem com o uso de nossos equipamentos cobraremos de preço de R$ 0,75 por kg levantado." },
+    { t: TXT_RG.chuva },
+    { t: "Os preços se referem aos serviços prestados em jornada de trabalho no horário normal segunda à sexta-feira de 07:00 as 17:00. Caso seja feito horas extras o valor será de R$ 380,00 por hora (equipe)." },
+    { t: _clausulaPagamento(orcamento), destaque: true },
+    { t: TXT_RG.atraso },
+    { t: TXT_RG.segundoTurno, destaque: true },
+    { t: TXT_RG.ajudantesExtras },
+    { t: TXT_RG.acesso },
+    { t: TXT_RG.frete30 },
+    { t: TXT_RG.diesel30 },
+    { t: "Caberá à CONTRATANTE ressarcir a CONTRATADA os prejuízos com danos e/ou perdas de ferramentas de perfuração (revestimentos, triconé, martelo, bits, hastes, etc.) em razão de obstáculos e/ou alteração no subsolo não prevista pela sondagem (pedras, matacões, rocha sã, estruturas de concreto, etc.). Desde que comprovada culpa exclusiva da CONTRATANTE. Ao final dos serviços, se houver danos e/ou perdas, devem ser apresentadas à CONTRATANTE pela CONTRATADA." },
+    { t: TXT_RG.folga },
+    { t: TXT_RG.acessoMecanico },
+    { t: "Caso as atividades de perfuração sejam realizadas em locais com presença de lâmina d'água, a Contratante se obriga a fornecer, previamente, a camisa de revestimento a ser perdida, bem como balsa ou plataforma flutuante devidamente dimensionada e compatível com as cargas e operações do equipamento, de forma a assegurar as condições de segurança e acessibilidade necessárias à adequada execução dos trabalhos." },
+    { t: "O item referente ao faturamento mínimo diário do equipamento considera como base a produtividade de perfuração efetiva do referido equipamento Raiz. Em caso de alteração no escopo que implique no aumento do comprimento útil da estaca em mais de 2 (dois) metros ou na modificação do quantitativo inicialmente previsto, será aplicado um acréscimo de 50% (cinquenta por cento) sobre o valor unitário originalmente contratado." },
+    { t: TXT_RG.dieselVariacao },
+    { t: "Caso seja constatada, durante a execução das atividades, a necessidade de trepanagem do fuste, a definição da metodologia executiva, bem como dos respectivos custos e prazos envolvidos, deverá ser previamente discutida e acordada entre as partes, mediante formalização específica, para prosseguimento dos serviços." },
+    { t: "Caso o equipamento de perfuração esteja efetivamente disponível e designado à apoio na injeção de argamassa, inserção das armações o referido serviço passará a integrar o escopo de atividades diárias do equipamento, sendo, portanto, considerado para fins de apuração do faturamento mínimo diário conforme quadro de preços." },
+    { t: "Caso a execução das perfurações seja realizada com utilização de água e o CONTRATANTE opte, por qualquer motivo, pelo reaproveitamento da água utilizada, o fornecimento, instalação, operação, manutenção e retirada da bomba de lama/retorno e demais equipamentos necessários para tal finalidade serão de responsabilidade exclusiva do CONTRATANTE, não estando tais itens incluídos no escopo contratual da CONTRATADA. Alternativamente, caso o CONTRATANTE solicite que o fornecimento da bomba de lama/retorno seja realizado pela CGL FUNDAÇÕES, será devida uma verba mensal no valor de R$ 2.500,00 (dois mil e quinhentos reais) por equipamento, valor este que será faturado mensalmente enquanto perdurar a sua utilização na obra, independentemente do regime de produção." },
+    { t: TXT_RG.sobraConcreto }
+  ];
+}
+
+/* RG 11.10: as duas cláusulas são as mesmas do RG 11.8 (conferido em 09/11/2026) */
+function condicoesGeraisRaiz(){ return condicoesGeraisHelice(); }
+
+function encargosSecante(flags){
+  const f = flags || {};
+  return [
+    { d: TXT_RG.mobTransporte, r: "CGL", destaque: true },
+    { d: TXT_RG.epi, r: "CGL" },
+    { d: TXT_RG.art, r: "CGL" },
+    { d: TXT_RG.diario, r: "CGL" },
+    { d: TXT_RG.encargosTrab, r: "CGL" },
+    { d: "Efetuar, com precisão, a locação topográfica das estacas, realizando pré-furos (embocamentos) com, no mínimo, 40cm de profundidade e diâmetro idêntico ao elemento de fundação a ser executado, conforme previsto em projeto.", r: "CONTRATANTE" },
+    { d: TXT_RG.locacaoRN, r: "CONTRATANTE" },
+    { d: TXT_RG.controleTec, r: "CONTRATANTE" },
+    { d: "Bombeamento do concreto.", r: "CONTRATANTE" },
+    { d: "Fornecimento de 03 (três) ajudantes para limpeza dos trados e outros serviços de remoções de solo.", r: "CONTRATANTE" },
+    { d: "Remoção dos materiais provenientes das escavações com equipamento mecanizado Retro escavadeira ou similar.", r: "CONTRATANTE" },
+    { d: TXT_RG.atestado, r: "CONTRATANTE" },
+    { d: TXT_RG.frente, r: "CONTRATANTE" },
+    { d: TXT_RG.tapumes, r: "CONTRATANTE" },
+    { d: TXT_RG.vigilancia, r: "CONTRATANTE" },
+    { d: "Fornecimento água, energia elétrica (ponto trifásico 220 v para atender um motor de 10 cv), iluminação, instalações sanitárias, condições mínimas segurança para nossos colaboradores conforme NR-18.", r: "CONTRATANTE" },
+    { d: "Hospedagem (limite de 2 pessoas por quarto) e alimentação externa (café da manhã, almoço e jantar) à obra para colaboradores.", r: f.cgl_fornece_hospedagem ? "CGL" : "CONTRATANTE", destaque: true },
+    f.cgl_fornece_alimentacao
+      ? { d: "Alimentação dentro do canteiro de obras para colaboradores, por conta da CGL (03 funcionários por HC)", r: "CGL", destaque: true }
+      : { d: "Alimentação dentro do canteiro de obras para colaboradores. (03 funcionários por HC)", r: "CONTRATANTE", destaque: true },
+    { d: "Fornecimento de combustível para os equipamentos (diesel S10) (100 a 150 Litros por HC)", r: f.cgl_fornece_diesel ? "CGL" : "CONTRATANTE", destaque: true },
+    { d: TXT_RG.kitAmbiental, r: "CONTRATANTE" },
+    { d: TXT_RG.projetos, r: "CONTRATANTE" },
+    { d: TXT_RG.seguro + " Caso o contratante não faça o seguro assume todas as responsabilidades em caso de acidente.", r: "CONTRATANTE" },
+    { d: TXT_RG.canteiro, r: "CONTRATANTE" },
+    { d: TXT_RG.botaFora, r: "CONTRATANTE" },
+    { d: "Fornecimento de concreto bombeado e ou Argamassa (com fornecimento de bomba em tempo integral para não ocorrer hora parada ou à disposição).", r: "CONTRATANTE" },
+    { d: "Aço conforme projeto cortado, montado e dobrado, armado em \"gaiolas\" prevendo equipamento de apoio para lançamento caso seja necessário ou Perfil metálico conforme projeto soldado (ou seja no comprimento de projeto) e em perfeito alinhamento para não comprometer o seu lançamento. Armadura de comprimento longitudinal maior que 6,0m deverá ser fornecido concreto especial, Traço com aditivo especial para auxiliar na penetração da mesma no fuste concretado.", r: "CONTRATANTE" },
+    { d: "Locação das estacas (escavação de vala com aproximadamente 30 cm de profundidade e 120 cm de largura, instalação das fôrmas de isopor e preenchimento do entorno com concreto).", r: "CONTRATANTE" },
+    { d: "Preparo e limpeza do terreno antes e após a execução dos serviços;", r: "CONTRATANTE" },
+    { d: "Fornecimento de caminhão munck e PTA para realização da montagem, desmontagem e mudanças de frentes e manutenções preventivas e corretivas.", r: "CONTRATANTE" },
+    { d: "Permissão para entrada e saída dos nossos operários e veículos, no local da obra, mesmo em horário extraordinário, se necessário;", r: "CONTRATANTE" },
+    { d: "Providenciar a retirada e recolocação que se fizerem necessárias, de quaisquer obstáculos que porventura prejudiquem a execução dos serviços a nosso cargo;", r: "CONTRATANTE" }
+  ];
+}
+
+/* RG 11.11: a cláusula do prazo das medições aparece duas vezes no RG (a segunda com a NFS-e);
+   transcrita como está, para a diretoria decidir */
+function criteriosMedicaoSecante(orcamento){
+  return [
+    { t: TXT_RG.medidas },
+    { t: TXT_RG.diarioMedicao },
+    { t: TXT_RG.diarioDigital },
+    { t: TXT_RG.prazoMedicoes },
+    { t: TXT_RG.retencao },
+    { t: "Em caso de não inserção do perfil/armadura, seja necessário executar um refuro na estaca a mesma será cobrada como uma nova estaca." },
+    { t: "CHUVA: em caso de paralisações das atividades por motivo de chuva intermitente e/ou praça de trabalho saturada, que impossibilite trânsito de equipamentos pesados, será considerado 50% do faturamento mínimo acordado." },
+    { t: "Os preços se referem aos serviços prestados em jornada de trabalho no horário normal segunda à quinta-feira 07:00 as 17:00 e às sextas-feiras, das 7:00 as 16:00 horas. Caso seja feito horas extras o valor será de R$ 380,00 por hora (Equipe)." },
+    { t: TXT_RG.prazoMedicoes + " Será emitida Nota Fiscal de Serviço." },
+    { t: _clausulaPagamento(orcamento), destaque: true },
+    { t: TXT_RG.atraso },
+    { t: TXT_RG.sobraConcreto },
+    { t: TXT_RG.segundoTurno, destaque: true },
+    { t: TXT_RG.bits },
+    { t: TXT_RG.folga },
+    { t: TXT_RG.ajudantesExtras },
+    { t: TXT_RG.acesso },
+    { t: TXT_RG.frete30 },
+    { t: TXT_RG.diesel30 },
+    { t: "Nos casos em que for preciso refurar estacas, por qualquer motivo alheio à CGL (exemplos: dificuldade na inserção da armação, concreto insuficiente para finalização da estaca, concreto fora da especificação causando entupimentos, etc.), será cobrado o metro linear do refuro no mesmo valor praticado para o furo." },
+    { t: "Nos casos em que for solicitada a execução de pré-furos/furos secos pelo equipamento, considerar o preço do metro linear escavado igual a 80% do valor do metro linear de hélice contínua monitorada acordado para o diâmetro correspondente. Nesses casos, além do furo seco, a estaca hélice continua monitorada será cobrada em sua integralidade, desde a cota de apoio do equipamento até a cota de fundo da estaca." },
+    { t: TXT_RG.dieselVariacao },
+    { t: "Caberá à CONTRATANTE ressarcir a CONTRATADA os prejuízos com danos e/ou perdas de ferramentas de perfuração (trado, ponteira, etc.) em razão de obstáculos e/ou alteração no subsolo não prevista pela sondagem (pedras, matacões, rocha sã, estruturas de concreto, etc.). Ao final dos serviços, se houver danos e/ou perdas, devem ser apresentadas à CONTRATANTE pela CONTRATADA." },
+    { t: "Adicional de 1,5% sobre o valor total da obra para fins de seguros." }
+  ];
+}
+
+/* RG 11.11: as duas cláusulas são as mesmas do RG 11.8 (conferido em 09/11/2026) */
+function condicoesGeraisSecante(){ return condicoesGeraisHelice(); }
+
 /* CONTRATAÇÃO DOS SERVIÇOS */
 function contratacaoServicosTextoComum(){
   return [
@@ -597,27 +868,27 @@ function validadeTextoComum(dias){
 function encargosPorTipo(tipo, flags){
   switch(tipo){
     case "helice":  return encargosHelice(flags);
-    case "trado":   return []; /* TODO */
-    case "raiz":    return []; /* TODO */
-    case "secante": return []; /* TODO */
+    case "trado":   return encargosTrado(flags);
+    case "raiz":    return encargosRaiz(flags);
+    case "secante": return encargosSecante(flags);
     default:        return [];
   }
 }
 function criteriosMedicaoPorTipo(tipo, orcamento){
   switch(tipo){
     case "helice":  return criteriosMedicaoHelice(orcamento);
-    case "trado":   return []; /* TODO */
-    case "raiz":    return []; /* TODO */
-    case "secante": return []; /* TODO */
+    case "trado":   return criteriosMedicaoTrado(orcamento);
+    case "raiz":    return criteriosMedicaoRaiz(orcamento);
+    case "secante": return criteriosMedicaoSecante(orcamento);
     default:        return [];
   }
 }
 function condicoesGeraisPorTipo(tipo){
   switch(tipo){
     case "helice":  return condicoesGeraisHelice();
-    case "trado":   return []; /* TODO */
-    case "raiz":    return []; /* TODO */
-    case "secante": return []; /* TODO */
+    case "trado":   return condicoesGeraisTrado();
+    case "raiz":    return condicoesGeraisRaiz();
+    case "secante": return condicoesGeraisSecante();
     default:        return [];
   }
 }
