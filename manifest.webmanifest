@@ -1,0 +1,14 @@
+{
+  "name": "CGL Fundações — Diário de campo",
+  "short_name": "CGL Campo",
+  "lang": "pt-BR",
+  "start_url": "operador.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1B3F42",
+  "icons": [
+    { "src": "img/icone-cgl.png", "sizes": "1080x1080", "type": "image/png", "purpose": "any" }
+  ]
+}

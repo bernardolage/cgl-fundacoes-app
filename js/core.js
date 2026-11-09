@@ -1126,6 +1126,12 @@ async function iniciarApp(){
     return;
   }
 
+  /* fase 129b: o operador usa o app de campo (operador.html), feito para o celular; engenharia e encarregado
+     continuam aqui e têm o link "Modo campo" no rodapé do menu */
+  if(perfil?.cargo === "operador"){ location.replace("operador.html"); return; }
+  const lnkCampo = $("lnk-modo-campo");
+  if(lnkCampo) lnkCampo.hidden = !["encarregado", "engenheiro", "assistente_engenharia", "admin", "diretor"].includes(perfil?.cargo);
+
   // fase 93b: o e-mail técnico do login por CPF não aparece na tela (carrega o CPF)
   _loginCpfDigitos = emailEhLoginCpf(user.email) ? String(user.email).split("@")[0] : null;
   const rotuloSemPerfil = _loginCpfDigitos ? "Funcionário" : user.email;

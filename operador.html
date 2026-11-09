@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<!-- Fase 129b: app do operador (diário de campo). Mesma CSP do index.html (fase 99a): nada inline, nada de CDN. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+<meta name="app-versao" content="b25b532" />
+<title>CGL Campo</title>
+<link rel="icon" type="image/png" href="img/icone-cgl.png" />
+<link rel="apple-touch-icon" href="img/icone-cgl.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/estilo.css?v=b25b532" />
+<script src="js/tema.js?v=b25b532"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=b25b532"></script>
+</head>
+<body class="op-corpo">
+
+<!-- ===== Entrar ===== -->
+<main id="op-login" class="op-login" hidden>
+  <img src="img/logo-cgl.png" alt="CGL Fundações" class="op-login-logo" />
+  <h1>Diário de campo</h1>
+  <p id="op-login-fila" class="op-alerta op-alerta-info" hidden></p>
+  <p id="op-login-aviso" class="op-alerta op-alerta-perigo" role="alert" hidden></p>
+  <form id="op-form-login" class="op-bloco" autocomplete="on" novalidate>
+    <label class="op-campo">CPF<input type="text" id="op-login-cpf" inputmode="numeric" autocomplete="username" maxlength="14" required></label>
+    <label class="op-campo">Senha<input type="text" id="op-login-senha" autocomplete="current-password" autocapitalize="off" spellcheck="false" required></label>
+    <label class="op-check"><input type="checkbox" id="op-login-mostrar" checked> Mostrar senha</label>
+    <label class="op-check"><input type="checkbox" id="op-login-lembrar-cpf"> Lembrar meu CPF neste celular</label>
+    <label class="op-check"><input type="checkbox" id="op-login-manter"> Manter conectado por 7 dias</label>
+    <button type="submit" class="op-btn op-btn-primario op-btn-grande" id="op-btn-entrar">Entrar</button>
+    <p class="op-meta">Sem senha? Peça ao RH um link de primeiro acesso.</p>
+  </form>
+</main>
+
+<!-- ===== Troca da senha ===== -->
+<main id="op-troca-senha" class="op-login" hidden>
+  <h1 id="op-troca-titulo">Troque sua senha</h1>
+  <p id="op-troca-texto" class="op-meta"></p>
+  <p id="op-troca-aviso" class="op-alerta op-alerta-perigo" role="alert" hidden></p>
+  <form id="op-form-troca" class="op-bloco" novalidate>
+    <label class="op-campo">Senha nova<input type="password" id="op-troca-nova" autocomplete="new-password" minlength="8"></label>
+    <label class="op-campo">Repita a senha<input type="password" id="op-troca-confirma" autocomplete="new-password" minlength="8"></label>
+    <button type="submit" class="op-btn op-btn-primario op-btn-grande" id="op-btn-troca-salvar">Salvar senha</button>
+    <button type="button" class="op-btn" id="op-btn-troca-cancelar" hidden>Cancelar</button>
+  </form>
+</main>
+
+<!-- ===== App ===== -->
+<div id="op-app" class="op-app" hidden>
+  <header class="op-topo">
+    <h1 id="op-titulo">Diário de campo</h1>
+    <p id="op-subtitulo"></p>
+  </header>
+  <p id="op-faixa-fila" class="op-faixa" role="status" hidden></p>
+
+  <main class="op-telas">
+    <section id="op-maquina" class="op-tela" hidden><div id="op-maquina-conteudo"></div></section>
+    <section id="op-dia" class="op-tela" hidden><div id="op-dia-conteudo"></div></section>
+    <section id="op-equipe" class="op-tela" hidden><div id="op-equipe-conteudo"></div></section>
+    <section id="op-abast" class="op-tela" hidden><div id="op-abast-conteudo"></div></section>
+    <section id="op-estacas" class="op-tela" hidden><div id="op-estacas-conteudo"></div></section>
+    <section id="op-geo" class="op-tela" hidden><div id="op-geo-conteudo"></div></section>
+    <section id="op-parada" class="op-tela" hidden><div id="op-parada-conteudo"></div></section>
+    <section id="op-foto" class="op-tela" hidden><div id="op-foto-conteudo"></div></section>
+    <section id="op-enviar" class="op-tela" hidden><div id="op-enviar-conteudo"></div></section>
+    <section id="op-dias" class="op-tela" hidden><div id="op-dias-conteudo"></div></section>
+    <section id="op-eu" class="op-tela" hidden><div id="op-eu-conteudo"></div></section>
+    <section id="op-mais" class="op-tela" hidden><div id="op-mais-conteudo"></div></section>
+  </main>
+
+  <button type="button" id="op-fab-parada" class="op-fab" aria-label="Paradas" hidden>⏸</button>
+  <nav id="op-barra" class="op-barra" aria-label="Telas"></nav>
+</div>
+
+<p id="op-toast" class="op-toast" role="status" aria-live="polite" hidden></p>
+
+<!-- ===== Sessão vencida: só a senha, a fila fica ===== -->
+<div id="op-sessao-vencida" class="op-modal" role="dialog" aria-modal="true" aria-labelledby="op-sv-titulo" hidden>
+  <form id="op-form-sessao" class="op-bloco">
+    <h2 id="op-sv-titulo">Digite a senha de novo</h2>
+    <p class="op-meta">A sessão venceu. Nada do aparelho se perde: depois da senha, a fila continua subindo.</p>
+    <label class="op-campo">Senha<input type="password" id="op-sv-senha" autocomplete="current-password"></label>
+    <button type="submit" class="op-btn op-btn-primario op-btn-grande">Continuar</button>
+    <button type="button" class="op-btn" id="op-sv-sair">Sair</button>
+  </form>
+</div>
+
+<script src="js/op_core.js?v=b25b532"></script>
+<script src="js/op_dia.js?v=b25b532"></script>
+<script src="js/op_equipe.js?v=b25b532"></script>
+<script src="js/op_estacas.js?v=b25b532"></script>
+<script src="js/op_parada.js?v=b25b532"></script>
+<script src="js/op_foto.js?v=b25b532"></script>
+<script src="js/op_init.js?v=b25b532"></script>
+</body>
+</html>
