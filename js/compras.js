@@ -66,6 +66,7 @@ let _cmpAprovAtual = { pend: [], assinadas: [], carregado: false };   // fase 10
 let _cmpModoDono = false;         // fase 108b: ficha aberta pela Sala de Comando por quem não tem Compras no menu
 const _cmpObraMetodo = {};        // fase 108b: obra_id -> método padrão pelo tipo de serviço da obra (null = sem padrão)
 let _cmpRecsAtual = [];           // lote S57a: recebimentos da ficha aberta (Lançar NF e Estornar)
+let _cmpRecsDe = null;            // fase 133: id do pedido cujos recebimentos estão em _cmpRecsAtual (null = ainda carregando)
 let _cmpEtapaEsp = {};            // fase 102: pedido_id -> linha de vw_compras_pedido_etapa (conferência, financeiro, aviso)
 let _cmpEtapasResumo = null;      // fase 102: etapa -> { q, v, atr, cv } somados de vw_compras_etapas (null = view ausente)
 let _cmpCotacoes = [];            // fase 102: cotações do pedido aberto
@@ -77,10 +78,13 @@ let _cmpRat = null;               // lote S53 (#149): modal de rateio aberto { i
 let _cmpRatPadrao = [];           // lote S53 (#149): TAGs do "+ TAGs" do cabeçalho (itens novos nascem rateados em partes iguais)
 let _cmpCotEnviar = true;         // lote S53 (#163): "ao fechar, enviar para aprovação" (caixa da aba Cotações)
 /* colunas que o painel usa (a ficha abre o pedido inteiro em abrirPedido) */
-let CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at,observacoes,nf_informada,km_informado";
+let CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at,observacoes,nf_informada,km_informado,tipo_compra,destino_centro_custo_id";
 /* lote S56: colunas da migration loteS56a; sem ela (42703) o painel volta ao seletor anterior */
 const CMP_COLS_S56 = ",nf_informada,km_informado";
-let _cmpS56 = false;              // lote S56: migration loteS56a aplicada (NF e km no pedido, fator do XML, destino acessório)
+/* fase 133: tipo de compra e destino do custo no cabeçalho; sem a migration (42703) o painel segue sem eles */
+const CMP_COLS_133 = ",tipo_compra,destino_centro_custo_id";
+let _cmp133 = false;              // fase 133: migration aplicada (tipo no cabeçalho, pedido_reabrir, enviado volta a rascunho)
+let _cmpS56 = false;             // lote S56: migration loteS56a aplicada (NF e km no pedido, fator do XML, destino acessório)
 let _cmpAceMap = {};              // lote S56 (#202): acessorio_id -> { marcacao, familia, jogo, local… } (rótulos do destino)
 let _cmpAcePick = null;           // lote S56 (#202): callback do seletor de acessório aberto
 let _cmpObraPeriodo = {};         // lote S56 (#174): obra_id -> { codigo, data_inicio_ref, data_termino, termino_origem } | null
@@ -284,8 +288,182 @@ function cmpTipoPedido(p){
   if(!p.itens || !p.itens.length) return "";
   return [...new Set(p.itens.map(cmpItemTipo))].sort((a, b) => (a === "reposicao" ? -1 : 1) - (b === "reposicao" ? -1 : 1)).map(t => CMP_TIPO_CURTO[t]).join(" + ");
 }
-/* o produto sugere: o do produto vence o da categoria; nulo = aplicação direta (produto_tipo_compra_padrao no banco) */
-function cmpTipoPadraoProduto(p){ return (p && (p.tipo_compra_padrao || p.categoria?.tipo_compra_padrao)) || "aplicacao_direta"; }
+/* ---------- fase 133: tipo de compra primeiro, destino do custo e onde o custo cai ----------
+   O tipo do cabeçalho (cmp-tipo) é a primeira escolha: sem ele não entra item, e os itens novos herdam. Item que difere é
+   exceção (pedido misto, marcado na linha e no chip Tipo). Em aplicação direta, "Destino do custo" (cmp-dest-custo: obra,
+   TAG, setor/obra interna ou "Vários destinos") preenche os itens novos; o custo continua saindo do item. cmp-equip (oculto)
+   e cmp-obra guardam equipamento_id e obra_id do cabeçalho; a obra também é a da entrega ou a referência ao lado da TAG. */
+function cmpCentroCurto(id){ const c = _cmpCentroMap[id]; return c ? [c.codigo, c.nome].filter(Boolean).join(" ") : ""; }
+/* chave do custo de um item: "estoque", "obra:…", "eq:…", "cc:…", "ac:…"; "" = falta escolher */
+function cmpCustoChave(it){
+  if(it.destino === "estoque") return "estoque";
+  if(!it.destino || cmpDestinoIncompleto(it)) return "";
+  return cmpDestinoValor(it);
+}
+function cmpCustoChaveTxt(k){
+  if(k === "estoque") return "Estoque, na saída";
+  if(k.startsWith("obra:")) return cmpObra(k.slice(5)) || "Obra ?";
+  if(k.startsWith("eq:")) return "TAG " + (cmpEq(k.slice(3)) || "?");
+  if(k.startsWith("cc:")) return cmpCentroCurto(k.slice(3)) || "Centro de custo ?";
+  if(k.startsWith("ac:")) return "Acessório " + (cmpAce(k.slice(3)) || "?");
+  return k;
+}
+/* onde o custo cai, pelos itens: { k: "um" | "varios" | "falta", chave, chaves }; null = sem itens. O rateio conta cada TAG. */
+function cmpCustoDosItens(itens){
+  if(!itens || !itens.length) return null;
+  const chaves = new Set(); let falta = false;
+  itens.forEach(it => {
+    const k = cmpCustoChave(it);
+    if(!k){ falta = true; return; }
+    if(cmpTemRateio(it)) it._rateio.forEach(r => chaves.add("eq:" + r.equipamento_id)); else chaves.add(k);
+  });
+  const lst = [...chaves];
+  if(falta) return { k: "falta", chaves: lst };
+  return lst.length === 1 ? { k: "um", chave: lst[0], chaves: lst } : { k: "varios", chaves: lst };
+}
+function cmpDestinoPedidoChave(k){
+  const tipo = k.startsWith("obra:") ? "obra" : k.startsWith("eq:") ? "tag" : k.startsWith("cc:") ? "centro" : "acessorio";
+  return { k: tipo, id: k.slice(k.indexOf(":") + 1), txt: cmpCustoChaveTxt(k) };
+}
+/* destino do custo do pedido inteiro (lista, cartão e ordenação, numa regra só). Com os itens carregados (pedidos em aberto)
+   vale o que eles dizem; sem eles (pedido fechado, lote S43), o cabeçalho, nesta ordem: reposição = Estoque; TAG; setor ou
+   obra interna do destino; obra; "Vários destinos". O setor solicitante (centro_custo_id) nunca aparece como destino. */
+function cmpDestinoPedido(p){
+  const r = cmpCustoDosItens(p.itens);
+  if(r && r.k === "um") return r.chave === "estoque" ? { k: "estoque", txt: "Estoque" } : cmpDestinoPedidoChave(r.chave);
+  if(r && r.k === "varios") return { k: "varios", txt: `Vários destinos (${r.chaves.length})`, title: r.chaves.map(cmpCustoChaveTxt).join(" · ") };
+  if(r && r.k === "falta") return { k: "falta", txt: "Falta definir" };
+  if(p.tipo_compra === "reposicao") return { k: "estoque", txt: "Estoque" };
+  if(p.equipamento_id) return cmpDestinoPedidoChave("eq:" + p.equipamento_id);
+  if(p.destino_centro_custo_id) return cmpDestinoPedidoChave("cc:" + p.destino_centro_custo_id);
+  if(p.obra_id) return cmpDestinoPedidoChave("obra:" + p.obra_id);
+  if(p.tipo_compra === "aplicacao_direta") return { k: "varios", txt: "Vários destinos" };
+  return p.itens && !p.itens.length ? { k: "falta", txt: "—" } : { k: "estoque", txt: "Estoque" };
+}
+function cmpDestinoPedidoTxt(p){ return cmpDestinoPedido(p).txt; }
+const CMP_DEST_ICONE = { obra: "🏗️", tag: "🚜", centro: "🏢", acessorio: "🔩", estoque: "📦", varios: "🔀", falta: "⚠" };
+function cmpTipoCab(){ return $("cmp-tipo")?.value || ""; }
+/* chip Custo da ficha: pelos itens; sem itens, pelo tipo e pelo destino do cabeçalho */
+function cmpCustoPedidoAberto(){
+  const r = cmpCustoDosItens(_cmpItens), tipo = cmpTipoCab(), dv = $("cmp-dest-custo")?.value || "";
+  if(r && r.k === "falta") return { txt: "Falta definir", title: "Há item de aplicação direta sem obra, TAG, setor ou acessório." };
+  if(r && r.k === "um") return { txt: cmpCustoChaveTxt(r.chave) };
+  if(r) return { txt: `Vários destinos (${r.chaves.length})`, title: r.chaves.map(cmpCustoChaveTxt).join(" · ") };
+  if(tipo === "reposicao") return { txt: "Estoque, na saída" };
+  if(tipo === "aplicacao_direta") return dv === "varios" ? { txt: "Vários destinos" } : dv ? { txt: cmpCustoChaveTxt(dv) } : { txt: "Falta definir" };
+  return { txt: "—" };
+}
+/* tipo do pedido aberto: o gravado; sem ele (rascunho antigo, migration ausente), o dos itens, como a carga da migration */
+function cmpTipoInicial(p, itens){
+  if(p.tipo_compra) return p.tipo_compra;
+  if(!itens.length) return "";
+  return itens.every(i => cmpItemTipo(i) === "reposicao") ? "reposicao" : "aplicacao_direta";
+}
+/* "Destino do custo" pelos itens de aplicação direta (null = nenhum com destino); acessório só existe na linha: "varios" */
+function cmpDestCabDosItens(){
+  const ks = new Set(_cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta").map(cmpCustoChave).filter(Boolean));
+  if(!ks.size) return null;
+  const k = [...ks][0];
+  return ks.size === 1 && /^(obra|eq|cc):/.test(k) ? k : "varios";
+}
+function cmpDestCabDoPedido(p, tipo){
+  if(tipo !== "aplicacao_direta") return "";
+  return p.equipamento_id ? "eq:" + p.equipamento_id : p.destino_centro_custo_id ? "cc:" + p.destino_centro_custo_id : p.obra_id ? "obra:" + p.obra_id : "";
+}
+/* põe o valor no select e, em rascunho, espelha em cmp-equip e cmp-obra (o que o Salvar e o km leem) */
+function cmpDestCabDefinir(v){
+  const sel = $("cmp-dest-custo"); if(!sel) return;
+  sel.innerHTML = cmpDestinoDiretoOptions(v, true); sel.value = v;
+  if(cmpEditavel()){
+    const eqAntes = $("cmp-equip").value;
+    $("cmp-equip").value = v.startsWith("eq:") ? v.slice(3) : "";
+    if(v.startsWith("obra:")) $("cmp-obra").value = v.slice(5);
+    if($("cmp-equip").value !== eqAntes){
+      if(_cmpRatPadrao.length && _cmpRatPadrao[0] !== $("cmp-equip").value){ _cmpRatPadrao = []; cmpRatPadraoTxt(); }
+      cmpKmAtualizar();
+    }
+  }
+  cmpCabVisibilidade();
+}
+/* o campo acompanha os itens: um destino só → ele; destinos diferentes → "Vários destinos". "Vários" escolhido à mão fica. */
+function cmpDestCabSincronizar(){
+  const sel = $("cmp-dest-custo"); if(!sel || !cmpEditavel() || cmpTipoCab() !== "aplicacao_direta") return;
+  const v = cmpDestCabDosItens();
+  if(v === null || v === sel.value || (sel.value === "varios" && v !== "varios")) return;
+  cmpDestCabDefinir(v);
+}
+/* Destino do custo trocado à mão: preenche os itens de aplicação direta sem destino; os que já têm só mudam se a pessoa confirmar */
+function cmpDestCabMudou(){
+  const v = $("cmp-dest-custo").value;
+  const ad = _cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta");
+  let alvo = ad.filter(i => !i.destino);
+  if(v && v !== "varios"){
+    const outros = ad.filter(i => i.destino && cmpCustoChave(i) !== v);
+    if(outros.length && confirm(`Levar também ${outros.length} item(ns) de aplicação direta que já têm destino para ${cmpCustoChaveTxt(v)}?\n\nCancelar preenche só os itens sem destino e os novos.`)) alvo = alvo.concat(outros);
+  }
+  cmpDestCabDefinir(v);
+  if(v && v !== "varios"){
+    alvo.forEach(it => {
+      const tinha = cmpTemRateio(it), d = cmpDestinoDiretoPadrao();
+      Object.assign(it, d);
+      if(d._rateio) it._rateio = d._rateio.map(r => ({ ...r })); else if(tinha){ it._rateio = null; it._rateioDirty = true; }
+      if(it.destino !== "equipamento") it.horimetro = null;
+      cmpAplicarMetodoPadrao(it);
+    });
+  }
+  renderItensPedido(); cmpPeriodoAvisoPedidoD();
+}
+/* reposição: some obra, TAG e destino, entrega só na Base; aplicação direta: destino do custo e a obra como entrega ou referência */
+function cmpCabVisibilidade(){
+  const tipo = cmpTipoCab(), repo = tipo === "reposicao", ad = tipo === "aplicacao_direta", ed = cmpEditavel();
+  const dv = $("cmp-dest-custo")?.value || "", destObra = dv.startsWith("obra:");
+  const mostra = (id, on) => { const el = $(id); if(el) el.style.display = on ? "" : "none"; };
+  mostra("cmp-dest-campo", ad);
+  const loc = $("cmp-local");
+  if(repo && loc.value !== "base") loc.value = "base";
+  loc.disabled = !ed || repo;
+  loc.title = repo ? "Reposição de estoque entra pela Base Itabira." : "";
+  const entregaObra = loc.value === "obra";
+  mostra("cmp-obra-campo", !repo && !destObra && (entregaObra || (ad && (dv.startsWith("eq:") || !!$("cmp-obra").value))));
+  if($("cmp-obra-rot")) $("cmp-obra-rot").textContent = entregaObra ? "Obra da entrega" : "Obra (referência, não entra no custo)";
+  mostra("btn-cmp-rat-padrao", ed && dv.startsWith("eq:"));
+  const dica = $("cmp-tipo-dica");
+  if(dica) dica.textContent = repo ? "Entra no almoxarifado pela Base; o custo aparece na saída do estoque." : ad ? "O custo cai no destino de cada item, no recebimento." : "Escolha antes de lançar os itens.";
+  cmpItensAddEstado();
+}
+/* sem tipo, "Adicionar produto" fica travado e diz por quê */
+function cmpItensAddEstado(){
+  const sem = cmpEditavel() && !cmpTipoCab();
+  ["cmp-busca-prod", "btn-cmp-prod-novo", "btn-cmp-srv-novo"].forEach(id => { const el = $(id); if(el) el.disabled = sem; });
+  const b = $("cmp-busca-prod"); if(b) b.title = sem ? "Escolha o tipo de compra no Cabeçalho antes de adicionar itens." : "";
+  const m = $("cmp-itens-sem-tipo"); if(m) m.style.display = sem ? "" : "none";
+}
+/* tipo do cabeçalho trocado com itens: confirma e lista o que muda; serviço e item sem produto do catálogo ficam aplicação direta */
+function cmpTipoCabMudou(){
+  const sel = $("cmp-tipo"), novo = sel.value, ant = sel.dataset.prev || "";
+  if(novo === ant) return;
+  if(!novo && _cmpItens.length){ aviso("app-aviso", "O pedido já tem itens: escolha reposição de estoque ou aplicação direta.", "erro"); sel.value = ant; return; }
+  const muda = [], ficam = [];
+  _cmpItens.forEach(it => {
+    if(cmpItemTipo(it) === novo) return;
+    if(novo === "reposicao" && (!it.produto_id || cmpProdutoEhServico(it))) ficam.push(it); else muda.push(it);
+  });
+  if(muda.length || ficam.length){
+    const lista = l => l.slice(0, 12).map(it => "• " + String(semCodOdoo(it.descricao) || "").slice(0, 70)).join("\n") + (l.length > 12 ? `\n… e mais ${l.length - 12}` : "");
+    const destino = novo === "reposicao" ? "destino almoxarifado; o custo aparece na saída do estoque"
+      : ($("cmp-dest-custo").value && $("cmp-dest-custo").value !== "varios" ? "destino " + cmpCustoChaveTxt($("cmp-dest-custo").value) : "o destino de cada um fica para escolher");
+    const msg = `Trocar o tipo do pedido para ${CMP_TIPO_LBL[novo]}?`
+      + (muda.length ? `\n\n${muda.length} item(ns) passam a ${CMP_TIPO_CURTO[novo]} (${destino}):\n${lista(muda)}` : "")
+      + (ficam.length ? `\n\n${ficam.length} item(ns) continuam aplicação direta, como exceção (serviço ou item sem produto do catálogo não entra no estoque):\n${lista(ficam)}` : "");
+    if(!confirm(msg)){ sel.value = ant; return; }
+  }
+  sel.dataset.prev = novo;
+  if(novo === "reposicao") cmpDestCabDefinir("");   // entrega na Base, sem TAG nem destino no cabeçalho
+  muda.forEach(it => cmpAplicarTipoItem(it, novo));
+  cmpCabVisibilidade();
+  renderItensPedido();
+  if(novo === "aplicacao_direta") muda.forEach(cmpAplicarMetodoPadrao);
+}
 const CMP_SEM_DESTINO = { destino: null, obra_id: null, equipamento_id: null, centro_custo_id: null, destino_acessorio_id: null };
 function cmpDestinoDiretoDoValor(v){ return v ? cmpDestinoDoValor(v) : { ...CMP_SEM_DESTINO }; }
 /* natureza do gasto */
@@ -355,11 +533,13 @@ function cmpDestinoOptions(sel, semAcessorio){
   const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
   return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Reposição de estoque (almoxarifado)</option>${/* html */ obras}<optgroup label="Aplicação direta na TAG">${eqs}</optgroup><optgroup label="Aplicação direta no setor / obra interna">${centros}</optgroup>${semAcessorio ? "" : cmpAceOptgroup(sel)}`;
 }
-/* fase 108b: destino de item de aplicação direta (sem a opção do estoque; vazio = falta escolher) */
-function cmpDestinoDiretoOptions(sel){
+/* fase 108b: destino de item de aplicação direta (sem a opção do estoque; vazio = falta escolher). Fase 133: cab = o
+   "Destino do custo" do cabeçalho, sem acessório (fica na linha) e com "Vários destinos (um por item)" */
+function cmpDestinoDiretoOptions(sel, cab){
   const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => `${o.codigo} — ${o.nome}`, "Obra");
   const eqs = _cmpEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
-  const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
+  const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc([c.codigo, c.nome].filter(Boolean).join(" "))}</option>`).join("");
+  if(cab) return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou setor —</option><option value="varios"${sel === "varios" ? " selected" : ""}>Vários destinos (um por item)</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>`;
   return `<option value=""${sel ? "" : " selected"}>— obra, TAG, centro ou acessório —</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>${cmpAceOptgroup(sel)}`;
 }
 function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${esc(k)}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
@@ -527,7 +707,7 @@ async function cmpCarregarBase(force){
 }
 async function cmpCarregarBaseAgora(){
   {
-    const [fo, ob, eq, al, cc, pf, nat, s56] = await Promise.all([
+    const [fo, ob, eq, al, cc, pf, nat, s56, f133] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").neq("status", "cancelada").order("codigo", { ascending: false }),   // lote S54 (#171): concluídas entram (grupo próprio nos selects)
       sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).order("codigo"),
@@ -535,10 +715,13 @@ async function cmpCarregarBaseAgora(){
       sb.from("centros_custo").select("id,codigo,nome,tipo,ativo,odoo_naturezas").order("tipo", { ascending: false }).order("nome"),   // lote S57a (#212): naturezas sugerem o centro
       sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),   // fase 78
       sb.from("naturezas_custo").select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem").order("ordem").order("nome"),   // fase 108b
-      sb.from("pedido_compra_itens").select("destino_acessorio_id").limit(1)   // lote S56: a coluna nova diz se a migration loteS56a está no banco
+      sb.from("pedido_compra_itens").select("destino_acessorio_id").limit(1),   // lote S56: a coluna nova diz se a migration loteS56a está no banco
+      sb.from("pedidos_compra").select("tipo_compra").limit(1)   // fase 133: idem para a migration da 133
     ]);
     _cmpS56 = !s56.error;
     if(!_cmpS56 && CMP_COLS.includes(CMP_COLS_S56)) CMP_COLS = CMP_COLS.replace(CMP_COLS_S56, "");
+    _cmp133 = !f133.error;
+    if(!_cmp133 && CMP_COLS.includes(CMP_COLS_133)) CMP_COLS = CMP_COLS.replace(CMP_COLS_133, "");
     // fase 108b: sem leitura de naturezas_custo (dono do custo fora de Compras) a lista fica vazia e a tela mostra o texto do Odoo
     _cmpNaturezas = nat.error ? [] : (nat.data || []); _cmpNatMap = {}; _cmpNaturezas.forEach(n => _cmpNatMap[n.id] = n);
     _cmpPerfis = pf.data || [];
@@ -668,6 +851,7 @@ async function cmpFetchPaginas(filtro){
     const pg = await q;
     if(pg.error){
       // lote S56 (#162/#203): sem nf_informada/km_informado (migration loteS56a não aplicada) o painel segue sem elas
+      if(pg.error.code === "42703" && CMP_COLS.includes(CMP_COLS_133)){ CMP_COLS = CMP_COLS.replace(CMP_COLS_133, ""); _cmp133 = false; return cmpFetchPaginas(filtro); }   // fase 133
       if(pg.error.code === "42703" && CMP_COLS.includes(CMP_COLS_S56)){ CMP_COLS = CMP_COLS.replace(CMP_COLS_S56, ""); return cmpFetchPaginas(filtro); }
       return pg;
     }
@@ -683,7 +867,7 @@ async function cmpFetchItens(ids){
   const res = await Promise.all(lotes.map(async lote => {
     const out = [];
     for(let de = 0; out.length === de; de += 1000){
-      const r = await sb.from("pedido_compra_itens").select("id,pedido_id,descricao,quantidade,quantidade_recebida,destino,obra_id,equipamento_id").in("pedido_id", lote).order("id").range(de, de + 999);   // fase 108b: destino = tipo na lista
+      const r = await sb.from("pedido_compra_itens").select("id,pedido_id,descricao,quantidade,quantidade_recebida,destino,obra_id,equipamento_id,centro_custo_id" + (_cmpS56 ? ",destino_acessorio_id" : "")).in("pedido_id", lote).order("id").range(de, de + 999);   // fase 108b: destino = tipo na lista
       if(r.error) return r;
       out.push(...(r.data || []));
     }
@@ -941,13 +1125,13 @@ function renderCompras(){
 }
 function cmpCardHTML(p){
   const atras = cmpAtrasado(p);
-  const dest = p.obra_id ? "🏗️ " + esc(cmpObra(p.obra_id)) : p.equipamento_id ? "🚜 TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? "🏢 " + esc(cmpCentro(p.centro_custo_id)) : "📦 Estoque";
+  const dp = cmpDestinoPedido(p), dest = `<span${dp.title ? ` title="${esc(dp.title)}"` : ""}>${esc(CMP_DEST_ICONE[dp.k] || "")} ${esc(dp.txt)}</span>`;   // fase 133: mesma regra da lista
   const it = p.itens;   // null = pedido fechado, itens só na ficha (lote S43)
   const tipo = cmpTipoPedido(p);   // fase 108b
   return `<div class="serv-kan-card${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
     <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span>${cmpEuAssino(p.id) ? ` <span class="tag ambar" title="chave de aprovação pendente que você assina">falta sua assinatura</span>` : ""}${cmpEtapaExtra(p) ? " " + cmpEtapaExtra(p) : ""}</div>
     <div>${esc(p.fornecedor?.razao_social || "— sem fornecedor —")}</div>
-    <div class="meta">${dest}${it ? ` · ${it.length} item(ns)` : ""}${tipo ? ` · ${esc(tipo)}` : ""}${cmpNfTxt(p) ? ` · NF ${esc(cmpNfTxt(p))}` : ""}</div>
+    <div class="meta">${/* html */ dest}${it ? ` · ${it.length} item(ns)` : ""}${tipo ? ` · ${esc(tipo)}` : ""}${cmpNfTxt(p) ? ` · NF ${esc(cmpNfTxt(p))}` : ""}</div>
     <div class="meta" style="display:flex;justify-content:space-between;margin-top:4px;"><strong>${brl(p.total)}</strong>${p.previsao_entrega ? `<span class="${atras ? "txt-perigo" : ""}">${atras ? "⚠ " : "📅 "}${dataBR(p.previsao_entrega)}</span>` : ""}</div>
   </div>`;
 }
@@ -963,12 +1147,8 @@ function renderComprasKanban(dados){
    "cmp-ordem"). Padrão: data mais recente primeiro, como a carga. Status segue a ordem das etapas (rascunho →
    aguardando aprovação → … → recebido; cancelado no fim), o que agrupa os pedidos de cada status. */
 const CMP_ORDEM_STATUS = CMP_STAGES.concat(["cancelado"]);
-/* fase 108b: era um segundo cmpDestinoTxt, que sobrescrevia o do item (TAG com obra aparecia como obra; estoque com
-   setor solicitante aparecia como setor). O do pedido inteiro ganhou nome próprio. */
-function cmpDestinoPedidoTxt(p){
-  return p.obra_id ? cmpObra(p.obra_id) : p.equipamento_id ? "TAG " + cmpEq(p.equipamento_id)
-    : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? cmpCentro(p.centro_custo_id) : "Estoque";
-}
+/* fase 108b: o destino do pedido inteiro tem nome próprio (cmpDestinoPedidoTxt); fase 133: a regra mora em cmpDestinoPedido,
+   lida pelos itens e, sem eles, pelo cabeçalho, e vale para a lista, o cartão e a ordenação */
 const _cmpOrdem = ordenarTabela({
   numero:     { tipo: "texto", valor: p => p.numero || "" },
   data:       { tipo: "data",  valor: p => p.data_pedido || "", dirInicial: "desc" },
@@ -982,12 +1162,13 @@ const _cmpOrdem = ordenarTabela({
 }, { chave: "cmp-ordem", padrao: { col: "data", dir: "desc" } });
 function renderComprasLista(dados){
   dados = _cmpOrdem.aplicar(dados);
+  dados.forEach(p => { p._dp = cmpDestinoPedido(p); });   // fase 133: destino do custo, a mesma regra do cartão
   const th = (col, rot, extra) => /* html */ _cmpOrdem.th(col, rot, extra);
   $("cmp-conteudo").innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>${th("numero", "Número")}${th("data", "Data")}${th("fornecedor", "Fornecedor")}${th("nf", "NF", { title: "nº da NF dos recebimentos do pedido" })}${th("destino", "Destino")}${th("tipo", "Tipo de compra")}<th class="num">Itens</th>${th("total", "Total", { cls: "num" })}${th("previsao", "Previsão")}${th("status", "Status")}<th>Para receber com</th></tr></thead>
     <tbody>${dados.map(p => `<tr class="linha-clicavel${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
       <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td><td>${cmpNfTxt(p) ? esc(cmpNfTxt(p)) : '<span class="meta">—</span>'}</td>
-      <td>${p.obra_id ? linkObra(p.obra_id, cmpObra(p.obra_id)) : p.equipamento_id ? "TAG " + esc(cmpEq(p.equipamento_id)) : p.centro_custo_id && cmpCentro(p.centro_custo_id) ? esc(cmpCentro(p.centro_custo_id)) : "Estoque"}</td>
+      <td${p._dp.title ? ` title="${esc(p._dp.title)}"` : ""}>${p._dp.k === "obra" ? linkObra(p._dp.id, p._dp.txt) : esc(p._dp.txt)}</td>
       <td class="meta">${esc(cmpTipoPedido(p) || "—")}</td>
       <td class="num">${p.itens ? p.itens.length : "—"}</td><td class="num">${brl(p.total)}</td>
       <td class="${cmpAtrasado(p) ? "txt-perigo" : ""}">${dataBR(p.previsao_entrega)}</td>
@@ -1149,7 +1330,7 @@ let _cmpRascBase = null;   // estado na abertura ou no último salvar; null = es
 function cmpRascChave(id){ return rascunhoChave("pedido", id); }
 function cmpRascEstado(){
   const ids = _cmpItens.map(i => i.produto_id).filter(Boolean);
-  return { cab: cmpColetarCabecalho(), itens: _cmpItens,
+  return { cab: cmpColetarCabecalho(), tipo: cmpTipoCab(), dest: $("cmp-dest-custo")?.value || "", itens: _cmpItens,   // fase 133: tipo e destino do custo
     un: Object.fromEntries(ids.map(id => [id, _cmpProdUn[id]])), srv: Object.fromEntries(ids.map(id => [id, _cmpProdSrv[id]])) };
 }
 function cmpRascGravar(){
@@ -1173,6 +1354,7 @@ function cmpRascRestaurar(d){
   const campos = { "cmp-forn": c.fornecedor_id, "cmp-data": c.data_pedido, "cmp-prev": c.previsao_entrega, "cmp-cond": c.condicao_pagamento, "cmp-local": c.local_entrega,
     "cmp-obra": c.obra_id, "cmp-equip": c.equipamento_id, "cmp-centro": c.centro_custo_id, "cmp-resp-receb": c.responsavel_recebimento_id, "cmp-frete": c.frete, "cmp-desc": c.desconto, "cmp-obs": c.observacoes };
   Object.entries(campos).forEach(([id, v]) => { const el = $(id); if(el) el.value = v ?? ""; });
+  if(d.tipo !== undefined){ $("cmp-tipo").value = d.tipo || ""; $("cmp-tipo").dataset.prev = d.tipo || ""; cmpDestCabDefinir(d.dest || ""); }   // fase 133
   cmpFornAtualizar("cmp-forn");
   Object.assign(_cmpProdUn, d.un || {}); Object.assign(_cmpProdSrv, d.srv || {});
   _cmpItens = d.itens || [];
@@ -1196,6 +1378,11 @@ function abrirFichaPedido(p){
   $("cmp-obra").value = p.obra_id || ""; $("cmp-equip").value = p.equipamento_id || ""; $("cmp-centro").value = p.centro_custo_id || "";
   $("cmp-frete").value = p.frete ?? 0; $("cmp-desc").value = p.desconto ?? 0; $("cmp-obs").value = p.observacoes || "";
   $("cmp-ficha").querySelectorAll(".odoo-tab[data-tab=cabecalho] input, .odoo-tab[data-tab=cabecalho] select, .odoo-tab[data-tab=cabecalho] textarea").forEach(el => el.disabled = !ed);
+  // fase 133: tipo de compra primeiro (rascunho antigo: pelos itens) e destino do custo (pelos itens; sem destino neles, pelo cabeçalho)
+  const tipo0 = cmpTipoInicial(p, _cmpItens);
+  $("cmp-tipo").value = tipo0; $("cmp-tipo").dataset.prev = tipo0;
+  _cmpRatPadrao = [];
+  cmpDestCabDefinir(tipo0 === "aplicacao_direta" ? (cmpDestCabDosItens() || cmpDestCabDoPedido(p, tipo0)) : "");
   cmpNfKmPreparar(p);   // lote S56 (#162/#203): NF informada e km ficam editáveis em qualquer status vivo
   cmpPeriodoRender("cmp-periodo-aviso", []);
   cmpFornAtualizar("cmp-forn");   // lote S43 (#53): chip do fornecedor acompanha o select
@@ -1203,12 +1390,14 @@ function abrirFichaPedido(p){
   $("cmp-resp-receb").value = p.responsavel_recebimento_id || "";
   $("cmp-resp-receb").disabled = !(ed || cmpPodeTrocarResp());
   $("cmp-itens-add").style.display = ed ? "" : "none";
+  _cmpRecsAtual = []; _cmpRecsDe = null;   // fase 133: Reabrir e Voltar a rascunho (enviado) esperam os recebimentos deste pedido
   // fase 102 (#160) + lote S55 (#175): "+ Novo produto" / "+ Cadastrar serviço" para quem cadastra; aviso para quem não
   if($("btn-cmp-prod-novo")) $("btn-cmp-prod-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";
   if($("btn-cmp-srv-novo")) $("btn-cmp-srv-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";
   if($("cmp-prod-sem-cadastro")) $("cmp-prod-sem-cadastro").style.display = ed && !cmpPodeCadastrarProduto() ? "" : "none";
+  cmpItensAddEstado();   // fase 133
   _cmpRatPadrao = []; _cmpRat = null; cmpRatPadraoTxt();   // lote S53 (#149): o "+ TAGs" do cabeçalho vale só para a ficha aberta
-  if($("btn-cmp-rat-padrao")) $("btn-cmp-rat-padrao").style.display = ed ? "" : "none";
+  cmpCabVisibilidade();   // fase 133: "+ TAGs" só com TAG no destino do custo
   if($("cmp-rat-modal")) $("cmp-rat-modal").style.display = "none";
   _cmpCotacoes = []; _cmpCotEdit = null; _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };   // fase 102
   if($("cmp-cot-form")) $("cmp-cot-form").style.display = "none";
@@ -1256,14 +1445,21 @@ function cmpAtualizarChips(){
   if(chOdoo){ const ext = p.codigo_externo_origem === "odoo"; chOdoo.style.display = ext ? "" : "none";
     if(ext) $("cmp-chip-odoo-txt").textContent = p.codigo_externo + (p.comprador_externo ? " · comprador " + p.comprador_externo : ""); }
   $("cmp-chip-forn").textContent = cmpForn($("cmp-forn").value) || "—";
-  const obra = $("cmp-obra").value, eq = $("cmp-equip").value;
-  $("cmp-chip-destino").textContent = $("cmp-local").value === "obra" ? "Obra: " + (cmpObra(obra) || "?") : eq ? "TAG " + cmpEq(eq) : obra ? "Base · obra " + cmpObra(obra) : "Base Itabira";
+  // fase 133: "Destino" virou dois chips: Entrega (onde o material chega) e Custo (lido dos itens; sem itens, do cabeçalho)
+  const dv = $("cmp-dest-custo")?.value || "", obraEnt = dv.startsWith("obra:") ? dv.slice(5) : $("cmp-obra").value;
+  $("cmp-chip-entrega").textContent = $("cmp-local").value === "obra" ? "Obra " + (cmpObra(obraEnt) || "?") : "Base Itabira";
+  const custo = cmpCustoPedidoAberto();
+  $("cmp-chip-custo").textContent = custo.txt;
+  $("cmp-chip-custo").closest(".chip").title = custo.title || "Onde o custo cai: o destino de cada item (obra, TAG, setor ou acessório); reposição de estoque, na saída do almoxarifado.";
   $("cmp-chip-total").textContent = brl(total);
   $("cmp-chip-prev").textContent = dataBR($("cmp-prev").value) || "—";
   const nPend = _cmpAprovAtual.carregado ? _cmpAprovAtual.pend.length : null;   // fase 108b
   $("cmp-chip-aprov").textContent = p.status === "cancelado" ? "Cancelado" : p.aprovador ? `${p.aprovador.nome}${p.aprovado_em ? " · " + dataBR(String(p.aprovado_em).slice(0, 10)) : ""}`
     : p.status === "aguardando_aprovacao" ? (nPend ? `falta ${nPend} assinatura${nPend > 1 ? "s" : ""}` : "aguardando") : "—";
-  if($("cmp-chip-tipo")) $("cmp-chip-tipo").textContent = cmpTipoResumo(_cmpItens) || "—";   // fase 108b
+  if($("cmp-chip-tipo")){   // fase 108b; fase 133: o tipo do cabeçalho, com "misto" quando algum item difere
+    const tipo = cmpTipoCab(), misto = new Set(_cmpItens.map(cmpItemTipo)).size > 1;
+    $("cmp-chip-tipo").textContent = (tipo ? CMP_TIPO_LBL[tipo] : (cmpTipoResumo(_cmpItens) || "—")) + (misto ? ` · misto (${cmpTipoResumo(_cmpItens)})` : "");
+  }
   // fase 102: etapa do fluxo e conferência do solicitante
   const chEt = $("cmp-chip-etapa");
   if(chEt){ const et = p.id ? ((_cmpConfAtual.etapa && _cmpConfAtual.etapa.etapa) || cmpEtapa(p)) : "rascunho"; chEt.textContent = (CMP_ETAPA[et] || {}).label || et; }
@@ -1484,13 +1680,17 @@ function cmpAtualizarBotoes(){
     bAp.title = (fecha ? "Assina e aprova o pedido: " : "Assina a sua chave (o pedido continua aguardando as outras): ") + minhas.map(k => k.quem_assina).join("; ");
   }
   const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+  // fase 133: só o cargo diretor, com a migration no banco e os recebimentos do pedido lidos (nenhum vivo)
+  const dirSemRec = _cmp133 && !leitura && usuarioAtual?.cargo === "diretor" && !!_cmpEditId && _cmpRecsDe === _cmpEditId
+    && !(_cmpRecsAtual || []).some(r => r.status !== "cancelado");
   const mostra = { "btn-cmp-salvar": pode && st === "rascunho", "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
     "btn-cmp-cotacao": pode && st === "rascunho" && !novo && !leitura,   // fase 102: rascunho → em cotação
     "btn-cmp-conferir": !novo && !leitura && _cmpConfAtual.pode && _cmpConfAtual.lista.some(r => r.pendente),   // fase 102
     "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && cmpPodeLancarNf() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180); hotfix 221: a NF é do financeiro, quem recebe usa "Receber material"
     "btn-cmp-receber-material": cmpPodeReceber() && ["aprovado","enviado","parcialmente_recebido"].includes(st) && cmpMateriaisPendentes().length > 0,   // lote S57a (#221): material sem a NF
     "btn-cmp-receber-servico": cmpPodeReceberServico(),
-    "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && (st === "em_cotacao" || (["aguardando_aprovacao","aprovado"].includes(st) && usuarioAtual?.cargo === "diretor")),   // hotfix 192e: depois do envio para aprovação, só a diretoria
+    "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && (st === "em_cotacao" || (["aguardando_aprovacao","aprovado"].includes(st) && usuarioAtual?.cargo === "diretor") || (st === "enviado" && dirSemRec)),   // hotfix 192e: depois do envio para aprovação, só a diretoria; fase 133: enviado também, sem recebimento
+    "btn-cmp-reabrir": !novo && st === "cancelado" && dirSemRec,   // fase 133: cancelado volta a rascunho no mesmo número
     "btn-cmp-pdf-sem-valor": !novo && st !== "cancelado" && st !== "em_cotacao",   // lote S55 (#179): em cotação o PDF já é a solicitação
     "btn-cmp-cancelar": pode && !novo && !["recebido","cancelado"].includes(st) };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
@@ -1517,6 +1717,7 @@ async function cmpCarregarFilhas(id){
   const setSb = (bid, n) => { const b = $(bid); if(b){ b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); } };
   const recs = rec.data || [], tits = tit.data || [];
   _cmpRecsAtual = recs;   // lote S57a: "Lançar NF" lê o recebimento daqui
+  _cmpRecsDe = rec.error ? null : id; cmpAtualizarBotoes();   // fase 133: Reabrir / Voltar a rascunho só sem recebimento
   setSb("sb-cmp-rec", recs.length); setSb("sb-cmp-tit", tits.length);
   // lote S57a: "🧾 Lançar NF" (#221) no recebimento confirmado sem título e "↩ Estornar" (#206) no confirmado sem título exportado.
   // Os títulos só vêm para quem lê contas a pagar; quem não lê não vê o "Lançar NF" e o banco confere o exportado no estorno.
@@ -1892,16 +2093,18 @@ async function cmpSalvarProdutoRapido(){
 }
 
 /* itens */
-/* fase 108b: destino padrão de item de APLICAÇÃO DIRETA pelo cabeçalho (TAG, senão obra); sem eles fica para escolher */
+/* fase 108b: destino padrão de item de APLICAÇÃO DIRETA pelo cabeçalho. Fase 133: vem do "Destino do custo" (obra, TAG
+   ou setor/obra interna, que antes não preenchia); "Vários destinos" ou vazio = escolher item a item. A obra que fica ao
+   lado da TAG é referência e não entra no item. */
 function cmpDestinoDiretoPadrao(){
-  const obra = $("cmp-obra").value, eq = $("cmp-equip").value;
-  if(eq){
-    const d = cmpDestinoDoValor("eq:" + eq);
+  const dv = $("cmp-dest-custo")?.value || "";
+  if(dv.startsWith("eq:")){
+    const eq = dv.slice(3), d = cmpDestinoDoValor(dv);
     // lote S53 (#149): "+ TAGs" do cabeçalho → o item novo nasce rateado em partes iguais (a primeira TAG é o equipamento_id)
     if(_cmpRatPadrao.length >= 2 && _cmpRatPadrao[0] === eq){ d._rateio = _cmpRatPadrao.map(id => ({ equipamento_id: id, fracao: 1 / _cmpRatPadrao.length })); d._rateioDirty = true; }
     return d;
   }
-  if(obra) return cmpDestinoDoValor("obra:" + obra);
+  if(dv.startsWith("obra:") || dv.startsWith("cc:")) return cmpDestinoDoValor(dv);
   return { ...CMP_SEM_DESTINO };
 }
 /* Fase 108b: colunas Tipo de compra (antes do destino), Natureza e Método. Reposição de estoque: o destino é o
@@ -1925,6 +2128,9 @@ function renderItensPedido(){
     const tipoCel = ed
       ? `<select class="cmp-it" data-f="_tipo" style="min-width:140px;max-width:160px;"><option value="reposicao"${repo ? " selected" : ""}${semEstoque}>${esc(CMP_TIPO_LBL.reposicao)}</option><option value="aplicacao_direta"${repo ? "" : " selected"}>${esc(CMP_TIPO_LBL.aplicacao_direta)}</option></select>`
       : cmpTipoTag(tipo);
+    // fase 133: item com tipo diferente do cabeçalho é exceção (pedido misto)
+    const cabTipo = cmpTipoCab(), excecao = cabTipo && tipo !== cabTipo
+      ? ` <span class="tag ambar" title="O pedido é ${esc(CMP_TIPO_CURTO[cabTipo])} e este item é ${esc(CMP_TIPO_CURTO[tipo])}: pedido misto">exceção</span>` : "";
     // lote S53 (#149): destino TAG ganha o botão ⚖ (rateio entre equipamentos) e a linha "+ N TAG(s) (rateio)"
     const destinoCel = repo
       ? `<span class="meta" title="${esc(cmpDicaDestinoEstoque(it))}">${esc(cmpDestinoTxt({ destino: "estoque", centro_custo_id: ed ? $("cmp-centro").value : it.centro_custo_id }))}</span>`
@@ -1946,7 +2152,7 @@ function renderItensPedido(){
       <td>${ed ? `<input type="number" step="0.01" min="0" max="100" class="cmp-it" data-f="icms_percentual" value="${esc(it.icms_percentual ?? 0)}" title="% de ICMS: só informativo" style="width:68px;text-align:right;" />` : `<span class="meta">${esc(cmpPct(it.icms_percentual) || "—")}</span>`}</td>
       <td class="num cmp-it-total">${cmpItemTotalHTML(it)}</td>
       <td>${ed ? `<select class="cmp-it" data-f="categoria_custo">${cmpCatOptions(it.categoria_custo || "peca")}</select>` : esc(CMP_CAT_LBL[it.categoria_custo] || "—")}</td>
-      <td>${tipoCel}</td>
+      <td>${tipoCel}${/* html */ excecao}</td>
       <td>${destinoCel}${!repo && it.destino === "equipamento" && it.obra_id ? `<div class="meta">obra ${esc(cmpObra(it.obra_id))}</div>` : ""}${externo}${ed && !repo && cmpItemTemHorimetro(it) ? `<div style="margin-top:3px;"><input type="number" class="cmp-it" data-f="horimetro" step="0.1" min="0" placeholder="horímetro" value="${esc(it.horimetro ?? "")}"${cmpTemRateio(it) ? ' disabled title="horímetro só em item de uma TAG"' : ' title="horímetro da máquina no abastecimento: só informação do item, não vira leitura oficial"'} style="width:110px;text-align:right;" /> <span class="meta">h</span></div>` : ""}</td>
       <td>${natCel}</td>
       <td>${metCel}</td>
@@ -1971,7 +2177,7 @@ function renderItensPedido(){
       if(bRat) bRat.style.display = it.destino === "equipamento" ? "" : "none";
       if(tRat) tRat.innerHTML = cmpDestinoRateioHTML(it);
       if(it.categoria_custo === "combustivel"){ if(it.destino !== "equipamento") it.horimetro = null; renderItensPedido(); }   // #215: campo do horímetro aparece/some
-      cmpAplicarMetodoPadrao(it); cmpAtualizarChips(); return;
+      cmpAplicarMetodoPadrao(it); cmpDestCabSincronizar(); cmpAtualizarChips(); return;   // fase 133: o cabeçalho acompanha
     }
     if(f === "natureza_id"){ it.natureza_id = v || null; it._natAuto = false; cmpSugerirDestinoNatureza(it); return; }
     if(f === "horimetro"){ it.horimetro = v === "" ? null : Number(v); return; }   // lote S57a (#215): só informação do item
@@ -2001,6 +2207,7 @@ function renderItensPedido(){
   tb.querySelectorAll(".cmp-it-func").forEach(inp => cmpLigarColaborador(inp));
   tb.querySelectorAll(".cmp-it-rat").forEach(b => b.addEventListener("click", e => cmpAbrirRateio(Number(e.target.closest("tr").dataset.idx))));
   tb.querySelectorAll(".cmp-it-rem").forEach(b => b.addEventListener("click", e => { _cmpItens.splice(Number(e.target.closest("tr").dataset.idx), 1); renderItensPedido(); }));
+  cmpDestCabSincronizar();   // fase 133: itens com destinos diferentes → "Vários destinos" no cabeçalho
   cmpAtualizarSbItens();
   cmpAtualizarChips();
 }
@@ -2099,16 +2306,23 @@ function cmpAtualizarSbItens(){
    cabeçalho (ou a escolher) e método pela obra. A natureza só é recalculada enquanto não foi escolhida à mão. */
 function cmpTrocarTipoItem(it, tipo){
   if(tipo === "reposicao" && cmpProdutoEhServico(it)){ aviso("app-aviso", "Serviço consumido não entra no estoque: informe a obra, a TAG ou o setor.", "erro"); renderItensPedido(); return; }   // lote S55 (#175)
-  it._tipo = tipo;
-  if(tipo === "reposicao"){
-    Object.assign(it, { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null, destino_acessorio_id: null, metodo: null });
-    it._metAuto = true;
-  } else {
-    Object.assign(it, cmpDestinoDiretoPadrao());
-  }
-  if(it._natAuto){ it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo); }
+  cmpAplicarTipoItem(it, tipo);
   renderItensPedido();
   if(tipo === "aplicacao_direta") cmpAplicarMetodoPadrao(it);
+}
+/* fase 133: a troca de um item, sem redesenhar (a troca do tipo do cabeçalho aplica em vários e redesenha uma vez) */
+function cmpAplicarTipoItem(it, tipo){
+  it._tipo = tipo;
+  if(cmpTemRateio(it)){ it._rateio = null; it._rateioDirty = true; }   // o rateio sai junto com a TAG (o Salvar apaga pela RPC)
+  if(tipo === "reposicao"){
+    Object.assign(it, { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null, destino_acessorio_id: null, metodo: null, horimetro: null });
+    it._metAuto = true;
+  } else {
+    const d = cmpDestinoDiretoPadrao();
+    Object.assign(it, d);
+    if(d._rateio) it._rateio = d._rateio.map(r => ({ ...r }));
+  }
+  if(it._natAuto){ it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo); }
 }
 /* lote S55 (#175): acabou o item livre (cmpAddItem(null)); todo item nasce de um produto do catálogo — serviço consumido
    também é produto (tipo_item = servico: aplicação direta, nunca estoque; o banco força e recusa) */
@@ -2116,8 +2330,12 @@ function cmpAddItem(p){
   if(!p?.id) return;
   if(p.unidade) _cmpProdUn[p.id] = p.unidade;   // lote S54 (#170): unidade do cadastro = padrão da linha
   const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv;
-  // fase 108b: o produto sugere o tipo (produto → categoria → aplicação direta)
-  const tipo = srv ? "aplicacao_direta" : cmpTipoPadraoProduto(p);
+  // fase 133: o item herda o tipo do cabeçalho (antes o produto sugeria); sem tipo não entra item. Serviço consumido em
+  // pedido de reposição fica aplicação direta, como exceção
+  const cab = cmpTipoCab();
+  if(!cab){ aviso("app-aviso", "Escolha o tipo de compra no Cabeçalho (reposição de estoque ou aplicação direta) antes de adicionar itens.", "erro"); ativarTabPedido("cabecalho"); return; }
+  const tipo = srv ? "aplicacao_direta" : cab;
+  if(srv && cab === "reposicao") aviso("app-aviso", `"${prodTxt(p)}" é serviço e não entra no estoque: ficou como aplicação direta (exceção). Escolha a obra, a TAG ou o setor na linha.`, "aviso");
   const d = tipo === "reposicao" ? { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null, destino_acessorio_id: null } : cmpDestinoDiretoPadrao();
   const it = { produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade: 1,
     valor_unitario: Number(p.custo_ultimo || 0), categoria_custo: p.categoria_custo || (srv ? "servico_terceiro" : "peca"), ipi_percentual: 0, icms_percentual: 0, ...d, quantidade_recebida: 0,   // lote S53 (#166)
@@ -2262,7 +2480,7 @@ function cmpRatAplicar(){
   }
   if(r.idx === null){
     _cmpRatPadrao = rateio.length >= 2 ? rateio.map(x => x.equipamento_id) : [];
-    if(rateio.length) $("cmp-equip").value = rateio[0].equipamento_id;
+    if(rateio.length) cmpDestCabDefinir("eq:" + rateio[0].equipamento_id);   // fase 133: a primeira TAG vira o destino do custo
     cmpRatPadraoTxt(); cmpAtualizarChips();
   } else {
     const it = _cmpItens[r.idx]; if(!it) return;
@@ -2367,10 +2585,16 @@ function cmpCampoFornecedor(idSelect, placeholder){
 function cmpFornAtualizar(idSelect){ const c = _cmpFornCampos[idSelect]; if(c) c.atualizar(); }
 
 /* salvar / ações */
+/* fase 133: o "Destino do custo" decide equipamento_id e destino_centro_custo_id (obra_id = a obra do destino ou a da entrega
+   ou referência). Reposição: entrega na Base, sem obra, TAG nem destino. centro_custo_id continua sendo o setor solicitante. */
 function cmpColetarCabecalho(){
+  const tipo = cmpTipoCab() || null, repo = tipo === "reposicao", dv = $("cmp-dest-custo")?.value || "";
   return {
     fornecedor_id: $("cmp-forn").value || null, data_pedido: $("cmp-data").value || hojeISO(), previsao_entrega: $("cmp-prev").value || null,
-    condicao_pagamento: $("cmp-cond").value.trim() || null, local_entrega: $("cmp-local").value, obra_id: $("cmp-obra").value || null, equipamento_id: $("cmp-equip").value || null,
+    condicao_pagamento: $("cmp-cond").value.trim() || null, local_entrega: repo ? "base" : $("cmp-local").value,
+    obra_id: repo ? null : dv.startsWith("obra:") ? dv.slice(5) : ($("cmp-obra").value || null),
+    equipamento_id: repo ? null : dv.startsWith("eq:") ? dv.slice(3) : null,
+    ...(_cmp133 ? { tipo_compra: tipo, destino_centro_custo_id: !repo && dv.startsWith("cc:") ? dv.slice(3) : null } : {}),
     centro_custo_id: $("cmp-centro").value || null,
     responsavel_recebimento_id: $("cmp-resp-receb").value || _cmpAtual?.solicitante_id || null,   // fase 78 (pedido novo sem escolha: o gatilho põe o solicitante)
     frete: Number($("cmp-frete").value || 0), desconto: Number($("cmp-desc").value || 0), observacoes: $("cmp-obs").value.trim() || null
@@ -2477,6 +2701,9 @@ async function cmpAcao(acao){
       return;
     } else if(acao === "enviar_aprovacao"){
       // fase 108b: natureza é o 2º eixo da distribuição; sem ela o envio segue, mas o comprador confirma
+      // fase 133: tipo e destino do custo vêm antes (o banco também recusa item de aplicação direta sem destino)
+      if(!cmpTipoCab()){ aviso("app-aviso", "Escolha o tipo de compra no Cabeçalho.", "erro"); ativarTabPedido("cabecalho"); return; }
+      if(cmpTipoCab() === "aplicacao_direta" && !$("cmp-dest-custo").value){ aviso("app-aviso", "Escolha o destino do custo no Cabeçalho (obra, TAG, setor ou Vários destinos, um por item).", "erro"); ativarTabPedido("cabecalho"); return; }
       const semNat = _cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta" && !i.natureza_id && !i.natureza).length;
       if(semNat && !confirm(`${semNat} item(ns) de aplicação direta sem natureza do gasto. Enviar para aprovação assim mesmo?`)){ ativarTabPedido("itens"); return; }
       id = await salvarPedido(true); if(!id) return;
@@ -2494,8 +2721,19 @@ async function cmpAcao(acao){
       const { error } = await sb.rpc("pedido_mudar_status", { p_id: id, p_status: "enviado" }); if(error) throw error;
       aviso("app-aviso", "Pedido marcado como enviado ao fornecedor.", "ok");
     } else if(acao === "rascunho"){
+      // fase 133: enviado ao fornecedor volta só pela diretoria e sem recebimento; o fornecedor precisa do PDF corrigido
+      const enviado = _cmpAtual?.status === "enviado";
+      if(enviado && !confirm(`O pedido ${_cmpAtual.numero} já foi enviado ao fornecedor. Ele volta a rascunho e, depois de corrigido, passa por nova aprovação.\n\nDepois de aprovado de novo, mande o PDF corrigido ao fornecedor.\n\nVoltar a rascunho?`)) return;
       const { error } = await sb.rpc("pedido_mudar_status", { p_id: id, p_status: "rascunho" }); if(error) throw error;
-      aviso("app-aviso", "Pedido voltou para rascunho.", "ok");
+      aviso("app-aviso", enviado ? "Pedido voltou para rascunho. Depois de corrigir e aprovar, mande o PDF novo ao fornecedor." : "Pedido voltou para rascunho.", "ok");
+    } else if(acao === "reabrir"){
+      // fase 133: cancelado sem recebimento volta a rascunho no mesmo número, só pela diretoria, com motivo (fica no histórico)
+      const motivo = prompt(`Reabrir o pedido ${_cmpAtual?.numero || ""} em rascunho, no mesmo número. Depois de corrigido ele passa por nova aprovação.\n\nMotivo da reabertura (fica no histórico):`);
+      if(motivo === null) return;
+      if(motivo.trim().length < 5){ aviso("app-aviso", "Informe o motivo da reabertura.", "erro"); return; }
+      const { data, error } = await sb.rpc("pedido_reabrir", { p_id: id, p_motivo: motivo.trim() }); if(error) throw error;
+      const av = data && data.aviso;
+      aviso("app-aviso", `Pedido ${(data && data.numero) || ""} reaberto em rascunho: corrija e envie para aprovação de novo.` + (av ? " Atenção: " + av : ""), av ? "aviso" : "ok");
     } else if(acao === "cancelar"){
       const motivo = prompt("Motivo do cancelamento:"); if(motivo === null) return;
       const { error } = await sb.rpc("pedido_mudar_status", { p_id: id, p_status: "cancelado", p_motivo: motivo || null }); if(error) throw error;
@@ -2921,7 +3159,15 @@ function cmpRecAddItem(p){
     valor_unitario_nf: Number(p.custo_ultimo || 0), categoria_custo: p.categoria_custo || (srv ? "servico_terceiro" : "peca"), ...d });
   renderItensRecebimento();
 }
-function cmpDestinoPadraoDe(p){ return p.equipamento_id ? "eq:" + p.equipamento_id : (p.local_entrega === "obra" && p.obra_id) ? "obra:" + p.obra_id : "estoque"; }
+/* destino sugerido para linha nova da nota (e serviço sem destino). Fase 133: segue o destino do custo do pedido (antes
+   aplicação direta com setor ou obra interna sugeria o estoque) */
+function cmpDestinoPadraoDe(p){
+  if(p.tipo_compra === "reposicao") return "estoque";
+  if(p.equipamento_id) return "eq:" + p.equipamento_id;
+  if(p.destino_centro_custo_id) return "cc:" + p.destino_centro_custo_id;
+  if(p.obra_id && (p.tipo_compra === "aplicacao_direta" || p.local_entrega === "obra")) return "obra:" + p.obra_id;
+  return "estoque";
+}
 async function confirmarRecebimento(){
   const r = _cmpRec; if(!r) return;
   if(r.modo === "compra_direta") return registrarCompraDireta();   // fase 78
@@ -3551,6 +3797,10 @@ function ligarCompras(){
   document.querySelectorAll("#cmp-ficha .sb-btn[data-goto-tab]").forEach(b => b.addEventListener("click", () => ativarTabPedido(b.dataset.gotoTab)));
   $("btn-cmp-anx-enviar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-anx-enviar", cmpEnviarAnexosPedido));   // lote S48 (#117)
   ["cmp-forn","cmp-local","cmp-obra","cmp-equip","cmp-prev"].forEach(id => $(id)?.addEventListener("change", cmpAtualizarChips));
+  // fase 133: tipo de compra, destino do custo e entrega mudam o que o cabeçalho mostra
+  $("cmp-tipo")?.addEventListener("change", cmpTipoCabMudou);
+  $("cmp-dest-custo")?.addEventListener("change", cmpDestCabMudou);
+  $("cmp-local")?.addEventListener("change", () => { cmpCabVisibilidade(); cmpAtualizarChips(); });
   // lote S56: NF informada (#162), km do veículo (#203), aviso de período (#174) e seletor de acessório (#202)
   $("cmp-nf-inf")?.addEventListener("change", debounce(cmpSalvarNfInformada, 300));
   $("cmp-km")?.addEventListener("change", cmpSalvarKm);
