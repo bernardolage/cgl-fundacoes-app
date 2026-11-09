@@ -121,6 +121,32 @@ function balAplicarMetodo(){
   const obra = dv.startsWith("obra:");
   met.disabled = !obra;
   if(!obra) met.value = "";
+  balCarregarVinculos(dv, "bal-vinc", "bal-vinc-campo", "");   // fase 137: toda troca de destino passa por aqui
+}
+/* ---------- fase 137 (D9): OS ou reparo desta saída ----------
+   TAG ou acessório com OS ou reparo aberto (RPC estoque_saida_vinculos_abertos, que o auxiliar também lê) mostra "OS ou reparo
+   desta saída" sem opção marcada: a pessoa escolhe a OS, o reparo ou "Sem OS", e a escolha vai no p_destino (manutencao_id,
+   reparo_id ou sem_vinculo). Sem vínculo aberto o campo some e o balcão segue como antes. EPI e uniforme nunca exigem. */
+function balVincRotulo(v){ return `${v.numero || (v.tipo === "manutencao" ? "OS" : "Reparo") + " sem número"}${v.descricao ? " · " + v.descricao : ""}`; }
+function balVincValor(v){ return (v.tipo === "manutencao" ? "os:" : "rep:") + v.id; }
+function balVincDoValor(v){ return v.startsWith("os:") ? { manutencao_id: v.slice(3) } : v.startsWith("rep:") ? { reparo_id: v.slice(4) } : v === "sem" ? { sem_vinculo: true } : {}; }
+/* valor atual da saída de hoje (para a edição): o vínculo dela, ou "Sem OS" */
+function balVincAtual(m){ const v = _balHojeVinculos.get(m.id); return v?.tipo === "manutencao" ? "os:" + v.ref_id : v?.tipo === "reparo" ? "rep:" + v.ref_id : "sem"; }
+async function balCarregarVinculos(dv, selId, campoId, atual){
+  const sel = $(selId), campo = $(campoId); if(!sel || !campo) return;
+  const eq = String(dv || "").startsWith("eq:") ? dv.slice(3) : null;
+  const ac = String(dv || "").startsWith("ac:") && dv.length > 3 ? dv.slice(3) : null;
+  const seq = `${dv}|${Date.now()}|${Math.random()}`; sel.dataset.seq = seq;
+  const esconder = () => { campo.style.display = "none"; sel.innerHTML = ""; };
+  if((!eq && !ac) || balSoEpi()){ esconder(); return; }
+  const { data, error } = await sb.rpc("estoque_saida_vinculos_abertos", { p_equipamento: eq, p_acessorio: ac });
+  if(sel.dataset.seq !== seq) return;   // o destino mudou durante a consulta
+  if(error || !(data || []).length){ esconder(); return; }   // sem a migration da 137 a RPC não existe: o balcão segue como antes
+  const marca = val => val === atual ? " selected" : "";
+  sel.innerHTML = `<option value="">— escolha —</option>`
+    + data.map(v => `<option value="${esc(balVincValor(v))}"${marca(balVincValor(v))}>${esc(balVincRotulo(v))}</option>`).join("")
+    + `<option value="sem"${marca("sem")}>Sem OS (a peça não é de OS nem de reparo)</option>`;
+  campo.style.display = "";
 }
 /* fase 108c: EPI para o destino pela alocação = categoria EPI / UNIFORMES ou EPI, ou categoria de custo epi/uniforme
    (produto_eh_epi no banco). A obrigatoriedade de quem retira e a ficha de EPI seguem por balEhEpi (fase 100). */
@@ -315,6 +341,13 @@ async function registrarSaidaBalcao(){
   const destino = balDestinoDoValor(dv);   // lote S56 (#202): + acessório
   const met = $("bal-metodo")?.value || "";
   if(met && destino.obra_id) destino.metodo = met;   // fase 108c: método opcional, só com obra
+  // fase 137: com OS ou reparo aberto no destino, a escolha é obrigatória (só EPI e uniforme na lista não exigem)
+  const soEpi = _balItens.every(i => balEhEpiAloc(i.p));
+  if($("bal-vinc-campo")?.style.display !== "none" && !soEpi){
+    const vinc = $("bal-vinc")?.value || "";
+    if(!vinc){ aviso("app-aviso", "Escolha em “OS ou reparo desta saída”: a OS, o reparo ou “Sem OS”.", "erro"); $("bal-vinc")?.focus(); return; }
+    Object.assign(destino, balVincDoValor(vinc));
+  }
   const itens = _balItens.slice(), retirante = _balRetirante;
   const { data, error } = await sb.rpc("estoque_saida_registrar", {
     p_retirante_id: retirante ? retirante.id : null, p_destino: destino,
@@ -335,6 +368,7 @@ async function registrarSaidaBalcao(){
       }
       return;
     }
+    if(String(error.hint || "") === "vinculo_obrigatorio") balAplicarMetodo();   // fase 137: a OS abriu depois de escolher o destino: o campo aparece
     aviso("app-aviso", "Saída não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return;
   }
   const ids = data || [], n = ids.length;
@@ -400,6 +434,7 @@ function balEditarHTML(m){
         <div class="campo"><label>Item</label><div>${esc(prodTxt(m.produto))}${m.retirante?.nome ? ` <span class="meta">· retirante ${esc(m.retirante.nome)} (não muda)</span>` : ""}</div></div>
         <div class="campo"><label>Quantidade <span class="meta">(${esc(m.produto?.unidade || "un")})</span></label><input type="number" id="bal-ed-qtd" step="0.001" min="0.001" value="${esc(Math.abs(m.quantidade || 0))}" style="width:110px;text-align:right;" /></div>
         <div class="campo"><label>Destino</label><select id="bal-ed-destino">${balDestinoOptions(atual, balDestinoTxt(m))}</select></div>
+        <div class="campo" id="bal-ed-vinc-campo" style="display:none;"><label>OS ou reparo desta saída *</label><select id="bal-ed-vinc"></select></div>
         <div class="campo"><label>Documento</label><input id="bal-ed-doc" value="${esc(m.documento || "")}" placeholder="Saída no balcão" /></div>
         <div class="campo largo"><label>Observação</label><input id="bal-ed-obs" value="${esc(m.observacoes || "")}" placeholder="opcional" /></div>
       </div></td>
@@ -412,6 +447,12 @@ async function balSalvarEdicao(id){
   const dv = $("bal-ed-destino")?.value || "";
   if(!dv){ aviso("app-aviso", "Escolha o destino: obra, TAG, setor ou acessório.", "erro"); $("bal-ed-destino")?.focus(); return; }
   const destino = balDestinoDoValor(dv);   // lote S56 (#202)
+  // fase 137: com o campo à vista, a escolha vai junto (a original já vem marcada); escondido, o banco mantém o vínculo da original
+  if($("bal-ed-vinc-campo")?.style.display !== "none" && !balMovEhEpi(m)){
+    const vinc = $("bal-ed-vinc")?.value || "";
+    if(!vinc){ aviso("app-aviso", "Escolha em “OS ou reparo desta saída”: a OS, o reparo ou “Sem OS”.", "erro"); $("bal-ed-vinc")?.focus(); return; }
+    Object.assign(destino, balVincDoValor(vinc));
+  }
   const { error } = await sb.rpc("estoque_saida_corrigir", { p_id: id, p_quantidade: qtd, p_destino: destino,
     p_documento: ($("bal-ed-doc")?.value || "").trim(), p_observacoes: ($("bal-ed-obs")?.value || "").trim() });
   if(error){ aviso("app-aviso", "Não foi possível corrigir: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
@@ -451,6 +492,12 @@ function renderSaidasHoje(){
         <td class="num">${brl(Math.abs(Number(m.quantidade || 0)) * Number(m.custo_unitario || 0))}</td>
         <td>${esc(balDestinoTxt(m))}</td><td class="meta">${/* html */ [linkDocumentoSaida(m, _balHojeVinculos.get(m.id)), esc(m.observacoes || "")].filter(Boolean).join(" · ")}</td>
         <td style="white-space:nowrap;">${m.estornada ? marca(m) : podeDesfazer ? `${podeEditar ? `<button type="button" class="btn-sec btn-sm bal-editar" data-id="${esc(m.id)}" title="corrigir quantidade, destino, documento ou observação (até 10 min)">✎ Editar</button> ` : ""}<button type="button" class="btn-sec btn-sm bal-desfazer" data-id="${esc(m.id)}" title="desfazer (até 10 min)">Desfazer</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
+  const emEdicao = _balEdit && _balHoje.find(x => x.id === _balEdit);
+  if(emEdicao && $("bal-ed-destino")){   // fase 137: o vínculo da saída em edição (o atual já marcado) e o do destino novo
+    balCarregarVinculos(balDestinoValor(emEdicao), "bal-ed-vinc", "bal-ed-vinc-campo", balVincAtual(emEdicao));
+    $("bal-ed-destino").addEventListener("change", e => balCarregarVinculos(e.target.value, "bal-ed-vinc", "bal-ed-vinc-campo",
+      e.target.value === balDestinoValor(emEdicao) ? balVincAtual(emEdicao) : ""));
+  }
   cont.querySelectorAll(".bal-editar").forEach(b => b.addEventListener("click", () => { _balEdit = b.dataset.id; renderSaidasHoje(); $("bal-ed-qtd")?.focus(); }));
   cont.querySelectorAll(".bal-ed-cancelar").forEach(b => b.addEventListener("click", () => { _balEdit = null; renderSaidasHoje(); }));
   cont.querySelectorAll(".bal-ed-salvar").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => balSalvarEdicao(b.dataset.id))));

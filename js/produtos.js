@@ -177,6 +177,7 @@ async function carregarProdutos(){
   }
   renderProdutos();
   prodContarSaidasSemCusto();   // hotfix saída sem custo: contador da visão "Saídas sem custo"
+  prodContarSaidasSemVinculo(); // fase 137: contador da visão "Saídas sem vínculo"
   // o select escondido da entrada de estoque (#ent-produto) é preenchido por estSelecionarProduto (estoque.js),
   // que já busca no servidor; não é mais alimentado daqui
 }
@@ -247,9 +248,10 @@ function renderProdutos(){
   const cont = $("prod-contador");
   if(cont) cont.textContent = `${num(_prodTotalFiltro)} de ${num(_prodTotalAtivos ?? _prodTotalFiltro)}`;   // N da consulta, de M ativos
   // hotfix saída sem custo: a visão das saídas não usa a busca nem os filtros de produto
-  const ssc = _prodView === "saidas_sem_custo";
-  document.querySelectorAll("#prod-painel .serv-filtros, #prod-modo").forEach(el => { el.style.display = ssc ? "none" : ""; });
+  const ssc = _prodView === "saidas_sem_custo", ssv = _prodView === "saidas_sem_vinculo";   // fase 137: idem "Saídas sem vínculo"
+  document.querySelectorAll("#prod-painel .serv-filtros, #prod-modo").forEach(el => { el.style.display = ssc || ssv ? "none" : ""; });
   if(ssc){ prodRenderSaidasSemCusto(); return; }
+  if(ssv){ prodRenderSaidasSemVinculo(); return; }
   renderProdModo();
   if(_prodView === "kanban") renderProdKanban(dados);
   else                       renderProdLista(dados);
@@ -912,6 +914,132 @@ async function criarNovaCategoria(){
   aviso("app-aviso","Categoria criada.","ok");
 }
 
+/* ---------- Fase 137 (D10): Saídas sem vínculo ----------
+   Saídas de estoque com destino, sem EPI, não desfeitas e sem OS, reparo, fabricação nem separação (vw_estoque_saidas_sem_vinculo).
+   "Vincular" liga a saída de TAG ou acessório a uma OS ou reparo (estoque_saida_vincular), com a OS do período como sugestão e
+   confirmação. Nada automático. Sem a migration o botão da visão não aparece. */
+let _prodSsv = [];            // linhas de vw_estoque_saidas_sem_vinculo do período
+let _prodSsvTem = null;       // a view existe? (null = ainda não consultou)
+let _prodSsvPeriodo = "90";   // "30" | "90" | "tudo"
+let _prodSsvDestino = "";     // "" ou um destino_tipo
+const PROD_SSV_DESTINOS = { equipamento: "TAG", acessorio: "Acessório", obra: "Obra", centro_custo: "Setor" };
+/* espelha estoque_saida_vincular: almoxarifado_baixa_pecas() ou manutencao_pode_operar(), nunca o auditor */
+function prodPodeVincularSaida(){
+  return !!usuarioAtual && !ehSomenteLeitura() &&
+    ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"].includes(usuarioAtual.cargo);
+}
+async function prodContarSaidasSemVinculo(){
+  const btn = $("prod-view-ssv"); if(!btn || _prodSsvTem === false) return;
+  const { count, error } = await sb.from("vw_estoque_saidas_sem_vinculo").select("id", { count: "exact", head: true });
+  if(error){ _prodSsvTem = false; btn.style.display = "none"; return; }   // migration da fase 137 ainda não aplicada
+  _prodSsvTem = true; btn.style.display = "";
+  $("prod-ssv-cont").textContent = count ? `(${num(count)})` : "";
+}
+function prodSsvRotulo(v){ return `${v.numero || (v.tipo === "reparo" ? "Reparo" : "OS") + " sem número"}${v.descricao ? " · " + v.descricao : ""}${v.fim ? (v.tipo === "reparo" ? " (concluído)" : " (concluída)") : ""}`; }
+async function prodRenderSaidasSemVinculo(){
+  const cont = $("prod-conteudo"); if(!cont) return;
+  cont.innerHTML = `<p class="vazio">Carregando…</p>`;
+  let desde = null;
+  if(_prodSsvPeriodo !== "tudo"){ const d = new Date(); d.setDate(d.getDate() - Number(_prodSsvPeriodo)); desde = dataLocalISO(d); }
+  const { data, error } = await lerTudo(() => {
+    let q = sb.from("vw_estoque_saidas_sem_vinculo").select("*");
+    if(desde) q = q.gte("data", desde);
+    return q;
+  }, "id");
+  if(_prodView !== "saidas_sem_vinculo") return;
+  if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler as saídas sem vínculo: ${esc(error.message)}</p>`; return; }
+  _prodSsv = (data || []).sort((a, b) => String(b.data).localeCompare(String(a.data)));
+  const porDest = {};
+  let total = 0;
+  _prodSsv.forEach(r => {
+    const k = r.destino_tipo; porDest[k] = porDest[k] || { n: 0, v: 0 };
+    porDest[k].n++; porDest[k].v += Number(r.valor || 0); total += Number(r.valor || 0);
+  });
+  const lista = _prodSsvDestino ? _prodSsv.filter(r => r.destino_tipo === _prodSsvDestino) : _prodSsv;
+  const pode = prodPodeVincularSaida();
+  const optPer = [["30", "Últimos 30 dias"], ["90", "Últimos 90 dias"], ["tudo", "Todo o período"]]
+    .map(([v, t]) => `<option value="${esc(v)}"${v === _prodSsvPeriodo ? " selected" : ""}>${esc(t)}</option>`).join("");
+  const optDest = `<option value="">Todos os destinos</option>` + Object.entries(PROD_SSV_DESTINOS)
+    .map(([v, t]) => `<option value="${esc(v)}"${v === _prodSsvDestino ? " selected" : ""}>${esc(t)} (${num(porDest[v]?.n || 0)})</option>`).join("");
+  const resumo = Object.entries(PROD_SSV_DESTINOS).filter(([k]) => porDest[k])
+    .map(([k, t]) => `${esc(t)} ${num(porDest[k].n)} · <span data-val-sens>${brl(porDest[k].v)}</span>`).join(" · ");
+  const topo = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px;">
+      <select id="prod-ssv-periodo" aria-label="Período das saídas">${/* html */ optPer}</select>
+      <select id="prod-ssv-destino" aria-label="Destino das saídas">${/* html */ optDest}</select>
+    </div>
+    <div class="meta" style="margin:0 0 8px;">${num(_prodSsv.length)} saída(s) sem OS, reparo, fabricação nem separação · <span data-val-sens>${brl(total)}</span>` +
+    (resumo ? ` · ${/* html */ resumo}` : "") +
+    (pode ? " · a sugestão é a OS ou o reparo do mesmo destino no período; confira antes de vincular" : " · quem vincula é o almoxarifado ou a manutenção") + `</div>`;
+  if(!lista.length){ cont.innerHTML = topo + `<p class="vazio">✅ Nenhuma saída sem vínculo ${_prodSsvDestino ? "neste destino e " : ""}neste período.</p>`; return; }
+  const linhasSsv = lista.map(r => {
+    const sug = r.candidato_id
+      ? esc(r.candidato_numero || (r.candidato_tipo === "reparo" ? "Reparo sem número" : "OS sem número")) + (r.candidatos > 1 ? ` <span class="meta" title="Outras OS ou reparos no período">+${num(r.candidatos - 1)}</span>` : "")
+      : `<span class="meta">—</span>`;
+    const acao = pode && (r.equipamento_id || r.destino_acessorio_id)
+      ? `<button type="button" class="btn-sec btn-sm" data-ssv-vincular="${esc(r.id)}">Vincular</button>` : "";
+    return `<tr data-ssv-linha="${esc(r.id)}">
+      <td>${dataBR(dataLocalISO(r.data))}</td>
+      <td><strong>${esc(r.codigo)}</strong> — ${esc(r.produto)}</td>
+      <td class="num">${num(r.quantidade)} <span class="meta">${esc(r.unidade || "un")}</span></td>
+      <td class="num">${brl(r.valor)}</td>
+      <td>${esc(r.destino || "—")}</td>
+      <td>${esc(r.retirante || "—")}</td>
+      <td>${esc(r.documento || "—")}</td>
+      <td>${/* html */ sug}</td>
+      <td>${/* html */ acao}</td>
+    </tr>`;
+  }).join("");
+  cont.innerHTML = topo +
+    `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor</th><th>Destino</th><th>Retirou</th><th>Documento</th><th>Sugestão</th><th></th></tr></thead>
+    <tbody>${/* html */ linhasSsv}</tbody></table></div>`;
+}
+/* "Vincular": linha embutida logo abaixo da saída, com as OS e os reparos do destino que cobrem a data (sugestão já marcada) */
+async function prodSsvAbrirVincular(id){
+  const r = _prodSsv.find(x => x.id === id); if(!r) return;
+  document.querySelectorAll("#prod-conteudo tr.ssv-vinc").forEach(t => t.remove());
+  const tr = [...document.querySelectorAll("#prod-conteudo tr[data-ssv-linha]")].find(t => t.dataset.ssvLinha === id); if(!tr) return;
+  const nova = document.createElement("tr");
+  nova.className = "ssv-vinc";
+  nova.innerHTML = `<td colspan="9"><span class="meta">Carregando OS e reparos…</span></td>`;
+  tr.after(nova);
+  const { data, error } = await sb.rpc("estoque_saida_vinculos_abertos",
+    { p_equipamento: r.equipamento_id || null, p_acessorio: r.destino_acessorio_id || null, p_data: dataLocalISO(r.data) });
+  if(!nova.isConnected) return;
+  const fechar = `<button type="button" class="btn-sec btn-sm" data-ssv-cancelar>Fechar</button>`;
+  if(error){ nova.innerHTML = `<td colspan="9"><span class="meta">Não foi possível ler as OS e os reparos: ${esc(error.message)}</span> ${/* html */ fechar}</td>`; return; }
+  const ops = data || [];
+  if(!ops.length){ nova.innerHTML = `<td colspan="9"><span class="meta">Nenhuma OS nem reparo de ${esc(r.destino)} cobre a data desta saída.</span> ${/* html */ fechar}</td>`; return; }
+  const marcado = ops.some(v => v.id === r.candidato_id) ? r.candidato_id : null;
+  const opts = (marcado ? "" : `<option value="">— escolha —</option>`) + ops.map(v =>
+    `<option value="${esc(v.tipo)}:${esc(v.id)}"${v.id === marcado ? " selected" : ""}>${esc(prodSsvRotulo(v))}</option>`).join("");
+  nova.innerHTML = `<td colspan="9">
+      <label for="prod-ssv-sel" class="meta">Vincular a</label>
+      <select id="prod-ssv-sel">${/* html */ opts}</select>
+      <button type="button" class="btn btn-sm" id="prod-ssv-ok" data-ssv-confirmar="${esc(id)}">Vincular</button>
+      <button type="button" class="btn-sec btn-sm" data-ssv-cancelar>Cancelar</button>
+    </td>`;
+}
+async function prodSsvConfirmar(id){
+  const r = _prodSsv.find(x => x.id === id); const sel = $("prod-ssv-sel"); if(!r || !sel) return;
+  if(!sel.value){ aviso("app-aviso", "Escolha a OS ou o reparo desta saída.", "erro"); return; }
+  const [tipo, alvo] = sel.value.split(":");
+  const rot = sel.selectedOptions[0]?.textContent || "";
+  const ehRep = tipo === "reparo";
+  const de = ehRep ? "do reparo" : "da OS", pelo = ehRep ? "pelo reparo" : "pela OS";
+  const concluido = /\(concluíd[ao]\)$/.test(rot);
+  if(!confirm(`Vincular a saída de ${r.codigo} (${num(r.quantidade)} ${r.unidade || "un"}, ${dataBR(dataLocalISO(r.data))}, ${r.destino}) a ${rot}?\n\n` +
+    `A peça entra na lista ${de} e o custo dela passa a contar ${pelo}. ` +
+    (concluido ? `Como já está concluíd${ehRep ? "o" : "a"}, o custo sai do custo direto de ${r.destino} e entra ${de} agora.`
+               : `Ele só entra no custo quando ${ehRep ? "o reparo" : "a OS"} concluir; até lá sai do custo direto de ${r.destino}.`))) return;
+  await comBotaoTravado("prod-ssv-ok", async () => {
+    const { error } = await sb.rpc("estoque_saida_vincular", { p_mov: id, p_tipo: tipo, p_id: alvo });
+    if(error){ aviso("app-aviso", "Não vinculou: " + error.message, "erro"); return; }
+    aviso("app-aviso", `Saída de ${r.codigo} vinculada a ${rot}.`, "ok");
+    await prodRenderSaidasSemVinculo();
+    prodContarSaidasSemVinculo();
+  });
+}
+
 /* ---------- Listeners ---------- */
 function ligarProdutos(){
   document.querySelectorAll("#prod-painel .serv-view-btn").forEach(b => {
@@ -945,7 +1073,16 @@ function ligarProdutos(){
     const p = { id: prodEditId, codigo: $("prod-codigo").value, nome: $("prod-nome").value, unidade: $("prod-unidade").value };
     if(await prodDefinirCusto(p)) await abrirProduto(prodEditId);
   }));
+  // fase 137: filtros de período e destino da visão "Saídas sem vínculo"
+  $("prod-conteudo")?.addEventListener("change", (e) => {
+    if(e.target.id === "prod-ssv-periodo"){ _prodSsvPeriodo = e.target.value; prodRenderSaidasSemVinculo(); }
+    else if(e.target.id === "prod-ssv-destino"){ _prodSsvDestino = e.target.value; prodRenderSaidasSemVinculo(); }
+  });
   $("prod-conteudo")?.addEventListener("click", (e) => {
+    // fase 137: ações da visão "Saídas sem vínculo"
+    const sv = e.target.closest("[data-ssv-vincular]"); if(sv){ prodSsvAbrirVincular(sv.dataset.ssvVincular); return; }
+    const sk = e.target.closest("[data-ssv-confirmar]"); if(sk){ prodSsvConfirmar(sk.dataset.ssvConfirmar); return; }
+    if(e.target.closest("[data-ssv-cancelar]")){ e.target.closest("tr.ssv-vinc")?.remove(); return; }
     // hotfix saída sem custo: ações da visão "Saídas sem custo"
     const sd = e.target.closest("[data-ssc-definir]"); if(sd){ prodSscDefinir(sd.dataset.sscDefinir); return; }
     const sr = e.target.closest("[data-ssc-revalorar]"); if(sr){ prodSscRevalorar(sr.dataset.sscRevalorar); return; }
