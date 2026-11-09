@@ -76,6 +76,8 @@
   --info:        #2B7AD1;   /* azul mantido para "informativo" (distinto da marca teal) */
   --info-bg:     #E7F1FC;
   --info-txt:    #1F5FA8;
+  --lilas-bg:    #F1ECFA;   /* fase 154: grupo INJEÇÃO do acompanhamento raiz (cor da planilha da engenharia) */
+  --lilas-txt:   #5B3A9A;
 
   --neutro:      #64748b;
   --neutro-bg:   #eef2f6;
@@ -222,6 +224,8 @@
   --aviso-txt:   #fcd34d;
   --info-bg:     #15283f;
   --info-txt:    #93c5fd;
+  --lilas-bg:    #2a2140;
+  --lilas-txt:   #c4b5fd;
   --neutro-bg:   #2a3444;
   --neutro-txt:  #cbd5e1;
 
@@ -2845,12 +2849,18 @@ input:disabled, select:disabled, textarea:disabled {
 .raiz-resumo { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: var(--txt-sm); color: var(--txt-sec); padding: 8px 0 10px; }
 .raiz-tabela { font-size: var(--txt-xs); border-collapse: collapse; white-space: nowrap; }
 .raiz-tabela th, .raiz-tabela td { padding: 4px 6px; border-bottom: 1px solid var(--sup-3); }
-.raiz-tabela thead th { position: sticky; top: 0; background: var(--sup-3); z-index: 1; }
-.raiz-tabela .raiz-cab-grupo th { background: var(--marca-100); color: var(--marca-txt); text-align: center; letter-spacing: .3px; }
-.raiz-tabela tr.raiz-grupo td { background: var(--marca-50); font-weight: 600; color: var(--acao-txt); }
-.raiz-tabela tr.raiz-grupo.sem-local td { background: var(--aviso-bg); color: var(--aviso-txt); }   /* lote S61 (#267) */
-.raiz-tabela tr.ok td:nth-child(2) { color: var(--sucesso-txt); }
-.raiz-tabela tr.perigo td:nth-child(2) { color: var(--perigo-txt); }
+.raiz-tabela thead { position: sticky; top: 0; z-index: 1; }   /* fase 154: as duas linhas do cabeçalho grudam juntas */
+.raiz-tabela thead th { background: var(--sup-3); }
+.raiz-tabela .raiz-cab-grupo th { text-align: center; letter-spacing: .3px; }
+/* fase 154: grupos da planilha da engenharia (projeto, execução, injeção, outros) */
+.raiz-tabela thead th.raiz-g-proj   { background: var(--marca-100); color: var(--marca-txt); }
+.raiz-tabela thead th.raiz-g-exec   { background: var(--marca-50);  color: var(--marca-txt); }
+.raiz-tabela thead th.raiz-g-inj    { background: var(--lilas-bg);  color: var(--lilas-txt); }
+.raiz-tabela thead th.raiz-g-outros { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.raiz-tabela .raiz-ini { border-left: 2px solid var(--sup-3); }
+.raiz-tabela .raiz-sem-local { background: var(--aviso-bg); color: var(--aviso-txt); border-radius: var(--radius-sm); padding: 0 6px; font-weight: 600; }
+.raiz-tabela tr.ok td:nth-child(3) { color: var(--sucesso-txt); }   /* fase 154: a estaca é a 3ª coluna */
+.raiz-tabela tr.perigo td:nth-child(3) { color: var(--perigo-txt); }
 .raiz-tabela tfoot td { background: var(--sup-2); }
 
 /* ---- Mobilizações: quadro (fase 34) ---- */

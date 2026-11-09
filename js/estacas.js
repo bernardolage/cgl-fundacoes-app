@@ -274,7 +274,7 @@ async function carregarEstacasDaObra(obraId){
   estCarregarTolerancia(); // hotfix 15b: tolerância do destaque executada × projeto
   const [estsRes, execsRes, equipsRes, obraRes] = await Promise.all([
     lerTudo(() => sb.from("estacas")
-      .select("id,numero,tipo,status,diametro_mm,profundidade_m,profundidade_executada_m,projeto_pendente,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local")
+      .select("id,numero,tipo,status,diametro_mm,profundidade_m,profundidade_executada_m,projeto_pendente,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local,refuro_motivo")
       .eq("obra_id", obraId)
       .order("numero")),
     // hotfix carga do banco: a view parte de rdo; o !inner varria todas as execuções a cada abertura
@@ -410,103 +410,181 @@ function atualizarBotaoRaiz(){
 
 /* ====================================================================
    ACOMPANHAMENTO RAIZ (RG 11.1) — vista "Raiz" da aba Estacas.
-   Replica a planilha de acompanhamento de estaca raiz da CGL, por estaca:
-   Local · Bloco · Estaca · Ø · Comp. estimado | EXECUÇÃO: comp. final,
-   comp. total executado (inclui refuros), data, metros por ferramenta
-   (revestimento / martelo / tricone), TAG | INJEÇÃO: data, sacos, m³, TAG |
-   Período · Medição (BM) · Observação. Tudo derivado do RDO (execuções +
-   trechos de solo com ferramenta + itens de medição) — nada é digitado aqui.
-   Só aparece quando a obra tem estacas do tipo raiz.
+   Fase 154 (#255): colunas, ordem e grupos da planilha de acompanhamento da engenharia (A a U):
+   DADOS DE PROJETO   Projeto · Bloco · Estaca · Diâmetro · Comprimento estimado
+   EXECUÇÃO           Comprimento executado · Data · Revestimento · Tricone · Martelo · Refuro · TAG · Período
+   INJEÇÃO            Volume de concreto usinado · Data da injeção · Saco · M³ in loco · TAG · Turno
+   OUTROS DADOS       Medição (boletim em que a estaca entrou) · Observação
+   Tudo derivado do cadastro da estaca e do RDO (execuções, trechos de solo com ferramenta, turno do diário, medições) —
+   nada é digitado aqui. Só aparece quando a obra tem estacas do tipo raiz.
    ==================================================================== */
-let _raizDados = null;   // { execsPorEstaca: Map, carregadoEm }
+let _raizDados = null;   // { porEstaca: Map, medicoes: [], carregadoEm }
+let _raizLinhas = [];    // linhas da última renderização (CSV e Excel)
 
-function _raizPeriodo(iso){
-  if(!iso) return "";
-  const h = Number(String(iso).slice(11, 13));
-  if(Number.isNaN(h)) return "";
-  return (h >= 18 || h < 6) ? "NOTURNO" : "DIURNO";
+const RAIZ_GRUPOS = [["DADOS DE PROJETO", 5, "proj"], ["EXECUÇÃO DA ESTACA", 8, "exec"], ["INJEÇÃO DA ESTACA", 6, "inj"], ["OUTROS DADOS", 2, "outros"]];
+const RAIZ_COLUNAS = ["Projeto", "Bloco", "Estaca", "Diâmetro (mm)", "Comprimento estimado (m)",
+  "Comprimento executado (m)", "Data", "Revestimento (m)", "Tricone (m)", "Martelo (m)", "Refuro (m)", "TAG", "Período",
+  "Volume de concreto usinado (m³)", "Data da injeção", "Saco (un)", "M³ (in loco)", "TAG", "Turno",
+  "Medição", "Observação"];
+
+/* Fase 154: hora e dia no fuso do navegador (Itabira). A API devolve timestamptz em UTC; ler a hora do texto trocava o período
+   de 57 das 111 execuções com hora da 8350-2026 (03:30 virava "06" e saía DIURNO). */
+function _raizHora(iso){
+  if(!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d.getHours();
+}
+function _raizDia(iso){
+  if(!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : dataLocalISO(d);
+}
+/* período pela hora; sem hora, pelo turno do diário (rdo.turno_campo, fase 129a) */
+function _raizPeriodo(iso, turnoDiario){
+  const h = _raizHora(iso);
+  if(h != null) return (h >= 18 || h < 6) ? "NOTURNO" : "DIURNO";
+  if(turnoDiario === "noturno") return "NOTURNO";
+  if(turnoDiario === "diurno") return "DIURNO";
+  return "";
 }
 function _raizTag(exec){
-  if(exec.equipamento_id){
-    const eq = (_equipamentosCache || []).find(x => x.id === exec.equipamento_id);
+  const eqId = exec.equipamento_id || exec.rdo_equipamento_id;
+  if(eqId){
+    const eq = (_equipamentosCache || []).find(x => x.id === eqId);
     if(eq) return eq.codigo || eq.nome || "";
   }
   return exec.maquina_codigo || "";
 }
 
+/* Fase 154: boletim em que a estaca entrou. Pelo item da medição ligado à execução; sem item, a medição da obra cujo período
+   contém a data da execução, da mesma TAG (equipamento_id; vazio, o "TAG nn" do número contra o código "nn-RZ") e, havendo, do
+   mesmo turno ("Diurno"/"Noturno" no número). Rejeitada não conta; boletim sem TAG (compressor, gerador) não é da estaca. */
+const _raizNumTag = (s) => { const m = String(s || "").match(/^\s*0*(\d+)/); return m ? m[1] : null; };
+function _raizMedicoes(execs){
+  const achadas = new Map();
+  const add = (m, pelaData) => {
+    if(!m || !m.numero || m.status === "rejeitada") return;
+    const k = m.id || m.numero;
+    const a = achadas.get(k);
+    if(!a || (a.pelaData && !pelaData)) achadas.set(k, { ...m, pelaData });
+  };
+  execs.forEach(x => (x._meds || []).forEach(m => add(m, false)));
+  if(achadas.size) return [...achadas.values()];
+  const meds = (_raizDados && _raizDados.medicoes) || [];
+  execs.forEach(x => {
+    const dia = x.data;
+    if(!dia) return;
+    const eqId = x.equipamento_id || x.rdo_equipamento_id || null;
+    const tagNum = _raizNumTag(_raizTag(x));
+    const daTag = meds.filter(m => m.status !== "rejeitada" && m.periodo_inicio && m.periodo_fim && m.periodo_inicio <= dia && dia <= m.periodo_fim)
+      .filter(m => m.equipamento_id ? (eqId && m.equipamento_id === eqId)
+                                    : (tagNum && (String(m.numero || "").match(/\bTAG\s*0*(\d+)\b/i) || [])[1] === tagNum));
+    const doTurno = x._turno ? daTag.filter(m => new RegExp(x._turno, "i").test(m.numero || "")) : [];
+    (doTurno.length ? doTurno : daTag).forEach(m => add(m, true));
+  });
+  return [...achadas.values()];
+}
+function _raizMedicaoRotulo(m){
+  const ddmm = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}` : "");
+  const bm = String(m.numero || "").split(" · ")[0];
+  return m.periodo_inicio && m.periodo_fim ? `${bm} (${ddmm(m.periodo_inicio)}–${ddmm(m.periodo_fim)})` : bm;
+}
+
 async function carregarAcompanhamentoRaiz(){
   if(!obraEditId) return null;
-  const { data: execs, error } = await sb.from("vw_rdo_execucoes_obra")
-    .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo_id,obra_id,data,rdo_equipamento_id")
-    .eq("obra_id", obraEditId)
-    .order("perfuracao_inicio", { ascending: true });
-  if(error){ aviso("app-aviso", "Não foi possível carregar as execuções: " + error.message, "erro"); return null; }
-  (execs || []).forEach(execComRdo);
-  const ids = (execs || []).map(e => e.id);
-  let solos = [], meds = [];
-  if(ids.length){
-    const [sRes, mRes] = await Promise.all([
-      sb.from("rdo_raiz_solo").select("execucao_id,inicio_ml,final_ml,ferramenta").in("execucao_id", ids),
-      sb.from("medicao_itens").select("execucao_id, medicao:medicao_id(numero,status)").in("execucao_id", ids)
-    ]);
-    solos = sRes.data || [];
-    meds  = mRes.data || [];
-  }
+  const obraId = obraEditId;
+  // fase 154: tudo por obra e paginado (corte de 1.000 linhas; .in() com centenas de ids é recusado pela API)
+  const [eRes, rRes, sRes, iRes, mRes] = await Promise.all([
+    lerTudo(() => sb.from("vw_rdo_execucoes_obra")
+      .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,volume_injetado_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo_id,obra_id,data,rdo_equipamento_id")
+      .eq("obra_id", obraId)),
+    lerTudo(() => sb.from("rdo").select("id,turno_campo").eq("obra_id", obraId)),
+    lerTudo(() => sb.from("rdo_raiz_solo").select("execucao_id,inicio_ml,final_ml,ferramenta,rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)),
+    // medição: só quem lê medição (pode_ler_financeiro); para os outros vem vazio e a coluna fica "—"
+    lerTudo(() => sb.from("medicao_itens").select("execucao_id,medicao:medicao_id!inner(id,numero,status,periodo_inicio,periodo_fim,obra_id)")
+      .eq("medicao.obra_id", obraId).not("execucao_id", "is", null)),
+    sb.from("medicoes").select("id,numero,status,periodo_inicio,periodo_fim,equipamento_id").eq("obra_id", obraId)
+  ]);
+  if(obraId !== obraEditId) return null;
+  if(eRes.error){ aviso("app-aviso", "Não foi possível carregar as execuções: " + eRes.error.message, "erro"); return null; }
+  const turnoRdo = new Map((rRes.data || []).map(r => [r.id, r.turno_campo || ""]));
+  const execs = (eRes.data || []).map(execComRdo);
+  execs.forEach(x => {
+    x._turnoDiario = turnoRdo.get(x.rdo_id) || "";
+    x._turno = _raizPeriodo(x.perfuracao_inicio, x._turnoDiario).toLowerCase();
+  });
+  // ordem do furo: hora da perfuração; sem hora, o fim do dia do RDO
+  const ordem = (x) => x.perfuracao_inicio ? new Date(x.perfuracao_inicio).getTime() : new Date(`${x.data || "9999-12-31"}T23:59:59`).getTime();
+  execs.sort((a, b) => ordem(a) - ordem(b));
+
   const soloPorExec = new Map();
-  solos.forEach(s => { if(!soloPorExec.has(s.execucao_id)) soloPorExec.set(s.execucao_id, []); soloPorExec.get(s.execucao_id).push(s); });
+  (sRes.error ? [] : (sRes.data || [])).forEach(s => { if(!soloPorExec.has(s.execucao_id)) soloPorExec.set(s.execucao_id, []); soloPorExec.get(s.execucao_id).push(s); });
   const medPorExec = new Map();
-  meds.forEach(m => { if(m.medicao?.numero){ if(!medPorExec.has(m.execucao_id)) medPorExec.set(m.execucao_id, new Set()); medPorExec.get(m.execucao_id).add(m.medicao.numero); } });
+  (iRes.error ? [] : (iRes.data || [])).forEach(m => { if(m.medicao?.numero){ if(!medPorExec.has(m.execucao_id)) medPorExec.set(m.execucao_id, []); medPorExec.get(m.execucao_id).push(m.medicao); } });
 
   // agrupa por estaca (id; sem id, pelo número normalizado)
   const porEstaca = new Map();
-  (execs || []).forEach(ex => {
+  execs.forEach(ex => {
     const chave = ex.estaca_id || ("n:" + normalizarNumeroEstacaEstacas(ex.estaca_numero || ""));
     if(!porEstaca.has(chave)) porEstaca.set(chave, []);
-    porEstaca.get(chave).push({ ...ex, _solo: soloPorExec.get(ex.id) || [], _meds: [...(medPorExec.get(ex.id) || [])] });
+    porEstaca.get(chave).push({ ...ex, _solo: soloPorExec.get(ex.id) || [], _meds: medPorExec.get(ex.id) || [] });
   });
-  _raizDados = { porEstaca, carregadoEm: Date.now() };
+  _raizDados = { porEstaca, medicoes: mRes.error ? [] : (mRes.data || []), carregadoEm: Date.now() };
   return _raizDados;
 }
 
 function _raizLinha(est, execs){
-  const num = (v) => (v == null ? null : Number(v));
+  const num = (v) => (v == null || v === "" ? null : Number(v));
   const furos = execs.filter(x => (x.modalidade_execucao || "furo_normal") !== "refuro");
-  const ultimo = execs.length ? execs[execs.length - 1] : null;
+  const refuros = execs.filter(x => (x.modalidade_execucao || "furo_normal") === "refuro");
+  // execução = o último dia com perfuração (a linha só de injeção, sem metragem, não muda a data nem a TAG do furo)
+  const comFuro = execs.filter(x => x.perfuracao_inicio || (num(x.profundidade_executada) || 0) > 0);
+  const ultExec = comFuro.length ? comFuro[comFuro.length - 1] : (execs.length ? execs[execs.length - 1] : null);
   // hotfix 15: profundidade_executada é a metragem DO DIA e perfuracao_ate_m o acumulado ao fim do dia.
-  // Comp. final = maior acumulado entre os furos (estaca de vários dias); comp. total = soma dos dias, com refuros.
+  // Comprimento executado = maior acumulado entre os furos (estaca de vários dias); total = soma dos dias, com refuros (só no resumo e no CSV).
   const acum = (x) => Math.max(num(x.perfuracao_ate_m) || 0, num(x.profundidade_executada) || 0);
-  const compFinal = furos.length ? Math.max(...furos.map(acum)) : (ultimo ? acum(ultimo) : null);
+  const compFinal = furos.length ? Math.max(...furos.map(acum)) : (ultExec ? acum(ultExec) : null);
   const compTotal = execs.reduce((s, x) => s + (num(x.profundidade_executada) || 0), 0);
+  const refuroM = refuros.reduce((s, x) => s + (num(x.profundidade_executada) || 0), 0);
   const ferr = { revestimento: 0, martelo: 0, tricone: 0, outro: 0 };
   execs.forEach(x => (x._solo || []).forEach(s => {
     const m = Math.max(0, (num(s.final_ml) || 0) - (num(s.inicio_ml) || 0));
     const k = ferr[s.ferramenta] != null ? s.ferramenta : "outro";
     ferr[k] += m;
   }));
-  const comInj = execs.filter(x => x.concretagem_inicio || x.volume_concreto_m3 != null || x.consumo_cimento_raiz);
-  const ultInj = comInj.length ? comInj[comInj.length - 1] : null;
-  let sacos = 0, sacosTxt = [];
+  // injeção: a execução com hora de injeção; sem hora, a última com algum dado de injeção
+  const temInj = (x) => x.concretagem_inicio || num(x.volume_concreto_m3) != null || num(x.volume_injetado_m3) != null || String(x.consumo_cimento_raiz || "").trim();
+  const comInj = execs.filter(temInj);
+  const comHoraInj = comInj.filter(x => x.concretagem_inicio);
+  const ultInj = comHoraInj.length ? comHoraInj[comHoraInj.length - 1] : (comInj.length ? comInj[comInj.length - 1] : null);
+  let sacos = 0;
+  const sacosTxt = [];
   execs.forEach(x => {
-    if(!x.consumo_cimento_raiz) return;
+    if(!String(x.consumo_cimento_raiz || "").trim()) return;
     const n = Number(String(x.consumo_cimento_raiz).replace(",", "."));
     if(isFinite(n) && (!x.consumo_cimento_unidade || /saco/i.test(x.consumo_cimento_unidade))) sacos += n;
     else sacosTxt.push(String(x.consumo_cimento_raiz) + (x.consumo_cimento_unidade ? " " + x.consumo_cimento_unidade : ""));
   });
-  const m3 = execs.reduce((s, x) => s + (num(x.volume_concreto_m3) || 0), 0);
-  const meds = [...new Set(execs.flatMap(x => x._meds))];
+  const soma = (k) => { const v = execs.filter(x => num(x[k]) != null); return v.length ? v.reduce((s, x) => s + num(x[k]), 0) : null; };
+  const meds = _raizMedicoes(execs);
+  const obs = [est.observacoes, est.refuro_motivo ? motivoRefuradaLbl(est.refuro_motivo) : ""].map(s => String(s || "").trim()).filter(Boolean).join(" · ");
+  const obsRdo = [...new Set(execs.map(x => String(x.observacoes || "").trim()).filter(Boolean))].join(" | ");
   return {
     id: est.id, local: est.local || "", bloco: est.bloco || "", numero: est.numero || "", diametro: est.diametro_mm, estimado: est.profundidade_m,
-    compFinal: execs.length ? compFinal : null, compTotal: execs.length ? compTotal : null,
-    dataExec: ultimo ? (ultimo.perfuracao_fim || ultimo.perfuracao_inicio || ultimo.rdo?.data || null) : null,
+    compFinal: execs.length ? compFinal : null, compTotal: execs.length ? compTotal : null, refuroM: execs.length ? refuroM : null,
+    dataExec: ultExec ? (_raizDia(ultExec.perfuracao_fim || ultExec.perfuracao_inicio) || ultExec.data || null) : null,
     revest: ferr.revestimento, martelo: ferr.martelo, tricone: ferr.tricone, outro: ferr.outro,
-    tagExec: ultimo ? _raizTag(ultimo) : "",
-    dataInj: ultInj ? (ultInj.concretagem_inicio || ultInj.rdo?.data || null) : null,
-    sacos: sacos || null, sacosTxt: sacosTxt.join("; "), m3: comInj.length ? m3 : null,
+    tagExec: ultExec ? _raizTag(ultExec) : "",
+    periodo: ultExec ? _raizPeriodo(ultExec.perfuracao_inicio, ultExec._turnoDiario) : "",
+    usinado: soma("volume_concreto_m3"), inLoco: soma("volume_injetado_m3"),
+    dataInj: ultInj ? (_raizDia(ultInj.concretagem_inicio) || ultInj.data || null) : null,
+    sacos: sacos || null, sacosTxt: sacosTxt.join("; "),
     tagInj: ultInj ? _raizTag(ultInj) : "",
-    periodo: ultimo ? _raizPeriodo(ultimo.perfuracao_inicio) : "",
-    medicoes: meds.join(", "),
-    refuros: execs.length - furos.length,
-    obs: est.observacoes || "",
+    turnoInj: ultInj ? _raizPeriodo(ultInj.concretagem_inicio, ultInj._turnoDiario) : "",
+    medicoes: meds,
+    medicoesTxt: [...new Set(meds.map(_raizMedicaoRotulo))].join(", "),
+    refuros: refuros.length,
+    obs, obsRdo,
     status: est.status
   };
 }
@@ -524,16 +602,17 @@ async function renderAcompanhamentoRaiz(){
     .filter(e => estCasaLocal(e, fLocal))
     .filter(e => !termo || `${e.numero||""} ${e.observacoes||""} ${e.local||""} ${e.bloco||""}`.toLowerCase().includes(termo))
     .filter(e => estFiltroProfRegularizar(e, $("est-f-prof")?.value || ""));
-  if(!lista.length){ cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz para os filtros.</p>`; return; }
+  if(!lista.length){ _raizLinhas = []; cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz para os filtros.</p>`; return; }
 
   const fProf = $("est-f-prof")?.value || "";
   const linhas = lista.map(e => _raizLinha(e, _raizDados.porEstaca.get(e.id) || _raizDados.porEstaca.get("n:" + normalizarNumeroEstacaEstacas(e.numero || "")) || []))
     // hotfix 15b: filtro "Executada ≠ projeto" também no acompanhamento raiz
     .filter(l => fProf !== "diferente" || estProfDiverge({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }));
-  if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz com profundidade executada diferente do projeto.</p>`; return; }
-  // ordena por local, bloco, número
-  const ord = (a, b) => (a.local.localeCompare(b.local, "pt-BR") || a.bloco.localeCompare(b.bloco, "pt-BR", { numeric: true }) || a.numero.localeCompare(b.numero, "pt-BR", { numeric: true }));
+  if(!linhas.length){ _raizLinhas = []; cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz com profundidade executada diferente do projeto.</p>`; return; }
+  // ordena por projeto (local; sem local no fim), bloco, número
+  const ord = (a, b) => ((!a.local) - (!b.local) || a.local.localeCompare(b.local, "pt-BR") || a.bloco.localeCompare(b.bloco, "pt-BR", { numeric: true }) || a.numero.localeCompare(b.numero, "pt-BR", { numeric: true }));
   linhas.sort(ord);
+  _raizLinhas = linhas;
 
   const f2 = (v) => (v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const f0 = (v) => (v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 }));
@@ -545,59 +624,105 @@ async function renderAcompanhamentoRaiz(){
   let html = `<div class="raiz-resumo">
       <span><strong>${linhas.length}</strong> estacas raiz</span>
       <span><strong>${execN}</strong> executadas</span>
-      <span><strong>${f2(soma("compTotal"))} m</strong> executados (com refuros)</span>
-      <span><strong>${f2(soma("revest"))} m</strong> revestimento · <strong>${f2(soma("martelo"))} m</strong> martelo · <strong>${f2(soma("tricone"))} m</strong> tricone</span>
-      <span><strong>${f0(soma("sacos"))}</strong> sacos · <strong>${f2(soma("m3"))} m³</strong></span>
+      <span><strong>${f2(soma("compTotal"))} m</strong> perfurados (com refuros)</span>
+      <span><strong>${f2(soma("revest"))} m</strong> revestimento · <strong>${f2(soma("tricone"))} m</strong> tricone · <strong>${f2(soma("martelo"))} m</strong> martelo</span>
+      <span><strong>${f0(soma("sacos"))}</strong> sacos · <strong>${f2(soma("usinado"))} m³</strong> usinado · <strong>${f2(soma("inLoco"))} m³</strong> in loco</span>
       <button type="button" class="btn-sec btn-sm" id="btn-raiz-csv">CSV</button>
+      <button type="button" class="btn-sec btn-sm" id="btn-raiz-xlsx">Excel</button>
     </div>`;
-  if(semFerr) html += `<div class="dist-aviso neutro">ℹ️ ${semFerr} estaca(s) executada(s) sem trechos de solo com ferramenta no RDO — as colunas revestimento/martelo/tricone ficam zeradas até o RDO ser preenchido.</div>`;
+  if(semFerr) html += `<div class="dist-aviso neutro">ℹ️ ${semFerr} estaca(s) executada(s) sem trechos de solo com ferramenta no RDO — as colunas revestimento/tricone/martelo ficam zeradas até o RDO ser preenchido.</div>`;
 
-  let localAtual = null;
+  // primeira coluna de cada grupo leva a borda à esquerda
+  const INI = new Set([5, 13, 19]);
+  const td = (i, conteudo, cls = "", extra = "") => `<td class="${INI.has(i) ? "raiz-ini " : ""}${esc(cls)}"${/* html */ extra}>${/* html */ conteudo}</td>`;
   const trs = linhas.map(l => {
-    let cab = "";
-    if(l.local !== localAtual){ localAtual = l.local; cab = l.local ? `<tr class="raiz-grupo"><td colspan="19">📍 ${esc(l.local)}</td></tr>`
-      : `<tr class="raiz-grupo sem-local"><td colspan="19">📍 Sem local · abra a estaca para informar o local de apropriação</td></tr>`; }   // lote S61 (#267)
     const stCls = l.status === "executada" ? "ok" : (l.status === "refugada" ? "perigo" : "");
-    return cab + `<tr class="${stCls}">
-      <td>${esc(l.bloco || "—")}</td><td><strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${esc(l.refuros)} refuro(s)">🔄${esc(l.refuros)}</span>` : ""}</td>
-      <td class="num">${f0(l.diametro)}</td><td class="num">${f2(l.estimado)}</td>
-      <td class="num">${l.compFinal != null ? estCelulaExecutada({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }, f2) : "—"}</td><td class="num">${f2(l.compTotal)}</td><td>${dt(l.dataExec)}</td>
-      <td class="num">${l.compFinal != null ? f2(l.revest) : "—"}</td><td class="num">${l.compFinal != null ? f2(l.martelo) : "—"}</td><td class="num">${l.compFinal != null ? f2(l.tricone) : "—"}</td>
-      <td>${esc(l.tagExec || "—")}</td>
-      <td>${dt(l.dataInj)}</td><td class="num">${l.sacos != null ? f0(l.sacos) : (l.sacosTxt ? esc(l.sacosTxt) : "—")}</td><td class="num">${f2(l.m3)}</td><td>${esc(l.tagInj || "—")}</td>
-      <td>${esc(l.periodo || "—")}</td><td>${esc(l.medicoes || "—")}</td><td class="meta">${esc(l.obs)}</td>
+    const exec = l.compFinal != null;
+    const med = l.medicoes.length
+      ? (l.medicoes.every(m => m.pelaData)
+          ? `<em title="pelo período do boletim, sem item ligado à execução">${esc(l.medicoesTxt)}</em>`
+          : esc(l.medicoesTxt))
+      : "—";
+    const c = [
+      l.local ? esc(l.local) : `<span class="raiz-sem-local" title="abra a estaca para informar o local de apropriação">sem local</span>`,   // lote S61 (#267)
+      esc(l.bloco || "—"),
+      `<strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${esc(l.refuros)} refuro(s)">🔄${esc(l.refuros)}</span>` : ""}`,
+      f0(l.diametro), f2(l.estimado),
+      exec ? estCelulaExecutada({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }, f2) : "—",
+      dt(l.dataExec),
+      exec ? f2(l.revest) : "—", exec ? f2(l.tricone) : "—", exec ? f2(l.martelo) : "—",
+      l.refuroM ? f2(l.refuroM) : "—",
+      esc(l.tagExec || "—"), esc(l.periodo || "—"),
+      f2(l.usinado), dt(l.dataInj),
+      l.sacos != null ? f0(l.sacos) : (l.sacosTxt ? esc(l.sacosTxt) : "—"),
+      f2(l.inLoco), esc(l.tagInj || "—"), esc(l.turnoInj || "—"),
+      med,
+      esc(l.obs || (l.obsRdo ? "…" : ""))
+    ];
+    const NUM = new Set([3, 4, 5, 7, 8, 9, 10, 13, 15, 16]);
+    return `<tr class="${stCls}">${c.map((v, i) => td(i, v, (NUM.has(i) ? "num" : "") + (i === 20 ? " meta" : ""),
+        i === 20 && l.obsRdo ? ` title="${esc("RDO: " + l.obsRdo)}"` : "")).join("")}
       <td class="col-acao"><button type="button" class="btn-sec btn-sm raiz-edit" data-id="${esc(l.id)}" title="abrir estaca">Abrir</button></td>
     </tr>`;
   }).join("");
 
+  const ini = (i) => (INI.has(i) ? " raiz-ini" : "");
+  const cabGrupos = RAIZ_GRUPOS.map(([nome, n, cls], g) => `<th colspan="${esc(n)}" class="raiz-g-${esc(cls)}${g ? " raiz-ini" : ""}">${esc(nome)}</th>`).join("");
+  let k = 0;
+  const cabCols = RAIZ_GRUPOS.map(([, n, cls]) => Array.from({ length: n }, () => { const i = k++; return `<th class="raiz-g-${esc(cls)}${ini(i)}${[3, 4, 5, 7, 8, 9, 10, 13, 15, 16].includes(i) ? " num" : ""}">${esc(RAIZ_COLUNAS[i])}</th>`; }).join("")).join("");
+  const tot = (i, v) => td(i, v, "num");
   html += `<div class="tabela-rola"><table class="raiz-tabela">
     <thead>
-      <tr class="raiz-cab-grupo"><th colspan="4"></th><th colspan="7">EXECUÇÃO DA ESTACA</th><th colspan="4">INJEÇÃO</th><th colspan="4"></th></tr>
-      <tr><th>Bloco</th><th>Estaca</th><th class="num">Ø (mm)</th><th class="num">Comp. est. (m)</th>
-        <th class="num">Comp. final</th><th class="num">Total exec.</th><th>Data</th><th class="num">Revest.</th><th class="num">Martelo</th><th class="num">Tricone</th><th>TAG</th>
-        <th>Data</th><th class="num">Sacos</th><th class="num">m³</th><th>TAG</th>
-        <th>Período</th><th>Medição</th><th>Obs.</th><th></th></tr>
+      <tr class="raiz-cab-grupo">${/* html */ cabGrupos}<th></th></tr>
+      <tr>${/* html */ cabCols}<th></th></tr>
     </thead>
     <tbody>${/* html */ trs}</tbody>
-    <tfoot><tr><td colspan="4"><strong>Totais</strong></td><td class="num"></td><td class="num"><strong>${f2(soma("compTotal"))}</strong></td><td></td>
-      <td class="num"><strong>${f2(soma("revest"))}</strong></td><td class="num"><strong>${f2(soma("martelo"))}</strong></td><td class="num"><strong>${f2(soma("tricone"))}</strong></td><td></td>
-      <td></td><td class="num"><strong>${f0(soma("sacos"))}</strong></td><td class="num"><strong>${f2(soma("m3"))}</strong></td><td colspan="5"></td></tr></tfoot>
+    <tfoot><tr><td colspan="5"><strong>Totais</strong></td>${tot(5, `<strong>${f2(soma("compFinal"))}</strong>`)}${td(6, "")}
+      ${tot(7, `<strong>${f2(soma("revest"))}</strong>`)}${tot(8, `<strong>${f2(soma("tricone"))}</strong>`)}${tot(9, `<strong>${f2(soma("martelo"))}</strong>`)}${tot(10, `<strong>${f2(soma("refuroM"))}</strong>`)}
+      ${td(11, "")}${td(12, "")}${tot(13, `<strong>${f2(soma("usinado"))}</strong>`)}${td(14, "")}${tot(15, `<strong>${f0(soma("sacos"))}</strong>`)}${tot(16, `<strong>${f2(soma("inLoco"))}</strong>`)}
+      ${td(17, "")}${td(18, "")}${td(19, "")}${td(20, "")}<td></td></tr></tfoot>
   </table></div>`;
   cont.innerHTML = html;
 
   // lote S61 (#267): pelo id; pelo número abria a estaca de outro local com o mesmo número
   cont.querySelectorAll(".raiz-edit").forEach(b => b.addEventListener("click", () => abrirModalEstaca(b.dataset.id)));
-  $("btn-raiz-csv")?.addEventListener("click", () => {
-    const cab = ["Local","Bloco","Estaca","Diametro_mm","Comp_estimado_m","Comp_final_m","Comp_total_exec_m","Data_execucao","Revestimento_m","Martelo_m","Tricone_m","TAG_exec","Data_injecao","Sacos","m3","TAG_injecao","Periodo","Medicao","Observacao"];
-    const cel = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
-    const csv = [cab.join(";")].concat(linhas.map(l => [l.local, l.bloco, l.numero, l.diametro, l.estimado, l.compFinal, l.compTotal, l.dataExec ? String(l.dataExec).slice(0,10) : "", l.revest, l.martelo, l.tricone, l.tagExec, l.dataInj ? String(l.dataInj).slice(0,10) : "", l.sacos ?? l.sacosTxt, l.m3, l.tagInj, l.periodo, l.medicoes, l.obs].map(cel).join(";"))).join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `acompanhamento-raiz-${(obraEditId || "obra").slice(0, 8)}-${hojeISO()}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  });
+  $("btn-raiz-csv")?.addEventListener("click", raizExportarCSV);
+  $("btn-raiz-xlsx")?.addEventListener("click", raizExportarExcel);
+}
+
+/* Fase 154: valores crus da linha, na ordem das colunas A a U */
+function _raizValores(l){
+  const d = (v) => (v ? String(v).slice(0, 10) : "");
+  return [l.local || "sem local", l.bloco, l.numero, l.diametro, l.estimado,
+    l.compFinal, d(l.dataExec), l.compFinal != null ? l.revest : null, l.compFinal != null ? l.tricone : null, l.compFinal != null ? l.martelo : null, l.refuroM || null, l.tagExec, l.periodo,
+    l.usinado, d(l.dataInj), l.sacos ?? (l.sacosTxt || null), l.inLoco, l.tagInj, l.turnoInj,
+    l.medicoesTxt, l.obs];
+}
+function _raizArquivo(ext){ return `acompanhamento-raiz-${(obraEditId || "obra").slice(0, 8)}-${hojeISO()}.${ext}`; }
+function raizExportarCSV(){
+  const cab = RAIZ_COLUNAS.concat(["Total executado (m)", "Observações do RDO"]);
+  const cel = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+  const csv = [cab.map(cel).join(";")].concat(_raizLinhas.map(l => _raizValores(l).concat([l.compTotal, l.obsRdo]).map(cel).join(";"))).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = _raizArquivo("csv");
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+/* Excel no leiaute da planilha da engenharia: linha 1 com os grupos mesclados, linha 2 com as colunas */
+function raizExportarExcel(){
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "A biblioteca de planilhas não carregou; use o CSV.", "erro"); return; }
+  const grupos = [];
+  RAIZ_GRUPOS.forEach(([nome, n]) => { grupos.push(nome); for(let i = 1; i < n; i++) grupos.push(""); });
+  const aoa = [grupos, RAIZ_COLUNAS.slice()].concat(_raizLinhas.map(_raizValores));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  let c = 0;
+  ws["!merges"] = RAIZ_GRUPOS.map(([, n]) => { const m = { s: { r: 0, c }, e: { r: 0, c: c + n - 1 } }; c += n; return m; });
+  ws["!cols"] = RAIZ_COLUNAS.map((t) => ({ wch: Math.max(9, Math.min(28, t.length + 2)) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Acompanhamento");
+  XLSX.writeFile(wb, _raizArquivo("xlsx"));
 }
 
 function renderEstacas(){
