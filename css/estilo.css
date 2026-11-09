@@ -3435,3 +3435,15 @@ td.num, th.num, tfoot td, .ind .num, .dash-card-num, .dash-tabela .num, .sb-btn 
 .op-toast-erro { background: var(--perigo-bg); color: var(--perigo-txt); border-color: var(--perigo); }
 .op-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: var(--esp-4); background: color-mix(in srgb, var(--txt) 55%, transparent); }
 .op-modal .op-bloco { width: 100%; max-width: 420px; }
+
+/* ---- Fase 129c: ficha do RDO com o que veio do app do campo (js/rdo.js) ---- */
+.rdo-ficha-faixa { margin: 0; padding: var(--esp-2) 18px; background: var(--aviso-bg); color: var(--aviso-txt); border-bottom: 1px solid var(--border-color); font-size: var(--txt-sm); }
+.rdo-ficha-faixa-perigo { background: var(--perigo-bg); color: var(--perigo-txt); font-weight: 600; }
+.rdo-ficha-faixa .btn-sm { margin-left: var(--esp-2); }
+#rdo-paradas { margin-bottom: var(--esp-4); }
+.rdo-fotos-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--esp-3); }
+.rdo-foto { margin: 0; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--sup-0); overflow: hidden; }
+.rdo-foto img { display: block; width: 100%; height: 160px; object-fit: cover; }
+.rdo-foto-falta { height: 160px; display: flex; align-items: center; justify-content: center; text-align: center; padding: var(--esp-2); background: var(--sup-2); color: var(--txt-fraco); font-size: var(--txt-sm); }
+.rdo-foto figcaption { padding: var(--esp-2); font-size: var(--txt-sm); display: flex; flex-direction: column; gap: 2px; }
+.rdo-foto-descons { opacity: .6; }

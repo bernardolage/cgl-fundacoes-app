@@ -18,6 +18,13 @@ let _rdoAtividades = [];   // chamado #5: atividades hora-a-hora do dia (rdo_rai
 let _rdoRaizEquipe = [];
 let _rdoRaizDados  = null;
 let _rdoFuncs = [];           // cache funcionários
+/* fase 129c: o que a ficha leu do banco (cabeçalho e linhas de execução, equipe e abastecimento, uma cópia em texto por id).
+   Salvar confere de novo antes de gravar e só apaga as linhas que a ficha leu e o usuário tirou da tela: o que o app do campo,
+   a sync do Geodigitus ou outra pessoa gravou depois fica no diário. */
+let _rdoSnap = null;
+const RDO_CAB_CONFERE = ["obra_id", "data", "tipo_servico", "equipamento_id", "turno_campo", "status", "responsavel_id", "local",
+  "tempo_manha", "tempo_tarde", "feriado", "efetivo_proprio", "efetivo_terceiro", "atividades", "observacoes", "enviado_em", "devolvido_em"];
+let _rdoCampo = { rdo: null, fotos: [], paradas: [], pendencias: [], origens: null, nomes: {} };   // fase 129c: o que veio do app do campo
 const FERRAMENTAS_RAIZ = { revestimento:"Revestimento", martelo:"Martelo", tricone:"Tricone", trado:"Trado", outro:"Outro" };
 /* fase 101 (#99): volume injetado (m³) e água (L) por estaca. As colunas nascem na migration da fase 101: só entram no
    insert quando preenchidas, para o front não quebrar se for publicado antes dela. */
@@ -244,7 +251,14 @@ async function carregarRDO(){
   await rdoCarregarAuxiliares();
   const sel = $("rdo-f-status");
   if(sel && !sel.options.length){
-    sel.innerHTML = `<option value="">Todos os status</option>` + opcoesStatus("rdo");
+    sel.innerHTML = `<option value="">Todos os status</option>` + opcoesStatus("rdo")
+      // fase 129c: diários do app do campo (enviados e ainda não finalizados; devolvidos esperando o operador)
+      + `<option value="campo_enviado">Enviados pelo campo</option><option value="campo_devolvido">Devolvidos ao campo</option>`;
+  }
+  if(_rdoPreset){   // fase 129c: filtro pedido pelo Para regularizar
+    if(sel) sel.value = _rdoPreset.status || "";
+    if($("rdo-f-obra")) $("rdo-f-obra").value = _rdoPreset.obra || "";
+    _rdoPreset = null;
   }
   const selT = $("rdo-f-tipo");
   if(selT && !selT.options.length){
@@ -252,8 +266,14 @@ async function carregarRDO(){
       Object.entries(TIPO_SERVICO).map(([v,o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
   }
   // Busca RDOs + execuções agregadas via view
-  const { data, error } = await lerTudo(() => sb.from("vw_rdo_resumo").select("*").order("data", { ascending:false }));
-  _rdos = error ? [] : (data || []);
+  // fase 129c: envio e devolução do campo vêm da própria rdo (vw_rdo_resumo não tem as colunas; nada de mexer na view)
+  const [res, campo] = await Promise.all([
+    lerTudo(() => sb.from("vw_rdo_resumo").select("*").order("data", { ascending:false })),
+    lerTudo(() => sb.from("rdo").select("id,enviado_em,devolvido_em").or("enviado_em.not.is.null,devolvido_em.not.is.null"))
+  ]);
+  const { data, error } = res;
+  const porId = new Map((campo.error ? [] : campo.data || []).map(c => [c.id, c]));
+  _rdos = error ? [] : (data || []).map(r => porId.has(r.id) ? { ...r, ...porId.get(r.id) } : r);
   renderRDO();
 }
 
@@ -266,7 +286,9 @@ function rdoFiltrados(){
   const fMaq   = $("rdo-f-maquina")?.value || "";   // fase 94: "" todas · "sem" diário sem máquina · uuid
   return _rdos.filter(r => {
     if(fObra && r.obra_id !== fObra) return false;
-    if(fStat && r.status !== fStat) return false;
+    if(fStat === "campo_enviado"){ if(!(r.enviado_em && r.status === "rascunho" && !rdoDevolvidoAberto(r))) return false; }   // fase 129c
+    else if(fStat === "campo_devolvido"){ if(!(r.status === "rascunho" && rdoDevolvidoAberto(r))) return false; }
+    else if(fStat && r.status !== fStat) return false;
     if(fTipo && r.tipo_servico !== fTipo) return false;
     if(fMaq === "sem" ? r.equipamento_id : (fMaq && r.equipamento_id !== fMaq)) return false;
     if(!termo) return true;
@@ -308,7 +330,7 @@ function renderRDOLista(dados){
       <td>${esc(r.qtd_estacas_executadas || 0)}</td>
       <td class="num">${num(r.metragem_total)} m</td>
       <td class="num">${num(r.concreto_total_m3)} m³</td>
-      <td>${tagStatus("rdo", r.status)}</td>
+      <td>${tagStatus("rdo", r.status)}${/* html */ rdoTagCampoLista(r)}</td>
     </tr>`;
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
@@ -428,6 +450,8 @@ async function novoRDO(){
   ["rdo-raiz-folha","rdo-raiz-projeto","rdo-raiz-local","rdo-raiz-bloco"]
     .forEach(k => { const el = $(k); if(el) el.value = ""; });
   _rdoBoletimAberto = null;
+  _rdoSnap = null;   // fase 129c: diário novo não tem o que conferir
+  _rdoCampo = { rdo: null, fotos: [], paradas: [], pendencias: [], origens: null, nomes: {} };
   $("btn-excluir-rdo").style.display = "none";
   abrirFichaRDOVisual({ status: "rascunho", tipo_servico: "helice_continua" });
 }
@@ -455,6 +479,7 @@ async function abrirRDO(id){
     aviso("app-aviso","Não foi possível carregar as execuções deste RDO ("+falha.message+"). Tente abrir de novo.","erro");
     return;
   }
+  _rdoSnap = rdoSnapshot(id, rdo.data, execs.data, equipe.data, abast.data);   // fase 129c: antes de qualquer mudança na tela
   const data = rdo.data;
   $("rdo-obra").value             = data.obra_id || "";
   $("rdo-data").value             = (data.data||"").slice(0,10);
@@ -515,7 +540,9 @@ async function abrirRDO(id){
       .forEach(k => { const el = $(k); if(el) el.value = ""; });
   }
   $("btn-excluir-rdo").style.display = "";
+  _rdoCampo = { rdo: null, fotos: [], paradas: [], pendencias: [], origens: null, nomes: {} };   // fase 129c
   abrirFichaRDOVisual(data);
+  rdoCarregarCampo(id);
 }
 
 function abrirFichaRDOVisual(rdo){
@@ -549,6 +576,188 @@ function abrirFichaRDOVisual(rdo){
   renderRdoAbast();
   renderRdoAtividades();
   atualizarVizinhosRDO(rdo);
+  rdoRenderCampo(rdoEditId ? rdo : null);   // fase 129c: chip, faixa e botão do campo com o que já veio no cabeçalho
+}
+
+/* ---------- Fase 129c: o que veio do app do campo (diário do operador) ----------
+   Chip "Enviado pelo campo", faixa "Devolvido", Devolver ao campo (RPC rdo_devolver), aba Fotos (bucket privado rdo-fotos,
+   URL assinada), paradas lidas de ocorrencias, aviso de relógio divergente (campo_pendencias) e selo "app" nas linhas. */
+const RDO_CARGOS_OPERAR = ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado"];   // = rdo_pode_operar() no banco
+const RDO_MOTIVO_PARADA = { aguardando_liberacao: "Aguardando liberação", aguardando_locacao: "Aguardando locação",
+  aguardando_concreto_argamassa: "Aguardando concreto/argamassa", aguardando_frente: "Aguardando frente", chuva: "Chuva",
+  manutencao: "Manutenção", preparacao: "Preparação", deslocamento_interno: "Deslocamento interno", outro: "Outro" };
+const RDO_FOTO_TIPO = { boletim_assinado: "Boletim assinado", estaca: "Estaca", ocorrencia: "Ocorrência", horimetro: "Horímetro", diario: "Diário" };
+function rdoPodeOperarFront(){
+  return !!usuarioAtual && RDO_CARGOS_OPERAR.includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+}
+function rdoDevolvidoAberto(r){ return !!(r && r.devolvido_em && (!r.enviado_em || r.devolvido_em > r.enviado_em)); }
+function rdoTagCampoLista(r){
+  if(!r || r.status !== "rascunho") return "";
+  if(rdoDevolvidoAberto(r)) return ' <span class="tag vermelho" title="Devolvido ao campo: espera o operador corrigir e enviar de novo">devolvido</span>';
+  return r.enviado_em ? ' <span class="tag azul" title="Enviado pelo app do campo: confira e finalize, ou devolva">do campo</span>' : "";
+}
+function rdoHoraCampo(ts, diaRdo){
+  if(!ts) return "";
+  const d = new Date(ts);
+  const hh = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+  const dia = d.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  return dia === diaRdo ? `às ${hh}` : `em ${dataBR(dia)} às ${hh}`;
+}
+function rdoNomeCampo(id){ return id ? (_rdoCampo.nomes[id] || "usuário do campo") : "—"; }
+function rdoTagApp(tab, l){
+  const doApp = tab === "exec" ? l?.origem_dados === "app_operador" : !!(l?.id && _rdoCampo.origens?.[tab]?.has(l.id));
+  return doApp ? ' <span class="tag verde" data-app-badge="1" title="Gravado pelo app do campo (diário do operador)">app</span>' : "";
+}
+/* desenha só a parte do campo, sem redesenhar as grades (não perde o que o usuário digitou) */
+function rdoRenderCampo(r){
+  if(r !== undefined) _rdoCampo.rdo = r;   // sem argumento: redesenha com o cabeçalho já guardado
+  const cab = _rdoCampo.rdo;
+  const chip = $("rdo-ficha-campo-chip"), faixa = $("rdo-ficha-devolvido"), bDev = $("btn-rdo-devolver");
+  const devolvido = rdoDevolvidoAberto(cab);
+  if(chip){
+    chip.style.display = cab?.enviado_em ? "" : "none";
+    if(cab?.enviado_em){
+      chip.querySelector("strong").textContent = `${rdoHoraCampo(cab.enviado_em, cab.data)} por ${rdoNomeCampo(cab.enviado_por)}`;
+      chip.classList.toggle("chip-aviso", devolvido);
+    }
+  }
+  if(faixa){
+    faixa.style.display = devolvido ? "" : "none";
+    if(devolvido) faixa.textContent = `Devolvido ao campo ${rdoHoraCampo(cab.devolvido_em, cab.data)} por ${rdoNomeCampo(cab.devolvido_por)}: ${cab.devolvido_motivo || "sem motivo"}. O operador corrige no app e envia de novo.`;
+  }
+  if(bDev) bDev.style.display = cab && cab.enviado_em && !devolvido && cab.status === "rascunho" && rdoPodeOperarFront() ? "" : "none";
+  // relógio do celular diferente do servidor (pendência aberta pelo app ao abrir o dia)
+  const rel = $("rdo-ficha-relogio");
+  const pRel = cab ? (_rdoCampo.pendencias || []).find(p => p.tipo === "relogio_divergente") : null;
+  if(rel){
+    rel.style.display = pRel ? "" : "none";
+    if(pRel){
+      const min = Number(pRel.detalhe?.minutos) || null;
+      $("rdo-ficha-relogio-txt").textContent = `O relógio do celular de quem abriu este dia no campo estava ${min ? min + " min " : ""}diferente do servidor. Confira as horas lançadas pelo app (equipe, paradas e estacas) antes de finalizar.`;
+      const bOk = $("btn-rdo-relogio-ok");
+      if(bOk){ bOk.dataset.id = pRel.id; bOk.style.display = rdoPodeOperarFront() ? "" : "none"; }
+    }
+  }
+  const nF = (_rdoCampo.fotos || []).length;
+  const tabF = document.querySelector('#rdo-notebook button[data-tab="fotos"]');
+  if(tabF) tabF.textContent = nF ? `Fotos (${nF})` : "Fotos";
+  renderRdoParadas();
+}
+async function rdoCarregarCampo(id){
+  const [fotos, paradas, pend, orig] = await Promise.all([
+    sb.from("rdo_fotos").select("id,tipo,storage_path,legenda,tirada_em,autor_id,enviada,desconsiderada_motivo,execucao_id,ocorrencia_id").eq("rdo_id", id).order("tirada_em"),
+    sb.from("ocorrencias").select("id,tipo,motivo,descricao,paralisado,em_razao_cliente,periodo_inicio,periodo_fim,horas_paradas,origem,status,autor_id").eq("rdo_id", id).order("periodo_inicio", { nullsFirst: true }),
+    sb.from("campo_pendencias").select("id,tipo,detalhe,aberta_em").eq("rdo_id", id).is("resolvida_em", null),
+    sb.rpc("rdo_campo_origens", { p_rdo: id })
+  ]);
+  if(rdoEditId !== id) return;
+  // tabelas da 129a ausentes ou leitura recusada: a ficha segue sem a parte do campo
+  _rdoCampo.fotos = fotos.error ? [] : (fotos.data || []);
+  _rdoCampo.paradas = paradas.error ? [] : (paradas.data || []);
+  _rdoCampo.pendencias = pend.error ? [] : (pend.data || []);
+  // RPC da 129c (migration 20261109_fase129c_campo_origens.sql): sem ela, o selo "app" fica só nas execuções
+  _rdoCampo.origens = orig.error ? null : { equipe: new Set((orig.data || []).filter(o => o.tabela === "rdo_equipe").map(o => o.linha_id)),
+    abast: new Set((orig.data || []).filter(o => o.tabela === "rdo_abastecimento").map(o => o.linha_id)) };
+  const c = _rdoCampo.rdo || {};
+  const ids = [...new Set([c.enviado_por, c.devolvido_por, ..._rdoCampo.fotos.map(f => f.autor_id), ..._rdoCampo.paradas.map(p => p.autor_id)].filter(Boolean))];
+  if(ids.length){
+    const { data: pf } = await sb.from("profiles").select("id,nome").in("id", ids);
+    (pf || []).forEach(p => { _rdoCampo.nomes[p.id] = p.nome; });
+  }
+  if(rdoEditId !== id) return;
+  rdoRenderCampo();
+  rdoAplicarSelosApp();
+  if(document.querySelector('#rdo-notebook button[data-tab="fotos"].ativo')) renderRdoFotos();
+}
+/* acrescenta o selo nas grades de equipe e abastecimento já desenhadas */
+function rdoAplicarSelosApp(){
+  [["equipe", "#rdo-equipe-tbody", _rdoEquipe], ["abast", "#rdo-abast-tbody", _rdoAbast]].forEach(([tab, sel, linhas]) => {
+    (linhas || []).forEach((l, idx) => {
+      const td = document.querySelector(`${sel} tr[data-idx="${idx}"] td`);
+      if(!td) return;
+      td.querySelectorAll("[data-app-badge]").forEach(x => x.remove());
+      td.insertAdjacentHTML("beforeend", rdoTagApp(tab, l));
+    });
+  });
+}
+function renderRdoParadas(){
+  const cont = $("rdo-paradas");
+  if(!cont) return;
+  const ps = rdoEditId ? (_rdoCampo.paradas || []) : [];
+  if(!ps.length){ cont.innerHTML = `<p class="vazio">Nenhuma parada ou ocorrência registrada neste diário.</p>`; return; }
+  const hora = (t) => t ? String(t).slice(0, 5) : "—";
+  const total = ps.reduce((s, p) => s + (Number(p.horas_paradas) || 0), 0);
+  cont.innerHTML = `<div class="tabela-rola"><table class="itens-tabela">
+    <thead><tr><th>Início</th><th>Fim</th><th class="num">Horas</th><th>Motivo</th><th>Descrição</th><th>Paralisou?</th><th>Cliente?</th><th>Origem</th></tr></thead>
+    <tbody>${/* html */ ps.map(p => `<tr>
+      <td>${esc(hora(p.periodo_inicio))}</td>
+      <td>${p.periodo_inicio && !p.periodo_fim ? '<span class="tag ambar" title="Parada iniciada no campo e ainda não encerrada">em andamento</span>' : esc(hora(p.periodo_fim))}</td>
+      <td class="num">${p.horas_paradas != null ? num(p.horas_paradas) : "—"}</td>
+      <td>${esc(RDO_MOTIVO_PARADA[p.motivo] || p.tipo || "—")}</td>
+      <td>${esc(p.descricao || "")}</td>
+      <td>${p.paralisado == null ? "—" : p.paralisado ? "sim" : "não"}</td>
+      <td>${p.em_razao_cliente == null ? "—" : p.em_razao_cliente ? "sim" : "não"}</td>
+      <td>${p.origem === "app_operador" ? `<span class="tag verde" title="Lançada no app do campo por ${esc(rdoNomeCampo(p.autor_id))}">app</span>` : p.origem === "maya" ? '<span class="tag cinza" title="Importada do Relatório Diário do Maya">Maya</span>' : esc(p.origem || "manual")}</td>
+    </tr>`).join("")}</tbody>
+    <tfoot><tr><td colspan="2"><strong>Total parado</strong></td><td class="num"><strong>${num(total)}</strong></td><td colspan="5"></td></tr></tfoot>
+  </table></div>`;
+}
+async function renderRdoFotos(){
+  const cont = $("rdo-fotos");
+  if(!cont) return;
+  const fs = rdoEditId ? (_rdoCampo.fotos || []) : [];
+  if(!fs.length){ cont.innerHTML = `<p class="vazio">Nenhuma foto enviada pelo campo neste diário.</p>`; return; }
+  const enviadas = fs.filter(f => f.enviada);
+  const urls = {};
+  if(enviadas.length){
+    const { data } = await sb.storage.from("rdo-fotos").createSignedUrls(enviadas.map(f => f.storage_path), 3600);
+    (data || []).forEach(u => { if(u.signedUrl) urls[u.path] = u.signedUrl; });
+  }
+  const execNum = (id) => (_rdoExecucoes.find(e => e.id === id) || {}).estaca_numero;
+  cont.innerHTML = `<div class="rdo-fotos-grade">${/* html */ fs.map(f => {
+    const url = urls[f.storage_path];
+    const leg = [RDO_FOTO_TIPO[f.tipo] || f.tipo, f.execucao_id && execNum(f.execucao_id) ? "estaca " + execNum(f.execucao_id) : null, f.legenda].filter(Boolean).join(" · ");
+    const quando = f.tirada_em ? new Date(f.tirada_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+    return `<figure class="rdo-foto${f.desconsiderada_motivo ? " rdo-foto-descons" : ""}">
+      ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener" title="Abrir a foto em tamanho real"><img src="${esc(url)}" alt="${esc(leg)}" loading="lazy" /></a>`
+            : `<div class="rdo-foto-falta" title="O celular registrou a foto mas o arquivo ainda não subiu">${f.enviada ? "sem acesso ao arquivo" : "aguardando envio do celular"}</div>`}
+      <figcaption><strong>${esc(leg)}</strong><span class="meta">${esc(quando)} · ${esc(rdoNomeCampo(f.autor_id))}${f.desconsiderada_motivo ? " · desconsiderada: " + esc(f.desconsiderada_motivo) : ""}</span></figcaption>
+    </figure>`;
+  }).join("")}</div>`;
+}
+/* Para regularizar do campo (vw_sc_regularizar_campo) → o diário (um só) ou a lista filtrada. registro_id é o diário nos
+   itens enviado/devolvido e a pendência (campo_pendencias) nos demais. */
+let _rdoPreset = null;
+async function rdoAbrirPresetCampo(a){
+  if(!a || !irParaSecao("rdo")) return;
+  if(a.registro_id && /^rdo_(devolvido|enviado_sem_conferencia)$/.test(a.filtro || "")){ await abrirRDO(a.registro_id); return; }
+  if(a.registro_id){
+    const { data } = await sb.from("campo_pendencias").select("rdo_id").eq("id", a.registro_id).maybeSingle();
+    if(data?.rdo_id){ await abrirRDO(data.rdo_id); return; }
+  }
+  _rdoPreset = { status: a.filtro === "rdo_devolvido" ? "campo_devolvido" : a.filtro === "rdo_enviado_sem_conferencia" ? "campo_enviado" : "",
+                 obra: (a.obra_ids || []).length === 1 ? a.obra_ids[0] : "" };
+  if(_rdoView === "geo"){ _rdoView = "lista"; document.querySelectorAll("#rdo-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === "lista")); }
+  $("rdo-painel").style.display = ""; $("rdo-ficha").style.display = "none"; rdoEditId = null;
+  await carregarRDO();
+}
+async function rdoDevolverCampo(){
+  if(!rdoEditId || !rdoPodeOperarFront()) return;
+  const motivo = prompt("Devolver este diário ao campo.\nO operador vê o motivo no app, corrige e envia de novo.\n\nMotivo (obrigatório):", "");
+  if(motivo === null) return;
+  if(motivo.trim().length < 5){ aviso("app-aviso", "Escreva o motivo da devolução (pelo menos 5 letras).", "erro"); return; }
+  const { error } = await sb.rpc("rdo_devolver", { p_rdo: rdoEditId, p_motivo: motivo.trim() });
+  if(error){ aviso("app-aviso", "Não foi possível devolver: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Diário devolvido ao campo. O operador já pode corrigir no app.", "ok");
+  await carregarRDO();
+  await abrirRDO(rdoEditId);
+}
+async function rdoRelogioConferido(id){
+  if(!id || !rdoPodeOperarFront()) return;
+  const { error } = await sb.from("campo_pendencias").update({ resolvida_em: new Date().toISOString(), resolvida_por: usuarioAtual?.id || null }).eq("id", id).is("resolvida_em", null);
+  if(error){ aviso("app-aviso", "Não foi possível marcar como conferido: " + error.message, "erro"); return; }
+  _rdoCampo.pendencias = (_rdoCampo.pendencias || []).filter(p => p.id !== id);
+  rdoRenderCampo();
 }
 
 /* Busca RDO anterior e próximo na mesma obra + tipo */
@@ -638,6 +847,7 @@ function ativarTabRDO(nome){
   });
   // Ao entrar em Execuções, refresca pra pegar mudanças na Equipe (selects de operador)
   if(nome === "execucoes" && typeof renderExecucoes === "function") renderExecucoes();
+  if(nome === "fotos") renderRdoFotos();   // fase 129c: URL assinada só quando a aba abre
 }
 
 /* ---------- Grid de execuções (varia por tipo) ---------- */
@@ -683,7 +893,7 @@ function renderExecucoes(){
     const bltAberto = (_rdoBoletimAberto === idx);
     const bltStyle = bltAberto ? 'background:var(--info-bg);color:var(--acao-txt);border-color:var(--marca-600);font-weight:700;' : '';
     return `<tr data-idx="${idx}">
-      <td><input type="text" class="ex-num col-md" value="${esc(e.estaca_numero||"")}" />${/* html */ typeof geoBadgeExec === "function" ? geoBadgeExec(e) : ""}</td>
+      <td><input type="text" class="ex-num col-md" value="${esc(e.estaca_numero||"")}" />${/* html */ typeof geoBadgeExec === "function" ? geoBadgeExec(e) : ""}${/* html */ rdoTagApp("exec", e)}</td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-diam" step="0.1" min="0" value="${esc(e.diametro_mm ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pproj" step="0.01" min="0" value="${esc(e.profundidade_projeto ?? "")}" style="width:75px;" /></td>
       <td data-col-tipo="helice_continua,trado_mecanizado,estaca_raiz,helice_secante"><input type="number" class="ex-pexec" step="0.01" min="0" value="${esc(e.profundidade_executada ?? "")}" data-auto="${esc(e._pexecAuto ?? "")}" style="width:75px;" title="Metros perfurados neste dia (o que a medição soma) = Acum. − De. Pode corrigir à mão" /></td>
@@ -1399,7 +1609,7 @@ function renderRdoEquipe(){
       : st?.meio ? "Folga meio período: informe a entrada e a saída trabalhadas; o fechamento do mês debita metade da jornada do dia" : "";
     const tituloHE = semHE ? `${st.l}: sem HE (regra do status do dia${st.semHE && !st.viagem ? "; em sábado, domingo e feriado a HE fica" : ""})` : "";
     return `<tr data-idx="${idx}"${classes ? ` class="${esc(classes)}"` : ""}${titulo ? ` title="${esc(titulo)}"` : ""}>
-    <td><strong>${idx+1}</strong></td>
+    <td><strong>${idx+1}</strong>${/* html */ rdoTagApp("equipe", e)}</td>
     <td><select class="eq-func">${optFunc}</select></td>
     <td><input type="text" class="eq-nome" placeholder="terceiro sem cadastro" value="${esc(e.nome_avulso||"")}" style="min-width:140px;" /></td>
     <td><select class="eq-funcao">${optFuncao}</select></td>
@@ -1498,7 +1708,7 @@ function renderRdoAbast(){
   const optMaq = '<option value="">— máquina —</option>' + _rdoEquipsCache.map(e => `<option value="${esc(e.id)}">${esc(e.codigo || "")}${e.nome ? " · " + esc(e.nome) : ""}</option>`).join("");
   const optComb = RDO_COMBUSTIVEIS.map(c => `<option value="${esc(c)}">${esc(c.replace("_", " "))}</option>`).join("");
   tb.innerHTML = _rdoAbast.map((a, idx) => `<tr data-idx="${idx}">
-    <td><select class="ab-maq">${optMaq}</select>${a.maquina_codigo && !a.equipamento_id ? `<div class="meta">no diário: ${esc(a.maquina_codigo)}</div>` : ""}</td>
+    <td><select class="ab-maq">${optMaq}</select>${/* html */ rdoTagApp("abast", a)}${a.maquina_codigo && !a.equipamento_id ? `<div class="meta">no diário: ${esc(a.maquina_codigo)}</div>` : ""}</td>
     <td><select class="ab-comb">${optComb}</select></td>
     <td><input type="number" class="ab-qtd" step="0.01" min="0" value="${esc(a.quantidade ?? "")}" style="width:90px;" /></td>
     <td><input type="number" class="ab-hor" step="0.1" min="0" value="${esc(a.horimetro ?? "")}" style="width:100px;" /><div class="meta ab-hor-atual"></div></td>
@@ -1687,8 +1897,33 @@ async function rdoSalvarAgora(novoStatus){
       _rdoExecucoes.forEach(e => { if(e.equipamento_id === _rdoMaqOriginal) e.equipamento_id = reg.equipamento_id; });
   }
 
+  // fase 129c: cada linha mantém o id (o celular, as fotos, a medição e o Geodigitus apontam para ele). Linha nova da tela
+  // ganha id aqui; quem fica na tela é gravado por upsert; só sai do banco a linha que a ficha leu e o usuário tirou.
+  const novoIdLinha = () => (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : null;
+  const execsParaSalvar = _rdoExecucoes.filter(e => e.estaca_numero);
+  const eqFica = (e) => !e.liberado_em && (e.funcionario_id || (e.nome_avulso && e.nome_avulso.trim()));
+  const abFica = (a) => a.equipamento_id || a.maquina_codigo || a.quantidade != null || a.horimetro != null;
+  for(const l of [...execsParaSalvar, ..._rdoEquipe.filter(eqFica), ..._rdoAbast.filter(abFica)]){
+    if(!l.id) l.id = novoIdLinha();
+    if(!l.id){ aviso("app-aviso", "Este navegador não gera o identificador das linhas novas. Atualize o navegador e tente de novo; nada foi gravado.", "erro"); return; }
+  }
   let savedId = rdoEditId;
+  let novosDoCampo = 0;
   if(rdoEditId){
+    // fase 129c: confere, antes de gravar qualquer coisa, se o diário mudou depois que a ficha leu
+    if(!_rdoSnap || _rdoSnap.id !== rdoEditId){ aviso("app-aviso", "Reabra o diário antes de salvar; nada foi gravado.", "erro"); return; }
+    const cf = await rdoConferirMudancas(rdoEditId);
+    if(cf.erro){ aviso("app-aviso", "Não foi possível conferir o diário antes de gravar (" + cf.erro + "). Nada foi gravado.", "erro"); return; }
+    const naTelaEq = new Map(_rdoEquipe.filter(eqFica).filter(e => e.funcionario_id).map(e => [e.funcionario_id, e.id]));
+    const dupEq = cf.novos.equipe.filter(n => n.funcionario_id && naTelaEq.has(n.funcionario_id) && naTelaEq.get(n.funcionario_id) !== n.id)
+      .map(n => (_rdoFuncs.find(f => f.id === n.funcionario_id) || {}).nome || "um funcionário");
+    if(cf.mudou.length || dupEq.length){
+      const oque = cf.mudou.length ? `mudou depois que você abriu a ficha (${cf.mudou.join(", ")})` : `ganhou ${dupEq.join(", ")} na equipe, que também está na sua tela`;
+      aviso("app-aviso", `Nada foi gravado: este diário ${oque}, pelo app do campo, pela sync ou por outra pessoa. Reabra a ficha para ver o que está gravado e refaça a alteração.`, "erro");
+      if(confirm("Este diário mudou depois que você abriu a ficha. Reabrir agora?\nO que você alterou nesta tela e ainda não foi gravado se perde.")) await abrirRDO(rdoEditId);
+      return;
+    }
+    novosDoCampo = cf.novos.exec.length + cf.novos.equipe.length + cf.novos.abast.length;
     const { error } = await sb.from("rdo").update(reg).eq("id", rdoEditId);
     if(error){
       const m = (error.message||"").toLowerCase();
@@ -1698,15 +1933,19 @@ async function rdoSalvarAgora(novoStatus){
         aviso("app-aviso","Erro ao salvar: "+error.message,"erro");
       return;
     }
-    // Substitui execuções e sub-tabelas. Cada delete é checado: se um falhar,
-    // paramos ANTES do insert para não deixar o RDO pela metade. As tabelas de
-    // raiz são limpas sempre (se o tipo mudou de raiz para outro, o boletim
-    // antigo não pode ficar órfão).
+    // Cada delete é checado: se um falhar, paramos ANTES de gravar as linhas para não deixar o RDO pela metade.
+    // Fase 129c: execução, equipe e abastecimento perdem só as linhas que a ficha leu e não estão mais na tela
+    // (`.in('id', …)` no lugar de `.eq('rdo_id', …)`); as tabelas de raiz, que só a ficha grava, continuam limpas
+    // por diário (se o tipo mudou de raiz para outro, o boletim antigo não pode ficar órfão).
+    const saiu = (mapa, fica) => { const ids = new Set(fica.map(x => x.id)); return [...mapa.keys()].filter(i => !ids.has(i)); };
+    const saiuExec = saiu(_rdoSnap.exec, execsParaSalvar);
+    // fase 93c: linha liberada para a folha fica (o banco recusaria o delete) e não é regravada
+    const saiuEq = saiu(_rdoSnap.equipe, _rdoEquipe.filter(e => eqFica(e) || e.liberado_em));
+    const saiuAb = saiu(_rdoSnap.abast, _rdoAbast.filter(abFica));
     const dels = [
-      ["rdo_execucao_estaca",   sb.from("rdo_execucao_estaca").delete().eq("rdo_id", rdoEditId)],
-      // fase 93c: linha liberada para a folha fica (o banco recusaria o delete); o insert abaixo também a pula
-      ["rdo_equipe",            sb.from("rdo_equipe").delete().eq("rdo_id", rdoEditId).is("liberado_em", null)],
-      ["rdo_abastecimento",     sb.from("rdo_abastecimento").delete().eq("rdo_id", rdoEditId)],
+      ...(saiuExec.length ? [["rdo_execucao_estaca", sb.from("rdo_execucao_estaca").delete().eq("rdo_id", rdoEditId).in("id", saiuExec)]] : []),
+      ...(saiuEq.length ? [["rdo_equipe", sb.from("rdo_equipe").delete().eq("rdo_id", rdoEditId).in("id", saiuEq).is("liberado_em", null)]] : []),
+      ...(saiuAb.length ? [["rdo_abastecimento", sb.from("rdo_abastecimento").delete().eq("rdo_id", rdoEditId).in("id", saiuAb)]] : []),
       ["rdo_raiz_solo",         sb.from("rdo_raiz_solo").delete().eq("rdo_id", rdoEditId)],
       ["rdo_raiz_justificativa",sb.from("rdo_raiz_justificativa").delete().eq("rdo_id", rdoEditId)],
       ["rdo_raiz_dados",        sb.from("rdo_raiz_dados").delete().eq("rdo_id", rdoEditId)]
@@ -1732,13 +1971,13 @@ async function rdoSalvarAgora(novoStatus){
     rdoEditId = savedId;
   }
 
-  // Insere execuções
-  const execsParaSalvar = _rdoExecucoes.filter(e => e.estaca_numero);
+  // Grava execuções (fase 129c: upsert pelo id; coluna que a ficha não mostra, como a etapa do campo, fica como está)
   let insertedExecs = null;
   if(execsParaSalvar.length){
     const temColDesv = execsParaSalvar.some(e => Object.prototype.hasOwnProperty.call(e, "desvinculo_manual"));   // lote S49 (#130)
     const insertExecs = execsParaSalvar.map(e => {
       const base = {
+        id: e.id,
         rdo_id: savedId,
         estaca_id: e.estaca_id || null,
         estaca_numero: e.estaca_numero,
@@ -1781,9 +2020,9 @@ async function rdoSalvarAgora(novoStatus){
       if(temColDesv) base.desvinculo_manual = e.desvinculo_manual === true && !e.estaca_id;
       return base;
     });
-    const { data: ids, error: errExec } = await sb.from("rdo_execucao_estaca").insert(insertExecs).select("id");
+    const { error: errExec } = await sb.from("rdo_execucao_estaca").upsert(insertExecs, { onConflict: "id" });
     if(errExec){ aviso("app-aviso","Erro ao salvar execuções: "+errExec.message,"erro"); return; }
-    insertedExecs = ids;
+    insertedExecs = insertExecs.map(x => ({ id: x.id }));   // mesma ordem de execsParaSalvar
 
     // Raiz: insere solo/just por execucao_id
     if(tipo === "estaca_raiz" && insertedExecs){
@@ -1843,9 +2082,12 @@ async function rdoSalvarAgora(novoStatus){
   }
   // Insere equipe do dia (genérico, todos os tipos de RDO). Fase 93c: linha já liberada para a folha não é
   // reinserida (ficou no banco); noturnas vão só quando corrigidas à mão, senão o gatilho calcula (22h–5h)
+  // fase 129c: upsert pelo id; status_dia vai sempre (nulo = presente), porque no update a chave ausente manteria o antigo.
+  // Colunas que só o campo grava (chegada real) ficam como estão.
   const eqLimpa = _rdoEquipe
-    .filter(e => !e.liberado_em && (e.funcionario_id || (e.nome_avulso && e.nome_avulso.trim())))
+    .filter(eqFica)
     .map((e,i) => ({
+      id:             e.id,
       rdo_id:         savedId,
       funcionario_id: e.funcionario_id || null,
       nome_avulso:    e.nome_avulso || null,
@@ -1859,21 +2101,20 @@ async function rdoSalvarAgora(novoStatus){
       horas_noturnas_manual: !!e.horas_noturnas_manual,
       observacoes:    e.observacoes || null,
       ordem:          i + 1,
-      // fase 103: só vai quando há status (presente = nulo); sem status a linha grava igual a antes da migration
-      ...(rdoStatusDia(e.status_dia) ? { status_dia: e.status_dia } : {})
+      status_dia:     rdoStatusDia(e.status_dia) ? e.status_dia : null
     }));
   if(eqLimpa.length){
-    const { error: errEq } = await sb.from("rdo_equipe").insert(eqLimpa);
+    const { error: errEq } = await sb.from("rdo_equipe").upsert(eqLimpa, { onConflict: "id" });
     if(errEq){ aviso("app-aviso","Erro ao salvar equipe: "+errEq.message,"erro"); return; }
   }
-  // Abastecimento do dia (fase 46)
+  // Abastecimento do dia (fase 46; fase 129c: upsert pelo id, a origem do diesel informada no campo fica)
   const abLimpo = _rdoAbast
-    .filter(a => a.equipamento_id || a.maquina_codigo || a.quantidade != null || a.horimetro != null)
-    .map((a, i) => ({ rdo_id: savedId, equipamento_id: a.equipamento_id || null, maquina_codigo: a.maquina_codigo || null,
+    .filter(abFica)
+    .map((a, i) => ({ id: a.id, rdo_id: savedId, equipamento_id: a.equipamento_id || null, maquina_codigo: a.maquina_codigo || null,
       combustivel: a.combustivel || "diesel", quantidade: a.quantidade ?? null, unidade: "L", horimetro: a.horimetro ?? null,
       observacao: a.observacao || null, ordem: i + 1 }));
   if(abLimpo.length){
-    const { error: errAb } = await sb.from("rdo_abastecimento").insert(abLimpo);
+    const { error: errAb } = await sb.from("rdo_abastecimento").upsert(abLimpo, { onConflict: "id" });
     if(errAb){ aviso("app-aviso","Erro ao salvar abastecimento: "+errAb.message,"erro"); return; }
   }
 
@@ -1895,9 +2136,39 @@ async function rdoSalvarAgora(novoStatus){
   $("btn-excluir-rdo").style.display = "";
   $("rdo-status").value = reg.status;
   if(rdoRaizErro) aviso("app-aviso", "RDO salvo, mas os dados da raiz não foram gravados: " + rdoRaizErro.message, "erro");
-  else aviso("app-aviso","RDO salvo com sucesso.","ok");
+  else aviso("app-aviso", novosDoCampo
+    ? `RDO salvo. ${novosDoCampo} linha(s) gravada(s) pelo campo ou pela sync depois que você abriu a ficha continuam no diário: confira.`
+    : "RDO salvo com sucesso.", "ok");
   await carregarRDO();
   await abrirRDO(savedId);
+}
+
+/* fase 129c: cópia do que a ficha leu (texto por id) e a conferência antes de gravar */
+function rdoSnapshot(id, cab, execs, equipe, abast){
+  const mapa = (l) => new Map((l || []).map(x => [x.id, JSON.stringify(x)]));
+  return { id, cab: JSON.stringify(RDO_CAB_CONFERE.map(k => cab?.[k] ?? null)), exec: mapa(execs), equipe: mapa(equipe), abast: mapa(abast) };
+}
+async function rdoConferirMudancas(id){
+  const [cab, ex, eq, ab] = await Promise.all([
+    sb.from("rdo").select(RDO_CAB_CONFERE.join(",")).eq("id", id).single(),
+    sb.from("rdo_execucao_estaca").select("*").eq("rdo_id", id),
+    sb.from("rdo_equipe").select("*").eq("rdo_id", id),
+    sb.from("rdo_abastecimento").select("*").eq("rdo_id", id)]);
+  const falha = cab.error || ex.error || eq.error || ab.error;
+  if(falha) return { erro: falha.message };
+  const mudou = [], novos = { exec: [], equipe: [], abast: [] };
+  if(JSON.stringify(RDO_CAB_CONFERE.map(k => cab.data?.[k] ?? null)) !== _rdoSnap.cab) mudou.push("cabeçalho");
+  [["exec", "execução de estaca", ex.data], ["equipe", "equipe", eq.data], ["abast", "abastecimento", ab.data]].forEach(([k, rot, linhas]) => {
+    const vistos = new Set();
+    (linhas || []).forEach(r => {
+      vistos.add(r.id);
+      const antes = _rdoSnap[k].get(r.id);
+      if(antes === undefined) novos[k].push(r);
+      else if(antes !== JSON.stringify(r)) mudou.push(rot + " alterada");
+    });
+    _rdoSnap[k].forEach((_, i) => { if(!vistos.has(i)) mudou.push(rot + " apagada"); });
+  });
+  return { mudou: [...new Set(mudou)], novos };
 }
 
 /* fase 94 (#77): chip da máquina do diário, aviso de "sem máquina" e botão "Dividir por máquina" */
@@ -1989,6 +2260,8 @@ function ligarRDO(){
   $("btn-salvar-rdo")?.addEventListener("click", () => comBotaoTravado("btn-salvar-rdo", () => salvarRDO()));
   $("btn-finalizar-rdo")?.addEventListener("click", () => comBotaoTravado("btn-finalizar-rdo", () => salvarRDO("finalizado")));
   $("btn-excluir-rdo")?.addEventListener("click", excluirRDO);
+  $("btn-rdo-devolver")?.addEventListener("click", () => comBotaoTravado("btn-rdo-devolver", rdoDevolverCampo));   // fase 129c
+  $("btn-rdo-relogio-ok")?.addEventListener("click", (ev) => rdoRelogioConferido(ev.currentTarget.dataset.id));
   $("btn-add-execucao")?.addEventListener("click", adicionarExecucao);
   $("btn-add-raiz-solo")?.addEventListener("click", adicionarRaizSolo);
   $("btn-add-rdo-atividade")?.addEventListener("click", adicionarRdoAtividade);
@@ -2443,6 +2716,7 @@ async function montarPreviewDias(data, origem, obraSel){
         intervalo_minutos: d.intervalo_minutos ?? null, almoco_inicio: d.almoco_inicio || null, almoco_fim: d.almoco_fim || null, feriado: false,
         sem_estacas: d.sem_estacas === true, // dia só com ocorrência (planilha do Maya): vira RDO sem execuções
         abastecimentos: Array.isArray(d.abastecimentos) ? d.abastecimentos : [], // bloco Abastecimento da planilha (diário do operador)
+        paradas: Array.isArray(d.paradas) ? d.paradas : [],   // fase 129c: ocorrências do Maya → tabela ocorrencias
         equipe: (Array.isArray(d.equipe) ? d.equipe : []).map(iaCasarIntegrante),
         // v3.2 (chamado #5): lista hora-a-hora da justificativa; função v3.1 não manda → []
         justificativa: (Array.isArray(d.justificativa) ? d.justificativa : [])
@@ -3520,6 +3794,92 @@ async function rdoRg113ConciliarExistentes(obraId, dia, exs, ests){
   }
   return out;
 }
+/* fase 129c: import (Maya, CSV, SoftSaci, IA) sobre um diário que já existe. A execução do arquivo com o mesmo número (e a mesma
+   modalidade) de uma lançada pelo app do campo nesse diário não vira uma segunda linha: a do app só recebe o que está vazio nela.
+   Um para um: cada linha do app casa uma vez só, então dois trechos da mesma estaca raiz no arquivo contra um no app dão duas linhas,
+   como antes. Linhas de outras origens seguem para a RPC rdo_import_execucao_conciliar (que pula a do Geodigitus). */
+const RDO_CAMPOS_COMPLETAR = ["estaca_id", "diametro_mm", "profundidade_projeto", "profundidade_executada", "perfuracao_de_m", "perfuracao_ate_m",
+  "perfuracao_inicio", "perfuracao_fim", "concretagem_inicio", "concretagem_fim", "torque", "volume_concreto_m3", "inclinacao",
+  "numero_boletim_fisico", "equipamento_id", "maquina_codigo", "consumo_cimento_raiz", "consumo_cimento_unidade", "consumo_areia_raiz",
+  "consumo_areia_unidade", "pressao_injecao_kgcm2", "volume_injetado_m3", "agua_l"];
+async function rdoConciliarComCampo(rdoId, exs, ests, dia, jaFeitas){
+  const out = { indices: new Set(), conciliadas: 0, trechos: 0 };
+  const { data: app, error } = await sb.from("rdo_execucao_estaca")
+    .select("id,estaca_numero,estaca_numero_corrigido,modalidade_execucao,observacoes," + RDO_CAMPOS_COMPLETAR.join(","))
+    .eq("rdo_id", rdoId).eq("origem_dados", "app_operador");
+  if(error) throw new Error(`Execuções do campo em ${dia}: ${error.message}`);
+  if(!app || !app.length) return out;
+  const chave = (n, m) => normalizarNumeroEstaca(n || "") + "|" + (m || "furo_normal");
+  const usadas = new Set();
+  for(let i = 0; i < exs.length; i++){
+    if(jaFeitas && jaFeitas.has(i)) continue;
+    const x = exs[i];
+    const alvo = app.find(a => !usadas.has(a.id) && chave(a.estaca_numero_corrigido || a.estaca_numero, a.modalidade_execucao) === chave(x.estaca_numero, x.modalidade_execucao));
+    if(!alvo) continue;
+    usadas.add(alvo.id);
+    const upd = {};
+    RDO_CAMPOS_COMPLETAR.forEach(c => { if((alvo[c] == null || alvo[c] === "") && x[c] != null && x[c] !== "") upd[c] = x[c]; });
+    if(x.observacoes && !String(alvo.observacoes || "").includes(x.observacoes)) upd.observacoes = alvo.observacoes ? alvo.observacoes + "\n" + x.observacoes : x.observacoes;
+    if(Object.keys(upd).length){
+      const { error: eUp } = await sb.from("rdo_execucao_estaca").update(upd).eq("id", alvo.id);
+      if(eUp) throw new Error(`Estaca ${x.estaca_numero} de ${dia} (lançada no campo): ${eUp.message}`);
+    }
+    const trechos = (ests[i] && ests[i].trechos) || [];
+    if(trechos.length){
+      const { count } = await sb.from("rdo_raiz_solo").select("id", { count: "exact", head: true }).eq("execucao_id", alvo.id);
+      if(count === 0){
+        const { error: eSolo } = await sb.from("rdo_raiz_solo").insert(trechos.map((t, ti) => ({ rdo_id: rdoId, execucao_id: alvo.id, ordem: ti + 1,
+          inicio_ml: t.de ?? null, final_ml: t.ate ?? null, classificacao: t.solo || null, ferramenta: t.ferramenta || null })));
+        if(eSolo) console.warn(`Trechos de ${x.estaca_numero} de ${dia} não gravados:`, eSolo.message);
+        else out.trechos += trechos.length;
+      }
+    }
+    out.indices.add(i); out.conciliadas++;
+  }
+  return out;
+}
+/* fase 129c: ocorrências do Relatório Diário do Maya → ocorrencias (origem 'maya'). Reimportar o mesmo arquivo não duplica
+   (mesma descrição e mesmo início no diário). Período só vai inteiro (início sem fim abriria uma parada "em andamento").
+   O motivo sai do texto quando ele é claro; senão fica nulo e a descrição leva o tipo do Maya. Se o banco recusar
+   (perfil que importa diário mas não grava ocorrências), o texto volta às observações do diário, como antes da 129c. */
+const RDO_MAYA_MOTIVO = [[/chuv/, "chuva"], [/manuten|quebr|mecanic/, "manutencao"], [/libera/, "aguardando_liberacao"],
+  [/locac/, "aguardando_locacao"], [/concret|argamass/, "aguardando_concreto_argamassa"], [/frente/, "aguardando_frente"],
+  [/prepar/, "preparacao"], [/desloc|mudanca de (plato|frente)/, "deslocamento_interno"]];
+async function rdoGravarParadasImport(rdoId, obraId, diaData, eqId, paradas, dia){
+  const out = { gravadas: 0, texto: 0 };
+  const norm = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const descr = (p) => { const d = String(p.descricao || "").trim(), t = String(p.tipo || "").trim();
+    return (t && d && norm(d) !== norm(t) ? `${t}: ${d}` : (d || t)) || "Ocorrência do Maya"; };
+  const chave = (d, ini) => norm(d).trim() + "|" + String(ini || "").slice(0, 5);
+  const { data: ja } = await sb.from("ocorrencias").select("descricao,periodo_inicio").eq("rdo_id", rdoId);
+  const vistos = new Set((ja || []).map(o => chave(o.descricao, o.periodo_inicio)));
+  const linhas = [];
+  paradas.forEach(p => {
+    const inteiro = !!(p.periodo_inicio && p.periodo_fim);
+    const desc = descr(p), k = chave(desc, inteiro ? p.periodo_inicio : null);
+    if(vistos.has(k)) return;
+    vistos.add(k);
+    const alvo = norm((p.tipo || "") + " " + (p.descricao || ""));
+    const mot = (RDO_MAYA_MOTIVO.find(([re]) => re.test(alvo)) || [])[1] || null;
+    linhas.push({ obra_id: obraId, rdo_id: rdoId, data: diaData, status: "resolvida", descricao: desc, origem: "maya",
+      tipo: mot === "chuva" ? "clima" : (p.paralisado ? "paralisacao" : "outro"), motivo: mot,
+      paralisado: p.paralisado === true, em_razao_cliente: p.em_razao_cliente === true,
+      periodo_inicio: inteiro ? p.periodo_inicio : null, periodo_fim: inteiro ? p.periodo_fim : null, equipamento_id: eqId || null });
+  });
+  if(!linhas.length) return out;
+  const { error } = await sb.from("ocorrencias").insert(linhas);
+  if(!error){ out.gravadas = linhas.length; return out; }
+  console.warn("Ocorrências de " + dia + " não gravadas na tabela (vão para as observações):", error.message);
+  const { data: r } = await sb.from("rdo").select("observacoes").eq("id", rdoId).maybeSingle();
+  const atual = String(r?.observacoes || "");
+  const novos = paradas.map(p => p.texto).filter(t => t && !atual.includes(t));
+  if(novos.length){
+    const { error: eObs } = await sb.from("rdo").update({ observacoes: [atual || null, ...novos].filter(Boolean).join("\n") }).eq("id", rdoId);
+    if(eObs) console.warn("Observações de " + dia + " não gravadas:", eObs.message);
+    else out.texto = novos.length;
+  }
+  return out;
+}
 /* lote S57 (#220): rdo_raiz_dados (1 por diário) recebe local e bloco da planilha; o que já está preenchido fica */
 async function rdoCompletarRaizDados(rdoId, rd, dia){
   const { data: atual, error } = await sb.from("rdo_raiz_dados").select("id,local_obra,bloco").eq("rdo_id", rdoId).maybeSingle();
@@ -3630,6 +3990,7 @@ async function confirmarImportCSV(){
       if(!atual || g.linhas.length > atual.n || (g.linhas.length === atual.n && g.eq && !atual.eq)) principalDoDia[g.dia] = { k: g.eq || "", eq: g.eq, n: g.linhas.length };
     });
     let totalRdos = 0, totalExecs = 0, totalTrechos = 0, totalAtiv = 0, totalSemMaq = 0, totalGeo = 0, totalConc = 0;
+    let totalParadas = 0, totalParadasTexto = 0;   // fase 129c
     for(const g of grupos){
       const dia = g.dia, ests = g.linhas, eqId = g.eq;
       // fase 134b: a chave do dia leva o período; o diário é procurado por obra + data + tipo + máquina + período
@@ -3717,6 +4078,11 @@ async function confirmarImportCSV(){
       // lote S57 (#220): o RG 11.3 concilia antes com a execução que o dia já tem (lida por PDF ou lançada à mão)
       // fase 134b: concilia no dia da obra, entre diurno e noturno (é a mesma estaca no mesmo dia)
       const rc = _iaOrigem === "xlsx_rg113" ? await rdoRg113ConciliarExistentes(obra_id, diaData, exs, ests) : { indices: new Set(), conciliadas: 0, trechos: 0 };
+      // fase 129c: diário que já existe (aberto pelo app do campo): a estaca que o operador lançou não ganha uma segunda linha
+      if(rdoExist){
+        const cc = await rdoConciliarComCampo(rdoId, exs, ests, dia, rc.indices);
+        cc.indices.forEach(i => rc.indices.add(i)); rc.conciliadas += cc.conciliadas; rc.trechos += cc.trechos;
+      }
       const idxNovos = exs.map((_, i) => i).filter(i => !rc.indices.has(i));
       // fase 107a: cada execução pela RPC rdo_import_execucao_conciliar (a mesma da sync do Geodigitus): concilia com a da
       // obra no mesmo dia e número, pula a que já veio do Geodigitus; só a inserida agora recebe os trechos de solo
@@ -3793,8 +4159,18 @@ async function confirmarImportCSV(){
         const { error: errAb } = await sb.from("rdo_abastecimento").insert(linhasAb);
         if(errAb) console.warn("Abastecimento de " + dia + " não gravado:", errAb.message);
       }
+      // fase 129c: ocorrências da planilha do Maya → tabela ocorrencias, cada uma no diário da sua máquina (sem máquina → principal)
+      const parIA = (_iaExtras?.[dia]?.paradas || []).filter(p => {
+        const eqP = maqAbast(p);
+        if(eqP) return eqP === eqId || (ehPrincipal && !grupos.some(x => x.dia === dia && x.eq === eqP));
+        return ehPrincipal;
+      });
+      if(parIA.length){
+        const gp = await rdoGravarParadasImport(rdoId, obra_id, diaData, eqId, parIA, dia);
+        totalParadas += gp.gravadas; totalParadasTexto += gp.texto;
+      }
     }
-    aviso("app-aviso", `✅ Importado: ${totalRdos} diário(s) novo(s) em ${dias.length} dia(s), ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.${totalGeo ? ` ${totalGeo} estaca(s) já vieram do Geodigitus (não duplicadas).` : ""}${totalConc ? ` ${totalConc} estaca(s) conciliada(s) com o que já estava no diário.` : ""}${totalSemMaq ? ` ⚠️ ${totalSemMaq} diário(s) sem máquina — informe a máquina no cabeçalho (Para regularizar).` : ""}`, "ok");
+    aviso("app-aviso", `✅ Importado: ${totalRdos} diário(s) novo(s) em ${dias.length} dia(s), ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.${totalGeo ? ` ${totalGeo} estaca(s) já vieram do Geodigitus (não duplicadas).` : ""}${totalConc ? ` ${totalConc} estaca(s) conciliada(s) com o que já estava no diário.` : ""}${totalParadas ? ` ${totalParadas} ocorrência(s) gravada(s) nas paradas do diário.` : ""}${totalParadasTexto ? ` ⚠️ ${totalParadasTexto} ocorrência(s) foram para as observações (seu perfil não grava ocorrências).` : ""}${totalSemMaq ? ` ⚠️ ${totalSemMaq} diário(s) sem máquina — informe a máquina no cabeçalho (Para regularizar).` : ""}`, "ok");
     fecharModalImportCSV();
     await carregarRDO();
   } catch(err){

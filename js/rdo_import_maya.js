@@ -114,7 +114,7 @@ function mayaParaDias(abas){
   const dias = {};
   const dia = (iso) => (dias[iso] = dias[iso] || { data: iso, obra, tipo_servico: null, maquina: null, tempo_manha: null, tempo_tarde: null,
     responsavel: null, atividades: null, observacoes: null, almoco_inicio: null, almoco_fim: null, intervalo_minutos: null,
-    equipe: [], injecao: [], estacas: [], abastecimentos: [], _ops: {}, _ocorr: [], _fim: [] });
+    equipe: [], injecao: [], estacas: [], abastecimentos: [], paradas: [], _ops: {}, _ocorr: [], _fim: [] });
   const addOperador = (d, nome, periodo) => {
     const n = String(nome || "").trim(); if(!n) return;
     const p = d._ops[n] || (d._ops[n] = { nome: n, funcao: "operador", hora_entrada: null, hora_saida: null, horas_normais: null, horas_50: null, horas_100: null });
@@ -172,6 +172,10 @@ function mayaParaDias(abas){
     const cab = [maq ? `Máquina ${maq}` : null, tipo ? `Ocorrência: ${tipo}` : null, paralisado ? "Paralisado: sim" : null, cliente ? "Em razão do cliente: sim" : null,
       periodo.ini ? `Período ${periodo.ini}–${periodo.fim}` : null].filter(Boolean).join(" · ");
     d._ocorr.push((cab ? `[${cab}] ` : "") + desc);
+    // fase 129c: a ocorrência também sai estruturada; o import grava em `ocorrencias` (a tabela que a ficha, a aba da obra e a
+    // medição leem) e o texto acima só volta às observações se o banco recusar a gravação
+    d.paradas.push({ maquina: maq, tipo: tipo || null, descricao: desc || tipo || null, paralisado, em_razao_cliente: cliente,
+      periodo_inicio: periodo.ini, periodo_fim: periodo.fim, texto: (cab ? `[${cab}] ` : "") + desc });
     if(maq && !d.maquina) d.maquina = maq;
     addOperador(d, mayaCampo(o, "operador"), periodo);
     if(!d.responsavel && mayaCampo(o, "operador")) d.responsavel = String(mayaCampo(o, "operador")).trim();
@@ -225,7 +229,7 @@ function mayaParaDias(abas){
   const lista = Object.values(dias).sort((a, b) => a.data.localeCompare(b.data));
   lista.forEach(d => {
     d.equipe = Object.values(d._ops);
-    d.observacoes = [...d._ocorr, ...d._fim].join("\n") || null;
+    d.observacoes = d._fim.join("\n") || null;   // fase 129c: as ocorrências vão para a tabela (d.paradas)
     if(d.estacas.length){
       const diams = [...new Set(d.estacas.map(e => e.diametro_mm).filter(Boolean))].sort((a, b) => a - b);
       const ref = d.estacas.filter(e => e.refuro).length;

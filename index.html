@@ -9,20 +9,20 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="18b1cb7" />
+<meta name="app-versao" content="9ec2ff2" />
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=18b1cb7" />
+<link rel="stylesheet" href="css/estilo.css?v=9ec2ff2" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=18b1cb7"></script>
+<script src="js/tema.js?v=9ec2ff2"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=18b1cb7"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=18b1cb7"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=18b1cb7"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=9ec2ff2"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=9ec2ff2"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=9ec2ff2"></script>
 </head>
 <body>
 
@@ -3611,6 +3611,7 @@
               <button type="button" class="btn-sec" id="btn-rdo-proximo" title="Próximo RDO da mesma obra/tipo">Dia posterior </button>
               <button type="button" class="btn" id="btn-salvar-rdo">Salvar</button>
               <button type="button" class="btn btn-sucesso" id="btn-finalizar-rdo">Finalizar</button>
+              <button type="button" class="btn-sec" id="btn-rdo-devolver" style="display:none;" title="Fase 129c: devolve o diário enviado pelo app do campo para o operador corrigir; o motivo é obrigatório e aparece no celular">Devolver ao campo</button>
               <button type="button" class="btn-sec" id="btn-importar-csv">Importar arquivo</button>
               <button type="button" class="btn-sec" id="btn-rdo-pedir-material" style="display:none;" title="Lista de separação para o almoxarifado (fase 83)">Pedir material</button>
               <button type="button" class="btn-sec" id="btn-rdo-dividir" style="display:none;" title="Fase 94 (#77): este diário tem execuções de mais de uma máquina; separa um diário por máquina (equipe e abastecimento ficam no da máquina principal)">Dividir por máquina</button>
@@ -3641,7 +3642,10 @@
             <div class="chip" id="rdo-ficha-maquina-chip" title="Fase 94: um diário por máquina na mesma obra e data"><span>Máquina</span><strong>—</strong></div>
             <div class="chip" id="rdo-ficha-turno-chip" title="Fase 134b: diurno ou noturno; a mesma máquina pode ter os dois diários no mesmo dia"><span>Período</span><strong>Diurno</strong></div>
             <div class="chip chip-aviso" id="rdo-ficha-jornada-chip" style="display:none;" title="Lote S40 (#31): a HE é calculada pela jornada padrão da empresa até a obra ter jornada própria"><span>Jornada</span><strong>Obra sem jornada; usando padrão da empresa · <a href="#" id="rdo-ficha-jornada-link">cadastrar em Parâmetros</a></strong></div>
+            <div class="chip" id="rdo-ficha-campo-chip" style="display:none;" title="Fase 129c: o operador enviou o dia pelo app do campo; confira e finalize, ou devolva com o motivo"><span>Enviado pelo campo</span><strong>—</strong></div>
           </div>
+          <p class="rdo-ficha-faixa rdo-ficha-faixa-perigo" id="rdo-ficha-devolvido" style="display:none;"></p>
+          <p class="rdo-ficha-faixa" id="rdo-ficha-relogio" style="display:none;"><span id="rdo-ficha-relogio-txt"></span> <button type="button" class="btn-sec btn-sm" id="btn-rdo-relogio-ok" title="Tira o aviso desta ficha e do Para regularizar">Conferido</button></p>
 
           <div class="odoo-notebook" id="rdo-notebook">
             <button type="button" data-tab="cabecalho" class="ativo">Cabeçalho</button>
@@ -3649,7 +3653,8 @@
             <button type="button" data-tab="equipe">Equipe</button>
             <button type="button" data-tab="execucoes">Execuções</button>
             <button type="button" data-tab="raiz-dados" data-rdo-aba-raiz="1">Dados Raiz</button>
-            <button type="button" data-tab="observacoes">Observações</button>
+            <button type="button" data-tab="observacoes">Paradas e observações</button>
+            <button type="button" data-tab="fotos" title="Fase 129c: fotos tiradas no app do campo (boletim assinado, estaca, ocorrência, horímetro)">Fotos</button>
           </div>
 
           <div class="odoo-body">
@@ -3820,9 +3825,16 @@
 
             <!-- Observações -->
             <div class="odoo-tab" data-tab="observacoes">
+              <h4 class="titulo-linha" title="Fase 129c: paradas do app do campo e ocorrências importadas (tabela de ocorrências, a mesma que a aba da obra e a medição leem). Só leitura nesta ficha.">Paradas e ocorrências do dia</h4>
+              <div id="rdo-paradas"></div>
               <div class="grade">
                 <div class="campo largo"><label>Observações gerais</label><textarea id="rdo-obs" rows="6"></textarea></div>
               </div>
+            </div>
+
+            <!-- Fotos (fase 129c) -->
+            <div class="odoo-tab" data-tab="fotos">
+              <div id="rdo-fotos"></div>
             </div>
           </div>
         </div>
@@ -7094,61 +7106,61 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=18b1cb7"></script>
+<script src="js/core.js?v=9ec2ff2"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=18b1cb7"></script>
+<script src="js/historico.js?v=9ec2ff2"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=18b1cb7"></script>
-<script src="js/fiscal_ncm.js?v=18b1cb7"></script>
+<script src="js/fiscal.js?v=9ec2ff2"></script>
+<script src="js/fiscal_ncm.js?v=9ec2ff2"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=18b1cb7"></script>
-<script src="js/fornecedores.js?v=18b1cb7"></script>
-<script src="js/apropriacoes.js?v=18b1cb7"></script>
-<script src="js/funcionarios.js?v=18b1cb7"></script>
-<script src="js/funcionarios_importar.js?v=18b1cb7"></script>
-<script src="js/funcionarios_lotacao.js?v=18b1cb7"></script>
-<script src="js/rh_documentos.js?v=18b1cb7"></script>
-<script src="js/servicos.js?v=18b1cb7"></script>
-<script src="js/produtos.js?v=18b1cb7"></script>
-<script src="js/estoque.js?v=18b1cb7"></script>
-<script src="js/separacoes.js?v=18b1cb7"></script>
-<script src="js/epi.js?v=18b1cb7"></script>
-<script src="js/compras.js?v=18b1cb7"></script>
-<script src="js/requisicoes.js?v=18b1cb7"></script>
-<script src="js/orcamentos.js?v=18b1cb7"></script>
-<script src="js/propostas.js?v=18b1cb7"></script>
-<script src="js/contratos.js?v=18b1cb7"></script>
-<script src="js/contas_pagar.js?v=18b1cb7"></script>
-<script src="js/centros_custo.js?v=18b1cb7"></script>
-<script src="js/carteira.js?v=18b1cb7"></script>
-<script src="js/obras.js?v=18b1cb7"></script>
-<script src="js/frota.js?v=18b1cb7"></script>
-<script src="js/viagens.js?v=18b1cb7"></script>
-<script src="js/equipamentos.js?v=18b1cb7"></script>
-<script src="js/vendas_bens.js?v=18b1cb7"></script>
-<script src="js/acessorios.js?v=18b1cb7"></script>
-<script src="js/reparos.js?v=18b1cb7"></script>
-<script src="js/manutencao.js?v=18b1cb7"></script>
-<script src="js/fabricacao.js?v=18b1cb7"></script>
-<script src="js/mobilizacoes.js?v=18b1cb7"></script>
-<script src="js/estacas.js?v=18b1cb7"></script>
-<script src="js/obra_abas.js?v=18b1cb7"></script>
-<script src="js/medicoes.js?v=18b1cb7"></script>
-<script src="js/movimentacoes.js?v=18b1cb7"></script>
-<script src="js/rdo_import_rg113.js?v=18b1cb7"></script>
-<script src="js/rdo.js?v=18b1cb7"></script>
-<script src="js/rdo_import_maya.js?v=18b1cb7"></script>
-<script src="js/geodigitus.js?v=18b1cb7"></script>
-<script src="js/computadores_bordo.js?v=18b1cb7"></script>
-<script src="js/usuarios.js?v=18b1cb7"></script>
-<script src="js/chamados.js?v=18b1cb7"></script>
-<script src="js/dashboard.js?v=18b1cb7"></script>
-<script src="js/rh_horas.js?v=18b1cb7"></script>
-<script src="js/sesmt.js?v=18b1cb7"></script>
-<script src="js/patrimonio.js?v=18b1cb7"></script>
+<script src="js/clientes.js?v=9ec2ff2"></script>
+<script src="js/fornecedores.js?v=9ec2ff2"></script>
+<script src="js/apropriacoes.js?v=9ec2ff2"></script>
+<script src="js/funcionarios.js?v=9ec2ff2"></script>
+<script src="js/funcionarios_importar.js?v=9ec2ff2"></script>
+<script src="js/funcionarios_lotacao.js?v=9ec2ff2"></script>
+<script src="js/rh_documentos.js?v=9ec2ff2"></script>
+<script src="js/servicos.js?v=9ec2ff2"></script>
+<script src="js/produtos.js?v=9ec2ff2"></script>
+<script src="js/estoque.js?v=9ec2ff2"></script>
+<script src="js/separacoes.js?v=9ec2ff2"></script>
+<script src="js/epi.js?v=9ec2ff2"></script>
+<script src="js/compras.js?v=9ec2ff2"></script>
+<script src="js/requisicoes.js?v=9ec2ff2"></script>
+<script src="js/orcamentos.js?v=9ec2ff2"></script>
+<script src="js/propostas.js?v=9ec2ff2"></script>
+<script src="js/contratos.js?v=9ec2ff2"></script>
+<script src="js/contas_pagar.js?v=9ec2ff2"></script>
+<script src="js/centros_custo.js?v=9ec2ff2"></script>
+<script src="js/carteira.js?v=9ec2ff2"></script>
+<script src="js/obras.js?v=9ec2ff2"></script>
+<script src="js/frota.js?v=9ec2ff2"></script>
+<script src="js/viagens.js?v=9ec2ff2"></script>
+<script src="js/equipamentos.js?v=9ec2ff2"></script>
+<script src="js/vendas_bens.js?v=9ec2ff2"></script>
+<script src="js/acessorios.js?v=9ec2ff2"></script>
+<script src="js/reparos.js?v=9ec2ff2"></script>
+<script src="js/manutencao.js?v=9ec2ff2"></script>
+<script src="js/fabricacao.js?v=9ec2ff2"></script>
+<script src="js/mobilizacoes.js?v=9ec2ff2"></script>
+<script src="js/estacas.js?v=9ec2ff2"></script>
+<script src="js/obra_abas.js?v=9ec2ff2"></script>
+<script src="js/medicoes.js?v=9ec2ff2"></script>
+<script src="js/movimentacoes.js?v=9ec2ff2"></script>
+<script src="js/rdo_import_rg113.js?v=9ec2ff2"></script>
+<script src="js/rdo.js?v=9ec2ff2"></script>
+<script src="js/rdo_import_maya.js?v=9ec2ff2"></script>
+<script src="js/geodigitus.js?v=9ec2ff2"></script>
+<script src="js/computadores_bordo.js?v=9ec2ff2"></script>
+<script src="js/usuarios.js?v=9ec2ff2"></script>
+<script src="js/chamados.js?v=9ec2ff2"></script>
+<script src="js/dashboard.js?v=9ec2ff2"></script>
+<script src="js/rh_horas.js?v=9ec2ff2"></script>
+<script src="js/sesmt.js?v=9ec2ff2"></script>
+<script src="js/patrimonio.js?v=9ec2ff2"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=18b1cb7"></script>
+<script src="js/sesmt_ocorrencias.js?v=9ec2ff2"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=18b1cb7"></script>
+<script src="js/init.js?v=9ec2ff2"></script>
 </body>
 </html>
