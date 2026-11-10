@@ -3605,14 +3605,16 @@ async function custosRender(containerId, filtro, cbTotal){
   };
   const verCaixa = typeof podeVerContasPagar === "function" && podeVerContasPagar();
   const [rCus, rComp, rCx] = await Promise.all([
-    aplicar(sb.from("vw_custos").select("*").order("data", { ascending: false }).limit(2000)),
+    // lote travas (BUG-04): o limite de 2.000 linhas era cortado em 1.000 pela API sem aviso e o total saía menor; lerTudo pagina pela chave
+    // (a mesma de js/patrimonio.js) e a ordem da tela, da data mais nova para a mais velha, é refeita logo abaixo
+    lerTudo(() => aplicar(sb.from("vw_custos").select("*")), ["categoria", "data", "origem", "origem_id", "valor"]),
     lerTudo(() => aplicar(sb.from("vw_custos_comprometido").select("pedido_id,pedido_numero,valor")), ["pedido_item_id", "equipamento_id"]),
     verCaixa ? lerTudo(() => aplicar(sb.from("vw_custos_caixa_previsto").select("mes_vencimento,valor")), ["titulo_id", "recebimento_item_id", "equipamento_id"])
              : Promise.resolve({ data: [], error: { pulado: true } })
   ]);
   const { data, error } = rCus;
   if(error){ c.innerHTML = `<p class="vazio">Erro ao carregar custos: ${esc(error.message)}</p>`; return; }
-  const linhas = data || [];
+  const linhas = (data || []).sort((a, b) => String(b.data || "").localeCompare(String(a.data || "")));
   const comp = rComp.error ? null : (rComp.data || []);
   const caixa = rCx.error ? null : (rCx.data || []);
   const total = linhas.reduce((s, l) => s + Number(l.valor || 0), 0);

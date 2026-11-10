@@ -193,6 +193,8 @@ function vgPreencherForm(){
   if(!v.id) vgSugerirDoVeiculo();
   const pode = logPodeOperar() && v.status !== "cancelada";
   document.querySelectorAll('#vg-ficha .odoo-tab[data-tab="geral"] input, #vg-ficha .odoo-tab[data-tab="geral"] select').forEach(el => { el.disabled = !pode; });
+  // lote travas (BAN-05): o frete vira título a pagar; só logística, gestor de frota, financeiro e comprador informam (a RPC recusa os demais)
+  if(!vgPodeInformarFrete()) ["vg-frete-valor", "vg-frete-venc", "vg-frete-doc", "vg-frete-emissao", "vg-frete-obs"].forEach(id => { $(id).disabled = true; });
   // título exportado: valor, vencimento, documento e emissão do frete travam no banco; a observação continua livre
   if(v.frete_status === "exportado") ["vg-frete-valor", "vg-frete-venc", "vg-frete-doc", "vg-frete-emissao", "vg-transp-busca"].forEach(id => { $(id).disabled = true; });
 }
@@ -203,7 +205,9 @@ function vgToggleFinalidade(){
   ["vg-campo-transp", "vg-campo-transp-placa", "vg-campo-transp-motorista", "vg-bloco-frete"].forEach(id => vgShow(id, frete));
   const nota = $("vg-frete-nota");
   if(nota && frete){
-    nota.textContent = vgPodeVerFrete()
+    nota.textContent = !vgPodeInformarFrete()
+      ? "O valor, o vencimento e o documento do frete são informados pela logística, pelo gestor de frota, pelo comprador ou pelo financeiro. Você registra a viagem e o transportador; o chip Frete mostra o estado do título."
+      : vgPodeVerFrete()
       ? "O título a pagar nasce no banco quando há valor maior que zero e vencimento, acompanha as alterações e some se a viagem for cancelada; depois de exportado ao financeiro ele não muda mais (\"título já exportado: ajuste em Contas a pagar\"). O custo cai nas obras atendidas (aba Custo)."
       : "Você informa o valor, o vencimento e o documento; eles ficam visíveis só para quem lê Contas a pagar (financeiro, comprador, admin, diretoria). Depois de salvar o campo volta vazio e o chip Frete mostra o estado do título. Para corrigir, informe de novo.";
   }

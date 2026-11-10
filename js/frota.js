@@ -39,6 +39,9 @@ function vgEhFrete(v){ return !!v && v.finalidade === "frete_terceirizado"; }
 /* viagem_fretes vem como objeto (1:1) ou nulo para quem não lê contas a pagar */
 function vgFrete(v){ if(!v || !v.frete) return null; return Array.isArray(v.frete) ? (v.frete[0] || null) : v.frete; }
 function vgPodeVerFrete(){ return typeof podeVerContasPagar === "function" && podeVerContasPagar(); }
+/* lote travas 09/11/2026 (BAN-05): quem informa o frete. Mesma lista da RPC viagem_frete_gravar (admin, logistica, gestor_frota,
+   financeiro, comprador); diretor entra por has_role() lá e aqui na lista. Os demais registram a viagem e deixam o frete para eles. */
+function vgPodeInformarFrete(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "logistica", "gestor_frota", "financeiro", "comprador"].includes(usuarioAtual.cargo); }
 /* valor da viagem: frota própria = km × R$/km (valor_total); frete = valor combinado (nulo quando o usuário não lê) */
 function vgValorViagem(v){
   if(vgEhFrete(v)){ const f = vgFrete(v); return f && f.valor_frete != null ? Number(f.valor_frete) : null; }
