@@ -89,6 +89,10 @@ function horaDeTimestamp(iso){
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 }
+/* Fase 155a: hora da estaca como o resto do sistema grava (hora de parede com +00) e lê (fatiando o texto, sem fuso).
+   horaDeTimestamp continua para instantes reais (envio, sincronização, fila). */
+function horaParedeAgora(){ return `${dataLocalISO()}T${horaAgora(1)}:00+00:00`; }
+function horaDeParede(iso){ const m = /^\d{4}-\d{2}-\d{2}[T ](\d{2}):(\d{2})/.exec(String(iso || "")); return m ? `${m[1]}:${m[2]}` : ""; }
 function minutos(h){ const m = /^(\d{1,2}):(\d{2})/.exec(String(h || "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
 function novoId(){
   if(crypto.randomUUID) return crypto.randomUUID();

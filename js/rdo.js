@@ -1303,16 +1303,27 @@ function volumeConcretoJS(tipo, diametroMm, profMaxM, qtdSacos, params){
 async function carregarParamsObraRDO(obraId){
   _rdoObraParams = null;
   rdoMontarSelectMaquina(obraId);   // fase 101: máquinas da obra primeiro (não bloqueia a jornada)
-  if(!obraId){ atualizarChipJornadaRDO(null); return null; }
+  if(!obraId){ atualizarChipJornadaRDO(null); rdoMostrarPeriodo(); return null; }
   const [{ data }] = await Promise.all([
     sb.from("obras")
-      .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida")
+      .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida,dois_turnos")
       .eq("id", obraId).maybeSingle(),
     carregarJornadaEmpresa()
   ]);
   _rdoObraParams = data || null;
   atualizarChipJornadaRDO(obraId);
+  rdoMostrarPeriodo();
   return _rdoObraParams;
+}
+/* Fase 155a: o Período só aparece em obra de dois turnos, ou no diário que já é noturno (para poder corrigir).
+   Diário novo em obra de um turno nasce diurno. */
+function rdoMostrarPeriodo(){
+  const sel = $("rdo-turno");
+  if(!sel) return;
+  const campo = sel.closest(".campo") || sel;
+  const dois = !!(_rdoObraParams && _rdoObraParams.dois_turnos);
+  if(!dois && !rdoEditId) sel.value = "diurno";
+  campo.style.display = dois || sel.value === "noturno" ? "" : "none";
 }
 /* Lote S40 (#31): chip amarelo na ficha quando a obra não tem jornada e o cálculo usa a da empresa */
 function atualizarChipJornadaRDO(obraId){
@@ -3941,15 +3952,18 @@ async function confirmarImportCSV(){
   const semMaqPrev = gruposPrev.filter(g => !g.eq && g.linhas.length).length;
   // fase 101 (#85): obra que exige máquina não aceita diário sem ela (o gatilho recusaria no meio da gravação)
   const semMaqTodos = gruposPrev.filter(g => !g.eq).length;
+  // fase 155a: obra de um turno não tem diário noturno; o noturno da planilha entra no diurno do dia (sem a coluna, nada muda)
+  const { data: oEx, error: eEx } = await sb.from("obras").select("rdo_exige_equipamento,dois_turnos").eq("id", obra_id).maybeSingle();
+  const obraDoisTurnos = eEx ? true : !!oEx?.dois_turnos;
+  const noturnosNoDiurno = obraDoisTurnos ? 0 : gruposPrev.filter(g => rdoDiaTurno(g.dia) === "noturno").length;
   if(semMaqTodos){
-    const { data: oEx, error: eEx } = await sb.from("obras").select("rdo_exige_equipamento").eq("id", obra_id).maybeSingle();
     if(!eEx && oEx?.rdo_exige_equipamento){
       aviso("app-aviso", `Esta obra exige a máquina do diário: ${semMaqTodos} diário(s) ficariam sem máquina. Confirme a TAG no bloco de máquinas (💡 usar) ou escolha a máquina das linhas sem máquina.`, "erro");
       if($("csv-aviso")) aviso("csv-aviso", "Obra exige máquina: escolha a TAG antes de importar.", "erro");
       return;
     }
   }
-  if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}?\n${gruposPrev.length} diário(s), um por dia e máquina${semMaqPrev ? ` — ${semMaqPrev} sem máquina (vão para "Para regularizar")` : ""}.`)) return;
+  if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}?\n${gruposPrev.length} diário(s), um por dia e máquina${semMaqPrev ? ` — ${semMaqPrev} sem máquina (vão para "Para regularizar")` : ""}.${noturnosNoDiurno ? `\n⚠️ ${noturnosNoDiurno} diário(s) noturno(s) da planilha entram no diurno do mesmo dia: a obra trabalha em um turno (Obra › Parâmetros).` : ""}`)) return;
 
   const btn = $("btn-csv-confirmar");
   btn.disabled = true;
@@ -3994,7 +4008,7 @@ async function confirmarImportCSV(){
     for(const g of grupos){
       const dia = g.dia, ests = g.linhas, eqId = g.eq;
       // fase 134b: a chave do dia leva o período; o diário é procurado por obra + data + tipo + máquina + período
-      const diaData = rdoDiaData(dia), turnoDia = rdoDiaTurno(dia);
+      const diaData = rdoDiaData(dia), turnoDia = obraDoisTurnos ? rdoDiaTurno(dia) : "diurno";   // fase 155a
       const porTurno = (q) => turnoDia === "noturno" ? q.eq("turno_campo", "noturno") : q.or("turno_campo.is.null,turno_campo.eq.diurno");
       const ehPrincipal = (principalDoDia[dia] || {}).k === (eqId || "");
       // Upsert do RDO (cria se não existe): chave obra + data + tipo + máquina + período. Com dois diários no dia o maybeSingle
@@ -4170,7 +4184,7 @@ async function confirmarImportCSV(){
         totalParadas += gp.gravadas; totalParadasTexto += gp.texto;
       }
     }
-    aviso("app-aviso", `✅ Importado: ${totalRdos} diário(s) novo(s) em ${dias.length} dia(s), ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.${totalGeo ? ` ${totalGeo} estaca(s) já vieram do Geodigitus (não duplicadas).` : ""}${totalConc ? ` ${totalConc} estaca(s) conciliada(s) com o que já estava no diário.` : ""}${totalParadas ? ` ${totalParadas} ocorrência(s) gravada(s) nas paradas do diário.` : ""}${totalParadasTexto ? ` ⚠️ ${totalParadasTexto} ocorrência(s) foram para as observações (seu perfil não grava ocorrências).` : ""}${totalSemMaq ? ` ⚠️ ${totalSemMaq} diário(s) sem máquina — informe a máquina no cabeçalho (Para regularizar).` : ""}`, "ok");
+    aviso("app-aviso", `✅ Importado: ${totalRdos} diário(s) novo(s) em ${dias.length} dia(s), ${totalExecs} execuções de estaca${totalTrechos ? `, ${totalTrechos} trechos de solo` : ""}${totalAtiv ? `, ${totalAtiv} atividades hora a hora` : ""}.${totalGeo ? ` ${totalGeo} estaca(s) já vieram do Geodigitus (não duplicadas).` : ""}${totalConc ? ` ${totalConc} estaca(s) conciliada(s) com o que já estava no diário.` : ""}${totalParadas ? ` ${totalParadas} ocorrência(s) gravada(s) nas paradas do diário.` : ""}${totalParadasTexto ? ` ⚠️ ${totalParadasTexto} ocorrência(s) foram para as observações (seu perfil não grava ocorrências).` : ""}${totalSemMaq ? ` ⚠️ ${totalSemMaq} diário(s) sem máquina — informe a máquina no cabeçalho (Para regularizar).` : ""}${noturnosNoDiurno ? ` ⚠️ ${noturnosNoDiurno} diário(s) noturno(s) da planilha foram para o diurno: a obra trabalha em um turno.` : ""}`, "ok");
     fecharModalImportCSV();
     await carregarRDO();
   } catch(err){

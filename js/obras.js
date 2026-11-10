@@ -677,6 +677,7 @@ function preencherParametrosObra(d){
   set("obr-jornada-saida",       hhmm(d.jornada_saida));
   set("obr-jornada-sex-entrada", hhmm(d.jornada_sexta_entrada));
   set("obr-jornada-sex-saida",   hhmm(d.jornada_sexta_saida));
+  if($("obr-dois-turnos")) $("obr-dois-turnos").checked = !!d.dois_turnos;   // fase 155a
   set("obr-iss-pct",             d.iss_percentual ?? 5);
   set("obr-cno",                 d.cno || "");                 // fase 93c: CNO do cliente (alocação mensal do RH)
   set("obr-meta-estacas",        d.meta_estacas || "");        // fase 140 (decisão 3): 0 no banco = sem meta
@@ -696,6 +697,8 @@ function lerParametrosObra(){
   const t = (id) => { const v = $(id)?.value; return v ? v : null; };
   const n = (id, padrao) => { const v = $(id)?.value; if(v === "" || v == null) return padrao; const x = Number(String(v).replace(",", ".")); return isFinite(x) && x > 0 ? x : padrao; };
   return {
+    // fase 155a: o banco não deixa desligar com diário noturno (trg_obras_dois_turnos_guarda); a mensagem sai no aviso do salvar
+    ...($("obr-dois-turnos") ? { dois_turnos: $("obr-dois-turnos").checked } : {}),
     jornada_entrada:        t("obr-jornada-entrada"),
     jornada_saida:          t("obr-jornada-saida"),
     jornada_sexta_entrada:  t("obr-jornada-sex-entrada"),

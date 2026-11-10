@@ -98,7 +98,7 @@ function formularioEstaca(tipo){
         <button type="button" class="op-btn" data-est-agora="perfuracao_inicio">Início da perfuração: agora</button>
         <button type="button" class="op-btn" data-est-agora="concretagem_fim">Fim da concretagem: agora</button>
       </div>
-      <p class="op-meta" id="op-est-horas">${x?.perfuracao_inicio ? "Início " + esc(horaDeTimestamp(x.perfuracao_inicio)) : ""}${x?.concretagem_fim ? " · fim " + esc(horaDeTimestamp(x.concretagem_fim)) : ""}</p>`}
+      <p class="op-meta" id="op-est-horas">${x?.perfuracao_inicio ? "Início " + esc(horaDeParede(x.perfuracao_inicio)) : ""}${x?.concretagem_fim ? " · fim " + esc(horaDeParede(x.concretagem_fim)) : ""}</p>`}
       <label class="op-campo">Observação<input type="text" id="op-est-obs" maxlength="300" value="${esc(obsSemEtapa(x?.observacoes))}"></label>
     </details>
     <div class="op-acoes">
@@ -196,7 +196,7 @@ OP.telas.geo = async function(){
     ${lista.map(x => `<article class="op-card${x.modalidade_execucao === "refuro" ? " op-card-apagado" : ""}" data-geo="${esc(x.id)}">
       <div class="op-card-topo"><strong>${esc(x.estaca_numero || "")}</strong>${seloEstado(x.id)}</div>
       <p>${x.profundidade_executada != null ? num(x.profundidade_executada, 2) + " m" : ""}${x.diametro_mm ? " · Ø " + esc(x.diametro_mm) : ""}${x.volume_concreto_m3 ? " · " + num(x.volume_concreto_m3, 2) + " m³" : ""}${x.modalidade_execucao === "refuro" ? " · Refurada" : ""}</p>
-      <p class="op-meta">${x.perfuracao_inicio ? esc(horaDeTimestamp(x.perfuracao_inicio)) : ""}${x.concretagem_fim ? "–" + esc(horaDeTimestamp(x.concretagem_fim)) : ""}</p>
+      <p class="op-meta">${x.perfuracao_inicio ? esc(horaDeParede(x.perfuracao_inicio)) : ""}${x.concretagem_fim ? "–" + esc(horaDeParede(x.concretagem_fim)) : ""}</p>
       ${x.observacoes ? `<p class="op-meta">${esc(x.observacoes)}</p>` : ""}
       ${ed ? `<div class="op-acoes">
         <button type="button" class="op-btn" data-geo-observar="${esc(x.id)}">Observar</button>
@@ -237,9 +237,9 @@ document.addEventListener("click", async (ev) => {
     return;
   }
   if(d.estAgora){
-    _estHoras[d.estAgora] = new Date().toISOString();
+    _estHoras[d.estAgora] = horaParedeAgora();   // fase 155a: hora de parede, como a ficha do RDO
     const p = $("op-est-horas");
-    if(p) p.textContent = Object.entries(_estHoras).map(([k, v]) => (k === "perfuracao_inicio" ? "Início " : "Fim ") + horaDeTimestamp(v)).join(" · ");
+    if(p) p.textContent = Object.entries(_estHoras).map(([k, v]) => (k === "perfuracao_inicio" ? "Início " : "Fim ") + horaDeParede(v)).join(" · ");
     return;
   }
   if(d.estRemover){

@@ -427,24 +427,16 @@ const RAIZ_COLUNAS = ["Projeto", "Bloco", "Estaca", "Diâmetro (mm)", "Comprimen
   "Volume de concreto usinado (m³)", "Data da injeção", "Saco (un)", "M³ (in loco)", "TAG", "Turno",
   "Medição", "Observação"];
 
-/* Fase 154: hora e dia como o RDO grava. A tela do RDO e os imports gravam a hora digitada com +00 (hora de parede, sem fuso)
-   e o app a mostra fatiando o texto (rdo.js, medicoes.js, histórico da estaca). Converter para o fuso do navegador atrasava
-   3 h: quem começou às 06:30 aparecia às 03:30, como NOTURNO. */
-function _raizHora(iso){
-  const m = /^\d{4}-\d{2}-\d{2}[T ](\d{2}):/.exec(String(iso || ""));
-  return m ? Number(m[1]) : null;
-}
+/* Fase 154: dia como o RDO grava. A tela do RDO e os imports gravam a hora digitada com +00 (hora de parede, sem fuso) e o app
+   a lê fatiando o texto (rdo.js, medicoes.js, histórico da estaca); converter para o fuso do navegador muda a hora e o dia. */
 function _raizDia(iso){
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(iso || ""));
   return m ? m[1] : null;
 }
-/* período pela hora; sem hora, pelo turno do diário (rdo.turno_campo, fase 129a) */
-function _raizPeriodo(iso, turnoDiario){
-  const h = _raizHora(iso);
-  if(h != null) return (h >= 18 || h < 6) ? "NOTURNO" : "DIURNO";
-  if(turnoDiario === "noturno") return "NOTURNO";
-  if(turnoDiario === "diurno") return "DIURNO";
-  return "";
+/* Fase 155a: o período vem da obra e do diário, nunca da hora. Obra de um turno é sempre DIURNO (o que passa do expediente é
+   hora extra do mesmo diário); obra de dois turnos usa o turno do diário (rdo.turno_campo; vazio conta como diurno). */
+function _raizPeriodo(turnoDiario, doisTurnos){
+  return doisTurnos && turnoDiario === "noturno" ? "NOTURNO" : "DIURNO";
 }
 function _raizTag(exec){
   const eqId = exec.equipamento_id || exec.rdo_equipamento_id;
@@ -493,7 +485,7 @@ async function carregarAcompanhamentoRaiz(){
   if(!obraEditId) return null;
   const obraId = obraEditId;
   // fase 154: tudo por obra e paginado (corte de 1.000 linhas; .in() com centenas de ids é recusado pela API)
-  const [eRes, rRes, sRes, iRes, mRes] = await Promise.all([
+  const [eRes, rRes, sRes, iRes, mRes, oRes] = await Promise.all([
     lerTudo(() => sb.from("vw_rdo_execucoes_obra")
       .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,volume_injetado_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo_id,obra_id,data,rdo_equipamento_id")
       .eq("obra_id", obraId)),
@@ -502,15 +494,19 @@ async function carregarAcompanhamentoRaiz(){
     // medição: só quem lê medição (pode_ler_financeiro); para os outros vem vazio e a coluna fica "—"
     lerTudo(() => sb.from("medicao_itens").select("execucao_id,medicao:medicao_id!inner(id,numero,status,periodo_inicio,periodo_fim,obra_id)")
       .eq("medicao.obra_id", obraId).not("execucao_id", "is", null)),
-    sb.from("medicoes").select("id,numero,status,periodo_inicio,periodo_fim,equipamento_id").eq("obra_id", obraId)
+    sb.from("medicoes").select("id,numero,status,periodo_inicio,periodo_fim,equipamento_id").eq("obra_id", obraId),
+    sb.from("obras").select("dois_turnos").eq("id", obraId).maybeSingle()   // fase 155a
   ]);
   if(obraId !== obraEditId) return null;
   if(eRes.error){ aviso("app-aviso", "Não foi possível carregar as execuções: " + eRes.error.message, "erro"); return null; }
   const turnoRdo = new Map((rRes.data || []).map(r => [r.id, r.turno_campo || ""]));
+  const doisTurnos = !!oRes?.data?.dois_turnos;
   const execs = (eRes.data || []).map(execComRdo);
   execs.forEach(x => {
     x._turnoDiario = turnoRdo.get(x.rdo_id) || "";
-    x._turno = _raizPeriodo(x.perfuracao_inicio, x._turnoDiario).toLowerCase();
+    x._periodo = _raizPeriodo(x._turnoDiario, doisTurnos);
+    // obra de um turno: a medição não escolhe boletim pelo turno (o "Noturno" do número não vale para ela)
+    x._turno = doisTurnos ? x._periodo.toLowerCase() : "";
   });
   // ordem do furo: hora da perfuração; sem hora, o fim do dia do RDO
   const ordem = (x) => x.perfuracao_inicio ? String(x.perfuracao_inicio).slice(0, 19).replace(" ", "T") : `${x.data || "9999-12-31"}T23:59:59`;
@@ -528,7 +524,7 @@ async function carregarAcompanhamentoRaiz(){
     if(!porEstaca.has(chave)) porEstaca.set(chave, []);
     porEstaca.get(chave).push({ ...ex, _solo: soloPorExec.get(ex.id) || [], _meds: medPorExec.get(ex.id) || [] });
   });
-  _raizDados = { porEstaca, medicoes: mRes.error ? [] : (mRes.data || []), carregadoEm: Date.now() };
+  _raizDados = { porEstaca, medicoes: mRes.error ? [] : (mRes.data || []), doisTurnos, carregadoEm: Date.now() };
   return _raizDados;
 }
 
@@ -574,12 +570,12 @@ function _raizLinha(est, execs){
     dataExec: ultExec ? (_raizDia(ultExec.perfuracao_fim || ultExec.perfuracao_inicio) || ultExec.data || null) : null,
     revest: ferr.revestimento, martelo: ferr.martelo, tricone: ferr.tricone, outro: ferr.outro,
     tagExec: ultExec ? _raizTag(ultExec) : "",
-    periodo: ultExec ? _raizPeriodo(ultExec.perfuracao_inicio, ultExec._turnoDiario) : "",
+    periodo: ultExec ? ultExec._periodo || "" : "",
     usinado: soma("volume_concreto_m3"), inLoco: soma("volume_injetado_m3"),
     dataInj: ultInj ? (_raizDia(ultInj.concretagem_inicio) || ultInj.data || null) : null,
     sacos: sacos || null, sacosTxt: sacosTxt.join("; "),
     tagInj: ultInj ? _raizTag(ultInj) : "",
-    turnoInj: ultInj ? _raizPeriodo(ultInj.concretagem_inicio, ultInj._turnoDiario) : "",
+    turnoInj: ultInj ? ultInj._periodo || "" : "",
     medicoes: meds,
     medicoesTxt: [...new Set(meds.map(_raizMedicaoRotulo))].join(", "),
     refuros: refuros.length,

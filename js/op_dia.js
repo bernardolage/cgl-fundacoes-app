@@ -31,7 +31,7 @@ OP.telas.maquina = async function(){
   }
   box.innerHTML = _maquinas.map(m => {
     const hoje = (m.diarios_hoje || []);
-    const turno = m.turno_ontem || "diurno";
+    const turno = m.turno_ontem || "diurno";   // fase 155a: o turno só aparece em obra de dois turnos (m.dois_turnos); nas outras o dia abre diurno
     const pend = m.pendencia
       ? `<p class="op-alerta op-alerta-perigo">⚠ ${m.pendencia === "rdo_tipo_nao_confirmado" ? "Máquina sem tipo de serviço" : "Máquina sem obra nesta data"}: fale com a engenharia.</p>` : "";
     const diarios = hoje.map(d => `<li>${d.turno === "noturno" ? "🌙 Noturno" : "☀ Diurno"} · ${d.status === "finalizado" ? "🔒 Finalizado" : d.enviado_em ? "📤 Enviado" : "✏ Rascunho"}</li>`).join("");
@@ -40,10 +40,10 @@ OP.telas.maquina = async function(){
       <p class="op-card-linha">${esc(m.obra_codigo || "sem obra")} · ${esc(m.obra_nome || "")}${m.cidade ? " · " + esc(m.cidade) : ""}</p>
       ${pend}
       ${diarios ? `<ul class="op-lista-simples">${diarios}</ul>` : ""}
-      ${m.pendencia ? "" : `<div class="op-turno" role="group" aria-label="Turno">
+      ${m.pendencia ? "" : `${m.dois_turnos ? `<div class="op-turno" role="group" aria-label="Turno">
         <label class="op-radio"><input type="radio" name="turno-${esc(m.equipamento_id)}" value="diurno" ${turno === "diurno" ? "checked" : ""}> ☀ Diurno</label>
         <label class="op-radio"><input type="radio" name="turno-${esc(m.equipamento_id)}" value="noturno" ${turno === "noturno" ? "checked" : ""}> 🌙 Noturno</label>
-      </div>
+      </div>` : ""}
       <p class="op-pergunta">A obra é <strong>${esc(m.obra_codigo || "")}</strong>?</p>
       <div class="op-acoes">
         <button type="button" class="op-btn op-btn-primario" data-abrir="${esc(m.equipamento_id)}" data-confirmada="1">Sim, abrir o dia</button>
