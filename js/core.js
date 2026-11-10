@@ -1404,6 +1404,18 @@ function ehSomenteLeitura(){ return !!usuarioAtual && usuarioAtual.cargo === "au
 function podeVerContasPagar(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "auditor"].includes(usuarioAtual.cargo);
 }
+/* Fase 156a: Apontamentos da oficina. Quem grava hora em cada tipo de documento, espelhando as policies de reparo_horas,
+   manutencao_horas (manutencao_pode_operar) e fabricacao_horas (fabricacao_pode_operar). O item do menu aparece para quem
+   grava em pelo menos um tipo e para o auditor (só leitura); nasce escondido no index.html. */
+const APT_CARGOS_GRAVAM = {
+  RP: ["diretor", "admin", "mecanico", "engenheiro", "gestor_acessorios", "logistica"],
+  OS: ["diretor", "admin", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"],
+  OF: ["diretor", "admin", "gestor_acessorios", "mecanico", "logistica", "engenheiro", "almoxarife"]
+};
+function podeVerApontamentos(){
+  if(!usuarioAtual) return false;
+  return usuarioAtual.cargo === "auditor" || Object.values(APT_CARGOS_GRAVAM).some(l => l.includes(usuarioAtual.cargo));
+}
 /* Fase 76: Centros de custo internos (setores e obras internas): quem lê custos de compras e acessórios */
 function podeVerCentrosCusto(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "gestor_acessorios", "gestor_frota", "auditor"].includes(usuarioAtual.cargo);
@@ -1487,6 +1499,9 @@ function aplicarMenuPorCargo(perfil){
   if(navCon) navCon.style.display = podeVerContasPagar() ? "" : "none";
   const navCcu = document.querySelector('.sidebar-nav button[data-secao="centros"]');
   if(navCcu) navCcu.style.display = podeVerCentrosCusto() ? "" : "none";
+  // Fase 156a: Apontamentos da oficina só para quem grava hora em RP, OS ou OF, e o auditor (só leitura)
+  const navApt = $("nav-apontamentos");
+  if(navApt) navApt.style.display = podeVerApontamentos() ? "" : "none";
   // Fase 93c: "Horas e alocação" só para quem libera, confere ou fecha horas (lista em podeVerHorasRH)
   const navRhh = $("nav-rhh");
   if(navRhh) navRhh.style.display = podeVerHorasRH() ? "" : "none";

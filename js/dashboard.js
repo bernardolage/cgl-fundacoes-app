@@ -406,15 +406,17 @@ async function dashCarregarRegularizar(){
   // fase 151: baixada vencida ou a vencer e diário fora da alocação (vw_sc_regularizar_log; só contagens, logística e diretoria)
   // fase 129c: diário do campo enviado sem conferência, devolvido sem reenvio e pendências do app (vw_sc_regularizar_campo; a view
   // devolve a cada um só o papel dele)
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
     dashLer("vw_sc_regularizar_ace", q => q.select("*")),
     dashLer("vw_sc_regularizar_log", q => q.select("*")),
-    dashLer("vw_sc_regularizar_campo", q => q.select("*"))]);
+    dashLer("vw_sc_regularizar_campo", q => q.select("*")),
+    // fase 156a: horas de fim de semana e feriado esperando aprovação (só quem aprova: diretor, gestor de manutenção e de acessórios)
+    usuarioAtual && ["diretor", "gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_apt", q => q.select("*")) : null]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   const n = p => _dashReg.filter(a => a.papel === p).length;
   if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
@@ -553,6 +555,7 @@ async function dashAbrirRegularizar(a){
   // fase 107a: Geodigitus. cpu_* e sync parada → ficha da CPU (uma só) ou visão Computadores de bordo filtrada;
   // geodigitus_estaca_* e diário finalizado → Chegadas do Geodigitus filtrada pela situação (uma só com diário abre o RDO)
   if(a.setor === "campo"){ if(typeof rdoAbrirPresetCampo === "function") await rdoAbrirPresetCampo(a); return; }   // fase 129c
+  if(a.setor === "apontamentos"){ if(irParaSecao("apontamentos") && typeof aptAbrirAguardando === "function") await aptAbrirAguardando(a.filtro); return; }   // fase 156a
   if(a.setor === "geodigitus"){
     if(/^cpu_/.test(a.filtro || "") || a.filtro === "geodigitus_sync_parado"){
       if(!irParaSecao("equipamentos")) return;
