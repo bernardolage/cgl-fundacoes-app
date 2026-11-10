@@ -3589,9 +3589,12 @@ async function salvarCustoAvulso(){
 let _custosMesModo = "competencia";
 async function custosRender(containerId, filtro, cbTotal){
   const c = $(containerId); if(!c) return;
-  // 22/09/2026: custos por TAG/obra só para quem opera compras (mesmos cargos que leem as tabelas de custo no banco)
+  // 22/09/2026: custos por TAG/obra só para quem opera compras (mesmos cargos que leem as tabelas de custo no banco).
+  // 10/11/2026 (decisão do Bernardo): o auditor também vê, só leitura; o banco já o deixa ler por pode_ler_compras().
+  // Lançar custo avulso continua só com cmpPodeOperar().
   const abaBtn = c.closest(".odoo-body")?.previousElementSibling?.querySelector?.('button[data-tab="custos"]');
-  if(!cmpPodeOperar()){ if(abaBtn) abaBtn.style.display = "none"; c.innerHTML = `<p class="vazio">Seu perfil não vê custos.</p>`; return; }
+  const leAuditor = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+  if(!cmpPodeOperar() && !leAuditor){ if(abaBtn) abaBtn.style.display = "none"; c.innerHTML = `<p class="vazio">Seu perfil não vê custos.</p>`; return; }
   if(abaBtn) abaBtn.style.display = "";
   c.innerHTML = `<p class="vazio">Carregando custos…</p>`;
   const aplicar = q => {
@@ -3614,7 +3617,7 @@ async function custosRender(containerId, filtro, cbTotal){
   const caixa = rCx.error ? null : (rCx.data || []);
   const total = linhas.reduce((s, l) => s + Number(l.valor || 0), 0);
   if(cbTotal) cbTotal(total);
-  const pode = cmpPodeOperar();
+  const pode = cmpPodeOperar() && !leAuditor;
   const mesBR = m => m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : "";
   const porCat = {}; linhas.forEach(l => porCat[l.categoria] = (porCat[l.categoria] || 0) + Number(l.valor || 0));
   const temComp = linhas.some(l => l.competencia !== undefined);
