@@ -1109,8 +1109,15 @@ async function iniciarApp(){
   // hotfix 147: traz a função cadastrada pelo RH (funcionarios.funcao, pela FK profiles.funcionario_id); o embed vem
   // nulo para quem não tem funcionário ligado. Sem a relação (PGRST200) ou sem coluna (42703), lê como antes
   const perfilCols = "id,nome,cargo,ativo,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate";   // hotfix 113: módulos extras
-  let { data:perfil, error:perfilErr } = await sb.from("profiles")
-    .select(perfilCols + ",funcionario:funcionarios!profiles_funcionario_id_fkey(funcao)").eq("id",user.id).single();
+  // fase 159a: login por CPF lê o próprio perfil pela RPC campo_meu_perfil. Com o portão da API ligado (159b) o operador
+  // não lê a tabela profiles, e é esta leitura que o manda para o operador.html. Sem a RPC, ou para os demais, a leitura de sempre.
+  let perfil = null, perfilErr = null;
+  if(emailEhLoginCpf(user.email)){
+    const rp = await sb.rpc("campo_meu_perfil");
+    if(!rp.error && rp.data) perfil = rp.data;
+  }
+  if(!perfil) ({ data:perfil, error:perfilErr } = await sb.from("profiles")
+    .select(perfilCols + ",funcionario:funcionarios!profiles_funcionario_id_fkey(funcao)").eq("id",user.id).single());
   if(perfilErr && (perfilErr.code === "PGRST200" || perfilErr.code === "42703")){
     ({ data:perfil, error:perfilErr } = await sb.from("profiles").select(perfilCols).eq("id",user.id).single());
   }

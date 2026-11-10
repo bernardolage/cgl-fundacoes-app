@@ -495,13 +495,22 @@ async function lerPerfil(){
   const { data: { user } } = await sb.auth.getUser();
   if(!user) return null;
   OP.cpfDigitos = emailEhLoginCpf(user.email) ? String(user.email).split("@")[0] : null;
+  // fase 159a: perfil e funcionário vêm da RPC campo_meu_perfil (o app do campo deixa de ler tabela direto, para o portão
+  // da API poder recusar todo acesso a tabela). Sem a migration (função ausente) cai na leitura antiga.
+  const r = await sb.rpc("campo_meu_perfil");
+  if(!r.error) return r.data || { id: user.id, nome: "Funcionário", cargo: null, ativo: false };
+  if(!opRpcAusente(r.error)) return { id: user.id, nome: "Funcionário", cargo: null, ativo: false };
   const { data: perfil, error } = await sb.from("profiles").select("id,nome,cargo,ativo,funcionario_id,senha_provisoria").eq("id", user.id).single();
   if(error || !perfil) return { id: user.id, nome: "Funcionário", cargo: null, ativo: false };
   return perfil;
 }
+/* fase 159a: a RPC ainda não existe no banco (migration não aplicada) ou não entrou no cache da API */
+function opRpcAusente(err){ return !!err && (["PGRST202", "42883"].includes(err.code) || /could not find the function|schema cache/i.test(String(err.message || ""))); }
 async function lerFuncionario(){
   OP.funcionario = null;
   if(!OP.perfil?.funcionario_id) return;
+  // fase 159a: a RPC do perfil já trouxe o funcionário (a chave "funcionario" existe, mesmo nula)
+  if(Object.prototype.hasOwnProperty.call(OP.perfil, "funcionario")){ OP.funcionario = OP.perfil.funcionario || null; return; }
   const { data } = await sb.from("vw_funcionarios_campo").select("id,nome,funcao").eq("id", OP.perfil.funcionario_id).limit(1);
   if(data && data[0]) OP.funcionario = data[0];
 }

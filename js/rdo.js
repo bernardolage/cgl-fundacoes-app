@@ -1977,6 +1977,8 @@ async function rdoSalvarAgora(novoStatus){
       const m = (error.message||"").toLowerCase();
       if(m.includes("duplicate"))
         aviso("app-aviso",`Já existe um diário ${$("rdo-turno")?.value === "noturno" ? "noturno" : "diurno"} desta máquina (ou sem máquina) nesta obra, data e tipo de serviço. Abra o existente pela lista, troque a máquina ou o período.`,"erro");
+      else if(m.includes("row-level security") && usuarioAtual?.cargo === "encarregado")   // fase 159a: encarregado só cria diário em obra em que já está
+        aviso("app-aviso","Você ainda não está na equipe desta obra. Peça ao engenheiro para abrir o primeiro diário dela ou para incluir você na equipe.","erro");
       else
         aviso("app-aviso","Erro ao salvar: "+error.message,"erro");
       return;

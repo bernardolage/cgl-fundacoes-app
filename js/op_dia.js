@@ -187,18 +187,24 @@ OP.telas.dias = async function(){
   const box = $("op-dias-conteudo");
   let lista = null;
   if(navigator.onLine){
-    const me = OP.perfil.id;
-    const { data, error } = await sb.from("rdo")
-      .select("id,data,turno_campo,status,tipo_servico,enviado_em,devolvido_em,devolvido_motivo,obra:obras(codigo,nome),equipamento:equipamentos(codigo)")
-      .gte("data", addDiasISO(dataLocalISO(), -30))
-      .or(`aberto_campo_por.eq.${me},criado_por.eq.${me},enviado_por.eq.${me}`)
-      .order("data", { ascending: false }).limit(200);
-    if(error){ box.innerHTML = `<div class="op-vazio">⚠ ${esc(mensagemDoBanco(error))}</div>`; return; }
-    lista = data || [];
-    if(lista.length){
-      const { data: res } = await sb.from("vw_rdo_resumo").select("id,qtd_estacas_executadas,metragem_total").in("id", lista.map(d => d.id));
-      const m = new Map((res || []).map(x => [x.id, x]));
-      lista.forEach(d => { d.resumo = m.get(d.id) || null; });
+    // fase 159a: a lista vem pronta da RPC campo_meus_dias (com obra, máquina e resumo). Sem a migration, a leitura antiga.
+    const rd = await sb.rpc("campo_meus_dias", { p_dias: 30 });
+    if(!rd.error) lista = rd.data || [];
+    else if(!opRpcAusente(rd.error)){ box.innerHTML = `<div class="op-vazio">⚠ ${esc(mensagemDoBanco(rd.error))}</div>`; return; }
+    else {
+      const me = OP.perfil.id;
+      const { data, error } = await sb.from("rdo")
+        .select("id,data,turno_campo,status,tipo_servico,enviado_em,devolvido_em,devolvido_motivo,obra:obras(codigo,nome),equipamento:equipamentos(codigo)")
+        .gte("data", addDiasISO(dataLocalISO(), -30))
+        .or(`aberto_campo_por.eq.${me},criado_por.eq.${me},enviado_por.eq.${me}`)
+        .order("data", { ascending: false }).limit(200);
+      if(error){ box.innerHTML = `<div class="op-vazio">⚠ ${esc(mensagemDoBanco(error))}</div>`; return; }
+      lista = data || [];
+      if(lista.length){
+        const { data: res } = await sb.from("vw_rdo_resumo").select("id,qtd_estacas_executadas,metragem_total").in("id", lista.map(d => d.id));
+        const m = new Map((res || []).map(x => [x.id, x]));
+        lista.forEach(d => { d.resumo = m.get(d.id) || null; });
+      }
     }
     await idbPut("cache", { chave: "meus_dias", lista, em: new Date().toISOString() });
   } else {

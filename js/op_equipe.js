@@ -119,10 +119,20 @@ async function saidaDaEquipe(){
 async function copiarEquipeDeOntem(){
   if(!navigator.onLine){ avisar("Copiar a equipe de ontem precisa de sinal.", "aviso"); return; }
   const r = OP.snap.rdo;
-  const { data: dias, error } = await sb.from("rdo").select("id,data").eq("equipamento_id", r.equipamento_id).lt("data", r.data)
-    .order("data", { ascending: false }).limit(1);
-  if(error || !dias?.length){ avisar(error ? mensagemDoBanco(error) : "Não achei o dia anterior desta máquina.", "aviso"); return; }
-  const { data: linhas } = await sb.from("rdo_equipe").select("funcionario_id,nome_avulso,funcao_no_dia").eq("rdo_id", dias[0].id);
+  // fase 159a: o dia anterior da máquina e a equipe dele vêm da RPC campo_equipe_dia_anterior. Sem a migration, a leitura antiga.
+  let linhas = null, dataAnt = null;
+  const ra = await sb.rpc("campo_equipe_dia_anterior", { p_rdo: r.id });
+  if(!ra.error){
+    if(!ra.data?.achou){ avisar("Não achei o dia anterior desta máquina.", "aviso"); return; }
+    linhas = ra.data.linhas || []; dataAnt = ra.data.data || null;
+  } else if(!opRpcAusente(ra.error)){ avisar(mensagemDoBanco(ra.error), "aviso"); return; }
+  else {
+    const { data: dias, error } = await sb.from("rdo").select("id,data").eq("equipamento_id", r.equipamento_id).lt("data", r.data)
+      .order("data", { ascending: false }).limit(1);
+    if(error || !dias?.length){ avisar(error ? mensagemDoBanco(error) : "Não achei o dia anterior desta máquina.", "aviso"); return; }
+    ({ data: linhas } = await sb.from("rdo_equipe").select("funcionario_id,nome_avulso,funcao_no_dia").eq("rdo_id", dias[0].id));
+    dataAnt = dias[0].data;
+  }
   const ja = new Set((OP.snap.equipe || []).map(e => e.funcionario_id).filter(Boolean));
   let n = 0;
   for(const l of linhas || []){
@@ -133,7 +143,7 @@ async function copiarEquipeDeOntem(){
     await equipeGravar(null, campos);
     n++;
   }
-  avisar(n ? `${n} pessoa(s) copiadas de ${dataBR(dias[0].data)}, sem horário.` : "A equipe de ontem já está toda aqui.", "ok");
+  avisar(n ? `${n} pessoa(s) copiadas de ${dataBR(dataAnt)}, sem horário.` : "A equipe de ontem já está toda aqui.", "ok");
   renderTelaAtual();
 }
 
