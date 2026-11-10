@@ -745,7 +745,18 @@ function atualizarResumoParametrosObra(){
     }
     linhas.push("Sábado, domingo e feriado: todo o trabalhado é HE 100 % (regra RH 11/09/2026).");
   } else {
-    linhas.push("Sem jornada cadastrada: as horas extras da equipe no RDO ficam em branco para preencher à mão.");
+    // Desde o lote S40 (#31) a obra sem jornada própria usa a jornada padrão da empresa (campo_jornada_dia / jornadaEfetiva)
+    const emp = typeof _rdoJornadaEmpresa === "undefined" ? undefined : _rdoJornadaEmpresa;
+    const hm = (s) => String(s || "").slice(0, 5);
+    if(emp === undefined){
+      linhas.push("Sem jornada própria: a hora extra do RDO usa a jornada padrão da empresa.");
+      if(typeof carregarJornadaEmpresa === "function") carregarJornadaEmpresa().then(() => atualizarResumoParametrosObra()).catch(() => {});
+    } else if(emp){
+      const sexta = emp.jornada_sexta_entrada && emp.jornada_sexta_saida ? `, sexta ${hm(emp.jornada_sexta_entrada)}–${hm(emp.jornada_sexta_saida)}` : "";
+      linhas.push(`Sem jornada própria: a hora extra do RDO usa a jornada padrão da empresa (seg–qui ${hm(emp.jornada_entrada)}–${hm(emp.jornada_saida)}${sexta}).`);
+    } else {
+      linhas.push("Sem jornada cadastrada e sem jornada padrão da empresa: as horas extras da equipe no RDO ficam em branco para preencher à mão.");
+    }
   }
   // fase 155b: jornada noturna (só em obra de dois turnos)
   if(p.dois_turnos){
@@ -929,7 +940,7 @@ function ligarObras(){
     logradouro: "obr-logradouro", bairro: "obr-bairro", cidade: "obr-cidade", uf: "obr-uf", ibge: "obr-ibge" });
   // Aba Parâmetros: resumo ao vivo da jornada/concretagem
   $("obr-dois-turnos")?.addEventListener("change", () => { obrMostrarJornadaNoturna(); atualizarResumoParametrosObra(); });   // fase 155b
-  ["obr-jornada-entrada","obr-jornada-saida","obr-jornada-sab-entrada","obr-jornada-sab-saida",
+  ["obr-jornada-entrada","obr-jornada-saida","obr-jornada-sex-entrada","obr-jornada-sex-saida",
    "obr-jornada-not-entrada","obr-jornada-not-saida","obr-jornada-not-sex-entrada","obr-jornada-not-sex-saida",
    "obr-conc-tipo","obr-conc-fornecedor","obr-conc-traco","obr-conc-peso-saco","obr-conc-fator-perda","obr-sinal-modelo"].forEach(id => {
     $(id)?.addEventListener("input", atualizarResumoParametrosObra);
