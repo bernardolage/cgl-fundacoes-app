@@ -318,7 +318,7 @@ function calcularTotaisProposta(itens, orcamento){
   const p  = Number((orcamento && orcamento.iss_percentual) || 0);
   const iss = orcIssSobre(subtotal, orcamento);   // lote S44 (L8): mesma conta da ficha e da lista (js/orcamentos.js)
   const pTxt = String(p).replace(".", ",").replace(/,0+$/, "");
-  const rotulo = iss > 0 ? `ISS ${pTxt}% ( Mão de obra Calculo por dentro)` : "";
+  const rotulo = iss > 0 ? `ISS ${pTxt}%` : "";
   return { subtotal, iss, total: subtotal + iss, rotulo };
 }
 
@@ -383,9 +383,9 @@ function blocoQuadroPrecos(itens, orcamento){
       <tr>
         <td>${esc(rotuloNum)}- ${esc(it.descricao || "")}</td>
         <td class="col-un">${esc(it.unidade || "")}</td>
-        <td class="col-qtd">${qtd ? num(qtd) : ""}</td>
+        <td class="col-qtd">${qtd ? num(qtd) : "–"}</td>
         <td class="col-vu">${brl(vu)}</td>
-        <td colspan="2" class="col-vt">${qtd ? brl(vt) : "R$ -"}</td>
+        <td colspan="2" class="col-vt"${qtd ? "" : ' style="text-align:center;"'}>${qtd ? brl(vt) : "–"}</td>
       </tr>`;
   });
 
@@ -433,6 +433,19 @@ function blocoNotaINSS(){
 }
 
 /* bloco do responsável comercial (assinatura) */
+/* Assinatura (orçamento 8896/2026, 10/11/2026): o cargo saía como o enum do banco ("diretor") e o telefone como foi
+   digitado no perfil ("31971555..."). Cargo pelo rótulo de CARGOS (usuarios.js); telefone com DDD entre parênteses e
+   traço depois dos 5 primeiros dígitos (4 no fixo de 8). Menos de 10 dígitos sai como está. */
+function _propostaCargo(c){
+  if(!c) return "Comercial";
+  return (typeof CARGOS !== "undefined" && CARGOS[c]) || (String(c).charAt(0).toUpperCase() + String(c).slice(1).replace(/_/g, " "));
+}
+function _propostaTelefone(t){
+  const d = String(t || "").replace(/\D/g, "");
+  if(d.length < 10) return String(t || "").trim();
+  const resto = d.slice(2), corte = resto.length === 8 ? 4 : 5;
+  return `(${d.slice(0, 2)}) ${resto.slice(0, corte)}-${resto.slice(corte)}`;
+}
 function blocoComercial(responsavel){
   const r = responsavel || {};
   return `
@@ -442,8 +455,8 @@ function blocoComercial(responsavel){
     </div>
     <div class="bloco-comercial">
       <div class="nome">${esc(r.nome || "—")}</div>
-      <div>${esc(r.cargo || "Comercial")}</div>
-      ${r.telefone ? `<div>Cel.: ${esc(r.telefone)}</div>` : ""}
+      <div>${esc(_propostaCargo(r.cargo))}</div>
+      ${r.telefone ? `<div>Cel.: ${esc(_propostaTelefone(r.telefone))}</div>` : ""}
       ${r.email    ? `<div>${esc(r.email)}</div>`         : ""}
       <div>${esc(CGL_INFO.site)}</div>
     </div>

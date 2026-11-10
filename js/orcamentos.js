@@ -1495,17 +1495,92 @@ function orcAbrirNovoCliente(){
   const uf = $("orc-cli-uf");
   if(uf && !uf.options.length) uf.innerHTML = `<option value="">—</option>` + UFS.map(u => `<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
   if(uf) uf.value = "";
+  _orcCliCnpj = null; _orcCliDupId = null; orcCliDocStatus("");
   $("orc-cli-modal").style.display = "flex";
   $("orc-cli-nome")?.focus();
 }
 function orcFecharNovoCliente(){ $("orc-cli-modal").style.display = "none"; }
+
+/* CNPJ no cadastro rápido (orçamento 8896/2026, 10/11/2026): o campo só conferia os dígitos, e um CNPJ com a raiz trocada
+   só apareceria na hora da nota. Ao sair do campo (ou no botão): 1) dígitos verificadores; 2) cliente já cadastrado com o
+   mesmo documento vira "Usar este cliente", sem cadastrar outro; 3) CNPJ válido busca a Receita pela BrasilAPI
+   (fiscalBuscarCnpj, a mesma de Clientes e Fornecedores; CPF nunca sai do app) e preenche só campo vazio (nome, cidade, UF). Endereço, nome
+   fantasia e código IBGE não têm campo neste modal: ficam em _orcCliCnpj e vão no insert se o documento não mudou. */
+let _orcCliCnpj = null;    // { doc, dados } da última consulta que deu certo
+let _orcCliDupId = null;   // cliente já cadastrado com o documento digitado
+let _orcCliBusca = 0;      // descarta resposta de consulta antiga
+function orcCliDocStatus(txt, erro, html){
+  const st = $("orc-cli-doc-status");
+  if(!st) return;
+  if(html) st.innerHTML = /* html */ html; else st.textContent = txt || "";
+  st.classList.toggle("txt-perigo", !!erro);
+}
+function _orcCliMascara(d){
+  if(/^\d{14}$/.test(d)) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  if(/^\d{11}$/.test(d)) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  return d;
+}
+async function orcCliConferirDoc(forcar){
+  const d = fiscalDocLimpo($("orc-cli-doc")?.value);
+  _orcCliDupId = null;
+  if(!d){ orcCliDocStatus(""); return; }
+  if(d.length !== 11 && d.length !== 14){ orcCliDocStatus("CPF tem 11 dígitos; CNPJ, 14.", true); return; }
+  if(!fiscalDocValido(d)){ orcCliDocStatus("Dígitos verificadores não conferem: confira o número com o cliente.", true); return; }
+  const vez = ++_orcCliBusca;
+  // o documento está gravado com ou sem máscara, conforme a origem do cadastro
+  const { data: dup } = await sb.from("clientes").select("id,nome,contato_nome,telefone,email").in("cpf_cnpj", [d, _orcCliMascara(d)]).limit(1);
+  if(vez !== _orcCliBusca) return;
+  if(dup && dup.length){
+    _orcCliDupId = dup[0].id;
+    orcCliDocStatus("", true, `Já cadastrado: <b>${esc(dup[0].nome)}</b>. <button type="button" class="btn-sec btn-sm" id="btn-orc-cli-usar-dup">Usar este cliente</button>`);
+    $("btn-orc-cli-usar-dup")?.addEventListener("click", () => orcUsarClienteExistente(dup[0]));
+    return;
+  }
+  if(d.length === 11){ orcCliDocStatus(""); if($("orc-cli-tipo")) $("orc-cli-tipo").value = "fisica"; return; }
+  if(!forcar && _orcCliCnpj && _orcCliCnpj.doc === d) return;   // já consultado: sair do campo de novo não repete
+  orcCliDocStatus("Buscando o CNPJ na BrasilAPI…");
+  const r = await fiscalBuscarCnpj(d);
+  if(vez !== _orcCliBusca) return;
+  if(r.erro){ orcCliDocStatus(r.erro, true); return; }
+  _orcCliCnpj = { doc: d, dados: r };
+  const pos = (id, v) => { const c = $(id); if(!c || !v || String(c.value || "").trim()) return; c.value = v; };
+  pos("orc-cli-nome", r.razao_social);
+  // telefone e e-mail da Receita não entram: aqui eles viram o contato da proposta, e o da Receita costuma ser o da contabilidade
+  pos("orc-cli-cidade", r.cidade);
+  const uf = $("orc-cli-uf");
+  if(uf && !uf.value && r.uf && [...uf.options].some(o => o.value === r.uf)) uf.value = r.uf;
+  if($("orc-cli-tipo")) $("orc-cli-tipo").value = "juridica";
+  // razão social diferente da já digitada: avisa, não troca (pode ser o CNPJ de outra empresa)
+  const nome = ($("orc-cli-nome")?.value || "").trim();
+  const difere = r.razao_social && nome && nome.toUpperCase() !== r.razao_social.toUpperCase();
+  if(!r.ativa) orcCliDocStatus(`Atenção: situação cadastral na Receita = ${r.situacao}. Razão social: ${r.razao_social || "—"}.`, true);
+  else orcCliDocStatus(`${r.razao_social || "CNPJ encontrado"} · ${[r.cidade, (r.uf || "").toUpperCase()].filter(Boolean).join("/") || "sem município"} · situação ${r.situacao || "ativa"}`
+    + (difere ? " · o nome digitado é diferente: confira." : " · endereço vai junto no cadastro."), difere);
+}
+function orcUsarClienteExistente(c){
+  if(![...$("orc-cliente").options].some(o => o.value === c.id)){ aviso("app-aviso", `${c.nome} está inativo ou fora da lista: reative na ficha do cliente (menu Clientes).`, "erro"); return; }
+  $("orc-cliente").value = c.id;
+  $("orc-cliente").dispatchEvent(new Event("change", { bubbles: true }));
+  const preencher = (k, val) => { const el = $(k); if(el && !el.value.trim() && val) el.value = val; };
+  preencher("orc-contato-nome",  c.contato_nome);
+  preencher("orc-contato-tel",   c.telefone);
+  preencher("orc-contato-email", c.email);
+  if($("orc-ficha-cliente-chip")) $("orc-ficha-cliente-chip").textContent = c.nome;
+  orcFecharNovoCliente();
+  aviso("app-aviso", `Cliente ${c.nome} já estava cadastrado e foi escolhido neste orçamento.`, "ok");
+}
 async function orcSalvarNovoCliente(){
+  // clicar em Cadastrar logo depois de digitar o documento: espera a conferência (duplicidade e Receita) antes de gravar;
+  // BrasilAPI fora do ar não impede o cadastro
+  const docAntes = fiscalDocLimpo($("orc-cli-doc").value);
+  if(fiscalDocValido(docAntes) && !_orcCliDupId && !(_orcCliCnpj && _orcCliCnpj.doc === docAntes)) await orcCliConferirDoc(false);
   const nome = $("orc-cli-nome").value.trim();
   if(!nome){ aviso("app-aviso", "Informe o nome/razão social do cliente.", "erro"); $("orc-cli-nome").focus(); return; }
   const doc = $("orc-cli-doc").value.trim();
   if(doc && typeof fiscalDocValido === "function" && !fiscalDocValido(doc)){
     aviso("app-aviso", "CPF/CNPJ inválido: confira os dígitos verificadores.", "erro"); $("orc-cli-doc").focus(); return;
   }
+  if(_orcCliDupId){ aviso("app-aviso", "Já existe um cliente com esse CPF/CNPJ: use o botão \"Usar este cliente\".", "erro"); return; }
   const reg = {
     tipo_pessoa:  $("orc-cli-tipo").value || "juridica",
     nome,
@@ -1517,6 +1592,12 @@ async function orcSalvarNovoCliente(){
     uf:           $("orc-cli-uf").value || null,
     ativo:        true
   };
+  // dados da Receita sem campo no modal: só quando o documento gravado é o mesmo que foi consultado
+  if(_orcCliCnpj && _orcCliCnpj.doc === fiscalDocLimpo(doc)){
+    const r = _orcCliCnpj.dados;
+    Object.assign(reg, { nome_fantasia: r.nome_fantasia || null, cep: r.cep || null, logradouro: r.logradouro || null, numero: r.numero || null,
+      complemento: r.complemento || null, bairro: r.bairro || null, codigo_ibge: r.ibge || null });
+  }
   const { data, error } = await sb.from("clientes").insert(reg).select("id,nome,contato_nome,telefone,email").single();
   if(error){
     const m = (error.message || "").toLowerCase();
@@ -1733,6 +1814,9 @@ function ligarOrcamentos(){
   $("btn-orc-novo-cliente")?.addEventListener("click", orcAbrirNovoCliente);
   $("btn-orc-cli-fechar")?.addEventListener("click", orcFecharNovoCliente);
   $("btn-orc-cli-salvar")?.addEventListener("click", () => comBotaoTravado("btn-orc-cli-salvar", orcSalvarNovoCliente));
+  $("orc-cli-doc")?.addEventListener("blur", () => orcCliConferirDoc(false));
+  $("orc-cli-doc")?.addEventListener("input", () => { _orcCliDupId = null; orcCliDocStatus(""); });
+  $("btn-orc-cli-cnpj")?.addEventListener("click", () => comBotaoTravado("btn-orc-cli-cnpj", () => orcCliConferirDoc(true)));
 
   // Ações novas: nova revisão + criar contrato
   $("btn-orc-nova-revisao")?.addEventListener("click", criarNovaRevisaoOrc);
