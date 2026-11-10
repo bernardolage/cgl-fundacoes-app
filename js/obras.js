@@ -678,6 +678,11 @@ function preencherParametrosObra(d){
   set("obr-jornada-sex-entrada", hhmm(d.jornada_sexta_entrada));
   set("obr-jornada-sex-saida",   hhmm(d.jornada_sexta_saida));
   if($("obr-dois-turnos")) $("obr-dois-turnos").checked = !!d.dois_turnos;   // fase 155a
+  set("obr-jornada-not-entrada",     hhmm(d.jornada_noturno_entrada));       // fase 155b
+  set("obr-jornada-not-saida",       hhmm(d.jornada_noturno_saida));
+  set("obr-jornada-not-sex-entrada", hhmm(d.jornada_noturno_sexta_entrada));
+  set("obr-jornada-not-sex-saida",   hhmm(d.jornada_noturno_sexta_saida));
+  obrMostrarJornadaNoturna();
   set("obr-iss-pct",             d.iss_percentual ?? 5);
   set("obr-cno",                 d.cno || "");                 // fase 93c: CNO do cliente (alocação mensal do RH)
   set("obr-meta-estacas",        d.meta_estacas || "");        // fase 140 (decisão 3): 0 no banco = sem meta
@@ -703,6 +708,13 @@ function lerParametrosObra(){
     jornada_saida:          t("obr-jornada-saida"),
     jornada_sexta_entrada:  t("obr-jornada-sex-entrada"),
     jornada_sexta_saida:    t("obr-jornada-sex-saida"),
+    // fase 155b: jornada do turno noturno; o banco recusa ligar os dois turnos sem a de segunda a quinta
+    ...($("obr-jornada-not-entrada") ? {
+      jornada_noturno_entrada:       t("obr-jornada-not-entrada"),
+      jornada_noturno_saida:         t("obr-jornada-not-saida"),
+      jornada_noturno_sexta_entrada: t("obr-jornada-not-sex-entrada"),
+      jornada_noturno_sexta_saida:   t("obr-jornada-not-sex-saida")
+    } : {}),
     iss_percentual:         n("obr-iss-pct", 5), // ISS do município (16/09/2026): a medição herda
     cno:                    ($("obr-cno")?.value || "").trim() || null,   // fase 93c
     meta_estacas:           Math.round(n("obr-meta-estacas", 0)),   // fase 140 (decisão 3): colunas NOT NULL, vazio grava 0
@@ -735,6 +747,20 @@ function atualizarResumoParametrosObra(){
   } else {
     linhas.push("Sem jornada cadastrada: as horas extras da equipe no RDO ficam em branco para preencher à mão.");
   }
+  // fase 155b: jornada noturna (só em obra de dois turnos)
+  if(p.dois_turnos){
+    if(p.jornada_noturno_entrada && p.jornada_noturno_saida){
+      const m = (s) => { const [h, mi] = s.split(":").map(Number); return h * 60 + mi; };
+      const uteis = (ent, sai) => { let dur = m(sai) - m(ent); if(dur < 0) dur += 1440; return ((dur - 60) / 60).toLocaleString("pt-BR", { maximumFractionDigits: 2 }); };
+      const virada = (ent, sai) => m(sai) < m(ent) ? ", saída no dia seguinte" : "";
+      linhas.push(`Jornada noturna seg–qui: ${p.jornada_noturno_entrada}–${p.jornada_noturno_saida} (${uteis(p.jornada_noturno_entrada, p.jornada_noturno_saida)} h úteis${virada(p.jornada_noturno_entrada, p.jornada_noturno_saida)}).`);
+      linhas.push(p.jornada_noturno_sexta_entrada && p.jornada_noturno_sexta_saida
+        ? `Sexta noturna: ${p.jornada_noturno_sexta_entrada}–${p.jornada_noturno_sexta_saida} (${uteis(p.jornada_noturno_sexta_entrada, p.jornada_noturno_sexta_saida)} h úteis).`
+        : "Sexta noturna sem jornada própria: usa a de seg–qui.");
+    } else {
+      linhas.push("Dois turnos sem jornada noturna: preencha a de segunda a quinta para salvar.");
+    }
+  }
   if(p.concretagem_tipo_padrao === "saco"){
     linhas.push(`Saco: 10 sacos de ${p.peso_saco_kg} kg com traço ${p.traco_kg_cimento_m3} kg/m³ = ${(p.peso_saco_kg * 10 / p.traco_kg_cimento_m3).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³.`);
   } else if(p.concretagem_tipo_padrao === "usinado"){
@@ -748,6 +774,13 @@ function atualizarResumoParametrosObra(){
   else if(p.sinal_abatimento_modelo === "percentual") linhas.push("Sinal: cada medição desconta o % do sinal sobre o contrato, até zerar o saldo.");
   else linhas.push("Sinal: cada medição desconta subtotal × saldo do sinal ÷ saldo a medir; aditivo ou redução do contrato ajustam a fração sozinhos.");
   el.textContent = linhas.join(" ");
+}
+/* Fase 155b: o bloco da jornada noturna aparece com a chave dos dois turnos (ou quando já tem jornada noturna gravada) */
+function obrMostrarJornadaNoturna(){
+  const bloco = $("obr-jornada-noturna-bloco");
+  if(!bloco) return;
+  const tem = ["obr-jornada-not-entrada","obr-jornada-not-saida","obr-jornada-not-sex-entrada","obr-jornada-not-sex-saida"].some(id => $(id)?.value);
+  bloco.style.display = $("obr-dois-turnos")?.checked || tem ? "" : "none";
 }
 
 /* ---------- Salvar (insert ou update) ---------- */
@@ -777,6 +810,12 @@ async function salvarObra(novoStatus){
     observacoes: $("obr-obs").value.trim() || null,
     ...lerParametrosObra()
   };
+  // fase 155b: mesma regra do gatilho trg_obras_dois_turnos_guarda, dita antes de ir ao banco
+  if(reg.dois_turnos && "jornada_noturno_entrada" in reg && (!reg.jornada_noturno_entrada || !reg.jornada_noturno_saida)){
+    aviso("app-aviso", "Preencha a jornada noturna (segunda a quinta) antes de ligar os dois turnos.", "erro");
+    ativarTabObra("parametros"); obrMostrarJornadaNoturna(); obrFocarCampo(reg.jornada_noturno_entrada ? "obr-jornada-not-saida" : "obr-jornada-not-entrada");
+    return;
+  }
   // fase 105a: município da prestação (só com a coluna no banco)
   if(_obrTemIbge){
     reg.codigo_ibge = ($("obr-ibge")?.value || "").replace(/\D/g, "") || null;
@@ -889,7 +928,9 @@ function ligarObras(){
   if(typeof fiscalLigarCep === "function") fiscalLigarCep({ cep: "obr-cep", botao: "btn-obr-cep", status: "obr-cep-status",
     logradouro: "obr-logradouro", bairro: "obr-bairro", cidade: "obr-cidade", uf: "obr-uf", ibge: "obr-ibge" });
   // Aba Parâmetros: resumo ao vivo da jornada/concretagem
+  $("obr-dois-turnos")?.addEventListener("change", () => { obrMostrarJornadaNoturna(); atualizarResumoParametrosObra(); });   // fase 155b
   ["obr-jornada-entrada","obr-jornada-saida","obr-jornada-sab-entrada","obr-jornada-sab-saida",
+   "obr-jornada-not-entrada","obr-jornada-not-saida","obr-jornada-not-sex-entrada","obr-jornada-not-sex-saida",
    "obr-conc-tipo","obr-conc-fornecedor","obr-conc-traco","obr-conc-peso-saco","obr-conc-fator-perda","obr-sinal-modelo"].forEach(id => {
     $(id)?.addEventListener("input", atualizarResumoParametrosObra);
     $(id)?.addEventListener("change", atualizarResumoParametrosObra);

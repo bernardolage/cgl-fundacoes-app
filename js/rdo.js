@@ -1306,13 +1306,13 @@ async function carregarParamsObraRDO(obraId){
   if(!obraId){ atualizarChipJornadaRDO(null); rdoMostrarPeriodo(); return null; }
   const [{ data }] = await Promise.all([
     sb.from("obras")
-      .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida,dois_turnos")
+      .select("concretagem_tipo_padrao,concreto_fornecedor,traco_kg_cimento_m3,peso_saco_kg,fator_perda_concreto,jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida,dois_turnos,jornada_noturno_entrada,jornada_noturno_saida,jornada_noturno_sexta_entrada,jornada_noturno_sexta_saida")
       .eq("id", obraId).maybeSingle(),
     carregarJornadaEmpresa()
   ]);
   _rdoObraParams = data || null;
-  atualizarChipJornadaRDO(obraId);
   rdoMostrarPeriodo();
+  atualizarChipJornadaRDO(obraId);   // fase 155b: depois do período, que pode voltar a diurno em obra de um turno
   return _rdoObraParams;
 }
 /* Fase 155a: o Período só aparece em obra de dois turnos, ou no diário que já é noturno (para poder corrigir).
@@ -1325,12 +1325,15 @@ function rdoMostrarPeriodo(){
   if(!dois && !rdoEditId) sel.value = "diurno";
   campo.style.display = dois || sel.value === "noturno" ? "" : "none";
 }
-/* Lote S40 (#31): chip amarelo na ficha quando a obra não tem jornada e o cálculo usa a da empresa */
+/* Lote S40 (#31): chip amarelo na ficha quando a obra não tem jornada e o cálculo usa a da empresa.
+   Fase 155b: no diário noturno, o chip avisa a obra sem jornada noturna (HE zero até preencher). */
 function atualizarChipJornadaRDO(obraId){
   const chip = $("rdo-ficha-jornada-chip");
   if(!chip) return;
-  const j = obraId ? jornadaEfetiva(_rdoObraParams) : null;
-  chip.style.display = j && j.padrao_empresa ? "" : "none";
+  const j = obraId ? jornadaEfetiva(_rdoObraParams, $("rdo-turno")?.value) : null;
+  const txt = $("rdo-ficha-jornada-txt");
+  if(txt) txt.textContent = j && j.sem_jornada_noturna ? "Obra sem jornada noturna; HE zero até preencher" : "Obra sem jornada; usando padrão da empresa";
+  chip.style.display = j && (j.padrao_empresa || j.sem_jornada_noturna) ? "" : "none";
   chip.dataset.obraId = obraId || "";
 }
 /* Preenche Vol. m³ das execuções pela parametrização da obra. Só as vazias, a menos
@@ -1693,7 +1696,7 @@ function renderRdoEquipe(){
         const vh = tr.querySelector(".eq-viagem-h");
         if(vh) vh.textContent = rdoTxtHorasViagem(l);
       } else {
-        const r = calcularHorasEquipe($("rdo-data")?.value, l.hora_entrada, l.hora_saida, jornadaEfetiva(_rdoObraParams), l.intervalo_minutos, !!$("rdo-feriado")?.checked);
+        const r = calcularHorasEquipe($("rdo-data")?.value, l.hora_entrada, l.hora_saida, jornadaEfetiva(_rdoObraParams, $("rdo-turno")?.value), l.intervalo_minutos, !!$("rdo-feriado")?.checked);
         if(r){
           tr.querySelector(".eq-h100").value = r.horas_100 || "";
           tr.querySelector(".eq-h50").value = "";
@@ -2084,7 +2087,7 @@ async function rdoSalvarAgora(novoStatus){
   const precisaHE = (e) => e.hora_entrada && e.hora_saida && e.horas_100 == null && !rdoSemHE(rdoStatusDia(e.status_dia), dataRDO, reg.feriado);
   if(_rdoEquipe.some(precisaHE)){
     if(!_rdoObraParams) await carregarParamsObraRDO(obra_id);
-    const jornada = jornadaEfetiva(_rdoObraParams);
+    const jornada = jornadaEfetiva(_rdoObraParams, reg.turno_campo);   // fase 155b: jornada do período do diário
     _rdoEquipe.forEach(e => {
       if(!precisaHE(e)) return;
       const r = calcularHorasEquipe(dataRDO, e.hora_entrada, e.hora_saida, jornada, e.intervalo_minutos, reg.feriado);
@@ -2286,6 +2289,8 @@ function ligarRDO(){
   // lote S54 (#178): a data e o feriado decidem se o treinamento tem HE; a equipe é redesenhada
   $("rdo-data")?.addEventListener("change", renderRdoEquipe);
   $("rdo-feriado")?.addEventListener("change", renderRdoEquipe);
+  // fase 155b: o período escolhe a jornada (diurna ou noturna) da HE
+  $("rdo-turno")?.addEventListener("change", () => { atualizarChipJornadaRDO($("rdo-obra")?.value || null); renderRdoEquipe(); });
   $("rdo-ficha-jornada-link")?.addEventListener("click", (ev) => {
     ev.preventDefault();
     const id = $("rdo-ficha-jornada-chip")?.dataset.obraId || $("rdo-obra")?.value;
@@ -2996,20 +3001,38 @@ async function carregarJornadaEmpresa(){
   _rdoJornadaEmpresa = data && data.jornada_entrada && data.jornada_saida ? data : null;
   return _rdoJornadaEmpresa;
 }
-/* Jornada que vale para o cálculo: a da obra quando cadastrada; senão a da empresa (padrao_empresa=true) */
-function jornadaEfetiva(obra){
+/* Jornada que vale para o cálculo: a da obra quando cadastrada; senão a da empresa (padrao_empresa=true).
+   Fase 155b: o diário noturno usa a jornada noturna da obra (espelho de campo_jornada_dia no banco), sem padrão da
+   empresa; sem ela devolve { sem_jornada_noturna } e as horas trabalhadas vão como normais, HE zero. */
+function jornadaEfetiva(obra, turno){
+  if(turno === "noturno"){
+    if(obra && obra.jornada_noturno_entrada && obra.jornada_noturno_saida) return {
+      jornada_entrada: obra.jornada_noturno_entrada, jornada_saida: obra.jornada_noturno_saida,
+      jornada_sexta_entrada: obra.jornada_noturno_sexta_entrada, jornada_sexta_saida: obra.jornada_noturno_sexta_saida,
+      noturno: true
+    };
+    return { sem_jornada_noturna: true, noturno: true };
+  }
   if(obra && obra.jornada_entrada && obra.jornada_saida) return obra;
   return _rdoJornadaEmpresa ? { ..._rdoJornadaEmpresa, padrao_empresa: true } : null;
 }
+let _iaObraJornadas = null;   // fase 155b: linha da obra (diurna, noturna e dois_turnos) para a jornada de cada dia
 async function iaCarregarJornadaObra(obraId){
-  _iaJornadaObra = null;
+  _iaJornadaObra = null; _iaObraJornadas = null;
   if(!obraId) return null;
   const [{ data }] = await Promise.all([
-    sb.from("obras").select("jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida").eq("id", obraId).maybeSingle(),
+    sb.from("obras").select("jornada_entrada,jornada_saida,jornada_sexta_entrada,jornada_sexta_saida,dois_turnos,jornada_noturno_entrada,jornada_noturno_saida,jornada_noturno_sexta_entrada,jornada_noturno_sexta_saida").eq("id", obraId).maybeSingle(),
     carregarJornadaEmpresa()
   ]);
+  _iaObraJornadas = data || null;
   _iaJornadaObra = jornadaEfetiva(data);
   return _iaJornadaObra;
+}
+/* Fase 155b: o dia noturno da planilha usa a jornada noturna só em obra de dois turnos; nas outras ele grava diurno (155a) */
+function iaJornadaDoDia(dia){
+  return _iaObraJornadas && _iaObraJornadas.dois_turnos && rdoDiaTurno(dia) === "noturno"
+    ? jornadaEfetiva(_iaObraJornadas, "noturno")
+    : _iaJornadaObra;
 }
 function minutosHHMM(s){ const m = String(s || "").match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
 /* Fase 93c: horas entre 22h e 5h de um turno (espelho de rh_horas_noturnas no banco). Saída menor ou igual à entrada
@@ -3033,6 +3056,7 @@ function calcularHorasEquipe(dataISO, entrada, saida, jornada, intervaloMin, fer
   const h = (m) => Math.round(m / 60 * 4) / 4; // quartos de hora
   if(dow === 0 || dow === 6 || feriado) return { horas_normais: 0, horas_50: 0, horas_100: h(trab) };
   if(!jornada) return null;
+  if(jornada.sem_jornada_noturna) return { horas_normais: h(trab), horas_50: 0, horas_100: 0 };   // fase 155b
   // seg-qui usam a jornada padrão; sexta usa a própria quando cadastrada (decisão de 16/09/2026)
   const usaSexta = dow === 5 && minutosHHMM(jornada.jornada_sexta_entrada) != null && minutosHHMM(jornada.jornada_sexta_saida) != null;
   const je = minutosHHMM(usaSexta ? jornada.jornada_sexta_entrada : jornada.jornada_entrada);
@@ -3045,10 +3069,23 @@ function calcularHorasEquipe(dataISO, entrada, saida, jornada, intervaloMin, fer
 }
 function iaTextoAvisoJornada(){
   const j = _iaJornadaObra;
-  if(!j) return "⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros) e não há jornada padrão da empresa: as horas extras dos dias úteis ficam em branco até alguém preencher.";
   const hm = (s) => String(s || "").slice(0, 5);
-  const sexta = j.jornada_sexta_entrada && j.jornada_sexta_saida ? `, sexta ${hm(j.jornada_sexta_entrada)}–${hm(j.jornada_sexta_saida)}` : "";
-  return `⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros): usando o padrão da empresa (seg-qui ${hm(j.jornada_entrada)}–${hm(j.jornada_saida)}${sexta}).`;
+  const faixa = (x) => `seg-qui ${hm(x.jornada_entrada)}–${hm(x.jornada_saida)}${x.jornada_sexta_entrada && x.jornada_sexta_saida ? `, sexta ${hm(x.jornada_sexta_entrada)}–${hm(x.jornada_sexta_saida)}` : ""}`;
+  const dois = !!(_iaObraJornadas && _iaObraJornadas.dois_turnos);
+  let t;
+  if(!j) t = "⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros) e não há jornada padrão da empresa: as horas extras dos dias úteis ficam em branco até alguém preencher.";
+  else if(!j.padrao_empresa) t = `⏱️ Diurno: jornada da obra (${faixa(j)}).`;
+  else t = `⏱️ A obra não tem jornada cadastrada (Obra › Parâmetros): usando o padrão da empresa (${faixa(j)}).`;
+  // fase 155b: obra de dois turnos diz também a jornada dos dias noturnos
+  if(dois){
+    const n = jornadaEfetiva(_iaObraJornadas, "noturno");
+    t += n.sem_jornada_noturna ? " Noturno: obra sem jornada noturna; preencha na aba Parâmetros (HE zero até lá)." : ` Noturno: jornada noturna da obra (${faixa(n)}; saída depois da meia-noite é no dia seguinte).`;
+  }
+  return t;
+}
+/* Fase 155b: o aviso aparece sem jornada própria da obra ou em obra de dois turnos (para dizer as duas jornadas) */
+function iaMostrarAvisoJornada(){
+  return !(_iaJornadaObra && !_iaJornadaObra.padrao_empresa) || !!(_iaObraJornadas && _iaObraJornadas.dois_turnos);
 }
 /* Feriado marcado no cabeçalho do dia (preview da IA) */
 function iaDiaFeriado(dia){
@@ -3063,7 +3100,7 @@ function iaRecalcularHorasNoDOM(soVazias){
   });
   const aviso_ = document.querySelector(".ia-jornada-aviso");
   if(aviso_){
-    aviso_.style.display = _iaJornadaObra && !_iaJornadaObra.padrao_empresa ? "none" : "";
+    aviso_.style.display = iaMostrarAvisoJornada() ? "" : "none";
     aviso_.textContent = iaTextoAvisoJornada();
   }
 }
@@ -3076,7 +3113,7 @@ function iaRecalcularHorasLinha(tr, dia, soVazias){
     return;
   }
   // fase 134b: a chave do bloco pode levar o período; a jornada e o feriado olham a data
-  const r = calcularHorasEquipe(rdoDiaData(dia), g("hora_entrada")?.value, g("hora_saida")?.value, _iaJornadaObra, g("intervalo_minutos")?.value, iaDiaFeriado(dia));
+  const r = calcularHorasEquipe(rdoDiaData(dia), g("hora_entrada")?.value, g("hora_saida")?.value, iaJornadaDoDia(dia), g("intervalo_minutos")?.value, iaDiaFeriado(dia));
   if(r && rdoSemHE(st, rdoDiaData(dia), iaDiaFeriado(dia))) r.horas_100 = 0;
   ["horas_normais","horas_50","horas_100"].forEach(k => {
     const el = g(k); if(!el) return;
@@ -3099,7 +3136,7 @@ function renderConferenciaIA(resp){
   const conf = resp?.confianca || "media";
   const corConf = conf === "alta" ? "var(--sucesso)" : conf === "baixa" ? "var(--perigo)" : "var(--aviso)";
   const duvidas = (resp?.duvidas || []);
-  const temJornada = !!(_iaJornadaObra && !_iaJornadaObra.padrao_empresa);
+  const temJornada = !iaMostrarAvisoJornada();   // fase 155b: nome antigo; esconde o aviso só com jornada própria e um turno
   let html = `<div class="ia-conf-topo">
     <div>${resp?.origem_label ? esc(resp.origem_label) : `🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"}`} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
       ${resp?.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
