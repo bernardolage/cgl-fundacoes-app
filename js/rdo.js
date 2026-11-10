@@ -2098,6 +2098,10 @@ async function rdoSalvarAgora(novoStatus){
   // reinserida (ficou no banco); noturnas vão só quando corrigidas à mão, senão o gatilho calcula (22h–5h)
   // fase 129c: upsert pelo id; status_dia vai sempre (nulo = presente), porque no update a chave ausente manteria o antigo.
   // Colunas que só o campo grava (chegada real) ficam como estão.
+  // Hotfix das horas normais: horas_normais vai sempre nulo. A ficha não mostra nem edita essa coluna; sem a chave, o upsert
+  // mantinha a hora gravada antes (gatilho, app ou Falta) e o gatilho não recalcula coluna preenchida, então corrigir o
+  // horário ou o status deixava a hora antiga para a folha. Nulo = como era antes da 129c (a linha nascia de novo): o gatilho
+  // recalcula quando a HE está vazia, e com HE digitada a folha calcula as normais na leitura (vw_rh_horas_mes).
   const eqLimpa = _rdoEquipe
     .filter(eqFica)
     .map((e,i) => ({
@@ -2109,6 +2113,7 @@ async function rdoSalvarAgora(novoStatus){
       hora_entrada:   e.hora_entrada || null,
       hora_saida:     e.hora_saida || null,
       intervalo_minutos: e.intervalo_minutos ?? null,
+      horas_normais:  null,
       horas_50:       e.horas_50 || null,
       horas_100:      e.horas_100 || null,
       horas_noturnas: e.horas_noturnas_manual ? (e.horas_noturnas ?? 0) : (e.hora_entrada && e.hora_saida ? null : (e.horas_noturnas ?? null)),
