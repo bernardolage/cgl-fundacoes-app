@@ -748,6 +748,7 @@ function renderEstacas(){
   const wrapPlanta = $("est-planta-wrap");
   const wrapRaiz   = $("est-raiz-wrap");
   const mostrar = (el, on) => { if(el) el.style.display = on ? "" : "none"; };
+  if(typeof egpVisao === "function" && egpVisao(_estView, [wrapLista, wrapPlanta, wrapRaiz])) return;   // visão GPS: js/estacas_gps.js cuida do próprio bloco
   if(_estView === "planta"){
     mostrar(wrapLista, false); mostrar(wrapRaiz, false); mostrar(wrapPlanta, true);
     renderPlantaSVG();
@@ -862,7 +863,7 @@ function estFiltroProfRegularizar(e, f){
 function estDefinirFiltroProf(valor){
   const sel = $("est-f-prof");
   if(sel) sel.value = valor || "";
-  if(_estView === "planta"){
+  if(_estView === "planta" || _estView === "gps"){
     _estView = "lista";
     document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === "lista"));
   }

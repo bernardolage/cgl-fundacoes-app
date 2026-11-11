@@ -3676,3 +3676,28 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .obf-nota { font-size: var(--txt-sm); color: var(--txt-sec); }
 .obf-resumo, .obf-previsao { font-size: var(--txt-md); color: var(--txt-sec); }
 .obf-previsao strong { color: var(--txt); }
+
+/* Croqui das estacas pelo GPS do computador de bordo (fase 168a, js/estacas_gps.js): visão "GPS" da aba Estacas da obra. O aviso
+   de posição aproximada abre o bloco e não some. Sem malha de fundo, de propósito: o erro do GPS é de metros. A cor e o contorno
+   de cada círculo vêm do JS, por style (o SVG só aceita token assim). */
+.egp-aviso { margin: 0 0 var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--aviso); border-left-width: 4px; border-radius: var(--radius-sm); background: var(--aviso-bg); color: var(--aviso-txt); font-size: var(--txt-md); font-weight: 600; }
+.egp-resumo { margin: 0 0 var(--esp-2); font-size: var(--txt-md); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
+.egp-barra { padding-top: 0; }
+.egp-modos { display: inline-flex; align-items: center; gap: var(--esp-2); margin-right: auto; }
+.egp-check { display: inline-flex; align-items: center; gap: var(--esp-1); font-size: var(--txt-sm); color: var(--txt-sec); cursor: pointer; }
+.egp-legenda { display: flex; flex-wrap: wrap; gap: var(--esp-1) var(--esp-3); min-height: 18px; margin: 0 0 var(--esp-2); font-size: var(--txt-sm); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
+.egp-leg { display: inline-flex; align-items: center; gap: var(--esp-1); white-space: nowrap; }
+.egp-leg-svg { flex: none; width: 16px; height: 16px; }
+.egp-area { position: relative; width: 100%; aspect-ratio: 3 / 2; max-height: 70vh; border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-2); overflow: hidden; touch-action: none; user-select: none; }
+#egp-svg { display: block; width: 100%; height: 100%; cursor: grab; }
+#egp-svg.egp-arrastando { cursor: grabbing; }
+#egp-svg .egp-ponto { vector-effect: non-scaling-stroke; cursor: pointer; }
+#egp-svg .egp-ponto:hover { filter: brightness(1.12); }
+#egp-svg .egp-ponto:focus-visible { outline: none; stroke: var(--marca-600) !important; stroke-width: 3px !important; stroke-dasharray: none !important; }
+.egp-norte { position: absolute; top: var(--esp-2); right: var(--esp-2); display: flex; flex-direction: column; align-items: center; padding: 2px var(--esp-1); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt-sec); font-size: var(--txt-xs); font-weight: 700; line-height: 1.1; pointer-events: none; }
+.egp-norte svg { width: 16px; height: 16px; }
+.egp-escala { position: absolute; left: var(--esp-2); bottom: var(--esp-2); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--esp-1); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt-sec); font-size: var(--txt-xs); font-variant-numeric: tabular-nums; pointer-events: none; }
+.egp-escala-barra { display: block; height: 6px; min-width: 8px; border: 1px solid var(--txt-sec); border-top: none; }
+.egp-nota { margin: var(--esp-2) 0 0; font-size: var(--txt-sm); color: var(--txt-fraco); }
+.egp-nota-topo { margin: 0 0 var(--esp-2); color: var(--txt-sec); }
+.egp-longe { margin-top: var(--esp-3); }
