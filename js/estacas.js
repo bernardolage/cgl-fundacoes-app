@@ -487,7 +487,7 @@ async function carregarAcompanhamentoRaiz(){
   // fase 154: tudo por obra e paginado (corte de 1.000 linhas; .in() com centenas de ids é recusado pela API)
   const [eRes, rRes, sRes, iRes, mRes, oRes] = await Promise.all([
     lerTudo(() => sb.from("vw_rdo_execucoes_obra")
-      .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,volume_injetado_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,observacoes,rdo_id,obra_id,data,rdo_equipamento_id")
+      .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,volume_injetado_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,observacoes,rdo_id,obra_id,data,rdo_equipamento_id")
       .eq("obra_id", obraId)),
     lerTudo(() => sb.from("rdo").select("id,turno_campo").eq("obra_id", obraId)),
     lerTudo(() => sb.from("rdo_raiz_solo").select("execucao_id,inicio_ml,final_ml,ferramenta,rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)),
@@ -525,6 +525,7 @@ async function carregarAcompanhamentoRaiz(){
     porEstaca.get(chave).push({ ...ex, _solo: soloPorExec.get(ex.id) || [], _meds: medPorExec.get(ex.id) || [] });
   });
   _raizDados = { porEstaca, medicoes: mRes.error ? [] : (mRes.data || []), doisTurnos, carregadoEm: Date.now() };
+  if(typeof elpAoCarregar === "function") elpAoCarregar();   // resumo "só com injeção" da aba (js/estacas_perfuracao.js)
   return _raizDados;
 }
 
@@ -564,7 +565,7 @@ function _raizLinha(est, execs){
   const meds = _raizMedicoes(execs);
   const obs = [est.observacoes, est.refuro_motivo ? motivoRefuradaLbl(est.refuro_motivo) : ""].map(s => String(s || "").trim()).filter(Boolean).join(" · ");
   const obsRdo = [...new Set(execs.map(x => String(x.observacoes || "").trim()).filter(Boolean))].join(" | ");
-  return {
+  const linha = {
     id: est.id, local: est.local || "", bloco: est.bloco || "", numero: est.numero || "", diametro: est.diametro_mm, estimado: est.profundidade_m,
     compFinal: execs.length ? compFinal : null, compTotal: execs.length ? compTotal : null, refuroM: execs.length ? refuroM : null,
     dataExec: ultExec ? (_raizDia(ultExec.perfuracao_fim || ultExec.perfuracao_inicio) || ultExec.data || null) : null,
@@ -582,6 +583,8 @@ function _raizLinha(est, execs){
     obs, obsRdo,
     status: est.status
   };
+  // estaca só com injeção: EXECUÇÃO sem a data e a TAG da injeção, INJEÇÃO reconhecida pela etapa (js/estacas_perfuracao.js)
+  return typeof elpAjustarLinha === "function" ? elpAjustarLinha(linha, est, execs) : linha;
 }
 
 async function renderAcompanhamentoRaiz(){
@@ -643,7 +646,7 @@ async function renderAcompanhamentoRaiz(){
       esc(l.bloco || "—"),
       `<strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${esc(l.refuros)} refuro(s)">🔄${esc(l.refuros)}</span>` : ""}`,
       f0(l.diametro), f2(l.estimado),
-      exec ? estCelulaExecutada({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }, f2) : "—",
+      (typeof elpCelulaRaiz === "function" && elpCelulaRaiz(l)) || (exec ? estCelulaExecutada({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }, f2) : "—"),   // etiqueta "falta a perfuração"
       dt(l.dataExec),
       exec ? f2(l.revest) : "—", exec ? f2(l.tricone) : "—", exec ? f2(l.martelo) : "—",
       l.refuroM ? f2(l.refuroM) : "—",
@@ -657,7 +660,7 @@ async function renderAcompanhamentoRaiz(){
     const NUM = new Set([3, 4, 5, 7, 8, 9, 10, 13, 15, 16]);
     return `<tr class="${stCls}">${c.map((v, i) => td(i, v, (NUM.has(i) ? "num" : "") + (i === 20 ? " meta" : ""),
         i === 20 && l.obsRdo ? ` title="${esc("RDO: " + l.obsRdo)}"` : "")).join("")}
-      <td class="col-acao"><button type="button" class="btn-sec btn-sm raiz-edit" data-id="${esc(l.id)}" title="abrir estaca">Abrir</button></td>
+      <td class="col-acao">${/* html */ typeof elpBotaoLinha === "function" ? elpBotaoLinha(l.id) : ""}<button type="button" class="btn-sec btn-sm raiz-edit" data-id="${esc(l.id)}" title="abrir estaca">Abrir</button></td>
     </tr>`;
   }).join("");
 
@@ -743,6 +746,7 @@ function renderEstacas(){
   const faltamM = pendentesM > 0 ? pendentesM : Math.max((Number($("obr-meta-metros")?.value) || 0) - metragem, 0);
   if($("est-stat-faltam")) $("est-stat-faltam").textContent = total ? `faltam ${faltamN}${faltamM > 0 ? ` · ${num(Math.round(faltamM))} m` : ""}${refuradas ? ` · ${refuradas} refurada${refuradas === 1 ? "" : "s"} fora da conta` : ""}` : "";
   if(typeof epjLinha === "function") epjLinha(_estacas);   // linha de estado da profundidade de projeto (js/estacas_prof_projeto.js)
+  if(typeof elpFaixa === "function") elpFaixa();   // estaca raiz só com injeção: resumo e aviso acima da lista (js/estacas_perfuracao.js)
 
   // Toggle vistas
   const wrapLista  = $("est-conteudo");
@@ -811,10 +815,11 @@ function renderEstacas(){
       <td>${esc(ESTACA_TIPOS[e.tipo] || e.tipo || "—")}</td>
       <td class="num">${e.diametro_mm != null ? num(e.diametro_mm) : "—"}</td>
       <td class="num">${e.profundidade_m != null ? num(e.profundidade_m) : "—"}</td>
-      <td class="num">${estCelulaExecutada(e)}</td>
+      <td class="num">${/* html */ (typeof elpCelulaLista === "function" && elpCelulaLista(e)) || estCelulaExecutada(e)}</td>
       <td>${dataBR(e.data_execucao)}</td>
       <td><span class="tag ${esc(st.cor)}">${esc(st.label)}</span></td>
       <td class="col-acao">
+        ${/* html */ typeof elpBotaoLinha === "function" ? elpBotaoLinha(e.id) : ""}
         <button type="button" class="btn-sec btn-sm est-edit" data-id="${esc(e.id)}">Editar</button>
         <button type="button" class="btn-sec btn-sm est-del txt-perigo" data-id="${esc(e.id)}">Excluir</button>
       </td>
@@ -855,6 +860,7 @@ function estProfDiverge(e){ const d = estProfDiferenca(e); return d != null && M
 /* Fase 75 ("Para regularizar"): executada sem profundidade lançada e projeto a confirmar.
    Os outros valores do filtro ("", "diferente") não restringem aqui. */
 function estFiltroProfRegularizar(e, f){
+  if(typeof elpFiltro === "function"){ const r = elpFiltro(e, f); if(r != null) return r; }   // estaca raiz só com injeção, ou perfurada sem injeção (js/estacas_perfuracao.js)
   if(f === "sem_profundidade") return e.status === "executada" && !(Number(e.profundidade_executada_m) > 0);
   if(f === "projeto_pendente") return !!e.projeto_pendente;
   if(f === "sem_diametro") return !(Number(e.diametro_mm) > 0) && e.status !== "refugada"; // lote S46 (#96)
@@ -899,6 +905,7 @@ function abrirModalEstaca(id, aba){
   }
   const pend = $("est-proj-pend"); // fase 75
   if(pend) pend.style.display = e.projeto_pendente ? "" : "none";
+  if(typeof elpFicha === "function") elpFicha(_estacaEdit);   // "falta lançar a perfuração" e o botão (js/estacas_perfuracao.js)
   if($("est-proj-confirmado")) $("est-proj-confirmado").checked = false;
   $("est-cota-topo").value      = e.cota_topo ?? "";
   $("est-cota-ponta").value     = e.cota_ponta ?? "";

@@ -3737,6 +3737,24 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .epj-imp-resumo { margin: 0 0 var(--esp-2); font-size: var(--txt-md); color: var(--txt-sec); }
 .epj-imp-detalhe .tabela-rola { max-height: 220px; margin-top: var(--esp-2); }
 
+/* Estaca raiz só com injeção (fase 173a, js/estacas_perfuracao.js): a faixa entre os filtros e a lista da aba Estacas (resumo
+   clicável, aviso e explicação do filtro), a etiqueta "falta a perfuração" na linha, o aviso na janela da estaca e a janela
+   "Lançar perfuração". A etiqueta é baixa para a linha da tabela não crescer. Só tokens. */
+.est-lp-faixa { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); margin: 0 0 var(--esp-2); font-size: var(--txt-sm); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
+.est-lp-faixa:empty { display: none; }
+.est-lp-faixa .dist-aviso, .est-lp-ficha .dist-aviso { flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); margin: 0; }
+.est-lp-faixa .dist-aviso > span, .est-lp-ficha .dist-aviso > span { flex: 1 1 260px; }
+.est-lp-chip { display: inline-flex; align-items: center; gap: var(--esp-1); min-height: 32px; padding: var(--esp-1) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-pill); background: var(--sup-1); color: var(--txt-sec); font: inherit; font-size: var(--txt-sm); cursor: pointer; }
+.est-lp-chip.alerta { border-color: var(--aviso); background: var(--aviso-bg); color: var(--aviso-txt); }
+.est-lp-chip:hover { border-color: var(--marca-600); }
+.est-lp-chip:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
+.est-lp-tag { padding: 1px var(--esp-2); cursor: help; }
+.est-lp-lancar { margin-right: var(--esp-1); white-space: nowrap; }
+.est-lp-ficha { margin: 0 0 var(--esp-3); }
+.est-lp-ficha:empty { display: none; }
+.est-lp-caixa { max-width: 620px; }
+.est-lp-apoio { margin: 0 0 var(--esp-3); font-size: var(--txt-md); line-height: 1.6; color: var(--txt-sec); }
+
 /* Croqui das estacas pelo GPS do computador de bordo (fase 168a, js/estacas_gps.js): visão "GPS" da aba Estacas da obra. O aviso
    de posição aproximada abre o bloco e não some. Sem malha de fundo, de propósito: o erro do GPS é de metros. A cor e o contorno
    de cada círculo vêm do JS, por style (o SVG só aceita token assim). */
