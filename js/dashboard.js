@@ -251,12 +251,15 @@ async function dashCarregarAcoes(){
   // fase 91: caução vencida / a vencer e NF vencida sem recebimento (setor financeiro) em vw_sc_acoes_fin
   // fase 92: preventiva vencida/vencendo e mobilização sem checklist aprovado (setor manutenção) em vw_sc_acoes_man
   // fase 108b: chave de dono do custo pendente do usuário logado (vw_pedidos_aprovacao_pendente.dono_meu) entra em Compras
-  const [dados, sep, fab, fin, man, ass] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
-    dashLer("vw_pedidos_aprovacao_pendente", q => q.select("pedido_id,numero,total,quem_assina,criado_em").eq("dono_meu", true).order("criado_em"))]);
+  // lote S63-0: cotação parada, recebimento sem conferência e saída sem custo saíram de vw_sc_acoes (carga) e vêm de
+  // vw_sc_acoes_cmp, marcadas como "acoes" para o "o que é este número" seguir igual. Pendência nova: view própria, nunca vw_sc_acoes
+  const [dados, sep, fab, fin, man, ass, cmp] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
+    dashLer("vw_pedidos_aprovacao_pendente", q => q.select("pedido_id,numero,total,quem_assina,criado_em").eq("dono_meu", true).order("criado_em")),
+    dashLer("vw_sc_acoes_cmp", q => q.select("*"))]);
   if(!dados) return;
   // fase 164: cada lista leva a fonte de onde veio; a chave do "o que é este número" é fonte:ordem[:nível], nunca o título
-  dashMarcarFonte(dados, "acoes"); dashMarcarFonte(sep, "sep"); dashMarcarFonte(fab, "fab"); dashMarcarFonte(fin, "fin"); dashMarcarFonte(man, "man");
-  _dashAcoes = dados.concat(sep || [], fab || [], fin || [], man || []).filter(a => dashGereSetor(a.setor))
+  dashMarcarFonte(dados, "acoes"); dashMarcarFonte(cmp, "acoes"); dashMarcarFonte(sep, "sep"); dashMarcarFonte(fab, "fab"); dashMarcarFonte(fin, "fin"); dashMarcarFonte(man, "man");
+  _dashAcoes = dados.concat(cmp || [], sep || [], fab || [], fin || [], man || []).filter(a => dashGereSetor(a.setor))
     .concat(dashAcoesAssinatura(ass || []))   // é do usuário (ele é o dono do custo): não passa pelo filtro de setor
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
