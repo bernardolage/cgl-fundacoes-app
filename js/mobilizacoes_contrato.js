@@ -70,6 +70,8 @@ function mobTagDe(m){
 function mobObraCodDe(m){ return mobCardDe(m.id).obra_codigo || (_mobObras.find(o => o.id === m.obra_id) || {}).codigo || "?"; }
 function mobEquipeDe(mobId){ return _mobEquipe.filter(e => e.mobilizacao_id === mobId); }
 function mobNomeEq(e){ return (e.funcionario && e.funcionario.nome) || "?"; }
+/* data ISO ± n dias (o addDiasISO do core.js conta só a partir de hoje) */
+function mobSomarDias(iso, n){ const [a, m, d] = String(iso).split("-").map(Number); return dataLocalISO(new Date(a, m - 1, d + n)); }
 const MOB_ORDEM_ST = ["em_preparacao", "em_transito", "prevista", "em_obra", "desmobilizada"];
 function mobOrdemMaq(a, b){
   return MOB_ORDEM_ST.indexOf(a.status) - MOB_ORDEM_ST.indexOf(b.status)
@@ -79,7 +81,7 @@ function mobOrdemMaq(a, b){
 function mobsDoContrato(obraId){
   const todas = _mobLive.filter(m => m.obra_id === obraId);
   const vivas = todas.filter(m => m.status !== "desmobilizada");
-  const limite = addDiasISO(hojeISO(), -30);
+  const limite = addDiasISO(-30);
   return (vivas.length ? vivas : todas.filter(m => (m.data_desmob_real || "") >= limite)).sort(mobOrdemMaq);
 }
 function mobTipoContrato(k){
@@ -111,7 +113,7 @@ function mobSelosMaquina(m){
     if(!(m.acessorios_ids || []).length) s.push(["kit vazio", "aviso", "Nenhuma peça no kit desta mobilização."]);
     if(!m.viagem_ida_id) s.push(["viagem não planejada", "aviso", "A viagem de ida ainda não foi programada em Logística."]);
   }
-  if(m.status === "em_obra" && m.data_desmob_prev && m.data_desmob_prev <= addDiasISO(hojeISO(), 10) && !m.viagem_volta_id)
+  if(m.status === "em_obra" && m.data_desmob_prev && m.data_desmob_prev <= addDiasISO(10) && !m.viagem_volta_id)
     s.push(["volta sem viagem", "aviso", "Desmobilização em até 10 dias e a viagem de volta não foi programada."]);
   if(m.origem_mobilizacao_id){
     const o = mobLiveDe(m.origem_mobilizacao_id);
