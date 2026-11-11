@@ -819,6 +819,7 @@ async function mudarStatusMobilizacao(novo, btn){
     if(typeof carregarMovimentacoes === "function" && novo === "em_transito") carregarMovimentacoes();
     if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;   // fase 89: painel de Logística recarrega
     await abrirMobilizacao(atual.id);
+    if(novo === "em_obra") await mobOferecerMoverAlocacao(atual.id).catch(e => console.warn("mover alocação:", e.message || e));   // fase 157e: chegada pergunta se move a alocação da equipe
   } catch(err){
     aviso("app-aviso", "Não foi possível mudar o status: " + err.message, "erro");
     if(btn) btn.disabled = false;
@@ -930,6 +931,10 @@ function ligarMobilizacoes(){
   $("btn-mobd-fechar")?.addEventListener("click", fecharDesmobilizacaoMob);
   $("btn-mobd-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-mobd-confirmar", confirmarDesmobilizacaoMob));
   ["mobd-motivo", "mobd-data", "mobd-volta"].forEach(id => $(id)?.addEventListener("change", mobDesmobAtualizar));
+  // fase 157e: mover a alocação da equipe na chegada
+  $("btn-mobal-fechar")?.addEventListener("click", fecharMoverAlocacaoMob);
+  $("btn-mobal-agora-nao")?.addEventListener("click", fecharMoverAlocacaoMob);
+  $("btn-mobal-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-mobal-confirmar", confirmarMoverAlocacaoMob));
   $("mob-modal")?.addEventListener("click", (e) => { if(e.target.id === "mob-modal") fecharMobilizacao(); });
   $("mob-kpi-card-minhas")?.addEventListener("click", () => { _mobView = "pendencias"; renderMobilizacoes(); });
   document.querySelector('nav button[data-secao="mobilizacoes"]')?.addEventListener("click", () => carregarMobilizacoes(false));

@@ -530,7 +530,9 @@ function mobRenderEquipeFicha(){
       if(ant) mobEquipeDe(ant.id).filter(e => !naEq.has(e.funcionario_id) && !sug.some(s => s.funcionario_id === e.funcionario_id))
         .forEach(e => sug.push({ funcionario_id: e.funcionario_id, nome: mobNomeEq(e), funcao: e.funcao || "", origem: `equipe da ${mobTagDe(ant) || "máquina"} trocada` }));
       const lib = eq.filter(mobEqLiberado).length;
-      const corpo = (eq.length ? `<div class="mob-pend-lista">${eq.map(e => `<div class="mob-pend mob-eq-linha">
+      const corpo = (eq.length && x.status === "em_obra" && mobPodeMoverAlocacao()
+          ? `<div class="mob-eq-sug"><button type="button" class="btn-sec btn-sm" data-eq-aloc="${esc(x.id)}" title="Lista a equipe desta máquina e move a alocação de quem você marcar para esta obra e TAG, desde a data da chegada">Mover a alocação da equipe</button></div>` : "")
+        + (eq.length ? `<div class="mob-pend-lista">${eq.map(e => `<div class="mob-pend mob-eq-linha">
           ${uiAvatar(mobNomeEq(e))}
           <span class="mob-pend-txt"><span class="mob-pend-titulo">${esc(mobNomeEq(e))}${e.funcao ? ` <span class="meta">${esc(e.funcao)}</span>` : ""}</span>${e.atualizado_em ? `<span class="meta">atualizado em ${esc(dataHoraBR(e.atualizado_em))}</span>` : ""}</span>
           ${pode ? mobEqSituacaoSelect(e) : mobEqSituacaoChip(e)}
@@ -552,6 +554,7 @@ function mobRenderEquipeFicha(){
   box.querySelectorAll("[data-eq-rem]").forEach(b => b.addEventListener("click", () => mobEquipeRemover(b.dataset.eqRem)));
   box.querySelectorAll("[data-eq-add]").forEach(b => b.addEventListener("click", () => mobEquipeAdicionar(b.dataset.eqAdd, [{ funcionario_id: b.dataset.func, funcao: b.dataset.funcao || null }])));
   box.querySelectorAll("[data-eq-add-todos]").forEach(b => b.addEventListener("click", () => mobEquipeAdicionar(b.dataset.eqAddTodos, (box._sug[b.dataset.eqAddTodos] || []).map(s => ({ funcionario_id: s.funcionario_id, funcao: s.funcao || null })))));
+  box.querySelectorAll("[data-eq-aloc]").forEach(b => b.addEventListener("click", () => mobOferecerMoverAlocacao(b.dataset.eqAloc)));   // fase 157e
   box.querySelectorAll("input[data-eq-busca]").forEach(inp => mobLigarBuscaPessoa(inp, box.querySelector(`[data-eq-res="${inp.dataset.eqBusca}"]`), inp.dataset.eqBusca));
   mobAtualizarBadgeEquipe();
 }
@@ -619,4 +622,60 @@ async function mobRegistrarSaidaSemLiberacao(mobId, pessoas){
     + pessoas.map(e => `${mobNomeEq(e)} (${(MOB_EQ_SITUACAO[e.situacao] || {}).rot || e.situacao})`).join(", ") + ".";
   const { error } = await sb.rpc("chatter_publicar", { p_entidade: "mobilizacoes", p_registro_id: mobId, p_tipo: "nota", p_texto: txt, p_mencionados: [] });
   if(error) aviso("app-aviso", "A saída foi registrada, mas a nota na conversa não: " + error.message, "erro");
+}
+
+/* ---------- Fase 157e: equipe ligada à Alocação ----------
+   Na chegada da máquina ("Chegou na obra"), ou depois pela aba Equipe e SESMT, quem pode movimentar funcionário
+   (lotacaoPodeOperar: diretor, admin, logística, RH) confirma pessoa a pessoa quem passa a ficar alocado na obra e na
+   TAG desde a data da chegada. Grava pela RPC mobilizacao_mover_equipe, que chama a funcionario_movimentar da fase 151
+   (mesma regra e mesmo histórico). D7: desmobilizar não mexe na alocação. */
+let _mobAlocCtx = null;
+function mobPodeMoverAlocacao(){ return typeof lotacaoPodeOperar === "function" && lotacaoPodeOperar(); }
+function mobAlocRotulo(obra, tag){ return `${obra || "sem obra"}${tag ? "/" + tag : ""}`; }
+async function mobOferecerMoverAlocacao(mobId){
+  if(!mobPodeMoverAlocacao()) return;
+  const { data: m, error } = await sb.from("mobilizacoes").select("id,obra_id,equipamento_id,status,data_chegada_real").eq("id", mobId).maybeSingle();
+  if(error || !m || m.status !== "em_obra" || !m.data_chegada_real || !m.equipamento_id) return;
+  const { data: eq } = await sb.from("mobilizacao_equipe").select("funcionario_id,funcao,funcionario:funcionarios(nome)").eq("mobilizacao_id", mobId);
+  if(!(eq || []).length) return;
+  const ids = eq.map(e => e.funcionario_id);
+  const [{ data: alocs }, { data: obra }, { data: equip }] = await Promise.all([
+    sb.from("alocacoes").select("funcionario_id,obra_id,equipamento_id,data_inicio,obra:obras(codigo),equipamento:equipamentos(codigo)").eq("status", "ativa").in("funcionario_id", ids),
+    sb.from("obras").select("codigo").eq("id", m.obra_id).maybeSingle(),
+    sb.from("equipamentos").select("codigo").eq("id", m.equipamento_id).maybeSingle()
+  ]);
+  const destino = mobAlocRotulo(obra?.codigo, equip?.codigo);
+  const pessoas = eq.map(e => {
+    const a = (alocs || []).find(x => x.funcionario_id === e.funcionario_id);
+    const nome = e.funcionario?.nome || "?";
+    if(a && a.obra_id === m.obra_id && a.equipamento_id === m.equipamento_id)
+      return { id: e.funcionario_id, nome, pode: false, txt: `já alocado em ${destino} desde ${dataBR(a.data_inicio)}` };
+    if(a && a.data_inicio >= m.data_chegada_real)
+      return { id: e.funcionario_id, nome, pode: false, txt: `período atual em ${mobAlocRotulo(a.obra?.codigo, a.equipamento?.codigo)} começou em ${dataBR(a.data_inicio)}, depois da chegada: corrija pela ficha do funcionário` };
+    const saida = mobSomarDias(m.data_chegada_real, -1);
+    return { id: e.funcionario_id, nome, pode: true,
+      txt: (a ? `sai de ${mobAlocRotulo(a.obra?.codigo, a.equipamento?.codigo)} em ${dataBR(saida)}, ` : "sem alocação ativa, ") + `entra em ${destino} em ${dataBR(m.data_chegada_real)}` };
+  }).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  if(!pessoas.some(p => p.pode)) return;
+  _mobAlocCtx = { mobId };
+  $("mobal-texto").textContent = `A máquina chegou em ${dataBR(m.data_chegada_real)}. Marque quem passa a ficar alocado em ${destino} a partir dessa data. Quem não for marcado continua onde está.`;
+  $("mobal-lista").innerHTML = pessoas.map(p => `<label class="mob-pend mob-eq-linha">
+      <input type="checkbox" data-mobal="${esc(p.id)}" ${p.pode ? "checked" : "disabled"} />
+      <span class="mob-pend-txt"><span class="mob-pend-titulo">${esc(p.nome)}</span><span class="meta">${esc(p.txt)}</span></span>
+    </label>`).join("");
+  $("mob-aloc-modal").style.display = "flex";
+}
+function fecharMoverAlocacaoMob(){ $("mob-aloc-modal").style.display = "none"; _mobAlocCtx = null; }
+async function confirmarMoverAlocacaoMob(){
+  if(!_mobAlocCtx) return;
+  if(!mobPodeMoverAlocacao()){ aviso("app-aviso", "Seu cargo não movimenta funcionário.", "erro"); return; }
+  const ids = [...document.querySelectorAll("#mobal-lista input[data-mobal]:checked")].map(i => i.dataset.mobal);
+  if(!ids.length){ fecharMoverAlocacaoMob(); return; }
+  const { data, error } = await sb.rpc("mobilizacao_mover_equipe", { p_mobilizacao: _mobAlocCtx.mobId, p_funcionarios: ids });
+  if(error){ aviso("app-aviso", "Não foi possível mover a alocação: " + error.message, "erro"); return; }
+  const recus = (data?.pessoas || []).filter(p => p.resultado === "recusado");
+  aviso("app-aviso", `Alocação movida para ${data?.movidos || 0} pessoa(s) desde ${dataBR(data?.data)}.`
+    + (recus.length ? ` Não movidos: ${recus.map(p => `${p.nome || "?"} (${p.mensagem})`).join("; ")}.` : ""), recus.length ? "erro" : "ok");
+  fecharMoverAlocacaoMob();
+  if(_mobAberta && $("mob-equipe")){ await mobCarregarSugestoesEquipe(_mobAberta.obra_id); mobRenderEquipeFicha(); }
 }
