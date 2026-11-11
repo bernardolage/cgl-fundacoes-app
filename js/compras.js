@@ -3395,8 +3395,7 @@ async function confirmarServico(){
   const p = s.pedido, desc = $("cmp-srv-desc").value.trim(), files = [...($("cmp-srv-anexos").files || [])];
   const itens = s.itens.filter(i => Number(i.quantidade) > 0);
   if(!itens.length){ aviso("app-aviso", "Informe a quantidade recebida de pelo menos um serviço.", "erro"); return; }
-  if(!desc){ aviso("app-aviso", "Descreva o que foi executado.", "erro"); $("cmp-srv-desc").focus(); return; }
-  if(!files.length){ aviso("app-aviso", "Serviço sem evidência não é recebido: anexe a foto ou o documento do que foi executado.", "erro"); return; }
+  // lote S62a (#265): o texto e a evidência são opcionais; em branco, o recebimento leva a descrição dos serviços recebidos
   // fase 152 (D-152d): nota anotada opcional; sem número, emissão e total não vão
   const nfAnot = ($("cmp-srv-nf")?.value || "").trim() || null, totAnot = Number($("cmp-srv-total")?.value || 0);
   if(!nfAnot && ($("cmp-srv-emissao")?.value || totAnot)){ aviso("app-aviso", "Para anotar a nota, informe o número da NF (ou apague emissão e total).", "erro"); $("cmp-srv-nf").focus(); return; }
@@ -3413,7 +3412,7 @@ async function confirmarServico(){
   // lote S61a (#265): sem vencimento, não nasce título; total_nf = valor do serviço (só exibição; o Lançar NF recalcula)
   // fase 152 (D-152d): com a nota anotada, número, série, emissão e o total da nota (quando informado) vão para o financeiro conferir
   const { error } = await sb.from("recebimentos").insert({ id: recId, pedido_id: p.id, fornecedor_id: p.fornecedor_id, tipo: "servico",
-    data_recebimento: $("cmp-srv-data").value || hojeISO(), parcelas: 1, total_nf: nfAnot && totAnot > 0 ? Math.round(totAnot * 100) / 100 : total, observacoes: desc,
+    data_recebimento: $("cmp-srv-data").value || hojeISO(), parcelas: 1, total_nf: nfAnot && totAnot > 0 ? Math.round(totAnot * 100) / 100 : total, observacoes: desc || ("Serviço recebido: " + itens.map(i => i.descricao).join("; ")).slice(0, 500),
     nf_numero: nfAnot, nf_serie: nfAnot ? (($("cmp-srv-serie")?.value || "").trim() || null) : null, nf_data_emissao: nfAnot ? ($("cmp-srv-emissao")?.value || null) : null });
   if(error){ await cmpRemoverAnexos(anexos); aviso("app-aviso", "Erro ao criar o recebimento: " + error.message, "erro"); return; }
   const { error: eIt } = await sb.from("recebimento_itens").insert(itens.map(it => ({
@@ -3423,11 +3422,13 @@ async function confirmarServico(){
     centro_custo_id: it.destino === "centro_custo" ? it.centro_custo_id : null,
     ...(_cmpS56 ? { destino_acessorio_id: it.destino === "acessorio" ? (it.destino_acessorio_id || null) : null } : {}) })));   // lote S56 (#202)
   if(eIt){ await desfazer(); aviso("app-aviso", "Erro nos itens do recebimento: " + eIt.message, "erro"); return; }
-  const { error: eAn } = await sb.from("recebimento_anexos").insert(anexos.map(a => ({ recebimento_id: recId, ...a })));
-  if(eAn){ await desfazer(); aviso("app-aviso", "Erro ao registrar a evidência: " + eAn.message, "erro"); return; }
+  if(anexos.length){
+    const { error: eAn } = await sb.from("recebimento_anexos").insert(anexos.map(a => ({ recebimento_id: recId, ...a })));
+    if(eAn){ await desfazer(); aviso("app-aviso", "Erro ao registrar a evidência: " + eAn.message, "erro"); return; }
+  }
   const { error: eRpc } = await sb.rpc("recebimento_confirmar", { p_id: recId });
   if(eRpc){ await desfazer(); aviso("app-aviso", "Serviço não recebido: " + eRpc.message.replace(/^.*?: /, ""), "erro"); return; }
-  aviso("app-aviso", "Serviço recebido com evidência: custo lançado. A NF e o título saem em Lançar NF.", "ok");
+  aviso("app-aviso", `Serviço recebido${anexos.length ? " com evidência" : ""}: custo lançado. A NF e o título saem em Lançar NF.`, "ok");
   fecharReceberServico();
   await cmpFetchPedidos();
   await abrirPedido(p.id);
