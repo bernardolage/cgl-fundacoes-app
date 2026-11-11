@@ -2925,6 +2925,7 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-chip.st { background: var(--marca-50); border-color: var(--marca-100); color: var(--acao-txt); }
 .mob-chip.ok { background: var(--sucesso-bg); color: var(--sucesso-txt); border-color: transparent; }
 .mob-chip.perigo { background: var(--perigo-bg); color: var(--perigo-txt); border-color: transparent; }
+.mob-chip.aviso { background: var(--aviso-bg); color: var(--aviso-txt); border-color: transparent; }   /* fase 157c: sem receita / sem custo */
 .mob-card-rodape { display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--txt-xs); color: var(--txt-sec); }
 .mob-badge { border-radius: var(--radius-pill); padding: 1px 8px; font-size: var(--txt-xs); font-weight: 600; }
 .mob-badge.ok { background: var(--sucesso-bg); color: var(--sucesso-txt); }

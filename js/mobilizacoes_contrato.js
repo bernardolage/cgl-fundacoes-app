@@ -333,7 +333,9 @@ function mobPendLinhasHTML(lista){
         </div>`; }).join("")}
     </div>`).join("") || uiVazio("Sem pendências.");
 }
-const MOB_ABAS = [["maquinas", "Máquinas"], ["equipe", "Equipe e SESMT"], ["kit", "Kit e materiais"], ["escopo", "Escopo"], ["condicoes", "Condições e contato"], ["pendencias", "Pendências"], ["viagens", "Viagens e notas"], ["conversa", "Conversa"]];
+const MOB_ABAS = [["maquinas", "Máquinas"], ["equipe", "Equipe e SESMT"], ["kit", "Kit e materiais"], ["escopo", "Escopo"], ["condicoes", "Condições e contato"], ["pendencias", "Pendências"], ["viagens", "Viagens e notas"], ["custo", "Custo"], ["conversa", "Conversa"]];
+// fase 157c: a aba Custo só aparece para quem lê financeiro (o banco só devolve a vw_mobilizacao_resultado a esses cargos)
+function mobAbas(){ return MOB_ABAS.filter(a => a[0] !== "custo" || podeVerValorObra()); }
 
 function renderDrawerMob(){
   const m = _mobAberta, c = _mobAbertaCard || {};
@@ -351,7 +353,8 @@ function renderDrawerMob(){
   const simNao = (id, v) => `<select id="${esc(id)}"><option value="">—</option><option value="true"${v === true ? " selected" : ""}>Sim</option><option value="false"${v === false ? " selected" : ""}>Não</option></select>`;
   _mobApoioSel.mob = [...(m.equipamentos_apoio || [])];
   const transicoesDe = (x, sm) => podeEditar ? (MOB_TRANSICOES[x.status] || []).map(([st, lbl, cls]) => `<button type="button" class="${esc(cls)}${sm ? " btn-sm" : ""}" data-mob-tr="${esc(st)}" data-mob-id="${esc(x.id)}">${esc(lbl)}</button>`).join("") : "";
-  const abaAtual = MOB_ABAS.some(a => a[0] === _mobAba) ? _mobAba : "maquinas";
+  const abas = mobAbas();
+  const abaAtual = abas.some(a => a[0] === _mobAba) ? _mobAba : "maquinas";
   const pane = (k2, html) => `<div class="mob-aba" data-aba="${esc(k2)}"${k2 === abaAtual ? "" : " hidden"}>${/* html */ html}</div>`;
   const nEq = mobEquipeDe(m.id), nLib = nEq.filter(mobEqLiberado).length;
   const pendAbCtr = _mobPendObra.filter(p => !p.concluida).length, pendAbMaq = _mobPendAberta.filter(p => !p.concluida).length;
@@ -407,7 +410,7 @@ function renderDrawerMob(){
     </div>
 
     <div class="odoo-notebook" id="mob-notebook" role="tablist">
-      ${MOB_ABAS.map(([k2, rot]) => `<button type="button" role="tab" data-aba="${esc(k2)}" class="${k2 === abaAtual ? "ativo" : ""}" aria-selected="${k2 === abaAtual ? "true" : "false"}">${esc(rot)}${k2 === "equipe" && nEq.length ? ` <span class="conf-badge">${esc(nLib)}/${esc(nEq.length)}</span>` : ""}${k2 === "pendencias" && (pendAbCtr + pendAbMaq) ? ` <span class="conf-badge">${esc(pendAbCtr + pendAbMaq)}</span>` : ""}</button>`).join("")}
+      ${abas.map(([k2, rot]) => `<button type="button" role="tab" data-aba="${esc(k2)}" class="${k2 === abaAtual ? "ativo" : ""}" aria-selected="${k2 === abaAtual ? "true" : "false"}">${esc(rot)}${k2 === "equipe" && nEq.length ? ` <span class="conf-badge">${esc(nLib)}/${esc(nEq.length)}</span>` : ""}${k2 === "pendencias" && (pendAbCtr + pendAbMaq) ? ` <span class="conf-badge">${esc(pendAbCtr + pendAbMaq)}</span>` : ""}</button>`).join("")}
     </div>
 
     ${pane("maquinas",
@@ -470,6 +473,8 @@ function renderDrawerMob(){
           ? `<div class="mob-card-chips">${m.movimentacao_remessa_id ? linkMovimentacao(m.movimentacao_remessa_id, "Nota de remessa") : ""} ${m.movimentacao_retorno_id ? linkMovimentacao(m.movimentacao_retorno_id, "Nota de retorno") : ""}</div>`
           : uiVazio("A remessa nasce na saída para a obra; o retorno, na desmobilização.")))}
 
+    ${abas.some(a => a[0] === "custo") ? pane("custo", uiSecao("documento", `Receita × custo · ${tag}`, `<div id="mob-custo">${uiVazio("Carregando…")}</div>`)) : ""}
+
     ${pane("conversa", `<p class="meta">Conversa da máquina ${esc(tag)} (cada máquina tem a sua).</p><div id="mob-chatter"></div>`)}
   `;
 
@@ -501,10 +506,50 @@ function renderDrawerMob(){
   mobRenderMateriais();
   mobRenderSeparacao();
   mobRenderViagens();
+  mobRenderCusto();
   if(typeof manRenderChecklistMob === "function") manRenderChecklistMob(m, "mob-checklist");
   $("mob-ver-origem")?.addEventListener("click", e => { e.preventDefault(); abrirMobilizacao(m.origem_mobilizacao_id); });
   ["mob-cobrar-ida", "mob-cobrar-volta"].forEach(id => $(id)?.addEventListener("change", () => mobSalvarCobranca(m)));
   mobSugerirDesmobPrev(m);
+}
+
+/* ---------- Fase 157c: receita × custo por perna ----------
+   Lê vw_mobilizacao_resultado (uma linha por perna). Cobrado = itens de medição ligados à máquina e à perna (o orçado fica
+   de contexto); custo = deslocamento da obra (vw_custos) das viagens da perna: frota pelo km, frete pelo título. Perna sem
+   medição sai "sem receita"; sem viagem com valor, "sem custo". O título abre pela viagem (não há ficha de título no app). */
+const MOB_SUBTIPO_LBL = { frota_propria: "Frota própria", frete_terceirizado: "Frete terceirizado", misto: "Frota e frete" };
+async function mobRenderCusto(){
+  const box = $("mob-custo"); const m = _mobAberta; if(!box || !m) return;
+  const { data, error } = await sb.from("vw_mobilizacao_resultado").select("*").eq("mobilizacao_id", m.id);
+  if(!$("mob-custo") || _mobAberta !== m) return;
+  if(error){ box.innerHTML = uiVazio("Não foi possível ler o resultado: " + error.message); return; }
+  const linhas = data || [];
+  if(!linhas.length){ box.innerHTML = uiVazio("Sem resultado para esta máquina (mobilização cancelada ou cargo sem leitura do financeiro)."); return; }
+  const vgIds = [...new Set(linhas.flatMap(l => l.viagem_ids || []))];
+  const titIds = [...new Set(linhas.flatMap(l => l.titulo_ids || []))];
+  const [rv, rt] = await Promise.all([
+    vgIds.length ? sb.from("viagens").select("id,numero,data").in("id", vgIds) : Promise.resolve({ data: [] }),
+    titIds.length ? sb.from("titulos_pagar").select("id,vencimento,valor").in("id", titIds) : Promise.resolve({ data: [] })
+  ]);
+  if(!$("mob-custo") || _mobAberta !== m) return;
+  const vgs = rv.data || [], tits = rt.data || [];
+  const linha = (rot, valorHTML, dica) => `<div class="custos-linha"${dica ? ` title="${esc(dica)}"` : ""}><span>${esc(rot)}</span><strong data-val-sens>${/* html */ valorHTML}</strong></div>`;
+  const perna = (p, rot) => {
+    const l = linhas.find(x => x.perna === p) || {};
+    const med = Number(l.valor_medido || 0), cst = Number(l.custo || 0);
+    const orc = l.valor_orcado != null ? Number(l.valor_orcado) : null;
+    const viagens = (l.viagem_ids || []).map(id => { const v = vgs.find(x => x.id === id); return linkViagem(id, "viagem " + (v?.numero || "") + (v?.data ? " · " + dataBR(v.data) : "")); });
+    const titulos = (l.titulo_ids || []).map(id => { const t = tits.find(x => x.id === id); return t ? `<span class="mob-chip">título · venc. ${esc(dataBR(t.vencimento))} · ${brl(t.valor)}</span>` : `<span class="mob-chip">título a pagar</span>`; });
+    return `<div><div class="mov-ace-sug-grupo-t">${esc(rot)}${l.cobrar === false ? ` <span class="mob-chip">não cobrar</span>` : ""}</div>
+      ${linha("Orçado", orc != null ? brl(orc) : `<span class="mob-chip">sem item no orçamento</span>`, "Item da perna no orçamento da obra")}
+      ${linha("Cobrado (medido)", med > 0 ? brl(med) : `<span class="mob-chip aviso">sem receita</span>`, "Itens de medição ligados a esta máquina e perna")}
+      ${linha("Custo", cst > 0 ? brl(cst) : `<span class="mob-chip aviso">sem custo</span>`, "Deslocamento lançado na obra pelas viagens desta perna")}
+      ${linha("Resultado", med > 0 || cst > 0 ? brl(med - cst) : "—", "Cobrado menos custo")}
+      ${linha("Quem fez", esc(MOB_SUBTIPO_LBL[l.subtipo] || "—") + (l.transportador ? " · " + esc(l.transportador) : ""))}
+      <div class="mob-card-chips">${/* html */ viagens.join(" ") || `<span class="meta">Sem viagem nesta perna.</span>`} ${/* html */ titulos.join(" ")}</div>
+    </div>`;
+  };
+  box.innerHTML = `<div class="custos-resumo">${perna("ida", "Ida (mobilização)")}${perna("volta", "Volta (desmobilização)")}</div>`;
 }
 
 /* ---------- Fase 157b (A7): cobrar cada perna em medição ----------

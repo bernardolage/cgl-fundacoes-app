@@ -3651,14 +3651,21 @@ async function custosRender(containerId, filtro, cbTotal){
     return q;
   };
   const verCaixa = typeof podeVerContasPagar === "function" && podeVerContasPagar();
-  const [rCus, rComp, rCx] = await Promise.all([
+  // fase 157c: na obra, o deslocamento abre por perna (ida/volta da mobilização) pela vw_mobilizacao_resultado, que só
+  // devolve linha a quem lê financeiro; sem leitura, a tabela fica como antes
+  const verPerna = !!filtro.obra_id && typeof podeVerValorObra === "function" && podeVerValorObra();
+  const [rCus, rComp, rCx, rPerna] = await Promise.all([
     // lote travas (BUG-04): o limite de 2.000 linhas era cortado em 1.000 pela API sem aviso e o total saía menor; lerTudo pagina pela chave
     // (a mesma de js/patrimonio.js) e a ordem da tela, da data mais nova para a mais velha, é refeita logo abaixo
     lerTudo(() => aplicar(sb.from("vw_custos").select("*")), ["categoria", "data", "origem", "origem_id", "valor"]),
     lerTudo(() => aplicar(sb.from("vw_custos_comprometido").select("pedido_id,pedido_numero,valor")), ["pedido_item_id", "equipamento_id"]),
     verCaixa ? lerTudo(() => aplicar(sb.from("vw_custos_caixa_previsto").select("mes_vencimento,valor")), ["titulo_id", "recebimento_item_id", "equipamento_id"])
-             : Promise.resolve({ data: [], error: { pulado: true } })
+             : Promise.resolve({ data: [], error: { pulado: true } }),
+    verPerna ? sb.from("vw_mobilizacao_resultado").select("perna,viagem_ids").eq("obra_id", filtro.obra_id) : Promise.resolve({ data: [] })
   ]);
+  const pernaDaViagem = {};
+  if(!rPerna.error) (rPerna.data || []).forEach(r => (r.viagem_ids || []).forEach(id => { pernaDaViagem[id] = r.perna; }));
+  const PERNA_LBL = { ida: "ida", volta: "volta" };
   const { data, error } = rCus;
   if(error){ c.innerHTML = `<p class="vazio">Erro ao carregar custos: ${esc(error.message)}</p>`; return; }
   const linhas = (data || []).sort((a, b) => String(b.data || "").localeCompare(String(a.data || "")));
@@ -3669,6 +3676,10 @@ async function custosRender(containerId, filtro, cbTotal){
   const pode = cmpPodeOperar() && !leAuditor;
   const mesBR = m => m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : "";
   const porCat = {}; linhas.forEach(l => porCat[l.categoria] = (porCat[l.categoria] || 0) + Number(l.valor || 0));
+  const porPerna = {}; linhas.filter(l => l.origem === "deslocamento").forEach(l => { const p = pernaDaViagem[l.origem_id] || "sem"; porPerna[p] = (porPerna[p] || 0) + Number(l.valor || 0); });
+  const blocoPerna = verPerna && (porPerna.ida || porPerna.volta)
+    ? `<div><div class="mov-ace-sug-grupo-t" title="Custo de deslocamento das viagens ligadas a uma mobilização, pela perna">Deslocamento por perna</div>${[["ida", "Ida (mobilização)"], ["volta", "Volta (desmobilização)"], ["sem", "Sem mobilização"]].filter(([k]) => porPerna[k]).map(([k, rot]) => `<div class="custos-linha"><span>${esc(rot)}</span><strong>${brl(porPerna[k])}</strong></div>`).join("")}</div>`
+    : "";
   const temComp = linhas.some(l => l.competencia !== undefined);
   const blocoMes = () => {
     const porComp = temComp && _custosMesModo === "competencia";
@@ -3713,9 +3724,10 @@ async function custosRender(containerId, filtro, cbTotal){
       ${linhas.length ? `<div><div class="mov-ace-sug-grupo-t">Por categoria</div>${Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="custos-linha"><span>${esc(CMP_CAT_LBL[k] || k)}</span><strong>${brl(v)}</strong></div>`).join("")}</div>
       <div id="${esc(containerId)}-mes">${/* html */ blocoMes()}</div>` : ""}
       ${/* html */ blocoCaixa}
+      ${/* html */ blocoPerna}
     </div>` : ""}
     ${linhas.length ? `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Origem</th><th>Categoria</th><th>Descrição</th><th>${filtro.equipamento_id ? "Obra" : filtro.centro_custo_id ? "Obra / TAG" : "TAG"}</th><th>Fornecedor</th><th>Doc.</th><th class="num">Valor</th></tr></thead>
-      <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : l.origem === "combustivel" ? "ambar" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}</span></td>
+      <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : l.origem === "combustivel" ? "ambar" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}${l.origem === "deslocamento" && pernaDaViagem[l.origem_id] ? " · " + esc(PERNA_LBL[pernaDaViagem[l.origem_id]]) : ""}</span></td>
         <td>${esc(CMP_CAT_LBL[l.categoria] || l.categoria)}</td><td>${esc(semCodOdoo(l.descricao) || "")}</td>
         <td>${filtro.equipamento_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : "—") : filtro.centro_custo_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : esc(nomeEq(l.equipamento_id) || "—")) : esc(nomeEq(l.equipamento_id) || "—")}</td>
         <td>${esc(nomeForn(l.fornecedor_id) || "—")}</td><td class="meta">${esc(l.documento || "")}</td><td class="num">${brl(l.valor)}</td></tr>`).join("")}</tbody></table></div>
