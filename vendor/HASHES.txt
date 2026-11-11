@@ -8,6 +8,14 @@
 #                                  (troca a 0.18.5: corrige CVE-2023-30533 e CVE-2024-22363)
 #   html2pdf-0.10.1.bundle.min.js  https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js
 #                                  (hash igual ao publicado no npm)
+#   pdfjs-4.10.38.min.js          pdfjs-dist 4.10.38 (Apache-2.0), arquivo build/pdf.min.mjs do pacote do npm
+#   pdfjs-4.10.38.worker.min.js   pdfjs-dist 4.10.38, arquivo build/pdf.worker.min.mjs do mesmo pacote
+#                                  (fase 167a, 11/11/2026: https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-4.10.38.tgz, conferido com a
+#                                  integridade que o npm declara, sha512-/Y3fcFrXEAsMjJXeL9J8+ZG9U01LbuWaYypvDW2ycW1jL269L3js3DVBjDJ0Up9Np1uqDXsDrRihHANhZOlwdQ==.
+#                                  O conteúdo é o do npm, byte a byte; só o nome muda, para .js. NÃO entram no index.html: a janela
+#                                  "Projeto do cliente" (js/planta_projeto.js) carrega os dois por import(), só para quem envia o PDF)
 ee3be8de192b97cb1d73d1e95d6b82bb1f6b658c0f97c4ef757fc331996ed3d3  supabase-js-2.118.0.min.js
 cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41  xlsx-0.20.3.full.min.js
 85e6ee9ce246e3ae4424313f7e46a5ed860a28d757811de8dc9c43f306049d65  html2pdf-0.10.1.bundle.min.js
+27fc2a057a00f92a4334ad06e17dbd7259912954e9fb7f76400bcca5fd190a9c  pdfjs-4.10.38.min.js
+1baa1844c89c80a5b2797c916e75ab29254be46d8e9cb53cb6364d7aad84be36  pdfjs-4.10.38.worker.min.js

@@ -751,6 +751,7 @@ function renderEstacas(){
   if(typeof egpVisao === "function" && egpVisao(_estView, [wrapLista, wrapPlanta, wrapRaiz])) return;   // visão GPS: js/estacas_gps.js cuida do próprio bloco
   if(_estView === "planta"){
     mostrar(wrapLista, false); mostrar(wrapRaiz, false); mostrar(wrapPlanta, true);
+    if(typeof ppjRender === "function" && ppjRender()) return;   // folha do projeto do cliente como fundo: js/planta_projeto.js desenha; sem folha na tela, segue o Esquema
     renderPlantaSVG();
     return;
   }

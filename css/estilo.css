@@ -3704,3 +3704,47 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .egp-nota { margin: var(--esp-2) 0 0; font-size: var(--txt-sm); color: var(--txt-fraco); }
 .egp-nota-topo { margin: 0 0 var(--esp-2); color: var(--txt-sec); }
 .egp-longe { margin-top: var(--esp-3); }
+/* Fase 167a: projeto do cliente como fundo da planta (js/planta_projeto.js). Barra Esquema x folhas, visor da folha e a
+   janela de envio. Só tokens; em folha, somem os blocos que são do Esquema (cor, regra de distância, conflitos, desenho). */
+.ppj-barra { margin: 0 0 var(--esp-2); }
+.ppj-barra-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); }
+.ppj-fundos { flex-wrap: wrap; }
+.ppj-barra-acoes { display: inline-flex; flex-wrap: wrap; gap: var(--esp-2); margin-left: auto; }
+.ppj-vazio { margin: 0 0 var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px dashed var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-2); }
+.ppj-erro { margin: var(--esp-1) 0 0; font-size: var(--txt-sm); color: var(--perigo-txt); }
+#est-planta-wrap.ppj-em-folha > .planta-toolbar,
+#est-planta-wrap.ppj-em-folha > #regra-dist,
+#est-planta-wrap.ppj-em-folha > #planta-conflitos,
+#est-planta-wrap.ppj-em-folha > #est-planta-svg-container,
+#est-planta-wrap.ppj-em-folha > .planta-rodape { display: none; }
+.ppj-palco { position: relative; width: 100%; height: min(72vh, 820px); min-height: 360px; border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-2); overflow: hidden; touch-action: none; user-select: none; cursor: grab; }
+.ppj-palco.ppj-arrastando { cursor: grabbing; }
+.ppj-palco:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
+.ppj-palco:fullscreen { height: 100%; border: 0; border-radius: 0; }
+.ppj-palco.ppj-cheia { position: fixed; inset: 0; z-index: 9990; height: auto; min-height: 0; border: 0; border-radius: 0; }
+.ppj-img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; will-change: transform; pointer-events: none; }
+.ppj-img:not([src]) { visibility: hidden; }
+.ppj-estado { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: var(--esp-4); text-align: center; font-size: var(--txt-md); color: var(--txt-fraco); pointer-events: none; }
+.ppj-estado[hidden], .ppj-rodape [hidden] { display: none; }   /* o atributo hidden perde para o display do .btn-sec: a regra devolve o sumiço */
+.ppj-controles { position: absolute; top: var(--esp-2); right: var(--esp-2); display: flex; gap: var(--esp-1); padding: var(--esp-1); border-radius: var(--radius-sm); background: var(--sup-0); box-shadow: var(--shadow-sm); cursor: default; }
+.ppj-controles button { min-width: 32px; }
+.ppj-rodape { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2) var(--esp-3); margin: var(--esp-2) 0 0; font-size: var(--txt-sm); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
+.ppj-nota { margin: var(--esp-1) 0 0; font-size: var(--txt-sm); color: var(--txt-fraco); }
+.ppj-caixa { max-width: 1080px; width: 94%; }
+.ppj-caixa .ui-secao + .ui-secao { margin-top: var(--esp-3); }
+.ppj-linha { display: flex; align-items: center; gap: var(--esp-2); }
+.ppj-linha select, .ppj-linha input { flex: 1; min-width: 0; }
+.ppj-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--esp-3); }
+.ppj-pag { display: flex; flex-direction: column; gap: var(--esp-2); min-width: 0; padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-2); }
+.ppj-pag .campo, .ppj-folha .campo { margin-bottom: 0; }
+.ppj-mini { display: flex; align-items: center; justify-content: center; min-height: 160px; border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-0); overflow: hidden; }
+.ppj-mini canvas { display: block; max-width: 100%; height: auto; }
+.ppj-mini-txt { font-size: var(--txt-sm); color: var(--txt-fraco); }
+.ppj-check { display: inline-flex; align-items: center; gap: var(--esp-1); font-size: var(--txt-md); cursor: pointer; }
+.ppj-progresso { margin-right: auto; font-size: var(--txt-sm); color: var(--txt-sec); }
+.ppj-folha { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--esp-2) var(--esp-3); align-items: end; padding: var(--esp-3) 0; border-bottom: 1px solid var(--borda); }
+.ppj-folha:first-child { padding-top: 0; }
+.ppj-folha:last-child { padding-bottom: 0; border-bottom: 0; }
+.ppj-folha.ppj-inativa .campo { opacity: .7; }
+.ppj-folha-acoes { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); }
+.ppj-folha-meta { margin-right: auto; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
