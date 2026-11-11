@@ -47,6 +47,12 @@ function mayaNum(s){
   const n = Number(t);
   return isFinite(n) ? n : null;
 }
+/* "Sim" → true, "Não" → false; em branco, traço ou qualquer outro texto ("não informado", "n/a") → null (não informado).
+   Fase 166: só resposta dada vira resposta; nada vira "não" por omissão. */
+function mayaSimNao(s){
+  const t = mayaNorm(s).replace(/[.!?]+$/, "");
+  return /^s(im)?$/.test(t) ? true : /^n(ao)?$/.test(t) ? false : null;
+}
 /* "PC.110 - REF" / "PC.101 - REFORÇO" / "E12R" → { numero: "PC.110", refuro: true } */
 function mayaEstaca(raw){
   const t = String(raw == null ? "" : raw).trim();
@@ -164,8 +170,9 @@ function mayaParaDias(abas){
     const periodo = mayaPeriodo(mayaCampo(o, "periodo"));
     const desc = String(mayaCampo(o, "descric") || "").trim();
     const tipo = String(mayaCampo(o, "ocorrencia") || "").trim();
-    const paralisado = /^s/i.test(mayaCampo(o, "paralisado"));
-    const cliente = /^s/i.test(mayaCampo(o, "em razao", "razao"));
+    // fase 166: sim vira sim, não vira não, e célula em branco ou coluna ausente fica nulo (não informado), nunca "não"
+    const paralisado = mayaSimNao(mayaCampo(o, "paralisado"));
+    const cliente = mayaSimNao(mayaCampo(o, "em razao", "razao"));
     // fase 94 (#77): a ocorrência leva a máquina no texto, porque o dia vira um diário por máquina e as
     // observações do dia ficam no diário da máquina principal
     const maq = String(mayaCampo(o, "maquina") || "").trim() || null;

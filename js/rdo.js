@@ -592,6 +592,84 @@ const RDO_MOTIVO_PARADA = { aguardando_liberacao: "Aguardando liberação", agua
   aguardando_concreto_argamassa: "Aguardando concreto/argamassa", aguardando_frente: "Aguardando frente", chuva: "Chuva",
   manutencao: "Manutenção", preparacao: "Preparação", deslocamento_interno: "Deslocamento interno", outro: "Outro" };
 const RDO_FOTO_TIPO = { boletim_assinado: "Boletim assinado", estaca: "Estaca", ocorrencia: "Ocorrência", horimetro: "Horímetro", diario: "Diário" };
+
+/* ---------- Fase 166: as duas respostas da parada ("a obra ficou paralisada?" e "em razão do cliente?") ----------
+   Nulo é "não informado": nunca vira "não" na tela nem na soma. Funções puras, conferidas em scripts/testar-fase166.mjs. */
+/* Resposta sugerida por motivo. Cópia idêntica à de js/op_parada.js: os dois arquivos não carregam na mesma página, e o
+   scripts/testar-fase166.mjs compara as duas. null = sem sugestão: a pergunta aparece sem resposta e salvar exige responder. */
+const PARADA_RESPOSTA_PADRAO = {
+  aguardando_liberacao: { paralisado: true, em_razao_cliente: true },
+  aguardando_locacao: { paralisado: true, em_razao_cliente: true },
+  aguardando_concreto_argamassa: { paralisado: true, em_razao_cliente: true },
+  aguardando_frente: { paralisado: true, em_razao_cliente: true },
+  chuva: { paralisado: true, em_razao_cliente: false },
+  manutencao: { paralisado: true, em_razao_cliente: false },
+  preparacao: { paralisado: null, em_razao_cliente: null },
+  deslocamento_interno: { paralisado: null, em_razao_cliente: null },
+  outro: { paralisado: null, em_razao_cliente: null }
+};
+const PARADA_AVISO_RESPOSTA = "Responda se a obra ficou paralisada e se foi em razão do cliente.";
+const RDO_PARADA_COLS = "id,tipo,motivo,descricao,paralisado,em_razao_cliente,periodo_inicio,periodo_fim,horas_paradas,origem,status,autor_id";
+/* só verdadeiro e falso são resposta; qualquer outra coisa é "não informado" (nulo) */
+const paradaBool = (v) => v === true ? true : v === false ? false : null;
+function paradaSugestao(motivo){
+  const s = Object.prototype.hasOwnProperty.call(PARADA_RESPOSTA_PADRAO, motivo) ? PARADA_RESPOSTA_PADRAO[motivo] : null;
+  return { paralisado: paradaBool(s && s.paralisado), em_razao_cliente: paradaBool(s && s.em_razao_cliente) };
+}
+/* motivo sem sugestão (ou desconhecido): quem lança tem de responder à mão */
+function paradaSemSugestao(motivo){ const s = paradaSugestao(motivo); return s.paralisado === null || s.em_razao_cliente === null; }
+/* falta alguma das duas respostas: não dá para salvar parada nova */
+function paradaRespostaFalta(r){ return !r || paradaBool(r.paralisado) === null || paradaBool(r.em_razao_cliente) === null; }
+/* valor do <select> ↔ valor do banco: "sim" = verdadeiro, "nao" = falso, qualquer outra coisa = nulo */
+function paradaDeSimNao(v){ return v === "sim" ? true : v === "nao" ? false : null; }
+function paradaParaSimNao(v){ return v === true ? "sim" : v === false ? "nao" : ""; }
+/* de quem é a hora parada: "cliente" (sim), "cgl" (não) ou "nao_informado" (nulo) */
+function paradaGrupo(p){
+  const c = paradaBool(p && p.em_razao_cliente);
+  return c === true ? "cliente" : c === false ? "cgl" : "nao_informado";
+}
+/* Soma das horas paradas nos três grupos. Conta em centésimos de hora (horas_paradas tem duas casas): o total é sempre a soma
+   exata das três partes. semResposta = paradas com alguma das duas perguntas sem resposta. */
+function paradaSomar(lista){
+  const c = { total: 0, cliente: 0, cgl: 0, nao_informado: 0 };
+  const s = { n: 0, nCliente: 0, nCgl: 0, nNaoInformado: 0, semResposta: 0 };
+  (Array.isArray(lista) ? lista : []).forEach(p => {
+    if(!p || typeof p !== "object") return;
+    const h = Number(p.horas_paradas), cent = isFinite(h) && h > 0 ? Math.round(h * 100) : 0;
+    const g = paradaGrupo(p);
+    s.n++; c.total += cent; c[g] += cent;
+    if(g === "cliente") s.nCliente++; else if(g === "cgl") s.nCgl++; else s.nNaoInformado++;
+    if(paradaRespostaFalta(p)) s.semResposta++;
+  });
+  return { ...s, total: c.total / 100, cliente: c.cliente / 100, cgl: c.cgl / 100, nao_informado: c.nao_informado / 100 };
+}
+/* "em razão do cliente Y h · da CGL Z h · não informado W h" (a parte comum do rodapé da ficha e da linha da obra) */
+function paradaGruposTxt(s){
+  return `em razão do cliente ${num(s.cliente)} h · da CGL ${num(s.cgl)} h · não informado ${num(s.nao_informado)} h`;
+}
+/* linha da aba RDOs da ficha da obra; sem parada, não há linha */
+function paradaObraTxt(s){
+  return s && s.n ? `Paradas da obra: ${num(s.n)} · ${num(s.total)} h · ${paradaGruposTxt(s)}` : "";
+}
+/* Parada lançada na ficha: o que falta para gravar ("" = pode gravar). f = { motivo, inicio, fim, paralisado, em_razao_cliente, descricao } */
+function paradaValidarNova(f){
+  const x = f || {}, hora = /^\d{2}:\d{2}/;
+  if(!x.motivo || !Object.prototype.hasOwnProperty.call(RDO_MOTIVO_PARADA, x.motivo)) return "Escolha o motivo da parada.";
+  if(!hora.test(x.inicio || "") || !hora.test(x.fim || "")) return "Informe a hora de início e a hora do fim da parada.";
+  if(paradaRespostaFalta(x)) return PARADA_AVISO_RESPOSTA;
+  if(x.motivo === "outro" && !String(x.descricao || "").trim()) return "Descreva a parada quando o motivo é Outro.";
+  return "";
+}
+/* linha de `ocorrencias` da parada lançada na ficha (origem 'manual'). A hora é de parede: vai como foi digitada, sem fuso.
+   O tipo segue a RPC do campo (chuva = clima; o resto = paralisacao); as horas saem do gatilho do banco. */
+function paradaLinhaNova(f, cab, autorId){
+  const desc = String(f.descricao || "").trim();
+  return { obra_id: cab.obra_id, rdo_id: cab.id, data: cab.data, tipo: f.motivo === "chuva" ? "clima" : "paralisacao", status: "resolvida",
+    descricao: desc || RDO_MOTIVO_PARADA[f.motivo], motivo: f.motivo, paralisado: paradaBool(f.paralisado), em_razao_cliente: paradaBool(f.em_razao_cliente),
+    periodo_inicio: String(f.inicio).slice(0, 5), periodo_fim: String(f.fim).slice(0, 5), equipamento_id: cab.equipamento_id || null,
+    origem: "manual", autor_id: autorId || null };
+}
+
 function rdoPodeOperarFront(){
   return !!usuarioAtual && RDO_CARGOS_OPERAR.includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
 }
@@ -651,7 +729,7 @@ function rdoRenderCampo(r){
 async function rdoCarregarCampo(id){
   const [fotos, paradas, pend, orig] = await Promise.all([
     sb.from("rdo_fotos").select("id,tipo,storage_path,legenda,tirada_em,autor_id,enviada,desconsiderada_motivo,execucao_id,ocorrencia_id").eq("rdo_id", id).order("tirada_em"),
-    sb.from("ocorrencias").select("id,tipo,motivo,descricao,paralisado,em_razao_cliente,periodo_inicio,periodo_fim,horas_paradas,origem,status,autor_id").eq("rdo_id", id).order("periodo_inicio", { nullsFirst: true }),
+    sb.from("ocorrencias").select(RDO_PARADA_COLS).eq("rdo_id", id).order("periodo_inicio", { nullsFirst: true }),
     sb.from("campo_pendencias").select("id,tipo,detalhe,aberta_em").eq("rdo_id", id).is("resolvida_em", null),
     sb.rpc("rdo_campo_origens", { p_rdo: id })
   ]);
@@ -686,27 +764,208 @@ function rdoAplicarSelosApp(){
     });
   });
 }
+/* ---------- Fase 166: paradas na ficha (aba Observações) ----------
+   Quem opera o diário (rdoPodeOperarFront) e com o diário em rascunho: responde e corrige as duas perguntas de qualquer parada
+   (grava na hora), lança parada nova (origem 'manual') e exclui só a que foi lançada aqui. Parada do app e do Maya não muda de
+   horário nem de motivo nesta tela. Quem só lê, ou com o diário finalizado, vê texto; nulo aparece como "não informado".
+   Vale a policy que já existe em `ocorrencias` (os mesmos cargos de RDO_CARGOS_OPERAR): se o banco recusar, o valor volta. */
+const RDO_PAR_PERGUNTA = { paralisado: "Obra paralisada?", em_razao_cliente: "Em razão do cliente?" };
+let _rdoParForm = null;       // parada sendo lançada: { rdoId, motivo, inicio, fim, paralisado, em_razao_cliente, descricao, guarda }
+let _rdoParSelGuarda = null;  // marca de formulário alterado no momento em que o foco entrou num select de resposta
+let _rdoParForaSeq = 0;       // conta as edições feitas fora do bloco de paradas
+function rdoParPodeEditar(){
+  return !!rdoEditId && !!_rdoCampo.rdo && _rdoCampo.rdo.status === "rascunho" && rdoPodeOperarFront();
+}
+/* Fase 86: gravar uma parada não salva o resto da ficha. Antes de mexer aqui guarda-se a marca de formulário alterado; depois
+   de gravar ou desistir ela volta ao que era, a menos que alguém tenha mexido em outro campo nesse meio-tempo. */
+function rdoParSujoGuardar(){ return { sujo: typeof appFormSujo === "function" ? appFormSujo() : true, seq: _rdoParForaSeq }; }
+function rdoParSujoDevolver(g){
+  if(g && g.sujo === false && g.seq === _rdoParForaSeq && !_rdoParForm && typeof appLimparSujo === "function") appLimparSujo();
+}
+if(typeof document !== "undefined" && document.addEventListener) ["input", "change"].forEach(ev => document.addEventListener(ev, (e) => {
+  if(e.target && e.target.closest && !e.target.closest("#rdo-paradas")) _rdoParForaSeq++;
+}, true));
+
+function rdoParRespostaHTML(p, campo, edita){
+  const v = paradaBool(p[campo]);
+  if(!edita) return v === null ? '<span class="tag ambar" title="Ninguém respondeu esta pergunta para esta parada">não informado</span>' : v ? "sim" : "não";
+  const atual = paradaParaSimNao(v);
+  return `<select class="rdo-par-resp${v === null ? " rdo-par-falta" : ""}" data-par-id="${esc(p.id)}" data-par-campo="${esc(campo)}" aria-label="${esc(RDO_PAR_PERGUNTA[campo])}" title="Trocar grava na hora">${
+    [["", "não informado"], ["sim", "sim"], ["nao", "não"]].map(([val, rot]) => `<option value="${esc(val)}"${val === atual ? " selected" : ""}>${esc(rot)}</option>`).join("")}</select>`;
+}
+function rdoParOrigemHTML(p){
+  if(p.origem === "app_operador") return `<span class="tag verde" title="Lançada no app do campo por ${esc(rdoNomeCampo(p.autor_id))}">app</span>`;
+  if(p.origem === "maya") return '<span class="tag cinza" title="Importada do Relatório Diário do Maya">Maya</span>';
+  if(p.origem === "manual") return `<span class="tag cinza" title="Lançada nesta ficha${_rdoCampo.nomes[p.autor_id] ? " por " + esc(_rdoCampo.nomes[p.autor_id]) : ""}">manual</span>`;
+  return esc(p.origem || "manual");
+}
+function rdoParFormHTML(f){
+  const opt = (val, rot, atual) => `<option value="${esc(val)}"${val === atual ? " selected" : ""}>${esc(rot)}</option>`;
+  const resposta = (campo, rot) => `<div class="campo"><label for="rdo-par-${esc(campo)}">${esc(rot)}</label>
+        <select id="rdo-par-${esc(campo)}" data-par-form="${esc(campo)}">${[["", "responda"], ["sim", "Sim"], ["nao", "Não"]].map(([v, r]) => opt(v, r, paradaParaSimNao(f[campo]))).join("")}</select></div>`;
+  const dica = !f.motivo ? "Escolha o motivo: ele sugere as duas respostas, e você confere antes de incluir."
+    : paradaSemSugestao(f.motivo) ? "Este motivo não tem resposta sugerida: responda as duas perguntas."
+    : "Respostas sugeridas pelo motivo: confira e troque se não for o caso.";
+  return `<div class="rdo-par-form" id="rdo-par-form">
+    <div class="grade">
+      <div class="campo"><label for="rdo-par-motivo">Motivo</label>
+        <select id="rdo-par-motivo" data-par-form="motivo">${opt("", "— escolha —", f.motivo || "")}${Object.entries(RDO_MOTIVO_PARADA).map(([v, r]) => opt(v, r, f.motivo || "")).join("")}</select></div>
+      <div class="campo"><label for="rdo-par-inicio">Início</label><input type="time" id="rdo-par-inicio" data-par-form="inicio" value="${esc(f.inicio || "")}" /></div>
+      <div class="campo"><label for="rdo-par-fim">Fim</label><input type="time" id="rdo-par-fim" data-par-form="fim" value="${esc(f.fim || "")}" /></div>
+      ${/* html */ resposta("paralisado", "A obra ficou paralisada?")}
+      ${/* html */ resposta("em_razao_cliente", "Em razão do cliente?")}
+      <div class="campo largo"><label for="rdo-par-descricao">Descrição${f.motivo === "outro" ? " (obrigatória)" : ""}</label><input type="text" id="rdo-par-descricao" data-par-form="descricao" maxlength="200" value="${esc(f.descricao || "")}" /></div>
+    </div>
+    <p class="meta">${esc(dica)} As horas saem do início e do fim.</p>
+    <div class="form-acoes compacta">
+      <button type="button" class="btn btn-sm" id="btn-rdo-par-incluir">Incluir parada</button>
+      <button type="button" class="btn-sec btn-sm" id="btn-rdo-par-cancelar">Cancelar</button>
+    </div>
+  </div>`;
+}
 function renderRdoParadas(){
   const cont = $("rdo-paradas");
   if(!cont) return;
+  rdoParLigar(cont);
   const ps = rdoEditId ? (_rdoCampo.paradas || []) : [];
-  if(!ps.length){ cont.innerHTML = `<p class="vazio">Nenhuma parada ou ocorrência registrada neste diário.</p>`; return; }
+  const edita = rdoParPodeEditar();
+  if(_rdoParForm && (!edita || _rdoParForm.rdoId !== rdoEditId)) _rdoParForm = null;
+  const opera = rdoPodeOperarFront();
+  const acoes = edita
+    ? (_rdoParForm ? rdoParFormHTML(_rdoParForm) : `<p class="rdo-par-acoes"><button type="button" class="btn-sec btn-sm" id="btn-rdo-par-adicionar" title="Lança uma parada neste diário, com início, fim e as duas respostas">+ Adicionar parada</button></p>`)
+    : !opera ? "" : !rdoEditId ? `<p class="meta">Salve o diário para lançar paradas.</p>`
+    : `<p class="meta">Diário finalizado: para responder ou lançar parada, volte o diário para rascunho.</p>`;
+  if(!ps.length){ cont.innerHTML = `<p class="vazio">Nenhuma parada ou ocorrência registrada neste diário.</p>${/* html */ acoes}`; return; }
   const hora = (t) => t ? String(t).slice(0, 5) : "—";
-  const total = ps.reduce((s, p) => s + (Number(p.horas_paradas) || 0), 0);
+  const s = paradaSomar(ps);
+  const semCliente = `não informado ${num(s.nao_informado)} h`;
   cont.innerHTML = `<div class="tabela-rola"><table class="itens-tabela">
-    <thead><tr><th>Início</th><th>Fim</th><th class="num">Horas</th><th>Motivo</th><th>Descrição</th><th>Paralisou?</th><th>Cliente?</th><th>Origem</th></tr></thead>
+    <thead><tr><th>Início</th><th>Fim</th><th class="num">Horas</th><th>Motivo</th><th>Descrição</th><th title="A obra ficou paralisada por causa desta parada?">Obra paralisada?</th><th title="A parada foi em razão do cliente? Sim soma nas horas do cliente; não, nas da CGL.">Em razão do cliente?</th><th>Origem</th>${edita ? "<th></th>" : ""}</tr></thead>
     <tbody>${/* html */ ps.map(p => `<tr>
       <td>${esc(hora(p.periodo_inicio))}</td>
       <td>${p.periodo_inicio && !p.periodo_fim ? '<span class="tag ambar" title="Parada iniciada no campo e ainda não encerrada">em andamento</span>' : esc(hora(p.periodo_fim))}</td>
       <td class="num">${p.horas_paradas != null ? num(p.horas_paradas) : "—"}</td>
       <td>${esc(RDO_MOTIVO_PARADA[p.motivo] || p.tipo || "—")}</td>
       <td>${esc(p.descricao || "")}</td>
-      <td>${p.paralisado == null ? "—" : p.paralisado ? "sim" : "não"}</td>
-      <td>${p.em_razao_cliente == null ? "—" : p.em_razao_cliente ? "sim" : "não"}</td>
-      <td>${p.origem === "app_operador" ? `<span class="tag verde" title="Lançada no app do campo por ${esc(rdoNomeCampo(p.autor_id))}">app</span>` : p.origem === "maya" ? '<span class="tag cinza" title="Importada do Relatório Diário do Maya">Maya</span>' : esc(p.origem || "manual")}</td>
+      <td>${/* html */ rdoParRespostaHTML(p, "paralisado", edita)}</td>
+      <td>${/* html */ rdoParRespostaHTML(p, "em_razao_cliente", edita)}</td>
+      <td>${/* html */ rdoParOrigemHTML(p)}</td>
+      ${edita ? `<td>${p.origem === "manual" ? `<button type="button" class="btn-sec btn-sm txt-perigo" data-par-excluir="${esc(p.id)}" title="Excluir esta parada, lançada nesta ficha">Excluir</button>` : ""}</td>` : ""}
     </tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="2"><strong>Total parado</strong></td><td class="num"><strong>${num(total)}</strong></td><td colspan="5"></td></tr></tfoot>
-  </table></div>`;
+    <tfoot><tr><td colspan="${edita ? 9 : 8}"><strong>Total parado ${num(s.total)} h</strong> · em razão do cliente ${num(s.cliente)} h · da CGL ${num(s.cgl)} h · ${
+      s.nNaoInformado ? `<span class="tag ambar" title="${num(s.nNaoInformado)} parada(s) sem resposta para 'em razão do cliente'">${esc(semCliente)}</span>` : esc(semCliente)}</td></tr></tfoot>
+  </table></div>${/* html */ acoes}`;
+}
+/* liga uma vez os eventos do bloco (delegação: o conteúdo é redesenhado a cada mudança) */
+function rdoParLigar(cont){
+  if(!cont.dataset || cont.dataset.parLigado) return;
+  cont.dataset.parLigado = "1";
+  cont.addEventListener("focusin", (e) => {
+    if(e.target.closest && e.target.closest("select.rdo-par-resp")) _rdoParSelGuarda = rdoParSujoGuardar();
+  });
+  cont.addEventListener("change", (e) => {
+    const sel = e.target.closest ? e.target.closest("select.rdo-par-resp") : null;
+    if(sel){ rdoParGravarResposta(sel); return; }
+    rdoParFormSincronizar(e.target, "change");
+  });
+  cont.addEventListener("input", (e) => rdoParFormSincronizar(e.target, "input"));
+  cont.addEventListener("click", (e) => {
+    const b = e.target.closest ? e.target.closest("button") : null;
+    if(!b) return;
+    if(b.id === "btn-rdo-par-adicionar") rdoParAbrirForm();
+    else if(b.id === "btn-rdo-par-cancelar") rdoParFecharForm();
+    else if(b.id === "btn-rdo-par-incluir") comBotaoTravado(b, rdoParIncluir);
+    else if(b.dataset.parExcluir) comBotaoTravado(b, () => rdoParExcluir(b.dataset.parExcluir));
+  });
+}
+/* o formulário guarda o que foi digitado em _rdoParForm: redesenhar o bloco não perde nada */
+function rdoParFormSincronizar(el, evento){
+  const campo = el && el.dataset ? el.dataset.parForm : null;
+  if(!campo || !_rdoParForm) return;
+  if(el.tagName === "SELECT" && evento !== "change") return;
+  if(campo === "motivo"){
+    _rdoParForm.motivo = el.value || "";
+    Object.assign(_rdoParForm, paradaSugestao(_rdoParForm.motivo));   // o motivo refaz a sugestão, à vista de quem lança
+    renderRdoParadas();
+    $("rdo-par-motivo")?.focus();
+  } else if(campo === "paralisado" || campo === "em_razao_cliente") _rdoParForm[campo] = paradaDeSimNao(el.value);
+  else if(campo === "inicio" || campo === "fim" || campo === "descricao") _rdoParForm[campo] = el.value;
+}
+function rdoParAbrirForm(){
+  if(!rdoParPodeEditar()) return;
+  _rdoParForm = { rdoId: rdoEditId, motivo: "", inicio: "", fim: "", paralisado: null, em_razao_cliente: null, descricao: "", guarda: rdoParSujoGuardar() };
+  renderRdoParadas();
+  $("rdo-par-motivo")?.focus();
+}
+function rdoParFecharForm(){
+  const f = _rdoParForm;
+  _rdoParForm = null;
+  if(f) rdoParSujoDevolver(f.guarda);
+  renderRdoParadas();
+}
+async function rdoParRecarregar(){
+  const id = rdoEditId;
+  if(!id) return;
+  const { data, error } = await sb.from("ocorrencias").select(RDO_PARADA_COLS).eq("rdo_id", id).order("periodo_inicio", { nullsFirst: true });
+  if(rdoEditId !== id) return;
+  if(error){ aviso("app-aviso", "A alteração foi gravada, mas a lista de paradas não pôde ser relida: " + error.message + ". Reabra o diário.", "erro"); return; }
+  _rdoCampo.paradas = data || [];
+  if(usuarioAtual && usuarioAtual.id && usuarioAtual.nome) _rdoCampo.nomes[usuarioAtual.id] = usuarioAtual.nome;
+  renderRdoParadas();
+  if(typeof rdoResumoAtualizar === "function") rdoResumoAtualizar();
+}
+/* Troca de uma das duas respostas: grava na hora; se o banco recusar ou não devolver a linha, o valor volta e sai aviso */
+async function rdoParGravarResposta(sel){
+  const id = sel.dataset.parId, campo = sel.dataset.parCampo, guarda = _rdoParSelGuarda, rdoId = rdoEditId;
+  _rdoParSelGuarda = null;
+  const p = (_rdoCampo.paradas || []).find(x => x.id === id);
+  if(!p || !rdoParPodeEditar() || !Object.prototype.hasOwnProperty.call(RDO_PAR_PERGUNTA, campo)){ renderRdoParadas(); return; }
+  const novo = paradaDeSimNao(sel.value);
+  if(novo === paradaBool(p[campo])){ rdoParSujoDevolver(guarda); return; }
+  sel.disabled = true;
+  let falha = "";
+  try {
+    const { data, error } = await sb.from("ocorrencias").update({ [campo]: novo }).eq("id", id).select("id");
+    if(error) falha = error.message;
+    else if(!data || !data.length) falha = "o banco não aceitou a alteração (o seu perfil pode não ter permissão para alterar paradas)";
+  } catch(e){ falha = e && e.message ? e.message : String(e); }
+  if(rdoEditId !== rdoId) return;
+  if(falha) aviso("app-aviso", "Não foi possível gravar a resposta: " + falha + ". O valor anterior foi mantido.", "erro");
+  else p[campo] = novo;
+  rdoParSujoDevolver(guarda);
+  renderRdoParadas();
+  if(!falha && typeof rdoResumoAtualizar === "function") rdoResumoAtualizar();
+}
+async function rdoParIncluir(){
+  const f = _rdoParForm, cab = _rdoCampo.rdo, id = rdoEditId;
+  if(!f || !rdoParPodeEditar() || f.rdoId !== id) return;
+  const falta = paradaValidarNova(f);
+  if(falta){ aviso("app-aviso", falta, "erro"); return; }
+  const { data, error } = await sb.from("ocorrencias").insert(paradaLinhaNova(f, cab, usuarioAtual ? usuarioAtual.id : null)).select("id");
+  if(error || !data || !data.length){
+    aviso("app-aviso", "Não foi possível lançar a parada: " + (error ? error.message : "o banco não devolveu a linha gravada") + ".", "erro");
+    return;
+  }
+  if(rdoEditId !== id) return;
+  _rdoParForm = null;
+  rdoParSujoDevolver(f.guarda);
+  aviso("app-aviso", "Parada lançada no diário.", "ok");
+  await rdoParRecarregar();
+}
+/* só a parada lançada nesta ficha (origem 'manual') é excluída aqui; a do app se corrige no app, a do Maya fica */
+async function rdoParExcluir(paradaId){
+  const p = (_rdoCampo.paradas || []).find(x => x.id === paradaId), id = rdoEditId;
+  if(!p || p.origem !== "manual" || !rdoParPodeEditar()) return;
+  const hora = (t) => t ? String(t).slice(0, 5) : "—";
+  if(!confirm(`Excluir a parada de ${hora(p.periodo_inicio)} a ${hora(p.periodo_fim)} (${RDO_MOTIVO_PARADA[p.motivo] || "sem motivo"})? Não dá para desfazer.`)) return;
+  const { data, error } = await sb.from("ocorrencias").delete().eq("id", paradaId).eq("origem", "manual").select("id");
+  if(error || !data || !data.length){
+    aviso("app-aviso", "Não foi possível excluir a parada: " + (error ? error.message : "o banco não aceitou a exclusão") + ".", "erro");
+    return;
+  }
+  if(rdoEditId !== id) return;
+  aviso("app-aviso", "Parada excluída.", "ok");
+  await rdoParRecarregar();
 }
 async function renderRdoFotos(){
   const cont = $("rdo-fotos");
@@ -3942,7 +4201,8 @@ async function rdoGravarParadasImport(rdoId, obraId, diaData, eqId, paradas, dia
     const mot = (RDO_MAYA_MOTIVO.find(([re]) => re.test(alvo)) || [])[1] || null;
     linhas.push({ obra_id: obraId, rdo_id: rdoId, data: diaData, status: "resolvida", descricao: desc, origem: "maya",
       tipo: mot === "chuva" ? "clima" : (p.paralisado ? "paralisacao" : "outro"), motivo: mot,
-      paralisado: p.paralisado === true, em_razao_cliente: p.em_razao_cliente === true,
+      // fase 166: o valor vai como veio; em branco na planilha fica nulo (não informado), nunca "não". Para o tipo, nulo conta como não paralisado.
+      paralisado: paradaBool(p.paralisado), em_razao_cliente: paradaBool(p.em_razao_cliente),
       periodo_inicio: inteiro ? p.periodo_inicio : null, periodo_fim: inteiro ? p.periodo_fim : null, equipamento_id: eqId || null });
   });
   if(!linhas.length) return out;

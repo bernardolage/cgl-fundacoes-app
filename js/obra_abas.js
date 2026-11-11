@@ -645,13 +645,15 @@ async function carregarRDOsDaObra(obraId){
   }
 
   // Resumo dos RDOs + execuções por rdo (pra contar vinculadas)
-  const [resumoRes, execsRes, injRes] = await Promise.all([
+  const [resumoRes, execsRes, injRes, paradasRes] = await Promise.all([
     sb.from("vw_rdo_resumo").select("*").eq("obra_id", obraId).order("data", { ascending: false }),
     // hotfix carga do banco: a view parte de rdo; o !inner varria todas as execuções a cada abertura
     sb.from("vw_rdo_execucoes_obra").select("rdo_id, estaca_id, obra_id").eq("obra_id", obraId),
     // fase 101 (#99): injeção do dia nos RDOs de raiz (cimento, areia, água, m³ injetado); erro = migration ainda não aplicada
     sb.from("vw_rdo_execucoes_obra").select("rdo_id,consumo_cimento_raiz,consumo_cimento_unidade,consumo_areia_raiz,consumo_areia_unidade,agua_l,volume_injetado_m3")
-      .eq("obra_id", obraId).eq("tipo_servico", "estaca_raiz")
+      .eq("obra_id", obraId).eq("tipo_servico", "estaca_raiz"),
+    // fase 166: horas paradas da obra, separadas pela resposta "em razão do cliente?" (poucas linhas por obra: sem lerTudo)
+    sb.from("ocorrencias").select("horas_paradas,em_razao_cliente").eq("obra_id", obraId)
   ]);
   const injPorRdo = {};
   if(!injRes.error && typeof rdoTotaisInjecao === "function"){
@@ -726,9 +728,15 @@ async function carregarRDOsDaObra(obraId){
   const faixa = typeof obfReservaHTML === "function" ? obfReservaHTML(obraId, { semRdo: !todos.length, filtro: faixaFiltro }) : "";
   const preencherFaixa = () => { if(typeof obfPreencher === "function") obfPreencher(obraId, { rdos: faixaRdos, semRdo: !todos.length, filtroMaq: _obrRdoFiltroMaq }); };
 
+  // fase 166: uma linha com as paradas da obra inteira (não segue os filtros da aba), abaixo da faixa. Sem parada, sem linha;
+  // nulo em "em razão do cliente" é "não informado" e nunca soma nas horas da CGL. Erro de leitura não derruba a aba.
+  if(paradasRes.error) console.warn("Paradas da obra não lidas:", paradasRes.error.message);
+  const paradasTxt = !paradasRes.error && typeof paradaSomar === "function" ? paradaObraTxt(paradaSomar(paradasRes.data || [])) : "";
+  const paradasObra = paradasTxt ? `<p class="obr-rdo-paradas" title="Soma das paradas e ocorrências de todos os diários da obra. Em razão do cliente: respondido sim; da CGL: respondido não; não informado: ninguém respondeu.">${esc(paradasTxt)}</p>` : "";
+
   if(!data || !data.length){
     // sem nenhum diário, quem explica de onde ele nasce é o bloco da faixa; sem o js/obra_faixa.js fica a frase curta
-    cont.innerHTML = `${header}${/* html */ faixa}${todos.length ? '<p class="vazio">Nenhum RDO para esta máquina ou período. Limpe o filtro para ver os outros diários.</p>'
+    cont.innerHTML = `${header}${/* html */ faixa}${/* html */ paradasObra}${todos.length ? '<p class="vazio">Nenhum RDO para esta máquina ou período. Limpe o filtro para ver os outros diários.</p>'
       : (faixa ? "" : '<p class="vazio">Esta obra ainda não tem diário.</p>')}`;
     $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
     ligarFiltroMaq();
@@ -778,7 +786,7 @@ async function carregarRDOsDaObra(obraId){
     </tr>`;
   }).join("");
 
-  cont.innerHTML = `${header}${/* html */ faixa}${grafico}
+  cont.innerHTML = `${header}${/* html */ faixa}${/* html */ paradasObra}${grafico}
     <div class="tabela-rola"><table>
       <thead><tr>
         <th>Data</th><th title="Fase 94: um diário por máquina">Máquina</th><th title="Fase 134b: diurno ou noturno; a mesma máquina pode ter os dois no mesmo dia">Período</th><th>Tipo de serviço</th><th>Estacas</th>

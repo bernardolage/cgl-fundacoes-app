@@ -58,7 +58,16 @@ function rdoResumoKpis(execs, tipo, paradas){
     m3Contexto = com.length ? `${com.length} de ${xs.length} com volume` : "sem volume lançado";
   }
   const horasParadas = ps.reduce((s, p) => s + (Number(p.horas_paradas) || 0), 0);
-  return { estacas: xs.length, comMetro, refuradas, metros, m3, m3Rotulo, m3Contexto, paradas: ps.length, horasParadas };
+  // fase 166: horas em razão do cliente à parte, e quantas paradas estão com alguma das duas perguntas sem resposta
+  const sp = paradaSomar(ps);
+  return { estacas: xs.length, comMetro, refuradas, metros, m3, m3Rotulo, m3Contexto, paradas: ps.length, horasParadas,
+    horasCliente: sp.cliente, paradasSemResposta: sp.semResposta };
+}
+/* contexto do indicador de paradas: "3 h paradas · 1,5 h em razão do cliente · 1 sem resposta" */
+function rdoResumoParadasTxt(k){
+  if(!k || !k.paradas) return "nenhuma registrada";
+  return [`${num(k.horasParadas)} h paradas`, k.horasCliente ? `${num(k.horasCliente)} h em razão do cliente` : "",
+    k.paradasSemResposta ? `${num(k.paradasSemResposta)} sem resposta` : ""].filter(Boolean).join(" · ");
 }
 /* Execuções agregadas por diâmetro (e Refurada à parte): uma linha por grupo, com as estacas e a média */
 function rdoResumoAtividades(execs, tipo){
@@ -96,7 +105,8 @@ function rdoResumoTimeline(atividades, paradas, turno){
     if(!p) return;
     const motivo = (typeof RDO_MOTIVO_PARADA === "object" && RDO_MOTIVO_PARADA[p.motivo]) || p.tipo || "sem motivo";
     itens.push({ tipo: "parada", ini: rdoHoraParede(p.periodo_inicio), fim: rdoHoraParede(p.periodo_fim), aberta: !!(p.periodo_inicio && !p.periodo_fim),
-      texto: `${motivo}${p.descricao ? ": " + String(p.descricao).trim() : ""}`, horas: p.horas_paradas == null ? null : Number(p.horas_paradas), o: ordem(p.periodo_inicio) });
+      texto: `${motivo}${p.descricao ? ": " + String(p.descricao).trim() : ""}`, horas: p.horas_paradas == null ? null : Number(p.horas_paradas), o: ordem(p.periodo_inicio),
+      cliente: p.em_razao_cliente === true });   // fase 166: só a resposta "sim" marca a parada como do cliente
   });
   return itens.sort((x, y) => x.o - y.o);
 }
@@ -160,7 +170,7 @@ function rdoResumoHTML(d){
     ${/* html */ uiKpi(String(k.estacas), "Estacas no dia", k.refuradas ? `${k.refuradas} ${k.refuradas === 1 ? "Refurada" : "Refuradas"}` : (k.estacas ? "nenhuma Refurada" : "nenhuma execução lançada"))}
     ${/* html */ uiKpi(num(k.metros), "Metragem (m)", k.comMetro ? `média ${rdoUmaCasa(k.metros / k.comMetro)} m por estaca com metragem` : (k.estacas ? "sem metragem lançada" : ""))}
     ${/* html */ uiKpi(k.m3 == null ? "—" : num(k.m3), k.m3Rotulo, k.m3Contexto)}
-    ${/* html */ uiKpi(String(k.paradas), "Paradas", k.paradas ? `${num(k.horasParadas)} h paradas` : "nenhuma registrada")}
+    ${/* html */ uiKpi(String(k.paradas), "Paradas", rdoResumoParadasTxt(k))}
   </div>`;
 
   /* coluna principal */
@@ -183,7 +193,7 @@ function rdoResumoHTML(d){
     `<div id="rdo-resumo-fotos">${/* html */ nFotos ? uiVazio("Carregando as fotos…") : uiVazio("Nenhuma foto enviada pelo app do campo neste diário.")}</div>`,
     nFotos ? `${nFotos} ${nFotos === 1 ? "foto" : "fotos"}` : "");
 
-  const linhaTl = (t) => `<li class="${t.tipo === "parada" ? "parada" : ""}"><time>${esc(t.ini || "—")}${t.fim ? "–" + esc(t.fim) : ""}</time><div>${t.tipo === "parada" ? `<span class="tag ambar">parada${t.horas != null ? " · " + num(t.horas) + " h" : t.aberta ? " · em andamento" : ""}</span> ` : ""}${esc(t.texto || "sem descrição")}</div></li>`;
+  const linhaTl = (t) => `<li class="${t.tipo === "parada" ? "parada" : ""}"><time>${esc(t.ini || "—")}${t.fim ? "–" + esc(t.fim) : ""}</time><div>${t.tipo === "parada" ? `<span class="tag ambar">parada${t.horas != null ? " · " + num(t.horas) + " h" : t.aberta ? " · em andamento" : ""}${t.cliente ? " · em razão do cliente" : ""}</span> ` : ""}${esc(t.texto || "sem descrição")}</div></li>`;
   const obs = String(d.obs || "").trim();
   const secOcorr = uiSecao("relogio", "Ocorrências e observações",
     (tl.length ? `<ol class="rdo-res-tl">${/* html */ tl.map(linhaTl).join("")}</ol>` : uiVazio("Nenhuma atividade ou parada lançada neste diário."))
