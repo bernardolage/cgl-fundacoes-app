@@ -157,7 +157,7 @@ function fiscalItemMontar(pref){
           <div class="autocomplete-lista" id="${esc(pref)}-ncm-lista" style="display:none;"></div></div>
         <span class="meta" id="${esc(pref)}-ncm-desc"></span></div>
       <div class="campo"><label>Unidade comercial</label><input id="${esc(pref)}-ucom" maxlength="6" placeholder="UN" title="Unidade da NF-e (até 6 letras ou dígitos). Vazio = UN (produto: a unidade do cadastro)" /></div>
-      <div class="campo"><label>Valor unitário para remessa (R$)</label><input id="${esc(pref)}-vrem" type="number" min="0" step="0.01" placeholder="vazio = sugerido" />
+      <div class="campo"><label id="${esc(pref)}-vrem-rot">Valor unitário para remessa (R$)</label><input id="${esc(pref)}-vrem" type="number" min="0" step="0.01" placeholder="vazio = sugerido" />
         <span class="meta" id="${esc(pref)}-vrem-sug"></span></div>
     </div>`;
   const inp = $(`${pref}-ncm`), lista = $(`${pref}-ncm-lista`), desc = $(`${pref}-ncm-desc`);
@@ -195,6 +195,26 @@ function fiscalItemMontar(pref){
   inp.addEventListener("blur", () => { setTimeout(fechar, 150); if(ncmDigitos(inp.value).length === 8) inp.value = ncmFormatar(inp.value); descrever(); });
 }
 
+/* Valor para remessa de MÁQUINA (hotfix 11/11/2026): é o valor contábil (da contabilidade); só a diretoria e o financeiro definem
+   (gatilho no banco recusa os outros).
+   Na ficha do equipamento o campo fica desabilitado para quem não grava, nunca vai no update de equipamentos e é gravado pela
+   RPC equipamentos_definir_valor_remessa (o financeiro não altera o cadastro da máquina). Acessório e produto não mudam. */
+const FISCAL_VREM_TITLE_GRAVA = "Valor contábil (da contabilidade) da máquina, declarado na NF-e de remessa. Sem valor contábil, digite o valor a declarar. Só a diretoria e o financeiro definem; cada alteração fica registrada.";
+const FISCAL_VREM_TITLE_LE = "Valor contábil (da contabilidade) da máquina, declarado na NF-e de remessa. Só a diretoria e o financeiro definem; se estiver vazio, peça a eles.";
+const FISCAL_VREM_ROTULO = { equipamento: "Valor para remessa (R$): valor contábil (da contabilidade)" };
+function fiscalRemessaRestrita(tipo){ return tipo === "equipamento"; }
+function fiscalPodeGravarRemessa(tipo){ return !fiscalRemessaRestrita(tipo) || (typeof podeGravarValorBem === "function" && podeGravarValorBem()); }
+function fiscalValorIgual(a, b){ return (a == null && b == null) || (a != null && b != null && Math.abs(Number(a) - Number(b)) < 0.005); }
+/* grava o valor para remessa de uma ou mais máquinas: [{ id, valor }] (valor null = apagar). origem: de onde veio o valor
+   (ex.: "planilha da contabilidade: imobilizado.xlsx"); vazio = digitado na tela. Devolve { n } ou { erro } */
+async function fiscalRemessaGravar(itens, origem){
+  const args = { p_itens: itens.map(i => ({ id: i.id, valor: i.valor == null ? null : Number(i.valor) })) };
+  if(origem) args.p_origem = String(origem).slice(0, 200);
+  const { data, error } = await sb.rpc("equipamentos_definir_valor_remessa", args);
+  if(error) return { erro: error.message || String(error) };
+  return { n: Number(data) || 0 };
+}
+
 /* tipo: equipamento | acessorio | produto. registro: o que a ficha abriu ({} ou sem id = novo).
    pode: false deixa os campos só para consulta (mesma regra de edição da ficha). */
 async function fiscalItemPreencher(pref, tipo, registro, pode){
@@ -222,6 +242,13 @@ async function fiscalItemPreencher(pref, tipo, registro, pode){
   inp.value = dados.ncm ? ncmFormatar(dados.ncm) : "";
   ucom.value = dados.unidade_comercial || "";
   vrem.value = dados.valor_remessa ?? "";
+  est.vremOrig = dados.valor_remessa ?? null;
+  const rot = $(`${pref}-vrem-rot`); if(rot) rot.textContent = FISCAL_VREM_ROTULO[tipo] || "Valor unitário para remessa (R$)";
+  if(fiscalRemessaRestrita(tipo)){
+    const grava = fiscalPodeGravarRemessa(tipo);
+    vrem.disabled = !grava;   // o financeiro grava mesmo sem editar o resto do cadastro
+    vrem.title = grava ? FISCAL_VREM_TITLE_GRAVA : FISCAL_VREM_TITLE_LE;
+  } else vrem.title = "";
   inp.dispatchEvent(new Event("blur"));
   if(r.id){
     const { data } = await sb.rpc("fiscal_valor_remessa", { p_tipo: tipo, p_id: r.id });
@@ -245,5 +272,16 @@ function fiscalItemValores(pref){
   if(ucom && !/^[0-9A-Z]{1,6}$/.test(ucom)) return { erro: "Unidade comercial com até 6 letras ou dígitos (ex.: UN, PC, KG)." };
   const valor = vtxt === "" ? null : Number(vtxt.replace(",", "."));
   if(valor != null && !(valor >= 0)) return { erro: "Valor para remessa inválido." };
+  // máquina: o valor para remessa nunca vai no update do cadastro (vai por fiscalItemRemessaMudou + fiscalRemessaGravar)
+  if(fiscalRemessaRestrita(est.tipo)) return { ncm: ncm || null, unidade_comercial: ucom || null };
   return { ncm: ncm || null, unidade_comercial: ucom || null, valor_remessa: valor };
+}
+/* máquina: { valor } quando quem grava mudou o valor para remessa; { erro } se inválido; null se não há o que gravar */
+function fiscalItemRemessaMudou(pref){
+  const est = _fiscalItem[pref];
+  if(!est || !est.disponivel || !fiscalRemessaRestrita(est.tipo) || !fiscalPodeGravarRemessa(est.tipo)) return null;
+  const vtxt = ($(`${pref}-vrem`)?.value || "").trim();
+  const valor = vtxt === "" ? null : Number(vtxt.replace(",", "."));
+  if(valor != null && !(valor > 0)) return { erro: "Valor para remessa: informe um valor maior que zero, ou deixe vazio." };
+  return fiscalValorIgual(valor, est.vremOrig) ? null : { valor };
 }

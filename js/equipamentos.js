@@ -134,8 +134,254 @@ async function eqpSemSalvar(){
   await carregarEquipamentos(true);
 }
 
+/* ---------- visão Valor para remessa (hotfix 11/11/2026) ----------
+   A diretoria e o financeiro definem uma vez o valor declarado na NF-e de remessa de cada máquina: o valor contábil (da
+   contabilidade), digitado aqui ou importado da planilha da contabilidade; sem valor contábil, o valor que eles digitarem. Primeiro as máquinas em obra ou em trânsito, depois as que já foram mobilizadas. Como referência,
+   a aquisição (quem lê o valor do bem) e a avaliação de mercado (quem lê o Patrimônio); nunca para outros. Grava pela RPC
+   equipamentos_definir_valor_remessa, que o banco só aceita da diretoria e do financeiro. */
+let _eqpVrm = { ok: false, mobilizadas: new Set(), aquisicao: {}, avaliacao: {}, valores: {} };
+const EQP_VRM_SIT = { 1: { txt: "Em obra", cor: "azul" }, 2: { txt: "Em mobilização", cor: "ambar" }, 3: { txt: "Já mobilizada", cor: "verde" }, 4: { txt: "Nunca mobilizada", cor: "cinza" } };
+function eqpVrmPode(){ return typeof podeGravarValorBem === "function" && podeGravarValorBem(); }
+function eqpVrmMaquinas(){ return _eqpRegistros.filter(e => e.ativo !== false && !EQP_FORA_OPERACAO.includes(e.status)); }
+function eqpVrmSituacao(e){
+  const t = e.localizacao_tipo || "base";
+  if(t === "obra" || (e._mob && e._mob.status === "em_obra")) return 1;
+  if(t === "em_transito" || e._mob) return 2;
+  return _eqpVrm.mobilizadas.has(e.id) ? 3 : 4;
+}
+async function eqpVrmCarregar(){
+  const cont = $("eqp-conteudo"); if(!cont) return;
+  if(!eqpVrmPode()){ cont.innerHTML = uiVazio("Só a diretoria e o financeiro definem o valor para remessa."); return; }
+  cont.innerHTML = `<p class="vazio">Carregando valores para remessa…</p>`;
+  if(!_eqpCarregado){ carregarEquipamentos(false); return; }   // carregarEquipamentos volta para esta visão ao terminar
+  const mob = await lerTudo(() => sb.from("mobilizacoes").select("id,equipamento_id,equipamentos_apoio"));
+  const aq = podeVerValorBem() ? await lerTudo(() => sb.from("equipamentos_financeiro").select("equipamento_id,valor_aquisicao"), "equipamento_id") : { data: [] };
+  const av = (typeof podeVerPatrimonio === "function" && podeVerPatrimonio())
+    ? await lerTudo(() => sb.from("patrimonio_avaliacoes").select("id,bem_id,valor,ano_referencia").eq("bem_tipo", "equipamento")) : { data: [] };
+  if(_eqpView !== "remessa") return;   // trocou de visão enquanto carregava
+  if(mob.error){ cont.innerHTML = `<p class="vazio">Erro ao carregar as mobilizações: ${esc(mob.error.message || mob.error)}</p>`; return; }
+  const mobilizadas = new Set();
+  (mob.data || []).forEach(m => [m.equipamento_id, ...(m.equipamentos_apoio || [])].filter(Boolean).forEach(id => mobilizadas.add(id)));
+  const aquisicao = {}; (aq.data || []).forEach(r => { if(Number(r.valor_aquisicao) > 0) aquisicao[r.equipamento_id] = Number(r.valor_aquisicao); });
+  const avaliacao = {}; (av.data || []).forEach(r => { const a = avaliacao[r.bem_id]; if(!a || r.ano_referencia > a.ano) avaliacao[r.bem_id] = { valor: Number(r.valor), ano: r.ano_referencia }; });
+  _eqpVrm = { ok: true, mobilizadas, aquisicao, avaliacao, verAquisicao: !aq.error && podeVerValorBem(), verAvaliacao: !av.error && typeof podeVerPatrimonio === "function" && podeVerPatrimonio(), valores: _eqpVrm.valores || {} };
+  eqpVrmRender();
+}
+function eqpVrmRender(){
+  const cont = $("eqp-conteudo"); if(!cont) return;
+  const q = ($("eqp-vrm-busca")?.value || "").trim().toLowerCase(), fSit = $("eqp-vrm-f-situacao")?.value || "", fVal = $("eqp-vrm-f-valor")?.value || "";
+  const todas = eqpVrmMaquinas();
+  const comValor = todas.filter(e => Number(e.valor_remessa) > 0).length;
+  const linhas = todas.map(e => ({ e, sit: eqpVrmSituacao(e) }))
+    .filter(({ e, sit }) => {
+      if(fSit === "ativa" && sit > 2) return false;
+      if(fSit === "mobilizada" && sit > 3) return false;
+      if(fSit === "nunca" && sit !== 4) return false;
+      if(fVal === "sem" && Number(e.valor_remessa) > 0) return false;
+      if(fVal === "com" && !(Number(e.valor_remessa) > 0)) return false;
+      return !q || `${e.codigo} ${e.nome || ""} ${EQP_TIPO_LBL[e.tipo] || ""}`.toLowerCase().includes(q);
+    })
+    .sort((a, b) => a.sit - b.sit || eqpOrd(a.e, b.e));
+  $("eqp-contador").textContent = `${comValor} de ${todas.length} máquinas com valor para remessa`;
+  // durante a prévia da planilha, os filtros e os botões da lista saem de cena (não valem para a prévia)
+  ["btn-eqp-vrm-salvar", "eqp-vrm-imp-rotulo", "eqp-vrm-busca", "eqp-vrm-f-situacao", "eqp-vrm-f-valor"].forEach(id => { const el = $(id); if(el) el.style.display = _eqpVrm.imp ? "none" : ""; });
+  if(_eqpVrm.imp){ eqpVrmImpRender(cont); return; }
+  if(!linhas.length){ cont.innerHTML = uiVazio("Nenhuma máquina com esses filtros."); return; }
+  const verAq = !!_eqpVrm.verAquisicao, verAv = !!_eqpVrm.verAvaliacao;
+  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Valor contábil (da contabilidade) da máquina, declarado na NF-e de remessa. Digite aqui ou use "Importar planilha da contabilidade"; sem valor contábil, digite o valor a declarar; ${verAq || verAv ? "a aquisição e a avaliação servem só de referência" : "cada alteração fica registrada"}. Vazio = a nota ainda usa o valor sugerido.</p>
+    <div class="tabela-rola"><table class="eqp-vrm-tabela"><thead><tr><th>TAG</th><th>Máquina</th><th title="Valor contábil (da contabilidade) da máquina, declarado na NF-e de remessa">Valor contábil (R$)</th><th>Situação</th>${verAv ? '<th class="num">Avaliação de mercado</th>' : ""}${verAq ? '<th class="num">Aquisição</th>' : ""}</tr></thead>
+    <tbody>${linhas.map(({ e, sit }) => { const s = EQP_VRM_SIT[sit], av = _eqpVrm.avaliacao[e.id], aq = _eqpVrm.aquisicao[e.id]; const pend = _eqpVrm.valores[e.id];
+      return `<tr data-vrm="${esc(e.id)}">
+      <td class="linha-clicavel" data-id="${esc(e.id)}" title="Abrir a ficha da máquina">${uiCodigo(e.codigo)}</td>
+      <td>${esc(e.nome || "")} <span class="meta">${esc(EQP_TIPO_LBL[e.tipo] || e.tipo || "")}</span></td>
+      <td><input type="number" class="eqp-vrm-val" min="0.01" step="0.01" inputmode="decimal" style="width:120px;text-align:right;" aria-label="Valor contábil para remessa de ${esc(e.codigo)}" value="${esc(pend !== undefined ? pend : (e.valor_remessa ?? ""))}" /> <span class="meta eqp-vrm-msg"></span></td>
+      <td><span class="tag ${esc(s.cor)}">${esc(s.txt)}</span></td>
+      ${verAv ? `<td class="num" data-val-sens>${av ? `${esc(brl(av.valor))} <span class="meta">${esc(av.ano)}</span>` : "—"}</td>` : ""}
+      ${verAq ? `<td class="num" data-val-sens>${aq ? esc(brl(aq)) : "—"}</td>` : ""}
+    </tr>`; }).join("")}</tbody></table></div>`;
+  cont.querySelectorAll("tr[data-vrm]").forEach(tr => {
+    const e = todas.find(x => x.id === tr.dataset.vrm); if(!e) return;
+    const inp = tr.querySelector(".eqp-vrm-val");
+    eqpVrmMarcar(tr, e);
+    inp?.addEventListener("input", () => { _eqpVrm.valores[e.id] = inp.value; eqpVrmMarcar(tr, e); });
+  });
+}
+/* a linha mostra se o valor digitado difere do gravado (e se é válido) */
+function eqpVrmMarcar(tr, e){
+  const msg = tr.querySelector(".eqp-vrm-msg"), v = _eqpVrm.valores[e.id];
+  if(!msg) return;
+  msg.classList.remove("txt-perigo");
+  if(v === undefined){ msg.textContent = ""; return; }
+  const n = String(v).trim() === "" ? null : Number(String(v).replace(",", "."));
+  if(n != null && !(n > 0)){ msg.textContent = "maior que zero"; msg.classList.add("txt-perigo"); return; }
+  msg.textContent = fiscalValorIgual(n, e.valor_remessa) ? "" : (n == null ? "apagar ao salvar" : "a salvar");
+}
+async function eqpVrmSalvar(){
+  if(!eqpVrmPode()){ aviso("app-aviso", "Só a diretoria e o financeiro definem o valor para remessa.", "erro"); return; }
+  const mudancas = [], invalidas = [];
+  eqpVrmMaquinas().forEach(e => {
+    const v = _eqpVrm.valores[e.id]; if(v === undefined) return;
+    const n = String(v).trim() === "" ? null : Number(String(v).replace(",", "."));
+    if(n != null && !(n > 0)){ invalidas.push(e.codigo); return; }
+    if(!fiscalValorIgual(n, e.valor_remessa)) mudancas.push({ id: e.id, valor: n });
+  });
+  if(invalidas.length){ aviso("app-aviso", `Valor para remessa tem de ser maior que zero (ou vazio): ${invalidas.join(", ")}.`, "erro"); return; }
+  if(!mudancas.length){ aviso("app-aviso", "Nada para salvar: nenhum valor mudou.", "aviso"); return; }
+  const r = await fiscalRemessaGravar(mudancas);
+  if(r.erro){ aviso("app-aviso", "Valores para remessa não gravados: " + r.erro, "erro"); return; }
+  mudancas.forEach(m => { const e = _eqpRegistros.find(x => x.id === m.id); if(e) e.valor_remessa = m.valor; delete _eqpVrm.valores[m.id]; });
+  aviso("app-aviso", `${mudancas.length} valor(es) para remessa salvo(s).`, "ok");
+  eqpVrmRender();
+}
+
+/* ---------- importação da planilha da contabilidade (decisão de 11/11/2026: valor para remessa = valor contábil) ----------
+   A planilha (relação de bens do imobilizado, .xlsx ou .csv) é lida no navegador; cada linha casa com UMA máquina ativa pela
+   TAG, código externo, número de série ou placa (sem acento, espaço nem pontuação). A prévia separa casadas, divergentes (a
+   máquina já tem outro valor: só troca se marcar) e não casadas; nada vai ao banco antes de "Confirmar e gravar". A origem
+   ("planilha da contabilidade: <arquivo>") fica no log junto de cada mudança. */
+function eqpVrmNorm(s){ return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+/* número da planilha: 1234.5 | "1.234,56" | "1234,56" | "R$ 1.234" | "1,234.56"; vazio = null; ilegível = NaN */
+function eqpVrmNumero(v){
+  if(v == null) return null;
+  if(typeof v === "number") return Number.isFinite(v) ? v : NaN;
+  let t = String(v).replace(/R\$|\s| /gi, "").trim();
+  if(t === "" || t === "-") return null;
+  const neg = /^\(.*\)$/.test(t); if(neg) t = t.slice(1, -1);
+  const ultV = t.lastIndexOf(","), ultP = t.lastIndexOf(".");
+  if(ultV >= 0 && ultP >= 0) t = ultV > ultP ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  else if(ultV >= 0) t = (t.match(/,/g).length > 1) ? t.replace(/,/g, "") : t.replace(",", ".");
+  else if(/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  if(!/^-?\d+(\.\d+)?$/.test(t)) return NaN;
+  const n = Number(t);
+  return neg ? -n : n;
+}
+/* matriz da 1ª aba: acha o cabeçalho (1ª linha, entre as 15 primeiras, com 2+ textos) e devolve { cab, dados, linhaCab } */
+function eqpVrmLerMatriz(matriz){
+  const linhas = (matriz || []).map(l => (l || []).map(c => c == null ? "" : c));
+  let iCab = linhas.slice(0, 15).findIndex(l => l.filter(c => typeof c === "string" && c.trim() !== "" && Number.isNaN(Number(c))).length >= 2);
+  if(iCab < 0) iCab = 0;
+  const cab = (linhas[iCab] || []).map((c, i) => String(c).trim() || `Coluna ${i + 1}`);
+  const dados = linhas.slice(iCab + 1).filter(l => l.some(c => String(c).trim() !== ""));
+  return { cab, dados, linhaCab: iCab + 1 };
+}
+/* colunas sugeridas: identificação (TAG, patrimônio, código, placa, série) e valor contábil (contábil > residual > líquido > valor) */
+function eqpVrmSugerirColunas(cab){
+  const n = cab.map(c => String(c).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase());
+  const achar = res => { for(const re of res){ const i = n.findIndex(c => re.test(c)); if(i >= 0) return i; } return -1; };
+  return {
+    id: achar([/\btag\b/, /patrim|plaqueta/, /\bcod/, /placa/, /serie/, /ident/]),
+    valor: achar([/contab/, /residual/, /liquid/, /\bvalor\b|\bvlr\b/])
+  };
+}
+/* índice: chave normalizada -> ids das máquinas que a usam (TAG, código externo, número de série, placa) */
+function eqpVrmIndice(maquinas){
+  const idx = new Map();
+  maquinas.forEach(e => [e.codigo, e.codigo_externo, e.numero_serie, e.placa].forEach(v => {
+    const k = eqpVrmNorm(v); if(k.length < 2) return;
+    if(!idx.has(k)) idx.set(k, new Set());
+    idx.get(k).add(e.id);
+  }));
+  return idx;
+}
+/* casa as linhas: status casada (máquina sem valor), igual, divergente, sem_maquina, ambigua, valor_invalido, repetida */
+function eqpVrmCasar(dados, colId, colValor, maquinas, linhaCab){
+  const idx = eqpVrmIndice(maquinas), porId = new Map(maquinas.map(e => [e.id, e]));
+  const res = dados.map((l, i) => {
+    const ident = String(l[colId] ?? "").trim(), valor = eqpVrmNumero(l[colValor]);
+    const r = { linha: (linhaCab || 1) + i + 1, ident, valor, eq: null, status: "" };
+    let ids = idx.get(eqpVrmNorm(ident));
+    if(!ids){   // a célula pode trazer mais de um código ("HC-07 / série 123"): vale o pedaço que casar
+      const achados = new Set();
+      ident.split(/[\s/;|]+/).map(eqpVrmNorm).filter(k => k.length >= 2).forEach(k => (idx.get(k) || []).forEach(id => achados.add(id)));
+      ids = achados.size ? achados : null;
+    }
+    if(!ident || !ids){ r.status = "sem_maquina"; return r; }
+    if(ids.size > 1){ r.status = "ambigua"; return r; }
+    r.eq = porId.get([...ids][0]);
+    if(valor == null || !(valor > 0)){ r.status = "valor_invalido"; return r; }
+    r.valor = Math.round(valor * 100) / 100;
+    r.status = !(Number(r.eq.valor_remessa) > 0) ? "casada" : fiscalValorIgual(r.valor, r.eq.valor_remessa) ? "igual" : "divergente";
+    return r;
+  });
+  const vezes = new Map(); res.forEach(r => { if(r.eq && r.status !== "valor_invalido") vezes.set(r.eq.id, (vezes.get(r.eq.id) || 0) + 1); });
+  res.forEach(r => { if(r.eq && vezes.get(r.eq.id) > 1 && r.status !== "valor_invalido") r.status = "repetida"; });
+  return res;
+}
+const EQP_VRM_IMP_MOTIVO = { sem_maquina: "nenhuma máquina ativa com esse código", ambigua: "o código serve a mais de uma máquina", valor_invalido: "valor contábil vazio, zero ou ilegível", repetida: "a máquina aparece em mais de uma linha" };
+async function eqpVrmImportarArquivo(file){
+  if(!file) return;
+  if(!eqpVrmPode()){ aviso("app-aviso", "Só a diretoria e o financeiro importam o valor contábil das máquinas.", "erro"); return; }
+  let matriz;
+  try {
+    const csv = /\.csv$/i.test(file.name);
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, raw: csv });   // csv: texto cru ("1.234,56" não vira outro número)
+    matriz = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
+  } catch(e){ aviso("app-aviso", "Não consegui ler a planilha: " + (e.message || e), "erro"); return; }
+  const { cab, dados, linhaCab } = eqpVrmLerMatriz(matriz);
+  if(!dados.length){ aviso("app-aviso", "A planilha não tem linhas abaixo do cabeçalho.", "erro"); return; }
+  const sug = eqpVrmSugerirColunas(cab);
+  _eqpVrm.imp = { arquivo: file.name, cab, dados, linhaCab, colId: sug.id >= 0 ? sug.id : 0, colValor: sug.valor >= 0 ? sug.valor : Math.min(1, cab.length - 1), trocar: new Set() };
+  eqpVrmImpCasar();
+  eqpVrmRender();
+}
+function eqpVrmImpCasar(){ const imp = _eqpVrm.imp; if(imp){ imp.res = eqpVrmCasar(imp.dados, imp.colId, imp.colValor, eqpVrmMaquinas(), imp.linhaCab); imp.trocar = new Set(); } }
+/* o que a confirmação grava: casadas novas + divergentes marcadas */
+function eqpVrmImpAGravar(imp){
+  return (imp?.res || []).filter(r => r.status === "casada" || (r.status === "divergente" && imp.trocar.has(r.eq.id))).map(r => ({ id: r.eq.id, valor: r.valor }));
+}
+function eqpVrmImpRender(cont){
+  const imp = _eqpVrm.imp, res = imp.res || [];
+  const grupo = st => res.filter(r => st.includes(r.status));
+  const casadas = grupo(["casada", "igual"]), diverg = grupo(["divergente"]), nao = grupo(["sem_maquina", "ambigua", "valor_invalido", "repetida"]);
+  const naPlanilha = new Set(res.filter(r => r.eq).map(r => r.eq.id));
+  const semLinha = eqpVrmMaquinas().filter(e => !naPlanilha.has(e.id)).length;
+  const nGravar = eqpVrmImpAGravar(imp).length;
+  const opc = sel => imp.cab.map((c, i) => `<option value="${i}"${i === sel ? " selected" : ""}>${esc(c)}</option>`).join("");
+  const maq = e => `${uiCodigo(e.codigo)} <span class="meta">${esc(e.nome || "")}</span>`;
+  const tab = (cols, linhas) => `<div class="tabela-rola"><table class="eqp-vrm-imp-tabela"><thead><tr>${cols.map(c => `<th${c.num ? ' class="num"' : ""}>${esc(c.t)}</th>`).join("")}</tr></thead><tbody>${/* html */ linhas}</tbody></table></div>`;
+  const tabCasadas = casadas.length ? tab([{ t: "Linha" }, { t: "Na planilha" }, { t: "Máquina" }, { t: "Valor contábil", num: true }, { t: "" }],
+    casadas.map(r => `<tr><td>${esc(r.linha)}</td><td>${esc(r.ident)}</td><td>${maq(r.eq)}</td><td class="num" data-val-sens>${esc(brl(r.valor))}</td><td class="meta">${r.status === "igual" ? "já igual" : "a gravar"}</td></tr>`).join("")) : uiVazio("Nenhuma linha casou com uma máquina.");
+  const tabDiverg = diverg.length ? `<p class="meta" style="margin:0 0 6px;">A máquina já tem outro valor para remessa. Marque as que devem receber o valor da planilha.</p>` + tab([{ t: "Trocar" }, { t: "Linha" }, { t: "Máquina" }, { t: "Hoje", num: true }, { t: "Planilha", num: true }],
+    diverg.map(r => `<tr><td><input type="checkbox" class="eqp-vrm-imp-trocar" data-id="${esc(r.eq.id)}"${imp.trocar.has(r.eq.id) ? " checked" : ""} aria-label="Trocar o valor de ${esc(r.eq.codigo)} pelo da planilha" /></td><td>${esc(r.linha)}</td><td>${maq(r.eq)}</td><td class="num" data-val-sens>${esc(brl(r.eq.valor_remessa))}</td><td class="num" data-val-sens>${esc(brl(r.valor))}</td></tr>`).join("")) : uiVazio("Nenhuma divergência.");
+  const tabNao = nao.length ? tab([{ t: "Linha" }, { t: "Na planilha" }, { t: "Valor", num: true }, { t: "Motivo" }],
+    nao.map(r => `<tr><td>${esc(r.linha)}</td><td>${esc(r.ident || "(vazio)")}${r.eq && eqpVrmNorm(r.eq.codigo) !== eqpVrmNorm(r.ident) ? ` <span class="meta">${esc(r.eq.codigo)}</span>` : ""}</td><td class="num" data-val-sens>${r.valor == null || Number.isNaN(r.valor) ? "—" : esc(brl(r.valor))}</td><td class="meta">${esc(EQP_VRM_IMP_MOTIVO[r.status] || r.status)}</td></tr>`).join("")) : uiVazio("Todas as linhas casaram.");
+  cont.innerHTML = `
+    <div class="eqp-vrm-imp">
+      <p class="meta" style="margin:0 0 8px;">Planilha da contabilidade <strong>${esc(imp.arquivo)}</strong>: ${esc(res.length)} linha(s). Confira a prévia; nada foi gravado ainda.</p>
+      <div class="serv-filtros">
+        <label class="rotulo-caps">Coluna da identificação <select id="eqp-vrm-imp-col-id" title="Coluna com a TAG, o código externo, o número de série ou a placa da máquina">${opc(imp.colId)}</select></label>
+        <label class="rotulo-caps">Coluna do valor contábil <select id="eqp-vrm-imp-col-valor" title="Coluna com o valor contábil (da contabilidade) de cada bem">${opc(imp.colValor)}</select></label>
+      </div>
+      <div class="eqp-vrm-imp-resumo" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;">${uiKpi(casadas.length, "casadas", `${grupo(["casada"]).length} a gravar, ${grupo(["igual"]).length} já iguais`)}${uiKpi(diverg.length, "divergentes", "só trocam se marcar")}${uiKpi(nao.length, "não casadas", "não são gravadas")}${uiKpi(semLinha, "máquinas fora da planilha", "continuam como estão")}</div>
+      ${uiSecao("check", `Casadas (${casadas.length})`, tabCasadas)}
+      ${uiSecao("nota", `Divergentes (${diverg.length})`, tabDiverg)}
+      ${uiSecao("documento", `Não casadas (${nao.length})`, tabNao)}
+      <div class="form-acoes" style="margin-top:10px;">
+        <button type="button" class="btn" id="btn-eqp-vrm-imp-gravar"${nGravar ? "" : " disabled"} title="Grava o valor contábil das casadas e das divergentes marcadas; cada mudança fica registrada com o nome da planilha">Confirmar e gravar ${esc(nGravar)} valor(es)</button>
+        <button type="button" class="btn-sec" id="btn-eqp-vrm-imp-cancelar" title="Descarta a prévia sem gravar nada">Cancelar</button>
+      </div>
+    </div>`;
+  $("eqp-vrm-imp-col-id")?.addEventListener("change", ev => { imp.colId = Number(ev.target.value); eqpVrmImpCasar(); eqpVrmRender(); });
+  $("eqp-vrm-imp-col-valor")?.addEventListener("change", ev => { imp.colValor = Number(ev.target.value); eqpVrmImpCasar(); eqpVrmRender(); });
+  cont.querySelectorAll(".eqp-vrm-imp-trocar").forEach(cb => cb.addEventListener("change", () => { if(cb.checked) imp.trocar.add(cb.dataset.id); else imp.trocar.delete(cb.dataset.id); eqpVrmRender(); }));
+  $("btn-eqp-vrm-imp-gravar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-vrm-imp-gravar", eqpVrmImpGravar));
+  $("btn-eqp-vrm-imp-cancelar")?.addEventListener("click", () => { _eqpVrm.imp = null; eqpVrmRender(); });
+}
+async function eqpVrmImpGravar(){
+  const imp = _eqpVrm.imp; if(!imp) return;
+  if(!eqpVrmPode()){ aviso("app-aviso", "Só a diretoria e o financeiro importam o valor contábil das máquinas.", "erro"); return; }
+  const itens = eqpVrmImpAGravar(imp);
+  if(!itens.length){ aviso("app-aviso", "Nada para gravar: nenhuma linha casada nova nem divergente marcada.", "aviso"); return; }
+  const r = await fiscalRemessaGravar(itens, `planilha da contabilidade: ${imp.arquivo}`);
+  if(r.erro){ aviso("app-aviso", "Valores contábeis não gravados: " + r.erro, "erro"); return; }
+  itens.forEach(m => { const e = _eqpRegistros.find(x => x.id === m.id); if(e) e.valor_remessa = m.valor; delete _eqpVrm.valores[m.id]; });
+  _eqpVrm.imp = null;
+  aviso("app-aviso", `${itens.length} valor(es) contábil(eis) gravado(s) da planilha ${imp.arquivo}.`, "ok");
+  eqpVrmRender();
+}
+
 async function carregarEquipamentos(force){
-  if(force) _eqpSemOk = false;
+  if(force){ _eqpSemOk = false; _eqpVrm.ok = false; }
   const cont = $("eqp-conteudo");
   if(!cont) return;
   if(force || !_eqpCarregado){
@@ -226,15 +472,19 @@ function renderEquipamentos(){
   const ehSem = _eqpView === "semanal";   // lote S58 (#232)
   if(_eqpView === "vendas" && typeof vbRenderPainel !== "function") _eqpView = "kanban";
   if(_eqpView === "cpb" && typeof cpbRenderPainel !== "function") _eqpView = "kanban";   // fase 107a: js/computadores_bordo.js
-  const ehVendas = _eqpView === "vendas", ehCpb = _eqpView === "cpb";
-  [["eqp-indicadores", !ehVendas && !ehCpb && !ehSem], ["eqp-filtros", !ehVendas && !ehCpb && !ehSem], ["eqp-sem-filtros", ehSem], ["vb-indicadores", ehVendas], ["vb-filtros", ehVendas], ["cpb-filtros", ehCpb]].forEach(([id, ver]) => { const el = $(id); if(el) el.style.display = ver ? "" : "none"; });
-  const tit = $("eqp-painel-titulo"); if(tit) tit.textContent = ehVendas ? "Vendas de bens" : ehCpb ? "Computadores de bordo" : ehSem ? "Horímetro semanal" : "Máquinas";
-  const bn = $("btn-eqp-novo"); if(bn) bn.style.display = (!ehVendas && !ehCpb && !ehSem && eqpPodeEditar()) ? "" : "none";
+  // valor para remessa: a visão só existe para quem grava (diretoria e financeiro)
+  const bVrm = $("eqp-view-remessa"); if(bVrm) bVrm.style.display = eqpVrmPode() ? "" : "none";
+  if(_eqpView === "remessa" && !eqpVrmPode()) _eqpView = "kanban";
+  const ehVendas = _eqpView === "vendas", ehCpb = _eqpView === "cpb", ehVrm = _eqpView === "remessa";
+  [["eqp-indicadores", !ehVendas && !ehCpb && !ehSem && !ehVrm], ["eqp-filtros", !ehVendas && !ehCpb && !ehSem && !ehVrm], ["eqp-sem-filtros", ehSem], ["eqp-vrm-filtros", ehVrm], ["vb-indicadores", ehVendas], ["vb-filtros", ehVendas], ["cpb-filtros", ehCpb]].forEach(([id, ver]) => { const el = $(id); if(el) el.style.display = ver ? "" : "none"; });
+  const tit = $("eqp-painel-titulo"); if(tit) tit.textContent = ehVendas ? "Vendas de bens" : ehCpb ? "Computadores de bordo" : ehSem ? "Horímetro semanal" : ehVrm ? "Valor para remessa" : "Máquinas";
+  const bn = $("btn-eqp-novo"); if(bn) bn.style.display = (!ehVendas && !ehCpb && !ehSem && !ehVrm && eqpPodeEditar()) ? "" : "none";
   if(!ehCpb){ ["btn-cpb-novo", "btn-cpb-descobrir"].forEach(id => { const el = $(id); if(el) el.style.display = "none"; }); }
   document.querySelectorAll("#eqp-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _eqpView));
   if(ehVendas){ vbRenderPainel(); return; }
   if(ehCpb){ cpbRenderPainel(); return; }
   if(ehSem){ if(_eqpSemOk) eqpSemRender(); else eqpSemCarregar(); return; }
+  if(ehVrm){ if(_eqpVrm.ok) eqpVrmRender(); else eqpVrmCarregar(); return; }
   eqpRenderKpis();
   document.querySelectorAll("#eqp-painel .ind[data-kpi]").forEach(el => el.classList.toggle("ativo", el.dataset.kpi === _eqpKpi));
   const dados = eqpFiltradas();
@@ -737,16 +987,25 @@ async function salvarEquipamento(){
   const vendido = !!_eqpAtual && (_eqpAtual.status === "vendido" || !!_eqpAtual.venda_id);
   const podeCadastro = eqpPodeEditar() && !vendido;   // fase 96: bem vendido fica só para consulta
   const mudouValor = eqpValorBemMudou();              // valor e data de aquisição: diretoria e financeiro, também em bem vendido
+  // valor para remessa: só diretoria e financeiro, pela RPC (nunca no update do cadastro)
+  const remessa = typeof fiscalItemRemessaMudou === "function" ? fiscalItemRemessaMudou("eqp") : null;
+  if(remessa && remessa.erro){ aviso("app-aviso", remessa.erro, "erro"); ativarTabEquipamento("fiscal"); return; }
   if(!podeCadastro){
-    if(mudouValor && _eqpEditId){
+    if((mudouValor || remessa) && _eqpEditId){
       const idBem = _eqpEditId;
-      const erroValor = await eqpValorBemGravar(idBem);
-      if(erroValor){ aviso("app-aviso", "O valor de aquisição não foi gravado: " + erroValor.message, "erro"); return; }
-      aviso("app-aviso", "Valor de aquisição salvo.", "ok");
+      if(mudouValor){
+        const erroValor = await eqpValorBemGravar(idBem);
+        if(erroValor){ aviso("app-aviso", "O valor de aquisição não foi gravado: " + erroValor.message, "erro"); return; }
+      }
+      if(remessa){
+        const r = await fiscalRemessaGravar([{ id: idBem, valor: remessa.valor }]);
+        if(r.erro){ aviso("app-aviso", "O valor para remessa não foi gravado: " + r.erro, "erro"); return; }
+      }
+      aviso("app-aviso", mudouValor && remessa ? "Valor de aquisição e valor para remessa salvos." : mudouValor ? "Valor de aquisição salvo." : "Valor para remessa salvo.", "ok");
       await carregarEquipamentos(true);
       await abrirEquipamento(idBem);
     } else if(vendido && eqpPodeEditar()) aviso("app-aviso", "Bem vendido: o cadastro fica só para consulta.", "erro");
-    else if(eqpValorBemEditavel()) aviso("app-aviso", "Nada para salvar: o valor e a data de aquisição não mudaram.", "aviso");
+    else if(eqpValorBemEditavel()) aviso("app-aviso", "Nada para salvar: o valor de aquisição e o valor para remessa não mudaram.", "aviso");
     return;
   }
   const n = v => v === "" ? null : Number(v);
@@ -788,7 +1047,9 @@ async function salvarEquipamento(){
     id = data.id;
   }
   const erroValor = mudouValor ? await eqpValorBemGravar(id) : null;
+  const erroRemessa = remessa ? (await fiscalRemessaGravar([{ id, valor: remessa.valor }])).erro : null;
   if(erroValor) aviso("app-aviso", "Cadastro salvo, mas o valor de aquisição não foi gravado: " + erroValor.message, "erro");
+  else if(erroRemessa) aviso("app-aviso", "Cadastro salvo, mas o valor para remessa não foi gravado: " + erroRemessa, "erro");
   else aviso("app-aviso", "Equipamento salvo.", "ok");
   await carregarEquipamentos(true);
   await abrirEquipamento(id);
@@ -871,6 +1132,10 @@ function ligarEquipamentos(){
   $("eqp-sem-busca")?.addEventListener("input", debounce(eqpSemRender));   // lote S58 (#232)
   $("eqp-sem-grupo")?.addEventListener("change", eqpSemRender);
   $("btn-eqp-sem-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-sem-salvar", eqpSemSalvar));
+  $("eqp-vrm-busca")?.addEventListener("input", debounce(eqpVrmRender));   // valor para remessa
+  ["eqp-vrm-f-situacao", "eqp-vrm-f-valor"].forEach(id => $(id)?.addEventListener("change", eqpVrmRender));
+  $("btn-eqp-vrm-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-vrm-salvar", eqpVrmSalvar));
+  $("eqp-vrm-imp-arquivo")?.addEventListener("change", e => { const f = e.target.files?.[0]; e.target.value = ""; eqpVrmImportarArquivo(f); });
   $("eqp-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a.link-obra")) return;
     const el = e.target.closest("[data-id]");
