@@ -3748,3 +3748,54 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-folha.ppj-inativa .campo { opacity: .7; }
 .ppj-folha-acoes { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); }
 .ppj-folha-meta { margin-right: auto; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
+/* Fase 167b: estacas por cima da folha do projeto (js/planta_posicoes.js). Barra da folha (cor, legenda, modo de
+   edição), faixa âmbar do modo de edição, painel "Sem posição nesta folha" e os marcadores em SVG. Só tokens. A camada dos
+   marcadores não recebe o ponteiro (o arrasto da folha passa por ela); só o marcador recebe. */
+.ppj-ferramentas { display: flex; flex-direction: column; gap: var(--esp-2); margin: 0 0 var(--esp-2); }
+.ppj-ferramentas[hidden], .ppj-painel[hidden] { display: none; }   /* o display da regra vence o atributo hidden: a regra devolve o sumiço */
+.ppj-ferramentas-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2) var(--esp-3); }
+.ppj-legenda { flex: 1 1 240px; min-width: 0; }   /* sem 240 px ao lado dos botões, a legenda desce para uma linha só dela (em 400 px ela virava uma coluna de 19 px, com 244 px de altura) */
+.ppj-recusa { margin: 0; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--perigo); border-radius: var(--radius-sm); background: var(--perigo-bg); font-weight: 600; }
+.ppj-legenda .ppj-leg { box-sizing: border-box; border: 1.5px solid var(--sup-3); background: var(--txt-sutil); }
+.ppj-legenda .ppj-leg-prevista { background: var(--estaca-prevista); }
+.ppj-legenda .ppj-leg-em_execucao { background: var(--aviso); border: 2px dashed var(--txt-sec); }
+.ppj-legenda .ppj-leg-perfuracao_concluida { background: var(--estaca-hoje); border: 2px dashed var(--txt-sec); }
+.ppj-legenda .ppj-leg-armacao_aplicada { background: var(--marca-laranja); border: 2px dashed var(--txt-sec); }
+.ppj-legenda .ppj-leg-executada { background: var(--sucesso); border: 2.5px solid var(--txt); }
+.ppj-legenda .ppj-leg-refugada { background: var(--perigo); border: 2.5px dotted var(--txt); }
+.ppj-legenda .ppj-leg-hoje { background: var(--estaca-hoje); }
+.ppj-faixa-edicao { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--esp-1) var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--aviso); border-radius: var(--radius-sm); background: var(--aviso-bg); color: var(--aviso-txt); font-size: var(--txt-sm); }
+.ppj-area { display: flex; align-items: stretch; gap: var(--esp-2); }
+.ppj-area > .ppj-palco { flex: 1; min-width: 0; width: auto; }
+.ppj-palco.ppj-editando { cursor: crosshair; }
+.ppj-palco.ppj-editando.ppj-arrastando { cursor: grabbing; }
+.ppj-painel { display: flex; flex-direction: column; gap: var(--esp-2); flex: none; width: 250px; max-height: min(72vh, 820px); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-0); }
+.ppj-painel input[type="search"] { width: 100%; min-height: var(--ctl-h); padding: var(--esp-1) var(--esp-2); font-size: var(--txt-md); border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--sup-0); }   /* o mesmo campo dos filtros da aba; sem isso saía o campo cru do navegador */
+.ppj-painel input[type="search"]:focus { outline: none; border-color: var(--azul-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--marca-600) 25%, transparent); }
+.ppj-ed-sel { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--esp-2); font-size: var(--txt-sm); }
+.ppj-ed-sel:empty { display: none; }
+.ppj-ed-vez { margin: 0; font-size: var(--txt-sm); color: var(--txt-sec); }
+.ppj-lista { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 120px; overflow-y: auto; }
+.ppj-item { display: flex; align-items: baseline; justify-content: space-between; gap: var(--esp-2); padding: 3px var(--esp-2); border: 1px solid transparent; border-radius: var(--radius-sm); font-size: var(--txt-sm); cursor: grab; user-select: none; }
+.ppj-item:hover { background: var(--sup-2); }
+.ppj-item.ativo { border-color: var(--marca-600); background: var(--sup-2); font-weight: 600; }
+.ppj-item:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 1px; }
+.ppj-item-nome { font-family: var(--font-mono); }
+.ppj-item-sub, .ppj-item-mais { margin: 0; font-size: var(--txt-xs); color: var(--txt-fraco); }
+.ppj-marcas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.ppj-marca { pointer-events: auto; cursor: pointer; }
+.ppj-marca:focus { outline: none; }
+.ppj-marca:focus-visible circle, .ppj-marca.ppj-selecionada circle { stroke: var(--marca-600) !important; stroke-width: 3.5 !important; stroke-opacity: 1 !important; }
+.ppj-editando .ppj-marca { cursor: move; }
+/* o nome fica sobre a folha, que é papel branco nos dois temas: tinta e papel do documento, que não trocam no escuro */
+.ppj-marca-rot { display: none; font-family: var(--font-mono); font-size: 11px; font-weight: 600; fill: var(--doc-tinta); stroke: var(--doc-papel); stroke-width: 3px; paint-order: stroke; pointer-events: none; }
+/* com "reduzir movimento" ligado, a regra geral (transition-duration: 0.01ms em tudo) fazia de cada passo do zoom uma transição por
+   marcador e uma na imagem; a folha e os marcadores andam pela mão, sem transição */
+.ppj-img, .ppj-marcas g { transition: none; }
+.ppj-com-rotulo .ppj-marca-rot { display: inline; }
+.ppj-contagem { font-weight: 600; color: var(--txt); }
+.ppj-contagem:empty { display: none; }
+@media (max-width: 767px) {
+  .ppj-area { flex-direction: column; }
+  .ppj-painel { width: auto; max-height: 40vh; }
+}
