@@ -58,16 +58,23 @@ async function carregarApontamentos(){
   if(!$("apt-de").value){ $("apt-de").value = hojeISO(); $("apt-ate").value = hojeISO(); }
   $("btn-apt-lancar").style.display = aptPodeLancar() ? "" : "none";
   $("apt-conteudo").innerHTML = `<p class="vazio">Carregando…</p>`;
-  const [f, c] = await Promise.all([
-    _aptFuncs.length ? { data: _aptFuncs } : lerTudo(() => sb.from("funcionarios").select("id,nome,funcao").eq("ativo", true), "id"),
-    _aptCentros.length ? { data: _aptCentros } : sb.from("centros_trabalho").select("id,nome,setor,ativo,ordem").eq("ativo", true).order("ordem").order("nome")
-  ]);
-  _aptFuncs = (f.data || []).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
-  _aptCentros = c.data || [];
+  await aptCarregarCadastros();
   const fSel = $("apt-func"), fVal = fSel.value;
   preencherSelect(fSel, _aptFuncs, "id", "nome", "Todos os funcionários"); fSel.value = fVal;
   await Promise.all([aptCarregarHoras(), aptCarregarAprovacoes()]);
   aptRender();
+}
+/* funcionários e centros de trabalho; erro de leitura vira aviso (antes a lista vinha vazia sem dizer nada) e a próxima
+   abertura da grade tenta de novo */
+async function aptCarregarCadastros(){
+  const [f, c] = await Promise.all([
+    _aptFuncs.length ? { data: _aptFuncs } : lerTudo(() => sb.from("funcionarios").select("id,nome,funcao").eq("ativo", true), "id"),
+    _aptCentros.length ? { data: _aptCentros } : sb.from("centros_trabalho").select("id,nome,setor,ativo,ordem").eq("ativo", true).order("ordem").order("nome")
+  ]);
+  if(f.error) aviso("app-aviso", "Não foi possível carregar a lista de funcionários: " + f.error.message + ". Clique em Atualizar.", "erro");
+  else _aptFuncs = (f.data || []).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+  if(c.error) aviso("app-aviso", "Não foi possível carregar os centros de trabalho: " + c.error.message + ". Clique em Atualizar.", "erro");
+  else _aptCentros = c.data || [];
 }
 async function aptCarregarHoras(){
   const de = $("apt-de").value || hojeISO(), ate = $("apt-ate").value || de, tipo = $("apt-tipo").value, func = $("apt-func").value;
@@ -229,6 +236,7 @@ function aptLinhaNova(base){
 async function aptAbrirGrade(){
   $("apt-grade-box").style.display = "";
   if(!_aptDocs.length) await aptCarregDocsComAviso();
+  if(!_aptFuncs.length || !_aptCentros.length) await aptCarregarCadastros();
   if(!_aptGrade.length) _aptGrade = [aptLinhaNova(), aptLinhaNova(), aptLinhaNova()];
   aptRenderGrade();
 }
@@ -239,6 +247,7 @@ async function aptCarregDocsComAviso(){
 /* "RP 734", "RP-2026-00734", "OS 1410", código do Odoo ou o rótulo escolhido na lista → documento */
 async function aptResolverDoc(txt){
   const t = String(txt || "").trim(); if(!t) return { doc: null };
+  if(!_aptDocs.length) await aptCarregarDocs();   // "Atualizar" com a grade aberta esvazia a lista
   const porRotulo = _aptDocs.find(d => aptRotuloDoc(d) === t);
   if(porRotulo) return { doc: porRotulo };
   const up = t.toUpperCase().replace(/\s+/g, " ");
@@ -254,6 +263,10 @@ async function aptResolverDoc(txt){
     if(abertos.length === 1) return { doc: null, msg: `Sem o prefixo RP, OS ou OF o número não basta (candidato: ${abertos[0].numero}): escolha na lista.` };
     // nenhum aberto: procura fechado para dizer o porquê
     const fechado = await aptProcurarFechado(tipos, m[3], m[2]);
+    if(fechado && aptDocAberto(fechado))
+      return { doc: null, msg: `${fechado.numero} está aberto, mas não está na sua lista: seu perfil não lança hora nesse documento.` };
+    if(fechado && !comPrefixo)
+      return { doc: null, msg: `Sem o prefixo RP, OS ou OF o número não basta (achado: ${fechado.numero}, ${aptStatusDoc(fechado.status)}): escolha na lista.` };
     if(fechado) return { doc: fechado };
   }
   return { doc: null, msg: "Documento não encontrado entre os abertos que você pode lançar." };
@@ -425,7 +438,10 @@ function ligarApontamentos(){
   const nav = document.querySelector('nav button[data-secao="apontamentos"]');
   if(!nav) return;
   nav.addEventListener("click", () => carregarApontamentos());
-  $("btn-apt-atualizar").addEventListener("click", () => comBotaoTravado("btn-apt-atualizar", async () => { _aptDocs = []; _aptAtiv = {}; await carregarApontamentos(); }));
+  $("btn-apt-atualizar").addEventListener("click", () => comBotaoTravado("btn-apt-atualizar", async () => {
+    _aptDocs = []; _aptAtiv = {}; await carregarApontamentos();
+    if($("apt-grade-box").style.display !== "none") await aptCarregarDocs();   // grade aberta: a lista de documentos volta já
+  }));
   ["apt-de", "apt-ate", "apt-tipo", "apt-func"].forEach(id => $(id).addEventListener("change", async () => {
     if(id === "apt-de" && $("apt-ate").value < $("apt-de").value) $("apt-ate").value = $("apt-de").value;
     await Promise.all([aptCarregarHoras(), aptCarregarAprovacoes()]); aptRender();
