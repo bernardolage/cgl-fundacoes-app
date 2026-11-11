@@ -3106,8 +3106,21 @@ async function montarPreviewDias(data, origem, obraSel){
 
     // Jornada da obra (horas extras da equipe) — da obra escolhida no preview
     await iaCarregarJornadaObra((selObra && selObra.value) || (_csvObraDetectada && _csvObraDetectada.id) || obraSel || null);
+    // fase 173b: estaca raiz só com injeção no arquivo e sem perfuração em nenhum diário da obra (RG 11.3 e leitura por IA)
+    await rdoAvisoSoInjecao(data, origem, (selObra && selObra.value) || (_csvObraDetectada && _csvObraDetectada.id) || obraSel || null);
     renderConferenciaIA(data);
-    selObra?.addEventListener("change", async () => { await iaCarregarJornadaObra(selObra.value); iaRecalcularHorasNoDOM(false); });
+    selObra?.addEventListener("change", async () => {
+      await iaCarregarJornadaObra(selObra.value); iaRecalcularHorasNoDOM(false);
+      await rdoAvisoSoInjecao(data, origem, selObra.value || null);
+    });
+}
+/* fase 173b: aviso da prévia (não bloqueia). Calcula em data.aviso_so_injecao e, se a conferência já está na tela, troca o texto. */
+async function rdoAvisoSoInjecao(data, origem, obraId){
+  if(origem !== "xlsx_rg113" && !/^ia_/.test(origem || "")) return;
+  try { data.aviso_so_injecao = await rg113AvisoSoInjecao(data.dias, obraId); }
+  catch(err){ console.warn("Aviso de estaca só com injeção:", err.message); data.aviso_so_injecao = null; }
+  const el = $("csv-aviso-so-injecao");
+  if(el){ el.textContent = data.aviso_so_injecao ? "⚠️ " + data.aviso_so_injecao : ""; el.style.display = data.aviso_so_injecao ? "" : "none"; }
 }
 
 const CONDICAO_TEMPO_IA = { bom:"Bom", nublado:"Nublado", chuva_fraca:"Chuva fraca", chuva_forte:"Chuva forte", impraticavel:"Impraticável" };
@@ -3431,6 +3444,7 @@ function renderConferenciaIA(resp){
     <div>${resp?.origem_label ? esc(resp.origem_label) : `🤖 <strong>Lido por IA</strong> ${resp?.manuscrito ? "(diário manuscrito)" : "(PDF digital)"}`} · confiança <strong style="color:${corConf}">${esc(conf)}</strong>
       ${resp?.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
     ${duvidas.length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${duvidas.map(esc).join(" · ")}</div>` : ""}
+    <div class="ia-duvidas" id="csv-aviso-so-injecao" style="${resp?.aviso_so_injecao ? "" : "display:none;"}">${esc(resp?.aviso_so_injecao ? "⚠️ " + resp.aviso_so_injecao : "")}</div>
     <div class="ia-duvidas ia-jornada-aviso" style="${temJornada ? "display:none;" : ""}">${esc(iaTextoAvisoJornada())}</div>
     <div class="meta">Confira e corrija abaixo. O que estiver na tabela é exatamente o que será gravado. Linhas removidas com ✕ não entram. A função da equipe vem do cadastro de funcionários; "Função no dia" só quando o boletim disser outra.</div>
   </div>`;
@@ -4093,45 +4107,7 @@ async function rdoGravarExecucoesImport(rdoId, exs, dia){
   return out;
 }
 
-/* lote S57 (#220): no RG 11.3, a estaca que já tem execução no mesmo dia da obra (lida antes por PDF ou lançada à mão)
-   não ganha uma segunda. A RPC rdo_import_execucao_conciliar só concilia com a do Geodigitus e inseriria outra linha;
-   aqui a execução existente só recebe o que está vazio nela (campos, observação nova e, se ela não tiver nenhum, os
-   trechos de solo). A do Geodigitus segue para a RPC (pulada lá). Devolve { indices, conciliadas, trechos }. */
-async function rdoRg113ConciliarExistentes(obraId, dia, exs, ests){
-  const out = { indices: new Set(), conciliadas: 0, trechos: 0 };
-  const { data: ja, error } = await sb.from("rdo_execucao_estaca")
-    .select("id,rdo_id,estaca_numero,estaca_numero_corrigido,modalidade_execucao,origem_dados,estaca_id,diametro_mm,profundidade_executada,perfuracao_de_m,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,inclinacao,numero_boletim_fisico,equipamento_id,observacoes,rdo!inner(obra_id,data)")
-    .eq("rdo.obra_id", obraId).eq("rdo.data", dia);
-  if(error) throw new Error(`Execuções já gravadas em ${dia}: ${error.message}`);
-  if(!ja || !ja.length) return out;
-  const chave = (n, m) => normalizarNumeroEstaca(n || "") + "|" + (m || "furo_normal");
-  const CAMPOS = ["estaca_id", "diametro_mm", "profundidade_executada", "perfuracao_de_m", "perfuracao_ate_m", "perfuracao_inicio",
-    "perfuracao_fim", "inclinacao", "numero_boletim_fisico", "equipamento_id"];
-  for(let i = 0; i < exs.length; i++){
-    const x = exs[i];
-    const alvo = ja.find(j => chave(j.estaca_numero_corrigido || j.estaca_numero, j.modalidade_execucao) === chave(x.estaca_numero, x.modalidade_execucao));
-    if(!alvo || alvo.origem_dados === "geodigitus_s3") continue;
-    const upd = {};
-    CAMPOS.forEach(c => { if((alvo[c] == null || alvo[c] === "") && x[c] != null && x[c] !== "") upd[c] = x[c]; });
-    if(x.observacoes && !String(alvo.observacoes || "").includes(x.observacoes)) upd.observacoes = alvo.observacoes ? alvo.observacoes + "\n" + x.observacoes : x.observacoes;
-    if(Object.keys(upd).length){
-      const { error: eUp } = await sb.from("rdo_execucao_estaca").update(upd).eq("id", alvo.id);
-      if(eUp) console.warn(`Estaca ${x.estaca_numero} de ${dia} não completada:`, eUp.message);
-    }
-    const trechos = (ests[i] && ests[i].trechos) || [];
-    if(trechos.length){
-      const { count } = await sb.from("rdo_raiz_solo").select("id", { count: "exact", head: true }).eq("execucao_id", alvo.id);
-      if(count === 0){
-        const { error: eSolo } = await sb.from("rdo_raiz_solo").insert(trechos.map((t, ti) => ({ rdo_id: alvo.rdo_id, execucao_id: alvo.id, ordem: ti + 1,
-          inicio_ml: t.de ?? null, final_ml: t.ate ?? null, classificacao: t.solo || null, ferramenta: t.ferramenta || null })));
-        if(eSolo) console.warn(`Trechos de ${x.estaca_numero} de ${dia} não gravados:`, eSolo.message);
-        else out.trechos += trechos.length;
-      }
-    }
-    out.indices.add(i); out.conciliadas++;
-  }
-  return out;
-}
+/* lote S57 (#220) / fase 173b: rdoRg113ConciliarExistentes (conciliação do RG 11.3 por diário) está em js/rdo_import_rg113.js */
 /* fase 129c: import (Maya, CSV, SoftSaci, IA) sobre um diário que já existe. A execução do arquivo com o mesmo número (e a mesma
    modalidade) de uma lançada pelo app do campo nesse diário não vira uma segunda linha: a do app só recebe o que está vazio nela.
    Um para um: cada linha do app casa uma vez só, então dois trechos da mesma estaca raiz no arquivo contra um no app dão duas linhas,
@@ -4418,8 +4394,9 @@ async function confirmarImportCSV(){
         };
       });
       // lote S57 (#220): o RG 11.3 concilia antes com a execução que o dia já tem (lida por PDF ou lançada à mão)
-      // fase 134b: concilia no dia da obra, entre diurno e noturno (é a mesma estaca no mesmo dia)
-      const rc = _iaOrigem === "xlsx_rg113" ? await rdoRg113ConciliarExistentes(obra_id, diaData, exs, ests) : { indices: new Set(), conciliadas: 0, trechos: 0 };
+      // fase 173b: concilia só com a linha do mesmo diário (mesma máquina e período) ou de diário sem máquina do mesmo período;
+      // a de outra máquina ou de outro período fica como está e a do arquivo entra como linha nova neste diário
+      const rc = _iaOrigem === "xlsx_rg113" ? await rdoRg113ConciliarExistentes(obra_id, diaData, exs, ests, { rdoId, eqId, turno: turnoDia }) : { indices: new Set(), conciliadas: 0, trechos: 0 };
       // fase 129c: diário que já existe (aberto pelo app do campo): a estaca que o operador lançou não ganha uma segunda linha
       if(rdoExist){
         const cc = await rdoConciliarComCampo(rdoId, exs, ests, dia, rc.indices);

@@ -23,6 +23,7 @@
    ==================================================================== */
 const RG113_ABA = "separados";
 const RG113_FERRAMENTAS = ["revestimento", "martelo", "tricone", "trado"];
+const RG113_REFURO = ["ref", "refuro"];   // fase 173b: valores da coluna INJEÇÃO lidos como refuro (com profundidade final)
 
 /* Procura o cabeçalho (linha com "NOME ESTACA" e "D P M O") nas primeiras linhas de uma aba */
 function rg113AcharCabecalho(linhas){
@@ -178,12 +179,16 @@ function rg113ParaDias(wb, nomeArquivo){
     if(!numero) continue;
     const bloco = rg113Txt(cel(r, "bloco")) || null, local = rg113Txt(cel(r, "local")) || null;
     addU(d._locais, local); addU(d._blocos, bloco);
-    const e = d._ests[numero] || (d._ests[numero] = { numero, agrupamento: bloco, trechos: [], hIni: [], hFim: [], diams: [], inclinacao: null,
-      boletim: null, obs: [], inj: [], perf: false });
-    if(!e.agrupamento && bloco) e.agrupamento = bloco;
     const injTxt = rg113Txt(cel(r, "inj")), injN = mayaNorm(injTxt);
     const de = rg113Num(cel(r, "de")), ate = rg113Num(cel(r, "ate"));
-    if(injN === "prof" || (!injN && ate != null && ate > 0)){
+    // fase 173b: INJEÇÃO = "REF"/"REFURO" com profundidade final é trecho perfurado de refuro (linha própria, modalidade refuro,
+    // que não mexe no status da estaca); sem profundidade final continua observação
+    const ehRef = RG113_REFURO.includes(injN.replace(/[^a-z]/g, "")) && ate != null && ate > 0;
+    const k = ehRef ? numero + "|refuro" : numero;
+    const e = d._ests[k] || (d._ests[k] = { numero, agrupamento: bloco, trechos: [], hIni: [], hFim: [], diams: [], inclinacao: null,
+      boletim: null, obs: [], inj: [], perf: false, refuro: ehRef });
+    if(!e.agrupamento && bloco) e.agrupamento = bloco;
+    if(ehRef || injN === "prof" || (!injN && ate != null && ate > 0)){
       e.perf = true;
       const mat = mayaNorm(rg113Txt(cel(r, "material")));
       e.trechos.push({ de: rg113R2(de ?? 0), ate: rg113R2(ate), solo: rg113Txt(cel(r, "solo")) || null,
@@ -220,12 +225,14 @@ function rg113ParaDias(wb, nomeArquivo){
     Object.values(d._ests).forEach(e => {
       const u = rg113Uniao(e.trechos);
       if(u.sobrepoe) duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: trechos sobrepostos (reperfuração); metragem do dia pela união (${rg113M(u.metros)} m)`);
-      const ant = maxAnterior[e.numero];
+      // fase 173b: o refuro repassa trecho já perfurado por definição; fica fora da conta de reperfuração
+      if(e.refuro) duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: linha REF lida como refuro`);
+      const ant = e.refuro ? null : maxAnterior[e.numero];
       const minDe = e.trechos.reduce((m, t) => t.de != null && (m == null || t.de < m) ? t.de : m, null);
       if(e.perf && ant && minDe != null && minDe < ant.ate - 0.001)
         duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: trecho a partir de ${rg113M(minDe)} m repete o que já foi perfurado até ${rg113M(ant.ate)} m em ${rg113DataBR(ant.dia)} (reperfuração?)`);
       const maxAte = e.trechos.reduce((m, t) => t.ate != null && (m == null || t.ate > m) ? t.ate : m, null);
-      if(maxAte != null && (!ant || maxAte > ant.ate)) maxAnterior[e.numero] = { ate: maxAte, dia: d.data };
+      if(!e.refuro && maxAte != null && (!ant || maxAte > ant.ate)) maxAnterior[e.numero] = { ate: maxAte, dia: d.data };
       if(e.diams.length > 1) duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: mais de um diâmetro (${e.diams.join(", ")} mm)`);
       e.trechos.filter(t => t.ferramenta === "outro").forEach(() => duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: material fora da lista (revestimento, martelo, tricone, trado)`));
       const obs = [];
@@ -239,7 +246,7 @@ function rg113ParaDias(wb, nomeArquivo){
       e.obs.forEach(t => { obs.push(t); duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: coluna INJEÇÃO com texto "${t.slice(0, 60)}" (foi para a observação da estaca)`); });
       const hIni = [...e.hIni].sort(), hFim = [...e.hFim].sort();
       d.estacas.push({
-        numero: e.numero, agrupamento: e.agrupamento, refuro: false,
+        numero: e.numero, agrupamento: e.agrupamento, refuro: !!e.refuro,   // fase 173b: linha REF com trecho = refuro
         diametro_mm: e.diams[0] ?? null, profundidade_projeto: null,
         profundidade_executada: e.perf ? u.metros : null,
         trechos: e.trechos, perfuracao_de_m: null, perfuracao_ate_m: null,
@@ -249,10 +256,12 @@ function rg113ParaDias(wb, nomeArquivo){
         numero_boletim_fisico: e.boletim
       });
     });
+    // fase 173b: o hora a hora cita perfuração de uma estaca e o diário não tem metragem dela (só avisa)
+    rg113DuvidasFurando(d).forEach(t => duvidas.push(t));
     const perfs = d.estacas.filter(e => e.profundidade_executada), injs = d.estacas.filter(e => /^Injeção/.test(e.observacoes || ""));
     d.observacoes = [d._bol.length ? `Boletim físico (RDO) nº ${d._bol.join(", ")}` : null, ...d._obs].filter(Boolean).join("\n") || null;
     if(d.estacas.length){
-      d.atividades = [perfs.length ? `Perfuração de ${perfs.map(e => `${e.numero} (${rg113M(e.profundidade_executada)} m)`).join(", ")}` : null,
+      d.atividades = [perfs.length ? `Perfuração de ${perfs.map(e => `${e.numero}${e.refuro ? " refuro" : ""} (${rg113M(e.profundidade_executada)} m)`).join(", ")}` : null,
         injs.length ? `injeção de ${injs.map(e => e.numero).join(", ")}` : null].filter(Boolean).join("; ") + (d.maquina ? ` com ${d.maquina}` : "") + " — planilha RG 11.3.";
     } else {
       d.atividades = "Sem execução de estacas neste dia (ver atividades hora a hora).";
@@ -279,6 +288,159 @@ function rg113ParaDias(wb, nomeArquivo){
 }
 const dataBRrg = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
+/* ====================================================================
+   Fase 173b: a importação para de esconder a estaca raiz só com injeção.
+   Funções puras (testadas em Node por scripts/testar-fase173b.mjs) e a leitura das linhas com metragem da obra.
+   ==================================================================== */
+const rg113NumEst = (s) => String(s == null ? "" : s).toUpperCase().trim().replace(/\s+/g, " ");
+const rg113Positivo = (v) => { const n = typeof v === "number" ? v : Number(String(v == null ? "" : v).replace(",", ".")); return isFinite(n) && n > 0; };
+/* Linha do contrato v3 com metragem: metros no dia, acumulado ou trecho com profundidade final */
+function rg113TemMetragem(e){
+  return !!e && (rg113Positivo(e.profundidade_executada) || rg113Positivo(e.perfuracao_ate_m) || rg113Positivo(e.profundidade_acumulada_m) ||
+    (Array.isArray(e.trechos) && e.trechos.some(t => t && rg113Positivo(t.ate))));
+}
+/* Números das estacas que, no arquivo inteiro (todos os dias e períodos), têm injeção e nenhuma metragem, e que não estão em
+   metragemObra (números das linhas com metragem que a obra já tem em diário). Refuro não conta como perfuração nem como injeção. */
+function rg113EstacasSoInjecao(dias, metragemObra){
+  const perf = new Set(), inj = [];
+  const add = (n) => { if(n && !inj.includes(n)) inj.push(n); };
+  (dias || []).forEach(d => {
+    (d.estacas || []).forEach(e => {
+      if(e.refuro) return;
+      const n = rg113NumEst(e.numero);
+      if(!n) return;
+      if(rg113TemMetragem(e)) perf.add(n);
+      else if(/inje[çc]/i.test(String(e.observacoes || ""))) add(n);
+    });
+    (d.injecao || []).forEach(j => add(rg113NumEst(j && j.estaca)));
+  });
+  const naObra = new Set([...(metragemObra || [])].map(rg113NumEst));
+  return inj.filter(n => !perf.has(n) && !naObra.has(n));
+}
+/* Texto do aviso da prévia. conferiuObra = false quando a obra não foi escolhida ou a leitura dos diários falhou. */
+function rg113TextoSoInjecao(lista, conferiuObra = true){
+  if(!lista || !lista.length) return null;
+  const n = lista.length, um = n === 1;
+  const nomes = lista.slice(0, 15).join(", ") + (n > 15 ? "…" : "");
+  if(!conferiuObra)
+    return `${n} estaca${um ? "" : "s"} deste arquivo ${um ? "tem" : "têm"} só injeção, sem a perfuração no arquivo: ${nomes}. Escolha a obra para conferir se a perfuração já está em outro diário.`;
+  return `${n} estaca${um ? "" : "s"} deste arquivo ${um ? "tem" : "têm"} só injeção, e a obra não tem a perfuração ${um ? "dela" : "delas"} em nenhum diário: ${nomes}. ` +
+    "A perfuração pode estar no diário do outro turno ou de outra máquina.";
+}
+/* Aviso da prévia (RG 11.3 e leitura por IA): lê as linhas com metragem que a obra já tem. Não bloqueia; erro de leitura só
+   tira a conferência com a obra. Devolve o texto ou null. */
+async function rg113AvisoSoInjecao(dias, obraId){
+  const cand = rg113EstacasSoInjecao(dias, []);
+  if(!cand.length) return null;
+  if(!obraId) return rg113TextoSoInjecao(cand, false);
+  const { data, error } = await lerTudo(() => sb.from("rdo_execucao_estaca")
+    .select("id,estaca_numero,estaca_numero_corrigido,modalidade_execucao,rdo!inner(obra_id)")
+    .eq("rdo.obra_id", obraId).or("profundidade_executada.gt.0,perfuracao_ate_m.gt.0"));
+  if(error){ console.warn("Aviso de estaca só com injeção sem a conferência da obra:", error.message); return rg113TextoSoInjecao(cand, false); }
+  const naObra = (data || []).filter(l => l.modalidade_execucao !== "refuro").map(l => l.estaca_numero_corrigido || l.estaca_numero);
+  return rg113TextoSoInjecao(rg113EstacasSoInjecao(dias, naObra), true);
+}
+
+/* "Furando"/"perfurando" no hora a hora: números de estaca citados depois do verbo (EE44, B1.2, "estaca 12") */
+const RG113_FURANDO = /\b(?:per)?furando\b/i;
+function rg113EstacasCitadas(txt){
+  const m = String(txt || "").match(RG113_FURANDO);
+  if(!m) return null;
+  const resto = String(txt).slice(m.index + m[0].length);
+  const out = [];
+  const add = (s) => { const n = rg113NumEst(String(s).replace(",", ".")); if(n && !out.includes(n)) out.push(n); };
+  for(const x of resto.matchAll(/\b([A-Za-z]{1,4}-?\d+(?:[.,]\d+)*[A-Za-z]?)\b/g)) add(x[1]);
+  for(const x of resto.matchAll(/\bestacas?\s+(?:n[º°o]?\.?\s*)?(\d+(?:[.,]\d+)*)\b/gi)) add(x[1]);
+  return out;
+}
+/* Dúvidas de um dia do contrato v3: o hora a hora cita perfuração e o diário não tem linha com metragem para a estaca
+   (refuro com trecho conta como metragem: a linha REF já tem dúvida própria). Só avisa. */
+function rg113DuvidasFurando(d){
+  const out = [];
+  if(!d) return out;
+  const comMetragem = new Set((d.estacas || []).filter(rg113TemMetragem).map(e => rg113NumEst(e.numero)));
+  const quando = `${rg113DataBR(d.data)}${d.turno_campo === "noturno" ? " (noturno)" : ""}`;
+  let semNumero = false;
+  const ja = [];
+  (d.justificativa || []).forEach(j => {
+    const cit = rg113EstacasCitadas(j && j.motivo);
+    if(cit == null) return;
+    if(!cit.length){ semNumero = true; return; }
+    cit.forEach(n => {
+      if(comMetragem.has(n) || ja.includes(n)) return;
+      ja.push(n);
+      out.push(`${n} em ${quando}: o hora a hora cita perfuração e o diário não tem metragem dela`);
+    });
+  });
+  if(semNumero && !comMetragem.size && !ja.length) out.push(`${quando}: o hora a hora cita perfuração e o diário não tem nenhuma estaca com metragem`);
+  return out;
+}
+
+/* Conciliação por diário (pergunta 3 da spec, decisão de "Se não responder"): a linha já gravada só é completada quando é do
+   MESMO diário (mesma máquina e mesmo período) ou de diário sem máquina do mesmo período (o dia lido antes por PDF, lote S57).
+   diario = { rdoId, eqId, turno }; j = linha já gravada com rdo { equipamento_id, turno_campo }. */
+function rg113MesmoDiario(j, diario){
+  const r = (j && j.rdo) || {};
+  const turnoJ = r.turno_campo === "noturno" ? "noturno" : "diurno";
+  const turnoD = diario && diario.turno === "noturno" ? "noturno" : "diurno";
+  if(turnoJ !== turnoD) return false;
+  if(diario && diario.rdoId && j.rdo_id === diario.rdoId) return true;
+  const eqDiario = (diario && diario.eqId) || null;
+  if(r.equipamento_id) return !!eqDiario && r.equipamento_id === eqDiario;
+  // diário sem máquina: a linha não pode ser de outra máquina
+  return !j.equipamento_id || !eqDiario || j.equipamento_id === eqDiario;
+}
+/* Linha já gravada que a linha x do arquivo completa (ou null): mesmo número e modalidade, no mesmo diário; a do próprio
+   diário primeiro. usadas: ids já completados nesta importação (uma linha gravada casa uma vez só). */
+function rg113AlvoConciliacao(ja, x, diario, usadas){
+  const chave = (n, m) => rg113NumEst(n) + "|" + (m || "furo_normal");
+  const k = chave(x.estaca_numero, x.modalidade_execucao);
+  const cands = (ja || []).filter(j => !(usadas && usadas.has(j.id)) && chave(j.estaca_numero_corrigido || j.estaca_numero, j.modalidade_execucao) === k && rg113MesmoDiario(j, diario));
+  return cands.find(j => diario && j.rdo_id === diario.rdoId) || cands[0] || null;
+}
+
+/* lote S57 (#220): no RG 11.3, a estaca que já tem execução no mesmo dia (lida antes por PDF ou lançada à mão) não ganha uma
+   segunda. A RPC rdo_import_execucao_conciliar só concilia com a do Geodigitus e inseriria outra linha; aqui a execução
+   existente só recebe o que está vazio nela (campos, observação nova e, se ela não tiver nenhum, os trechos de solo). A do
+   Geodigitus segue para a RPC (pulada lá). Fase 173b: só a linha do mesmo diário (rg113MesmoDiario); a de outra máquina ou de
+   outro período não é tocada, e a do arquivo entra como linha nova no diário dela. Devolve { indices, conciliadas, trechos }. */
+async function rdoRg113ConciliarExistentes(obraId, dia, exs, ests, diario){
+  const out = { indices: new Set(), conciliadas: 0, trechos: 0 };
+  const { data: ja, error } = await sb.from("rdo_execucao_estaca")
+    .select("id,rdo_id,estaca_numero,estaca_numero_corrigido,modalidade_execucao,origem_dados,estaca_id,diametro_mm,profundidade_executada,perfuracao_de_m,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,inclinacao,numero_boletim_fisico,equipamento_id,observacoes,rdo!inner(obra_id,data,equipamento_id,turno_campo)")
+    .eq("rdo.obra_id", obraId).eq("rdo.data", dia);
+  if(error) throw new Error(`Execuções já gravadas em ${dia}: ${error.message}`);
+  if(!ja || !ja.length) return out;
+  const CAMPOS = ["estaca_id", "diametro_mm", "profundidade_executada", "perfuracao_de_m", "perfuracao_ate_m", "perfuracao_inicio",
+    "perfuracao_fim", "inclinacao", "numero_boletim_fisico", "equipamento_id"];
+  const usadas = new Set();
+  for(let i = 0; i < exs.length; i++){
+    const x = exs[i];
+    const alvo = rg113AlvoConciliacao(ja, x, diario || { rdoId: x.rdo_id }, usadas);
+    if(!alvo || alvo.origem_dados === "geodigitus_s3") continue;
+    usadas.add(alvo.id);
+    const upd = {};
+    CAMPOS.forEach(c => { if((alvo[c] == null || alvo[c] === "") && x[c] != null && x[c] !== "") upd[c] = x[c]; });
+    if(x.observacoes && !String(alvo.observacoes || "").includes(x.observacoes)) upd.observacoes = alvo.observacoes ? alvo.observacoes + "\n" + x.observacoes : x.observacoes;
+    if(Object.keys(upd).length){
+      const { error: eUp } = await sb.from("rdo_execucao_estaca").update(upd).eq("id", alvo.id);
+      if(eUp) console.warn(`Estaca ${x.estaca_numero} de ${dia} não completada:`, eUp.message);
+    }
+    const trechos = (ests[i] && ests[i].trechos) || [];
+    if(trechos.length){
+      const { count } = await sb.from("rdo_raiz_solo").select("id", { count: "exact", head: true }).eq("execucao_id", alvo.id);
+      if(count === 0){
+        const { error: eSolo } = await sb.from("rdo_raiz_solo").insert(trechos.map((t, ti) => ({ rdo_id: alvo.rdo_id, execucao_id: alvo.id, ordem: ti + 1,
+          inicio_ml: t.de ?? null, final_ml: t.ate ?? null, classificacao: t.solo || null, ferramenta: t.ferramenta || null })));
+        if(eSolo) console.warn(`Trechos de ${x.estaca_numero} de ${dia} não gravados:`, eSolo.message);
+        else out.trechos += trechos.length;
+      }
+    }
+    out.indices.add(i); out.conciliadas++;
+  }
+  return out;
+}
+
 /* Lê o .xlsx; se for um RG 11.3 monta a prévia e devolve true; senão devolve false (segue para o leitor do Maya) */
 async function processarArquivoXlsxRG113(file){
   if(typeof XLSX === "undefined") return false;
@@ -302,4 +464,10 @@ async function processarArquivoXlsxRG113(file){
     if(btn){ btn.disabled = false; btn.textContent = txtBtn; }
   }
   return true;
+}
+
+// teste em Node (scripts/testar-fase173b.mjs): as funções puras e a conciliação também saem por module.exports
+if(typeof module === "object" && module && module.exports){
+  module.exports = { rg113ParaDias, rg113TemMetragem, rg113EstacasSoInjecao, rg113TextoSoInjecao, rg113AvisoSoInjecao, rg113EstacasCitadas,
+    rg113DuvidasFurando, rg113MesmoDiario, rg113AlvoConciliacao, rdoRg113ConciliarExistentes };
 }
