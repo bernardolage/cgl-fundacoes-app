@@ -62,10 +62,48 @@ function eqpNumAce(e){ return Number(e._ace) || 0; }
 /* ---------- visão Horímetro semanal (lote S58, #232) ----------
    Grava em equipamento_leituras com origem "semanal", que só sobe (fn_equipamento_leitura_aplicar): valor menor fica marcado e
    não é gravado; a correção para baixo segue pelo Ajustar, com motivo. Inclui caminhões e veículos, que o resto do painel não lista. */
-let _eqpSem = [], _eqpSemOk = false, _eqpSemData = {}, _eqpSemValores = {};
+let _eqpSem = [], _eqpSemOk = false, _eqpSemUltima = {}, _eqpSemOperador = {}, _eqpSemValores = {};
 function eqpSemUsaKm(e){ return ["caminhao", "veiculo"].includes(e.tipo) || (e.km != null && e.horimetro == null); }
 function eqpSemPode(){ return eqpPodeManutencao() && !ehSomenteLeitura(); }
 function eqpSemAtual(e){ return eqpSemUsaKm(e) ? e.km : e.horimetro; }
+
+/* lote S63-f (#283): partes puras da visão, testadas em scripts/testar-loteS63f.mjs (o teste lê o bloco entre os marcadores). */
+// S63F-INICIO
+function eqpSemTxtNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); }
+// mais recente primeiro: data do registro e, no mesmo dia, o que foi lançado por último
+function eqpSemMaisRecente(a, b){ return String(b.data || "").localeCompare(String(a.data || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")); }
+/* Último lançamento de cada máquina em equipamento_leituras: a leitura mais recente que tem o campo da máquina (horímetro ou km,
+   campoDe(equipamento_id) diz qual). Devolve { equipamento_id: { data, valor } }. */
+function eqpSemUltimaLeitura(leituras, campoDe){
+  const out = {};
+  [...(leituras || [])].sort(eqpSemMaisRecente).forEach(l => {
+    if(!l || !l.equipamento_id || out[l.equipamento_id]) return;
+    const v = l[campoDe(l.equipamento_id)];
+    if(v == null || v === "") return;
+    out[l.equipamento_id] = { data: l.data, valor: Number(v) };
+  });
+  return out;
+}
+/* Operador pela função do RH (funcionarios.funcao), como o funcaoRdoDoCargo do RDO: "Operador de Caminhão" é motorista. */
+function eqpSemEhOperador(funcao){ const f = eqpSemTxtNorm(funcao); return f.includes("OPERADOR") && !f.includes("CAMINHAO"); }
+function eqpSemOperaMaquina(funcao){ const f = eqpSemTxtNorm(funcao); return f.includes("MAQUINA") || f.includes("PERFURATRIZ"); }
+/* Operador do último RDO de cada máquina (rdo.equipamento_id) que tem operador na equipe (rdo_equipe → funcionarios). RDO sem
+   operador na equipe é pulado e vale o anterior da mesma máquina. Com operador de máquinas e outro operador (betoneira, bomba),
+   fica o de máquinas; dois de máquinas no mesmo RDO saem os dois. Devolve { equipamento_id: { nomes: [...], data } }. */
+function eqpSemUltimoOperador(rdos){
+  const out = {};
+  [...(rdos || [])].sort(eqpSemMaisRecente).forEach(r => {
+    if(!r || !r.equipamento_id || out[r.equipamento_id]) return;
+    const ops = (r.rdo_equipe || []).map(q => q && q.funcionarios).filter(f => f && f.nome && eqpSemEhOperador(f.funcao));
+    if(!ops.length) return;
+    const maq = ops.filter(f => eqpSemOperaMaquina(f.funcao));
+    const nomes = [...new Set((maq.length ? maq : ops).map(f => f.nome))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+    out[r.equipamento_id] = { nomes, data: r.data };
+  });
+  return out;
+}
+// S63F-FIM
+
 async function eqpSemCarregar(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando leituras…</p>`;
@@ -73,14 +111,16 @@ async function eqpSemCarregar(){
   if(_eqpView !== "semanal") return;   // trocou de visão enquanto carregava
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   _eqpSem = (data || []).filter(e => !EQP_FORA_OPERACAO.includes(e.status)).sort(eqpOrd);
-  // data da última leitura de cada máquina: a API devolve no máximo 1.000 linhas por vez
-  _eqpSemData = {};
-  for(let de = 0; de < 50000; de += 1000){
-    const { data: lei, error: e2 } = await sb.from("equipamento_leituras").select("equipamento_id,data").order("data", { ascending: false }).order("id").range(de, de + 999);
-    if(e2) break;
-    (lei || []).forEach(l => { if(!_eqpSemData[l.equipamento_id]) _eqpSemData[l.equipamento_id] = l.data; });
-    if((lei || []).length < 1000) break;
-  }
+  // lote S63-f (#283): último lançamento (data e valor) e operador do último RDO, uma leitura de cada tabela; as duas passam de 1.000 linhas
+  const porId = Object.fromEntries(_eqpSem.map(e => [e.id, e]));
+  const [lei, rdos] = await Promise.all([
+    lerTudo(() => sb.from("equipamento_leituras").select("id,equipamento_id,data,horimetro,km,created_at")),
+    lerTudo(() => sb.from("rdo").select("id,equipamento_id,data,created_at,rdo_equipe(funcionarios(nome,funcao))").not("equipamento_id", "is", null))
+  ]);
+  if(_eqpView !== "semanal") return;
+  _eqpSemUltima = eqpSemUltimaLeitura(lei.data, id => (porId[id] && eqpSemUsaKm(porId[id])) ? "km" : "horimetro");
+  _eqpSemOperador = rdos.error ? {} : eqpSemUltimoOperador(rdos.data);
+  if(lei.error || rdos.error) aviso("app-aviso", "Parte da lista não carregou: " + (lei.error || rdos.error).message, "erro");
   _eqpSemOk = true;
   if(_eqpView === "semanal") eqpSemRender();
 }
@@ -88,6 +128,12 @@ function eqpSemMarcar(linha, e){
   const v = _eqpSemValores[e.id], atual = eqpSemAtual(e);
   const menor = v !== undefined && v !== "" && atual != null && Number(v) < Number(atual);
   const msg = linha.querySelector(".eqp-sem-msg"); if(msg) msg.textContent = menor ? "menor que a atual: não será gravada; use Ajustar" : "";
+}
+// lote S63-f (#283): o botão Salvar, fixo acima da lista, mostra quantas leituras estão preenchidas
+function eqpSemContarPreenchidas(){
+  const b = $("btn-eqp-sem-salvar"); if(!b) return;
+  const n = Object.values(_eqpSemValores).filter(v => v !== undefined && v !== "").length;
+  b.textContent = n ? `Salvar leituras (${n})` : "Salvar leituras";
 }
 function eqpSemRender(){
   const cont = $("eqp-conteudo"); if(!cont) return;
@@ -97,20 +143,23 @@ function eqpSemRender(){
   $("eqp-contador").textContent = `${linhas.length} de ${_eqpSem.length}`;
   const pode = eqpSemPode();
   const bs = $("btn-eqp-sem-salvar"); if(bs) bs.style.display = pode ? "" : "none";
+  eqpSemContarPreenchidas();
   if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma máquina com esses filtros.</p>`; return; }
   const tipoTxt = t => ({ caminhao: "Caminhão", veiculo: "Veículo" })[t] || EQP_TIPO_LBL[t] || t || "";
+  /* lote S63-f (#283): a lista rola dentro da caixa (.eqp-sem-rola), então o cabeçalho e o botão Salvar, logo acima, ficam à vista */
   cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Preencha só as máquinas lidas na semana. A leitura só sobe; valor menor que o atual não é gravado e a correção é pelo Ajustar, com motivo.</p>
-    <div class="tabela-rola"><table><thead><tr><th>TAG</th><th>Equipamento</th><th class="num">Última leitura</th><th>Data</th><th>Leitura nova</th><th class="col-acao"></th></tr></thead>
-    <tbody>${linhas.map(e => { const km = eqpSemUsaKm(e), un = km ? "km" : "h", atual = eqpSemAtual(e); return `<tr data-eq="${esc(e.id)}">
+    <div class="tabela-rola eqp-sem-rola"><table><thead><tr><th>TAG</th><th>Equipamento</th><th title="Operador do último RDO desta máquina que tem operador na equipe">Operador</th><th class="num" title="Valor atual da máquina; a leitura nova não pode ser menor">Atual</th><th title="Data e valor do último registro de horímetro ou km desta máquina (RDO, OS, checklist, viagem ou semanal)">Último lançamento</th><th>Leitura nova</th><th class="col-acao"></th></tr></thead>
+    <tbody>${linhas.map(e => { const km = eqpSemUsaKm(e), un = km ? "km" : "h", atual = eqpSemAtual(e), ult = _eqpSemUltima[e.id], op = _eqpSemOperador[e.id]; return `<tr data-eq="${esc(e.id)}">
       <td><strong>${esc(e.codigo)}</strong></td><td>${esc(e.nome || "")} <span class="meta">${esc(tipoTxt(e.tipo))}</span></td>
+      <td>${op ? `${esc(op.nomes.join(", "))} <span class="meta">RDO ${esc(dataBR(op.data))}</span>` : '<span class="meta">—</span>'}</td>
       <td class="num">${atual != null ? esc(num(atual)) + " " + esc(un) : "—"}</td>
-      <td class="meta">${_eqpSemData[e.id] ? dataBR(_eqpSemData[e.id]) : "—"}</td>
+      <td>${ult ? `<span class="meta">${esc(dataBR(ult.data))}</span> · ${esc(num(ult.valor))} ${esc(un)}` : '<span class="meta">—</span>'}</td>
       <td><input type="number" class="eqp-sem-val" min="0" step="0.1" style="width:110px;text-align:right;" value="${esc(_eqpSemValores[e.id] ?? "")}" ${pode ? "" : "disabled"} /> <span class="meta">${esc(un)}</span> <span class="meta txt-perigo eqp-sem-msg"></span></td>
       <td class="col-acao">${pode ? '<button type="button" class="btn-sec btn-sm eqp-sem-ajustar" title="Correção com motivo, inclusive para baixo">Ajustar</button>' : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
   cont.querySelectorAll("tr[data-eq]").forEach(tr => {
     const e = _eqpSem.find(x => x.id === tr.dataset.eq); if(!e) return;
     eqpSemMarcar(tr, e);
-    tr.querySelector(".eqp-sem-val")?.addEventListener("input", ev => { _eqpSemValores[e.id] = ev.target.value; eqpSemMarcar(tr, e); });
+    tr.querySelector(".eqp-sem-val")?.addEventListener("input", ev => { _eqpSemValores[e.id] = ev.target.value; eqpSemMarcar(tr, e); eqpSemContarPreenchidas(); });
     tr.querySelector(".eqp-sem-ajustar")?.addEventListener("click", () => { if(typeof manLeituraAbrir === "function") manLeituraAbrir(e); });
   });
 }

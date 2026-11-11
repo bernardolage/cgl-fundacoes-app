@@ -381,7 +381,7 @@ function renderFichaChamado(erroComentarios){
     <div class="cham-status-bar" id="cham-status-bar">${stages}</div>
     ${chamBlocoEspera(c, ehAutor, podeTriar)}
     ${cat.dica ? `<p class="nota">${esc(cat.dica)}</p>` : ""}
-    <div class="campo largo"><label>Descrição</label><div class="cham-desc" style="font-size:var(--txt-sm);color:var(--txt);">${esc(c.descricao || "—")}</div></div>
+    <div class="campo largo"><label>Descrição</label><div class="cham-desc" style="font-size:var(--txt-sm);color:var(--txt);">${/* html */ linkificarCodigos(esc(c.descricao || "—"))}</div></div>
     <h4 class="titulo-bloco" style="margin-top:14px;">📎 Anexos (${_chamAnexos.length})</h4>
     <div id="cham-anexos">${_chamAnexos.length ? _chamAnexos.map(a => `<div class="cham-anexo">
       <button type="button" class="btn-sec btn-sm btn-cham-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}" title="Baixar">${esc(a.nome)}</button>
@@ -401,7 +401,8 @@ function renderFichaChamado(erroComentarios){
       const pref = txt.match(PREF_RE);
       const corpo = txt.replace(/^\[(status|resolu[cç][aã]o)\]\s*/i, "").replace(PREF_RE, "");
       const sugerida = chamRespostaSugerida(txt);
-      const corpoHtml = esc(corpo).replace(/^\[resposta sugerida\]/im, '<span class="tag verde">resposta sugerida</span>')
+      // lote S63a: PC-AAAA-NNNNN vira link para a ficha do pedido (o texto já sai escapado antes)
+      const corpoHtml = linkificarCodigos(esc(corpo)).replace(/^\[resposta sugerida\]/im, '<span class="tag verde">resposta sugerida</span>')
         .replace(/\[sugere:\s*([a-z_]+)\]/gi, (_m, st) => `<span class="tag cinza">ao aprovar: ${esc(CHAM_SUGERE[st.toLowerCase()] || st)}</span>`);
       const corPref = (p) => /^(resposta|confirmado)/i.test(p) ? "verde" : /^duplicado/i.test(p) ? "cinza" : /^(pergunta|reaberto)/i.test(p) ? "ambar" : "azul";
       // o botão antigo "Aprovar resposta" só existe antes da migration do lote S47 (depois, o bloco "Esperando" aprova)
@@ -415,6 +416,7 @@ function renderFichaChamado(erroComentarios){
     </div>`;
 
   $("btn-cham-fechar").addEventListener("click", fecharChamado);
+  resolverCodigosDoc(box);   // lote S63a: número sem pedido (ou sem leitura) volta a ser texto; o clique é do core.js
   box.querySelectorAll(".btn-cham-anexo").forEach(b => b.addEventListener("click", () => chamBaixarAnexo(b.dataset.path, b.dataset.nome)));
   $("btn-cham-anexar")?.addEventListener("click", () => comBotaoTravado("btn-cham-anexar", chamAnexarNaFicha));
   $("btn-cham-comentar").addEventListener("click", () => comentarChamado(false));

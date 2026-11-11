@@ -1685,13 +1685,15 @@ button.dash-ajuda:focus-visible { outline: 2px solid var(--marca-600); outline-o
 .odoo-contexto .chip.chip-aviso a { color: var(--aviso-txt); text-decoration: underline; }
 
 /* Chamado #4: obra clicável em qualquer tela (linkObra em core.js) */
-a.link-obra, a.link-cad {
+a.link-obra, a.link-cad, a.link-cod {
   color: inherit; text-decoration: none; cursor: pointer;
   border-bottom: 1px dotted currentColor;
 }
-a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus-visible {
+a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus-visible, a.link-cod:hover, a.link-cod:focus-visible {
   color: var(--acao-txt); border-bottom-style: solid;
 }
+/* lote S63a: número de documento citado em texto livre (linkificarCodigos em core.js) */
+a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 .odoo-notebook {
   display: flex;
@@ -2814,6 +2816,9 @@ input:disabled, select:disabled, textarea:disabled {
 /* cabeçalho fixo nas tabelas com rolagem (RDO com 16 colunas, listas longas) */
 .tabela-rola { position: relative; }
 .tabela-rola thead th { position: sticky; top: 0; z-index: 1; background: var(--sup-3); }
+/* lote S63-f (#283): horímetro semanal rola dentro da caixa; o cabeçalho gruda e o Salvar, logo acima, fica sempre à vista */
+.eqp-sem-rola { max-height: calc(100vh - 260px); min-height: 240px; overflow-y: auto; }
+#eqp-sem-filtros { position: sticky; top: 0; z-index: 2; background: var(--bg-card); }
 
 /* ---- Orçamentos: tipo de obra (segmentado) + filtro do catálogo (fase 31) ---- */
 .orc-filtro-cat { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:var(--txt-sm); background:var(--marca-50); border:1px solid var(--marca-100); border-radius: var(--radius-sm); padding:6px 10px; margin-bottom:10px; }

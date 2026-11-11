@@ -1646,6 +1646,64 @@ document.addEventListener("click", async (e) => {
   else if(tipo === "separacao" && typeof abrirSeparacao === "function") abrirSeparacao(id);   // lote S58 (#233)
 }, true);
 
+/* códigos de documento: início (bloco testado por scripts/testar-loteS63a.mjs)
+   Lote S63a (#272): número de documento citado num texto livre (descrição e comentários do chamado) vira link para a
+   ficha. linkificarCodigos(html) recebe texto JÁ escapado por esc() e só embrulha o código num <a class="link-cod">;
+   nunca recebe texto cru. Depois de pôr o HTML na tela, resolverCodigosDoc(caixa) faz uma consulta `in` por tipo com os
+   números encontrados: o que tem documento ganha o id; o que não tem (ou que a RLS não deixa ler) volta a ser texto.
+   Tipo novo (OS, BM, OF...) = uma linha em CODIGOS_DOC: `re` sem grupos, sem âncoras, casando só o código. */
+const CODIGOS_DOC = [
+  { tipo: "pc", re: "PC-\\d{4}-\\d{5}", tabela: "pedidos_compra", coluna: "numero", titulo: "Abrir o pedido de compra",
+    rotulo: "Pedido", abrir: async (id) => {
+      if(!irParaSecao("compras")) return;
+      if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false);
+      if(typeof abrirPedido === "function") await abrirPedido(id);
+    } }
+];
+// código colado em letra, dígito, "_" ou "-" (XPC-..., PC-...-A, PC-2026-014600) não é código
+const _CODIGOS_DOC_RE = new RegExp("(?<![\\w-])(?:" + CODIGOS_DOC.map(p => "(" + p.re + ")").join("|") + ")(?![\\w-])", "g");
+function linkificarCodigos(html){
+  return String(html ?? "").replace(_CODIGOS_DOC_RE, (m, ...g) => {
+    const p = CODIGOS_DOC[g.findIndex((v, i) => i < CODIGOS_DOC.length && v !== undefined)];
+    if(!p) return m;
+    // m vem do texto já escapado e só tem o que o padrão casa; o `/* html */` evita escapar duas vezes
+    return `<a href="#" class="link-cod" data-cod="${esc(p.tipo)}" data-cod-num="${/* html */ m}" title="${esc(p.titulo)}">${/* html */ m}</a>`;
+  });
+}
+async function resolverCodigosDoc(caixa){
+  if(!caixa) return;
+  const porTipo = {};
+  for(const el of caixa.querySelectorAll("a.link-cod[data-cod]")) (porTipo[el.dataset.cod] = porTipo[el.dataset.cod] || []).push(el);
+  for(const [tipo, els] of Object.entries(porTipo)){
+    const p = CODIGOS_DOC.find(x => x.tipo === tipo); if(!p) continue;
+    const nums = [...new Set(els.map(el => el.dataset.codNum))];
+    const { data, error } = await sb.from(p.tabela).select(`id,${p.coluna}`).in(p.coluna, nums);
+    if(error){ console.warn("códigos de documento:", error.message); continue; }   // fica link; o clique tenta de novo
+    const ids = new Map((data || []).map(r => [r[p.coluna], r.id]));
+    els.forEach(el => {
+      const id = ids.get(el.dataset.codNum);
+      if(id) el.dataset.codId = id;
+      else el.replaceWith(document.createTextNode(el.textContent));
+    });
+  }
+}
+document.addEventListener("click", async (e) => {
+  const a = e.target && e.target.closest ? e.target.closest("a.link-cod") : null;
+  if(!a) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const p = CODIGOS_DOC.find(x => x.tipo === a.dataset.cod); if(!p) return;
+  let id = a.dataset.codId;
+  if(!id){
+    const { data } = await sb.from(p.tabela).select("id").eq(p.coluna, a.dataset.codNum).maybeSingle();
+    id = data?.id;
+    if(!id){ aviso("app-aviso", `${p.rotulo} ${a.dataset.codNum} não encontrado.`, "erro"); return; }
+  }
+  if(typeof fecharChamado === "function" && $("cham-modal") && $("cham-modal").style.display !== "none") fecharChamado();
+  await p.abrir(id);
+}, true);
+/* códigos de documento: fim */
+
 /* ====================== ATUALIZAÇÃO AUTOMÁTICA DO APP (fase 86) ======================
    Pedido do Bernardo em 16/10/2026: depois de cada publicação ninguém pode continuar numa versão
    antiga. A saída é recarregar a aba, nunca deslogar: o login vive no storage do navegador (fase 87:
