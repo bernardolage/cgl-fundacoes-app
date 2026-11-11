@@ -384,7 +384,8 @@ const PRECO_ORIGEM_INFO = {
    (medicao_itens.total_travado + valor_total_lido; o banco gera valor_total = total lido quando travado, senão
    quantidade × unitário). Item travado não recalcula; "usar q × unitário" destrava. Sem a migration do hotfix as duas
    colunas não existem: a leitura cai na lista antiga e a gravação não as manda (nada fica travado). */
-const MED_ITENS_COLS = "id,ordem,descricao,variante_id,execucao_id,orcamento_item_id,quantidade,unidade,valor_unitario,valor_total,preco_origem,preco_origem_obs,equipamento_id,equipamento_tag,quantidade_lida,valor_unitario_lido,conferido";
+// fase 157b: mobilizacao_id e perna (a perna vem da variante, por gatilho; a mobilização vem do "Sugerir do período")
+const MED_ITENS_COLS = "id,ordem,descricao,variante_id,execucao_id,orcamento_item_id,quantidade,unidade,valor_unitario,valor_total,preco_origem,preco_origem_obs,equipamento_id,equipamento_tag,quantidade_lida,valor_unitario_lido,conferido,mobilizacao_id,perna";
 let _medTemTrava = true;   // false quando o banco ainda não tem total_travado/valor_total_lido
 const medErroSemTrava = (e) => !!e && /total_travado|valor_total_lido/.test(e.message || "");
 const medArred6 = (n) => Math.round((Number(n) || 0) * 1e6) / 1e6;
@@ -896,6 +897,8 @@ async function sugerirItensMedicao(){
     preco_origem: d.preco_origem || "orcamento_obra",
     preco_origem_obs: d.preco_origem_obs || null,
     orcamento_item_id: d.orcamento_item_id || null,
+    mobilizacao_id: d.mobilizacao_id || null,   // fase 157b: uma linha por mobilização e perna
+    perna: d.perna || null,
     _categoria: d.categoria || null
   }));
 
@@ -1042,6 +1045,8 @@ async function salvarMedicao(novoStatus){
           variante_id: it.variante_id || null,
           execucao_id: it.execucao_id || null,
           orcamento_item_id: it.orcamento_item_id || null,
+          // fase 157b: preservada no delete + insert; sem ela o banco liga à primeira mobilização com a perna em aberto
+          mobilizacao_id: it.mobilizacao_id || null,
           quantidade: medArred6(it.quantidade),   // hotfix 93: numeric(18,6)
           unidade: it.unidade || null,
           valor_unitario: Number(it.valor_unitario) || 0,

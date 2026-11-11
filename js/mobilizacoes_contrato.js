@@ -429,6 +429,7 @@ function renderDrawerMob(){
           <div class="campo"><label for="mob-tricone">Tricone</label>${simNao("mob-tricone", m.tricone)}</div>
           <div class="campo"><label for="mob-torre">Torre baixa</label>${simNao("mob-torre", m.torre_baixa)}</div>
         </div>`)
+      + uiSecao("check", "Cobrança em medição", mobCobrancaHTML(m))
       + uiSecao("check", "Checklist do equipamento (antes de mobilizar; só avisa)", `<div id="mob-checklist">${uiVazio("Carregando…")}</div>`))}
 
     ${pane("equipe", `<div id="mob-equipe"></div>`)}
@@ -502,7 +503,37 @@ function renderDrawerMob(){
   mobRenderViagens();
   if(typeof manRenderChecklistMob === "function") manRenderChecklistMob(m, "mob-checklist");
   $("mob-ver-origem")?.addEventListener("click", e => { e.preventDefault(); abrirMobilizacao(m.origem_mobilizacao_id); });
+  ["mob-cobrar-ida", "mob-cobrar-volta"].forEach(id => $(id)?.addEventListener("change", () => mobSalvarCobranca(m)));
   mobSugerirDesmobPrev(m);
+}
+
+/* ---------- Fase 157b (A7): cobrar cada perna em medição ----------
+   "Sugerir do período" da medição só propõe a perna marcada. A volta da sede nasce sem cobrar a ida e a desmobilização
+   para manutenção na sede grava a volta sem cobrar (regra no banco). Muda quem grava medição, pela RPC
+   mobilizacao_definir_cobranca (a mesma lista de medicoes_write; diretor entra). */
+const MOB_COBRANCA_CARGOS = ["diretor", "admin", "engenheiro", "comercial", "financeiro", "assistente_engenharia"];
+function mobPodeDefinirCobranca(){ return !!usuarioAtual && MOB_COBRANCA_CARGOS.includes(usuarioAtual.cargo); }
+function mobCobrancaHTML(m){
+  const pode = mobPodeDefinirCobranca();
+  const trava = pode ? "" : " disabled";
+  const dica = pode ? "Desmarcado, o Sugerir do período da medição não propõe esta perna." : "Só quem grava medição muda o que se cobra.";
+  return `<div class="grade">
+      <div class="campo"><label title="${esc(dica)}"><input type="checkbox" id="mob-cobrar-ida"${m.cobrar_ida !== false ? " checked" : ""}${trava} /> Cobrar a mobilização (ida)</label></div>
+      <div class="campo"><label title="${esc(dica)}"><input type="checkbox" id="mob-cobrar-volta"${m.cobrar_volta !== false ? " checked" : ""}${trava} /> Cobrar a desmobilização (volta)</label></div>
+    </div>
+    <p class="meta">A volta da sede não cobra a ida, e a desmobilização para manutenção na sede não cobra a volta. O custo das viagens continua na obra.</p>`;
+}
+async function mobSalvarCobranca(m){
+  const ida = $("mob-cobrar-ida"), volta = $("mob-cobrar-volta");
+  if(!ida || !volta) return;
+  const { error } = await sb.rpc("mobilizacao_definir_cobranca", { p_id: m.id, p_cobrar_ida: ida.checked, p_cobrar_volta: volta.checked });
+  if(error){
+    ida.checked = m.cobrar_ida !== false; volta.checked = m.cobrar_volta !== false;
+    aviso("app-aviso", "Não foi possível mudar a cobrança: " + error.message, "erro");
+    return;
+  }
+  m.cobrar_ida = ida.checked; m.cobrar_volta = volta.checked;
+  aviso("app-aviso", `Cobrança em medição: ida ${m.cobrar_ida ? "cobrada" : "não cobrada"}, volta ${m.cobrar_volta ? "cobrada" : "não cobrada"}.`, "ok");
 }
 
 /* ---------- Aba Equipe e SESMT ---------- */
