@@ -3080,6 +3080,7 @@ body.so-leitura [id^="btn-salvar-"],
    sempre tem "-nov" (btn-nova-obra, btn-medic-nova, btn-frota-novo-veic, btn-orc-nova-revisao…). Só <button>: os
    inputs e divs com "nov" no id (senha-nova, cham-anexo-novo, fab-ct-novo) ficam. PDFs e Imprimir (`btn-sec`) continuam. */
 body.so-leitura .ficha-mais,
+body.so-leitura #btn-finalizar-rdo,   /* fase 161: no diário finalizado ele vira .btn-sec e escaparia da regra do botão principal */
 body.so-leitura #btn-registrar-entrada,
 body.so-leitura .acao-perigo,
 body.so-leitura button.txt-perigo,
