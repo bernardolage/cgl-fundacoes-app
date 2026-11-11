@@ -3577,3 +3577,31 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .cmp-aprop-grade { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--esp-4); align-items: start; }
 .cmp-aprop-grade .rotulo-caps { margin-bottom: var(--esp-2); }
 @media (max-width: 1100px) { .cmp-aprop-grade { grid-template-columns: minmax(0, 1fr); } }
+
+/* Perfil e replay da estaca do Geodigitus (fase 162, js/estaca_perfil.js): janela larga; resumo em uma tira; gráfico à esquerda
+   (rola na vertical quando a estaca é funda) e replay à direita; uma coluna em tela estreita. As cores das curvas entram pelo JS. */
+.epf-caixa { max-width: 1180px; width: 94%; }
+.epf-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--esp-2) var(--esp-3); margin-bottom: var(--esp-3); }
+.epf-numero { font-family: var(--font-mono); font-size: var(--txt-xl); font-weight: 600; color: var(--txt); overflow-wrap: anywhere; }
+.epf-cab-meta { font-size: var(--txt-md); color: var(--txt-sec); }
+.epf-resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--esp-2) var(--esp-3); padding: var(--esp-3); margin-bottom: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-2); }
+.epf-resumo .ui-rv-valor, .epf-quadro .ui-rv-valor { font-variant-numeric: tabular-nums; }
+.epf-area { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: var(--esp-4); align-items: start; }
+.epf-col { min-width: 0; }
+.epf-legendas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--esp-2) var(--esp-4); margin-bottom: var(--esp-2); }
+.epf-leg { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-1) var(--esp-3); font-size: var(--txt-sm); color: var(--txt-sec); }
+.epf-leg-item { display: inline-flex; align-items: center; gap: var(--esp-1); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.epf-leg-cor { flex: none; width: 14px; height: 3px; border-radius: var(--radius-pill); }
+.epf-grafico { max-height: 50vh; overflow: auto; border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-0); }
+.epf-svg { display: block; width: 100%; min-width: 560px; height: auto; }
+.epf-replay { display: grid; gap: var(--esp-3); min-width: 0; }
+.epf-controles { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); }
+.epf-controles #btn-epf-tocar { min-width: 72px; }
+.epf-barra { width: 100%; margin: 0; accent-color: var(--acao); }
+.epf-pos { font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
+.epf-quadro { display: grid; gap: var(--esp-1); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); }
+.epf-quadro .ui-rv { display: flex; justify-content: space-between; align-items: baseline; gap: var(--esp-2); }
+.epf-quadro .ui-rv-valor { font-size: var(--txt-md); text-align: right; white-space: nowrap; }
+.epf-selo:hover { text-decoration: underline; }
+.epf-selo:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
+@media (max-width: 900px) { .epf-area { grid-template-columns: minmax(0, 1fr); } .epf-legendas { grid-template-columns: minmax(0, 1fr); } }

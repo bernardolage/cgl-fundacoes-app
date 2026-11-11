@@ -10,6 +10,8 @@
      Tudo grava pelas RPCs geodigitus_* (rdo_pode_operar() no banco: admin, engenheiro, assistente de engenharia,
      encarregado; diretor). As tabelas geodigitus_* só a service role grava.
    - Badge "Geodigitus" e sobreconsumo na execução do RDO (geoBadgeExec, chamado por renderExecucoes em rdo.js).
+   - Fase 162: a ação "Perfil" de cada estaca das Chegadas e o selo do RDO, agora clicável, abrem o perfil e o replay da
+     estaca (abrirPerfilEstaca, em js/estaca_perfil.js). É leitura: aparece para todo usuário que vê a tela.
    - Card "Geodigitus" na Sala de Comando (geoCarregarCardSala, chamado por dashboard.js).
    - Bloco Geodigitus em Usuários › parâmetros da empresa (empresa_config.geodigitus_*, só diretor e admin).
    Regra 1 da fase: o Geodigitus é a fonte primária das estacas de hélice e secante; o Maya complementa.
@@ -98,6 +100,8 @@ function geoFiltradas(){
 }
 function geoAcoesHTML(g){
   const pode = geoPodeOperar(), b = [];
+  // fase 162: leitura, vale para todo usuário que vê a tela (inclusive o só leitura)
+  b.push(`<button type="button" class="btn-sec btn-sm" data-geo-acao="perfil" data-geo="${esc(g.id)}" title="Gráfico por profundidade e replay da execução, com o que o computador de bordo gravou">Perfil</button>`);
   if(pode && g.situacao === "pendente_obra") b.push(`<button type="button" class="btn-sec btn-sm" data-geo-acao="obra" data-geo="${esc(g.id)}">Definir obra</button>`);
   if(pode && (g.situacao === "pendente_estaca" || (["vinculada", "conciliada"].includes(g.situacao) && !g.estaca_id))) b.push(`<button type="button" class="btn-sec btn-sm" data-geo-acao="estaca" data-geo="${esc(g.id)}">Vincular estaca</button>`);
   if(pode && ["pendente_maquina", "pendente_obra", "pendente_rdo_finalizado"].includes(g.situacao)) b.push(`<button type="button" class="btn-sec btn-sm" data-geo-acao="resolver" data-geo="${esc(g.id)}" title="Depois de corrigir o vínculo da CPU, a mobilização ou reabrir o diário">Resolver de novo</button>`);
@@ -485,6 +489,7 @@ async function geoConfirmarGrupo(){
 /* ---------- ações ---------- */
 async function geoAcao(acao, id){
   const g = (_geoDados || []).find(x => x.id === id); if(!g) return;
+  if(acao === "perfil"){ if(typeof abrirPerfilEstaca === "function") await abrirPerfilEstaca(id); return; }   // fase 162: só lê, não recarrega as chegadas
   if(acao === "rdo"){ if(g.rdo_id && typeof abrirRDO === "function") abrirRDO(g.rdo_id); return; }
   if(acao === "cpu"){ if(typeof cpbAbrir === "function") cpbAbrir(g.computador_id); return; }
   if(acao === "obra") return geoAbrirModal("obra", g);
@@ -567,7 +572,7 @@ async function geoCarregarExecs(execs){
   _geoExecs = {};
   const ids = (execs || []).map(e => e.id).filter(Boolean);
   if(!ids.length) return false;
-  const { data, error } = await sb.from("geodigitus_estacas").select("rdo_execucao_id,sobreconsumo_pct,situacao,arquivo:geodigitus_arquivos(imei)").in("rdo_execucao_id", ids);
+  const { data, error } = await sb.from("geodigitus_estacas").select("id,rdo_execucao_id,sobreconsumo_pct,situacao,arquivo:geodigitus_arquivos(imei)").in("rdo_execucao_id", ids);
   if(error) return false;
   (data || []).forEach(g => { _geoExecs[g.rdo_execucao_id] = g; });
   return (data || []).length > 0;
@@ -576,7 +581,11 @@ function geoBadgeExec(e){
   const g = e && e.id ? _geoExecs[e.id] : null;
   if(!g && e?.origem_dados !== "geodigitus_s3") return "";
   const titulo = g ? `Do computador de bordo (CPU ${g.arquivo?.imei || "?"})${g.situacao === "conciliada" ? ": conciliada com o que já estava digitado" : ""}` : "Do computador de bordo (Geodigitus)";
-  return `<span data-geo-badge="1"> <span class="tag azul" title="${esc(titulo)}">Geodigitus</span>${g ? geoTagSobre(g.sobreconsumo_pct) : ""}</span>`;
+  // fase 162: com a chegada lida (geoCarregarExecs), o selo abre o perfil da estaca (clique ligado em js/estaca_perfil.js)
+  const selo = g?.id
+    ? `<button type="button" class="tag azul epf-selo" data-epf-perfil="${esc(g.id)}" title="${esc(titulo)}. Clique para ver o perfil e o replay da estaca.">Geodigitus</button>`
+    : `<span class="tag azul" title="${esc(titulo)}">Geodigitus</span>`;
+  return `<span data-geo-badge="1"> ${/* html */ selo}${g ? geoTagSobre(g.sobreconsumo_pct) : ""}</span>`;
 }
 /* depois da consulta, só acrescenta os badges na grade já desenhada (não redesenha: não perde o que o usuário digitou) */
 function geoAplicarBadgesExec(execs){
