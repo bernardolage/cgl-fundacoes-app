@@ -29,6 +29,11 @@ let _balAlocCache = {};            // fase 108c: funcionario_id -> resposta de e
 let _balS56 = false;               // lote S56 (#202): migration loteS56a aplicada (acessório como destino da saída)
 let _balAceMap = {};               // lote S56 (#202): acessorio_id -> { marcacao, familia }
 const BAL_ACE_FAM = { helice: "Hélice contínua", raiz: "estaca raiz", secante: "Hélice secante", trado: "Trado", comum: "Comum" };
+const BAL_ACE_COND = { bom_estado: "bom estado", precisa_manutencao: "precisa de manutenção", em_manutencao: "em manutenção",
+  sem_marcacao: "sem marcação", sem_avaliacao: "sem avaliação", sucata: "sucata", baixado: "baixado" };   // fase 160
+let _balVincPre = null;            // fase 160: { dv, valor } = destino preenchido pela busca de OS ou reparo e a escolha que vem marcada
+let _balOsRpc = null;              // fase 160: a RPC estoque_saida_vinculos_busca existe e o perfil a lê (null = ainda não conferido)
+let _balAceRpc = null;             // fase 160: idem para estoque_acessorios_busca (false = cai na busca antiga)
 
 const EST_TIPO_LBL = { entrada: "Entrada", saida: "Saída", ajuste: "Ajuste", devolucao: "Devolução", transferencia: "Transferência" };
 const EST_TIPO_COR = { entrada: "verde", saida: "ambar", ajuste: "azul", devolucao: "verde", transferencia: "cinza" };
@@ -85,7 +90,7 @@ async function carregarEstoque(force){
   estAplicarTipo();
   // fase 100: relatório de EPI por colaborador e por obra (js/epi.js), só para quem vê
   if(typeof epiAplicarVisibilidade === "function"){ epiAplicarVisibilidade(); if(podeVerEpi()) epiRenderRelatorio("epi-conteudo"); }
-  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), pode || soEpi ? carregarSaidasHoje() : null]);
+  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), pode || soEpi ? carregarSaidasHoje() : null, balOsPreparar()]);   // fase 160: + campo da OS
 }
 
 /* ---------- Saída no balcão (fase 78) ----------
@@ -121,7 +126,78 @@ function balAplicarMetodo(){
   const obra = dv.startsWith("obra:");
   met.disabled = !obra;
   if(!obra) met.value = "";
-  balCarregarVinculos(dv, "bal-vinc", "bal-vinc-campo", "");   // fase 137: toda troca de destino passa por aqui
+  const campo = $("bal-metodo-campo"); if(campo) campo.style.display = obra ? "" : "none";   // fase 160: fora de obra o campo some
+  // fase 160: destino preenchido pela busca de OS ou reparo traz a escolha marcada; trocar o destino desfaz a marca
+  if(_balVincPre && _balVincPre.dv !== dv){ _balVincPre = null; const b = $("bal-os-busca"); if(b) b.value = ""; }
+  balCarregarVinculos(dv, "bal-vinc", "bal-vinc-campo", _balVincPre ? _balVincPre.valor : "");   // fase 137: toda troca de destino passa por aqui
+}
+/* ---------- fase 160: começar a saída pela OS ou pelo reparo ----------
+   "OS ou reparo (opcional)" busca os abertos por número, TAG, marcação ou descrição (RPC estoque_saida_vinculos_busca, que o
+   auxiliar também lê). Escolher preenche o Destino (o acessório, quando o reparo é de acessório; senão a TAG) e deixa "OS ou
+   reparo desta saída" marcado; a pessoa ainda troca os dois. Sem OS, o destino é escolhido como sempre. Só de EPI, ou sem a
+   migration da 160, o campo não aparece. */
+function balOsDestinoTxt(v){ return v.acessorio_marcacao ? "Acessório " + v.acessorio_marcacao : v.equipamento_codigo ? "TAG " + v.equipamento_codigo : ""; }
+async function balOsPreparar(){
+  const campo = $("bal-os-campo"); if(!campo) return;
+  if(balSoEpi() || !estPodeEditar()){ campo.style.display = "none"; return; }
+  if(_balOsRpc === null){
+    const { error } = await sb.rpc("estoque_saida_vinculos_busca", { p_texto: "sem-resultado-de-proposito" });
+    _balOsRpc = !error;
+  }
+  campo.style.display = _balOsRpc ? "" : "none";
+}
+async function balOsBuscar(){
+  const inp = $("bal-os-busca"), res = $("bal-os-res"); if(!inp || !res) return;
+  const t = inp.value.trim();
+  if(t.length < 2){ res.style.display = "none"; return; }
+  const { data, error } = await sb.rpc("estoque_saida_vinculos_busca", { p_texto: t });
+  if(inp.value.trim() !== t) return;   // digitou mais durante a consulta
+  const lst = error ? [] : (data || []);
+  res.innerHTML = lst.map(v => `<div class="resultado-item" data-id="${esc(v.id)}"><strong>${esc(v.numero || (v.tipo === "manutencao" ? "OS sem número" : "Reparo sem número"))}</strong> <span class="meta">${esc(balOsDestinoTxt(v))}${v.descricao ? " · " + esc(v.descricao) : ""}</span></div>`).join("")
+    || `<div class="resultado-item vazio">${error ? "Não foi possível buscar agora." : "Nenhuma OS ou reparo aberto com esse texto."}</div>`;
+  res.style.display = "";
+  res.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", e => {
+    e.preventDefault();
+    const v = lst.find(x => x.id === d.dataset.id); if(v) balOsEscolher(v);
+  }));
+}
+/* TAG da OS que não está na lista do destino (inativa, caminhão): entra no grupo TAG para a saída poder ser registrada */
+function balGarantirTag(id, codigo){
+  const sel = $("bal-destino"), v = "eq:" + id; if(!sel || [...sel.options].some(o => o.value === v)) return;
+  const g = sel.querySelector('optgroup[label="TAG"]'); if(!g) return;
+  const o = document.createElement("option"); o.value = v; o.textContent = codigo || "TAG"; g.appendChild(o);
+}
+function balOsEscolher(v){
+  const sel = $("bal-destino"); if(!sel || !v) return;
+  let dv = "";
+  if(v.acessorio_id && sel.querySelector("optgroup[data-ace]")){
+    dv = "ac:" + v.acessorio_id;
+    balGarantirAce({ id: v.acessorio_id, marcacao: v.acessorio_marcacao, familia: v.acessorio_familia });
+  } else if(v.equipamento_id){
+    dv = "eq:" + v.equipamento_id;
+    balGarantirTag(v.equipamento_id, v.equipamento_codigo); sel.value = dv;
+  }
+  if($("bal-os-res")) $("bal-os-res").style.display = "none";
+  if(!dv || sel.value !== dv){ aviso("app-aviso", "Não foi possível preencher o destino desta OS ou reparo. Escolha o destino na lista.", "erro"); return; }
+  _balVincPre = { dv, valor: (v.tipo === "manutencao" ? "os:" : "rep:") + v.id };
+  _balDestinoOrigem = "manual"; balAceMostrar(false);
+  const inp = $("bal-os-busca"); if(inp) inp.value = [v.numero, balOsDestinoTxt(v)].filter(Boolean).join(" · ");
+  balAplicarMetodo(); balAtualizarDestinoAloc();
+}
+/* ---------- fase 160: indicador por semana (só leitura) ----------
+   Saídas para TAG ou acessório desde 09/11/2026: com OS ou reparo, "Sem OS" (havia OS ou reparo no período) e sem candidato.
+   RPC estoque_saida_vinculo_semanas, só contagem. Semana sem saída não aparece; sem a migration o bloco fica escondido. */
+async function balCarregarSemanas(){
+  const box = $("bal-semanas"); if(!box) return;
+  if(!estPodeEditar()){ box.style.display = "none"; return; }
+  const { data, error } = await sb.rpc("estoque_saida_vinculo_semanas", { p_semanas: 6 });
+  const lst = error ? [] : (data || []).filter(s => Number(s.saidas) > 0);
+  if(!lst.length){ box.style.display = "none"; box.innerHTML = ""; return; }
+  const pct = s => { const base = Number(s.com_vinculo) + Number(s.sem_os); return base ? Math.round(100 * Number(s.com_vinculo) / base) + "%" : "—"; };
+  box.innerHTML = `<div class="lista-topo compacta"><h3>OS ou reparo nas saídas, por semana</h3><span class="meta">saídas para TAG ou acessório desde 09/11/2026, sem EPI · “Sem OS” = havia OS ou reparo no período e a saída ficou sem vínculo</span></div>
+    <div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Semana de</th><th class="num">Saídas</th><th class="num">Com OS ou reparo</th><th class="num">Sem OS</th><th class="num">Sem OS nem reparo no período</th><th class="num">Vinculadas quando havia</th></tr></thead>
+    <tbody>${lst.map(s => `<tr><td>${dataBR(s.semana)}</td><td class="num">${Number(s.saidas)}</td><td class="num">${Number(s.com_vinculo)}</td><td class="num">${Number(s.sem_os)}</td><td class="num">${Number(s.sem_candidato)}</td><td class="num">${esc(pct(s))}</td></tr>`).join("")}</tbody></table></div>`;
+  box.style.display = "";
 }
 /* ---------- fase 137 (D9): OS ou reparo desta saída ----------
    TAG ou acessório com OS ou reparo aberto (RPC estoque_saida_vinculos_abertos, que o auxiliar também lê) mostra "OS ou reparo
@@ -219,14 +295,29 @@ function balAceMostrar(on){
   c.style.display = on ? "" : "none";
   if(on){ $("bal-ace-busca").value = ""; $("bal-ace-res").style.display = "none"; $("bal-ace-busca").focus(); }
 }
+/* fase 160: o que diferencia uma peça da outra na lista (PT-06 × PT-06-1): modelo ou família, Ø, condição, local e jogo */
+function balAceDetalhe(a){
+  return [a.modelo || BAL_ACE_FAM[a.familia] || a.familia, a.diametro_mm ? "Ø" + a.diametro_mm : "", BAL_ACE_COND[a.condicao] || "",
+    a.local_rotulo || "", a.jogo ? "jogo " + a.jogo : ""].filter(Boolean).join(" · ");
+}
 async function balAceBuscar(){
   const t = ($("bal-ace-busca")?.value || "").replace(/[%,()"]/g, " ").trim(), res = $("bal-ace-res"); if(!res) return;
   if(t.length < 2){ res.style.display = "none"; return; }
-  const { data, error } = await sb.from("acessorios").select("id,marcacao,familia,jogo").eq("ativo", true).or(`marcacao.ilike.%${t}%,jogo.ilike.%${t}%`).order("marcacao").limit(30);
+  // fase 160: marcação, jogo, família, tipo, modelo e Ø, com todos os termos (RPC estoque_acessorios_busca); sem a migration
+  // (ou se a RPC falhar) vale a busca antiga, só por marcação e jogo
+  let lst = null;
+  if(_balAceRpc !== false){
+    const r = await sb.rpc("estoque_acessorios_busca", { p_texto: t, p_equipamento: null });
+    if(r.error){ if(r.error.code === "PGRST202" || r.error.code === "42883") _balAceRpc = false; }
+    else { _balAceRpc = true; lst = r.data || []; }
+  }
+  if(lst === null){
+    const { data, error } = await sb.from("acessorios").select("id,marcacao,familia,jogo").eq("ativo", true).or(`marcacao.ilike.%${t}%,jogo.ilike.%${t}%`).order("marcacao").limit(30);
+    lst = error ? [] : (data || []);
+  }
   if(($("bal-ace-busca")?.value || "").replace(/[%,()"]/g, " ").trim() !== t) return;
-  const lst = error ? [] : (data || []);
-  res.innerHTML = lst.map(a => `<div class="resultado-item" data-id="${esc(a.id)}"><strong>${esc(a.marcacao)}</strong> <span class="meta">${esc(BAL_ACE_FAM[a.familia] || a.familia || "")}${a.jogo ? " · jogo " + esc(a.jogo) : ""}</span></div>`).join("")
-    || `<div class="resultado-item vazio">Nenhum acessório ativo com esse texto.</div>`;
+  res.innerHTML = lst.map(a => `<div class="resultado-item" data-id="${esc(a.id)}"><strong>${esc(a.marcacao)}</strong> <span class="meta">${esc(balAceDetalhe(a))}</span>${a.reparo_aberto ? ' <span class="tag ambar">reparo aberto</span>' : ""}</div>`).join("")
+    || `<div class="resultado-item vazio">Nenhum acessório ativo com esse texto. Tente o tipo e o diâmetro (ex.: “ponta 800”).</div>`;
   res.style.display = "";
   res.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", e => {
     e.preventDefault();
@@ -388,6 +479,7 @@ async function registrarSaidaBalcao(){
 }
 async function carregarSaidasHoje(){
   const cont = $("bal-hoje"); if(!cont) return;
+  balCarregarSemanas();   // fase 160: o indicador acompanha toda recarga das saídas (registrar, desfazer, corrigir)
   const desde = new Date(hojeISO() + "T00:00:00").toISOString();
   const COLS = "id,quantidade,custo_unitario,obra_id,equipamento_id,centro_custo_id,documento,observacoes,categoria_custo,created_at,registrado_por,produto:produtos(codigo,nome,unidade,categoria_custo),retirante:funcionarios!movimentacoes_estoque_responsavel_id_fkey(nome)";
   const saidas = cols => sb.from("movimentacoes_estoque").select(cols).eq("tipo", "saida").gte("created_at", desde).order("created_at", { ascending: false }).limit(300);
@@ -945,6 +1037,8 @@ function ligarEstoque(){
   balLigarRetirante();
   // fase 108c: destino escolhido à mão vence o da alocação; método só com obra
   $("bal-destino")?.addEventListener("change", () => { _balDestinoOrigem = "manual"; balAceMostrar($("bal-destino").value === "ac:"); balAplicarMetodo(); balAtualizarDestinoAloc(); });
+  $("bal-os-busca")?.addEventListener("input", debounce(balOsBuscar, 250));   // fase 160
+  $("bal-os-busca")?.addEventListener("blur", () => setTimeout(() => { if($("bal-os-res")) $("bal-os-res").style.display = "none"; }, 200));
   $("bal-ace-busca")?.addEventListener("input", debounce(balAceBuscar, 250));   // lote S56 (#202)
   $("bal-ace-busca")?.addEventListener("blur", () => setTimeout(() => { if($("bal-ace-res")) $("bal-ace-res").style.display = "none"; }, 200));
   $("bal-item")?.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); balEnter(); } });
