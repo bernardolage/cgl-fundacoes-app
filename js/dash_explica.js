@@ -246,7 +246,22 @@ const DASH_EXPLICA = {
   "aprovacao_os": { regra: "Apontamentos de horas de OS aguardando aprovação, lançados por outra pessoa.",
     fazer: "Aprovar ou recusar em Apontamentos.", origem: "Dos apontamentos de horas." },
   "aprovacao_rp_of": { regra: "Apontamentos de horas de reparo e de fabricação aguardando aprovação, lançados por outra pessoa.",
-    fazer: "Aprovar ou recusar em Apontamentos.", origem: "Dos apontamentos de horas." }
+    fazer: "Aprovar ou recusar em Apontamentos.", origem: "Dos apontamentos de horas." },
+  /* mobilizações: obra sem mobilização, viagem de ida e volta, desmobilização prevista */
+  "mob_nova": { regra: "Mobilizações previstas criadas nos últimos 7 dias, pelo orçamento aprovado, pela obra nova ou pela volta de uma máquina da sede.",
+    fazer: "Definir a TAG e a data prevista e programar a viagem de ida no quadro de Mobilizações.", origem: "Do quadro de Mobilizações." },
+  "obra_sem_mobilizacao": { regra: "Obras não canceladas nem concluídas que têm diário de obra e nenhuma mobilização (cancelada não conta).",
+    fazer: "Criar a mobilização pelo botão Mobilizar equipamento, na aba Máquinas da obra.", origem: "Dos diários de obra e do quadro de Mobilizações." },
+  "mob_sem_viagem_ida": { regra: "Mobilizações em obra sem viagem de ida ligada.",
+    fazer: "Ligar a viagem que levou a máquina na ficha da viagem (campo Mobilização), ou registrar a viagem que faltou.", origem: "Do quadro de Mobilizações e das viagens da Logística." },
+  "mob_desmob_sem_volta": { regra: "Mobilizações em obra com desmobilização prevista para os próximos 10 dias, ou já passada, sem viagem de volta ligada.",
+    fazer: "Programar a viagem de volta em Logística e ligá-la à mobilização.", origem: "Do quadro de Mobilizações e das viagens da Logística." },
+  "mob_sem_desmob_prev": { regra: "Mobilizações em obra sem data prevista de desmobilização, em obras que já têm previsão de término pelo andamento.",
+    fazer: "Informar a desmobilização prevista na ficha da mobilização; a previsão de término da obra aparece como sugestão.", origem: "Do quadro de Mobilizações e da previsão de término das obras." },
+  "mob_encerrada_sem_volta": { regra: "Mobilizações desmobilizadas pelo botão Desmobilizar, com motivo informado, que ficaram sem viagem de volta ligada.",
+    fazer: "Ligar a viagem de volta na ficha da viagem, ou registrar a que faltou.", origem: "Do quadro de Mobilizações e das viagens da Logística." },
+  "viagem_mob_solta": { regra: "Viagens com finalidade Mobilização ou Desmobilização, não canceladas, sem mobilização escolhida.",
+    fazer: "Abrir a viagem e escolher a mobilização que ela atende.", origem: "Das viagens da Logística." }
 };
 
 /* Os cinco indicadores da faixa do período: o texto que antes ficava só no title (não abria em tela de toque) */

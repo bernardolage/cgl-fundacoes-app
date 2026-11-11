@@ -215,10 +215,13 @@ async function carregarMaquinasDaObra(obraId){
   const cont = $("obr-maq-conteudo");
   if(!cont) return;
   if(!obraId){ cont.innerHTML = `<p class="vazio">Salve a obra primeiro.</p>`; return; }
-  const [vRes, oRes] = await Promise.all([
+  const [vRes, oRes, rRes] = await Promise.all([
     sb.from("vw_obra_equipamentos").select("*").eq("obra_id", obraId),
-    sb.from("obras").select("rdo_exige_equipamento").eq("id", obraId).maybeSingle()
+    sb.from("obras").select("rdo_exige_equipamento").eq("id", obraId).maybeSingle(),
+    sb.from("vw_mobilizacoes_regularizar").select("tipo").eq("obra_id", obraId).eq("tipo", "obra_sem_mobilizacao")   // fase 157a
   ]);
+  const semMob = !rRes.error && (rRes.data || []).length > 0;
+  const podeMob = typeof mobPodeEditar === "function" && mobPodeEditar();
   if(obraId !== obraEditId) return;
   if(vRes.error){
     cont.innerHTML = `<p class="vazio">As máquinas da obra entram com a migration da fase 101 (${esc(vRes.error.message)}).</p>`;
@@ -261,7 +264,9 @@ async function carregarMaquinasDaObra(obraId){
       <h4 style="margin:0;font-size:var(--txt-md);">🛠️ Máquinas da obra <span class="contador">${maquinas.length}</span></h4>
       ${exige === null ? "" : `<label class="check-inline" title="${obrMaqPodeExigir() ? "Ligado: salvar RDO sem máquina nesta obra é recusado" : "Só a engenharia altera"}">
         <input type="checkbox" id="obr-maq-exige"${exige ? " checked" : ""}${obrMaqPodeExigir() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) ? "" : " disabled"} /> RDO exige máquina</label>`}
+      ${podeMob ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-maq-mobilizar" title="Cria a mobilização desta obra no quadro de Mobilizações: é ela que leva a máquina e diz onde ela está">Mobilizar equipamento</button>` : ""}
     </div>
+    ${semMob ? `<p class="aviso atencao" style="display:block;margin-bottom:10px;">Esta obra tem diário de obra e nenhuma mobilização: a máquina não aparece como estando aqui.${podeMob ? " Use <strong>Mobilizar equipamento</strong>." : " A engenharia ou a logística cria a mobilização."}</p>` : ""}
     <p class="meta" style="margin:0 0 10px;">Vínculo de trabalho: mobilização ativa, RDO dos últimos 60 dias e vínculo manual. Onde a máquina está continua vindo da mobilização. Máquina nova se cadastra em <a href="#" id="obr-maq-ir-eqp">Equipamentos</a>.</p>
     ${maquinas.length ? tabela(maquinas, false) : `<p class="vazio" style="padding:8px 0;">Nenhuma máquina com mobilização ativa, RDO recente ou vínculo manual.</p>`}
     <div class="lista-topo" style="border:none;padding:0;margin:16px 0 10px;">
@@ -284,6 +289,11 @@ async function carregarMaquinasDaObra(obraId){
     if(irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(a.dataset.eqp);
   }));
   $("obr-maq-ir-eqp")?.addEventListener("click", ev => { ev.preventDefault(); irParaSecao("equipamentos"); });
+  $("btn-obr-maq-mobilizar")?.addEventListener("click", async () => {   // fase 157a
+    if(!irParaSecao("mobilizacoes")) return;
+    await carregarMobilizacoes(false);
+    abrirNovaMobilizacao(obraId);
+  });
   $("obr-maq-exige")?.addEventListener("change", async ev => {
     const v = ev.target.checked;
     const { error } = await sb.from("obras").update({ rdo_exige_equipamento: v }).eq("id", obraId);

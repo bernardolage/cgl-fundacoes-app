@@ -34,7 +34,8 @@ const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", c
   sesmt: "SESMT",   // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt)
   logistica: "Logística",   // fase 151: baixadas e alocação (vw_sc_regularizar_log)
   geodigitus: "Geodigitus",   // fase 107a: computador de bordo e estacas do S3 (vw_sc_regularizar_geo)
-  campo: "Campo" };   // fase 129c: diário do operador enviado, devolvido e pendências do app (vw_sc_regularizar_campo)
+  campo: "Campo",   // fase 129c: diário do operador enviado, devolvido e pendências do app (vw_sc_regularizar_campo)
+  mobilizacoes: "Mobilizações" };   // fase 157a: obra sem mobilização, viagem de ida e volta, desmobilização prevista (vw_sc_regularizar_mob): diário do operador enviado, devolvido e pendências do app (vw_sc_regularizar_campo)
 /* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
    "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
    As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
@@ -459,7 +460,7 @@ async function dashCarregarRegularizar(){
   // fase 151: baixada vencida ou a vencer e diário fora da alocação (vw_sc_regularizar_log; só contagens, logística e diretoria)
   // fase 129c: diário do campo enviado sem conferência, devolvido sem reenvio e pendências do app (vw_sc_regularizar_campo; a view
   // devolve a cada um só o papel dele)
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
@@ -467,9 +468,10 @@ async function dashCarregarRegularizar(){
     dashLer("vw_sc_regularizar_log", q => q.select("*")),
     dashLer("vw_sc_regularizar_campo", q => q.select("*")),
     // fase 156a: horas de fim de semana e feriado esperando aprovação (só quem aprova: diretor, gestor de manutenção e de acessórios)
-    usuarioAtual && ["diretor", "gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_apt", q => q.select("*")) : null]);
+    usuarioAtual && ["diretor", "gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_apt", q => q.select("*")) : null,
+    dashLer("vw_sc_regularizar_mob", q => q.select("*"))]);   // fase 157a: mobilizações (a view devolve a cada um só o papel dele)
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   dashRenderRegularizar();
 }
@@ -621,6 +623,12 @@ async function dashAbrirRegularizar(a){
   // fase 107a: Geodigitus. cpu_* e sync parada → ficha da CPU (uma só) ou visão Computadores de bordo filtrada;
   // geodigitus_estaca_* e diário finalizado → Chegadas do Geodigitus filtrada pela situação (uma só com diário abre o RDO)
   if(a.setor === "campo"){ if(typeof rdoAbrirPresetCampo === "function") await rdoAbrirPresetCampo(a); return; }   // fase 129c
+  // fase 157a: obra com diário sem mobilização (uma só) → aba Máquinas da obra; o resto → Mobilizações, visão Para regularizar no tipo
+  if(a.setor === "mobilizacoes"){
+    if(a.filtro === "obra_sem_mobilizacao" && ids.length === 1){ dashAbrirObra(ids[0], "maquinas"); return; }
+    if(typeof mobAbrirRegularizar === "function") await mobAbrirRegularizar(a.filtro);
+    return;
+  }
   if(a.setor === "apontamentos"){ if(irParaSecao("apontamentos") && typeof aptAbrirAguardando === "function") await aptAbrirAguardando(a.filtro); return; }   // fase 156a
   if(a.setor === "geodigitus"){
     if(/^cpu_/.test(a.filtro || "") || a.filtro === "geodigitus_sync_parado"){

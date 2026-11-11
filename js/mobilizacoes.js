@@ -15,7 +15,9 @@
 
 let _mobCards      = [];      // linhas de vw_mobilizacoes_quadro
 let _mobPendSetor  = [];      // linhas de vw_mobilizacao_pendencias_setor
-let _mobView       = "quadro"; // quadro | pendencias
+let _mobView       = "quadro"; // quadro | pendencias | regularizar
+let _mobReg        = null;    // fase 157a: linhas de vw_mobilizacoes_regularizar (null = view indisponível)
+let _mobRegFiltro  = "";      // fase 157a: tipo escolhido na visão Para regularizar (vazio = todos)
 let _mobCarregado  = false;
 let _mobAberta     = null;    // registro de mobilizacoes aberto no drawer
 let _mobAbertaCard = null;    // linha da view correspondente
@@ -42,6 +44,18 @@ const MOB_SETOR  = { engenharia: "Engenharia", sesmt: "SESMT", rh: "RH", manuten
 // profiles.cargo → setor cujas pendências a pessoa vê em "Minhas pendências"
 const MOB_CARGO_SETOR = { engenheiro: "engenharia", assistente_engenharia: "engenharia", encarregado: "engenharia", operador: "engenharia", sesmt: "sesmt", rh: "rh", mecanico: "manutencao", almoxarife: "almoxarifado", comprador: "almoxarifado", gestor_acessorios: "almoxarifado", logistica: "logistica", comercial: "comercial" };
 const MOB_TIPO_ICONE = { helice: "🌀", secante: "🌀", raiz: "🌱", trado: "🔩", outro: "⚙️" };
+// fase 157a: motivo da desmobilização (check em mobilizacoes.desmob_motivo; a RPC mobilizacao_desmobilizar confere de novo)
+const MOB_DESMOB_MOTIVOS = { fim_contrato: "Fim do contrato", manutencao_sede: "Manutenção na sede", troca_maquina: "Troca de máquina", paralisacao: "Paralisação da obra", outro: "Outro" };
+// fase 157a: pendências da visão Para regularizar (vw_mobilizacoes_regularizar), na ordem da tela
+const MOB_REG_TIPOS = {
+  mob_nova:                { rot: "Mobilização nova a planejar", acao: "Abrir", dica: "Criada nos últimos 7 dias e ainda prevista: definir TAG, data e viagem." },
+  obra_sem_mobilizacao:    { rot: "Obra com diário e sem mobilização", acao: "Mobilizar", dica: "A obra já tem RDO, mas nenhuma mobilização: a localização das máquinas não acompanha." },
+  mob_sem_viagem_ida:      { rot: "Em obra sem viagem de ida", acao: "Abrir", dica: "Ligue a viagem que levou a máquina: na ficha da viagem, finalidade Mobilização e esta mobilização." },
+  mob_desmob_sem_volta:    { rot: "Desmobilização em até 10 dias sem viagem de volta", acao: "Abrir", dica: "Programe a viagem de volta." },
+  mob_sem_desmob_prev:     { rot: "Em obra sem data prevista de desmobilização", acao: "Abrir", dica: "A obra tem previsão de término: informe a desmobilização prevista da máquina." },
+  mob_encerrada_sem_volta: { rot: "Desmobilizada sem viagem de volta", acao: "Abrir", dica: "Ligue a viagem que trouxe a máquina de volta." },
+  viagem_mob_solta:        { rot: "Viagem de mobilização sem a mobilização", acao: "Abrir viagem", dica: "Na ficha da viagem, escolha a mobilização que ela atende." }
+};
 // transições válidas por status atual (quem pode é o RLS + regra no confirmar)
 const MOB_TRANSICOES = {
   prevista:      [["em_preparacao", "▶ Iniciar preparação", "btn"], ["cancelada", "✕ Cancelar", "btn-sec txt-perigo"]],
@@ -68,14 +82,16 @@ async function carregarMobilizacoes(forcar){
   if(_mobCarregado && !forcar) return;
   const cont = $("mob-conteudo");
   if(cont && !_mobCarregado) cont.innerHTML = `<p class="vazio">Carregando quadro…</p>`;
-  const [qRes, pRes, eRes, oRes, prRes] = await Promise.all([
+  const [qRes, pRes, eRes, oRes, prRes, rRes] = await Promise.all([
     sb.from("vw_mobilizacoes_quadro").select("*").order("data_mobilizacao_prev", { ascending: true, nullsFirst: false }),
     sb.from("vw_mobilizacao_pendencias_setor").select("*"),
     sb.from("equipamentos").select("id,codigo,nome,tipo,status,localizacao_tipo,localizacao_obra_id").eq("ativo", true).order("codigo"),
     sb.from("obras").select("id,codigo,nome,status,contrato_id,cliente_id,cidade,uf").not("status", "in", "(cancelada)").order("codigo", { ascending: false }),
-    sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome")
+    sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),
+    sb.from("vw_mobilizacoes_regularizar").select("*")   // fase 157a: pendências (erro = migration ainda não aplicada: a visão some)
   ]);
   if(qRes.error){ aviso("app-aviso", "Não foi possível carregar as mobilizações: " + qRes.error.message, "erro"); return; }
+  _mobReg       = rRes.error ? null : (rRes.data || []);
   _mobCards     = qRes.data || [];
   _mobPendSetor = pRes.data || [];
   _mobEquips    = eRes.data || [];
@@ -123,8 +139,67 @@ function renderMobilizacoes(){
   // fase 95: "+ Nova mobilização" só para quem cria (mobilizacoes_write / mobilizacoes_insert_acessorios no banco)
   const bn = $("btn-mob-nova"); if(bn) bn.style.display = mobPodeEditar() ? "" : "none";
 
+  // fase 157a: visão Para regularizar (some sem a view no banco)
+  const breg = document.querySelector('#sec-mobilizacoes .serv-view-btn[data-view="regularizar"]');
+  if(breg) breg.style.display = _mobReg ? "" : "none";
+  if($("mob-reg-badge")) $("mob-reg-badge").textContent = _mobReg && _mobReg.length ? _mobReg.length : "";
+  if(_mobView === "regularizar" && !_mobReg) _mobView = "quadro";
+
   document.querySelectorAll("#sec-mobilizacoes .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _mobView));
-  if(_mobView === "pendencias") renderMinhasPendenciasMob(); else renderQuadroMob();
+  if(_mobView === "pendencias") renderMinhasPendenciasMob();
+  else if(_mobView === "regularizar") renderRegularizarMob();
+  else renderQuadroMob();
+}
+
+/* ---------- Fase 157a: Para regularizar ----------
+   Uma linha por obra, mobilização ou viagem (vw_mobilizacoes_regularizar): a Logística liga a viagem pela ficha da viagem
+   (finalidade Mobilização ou Desmobilização e a mobilização), a engenharia informa a desmobilização prevista na ficha
+   da mobilização e a obra com diário sem mobilização ganha a sua pelo botão Mobilizar. Nada é ligado automaticamente. */
+function renderRegularizarMob(){
+  const cont = $("mob-conteudo");
+  if(!cont) return;
+  const termo = ($("mob-busca")?.value || "").trim().toLowerCase();
+  const linhas = (_mobReg || []).filter(r => !_mobRegFiltro || r.tipo === _mobRegFiltro)
+    .filter(r => !termo || `${r.obra_codigo || ""} ${r.equipamento_tag || ""} ${r.descricao || ""}`.toLowerCase().includes(termo));
+  const porTipo = {};
+  (_mobReg || []).forEach(r => { porTipo[r.tipo] = (porTipo[r.tipo] || 0) + 1; });
+  const filtros = `<div class="serv-views" role="group" aria-label="Tipo de pendência">
+    <button type="button" class="serv-view-btn${_mobRegFiltro ? "" : " ativo"}" data-mob-reg="">Todas <span class="contador">(${esc((_mobReg || []).length)})</span></button>
+    ${Object.keys(MOB_REG_TIPOS).filter(t => porTipo[t]).map(t => `<button type="button" class="serv-view-btn${_mobRegFiltro === t ? " ativo" : ""}" data-mob-reg="${esc(t)}" title="${esc(MOB_REG_TIPOS[t].dica)}">${esc(MOB_REG_TIPOS[t].rot)} <span class="contador">(${esc(porTipo[t])})</span></button>`).join("")}
+  </div>`;
+  if(!linhas.length){ cont.innerHTML = filtros + `<p class="vazio">Nada para regularizar nas mobilizações.</p>`; mobLigarFiltrosReg(cont); return; }
+  const ordem = Object.keys(MOB_REG_TIPOS);
+  linhas.sort((a, b) => ordem.indexOf(a.tipo) - ordem.indexOf(b.tipo) || String(a.obra_codigo || "").localeCompare(String(b.obra_codigo || ""), "pt-BR", { numeric: true }));
+  const pode = mobPodeEditar(), podeVg = typeof logPodeOperar === "function" && logPodeOperar();
+  cont.innerHTML = filtros + `<div class="tabela-rola"><table>
+    <thead><tr><th>Pendência</th><th>Obra</th><th>TAG</th><th>Data</th><th></th></tr></thead>
+    <tbody>${linhas.map(r => {
+      const t = MOB_REG_TIPOS[r.tipo] || { rot: r.descricao, acao: "Abrir", dica: "" };
+      const mostra = r.tipo === "viagem_mob_solta" ? podeVg : (r.tipo === "obra_sem_mobilizacao" ? pode : true);
+      return `<tr>
+        <td title="${esc(t.dica)}">${esc(r.descricao || t.rot)}</td>
+        <td>${r.obra_id ? linkObra(r.obra_id, r.obra_codigo || "?") : '<span class="meta">—</span>'}</td>
+        <td>${uiCodigo(r.equipamento_tag || "a definir")}</td>
+        <td>${r.data_ref ? esc(dataBR(r.data_ref)) : '<span class="meta">—</span>'}</td>
+        <td>${mostra ? `<button type="button" class="btn-sec btn-sm" data-reg-tipo="${esc(r.tipo)}" data-reg-mob="${esc(r.mobilizacao_id || "")}" data-reg-vg="${esc(r.viagem_id || "")}" data-reg-obra="${esc(r.obra_id || "")}" title="${esc(t.dica)}">${esc(t.acao)}</button>` : ""}</td>
+      </tr>`; }).join("")}</tbody></table></div>`;
+  mobLigarFiltrosReg(cont);
+  cont.querySelectorAll("[data-reg-tipo]").forEach(b => b.addEventListener("click", () => {
+    const d = b.dataset;
+    if(d.regTipo === "viagem_mob_solta"){ if(irParaSecao("frota") && typeof abrirViagem === "function") abrirViagem(d.regVg, async () => { if(irParaSecao("mobilizacoes")){ _mobView = "regularizar"; await carregarMobilizacoes(true); } }); }
+    else if(d.regTipo === "obra_sem_mobilizacao") abrirNovaMobilizacao(d.regObra);
+    else if(d.regMob) abrirMobilizacao(d.regMob);
+  }));
+}
+function mobLigarFiltrosReg(cont){
+  cont.querySelectorAll("[data-mob-reg]").forEach(b => b.addEventListener("click", () => { _mobRegFiltro = b.dataset.mobReg; renderRegularizarMob(); }));
+}
+/* Chamado pela Sala de Comando ("Para regularizar" de mobilizações): abre o quadro nesta visão, no tipo da linha */
+async function mobAbrirRegularizar(filtro){
+  if(!irParaSecao("mobilizacoes")) return;
+  _mobView = "regularizar";
+  _mobRegFiltro = MOB_REG_TIPOS[filtro] ? filtro : "";
+  await carregarMobilizacoes(true);
 }
 
 function mobFiltrados(){
@@ -148,6 +223,9 @@ function mobBadgePend(c){
   return `<span class="mob-badge ${esc(cls)}" title="${esc(setores || "todas as pendências concluídas")}">${c.tem_atrasada ? "⏰ " : ""}${txt}</span>`;
 }
 
+/* fase 157a: prevista criada nos últimos 7 dias (tipo mob_nova da vw_mobilizacoes_regularizar) */
+function mobEhNova(id){ return !!(_mobReg && _mobReg.some(r => r.tipo === "mob_nova" && r.mobilizacao_id === id)); }
+
 function cardMobHTML(c){
   const dias = c.data_mobilizacao_prev ? Math.round((new Date(c.data_mobilizacao_prev + "T00:00:00") - new Date(hojeISO() + "T00:00:00")) / 86400000) : null;
   const quando = c.data_mobilizacao_prev
@@ -165,6 +243,7 @@ function cardMobHTML(c){
       <span class="mob-chip tag">${esc(c.equipamento_tag || "XX")}</span>
       ${c.apoio_tags ? `<span class="mob-chip">+ ${esc(c.apoio_tags)}</span>` : ""}
       <span class="mob-chip st">${esc(MOB_STATUS[c.mob_status] || c.mob_status)}</span>
+      ${mobEhNova(c.id) ? `<span class="mob-chip ok" title="Mobilização prevista criada nos últimos 7 dias (orçamento aprovado, obra nova ou volta da sede).">nova</span>` : ""}
     </div>
     <div class="mob-card-rodape">
       <span>${quando}</span>
@@ -373,6 +452,9 @@ function renderDrawerMob(){
           <span class="mob-chip" style="border-color:${esc(col.cor || "var(--sup-3)")}">${esc(col.label || "")}</span>
           ${c.obra_codigo ? `🏗️ ${linkObra(m.obra_id, `${c.obra_codigo} — ${c.obra_nome || ""}`.trim())}` : ""}
           ${m.trello_card_url ? `<a href="${esc(m.trello_card_url)}" target="_blank" rel="noopener" class="meta">card no Trello ↗</a>` : ""}
+          ${m.desmob_motivo ? `<span class="mob-chip" title="Motivo informado na desmobilização">${esc(MOB_DESMOB_MOTIVOS[m.desmob_motivo] || m.desmob_motivo)}</span>` : ""}
+          ${m.volta_prevista ? `<span class="mob-chip aviso" title="A máquina volta à obra depois da manutenção na sede">volta prevista</span>` : ""}
+          ${m.origem_mobilizacao_id ? `<a href="#" class="mob-chip" id="mob-ver-origem" title="Esta mobilização nasceu da volta da sede de outra mobilização">origem: volta da sede ↗</a>` : ""}
         </div>
       </div>
       <button type="button" class="btn-sec" id="btn-mob-fechar" aria-label="Fechar">×</button>
@@ -389,6 +471,8 @@ function renderDrawerMob(){
         <div class="campo"><label>TAG principal</label><select id="mob-equip">${mobEquipOpts(m.equipamento_id)}</select></div>
         <div class="campo"><label>Saída real</label><input type="date" id="mob-data-saida" value="${esc(m.data_saida_real || "")}" /></div>
         <div class="campo"><label>Chegada real</label><input type="date" id="mob-data-chegada" value="${esc(m.data_chegada_real || "")}" /></div>
+        <div class="campo"><label>Desmobilização prevista</label><input type="date" id="mob-data-desmob-prev" value="${esc(m.data_desmob_prev || "")}" title="Data em que a máquina deve sair da obra. A Logística recebe o aviso 10 dias antes para programar a volta." />
+          <span class="meta" id="mob-desmob-sug"></span></div>
         <div class="campo"><label>Desmobilização real</label><input type="date" id="mob-data-desmob" value="${esc(m.data_desmob_real || "")}" /></div>
         <div class="campo largo"><label>TAGs de apoio (bomba, compressor, gerador)</label>${mobApoioHTML("mob")}</div>
       </div>
@@ -465,6 +549,18 @@ function renderDrawerMob(){
   mobRenderSeparacao();
   mobRenderViagens();     // fase 89
   if(typeof manRenderChecklistMob === "function") manRenderChecklistMob(m, "mob-checklist");   // fase 92
+  $("mob-ver-origem")?.addEventListener("click", e => { e.preventDefault(); abrirMobilizacao(m.origem_mobilizacao_id); });
+  mobSugerirDesmobPrev(m);   // fase 157a
+}
+
+/* fase 157a: sugere a desmobilização prevista pela previsão de término da obra (fase 140); só sugere, quem grava é o usuário */
+async function mobSugerirDesmobPrev(m){
+  const box = $("mob-desmob-sug");
+  if(!box || m.data_desmob_prev || !["prevista", "em_preparacao", "em_transito", "em_obra"].includes(m.status)) return;
+  const { data } = await sb.from("vw_sc_obra_andamento").select("previsao_termino").eq("obra_id", m.obra_id).maybeSingle();
+  if(_mobAberta !== m || !$("mob-desmob-sug") || !data?.previsao_termino) return;
+  box.innerHTML = `previsão de término da obra: <a href="#" id="mob-desmob-usar" title="Preenche a desmobilização prevista com a previsão de término calculada pelo andamento da obra">${esc(dataBR(data.previsao_termino))} (usar)</a>`;
+  $("mob-desmob-usar")?.addEventListener("click", e => { e.preventDefault(); $("mob-data-desmob-prev").value = data.previsao_termino; });
 }
 
 /* ---------- Fase 89: viagens da mobilização (ida e volta) ----------
@@ -746,6 +842,7 @@ async function salvarMobilizacao(){
     data_saida_real: $("mob-data-saida").value || null,
     data_chegada_real: $("mob-data-chegada").value || null,
     data_desmob_real: $("mob-data-desmob").value || null,
+    data_desmob_prev: $("mob-data-desmob-prev")?.value || null,   // fase 157a
     equipamento_id: $("mob-equip").value || null,
     equipamentos_apoio: [..._mobApoioSel.mob],
     estacas_resumo: lerEstacasResumoMob(),
@@ -859,7 +956,7 @@ async function mudarStatusMobilizacao(novo, btn){
     if(abertas && !confirm(`Ainda há ${abertas} pendência(s) aberta(s). Registrar a saída mesmo assim?`)) return;
     if(!confirm("Registrar saída para a obra? A viagem de ida passa a 'em trânsito' em Logística com a nota de remessa (rascunho), e a TAG passa a 'em trânsito'.")) return;
   } else if(novo === "desmobilizada"){
-    if(!confirm("Desmobilizar? Será gerada a viagem de volta em Logística com a nota de retorno (rascunho), e a TAG volta para a base.")) return;
+    abrirDesmobilizacaoMob(); return;   // fase 157a: motivo, data e volta prevista no modal; grava pela RPC
   } else if(novo === "cancelada"){
     if(!confirm("Cancelar esta mobilização?")) return;
   } else if(novo === "em_preparacao"){
@@ -880,11 +977,6 @@ async function mudarStatusMobilizacao(novo, btn){
       await mobViagemStatus(vg, "em_transito");
     }
     if(novo === "em_obra" && atual.viagem_ida_id) await mobViagemStatus({ id: atual.viagem_ida_id }, "concluida", $("mob-data-chegada")?.value || atual.data_chegada_real || null);
-    if(novo === "desmobilizada"){
-      const vg = await mobGarantirViagem(atual, "volta"); upd.viagem_volta_id = vg.id;
-      upd.movimentacao_retorno_id = await criarMovimentacaoMob("retorno", atual, vg);
-      await mobViagemStatus(vg, "em_transito");
-    }
     const { data: gravou, error } = await sb.from("mobilizacoes").update(upd).eq("id", atual.id).select("id");
     if(error) throw new Error(/mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa." : error.message);
     if(!gravou?.length) throw new Error(MOB_MSG_SEM_PERMISSAO);   // fase 95: RLS barrou (0 linhas, sem erro)
@@ -895,7 +987,7 @@ async function mudarStatusMobilizacao(novo, btn){
     }
     aviso("app-aviso", `Mobilização: ${MOB_STATUS[novo]}.`, "ok");
     await carregarMobilizacoes(true);
-    if(typeof carregarMovimentacoes === "function" && (novo === "em_transito" || novo === "desmobilizada")) carregarMovimentacoes();
+    if(typeof carregarMovimentacoes === "function" && novo === "em_transito") carregarMovimentacoes();
     if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;   // fase 89: painel de Logística recarrega
     await abrirMobilizacao(atual.id);
   } catch(err){
@@ -903,6 +995,60 @@ async function mudarStatusMobilizacao(novo, btn){
     if(btn) btn.disabled = false;
   }
 }
+/* ---------- Fase 157a: desmobilizar com motivo ----------
+   O modal pede motivo e data; na manutenção na sede pede também a volta prevista, e a RPC mobilizacao_desmobilizar
+   cria a mobilização prevista da volta (mesma TAG, mesma obra). A viagem de volta e a nota de retorno continuam
+   nascendo aqui, antes da RPC, como na fase 89. */
+function abrirDesmobilizacaoMob(){
+  const m = _mobAberta; if(!m) return;
+  $("mobd-motivo").innerHTML = '<option value="">— selecione —</option>' + Object.entries(MOB_DESMOB_MOTIVOS).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
+  $("mobd-data").value = hojeISO();
+  $("mobd-volta").value = "";
+  mobDesmobAtualizar();
+  $("mob-desmob-modal").style.display = "flex";
+}
+function mobDesmobAtualizar(){
+  const m = _mobAberta || {}, c = _mobAbertaCard || {};
+  const motivo = $("mobd-motivo").value, sede = motivo === "manutencao_sede";
+  $("mobd-volta-campo").style.display = sede ? "" : "none";
+  const tag = c.equipamento_tag || (_mobEquips.find(e => e.id === m.equipamento_id) || {}).codigo || "a máquina";
+  const obra = c.obra_codigo || (_mobObras.find(o => o.id === m.obra_id) || {}).codigo || "obra";
+  const dt = $("mobd-data").value, volta = $("mobd-volta").value;
+  $("mobd-resumo").textContent = !motivo ? ""
+    : sede ? `${tag} volta à base em ${dt ? dataBR(dt) : "…"} e fica prevista para a ${obra} em ${volta ? dataBR(volta) : "…"}.`
+    : `${tag} volta à base em ${dt ? dataBR(dt) : "…"} (${MOB_DESMOB_MOTIVOS[motivo]}).`;
+}
+function fecharDesmobilizacaoMob(){ $("mob-desmob-modal").style.display = "none"; }
+async function confirmarDesmobilizacaoMob(){
+  const m = _mobAberta; if(!m) return;
+  if(!mobPodeEditar()){ aviso("app-aviso", MOB_MSG_SEM_PERMISSAO, "erro"); return; }
+  const motivo = $("mobd-motivo").value, dt = $("mobd-data").value, volta = $("mobd-volta").value || null;
+  if(!motivo){ aviso("app-aviso", "Informe o motivo da desmobilização.", "erro"); $("mobd-motivo").focus(); return; }
+  if(!dt){ aviso("app-aviso", "Informe a data da desmobilização.", "erro"); $("mobd-data").focus(); return; }
+  if(motivo === "manutencao_sede" && !volta){ aviso("app-aviso", "Informe quando a máquina volta à obra.", "erro"); $("mobd-volta").focus(); return; }
+  if(volta && volta < dt){ aviso("app-aviso", "A volta não pode ser antes da desmobilização.", "erro"); return; }
+  try {
+    await salvarMobilizacaoSilencioso();
+    const atual = _mobAberta;
+    const vg = await mobGarantirViagem(atual, "volta");
+    const retorno = await criarMovimentacaoMob("retorno", atual, vg);
+    await mobViagemStatus(vg, "em_transito");
+    const { data: lig, error: eLig } = await sb.from("mobilizacoes").update({ viagem_volta_id: vg.id, movimentacao_retorno_id: retorno }).eq("id", atual.id).select("id");
+    if(eLig) throw new Error(eLig.message);
+    if(!lig?.length) throw new Error(MOB_MSG_SEM_PERMISSAO);
+    const { data: nova, error } = await sb.rpc("mobilizacao_desmobilizar", { p_id: atual.id, p_motivo: motivo, p_data: dt, p_volta_prevista: motivo === "manutencao_sede" ? volta : null });
+    if(error) throw new Error(error.message);
+    fecharDesmobilizacaoMob();
+    aviso("app-aviso", nova ? "Mobilização desmobilizada. A volta à obra ficou prevista no quadro." : "Mobilização desmobilizada.", "ok");
+    await carregarMobilizacoes(true);
+    if(typeof carregarMovimentacoes === "function") carregarMovimentacoes();
+    if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;
+    await abrirMobilizacao(atual.id);
+  } catch(err){
+    aviso("app-aviso", "Não foi possível desmobilizar: " + err.message, "erro");
+  }
+}
+
 async function salvarMobilizacaoSilencioso(){
   if(!_mobAberta || !$("mob-equip")) return;
   const reg = { equipamento_id: $("mob-equip").value || null, equipamentos_apoio: [..._mobApoioSel.mob],
@@ -951,6 +1097,10 @@ function ligarMobilizacoes(){
   $("btn-mob-nova")?.addEventListener("click", () => abrirNovaMobilizacao());
   $("btn-mobn-fechar")?.addEventListener("click", fecharNovaMobilizacao);
   $("btn-mobn-criar")?.addEventListener("click", () => comBotaoTravado("btn-mobn-criar", criarMobilizacao));
+  // fase 157a: desmobilizar com motivo
+  $("btn-mobd-fechar")?.addEventListener("click", fecharDesmobilizacaoMob);
+  $("btn-mobd-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-mobd-confirmar", confirmarDesmobilizacaoMob));
+  ["mobd-motivo", "mobd-data", "mobd-volta"].forEach(id => $(id)?.addEventListener("change", mobDesmobAtualizar));
   $("mob-modal")?.addEventListener("click", (e) => { if(e.target.id === "mob-modal") fecharMobilizacao(); });
   $("mob-kpi-card-minhas")?.addEventListener("click", () => { _mobView = "pendencias"; renderMobilizacoes(); });
   document.querySelector('nav button[data-secao="mobilizacoes"]')?.addEventListener("click", () => carregarMobilizacoes(false));

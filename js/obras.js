@@ -842,6 +842,7 @@ async function salvarObra(novoStatus){
     if(reg.codigo_ibge && reg.codigo_ibge.length !== 7){ aviso("app-aviso", "Código IBGE do município tem 7 dígitos (busque pelo CEP).", "erro"); ativarTabObra("endereco"); return; }
   }
 
+  const obraNova = !obraEditId;   // fase 157a: obra nova com orçamento de mobilização já nasce com a mobilização prevista
   const gravar = (r) => obraEditId
     ? sb.from("obras").update(r).eq("id", obraEditId).select().single()
     : sb.from("obras").insert(r).select().single();
@@ -883,6 +884,12 @@ async function salvarObra(novoStatus){
     const { error: errVinc } = await sb.from("obras")
       .update({ contrato_id: contratoId }).eq("id", obraEditId);
     if(errVinc) aviso("app-aviso","Contrato gravado, mas não foi possível vinculá-lo à obra: "+errVinc.message,"erro");
+  }
+  // fase 157a: só quando o contrato vem de orçamento com item MOB.* (sem orçamento a RPC devolve nulo e nada muda)
+  if(obraNova){
+    const { data: mobId, error: eMob } = await sb.rpc("mobilizacao_prevista_do_orcamento", { p_obra: obraEditId });
+    if(eMob) console.warn("mobilização prevista da obra nova:", eMob.message);
+    else if(mobId) msgFim += " Mobilização prevista criada no quadro de Mobilizações.";
   }
 
   aviso("app-aviso", msgFim, tipoFim);

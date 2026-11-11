@@ -190,6 +190,8 @@ function vgPreencherForm(){
   $("vg-frete-valor").placeholder = restrito && v.frete_status && v.frete_status !== "a_informar" ? "informado (visível ao financeiro)" : "0,00";
   vgToggleObra();
   vgToggleFinalidade();
+  if($("vg-mob")){ delete $("vg-mob").dataset.carregado; $("vg-mob").innerHTML = ""; }
+  vgCarregarMobs();   // fase 157a
   if(!v.id) vgSugerirDoVeiculo();
   const pode = logPodeOperar() && v.status !== "cancelada";
   document.querySelectorAll('#vg-ficha .odoo-tab[data-tab="geral"] input, #vg-ficha .odoo-tab[data-tab="geral"] select').forEach(el => { el.disabled = !pode; });
@@ -199,8 +201,40 @@ function vgPreencherForm(){
   if(v.frete_status === "exportado") ["vg-frete-valor", "vg-frete-venc", "vg-frete-doc", "vg-frete-emissao", "vg-transp-busca"].forEach(id => { $(id).disabled = true; });
 }
 /* fase 130: a finalidade decide os blocos da aba Geral (frota própria × frete terceirizado) e os rótulos dos chips */
+/* fase 157a: a viagem liga à mobilização (e à perna) quando leva ou traz máquina: finalidade Mobilização, Desmobilização
+   ou frete terceirizado. As opções são as mobilizações da obra de origem e da de destino (a já ligada sempre aparece). */
+function vgMostraMob(){
+  return ["mobilizacao", "desmobilizacao", "frete_terceirizado"].includes($("vg-finalidade").value) || !!$("vg-mob")?.value;
+}
+async function vgCarregarMobs(){
+  const sel = $("vg-mob"); if(!sel || !_vgAtual) return;
+  const v = _vgAtual;
+  const atual = sel.dataset.carregado ? sel.value : (v.mobilizacao_id || "");
+  const obras = [$("vg-origem-obra").value, $("vg-destino-obra").value].filter(Boolean);
+  const pedido = (sel._pedido = (sel._pedido || 0) + 1);
+  let lista = [];
+  if(obras.length || atual){
+    let q = sb.from("mobilizacoes").select("id,status,obra_id,data_mobilizacao_prev,obra:obras(codigo),equipamento:equipamentos!equipamento_id(codigo)");
+    q = obras.length && atual ? q.or(`obra_id.in.(${obras.join(",")}),id.eq.${atual}`) : obras.length ? q.in("obra_id", obras) : q.eq("id", atual);
+    const { data, error } = await q.neq("status", "cancelada").order("created_at", { ascending: false });
+    if(error){ console.warn("mobilizações da viagem:", error.message); }
+    lista = data || [];
+  }
+  if(sel._pedido !== pedido || _vgAtual !== v) return;
+  const st = (typeof MOB_STATUS !== "undefined" && MOB_STATUS) || {};
+  sel.innerHTML = '<option value="">— nenhuma —</option>' + lista.map(m => `<option value="${esc(m.id)}"${m.id === atual ? " selected" : ""}>${esc(m.obra?.codigo || "obra")} · ${esc(m.equipamento?.codigo || "XX")} · ${esc(st[m.status] || m.status)}${m.data_mobilizacao_prev ? " · " + esc(dataBR(m.data_mobilizacao_prev)) : ""}</option>`).join("");
+  if(!sel.dataset.carregado) $("vg-mob-perna").value = v.mobilizacao_perna || "";
+  sel.dataset.carregado = "1";
+  vgToggleMob();
+}
+function vgToggleMob(){
+  const mostra = vgMostraMob();
+  vgShow("vg-campo-mob", mostra);
+  vgShow("vg-campo-mob-perna", mostra && !!$("vg-mob")?.value);
+}
 function vgToggleFinalidade(){
   const frete = $("vg-finalidade").value === "frete_terceirizado";
+  vgToggleMob();   // fase 157a
   ["vg-campo-caminhao", "vg-campo-motorista", "vg-bloco-km"].forEach(id => vgShow(id, !frete));
   ["vg-campo-transp", "vg-campo-transp-placa", "vg-campo-transp-motorista", "vg-bloco-frete"].forEach(id => vgShow(id, frete));
   const nota = $("vg-frete-nota");
@@ -252,8 +286,16 @@ function vgColetar(){
     destino_descricao: $("vg-destino-desc").value.trim() || null,
     km_saida: frete ? null : num("vg-km-saida"), km_chegada: frete ? null : num("vg-km-chegada"), valor_km: frete ? null : num("vg-valor-km"),
     data_saida: vgDtISO($("vg-data-saida").value), data_chegada: vgDtISO($("vg-data-chegada").value),
-    observacoes: $("vg-obs").value.trim() || null
+    observacoes: $("vg-obs").value.trim() || null,
+    ...vgColetarMob()   // fase 157a
   };
+}
+/* fase 157a: só manda o vínculo depois de a lista carregar (antes disso, fica o que a viagem já tinha) */
+function vgColetarMob(){
+  const sel = $("vg-mob");
+  if(!sel || !sel.dataset.carregado) return {};
+  const mob = vgMostraMob() ? (sel.value || null) : null;
+  return { mobilizacao_id: mob, mobilizacao_perna: mob ? ($("vg-mob-perna").value || null) : null };
 }
 /* Fase 158: chave de acesso do CT-e do transportador (44 dígitos, opcional). Layout: UF(2) AAMM(4) CNPJ(14) modelo(2)
    série(3) número(9) tipo(1) código(8) DV(1). A conferência daqui é a mesma da RPC viagem_frete_chave_gravar (o banco
@@ -1031,5 +1073,8 @@ function ligarViagens(){
   $("vg-finalidade")?.addEventListener("change", vgToggleFinalidade);   // fase 130
   vgLigarBuscaTransportador();
   $("vg-frete-chave")?.addEventListener("blur", vgCteChaveAoSair);   // fase 158
+  // fase 157a: mobilização da viagem acompanha as obras de origem e destino
+  ["vg-origem-obra", "vg-destino-obra", "vg-origem-tipo", "vg-destino-tipo"].forEach(id => $(id)?.addEventListener("change", vgCarregarMobs));
+  $("vg-mob")?.addEventListener("change", vgToggleMob);
 }
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarViagens); else ligarViagens();

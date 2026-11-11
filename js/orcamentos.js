@@ -1223,9 +1223,16 @@ async function criarObraDoOrcamento(){
   // 2b) Valor da obra (fase 90): vive em obras_financeiro; a linha nasce zerada pelo gatilho e recebe aqui o total com ISS (S45, L9)
   const { error: eFin } = await sb.from("obras_financeiro").upsert({ obra_id: novaObraReg.id, valor_contratado: valorContratado });
 
+  // 2c) Fase 157a (decisão 5): orçamento com item de mobilização (variante MOB.*) já cria a mobilização prevista, com a TAG
+  // e o início previstos do orçamento, para a Logística planejar desde a aprovação. Se falhar, a obra fica e a pendência
+  // "Obra com diário e sem mobilização" pega o caso.
+  const { data: mobId, error: eMob } = await sb.rpc("mobilizacao_prevista_do_orcamento", { p_obra: novaObraReg.id });
+  const txtMob = eMob ? ` A mobilização prevista não pôde ser criada (${eMob.message}); crie pela aba Máquinas da obra.`
+    : mobId ? " Mobilização prevista criada no quadro de Mobilizações." : "";
+
   aviso("app-aviso", eFin
-    ? `🏗️ Obra ${codigo} criada, mas o valor contratado não pôde ser gravado: ${eFin.message}`
-    : `🏗️ Obra ${codigo} criada (status: planejada).`, eFin ? "erro" : "ok");
+    ? `🏗️ Obra ${codigo} criada, mas o valor contratado não pôde ser gravado: ${eFin.message}.${txtMob}`
+    : `🏗️ Obra ${codigo} criada (status: planejada).${txtMob}`, eFin || eMob ? "erro" : "ok");
   if(typeof carregarObras === "function")     await carregarObras();
   if(typeof carregarContratos === "function") await carregarContratos();
   await carregarAbasOrc(orc);
