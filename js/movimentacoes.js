@@ -1006,7 +1006,8 @@ async function movSugerirValor(it){
   const [t, id] = movItemChave(it);
   if(!id) return null;
   const { data } = await sb.rpc("fiscal_valor_remessa", { p_tipo: t, p_id: id });
-  const s = Array.isArray(data) ? data[0] : data;
+  const bruto = Array.isArray(data) ? data[0] : data;
+  const s = typeof fiscalSugestaoVisivel === "function" ? fiscalSugestaoVisivel(bruto) : bruto;   // a aquisição só é sugerida a quem lê o valor do bem
   if(!s || s.valor == null) return null;
   const k = `${t}:${id}`;
   _movFiscalItens[k] = { ...(_movFiscalItens[k] || {}), sug: Number(s.valor), origem: s.origem };

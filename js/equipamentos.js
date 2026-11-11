@@ -18,6 +18,9 @@ let _eqpAtual = null;          // registro aberto
 let _eqpEditId = null;         // null = novo
 let _eqpAceModo = "";          // filtro da aba Acessórios
 let _eqpAceCache = { id: null, na: [], pertence: [], compat: [] };
+// valor e data de aquisição: moram em equipamentos_financeiro (leem diretoria, financeiro e auditor; gravam diretoria e financeiro)
+let _eqpValorBem = null;             // da ficha aberta: { equipId, disponivel, valor, data }
+let _eqpValorBemSemTabela = false;   // o banco ainda não tem a tabela: não pergunta de novo nesta página
 
 const EQP_TIPOS = ["perfuratriz","bate_estaca","escavadeira","retroescavadeira","guindaste","compressor","gerador","bomba","ferramenta","outro"];
 const EQP_TIPO_LBL = { perfuratriz: "Perfuratriz", bate_estaca: "Bate-estaca", escavadeira: "Escavadeira", retroescavadeira: "Retroescavadeira", guindaste: "Guindaste", compressor: "Compressor", gerador: "Gerador", bomba: "Bomba", ferramenta: "Ferramenta", outro: "Outro" };
@@ -144,7 +147,7 @@ async function carregarEquipamentos(force){
         sb.from("mobilizacoes").select("id,obra_id,equipamento_id,equipamentos_apoio,status").in("status", EQP_MOB_ATIVA)
       ]);
       if(eq.error) throw eq.error;
-      _eqpRegistros = (eq.data || []).sort(eqpOrd);
+      _eqpRegistros = (eq.data || []).map(semValorBem).sort(eqpOrd);   // valor e data de aquisição não ficam na lista
       _eqpObras = ob.data || [];
       _eqpObraMap = {}; _eqpObras.forEach(o => _eqpObraMap[o.id] = o);
       // mobilização ativa por equipamento (principal ou apoio)
@@ -303,7 +306,7 @@ function mostrarPainelEquipamentos(){
   $("eqp-ficha").style.display = "none";
   if($("cpb-ficha")) $("cpb-ficha").style.display = "none";   // fase 107a
   $("eqp-painel").style.display = "";
-  _eqpAtual = null; _eqpEditId = null;
+  _eqpAtual = null; _eqpEditId = null; _eqpValorBem = null;
   if(typeof ocultarHistorico === "function") ocultarHistorico("eqp-chatter");
   renderEquipamentos();
 }
@@ -317,9 +320,75 @@ async function abrirEquipamento(id){
   if(!e){
     const { data } = await sb.from("equipamentos").select("*").eq("id", id).maybeSingle();
     if(!data){ aviso("app-aviso", "Equipamento não encontrado.", "erro"); return; }
-    e = data;
+    e = semValorBem(data);
   }
   abrirFichaEquipamento(e);
+}
+/* ---------- valor e data de aquisição (equipamentos_financeiro) ----------
+   Decisão da diretoria (11/11/2026): leem diretoria, financeiro e auditor; gravam diretoria e financeiro. O valor saiu do
+   registro de equipamentos: a ficha lê e grava à parte, e o que vai para a tabela equipamentos nunca leva esses dois campos
+   (quem salva a ficha sem ver o valor não escreve vazio por cima dele). */
+/* disponivel = false quando o banco não tem a tabela ou a leitura falhou: a ficha esconde os campos e não grava nada */
+async function eqpValorBemLer(equipId){
+  const vazio = { disponivel: false, valor: null, data: null, alteradoEm: null };
+  if(typeof podeVerValorBem !== "function" || !podeVerValorBem() || _eqpValorBemSemTabela) return vazio;
+  const q = sb.from("equipamentos_financeiro").select("equipamento_id,valor_aquisicao,data_aquisicao,alterado_em");
+  const { data, error } = await (equipId ? q.eq("equipamento_id", equipId).maybeSingle() : q.limit(1));   // sem id (equipamento novo): só confere que a tabela existe
+  if(error){
+    if(error.code === "PGRST205" || error.code === "42P01" || /equipamentos_financeiro/.test(error.message || "")) _eqpValorBemSemTabela = true;
+    else console.warn("valor de aquisição:", error.message || error);
+    return vazio;
+  }
+  const r = (equipId && data) || {};
+  return { disponivel: true, valor: r.valor_aquisicao ?? null, data: r.data_aquisicao || null, alteradoEm: r.alterado_em || null };
+}
+function eqpValorBemEditavel(){
+  return !!_eqpValorBem && _eqpValorBem.disponivel === true && typeof podeGravarValorBem === "function" && podeGravarValorBem();
+}
+/* os dois campos nascem ocultos e vazios; aparecem só depois de lidos, e ficam editáveis só para quem grava */
+async function eqpValorBemPreencher(e){
+  const est = _eqpValorBem = { equipId: (e && e.id) || null, disponivel: false, valor: null, data: null };
+  const cv = $("eqp-valor-campo"), cd = $("eqp-aquisicao-campo"), iv = $("eqp-valor"), idt = $("eqp-aquisicao");
+  if(!iv || !idt) return;
+  if(cv) cv.style.display = "none";
+  if(cd) cd.style.display = "none";
+  iv.value = ""; idt.value = ""; iv.disabled = true; idt.disabled = true; iv.title = ""; idt.title = "";
+  const lido = await eqpValorBemLer(est.equipId);
+  if(_eqpValorBem !== est) return;   // a ficha mudou enquanto lia
+  est.disponivel = lido.disponivel; est.valor = lido.valor; est.data = lido.data;
+  if(!est.disponivel) return;
+  iv.value = est.valor ?? ""; idt.value = est.data || "";
+  const edita = eqpValorBemEditavel();
+  iv.disabled = !edita; idt.disabled = !edita;
+  const dia = lido.alteradoEm ? dataBR(typeof dataLocalISO === "function" ? dataLocalISO(new Date(lido.alteradoEm)) : String(lido.alteradoEm).slice(0, 10)) : "";
+  iv.title = idt.title = (edita ? "Só a diretoria e o financeiro alteram; cada alteração fica registrada." : "Só a diretoria e o financeiro alteram.") + (dia ? ` Última alteração em ${dia}.` : "");
+  if(cv) cv.style.display = "";
+  if(cd) cd.style.display = "";
+  if(edita && $("btn-eqp-salvar")) $("btn-eqp-salvar").style.display = "";   // o financeiro grava o valor sem gravar o cadastro
+  // bem vendido: o aviso diz que o cadastro é só para consulta, e o botão Salvar aparece por causa destes dois campos
+  const notaV = $("eqp-nota-vendido");
+  if(edita && notaV && notaV.style.display !== "none" && notaV.textContent && !/aquisição/.test(notaV.textContent))
+    notaV.textContent += " O valor e a data de aquisição continuam editáveis pela diretoria e pelo financeiro, na aba Geral.";
+}
+function eqpValorBemCampos(){
+  const v = $("eqp-valor").value, d = $("eqp-aquisicao").value;
+  return { valor: v === "" || v == null ? null : Number(v), data: d || null };
+}
+/* só quem grava, só com a tabela lida, e só se o que está nos campos difere do que foi lido */
+function eqpValorBemMudou(){
+  if(!eqpValorBemEditavel()) return false;
+  const c = eqpValorBemCampos();
+  const igual = (a, b) => (a == null && b == null) || (a != null && b != null && Math.abs(Number(a) - Number(b)) < 0.005);
+  return !igual(c.valor, _eqpValorBem.valor) || (c.data || null) !== (_eqpValorBem.data || null);
+}
+/* a linha nasce por gatilho junto com o equipamento; upsert cobre a que faltar. Devolve o erro, ou null. */
+async function eqpValorBemGravar(equipId){
+  const c = eqpValorBemCampos();
+  if(c.valor != null && !(c.valor >= 0)) return { message: "informe um valor maior ou igual a zero" };
+  const { error } = await sb.from("equipamentos_financeiro")
+    .upsert({ equipamento_id: equipId, valor_aquisicao: c.valor, data_aquisicao: c.data }, { onConflict: "equipamento_id" });
+  if(!error && _eqpValorBem){ _eqpValorBem.valor = c.valor; _eqpValorBem.data = c.data; }
+  return error || null;
 }
 function eqpToggleLocalObra(){
   const t = $("eqp-local-tipo").value;
@@ -352,8 +421,8 @@ function abrirFichaEquipamento(e){
   $("eqp-tipo").value = EQP_TIPOS.includes(e.tipo) ? e.tipo : "outro";
   $("eqp-marca").value = e.marca || ""; $("eqp-modelo").value = e.modelo || "";
   $("eqp-ano").value = e.ano_fabricacao ?? ""; $("eqp-serie").value = e.numero_serie || "";
-  $("eqp-horimetro").value = e.horimetro ?? ""; $("eqp-aquisicao").value = e.data_aquisicao || "";
-  $("eqp-valor").value = e.valor_aquisicao ?? ""; $("eqp-cod-ext").value = e.codigo_externo || "";
+  $("eqp-horimetro").value = e.horimetro ?? ""; $("eqp-cod-ext").value = e.codigo_externo || "";
+  eqpValorBemPreencher(e);   // valor e data de aquisição: lidos à parte, só para quem pode ver
   $("eqp-ativo").checked = e.ativo !== false;
   $("eqp-local-tipo").value = e.localizacao_tipo || "base";
   $("eqp-local-obra").value = e.localizacao_obra_id || "";
@@ -665,15 +734,28 @@ function eqpRenderAcessorios(){
 
 /* ---------- salvar ---------- */
 async function salvarEquipamento(){
-  if(!eqpPodeEditar()) return;
-  if(_eqpAtual && (_eqpAtual.status === "vendido" || _eqpAtual.venda_id)){ aviso("app-aviso", "Bem vendido: o cadastro fica só para consulta.", "erro"); return; }   // fase 96
+  const vendido = !!_eqpAtual && (_eqpAtual.status === "vendido" || !!_eqpAtual.venda_id);
+  const podeCadastro = eqpPodeEditar() && !vendido;   // fase 96: bem vendido fica só para consulta
+  const mudouValor = eqpValorBemMudou();              // valor e data de aquisição: diretoria e financeiro, também em bem vendido
+  if(!podeCadastro){
+    if(mudouValor && _eqpEditId){
+      const idBem = _eqpEditId;
+      const erroValor = await eqpValorBemGravar(idBem);
+      if(erroValor){ aviso("app-aviso", "O valor de aquisição não foi gravado: " + erroValor.message, "erro"); return; }
+      aviso("app-aviso", "Valor de aquisição salvo.", "ok");
+      await carregarEquipamentos(true);
+      await abrirEquipamento(idBem);
+    } else if(vendido && eqpPodeEditar()) aviso("app-aviso", "Bem vendido: o cadastro fica só para consulta.", "erro");
+    else if(eqpValorBemEditavel()) aviso("app-aviso", "Nada para salvar: o valor e a data de aquisição não mudaram.", "aviso");
+    return;
+  }
   const n = v => v === "" ? null : Number(v);
   const localTipo = $("eqp-local-tipo").value;
   const reg = {
     nome: $("eqp-nome").value.trim(), tipo: $("eqp-tipo").value,
     marca: $("eqp-marca").value.trim() || null, modelo: $("eqp-modelo").value.trim() || null,
     ano_fabricacao: n($("eqp-ano").value), numero_serie: $("eqp-serie").value.trim() || null,
-    horimetro: n($("eqp-horimetro").value), data_aquisicao: $("eqp-aquisicao").value || null, valor_aquisicao: n($("eqp-valor").value),
+    horimetro: n($("eqp-horimetro").value),   // valor e data de aquisição não entram aqui: vão por eqpValorBemGravar()
     codigo_externo: $("eqp-cod-ext").value.trim() || null, ativo: $("eqp-ativo").checked,
     localizacao_tipo: localTipo,
     localizacao_obra_id: ["obra","em_transito","cliente"].includes(localTipo) ? ($("eqp-local-obra").value || null) : null,
@@ -705,7 +787,9 @@ async function salvarEquipamento(){
     if(error){ aviso("app-aviso", "Erro ao cadastrar: " + error.message, "erro"); return; }
     id = data.id;
   }
-  aviso("app-aviso", "Equipamento salvo.", "ok");
+  const erroValor = mudouValor ? await eqpValorBemGravar(id) : null;
+  if(erroValor) aviso("app-aviso", "Cadastro salvo, mas o valor de aquisição não foi gravado: " + erroValor.message, "erro");
+  else aviso("app-aviso", "Equipamento salvo.", "ok");
   await carregarEquipamentos(true);
   await abrirEquipamento(id);
 }

@@ -1426,6 +1426,14 @@ function podeVerCentrosCusto(){
 function podeVerValorObra(){
   return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
+/* Valor de aquisição restrito (Bernardo, 11/11/2026): o valor e a data de aquisição do bem e o resultado da venda (venda menos
+   aquisição) são só da diretoria, do financeiro e do auditor; ADMIN NÃO LÊ. Moram em equipamentos_financeiro, que no banco só
+   pode_ler_valor_bem() lê e só pode_gravar_valor_bem() grava (diretor e financeiro). O front espelha as duas listas para não
+   desenhar campo, coluna e chip a quem não lê. semValorBem() tira os dois campos de um registro de equipamentos lido com "*":
+   enquanto a coluna antiga existir no banco, ela não chega à tela nem volta numa gravação. FIPE continua aberta. */
+function podeVerValorBem(){ return !!usuarioAtual && ["diretor", "financeiro", "auditor"].includes(usuarioAtual.cargo); }
+function podeGravarValorBem(){ return !!usuarioAtual && ["diretor", "financeiro"].includes(usuarioAtual.cargo); }
+function semValorBem(reg){ if(reg && typeof reg === "object"){ delete reg.valor_aquisicao; delete reg.data_aquisicao; } return reg; }
 /* Fase 98: permutas (obra paga em imóvel: teto, crédito, saldo, documentos). Espelha pode_ler_permutas() do banco:
    sem engenharia nem comercial, ao contrário de podeVerValorObra(). */
 function podeVerPermutas(){

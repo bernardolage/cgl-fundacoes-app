@@ -141,6 +141,10 @@ const FISCAL_ITEM_ORIGEM = { informado: "informado", avaliacao: "avaliação de 
 const FISCAL_ITEM_TABELA = { equipamento: "equipamentos", acessorio: "acessorios", produto: "produtos" };
 const _fiscalItem = {};   // por prefixo: { disponivel, tipo, id }
 
+/* A sugestão que vem do valor de aquisição do bem só aparece para quem lê esse valor (diretoria, financeiro e auditor). Com o
+   banco atualizado a função fiscal_valor_remessa já não devolve esse degrau a quem não lê; a tela não depende disso. */
+function fiscalSugestaoVisivel(s){ return !s || (s.origem === "aquisicao" && !(typeof podeVerValorBem === "function" && podeVerValorBem())) ? null : s; }
+
 function fiscalItemMontar(pref){
   const box = $(`${pref}-fiscal`);
   if(!box || box.dataset.montado) return;
@@ -222,7 +226,7 @@ async function fiscalItemPreencher(pref, tipo, registro, pode){
   if(r.id){
     const { data } = await sb.rpc("fiscal_valor_remessa", { p_tipo: tipo, p_id: r.id });
     if(_fiscalItem[pref] !== est) return;
-    const s = Array.isArray(data) ? data[0] : data;
+    const s = fiscalSugestaoVisivel(Array.isArray(data) ? data[0] : data);
     sug.textContent = s && s.valor != null
       ? (s.origem === "informado" ? "" : `Sugerido: ${brl(s.valor)} (${FISCAL_ITEM_ORIGEM[s.origem] || s.origem})`)
       : "Sem valor sugerido: informe o valor da remessa.";

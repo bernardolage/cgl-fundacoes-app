@@ -70,6 +70,17 @@ function vbPodeLer(e){
   return vbCargo() === "gestor_frota" && (e == null || vbEhVeiculo(e));
 }
 
+/* Resultado da venda (venda menos aquisição), valor e data de aquisição: só quem lê o valor do bem (diretoria, financeiro e
+   auditor; pode_ler_valor_bem() no banco). O valor da venda continua com quem já lia a venda. */
+function vbPodeVerResultado(){ return typeof podeVerValorBem === "function" && podeVerValorBem(); }
+/* tira das linhas de vw_vendas_bens o que quem não lê o valor do bem não pode receber na tela nem na planilha
+   (com o banco atualizado esses três campos já vêm vazios; a pendência "sem valor de aquisição" continua para todos) */
+function vbSemValorBem(registros){
+  if(vbPodeVerResultado() || !registros) return registros;
+  [].concat(registros).forEach(v => { if(v && typeof v === "object"){ delete v.valor_aquisicao; delete v.data_aquisicao; delete v.resultado; } });
+  return registros;
+}
+
 /* ---------- utilidades ---------- */
 const vbR2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 function vbTag(st){ const o = VB_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`; }
@@ -108,7 +119,7 @@ async function vbCarregarVendas(forcar){
     return _vbVendas;
   }
   const { data, error } = await sb.from("vw_vendas_bens").select("*").order("data_venda", { ascending: false, nullsFirst: true }).limit(2000);
-  _vbVendas = { soStatus: false, lista: data || [], erro: error };
+  _vbVendas = { soStatus: false, lista: vbSemValorBem(data || []), erro: error };
   return _vbVendas;
 }
 function vbPreencherFiltros(lista){
@@ -191,10 +202,11 @@ async function vbRenderPainel(){
   vbRenderIndicadores(r.lista);
   if($("eqp-contador")) $("eqp-contador").textContent = `${lista.length} de ${r.lista.filter(v => v.status !== "cancelada").length}`;
   if(!lista.length){ cont.innerHTML = `<p class="vazio">${r.lista.length ? "Nenhuma venda com esses filtros." : "Nenhuma venda registrada. Na ficha do bem, use \"Registrar venda\"."}</p>`; return; }
+  const verRes = vbPodeVerResultado();   // coluna Resultado só para quem lê o valor de aquisição
   const tot = { valor: 0, rec: 0, saldo: 0, venc: 0 };
   lista.forEach(v => { tot.valor += Number(v.valor_venda) || 0; tot.rec += Number(v.recebido) || 0; tot.saldo += Number(v.saldo) || 0; tot.venc += Number(v.valor_vencido) || 0; });
   cont.innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr><th>Venda</th><th>Data</th><th>Bem</th><th>Comprador</th><th class="num">Valor</th><th class="num">Recebido</th><th class="num">Saldo</th><th>Próx. vencimento</th><th class="num">Vencido</th><th>Status</th><th class="num" title="Valor da venda − valor de aquisição">Resultado</th><th>Pendências</th></tr></thead>
+    <thead><tr><th>Venda</th><th>Data</th><th>Bem</th><th>Comprador</th><th class="num">Valor</th><th class="num">Recebido</th><th class="num">Saldo</th><th>Próx. vencimento</th><th class="num">Vencido</th><th>Status</th>${verRes ? '<th class="num" title="Valor da venda − valor de aquisição">Resultado</th>' : ""}<th>Pendências</th></tr></thead>
     <tbody>${lista.map(v => `<tr class="linha-clicavel" data-vb-venda="${esc(v.id)}">
       <td style="white-space:nowrap;"><strong>${esc(v.numero)}</strong>${v.origem === "planilha" ? '<div class="meta" title="carga da planilha de avaliação">carga</div>' : ""}</td>
       <td>${dataBR(v.data_venda)}</td>
@@ -206,10 +218,10 @@ async function vbRenderPainel(){
       <td>${v.proximo_vencimento ? dataBR(v.proximo_vencimento) : "—"}</td>
       <td class="num">${Number(v.valor_vencido) > 0.009 ? `<span class="txt-perigo">${brl(v.valor_vencido)}</span> <span class="meta">${esc(v.dias_atraso)} d</span>` : "—"}</td>
       <td>${vbTag(v.status)}</td>
-      <td class="num">${v.resultado != null ? `<span class="${v.resultado < 0 ? "txt-perigo" : ""}">${brl(v.resultado)}</span>` : '<span class="meta" title="Informe o valor de aquisição do bem">sem aquisição</span>'}</td>
+      ${verRes ? `<td class="num">${v.resultado != null ? `<span class="${v.resultado < 0 ? "txt-perigo" : ""}">${brl(v.resultado)}</span>` : '<span class="meta" title="Informe o valor de aquisição do bem">sem aquisição</span>'}</td>` : ""}
       <td>${vbPendTags(v, ["sem_comprador", "sem_valor", "sem_data", "sem_parcelas", "sem_contrato", "sem_transferencia"]) || '<span class="meta">—</span>'}</td>
     </tr>`).join("")}</tbody>
-    <tfoot><tr><th colspan="4">Total (${lista.length})</th><th class="num">${brl(tot.valor)}</th><th class="num">${brl(tot.rec)}</th><th class="num">${brl(tot.saldo)}</th><th></th><th class="num">${brl(tot.venc)}</th><th colspan="3"></th></tr></tfoot>
+    <tfoot><tr><th colspan="4">Total (${lista.length})</th><th class="num">${brl(tot.valor)}</th><th class="num">${brl(tot.rec)}</th><th class="num">${brl(tot.saldo)}</th><th></th><th class="num">${brl(tot.venc)}</th><th colspan="${verRes ? "3" : "2"}"></th></tr></tfoot>
   </table></div>`;
 }
 /* Exportação .xlsx da visão (vendas filtradas + parcelas delas) */
@@ -225,13 +237,14 @@ async function vbExportar(){
     if(error){ aviso("app-aviso", "Não foi possível ler as parcelas: " + error.message, "erro"); return; }
     parcelas.push(...(data || []));
   }
+  const verRes = vbPodeVerResultado();   // Valor de aquisição e Resultado só para quem lê o valor do bem
   const vendas = lista.map(v => ({
     "Venda": v.numero, "Data da venda": v.data_venda || "", "TAG": v.codigo, "Bem": v.equipamento_nome || "", "Tipo": VB_TIPO_LBL[v.tipo] || v.tipo, "Placa": v.placa || "",
     "Comprador": v.comprador || "", "CPF/CNPJ": v.comprador_cpf_cnpj || "", "Contato": v.comprador_contato || "",
     "Valor da venda": v.valor_venda, "Entrada": v.valor_entrada, "Forma": v.forma === "parcelado" ? "Parcelado" : "À vista", "Nº de parcelas": v.n_parcelas,
     "Recebido": v.recebido, "Juros/multa recebidos": v.encargos_recebidos, "Saldo": v.saldo, "Vencido": v.valor_vencido, "Dias de atraso": v.dias_atraso,
     "Próximo vencimento": v.proximo_vencimento || "", "Status": VB_STATUS[v.status]?.label || v.status,
-    "Valor de aquisição": v.valor_aquisicao, "Resultado": v.resultado, "NF": v.nf_numero || "", "Data da NF": v.nf_data || "",
+    ...(verRes ? { "Valor de aquisição": v.valor_aquisicao, "Resultado": v.resultado } : {}), "NF": v.nf_numero || "", "Data da NF": v.nf_data || "",
     "Contrato anexado": v.contrato_path ? "sim" : "não", "Transferência concluída": v.eh_veiculo ? (v.transferencia_concluida ? "sim" : "não") : "",
     "Pendências": (v.pendencias || []).map(p => VB_PEND[p] || p).join(", "), "Observações": v.observacoes || ""
   }));
@@ -272,7 +285,7 @@ async function vbAbrirVenda(v){
    Aba Venda (ficha do equipamento) e modal da venda (veículo)
    ==================================================================== */
 async function vbAbrirVendaDoBem(equipId){
-  const { data: e, error } = await sb.from("equipamentos").select("id,codigo,nome,tipo,placa,status,ativo,venda_id,baixa_em,valor_aquisicao").eq("id", equipId).maybeSingle();
+  const { data: e, error } = await sb.from("equipamentos").select("id,codigo,nome,tipo,placa,status,ativo,venda_id,baixa_em").eq("id", equipId).maybeSingle();
   if(error || !e){ aviso("app-aviso", "Bem não encontrado.", "erro"); return; }
   $("vb-ficha-titulo").textContent = `💰 Venda · ${e.codigo}${e.nome ? " · " + e.nome : ""}`;
   $("vb-ficha-modal").style.display = "flex";
@@ -320,7 +333,7 @@ async function vbRenderAba(e, contId){
   ]);
   if(_vbAlvo?.contId !== contId || _vbAlvo?.equipId !== e.id) return;
   if(vr.error || !vr.data){ cont.innerHTML = `<p class="vazio">Não foi possível ler a venda${vr.error ? ": " + esc(vr.error.message) : ""}.</p>`; return; }
-  _vbVendaAtual = vr.data;
+  _vbVendaAtual = vbSemValorBem(vr.data);
   _vbParcelas = pr.data || [];
   cont.innerHTML = vbHTMLVenda(_vbVendaAtual, _vbParcelas, e) + vbHistHTML(hr.data || []);
   vbLigarAba(cont, e);
@@ -330,6 +343,7 @@ function vbHTMLVenda(v, parcelas, e){
   const podeRec = vbPodeReceber() && v.status !== "cancelada";
   const chip = (lbl, val, title, cls) => `<div class="chip${cls ? " " + esc(cls) : ""}"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
   const temRecebido = parcelas.some(p => Number(p.valor_recebido) > 0 || Number(p.encargos) > 0);
+  const verRes = vbPodeVerResultado();   // chip e nota do resultado só para quem lê o valor de aquisição
   const resultado = v.resultado != null
     ? `<span class="${v.resultado < 0 ? "txt-perigo" : ""}">${brl(v.resultado)}</span>`
     : `<span class="meta">sem valor de aquisição</span>`;
@@ -375,12 +389,12 @@ function vbHTMLVenda(v, parcelas, e){
       ${chip("Saldo", v.saldo != null ? `<span class="${Number(v.saldo) > 0.009 ? "txt-perigo" : ""}">${brl(v.saldo)}</span>` : "—")}
       ${chip("Vencido", Number(v.valor_vencido) > 0.009 ? `<span class="txt-perigo">${brl(v.valor_vencido)}</span> <span class="meta">${esc(v.dias_atraso)} d</span>` : "—")}
       ${chip("Próximo vencimento", v.proximo_vencimento ? dataBR(v.proximo_vencimento) : (v.status === "quitada" ? `quitada ${dataBR(v.quitada_em)}` : "—"))}
-      ${chip("Resultado", resultado, "Valor da venda − valor de aquisição do bem (resultado simples, sem depreciação)", v.resultado == null ? "chip-aviso" : "")}
+      ${verRes ? chip("Resultado", resultado, "Valor da venda − valor de aquisição do bem (resultado simples, sem depreciação)", v.resultado == null ? "chip-aviso" : "") : ""}
       ${chip("NF", v.nf_numero ? esc(v.nf_numero) + (v.nf_data ? ` <span class="meta">${dataBR(v.nf_data)}</span>` : "") : "—")}
       ${chip("Contrato", v.contrato_path ? `<a href="#" id="vb-contrato-abrir">📄 ${esc(v.contrato_nome || "abrir")}</a>` : '<span class="meta">não anexado</span>', null, v.contrato_path ? "" : "chip-aviso")}
     </div>
     ${(v.pendencias || []).length ? `<p class="meta">Pendências: ${vbPendTags(v)}</p>` : ""}
-    ${v.resultado == null ? `<p class="nota">O resultado da venda é calculado contra o valor de aquisição do bem, que está vazio. Informe-o na aba Geral da ficha (ou peça a quem cadastra equipamentos).</p>` : ""}
+    ${verRes && v.resultado == null ? `<p class="nota">O resultado da venda é calculado contra o valor de aquisição do bem, que está vazio. A diretoria e o financeiro informam o valor na aba Geral da ficha do bem.</p>` : ""}
     <p class="meta">${esc(encargoTxt)}</p>
     <div class="lista-topo compacta"><h4 class="titulo-bloco" style="margin:0;">Entrada e parcelas</h4>
       ${podeReg ? `<button type="button" class="btn-sec btn-sm" id="btn-vb-parc-nova" style="margin-left:auto;">+ Parcela</button>` : ""}</div>
@@ -733,7 +747,8 @@ async function vbRenderCarteira(contId){
   if($("cart-vb-ano")) $("cart-vb-ano").textContent = String(ano);
   const { data, error } = await sb.from("vw_vendas_bens").select("*").neq("status", "cancelada").order("data_venda", { ascending: false, nullsFirst: false });
   if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler as vendas: ${esc(error.message)}</p>`; return; }
-  const todas = data || [];
+  const todas = vbSemValorBem(data || []);
+  const verRes = vbPodeVerResultado();   // Aquisição e Resultado só para quem lê o valor do bem (o admin abre a Carteira e não lê)
   const doAno = todas.filter(v => Number(v.ano) === ano);
   const semData = todas.filter(v => !v.data_venda);
   const soma = (l, k) => l.reduce((s, v) => s + (Number(v[k]) || 0), 0);
@@ -744,14 +759,14 @@ async function vbRenderCarteira(contId){
       <div class="ind"><div class="num">${brl(soma(doAno, "valor_venda"))}</div><div class="rot">Valor vendido</div></div>
       <div class="ind"><div class="num" style="color:var(--sucesso-txt);">${brl(soma(doAno, "recebido"))}</div><div class="rot">Recebido</div></div>
       <div class="ind"><div class="num" style="color:var(--aviso-txt);">${brl(soma(doAno, "saldo"))}</div><div class="rot">Saldo a receber</div></div>
-      <div class="ind" title="Valor da venda − valor de aquisição, só nas vendas com os dois valores"><div class="num">${brl(soma(comRes, "resultado"))}</div><div class="rot">Resultado contra a aquisição${doAno.length - comRes.length ? ` · ${doAno.length - comRes.length} sem valor de aquisição` : ""}</div></div>
+      ${verRes ? `<div class="ind" title="Valor da venda − valor de aquisição, só nas vendas com os dois valores"><div class="num">${brl(soma(comRes, "resultado"))}</div><div class="rot">Resultado contra a aquisição${doAno.length - comRes.length ? ` · ${esc(doAno.length - comRes.length)} sem valor de aquisição` : ""}</div></div>` : ""}
     </div>
     ${doAno.length ? `<div class="tabela-rola"><table>
-      <thead><tr><th>Venda</th><th>Data</th><th>Bem</th><th>Comprador</th><th class="num">Valor</th><th class="num">Recebido</th><th class="num">Saldo</th><th class="num">Aquisição</th><th class="num">Resultado</th><th>Status</th></tr></thead>
+      <thead><tr><th>Venda</th><th>Data</th><th>Bem</th><th>Comprador</th><th class="num">Valor</th><th class="num">Recebido</th><th class="num">Saldo</th>${verRes ? '<th class="num">Aquisição</th><th class="num">Resultado</th>' : ""}<th>Status</th></tr></thead>
       <tbody>${doAno.map(v => `<tr class="linha-clicavel" data-vb-venda="${esc(v.id)}"><td>${esc(v.numero)}</td><td>${dataBR(v.data_venda)}</td><td>${esc(vbBemTxt(v))}</td><td>${esc(v.comprador || "—")}</td>
         <td class="num">${v.valor_venda != null ? brl(v.valor_venda) : "—"}</td><td class="num">${brl(v.recebido)}</td><td class="num">${v.saldo != null ? brl(v.saldo) : "—"}</td>
-        <td class="num">${v.valor_aquisicao != null ? brl(v.valor_aquisicao) : '<span class="meta">—</span>'}</td>
-        <td class="num">${v.resultado != null ? `<span class="${v.resultado < 0 ? "txt-perigo" : ""}">${brl(v.resultado)}</span>` : '<span class="meta">sem aquisição</span>'}</td><td>${vbTag(v.status)}</td></tr>`).join("")}</tbody></table></div>`
+        ${verRes ? `<td class="num">${v.valor_aquisicao != null ? brl(v.valor_aquisicao) : '<span class="meta">—</span>'}</td>
+        <td class="num">${v.resultado != null ? `<span class="${v.resultado < 0 ? "txt-perigo" : ""}">${brl(v.resultado)}</span>` : '<span class="meta">sem aquisição</span>'}</td>` : ""}<td>${vbTag(v.status)}</td></tr>`).join("")}</tbody></table></div>`
       : `<p class="vazio">Nenhuma venda com data em ${ano}.</p>`}
     ${semData.length ? `<p class="meta" style="margin-top:8px;">${semData.length} venda(s) sem data da venda (carga a completar pelo financeiro): ${semData.map(v => esc(v.codigo)).join(", ")}. <a href="#" id="cart-vb-sem-data">ver</a></p>` : ""}`;
   cont.querySelectorAll("tr[data-vb-venda]").forEach(tr => tr.addEventListener("click", () => { const v = todas.find(x => x.id === tr.dataset.vbVenda); if(v) vbAbrirVenda(v); }));

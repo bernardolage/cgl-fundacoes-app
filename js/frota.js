@@ -93,7 +93,7 @@ async function carregarFrota(force){
   if(force || !_frotaVeic.length){
     cont.innerHTML = `<p class="vazio">Carregando logística…</p>`;
     const [eq, fu, ob, ns] = await Promise.all([
-      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,km,valor_km,valor_fipe,fipe_referencia,fipe_codigo,status,ativo,localizacao_tipo,localizacao_descricao,localizacao_obra_id,observacoes,venda_id,baixa_em,valor_aquisicao").order("codigo"),
+      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,km,valor_km,valor_fipe,fipe_referencia,fipe_codigo,status,ativo,localizacao_tipo,localizacao_descricao,localizacao_obra_id,observacoes,venda_id,baixa_em").order("codigo"),
       sb.from("funcionarios").select("id,nome,funcao").eq("ativo", true).order("nome"),
       sb.from("obras").select("id,codigo,nome,status,uf").not("status", "in", "(cancelada)").order("codigo", { ascending: false }),
       sb.from("movimentacoes_ativos").select("id", { count: "exact", head: true }).is("viagem_id", null).eq("interna", false).in("status", ["rascunho", "emitida", "em_transito"])
