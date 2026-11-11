@@ -111,6 +111,8 @@ const DASH_EXPLICA = {
     fazer: "Retirar no almoxarifado.", origem: "Das separações de material." },
   "fila_sep:27": { regra: "Peças de estoque lançadas como consumo numa OS, ainda sem baixa no estoque e fora de separação em andamento. Aparece para quem dá baixa de peças no almoxarifado. O número conta peças da OS; fica em atenção quando a OS já foi concluída.",
     fazer: "Dar a baixa na aba Materiais da OS.", origem: "Dos materiais das ordens de serviço e das separações." },
+  "fila_sst:22": { regra: "Ação de ocorrência SST em que você é o responsável, a fazer ou em andamento. Aparece assim que a ação é atribuída, com o prazo; fica crítico quando o prazo passou.",
+    fazer: "Abrir a ocorrência, executar a ação e marcar como realizada.", origem: "Das ações das ocorrências SST." },
   "fila_custo:27": { regra: "Produto sem custo cadastrado que teve saída de estoque a custo zero a partir da data configurada (EPI e uniforme não entram). Uma linha por produto; fica crítico quando a primeira dessas saídas tem mais de 3 dias.",
     fazer: "Definir o custo do produto.", origem: "Das movimentações de estoque e do cadastro de produtos." },
 
@@ -275,7 +277,7 @@ const DASH_EXPLICA_FAIXA = {
 
 /* Famílias de acessório: em "Para regularizar", a linha de modelo sem preço traz a família no lugar do filtro */
 const DASH_EXPLICA_FAMILIAS = ["helice", "raiz", "secante", "trado", "comum"];
-const DASH_EXPLICA_FONTES = ["acoes", "sep", "fab", "fin", "man", "assinar", "fila", "fila_sep", "fila_custo"];
+const DASH_EXPLICA_FONTES = ["acoes", "sep", "fab", "fin", "man", "assinar", "fila", "fila_sep", "fila_custo", "fila_sst"];
 const dashExplicaTem = (k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(DASH_EXPLICA, k);
 
 /* Chave do texto de uma linha, ou null quando não há texto conferido para ela.
