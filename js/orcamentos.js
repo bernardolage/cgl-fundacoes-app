@@ -11,12 +11,13 @@ let orcEditId   = null;
 
 const ORC_STAGES = ["rascunho","enviado","em_negociacao","aprovado"];
 
-/* Lote S57b (#211): quem grava orçamento. Espelha orcamentos_write do banco (has_role admin/comercial, diretor pelo
+/* Lote S57b (#211): quem grava orçamento. Espelha orcamentos_write do banco (has_role comercial, diretor pelo
    has_role, ou o módulo extra "orcamentos"); o auditor nunca. Quem só tem o extra "orcamentos_leitura" (Pedro e
-   Sergio) abre a tela para ler: botões de gravação escondidos, campos travados, statusbar e kanban sem ação. */
+   Sergio) abre a tela para ler: botões de gravação escondidos, campos travados, statusbar e kanban sem ação.
+   Hotfix admin fora do comercial (11/11/2026, decisão da diretoria): o admin saiu daqui e da policy. */
 function orcPodeEditar(){
   if(!usuarioAtual || ehSomenteLeitura()) return false;
-  return ["diretor", "admin", "comercial"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
+  return ["diretor", "comercial"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
 }
 const ORC_BOTOES_ESCRITA = ["btn-novo-orcamento", "btn-salvar-orc", "btn-excluir-orc", "btn-orc-nova-revisao",
   "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente", "btn-orc-sim-usar"];

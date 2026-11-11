@@ -1376,7 +1376,7 @@ function temModuloExtra(modulo){
   return !ate || String(ate).slice(0, 10) >= (typeof hojeISO === "function" ? hojeISO() : new Date().toISOString().slice(0, 10));
 }
 // Lote S57b (#211): o extra "orcamentos_leitura" abre a tela só para ler (Pedro e Sergio); a escrita continua no
-// cargo comercial/admin/diretor ou no extra "orcamentos" (orcPodeEditar em js/orcamentos.js; a RLS barra no banco).
+// cargo comercial/diretor ou no extra "orcamentos" (orcPodeEditar em js/orcamentos.js; a RLS barra no banco).
 function podeVerOrcamentos(){ return podeVerComercial() || temModuloExtra("orcamentos") || temModuloExtra("orcamentos_leitura"); }
 /* Lote S55 (#180): seção do menu que um módulo extra libera mesmo quando o cargo a esconde (SECOES_OCULTAS_POR_CARGO).
    Orçamentos já fazia isso por podeVerOrcamentos (hotfix 113); Compras entra pelo módulo "compras" (Maria Eduarda:

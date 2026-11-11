@@ -19,6 +19,11 @@
      módulo se cala: nenhum marcador, nenhum botão, a folha fica como era, sem erro do código no console.
    - Grava: diretor, admin, engenheiro, assistente de engenharia e encarregado (ppjPodeEditar), nunca o usuário de
      revisão. O banco decide; a tela só esconde o que a pessoa não pode usar.
+   - Os módulos carregados depois continuam esta tela por ganchos guardados por typeof, e sem eles nada muda aqui:
+     js/planta_vinculo.js (fase 169a, executadas sem vínculo: ppjVinExtraBarra, ppjVinResumoFolha, ppjVinPintar e
+     ppjVinCliqueEstaca) e js/planta_sequencia.js (fase 169b, por bloco e em sequência: ppjSeqFaixa, ppjSeqPintar,
+     ppjSeqVisor, ppjSeqCliqueVazio, ppjSeqCliqueMarca e ppjSeqDesfazer; as ações dele na pilha de desfazer levam
+     composta = true). Para eles, ppjPosAvisar põe um aviso na caixa acima da folha.
    As funções ppjPosArredondar, ppjPosFracao, ppjPosTela, ppjPosCompararNomes, ppjPosOrdenar, ppjPosSemPosicao, ppjPosDaVez,
    ppjPosProxima, ppjPosEmpilhar, ppjPosDesempilhar, ppjPosOperacao, ppjPosInverso, ppjPosAplicar, ppjPosFiltrar,
    ppjPosResumo, ppjPosEspacamento, ppjPosRotuloCabe, ppjPosCentrar, ppjPosLinha, ppjPosTabelaAusente, ppjPosTitulo,
@@ -247,9 +252,11 @@ function ppjPosLegendaHTML(cor, maquinas){
   return Object.keys(PPJ_POS_TRACO).map(st => `<span title="${esc(ppjPosStatusRotulo(st))}"><i class="ppj-leg ppj-leg-${esc(st)}"></i>${esc(ppjPosStatusRotulo(st))}</span>`).join("")
     + `<span title="Executada hoje"><i class="ppj-leg ppj-leg-hoje"></i>Hoje</span>`;
 }
-/* s = { podeEditar, editando, cor: "status" | "maquina", desfazer: ações na pilha, maquinas: [{ id, rotulo }], erro }.
+/* s = { podeEditar, editando, cor: "status" | "maquina", desfazer: ações na pilha, maquinas: [{ id, rotulo }], erro, extra,
+         instrucao, nota }. instrucao troca o texto da faixa do modo de edição e nota entra no fim dela (fase 169b).
    A barra da folha: alternador de cor, legenda e, só para quem edita, o modo de edição. erro = a última gravação que o
-   banco recusou, dita aqui, ao lado da folha (o aviso do topo da página fica fora da vista de quem está no desenho). */
+   banco recusou, dita aqui, ao lado da folha (o aviso do topo da página fica fora da vista de quem está no desenho).
+   extra = botões já montados e escapados pelos módulos que continuam esta tela; entram antes dos botões de edição. */
 function ppjPosFerramentasHTML(s){
   const p = s || {}, cor = p.cor === "maquina" ? "maquina" : "status", editando = !!p.podeEditar && !!p.editando;
   const botao = (v, texto, dica) => `<button type="button" class="serv-view-btn${cor === v ? " ativo" : ""}" data-ppj-cor="${esc(v)}" aria-pressed="${cor === v ? "true" : "false"}" title="${esc(dica)}">${esc(texto)}</button>`;
@@ -257,12 +264,13 @@ function ppjPosFerramentasHTML(s){
     ? `<button type="button" class="btn-sec btn-sm" data-ppj-ed="desfazer" title="Desfazer a última mudança (Ctrl+Z)"${Number(p.desfazer) > 0 ? "" : " disabled"}>Desfazer</button>
        <button type="button" class="btn btn-sm" data-ppj-ed="concluir" title="Sair do modo de edição. O que foi feito já está gravado.">Concluir</button>`
     : p.podeEditar ? `<button type="button" class="btn-sec btn-sm" data-ppj-ed="entrar" title="Posicionar, mover ou tirar estacas desta folha. Cada mudança é gravada na hora.">Editar posições</button>` : "";
-  const faixa = editando ? `<div class="ppj-faixa-edicao" role="status"><strong>Modo de edição</strong><span>Clique no desenho para posicionar a estaca da vez. Arraste um marcador para mover; clique nele para selecionar e tirar da folha. Cada mudança é gravada na hora.</span></div>` : "";
+  const instrucao = p.instrucao || "Clique no desenho para posicionar a estaca da vez. Arraste um marcador para mover; clique nele para selecionar e tirar da folha. Cada mudança é gravada na hora.";
+  const faixa = editando ? `<div class="ppj-faixa-edicao" role="status"><strong>Modo de edição</strong><span>${esc(instrucao)}</span>${p.nota ? `<strong class="ppj-faixa-nota">${esc(p.nota)}</strong>` : ""}</div>` : "";
   const erro = p.erro ? `<p class="ppj-erro ppj-recusa" role="alert">${esc(p.erro)}</p>` : "";
   return `<div class="ppj-ferramentas-linha">
       <div class="serv-views" role="group" aria-label="Cor das estacas">${/* html */ botao("status", "Por status", "Cor da estaca pelo status dela")}${/* html */ botao("maquina", "Por máquina", "Cor da estaca pela máquina que a executa")}</div>
       <div class="planta-legenda ppj-legenda">${/* html */ ppjPosLegendaHTML(cor, p.maquinas)}</div>
-      <span class="ppj-barra-acoes">${/* html */ acoes}</span>
+      <span class="ppj-barra-acoes">${/* html */ p.extra || ""}${/* html */ acoes}</span>
     </div>${/* html */ faixa}${/* html */ erro}`;
 }
 /* s = { temLocal, local, todas }. O esqueleto do painel lateral do modo de edição; contador, estaca da vez, selecionada
@@ -414,6 +422,7 @@ function ppjPosVisor(v, t){
   const st = _ppjPos;
   if(!t || !t.folha || t.folha.id !== st.plantaId) return;
   ppjPosColocar(st, false);
+  if(typeof ppjSeqVisor === "function") ppjSeqVisor(st);   // a caixa presa ao ponto e a prévia acompanham a folha
 }
 /* Gancho de ppjEsquema: voltar ao Esquema encerra o modo de edição */
 function ppjPosSair(){
@@ -426,6 +435,24 @@ function ppjPosPintar(st){
   ppjPosBarra(st);
   ppjPosMarcadores(st);
   ppjPosPainel(st);
+  ppjPosExtras(st);
+}
+/* os módulos que continuam esta tela pintam o deles por cima, depois da folha */
+function ppjPosExtras(st){
+  if(typeof ppjVinPintar === "function") ppjVinPintar(st);
+  if(typeof ppjSeqPintar === "function") ppjSeqPintar(st);
+}
+/* Aviso na caixa acima da folha, para os módulos que continuam esta tela. Texto vazio apaga. */
+function ppjPosAvisar(msg){
+  const st = _ppjPos;
+  st.erro = String(msg || "");
+  if(st.disponivel) ppjPosBarra(st);
+}
+/* Clique (ou Enter) numa estaca fora do modo de edição: o painel de executadas sem vínculo pode ficar com o clique;
+   senão, abre a execução da estaca. */
+function ppjPosAbrirEstaca(id){
+  if(typeof ppjVinCliqueEstaca === "function" && ppjVinCliqueEstaca(id)) return;
+  if(typeof abrirModalExecucao === "function") abrirModalExecucao(id);
 }
 /* máquinas das estacas da obra, na tabela que o corDaMaquina do Esquema usa (a mesma cor nos dois desenhos) */
 function ppjPosMaquinas(){
@@ -443,7 +470,10 @@ function ppjPosBarra(st){
   const f = $("ppj-ferramentas");
   if(!f) return;
   const maquinas = ppjPosMaquinas();
-  const html = ppjPosFerramentasHTML({ podeEditar: ppjPodeEditar(), editando: st.editando, cor: ppjPosCor(), desfazer: st.pilha.length, maquinas, erro: st.erro });
+  const extra = typeof ppjVinExtraBarra === "function" ? ppjVinExtraBarra(st) : "";
+  const faixa = (typeof ppjSeqFaixa === "function" ? ppjSeqFaixa(st) : null) || {};
+  const html = ppjPosFerramentasHTML({ podeEditar: ppjPodeEditar(), editando: st.editando, cor: ppjPosCor(), desfazer: st.pilha.length, maquinas, erro: st.erro, extra,
+    instrucao: faixa.instrucao, nota: faixa.nota });
   if(html !== st.chaveBarra || !f.firstChild){
     f.innerHTML = html;
     st.chaveBarra = html;
@@ -503,7 +533,8 @@ function ppjPosMarcadores(st){
   st.espacamento = ppjPosEspacamento(mostradas.map(e => st.mapa.get(e.id)), Number(folha.largura_px), Number(folha.altura_px));
   ppjPosColocar(st, true);
   const c = $("ppj-contagem");
-  if(c) c.textContent = ppjPosResumo({ posicionadas: posicionadas.length, total: estacas.length, mostradas: mostradas.length, executadas: mostradas.filter(e => e.status === "executada").length });
+  if(c) c.textContent = ppjPosResumo({ posicionadas: posicionadas.length, total: estacas.length, mostradas: mostradas.length, executadas: mostradas.filter(e => e.status === "executada").length })
+    + (typeof ppjVinResumoFolha === "function" ? ppjVinResumoFolha(st) : "");
   // busca com um resultado só: a estaca vai para o centro, uma vez por busca (depois a pessoa arrasta à vontade)
   const termo = filtro.termo.trim().toLowerCase();
   if(!termo){ st.buscaCentrada = ""; return; }
@@ -613,6 +644,13 @@ function ppjPosDesfazer(st){
   if(!st.editando || !st.disponivel || !ppjPodeEditar()) return;
   const r = ppjPosDesempilhar(st.pilha);
   if(!r.acao) return;
+  if(r.acao.composta){   // ação de outro módulo (estaca criada pelo desenho, bloco posicionado): quem fez é quem desfaz
+    if(typeof ppjSeqDesfazer !== "function") return;
+    st.pilha = r.pilha;
+    st.selecionada = null;
+    ppjSeqDesfazer(st, r.acao);
+    return;
+  }
   const op = ppjPosInverso(r.acao);
   st.erro = "";
   st.pilha = r.pilha;
@@ -735,14 +773,16 @@ function ppjPosLigarPalco(palco){
       st.arrasto = null;
       if(!cancelado && a.moveu && a.pos && (a.pos.x !== a.antes.x || a.pos.y !== a.antes.y)) ppjPosFazer(st, { tipo: "mover", estaca_id: a.id, antes: a.antes, depois: a.pos });
       else if(cancelado || a.moveu) ppjPosColocar(st, true);                  // volta ao lugar
+      else if(typeof ppjSeqCliqueMarca === "function" && ppjSeqCliqueMarca(st, a.id, ev)){ /* Shift+clique: seleção de várias, do outro módulo */ }
       else ppjPosSelecionar(st, st.selecionada === a.id ? null : a.id);        // clique no marcador: seleciona
       return;
     }
     if(!q || q.ponteiro !== ev.pointerId) return;
     st.toque = null;
     if(cancelado || q.moveu) return;                                           // arrastou a folha: não é clique
-    if(q.id){ if(!st.editando && st.mapa.has(q.id) && typeof abrirModalExecucao === "function") abrirModalExecucao(q.id); return; }
+    if(q.id){ if(!st.editando && st.mapa.has(q.id)) ppjPosAbrirEstaca(q.id); return; }
     if(!st.editando) return;
+    if(typeof ppjSeqCliqueVazio === "function" && ppjSeqCliqueVazio(st, ppjPosPontoDoPalco(palco, ev))) return;   // por bloco ou em sequência
     if(st.daVez) ppjPosPosicionar(st, st.daVez, ppjPosPontoDoPalco(palco, ev));
     else if(st.selecionada) ppjPosSelecionar(st, null);
   };
@@ -794,7 +834,7 @@ function ppjPosTecla(ev){
   if(marca && ativar){
     ev.preventDefault();
     if(st.editando) ppjPosSelecionar(st, st.selecionada === marca ? null : marca);
-    else if(st.mapa.has(marca) && typeof abrirModalExecucao === "function") abrirModalExecucao(marca);
+    else if(st.mapa.has(marca)) ppjPosAbrirEstaca(marca);
     return;
   }
   if(item && ativar && st.editando){ ev.preventDefault(); st.daVez = item.dataset.ppjItem; ppjPosPainel(st); return; }
@@ -845,5 +885,5 @@ if(typeof module === "object" && module && module.exports){
   Object.assign(module.exports, { PPJ_POS_TABELA, PPJ_POS_COLUNAS, PPJ_POS_DESFAZER_MAX, PPJ_POS_RAIO, PPJ_POS_TOQUE_PX, PPJ_POS_ROTULO_MIN_PX, PPJ_POS_ZOOM_BUSCA, PPJ_POS_LISTA_MAX,
     ppjPosArredondar, ppjPosFracao, ppjPosTela, ppjPosCentrar, ppjPosCompararNomes, ppjPosOrdenar, ppjPosFiltrar, ppjPosSemPosicao, ppjPosDaVez, ppjPosProxima,
     ppjPosOperacao, ppjPosInverso, ppjPosAplicar, ppjPosEmpilhar, ppjPosDesempilhar, ppjPosResumo, ppjPosEspacamento, ppjPosRotuloCabe, ppjPosLinha, ppjPosTabelaAusente,
-    ppjPosTitulo, ppjPosNoPalco, ppjPosChaveMarca, ppjPosFerramentasHTML, ppjPosPainelHTML, ppjPosListaHTML });
+    ppjPosTitulo, ppjPosNoPalco, ppjPosChaveMarca, ppjPosFerramentasHTML, ppjPosPainelHTML, ppjPosListaHTML, ppjPosStatusRotulo });
 }

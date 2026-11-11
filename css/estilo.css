@@ -3680,6 +3680,26 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .obf-resumo, .obf-previsao { font-size: var(--txt-md); color: var(--txt-sec); }
 .obf-previsao strong { color: var(--txt); }
 
+/* Profundidade de projeto em lote (fase 170a, js/estacas_prof_projeto.js): a linha de estado da aba Estacas, a janela com a grade
+   por grupo (Ø, local e bloco), a prévia antes de gravar e a caixa "atualizar as que já existem" da importação. Só tokens. */
+.epj-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); margin: 0 0 var(--esp-3); font-size: var(--txt-sm); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
+.epj-linha:empty { display: none; }
+.epj-caixa { max-width: 1080px; width: 94%; }
+.epj-resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--esp-2) var(--esp-4); margin: 0 0 var(--esp-3); }
+.epj-resumo .ui-rv-valor { font-variant-numeric: tabular-nums; }
+.epj-barra { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); margin: 0 0 var(--esp-2); }
+.epj-previa:empty { display: none; }
+.epj-previa-caixa { margin: 0 0 var(--esp-3); padding: var(--esp-3); border: 1px solid var(--info); border-left-width: 4px; border-radius: var(--radius-sm); background: var(--info-bg); color: var(--info-txt); }
+.epj-previa-titulo { margin: var(--esp-1) 0; font-size: var(--txt-md); font-weight: 600; }
+.epj-previa-lista { margin: 0; padding-left: var(--esp-4); font-size: var(--txt-md); line-height: 1.5; }
+#epj-grade td { vertical-align: middle; }
+#epj-grade .epj-modo { min-width: 150px; }
+.epj-import { margin-top: var(--esp-3); padding: var(--esp-3); border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-2); }
+.epj-check { display: inline-flex; align-items: center; gap: var(--esp-1); font-size: var(--txt-md); cursor: pointer; }
+.epj-imp-detalhe { margin-top: var(--esp-2); }
+.epj-imp-resumo { margin: 0 0 var(--esp-2); font-size: var(--txt-md); color: var(--txt-sec); }
+.epj-imp-detalhe .tabela-rola { max-height: 220px; margin-top: var(--esp-2); }
+
 /* Croqui das estacas pelo GPS do computador de bordo (fase 168a, js/estacas_gps.js): visão "GPS" da aba Estacas da obra. O aviso
    de posição aproximada abre o bloco e não some. Sem malha de fundo, de propósito: o erro do GPS é de metros. A cor e o contorno
    de cada círculo vêm do JS, por style (o SVG só aceita token assim). */
@@ -3795,6 +3815,68 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-com-rotulo .ppj-marca-rot { display: inline; }
 .ppj-contagem { font-weight: 600; color: var(--txt); }
 .ppj-contagem:empty { display: none; }
+/* Fase 169a: executadas sem vínculo na folha do projeto (js/planta_vinculo.js). Painel ao lado da folha, com a execução
+   escolhida, as estacas parecidas e a confirmação; no desenho, anel e etiqueta na estaca sugerida. Só tokens. O anel e a
+   etiqueta ficam sobre o papel, branco nos dois temas: tinta e papel do documento. A confiança é dita pelo traço do anel
+   (cheio, tracejado, pontilhado) e pelo texto, não só pela cor. */
+.ppj-ferramentas [data-ppj-vin="abrir"][aria-pressed="true"] { border-color: var(--marca-600); background: var(--sup-2); font-weight: 600; }
+.ppj-vin { width: 300px; overflow-y: auto; }
+.ppj-vin-topo { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-2); }
+.ppj-vin-foco { display: flex; flex-direction: column; gap: var(--esp-2); font-size: var(--txt-sm); }
+.ppj-vin-foco:empty { display: none; }
+.ppj-vin-foco p { margin: 0; }
+.ppj-vin-dica, .ppj-vin-nota { font-size: var(--txt-xs); color: var(--txt-fraco); }
+.ppj-vin-escolhida { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--esp-1) var(--esp-2); padding: var(--esp-1) var(--esp-2); border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-2); }
+.ppj-vin-sugs { display: flex; flex-direction: column; gap: 2px; }
+.ppj-vin-item, .ppj-vin-sug { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 1px; cursor: pointer; }
+.ppj-vin-sug.ppj-vin-fora { cursor: default; }
+.ppj-vin-sug.ppj-vin-fora:hover { background: none; }
+.ppj-vin-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-1); }
+.ppj-vin .ppj-lista { flex: 1 0 140px; }
+.ppj-vin-confirma { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-2); }
+.ppj-vin-alerta { padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--aviso-bg); color: var(--aviso-txt); font-weight: 600; }
+.ppj-vin-acoes { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.ppj-vin-ok { padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.ppj-vin-anel { fill: none; stroke: var(--doc-tinta); stroke-width: 2.5px; pointer-events: none; }
+.ppj-vin-anel-media { stroke-dasharray: 5 3; }
+.ppj-vin-anel-baixa { stroke-dasharray: 1.5 3; }
+.ppj-vin-etq { font-family: var(--font-mono); font-size: 10px; font-weight: 700; text-anchor: middle; fill: var(--doc-tinta); stroke: var(--doc-papel); stroke-width: 3px; paint-order: stroke; pointer-events: none; }
+.ppj-marca.ppj-vin-sugerida .ppj-marca-rot { display: inline; }
+.ppj-marca.ppj-vin-alvo circle:not(.ppj-vin-anel) { stroke: var(--marca-600) !important; stroke-width: 3.5px !important; stroke-opacity: 1 !important; }
+/* Fase 169b: marcar em sequência, por estaca e por bloco (js/planta_sequencia.js). No painel do modo de edição, os três
+   jeitos de posicionar, a barra da sequência, a lista de blocos e "Definir bloco"; no desenho, a caixa presa ao ponto
+   clicado e a prévia tracejada. Só tokens. A prévia fica sobre o papel: tinta do documento, igual nos dois temas. */
+.ppj-painel { overflow-y: auto; }
+.ppj-seq-modos { flex-wrap: wrap; flex: none; }
+.ppj-painel.ppj-seq-outro-modo > #ppj-ed-vez,
+.ppj-painel.ppj-seq-outro-modo > #ppj-ed-busca,
+.ppj-painel.ppj-seq-outro-modo > .ppj-check,
+.ppj-painel.ppj-seq-outro-modo > #ppj-ed-lista { display: none; }
+.ppj-seq-corpo { display: flex; flex-direction: column; gap: var(--esp-2); min-height: 0; }
+.ppj-seq-corpo:empty { display: none; }
+.ppj-painel.ppj-seq-outro-modo > .ppj-seq-corpo { flex: 1 0 auto; }
+.ppj-seq-form { display: flex; flex-direction: column; gap: var(--esp-2); }
+.ppj-seq-form .campo, .ppj-seq-selecao .campo { margin-bottom: 0; }
+.ppj-seq-fixo, .ppj-seq-sel-txt { margin: 0; font-size: var(--txt-sm); color: var(--txt-sec); }
+.ppj-seq-dica { margin: 0; font-size: var(--txt-xs); color: var(--txt-fraco); }
+.ppj-seq-msg { margin: 0; font-size: var(--txt-sm); font-weight: 600; color: var(--perigo-txt); }
+.ppj-seq-msg:empty { display: none; }
+.ppj-seq-selecao { display: flex; flex-direction: column; flex: none; gap: var(--esp-2); padding-top: var(--esp-2); border-top: 1px solid var(--borda); font-size: var(--txt-sm); }
+.ppj-seq-acoes { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.ppj-seq-pergunta { margin: 0; font-size: var(--txt-sm); font-weight: 600; }
+.ppj-seq-alerta { margin: 0; padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--aviso-bg); color: var(--aviso-txt); font-size: var(--txt-sm); font-weight: 600; }
+.ppj-seq-ok { margin: 0; padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--sucesso-bg); color: var(--sucesso-txt); font-size: var(--txt-sm); }
+.ppj-seq-confirma { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-2); }
+.ppj-seq-caixa { position: absolute; z-index: 3; display: flex; flex-direction: column; gap: var(--esp-1); width: 230px; padding: var(--esp-2); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); box-shadow: var(--shadow-md); cursor: default; user-select: text; transition: none; }   /* a caixa anda com o ponto no zoom e no arrasto: sem transição, como a folha e os marcadores */
+.ppj-seq-caixa:focus { outline: none; }
+.ppj-seq-caixa:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 1px; }
+.ppj-seq-caixa input { width: 100%; min-height: var(--ctl-h); padding: var(--esp-1) var(--esp-2); font-family: var(--font-mono); font-size: var(--txt-md); border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); }
+.ppj-seq-caixa input:focus { outline: none; border-color: var(--azul-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--marca-600) 25%, transparent); }
+.ppj-seq-previa { pointer-events: none; }
+.ppj-seq-fantasma circle { fill: none; stroke: var(--doc-tinta); stroke-width: 2px; stroke-dasharray: 3 2; }
+.ppj-seq-fantasma .ppj-seq-fantasma-rot { display: inline; }
+.ppj-marca.ppj-seq-sel circle { stroke: var(--marca-600) !important; stroke-width: 3.5px !important; stroke-opacity: 1 !important; }
+.ppj-faixa-nota { margin-left: auto; }
 @media (max-width: 767px) {
   .ppj-area { flex-direction: column; }
   .ppj-painel { width: auto; max-height: 40vh; }

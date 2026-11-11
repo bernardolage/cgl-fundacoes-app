@@ -742,6 +742,7 @@ function renderEstacas(){
   const pendentesM = _estacas.filter(e => e.status !== "executada" && e.status !== "refugada").reduce((s, e) => s + (Number(e.profundidade_m) || 0), 0);
   const faltamM = pendentesM > 0 ? pendentesM : Math.max((Number($("obr-meta-metros")?.value) || 0) - metragem, 0);
   if($("est-stat-faltam")) $("est-stat-faltam").textContent = total ? `faltam ${faltamN}${faltamM > 0 ? ` · ${num(Math.round(faltamM))} m` : ""}${refuradas ? ` · ${refuradas} refurada${refuradas === 1 ? "" : "s"} fora da conta` : ""}` : "";
+  if(typeof epjLinha === "function") epjLinha(_estacas);   // linha de estado da profundidade de projeto (js/estacas_prof_projeto.js)
 
   // Toggle vistas
   const wrapLista  = $("est-conteudo");
@@ -1290,6 +1291,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     aviso("app-aviso", `Aplicado a ${alterados || _importPreview.length} estacas.`, "ok");
     renderImportPreview(observacoes, meta, contId, wrapId);
   });
+  if(typeof epjImportBloco === "function") epjImportBloco(contId);   // caixa "atualizar a profundidade de projeto das que já existem" (js/estacas_prof_projeto.js)
 }
 
 /* Aviso visível dentro do modal de import aberto (PDF ou DXF) — o app-aviso do topo
@@ -1347,11 +1349,20 @@ async function confirmarImportEstacas(){
     const k = chave(r);
     if(existentes.has(k) || vistos.has(k)) repetidos.push(r); else { vistos.add(k); novos.push(r); }
   });
+  // "Atualizar as que já existem" (js/estacas_prof_projeto.js): com a caixa da prévia marcada, as repetidas não são ignoradas,
+  // recebem a profundidade de projeto da lista pela RPC (prévia do banco e confirmação lá); as novas entram como sempre
+  const epjAtualiza = typeof epjImportMarcado === "function" && epjImportMarcado();
   if(!novos.length){
+    if(epjAtualiza){
+      const fim = await epjImportGravar();
+      avisoImport(fim.msg, fim.ok ? "ok" : "aviso");
+      if(fim.ok){ _importPreview = []; fecharModalImport(); fecharModalDXF(); fecharModalXlsx(); await carregarEstacasDaObra(obraEditId); }
+      return;
+    }
     avisoImport(`Todas as ${regs.length} estacas já existem nesta obra no mesmo local e ${rotuloAgrupamento().toLowerCase()} — nada foi importado. Se são de outro local/projeto ou de outro ${rotuloAgrupamento().toLowerCase()}, preencha as colunas Local/${rotuloAgrupamento()} no preview.`, "erro");
     return;
   }
-  if(repetidos.length && !confirm(`${repetidos.length} estaca(s) já existem no mesmo local/${rotuloAgrupamento().toLowerCase()} e serão ignoradas (${repetidos.slice(0,8).map(r => [r.bloco, r.numero].filter(Boolean).join(" ")).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?`)) return;
+  if(repetidos.length && !confirm(`${repetidos.length} estaca(s) já existem no mesmo local/${rotuloAgrupamento().toLowerCase()} e ${epjAtualiza ? "não entram de novo: só a profundidade de projeto delas é atualizada, com a prévia a seguir" : "serão ignoradas"} (${repetidos.slice(0,8).map(r => [r.bloco, r.numero].filter(Boolean).join(" ")).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?`)) return;
   regs.length = 0; novos.forEach(r => regs.push(r));
 
   // lote S46 (#96): estaca sem Ø na lista recebe o Ø do serviço da obra (único por tipo) ou o informado aqui
@@ -1374,7 +1385,8 @@ async function confirmarImportEstacas(){
     avisoImport("Erro ao importar: " + error.message,"erro");
     return;
   }
-  avisoImport(`${regs.length} estacas importadas com sucesso.`, "ok");
+  const epjFim = epjAtualiza ? await epjImportGravar() : null;   // as que já existiam: profundidade de projeto pela RPC, depois de as novas entrarem
+  avisoImport(`${regs.length} estacas importadas com sucesso.${epjFim ? " " + epjFim.msg : ""}`, epjFim && !epjFim.ok ? "aviso" : "ok");
   _importPreview = [];
   fecharModalImport();
   fecharModalDXF();
@@ -3554,11 +3566,14 @@ function estvARevisar(x){
 /* Até 8 sugestões para uma órfã: confiança alta primeiro; depois a travessia do nome do campo (lote S48, #80:
    T1.07 → "E07 — TRAVESSIA 01" no topo, "E07 — TRAVESSIA 07" logo abaixo); depois o resto da confiança, estaca ainda
    sem execução e o número. Com o filtro de local/bloco, só as estacas daquele local. */
-function estvSugestoes(x, comExec){
+/* Fase 169a: a folha do projeto usa a mesma sugestão, com as estacas e o filtro dela (estacas, filtroLocal). Sem esses
+   dois, vale o que a aba tem carregado, como sempre. */
+function estvSugestoes(x, comExec, estacas, filtroLocal){
   const g = estvGrupo(x.estaca_numero);
   const chaveResto = g ? estNormalizarNome(g.resto) : "";
-  return _estvEstacas
-    .filter(p => !_estvFiltroLocal || estvLocalTxt(p) === _estvFiltroLocal)
+  const fLocal = estacas ? (filtroLocal || "") : _estvFiltroLocal;
+  return (estacas || _estvEstacas)
+    .filter(p => !fLocal || estvLocalTxt(p) === fLocal)
     .map(p => {
       let conf = estvConfianca(x.estaca_numero, p.numero);
       const mesmoNum = !!chaveResto && estNormalizarNome(p.numero) === chaveResto;
@@ -3798,6 +3813,11 @@ function estvIrmas(x){
   const nome = estvNorm(x.estaca_numero);
   return _estvExecs.filter(o => o.id !== x.id && estvNorm(o.estaca_numero) === nome && (o.estaca_id || null) === (x.estaca_id || null));
 }
+/* Fase 169a: a gravação do vínculo num ponto só, para a aba e para a folha do projeto. A RPC confere o cargo, refaz o
+   status da estaca e registra em registros_log. Devolve a resposta da RPC ({ error }). */
+function estvGravarVinculo(execId, estacaId, motivo){
+  return sb.rpc("rdo_exec_vincular_estaca", { p_exec: execId, p_estaca: estacaId || null, p_motivo: motivo || null });
+}
 async function estvVincular(execId, estacaId, motivo){
   const x = _estvExecs.find(e => e.id === execId);
   if(!x) return;
@@ -3814,7 +3834,7 @@ async function estvVincular(execId, estacaId, motivo){
   if(irmas.length && confirm(`"${x.estaca_numero}" aparece em mais ${irmas.length} dia(s) ${atual ? "vinculada a " + atual.numero : "sem vínculo"} (${irmas.map(i => dataBR(i.rdo.data)).join(", ")}). ${verbo} esses também?\n\nOK = todos os ${irmas.length + 1} dias · Cancelar = só ${dataBR(x.rdo.data)}`)) lista = lista.concat(irmas);
   let n = 0;
   for(const e of lista){
-    const { error } = await sb.rpc("rdo_exec_vincular_estaca", { p_exec: e.id, p_estaca: estacaId || null, p_motivo: motivo || null });
+    const { error } = await estvGravarVinculo(e.id, estacaId, motivo);
     if(error){ aviso("app-aviso", `Não foi possível ${verbo.toLowerCase()} ${e.estaca_numero} (${dataBR(e.rdo.data)}): ${error.message}`, "erro"); break; }
     n++;
   }
@@ -3840,7 +3860,7 @@ async function estvVincularLote(pares, descricao){
   if(!confirm(`${descricao}${medidas ? `\n${medidas} delas apontam estacas já medidas.` : ""}\nCada vínculo fica em registros_log como correção em lote.`)) return;
   let n = 0;
   for(const pr of pares){
-    const { error } = await sb.rpc("rdo_exec_vincular_estaca", { p_exec: pr.x.id, p_estaca: pr.p.id, p_motivo: "correcao_lote" });
+    const { error } = await estvGravarVinculo(pr.x.id, pr.p.id, "correcao_lote");
     if(error){ aviso("app-aviso", `Parou em ${pr.x.estaca_numero}: ${error.message}`, "erro"); break; }
     n++;
   }
