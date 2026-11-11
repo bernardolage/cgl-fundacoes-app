@@ -6,6 +6,7 @@
    quando o responsável do setor aprova (RPC apontamento_aprovar). OS = gestor de manutenção; RP e OF = gestor de
    acessórios; o diretor aprova qualquer uma; quem lançou nunca aprova a própria.
    Documento concluído ou cancelado não aceita hora pela tela única. Prefixo: apt-.
+   Fase 156b: a foto do quadro (js/apontamentos_quadro.js) vira linhas desta mesma grade, com origem 'quadro'.
    ==================================================================== */
 
 let _aptHoras = [];        // vw_apontamentos no período
@@ -57,6 +58,7 @@ function aptRotuloDoc(d){
 async function carregarApontamentos(){
   if(!$("apt-de").value){ $("apt-de").value = hojeISO(); $("apt-ate").value = hojeISO(); }
   $("btn-apt-lancar").style.display = aptPodeLancar() ? "" : "none";
+  $("btn-apt-quadro").style.display = aptPodeLancar() ? "" : "none";
   $("apt-conteudo").innerHTML = `<p class="vazio">Carregando…</p>`;
   await aptCarregarCadastros();
   const fSel = $("apt-func"), fVal = fSel.value;
@@ -141,7 +143,8 @@ function aptFiltroBusca(txt){
   return !b || String(txt || "").toLowerCase().includes(b);
 }
 function aptRenderHoras(){
-  const linhas = _aptHoras.filter(h => aptFiltroBusca([h.numero, h.equipamento, h.funcionario, h.observacao, h.centro].join(" ")))
+  const soQuadro = $("apt-so-quadro").checked;
+  const linhas = _aptHoras.filter(h => (!soQuadro || h.origem === "quadro") && aptFiltroBusca([h.numero, h.equipamento, h.funcionario, h.observacao, h.centro].join(" ")))
     .sort((a, b) => String(b.data).localeCompare(String(a.data)) || String(a.funcionario || "").localeCompare(String(b.funcionario || ""), "pt-BR") || String(a.inicio || "").localeCompare(String(b.inicio || "")));
   $("apt-contador").textContent = `(${linhas.length})`;
   // total de horas por funcionário e dia, sem R$
@@ -295,6 +298,14 @@ function aptSugerirAtividade(l){
   ativ.forEach(a => { const n = pal(a.atividade).filter(w => obs.has(w)).length; if(n > pontos){ pontos = n; melhor = a.id; } });
   return melhor;
 }
+/* linha vinda da foto do quadro: o que estava escrito, os candidatos a documento e o porquê da sugestão */
+function aptQuadroInfo(l, i){
+  const q = l.quadro, cands = q.candidatos || [];
+  const sel = cands.length ? `<select data-i="${esc(i)}" data-c="cand" title="documentos possíveis para o número do quadro"><option value="">— ${esc(cands.length)} documento(s) possível(is) —</option>${cands.map((c, k) => `<option value="${esc(k)}">${esc(c.doc.numero)} · ${esc(aptStatusDoc(c.doc.status))}${c.doc.equipamento ? " · " + esc(c.doc.equipamento) : ""}${c.sugestao ? " (sugestão)" : ""}</option>`).join("")}</select>` : "";
+  const conf = Object.entries(q.confianca || {}).filter(([, v]) => v === "baixa").map(([k]) => k);
+  return `<div class="meta">Quadro: <span class="ui-codigo">${esc(q.texto || "—")}</span> · ${esc(q.responsavel || "—")}${q.situacao ? " · " + esc({ ok: "OK", paralisado: "paralisada", em_andamento: "em andamento" }[q.situacao] || q.situacao) : ""}${conf.length ? ` · <span class="txt-perigo">leitura duvidosa: ${esc(conf.join(", "))}</span>` : ""}</div>
+    ${/* html */ sel}${q.porque ? `<div class="meta">${esc(q.porque)}</div>` : ""}`;
+}
 function aptRenderGrade(){
   const funcs = `<option value="">— funcionário —</option>` + _aptFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
   const centros = `<option value="">— centro de trabalho * —</option>` + _aptCentros.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
@@ -311,7 +322,8 @@ function aptRenderGrade(){
         <label class="meta"><input type="checkbox" data-i="${i}" data-c="concluir_atividade" ${l.concluir_atividade ? "checked" : ""} /> marcar executada</label>` : `<span class="meta">sem atividade pendente</span>`;
       extra += ` ${/* html */ he}`;
     } else if(d?.tipo === "RP") extra = he;
-    const docInfo = d ? `<div class="meta">${esc(APT_TIPO[d.tipo].rotulo)}${d.equipamento ? " · " + esc(d.equipamento) : ""}${aptDocAberto(d) ? "" : ` · <span class="txt-perigo">${esc(aptStatusDoc(d.status))}</span>`}</div>` : "";
+    const docInfo = (d ? `<div class="meta">${esc(APT_TIPO[d.tipo].rotulo)}${d.equipamento ? " · " + esc(d.equipamento) : ""}${aptDocAberto(d) ? "" : ` · <span class="txt-perigo">${esc(aptStatusDoc(d.status))}</span>`}</div>` : "")
+      + (l.quadro ? aptQuadroInfo(l, i) : "");
     return `<tr data-i="${i}">
       <td><input list="apt-docs" data-i="${i}" data-c="docTxt" value="${esc(l.docTxt)}" placeholder="RP 734, OS 1410, TAG…" style="min-width:200px;" />${/* html */ docInfo}</td>
       <td><select data-i="${i}" data-c="funcionario_id">${/* html */ funcs}</select></td>
@@ -320,7 +332,7 @@ function aptRenderGrade(){
       <td><input type="time" data-i="${i}" data-c="fim" value="${esc(l.fim)}" /></td>
       <td><input data-i="${i}" data-c="observacao" value="${esc(l.observacao)}" placeholder="atividade" /></td>
       <td>${/* html */ extra}</td>
-      <td>${l.estado ? `<span class="tag ${esc(tagEst[l.estado] || "cinza")}">${esc({ gravada: "gravada", aguardando: "aguardando aprovação", recusada: "não gravou", repetida: "já lançada" }[l.estado])}</span>` : ""}
+      <td>${l.quadro ? `<label class="meta" title="sem a marca a linha não grava"><input type="checkbox" data-i="${i}" data-c="incluir" ${l.incluir !== false ? "checked" : ""} /> incluir</label> ` : ""}${l.estado ? `<span class="tag ${esc(tagEst[l.estado] || "cinza")}">${esc({ gravada: "gravada", aguardando: "aguardando aprovação", recusada: "não gravou", repetida: "já lançada" }[l.estado])}</span>` : ""}
         ${l.msg ? `<div class="meta">${esc(l.msg)}</div>` : ""}
         ${l.estado === "repetida" && l.existente && aptHora(l.existente.fim) !== l.fim ? `<button type="button" class="btn-sec btn-sm apt-atualizar-fim" data-i="${i}">Atualizar o fim para ${esc(l.fim)}</button>` : ""}</td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo apt-linha-rem" data-i="${i}" title="tirar a linha" aria-label="tirar a linha">×</button></td></tr>`;
@@ -336,8 +348,11 @@ async function aptGradeMudou(el){
   const i = Number(el.dataset.i), c = el.dataset.c, l = _aptGrade[i]; if(!l) return;
   l[c] = el.type === "checkbox" ? el.checked : el.value;
   if(l.estado && l.estado !== "gravada"){ l.estado = ""; l.msg = ""; l.existente = null; }
-  if(c === "docTxt"){
-    const r = await aptResolverDoc(l.docTxt);
+  if(c === "docTxt" || c === "cand"){
+    const cand = c === "cand" ? l.quadro?.candidatos?.[Number(el.value)] : null;
+    if(c === "cand" && !cand) return;
+    const r = cand ? { doc: cand.doc } : await aptResolverDoc(l.docTxt);
+    if(cand) l.docTxt = aptRotuloDoc(cand.doc);
     l.doc = r.doc; l.msg = r.msg || ""; l.atividade_id = ""; l.concluir_atividade = false;
     if(r.doc && aptDocAberto(r.doc)) l.docTxt = aptRotuloDoc(r.doc);
     if(l.doc?.tipo === "OS") await aptCarregarAtividades(l.doc.id);
@@ -360,11 +375,17 @@ async function aptExigeAprovacao(d){
   }
   return _aptDiaAprov[d];
 }
+/* mesma hora já gravada no documento (documento, funcionário, data e início) */
+async function aptJaLancada(d, l){
+  const t = APT_TIPO[d.tipo];
+  const { data, error } = await sb.from(t.tabela).select("id,fim").eq(t.col, d.id).eq("funcionario_id", l.funcionario_id).eq("data", l.data).eq("inicio", l.inicio).range(0, 0);
+  return { ja: data && data[0] ? data[0] : null, erro: error || null };
+}
 /* Uma linha: confere, procura repetida e grava na tabela do documento (dia útil) ou em apontamento_aprovacoes (fim de semana e feriado) */
 async function aptGravarLinha(l){
   const d = l.doc;
   const recusa = msg => { l.estado = "recusada"; l.msg = msg; };
-  if(!d) return recusa(l.msg || "Escolha o documento.");
+  if(!d) return recusa(l.quadro ? "Escolha o documento (lista de possíveis ou digite RP, OS ou OF e o número)." : (l.msg || "Escolha o documento."));
   if(!aptDocAberto(d)) return recusa(`${d.numero} está ${aptStatusDoc(d.status)} e não aceita hora nova. Quem pode reabrir o documento decide.`);
   if(!aptPodeGravar(d.tipo)) return recusa(`Seu perfil não lança hora em ${APT_TIPO[d.tipo].rotulo}.`);
   if(!l.funcionario_id) return recusa("Escolha o funcionário.");
@@ -374,14 +395,14 @@ async function aptGravarLinha(l){
   const t = APT_TIPO[d.tipo];
   const aprovar = await aptExigeAprovacao(l.data);
   // repetida: mesma hora já gravada no documento ou já esperando aprovação
-  const { data: ja, error: eJa } = await sb.from(t.tabela).select("id,fim").eq(t.col, d.id).eq("funcionario_id", l.funcionario_id).eq("data", l.data).eq("inicio", l.inicio).range(0, 0);
+  const { ja, erro: eJa } = await aptJaLancada(d, l);
   if(eJa) return recusa("Não foi possível conferir repetição: " + eJa.message);
-  if(ja && ja[0]){ l.estado = "repetida"; l.existente = ja[0]; l.msg = `Já lançada em ${d.numero} (fim ${aptHora(ja[0].fim)}).`; return; }
+  if(ja){ l.estado = "repetida"; l.existente = ja; l.msg = `Já lançada em ${d.numero} (fim ${aptHora(ja.fim)}).`; return; }
   if(aprovar){
     const { data: jaAp } = await sb.from("apontamento_aprovacoes").select("id").eq("documento_id", d.id).eq("funcionario_id", l.funcionario_id).eq("data", l.data).eq("inicio", l.inicio).eq("status", "aguardando").range(0, 0);
     if(jaAp && jaAp[0]){ l.estado = "repetida"; l.existente = null; l.msg = "Já está aguardando aprovação."; return; }
     const reg = { tipo: d.tipo, documento_id: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim,
-      observacao: l.observacao.trim() || null, lancado_por: usuarioAtual.id, origem: "apontamento" };
+      observacao: l.observacao.trim() || null, lancado_por: usuarioAtual.id, origem: l.origem || "apontamento" };
     reg.hora_extra = !!l.hora_extra;
     if(d.tipo === "OF") reg.centro_trabalho_id = l.centro_trabalho_id;
     const { error } = await sb.from("apontamento_aprovacoes").insert(reg);
@@ -392,7 +413,7 @@ async function aptGravarLinha(l){
     return;
   }
   const reg = { [t.col]: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim, horas: 0,   // o gatilho calcula
-    observacao: l.observacao.trim() || null, origem: "apontamento" };
+    observacao: l.observacao.trim() || null, origem: l.origem || "apontamento" };
   if(d.tipo === "OS") reg.funcionario_nome = aptNomeFunc(l.funcionario_id) || null;
   reg.hora_extra = !!l.hora_extra;   // HE nas três tabelas; sábado, domingo e feriado o banco marca de qualquer jeito
   if(d.tipo === "OF") reg.centro_trabalho_id = l.centro_trabalho_id;
@@ -406,12 +427,13 @@ async function aptGravarLinha(l){
   }
 }
 async function aptGravarGrade(){
-  const usadas = _aptGrade.filter(l => l.docTxt || l.funcionario_id && (l.inicio || l.fim));
+  const usadas = _aptGrade.filter(l => l.incluir !== false && (l.docTxt || l.funcionario_id && (l.inicio || l.fim)));
   if(!usadas.length){ aviso("app-aviso", "Preencha pelo menos uma linha.", "erro"); return; }
   for(const l of usadas){
     if(l.estado === "gravada" || l.estado === "aguardando") continue;
     try { await aptGravarLinha(l); } catch(e){ l.estado = "recusada"; l.msg = e.message; }
   }
+  if(typeof aqAposGravar === "function") await aqAposGravar(usadas);   // foto do quadro: registra o que foi conferido
   const n = st => usadas.filter(l => l.estado === st).length;
   const gravadas = n("gravada"), aguardando = n("aguardando"), presas = usadas.filter(l => !["gravada", "aguardando"].includes(l.estado)).length;
   // as que gravaram saem da grade; as recusadas e repetidas ficam com o motivo
@@ -447,6 +469,7 @@ function ligarApontamentos(){
     await Promise.all([aptCarregarHoras(), aptCarregarAprovacoes()]); aptRender();
   }));
   $("apt-busca").addEventListener("input", debounce(aptRender, 250));
+  $("apt-so-quadro").addEventListener("change", aptRender);
   $("apt-views").addEventListener("click", e => { const b = e.target.closest(".serv-view-btn"); if(!b) return; _aptView = b.dataset.view; aptRender(); });
   $("btn-apt-lancar").addEventListener("click", () => comBotaoTravado("btn-apt-lancar", aptAbrirGrade));
   $("btn-apt-fechar-grade").addEventListener("click", () => { $("apt-grade-box").style.display = "none"; });
