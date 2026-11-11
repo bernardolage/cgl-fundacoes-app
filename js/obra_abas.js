@@ -755,11 +755,11 @@ async function carregarRDOsDaObra(obraId){
       ? "Todas as execuções deste RDO estão vinculadas a estacas cadastradas"
       : `${orf} execução(ões) sem vínculo (órfãs)`;
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
-      <td>${atribuiLote && !r.equipamento_id ? `<input type="checkbox" class="obr-rdo-sel" data-rdo="${esc(r.id)}" title="Marcar para atribuir máquina" /> ` : ""}${dataBR(r.data)}</td>
-      <td>${r.equipamento_id ? esc(r.maquina || "?") : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho">sem máquina</span>'}</td>
+      <td>${atribuiLote && !r.equipamento_id ? `<input type="checkbox" class="obr-rdo-sel" data-rdo="${esc(r.id)}" title="Marcar para atribuir máquina" /> ` : ""}${/* html */ typeof rdoCelulaData === "function" ? rdoCelulaData(r.data) : dataBR(r.data)}</td>
+      <td>${r.equipamento_id ? `<span class="ui-codigo">${esc(r.maquina || "?")}</span>` : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho">sem máquina</span>'}</td>
       <td>${turnoDe(r) === "noturno" ? '<span class="tag azul" title="Diário do período noturno (fase 134b)">Noturno</span>' : "Diurno"}</td>
       <td>${esc(lblsTipo[r.tipo_servico] || r.tipo_servico)}</td>
-      <td>${esc(r.qtd_estacas_executadas || 0)}</td>
+      <td class="num">${esc(r.qtd_estacas_executadas || 0)}</td>
       <td title="${esc(tituloVinc)}" style="color:${corVinc};font-weight:600;">
         ${esc(v.vinculadas)} / ${esc(v.total)}${orf > 0 ? ` <small style="font-weight:400;">(${esc(orf)} órfã${orf>1?'s':''})</small>` : ""}
       </td>

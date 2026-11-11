@@ -973,7 +973,7 @@ async function vgRomaneio(){
     || `<tr><td colspan="7" style="${td}text-align:center;color:#666;">Nenhum item lançado na viagem.</td></tr>`;
   const notasTxt = notas.length ? notas.map(m => `${esc(m.numero)}${m.nf_numero ? ` (NF ${esc(m.nf_numero)}/${esc(m.nf_serie || "1")})` : ""} · ${esc(movLbl[m.tipo] || m.tipo)} · ${esc(m.status)}`).join("<br>") : "Sem nota fiscal nesta viagem.";
   const mdfeTxt = _vgMdfes.map(d => `${esc(d.numero || "MDF-e")} · ${esc(d.status)}${d.chave_acesso ? " · chave " + esc(d.chave_acesso) : ""}`).join("<br>");
-  const html = `<div style="font-family:'Open Sans',Arial,sans-serif;font-size:11px;color:#111;">
+  const html = `<div style="font-family:'Outfit',Arial,sans-serif;font-size:11px;color:#111;">
     ${typeof pdfCabecalhoHTML === "function" ? pdfCabecalhoHTML("Romaneio de carga", `Viagem ${v.numero} · ${dataBR(v.data)}`) : `<h2>Romaneio de carga — ${esc(v.numero)}</h2>`}
     <table style="width:100%;border-collapse:collapse;margin:10px 0 12px;"><tr>
       <td style="padding:3px;width:34%;"><b>${frete ? "Transportador" : "Caminhão"}:</b> ${esc(cam ? `${cam.codigo}${cam.nome ? " · " + cam.nome : ""}${cam.placa ? " · placa " + cam.placa : ""}` : "a definir")}</td>

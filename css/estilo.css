@@ -114,13 +114,17 @@
   --esp-8: 32px;
 
   /* ---- Tipografia ---- */
-  --font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* fase 161 (redesign, lote 1): Outfit no texto e JetBrains Mono só em código e número de documento */
+  --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
   --txt-xs: 11px;   /* rótulo de chip, meta */
   --txt-sm: 12px;   /* tabela, filtros */
   --txt-md: 13px;   /* corpo */
   --txt-base: 14px;   /* inputs, botões, texto de formulário (faltava na escala) */
   --txt-lg: 15px;   /* título de bloco */
   --txt-xl: 20px;   /* título de seção */
+  --txt-titulo-doc: 22px;   /* fase 161: título em frase da ficha-documento (peso 600) */
+  --txt-kpi: 26px;   /* fase 161: número de KPI (peso 700), o extremo grande da escala */
 
   /* ---- Formas e profundidade ---- */
   --radius-sm: 6px;
@@ -131,8 +135,8 @@
   /* ---- Altura de controle (fase 147): botão, filtro e alternador da mesma tira têm a mesma altura ---- */
   --ctl-h: 36px;
   --ctl-h-sm: 28px;
-  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.06);
+  --shadow-sm: 0 1px 0 rgba(20, 35, 59, 0.04), 0 1px 2px rgba(20, 35, 59, 0.06);   /* fase 161: mais discretas e frias */
+  --shadow-md: 0 2px 8px rgba(20, 35, 59, 0.08), 0 1px 2px rgba(20, 35, 59, 0.05);
   --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.06);
   --shadow-premium: 0 20px 25px -5px rgba(15, 23, 42, 0.05), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
 
@@ -3253,6 +3257,10 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .pular-conteudo:focus { transform: none; }
 #app-conteudo:focus { outline: none; }
 td.num, th.num, tfoot td, .ind .num, .dash-card-num, .dash-tabela .num, .sb-btn .sb-num { font-variant-numeric: tabular-nums; }
+/* fase 161: algarismos da mesma largura em toda tabela, chip e contador (número alinhado sem depender da classe .num) */
+table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], input[type="date"] { font-variant-numeric: tabular-nums; }
+/* fase 161: o extremo pequeno da escala. Rótulo em caixa alta espaçada, sobre um valor grande ou um título */
+.rotulo-caps { font-size: var(--txt-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--txt-fraco); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
@@ -3457,3 +3465,108 @@ td.num, th.num, tfoot td, .ind .num, .dash-card-num, .dash-tabela .num, .sb-btn 
 .rdo-foto-falta { height: 160px; display: flex; align-items: center; justify-content: center; text-align: center; padding: var(--esp-2); background: var(--sup-2); color: var(--txt-fraco); font-size: var(--txt-sm); }
 .rdo-foto figcaption { padding: var(--esp-2); font-size: var(--txt-sm); display: flex; flex-direction: column; gap: 2px; }
 .rdo-foto-descons { opacity: .6; }
+
+/* --------------------------------------------------------------------
+   COMPONENTES DA BASE VISUAL (fase 161, redesign lote 1) — js/ui.js
+   Cartão de seção, linha de item, KPI, avatar, trilha, código e rótulo/valor. Só tokens: valem nos dois temas.
+   -------------------------------------------------------------------- */
+.ui-secao { background: var(--sup-0); border: 1px solid var(--borda); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); min-width: 0; }
+.ui-secao-cab { display: flex; align-items: center; gap: var(--esp-2); padding: var(--esp-3) var(--esp-4); border-bottom: 1px solid var(--borda); }
+.ui-secao-cab svg { width: 14px; height: 14px; flex: none; color: var(--acao-txt); }
+.ui-secao-extra { margin-left: auto; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
+.ui-secao-corpo { padding: var(--esp-4); }
+.ui-linha { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); }
+.ui-linha + .ui-linha { margin-top: var(--esp-2); }
+.ui-linha-txt { flex: 1; min-width: 0; }
+.ui-linha-titulo { font-size: var(--txt-md); font-weight: 600; color: var(--txt); }
+.ui-linha-sub { font-size: var(--txt-sm); color: var(--txt-fraco); overflow-wrap: anywhere; }
+.ui-linha-valor { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-linha-valor strong { display: block; font-size: var(--txt-lg); font-weight: 700; color: var(--txt); }
+.ui-linha-valor span { font-size: var(--txt-xs); color: var(--txt-fraco); }
+.ui-kpis { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.ui-kpi { min-width: 104px; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-0); }
+.ui-kpi-valor { font-size: var(--txt-kpi); font-weight: 700; letter-spacing: -0.4px; line-height: 1.15; color: var(--txt); font-variant-numeric: tabular-nums; }
+.ui-kpi-contexto { font-size: var(--txt-sm); color: var(--txt-fraco); }
+.ui-avatar { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; border-radius: 50%; font-size: var(--txt-xs); font-weight: 700; letter-spacing: .2px; }
+.ui-avatar.t1 { background: var(--info-bg); color: var(--info-txt); }
+.ui-avatar.t2 { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.ui-avatar.t3 { background: var(--aviso-bg); color: var(--aviso-txt); }
+.ui-avatar.t4 { background: var(--lilas-bg); color: var(--lilas-txt); }
+.ui-avatar.t5 { background: var(--perigo-bg); color: var(--perigo-txt); }
+.ui-avatar.t6 { background: var(--neutro-bg); color: var(--neutro-txt); }
+.ui-codigo { font-family: var(--font-mono); font-size: var(--txt-sm); font-weight: 500; color: var(--acao-txt); font-variant-numeric: tabular-nums; }
+.ui-trilha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); min-width: 0; font-size: var(--txt-md); color: var(--txt-fraco); }
+.ui-trilha button { min-height: var(--ctl-h-sm); padding: 0 var(--esp-1, 4px); border: 0; background: none; color: var(--txt-fraco); font: inherit; cursor: pointer; border-radius: var(--radius-sm); }
+.ui-trilha button:hover { color: var(--acao-txt); text-decoration: underline; }
+.ui-trilha button:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
+.ui-trilha .sep { color: var(--txt-sutil); }
+.ui-trilha .atual { color: var(--txt); font-weight: 600; }
+.ui-rv { min-width: 0; }
+.ui-rv-valor { font-size: var(--txt-lg); font-weight: 600; color: var(--txt); overflow-wrap: anywhere; }
+.ui-vazio { margin: 0; font-size: var(--txt-sm); color: var(--txt-fraco); }
+
+/* Cabeçalho da ficha do RDO (fase 161): trilha à esquerda; ação principal, Salvar, menu Ações e paginador à direita */
+.rdo-cab { justify-content: space-between; }
+.rdo-cab .actions-left { min-width: 0; flex: 1 1 240px; }
+.rdo-cab .actions-right { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); }
+.rdo-cab .ficha-mais-menu { left: auto; right: 0; }
+.rdo-cab .ui-trilha a { color: inherit; }
+.ui-paginador { display: inline-flex; align-items: center; gap: var(--esp-1, 4px); }
+.ui-paginador > span { min-width: 56px; text-align: center; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
+.ui-paginador > span:empty { display: none; }
+.ui-paginador .btn-sec { min-width: var(--ctl-h); padding: 0 var(--esp-2); font-size: var(--txt-lg); line-height: 1; }
+
+/* Aba "Resumo" do RDO (fase 161): a ficha como documento, largura máxima, duas colunas (uma no celular) */
+.rdo-resumo { display: grid; gap: var(--esp-4); max-width: 1100px; margin: 0 auto; padding-top: var(--esp-4); }
+.rdo-res-doc-topo { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--esp-3) var(--esp-4); padding: var(--esp-4) var(--esp-4) 0; }
+.rdo-res-doc-id { min-width: 0; }
+.rdo-res-titulo { margin: var(--esp-1) 0; font-size: var(--txt-titulo-doc); font-weight: 600; letter-spacing: -0.3px; line-height: 1.2; color: var(--txt); }
+.rdo-res-obra { font-size: var(--txt-md); }
+.rdo-res-datas { font-size: var(--txt-sm); color: var(--txt-fraco); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rdo-res-rv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--esp-4); padding: var(--esp-4); }
+.rdo-res-kpis .ui-kpi { flex: 1 1 150px; }
+.rdo-res-grade { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--esp-4); align-items: start; }
+.rdo-res-col { display: grid; gap: var(--esp-4); min-width: 0; }
+.rdo-res-rodape { margin: var(--esp-3) 0 0; font-size: var(--txt-sm); }
+.ui-link { padding: 0; border: 0; background: none; color: var(--acao-txt); font: inherit; text-decoration: underline; cursor: pointer; }
+.ui-link:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
+.rdo-res-pessoa { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-2) 0; border-bottom: 1px solid var(--borda); }
+.rdo-res-pessoa:last-child { border-bottom: 0; }
+.rdo-res-pessoa.ausente { opacity: .7; }
+.rdo-res-pessoa-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rdo-res-pessoa-txt strong { font-size: var(--txt-md); font-weight: 600; color: var(--txt); }
+.rdo-res-pessoa-txt span { font-size: var(--txt-sm); color: var(--txt-fraco); }
+.rdo-res-hora { font-size: var(--txt-sm); color: var(--txt-sec); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rdo-res-mais > summary { padding: var(--esp-2) 0; font-size: var(--txt-sm); color: var(--acao-txt); cursor: pointer; }
+.rdo-res-tl { margin: 0; padding: 0; list-style: none; }
+.rdo-res-tl li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--esp-3); padding: var(--esp-2) 0; border-bottom: 1px solid var(--borda); font-size: var(--txt-md); color: var(--txt); }
+.rdo-res-tl li:last-child { border-bottom: 0; }
+.rdo-res-tl time { font-family: var(--font-mono); font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
+.rdo-res-obs { margin-top: var(--esp-3); padding-top: var(--esp-3); border-top: 1px solid var(--borda); }
+.rdo-res-obs p { margin: var(--esp-1) 0 0; font-size: var(--txt-md); color: var(--txt); white-space: pre-wrap; overflow-wrap: anywhere; }
+.rdo-res-clima { display: grid; grid-template-columns: 1fr 1fr; gap: var(--esp-3); }
+.rdo-res-clima > div { display: flex; flex-direction: column; gap: 2px; }
+.rdo-res-clima strong { font-size: var(--txt-lg); font-weight: 600; color: var(--txt); }
+.rdo-res-clima.vazio strong { font-size: var(--txt-sm); font-weight: 400; color: var(--txt-fraco); }
+.rdo-res-ass { display: flex; gap: var(--esp-3); padding: var(--esp-2) 0; border-bottom: 1px solid var(--borda); }
+.rdo-res-ass:last-child { border-bottom: 0; }
+.rdo-res-ass > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rdo-res-ass strong { font-size: var(--txt-md); font-weight: 600; color: var(--txt); }
+.rdo-res-ass span { font-size: var(--txt-sm); color: var(--txt-fraco); }
+.rdo-res-ass-marca { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: var(--txt-sm); font-weight: 700; }
+.rdo-res-ass-marca.ok { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.rdo-res-ass-marca.pend { background: var(--neutro-bg); color: var(--neutro-txt); }
+.rdo-res-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--esp-2); }
+.rdo-res-fotos figure { margin: 0; border: 1px solid var(--borda); border-radius: var(--radius-sm); overflow: hidden; background: var(--sup-2); }
+.rdo-res-fotos figure.descons { opacity: .6; }
+.rdo-res-fotos img { display: block; width: 100%; height: 92px; object-fit: cover; }
+.rdo-res-fotos .falta { display: flex; align-items: center; justify-content: center; height: 92px; padding: var(--esp-2); font-size: var(--txt-xs); color: var(--txt-fraco); text-align: center; }
+.rdo-res-fotos figcaption { padding: var(--esp-1) var(--esp-2); }
+@media (max-width: 900px) {
+  .rdo-res-grade { grid-template-columns: minmax(0, 1fr); }
+  .rdo-res-datas { text-align: left; }
+  .rdo-res-tl li { grid-template-columns: 84px minmax(0, 1fr); }
+}
+
+/* Listas de diários (fase 161): data curta sem quebrar a linha */
+.rdo-data-curta { white-space: nowrap; font-variant-numeric: tabular-nums; }

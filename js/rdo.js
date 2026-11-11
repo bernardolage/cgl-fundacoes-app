@@ -323,11 +323,11 @@ function renderRDOLista(dados){
   const linhas = dados.map(r => {
     const t = TIPO_SERVICO[r.tipo_servico] || { label: r.tipo_servico, icone: "" };
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
-      <td>${dataBR(r.data)}${/* html */ rdoTagTurno(r)}</td>
+      <td title="${dataBR(r.data)}">${/* html */ rdoCelulaData(r.data)}${/* html */ rdoTagTurno(r)}</td>
       <td>${linkObra(r.obra_id)}</td>
       <td>${esc(t.icone)} ${esc(t.label)}</td>
-      <td>${rdoCelulaMaquina(r)}</td>
-      <td>${esc(r.qtd_estacas_executadas || 0)}</td>
+      <td>${r.equipamento_id ? `<span class="ui-codigo">${rdoCelulaMaquina(r)}</span>` : rdoCelulaMaquina(r)}</td>
+      <td class="num">${esc(r.qtd_estacas_executadas || 0)}</td>
       <td class="num">${num(r.metragem_total)} m</td>
       <td class="num">${num(r.concreto_total_m3)} m³</td>
       <td>${tagStatus("rdo", r.status)}${/* html */ rdoTagCampoLista(r)}</td>
@@ -335,7 +335,7 @@ function renderRDOLista(dados){
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Data</th><th>Obra</th><th>Tipo</th><th title="Fase 94: um diário por máquina">Máquina</th><th>Estacas</th>
+      <th>Data</th><th>Obra</th><th>Tipo</th><th title="Cada máquina tem o seu diário na mesma obra e data">Máquina</th><th class="num">Estacas</th>
       <th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th>
     </tr></thead>
     <tbody>${/* html */ linhas}</tbody></table></div>`;
@@ -559,6 +559,9 @@ function abrirFichaRDOVisual(rdo){
   const maqTit = rdo.equipamento_id ? (_rdoEquipsCache.find(q => q.id === rdo.equipamento_id) || {}).codigo : null;
   const noturno = rdo.turno_campo === "noturno";   // fase 134b: período na ficha
   $("rdo-ficha-titulo").textContent = rdoEditId ? `RDO ${dataBR(rdo.data)}${noturno ? " · Noturno" : ""}${maqTit ? " · " + maqTit : ""}` : "Novo RDO";
+  // fase 161: trilha do cabeçalho (Diário de Obra › obra › este diário). O primeiro item é o Voltar de sempre.
+  const trObra = $("rdo-trilha-obra"); if(trObra) trObra.innerHTML = rdo.obra_id ? linkObra(rdo.obra_id) : "—";
+  const bVoltar = $("btn-voltar-rdo"); if(bVoltar) bVoltar.textContent = _rdoVoltarPara ? "Voltar à obra" : "Diário de Obra";
   const chipTurno = $("rdo-ficha-turno-chip");
   if(chipTurno){ chipTurno.querySelector("strong").textContent = noturno ? "Noturno" : "Diurno"; chipTurno.classList.toggle("chip-aviso", noturno); }
   rdoAtualizarChipMaquina(rdo.equipamento_id || null);   // fase 94: chip da máquina, aviso e botão "Dividir por máquina"
@@ -569,7 +572,8 @@ function abrirFichaRDOVisual(rdo){
   _rdoBoletimAberto = null;
   atualizarStatusbarRDO(rdo.status);
   atualizarVisibilidadeAbasRaiz(rdo.tipo_servico);
-  ativarTabRDO("cabecalho");
+  // fase 161: diário finalizado ou vindo do campo abre na leitura (aba Resumo); diário novo ou em digitação, no Cabeçalho
+  ativarTabRDO(rdoEditId && (rdo.status === "finalizado" || rdo.enviado_em) ? "resumo" : "cabecalho");
   renderExecucoes();
   renderRdoEquipe();
   // (_rdoAbast é carregado em abrirRDO: aqui `abast` não existe e o ReferenceError cortava o fim desta função desde a fase 46)
@@ -577,6 +581,7 @@ function abrirFichaRDOVisual(rdo){
   renderRdoAtividades();
   atualizarVizinhosRDO(rdo);
   rdoRenderCampo(rdoEditId ? rdo : null);   // fase 129c: chip, faixa e botão do campo com o que já veio no cabeçalho
+  if(typeof rdoResumoAtualizar === "function") rdoResumoAtualizar();   // fase 161: o Resumo, se for a aba aberta, com tudo já desenhado
 }
 
 /* ---------- Fase 129c: o que veio do app do campo (diário do operador) ----------
@@ -668,6 +673,7 @@ async function rdoCarregarCampo(id){
   rdoRenderCampo();
   rdoAplicarSelosApp();
   if(document.querySelector('#rdo-notebook button[data-tab="fotos"].ativo')) renderRdoFotos();
+  if(typeof rdoResumoAtualizar === "function") rdoResumoAtualizar();   // fase 161: fotos e paradas do campo chegaram
 }
 /* acrescenta o selo nas grades de equipe e abastecimento já desenhadas */
 function rdoAplicarSelosApp(){
@@ -818,7 +824,17 @@ async function navegarRDO(direcao){
   await abrirRDO(alvo.id);
 }
 
+/* fase 161: uma ação principal só no cabeçalho. Em rascunho é Finalizar; no diário finalizado, Salvar. Só troca a classe:
+   os dois botões e os handlers continuam os mesmos. */
+function rdoAplicarAcaoPrincipal(st){
+  const bFin = $("btn-finalizar-rdo"), bSal = $("btn-salvar-rdo");
+  if(!bFin || !bSal) return;
+  const finalizado = st === "finalizado";
+  bFin.className = finalizado ? "btn-sec" : "btn";
+  bSal.className = finalizado ? "btn" : "btn-sec";
+}
 function atualizarStatusbarRDO(st){
+  rdoAplicarAcaoPrincipal(st);
   const bar = $("rdo-statusbar");
   if(!bar) return;
   const idxAtual = RDO_STAGES.indexOf(st);
@@ -848,6 +864,7 @@ function ativarTabRDO(nome){
   // Ao entrar em Execuções, refresca pra pegar mudanças na Equipe (selects de operador)
   if(nome === "execucoes" && typeof renderExecucoes === "function") renderExecucoes();
   if(nome === "fotos") renderRdoFotos();   // fase 129c: URL assinada só quando a aba abre
+  if(nome === "resumo" && typeof renderRdoResumo === "function") renderRdoResumo();   // fase 161: leitura do dia, sempre com o que está na ficha
 }
 
 /* ---------- Grid de execuções (varia por tipo) ---------- */
@@ -2196,6 +2213,13 @@ async function rdoConferirMudancas(id){
 /* fase 134b: etiqueta do diário noturno nas listas (período nulo = diurno, sem etiqueta) */
 function rdoTagTurno(r){
   return r && r.turno_campo === "noturno" ? ' <span class="tag azul" title="Diário do período noturno (fase 134b): a mesma máquina pode ter o diurno no mesmo dia">Noturno</span>' : "";
+}
+/* fase 161: data da lista como "17 set · qui" (o ano aparece quando não é o corrente). Sem o js/rdo_resumo.js, dd/mm/aaaa. */
+function rdoCelulaData(iso){
+  if(typeof rdoDataCurta !== "function") return dataBR(iso);
+  const ano = String(iso || "").slice(0, 4), corrente = String(hojeISO()).slice(0, 4);
+  const [dia, sem] = rdoDataCurta(iso).split(" · ");
+  return `<span class="rdo-data-curta">${esc(dia)}${ano && ano !== corrente ? " " + esc(ano) : ""}${sem ? ` <span class="meta">· ${esc(sem)}</span>` : ""}</span>`;
 }
 function rdoCelulaMaquina(r){
   return r.equipamento_id

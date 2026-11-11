@@ -447,7 +447,7 @@ async function sepImprimir(){
   const linhas = _sepItens.map((i, n) => `<tr><td style="${td}text-align:center;">${i.separado ? "☑" : "☐"}</td><td style="${td}text-align:center;">${n + 1}</td>
     <td style="${td}">${esc(i.acessorio ? i.acessorio.marcacao + " · " : "")}${esc(i.produto ? prodTxt(i.produto) : i.descricao)}${i.observacoes ? `<br><small>${esc(i.observacoes)}</small>` : ""}${sepItemTemDestino(i) ? `<br><small>destino: ${esc(sepDestinoTxt(i, s))}</small>` : ""}</td>
     <td style="${td}text-align:right;">${num(i.quantidade_pedida)} ${esc(i.unidade || "un")}</td><td style="${td}width:70px;"></td></tr>`).join("");
-  const html = `<div style="font-family:'Open Sans',Arial,sans-serif;font-size:11px;">
+  const html = `<div style="font-family:'Outfit',Arial,sans-serif;font-size:11px;">
     ${typeof pdfCabecalhoHTML === "function" ? pdfCabecalhoHTML("Lista de separação", s.numero) : `<h2>Lista de separação ${esc(s.numero)}</h2>`}
     <table style="width:100%;border-collapse:collapse;margin:8px 0 12px;"><tr>
       <td style="padding:3px;"><b>Obra:</b> ${esc(sepObra(s.obra_id))} ${esc(sepObraNome(s.obra_id))}</td>
