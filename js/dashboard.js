@@ -625,7 +625,8 @@ async function dashAbrirRegularizar(a){
   if(a.setor === "campo"){ if(typeof rdoAbrirPresetCampo === "function") await rdoAbrirPresetCampo(a); return; }   // fase 129c
   // fase 157a: obra com diário sem mobilização (uma só) → aba Máquinas da obra; o resto → Mobilizações, visão Para regularizar no tipo
   if(a.setor === "mobilizacoes"){
-    if(a.filtro === "obra_sem_mobilizacao" && ids.length === 1){ dashAbrirObra(ids[0], "maquinas"); return; }
+    // o clique no botão da aba é o que carrega a aba Máquinas (ativarTabObra só troca a aba visível)
+    if(a.filtro === "obra_sem_mobilizacao" && ids.length === 1){ await dashAbrirObra(ids[0]); document.querySelector('#obr-notebook button[data-tab="maquinas"]')?.click(); return; }
     if(typeof mobAbrirRegularizar === "function") await mobAbrirRegularizar(a.filtro);
     return;
   }
