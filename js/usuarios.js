@@ -448,6 +448,45 @@ function usrExtrasMarcados(antes){
     .concat(USR_MODULOS_EXTRAS.filter(m => $(m.el)?.checked).map(m => m.id));
 }
 
+/* Hotfix admin portas (11/11/2026): o acesso extra a Orçamentos só a diretoria libera, retira ou muda o prazo, e ninguém
+   mexe no próprio cargo, na própria situação nem nos próprios acessos extras. O banco barra nos gatilhos de profiles; aqui
+   a caixa só fica desabilitada, com o motivo no title (no rótulo também: campo desabilitado não mostra a dica). */
+const USR_EXTRAS_SO_DIRETORIA = ["orcamentos", "orcamentos_leitura"];
+const USR_TRAVA_SO_DIRETORIA = "Só a diretoria libera ou retira este acesso.";
+const USR_TRAVA_PRAZO_ORC = "Só a diretoria muda o prazo de quem tem acesso extra a Orçamentos.";
+const USR_TRAVA_PROPRIO = "Você não altera o próprio cadastro neste campo: outra pessoa da diretoria ou da administração faz.";
+/* o que fica travado na ficha do usuário `u` (nulo = convite novo) para quem está logado: motivo por campo, "" = livre */
+function usrTravasFicha(u, eu){
+  const proprio = !!(u && u.id && eu && u.id === eu.id);
+  const diretor = !!eu && eu.cargo === "diretor";
+  const temOrc = Array.isArray(u?.modulos_extras) && u.modulos_extras.some(m => USR_EXTRAS_SO_DIRETORIA.includes(m));
+  const extras = {};
+  USR_MODULOS_EXTRAS.forEach(m => {
+    extras[m.id] = proprio ? USR_TRAVA_PROPRIO : (!diretor && USR_EXTRAS_SO_DIRETORIA.includes(m.id) ? USR_TRAVA_SO_DIRETORIA : "");
+  });
+  return {
+    extras,
+    prazo: proprio ? USR_TRAVA_PROPRIO : (!diretor && temOrc ? USR_TRAVA_PRAZO_ORC : ""),
+    cargo: proprio ? USR_TRAVA_PROPRIO : "",
+    ativo: proprio ? USR_TRAVA_PROPRIO : ""
+  };
+}
+function usrAplicarTravas(u){
+  const t = usrTravasFicha(u, usuarioAtual);
+  const travar = (el, motivo) => {
+    if(!el) return;
+    if(el.dataset.titleBase === undefined) el.dataset.titleBase = el.title || "";
+    el.disabled = !!motivo;
+    el.title = motivo || el.dataset.titleBase;
+    const rotulo = el.closest("label.check-inline");
+    if(rotulo) rotulo.title = motivo || "";
+  };
+  USR_MODULOS_EXTRAS.forEach(m => travar($(m.el), t.extras[m.id]));
+  travar($("usr-extra-ate"), t.prazo);
+  travar($("usr-cargo"), t.cargo);
+  travar($("usr-ativo"), t.ativo);
+}
+
 function novoUsuario(){
   preencherCargosFicha();
   usrEditId = null;
@@ -460,6 +499,7 @@ function novoUsuario(){
   $("usr-ativo").checked = true;
   USR_MODULOS_EXTRAS.forEach(m => { if($(m.el)) $(m.el).checked = false; });   // hotfix 113 + lote S51
   if($("usr-extra-ate")) $("usr-extra-ate").value = "";
+  usrAplicarTravas(null);
   $("btn-reset-senha-usr").style.display = "none";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "none";
   $("btn-salvar-usr").textContent = "Enviar convite";
@@ -482,6 +522,7 @@ function abrirUsuario(id){
   // hotfix 113 + lote S51: módulos extras com validade (uma data para todos)
   USR_MODULOS_EXTRAS.forEach(m => { if($(m.el)) $(m.el).checked = Array.isArray(u.modulos_extras) && u.modulos_extras.includes(m.id); });
   if($("usr-extra-ate")) $("usr-extra-ate").value = u.modulos_extras_ate ? String(u.modulos_extras_ate).slice(0, 10) : "";
+  usrAplicarTravas(u);
   $("btn-reset-senha-usr").style.display = u.login_cpf ? "none" : "";
   if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "";   // fase 87
   $("btn-salvar-usr").textContent = "Salvar alterações";
