@@ -12,6 +12,7 @@ let _obrContrato  = null; // contrato do cliente vinculado à obra aberta (fase 
 let _obrContratoPend = []; // pendências do contrato da obra aberta (fase 26)
 let _obrPendMap   = {};   // contrato_id -> [pendências] (badge na lista, fase 26)
 let _obrFiltroIds = null; // { ids:Set, rotulo, aba, foco } — lista vinda do "Para regularizar" (fase 75)
+let _obrAberta    = null; // fase 163: a obra da ficha aberta, como veio do banco (a faixa de 14 dias da aba RDOs lê status, início, UF, município e jornada de sábado)
 
 /* Etapas do statusbar (ordem do enum obra_status) */
 const OBR_STAGES = ["planejada","em_andamento","paralisada","concluida"];
@@ -499,6 +500,7 @@ async function salvarContratoDaObra(obra){
 }
 
 function abrirFichaObra(obra){
+  _obrAberta = obra;   // fase 163
   $("obr-painel").style.display = "none";
   $("obr-ficha").style.display = "";
 
@@ -568,13 +570,20 @@ function obrTextoPrevisao(a){
   }
   return partes.join(" · ") || "nada faltando";
 }
+/* fase 163: a leitura do chip fica guardada (a promessa já disparada, uma só ida ao banco) para a aba RDOs escrever a previsão
+   por extenso sem ler de novo. Cada abertura da ficha lê outra vez, como antes. */
+let _obrPrevisaoLida = { obraId: null, promessa: null };
+function obrPrevisaoLida(obraId){ return obraId && _obrPrevisaoLida.obraId === obraId ? _obrPrevisaoLida.promessa : null; }
 async function obrCarregarPrevisaoChip(obraId){
   const box = $("obr-ficha-previsao-chip-box"), el = $("obr-ficha-previsao-chip");
+  _obrPrevisaoLida = { obraId: null, promessa: null };
   if(!box || !el) return;
   box.style.display = "none";
   if(!obraId) return;
-  const { data, error } = await sb.from("vw_sc_obra_andamento")
-    .select("faltam_estacas,faltam_metros,previsao_termino,folga_dias,sem_previstas,ritmo_origem,ritmo_base").eq("obra_id", obraId).maybeSingle();
+  const promessa = sb.from("vw_sc_obra_andamento")
+    .select("faltam_estacas,faltam_metros,previsao_termino,folga_dias,sem_previstas,ritmo_origem,ritmo_base").eq("obra_id", obraId).maybeSingle().then(r => r);
+  _obrPrevisaoLida = { obraId, promessa };
+  const { data, error } = await promessa;
   if(error) console.error("Previsão da obra:", error);
   if(error || !data || obraId !== obraEditId) return;
   el.textContent = obrTextoPrevisao(data);

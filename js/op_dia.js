@@ -219,7 +219,7 @@ OP.telas.dias = async function(){
   filtrada.sort((a, b) => (devolvido(b) - devolvido(a)) || String(b.data).localeCompare(String(a.data)));
   const chip = (v, rot) => `<button type="button" class="op-chip-btn${_filtroDias === v ? " ativo" : ""}" data-filtro-dias="${esc(v)}" aria-pressed="${_filtroDias === v ? "true" : "false"}">${esc(rot)}</button>`;
   box.innerHTML = `<div class="op-chips">${chip("pendentes", "Pendentes")}${chip("devolvidos", "Devolvidos")}${chip("todos", "Todos")}</div>
-    ${!filtrada.length ? `<div class="op-vazio">Nenhum dia neste filtro.</div>` : filtrada.map(d => {
+    ${!filtrada.length ? `<div class="op-vazio">Nenhum dia neste filtro. Os dias aparecem aqui depois que você abre o dia em Minha máquina.</div>` : filtrada.map(d => {
       const sit = situacaoDoDia(d);
       const semCopia = !navigator.onLine && !noAparelho.has(d.id);
       return `<button type="button" class="op-card op-card-botao${semCopia ? " op-card-apagado" : ""}" data-abrir-rdo="${esc(d.id)}" ${semCopia ? "disabled" : ""}>

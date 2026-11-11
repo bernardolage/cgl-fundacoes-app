@@ -3605,3 +3605,43 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .epf-selo:hover { text-decoration: underline; }
 .epf-selo:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
 @media (max-width: 900px) { .epf-area { grid-template-columns: minmax(0, 1fr); } .epf-legendas { grid-template-columns: minmax(0, 1fr); } }
+
+/* Faixa dos últimos 14 dias do diário na ficha da obra (fase 163, js/obra_faixa.js): 14 casas na mesma linha (rola de lado em
+   tela estreita). O estado vem em cor de token e em texto curto; a casa com diário é botão. Compacta: não tira linha da tabela. */
+.obf-bloco { margin-bottom: var(--esp-3); }
+.obf-bloco .ui-secao-cab { padding-block: var(--esp-2); }
+.obf-bloco .ui-secao-corpo { padding: var(--esp-3) var(--esp-4); }
+.obf-bloco .ui-vazio + #obf-corpo:not(:empty) { margin-top: var(--esp-2); }
+.obf-solto { padding: var(--esp-3) 0 var(--esp-4); }
+.obf-faixa { display: grid; grid-template-columns: repeat(14, minmax(60px, 1fr)); gap: var(--esp-1); overflow-x: auto; padding: 2px; }
+.obf-dia { position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: var(--esp-1); min-width: 0; margin: 0; padding: var(--esp-1) 2px; border: 1px solid var(--borda); border-top: 3px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); font-family: inherit; line-height: 1.3; text-align: center; }
+button.obf-dia { cursor: pointer; }
+button.obf-dia:hover { box-shadow: var(--shadow-sm); filter: brightness(0.97); }
+button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 1px; }
+.obf-dia-sem { font-size: var(--txt-xs); text-transform: uppercase; letter-spacing: .4px; }
+.obf-dia-num { font-size: var(--txt-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+.obf-dia-est { flex-basis: 100%; font-size: var(--txt-xs); font-weight: 600; white-space: nowrap; }
+.obf-dia-qtd { position: absolute; top: 2px; right: 3px; min-width: 14px; padding: 0 3px; border-radius: var(--radius-pill); background: var(--neutro-bg); color: var(--neutro-txt); font-size: var(--txt-xs); font-weight: 700; line-height: 14px; }
+.obf-dia.obf-finalizado { background: var(--sucesso-bg); border-top-color: var(--sucesso); color: var(--sucesso-txt); }
+.obf-dia.obf-rascunho { background: var(--info-bg); border-top-color: var(--info); color: var(--info-txt); }
+.obf-dia.obf-estaca_sem_diario { background: var(--aviso-bg); border-top-color: var(--aviso); color: var(--aviso-txt); }
+.obf-dia.obf-devolvido { background: var(--perigo-bg); border-top-color: var(--perigo); color: var(--perigo-txt); }
+.obf-dia.obf-sem_diario { border-style: dashed; border-top-style: solid; color: var(--txt-fraco); }
+.obf-dia.obf-hoje { border-top-color: var(--marca-600); }
+.obf-dia.obf-nao_conta { background: var(--sup-2); border-top-color: var(--borda); color: var(--txt-fraco); }
+.obf-dia.obf-eh-hoje { box-shadow: inset 0 0 0 1px var(--marca-600); }
+.obf-dia.obf-sel { box-shadow: 0 0 0 2px var(--acao); }
+.obf-legenda { display: flex; flex-wrap: wrap; gap: var(--esp-1) var(--esp-3); margin: var(--esp-2) 0 0; font-size: var(--txt-xs); color: var(--txt-fraco); }
+.obf-leg { display: inline-flex; align-items: center; gap: var(--esp-1); }
+.obf-leg-cor { flex: none; width: 10px; height: 10px; border: 1px solid var(--borda-forte); border-radius: 2px; background: var(--sup-0); }
+.obf-leg-cor.obf-finalizado { background: var(--sucesso); border-color: var(--sucesso); }
+.obf-leg-cor.obf-rascunho { background: var(--info); border-color: var(--info); }
+.obf-leg-cor.obf-estaca_sem_diario { background: var(--aviso); border-color: var(--aviso); }
+.obf-leg-cor.obf-devolvido { background: var(--perigo); border-color: var(--perigo); }
+.obf-leg-cor.obf-sem_diario { border-style: dashed; }
+.obf-leg-cor.obf-nao_conta { background: var(--sup-3); border-color: var(--borda); }
+.obf-nota, .obf-resumo, .obf-previsao, .obf-bloco .ui-secao-corpo .meta { margin: var(--esp-2) 0 0; }
+.obf-nota[hidden] { display: none; }
+.obf-nota { font-size: var(--txt-sm); color: var(--txt-sec); }
+.obf-resumo, .obf-previsao { font-size: var(--txt-md); color: var(--txt-sec); }
+.obf-previsao strong { color: var(--txt); }

@@ -720,10 +720,19 @@ async function carregarRDOsDaObra(obraId){
     $("obr-rdo-f-turno")?.addEventListener("change", (ev) => { _obrRdoFiltroTurno = ev.target.value; carregarRDOsDaObra(obraId); });   // fase 134b
   };
 
+  // fase 163: faixa dos últimos 14 dias no topo da aba (js/obra_faixa.js). Uma por obra; segue o filtro de máquina, não o de período.
+  const faixaRdos = todos.filter(r => _obrRdoFiltroMaq === "sem" ? !r.equipamento_id : (!_obrRdoFiltroMaq || r.equipamento_id === _obrRdoFiltroMaq));
+  const faixaFiltro = _obrRdoFiltroMaq === "sem" ? "diários sem máquina" : ((maquinas.find(([id]) => id === _obrRdoFiltroMaq) || [])[1] || "");
+  const faixa = typeof obfReservaHTML === "function" ? obfReservaHTML(obraId, { semRdo: !todos.length, filtro: faixaFiltro }) : "";
+  const preencherFaixa = () => { if(typeof obfPreencher === "function") obfPreencher(obraId, { rdos: faixaRdos, semRdo: !todos.length, filtroMaq: _obrRdoFiltroMaq }); };
+
   if(!data || !data.length){
-    cont.innerHTML = `${header}<p class="vazio">${todos.length ? "Nenhum RDO para esta máquina ou período." : "Nenhum RDO registrado."}</p>`;
+    // sem nenhum diário, quem explica de onde ele nasce é o bloco da faixa; sem o js/obra_faixa.js fica a frase curta
+    cont.innerHTML = `${header}${/* html */ faixa}${todos.length ? '<p class="vazio">Nenhum RDO para esta máquina ou período. Limpe o filtro para ver os outros diários.</p>'
+      : (faixa ? "" : '<p class="vazio">Esta obra ainda não tem diário.</p>')}`;
     $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
     ligarFiltroMaq();
+    preencherFaixa();
     if(semMaq && atribuiLote) obrRdoLigarAtribuir(obraId);
     return;
   }
@@ -754,7 +763,7 @@ async function carregarRDOsDaObra(obraId){
     const tituloVinc = orf === 0
       ? "Todas as execuções deste RDO estão vinculadas a estacas cadastradas"
       : `${orf} execução(ões) sem vínculo (órfãs)`;
-    return `<tr class="linha-clicavel" data-id="${esc(r.id)}">
+    return `<tr class="linha-clicavel" data-id="${esc(r.id)}" data-dia="${esc(r.data)}">
       <td>${atribuiLote && !r.equipamento_id ? `<input type="checkbox" class="obr-rdo-sel" data-rdo="${esc(r.id)}" title="Marcar para atribuir máquina" /> ` : ""}${/* html */ typeof rdoCelulaData === "function" ? rdoCelulaData(r.data) : dataBR(r.data)}</td>
       <td>${r.equipamento_id ? `<span class="ui-codigo">${esc(r.maquina || "?")}</span>` : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho">sem máquina</span>'}</td>
       <td>${turnoDe(r) === "noturno" ? '<span class="tag azul" title="Diário do período noturno (fase 134b)">Noturno</span>' : "Diurno"}</td>
@@ -769,7 +778,7 @@ async function carregarRDOsDaObra(obraId){
     </tr>`;
   }).join("");
 
-  cont.innerHTML = `${header}${grafico}
+  cont.innerHTML = `${header}${/* html */ faixa}${grafico}
     <div class="tabela-rola"><table>
       <thead><tr>
         <th>Data</th><th title="Fase 94: um diário por máquina">Máquina</th><th title="Fase 134b: diurno ou noturno; a mesma máquina pode ter os dois no mesmo dia">Período</th><th>Tipo de serviço</th><th>Estacas</th>
@@ -780,6 +789,7 @@ async function carregarRDOsDaObra(obraId){
 
   $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
   ligarFiltroMaq();
+  preencherFaixa();
   cont.querySelectorAll(".linha-clicavel").forEach(tr => {
     tr.addEventListener("click", (ev) => { if(ev.target.closest(".obr-rdo-sel")) return; abrirRdoExistente(tr.dataset.id); });
   });
