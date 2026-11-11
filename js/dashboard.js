@@ -253,6 +253,8 @@ async function dashCarregarAcoes(){
   const [dados, sep, fab, fin, man, ass] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
     dashLer("vw_pedidos_aprovacao_pendente", q => q.select("pedido_id,numero,total,quem_assina,criado_em").eq("dono_meu", true).order("criado_em"))]);
   if(!dados) return;
+  // fase 164: cada lista leva a fonte de onde veio; a chave do "o que é este número" é fonte:ordem[:nível], nunca o título
+  dashMarcarFonte(dados, "acoes"); dashMarcarFonte(sep, "sep"); dashMarcarFonte(fab, "fab"); dashMarcarFonte(fin, "fin"); dashMarcarFonte(man, "man");
   _dashAcoes = dados.concat(sep || [], fab || [], fin || [], man || []).filter(a => dashGereSetor(a.setor))
     .concat(dashAcoesAssinatura(ass || []))   // é do usuário (ele é o dono do custo): não passa pelo filtro de setor
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
@@ -261,7 +263,7 @@ async function dashCarregarAcoes(){
   if($("dash-acoes-cont")) $("dash-acoes-cont").innerHTML = _dashAcoes.length
     ? Object.entries(DASH_NIVEL).filter(([k]) => porNivel[k]).map(([k, o]) => `<span class="tag ${esc(o.cor)}">${esc(porNivel[k])} ${esc(o.label.toLowerCase())}</span>`).join(" ")
     : "";
-  if(!_dashAcoes.length){ cont.innerHTML = `<p class="vazio">✅ Nada exigindo ação hoje.</p>`; return; }
+  if(!_dashAcoes.length){ cont.innerHTML = `<p class="vazio">Nada exigindo ação nos setores que você acompanha.</p>`; return; }
   // agrupado por setor, setores na ordem do item mais urgente
   const setores = [];
   _dashAcoes.forEach(a => { if(!setores.includes(a.setor)) setores.push(a.setor); });
@@ -278,19 +280,65 @@ function dashAcoesAssinatura(linhas){
   linhas.forEach(l => { (porPedido[l.pedido_id] = porPedido[l.pedido_id] || []).push(l); });
   return Object.values(porPedido).map((ls, k) => {
     const l = ls[0], dias = Math.floor((Date.now() - new Date(l.criado_em).getTime()) / 86400000);
-    return { setor: "compras", nivel: "atencao", ordem: k, quantidade: 1, secao: "compras", registro_id: l.pedido_id, _assinar: true,
+    return { setor: "compras", nivel: "atencao", ordem: k, quantidade: 1, secao: "compras", registro_id: l.pedido_id, _assinar: true, _fonte: "assinar",
       titulo: "Compra aguardando a sua assinatura",
       detalhe: [l.numero, brl(l.total), ls.map(x => x.quem_assina).join("; "), dias >= 1 ? `há ${dias} d` : ""].filter(Boolean).join(" · ") };
   });
 }
 function dashLinhaAcao(a, i, tipo){
   const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
-  return `<div class="dash-pendencia-item clicavel" data-${esc(tipo)}="${i}" title="Abrir">
+  const chave = dashExplicaDaLinha(a, tipo === "fila" ? "fila" : "acoes");   // fase 164
+  return `<div class="dash-pendencia-item clicavel" data-${esc(tipo)}="${i}"${chave ? ` data-explica="${esc(chave)}"` : ""} title="Abrir">
       <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(dashTituloAcao(a.titulo))}</strong>${a.quantidade > 1 ? ` <span class="contador">(${esc(a.quantidade)})</span>` : ""}
         ${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}</div>
-      <span class="dash-pend-seta">›</span>
+      ${/* html */ dashBotaoExplica(chave)}<span class="dash-pend-seta">›</span>
     </div>`;
+}
+/* ---------- Fase 164: "o que é este número" ----------
+   Os textos e a regra da chave ficam em js/dash_explica.js. Aqui: marcar a fonte de cada lista, desenhar o "?" e
+   abrir o painel logo abaixo da linha (um aberto por bloco), sem navegar para a tela de origem. */
+function dashMarcarFonte(lista, fonte){ (lista || []).forEach(a => { if(a) a._fonte = fonte; }); return lista; }
+const _dashExplicaAvisadas = new Set();
+function dashExplicaDaLinha(a, bloco){
+  const chave = typeof dashExplicaChave === "function" ? dashExplicaChave(a, bloco) : null;
+  if(!chave && a){
+    // sem texto conferido: a linha sai sem o "?" e a chave fica no console (uma vez) para quem for escrever o texto
+    const id = bloco === "regularizar" ? `regularizar:${a.filtro}` : `${a._fonte}:${a.ordem}:${a.nivel}`;
+    if(!_dashExplicaAvisadas.has(id)){ _dashExplicaAvisadas.add(id); console.warn("Sala de Comando: pendência sem texto de explicação:", id); }
+  }
+  return chave;
+}
+function dashBotaoExplica(chave){
+  return chave ? `<button type="button" class="dash-ajuda" data-explica-btn aria-expanded="false" aria-label="O que é este número" title="O que é este número">?</button>` : "";
+}
+let _dashExplicaSeq = 0;
+/* Abre ou fecha o painel do "?" clicado. ancora = elemento depois do qual o painel entra (a linha, ou o rótulo do indicador);
+   escopo = bloco em que só um painel fica aberto; html = conteúdo já escapado (dashExplicaHTML / dashExplicaFaixaHTML). */
+function dashAlternarExplica(btn, ancora, escopo, html){
+  if(!btn || !ancora || !escopo) return;
+  const aberto = btn.getAttribute("aria-expanded") === "true";
+  escopo.querySelectorAll(".dash-explica").forEach(p => p.remove());
+  escopo.querySelectorAll('.dash-ajuda[aria-expanded="true"]').forEach(b => { b.setAttribute("aria-expanded", "false"); b.removeAttribute("aria-controls"); });
+  if(aberto || !html) return;
+  const p = document.createElement("div");
+  p.className = "dash-explica";
+  p.id = "dash-explica-" + (++_dashExplicaSeq);
+  p.setAttribute("role", "region");
+  p.setAttribute("aria-label", "O que é este número");
+  p.innerHTML = html;
+  ancora.insertAdjacentElement("afterend", p);
+  btn.setAttribute("aria-expanded", "true");
+  btn.setAttribute("aria-controls", p.id);
+}
+/* Clique num "?" de linha de pendência: devolve true quando tratou (quem chama não abre a tela de origem) */
+function dashCliqueExplica(e, escopo){
+  const btn = e.target.closest("[data-explica-btn]");
+  if(!btn) return !!e.target.closest(".dash-explica");   // clique dentro do painel aberto também não navega
+  e.stopPropagation();
+  const linha = btn.closest("[data-explica]");
+  if(linha) dashAlternarExplica(btn, linha, escopo, dashExplicaHTML(linha.dataset.explica));
+  return true;
 }
 // tipos de pendência de contrato vêm como texto sem acento do banco (vw_pendencias_contratos)
 const DASH_TIPO_CONTRATO = { "composicao divergente": "composição divergente", "quadro parcial": "quadro de orçamento lido em parte",
@@ -311,11 +359,12 @@ async function dashCarregarFila(){
   if(!dados) return;
   if(typeof histMencoesPendentesDefinir === "function") histMencoesPendentesDefinir((menc || []).map(m => m.registro_id));
   if(menc) dashRenderMencoes(menc);   // lote S57b (#218): menções no card do topo e no badge do menu, não na fila
+  dashMarcarFonte(dados, "fila"); dashMarcarFonte(sep, "fila_sep"); dashMarcarFonte(custo, "fila_custo");   // fase 164
   _dashFila = dados.concat(sep || [], custo || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
     ? _dashFila.map((a, i) => dashChamadoEsperando(a) || dashChamadoConfirmar(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
-    : `<p class="vazio">Nada esperando por você.</p>`;
+    : `<p class="vazio">Nada no seu nome agora. Aqui entram comentário em que você foi marcado, pendência de mobilização sua, requisição para você aprovar, chamado esperando a sua resposta e separação atribuída a você. O que é da empresa está ao lado.</p>`;
 }
 /* Lote S57b (#218): "Você foi mencionado (N)" no topo do Início (entre o cabeçalho e a faixa) e badge no item Início do
    menu. Some com N = 0; ao abrir a ficha, historico.js marca como lida e chama dashCarregarFila, que refaz os dois. */
@@ -354,7 +403,8 @@ function dashLinhaFilaChamado(a, i){
   const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
   const sugerida = dashChamadoEsperando(a) && /^Resposta sugerida:/.test(a.detalhe || "") && !leitura;
   const confirmar = dashChamadoConfirmar(a) && !leitura;
-  return `<div class="dash-pendencia-item clicavel" data-fila="${i}" title="Abrir o chamado">
+  const chave = dashExplicaDaLinha(a, "fila");   // fase 164
+  return `<div class="dash-pendencia-item clicavel" data-fila="${i}"${chave ? ` data-explica="${esc(chave)}"` : ""} title="Abrir o chamado">
       <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}
         <div class="dash-fila-acoes">
@@ -363,6 +413,7 @@ function dashLinhaFilaChamado(a, i){
           <button type="button" class="btn-sec btn-sm" data-fila-abrir="${i}">Abrir</button>
         </div>
       </div>
+      ${/* html */ dashBotaoExplica(chave)}
     </div>`;
 }
 async function dashConfirmarChamadoFila(a){
@@ -387,12 +438,13 @@ function carregarDashPendencias(){ return Promise.all([dashCarregarAcoes(), dash
 /* ---------- Para regularizar (fase 75) ----------
    Cadastro incompleto que o responsável corrige quando tiver tempo. O destino vem do banco
    (vw_sc_regularizar + responsaveis_servico): o que é seu primeiro, depois o total da
-   diretoria, por último o que você só acompanha (mesmo bloco, com tag). */
-const DASH_REG_PAPEL = {
-  responsavel: { ordem: 1, tag: "" },
-  diretoria:   { ordem: 2, tag: '<span class="tag cinza" title="Total da empresa (diretoria)">todos</span>' },
-  acompanha:   { ordem: 3, tag: '<span class="tag azul" title="O responsável é outra pessoa; você acompanha">acompanha</span>' }
-};
+   diretoria, por último o que você só acompanha.
+   Fase 164: o papel que cada linha já traz vira três visões (Meus, Da empresa, Acompanho); a regra das visões fica em
+   js/dash_explica.js (dashRegContar, dashRegFiltrar, dashRegVisaoInicial). A ordem das linhas não muda. */
+const DASH_REG_PAPEL = { responsavel: { ordem: 1 }, diretoria: { ordem: 2 }, acompanha: { ordem: 3 } };
+const DASH_REG_VISAO_TITLE = { meus: "O que está no seu nome", empresa: "O total da empresa", acompanho: "O responsável é outra pessoa; você acompanha" };
+let _dashRegVisao = null;   // escolha da sessão
+try { _dashRegVisao = sessionStorage.getItem("dash-reg-visao"); } catch(_e) { /* sem storage: abre pelo padrão */ }
 async function dashCarregarRegularizar(){
   const cont = $("dash-regularizar");
   if(!cont) return;
@@ -418,19 +470,32 @@ async function dashCarregarRegularizar(){
   if(!dados) return;
   _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
-  const n = p => _dashReg.filter(a => a.papel === p).length;
-  if($("dash-reg-cont")) $("dash-reg-cont").innerHTML = _dashReg.length
-    ? [n("responsavel") && `<span class="tag ambar">${n("responsavel")} seu(s)</span>`,
-       n("diretoria") && `<span class="tag cinza">${n("diretoria")} no total</span>`,
-       n("acompanha") && `<span class="tag azul">${n("acompanha")} acompanha</span>`].filter(Boolean).join(" ")
-    : "";
-  cont.innerHTML = _dashReg.length
-    ? _dashReg.map((a, i) => `<div class="dash-pendencia-item clicavel" data-reg="${i}" title="Abrir a tela para corrigir">
-        <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong> <span class="contador">(${esc(a.quantidade)})</span> ${/* html */ DASH_REG_PAPEL[a.papel]?.tag || ""}
+  dashRenderRegularizar();
+}
+/* Desenha as visões e as linhas da visão escolhida. data-reg continua sendo a posição em _dashReg (a lista inteira). */
+function dashRenderRegularizar(){
+  const cont = $("dash-regularizar"), visoes = $("dash-reg-visoes");
+  if(!cont) return;
+  const n = dashRegContar(_dashReg);
+  const visao = dashRegVisaoInicial(n, _dashRegVisao);
+  if($("dash-reg-cont")) $("dash-reg-cont").textContent = _dashReg.length ? `(${_dashReg.length})` : "";
+  if(visoes){
+    visoes.style.display = visao ? "" : "none";
+    visoes.innerHTML = DASH_REG_VISOES.filter(([k]) => n[k] > 0).map(([k, rot]) =>
+      `<button type="button" class="serv-view-btn${k === visao ? " ativo" : ""}" data-reg-visao="${esc(k)}" aria-pressed="${k === visao ? "true" : "false"}" title="${esc(DASH_REG_VISAO_TITLE[k])}">${esc(rot)} <span class="contador">(${esc(n[k])})</span></button>`).join("");
+  }
+  if(!visao){ cont.innerHTML = `<p class="vazio">Nada para regularizar: nenhum cadastro no seu nome para completar.</p>`; return; }
+  const daVisao = new Set(dashRegFiltrar(_dashReg, visao));
+  cont.innerHTML = (n.meus ? "" : `<p class="dash-bloco-dono">Nenhum cadastro no seu nome para completar.</p>`)
+    + _dashReg.map((a, i) => {
+      if(!daVisao.has(a)) return "";
+      const chave = dashExplicaDaLinha(a, "regularizar");
+      return `<div class="dash-pendencia-item clicavel" data-reg="${i}"${chave ? ` data-explica="${esc(chave)}"` : ""} title="Abrir a tela para corrigir">
+        <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong> <span class="contador">(${esc(a.quantidade)})</span>
           ${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}</div>
-        <span class="dash-pend-seta">›</span>
-      </div>`).join("")
-    : `<p class="vazio">Nada para regularizar.</p>`;
+        ${/* html */ dashBotaoExplica(chave)}<span class="dash-pend-seta">›</span>
+      </div>`;
+    }).join("");
 }
 /* ---------- Segurança (fase 99b) ----------
    vw_sc_seguranca (security_invoker sobre seguranca_alertas(), que só devolve linhas a diretor, admin e auditor):
@@ -1030,8 +1095,10 @@ function ligarSalaDeComando(){
     carregarDashboard();
   });
   $("btn-dash-recarregar")?.addEventListener("click", () => comBotaoTravado("btn-dash-recarregar", () => { _dashObrasAnd = []; return carregarDashboard(); }));
-  $("dash-acoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-acao]"); if(el) dashAbrirAcao(_dashAcoes[Number(el.dataset.acao)]); });
+  // fase 164: o "?" de cada linha abre a explicação e não a tela de origem; por isso é conferido antes de [data-acao], [data-fila] e [data-reg]
+  $("dash-acoes")?.addEventListener("click", (e) => { if(dashCliqueExplica(e, e.currentTarget)) return; const el = e.target.closest("[data-acao]"); if(el) dashAbrirAcao(_dashAcoes[Number(el.dataset.acao)]); });
   $("dash-fila")?.addEventListener("click", (e) => {
+    if(dashCliqueExplica(e, e.currentTarget)) return;
     // lote S47: "Aprovar" inline não abre a ficha
     const ap = e.target.closest("[data-fila-aprovar]");
     if(ap){ e.stopPropagation(); comBotaoTravado(ap, () => dashAprovarChamadoFila(ap, _dashFila[Number(ap.dataset.filaAprovar)])); return; }
@@ -1040,7 +1107,21 @@ function ligarSalaDeComando(){
     if(cf){ e.stopPropagation(); comBotaoTravado(cf, () => dashConfirmarChamadoFila(_dashFila[Number(cf.dataset.filaConfirmar)])); return; }
     const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]);
   });
-  $("dash-regularizar")?.addEventListener("click", (e) => { const el = e.target.closest("[data-reg]"); if(el) dashAbrirRegularizar(_dashReg[Number(el.dataset.reg)]); });
+  $("dash-regularizar")?.addEventListener("click", (e) => { if(dashCliqueExplica(e, e.currentTarget)) return; const el = e.target.closest("[data-reg]"); if(el) dashAbrirRegularizar(_dashReg[Number(el.dataset.reg)]); });
+  $("dash-reg-visoes")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-reg-visao]");
+    if(!b || b.classList.contains("ativo")) return;
+    _dashRegVisao = b.dataset.regVisao;
+    try { sessionStorage.setItem("dash-reg-visao", _dashRegVisao); } catch(_e) { /* ok */ }
+    dashRenderRegularizar();
+    $("dash-reg-visoes")?.querySelector(".ativo")?.focus();   // o botão foi redesenhado: o foco de quem usa o teclado volta para a visão escolhida
+  });
+  // os cinco indicadores da faixa: o mesmo botão e o mesmo painel, com o texto que ficava só no title
+  $("dash-faixa")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-explica-faixa]");
+    if(!b) return;
+    dashAlternarExplica(b, b.closest(".dash-card-rot"), e.currentTarget, dashExplicaFaixaHTML(b.dataset.explicaFaixa));
+  });
   $("dash-mencoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-menc]"); if(el) dashAbrirMencao(_dashMencoes[Number(el.dataset.menc)]); });   // lote S57b (#218)
   $("dash-seguranca")?.addEventListener("click", (e) => { const el = e.target.closest(".clicavel[data-seg]"); if(el) dashAbrirSeguranca(_dashSeg[Number(el.dataset.seg)]); });   // fase 99b
   $("dash-notebook")?.addEventListener("click", (e) => {

@@ -1503,6 +1503,29 @@ td .btn, td .btn-sec { min-height: var(--ctl-h-sm); padding: 2px var(--esp-2); f
   border-radius: 50%; border: 1px solid var(--borda-forte); color: var(--txt-fraco);
   font-size: 9px; cursor: help; text-transform: none; margin-left: 2px;
 }
+/* Fase 164: o "?" virou botão (abre por toque e por teclado, não só por title). O círculo continua com 14 px para não mexer
+   na densidade; a área de toque cresce pelo ::after. O painel abre logo abaixo da linha ou do rótulo do indicador. */
+button.dash-ajuda {
+  position: relative; flex: none; padding: 0; background: none; font-family: inherit; font-weight: 600; line-height: 1;
+  cursor: pointer; vertical-align: middle;
+}
+button.dash-ajuda::after { content: ""; position: absolute; inset: -9px; }
+button.dash-ajuda:hover, button.dash-ajuda[aria-expanded="true"] { border-color: var(--marca-600); color: var(--marca-txt); background: var(--sup-2); }
+button.dash-ajuda:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
+.dash-pendencia-item > button.dash-ajuda { margin: 0 var(--esp-1); }
+.dash-explica {
+  margin: 0 0 var(--esp-1); padding: var(--esp-2) var(--esp-3); background: var(--sup-2);
+  border-left: 3px solid var(--marca-600); border-radius: var(--radius-sm);
+  font-size: var(--txt-sm); color: var(--text-main); text-transform: none; letter-spacing: 0; line-height: 1.4; cursor: default;
+}
+.dash-explica-linha { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: var(--esp-2); align-items: baseline; }
+.dash-explica-linha + .dash-explica-linha { margin-top: var(--esp-1); }
+.dash-card .dash-explica { margin: 0 0 var(--esp-2); }
+.dash-card .dash-explica-linha { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+@media (max-width: 600px) { .dash-explica-linha { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+/* de quem é o bloco: uma linha discreta sob o título */
+.dash-bloco-dono { margin: 0 0 var(--esp-2); font-size: var(--txt-xs); color: var(--txt-fraco); }
+.dash-reg-visoes { margin-bottom: var(--esp-2); }
 .dash-origem { background: none; border: 0; padding: 0; margin-top: var(--esp-1); color: var(--acao-txt); font-size: var(--txt-xs); cursor: pointer; }
 .dash-origem:hover { text-decoration: underline; }
 /* minmax(0, …): sem isso a descrição em nowrap de .dash-acao-txt .meta alarga a coluna e o Início ganha rolagem lateral */
