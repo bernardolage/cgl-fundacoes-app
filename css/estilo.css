@@ -3638,21 +3638,24 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 @media (max-width: 900px) { .epf-area { grid-template-columns: minmax(0, 1fr); } .epf-legendas { grid-template-columns: minmax(0, 1fr); } }
 
 /* Faixa dos últimos 14 dias do diário na ficha da obra (fase 163, js/obra_faixa.js): 14 casas na mesma linha (rola de lado em
-   tela estreita). O estado vem em cor de token e em texto curto; a casa com diário é botão. Compacta: não tira linha da tabela. */
+   tela estreita). O estado vem em cor de token e em texto curto; a casa com diário é botão. Compacta: não tira linha da tabela.
+   O contador de diários do dia fica no fluxo, na linha do dia (.obf-dia-topo, que não quebra), e a coluna nunca fica menor que o
+   conteúdo da casa (min-content): em tela estreita a casa com contador alarga uns pixels em vez de o contador cobrir o dia. */
 .obf-bloco { margin-bottom: var(--esp-3); }
 .obf-bloco .ui-secao-cab { padding-block: var(--esp-2); }
 .obf-bloco .ui-secao-corpo { padding: var(--esp-3) var(--esp-4); }
 .obf-bloco .ui-vazio + #obf-corpo:not(:empty) { margin-top: var(--esp-2); }
 .obf-solto { padding: var(--esp-3) 0 var(--esp-4); }
-.obf-faixa { display: grid; grid-template-columns: repeat(14, minmax(60px, 1fr)); gap: var(--esp-1); overflow-x: auto; padding: 2px; }
-.obf-dia { position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: var(--esp-1); min-width: 0; margin: 0; padding: var(--esp-1) 2px; border: 1px solid var(--borda); border-top: 3px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); font-family: inherit; line-height: 1.3; text-align: center; }
+.obf-faixa { display: grid; grid-template-columns: repeat(14, minmax(min-content, 1fr)); gap: var(--esp-1); overflow-x: auto; padding: 2px; }
+.obf-dia { display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 60px; margin: 0; padding: var(--esp-1) 2px; border: 1px solid var(--borda); border-top: 3px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); font-family: inherit; line-height: 1.3; text-align: center; }
 button.obf-dia { cursor: pointer; }
 button.obf-dia:hover { box-shadow: var(--shadow-sm); filter: brightness(0.97); }
 button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 1px; }
+.obf-dia-topo { display: flex; align-items: baseline; gap: var(--esp-1); white-space: nowrap; }
 .obf-dia-sem { font-size: var(--txt-xs); text-transform: uppercase; letter-spacing: .4px; }
 .obf-dia-num { font-size: var(--txt-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
-.obf-dia-est { flex-basis: 100%; font-size: var(--txt-xs); font-weight: 600; white-space: nowrap; }
-.obf-dia-qtd { position: absolute; top: 2px; right: 3px; min-width: 14px; padding: 0 3px; border-radius: var(--radius-pill); background: var(--neutro-bg); color: var(--neutro-txt); font-size: var(--txt-xs); font-weight: 700; line-height: 14px; }
+.obf-dia-est { font-size: var(--txt-xs); font-weight: 600; white-space: nowrap; }
+.obf-dia-qtd { flex: none; min-width: 14px; padding: 0 3px; border-radius: var(--radius-pill); background: var(--neutro-bg); color: var(--neutro-txt); font-size: var(--txt-xs); font-weight: 700; line-height: 14px; }
 .obf-dia.obf-finalizado { background: var(--sucesso-bg); border-top-color: var(--sucesso); color: var(--sucesso-txt); }
 .obf-dia.obf-rascunho { background: var(--info-bg); border-top-color: var(--info); color: var(--info-txt); }
 .obf-dia.obf-estaca_sem_diario { background: var(--aviso-bg); border-top-color: var(--aviso); color: var(--aviso-txt); }

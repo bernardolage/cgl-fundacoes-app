@@ -296,7 +296,7 @@ async function geoAbrirModalGrupo(acao, gr){
   const rotulo = dataBR(gr.dia) + " · " + (gr.maquina || "CPU " + gr.imei);
   const corpo = $("geo-modal-corpo");
   corpo.innerHTML = `<p class="vazio">Carregando…</p>`;
-  $("geo-modal").style.display = "";
+  $("geo-modal").style.display = "flex";
   if(acao === "g-obra"){
     _geoModal = { tipo: "grupo_obra", grupo: gr, geos: vivas.map(g => g.id), impedido: false, comExecucao: false };
     $("geo-modal-titulo").textContent = (gr.obra_id ? "Trocar obra" : "Definir obra") + " · " + vivas.length + " estaca(s)";
@@ -518,7 +518,7 @@ async function geoAbrirModal(tipo, g){
   $("geo-modal-titulo").textContent = tipo === "obra" ? `Definir obra · estaca ${g.numero_txt || "?"}` : `Vincular estaca · ${g.numero_txt || "?"}`;
   const corpo = $("geo-modal-corpo");
   corpo.innerHTML = `<p class="vazio">Carregando…</p>`;
-  $("geo-modal").style.display = "";
+  $("geo-modal").style.display = "flex";
   if(tipo === "obra"){
     const { data } = await sb.from("obras").select("id,codigo,nome,status").in("status", ["em_andamento", "planejada", "paralisada"]).order("codigo");
     corpo.innerHTML = `<p class="meta">Na CPU o operador digitou a obra <strong>"${esc(g.obra_txt || "—")}"</strong>${g.contrato_txt ? ` e o contrato <strong>"${esc(g.contrato_txt)}"</strong>` : ""}. Máquina: ${esc(g.equipamento?.codigo || "—")}.</p>

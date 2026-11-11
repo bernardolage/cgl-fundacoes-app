@@ -199,8 +199,9 @@ function obfCasaHTML(d){
   const n = d.diarios.length;
   const curto = d.estado === "rascunho" && d.enviadoCampo ? "do campo" : d.estado === "nao_conta" && d.motivo === "feriado" ? "feriado" : OBF_CURTO[d.estado];
   const classes = `obf-dia obf-${esc(d.estado)}${d.hoje ? " obf-eh-hoje" : ""}`;
-  const miolo = `<span class="obf-dia-sem">${esc(OBF_SEMANA[d.diaSemana])}</span><span class="obf-dia-num">${esc(d.data.slice(8, 10))}</span><span class="obf-dia-est">${esc(curto)}</span>${
-    n > 1 ? `<span class="obf-dia-qtd" aria-hidden="true">${esc(n)}</span>` : ""}`;
+  // o contador de diários fica na linha do dia, depois do número: no fluxo, nunca por cima do texto da casa
+  const miolo = `<span class="obf-dia-topo"><span class="obf-dia-sem">${esc(OBF_SEMANA[d.diaSemana])}</span><span class="obf-dia-num">${esc(d.data.slice(8, 10))}</span>${
+    n > 1 ? `<span class="obf-dia-qtd" aria-hidden="true">${esc(n)}</span>` : ""}</span><span class="obf-dia-est">${esc(curto)}</span>`;
   const titulo = obfTituloDia(d);
   if(!n) return `<div class="${/* html */ classes}" title="${esc(titulo)}">${/* html */ miolo}</div>`;
   return `<button type="button" class="${/* html */ classes}" data-obf-dia="${esc(d.data)}"${n === 1 && d.diarios[0].id != null ? ` data-obf-rdo="${esc(d.diarios[0].id)}"` : ' aria-pressed="false"'} title="${esc(titulo)}">${/* html */ miolo}</button>`;

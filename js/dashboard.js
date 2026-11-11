@@ -343,7 +343,8 @@ function dashCliqueExplica(e, escopo){
 // tipos de pendência de contrato vêm como texto sem acento do banco (vw_pendencias_contratos)
 const DASH_TIPO_CONTRATO = { "composicao divergente": "composição divergente", "quadro parcial": "quadro de orçamento lido em parte",
   "aditivo sem valor": "aditivo sem valor", "valor provisorio": "valor provisório", "sem assinatura": "sem assinatura",
-  "saldo negativo": "saldo negativo (precisa aditivo)", "aditivo pendente": "aditivo pendente" };
+  "saldo negativo": "saldo negativo (precisa aditivo)", "aditivo pendente": "aditivo pendente",
+  "medicao producao pendente": "medição de produção pendente" };
 function dashTituloAcao(t){
   const m = String(t || "").match(/^Contrato: (.+)$/);
   return m ? "Contrato: " + (DASH_TIPO_CONTRATO[m[1]] || m[1]) : t;

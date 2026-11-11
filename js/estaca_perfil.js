@@ -6,7 +6,7 @@
    - Entradas: ação "Perfil" de cada estaca em Chegadas (geoAcoesHTML) e o selo "Geodigitus" da execução no RDO
      (geoBadgeExec), os dois em js/geodigitus.js.
    - epfLinhaDoTempo, epfResumo, epfSeries, epfAvancar e epfQuadro são puras (sem tela nem banco) e testadas por
-     scripts/testar-fase162.mjs.
+     scripts/testar-fase162.mjs; epfTetoRobusto, epfFracao e epfRotuloSerie, por scripts/testar-lote-ajustes-maya-1.mjs.
    Unidades como o computador de bordo grava (saci.mjs): torque e pressão em bar, uma fatia a cada 8 cm. Nada é
    inventado: sem volume da fatia ou sem diâmetro, o sobreconsumo fica nulo e a tela diz "não medido".
    O SVG é montado por createElementNS e a cor de token entra só por elemento.style (regra do checar-paleta).
@@ -18,15 +18,18 @@ const EPF_COLUNAS = "id,numero_txt,refuro,diametro_mm,profundidade_m,volume_conc
   "perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,obra_id,equipamento_id,perfil," +
   "equipamento:equipamentos(codigo),obra:obras!geodigitus_estacas_obra_id_fkey(codigo,nome)";
 // curvas do gráfico: cada uma na escala do máximo da própria estaca. Cor por token de texto (vale nos dois temas).
+// tetoRobusto (só a velocidade): uma fatia de tempo muito curto dá um pico isolado que achataria a curva; ver epfTetoRobusto.
 const EPF_SERIES = [
   { chave: "torque_bar", fase: "perfuracao", nome: "Torque", unidade: "bar", casas: 0, cor: "var(--info-txt)" },
-  { chave: "velocidade_m_h", fase: "perfuracao", nome: "Velocidade de avanço", unidade: "m/h", casas: 0, cor: "var(--sucesso-txt)" },
+  { chave: "velocidade_m_h", fase: "perfuracao", nome: "Velocidade de avanço", unidade: "m/h", casas: 0, cor: "var(--sucesso-txt)", tetoRobusto: true },
   { chave: "rotacao_rpm", fase: "perfuracao", nome: "Rotação", unidade: "rpm", casas: 1, cor: "var(--neutro-txt)", tracejada: true },
   { chave: "pressao_bar", fase: "concretagem", nome: "Pressão", unidade: "bar", casas: 1, cor: "var(--acao-txt)" },
   { chave: "sobreconsumo_pct", fase: "concretagem", nome: "Sobreconsumo da fatia", unidade: "%", casas: 0, cor: "var(--lilas-txt)" }
 ];
 const EPF_FASE_LBL = { perfuracao: "Perfuração", concretagem: "Concretagem" };
 const EPF_VELOCIDADES = [1, 4, 16];
+const EPF_TETO_PCT = 0.95;     // percentil de referência do teto robusto da escala
+const EPF_TETO_FOLGA = 1.5;    // o teto fica no máximo 1,5 vez acima da referência
 
 /* ---------- funções puras ---------- */
 function epfN(v){
@@ -106,13 +109,34 @@ function epfResumo(linha, passos){
     passos_perfuracao: perf.length, passos_concretagem: conc.length
   };
 }
+/* Teto robusto de uma escala: 1,5 vez o percentil 95 dos valores (posto mais próximo; de 3 a 19 valores, o segundo maior),
+   nunca acima do maior valor. Sem pico isolado (maior valor até 1,5 vez a referência) o teto é o próprio máximo e nada é
+   cortado. Com menos de 3 valores não dá para saber qual é o pico: fica o máximo. Sem valor acima de zero, nulo. */
+function epfTetoRobusto(valores){
+  const v = (Array.isArray(valores) ? valores : []).map(epfN).filter(x => x != null && x > 0).sort((a, b) => a - b);
+  const n = v.length;
+  if(!n) return null;
+  if(n < 3) return v[n - 1];
+  const referencia = v[Math.min(Math.ceil(EPF_TETO_PCT * n), n - 1) - 1];
+  return Math.min(v[n - 1], referencia * EPF_TETO_FOLGA);
+}
 /* Curvas que a estaca tem (rotação e sobreconsumo podem não ter sido medidos), com a faixa de cada uma: de zero ao máximo
-   da própria estaca; valor abaixo de zero (sobreconsumo negativo) estica a faixa para baixo. */
+   da própria estaca; valor abaixo de zero (sobreconsumo negativo) estica a faixa para baixo. Na curva de tetoRobusto (a
+   velocidade), max é o teto da escala e pico guarda o maior valor real quando ele passa do teto; nas outras, pico é nulo. */
 function epfSeries(passos){
   return EPF_SERIES.map(s => {
     const v = (passos || []).filter(p => p.fase === s.fase).map(p => p[s.chave]).filter(x => x != null);
-    return v.length ? { ...s, min: Math.min(0, ...v), max: Math.max(0, ...v) } : null;
+    if(!v.length) return null;
+    const max = Math.max(0, ...v), teto = s.tetoRobusto ? epfTetoRobusto(v) : null;
+    const cortada = teto != null && teto < max;
+    return { ...s, min: Math.min(0, ...v), max: cortada ? teto : max, pico: cortada ? max : null };
   }).filter(Boolean);
+}
+/* Posição do valor na escala da curva, de 0 a 1: o que passa do teto é desenhado no limite do painel. */
+function epfFracao(v, s){
+  const n = epfN(v);
+  if(n == null || !s || !(s.max > s.min)) return 0;
+  return Math.max(0, Math.min(1, (n - s.min) / (s.max - s.min)));
 }
 /* Replay: com t segundos decorridos, a partir do passo i, em que passo a execução está e se chegou ao fim.
    O passo vale enquanto t está antes do fim dele; fatia de tempo zero é atravessada na hora. */
@@ -194,14 +218,20 @@ function epfResumoHTML(r, l){
     ${/* html */ uiRotuloValor("Inclinação X / Y", esc(l.inclinacao_x == null && l.inclinacao_y == null ? "—" : grau(l.inclinacao_x) + " / " + grau(l.inclinacao_y)))}
   </div>`;
 }
+/* Texto da curva na legenda: a faixa da escala; na curva cortada, o maior valor real e até onde a escala vai. */
 function epfRotuloSerie(s){
-  const faixa = s.min < 0 ? "de " + epfNum(s.min, s.casas) + " a " + epfNum(s.max, s.casas) : "máx. " + epfNum(s.max, s.casas);
+  const faixa = s.pico != null ? "máx. " + epfNum(s.pico, s.casas) + ", escala até " + epfNum(s.max, s.casas)
+    : s.min < 0 ? "de " + epfNum(s.min, s.casas) + " a " + epfNum(s.max, s.casas) : "máx. " + epfNum(s.max, s.casas);
   return s.nome + " (" + s.unidade + ") · " + faixa;
+}
+function epfTituloSerie(s){
+  return s.pico == null ? "Curva na escala do maior valor desta estaca"
+    : "Um pico isolado achataria a curva: a escala vai até " + epfNum(s.max, s.casas) + " " + s.unidade + " e a fatia que passa disso é desenhada no limite. O valor real de cada fatia aparece no quadro do replay.";
 }
 function epfAreaHTML(e){
   const legenda = (fase) => {
     const itens = e.series.filter(s => s.fase === fase);
-    return `<div class="epf-leg"><span class="rotulo-caps">${esc(EPF_FASE_LBL[fase])}</span>${itens.map(s => `<span class="epf-leg-item" title="Curva na escala do maior valor desta estaca"><span class="epf-leg-cor" data-epf-cor="${esc(s.chave)}"></span>${esc(epfRotuloSerie(s))}</span>`).join("")}${fase === "concretagem" && !itens.some(s => s.chave === "sobreconsumo_pct") ? `<span class="epf-leg-item">Sobreconsumo da fatia: não medido</span>` : ""}</div>`;
+    return `<div class="epf-leg"><span class="rotulo-caps">${esc(EPF_FASE_LBL[fase])}</span>${itens.map(s => `<span class="epf-leg-item" title="${esc(epfTituloSerie(s))}"><span class="epf-leg-cor" data-epf-cor="${esc(s.chave)}"></span>${esc(epfRotuloSerie(s))}</span>`).join("")}${fase === "concretagem" && !itens.some(s => s.chave === "sobreconsumo_pct") ? `<span class="epf-leg-item">Sobreconsumo da fatia: não medido</span>` : ""}</div>`;
   };
   const campo = (rotulo, id) => uiRotuloValor(rotulo, `<span id="epf-v-${esc(id)}">—</span>`);
   return `<div class="epf-area">
@@ -275,7 +305,7 @@ function epfDesenharGrafico(e){
       return;
     }
     e.series.filter(s => s.fase === fase).forEach(s => {
-      const x = (v) => x0[fase] + (s.max > s.min ? (v - s.min) / (s.max - s.min) : 0) * painel;
+      const x = (v) => x0[fase] + epfFracao(v, s) * painel;
       if(s.min < 0) svg.appendChild(epfSvg("line", { x1: x(0), x2: x(0), y1: G.topo, y2: G.topo + altura }, { stroke: s.cor, strokeDasharray: "4 3", opacity: "0.5" }));
       let d = "", solto = true;
       ps.forEach(p => {
@@ -417,5 +447,6 @@ if(typeof document !== "undefined"){
 }
 // teste em Node (scripts/testar-fase162.mjs): as funções puras também saem por module.exports
 if(typeof module === "object" && module && module.exports){
-  module.exports = { EPF_FATIA_M, epfTeoricoFatiaL, epfLinhaDoTempo, epfResumo, epfSeries, epfAvancar, epfQuadro, epfTempo };
+  module.exports = { EPF_FATIA_M, epfTeoricoFatiaL, epfLinhaDoTempo, epfResumo, epfSeries, epfAvancar, epfQuadro, epfTempo,
+    epfTetoRobusto, epfFracao, epfRotuloSerie };
 }
