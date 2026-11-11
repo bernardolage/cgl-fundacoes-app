@@ -26,6 +26,33 @@ const CARGOS = {
   gestor_manutencao: "Gestor de manutenção"  /* Bruno: OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar (fase 92) */
 };
 
+/* Fase 165: o que cada cargo é, em uma frase, para quem escolhe o cargo de um usuário. Aparece sob o campo Cargo da
+   ficha e no topo da matriz de acessos. Cada frase foi conferida contra a matriz gerada do banco (js/matriz_acessos_dados.js):
+   `modulos` são os módulos que a frase cita (o cargo tem de ver todos) e `sem` os que ela diz que o cargo não tem
+   (o cargo não pode ver nenhum). scripts/testar-fase165.mjs refaz essa conferência a cada retrato novo. */
+const CARGO_DESCRICAO = {
+  diretor:      { frase: "Acesso total. Só diretor dá ou tira os cargos Diretor e RH", modulos: ["usuarios", "carteira", "patrimonio"], sem: [] },
+  admin:        { frase: "Administra o sistema e os logins. Não vê Serviços, Orçamentos, Carteira nem Patrimônio e não emite nota fiscal", modulos: ["usuarios"], sem: ["servicos", "orcamentos", "carteira", "patrimonio"] },
+  engenheiro:   { frase: "Obras, estacas, RDO, medições e mobilização; responde pelas pendências das obras dele", modulos: ["obras", "rdo", "medicoes", "mobilizacoes"], sem: [] },
+  assistente_engenharia: { frase: "Lança e confere RDO e trata as pendências das obras", modulos: ["rdo", "obras"], sem: [] },
+  comercial:    { frase: "Serviços, orçamentos, propostas e contrato do cliente (na ficha da obra)", modulos: ["servicos", "orcamentos", "obras"], sem: [] },
+  financeiro:   { frase: "Medições, recebimentos, cauções e contas a pagar; emite nota fiscal", modulos: ["medicoes", "contratos"], sem: [] },
+  comprador:    { frase: "Requisições, cotações, pedidos, fornecedores e contas a pagar", modulos: ["compras", "fornecedores", "contratos"], sem: [] },
+  almoxarife:   { frase: "Estoque, separações, produtos e recebimento de material", modulos: ["estoque", "separacoes", "produtos", "compras"], sem: [] },
+  auxiliar_almoxarifado: { frase: "Estoque, separações, consulta de produtos e peças dos reparos; sem obras, compras nem valores", modulos: ["estoque", "separacoes", "produtos", "reparos"], sem: ["obras", "compras", "medicoes", "contratos"] },
+  gestor_acessorios: { frase: "Acessórios, reparos, fabricação e remessas; emite a nota de remessa", modulos: ["acessorios", "reparos", "fabricacao", "movimentacoes"], sem: [] },
+  gestor_frota: { frase: "Frota, equipamentos, manutenção e compras da frota", modulos: ["frota", "equipamentos", "manutencao", "compras"], sem: [] },
+  gestor_manutencao: { frase: "OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar", modulos: ["manutencao", "compras"], sem: ["obras", "medicoes", "contratos"] },
+  mecanico:     { frase: "OS, reparos, checklists e apontamento de horas", modulos: ["manutencao", "reparos", "apontamentos"], sem: [] },
+  encarregado:  { frase: "Diário das obras dele, no escritório e no celular", modulos: ["rdo", "diario-campo"], sem: [] },
+  operador:     { frase: "Só o diário de campo no celular, nas obras em que está", modulos: ["diario-campo"], sem: ["inicio", "rdo", "obras"] },
+  rh:           { frase: "Funcionários, dados sensíveis, folha e horas. Só diretor atribui", modulos: ["funcionarios", "rhh"], sem: [] },
+  sesmt:        { frase: "Segurança do trabalho: programas, exames, EPI e ocorrências", modulos: ["sesmt", "sesmt-ocorrencias", "estoque"], sem: [] },
+  logistica:    { frase: "Viagens, veículos, mobilizações e remessas; emite a nota de remessa", modulos: ["frota", "mobilizacoes", "movimentacoes"], sem: [] },
+  visualizador: { frase: "Só consulta o que é aberto a todo usuário. Não grava nos cadastros: só abre chamado e lança as próprias horas de viagem", modulos: ["chamados", "rhv"], sem: ["usuarios", "carteira", "patrimonio"] },
+  auditor:      { frase: "Só leitura: vê o que a diretoria vê, menos a gestão de logins, os dados sensíveis e a folha; não grava nada", modulos: ["carteira", "patrimonio", "medicoes", "contratos"], sem: ["usuarios"] }
+};
+
 let _usuarios   = [];
 let _usrView    = "lista";
 let usrEditId   = null;
@@ -300,6 +327,11 @@ function renderUsuarios(){
   const dados = usrFiltrados();
   const cont = $("usr-contador");
   if(cont) cont.textContent = `${dados.length} de ${_usuarios.length}`;
+  // fase 165: a visão "Matriz de acessos" não lista usuários, então os filtros da lista saem de cena
+  const naMatriz = _usrView === "matriz" && typeof renderMatrizAcessos === "function";
+  const filtros = document.querySelector("#usr-painel .card .serv-filtros");
+  if(filtros) filtros.hidden = naMatriz;
+  if(naMatriz){ renderMatrizAcessos($("usr-conteudo")); return; }
   if(_usrView === "kanban") renderUsrKanban(dados);
   else                       renderUsrLista(dados);
   const legacy = $("tab-usuarios");
@@ -478,7 +510,30 @@ function abrirFichaUsrVisual(u){
     : '<span class="tag verde">Ativo</span>';
   $("usr-ficha-titulo").textContent = usrEditId ? u.nome : "Convidar usuário";
 
+  usrMostrarDescricaoCargo();   // fase 165
   ativarTabUsr("perfil");
+}
+
+/* Fase 165: sob o campo Cargo, a frase do cargo escolhido e quantos módulos ele vê (pela matriz de acessos). Só texto:
+   nada aqui grava nem muda permissão. O atalho para a matriz só aparece com a visão da matriz liberada. */
+function usrMostrarDescricaoCargo(){
+  const alvo = $("usr-cargo-desc");
+  if(!alvo) return;
+  const cargo = $("usr-cargo")?.value || "";
+  const d = CARGO_DESCRICAO[cargo];
+  if(!d){ alvo.innerHTML = ""; return; }
+  const resumo = typeof mtzFraseResumo === "function" ? mtzFraseResumo(cargo) : "";
+  const atalho = typeof mtzTelaLiberada === "function" && mtzTelaLiberada()
+    ? ` <button type="button" class="link-mini" data-usr-matriz="${esc(cargo)}" title="Abre a matriz de acessos neste cargo">Ver a matriz deste cargo</button>` : "";
+  alvo.innerHTML = `<span class="usr-cargo-frase">${esc(d.frase)}.</span>${resumo ? ` <span class="meta">${esc(resumo)}</span>` : ""}${/* html */ atalho}`;
+}
+/* atalho da ficha: volta ao painel já na visão da matriz, no cargo escolhido */
+function usrAbrirMatrizDoCargo(cargo){
+  if(typeof mtzAbrirNoCargo !== "function" || !mtzAbrirNoCargo(cargo)) return;
+  mostrarPainelUsr();
+  _usrView = "matriz";
+  document.querySelectorAll("#usr-painel .lista-topo .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === "matriz"));
+  renderUsuarios();
 }
 
 function ativarTabUsr(nome){
@@ -623,6 +678,16 @@ function ligarUsuarios(){
   document.querySelectorAll("#usr-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabUsr(b.dataset.tab));
   });
+
+  // Fase 165: descrição do cargo sob o campo, e a visão "Matriz de acessos" (o botão nasce escondido no index.html
+  // e só aparece com a tela liberada: mtzTelaLiberada em js/matriz_acessos.js)
+  $("usr-cargo")?.addEventListener("change", usrMostrarDescricaoCargo);
+  $("usr-cargo-desc")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-usr-matriz]");
+    if(b) usrAbrirMatrizDoCargo(b.dataset.usrMatriz);
+  });
+  const btnMatriz = $("usr-view-matriz");
+  if(btnMatriz) btnMatriz.hidden = !(typeof mtzTelaLiberada === "function" && mtzTelaLiberada());
 
   // Responsáveis por serviço (fase 75)
   $("usr-resp-area")?.addEventListener("change", respPreencherPapel);

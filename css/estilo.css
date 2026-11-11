@@ -3679,6 +3679,43 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .obf-nota { font-size: var(--txt-sm); color: var(--txt-sec); }
 .obf-resumo, .obf-previsao { font-size: var(--txt-md); color: var(--txt-sec); }
 .obf-previsao strong { color: var(--txt); }
+/* Matriz de acessos de consulta (fase 165, js/matriz_acessos.js): terceira visão do painel de Usuários. Tabela densa de ERP; cada
+   resposta tem símbolo e texto, a cor só reforça. Em 375 px a tabela rola de lado dentro de .tabela-rola e a primeira coluna gruda. */
+.serv-view-btn[hidden], #usr-painel .serv-filtros[hidden], .mtz-controles select[hidden] { display: none; }
+.usr-cargo-desc { margin-top: var(--esp-1); font-size: var(--txt-sm); line-height: 1.4; color: var(--txt-sec); }
+.usr-cargo-desc:empty { display: none; }
+.mtz-controles { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2) var(--esp-3); }
+.mtz-controles .serv-views { flex: none; width: auto; }
+.mtz-controles select { flex: 0 1 300px; min-width: 0; }
+.mtz-desc { margin: var(--esp-2) 0; font-size: var(--txt-md); color: var(--txt-sec); }
+.mtz-desc strong { color: var(--txt); }
+.mtz-ressalva { margin: 0 0 var(--esp-2); padding: var(--esp-2) var(--esp-3); border-left: 3px solid var(--info); background: var(--info-bg); color: var(--info-txt); font-size: var(--txt-sm); }
+.mtz-tabela th, .mtz-tabela td { padding: 3px var(--esp-2); font-size: var(--txt-sm); white-space: nowrap; }
+.mtz-tabela tbody th { position: sticky; left: 0; z-index: 1; background: var(--sup-0); text-align: left; font-size: var(--txt-sm); font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--txt); white-space: normal; min-width: 150px; }
+.mtz-tabela .mtz-grupo th { background: var(--sup-2); padding-top: var(--esp-2); }
+.mtz-tabela .mtz-grupo .rotulo-caps { display: inline-block; position: sticky; left: var(--esp-2); }   /* o nome do grupo acompanha a rolagem lateral da tabela */
+.mtz-cel { display: inline-flex; align-items: center; gap: var(--esp-1); padding: 1px var(--esp-2); border: 1px solid transparent; border-radius: var(--radius-sm); font-size: var(--txt-sm); font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.mtz-cel small { font-size: var(--txt-xs); font-weight: 500; }
+.mtz-simb { font-weight: 700; }
+.mtz-cel.mtz-s { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.mtz-cel.mtz-n { background: var(--neutro-bg); color: var(--neutro-txt); }
+.mtz-cel.mtz-p { background: var(--aviso-bg); color: var(--aviso-txt); }
+.mtz-cel.mtz-x { background: var(--info-bg); color: var(--info-txt); }
+.mtz-cel.mtz-z { color: var(--txt-fraco); font-weight: 500; }
+button.mtz-cel { cursor: pointer; font-family: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+button.mtz-cel:hover, button.mtz-cel.mtz-sel { border-color: currentColor; }
+button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 1px; }
+.mtz-detalhe { margin: var(--esp-2) 0 0; min-height: 2.8em; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-2); font-size: var(--txt-sm); color: var(--txt-sec); }
+.mtz-legenda { display: flex; flex-wrap: wrap; gap: var(--esp-1) var(--esp-2); margin: var(--esp-2) 0 0; }
+/* O rodapé gruda no pé da área de rolagem. O main tem respiro embaixo (16 px; 20 px até 991 px) e o grudado para antes dele:
+   sem o deslocamento negativo, as linhas da tabela apareciam numa faixa abaixo do rodapé. */
+.mtz-rodape { position: sticky; bottom: calc(-1 * var(--esp-4)); z-index: 2; margin: var(--esp-2) 0 0; padding: var(--esp-2) 0; border-top: 1px solid var(--borda); background: var(--sup-0); font-size: var(--txt-sm); color: var(--txt-fraco); }
+@media (max-width: 991px) { .mtz-rodape { bottom: calc(-1 * var(--esp-5)); } }
+@media (max-width: 600px) {
+  .mtz-controles select { flex: 1 1 100%; }
+  .mtz-rodape { position: static; }   /* no celular o rodapé grudado comeria um quarto da tela */
+  .mtz-tabela tbody th { min-width: 110px; }
+}
 
 /* Profundidade de projeto em lote (fase 170a, js/estacas_prof_projeto.js): a linha de estado da aba Estacas, a janela com a grade
    por grupo (Ø, local e bloco), a prévia antes de gravar e a caixa "atualizar as que já existem" da importação. Só tokens. */
