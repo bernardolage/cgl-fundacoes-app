@@ -174,7 +174,7 @@ function aptRenderAprovacoes(){
         <td>${esc(dataBR(a.data))} <span class="meta">${esc(aptDiaSemana(a.data))}</span></td>
         <td><a href="#" class="apt-abrir-doc" data-tipo="${esc(a.tipo)}" data-id="${esc(a.documento_id)}">${esc(d.numero || a.tipo)}</a></td>
         <td>${esc(aptNomeFunc(a.funcionario_id) || "—")}</td><td>${esc(aptHora(a.inicio))}</td><td>${esc(aptHora(a.fim))}</td>
-        <td>${esc(a.observacao || "")}${a.tipo === "OF" && a.hora_extra ? ' <span class="tag ambar">HE</span>' : ""}</td>
+        <td>${esc(a.observacao || "")}${a.hora_extra ? ' <span class="tag ambar">HE</span>' : ""}</td>
         <td>${esc(a.lancado?.nome || "—")}</td>
         <td><span class="tag ${esc(tagSt[a.status] || "cinza")}">${esc(a.status)}</span>${a.decidido?.nome ? ` <span class="meta">${esc(a.decidido.nome)}</span>` : ""}${a.motivo_recusa ? `<div class="meta">${esc(a.motivo_recusa)}</div>` : ""}</td>
         <td>${pode ? `<button type="button" class="btn-sec btn-sm apt-aprovar" data-id="${esc(a.id)}">Aprovar</button> <button type="button" class="btn-sec btn-sm txt-perigo apt-recusar" data-id="${esc(a.id)}">Recusar</button>`
@@ -289,13 +289,15 @@ function aptRenderGrade(){
   $("apt-grade").innerHTML = _aptGrade.map((l, i) => {
     const d = l.doc;
     let extra = "";
+    const he = d ? `<label class="meta" title="hora extra, custa ×2; sábado, domingo e feriado vêm marcados"><input type="checkbox" data-i="${i}" data-c="hora_extra" ${l.hora_extra ? "checked" : ""} /> HE</label>` : "";
     if(d?.tipo === "OF") extra = `<select data-i="${i}" data-c="centro_trabalho_id">${/* html */ centros}</select>
-      <label class="meta"><input type="checkbox" data-i="${i}" data-c="hora_extra" ${l.hora_extra ? "checked" : ""} /> HE</label>`;
+      ${/* html */ he}`;
     else if(d?.tipo === "OS"){
       const at = _aptAtiv[d.id] || [];
       extra = at.length ? `<select data-i="${i}" data-c="atividade_id" title="atividade da OS (sugerida pela observação)"><option value="">— atividade da OS —</option>${at.map(a => `<option value="${esc(a.id)}">${esc(a.atividade)}</option>`).join("")}</select>
         <label class="meta"><input type="checkbox" data-i="${i}" data-c="concluir_atividade" ${l.concluir_atividade ? "checked" : ""} /> marcar executada</label>` : `<span class="meta">sem atividade pendente</span>`;
-    }
+      extra += ` ${/* html */ he}`;
+    } else if(d?.tipo === "RP") extra = he;
     const docInfo = d ? `<div class="meta">${esc(APT_TIPO[d.tipo].rotulo)}${d.equipamento ? " · " + esc(d.equipamento) : ""}${aptDocAberto(d) ? "" : ` · <span class="txt-perigo">${esc(aptStatusDoc(d.status))}</span>`}</div>` : "";
     return `<tr data-i="${i}">
       <td><input list="apt-docs" data-i="${i}" data-c="docTxt" value="${esc(l.docTxt)}" placeholder="RP 734, OS 1410, TAG…" style="min-width:200px;" />${/* html */ docInfo}</td>
@@ -326,13 +328,13 @@ async function aptGradeMudou(el){
     l.doc = r.doc; l.msg = r.msg || ""; l.atividade_id = ""; l.concluir_atividade = false;
     if(r.doc && aptDocAberto(r.doc)) l.docTxt = aptRotuloDoc(r.doc);
     if(l.doc?.tipo === "OS") await aptCarregarAtividades(l.doc.id);
-    if(l.doc?.tipo === "OF" && !l.hora_extra) l.hora_extra = await aptExigeAprovacao(l.data);
+    if(l.doc && !l.hora_extra) l.hora_extra = await aptExigeAprovacao(l.data);   // HE em RP, OS e OF: fim de semana e feriado vêm marcados
     l.atividade_id = aptSugerirAtividade(l);
     aptRenderGrade();
   } else if(c === "observacao" && l.doc?.tipo === "OS" && !l.atividade_id){
     l.atividade_id = aptSugerirAtividade(l);
     const a = $("apt-grade").querySelector(`tr[data-i="${i}"] [data-c="atividade_id"]`); if(a) a.value = l.atividade_id;
-  } else if(c === "data" && l.doc?.tipo === "OF"){
+  } else if(c === "data" && l.doc){
     l.hora_extra = await aptExigeAprovacao(l.data); aptRenderGrade();
   }
 }
@@ -367,7 +369,8 @@ async function aptGravarLinha(l){
     if(jaAp && jaAp[0]){ l.estado = "repetida"; l.existente = null; l.msg = "Já está aguardando aprovação."; return; }
     const reg = { tipo: d.tipo, documento_id: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim,
       observacao: l.observacao.trim() || null, lancado_por: usuarioAtual.id, origem: "apontamento" };
-    if(d.tipo === "OF"){ reg.centro_trabalho_id = l.centro_trabalho_id; reg.hora_extra = !!l.hora_extra; }
+    reg.hora_extra = !!l.hora_extra;
+    if(d.tipo === "OF") reg.centro_trabalho_id = l.centro_trabalho_id;
     const { error } = await sb.from("apontamento_aprovacoes").insert(reg);
     if(error) return recusa(error.message.replace(/^.*?: /, ""));
     l.estado = "aguardando";
@@ -378,7 +381,8 @@ async function aptGravarLinha(l){
   const reg = { [t.col]: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim, horas: 0,   // o gatilho calcula
     observacao: l.observacao.trim() || null, origem: "apontamento" };
   if(d.tipo === "OS") reg.funcionario_nome = aptNomeFunc(l.funcionario_id) || null;
-  if(d.tipo === "OF"){ reg.centro_trabalho_id = l.centro_trabalho_id; reg.hora_extra = !!l.hora_extra; }
+  reg.hora_extra = !!l.hora_extra;   // HE nas três tabelas; sábado, domingo e feriado o banco marca de qualquer jeito
+  if(d.tipo === "OF") reg.centro_trabalho_id = l.centro_trabalho_id;
   const { error } = await sb.from(t.tabela).insert(reg);
   if(error) return recusa(error.message.replace(/^.*?: /, ""));
   l.estado = "gravada"; l.msg = "";

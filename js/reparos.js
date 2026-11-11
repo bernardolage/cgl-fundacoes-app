@@ -256,7 +256,7 @@ function rephRender(){
   const detalhe = r => `<tr class="reph-det"><td colspan="6"><div class="tabela-rola" style="margin:2px 0 6px;"><table>
       <thead><tr><th>Data</th><th>Ordem</th><th>Descrição</th><th>Abertura</th><th>Início–fim</th><th class="num">Horas</th><th class="num">h:min</th><th>Obs.</th></tr></thead>
       <tbody>${r.linhas.slice().sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.inicio || "").localeCompare(String(b.inicio || ""))).map(l => `<tr>
-        <td>${dataBR(l.data)}</td><td><span class="tag cinza">${esc(REPH_ORIGEM[l.origem]?.[0] || l.origem)}</span> ${rephOrdemLink(l)}${l.hora_extra ? ' <span class="tag ambar" title="hora extra (fabricação)">HE</span>' : ""}</td>
+        <td>${dataBR(l.data)}</td><td><span class="tag cinza">${esc(REPH_ORIGEM[l.origem]?.[0] || l.origem)}</span> ${rephOrdemLink(l)}${l.hora_extra ? ' <span class="tag ambar" title="hora extra">HE</span>' : ""}</td>
         <td class="meta">${esc(l.ordem_descricao || "")}</td><td>${dataBR(l.ordem_abertura)}</td><td>${hr(l)}</td>
         <td class="num">${num(l.horas)}</td><td class="num">${rephHmin(l.horas)}</td><td class="meta">${esc(l.observacao || "")}${l.codigo_externo ? (l.observacao ? " · " : "") + "Odoo" : ""}</td></tr>`).join("")}</tbody>
       <tfoot><tr><th colspan="5">${r.ordens.size} ordem(ns) · ${esc(r.n)} lançamento(s)</th><th class="num">${num(r.horas)}</th><th class="num">${rephHmin(r.horas)}</th><th></th></tr></tfoot></table></div></td></tr>`;
@@ -473,10 +473,11 @@ function repRenderHoras(){
   const nomeF = id => (_repFuncs.find(f => f.id === id) || {}).nome || "";
   if(!_repHoras.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">${_repAtual?.id ? "Nenhuma hora lançada." : "Salve o reparo para lançar horas."}</td></tr>`; $("rep-horas-total").textContent = ""; return; }
   tb.innerHTML = _repHoras.map(h => `<tr><td>${esc(nomeF(h.funcionario_id) || "—")}</td><td>${dataBR(h.data)}</td><td>${h.inicio ? esc(String(h.inicio).slice(0, 5)) : "—"}</td><td>${h.fim ? esc(String(h.fim).slice(0, 5)) : "—"}</td>
-    <td class="num">${num(h.horas)}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · Odoo" : ""}</td>
+    <td class="num">${num(h.horas)}${h.hora_extra ? ' <span class="tag ambar" title="hora extra, custa ×2">HE</span>' : ""}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · Odoo" : ""}</td>
     <td>${pode && !h.codigo_externo ? `<button type="button" class="btn-sec btn-sm rep-h-rem" data-id="${esc(h.id)}" title="remover">×</button>` : ""}</td></tr>`).join("");
   const porF = {}; _repHoras.forEach(h => { const n = nomeF(h.funcionario_id) || "sem funcionário"; porF[n] = (porF[n] || 0) + Number(h.horas || 0); });
-  $("rep-horas-total").innerHTML = `Total: <strong>${num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong> · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ");
+  const heRep = _repHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);   // fase 156a (HE)
+  $("rep-horas-total").innerHTML = `Total: <strong>${num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong>${heRep ? ` (${num(heRep)} h de hora extra)` : ""} · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ");
   tb.querySelectorAll(".rep-h-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("reparo_horas").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
@@ -486,13 +487,14 @@ function repRenderHoras(){
 async function repAddHoras(){
   if(!_repAtual?.id) return;
   const reg = { reparo_id: _repAtual.id, funcionario_id: $("rep-h-func").value || null, data: $("rep-h-data").value || hojeISO(),
-    inicio: $("rep-h-inicio").value || null, fim: $("rep-h-fim").value || null, horas: $("rep-h-horas").value === "" ? null : Number($("rep-h-horas").value), observacao: $("rep-h-obs").value.trim() || null };
+    inicio: $("rep-h-inicio").value || null, fim: $("rep-h-fim").value || null, horas: $("rep-h-horas").value === "" ? null : Number($("rep-h-horas").value), observacao: $("rep-h-obs").value.trim() || null,
+    hora_extra: $("rep-h-he").checked };   // fase 156a (HE): sábado, domingo e feriado o banco marca sozinho
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim) reg.horas = 0;   // o gatilho calcula
   const { error } = await sb.from("reparo_horas").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
-  ["rep-h-inicio", "rep-h-fim", "rep-h-horas", "rep-h-obs"].forEach(id => $(id).value = "");
+  ["rep-h-inicio", "rep-h-fim", "rep-h-horas", "rep-h-obs"].forEach(id => $(id).value = ""); $("rep-h-he").checked = false;
   await abrirReparo(_repAtual.id); repAtivarTab("horas");
 }
 
@@ -500,11 +502,11 @@ async function repAddHoras(){
 function repRenderCustos(){
   const r = _repAtual, c = $("rep-custos"); if(!r || !c) return;
   const pode = repPodeEditar() && !!r.id;
-  const horas = _repHoras.reduce((t, h) => t + Number(h.horas || 0), 0);
+  const horas = _repHoras.reduce((t, h) => t + Number(h.horas || 0), 0), he = _repHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
   c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição</div>
         <div class="custos-linha"><span>Peças consumidas</span><strong>${brl(r.custo_pecas || 0)}</strong></div>
-        <div class="custos-linha"><span>Mão de obra (${num(horas)} h × ${_repCustoHora ? brl(_repCustoHora) : "hora não definida"})</span><strong>${brl(r.custo_horas || 0)}</strong></div>
+        <div class="custos-linha"><span>Mão de obra (${num(horas)} h${he ? `, ${num(he)} h de HE ×2` : ""} × ${_repCustoHora ? brl(_repCustoHora) : "hora não definida"})</span><strong>${brl(r.custo_horas || 0)}</strong></div>
         <div class="custos-linha"><span><strong>Custo real</strong>${r.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brl(r.custo_real || 0)}</strong></div>
       </div>
       <div><div class="mov-ace-sug-grupo-t">Custo digitado à mão</div>

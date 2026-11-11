@@ -989,10 +989,11 @@ function manRenderHoras(){
   const tb = $("man-horas"), pode = manPodeEditar() && _manAtual?.status !== "cancelada";
   if(!_manHoras.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">${_manAtual?.id ? "Nenhuma hora lançada." : "Salve a OS para lançar horas."}</td></tr>`; $("man-horas-total").textContent = ""; return; }
   tb.innerHTML = _manHoras.map(h => `<tr><td>${esc(manFunc(h.funcionario_id) || h.funcionario_nome || "—")}</td><td>${dataBR(h.data)}</td><td>${h.inicio ? esc(String(h.inicio).slice(0, 5)) : "—"}</td><td>${h.fim ? esc(String(h.fim).slice(0, 5)) : "—"}</td>
-    <td class="num">${num(h.horas)}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · planilha" : ""}</td>
+    <td class="num">${num(h.horas)}${h.hora_extra ? ' <span class="tag ambar" title="hora extra, custa ×2">HE</span>' : ""}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · planilha" : ""}</td>
     <td>${pode ? `<button type="button" class="btn-sec btn-sm txt-perigo man-h-rem" data-id="${esc(h.id)}" title="remover">×</button>` : ""}</td></tr>`).join("");
   const porF = {}; _manHoras.forEach(h => { const n = manFunc(h.funcionario_id) || h.funcionario_nome || "sem funcionário"; porF[n] = (porF[n] || 0) + Number(h.horas || 0); });
-  $("man-horas-total").innerHTML = `Total: <strong>${num(_manHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong> · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ");
+  const heMan = _manHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);   // fase 156a (HE)
+  $("man-horas-total").innerHTML = `Total: <strong>${num(_manHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong>${heMan ? ` (${num(heMan)} h de hora extra)` : ""} · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ");
   tb.querySelectorAll(".man-h-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("manutencao_horas").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
@@ -1002,13 +1003,14 @@ function manRenderHoras(){
 async function manAddHoras(){
   if(!_manAtual?.id) return;
   const reg = { manutencao_id: _manAtual.id, funcionario_id: $("man-h-func").value || null, data: $("man-h-data").value || hojeISO(),
-    inicio: $("man-h-inicio").value || null, fim: $("man-h-fim").value || null, horas: $("man-h-horas").value === "" ? null : Number($("man-h-horas").value), observacao: $("man-h-obs").value.trim() || null };
+    inicio: $("man-h-inicio").value || null, fim: $("man-h-fim").value || null, horas: $("man-h-horas").value === "" ? null : Number($("man-h-horas").value), observacao: $("man-h-obs").value.trim() || null,
+    hora_extra: $("man-h-he").checked };   // fase 156a (HE): sábado, domingo e feriado o banco marca sozinho
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim) reg.horas = 0;   // o gatilho calcula
   const { error } = await sb.from("manutencao_horas").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
-  ["man-h-inicio", "man-h-fim", "man-h-horas", "man-h-obs"].forEach(id => $(id).value = "");
+  ["man-h-inicio", "man-h-fim", "man-h-horas", "man-h-obs"].forEach(id => $(id).value = ""); $("man-h-he").checked = false;
   await abrirManutencao(_manAtual.id); manAtivarTab("horas");
 }
 
@@ -1045,12 +1047,12 @@ async function manAddMat(p, textoLivre){
 function manRenderCustos(){
   const m = _manAtual, c = $("man-custos"); if(!m || !c) return;
   const pode = manPodeEditar() && !!m.id;
-  const horas = _manHoras.reduce((t, h) => t + Number(h.horas || 0), 0);
+  const horas = _manHoras.reduce((t, h) => t + Number(h.horas || 0), 0), he = _manHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
   c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição do custo</div>
         <div class="custos-linha"><span>Serviço externo (fornecedor)</span><strong>${brl(m.custo || 0)}</strong></div>
         <div class="custos-linha"><span>Peças consumidas</span><strong>${brl(m.custo_pecas || 0)}</strong></div>
-        <div class="custos-linha"><span>Mão de obra (${num(horas)} h × ${_manCfg.custo_hora_oficina ? brl(_manCfg.custo_hora_oficina) : "hora não definida"})</span><strong>${brl(m.custo_horas || 0)}</strong></div>
+        <div class="custos-linha"><span>Mão de obra (${num(horas)} h${he ? `, ${num(he)} h de HE ×2` : ""} × ${_manCfg.custo_hora_oficina ? brl(_manCfg.custo_hora_oficina) : "hora não definida"})</span><strong>${brl(m.custo_horas || 0)}</strong></div>
         <div class="custos-linha"><span><strong>Custo real</strong>${m.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brl(m.custo_real || 0)}</strong></div>
       </div>
       <div><div class="mov-ace-sug-grupo-t">Custo digitado à mão</div>
