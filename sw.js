@@ -2,7 +2,7 @@
    VERSAO é carimbada pelo scripts/publicar-app.sh; cada publicação abre um cache novo e apaga os antigos.
    Rede primeiro (com prazo curto, o sinal da obra é fraco) e o cache como reserva: o app abre sem sinal
    com o que ficou da última vez. Supabase e fontes são de outra origem e não passam por aqui. */
-const VERSAO = "950b87b";
+const VERSAO = "9db3cfb";
 const CACHE = "cgl-campo-" + VERSAO;
 const ARQUIVOS = [
   "operador.html", "manifest.webmanifest", "css/estilo.css", "js/tema.js", "vendor/supabase-js-2.118.0.min.js",

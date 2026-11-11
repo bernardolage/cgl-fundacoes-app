@@ -2944,6 +2944,32 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-pend-lista .mob-pend { grid-template-columns: auto 1fr auto; cursor: pointer; }
 .mob-pend-meta { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .mob-pend-topo { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: var(--txt-sm); padding: 6px 0 10px; }
+/* fase 157d: quadro por contrato, ficha com abas e equipe */
+.mob-ctr-topo { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
+.mob-ctr-maqs { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.mob-ctr-maq { border-top: 1px dashed var(--borda); padding-top: 6px; }
+.mob-ctr-maq-cab { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
+.mob-ctr-maq .mob-card-chips { margin-bottom: 0; }
+.mob-ctr-faixa { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.mob-ctr-sel { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--borda); background: var(--sup-1); border-radius: var(--radius-pill); padding: 4px 12px; cursor: pointer; font-size: var(--txt-sm); color: var(--txt); }
+.mob-ctr-sel:hover { background: var(--sup-2); }
+.mob-ctr-sel.ativo { border-color: var(--acao); background: var(--marca-50); box-shadow: inset 0 0 0 1px var(--acao); }
+.mob-ctr-maquina .odoo-statusbar { margin-bottom: 8px; }
+.mob-aba { padding-top: 10px; }
+.mob-aba[hidden] { display: none; }
+.mob-maq-sel td { background: var(--marca-50); }
+.mob-maq-acoes { display: flex; flex-wrap: wrap; gap: 4px; }
+.mob-link-btn { border: 0; background: transparent; padding: 0; cursor: pointer; color: var(--acao-txt); text-decoration: underline; font: inherit; }
+tr.mob-linha-click { cursor: pointer; }
+tr.mob-linha-click:hover td, tr.mob-linha-click:focus-visible td { background: var(--sup-2); }
+.mob-pend-lista .mob-pend.mob-eq-linha, .mob-pend.mob-eq-linha { grid-template-columns: auto 1fr auto minmax(120px, 1fr) auto; cursor: default; }
+.mob-eq-sug { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; padding: 8px; background: var(--sup-2); border-radius: var(--radius-sm); }
+.mob-eq-busca { margin-top: 8px; position: relative; }
+.mob-eq-busca input { width: 100%; }
+.mob-aviso-bloco { display: block; }
+@media (max-width: 640px) {
+  .mob-pend-lista .mob-pend.mob-eq-linha, .mob-pend.mob-eq-linha { grid-template-columns: auto 1fr; }
+}
 @media (max-width: 720px){ .mob-pend { grid-template-columns: auto 1fr; } .mob-pend-lista .mob-pend { grid-template-columns: auto 1fr; } .mob-pend-meta { justify-content: flex-start; } }
 
 /* ---- Funcionários: vista Logística ---- */
