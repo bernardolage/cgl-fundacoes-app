@@ -273,6 +273,51 @@ function cmpTemRateio(it){ return it.destino === "equipamento" && Array.isArray(
 function cmpPctFracao(f){ return (Math.round(Number(f || 0) * 10000) / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "%"; }
 function cmpRateioTxt(it){ return cmpTemRateio(it) ? it._rateio.map(r => `TAG ${cmpEq(r.equipamento_id) || "?"} ${cmpPctFracao(r.fracao)}`).join(" · ") : ""; }
 function cmpDestinoRateioHTML(it){ return cmpTemRateio(it) ? `<div class="meta" title="${esc(cmpRateioTxt(it))}">+ ${it._rateio.length - 1} TAG(s) (rateio)</div>` : ""; }
+/* ---------- lote S62 (#271): apropriação do pedido ----------
+   Uma linha por parcela de custo: item sem rateio = uma parcela de 100%; item rateado entre TAGs = uma por TAG, com a fração.
+   O valor da parcela é total do item (com IPI) × fração; o centavo que sobra fica na última, para a soma bater com o item.
+   O resumo junta as parcelas por destino, com o percentual sobre o total dos itens. Só leitura: nada é consultado nem gravado. */
+function cmpApropriacaoLinhas(itens){
+  const cent = (v) => Math.round(Number(v || 0) * 100);
+  const linhas = [], porDestino = new Map(); let totalC = 0;
+  (itens || []).forEach((it, idx) => {
+    const valorC = cent(cmpItemTotal(it)); totalC += valorC;
+    const rateado = cmpTemRateio(it);
+    const txt = cmpDestinoTxt(it);
+    const partes = rateado ? it._rateio.map(r => ({ destino: "TAG " + (cmpEq(r.equipamento_id) || "?"), fracao: Number(r.fracao || 0) }))
+                           : [{ destino: !it.destino || txt === "— escolher —" ? "Sem destino" : txt, fracao: 1 }];
+    let usadoC = 0;
+    partes.forEach((p, k) => {
+      const vC = k === partes.length - 1 ? valorC - usadoC : Math.round(valorC * p.fracao); usadoC += vC;
+      linhas.push({ item: idx + 1, descricao: String(it.descricao || "").trim() || "(sem descrição)", tipo: cmpItemTipo(it), destino: p.destino, fracao: p.fracao, valor: vC / 100, rateio: rateado });
+      const d = porDestino.get(p.destino) || { destino: p.destino, valorC: 0, itens: new Set() };
+      d.valorC += vC; d.itens.add(idx); porDestino.set(p.destino, d);
+    });
+  });
+  const resumo = [...porDestino.values()].map(d => ({ destino: d.destino, valor: d.valorC / 100, pct: totalC ? d.valorC / totalC : 0, itens: d.itens.size }))
+    .sort((a, b) => b.valor - a.valor || a.destino.localeCompare(b.destino, "pt-BR"));
+  return { linhas, resumo, total: totalC / 100 };
+}
+function cmpApropriacaoHTML(a){
+  const porItem = `<table class="itens-tabela"><thead><tr><th style="width:36px;">#</th><th>Item</th><th>Tipo</th><th>Custo em</th><th class="num">%</th><th class="num">Valor</th></tr></thead>
+    <tbody>${a.linhas.map((l, k) => { const primeira = !k || a.linhas[k - 1].item !== l.item;   // item rateado: número, descrição e tipo só na primeira parcela
+      return `<tr><td>${primeira ? esc(l.item) : ""}</td><td>${primeira ? esc(l.descricao) + (l.rateio ? ' <span class="tag cinza">rateio</span>' : "") : ""}</td><td>${primeira ? esc(CMP_TIPO_CURTO[l.tipo] || l.tipo) : ""}</td>
+      <td>${esc(l.destino)}</td><td class="num">${esc(cmpPctFracao(l.fracao))}</td><td class="num">${esc(brl(l.valor))}</td></tr>`; }).join("")}</tbody></table>`;
+  const porDestino = `<table class="itens-tabela"><thead><tr><th>Custo em</th><th class="num">Itens</th><th class="num">% do pedido</th><th class="num">Valor</th></tr></thead>
+    <tbody>${a.resumo.map(d => `<tr><td>${esc(d.destino)}</td><td class="num">${esc(d.itens)}</td><td class="num">${esc(cmpPctFracao(d.pct))}</td><td class="num">${esc(brl(d.valor))}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;">Total dos itens (com IPI)</td><td class="num" style="font-weight:700;">${esc(brl(a.total))}</td></tr></tfoot></table>`;
+  const corpo = `<div class="cmp-aprop-grade">
+    <div><div class="rotulo-caps">Por item</div><div class="tabela-rola">${/* html */ porItem}</div></div>
+    <div><div class="rotulo-caps">Por destino</div><div class="tabela-rola">${/* html */ porDestino}</div></div>
+  </div><p class="meta">Frete e desconto do pedido não entram nesta conta. O rateio entre TAGs é definido no botão ⚖ do item.</p>`;
+  return uiSecao("nota", "Apropriação do custo", corpo, `${a.resumo.length} ${a.resumo.length === 1 ? "destino" : "destinos"} · ${a.linhas.length} ${a.linhas.length === 1 ? "parcela" : "parcelas"}`);
+}
+function cmpRenderApropriacao(){
+  const box = $("cmp-aprop"); if(!box) return;
+  if(!_cmpItens.length){ box.style.display = "none"; box.innerHTML = ""; return; }
+  box.innerHTML = cmpApropriacaoHTML(cmpApropriacaoLinhas(_cmpItens));
+  box.style.display = "";
+}
 function cmpOrdenarRateio(lista){ return lista.sort((a, b) => (cmpEq(a.equipamento_id) || "").localeCompare(cmpEq(b.equipamento_id) || "", "pt-BR")); }
 /* fase 108b: tipo de compra do item. _tipo = escolha na tela (rascunho); tipo_compra = coluna gerada do banco */
 function cmpItemTipo(it){ return it._tipo || it.tipo_compra || (it.destino === "estoque" ? "reposicao" : "aplicacao_direta"); }
@@ -2292,6 +2337,7 @@ function cmpItemTotalHTML(it){ const ipi = cmpItemIpi(it); return brl(cmpItemTot
 function cmpCrescerTextarea(t){ t.style.height = "auto"; t.style.height = Math.max(34, t.scrollHeight + 2) + "px"; }
 /* lote S53 (#166): rodapé Itens · IPI · Frete · Desconto · Total (IPI, frete e desconto só quando há valor) */
 function cmpRenderRodapeItens(){
+  cmpRenderApropriacao();   // lote S62 (#271): a apropriação acompanha os totais
   const tf = $("cmp-itens-rodape"); if(!tf) return;
   if(!_cmpItens.length){ tf.innerHTML = ""; return; }
   const itens = cmpSomaItens(_cmpItens), ipi = cmpSomaIpi(_cmpItens), frete = Number($("cmp-frete").value || 0), desc = Number($("cmp-desc").value || 0);
@@ -3799,6 +3845,8 @@ function ligarCompras(){
   $("btn-cmp-salvar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-salvar", async () => { const id = await salvarPedido(false); if(id){ await cmpFetchPedidos(); await abrirPedido(id); } }));
   document.querySelectorAll("#cmp-ficha .cmp-acao").forEach(b => b.addEventListener("click", () => comBotaoTravado(b.id, () => cmpAcao(b.dataset.acao))));
   document.querySelectorAll("#cmp-notebook button").forEach(b => b.addEventListener("click", () => ativarTabPedido(b.dataset.tab)));
+  // lote S62 (#271): trocar destino ou tipo de um item nem sempre redesenha o rodapé; a apropriação acompanha qualquer edição da tabela
+  $("cmp-itens")?.addEventListener("change", () => setTimeout(cmpRenderApropriacao, 0));
   document.querySelectorAll("#cmp-ficha .sb-btn[data-goto-tab]").forEach(b => b.addEventListener("click", () => ativarTabPedido(b.dataset.gotoTab)));
   $("btn-cmp-anx-enviar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-anx-enviar", cmpEnviarAnexosPedido));   // lote S48 (#117)
   ["cmp-forn","cmp-local","cmp-obra","cmp-equip","cmp-prev"].forEach(id => $(id)?.addEventListener("change", cmpAtualizarChips));

@@ -3571,3 +3571,9 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 
 /* Listas de diários (fase 161): data curta sem quebrar a linha */
 .rdo-data-curta { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Apropriação do custo do pedido (lote S62, #271): por item e por destino, lado a lado; uma coluna em tela estreita */
+#cmp-aprop { margin-top: var(--esp-4); }
+.cmp-aprop-grade { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--esp-4); align-items: start; }
+.cmp-aprop-grade .rotulo-caps { margin-bottom: var(--esp-2); }
+@media (max-width: 1100px) { .cmp-aprop-grade { grid-template-columns: minmax(0, 1fr); } }

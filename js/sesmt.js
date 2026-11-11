@@ -447,28 +447,63 @@ function sstExportarMatriz(){
     ...cols.map(r => [r.codigo, r.nome, SST_NATUREZA[r.natureza], SST_GRUPO[r.grupo], sstValidadeTxt(r.validade), r.carga_horaria ?? ""])]), "Requisitos");
   XLSX.writeFile(wb, `matriz-sst-conferencia-${hojeISO()}.xlsx`);
 }
-/* importação da planilha conferida: lê as abas Funcao e GHE, compara com a matriz e mostra o resumo; grava só no "Aplicar" */
+/* lote S62 (#275): quais abas da planilha o importador lê. Primeiro o leiaute do Exportar (abas "Funcao" e "GHE", rótulo na
+   primeira coluna). Sem nenhuma das duas, a primeira aba que tenha, até a 5ª linha, um cabeçalho com a coluna "Cargo / Função"
+   (ou "Função", "Cargo") e pelo menos um código de requisito conhecido: entra como matriz por função, com o rótulo tirado
+   dessa coluna. Colunas à esquerda do rótulo (GHE, Setor) não são lidas. Devolve { abas: [{ nome, alvo, colRotulo, cab, linhas }], nomes }. */
+function sstMatrizAbasDaPlanilha(wb, codigos){
+  const norm = (v) => String(v == null ? "" : v).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const conhecidos = new Set((codigos || []).map(c => String(c).trim().toUpperCase()));
+  const nomes = (wb && wb.SheetNames) || [];
+  const aoaDe = (nome) => XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, blankrows: false }) || [];
+  const cabDe = (linha) => (linha || []).map(c => String(c == null ? "" : c).trim().toUpperCase());
+  const abas = [];
+  [["funcao", "funcao"], ["ghe", "ghe"]].forEach(([chave, alvo]) => {
+    const nome = nomes.find(n => norm(n) === chave); if(!nome) return;
+    const aoa = aoaDe(nome); if(!aoa.length) return;
+    abas.push({ nome, alvo, colRotulo: 0, cab: cabDe(aoa[0]), linhas: aoa.slice(1) });
+  });
+  if(abas.length) return { abas, nomes };
+  for(const nome of nomes){
+    const aoa = aoaDe(nome);
+    for(let i = 0; i < Math.min(aoa.length, 5); i++){
+      const cab = cabDe(aoa[i]);
+      const colRotulo = cab.findIndex(c => /^(cargo\s*\/\s*funcao|funcao|funcoes|cargo|cargos)$/.test(norm(c)));
+      if(colRotulo < 0 || !cab.some((c, k) => k > colRotulo && conhecidos.has(c))) continue;
+      return { abas: [{ nome, alvo: "funcao", colRotulo, cab, linhas: aoa.slice(i + 1) }], nomes };
+    }
+  }
+  return { abas, nomes };
+}
+/* importação da planilha conferida: lê as abas (sstMatrizAbasDaPlanilha), compara com a matriz e mostra o resumo; grava só no "Aplicar" */
 async function sstImportarMatriz(file){
   if(!file || typeof XLSX === "undefined") return;
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
+  const lido = sstMatrizAbasDaPlanilha(wb, _sstReqs.map(r => r.codigo));
+  if(!lido.abas.length){   // lote S62 (#275): antes a tela dizia "Nada a mudar", como se a planilha batesse com a matriz
+    _sstMatrizImport = null;
+    aviso("app-aviso", `Não reconheci a matriz nesta planilha (abas encontradas: ${lido.nomes.join(", ") || "nenhuma"}). O importador lê a planilha do botão Exportar (abas "Funcao" e "GHE") ou uma aba com a coluna "Cargo / Função" e os códigos dos requisitos no cabeçalho.`, "erro");
+    renderSstMatriz();
+    return;
+  }
   const porCodigo = Object.fromEntries(_sstReqs.map(r => [r.codigo.toUpperCase(), r]));
   const funcoes = sstMatrizLinhas("funcao", { busca: "", depto: "", funcao: "", ghe: "", obra: "" });
   const ghes = sstMatrizLinhas("ghe", { busca: "", depto: "", funcao: "", ghe: "", obra: "" });
-  const novas = [], removidas = [], alteradas = [], desconhecidos = new Set(), semPar = new Set(); let lidas = 0;
-  [["Funcao", "funcao", funcoes], ["GHE", "ghe", ghes]].forEach(([aba, alvo, linhas]) => {
-    const ws = wb.Sheets[aba] || wb.Sheets[aba.toLowerCase()] || wb.Sheets[aba.toUpperCase()]; if(!ws) return;
-    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }); if(!aoa.length) return;
-    const cab = aoa[0].map(c => String(c || "").trim().toUpperCase());
+  const novas = [], removidas = [], alteradas = [], desconhecidos = new Set(), semPar = new Set(), codigosLidos = new Set(); let lidas = 0, casadas = 0;
+  lido.abas.forEach(({ alvo, cab, colRotulo, linhas: rows }) => {
+    const linhas = alvo === "funcao" ? funcoes : ghes;
     const vistas = new Set();
-    aoa.slice(1).forEach(row => {
-      const rotulo = String(row[0] || "").trim(); if(!rotulo) return; lidas++;
+    rows.forEach(row => {
+      const rotulo = String(row[colRotulo] || "").trim(); if(!rotulo) return; lidas++;
       const linha = alvo === "funcao" ? linhas.find(l => l.key === sstFuncaoChave(rotulo) || l.label.toLowerCase() === rotulo.toLowerCase())
                                      : linhas.find(l => l.label.toLowerCase() === rotulo.toLowerCase() || l.label.split(" · ")[0].toLowerCase() === rotulo.toLowerCase());
       if(!linha){ semPar.add(rotulo); return; }
-      cab.slice(1).forEach((cod, i) => {
-        if(!cod) return; const req = porCodigo[cod]; if(!req){ desconhecidos.add(cod); return; }
-        const marca = String(row[i + 1] || "").trim().toUpperCase(); const exig = marca === "X" ? "obrigatorio" : marca === "E" ? "eventual" : null;
+      casadas++;
+      cab.forEach((cod, i) => {
+        if(i <= colRotulo || !cod) return; const req = porCodigo[cod]; if(!req){ desconhecidos.add(cod); return; }
+        codigosLidos.add(cod);
+        const marca = String(row[i] || "").trim().toUpperCase(); const exig = marca === "X" ? "obrigatorio" : marca === "E" ? "eventual" : null;
         vistas.add(linha.key + "|" + req.id);
         const atual = sstMatrizCelula(alvo, linha.key, req.id);
         if(exig && !atual) novas.push({ alvo, requisito_id: req.id, exigencia: exig, ...linha.campo, _rotulo: `${linha.label} × ${cod}` });
@@ -481,6 +516,8 @@ async function sstImportarMatriz(file){
   const cont = $("sst-conteudo");
   cont.innerHTML = `<div class="card" style="margin-bottom:var(--esp-3);">
     <h4 style="margin:0 0 var(--esp-2);">Planilha conferida: ${esc(file.name)}</h4>
+    <p class="meta">Lido da aba ${lido.abas.map(a => `"${esc(a.nome)}"`).join(" e ")}, com ${codigosLidos.size} código(s) de requisito reconhecido(s).</p>
+    ${lidas && !casadas ? `<p class="meta txt-perigo"><strong>Nenhuma das ${lidas} linha(s) da planilha foi encontrada no app.</strong> Confira se os nomes das funções são os do cadastro de funcionários.</p>` : ""}
     <p class="meta">${lidas} linha(s) lida(s) · <strong>${novas.length}</strong> marcação(ões) nova(s) · <strong>${alteradas.length}</strong> alterada(s) (X↔E) · <strong>${removidas.length}</strong> removida(s)
       ${desconhecidos.size ? ` · códigos desconhecidos (ignorados): ${[...desconhecidos].map(esc).join(", ")}` : ""}
       ${semPar.size ? ` · linhas sem par no app (ignoradas): ${[...semPar].map(esc).join(", ")}` : ""}</p>
