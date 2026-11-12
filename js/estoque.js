@@ -91,7 +91,91 @@ async function carregarEstoque(force){
   estAplicarTipo();
   // fase 100: relatório de EPI por colaborador e por obra (js/epi.js), só para quem vê
   if(typeof epiAplicarVisibilidade === "function"){ epiAplicarVisibilidade(); if(podeVerEpi()) epiRenderRelatorio("epi-conteudo"); }
-  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), pode || soEpi ? carregarSaidasHoje() : null, balOsPreparar()]);   // fase 160: + campo da OS
+  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), pode || soEpi ? carregarSaidasHoje() : null, balOsPreparar(), carregarPendenciasEstoque()]);   // fase 160: + campo da OS; lote S63-d: + pendências de estoque
+}
+
+/* ---------- Pendências de estoque (lote S63-d, #276) ----------
+   Saída sem saldo em item com controle de reposição: antes da primeira contagem do produto grava e abre "Atualizar estoque deste
+   produto" (7 dias; almoxarifado, ou SESMT para EPI e uniforme); depois dela vira rascunho para a diretoria. A contagem da segunda
+   em diante também espera a diretoria. A regra é do banco (estoque_saida_registrar, estoque_ajustar, estoque_pendencia_decidir);
+   aqui só a lista e os botões. O diretor vê só o que pede a decisão dele; o setor dono, só a contagem de 7 dias. */
+let _estPend = [];
+function estPodeDecidir(){ return !!usuarioAtual && ["diretor", "admin"].includes(usuarioAtual.cargo); }
+function estMsgAjuste(r){
+  if(!r) return "Contagem lançada.";
+  if(r.situacao === "pendente") return "Contagem enviada ao diretor: o estoque muda quando ele aprovar.";
+  if(r.situacao === "sem_diferenca") return "A contagem é igual ao estoque atual. Nada a lançar.";
+  return r.primeira ? "Primeira atualização de estoque registrada: estoque igual à contagem." : "Contagem lançada — estoque ajustado.";
+}
+async function carregarPendenciasEstoque(){
+  const card = $("est-pend-card"), cont = $("est-pend-conteudo"); if(!card || !cont) return;
+  const dir = estPodeDecidir();
+  let q = sb.from("estoque_pendencias")
+    .select("id,tipo,setor,prazo,quantidade,saldo_antes,justificativa,created_at,produto:produtos(id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,odoo_saldo_em,estoque_atualizado_em)")
+    .eq("situacao", "aberta").order("created_at");
+  q = dir ? q.in("tipo", ["ajuste", "saida_rascunho"]) : q.eq("tipo", "atualizar_estoque");
+  const { data, error } = await q;
+  if(error){ card.style.display = "none"; return; }   // migration do lote S63-d ainda não aplicada ou perfil sem leitura
+  const sesmt = typeof sstPodeOperar === "function" && sstPodeOperar();
+  _estPend = (data || []).filter(e => dir || (e.setor === "sesmt" ? sesmt : estPodeEditar()));
+  card.style.display = _estPend.length ? "" : "none";
+  $("est-pend-contador").textContent = _estPend.length ? String(_estPend.length) : "";
+  $("est-pend-ajuda").textContent = dir
+    ? "contagem da segunda em diante e saída sem saldo depois da contagem: aprovar ou recusar"
+    : "saída sem saldo antes da primeira contagem: contar o produto em até 7 dias";
+  cont.innerHTML = `<div class="tabela-rola"><table class="itens-tabela"><thead><tr><th>Produto</th><th>${dir ? "Pedido" : "Prazo"}</th><th class="num">Saldo no app</th><th>${dir ? "Justificativa" : "Setor"}</th><th class="col-acao"></th></tr></thead>
+    <tbody>${/* html */ _estPend.map(estPendLinha).join("")}</tbody></table></div>`;
+  cont.querySelectorAll("[data-pend-acao]").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => estPendAcao(b.dataset.pendAcao, b.dataset.id))));
+}
+function estPendLinha(e){
+  const p = e.produto || {};
+  const saldo = `${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")}`;
+  if(e.tipo === "atualizar_estoque"){
+    const vencida = !!e.prazo && e.prazo < hojeISO();
+    return `<tr><td>${esc(prodTxt(p))}</td>
+      <td><span class="tag ${vencida ? "vermelho" : "ambar"}">${vencida ? "vencida em" : "até"} ${dataBR(e.prazo)}</span></td>
+      <td class="num">${/* html */ saldo}</td><td>${e.setor === "sesmt" ? "SESMT" : "Almoxarifado"}</td>
+      <td class="col-acao"><button type="button" class="btn-sec btn-sm" data-pend-acao="contar" data-id="${esc(e.id)}" title="lança a primeira contagem do produto: o estoque fica igual ao contado">Contar</button></td></tr>`;
+  }
+  const rasc = e.tipo === "saida_rascunho";
+  const pedido = rasc
+    ? `saída de ${num(e.quantidade)} com saldo ${num(e.saldo_antes)}`
+    : `contou ${num(e.quantidade)} (antes ${num(e.saldo_antes)}; diferença ${num(Number(e.quantidade) - Number(e.saldo_antes))})`;
+  return `<tr><td>${esc(prodTxt(p))}</td>
+    <td><span class="tag ${rasc ? "vermelho" : "azul"}">${rasc ? "saída em rascunho" : "contagem"}</span> ${/* html */ pedido} <span class="meta">${dataBR(String(e.created_at || "").slice(0, 10))}</span></td>
+    <td class="num">${/* html */ saldo}</td><td>${esc(e.justificativa || "")}</td>
+    <td class="col-acao" style="white-space:nowrap;"><button type="button" class="btn-sec btn-sm" data-pend-acao="aprovar" data-id="${esc(e.id)}" title="${rasc ? "baixa a saída do estoque" : "lança a diferença no estoque"}">Aprovar</button>
+      <button type="button" class="btn-sec btn-sm" data-pend-acao="recusar" data-id="${esc(e.id)}" title="não mexe no estoque; fica registrado">Recusar</button></td></tr>`;
+}
+async function estPendAcao(acao, id){
+  const e = _estPend.find(x => x.id === id); if(!e) return;
+  const p = e.produto || {};
+  if(acao === "contar"){
+    const v = prompt(`Quantidade contada de ${prodTxt(p)} (${p.unidade || "un"}). Saldo no app: ${num(p.estoque_atual || 0)}.`);
+    if(v === null) return;
+    const n = Number(String(v).replace(",", "."));
+    if(String(v).trim() === "" || isNaN(n) || n < 0){ aviso("app-aviso", "Informe a quantidade contada.", "erro"); return; }
+    const { data, error } = await sb.rpc("estoque_ajustar", { p_produto: p.id, p_contada: n, p_documento: "Inventário" });
+    if(error){ aviso("app-aviso", "Contagem não lançada: " + error.message, "erro"); return; }
+    aviso("app-aviso", estMsgAjuste(data), "ok");
+  } else {
+    const aprovar = acao === "aprovar";
+    let motivo = null;
+    if(!aprovar){ motivo = prompt("Motivo da recusa (opcional):"); if(motivo === null) return; }
+    const { error } = await sb.rpc("estoque_pendencia_decidir", { p_id: id, p_aprovar: aprovar, p_motivo: motivo || null });
+    if(error){ aviso("app-aviso", "Não foi possível decidir: " + error.message, "erro"); return; }
+    aviso("app-aviso", !aprovar ? "Recusado: o estoque não mudou e a decisão ficou registrada."
+      : e.tipo === "saida_rascunho" ? "Saída aprovada: o estoque foi baixado." : "Contagem aprovada: o estoque foi ajustado.", "ok");
+  }
+  if(typeof carregarProdutos === "function") carregarProdutos();
+  if(typeof carregarDashboard === "function") carregarDashboard();
+  await Promise.all([carregarPendenciasEstoque(), carregarReposicao(), carregarUltimasEntradas()]);
+}
+/* atalho da tela inicial ("Para regularizar"): abre o Estoque no quadro de pendências */
+async function estAbrirPendencias(){
+  if(typeof irParaSecao === "function" && !irParaSecao("estoque")) return;
+  await carregarPendenciasEstoque();
+  $("est-pend-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 /* ---------- Saída no balcão (fase 78) ----------
@@ -481,8 +565,11 @@ async function registrarSaidaBalcao(){
     if(String(error.hint || "") === "vinculo_obrigatorio") balAplicarMetodo();   // fase 137: a OS abriu depois de escolher o destino: o campo aparece
     aviso("app-aviso", "Saída não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return;
   }
-  const ids = data || [], n = ids.length;
-  aviso("app-aviso", `Saída registrada: ${n} item(ns)${retirante ? " para " + retirante.nome : ""} · ${$("bal-destino").selectedOptions[0]?.textContent || ""}.`, "ok");
+  const ids = data || [];
+  // lote S63-d (#276): item com controle de reposição já contado e sem saldo volta nulo: virou rascunho para a diretoria
+  const rasc = itens.filter((it, k) => !ids[k]).map(it => it.p.codigo), n = ids.length - rasc.length;
+  if(rasc.length) aviso("app-aviso", (n ? "Saída registrada: " + n + " item(ns). " : "") + rasc.join(", ") + " sem saldo: a saída ficou em rascunho para a diretoria aprovar. Urgente regularizar a contagem de estoque deste produto: é a segunda vez que se dá saída sem quantidade em estoque.", "erro");
+  else aviso("app-aviso", `Saída registrada: ${n} item(ns)${retirante ? " para " + retirante.nome : ""} · ${$("bal-destino").selectedOptions[0]?.textContent || ""}.`, "ok");
   _balVincPre = null; if($("bal-os-busca")) $("bal-os-busca").value = "";   // lote S63-h: a OF da busca vale só para esta saída
   _balItens = []; _balRetirante = null; $("bal-retirante").value = ""; $("bal-doc").value = ""; $("bal-destino").value = ""; balAceMostrar(false);
   _balDestinoOrigem = ""; _balAlocCache = {}; $("bal-destino").querySelector("optgroup[data-aloc]")?.remove(); balAplicarMetodo();   // fase 108c
@@ -495,7 +582,7 @@ async function registrarSaidaBalcao(){
       aoConcluir: () => carregarSaidasHoje() });
   }
   if(typeof carregarProdutos === "function") carregarProdutos();
-  await Promise.all([carregarSaidasHoje(), carregarReposicao(), carregarUltimasEntradas()]);
+  await Promise.all([carregarSaidasHoje(), carregarReposicao(), carregarUltimasEntradas(), carregarPendenciasEstoque()]);
 }
 async function carregarSaidasHoje(){
   const cont = $("bal-hoje"); if(!cont) return;
@@ -571,7 +658,7 @@ async function balSalvarEdicao(id){
   _balEdit = null;
   aviso("app-aviso", "Saída corrigida: a original ficou estornada e a nova vale no estoque e no custo.", "ok");
   if(typeof carregarProdutos === "function") carregarProdutos();
-  await Promise.all([carregarSaidasHoje(), carregarReposicao(), carregarUltimasEntradas()]);
+  await Promise.all([carregarSaidasHoje(), carregarReposicao(), carregarUltimasEntradas(), carregarPendenciasEstoque()]);
 }
 function renderSaidasHoje(){
   const cont = $("bal-hoje"); if(!cont) return;
@@ -627,7 +714,7 @@ function renderSaidasHoje(){
     if(error){ aviso("app-aviso", "Não foi possível desfazer: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
     aviso("app-aviso", "Saída desfeita: material de volta ao estoque.", "ok");
     if(typeof carregarProdutos === "function") carregarProdutos();
-    await Promise.all([carregarSaidasHoje(), carregarReposicao(), carregarUltimasEntradas()]);
+    await Promise.all([carregarSaidasHoje(), carregarReposicao(), carregarUltimasEntradas(), carregarPendenciasEstoque()]);
   })));
 }
 /* ---------- Devolução de obra (fase 83) ----------
@@ -707,7 +794,7 @@ async function registrarDevolucaoObra(){
   _devItens = []; _devQuem = null; $("est-dev-quem").value = ""; $("est-dev-saidas").style.display = "none";
   renderDevItens();
   if($("sec-produtos")?.classList.contains("ativa") && typeof carregarProdutos === "function") carregarProdutos();
-  await Promise.all([carregarReposicao(), carregarUltimasEntradas()]);
+  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), carregarPendenciasEstoque()]);
 }
 function devLigar(){
   const inp = $("est-dev-quem"), lista = $("est-dev-quem-res"); if(!inp || !lista) return;
@@ -758,13 +845,15 @@ function estMostrarProdInfo(){
     (p.custo_ultimo ? ` · último custo ${brl(p.custo_ultimo)}` : "") +
     (p.controle_reposicao ? ` · <span class="tag azul">reposição</span> mín. ${num(p.estoque_minimo || 0)} · ideal ${p.estoque_ideal != null ? num(p.estoque_ideal) : "—"}` : "") +
     estChipOdoo(p) +
-    (_estTipo === "ajuste" ? ` · <span class="meta">a contagem substitui o atual</span>` : "");
+    (_estTipo === "ajuste" ? (p.estoque_atualizado_em   // lote S63-d (#276)
+      ? ` · <span class="meta">já contado em ${dataBR(String(p.estoque_atualizado_em).slice(0, 10))}: a nova contagem precisa de justificativa em Observações e espera o diretor</span>`
+      : ` · <span class="meta">primeira contagem no app: o estoque fica igual ao contado na hora</span>`) : "");
 }
 async function estBuscarProdutos(termo){
   if(!termo || termo.length < 2) return [];
   const t = termo.replace(/[%,()]/g, " ").trim();
   const { data } = await sb.from("produtos")
-    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,odoo_saldo_em")
+    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,odoo_saldo_em,estoque_atualizado_em")
     .eq("ativo", true).eq("tipo_item", "produto").or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`).order("nome").limit(25);
   return data || [];
 }
@@ -831,21 +920,28 @@ async function registrarEntrada(){
     reg.custo_unitario = Number($("ent-custo").value);
     if(!(reg.custo_unitario >= 0) || $("ent-custo").value === ""){ aviso("app-aviso", "Informe o custo unitário.", "erro"); return; }
     reg.fornecedor_id = $("ent-fornecedor").value || null;
-  } else { // ajuste: delta = contado - atual (fase 100: saída só pela "Saída de material")
-    const delta = qtdInformada - Number(_estProd.estoque_atual || 0);
-    if(delta === 0){ aviso("app-aviso", "A contagem é igual ao estoque atual. Nada a lançar.", "ok"); return; }
-    reg.quantidade = delta;
-    reg.documento = reg.documento || "Inventário";
-    reg.observacoes = [`Contagem: ${num(qtdInformada)} (antes ${num(_estProd.estoque_atual || 0)})`, reg.observacoes].filter(Boolean).join(" · ");
   }
-  const { error } = await sb.from("movimentacoes_estoque").insert(reg);
-  if(error){ aviso("app-aviso", "Não foi possível registrar: " + error.message, "erro"); return; }
-  aviso("app-aviso", _estTipo === "entrada" ? "Entrada registrada — estoque e custo atualizados." : "Contagem lançada — estoque ajustado.", "ok");
+  if(_estTipo === "ajuste"){
+    // lote S63-d (#276): a contagem passa pela RPC estoque_ajustar (o insert direto de ajuste fechou no banco). A primeira atualização
+    // do produto lança na hora; da segunda em diante a justificativa (Observações) é obrigatória e o ajuste espera o diretor.
+    const { data: r, error } = await sb.rpc("estoque_ajustar", { p_produto: _estProd.id, p_contada: qtdInformada,
+      p_justificativa: reg.observacoes, p_documento: reg.documento });
+    if(error){
+      aviso("app-aviso", "Contagem não lançada: " + error.message, "erro");
+      if(error.hint === "justificativa_obrigatoria") $("est-mov-obs").focus();
+      return;
+    }
+    aviso("app-aviso", estMsgAjuste(r), "ok");
+  } else {
+    const { error } = await sb.from("movimentacoes_estoque").insert(reg);
+    if(error){ aviso("app-aviso", "Não foi possível registrar: " + error.message, "erro"); return; }
+    aviso("app-aviso", "Entrada registrada — estoque e custo atualizados.", "ok");
+  }
   ["ent-qtd","ent-custo","ent-doc","est-mov-obs","est-busca-prod"].forEach(id => { const el = $(id); if(el) el.value = ""; });
   estSelecionarProduto(null);
   if(typeof carregarProdutos === "function") await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
-  await Promise.all([carregarReposicao(), carregarUltimasEntradas()]);
+  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), carregarPendenciasEstoque()]);
 }
 
 async function criarNovoFornecedorRapido(){
@@ -972,16 +1068,15 @@ async function salvarControlarItem(){
   const { error } = await sb.from("produtos").update({ controle_reposicao: true, estoque_minimo: min, estoque_ideal: ideal }).eq("id", p.id);
   if(error){ aviso("app-aviso", "Não foi possível controlar o item: " + error.message, "erro"); return; }
   if($("est-ctrl-contagem").value !== ""){
-    const delta = Number($("est-ctrl-contagem").value) - Number(p.estoque_atual || 0);
-    if(delta !== 0){
-      const { error: e2 } = await sb.from("movimentacoes_estoque").insert({ produto_id: p.id, tipo: "ajuste", quantidade: delta, custo_unitario: 0, documento: "Inventário inicial", observacoes: `Contagem: ${num(Number($("est-ctrl-contagem").value))} (antes ${num(p.estoque_atual || 0)})` });
-      if(e2) aviso("app-aviso", "Item controlado, mas a contagem não foi lançada: " + e2.message, "erro");
-    }
+    // lote S63-d (#276): contagem inicial pela RPC (a primeira atualização do produto lança na hora; depois dela, só pela Contagem
+    // com justificativa, que espera o diretor)
+    const { error: e2 } = await sb.rpc("estoque_ajustar", { p_produto: p.id, p_contada: Number($("est-ctrl-contagem").value), p_documento: "Inventário inicial" });
+    if(e2) aviso("app-aviso", "Item controlado, mas a contagem não foi lançada: " + e2.message + (e2.hint === "justificativa_obrigatoria" ? " Lance pela Contagem, com a justificativa." : ""), "erro");
   }
   aviso("app-aviso", `${p.codigo} entrou na lista de reposição.`, "ok");
   fecharControlarItem();
   if(typeof carregarProdutos === "function") carregarProdutos();
-  await Promise.all([carregarReposicao(), carregarUltimasEntradas()]);
+  await Promise.all([carregarReposicao(), carregarUltimasEntradas(), carregarPendenciasEstoque()]);
 }
 
 /* ---------- Últimos movimentos ---------- */
