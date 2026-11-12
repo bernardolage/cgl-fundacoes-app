@@ -4100,6 +4100,32 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .orc-arq-linha .meta { font-size: var(--txt-xs); color: var(--txt-fraco); }
 .aviso.est-orc-leitura { display: flex; align-items: center; gap: var(--esp-3); flex-wrap: wrap; }
 
+/* fase 176: cobrança de resposta de chamado (contador no botão, balão e cartão no painel) */
+#btn-assistente { position: relative; }
+#btn-assistente .ast-contador { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-pill); background: var(--perigo);
+  color: var(--txt-sobre); font-size: var(--txt-xs); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+#btn-assistente .ast-contador[hidden] { display: none; }
+.ast-balao { position: fixed; top: 64px; right: var(--esp-4); z-index: 1150; width: min(360px, calc(100% - 32px)); box-sizing: border-box;
+  display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-3) var(--esp-4); background: var(--sup-0);
+  border: 1px solid var(--borda-forte); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+.ast-balao-txt { margin: 0; font-size: var(--txt-md); line-height: 1.4; }
+.ast-balao-acoes { display: flex; gap: var(--esp-2); flex-wrap: wrap; }
+.ast-cobranca { padding: var(--esp-3) var(--esp-4) 0; display: flex; flex-direction: column; gap: var(--esp-2); max-height: 60%; overflow-y: auto; }
+.ast-cobranca[hidden] { display: none; }
+.ast-cob-titulo { display: flex; align-items: baseline; gap: var(--esp-2); flex-wrap: wrap; font-size: var(--txt-md); }
+.ast-cob-meta { display: flex; align-items: center; gap: var(--esp-2); flex-wrap: wrap; }
+.ast-cob-desc { margin: 0; font-size: var(--txt-sm); color: var(--txt-sec); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ast-cob-desc .link-mini { background: none; border: 0; padding: 0; cursor: pointer; }
+.ast-cob-botoes { display: flex; align-items: center; gap: var(--esp-2); flex-wrap: wrap; }
+.ast-cob-caixa textarea { max-height: 200px; }
+.ast-cob-anexos { display: flex; gap: var(--esp-1); flex-wrap: wrap; }
+.ast-cob .cham-espera-perg { font-size: var(--txt-sm); overflow-wrap: anywhere; }
+@media (max-width: 768px){
+  .ast-balao { top: auto; bottom: 0; left: 0; right: 0; width: 100%; border-radius: 0; border-left: 0; border-right: 0; }
+  .ast-cobranca { max-height: 70%; }
+}
+
 /* botão de abrir, na barra do topo */
 #btn-assistente { display: inline-flex; align-items: center; gap: var(--esp-1); height: 40px; padding: 0 var(--esp-3) 0 2px; border: 1px solid var(--borda-forte);
   border-radius: var(--radius-pill); background: var(--sup-0); color: var(--marca-txt); font-weight: 600; cursor: pointer; }

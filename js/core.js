@@ -1167,6 +1167,8 @@ async function iniciarApp(){
   /* fase 87: prazos da empresa, vigia de inatividade / sessão máxima / revogação e MFA obrigatório por cargo */
   await carregarPoliticaSessao();
   if(!iniciarPoliticaSessao()) return;   // um prazo já tinha estourado ao abrir: saiu para o login
+  /* fase 176: o assistente chama quem tem chamado esperando a sua resposta (js/assistente.js) */
+  if(typeof astIniciarCobranca === "function") astIniciarCobranca();
   const mfaObrigatorio = await exigirMFAObrigatorio(perfil);
 
   /* P0 — alertar diretor/admin sem MFA configurado (quando o cargo não está na lista do obrigatório) */

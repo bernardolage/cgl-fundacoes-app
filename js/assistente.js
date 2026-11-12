@@ -547,13 +547,13 @@ async function abrirConversaAssistente(conversaId){
 
 /* ---------- Ditado (Web Speech API do navegador) ---------- */
 function astDitadoDisponivel(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
-function astAlternarDitado(){
+function astAlternarDitado(alvo){
   if(_astReconhecedor){ astPararDitado(); return; }
   const R = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!R) return;
   const rec = new R();
   rec.lang = "pt-BR"; rec.interimResults = false; rec.continuous = true;
-  const caixa = $("ast-texto");
+  const caixa = $(typeof alvo === "string" ? alvo : "ast-texto");   // fase 176: o cartão da cobrança dita na caixa dele
   rec.addEventListener("result", (ev) => {
     let novo = "";
     for(let k = ev.resultIndex; k < ev.results.length; k++) if(ev.results[k].isFinal) novo += ev.results[k][0].transcript;
@@ -574,9 +574,298 @@ function astMarcarMicrofone(ligado){
   b.title = ligado ? "Parar o ditado" : "Ditar pelo microfone (o texto cai na caixa para você revisar)";
 }
 
+/* ---------- Fase 176: cobrança de resposta de chamado ----------
+   Quem tem chamado "Esperando resposta" à sua espera é chamado por um balão junto do botão Ajuda (sem abrir o painel nem
+   tirar o foco) e responde num cartão dentro do painel, um chamado por vez. Sem IA: a fila vem de chamados_cobranca_resumo()
+   (security invoker, mesma regra de "Esperando minha resposta") e a resposta grava pela chamado_aprovar, como no bloco
+   "Esperando" da ficha. Limites (decisão de 12/11/2026): no máximo 3 chamadas automáticas por dia, 60 min entre elas,
+   balão "Lembrar em 2 h" / "Hoje não", cartão "Lembrar depois" = próximo dia útil; o controle fica em chamado_cobrancas.
+   Não chama: aba escondida, sem atividade nos últimos 2 min, painel aberto, modal ou formulário não salvo, seção Chamados,
+   faixa de sessão expirando. O auditor vê balão e cartão sem os botões de enviar; como não grava cobrança, o adiamento
+   dele fica só na memória da aba. */
+const AST_COB = { primeiraMs: 2 * 60000, tickMs: 5 * 60000, atividadeMs: 2 * 60000, maxDia: 3, intervaloMs: 60 * 60000, balaoMs: 30000, resumo: 400 };
+let _astCobFila = [];          // itens de chamados_cobranca_resumo().fila
+let _astCobMeta = {};          // chamadas_hoje, ultima_chamada_em, fila_adiada_ate
+let _astCobIdx = 0;
+let _astCobAberta = false;     // cartão visível no painel
+let _astCobEditando = false;   // "Editar" a resposta sugerida
+let _astCobAnexos = [];        // File[] escolhidos para o chamado atual
+let _astCobMsg = null;         // { tipo: "ok"|"erro", texto }
+let _astCobExpandido = false;
+let _astCobTimer = null, _astCobBalaoTimer = null;
+let _astCobLocal = { uid: null, chamadas: [], filaAte: 0, chamado: {} };   // auditor (não grava cobrança)
+
+const astCobLeitura = () => typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+function astCobLocal(){
+  const uid = usuarioAtual ? usuarioAtual.id : null;
+  if(_astCobLocal.uid !== uid) _astCobLocal = { uid, chamadas: [], filaAte: 0, chamado: {} };
+  return _astCobLocal;
+}
+
+/* chamado em iniciarApp() depois da política de sessão: primeira olhada em 2 min, depois a cada 5 min e na volta à aba */
+function astIniciarCobranca(){
+  astCobAtualizar();   // só o contador do botão
+  if(_astCobTimer) return;
+  setTimeout(() => astVerificarCobranca(), AST_COB.primeiraMs);
+  _astCobTimer = setInterval(() => astVerificarCobranca(), AST_COB.tickMs);
+  document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") astVerificarCobranca(); });
+}
+
+async function astCobAtualizar(){
+  if(!usuarioAtual || typeof sb === "undefined") return false;
+  const { data, error } = await sb.rpc("chamados_cobranca_resumo");
+  if(error || !data) return false;
+  const loc = astCobLocal(), agora = Date.now();
+  _astCobFila = (Array.isArray(data.fila) ? data.fila : []).filter(c => !(loc.chamado[c.id] > agora));
+  _astCobMeta = data;
+  if(_astCobIdx >= _astCobFila.length) _astCobIdx = 0;
+  astCobContador();
+  return true;
+}
+function astCobContador(){
+  const n = _astCobFila.length, el = $("ast-contador"), btn = $("btn-assistente");
+  if(el){ el.hidden = !n; el.textContent = n > 9 ? "9+" : String(n); }
+  if(btn) btn.setAttribute("aria-label", n ? `Ajuda: ${n} chamado${n > 1 ? "s" : ""} esperando a sua resposta` : "Ajuda: tirar dúvida ou relatar problema");
+}
+
+// o momento é bom para chamar? (nada aqui lê o banco)
+function astCobMomentoLivre(){
+  if(!usuarioAtual || document.visibilityState !== "visible") return false;
+  const ultima = typeof polLer === "function" ? Number(polLer("cgl_ultima_atividade")) || 0 : Date.now();
+  if(Date.now() - ultima > AST_COB.atividadeMs) return false;
+  if($("ast-painel")?.hidden === false || $("ast-balao")) return false;
+  if((typeof appModalAberto === "function" && appModalAberto()) || (typeof appFormSujo === "function" && appFormSujo())) return false;
+  if(document.querySelector(".sidebar-nav button.ativo")?.dataset.secao === "chamados") return false;
+  const faixa = $("app-faixa-sessao");
+  if(faixa && faixa.offsetParent !== null && faixa.style.display !== "none") return false;
+  return true;
+}
+
+async function astVerificarCobranca(){
+  if(!usuarioAtual || document.visibilityState !== "visible") return;
+  if(!(await astCobAtualizar()) || !_astCobFila.length || !astCobMomentoLivre()) return;
+  const loc = astCobLocal(), agora = Date.now(), hoje = hojeISO();
+  const filaAte = Math.max(Date.parse(_astCobMeta.fila_adiada_ate || "") || 0, loc.filaAte);
+  if(filaAte > agora) return;
+  const chamadasLocais = loc.chamadas.filter(t => dataLocalISO(new Date(t)) === hoje);
+  const chamadasHoje = (Number(_astCobMeta.chamadas_hoje) || 0) + chamadasLocais.length;
+  if(chamadasHoje >= AST_COB.maxDia) return;
+  const ultima = Math.max(Date.parse(_astCobMeta.ultima_chamada_em || "") || 0, ...loc.chamadas, 0);
+  if(agora - ultima < AST_COB.intervaloMs) return;
+  await astCobRegistrar("chamado", null);
+  astMostrarBalaoCobranca();
+}
+
+// grava em chamado_cobrancas; para o auditor (barrado pela policy) guarda na memória da aba
+async function astCobRegistrar(acao, chamadoId){
+  const loc = astCobLocal(), agora = Date.now();
+  if(!astCobLeitura()){
+    const { data, error } = await sb.rpc("chamado_cobranca_registrar", { p_acao: acao, p_chamado_id: chamadoId || null });
+    if(!error) return data;
+  }
+  if(acao === "chamado") loc.chamadas.push(agora);
+  else if(acao === "adiado" && !chamadoId) loc.filaAte = agora + 2 * 3600000;
+  else if(acao === "hoje_nao"){ const d = new Date(); d.setHours(24, 0, 0, 0); loc.filaAte = d.getTime(); }
+  else if(acao === "adiado") loc.chamado[chamadoId] = agora + 24 * 3600000;
+  return null;
+}
+
+/* ---------- Balão ---------- */
+function astMostrarBalaoCobranca(){
+  astFecharBalaoCobranca();
+  const n = _astCobFila.length;
+  if(!n) return;
+  const venc = _astCobFila.filter(c => c.vencido).length;
+  const b = document.createElement("div");
+  b.id = "ast-balao"; b.className = "ast-balao"; b.setAttribute("role", "status"); b.setAttribute("aria-live", "polite");
+  b.innerHTML = `<p class="ast-balao-txt">Você tem <strong>${esc(n)} chamado${n > 1 ? "s" : ""}</strong> esperando a sua resposta${venc ? ` <span class="txt-perigo">(${esc(venc)} com prazo vencido)</span>` : ""}.</p>
+    <div class="ast-balao-acoes">
+      <button type="button" class="btn btn-sm" data-ast-balao="responder">Responder agora</button>
+      <button type="button" class="btn-sec btn-sm" data-ast-balao="adiar" title="Volta a avisar daqui a 2 horas">Lembrar em 2 h</button>
+      <button type="button" class="btn-sec btn-sm" data-ast-balao="hoje" title="Não avisa mais hoje">Hoje não</button>
+    </div>`;
+  b.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-ast-balao]")?.dataset.astBalao;
+    if(!a) return;
+    astFecharBalaoCobranca();
+    if(a === "responder") astAbrirCobranca();
+    else astCobRegistrar(a === "hoje" ? "hoje_nao" : "adiado", null);
+  });
+  document.body.appendChild(b);
+  // sem resposta em 30 s: some e conta como "Lembrar em 2 h"
+  _astCobBalaoTimer = setTimeout(() => { if($("ast-balao")){ astFecharBalaoCobranca(); astCobRegistrar("adiado", null); } }, AST_COB.balaoMs);
+}
+function astFecharBalaoCobranca(){
+  if(_astCobBalaoTimer){ clearTimeout(_astCobBalaoTimer); _astCobBalaoTimer = null; }
+  $("ast-balao")?.remove();
+}
+
+/* ---------- Cartão no painel ---------- */
+async function astAbrirCobranca(){
+  if($("ast-painel")?.hidden !== false) abrirAssistente();
+  await astCobAtualizar();
+  _astCobAberta = _astCobFila.length > 0;
+  _astCobIdx = 0; _astCobEditando = false; _astCobAnexos = []; _astCobExpandido = false; _astCobMsg = null;
+  renderCobranca();
+}
+function astCobPrazo(c){
+  const dias = Number(c.dias_vencido) || 0;
+  if(c.vencido) return `<span class="tag vermelho">prazo vencido${dias ? ` há ${esc(dias)} dia${dias > 1 ? "s" : ""}` : ""}</span>`;
+  return c.aguardando_ate ? `<span class="meta">até ${esc(dataBR(c.aguardando_ate).slice(0, 5))}</span>` : "";
+}
+const AST_SVG_CLIPE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.5l-8.5 8.5a5 5 0 01-7-7L14 5.5a3.5 3.5 0 015 5L10.5 19a2 2 0 01-3-3L15 8.5"></path></svg>`;
+const AST_SVG_MIC = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0014 0M12 18v3"></path></svg>`;
+const AST_SVG_X = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>`;
+function astCartaoCobranca(c){
+  const leitura = astCobLeitura();
+  const total = _astCobFila.length;
+  const vai = (typeof CHAM_SUGERE !== "undefined" && CHAM_SUGERE[c.aguardando_sugere]) || "Em análise";
+  const desc = String(c.descricao || "");
+  const longa = desc.length > AST_COB.resumo;
+  const descTxt = _astCobExpandido || !longa ? desc + (desc.length >= 600 ? "…" : "") : desc.slice(0, AST_COB.resumo).replace(/\s+\S*$/, "") + "…";
+  const modulo = typeof chamModuloLabel === "function" && c.modulo ? chamModuloLabel(c.modulo) : (c.modulo || "");
+  const obra = [c.obra_codigo, c.obra_nome].filter(Boolean).join(" — ");
+  const perg = c.pergunta
+    ? `<div class="cham-espera-perg"><span class="tag ${c.sugerida ? "verde" : "ambar"}">${c.sugerida ? "resposta sugerida" : "pergunta"}</span> ${esc(c.pergunta)}</div>`
+    : `<p class="meta">Sem pergunta registrada: abra o chamado para ver o andamento.</p>`;
+  const sugerida = !!(c.sugerida && c.pergunta);
+  const maxAnexos = typeof CHAM_ANEXO_MAX !== "undefined" ? CHAM_ANEXO_MAX : 5;
+  const anexos = _astCobAnexos.length ? `<div class="ast-cob-anexos">${_astCobAnexos.map((f, i) => `<span class="ast-arquivo"><span class="ast-arquivo-nome" title="${esc(f.name)}">${esc(f.name)}</span><button type="button" class="btn-sec btn-sm" data-ast-cob-tirar="${esc(i)}" aria-label="Tirar ${esc(f.name)}">×</button></span>`).join("")}</div>` : "";
+  const mic = astDitadoDisponivel() ? `<button type="button" class="ast-caixa-btn" data-ast-cob-mic="1" aria-label="Ditar a resposta" title="Ditar pelo microfone (o texto cai na caixa para você revisar)">${/* html */ AST_SVG_MIC}</button>` : "";
+  const clipe = `<button type="button" class="ast-caixa-btn" data-ast-cob-anexar="1" aria-label="Anexar arquivo à resposta" title="Anexar arquivo à resposta (até ${esc(maxAnexos)}, 20 MB cada)">${/* html */ AST_SVG_CLIPE}</button>`;
+  let acao = "";
+  if(leitura){
+    acao = `<p class="meta">Usuário de revisão: só leitura, sem enviar resposta.</p>`;
+  } else if(sugerida && !_astCobEditando){
+    acao = `${/* html */ anexos}<div class="ast-cob-botoes"><button type="button" class="btn btn-sucesso btn-sm" id="ast-cob-aprovar" title="Envia a resposta sugerida em seu nome e muda o chamado para ${esc(vai)}">Aprovar e enviar</button>
+      <button type="button" class="btn-sec btn-sm" data-ast-cob-editar="1">Editar</button>${/* html */ clipe}</div>`;
+  } else {
+    acao = `<div class="ast-caixa ast-cob-caixa"><textarea id="ast-cob-texto" rows="3" maxlength="15000" aria-label="${sugerida ? "Resposta sugerida, editável" : "Sua resposta"}" placeholder="Sua resposta">${esc(sugerida ? c.pergunta : "")}</textarea>${/* html */ clipe}${/* html */ mic}</div>${/* html */ anexos}
+      <div class="ast-cob-botoes"><button type="button" class="btn btn-sm" id="ast-cob-enviar">${sugerida ? "Enviar resposta editada" : "Responder e enviar"}</button></div>`;
+  }
+  return `<section class="ast-cartao ast-cob" aria-label="Chamado esperando a sua resposta">
+    <div class="ast-cartao-topo"><span class="rotulo-caps">Esperando a sua resposta</span><span class="meta">${esc(_astCobIdx + 1)} de ${esc(total)}</span>
+      <button type="button" class="btn-sec btn-sm ast-icone-btn" data-ast-cob-fechar="1" aria-label="Fechar o cartão" title="Fechar">${/* html */ AST_SVG_X}</button></div>
+    <div class="ast-cartao-corpo">
+      <div class="ast-cob-titulo">${/* html */ uiCodigo("#" + c.numero)} <strong>${esc(c.titulo || "—")}</strong></div>
+      <div class="ast-cob-meta">${/* html */ astCobPrazo(c)}<span class="meta">Aberto por ${esc(c.aberto_por_nome || "—")}${c.criado_em ? " em " + esc(dataBR(String(c.criado_em).slice(0, 10)).slice(0, 5)) : ""}${modulo ? " · " + esc(modulo) : ""}${obra ? " · " + esc(obra) : ""}</span></div>
+      ${/* html */ perg}
+      ${desc ? `<p class="ast-cob-desc">${esc(descTxt)}${longa ? ` <button type="button" class="link-mini" data-ast-cob-mais="1">${_astCobExpandido ? "ver menos" : "ver mais"}</button>` : ""}</p>` : ""}
+      ${/* html */ acao}
+      ${leitura ? "" : `<p class="meta">Ao enviar, o chamado vai para <strong>${esc(vai)}</strong>.</p>`}
+      <div id="ast-cob-aviso" class="ast-msg-erro" role="alert" hidden></div>
+    </div>
+    <div class="ast-cartao-acoes">
+      <button type="button" class="btn-sec btn-sm" data-ast-cob-abrir="${esc(c.id)}" title="Abre a ficha do chamado com o andamento e os anexos">Abrir chamado</button>
+      ${total > 1 ? `<button type="button" class="btn-sec btn-sm" data-ast-cob-pular="1" title="Vai para o próximo sem adiar este">Pular</button>` : ""}
+      <button type="button" class="btn-sec btn-sm" data-ast-cob-adiar="1" title="Não mostra este chamado até o próximo dia útil">Lembrar depois</button>
+    </div>
+  </section>`;
+}
+function renderCobranca(){
+  const box = $("ast-cobranca");
+  if(!box) return;
+  const c = _astCobFila[_astCobIdx];
+  if(!_astCobAberta || (!c && !_astCobMsg)){ box.hidden = true; box.innerHTML = ""; return; }
+  const erro = _astCobMsg && _astCobMsg.tipo === "erro";
+  const msg = _astCobMsg ? `<div class="${erro ? "ast-msg-erro" : "ast-msg-nota-info"}" role="${erro ? "alert" : "status"}">${esc(_astCobMsg.texto)}</div>` : "";
+  box.hidden = false;
+  box.innerHTML = msg + (c ? astCartaoCobranca(c) : `<div class="ast-msg-nota-info" role="status">Nenhum chamado esperando você. Obrigado!</div>`);
+}
+// re-render guardando o que a pessoa já digitou
+function astCobRerender(){
+  const txt = $("ast-cob-texto")?.value;
+  renderCobranca();
+  if(txt != null && $("ast-cob-texto")) $("ast-cob-texto").value = txt;
+}
+function astCobAvisoCartao(txt){
+  const el = $("ast-cob-aviso");
+  if(el){ el.hidden = !txt; el.textContent = txt || ""; }
+}
+function astCobProximo(removerAtual){
+  if(removerAtual) _astCobFila.splice(_astCobIdx, 1);
+  else _astCobIdx++;
+  if(_astCobIdx >= _astCobFila.length) _astCobIdx = 0;
+  _astCobEditando = false; _astCobAnexos = []; _astCobExpandido = false;
+  astCobContador();
+  renderCobranca();
+}
+
+async function astResponderCobranca(comTexto){
+  const c = _astCobFila[_astCobIdx];
+  if(!c || astCobLeitura()) return;
+  const texto = comTexto ? ($("ast-cob-texto")?.value || "").trim() : null;
+  if(comTexto && !texto){ astCobAvisoCartao("Escreva a resposta."); return; }
+  astPararDitado();
+  if(_astCobAnexos.length){
+    const erro = typeof chamValidarAnexos === "function" ? chamValidarAnexos(_astCobAnexos) : null;
+    if(erro){ astCobAvisoCartao(erro); return; }
+    const falhas = await chamEnviarAnexos(c.id, _astCobAnexos);
+    if(falhas.length){ astCobAvisoCartao("A resposta não foi enviada: o anexo falhou (" + falhas.join("; ") + ")."); return; }
+    // mesma trilha da ficha: o anexo vira um comentário de sistema
+    await sb.from(CHAM_TBL.comentarios).insert({ chamado_id: c.id, [CHAM_COL.autor]: usuarioAtual.id,
+      texto: `[status] anexou ${_astCobAnexos.length} arquivo(s): ${_astCobAnexos.map(f => f.name).join(", ")}` });
+    _astCobAnexos = [];
+  }
+  const { data, error } = await sb.rpc("chamado_aprovar", { p_id: c.id, p_texto: texto });
+  if(error){
+    // alguém respondeu antes ou o status mudou: avisa e tira da fila; erro de rede fica no cartão para tentar de novo
+    if(/não está esperando|outra pessoa|não existe/i.test(error.message || "")){ _astCobMsg = { tipo: "erro", texto: `#${c.numero}: ${error.message}` }; astCobProximo(true); }
+    else astCobAvisoCartao("Não foi possível enviar: " + error.message);
+    return;
+  }
+  astCobRegistrar("respondido", c.id);
+  const st = (typeof CHAM_STATUS !== "undefined" && CHAM_STATUS[data]?.label) || data;
+  _astCobMsg = { tipo: "ok", texto: `Resposta enviada no #${c.numero}. Chamado em ${st}.` };
+  astCobProximo(true);
+  if(typeof dashCarregarFila === "function") dashCarregarFila();
+}
+
+function ligarCobranca(){
+  const box = $("ast-cobranca");
+  if(!box) return;
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.multiple = true; inp.hidden = true; inp.id = "ast-cob-arquivo";
+  if(typeof CHAM_ANEXO_ACCEPT !== "undefined") inp.accept = CHAM_ANEXO_ACCEPT;
+  inp.addEventListener("change", () => {
+    const max = typeof CHAM_ANEXO_MAX !== "undefined" ? CHAM_ANEXO_MAX : 5;
+    _astCobAnexos = _astCobAnexos.concat([...(inp.files || [])]).slice(0, max);
+    inp.value = "";
+    astCobRerender();
+  });
+  box.after(inp);
+  box.addEventListener("click", (e) => {
+    const t = e.target;
+    if(t.closest("[data-ast-cob-fechar]")){ _astCobAberta = false; _astCobMsg = null; renderCobranca(); return; }
+    if(t.closest("#ast-cob-aprovar")){ comBotaoTravado("ast-cob-aprovar", () => astResponderCobranca(false)); return; }
+    if(t.closest("#ast-cob-enviar")){ comBotaoTravado("ast-cob-enviar", () => astResponderCobranca(true)); return; }
+    if(t.closest("[data-ast-cob-editar]")){ _astCobEditando = true; renderCobranca(); $("ast-cob-texto")?.focus(); return; }
+    if(t.closest("[data-ast-cob-mais]")){ _astCobExpandido = !_astCobExpandido; astCobRerender(); return; }
+    if(t.closest("[data-ast-cob-anexar]")){ inp.click(); return; }
+    if(t.closest("[data-ast-cob-mic]")){ astAlternarDitado("ast-cob-texto"); return; }
+    const tirar = t.closest("[data-ast-cob-tirar]");
+    if(tirar){ _astCobAnexos.splice(Number(tirar.dataset.astCobTirar), 1); astCobRerender(); return; }
+    const abrir = t.closest("[data-ast-cob-abrir]");
+    if(abrir){ astVerChamado(abrir.dataset.astCobAbrir); return; }
+    if(t.closest("[data-ast-cob-pular]")){
+      const c = _astCobFila[_astCobIdx]; _astCobMsg = null;
+      if(c) astCobRegistrar("pulado", c.id);
+      astCobProximo(false); return;
+    }
+    if(t.closest("[data-ast-cob-adiar]")){
+      const c = _astCobFila[_astCobIdx];
+      if(c){ astCobRegistrar("adiado", c.id); _astCobMsg = { tipo: "ok", texto: `#${c.numero} volta no próximo dia útil.` }; astCobProximo(true); }
+    }
+  });
+}
+
 /* ---------- Listeners ---------- */
 function ligarAssistente(){
-  $("btn-assistente")?.addEventListener("click", () => { $("ast-painel")?.hidden === false ? fecharAssistente() : abrirAssistente(); });
+  $("btn-assistente")?.addEventListener("click", () => {
+    if($("ast-painel")?.hidden === false){ fecharAssistente(); return; }
+    astFecharBalaoCobranca(); abrirAssistente(); astAbrirCobranca();   // fase 176: a fila aparece ao abrir
+  });
+  ligarCobranca();
   $("ast-fechar")?.addEventListener("click", fecharAssistente);
   $("ast-nova")?.addEventListener("click", () => novaConversaAssistente());
   $("ast-orcamento")?.addEventListener("click", montarOrcamentoAssistente);   // fase 174b
