@@ -61,6 +61,7 @@ function astAjustarCaixa(){
   if(!c) return;
   c.style.height = "auto";
   c.style.height = Math.min(c.scrollHeight, 160) + "px";
+  c.style.overflowY = c.scrollHeight > 160 ? "auto" : "hidden";
 }
 function astHora(quando){
   const d = quando ? new Date(quando) : new Date();

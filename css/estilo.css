@@ -329,75 +329,87 @@ h4 {
    diálogo: o espaçamento vem do contêiner, não do título. */
 .titulo-linha { margin: 0; }
 
-/* ---------- TELA DE LOGIN TEMA GRADIENTE ---------- */
+/* ---------- TELA DE LOGIN (12/11/2026): duas colunas, marca à esquerda e acesso à direita.
+   Maquete do redesign (docs/referencias/redesign-2026-11) com o teal da CGL; textos e números do site.
+   No celular fica só a coluna de acesso. ---------- */
 #tela-login {
   min-height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(circle at top right, #1e293b 0%, #0f172a 100%);   /* fixo nos dois temas: o login é escuro desde sempre */
-  padding: 24px;
+  background: var(--marca-900);
   position: relative;
   overflow: hidden;
 }
-
-/* Elementos gráficos abstratos no fundo do Login */
-#tela-login::before, #tela-login::after {
-  content: "";
-  position: absolute;
-  width: 300px;
-  height: 300px;
-  border-radius: 50%;
-  filter: blur(100px);
-  z-index: 0;
+.login-arte {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--esp-5);
+  padding: 56px 64px;
+  color: var(--txt-sobre);
+  overflow: hidden;
 }
-#tela-login::before {
-  background: color-mix(in srgb, var(--marca-600) 25%, transparent); /* blue */
-  top: -10%;
-  right: -5%;
+.login-arte-forma { position: absolute; top: -6%; right: -4%; width: min(60%, 620px); height: auto; opacity: 0.55; pointer-events: none; }
+.login-arte-forma path { fill: none; stroke: var(--marca-laranja); stroke-width: 0.5; stroke-linejoin: round; }
+.login-selo {
+  position: absolute; top: 48px; left: 64px;
+  display: inline-flex; align-items: center; gap: var(--esp-2);
+  padding: 4px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-pill);
+  font-size: var(--txt-xs); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
 }
-#tela-login::after {
-  background: rgba(217, 119, 6, 0.1); /* amber */
-  bottom: -10%;
-  left: -5%;
-}
+.login-selo-ponto { width: 6px; height: 6px; border-radius: 50%; background: var(--marca-laranja); }
+.login-arte h2 { position: relative; margin: 0; max-width: 520px; font-size: 44px; font-weight: 700; line-height: 1.05; letter-spacing: -0.8px; color: var(--txt-sobre); }
+.login-arte h2 em { color: var(--marca-laranja); font-style: normal; }
+.login-arte p { position: relative; margin: 0; max-width: 460px; font-size: var(--txt-base); line-height: 1.5; color: rgba(255, 255, 255, 0.78); }
+.login-numeros { position: relative; margin: var(--esp-3) 0 0; display: flex; flex-wrap: wrap; gap: 40px; padding-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.14); }
+.login-numeros div { display: flex; flex-direction: column; gap: 2px; }
+.login-numeros dt { font-size: var(--txt-kpi); font-weight: 700; letter-spacing: -0.5px; color: var(--txt-sobre); font-variant-numeric: tabular-nums; }
+.login-numeros dd { margin: 0; font-size: var(--txt-xs); text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255, 255, 255, 0.66); }
 
 .login-card {
-  background: var(--login-card);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--login-card-borda);
-  border-radius: var(--radius-lg);
-  padding: 40px 32px;
-  width: 100%;
-  max-width: 400px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  z-index: 10;
-  position: relative;
-}
-
-.login-logo {
+  width: 460px;
+  flex-shrink: 0;
+  min-height: 100vh;
+  box-sizing: border-box;
   display: flex;
+  flex-direction: column;
   justify-content: center;
-  margin-bottom: 20px;
+  padding: 56px 52px 72px;
+  background: var(--sup-0);
+  box-shadow: -24px 0 48px rgba(0, 0, 0, 0.25);
+  position: relative;
+  z-index: 2;
 }
-.login-logo svg {
-  width: 48px;
-  height: 48px;
-  color: var(--acao-txt);
-}
-
+.login-logo { display: flex; justify-content: flex-start; margin-bottom: var(--esp-6); }
+.login-logo img { width: 112px; height: 112px; object-fit: contain; }
+.login-logo .logo-escuro { display: none; }
+:root[data-theme="escuro"] .login-logo .logo-claro { display: none; }
+:root[data-theme="escuro"] .login-logo .logo-escuro { display: block; }
 .login-card h1 {
+  margin: 0;
   font-size: 26px;
   font-weight: 700;
+  letter-spacing: -0.3px;
   color: var(--marca-txt);
-  text-align: center;
 }
 .login-card .sub {
-  text-align: center;
   color: var(--text-sec);
   font-size: 14px;
   margin: 6px 0 28px;
   font-weight: 400;
+}
+.login-rodape { position: absolute; left: 52px; right: 52px; bottom: 24px; display: flex; justify-content: space-between; gap: var(--esp-2); font-size: var(--txt-xs); color: var(--txt-fraco); }
+@media (max-width: 900px) {
+  .login-arte { display: none; }
+  .login-card { width: 100%; padding: 64px 24px 72px; box-shadow: none; }
+  .login-logo { justify-content: center; }
+  .login-card h1, .login-card .sub { text-align: center; }
+  .login-rodape { left: 24px; right: 24px; }
 }
 
 .campo {
@@ -3017,7 +3029,7 @@ tr.mob-linha-click:hover td, tr.mob-linha-click:focus-visible td { background: v
 .cham-status-bar .stage { padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--borda-forte); font-size: var(--txt-xs); cursor: pointer; background: var(--sup-1); }
 .cham-status-bar .stage.atual { background: var(--acao); color: var(--txt-sobre); border-color: var(--acao); cursor: default; }
 .cham-status-bar .stage[aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
-@media (max-width: 720px){ #btn-reportar-problema span, #btn-val-sens span { display: none; } }
+@media (max-width: 720px){ #btn-val-sens span { display: none; } }
 
 /* ---------- fase 48: anexos do chamado ---------- */
 .cham-anexo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
@@ -4047,7 +4059,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   border: 1px solid var(--borda-forte); border-radius: var(--radius-md); background: var(--sup-0); }
 .ast-caixa:focus-within { border-color: var(--acao); box-shadow: 0 0 0 3px var(--marca-100); }
 .ast-caixa textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 160px; border: 0; outline: none; resize: none; padding: var(--esp-2) 0;
-  background: transparent; font: inherit; font-size: var(--txt-md); color: var(--txt); box-shadow: none; }
+  background: transparent; font: inherit; font-size: var(--txt-md); color: var(--txt); box-shadow: none; overflow-y: hidden; }
 .ast-caixa-btn { width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--txt-sec);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
 .ast-caixa-btn:hover { background: var(--sup-3); color: var(--txt); }
@@ -4078,4 +4090,5 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .ast-icone-btn, .ast-caixa-btn { width: 44px; min-width: 44px; height: 44px; }
   .ast-caixa .btn { height: 44px; }
   .ast-dica { display: none; }
+  .ast-topo-titulo span { display: none; }
 }
