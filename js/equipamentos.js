@@ -104,13 +104,24 @@ function eqpSemUltimoOperador(rdos){
 }
 // S63F-FIM
 
+/* lote S63-g (#284): equipamento vinculado (munck no caminhão) logo abaixo do principal. As linhas vêm da
+   vw_equipamentos_horimetro_semanal: grupo_codigo = TAG do principal (ou a própria) e nivel = 0 principal, 1 vinculado.
+   Testado em scripts/testar-loteS63g.mjs (o teste lê o bloco entre os marcadores). */
+// S63G-INICIO
+function eqpSemOrdenar(lista){
+  const cmp = (a, b) => String(a || "").localeCompare(String(b || ""), "pt-BR", { numeric: true });
+  return [...(lista || [])].sort((a, b) => cmp(a.grupo_codigo || a.codigo, b.grupo_codigo || b.codigo) || ((Number(a.nivel) || 0) - (Number(b.nivel) || 0)) || cmp(a.codigo, b.codigo));
+}
+// S63G-FIM
+
 async function eqpSemCarregar(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando leituras…</p>`;
-  const { data, error } = await sb.from("equipamentos").select("id,codigo,nome,tipo,horimetro,km,status").eq("ativo", true).order("codigo");
+  // lote S63-g (#284): a view traz o principal de cada vinculado (munck no caminhão), que sai logo abaixo dele
+  const { data, error } = await sb.from("vw_equipamentos_horimetro_semanal").select("id,codigo,nome,tipo,horimetro,km,status,equipamento_principal_id,principal_codigo,principal_tipo,grupo_codigo,nivel").eq("ativo", true);
   if(_eqpView !== "semanal") return;   // trocou de visão enquanto carregava
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
-  _eqpSem = (data || []).filter(e => !EQP_FORA_OPERACAO.includes(e.status)).sort(eqpOrd);
+  _eqpSem = eqpSemOrdenar((data || []).filter(e => !EQP_FORA_OPERACAO.includes(e.status)));
   // lote S63-f (#283): último lançamento (data e valor) e operador do último RDO, uma leitura de cada tabela; as duas passam de 1.000 linhas
   const porId = Object.fromEntries(_eqpSem.map(e => [e.id, e]));
   const [lei, rdos] = await Promise.all([
@@ -138,8 +149,9 @@ function eqpSemContarPreenchidas(){
 function eqpSemRender(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   const q = ($("eqp-sem-busca")?.value || "").trim().toLowerCase(), grupo = $("eqp-sem-grupo")?.value || "";
-  const veic = e => ["caminhao", "veiculo"].includes(e.tipo);
-  const linhas = _eqpSem.filter(e => (!grupo || (grupo === "veiculos") === veic(e)) && (!q || `${e.codigo} ${e.nome || ""}`.toLowerCase().includes(q)));
+  // lote S63-g (#284): o vinculado segue o grupo e a busca do principal (filtrar "47" traz o caminhão e o munck)
+  const veic = e => ["caminhao", "veiculo"].includes(e.principal_tipo || e.tipo);
+  const linhas = _eqpSem.filter(e => (!grupo || (grupo === "veiculos") === veic(e)) && (!q || `${e.codigo} ${e.nome || ""} ${e.principal_codigo || ""}`.toLowerCase().includes(q)));
   $("eqp-contador").textContent = `${linhas.length} de ${_eqpSem.length}`;
   const pode = eqpSemPode();
   const bs = $("btn-eqp-sem-salvar"); if(bs) bs.style.display = pode ? "" : "none";
@@ -150,7 +162,7 @@ function eqpSemRender(){
   cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Preencha só as máquinas lidas na semana. A leitura só sobe; valor menor que o atual não é gravado e a correção é pelo Ajustar, com motivo.</p>
     <div class="tabela-rola eqp-sem-rola"><table><thead><tr><th>TAG</th><th>Equipamento</th><th title="Operador do último RDO desta máquina que tem operador na equipe">Operador</th><th class="num" title="Valor atual da máquina; a leitura nova não pode ser menor">Atual</th><th title="Data e valor do último registro de horímetro ou km desta máquina (RDO, OS, checklist, viagem ou semanal)">Último lançamento</th><th>Leitura nova</th><th class="col-acao"></th></tr></thead>
     <tbody>${linhas.map(e => { const km = eqpSemUsaKm(e), un = km ? "km" : "h", atual = eqpSemAtual(e), ult = _eqpSemUltima[e.id], op = _eqpSemOperador[e.id]; return `<tr data-eq="${esc(e.id)}">
-      <td><strong>${esc(e.codigo)}</strong></td><td>${esc(e.nome || "")} <span class="meta">${esc(tipoTxt(e.tipo))}</span></td>
+      <td>${e.principal_codigo ? `<span class="meta" title="Montado em ${esc(e.principal_codigo)}">↳</span> ` : ""}<strong>${esc(e.codigo)}</strong></td><td>${esc(e.nome || "")} <span class="meta">${esc(tipoTxt(e.tipo))}${e.principal_codigo ? ` · no ${esc(e.principal_codigo)}` : ""}</span></td>
       <td>${op ? `${esc(op.nomes.join(", "))} <span class="meta">RDO ${esc(dataBR(op.data))}</span>` : '<span class="meta">—</span>'}</td>
       <td class="num">${atual != null ? esc(num(atual)) + " " + esc(un) : "—"}</td>
       <td>${ult ? `<span class="meta">${esc(dataBR(ult.data))}</span> · ${esc(num(ult.valor))} ${esc(un)}` : '<span class="meta">—</span>'}</td>
@@ -693,6 +705,35 @@ function eqpToggleLocalObra(){
   const t = $("eqp-local-tipo").value;
   $("eqp-local-obra-campo").style.display = (t === "obra" || t === "em_transito" || t === "cliente") ? "" : "none";
 }
+/* lote S63-g (#284): campo "Equipamento principal" da ficha. O vínculo é de um nível só: a lista não traz quem já está
+   vinculado a outro, e quem já é principal de algum fica travado com a lista dos seus vinculados. Só aparece com a coluna no
+   banco (equipamentos.equipamento_principal_id). Caminhões e veículos entram na lista, embora o painel não os mostre. */
+let _eqpPrincipalSeq = 0;
+async function eqpPrincipalPreencher(e, pode){
+  const campo = $("eqp-principal-campo"), sel = $("eqp-principal"), info = $("eqp-principal-info");
+  if(!campo || !sel) return;
+  const seq = ++_eqpPrincipalSeq;
+  sel.dataset.carregado = "0"; sel.dataset.travado = "0";
+  const temCol = Object.prototype.hasOwnProperty.call(e, "equipamento_principal_id") || (_eqpRegistros[0] && Object.prototype.hasOwnProperty.call(_eqpRegistros[0], "equipamento_principal_id"));
+  campo.style.display = temCol ? "" : "none";
+  if(!temCol) return;
+  sel.innerHTML = `<option value="">Carregando…</option>`; sel.disabled = true;
+  if(info) info.textContent = "";
+  const { data, error } = await sb.from("equipamentos").select("id,codigo,nome,ativo,equipamento_principal_id");
+  if(seq !== _eqpPrincipalSeq) return;   // abriu outra ficha enquanto carregava
+  if(error){ sel.innerHTML = `<option value="">—</option>`; if(info) info.textContent = "Lista não carregou: " + error.message; return; }
+  const todos = (data || []).sort(eqpOrd);
+  const vinculados = e.id ? todos.filter(x => x.equipamento_principal_id === e.id) : [];
+  const atual = e.equipamento_principal_id || "";
+  const opcoes = todos.filter(x => x.id !== e.id && !x.equipamento_principal_id && (x.ativo !== false || x.id === atual));
+  sel.innerHTML = `<option value="">— nenhum (equipamento independente) —</option>` + opcoes.map(x => `<option value="${esc(x.id)}">${esc(eqpTag(x))}</option>`).join("");
+  sel.value = atual;
+  sel.dataset.carregado = "1";
+  if(vinculados.length){
+    sel.dataset.travado = "1"; sel.disabled = true;
+    if(info) info.textContent = `Principal de ${vinculados.map(x => x.codigo).join(", ")}: não pode ser vinculado a outro.`;
+  } else sel.disabled = !pode;
+}
 function abrirFichaEquipamento(e){
   _eqpAtual = e; _eqpEditId = e.id || null;
   const novo = !e.id;
@@ -740,6 +781,7 @@ function abrirFichaEquipamento(e){
     $("eqp-tipo-servico").value = e.tipo_servico_padrao || "";
   }
   if(typeof cpbPreencherMaquina === "function") cpbPreencherMaquina(e);   // fase 107a: chip CPU e bloco Computador de bordo
+  eqpPrincipalPreencher(e, pode);   // lote S63-g (#284): equipamento principal (munck no caminhão)
 
   // chips
   $("eqp-chip-tag").textContent = e.codigo || "—";
@@ -1080,6 +1122,9 @@ async function salvarEquipamento(){
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabEquipamento("fiscal"); return; }
   if(fis) Object.assign(reg, fis);
   if($("eqp-tipo-servico-campo") && $("eqp-tipo-servico-campo").style.display !== "none") reg.tipo_servico_padrao = $("eqp-tipo-servico").value || null;   // fase 107a
+  // lote S63-g (#284): vínculo com o principal; quem já é principal de outro fica travado (o banco também recusa)
+  const selPrin = $("eqp-principal");
+  if($("eqp-principal-campo") && $("eqp-principal-campo").style.display !== "none" && selPrin && selPrin.dataset.carregado === "1" && selPrin.dataset.travado !== "1") reg.equipamento_principal_id = selPrin.value || null;
   const atual = _eqpAtual || {};
   const mudouLocal = _eqpEditId && (atual.localizacao_tipo !== reg.localizacao_tipo || (atual.localizacao_obra_id || null) !== reg.localizacao_obra_id || (atual.localizacao_descricao || null) !== reg.localizacao_descricao);
   if(mudouLocal) reg.localizacao_atualizada_em = new Date().toISOString();
