@@ -1060,6 +1060,7 @@ function cmpPreencherSelectsFixos(){
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
   set("cmp-forn", fornOpts("— escolha o fornecedor —")); set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
   set("cmp-cot-forn", fornOpts("— fornecedor da cotação —"));   // fase 102
+  set("cmp-corrforn-forn", fornOpts("— fornecedor certo —"));   // lote S63-c (#245)
   set("cmp-f-etapa", `<option value="">Etapa</option>` + Object.entries(CMP_ETAPA).filter(([k]) => k !== "cancelado").map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join("")
     + `<option value="_atrasado">Recebimento atrasado</option>`);   // fase 102
   set("cmp-obra", obraOpts("— nenhuma —")); set("cmp-f-obra", obraOpts("Obra")); set("cmp-av-obra", obraOpts("— nenhuma —"));
@@ -1068,7 +1069,7 @@ function cmpPreencherSelectsFixos(){
   set("cmp-resp-receb", `<option value="">— o solicitante —</option>` + _cmpPerfis.map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join(""));
   const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
   const ac = $("cmp-av-cat"); if(ac) ac.innerHTML = cmpCatOptions("outro");
-  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-f-forn", "cmp-cot-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53); S45: filtro do painel; fase 102: cotação
+  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-f-forn", "cmp-cot-forn", "cmp-corrforn-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53); S45: filtro do painel; fase 102: cotação
 }
 
 /* ---------- painel ---------- */
@@ -1435,7 +1436,7 @@ function abrirFichaPedido(p){
   $("cmp-resp-receb").value = p.responsavel_recebimento_id || "";
   $("cmp-resp-receb").disabled = !(ed || cmpPodeTrocarResp());
   $("cmp-itens-add").style.display = ed ? "" : "none";
-  _cmpRecsAtual = []; _cmpRecsDe = null;   // fase 133: Reabrir e Voltar a rascunho (enviado) esperam os recebimentos deste pedido
+  _cmpRecsAtual = []; _cmpRecsDe = null; _cmpTitsAtual = []; _cmpTitsDe = null;   // fase 133; lote S63-c: Reabrir e Voltar a rascunho (enviado) esperam os recebimentos deste pedido
   // fase 102 (#160) + lote S55 (#175): "+ Novo produto" / "+ Cadastrar serviço" para quem cadastra; aviso para quem não
   if($("btn-cmp-prod-novo")) $("btn-cmp-prod-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";
   if($("btn-cmp-srv-novo")) $("btn-cmp-srv-novo").style.display = ed && cmpPodeCadastrarProduto() ? "" : "none";
@@ -1737,7 +1738,10 @@ function cmpAtualizarBotoes(){
     "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && (st === "em_cotacao" || (["aguardando_aprovacao","aprovado"].includes(st) && usuarioAtual?.cargo === "diretor") || (st === "enviado" && dirSemRec)),   // hotfix 192e: depois do envio para aprovação, só a diretoria; fase 133: enviado também, sem recebimento
     "btn-cmp-reabrir": !novo && st === "cancelado" && dirSemRec,   // fase 133: cancelado volta a rascunho no mesmo número
     "btn-cmp-pdf-sem-valor": !novo && st !== "cancelado" && st !== "em_cotacao",   // lote S55 (#179): em cotação o PDF já é a solicitação
-    "btn-cmp-cancelar": pode && !novo && !["recebido","cancelado"].includes(st) };
+    "btn-cmp-cancelar": pode && !novo && !["recebido","cancelado"].includes(st),
+    // lote S63-c (#245): fora do rascunho (lá o fornecedor se edita no Cabeçalho), com os títulos lidos e nenhum exportado
+    "btn-cmp-corrigir-forn": !novo && !leitura && cmpPodeCorrigirForn() && !["rascunho","cancelado"].includes(st)
+      && _cmpTitsDe === _cmpEditId && !(_cmpTitsAtual || []).some(t => t.exportado_em) };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   // lote S55 (#179): em cotação o botão PDF gera a "Solicitação de cotação" (sem preço, IPI, total nem aprovador)
   const bPdf = $("btn-cmp-pdf");
@@ -1762,6 +1766,7 @@ async function cmpCarregarFilhas(id){
   const setSb = (bid, n) => { const b = $(bid); if(b){ b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); } };
   const recs = rec.data || [], tits = tit.data || [];
   _cmpRecsAtual = recs;   // lote S57a: "Lançar NF" lê o recebimento daqui
+  _cmpTitsAtual = tits; _cmpTitsDe = tit.error ? null : id;   // lote S63-c: "Corrigir fornecedor" some com título exportado
   _cmpRecsDe = rec.error ? null : id; cmpAtualizarBotoes();   // fase 133: Reabrir / Voltar a rascunho só sem recebimento
   setSb("sb-cmp-rec", recs.length); setSb("sb-cmp-tit", tits.length);
   // lote S57a: "🧾 Lançar NF" (#221) no recebimento confirmado sem título e "↩ Estornar" (#206) no confirmado sem título exportado.
@@ -2733,6 +2738,7 @@ async function cmpAcao(acao){
   }
   if(acao === "receber_servico"){ return abrirReceberServico(); }   // fase 78
   if(acao === "conferir"){ return cmpConferirRecebimentos(); }      // fase 102
+  if(acao === "corrigir_fornecedor"){ return cmpCorrFornAbrir(); }   // lote S63-c (#245)
   let id = _cmpEditId;
   try {
     if(acao === "em_cotacao"){
@@ -3344,6 +3350,33 @@ function cmpPodeTrocarResp(){
   const p = _cmpAtual; if(!p || !cmpPodeOperar() || p.status === "cancelado") return false;
   return ["admin","diretor","comprador"].includes(usuarioAtual?.cargo) || (!!p.criado_por && p.criado_por === usuarioAtual?.id);
 }
+/* Lote S63-c (#245): "Corrigir fornecedor" = pedido_corrigir_fornecedor no banco (has_role admin/comprador; diretor pelo
+   has_role). A RPC troca o fornecedor no pedido, no recebimento e nos títulos não exportados; o front só escolhe e manda. */
+let _cmpTitsAtual = [], _cmpTitsDe = null;
+function cmpPodeCorrigirForn(){
+  if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
+  return ["admin","diretor","comprador"].includes(usuarioAtual?.cargo);
+}
+function cmpCorrFornAbrir(){
+  const p = _cmpAtual; if(!p?.id) return;
+  $("cmp-corrforn-ajuda").textContent = `Pedido ${p.numero || ""}, hoje com ${cmpForn(p.fornecedor_id) || "sem fornecedor"}. O recebimento e os títulos a pagar ainda não exportados passam para o fornecedor escolhido.`;
+  $("cmp-corrforn-forn").value = ""; cmpFornAtualizar("cmp-corrforn-forn");
+  $("cmp-corrforn-motivo").value = "";
+  $("cmp-corrforn-modal").style.display = "";
+}
+function cmpCorrFornFechar(){ $("cmp-corrforn-modal").style.display = "none"; }
+async function cmpCorrFornSalvar(){
+  const id = _cmpEditId, forn = $("cmp-corrforn-forn").value, motivo = $("cmp-corrforn-motivo").value.trim();
+  if(!id) return;
+  if(!forn){ aviso("app-aviso", "Escolha o fornecedor certo.", "erro"); return; }
+  if(motivo.length < 5){ aviso("app-aviso", "Informe o motivo da correção.", "erro"); return; }
+  const { data, error } = await sb.rpc("pedido_corrigir_fornecedor", { p_id: id, p_fornecedor: forn, p_motivo: motivo });
+  if(error){ aviso("app-aviso", (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})s*:s*/, ""), "erro"); return; }
+  cmpCorrFornFechar();
+  aviso("app-aviso", `Fornecedor corrigido: ${Number(data?.recebimentos || 0)} recebimento(s) e ${Number(data?.titulos || 0)} título(s) acertados.`, "ok");
+  await cmpFetchPedidos();
+  await abrirPedido(id);
+}
 function cmpServicosPendentes(){ return _cmpItens.filter(i => i.id && cmpItemServico(i) && Number(i.quantidade_recebida || 0) < Number(i.quantidade || 0)); }
 /* lote S60 (#264): "Receber material" só com material a receber. Item sem categoria conta como material, para nunca ficar sem caminho de recebimento */
 function cmpMateriaisPendentes(){ return _cmpItens.filter(i => i.id && !cmpItemServico(i) && Number(i.quantidade_recebida || 0) < Number(i.quantidade || 0)); }
@@ -3895,7 +3928,11 @@ function ligarCompras(){
   $("btn-cmp-rat-limpar")?.addEventListener("click", cmpRatLimpar);
   $("cmp-rat-busca")?.addEventListener("input", debounce(cmpRatRender, 150));
   $("cmp-rat-modal")?.addEventListener("click", e => { if(e.target.id === "cmp-rat-modal") cmpRatFechar(); });
-  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-cot-forn"].forEach(id => cmpCampoFornecedor(id));   // lote S43 (#53): fornecedor com busca e chip; fase 102: cotação
+  ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-cot-forn", "cmp-corrforn-forn"].forEach(id => cmpCampoFornecedor(id));   // lote S63-c: corrigir fornecedor
+  $("btn-cmp-corrforn-fechar")?.addEventListener("click", cmpCorrFornFechar);
+  $("btn-cmp-corrforn-cancelar")?.addEventListener("click", cmpCorrFornFechar);
+  $("btn-cmp-corrforn-ok")?.addEventListener("click", () => comBotaoTravado("btn-cmp-corrforn-ok", cmpCorrFornSalvar));
+  $("cmp-corrforn-modal")?.addEventListener("click", e => { if(e.target.id === "cmp-corrforn-modal") cmpCorrFornFechar(); });   // lote S43 (#53): fornecedor com busca e chip; fase 102: cotação
   // fase 102: cotações e novo produto a partir do pedido (#160)
   $("btn-cmp-cot-salvar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-cot-salvar", cmpSalvarCotacao));
   $("btn-cmp-cot-cancelar")?.addEventListener("click", cmpFecharFormCotacao);
