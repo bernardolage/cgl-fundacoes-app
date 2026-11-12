@@ -2213,6 +2213,8 @@ async function rdoSalvarAgora(novoStatus){
       if(confirm("Este diário mudou depois que você abriu a ficha. Reabrir agora?\nO que você alterou nesta tela e ainda não foi gravado se perde.")) await abrirRDO(rdoEditId);
       return;
     }
+    // fase 178: clima que a automação gravou enquanto a ficha estava aberta fica, se o usuário não escolheu outro
+    Object.entries(cf.climaNovo || {}).forEach(([k, v]) => { if(!reg[k]) reg[k] = v; });
     novosDoCampo = cf.novos.exec.length + cf.novos.equipe.length + cf.novos.abast.length;
     const { error } = await sb.from("rdo").update(reg).eq("id", rdoEditId);
     if(error){
@@ -2453,8 +2455,16 @@ async function rdoConferirMudancas(id){
     sb.from("rdo_abastecimento").select("*").eq("rdo_id", id)]);
   const falha = cab.error || ex.error || eq.error || ab.error;
   if(falha) return { erro: falha.message };
-  const mudou = [], novos = { exec: [], equipe: [], abast: [] };
-  if(JSON.stringify(RDO_CAB_CONFERE.map(k => cab.data?.[k] ?? null)) !== _rdoSnap.cab) mudou.push("cabeçalho");
+  const mudou = [], novos = { exec: [], equipe: [], abast: [] }, climaNovo = {};
+  /* fase 178: tempo vazio na leitura e preenchido depois (a automação do clima) não é conflito; o salvar mantém o valor
+     gravado se o usuário deixou o campo vazio */
+  const lido = JSON.parse(_rdoSnap.cab);
+  const agora = RDO_CAB_CONFERE.map((k, i) => {
+    const v = cab.data?.[k] ?? null;
+    if((k === "tempo_manha" || k === "tempo_tarde") && lido[i] === null && v !== null){ climaNovo[k] = v; return null; }
+    return v;
+  });
+  if(JSON.stringify(agora) !== _rdoSnap.cab) mudou.push("cabeçalho");
   [["exec", "execução de estaca", ex.data], ["equipe", "equipe", eq.data], ["abast", "abastecimento", ab.data]].forEach(([k, rot, linhas]) => {
     const vistos = new Set();
     (linhas || []).forEach(r => {
@@ -2465,7 +2475,7 @@ async function rdoConferirMudancas(id){
     });
     _rdoSnap[k].forEach((_, i) => { if(!vistos.has(i)) mudou.push(rot + " apagada"); });
   });
-  return { mudou: [...new Set(mudou)], novos };
+  return { mudou: [...new Set(mudou)], novos, climaNovo };
 }
 
 /* fase 94 (#77): chip da máquina do diário, aviso de "sem máquina" e botão "Dividir por máquina" */

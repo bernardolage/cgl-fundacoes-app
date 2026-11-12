@@ -201,8 +201,19 @@ function rdoResumoHTML(d){
     tl.length ? `${tl.length} ${tl.length === 1 ? "registro" : "registros"}` : "");
 
   /* coluna lateral */
-  const clima = (rot, v) => `<div><span class="rotulo-caps">${esc(rot)}</span><strong>${esc(climaTxt(v) || "não informado")}</strong></div>`;
-  const secClima = uiSecao("clima", "Clima e condições", `<div class="rdo-res-clima${d.climaManha || d.climaTarde ? "" : " vazio"}">${/* html */ clima("Manhã", d.climaManha)}${/* html */ clima("Tarde", d.climaTarde)}</div>`);
+  /* fase 178: o período que veio da automação (Open-Meteo, pela localização da obra) leva a marca "automático";
+     se o usuário trocou o valor, a marca some. Sem localização da obra, diz o que falta. */
+  const ca = (d.cab && d.cab.clima_auto) || null;
+  const notaClima = (per, v) => {
+    const a = ca && ca[per];
+    if(v && a && a.valor === v)
+      return `<span class="meta" title="Preenchido sozinho pela Open-Meteo na localização da obra: ${esc(num(a.chuva_mm))} mm de chuva e ${esc(String(a.nuvens_pct))}% de nuvens no período. Pode ser trocado no campo Tempo da ficha.">automático · Open-Meteo</span>`;
+    if(!v && ca && ca.erro === "sem_local")
+      return '<span class="meta" title="O clima é preenchido sozinho quando a obra tem cidade e UF no cadastro ou estacas do Geodigitus com GPS">sem localização da obra</span>';
+    return "";
+  };
+  const clima = (rot, v, per) => `<div><span class="rotulo-caps">${esc(rot)}</span><strong>${esc(climaTxt(v) || "não informado")}</strong>${/* html */ notaClima(per, v)}</div>`;
+  const secClima = uiSecao("clima", "Clima e condições", `<div class="rdo-res-clima${d.climaManha || d.climaTarde ? "" : " vazio"}">${/* html */ clima("Manhã", d.climaManha, "manha")}${/* html */ clima("Tarde", d.climaTarde, "tarde")}</div>`);
 
   const maqs = [d.maquina ? uiLinhaItem(d.maquina.codigo, d.maquina.nome || "máquina do diário", "", "") : ""]
     .concat((d.apoio || []).map(m => uiLinhaItem(m.codigo, (m.nome ? m.nome + " · " : "") + "também lançada nas execuções", "", ""))).join("");
