@@ -1784,7 +1784,9 @@ function cmpAtualizarBotoes(){
   // fase 133: só o cargo diretor, com a migration no banco e os recebimentos do pedido lidos (nenhum vivo)
   const dirSemRec = _cmp133 && !leitura && usuarioAtual?.cargo === "diretor" && !!_cmpEditId && _cmpRecsDe === _cmpEditId
     && !(_cmpRecsAtual || []).some(r => r.status !== "cancelado");
-  const mostra = { "btn-cmp-salvar": (pode && st === "rascunho") || (cmpSoSesmt() && cmpEditavel()),   // lote S63-e "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
+  const mostra = { "btn-cmp-salvar": (pode && st === "rascunho") || (cmpSoSesmt() && cmpEditavel()),   // lote S63-e
+    // o comentário da S63-e engolia as duas chaves abaixo e os botões ficavam sempre à mostra (correção de 12/11/2026)
+    "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
     "btn-cmp-cotacao": pode && st === "rascunho" && !novo && !leitura,   // fase 102: rascunho → em cotação
     "btn-cmp-conferir": !novo && !leitura && _cmpConfAtual.pode && _cmpConfAtual.lista.some(r => r.pendente),   // fase 102
     "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && cmpPodeLancarNf() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180); hotfix 221: a NF é do financeiro, quem recebe usa "Receber material"
