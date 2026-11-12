@@ -409,6 +409,7 @@ function ppjMostrarFolha(folha){
   if(_ppj.obs){ _ppj.obs.disconnect(); _ppj.obs = null; }
   const local = String(folha.local || "").trim();
   visor.innerHTML = `<div class="ppj-ferramentas" id="ppj-ferramentas" hidden></div>
+    <div class="ppl-caixa" id="ppl-caixa" hidden></div>
     <div class="ppj-area" id="ppj-area">
     <div class="ppj-palco" id="ppj-palco" tabindex="0" role="group" aria-label="${esc("Folha do projeto do cliente: " + ppjRotuloFolha(folha))}">
       <img id="ppj-img" class="ppj-img" alt="${esc("Folha do projeto do cliente: " + ppjRotuloFolha(folha))}" draggable="false" />
@@ -713,7 +714,12 @@ function ppjJanelaHTML(guardados){
     <div class="campo"><label for="ppj-arquivo">Arquivo do projeto</label><input id="ppj-arquivo" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" /></div>
     <div id="ppj-guardados">${/* html */ lista}</div>
     <div id="ppj-paginas"></div>`;
-  return `${/* html */ uiSecao("documento", "Enviar projeto", enviar)}${/* html */ uiSecao("foto", "Folhas desta obra", `<div id="ppj-folhas">${/* html */ ppjFolhasHTML(_ppj.folhas || [], temLocais)}</div>`, String((_ppj.folhas || []).length))}`;
+  // fase 175a: planilha e DXF saíram da barra da aba Estacas e ficam aqui, com papel novo (spec 175, "Planilha e DXF")
+  const listas = `<p class="texto-apoio">A folha dá o nome e a posição das estacas; Ø, profundidade de projeto e bloco vêm da lista do projeto. Em obra grande, importe a lista antes de ler a folha: a leitura passa só a posicionar e conferir.</p>
+    <div class="ppl-acoes"><button type="button" class="btn-sec btn-sm" data-ppj-lista="planilha" title="Lista de estacas do projeto em .xlsx, .csv ou colada do Excel (Nome, Ø, profundidade, bloco, local, X e Y). Não usa IA.">Lista de estacas (planilha)</button>
+    <button type="button" class="btn-sec btn-sm" data-ppj-lista="dxf" title="Arquivo do CAD (DXF) enviado pelo projetista: nome e coordenada exatos, sem IA. DWG não é lido.">Tenho o arquivo do CAD (DXF)</button>
+    <button type="button" class="btn-sec btn-sm" data-ppj-lista="orcamento" title="Obra que veio de um orçamento com o projeto lido no assistente: cria as estacas por essa leitura, sem nova leitura paga.">Leitura do orçamento</button></div>`;
+  return `${/* html */ uiSecao("documento", "Enviar projeto", enviar)}${/* html */ uiSecao("foto", "Folhas desta obra", `<div id="ppj-folhas">${/* html */ ppjFolhasHTML(_ppj.folhas || [], temLocais)}</div>`, String((_ppj.folhas || []).length))}${/* html */ uiSecao("documento", "Lista do projeto e CAD", listas)}`;
 }
 /* a lista "Folhas desta obra": renomear, trocar local e revisão, reordenar, desativar, baixar o original e excluir */
 function ppjFolhasHTML(folhas, temLocais){
@@ -857,6 +863,7 @@ async function ppjGerar(){
   envio.ocupado = true;
   if(botao) botao.disabled = true;
   let documentoId = envio.guardado ? envio.guardado.id : null, docNovo = null, feitas = 0, ordem = ppjProximaOrdem(_ppj.folhas);
+  const novas = [];   // as folhas gravadas agora (a leitura é oferecida na primeira)
   const bucket = sb.storage.from(PPJ_BUCKET);
   try {
     for(const m of marcadas){
@@ -882,6 +889,7 @@ async function ppjGerar(){
           ordem: ordem++ }, img.rotacao);
         if(ins.error) throw ins.error;
         _ppj.folhas = (_ppj.folhas || []).concat(ins.data);
+        novas.push(ins.data);
         feitas++;
       } catch(e){
         if(subidos.length) await bucket.remove(subidos);   // não deixa imagem sem folha
@@ -894,6 +902,7 @@ async function ppjGerar(){
     _ppj.lidoEm = Date.now();
     ppjFecharJanela();
     ppjRedesenhar();
+    if(typeof pplLeiOferecer === "function") pplLeiOferecer(novas);   // "Ler os nomes das estacas agora?" (fase 175b)
   } catch(e){
     console.error("Projeto do cliente, envio:", e);
     if(docNovo && !feitas){   // nenhuma folha saiu: o original que subiu agora não fica órfão
@@ -1015,6 +1024,17 @@ function ligarPlantaProjeto(){
     const el = ev.target;
     if(el.closest("#btn-ppj-guardado")) return void ppjAbrirGuardado();
     if(el.closest("#btn-ppj-gerar")) return void ppjGerar();
+    // fase 175a: planilha e DXF (saíram da barra da aba Estacas): a janela fecha e abre a importação de sempre
+    const lista = el.closest("[data-ppj-lista]");
+    if(lista){
+      if(_ppjEnvio && _ppjEnvio.ocupado) return;
+      ppjFecharJanela();
+      const qual = lista.dataset.ppjLista;   // "orcamento": leitura do orçamento da fase 174b, sem leitura paga
+      const fn = qual === "dxf" ? "abrirModalDXF" : qual === "orcamento" ? "abrirModalImport" : "abrirModalXlsx";
+      const abrir = typeof window[fn] === "function" ? window[fn] : null;
+      if(abrir) abrir();
+      return;
+    }
     if(el.closest("#btn-ppj-quais")){
       const r = ppjPaginasPedidas($("ppj-quais")?.value, _ppjEnvio ? _ppjEnvio.total : 0, PPJ_MAX_MINIATURAS);
       if(r.erro){ ppjAvisoJanela(r.erro); return; }

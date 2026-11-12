@@ -4117,3 +4117,27 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .ast-dica { display: none; }
   .ast-topo-titulo span { display: none; }
 }
+
+/* ---------- fase 175b: leitura das estacas da folha (js/planta_leitura.js) ---------- */
+.ppl-caixa { margin: 0 0 var(--esp-2); }
+.ppl-caixa[hidden] { display: none; }
+.ppl-progresso { margin: 0; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--info); border-radius: var(--radius-sm); background: var(--sup-2); font-size: var(--txt-sm); }
+.ppl-oferta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-2); font-size: var(--txt-sm); }
+.ppl-previa { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-3); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-1); }
+.ppl-topo { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--esp-1) var(--esp-3); }
+.ppl-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--esp-2); }
+.ppl-linha { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--esp-2) var(--esp-3); }
+.ppl-linha .campo { display: flex; flex-direction: column; gap: var(--esp-1); margin: 0; }
+.ppl-pilares { display: flex; flex-direction: column; gap: var(--esp-1); }
+.ppl-acoes { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+/* estaca lida e ainda não conferida: borda tracejada (a cor continua sendo o status) */
+.ppj-marca.ppl-a-conferir circle { stroke-dasharray: 3 2; stroke: var(--doc-tinta) !important; stroke-width: 2.5px !important; stroke-opacity: 1 !important; }
+.ppj-marca.ppl-oculta { display: none; }
+/* prévia da leitura: marcadores tracejados, sem clique */
+.ppl-previa-g { pointer-events: none; }
+.ppl-prev circle { fill: none; stroke-width: 2px; stroke-dasharray: 4 3; }
+.ppl-prev text { font-family: var(--font-mono); font-size: 11px; font-weight: 600; fill: var(--doc-tinta); stroke: var(--doc-papel); stroke-width: 3px; paint-order: stroke; }
+.ppl-prev-existe circle { stroke: var(--info); }
+.ppl-prev-nova circle { stroke: var(--sucesso); }
+.ppl-prev-ambigua circle { stroke: var(--aviso); }
+.ppl-prev-sem circle { stroke: var(--perigo); }

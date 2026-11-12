@@ -726,6 +726,8 @@ function raizExportarExcel(){
 function renderEstacas(){
   atualizarFiltroLocal();
   atualizarBotaoRaiz();
+  // fase 175a: "Projeto do cliente" (enviar e ler o projeto, planilha e DXF) só para quem edita estaca
+  { const bp = $("btn-est-projeto-cliente"); if(bp) bp.style.display = typeof ppjPodeEditar === "function" && ppjPodeEditar() ? "" : "none"; }
   // Mini-stats. Fase 140 (decisão 3), regra única de avanço, a mesma de vw_sc_obra_andamento e vw_obra_producao:
   // executadas ÷ (previstas − refuradas). Toda estaca cadastrada conta (inclusive BB), só a refurada sai; obra sem estaca
   // cadastrada usa a meta da aba Parâmetros.
@@ -790,7 +792,7 @@ function renderEstacas(){
   });
 
   if(!filtradas.length){
-    cont.innerHTML = `<p class="vazio">${total ? "Nenhuma estaca encontrada para os filtros." : "Nenhuma estaca cadastrada. Use \"+ Nova\" ou \"📄 Importar PDF\"."}</p>`;
+    cont.innerHTML = `<p class="vazio">${total ? "Nenhuma estaca encontrada para os filtros." : "Nenhuma estaca cadastrada. Use \"Projeto do cliente\" para lançar as estacas do projeto, ou \"+ Nova\"."}</p>`;
     return;
   }
   const linhas = filtradas.map(e => {
@@ -1002,90 +1004,6 @@ async function excluirEstaca(id){
   if(error){ aviso("app-aviso","Não foi possível excluir: "+error.message,"erro"); return; }
   aviso("app-aviso","Estaca excluída.","ok");
   await carregarEstacasDaObra(obraEditId);
-}
-
-/* ---------- Importação via PDF ---------- */
-async function importarEstacasPDF(){
-  const fileInput = $("est-import-file");
-  if(!fileInput.files || !fileInput.files[0]){
-    avisoImport("Selecione um PDF.","erro");
-    return;
-  }
-  if(!obraEditId){
-    avisoImport("Salve a obra primeiro.","erro");
-    return;
-  }
-  const btn = $("btn-est-extrair");
-  btn.disabled = true;
-  btn.textContent = "Extraindo... (~30s)";
-
-  try {
-    // Converte PDF → base64 (FileReader é nativo e não estoura a pilha como o
-    // loop byte a byte). Limite de 20 MB: acima disso a Edge Function/IA falha
-    // com erro genérico — melhor avisar antes de enviar.
-    const file = fileInput.files[0];
-    const LIMITE_MB = 20;
-    if(file.size > LIMITE_MB * 1024 * 1024){
-      avisoImport(`PDF com ${(file.size/1048576).toFixed(1)} MB — o limite é ${LIMITE_MB} MB. Exporte só as folhas de locação/tabela de estacas.`,"erro");
-      return;
-    }
-    const base64 = await new Promise((res, rej) => {
-      const fr = new FileReader();
-      fr.onload  = () => res(String(fr.result).split(",")[1] || "");
-      fr.onerror = () => rej(new Error("Falha ao ler o arquivo."));
-      fr.readAsDataURL(file);
-    });
-
-    // Chama Edge Function (extrai body mesmo em erro pra ver mensagem real)
-    // lote S40 (#28): PDF com centenas de estacas não termina dentro do limite da function (sem log em
-    // ia_chamadas); até a fase 71 dividir o arquivo no servidor, a orientação é dividir antes de enviar
-    const { data, error } = await iaInvocarComLimite("extrair-estacas-pdf", { pdf_base64: base64, obra_id: obraEditId },
-      "A leitura passou do limite de tempo. Arquivo com muitas estacas (mais de ~150) não cabe numa leitura só: divida o PDF em partes de 3 ou 4 páginas e importe uma de cada vez.");
-    if(error){
-      // supabase-js esconde o body de erro; tenta lê-lo via ctx.context
-      let detalhe = error.message || "";
-      try {
-        if(error.context && typeof error.context.json === "function"){
-          const body = await error.context.json();
-          if(body){
-            detalhe = body.error || JSON.stringify(body);
-            if(body.sugestao) detalhe += "\n💡 " + body.sugestao;
-            if(body.stop_reason) detalhe += " (motivo: " + body.stop_reason + ")";
-            if(body.detalhes) detalhe += "\n" + body.detalhes;
-          }
-        }
-      } catch(_e) { /* ignora */ }
-      throw new Error(detalhe || "Falha ao chamar a leitura por IA (sem resposta da função).");
-    }
-    if(data && data.error){
-      let msg = data.error;
-      if(data.sugestao) msg += "\n💡 " + data.sugestao;
-      throw new Error(msg);
-    }
-
-    const estacas = data.estacas || [];
-    if(!estacas.length){
-      avisoImport("A IA não encontrou estacas neste PDF. Tente outro arquivo ou cadastre manualmente.","erro");
-      return;
-    }
-    _importPreview = estacas.map(extrairCoordsDaObservacao);
-    _importUnidade = FATOR_UNIDADE[data.unidade_coordenadas] ? data.unidade_coordenadas : unidadeSugeridaCoords(_importPreview);
-    _importNomenclatura = data.agrupamento_nomenclatura || null;
-    // Local do projeto (prancha inteira de um local): aplica às estacas que vieram sem
-    if(data.local_detectado) _importPreview.forEach(e => { if(!e.local) e.local = data.local_detectado; });
-    // Junta aviso da heurística (se houver) às observações da IA
-    let obsCombinadas = data.observacoes || "";
-    if(data._aviso_confusao){
-      obsCombinadas = `⚠️ ${data._aviso_confusao}\n\n${obsCombinadas}`;
-    }
-    renderImportPreview(obsCombinadas, data._meta);
-    avisoImport(`IA extraiu ${estacas.length} estacas. Revise antes de importar.`, "ok");
-  } catch(err){
-    avisoImport("Erro ao extrair: " + (err?.message || "falha sem mensagem na leitura por IA"),"erro");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Extrair com IA";
-  }
 }
 
 /* lote S45 (L6): o tipo que a prévia mostra é o que grava. Estaca sem tipo no arquivo (IA, planilha) herda o tipo
@@ -1306,11 +1224,10 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
 function avisoImport(msg, tipo){
   aviso("app-aviso", msg, tipo);
   const aberto = id => { const m = $(id); return m && m.style.display !== "none" && m.style.display !== ""; };
-  // lote S45 (L6): cada modal tem o seu aviso — est-pdf-aviso no PDF, est-dxf-aviso no DXF, est-xlsx-aviso na planilha;
-  // est-import-aviso é o do modal de reconciliação (fallback). Antes o est-dxf-aviso estava dentro do modal do PDF e
-  // o erro do DXF aparecia num modal fechado.
+  // lote S45 (L6): cada modal tem o seu aviso — est-dxf-aviso no DXF, est-xlsx-aviso na planilha (o modal do PDF saiu na
+  // fase 175a); est-import-aviso é o do modal de reconciliação (fallback).
   const alvo = aberto("est-dxf-modal") ? $("est-dxf-aviso") : aberto("est-xlsx-modal") ? $("est-xlsx-aviso")
-             : aberto("est-import-modal") ? $("est-pdf-aviso") : null;
+             : null;
   const el = alvo || $("est-import-aviso");
   if(!el) return;
   el.textContent = msg;
@@ -1408,7 +1325,6 @@ function abrirModalImport(){
     return;
   }
   _importPreview = [];
-  $("est-import-file").value = "";
   $("est-import-preview").style.display = "none";
   $("est-import-preview-conteudo").innerHTML = "";
   $("est-import-modal").style.display = "flex";
@@ -1426,7 +1342,8 @@ async function estOfertaLeituraOrc(){
   const obraId = obraEditId;
   try {
     const { data, error } = await sb.functions.invoke("extrair-estacas-pdf", { body: { somente_cache: true, so_contar: true, obra_id: obraId } });
-    if(error || obraId !== obraEditId || !data?.leituras?.length) return;
+    if(obraId !== obraEditId) return;
+    if(error || !data?.leituras?.length){ avisoImport("Esta obra não tem projeto lido no orçamento. Leia a folha pela planta (Ler estacas da folha).", "aviso"); return; }
     const n = data.leituras.reduce((s, l) => s + (Number(l.estacas) || 0), 0);
     $("est-orc-leitura-txt").textContent = `Projeto lido no orçamento ${data.orcamento_numero || ""}: ${n} estaca(s). Sem nova leitura paga.`;
     box.style.display = "";
@@ -1445,10 +1362,10 @@ async function estUsarLeituraOrc(){
     }
     if(data?.error) throw new Error(data.error);
     const leituras = data?.leituras || [];
-    if(!leituras.length){ avisoImport(`Nenhuma leitura do projeto guardada (${data?.motivo || "sem leitura"}). Envie o PDF abaixo.`, "aviso"); return; }
+    if(!leituras.length){ avisoImport(`Nenhuma leitura do projeto guardada (${data?.motivo || "sem leitura"}). Leia a folha pela planta (Ler estacas da folha).`, "aviso"); return; }
     const r0 = leituras[0].resultado || {};
     _importPreview = leituras.flatMap(l => Array.isArray(l.resultado?.estacas) ? l.resultado.estacas : []).map(e => extrairCoordsDaObservacao({ ...e }));
-    if(!_importPreview.length){ avisoImport("A leitura do orçamento não tem estacas. Envie o PDF abaixo.", "aviso"); return; }
+    if(!_importPreview.length){ avisoImport("A leitura do orçamento não tem estacas. Leia a folha pela planta (Ler estacas da folha).", "aviso"); return; }
     _importUnidade = FATOR_UNIDADE[r0.unidade_coordenadas] ? r0.unidade_coordenadas : unidadeSugeridaCoords(_importPreview);
     _importNomenclatura = r0.agrupamento_nomenclatura || null;
     if(r0.local_detectado) _importPreview.forEach(e => { if(!e.local) e.local = r0.local_detectado; });
@@ -4132,9 +4049,12 @@ function ligarEstacas(){
     if(!obraEditId){ aviso("app-aviso","Salve a obra antes de adicionar estacas.","erro"); return; }
     abrirModalEstaca(null);
   });
-  $("btn-est-importar")?.addEventListener("click", abrirModalImport);
-  $("btn-est-orc-leitura")?.addEventListener("click", estUsarLeituraOrc);   // fase 174b
-  $("btn-est-importar-dxf")?.addEventListener("click", abrirModalDXF);
+  // fase 175a: planilha e DXF abrem de dentro da janela Projeto do cliente (js/planta_projeto.js); a barra tem o botão dela
+  $("btn-est-projeto-cliente")?.addEventListener("click", () => { if(typeof ppjAbrirJanela === "function") ppjAbrirJanela(); });
+  // fase 175a: do modal antigo do PDF fica só a leitura do orçamento (fase 174b), aberta pela janela Projeto do cliente
+  $("btn-est-orc-leitura")?.addEventListener("click", estUsarLeituraOrc);
+  $("btn-est-confirmar-import")?.addEventListener("click", () => comBotaoTravado("btn-est-confirmar-import", confirmarImportEstacas));
+  $("btn-est-fechar-import")?.addEventListener("click", fecharModalImport);
   $("btn-est-fechar-dxf")?.addEventListener("click", fecharModalDXF);
   $("btn-dxf-ler")?.addEventListener("click", lerArquivoDXF);
   $("btn-est-dxf-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-est-dxf-confirmar", confirmarImportEstacas));
@@ -4149,11 +4069,7 @@ function ligarEstacas(){
   $("btn-esth-xlsx")?.addEventListener("click", esthExportarXlsx);
   $("btn-exec-historico")?.addEventListener("click", () => { const id = _estExecId; fecharModalExecucao(); if(id) abrirModalEstaca(id, "historico"); });
 
-  $("btn-est-extrair")?.addEventListener("click", importarEstacasPDF);
-  $("btn-est-confirmar-import")?.addEventListener("click", () => comBotaoTravado("btn-est-confirmar-import", confirmarImportEstacas));
-  $("btn-est-fechar-import")?.addEventListener("click", fecharModalImport);
   // lote S43 (#55): planilha
-  $("btn-est-importar-xlsx")?.addEventListener("click", abrirModalXlsx);
   $("btn-est-fechar-xlsx")?.addEventListener("click", fecharModalXlsx);
   $("btn-est-xlsx-modelo")?.addEventListener("click", baixarModeloXlsx);
   $("btn-est-xlsx-ler")?.addEventListener("click", () => comBotaoTravado("btn-est-xlsx-ler", lerPlanilhaEstacas));

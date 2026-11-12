@@ -9,94 +9,97 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="db6297f" />
+<meta name="app-versao" content="11dc077" />
 <!-- pré-carregamento (gerado pelo scripts/preload-scripts.sh na publicação): baixa os scripts em paralelo -->
-<link rel="preload" as="script" href="js/tema.js?v=db6297f">
-<link rel="preload" as="script" href="vendor/supabase-js-2.118.0.min.js?v=db6297f">
-<link rel="preload" as="script" href="vendor/xlsx-0.20.3.full.min.js?v=db6297f">
-<link rel="preload" as="script" href="vendor/html2pdf-0.10.1.bundle.min.js?v=db6297f">
-<link rel="preload" as="script" href="js/core.js?v=db6297f">
-<link rel="preload" as="script" href="js/ui.js?v=db6297f">
-<link rel="preload" as="script" href="js/historico.js?v=db6297f">
-<link rel="preload" as="script" href="js/fiscal.js?v=db6297f">
-<link rel="preload" as="script" href="js/fiscal_ncm.js?v=db6297f">
-<link rel="preload" as="script" href="js/clientes.js?v=db6297f">
-<link rel="preload" as="script" href="js/fornecedores.js?v=db6297f">
-<link rel="preload" as="script" href="js/apropriacoes.js?v=db6297f">
-<link rel="preload" as="script" href="js/funcionarios.js?v=db6297f">
-<link rel="preload" as="script" href="js/funcionarios_importar.js?v=db6297f">
-<link rel="preload" as="script" href="js/funcionarios_lotacao.js?v=db6297f">
-<link rel="preload" as="script" href="js/rh_documentos.js?v=db6297f">
-<link rel="preload" as="script" href="js/servicos.js?v=db6297f">
-<link rel="preload" as="script" href="js/produtos.js?v=db6297f">
-<link rel="preload" as="script" href="js/estoque.js?v=db6297f">
-<link rel="preload" as="script" href="js/separacoes.js?v=db6297f">
-<link rel="preload" as="script" href="js/epi.js?v=db6297f">
-<link rel="preload" as="script" href="js/compras.js?v=db6297f">
-<link rel="preload" as="script" href="js/requisicoes.js?v=db6297f">
-<link rel="preload" as="script" href="js/orcamentos.js?v=db6297f">
-<link rel="preload" as="script" href="js/propostas.js?v=db6297f">
-<link rel="preload" as="script" href="js/contratos.js?v=db6297f">
-<link rel="preload" as="script" href="js/contas_pagar.js?v=db6297f">
-<link rel="preload" as="script" href="js/centros_custo.js?v=db6297f">
-<link rel="preload" as="script" href="js/carteira.js?v=db6297f">
-<link rel="preload" as="script" href="js/obras.js?v=db6297f">
-<link rel="preload" as="script" href="js/frota.js?v=db6297f">
-<link rel="preload" as="script" href="js/viagens.js?v=db6297f">
-<link rel="preload" as="script" href="js/equipamentos.js?v=db6297f">
-<link rel="preload" as="script" href="js/vendas_bens.js?v=db6297f">
-<link rel="preload" as="script" href="js/acessorios.js?v=db6297f">
-<link rel="preload" as="script" href="js/reparos.js?v=db6297f">
-<link rel="preload" as="script" href="js/manutencao.js?v=db6297f">
-<link rel="preload" as="script" href="js/fabricacao.js?v=db6297f">
-<link rel="preload" as="script" href="js/mobilizacoes.js?v=db6297f">
-<link rel="preload" as="script" href="js/mobilizacoes_contrato.js?v=db6297f">
-<link rel="preload" as="script" href="js/estacas.js?v=db6297f">
-<link rel="preload" as="script" href="js/estacas_prof_projeto.js?v=db6297f">
-<link rel="preload" as="script" href="js/obra_abas.js?v=db6297f">
-<link rel="preload" as="script" href="js/obra_faixa.js?v=db6297f">
-<link rel="preload" as="script" href="js/medicoes.js?v=db6297f">
-<link rel="preload" as="script" href="js/movimentacoes.js?v=db6297f">
-<link rel="preload" as="script" href="js/rdo_import_rg113.js?v=db6297f">
-<link rel="preload" as="script" href="js/rdo.js?v=db6297f">
-<link rel="preload" as="script" href="js/rdo_resumo.js?v=db6297f">
-<link rel="preload" as="script" href="js/rdo_import_maya.js?v=db6297f">
-<link rel="preload" as="script" href="js/geodigitus.js?v=db6297f">
-<link rel="preload" as="script" href="js/estaca_perfil.js?v=db6297f">
-<link rel="preload" as="script" href="js/estacas_gps.js?v=db6297f">
-<link rel="preload" as="script" href="js/estacas_perfuracao.js?v=db6297f">
-<link rel="preload" as="script" href="js/planta_projeto.js?v=db6297f">
-<link rel="preload" as="script" href="js/planta_posicoes.js?v=db6297f">
-<link rel="preload" as="script" href="js/computadores_bordo.js?v=db6297f">
-<link rel="preload" as="script" href="js/planta_vinculo.js?v=db6297f">
-<link rel="preload" as="script" href="js/planta_sequencia.js?v=db6297f">
-<link rel="preload" as="script" href="js/matriz_acessos_dados.js?v=db6297f">
-<link rel="preload" as="script" href="js/matriz_acessos.js?v=db6297f">
-<link rel="preload" as="script" href="js/usuarios.js?v=db6297f">
-<link rel="preload" as="script" href="js/chamados.js?v=db6297f">
-<link rel="preload" as="script" href="js/assistente.js?v=db6297f">
-<link rel="preload" as="script" href="js/apontamentos.js?v=db6297f">
-<link rel="preload" as="script" href="js/apontamentos_quadro.js?v=db6297f">
-<link rel="preload" as="script" href="js/dash_explica.js?v=db6297f">
-<link rel="preload" as="script" href="js/dashboard.js?v=db6297f">
-<link rel="preload" as="script" href="js/rh_horas.js?v=db6297f">
-<link rel="preload" as="script" href="js/sesmt.js?v=db6297f">
-<link rel="preload" as="script" href="js/patrimonio.js?v=db6297f">
-<link rel="preload" as="script" href="js/sesmt_ocorrencias.js?v=db6297f">
-<link rel="preload" as="script" href="js/init.js?v=db6297f">
+<link rel="preload" as="script" href="js/tema.js?v=11dc077">
+<link rel="preload" as="script" href="vendor/supabase-js-2.118.0.min.js?v=11dc077">
+<link rel="preload" as="script" href="vendor/xlsx-0.20.3.full.min.js?v=11dc077">
+<link rel="preload" as="script" href="vendor/html2pdf-0.10.1.bundle.min.js?v=11dc077">
+<link rel="preload" as="script" href="js/core.js?v=11dc077">
+<link rel="preload" as="script" href="js/ui.js?v=11dc077">
+<link rel="preload" as="script" href="js/historico.js?v=11dc077">
+<link rel="preload" as="script" href="js/fiscal.js?v=11dc077">
+<link rel="preload" as="script" href="js/fiscal_ncm.js?v=11dc077">
+<link rel="preload" as="script" href="js/clientes.js?v=11dc077">
+<link rel="preload" as="script" href="js/fornecedores.js?v=11dc077">
+<link rel="preload" as="script" href="js/apropriacoes.js?v=11dc077">
+<link rel="preload" as="script" href="js/funcionarios.js?v=11dc077">
+<link rel="preload" as="script" href="js/funcionarios_importar.js?v=11dc077">
+<link rel="preload" as="script" href="js/funcionarios_lotacao.js?v=11dc077">
+<link rel="preload" as="script" href="js/rh_documentos.js?v=11dc077">
+<link rel="preload" as="script" href="js/servicos.js?v=11dc077">
+<link rel="preload" as="script" href="js/produtos.js?v=11dc077">
+<link rel="preload" as="script" href="js/estoque.js?v=11dc077">
+<link rel="preload" as="script" href="js/separacoes.js?v=11dc077">
+<link rel="preload" as="script" href="js/epi.js?v=11dc077">
+<link rel="preload" as="script" href="js/compras.js?v=11dc077">
+<link rel="preload" as="script" href="js/requisicoes.js?v=11dc077">
+<link rel="preload" as="script" href="js/orcamentos.js?v=11dc077">
+<link rel="preload" as="script" href="js/propostas.js?v=11dc077">
+<link rel="preload" as="script" href="js/contratos.js?v=11dc077">
+<link rel="preload" as="script" href="js/contas_pagar.js?v=11dc077">
+<link rel="preload" as="script" href="js/centros_custo.js?v=11dc077">
+<link rel="preload" as="script" href="js/carteira.js?v=11dc077">
+<link rel="preload" as="script" href="js/obras.js?v=11dc077">
+<link rel="preload" as="script" href="js/frota.js?v=11dc077">
+<link rel="preload" as="script" href="js/viagens.js?v=11dc077">
+<link rel="preload" as="script" href="js/equipamentos.js?v=11dc077">
+<link rel="preload" as="script" href="js/vendas_bens.js?v=11dc077">
+<link rel="preload" as="script" href="js/acessorios.js?v=11dc077">
+<link rel="preload" as="script" href="js/reparos.js?v=11dc077">
+<link rel="preload" as="script" href="js/manutencao.js?v=11dc077">
+<link rel="preload" as="script" href="js/fabricacao.js?v=11dc077">
+<link rel="preload" as="script" href="js/mobilizacoes.js?v=11dc077">
+<link rel="preload" as="script" href="js/mobilizacoes_contrato.js?v=11dc077">
+<link rel="preload" as="script" href="js/estacas.js?v=11dc077">
+<link rel="preload" as="script" href="js/estacas_prof_projeto.js?v=11dc077">
+<link rel="preload" as="script" href="js/obra_abas.js?v=11dc077">
+<link rel="preload" as="script" href="js/obra_faixa.js?v=11dc077">
+<link rel="preload" as="script" href="js/medicoes.js?v=11dc077">
+<link rel="preload" as="script" href="js/movimentacoes.js?v=11dc077">
+<link rel="preload" as="script" href="js/rdo_import_rg113.js?v=11dc077">
+<link rel="preload" as="script" href="js/rdo.js?v=11dc077">
+<link rel="preload" as="script" href="js/rdo_resumo.js?v=11dc077">
+<link rel="preload" as="script" href="js/rdo_import_maya.js?v=11dc077">
+<link rel="preload" as="script" href="js/geodigitus.js?v=11dc077">
+<link rel="preload" as="script" href="js/estaca_perfil.js?v=11dc077">
+<link rel="preload" as="script" href="js/estacas_gps.js?v=11dc077">
+<link rel="preload" as="script" href="js/estacas_perfuracao.js?v=11dc077">
+<link rel="preload" as="script" href="js/planta_projeto.js?v=11dc077">
+<link rel="preload" as="script" href="js/planta_posicoes.js?v=11dc077">
+<link rel="preload" as="script" href="js/computadores_bordo.js?v=11dc077">
+<link rel="preload" as="script" href="js/planta_vinculo.js?v=11dc077">
+<link rel="preload" as="script" href="js/planta_sequencia.js?v=11dc077">
+<link rel="preload" as="script" href="js/planta_detector.js?v=11dc077">
+<link rel="preload" as="script" href="js/planta_leitura_regras.js?v=11dc077">
+<link rel="preload" as="script" href="js/planta_leitura.js?v=11dc077">
+<link rel="preload" as="script" href="js/matriz_acessos_dados.js?v=11dc077">
+<link rel="preload" as="script" href="js/matriz_acessos.js?v=11dc077">
+<link rel="preload" as="script" href="js/usuarios.js?v=11dc077">
+<link rel="preload" as="script" href="js/chamados.js?v=11dc077">
+<link rel="preload" as="script" href="js/assistente.js?v=11dc077">
+<link rel="preload" as="script" href="js/apontamentos.js?v=11dc077">
+<link rel="preload" as="script" href="js/apontamentos_quadro.js?v=11dc077">
+<link rel="preload" as="script" href="js/dash_explica.js?v=11dc077">
+<link rel="preload" as="script" href="js/dashboard.js?v=11dc077">
+<link rel="preload" as="script" href="js/rh_horas.js?v=11dc077">
+<link rel="preload" as="script" href="js/sesmt.js?v=11dc077">
+<link rel="preload" as="script" href="js/patrimonio.js?v=11dc077">
+<link rel="preload" as="script" href="js/sesmt_ocorrencias.js?v=11dc077">
+<link rel="preload" as="script" href="js/init.js?v=11dc077">
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=db6297f" />
+<link rel="stylesheet" href="css/estilo.css?v=11dc077" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=db6297f"></script>
+<script src="js/tema.js?v=11dc077"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=db6297f"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=db6297f"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=db6297f"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=11dc077"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=11dc077"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=11dc077"></script>
 </head>
 <body>
 
@@ -3339,9 +3342,7 @@
                   <button type="button" class="serv-view-btn" data-est-view="gps" id="btn-est-view-gps" style="display:none;" title="Onde o computador de bordo registrou cada estaca. Posição aproximada.">GPS</button>
                 </div>
                 <button type="button" class="btn-sec" id="btn-est-reconciliar" style="margin-left:8px;display:none;">Conferência <span id="est-reconciliar-badge" style="background:var(--perigo);color:var(--txt-sobre);border-radius:10px;padding:1px 7px;font-size:var(--txt-xs);margin-left:4px;"></span></button>
-                <button type="button" class="btn-sec" id="btn-est-importar">Importar PDF</button>
-                <button type="button" class="btn-sec" id="btn-est-importar-xlsx" title="Projeto sem numeração legível pela IA: preencha o modelo .xlsx (ou cole do Excel) e importe (chamado #55)">Importar planilha</button>
-                <button type="button" class="btn-sec" id="btn-est-importar-dxf">Importar DXF</button>
+                <button type="button" class="btn-sec" id="btn-est-projeto-cliente" style="display:none;" title="Enviar o PDF do projeto do cliente, ler as estacas da folha, ou importar a planilha ou o DXF do projeto">Projeto do cliente</button>
                 <button type="button" class="btn" id="btn-est-nova">+ Nova</button>
               </div>
               <div class="serv-filtros">
@@ -3670,29 +3671,17 @@
         </div>
       </div>
 
-      <!-- Modal: Importar PDF (IA) -->
+      <!-- Modal: estacas pela leitura do orçamento (fase 174b). O envio de PDF saiu na fase 175a; abre pela janela Projeto do cliente -->
       <div id="est-import-modal" class="modal-fundo" style="display:none;">
         <div style="background:var(--sup-0);max-width:920px;width:95%;max-height:90vh;border-radius:8px;padding:20px;display:flex;flex-direction:column;overflow-y:auto;">
           <div class="modal-topo">
-            <h3 class="titulo-linha">📄 Importar estacas de planta PDF</h3>
+            <h3 class="titulo-linha">Estacas pela leitura do orçamento</h3>
             <button type="button" class="btn-sec" id="btn-est-fechar-import">×</button>
           </div>
-          <p class="texto-apoio">
-            Envie um PDF de planta de locação (ou tabela de estacas). A IA Claude vai extrair número, bloco, diâmetro, profundidade e tipo.<br>
-            <strong>Dica:</strong> exporte do AutoCAD com todas as layers visíveis. A extração leva ~30 segundos.
-          </p>
+          <p class="texto-apoio">Usa a leitura do projeto feita no orçamento, sem nova leitura paga. Nada é gravado antes de Importar todas.</p>
           <div id="est-orc-leitura" class="aviso atencao est-orc-leitura" style="display:none;">
             <span id="est-orc-leitura-txt">Esta obra veio de um orçamento.</span>
             <button type="button" class="btn btn-sm" id="btn-est-orc-leitura" title="Usa a leitura do projeto feita no orçamento, sem nova leitura paga; nada é gravado antes de Importar">Criar as estacas previstas pela leitura do orçamento</button>
-          </div>
-          <div class="grade">
-            <div class="campo largo">
-              <label>Arquivo PDF</label>
-              <input id="est-import-file" type="file" accept="application/pdf" />
-            </div>
-          </div>
-          <div class="form-acoes compacta">
-            <button type="button" class="btn" id="btn-est-extrair">Extrair com IA</button>
           </div>
           <div id="est-import-preview" class="bloco-preview" style="display:none;">
             <h4>Preview — revise antes de importar</h4>
@@ -3701,7 +3690,7 @@
               <button type="button" class="btn btn-sucesso" id="btn-est-confirmar-import">Importar todas</button>
             </div>
           </div>
-          <div id="est-pdf-aviso" class="aviso" role="alert"></div><!-- lote S45 (L6): aviso deste modal (antes o est-dxf-aviso estava aqui) -->
+          <div id="est-pdf-aviso" class="aviso" role="alert"></div>
         </div>
       </div>
 
@@ -7518,80 +7507,84 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=db6297f"></script>
-<script src="js/ui.js?v=db6297f"></script>
+<script src="js/core.js?v=11dc077"></script>
+<script src="js/ui.js?v=11dc077"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=db6297f"></script>
+<script src="js/historico.js?v=11dc077"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=db6297f"></script>
-<script src="js/fiscal_ncm.js?v=db6297f"></script>
+<script src="js/fiscal.js?v=11dc077"></script>
+<script src="js/fiscal_ncm.js?v=11dc077"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=db6297f"></script>
-<script src="js/fornecedores.js?v=db6297f"></script>
-<script src="js/apropriacoes.js?v=db6297f"></script>
-<script src="js/funcionarios.js?v=db6297f"></script>
-<script src="js/funcionarios_importar.js?v=db6297f"></script>
-<script src="js/funcionarios_lotacao.js?v=db6297f"></script>
-<script src="js/rh_documentos.js?v=db6297f"></script>
-<script src="js/servicos.js?v=db6297f"></script>
-<script src="js/produtos.js?v=db6297f"></script>
-<script src="js/estoque.js?v=db6297f"></script>
-<script src="js/separacoes.js?v=db6297f"></script>
-<script src="js/epi.js?v=db6297f"></script>
-<script src="js/compras.js?v=db6297f"></script>
-<script src="js/requisicoes.js?v=db6297f"></script>
-<script src="js/orcamentos.js?v=db6297f"></script>
-<script src="js/propostas.js?v=db6297f"></script>
-<script src="js/contratos.js?v=db6297f"></script>
-<script src="js/contas_pagar.js?v=db6297f"></script>
-<script src="js/centros_custo.js?v=db6297f"></script>
-<script src="js/carteira.js?v=db6297f"></script>
-<script src="js/obras.js?v=db6297f"></script>
-<script src="js/frota.js?v=db6297f"></script>
-<script src="js/viagens.js?v=db6297f"></script>
-<script src="js/equipamentos.js?v=db6297f"></script>
-<script src="js/vendas_bens.js?v=db6297f"></script>
-<script src="js/acessorios.js?v=db6297f"></script>
-<script src="js/reparos.js?v=db6297f"></script>
-<script src="js/manutencao.js?v=db6297f"></script>
-<script src="js/fabricacao.js?v=db6297f"></script>
-<script src="js/mobilizacoes.js?v=db6297f"></script>
-<script src="js/mobilizacoes_contrato.js?v=db6297f"></script>
-<script src="js/estacas.js?v=db6297f"></script>
-<script src="js/estacas_prof_projeto.js?v=db6297f"></script>
-<script src="js/obra_abas.js?v=db6297f"></script>
-<script src="js/obra_faixa.js?v=db6297f"></script>
-<script src="js/medicoes.js?v=db6297f"></script>
-<script src="js/movimentacoes.js?v=db6297f"></script>
-<script src="js/rdo_import_rg113.js?v=db6297f"></script>
-<script src="js/rdo.js?v=db6297f"></script>
-<script src="js/rdo_resumo.js?v=db6297f"></script>
-<script src="js/rdo_import_maya.js?v=db6297f"></script>
-<script src="js/geodigitus.js?v=db6297f"></script>
-<script src="js/estaca_perfil.js?v=db6297f"></script>
-<script src="js/estacas_gps.js?v=db6297f"></script>
+<script src="js/clientes.js?v=11dc077"></script>
+<script src="js/fornecedores.js?v=11dc077"></script>
+<script src="js/apropriacoes.js?v=11dc077"></script>
+<script src="js/funcionarios.js?v=11dc077"></script>
+<script src="js/funcionarios_importar.js?v=11dc077"></script>
+<script src="js/funcionarios_lotacao.js?v=11dc077"></script>
+<script src="js/rh_documentos.js?v=11dc077"></script>
+<script src="js/servicos.js?v=11dc077"></script>
+<script src="js/produtos.js?v=11dc077"></script>
+<script src="js/estoque.js?v=11dc077"></script>
+<script src="js/separacoes.js?v=11dc077"></script>
+<script src="js/epi.js?v=11dc077"></script>
+<script src="js/compras.js?v=11dc077"></script>
+<script src="js/requisicoes.js?v=11dc077"></script>
+<script src="js/orcamentos.js?v=11dc077"></script>
+<script src="js/propostas.js?v=11dc077"></script>
+<script src="js/contratos.js?v=11dc077"></script>
+<script src="js/contas_pagar.js?v=11dc077"></script>
+<script src="js/centros_custo.js?v=11dc077"></script>
+<script src="js/carteira.js?v=11dc077"></script>
+<script src="js/obras.js?v=11dc077"></script>
+<script src="js/frota.js?v=11dc077"></script>
+<script src="js/viagens.js?v=11dc077"></script>
+<script src="js/equipamentos.js?v=11dc077"></script>
+<script src="js/vendas_bens.js?v=11dc077"></script>
+<script src="js/acessorios.js?v=11dc077"></script>
+<script src="js/reparos.js?v=11dc077"></script>
+<script src="js/manutencao.js?v=11dc077"></script>
+<script src="js/fabricacao.js?v=11dc077"></script>
+<script src="js/mobilizacoes.js?v=11dc077"></script>
+<script src="js/mobilizacoes_contrato.js?v=11dc077"></script>
+<script src="js/estacas.js?v=11dc077"></script>
+<script src="js/estacas_prof_projeto.js?v=11dc077"></script>
+<script src="js/obra_abas.js?v=11dc077"></script>
+<script src="js/obra_faixa.js?v=11dc077"></script>
+<script src="js/medicoes.js?v=11dc077"></script>
+<script src="js/movimentacoes.js?v=11dc077"></script>
+<script src="js/rdo_import_rg113.js?v=11dc077"></script>
+<script src="js/rdo.js?v=11dc077"></script>
+<script src="js/rdo_resumo.js?v=11dc077"></script>
+<script src="js/rdo_import_maya.js?v=11dc077"></script>
+<script src="js/geodigitus.js?v=11dc077"></script>
+<script src="js/estaca_perfil.js?v=11dc077"></script>
+<script src="js/estacas_gps.js?v=11dc077"></script>
 <!-- fase 173a: estaca raiz só com injeção (etiqueta, filtros e "Lançar perfuração" pelo diário); usa a aba Estacas e a ficha do RDO, não grava -->
-<script src="js/estacas_perfuracao.js?v=db6297f"></script>
-<script src="js/planta_projeto.js?v=db6297f"></script>
-<script src="js/planta_posicoes.js?v=db6297f"></script>
-<script src="js/computadores_bordo.js?v=db6297f"></script>
-<script src="js/planta_vinculo.js?v=db6297f"></script>
-<script src="js/planta_sequencia.js?v=db6297f"></script>
-<script src="js/matriz_acessos_dados.js?v=db6297f"></script>
-<script src="js/matriz_acessos.js?v=db6297f"></script>
-<script src="js/usuarios.js?v=db6297f"></script>
-<script src="js/chamados.js?v=db6297f"></script>
-<script src="js/assistente.js?v=db6297f"></script>
-<script src="js/apontamentos.js?v=db6297f"></script>
-<script src="js/apontamentos_quadro.js?v=db6297f"></script>
-<script src="js/dash_explica.js?v=db6297f"></script>
-<script src="js/dashboard.js?v=db6297f"></script>
-<script src="js/rh_horas.js?v=db6297f"></script>
-<script src="js/sesmt.js?v=db6297f"></script>
-<script src="js/patrimonio.js?v=db6297f"></script>
+<script src="js/estacas_perfuracao.js?v=11dc077"></script>
+<script src="js/planta_projeto.js?v=11dc077"></script>
+<script src="js/planta_posicoes.js?v=11dc077"></script>
+<script src="js/computadores_bordo.js?v=11dc077"></script>
+<script src="js/planta_vinculo.js?v=11dc077"></script>
+<script src="js/planta_sequencia.js?v=11dc077"></script>
+<!-- fase 175b: ler as estacas da folha do projeto (símbolos pelo pdf.js, nomes pela IA em ladrilhos, prévia antes de gravar) -->
+<script src="js/planta_detector.js?v=11dc077"></script>
+<script src="js/planta_leitura_regras.js?v=11dc077"></script>
+<script src="js/planta_leitura.js?v=11dc077"></script>
+<script src="js/matriz_acessos_dados.js?v=11dc077"></script>
+<script src="js/matriz_acessos.js?v=11dc077"></script>
+<script src="js/usuarios.js?v=11dc077"></script>
+<script src="js/chamados.js?v=11dc077"></script>
+<script src="js/assistente.js?v=11dc077"></script>
+<script src="js/apontamentos.js?v=11dc077"></script>
+<script src="js/apontamentos_quadro.js?v=11dc077"></script>
+<script src="js/dash_explica.js?v=11dc077"></script>
+<script src="js/dashboard.js?v=11dc077"></script>
+<script src="js/rh_horas.js?v=11dc077"></script>
+<script src="js/sesmt.js?v=11dc077"></script>
+<script src="js/patrimonio.js?v=11dc077"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=db6297f"></script>
+<script src="js/sesmt_ocorrencias.js?v=11dc077"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=db6297f"></script>
+<script src="js/init.js?v=11dc077"></script>
 </body>
 </html>

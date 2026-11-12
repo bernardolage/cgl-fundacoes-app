@@ -388,6 +388,7 @@ function ppjPosMontar(folha, palco){
   st.svg = svg; st.camada = g;
   ppjPosLigarPalco(palco);
   ppjPosCarregar(st);
+  if(typeof pplLeiMontar === "function") pplLeiMontar(st);   // leitura da folha (fase 175b)
 }
 async function ppjPosCarregar(st){
   if(st.lendo) return;
@@ -470,7 +471,7 @@ function ppjPosBarra(st){
   const f = $("ppj-ferramentas");
   if(!f) return;
   const maquinas = ppjPosMaquinas();
-  const extra = typeof ppjVinExtraBarra === "function" ? ppjVinExtraBarra(st) : "";
+  const extra = (typeof ppjVinExtraBarra === "function" ? ppjVinExtraBarra(st) : "") + (typeof pplLeiExtraBarra === "function" ? pplLeiExtraBarra(st) : "");
   const faixa = (typeof ppjSeqFaixa === "function" ? ppjSeqFaixa(st) : null) || {};
   const html = ppjPosFerramentasHTML({ podeEditar: ppjPodeEditar(), editando: st.editando, cor: ppjPosCor(), desfazer: st.pilha.length, maquinas, erro: st.erro, extra,
     instrucao: faixa.instrucao, nota: faixa.nota });
@@ -526,6 +527,7 @@ function ppjPosMarcadores(st){
     let no = st.marcas.get(e.id);
     if(!no || no.ppjChave !== chave || no.parentNode !== g){ no = ppjPosMarca(e, preenchimento); no.ppjChave = chave; }
     no.classList.toggle("ppj-selecionada", st.selecionada === e.id);
+    if(typeof pplLeiMarcaClasse === "function") pplLeiMarcaClasse(no, e.id);   // a conferir (fase 175b)
     marcas.set(e.id, no); nos.push(no);
   }
   ppjPosTrocarFilhos(g, nos);
@@ -571,6 +573,7 @@ function ppjPosColocar(st, forcar){
   if(!st.camada || !v || !folha || folha.id !== st.plantaId) return;
   const lw = Number(folha.largura_px), lh = Number(folha.altura_px);
   st.camada.setAttribute("transform", `translate(${v.tx}, ${v.ty})`);
+  if(typeof pplLeiColocar === "function") pplLeiColocar(st);   // marcadores tracejados da prévia da leitura (fase 175b)
   if(!forcar && v.z === st.zMarcas) return;
   st.zMarcas = v.z;
   for(const [id, no] of st.marcas){
@@ -599,7 +602,7 @@ function ppjPosPainel(st){
   if(conta) conta.textContent = `Sem posição nesta folha (${total.length})`;
   const daVez = st.lista.find(e => e.id === st.daVez), marcada = st.selecionada ? estacas.find(e => e.id === st.selecionada) : null;
   if(vez) vez.textContent = daVez ? `Estaca da vez: ${String(daVez.numero || "").trim() || "(sem nº)"}` : total.length ? "Nenhuma estaca nesta busca." : "Nenhuma estaca para posicionar.";
-  if(sel) sel.innerHTML = marcada ? `<span>Selecionada: <strong>${esc(String(marcada.numero || "").trim() || "(sem nº)")}</strong></span><button type="button" class="btn-sec btn-sm txt-perigo" data-ppj-ed="tirar" title="Tirar esta estaca da folha (tecla Delete). A estaca continua na obra.">Tirar da folha</button>` : "";
+  if(sel) sel.innerHTML = marcada ? `<span>Selecionada: <strong>${esc(String(marcada.numero || "").trim() || "(sem nº)")}</strong></span><button type="button" class="btn-sec btn-sm txt-perigo" data-ppj-ed="tirar" title="Tirar esta estaca da folha (tecla Delete). A estaca continua na obra.">Tirar da folha</button>${/* html */ typeof pplLeiSelHTML === "function" ? pplLeiSelHTML(st, marcada) : ""}` : "";
   if(lista) lista.innerHTML = ppjPosListaHTML(st.lista, st.daVez, !!st.termo && total.length > 0);
 }
 
@@ -639,6 +642,7 @@ function ppjPosFazer(st, acao){
     st.mapa = ppjPosAplicar(st.mapa, ppjPosInverso(acao));
     if(acao.tipo === "posicionar") st.daVez = acao.estaca_id;
   });
+  if(typeof pplLeiAposAcao === "function") pplLeiAposAcao(st, acao);   // mover a estaca lida confere (fase 175b)
 }
 function ppjPosDesfazer(st){
   if(!st.editando || !st.disponivel || !ppjPodeEditar()) return;
