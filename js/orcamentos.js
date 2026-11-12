@@ -851,6 +851,11 @@ function orcLimparAssistente(){
   _orcAssistente = null;
   const f = $("orc-aviso-assistente"); if(f) f.style.display = "none";
 }
+/* cabeçalho da ficha: o chip do cliente segue o select (antes só mudava ao abrir um orçamento salvo ou pelo cadastro rápido) */
+function orcAtualizarChipCliente(){
+  const chip = $("orc-ficha-cliente-chip"), sel = $("orc-cliente");
+  if(chip && sel) chip.textContent = (sel.value && (mapaClientes[sel.value] || sel.options[sel.selectedIndex]?.text)) || "—";
+}
 async function preencherOrcamentoDoAssistente(r, origem){
   if(!r || !irParaSecao("orcamentos")) return;
   await carregarOrcamentos();   // catálogo e número sugerido
@@ -860,6 +865,7 @@ async function preencherOrcamentoDoAssistente(r, origem){
   const setSel = (id, v) => { const el = $(id); if(el && v != null && [...el.options].some(o => o.value === String(v))) el.value = String(v); };
   const chk = (id, v) => { const el = $(id); if(el && typeof v === "boolean") el.checked = v; };
   setSel("orc-cliente", r.cliente?.id);
+  orcAtualizarChipCliente();
   set("orc-ref-obra", r.referencia_obra);
   set("orc-local", r.local_execucao);
   set("orc-contato-nome", r.contato_nome);
@@ -1986,6 +1992,7 @@ function ligarOrcamentos(){
   // Fase 40: ao escolher o cliente, A/c, telefone e e-mail vêm do cadastro (só se estiverem vazios)
   $("orc-cliente")?.addEventListener("change", async () => {
     const id = $("orc-cliente").value;
+    orcAtualizarChipCliente();
     if(!id) return;
     const { data:c } = await sb.from("clientes").select("contato_nome,telefone,email").eq("id", id).maybeSingle();
     if(!c) return;
