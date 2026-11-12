@@ -3969,43 +3969,113 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .ppj-painel { width: auto; max-height: 40vh; }
 }
 
-/* ===== Fase 174a: assistente de chat (js/assistente.js). Painel lateral fixo; tela cheia no celular. ===== */
+/* ===== Fase 174a: painel de Ajuda (assistente, js/assistente.js). Painel lateral fixo; tela cheia no celular.
+   Layout de 12/11/2026 (Claude Design): conversa como registro, sem balões; rótulo "VOCÊ · hora"/"RESPOSTA · hora";
+   passos numerados; rascunho do chamado em ficha. Logo CGL com letra preta no claro e branca no escuro. ===== */
 .ast-painel { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); z-index: 1200; display: flex; flex-direction: column;
   background: var(--sup-0); border-left: 1px solid var(--borda); box-shadow: var(--shadow-lg); }
 .ast-painel[hidden] { display: none; }
-.ast-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--esp-2); padding: var(--esp-3) var(--esp-4);
-  border-bottom: 1px solid var(--borda); }
-.ast-topo .meta { font-size: var(--txt-xs); color: var(--txt-fraco); }
-.ast-topo-acoes { display: flex; gap: var(--esp-1); flex-wrap: wrap; justify-content: flex-end; }
+.ast-logo { width: 44px; height: 44px; object-fit: contain; flex-shrink: 0; }
+.ast-logo-escuro { display: none; }
+:root[data-theme="escuro"] .ast-logo-claro { display: none; }
+:root[data-theme="escuro"] .ast-logo-escuro { display: inline-block; }
+
+/* topo e contexto */
+.ast-topo { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-3) var(--esp-4); border-bottom: 1px solid var(--borda); }
+.ast-topo-titulo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.ast-topo-titulo strong { font-size: var(--txt-lg); font-weight: 600; letter-spacing: -0.2px; }
+.ast-topo-titulo span { font-size: var(--txt-sm); color: var(--txt-fraco); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ast-topo-acoes { display: flex; gap: var(--esp-1); flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.ast-icone-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.ast-icone-btn svg { width: 16px; height: 16px; }
+.ast-contexto { display: flex; align-items: center; gap: var(--esp-2); flex-wrap: wrap; padding: var(--esp-2) var(--esp-4);
+  background: var(--sup-1); border-bottom: 1px solid var(--borda); font-size: var(--txt-sm); }
+.ast-contexto:empty { display: none; }
+.ast-contexto-tela { font-weight: 500; color: var(--marca-txt); }
+.ast-contexto-sep { color: var(--txt-sutil); }
 .ast-aviso-sensivel { margin: 0; padding: var(--esp-2) var(--esp-4); background: var(--aviso-bg); color: var(--aviso-txt); font-size: var(--txt-xs); }
-.ast-mensagens { flex: 1; overflow-y: auto; padding: var(--esp-3) var(--esp-4); display: flex; flex-direction: column; gap: var(--esp-2); }
-.ast-msg { max-width: 88%; padding: var(--esp-2) var(--esp-3); border-radius: var(--radius-md); font-size: var(--txt-sm); line-height: 1.45; }
-.ast-msg-txt { white-space: pre-wrap; overflow-wrap: anywhere; }
-.ast-msg-cod { font-family: var(--font-mono); font-size: 0.92em; padding: 0 var(--esp-1); border-radius: var(--radius-sm); background: var(--sup-1); }
-.ast-msg-eu { align-self: flex-end; background: var(--marca-50); color: var(--txt); border: 1px solid var(--marca-100); }
-.ast-msg-ia { align-self: flex-start; background: var(--sup-2); color: var(--txt); }
-.ast-msg-prints, .ast-msg-nota { margin-top: var(--esp-1); font-size: var(--txt-xs); color: var(--txt-fraco); }
-.ast-msg-erro { color: var(--perigo-txt); }
-.ast-digitando { color: var(--txt-fraco); font-style: italic; }
-.ast-cartao { border: 1px solid var(--borda-forte); border-radius: var(--radius-md); padding: var(--esp-3); background: var(--sup-1);
-  display: flex; flex-direction: column; gap: var(--esp-2); }
+
+/* conversa */
+.ast-mensagens { flex: 1; overflow-y: auto; padding: var(--esp-4); display: flex; flex-direction: column; gap: var(--esp-5); }
+.ast-turno { display: flex; flex-direction: column; gap: var(--esp-2); font-size: var(--txt-md); line-height: 1.5; }
+.ast-turno-eu .ast-turno-txt { padding: var(--esp-2) var(--esp-3); background: var(--sup-2); border: 1px solid var(--borda); border-radius: var(--radius-sm);
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+.ast-turno-ia .ast-turno-txt { display: flex; flex-direction: column; gap: var(--esp-2); overflow-wrap: anywhere; }
+.ast-turno-ia p { margin: 0; white-space: pre-wrap; }
+.ast-passos { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--esp-2); }
+.ast-passos li { display: flex; gap: var(--esp-2); align-items: flex-start; }
+.ast-passo-n { flex-shrink: 0; width: 20px; height: 20px; margin-top: 1px; border-radius: var(--radius-pill); background: var(--marca-900);
+  color: var(--txt-sobre); font: 500 var(--txt-xs) var(--font-mono); display: inline-flex; align-items: center; justify-content: center; }
+.ast-lista { margin: 0; padding-left: var(--esp-5); display: flex; flex-direction: column; gap: var(--esp-1); }
+.ast-msg-cod { font-family: var(--font-mono); font-size: 0.92em; padding: 0 var(--esp-1); border-radius: var(--radius-sm); background: var(--sup-3); }
+.ast-msg-prints, .ast-msg-nota { font-size: var(--txt-xs); color: var(--txt-fraco); }
+.ast-msg-nota-info { display: flex; gap: var(--esp-2); padding: var(--esp-2) var(--esp-3); background: var(--info-bg); color: var(--info-txt);
+  border-radius: var(--radius-sm); font-size: var(--txt-sm); }
+.ast-msg-erro { color: var(--perigo-txt); font-size: var(--txt-sm); }
+.ast-digitando { color: var(--txt-fraco); font-size: var(--txt-sm); }
+
+/* chamados parecidos */
+.ast-bloco { display: flex; flex-direction: column; gap: var(--esp-2); }
+.ast-parecidos { border: 1px solid var(--borda); border-radius: var(--radius-md); overflow: hidden; }
+.ast-parecido { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-2) var(--esp-3); }
+.ast-parecido + .ast-parecido { border-top: 1px solid var(--borda); }
+.ast-parecido-txt { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.ast-parecido-txt strong { font-size: var(--txt-md); font-weight: 500; }
+.ast-parecido-txt span { font-size: var(--txt-xs); color: var(--txt-fraco); }
+.ast-parecido .uicodigo, .ast-parecido code { flex-shrink: 0; }
+
+/* rascunho do chamado (ficha) */
+.ast-cartao { border: 1px solid var(--borda-forte); border-radius: var(--radius-md); background: var(--sup-0); box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column; }
+.ast-cartao-topo { display: flex; align-items: center; gap: var(--esp-2); padding: var(--esp-3) var(--esp-4); background: var(--sup-1);
+  border-bottom: 1px solid var(--borda); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.ast-cartao-topo .rotulo-caps { flex: 1; }
+.ast-pilula-aviso { font-size: var(--txt-xs); font-weight: 500; padding: 2px var(--esp-2); border-radius: var(--radius-pill); background: var(--aviso-bg); color: var(--aviso-txt); }
+.ast-cartao-corpo { padding: var(--esp-4); display: flex; flex-direction: column; gap: var(--esp-3); }
 .ast-cartao .campo { margin: 0; }
+.ast-cartao .campo label { font-size: var(--txt-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--txt-fraco); }
 .ast-cartao input, .ast-cartao select, .ast-cartao textarea { width: 100%; box-sizing: border-box; }
 .ast-cartao-linha { display: grid; grid-template-columns: 1fr 1fr; gap: var(--esp-2); }
-.ast-parecido { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-2); font-size: var(--txt-sm); }
+.ast-cartao-acoes { display: flex; align-items: center; gap: var(--esp-2); flex-wrap: wrap; padding: var(--esp-3) var(--esp-4); border-top: 1px solid var(--borda); }
+.ast-cartao-acoes .ast-descartar { margin-left: auto; color: var(--perigo-txt); }
+.ast-cartao-simples { padding: var(--esp-3) var(--esp-4); gap: var(--esp-2); }
+
+/* rodapé: caixa única com anexar, microfone e enviar */
 .ast-rodape { border-top: 1px solid var(--borda); padding: var(--esp-3) var(--esp-4); display: flex; flex-direction: column; gap: var(--esp-2); }
 .ast-rodape[hidden] { display: none; }
-.ast-rodape textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; }
-.ast-rodape-acoes { display: flex; gap: var(--esp-2); justify-content: flex-end; flex-wrap: wrap; }
+.ast-caixa { display: flex; align-items: flex-end; gap: var(--esp-1); padding: var(--esp-1) var(--esp-1) var(--esp-1) var(--esp-3);
+  border: 1px solid var(--borda-forte); border-radius: var(--radius-md); background: var(--sup-0); }
+.ast-caixa:focus-within { border-color: var(--acao); box-shadow: 0 0 0 3px var(--marca-100); }
+.ast-caixa textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 160px; border: 0; outline: none; resize: none; padding: var(--esp-2) 0;
+  background: transparent; font: inherit; font-size: var(--txt-md); color: var(--txt); box-shadow: none; }
+.ast-caixa-btn { width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--txt-sec);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.ast-caixa-btn:hover { background: var(--sup-3); color: var(--txt); }
+.ast-caixa-btn[aria-pressed="true"] { background: var(--marca-50); color: var(--acao-txt); }
+.ast-caixa-btn svg { width: 16px; height: 16px; }
+.ast-caixa-btn[hidden] { display: none; }
+.ast-caixa .btn { height: 36px; flex-shrink: 0; }
+.ast-dica { font-size: var(--txt-xs); color: var(--txt-fraco); }
 .ast-pendentes { display: flex; gap: var(--esp-2); flex-wrap: wrap; }
 .ast-pendentes[hidden] { display: none; }
 .ast-pendente { position: relative; }
 .ast-pendente img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--borda); display: block; }
 .ast-pendente button { position: absolute; top: -6px; right: -6px; padding: 0 6px; }
-#btn-assistente { display: inline-flex; align-items: center; gap: var(--esp-1); }
-#btn-assistente svg { width: 16px; height: 16px; }
+
+/* botão de abrir, na barra do topo */
+#btn-assistente { display: inline-flex; align-items: center; gap: var(--esp-1); height: 40px; padding: 0 var(--esp-3) 0 2px; border: 1px solid var(--borda-forte);
+  border-radius: var(--radius-pill); background: var(--sup-0); color: var(--marca-txt); font-weight: 600; cursor: pointer; }
+#btn-assistente:hover { border-color: var(--acao); }
+#btn-assistente[aria-expanded="true"] { background: var(--marca-900); border-color: var(--marca-900); color: var(--txt-sobre); }
+#btn-assistente[aria-expanded="true"] .ast-logo-claro { display: none; }
+#btn-assistente[aria-expanded="true"] .ast-logo-escuro { display: inline-block; }
+#btn-assistente .ast-logo { width: 36px; height: 36px; }
 @media (max-width: 720px){
+  #btn-assistente { width: 44px; height: 44px; padding: 0; justify-content: center; }
   #btn-assistente span { display: none; }
   .ast-painel { width: 100%; border-left: 0; }
   .ast-cartao-linha { grid-template-columns: 1fr; }
+  .ast-icone-btn, .ast-caixa-btn { width: 44px; min-width: 44px; height: 44px; }
+  .ast-caixa .btn { height: 44px; }
+  .ast-dica { display: none; }
 }

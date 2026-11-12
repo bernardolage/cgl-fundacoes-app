@@ -55,31 +55,78 @@ function novaConversaAssistente(){
 }
 
 /* ---------- Render ---------- */
-function astContextoTexto(){
-  const c = _astContexto || {};
-  return [c.modulo_label && c.modulo_label !== "—" ? c.modulo_label : null, c.registro_label || (c.registro_tipo ? c.registro_tipo : null)]
-    .filter(Boolean).join(" · ");
+/* A caixa de mensagem cresce com o texto até 160 px (o CSS limita) e volta a uma linha depois de enviar */
+function astAjustarCaixa(){
+  const c = $("ast-texto");
+  if(!c) return;
+  c.style.height = "auto";
+  c.style.height = Math.min(c.scrollHeight, 160) + "px";
 }
-/* Resposta do assistente: escapa primeiro e só depois troca **negrito** e `código` (o resto do markdown fica como texto).
-   Mensagem de quem escreve continua literal. */
-function astFormatarResposta(texto){
-  return esc(texto || "")
+function astHora(quando){
+  const d = quando ? new Date(quando) : new Date();
+  return isNaN(d) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+function astRenderContexto(){
+  const el = $("ast-contexto");
+  if(!el) return;
+  if(_astSomenteLeitura){
+    el.innerHTML = `<span class="rotulo-caps">Conversa</span><span>que gerou o chamado (só leitura)</span>`;
+    return;
+  }
+  const c = _astContexto || {};
+  const tela = c.modulo_label && c.modulo_label !== "—" ? c.modulo_label : null;
+  const reg = c.registro_label || null;
+  el.innerHTML = tela ? `<span class="rotulo-caps">Tela</span><span class="ast-contexto-tela">${esc(tela)}</span>`
+    + (reg ? `<span class="ast-contexto-sep">/</span>${uiCodigo(reg)}` : "") : "";
+}
+/* Resposta do assistente: escapa linha a linha e só então troca **negrito** e `código`; linhas "1. …" viram passos
+   numerados e "- …" lista. O resto do markdown fica como texto. A mensagem de quem escreve continua literal. */
+function astInline(linha){
+  return esc(linha)
     .replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>")
     .replace(/`([^`\n]+?)`/g, '<code class="ast-msg-cod">$1</code>');
 }
-function astBolha(it){
-  const quem = it.tipo === "usuario" ? "ast-msg ast-msg-eu" : "ast-msg ast-msg-ia";
-  const prints = it.prints && it.prints.length ? `<div class="ast-msg-prints">${it.prints.length} print(s) anexado(s)</div>` : "";
-  const sem = it.sem_resposta ? `<div class="ast-msg-nota">Pergunta guardada para o manual do app.</div>` : "";
-  const txt = it.tipo === "usuario" ? esc(it.texto || "") : astFormatarResposta(it.texto);
-  return `<div class="${quem}"><div class="ast-msg-txt">${/* html */ txt}</div>${prints}${sem}</div>`;
+function astFormatarResposta(texto){
+  const blocos = [];
+  let par = [], lista = null;
+  const fecharPar = () => { if(par.length){ blocos.push(`<p>${/* html */ par.map(astInline).join("\n")}</p>`); par = []; } };
+  const fecharLista = () => {
+    if(!lista) return;
+    blocos.push(lista.tipo === "ol"
+      ? `<ol class="ast-passos">${/* html */ lista.itens.map((t, k) => `<li><span class="ast-passo-n" aria-hidden="true">${esc(k + 1)}</span><span>${/* html */ astInline(t)}</span></li>`).join("")}</ol>`
+      : `<ul class="ast-lista">${/* html */ lista.itens.map(t => `<li>${/* html */ astInline(t)}</li>`).join("")}</ul>`);
+    lista = null;
+  };
+  for(const linha of String(texto || "").replace(/\r/g, "").split("\n")){
+    const ol = linha.match(/^\s*\d+[.)]\s+(.*)$/), ul = linha.match(/^\s*[-•]\s+(.*)$/);
+    if(ol || ul){
+      fecharPar();
+      const tipo = ol ? "ol" : "ul";
+      if(lista && lista.tipo !== tipo) fecharLista();
+      if(!lista) lista = { tipo, itens: [] };
+      lista.itens.push((ol || ul)[1]);
+    } else if(!linha.trim()){ fecharPar(); fecharLista(); }
+    else { fecharLista(); par.push(linha); }
+  }
+  fecharPar(); fecharLista();
+  return blocos.join("");
+}
+function astTurno(it){
+  const eu = it.tipo === "usuario";
+  const cls = eu ? "ast-turno ast-turno-eu" : "ast-turno ast-turno-ia";
+  const rotulo = (eu ? "Você" : "Resposta") + (it.hora ? " · " + it.hora : "");
+  const prints = it.prints && it.prints.length ? `<span class="ast-msg-prints">${esc(it.prints.length)} print(s) anexado(s)</span>` : "";
+  const sem = it.sem_resposta ? `<div class="ast-msg-nota-info">Pergunta guardada para a equipe responder e para o manual do app.</div>` : "";
+  const txt = eu ? esc(it.texto || "") : astFormatarResposta(it.texto);
+  return `<section class="${esc(cls)}"><span class="rotulo-caps">${esc(rotulo)}</span><div class="ast-turno-txt">${/* html */ txt}</div>${prints}${sem}</section>`;
 }
 function astCartaoRascunho(it, i){
   const r = it.rascunho;
   if(it.aberto){
-    return `<div class="ast-cartao"><div class="rotulo-caps">Chamado aberto</div>
-      <p>${esc("#" + (it.numero ?? "") + " · " + r.titulo)}</p>
-      <button type="button" class="btn-sec btn-sm" data-ast-ver-chamado="${esc(it.chamado_id)}">Ver em Chamados</button></div>`;
+    return `<div class="ast-cartao">
+      <div class="ast-cartao-topo"><span class="rotulo-caps">Chamado aberto</span></div>
+      <div class="ast-cartao-corpo"><span>${uiCodigo("#" + (it.numero ?? ""))} ${esc(r.titulo)}</span></div>
+      <div class="ast-cartao-acoes"><button type="button" class="btn-sec btn-sm" data-ast-ver-chamado="${esc(it.chamado_id)}">Ver em Chamados</button></div></div>`;
   }
   const cats = Object.entries(CHAM_CATEGORIA).map(([v, o]) => `<option value="${esc(v)}"${v === r.categoria ? " selected" : ""}>${esc(o.label)}</option>`).join("");
   const obras = Object.entries(mapaObras || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR"))
@@ -89,41 +136,43 @@ function astCartaoRascunho(it, i){
   const prints = _astPrintsConversa.length ? `<span class="chip">${esc(_astPrintsConversa.length)} print(s) vão anexados</span>` : "";
   const podeAbrir = astPodeAbrirChamado();
   return `<div class="ast-cartao" data-ast-rascunho="${esc(i)}">
-    <div class="rotulo-caps">Rascunho do chamado: confira antes de abrir</div>
-    <div class="cham-contexto">${mod}${reg}${prints}</div>
-    <div class="campo largo"><label for="ast-r-titulo-${esc(i)}">Título</label><input id="ast-r-titulo-${esc(i)}" maxlength="140" value="${esc(r.titulo)}" /></div>
-    <div class="ast-cartao-linha">
-      <div class="campo"><label for="ast-r-cat-${esc(i)}">Categoria</label><select id="ast-r-cat-${esc(i)}">${cats}</select></div>
-      <div class="campo"><label for="ast-r-obra-${esc(i)}">Obra</label><select id="ast-r-obra-${esc(i)}"><option value="">— nenhuma —</option>${obras}</select></div>
+    <div class="ast-cartao-topo"><span class="rotulo-caps">Rascunho do chamado</span><span class="ast-pilula-aviso">Confira antes de abrir</span></div>
+    <div class="ast-cartao-corpo">
+      <div class="cham-contexto">${mod}${reg}${prints}</div>
+      <div class="campo largo"><label for="ast-r-titulo-${esc(i)}">Título</label><input id="ast-r-titulo-${esc(i)}" maxlength="140" value="${esc(r.titulo)}" /></div>
+      <div class="ast-cartao-linha">
+        <div class="campo"><label for="ast-r-cat-${esc(i)}">Categoria</label><select id="ast-r-cat-${esc(i)}">${cats}</select></div>
+        <div class="campo"><label for="ast-r-obra-${esc(i)}">Obra</label><select id="ast-r-obra-${esc(i)}"><option value="">— nenhuma —</option>${obras}</select></div>
+      </div>
+      <div class="campo largo"><label for="ast-r-desc-${esc(i)}">Descrição</label><textarea id="ast-r-desc-${esc(i)}" rows="10">${esc(r.descricao)}</textarea></div>
+      <div class="aviso" id="ast-r-aviso-${esc(i)}"></div>
     </div>
-    <div class="campo largo"><label for="ast-r-desc-${esc(i)}">Descrição</label><textarea id="ast-r-desc-${esc(i)}" rows="9">${esc(r.descricao)}</textarea></div>
-    <div class="aviso" id="ast-r-aviso-${esc(i)}"></div>
-    <div class="form-acoes compacta">
+    <div class="ast-cartao-acoes">
       ${podeAbrir ? `<button type="button" class="btn btn-sm" id="ast-r-abrir-${esc(i)}" data-ast-abrir="${esc(i)}">Abrir chamado</button>` : `<span class="meta">O perfil de revisão não abre chamado.</span>`}
-      <button type="button" class="btn-sec btn-sm" data-ast-descartar="${esc(i)}">Descartar</button>
+      <button type="button" class="btn-sec btn-sm ast-descartar" data-ast-descartar="${esc(i)}">Descartar</button>
     </div>
   </div>`;
 }
 function astCartaoParecidos(it){
-  return `<div class="ast-cartao"><div class="rotulo-caps">Chamados parecidos já abertos</div>
-    ${it.chamados.map(c => `<div class="ast-parecido"><span>${uiCodigo("#" + (c.numero ?? ""))} ${esc(c.titulo || "")} <span class="meta">${esc((CHAM_STATUS[c.status] || {}).label || c.status || "")}</span></span>
-      <button type="button" class="btn-sec btn-sm" data-ast-ver-chamado="${esc(c.id)}">Comentar no #${esc(c.numero ?? "")}</button></div>`).join("")}
-    ${_astSomenteLeitura ? "" : `<div class="form-acoes compacta"><button type="button" class="btn-sec btn-sm" data-ast-mesmo-assim="1">Abrir mesmo assim</button></div>`}
-  </div>`;
+  return `<section class="ast-bloco"><span class="rotulo-caps">Chamados parecidos já abertos</span>
+    <div class="ast-parecidos">${it.chamados.map(c => `<div class="ast-parecido">${uiCodigo("#" + (c.numero ?? ""))}
+      <div class="ast-parecido-txt"><strong>${esc(c.titulo || "")}</strong><span>${esc((CHAM_STATUS[c.status] || {}).label || c.status || "")}</span></div>
+      <button type="button" class="btn-sec btn-sm" data-ast-ver-chamado="${esc(c.id)}" aria-label="Comentar no chamado #${esc(c.numero ?? "")}">Comentar</button></div>`).join("")}</div>
+    ${_astSomenteLeitura ? "" : `<div><button type="button" class="btn-sec btn-sm" data-ast-mesmo-assim="1">Abrir um novo mesmo assim</button></div>`}
+  </section>`;
 }
 function renderAssistente(){
   const lista = $("ast-mensagens");
   if(!lista) return;
-  const ctxTxt = astContextoTexto();
-  $("ast-contexto").textContent = _astSomenteLeitura ? "Conversa que gerou o chamado (só leitura)" : (ctxTxt ? "Tela: " + ctxTxt : "");
+  astRenderContexto();
   const sensivel = !_astSomenteLeitura && AST_SECOES_SENSIVEIS.has(_astContexto?.modulo);
   $("ast-aviso-sensivel").hidden = !sensivel;
   const boasVindas = _astItens.length ? "" : uiVazio("Conte o que você precisa fazer ou tire uma dúvida de uso. Pode digitar, falar pelo microfone ou colar um print (Ctrl+V).");
   lista.innerHTML = boasVindas + _astItens.map((it, i) =>
     it.tipo === "rascunho" ? astCartaoRascunho(it, i)
     : it.tipo === "parecidos" ? astCartaoParecidos(it)
-    : it.tipo === "aviso" ? `<div class="ast-msg-nota ast-msg-erro">${esc(it.texto)}</div>`
-    : astBolha(it)).join("") + (_astEnviando ? `<div class="ast-msg ast-msg-ia ast-digitando">Pensando…</div>` : "");
+    : it.tipo === "aviso" ? `<div class="ast-msg-erro" role="alert">${esc(it.texto)}</div>`
+    : astTurno(it)).join("") + (_astEnviando ? `<section class="ast-turno ast-turno-ia"><span class="rotulo-caps">Resposta</span><span class="ast-digitando">Procurando a resposta…</span></section>` : "");
   lista.scrollTop = lista.scrollHeight;
   const pend = $("ast-pendentes");
   if(pend){
@@ -203,8 +252,8 @@ async function enviarMensagemAssistente(textoForcado){
   astPararDitado();
   const prints = _astPendentes.splice(0);
   _astPrintsConversa.push(...prints);
-  _astItens.push({ tipo: "usuario", texto, prints });
-  if(caixa && textoForcado == null) caixa.value = "";
+  _astItens.push({ tipo: "usuario", texto, prints, hora: astHora() });
+  if(caixa && textoForcado == null){ caixa.value = ""; astAjustarCaixa(); }
   _astEnviando = true;
   renderAssistente();
   try {
@@ -224,7 +273,7 @@ async function enviarMensagemAssistente(textoForcado){
     }
     if(data?.error) throw new Error(data.error);
     if(data?.conversa_id) _astConversaId = data.conversa_id;
-    _astItens.push({ tipo: "assistente", texto: data.resposta, sem_resposta: !!data.sem_resposta });
+    _astItens.push({ tipo: "assistente", texto: data.resposta, sem_resposta: !!data.sem_resposta, hora: astHora() });
     if(Array.isArray(data.chamados_parecidos) && data.chamados_parecidos.length) _astItens.push({ tipo: "parecidos", chamados: data.chamados_parecidos });
     if(data.rascunho_chamado) _astItens.push({ tipo: "rascunho", rascunho: data.rascunho_chamado });
   } catch(e){
@@ -273,7 +322,7 @@ async function confirmarChamadoAssistente(i){
   }
   await sb.from("assistente_conversas").update({ chamado_id: data.id, encerrada_em: new Date().toISOString() }).eq("id", _astConversaId);
   it.aberto = true; it.chamado_id = data.id; it.numero = data.numero; it.rascunho.titulo = titulo;
-  _astItens.push({ tipo: "assistente", texto: `Chamado #${data.numero} aberto. A triagem diária dá o retorno no próprio chamado.` +
+  _astItens.push({ tipo: "assistente", hora: astHora(), texto: `Chamado #${data.numero} aberto. A triagem diária dá o retorno no próprio chamado.` +
     (falhas.length ? ` ${falhas.length} print(s) não subiram; anexe pela ficha do chamado.` : "") });
   renderAssistente();
   if(typeof carregarChamados === "function") carregarChamados(true);
@@ -294,7 +343,7 @@ async function abrirConversaAssistente(conversaId){
     return;
   }
   _astSomenteLeitura = true; _astConversaId = conversaId; _astPendentes = []; _astPrintsConversa = [];
-  _astItens = data.map(m => ({ tipo: m.papel === "assistente" ? "assistente" : "usuario", texto: m.texto, sem_resposta: m.sem_resposta,
+  _astItens = data.map(m => ({ tipo: m.papel === "assistente" ? "assistente" : "usuario", texto: m.texto, sem_resposta: m.sem_resposta, hora: astHora(m.criado_em),
     prints: Array.isArray(m.anexos) ? m.anexos : [] }));
   if(typeof fecharChamado === "function") fecharChamado();
   const painel = $("ast-painel");
@@ -315,7 +364,7 @@ function astAlternarDitado(){
   rec.addEventListener("result", (ev) => {
     let novo = "";
     for(let k = ev.resultIndex; k < ev.results.length; k++) if(ev.results[k].isFinal) novo += ev.results[k][0].transcript;
-    if(novo && caixa){ caixa.value = (caixa.value ? caixa.value.replace(/\s*$/, " ") : "") + novo.trim(); }
+    if(novo && caixa){ caixa.value = (caixa.value ? caixa.value.replace(/\s*$/, " ") : "") + novo.trim(); astAjustarCaixa(); }
   });
   rec.addEventListener("end", () => { _astReconhecedor = null; astMarcarMicrofone(false); });
   rec.addEventListener("error", (ev) => { _astReconhecedor = null; astMarcarMicrofone(false);
@@ -342,6 +391,7 @@ function ligarAssistente(){
     if(typeof abrirNovoChamado === "function") abrirNovoChamado(ctx || (typeof chamadosContextoAtual === "function" ? chamadosContextoAtual() : null));
   });
   $("ast-enviar")?.addEventListener("click", () => enviarMensagemAssistente());
+  $("ast-texto")?.addEventListener("input", astAjustarCaixa);
   $("ast-texto")?.addEventListener("keydown", (e) => {
     if(e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); enviarMensagemAssistente(); }
   });
