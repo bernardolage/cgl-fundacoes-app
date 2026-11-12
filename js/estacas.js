@@ -3476,9 +3476,13 @@ const ESTV_CONF = {
   prefixo:       { lbl: "só prefixo",        nivel: "alta" },
   zeros:         { lbl: "só zeros",          nivel: "alta" },
   prefixo_zeros: { lbl: "prefixo e zeros",   nivel: "media" },
-  parecida:      { lbl: "parecida",          nivel: "baixa" }
+  parecida:      { lbl: "parecida",          nivel: "baixa" },
+  bloco:         { lbl: "só o bloco",        nivel: "alta" },    // fase 175c: B2P10A → P10A do BLOCO 02
+  bloco_sem_local: { lbl: "só o bloco, estaca sem local", nivel: "media" },
+  bloco_outro:   { lbl: "nome igual, outro bloco", nivel: "baixa" }
 };
 const ESTV_NIVEL = { alta: 0, media: 1, baixa: 2 };
+let _estvPrefixos = new Set(); // fase 175c: prefixos de bloco desta obra (estvPrefixosBloco), refeitos a cada leitura
 let _estvFiltroLocal = "";    // lote S48 (#80): filtro de local/bloco nas sugestões ("" = todos)
 
 /* lote S48 (#80, reaberto pelo Isaque): travessia/bloco no nome do campo — "T1.07" = travessia 1, estaca 07;
@@ -3523,6 +3527,40 @@ function estvConfianca(campo, projeto){
   return scoreSimilaridade(a, b) >= 0.6 ? "parecida" : null;
 }
 function estvNorm(s){ return normalizarNumeroEstacaEstacas(s || ""); }
+
+/* Fase 175c: o prefixo do bloco no nome do campo. Na 8506 o campo escreve B2P10A ou B2-P10A para a estaca P10A da folha
+   do bloco 02. O prefixo é uma ou duas letras com o número do bloco, colado (ou com hífen) num nome que também começa por
+   letra e número; BB1.1, T1.07 e P10A não têm prefixo de bloco. Só vale a letra que a obra usa: a que aparece em pelo
+   menos duas execuções ou é a inicial de um local com número (BLOCO 02 → B). Serve só para sugerir; nada vincula sozinho. */
+const ESTV_BLOCO_RE = /^([A-Z]{1,2})0*(\d{1,3})-?(?=[A-Z]{1,2}\d)/;
+const estvLimpo = (s) => String(s || "").toUpperCase().replace(/\s+/g, "").replace(/,/g, ".");
+function estvPrefixosBloco(nomes, locais){
+  const cont = new Map();
+  for(const n of Array.isArray(nomes) ? nomes : []){
+    const m = estvLimpo(n).match(ESTV_BLOCO_RE);
+    if(m) cont.set(m[1], (cont.get(m[1]) || 0) + 1);
+  }
+  const pref = new Set([...cont].filter(([, q]) => q >= 2).map(([l]) => l));
+  for(const l of Array.isArray(locais) ? locais : []){
+    const m = String(l || "").toUpperCase().match(/^\s*([A-Z])[A-Z]*[\s.-]*0*(\d{1,3})\b/);
+    if(m) pref.add(m[1]);
+  }
+  return pref;
+}
+/* { nome: "P10A", num: 2, prefixo: "B" } para B2P10A / B2-P10A, ou null (sem prefixo, ou letra que a obra não usa) */
+function estvSemBloco(nome, prefixos){
+  const t = estvLimpo(nome), m = t.match(ESTV_BLOCO_RE);
+  if(!m || !prefixos || typeof prefixos.has !== "function" || !prefixos.has(m[1])) return null;
+  return { nome: t.slice(m[0].length), num: parseInt(m[2], 10), prefixo: m[1] };
+}
+/* chave do nome para "nome igual": sem espaço, vírgula vira ponto e sem os zeros logo depois das letras (P03 = P3) */
+function estvChaveNome(s){ return estvLimpo(s).replace(/^([A-Z]*)0+(?=\d)/, "$1"); }
+/* a confiança pelo bloco: o nome sem o prefixo é o da estaca; o local (ou bloco) da estaca tem o número do prefixo? */
+function estvConfBloco(semB, p){
+  if(!semB || !p || estvChaveNome(semB.nome) !== estvChaveNome(p.numero)) return null;
+  const nums = estvLocalNums(p);
+  return nums.has(semB.num) ? "bloco" : nums.size ? "bloco_outro" : "bloco_sem_local";
+}
 /* hotfix carga do banco: linha de vw_rdo_execucoes_obra no formato que as telas já liam (x.rdo) */
 function execComRdo(x){ x.rdo = { id: x.rdo_id, obra_id: x.obra_id, data: x.data, equipamento_id: x.rdo_equipamento_id }; return x; }
 function estvMaquina(x){
@@ -3540,8 +3578,9 @@ function estvARevisar(x){
    sem execução e o número. Com o filtro de local/bloco, só as estacas daquele local. */
 /* Fase 169a: a folha do projeto usa a mesma sugestão, com as estacas e o filtro dela (estacas, filtroLocal). Sem esses
    dois, vale o que a aba tem carregado, como sempre. */
-function estvSugestoes(x, comExec, estacas, filtroLocal){
+function estvSugestoes(x, comExec, estacas, filtroLocal, prefixos){
   const g = estvGrupo(x.estaca_numero);
+  const semB = estvSemBloco(x.estaca_numero, prefixos || _estvPrefixos);   // fase 175c
   const chaveResto = g ? estNormalizarNome(g.resto) : "";
   const fLocal = estacas ? (filtroLocal || "") : _estvFiltroLocal;
   return (estacas || _estvEstacas)
@@ -3550,7 +3589,9 @@ function estvSugestoes(x, comExec, estacas, filtroLocal){
       let conf = estvConfianca(x.estaca_numero, p.numero);
       const mesmoNum = !!chaveResto && estNormalizarNome(p.numero) === chaveResto;
       if(!conf && mesmoNum) conf = "parecida";
-      return { p, conf, mesmoNum, mesma: !!g && estvLocalNums(p).has(g.g) };
+      const cb = estvConfBloco(semB, p);   // fase 175c: B2P10A × P10A do BLOCO 02
+      if(cb && conf !== "igual" && (!conf || ESTV_NIVEL[ESTV_CONF[cb].nivel] <= ESTV_NIVEL[ESTV_CONF[conf].nivel])) conf = cb;
+      return { p, conf, mesmoNum, mesma: (!!g && estvLocalNums(p).has(g.g)) || cb === "bloco" };
     })
     .filter(s => s.conf)
     .sort((s1, s2) => (ESTV_CONF[s1.conf].nivel === "alta" ? 0 : 1) - (ESTV_CONF[s2.conf].nivel === "alta" ? 0 : 1)
@@ -3568,7 +3609,7 @@ function estvSugestaoAltaUnica(x, comExec){
   const sugs = estvSugestoes(x, comExec);
   const top = sugs[0];
   if(!top || ESTV_CONF[top.conf].nivel !== "alta" || sugs.some((s, i) => i > 0 && ESTV_CONF[s.conf].nivel === "alta")) return null;
-  return estvEmpate(top.p) ? null : top.p;
+  return top.conf !== "bloco" && estvEmpate(top.p) ? null : top.p;   // fase 175c: o número do bloco desempata
 }
 
 async function estvCarregar(obraId){
@@ -3596,6 +3637,7 @@ async function estvCarregar(obraId){
   if(!_equipamentosCache.length && eqRes.data) _equipamentosCache = eqRes.data;
   _estvExecs = (execsRes.data || []).filter(x => x.obra_id === obraId).map(execComRdo);
   _estvEstacas = estsRes.data || [];
+  _estvPrefixos = estvPrefixosBloco(_estvExecs.map(x => x.estaca_numero), _estvEstacas.map(p => p.local));   // fase 175c
   _estvMedidas = new Set(medRes.error ? [] : (medRes.data || []));
   estvRender();
 }

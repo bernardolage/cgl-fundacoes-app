@@ -3933,6 +3933,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-vin-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-1); }
 .ppj-vin .ppj-lista { flex: 1 0 140px; }
 .ppj-vin-confirma { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-2); }
+.ppj-vin .ppj-vin-pares { flex: 0 1 auto; min-height: 0; max-height: 40vh; }   /* fase 175c: a lista do "nome igual" rola dentro da confirmação */
 .ppj-vin-alerta { padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--aviso-bg); color: var(--aviso-txt); font-weight: 600; }
 .ppj-vin-acoes { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
 .ppj-vin-ok { padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--sucesso-bg); color: var(--sucesso-txt); }

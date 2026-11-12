@@ -14,20 +14,26 @@
      banco: depois de vincular, a tela relê as estacas da obra.
    - Todos veem a lista e as sugestões. Vincular é de quem edita estaca (ppjPodeEditar), nunca do usuário de revisão. O
      banco decide: a recusa aparece na caixa de aviso acima da folha.
+   - Fase 175c: o nome do campo com o prefixo do bloco (B2P10A, B2-P10A) acende a estaca do bloco certo ("só o bloco",
+     regra estvPrefixosBloco/estvSemBloco de js/estacas.js, prefixos tirados das execuções, do local das estacas e do local
+     da folha). "Vincular as N de nome igual" mostra a lista na tela e só grava no botão, um vínculo por vez, pela mesma
+     RPC, com o motivo do lote da aba (ppjVinNomeIgual decide quem entra; o resto fica para vincular um a um).
    - "Vincular as de confiança alta", trocar prefixo, desvincular e "nova do campo" continuam só na aba.
    As funções ppjVinConf, ppjVinComExec, ppjVinSugestoes, ppjVinPodeAlvo, ppjVinOrdenar, ppjVinResumo, ppjVinPergunta,
    ppjVinSub e as que montam HTML são puras (sem tela nem banco) e testadas por scripts/testar-fase169a.mjs.
    ==================================================================== */
 
 const PPJ_VIN_VIEW = "vw_rdo_execucoes_obra";
-const PPJ_VIN_COLUNAS = "id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,equipamento_id,maquina_codigo,modalidade_execucao,rdo_id,obra_id,data,rdo_equipamento_id";
+const PPJ_VIN_COLUNAS = "id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,equipamento_id,maquina_codigo,modalidade_execucao,rdo_id,obra_id,data,rdo_equipamento_id,desvinculo_manual";
+const PPJ_VIN_MOTIVO_LOTE = "correcao_lote"; // fase 175c: o mesmo tipo de registro do lote da aba Vincular
 const PPJ_VIN_MOTIVO = "vinculo_estaca";   // o mesmo tipo de registro do vínculo feito na aba
 const PPJ_VIN_SUG_MAX = 8;                 // as mesmas 8 sugestões da aba
 const PPJ_VIN_LISTA_MAX = 200;             // execuções desenhadas no painel (o resto, pela busca)
 const PPJ_VIN_ANEL = 5;                    // quanto o anel da estaca acesa passa do marcador, em pixels de tela
 /* as mesmas etiquetas da aba Vincular (ESTV_CONF em js/estacas.js); esta cópia só vale se aquela tabela não existir */
 const PPJ_VIN_CONF = { igual: { lbl: "igual", nivel: "alta" }, virgula: { lbl: "só vírgula/espaço", nivel: "alta" }, prefixo: { lbl: "só prefixo", nivel: "alta" },
-  zeros: { lbl: "só zeros", nivel: "alta" }, prefixo_zeros: { lbl: "prefixo e zeros", nivel: "media" }, parecida: { lbl: "parecida", nivel: "baixa" } };
+  zeros: { lbl: "só zeros", nivel: "alta" }, prefixo_zeros: { lbl: "prefixo e zeros", nivel: "media" }, parecida: { lbl: "parecida", nivel: "baixa" },
+  bloco: { lbl: "só o bloco", nivel: "alta" }, bloco_sem_local: { lbl: "só o bloco, estaca sem local", nivel: "media" }, bloco_outro: { lbl: "nome igual, outro bloco", nivel: "baixa" } };
 const PPJ_VIN_NIVEL = { alta: 0, media: 1, baixa: 2 };
 
 /* ---------- regra (pura) ---------- */
@@ -60,11 +66,11 @@ function ppjVinComExec(estacas){
 /* As sugestões de estaca para uma execução: as mesmas da aba Vincular (estvSugestoes), na mesma ordem, com o que a folha
    acrescenta: a estaca está posicionada nesta folha (mapa)? Tem marcador com os filtros da aba (visiveis)?
    Devolve [{ id, estaca, conf, rotulo, nivel, mesma, naFolha, visivel }]. Sem a função da aba, nenhuma sugestão. */
-function ppjVinSugestoes(exec, estacas, mapa, visiveis){
+function ppjVinSugestoes(exec, estacas, mapa, visiveis, prefixos){
   if(!exec || typeof estvSugestoes !== "function") return [];
   const lista = (Array.isArray(estacas) ? estacas : []).filter(Boolean);
   const tem = (m, id) => !!m && typeof m.has === "function" && m.has(id);
-  return estvSugestoes(exec, ppjVinComExec(lista), lista, "").slice(0, PPJ_VIN_SUG_MAX).map(s => {
+  return estvSugestoes(exec, ppjVinComExec(lista), lista, "", prefixos || new Set()).slice(0, PPJ_VIN_SUG_MAX).map(s => {
     const c = ppjVinConf(s.conf);
     return { id: s.p.id, estaca: s.p, conf: s.conf, rotulo: c.lbl, nivel: c.nivel, mesma: !!s.mesma, naFolha: tem(mapa, s.p.id), visivel: tem(visiveis, s.p.id) };
   });
@@ -80,7 +86,7 @@ function ppjVinOrdenar(execs, o){
   const p = o || {}, termo = String(p.termo || "").trim().toLowerCase(), foco = p.foco && p.foco.id ? p.foco : null;
   const conf = (x) => {
     if(!foco || typeof estvSugestoes !== "function") return null;
-    const s = estvSugestoes(x, new Set(), [foco], "")[0];
+    const s = estvSugestoes(x, new Set(), [foco], "", p.prefixos || new Set())[0];
     return s ? s.conf : null;
   };
   const nivel = (c) => c ? PPJ_VIN_NIVEL[ppjVinConf(c).nivel] : 3;
@@ -100,6 +106,53 @@ function ppjVinPergunta(exec, estaca, rotuloBloco){
   const bloco = String((estaca && estaca.bloco) || "").trim(), local = String((estaca && estaca.local) || "").trim(), data = ppjVinData(exec && exec.data);
   const onde = [bloco ? `${rotuloBloco || "bloco"} ${bloco}` : "", local].filter(Boolean).join(", ");
   return `Vincular a execução ${ppjVinNome(exec)}${data ? ` (${data})` : ""} à estaca ${ppjVinNumero(estaca)}${onde ? ` (${onde})` : ""}?`;
+}
+
+/* Fase 175c: os prefixos de bloco desta obra, pelos nomes das execuções, pelo local das estacas e pelo local da folha
+   (a regra é a da aba Vincular, estvPrefixosBloco de js/estacas.js; sem ela, nenhum prefixo) */
+function ppjVinPrefixos(execs, estacas, localFolha){
+  if(typeof estvPrefixosBloco !== "function") return new Set();
+  const locais = (Array.isArray(estacas) ? estacas : []).map(e => e && e.local).concat([localFolha]);
+  return estvPrefixosBloco((Array.isArray(execs) ? execs : []).map(x => x && x.estaca_numero), locais);
+}
+/* Fase 175c: "Vincular as N de nome igual". Cada execução solta cujo nome, igual ou só sem o prefixo do bloco (B2P10A,
+   B2-P10A → P10A do bloco 02), aponta UMA estaca só, posicionada nesta folha, prevista, sem execução e sem medição.
+   Fica de fora (para vincular uma a uma): desvinculada à mão, nome que casa com mais de uma estaca, estaca que duas
+   execuções disputam. Devolve { pares: [{ x, estaca, conf }], fora: quantas tinham nome igual e ficaram de fora }.
+   Nada é gravado aqui: a tela mostra a lista e grava só no botão. */
+function ppjVinNomeIgual(execs, estacas, mapa, prefixos, medidas){
+  const lista = (Array.isArray(estacas) ? estacas : []).filter(e => e && e.id);
+  if(typeof estvChaveNome !== "function" || typeof estvSemBloco !== "function" || typeof estvLocalNums !== "function") return { pares: [], fora: 0 };
+  const naFolha = (id) => !!mapa && typeof mapa.has === "function" && mapa.has(id);
+  const medida = (id) => !!medidas && typeof medidas.has === "function" && medidas.has(id);
+  const porChave = new Map();
+  for(const e of lista){
+    const k = estvChaveNome(e.numero);
+    if(k){ if(!porChave.has(k)) porChave.set(k, []); porChave.get(k).push(e); }
+  }
+  const candidatos = (x) => {
+    const iguais = porChave.get(estvChaveNome(x.estaca_numero)) || [];
+    if(iguais.length) return { l: iguais, conf: "igual" };
+    const semB = estvSemBloco(x.estaca_numero, prefixos);
+    if(!semB) return { l: [], conf: null };
+    return { l: (porChave.get(estvChaveNome(semB.nome)) || []).filter(e => estvLocalNums(e).has(semB.num)), conf: "bloco" };
+  };
+  const brutos = [];
+  let fora = 0;
+  for(const x of Array.isArray(execs) ? execs : []){
+    if(!x || !x.id || x.estaca_id) continue;
+    const c = candidatos(x);
+    if(!c.l.length) continue;
+    const e = c.l[0];
+    if(x.desvinculo_manual || c.l.length !== 1 || !naFolha(e.id) || e.status !== "prevista" || Number(e._execs_total) > 0 || medida(e.id)){ fora++; continue; }
+    brutos.push({ x, estaca: e, conf: c.conf });
+  }
+  const disputa = new Map();
+  for(const p of brutos) disputa.set(p.estaca.id, (disputa.get(p.estaca.id) || 0) + 1);
+  const pares = brutos.filter(p => disputa.get(p.estaca.id) === 1);
+  fora += brutos.length - pares.length;
+  pares.sort((a, b) => ppjPosCompararNomes(a.estaca.numero, b.estaca.numero) || String(a.x.data || "").localeCompare(String(b.x.data || "")));
+  return { pares, fora };
 }
 
 /* ---------- HTML (puro) ---------- */
@@ -155,13 +208,39 @@ function ppjVinConfirmacaoHTML(c){
       <button type="button" class="btn-sec btn-sm" data-ppj-vin="cancelar" title="Não vincular agora"${c.gravando ? " disabled" : ""}>Cancelar</button></div>
     </div>`;
 }
+/* Fase 175c: o botão do lote (só para quem vincula, com pelo menos um par) */
+function ppjVinLoteBotaoHTML(n){
+  const q = Math.max(0, Math.trunc(Number(n) || 0));
+  if(!q) return "";
+  return `<button type="button" class="btn-sec btn-sm" data-ppj-vin="lote-abrir" title="Mostra antes a lista das execuções cujo nome (igual, ou só sem o prefixo do bloco) aponta uma única estaca prevista desta folha. Nada é gravado antes de confirmar.">Vincular as ${q} de nome igual</button>`;
+}
+/* l = { pares, fora, gravando, feitas, equips }. A lista na tela antes de gravar (decisão D3: nunca sozinho). */
+function ppjVinLoteHTML(l){
+  const p = l || {}, pares = Array.isArray(p.pares) ? p.pares : [], n = pares.length, fora = Math.max(0, Math.trunc(Number(p.fora) || 0));
+  const linhas = pares.map(({ x, estaca, conf }) => {
+    const c = ppjVinConf(conf), sub = ppjVinSub(x, p.equips), onde = [String(estaca.local || "").trim(), String(estaca.bloco || "").trim()].filter(Boolean).join(" · ");
+    return `<div class="ppj-item ppj-vin-par"><span class="ppj-vin-linha"><span class="ppj-item-nome">${esc(ppjVinNome(x))}</span><span aria-hidden="true">→</span><span class="ppj-item-nome">${esc(ppjVinNumero(estaca))}</span><span class="rec-badge rec-badge-${esc(c.nivel)}">${esc(c.lbl)}</span></span>${sub || onde ? `<span class="ppj-item-sub">${esc([sub, onde].filter(Boolean).join(" · "))}</span>` : ""}</div>`;
+  }).join("");
+  const progresso = p.gravando ? `<p class="ppj-vin-nota" role="status">Vinculando ${Math.min(Number(p.feitas) || 0, n)} de ${esc(String(n))}…</p>` : "";
+  return `<div class="ppj-vin-confirma" role="group" aria-label="Confirmar o vínculo das execuções de nome igual">
+      <p><strong>Vincular ${esc(String(n))} ${n === 1 ? "execução" : "execuções"} à estaca de mesmo nome nesta folha?</strong></p>
+      <p class="ppj-vin-nota">Cada uma aponta uma única estaca prevista, sem execução e sem medição. O status das estacas é refeito pelo banco e cada vínculo fica no histórico.${fora ? ` ${fora} com nome igual ${fora === 1 ? "ficou" : "ficaram"} de fora (mais de uma estaca possível, estaca já com execução, fora desta folha ou desvinculada à mão): vincule uma a uma.` : ""}</p>
+      <div class="ppj-lista ppj-vin-pares" role="list" aria-label="Execuções e estacas que serão vinculadas">${/* html */ linhas}</div>${/* html */ progresso}
+      <div class="ppj-vin-acoes"><button type="button" class="btn btn-sm" data-ppj-vin="lote-confirmar" title="Gravar todos os vínculos desta lista"${p.gravando || !n ? " disabled" : ""}>${p.gravando ? "Vinculando…" : `Vincular as ${esc(String(n))}`}</button>
+      <button type="button" class="btn-sec btn-sm" data-ppj-vin="lote-cancelar" title="Não vincular agora"${p.gravando ? " disabled" : ""}>Cancelar</button></div>
+    </div>`;
+}
 /* s = { exec, equips, sugestoes, podeEditar, confirmar (ou nulo), foco: estaca clicada no desenho, ok: última gravação feita }.
    O bloco de cima do painel: a execução escolhida com as estacas parecidas, ou a estaca em foco, ou a dica. */
 function ppjVinFocoHTML(s){
   const p = s || {}, ok = p.ok ? `<p class="ppj-vin-ok" role="status">${esc(p.ok)}</p>` : "";
   if(!p.exec){
-    if(p.foco) return `${/* html */ ok}<div class="ppj-vin-escolhida"><span>Mais parecidas com a estaca ${/* html */ uiCodigo(ppjVinNumero(p.foco))} no topo da lista.</span><button type="button" class="btn-sec btn-sm" data-ppj-vin="limpar-foco" title="Voltar a lista à ordem de data">Limpar</button></div>`;
-    return `${/* html */ ok}<p class="ppj-vin-dica">Clique numa execução para ver no desenho as estacas parecidas com o nome dela. Clique numa estaca prevista do desenho para ver primeiro as execuções parecidas com ela.</p>`;
+    // fase 175c: s.lote = a lista aberta do "Vincular as N de nome igual"; s.nLote = quantos pares há (o botão)
+    if(p.lote && p.podeEditar) return `${/* html */ ok}${/* html */ ppjVinLoteHTML(p.lote)}`;
+    const botaoLote = p.podeEditar ? ppjVinLoteBotaoHTML(p.nLote) : "";
+    const lote = botaoLote ? `<div class="ppj-vin-acoes">${/* html */ botaoLote}</div>` : "";
+    if(p.foco) return `${/* html */ ok}<div class="ppj-vin-escolhida"><span>Mais parecidas com a estaca ${/* html */ uiCodigo(ppjVinNumero(p.foco))} no topo da lista.</span><button type="button" class="btn-sec btn-sm" data-ppj-vin="limpar-foco" title="Voltar a lista à ordem de data">Limpar</button></div>${/* html */ lote}`;
+    return `${/* html */ ok}<p class="ppj-vin-dica">Clique numa execução para ver no desenho as estacas parecidas com o nome dela. Clique numa estaca prevista do desenho para ver primeiro as execuções parecidas com ela.</p>${/* html */ lote}`;
   }
   const x = p.exec, sugs = Array.isArray(p.sugestoes) ? p.sugestoes : [], sub = ppjVinSub(x, p.equips), alvoId = p.confirmar && p.confirmar.estaca ? p.confirmar.estaca.id : null;
   const cab = `<div class="ppj-vin-escolhida"><span>Execução ${/* html */ uiCodigo(ppjVinNome(x))}${x.modalidade_execucao === "refuro" ? ` <span class="tag cinza">Refuro</span>` : ""}${sub ? ` <span class="ppj-item-sub">${esc(sub)}</span>` : ""}</span><button type="button" class="btn-sec btn-sm" data-ppj-vin="soltar" title="Deixar de procurar a estaca desta execução (Esc)">Soltar</button></div>`;
@@ -180,7 +259,8 @@ function ppjVinFocoHTML(s){
    ==================================================================== */
 function ppjVinEstadoNovo(obraId){
   return { obraId: obraId || null, execs: null, erro: "", lendo: false, lidoEm: 0, tentouEm: 0, medidas: null, lendoMedidas: false, aberto: false, termo: "",
-    escolhida: null, foco: null, confirmar: null, gravando: false, sugestoes: [], ok: "", painel: null, chaveFoco: null, chaveLista: null };
+    escolhida: null, foco: null, confirmar: null, gravando: false, sugestoes: [], ok: "", painel: null, chaveFoco: null, chaveLista: null,
+    lote: null, gravandoLote: false };   // fase 175c: lote = { pares, fora, feitas } enquanto a lista do "nome igual" está aberta
 }
 let _ppjVin = ppjVinEstadoNovo(null);   // trocado inteiro a cada obra
 
@@ -263,7 +343,7 @@ function ppjVinPintar(st){
    false deixa a folha abrir a execução da estaca, como sempre. */
 function ppjVinCliqueEstaca(id){
   const st = _ppjPos, v = _ppjVin;
-  if(!v.aberto || !ppjVinDisponivel(st) || v.gravando) return false;
+  if(!v.aberto || !ppjVinDisponivel(st) || v.gravando || v.gravandoLote) return false;
   const e = ppjEstacas().find(x => x.id === id);
   if(!e) return false;
   if(v.escolhida){
@@ -283,7 +363,7 @@ function ppjVinSoltar(v){ v.escolhida = null; v.confirmar = null; v.sugestoes = 
 function ppjVinAbrir(liga){
   const v = ppjVinEstado(), st = _ppjPos;
   v.aberto = !!liga && ppjVinDisponivel(st);
-  if(!v.aberto){ ppjVinSoltar(v); v.foco = null; v.ok = ""; }
+  if(!v.aberto){ if(v.gravandoLote){ v.aberto = true; return; } ppjVinSoltar(v); v.foco = null; v.ok = ""; v.lote = null; }
   else {
     if(ppjPodeEditar()) ppjVinLerMedidas();
     if(Date.now() - v.lidoEm > PPJ_VALIDADE_MS) ppjVinLer();   // outra pessoa pode ter vinculado
@@ -292,7 +372,8 @@ function ppjVinAbrir(liga){
 }
 function ppjVinEscolher(execId){
   const v = _ppjVin;
-  if(v.gravando || !Array.isArray(v.execs)) return;
+  if(v.gravando || v.gravandoLote || !Array.isArray(v.execs)) return;
+  v.lote = null;   // fase 175c: escolher uma execução fecha a lista do lote
   if(v.escolhida === execId || !v.execs.some(x => x.id === execId)) ppjVinSoltar(v);
   else { v.escolhida = execId; v.confirmar = null; v.foco = null; }
   v.ok = "";
@@ -357,6 +438,69 @@ async function ppjVinConfirmar(){
   if(v === _ppjVin) ppjVinLer();
 }
 
+/* ---------- fase 175c: "Vincular as N de nome igual" ---------- */
+const ppjVinLocalFolha = () => (typeof ppjFolhaAtual === "function" ? String((ppjFolhaAtual() || {}).local || "") : "");
+const ppjVinMedidasSet = (v) => (v.medidas instanceof Set ? v.medidas : null);
+function ppjVinLoteCalcular(v, st){
+  const estacas = ppjEstacas();
+  return ppjVinNomeIgual(v.execs, estacas, st && st.mapa, ppjVinPrefixos(v.execs, estacas, ppjVinLocalFolha()), ppjVinMedidasSet(v));
+}
+/* abre a lista na tela; nada é gravado antes de "Vincular as N" */
+function ppjVinLoteAbrir(){
+  const v = _ppjVin, st = _ppjPos;
+  if(v.gravando || v.gravandoLote || !ppjPodeEditar() || !ppjVinDisponivel(st)) return;
+  ppjVinSoltar(v);
+  v.foco = null;
+  v.ok = "";
+  const c = ppjVinLoteCalcular(v, st);
+  v.lote = c.pares.length ? { pares: c.pares, fora: c.fora, feitas: 0 } : null;
+  ppjPosAvisar("");
+  ppjVinLerMedidas();
+  ppjVinRepintar();
+}
+/* Grava a lista, um vínculo por vez, pela mesma RPC da aba (estvGravarVinculo → rdo_exec_vincular_estaca, que registra
+   em registros_log). Para no primeiro erro: o que já foi gravado fica, o resto continua na lista. Estaca que a leitura
+   das medidas mostrou medida depois de abrir a lista sai antes de gravar. */
+async function ppjVinLoteConfirmar(){
+  const v = _ppjVin, l = v.lote, obraId = v.obraId;
+  if(!l || v.gravando || v.gravandoLote || !ppjPodeEditar() || typeof estvGravarVinculo !== "function") return;
+  const med = ppjVinMedidasSet(v), pares = l.pares.filter(p => !med || !med.has(p.estaca.id));
+  v.gravandoLote = true;
+  l.feitas = 0;
+  ppjPosAvisar("");
+  ppjVinRepintar();
+  let erro = null, parou = null;
+  for(const p of pares){
+    let r;
+    try { r = await estvGravarVinculo(p.x.id, p.estaca.id, PPJ_VIN_MOTIVO_LOTE); }
+    catch(e){ r = { error: e }; }
+    if(v !== _ppjVin) return;
+    if(!r || r.error){ erro = (r && r.error) || { message: "sem resposta do banco" }; parou = p; break; }
+    l.feitas++;
+    v.execs = v.execs.filter(e => e.id !== p.x.id);
+    ppjVinRepintar();
+  }
+  v.gravandoLote = false;
+  v.lote = null;
+  const n = l.feitas, qtd = `${n} ${n === 1 ? "execução vinculada" : "execuções vinculadas"}`;
+  if(erro){
+    console.error("Executadas sem vínculo, lote de nome igual:", erro);
+    const msg = `${qtd} à estaca de mesmo nome. Parou em ${ppjVinNome(parou.x)} → ${ppjVinNumero(parou.estaca)}: ${String(erro.message || erro).replace(/[.\s]+$/, "")}. As outras continuam na lista.`;
+    ppjPosAvisar(msg);
+    aviso("app-aviso", msg, "erro");
+  } else {
+    v.ok = `${qtd} à estaca de mesmo nome.`;
+    aviso("app-aviso", v.ok, "ok");
+  }
+  if(!v.execs.length) v.aberto = false;
+  ppjVinRepintar();
+  if(n && typeof carregarEstacasDaObra === "function" && obraId === ppjObraId()){
+    try { await carregarEstacasDaObra(obraId); }
+    catch(e){ console.error("Executadas sem vínculo, releitura das estacas:", e); }
+  }
+  if(v === _ppjVin) ppjVinLer();
+}
+
 /* ---------- desenho ---------- */
 function ppjVinPainel(st){
   const v = _ppjVin, area = $("ppj-area");
@@ -383,7 +527,10 @@ function ppjVinPainel(st){
   if(v.escolhida && !x) ppjVinSoltar(v);
   const foco = v.foco ? estacas.find(e => e.id === v.foco && e.status === "prevista") : null;
   if(v.foco && !foco) v.foco = null;
-  v.sugestoes = x ? ppjVinSugestoes(x, estacas, st.mapa, st.marcas) : [];
+  const prefixos = ppjVinPrefixos(v.execs, estacas, ppjVinLocalFolha());   // fase 175c
+  v.sugestoes = x ? ppjVinSugestoes(x, estacas, st.mapa, st.marcas, prefixos) : [];
+  const nLote = !x && !v.lote && ppjPodeEditar() ? ppjVinNomeIgual(v.execs, estacas, st.mapa, prefixos, ppjVinMedidasSet(v)).pares.length : 0;
+  const lote = v.lote ? { ...v.lote, gravando: v.gravandoLote, equips } : null;
   let confirmar = null;
   if(x && v.confirmar){
     const alvo = estacas.find(e => e.id === v.confirmar.estacaId);
@@ -393,14 +540,14 @@ function ppjVinPainel(st){
   }
   const conta = $("ppj-vin-conta"), blocoFoco = $("ppj-vin-foco"), lista = $("ppj-vin-lista");
   if(conta) conta.textContent = `Executadas sem vínculo (${v.execs.length})`;
-  const htmlFoco = ppjVinFocoHTML({ exec: x, equips, sugestoes: v.sugestoes, podeEditar: ppjPodeEditar(), confirmar, foco, ok: v.ok });
+  const htmlFoco = ppjVinFocoHTML({ exec: x, equips, sugestoes: v.sugestoes, podeEditar: ppjPodeEditar(), confirmar, foco, ok: v.ok, lote, nLote });
   if(blocoFoco && htmlFoco !== v.chaveFoco){
     blocoFoco.innerHTML = htmlFoco; v.chaveFoco = htmlFoco;
     // a pergunta tem de estar à vista de quem acabou de clicar no desenho (em tela estreita o painel fica abaixo da folha)
     const pergunta = confirmar && blocoFoco.querySelector ? blocoFoco.querySelector(".ppj-vin-confirma") : null;
     if(pergunta && pergunta.scrollIntoView) pergunta.scrollIntoView({ block: "nearest" });
   }
-  const htmlLista = ppjVinListaHTML(ppjVinOrdenar(v.execs, { termo: v.termo, foco }), v.escolhida, equips, !!v.termo);
+  const htmlLista = ppjVinListaHTML(ppjVinOrdenar(v.execs, { termo: v.termo, foco, prefixos }), v.escolhida, equips, !!v.termo);
   if(lista && htmlLista !== v.chaveLista){ lista.innerHTML = htmlLista; v.chaveLista = htmlLista; }
 }
 /* acende no desenho as estacas sugeridas: um anel em volta do marcador (cheio, tracejado ou pontilhado conforme a
@@ -442,6 +589,9 @@ function ppjVinClique(ev){
     else if(qual === "limpar-foco"){ v.foco = null; ppjVinRepintar(); }
     else if(qual === "cancelar"){ if(!v.gravando){ v.confirmar = null; ppjVinRepintar(); } }
     else if(qual === "confirmar") ppjVinConfirmar();
+    else if(qual === "lote-abrir") ppjVinLoteAbrir();                                    // fase 175c
+    else if(qual === "lote-cancelar"){ if(!v.gravandoLote){ v.lote = null; ppjVinRepintar(); } }
+    else if(qual === "lote-confirmar") ppjVinLoteConfirmar();
     return;
   }
   const exec = alvo.closest("[data-ppj-vin-exec]");
@@ -484,6 +634,7 @@ if(typeof document !== "undefined"){
 // teste em Node (scripts/testar-fase169a.mjs): as funções puras saem pelo mesmo module.exports de js/planta_projeto.js
 if(typeof module === "object" && module && module.exports){
   Object.assign(module.exports, { PPJ_VIN_VIEW, PPJ_VIN_COLUNAS, PPJ_VIN_MOTIVO, PPJ_VIN_SUG_MAX, PPJ_VIN_LISTA_MAX,
+    PPJ_VIN_MOTIVO_LOTE, ppjVinPrefixos, ppjVinNomeIgual, ppjVinLoteBotaoHTML, ppjVinLoteHTML,
     ppjVinConf, ppjVinComExec, ppjVinSugestoes, ppjVinPodeAlvo, ppjVinOrdenar, ppjVinResumo, ppjVinPergunta, ppjVinSub,
     ppjVinBotaoHTML, ppjVinPainelHTML, ppjVinListaHTML, ppjVinSugestaoHTML, ppjVinConfirmacaoHTML, ppjVinFocoHTML });
 }
