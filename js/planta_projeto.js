@@ -694,12 +694,22 @@ function ppjAvisoJanela(msg, tipo){
   if(!msg){ el.textContent = ""; el.className = "aviso"; return; }
   aviso("ppj-aviso", msg, tipo || "erro");
 }
-function ppjOpcoesLocal(valor){
-  const locais = ppjLocaisDaObra(ppjEstacas()), v = String(valor || "").trim();
-  const lista = v && !locais.includes(v) ? locais.concat(v) : locais;
-  return `<option value="">Sem local (vale para todos)</option>${lista.map(l => `<option value="${esc(l)}"${l === v ? " selected" : ""}>${esc(l)}</option>`).join("")}`;
+/* Hotfix da 8506 (12/11/2026): o local da folha é digitado, com os locais da obra e das folhas como sugestão. Antes era
+   uma lista fechada com os locais que já tinham estaca, e a folha do bloco 02 não tinha como virar "BLOCO 02" enquanto
+   nenhuma estaca do bloco 02 existisse; sem local, a leitura comparava os nomes com as estacas do bloco 01.
+   Vazio = sem local (vale para todos). As sugestões ficam num datalist só, desenhado uma vez na janela. */
+function ppjLocaisSugeridos(){
+  const folhas = (_ppj.folhas || []).map(f => String((f && f.local) || "").trim()).filter(Boolean);
+  return [...new Set(ppjLocaisDaObra(ppjEstacas()).concat(folhas))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
 }
-const ppjTemLocais = () => ppjLocaisDaObra(ppjEstacas()).length > 0 || (_ppj.folhas || []).some(f => String(f.local || "").trim());
+function ppjLocaisDatalistHTML(){
+  return `<datalist id="ppj-locais">${ppjLocaisSugeridos().map(l => `<option value="${esc(l)}"></option>`).join("")}</datalist>`;
+}
+/* attr = "data-ppj-edita" (folha gravada) ou "data-ppj-campo" (página que vai virar folha) */
+function ppjCampoLocalHTML(attr, valor){
+  const a = attr === "data-ppj-campo" ? "data-ppj-campo" : "data-ppj-edita";
+  return `<div class="campo"><label>Local</label><input ${/* html */ a}="local" list="ppj-locais" value="${esc(String(valor || "").trim())}" maxlength="60" placeholder="ex.: BLOCO 02 (vazio vale para todos)" title="Local desta folha, escrito como o local das estacas (ex.: BLOCO 02). A leitura e o vínculo comparam só com as estacas deste local. Vazio vale para todos." /></div>`;
+}
 /* PDFs de projeto que a obra já tem em Documentos: lista para escolher em vez de enviar de novo */
 function ppjGuardadosHTML(pdfs){
   const l = Array.isArray(pdfs) ? pdfs : [];
@@ -709,7 +719,7 @@ function ppjGuardadosHTML(pdfs){
       <button type="button" class="btn-sec btn-sm" id="btn-ppj-guardado" title="Abrir o PDF escolhido para marcar as páginas que são planta">Abrir</button></div></div>`;
 }
 function ppjJanelaHTML(guardados){
-  const temLocais = ppjTemLocais(), lista = ppjGuardadosHTML(guardados);
+  const lista = ppjGuardadosHTML(guardados);
   const enviar = `<p class="texto-apoio">Escolha o PDF do projeto do cliente (até 50 MB). O PDF vira imagem aqui, no seu computador, e fica guardado na obra junto com o original. Projeto escaneado também serve: envie a imagem PNG ou JPG.</p>
     <div class="campo"><label for="ppj-arquivo">Arquivo do projeto</label><input id="ppj-arquivo" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" /></div>
     <div id="ppj-guardados">${/* html */ lista}</div>
@@ -719,15 +729,15 @@ function ppjJanelaHTML(guardados){
     <div class="ppl-acoes"><button type="button" class="btn-sec btn-sm" data-ppj-lista="planilha" title="Lista de estacas do projeto em .xlsx, .csv ou colada do Excel (Nome, Ø, profundidade, bloco, local, X e Y). Não usa IA.">Lista de estacas (planilha)</button>
     <button type="button" class="btn-sec btn-sm" data-ppj-lista="dxf" title="Arquivo do CAD (DXF) enviado pelo projetista: nome e coordenada exatos, sem IA. DWG não é lido.">Tenho o arquivo do CAD (DXF)</button>
     <button type="button" class="btn-sec btn-sm" data-ppj-lista="orcamento" title="Obra que veio de um orçamento com o projeto lido no assistente: cria as estacas por essa leitura, sem nova leitura paga.">Leitura do orçamento</button></div>`;
-  return `${/* html */ uiSecao("documento", "Enviar projeto", enviar)}${/* html */ uiSecao("foto", "Folhas desta obra", `<div id="ppj-folhas">${/* html */ ppjFolhasHTML(_ppj.folhas || [], temLocais)}</div>`, String((_ppj.folhas || []).length))}${/* html */ uiSecao("documento", "Lista do projeto e CAD", listas)}`;
+  return `${/* html */ uiSecao("documento", "Enviar projeto", enviar)}${/* html */ uiSecao("foto", "Folhas desta obra", `<div id="ppj-folhas">${/* html */ ppjFolhasHTML(_ppj.folhas || [])}</div>${/* html */ ppjLocaisDatalistHTML()}`, String((_ppj.folhas || []).length))}${/* html */ uiSecao("documento", "Lista do projeto e CAD", listas)}`;
 }
 /* a lista "Folhas desta obra": renomear, trocar local e revisão, reordenar, desativar, baixar o original e excluir */
-function ppjFolhasHTML(folhas, temLocais){
+function ppjFolhasHTML(folhas){
   const l = (folhas || []).slice().sort(ppjOrdenar);
   if(!l.length) return uiVazio("Nenhuma folha ainda. Envie o projeto acima e marque as páginas que são planta de locação.");
   return l.map((f, k) => `<div class="ppj-folha${f.ativa === false ? " ppj-inativa" : ""}" data-ppj-id="${esc(f.id)}">
       <div class="campo"><label>Título</label><input data-ppj-edita="titulo" value="${esc(f.titulo || "")}" maxlength="80" /></div>
-      ${temLocais ? `<div class="campo"><label>Local</label><select data-ppj-edita="local">${/* html */ ppjOpcoesLocal(f.local)}</select></div>` : ""}
+      ${/* html */ ppjCampoLocalHTML("data-ppj-edita", f.local)}
       <div class="campo"><label>Revisão</label><input data-ppj-edita="revisao" value="${esc(f.revisao || "")}" maxlength="30" placeholder="ex.: R02" /></div>
       <div class="ppj-folha-acoes">
         <span class="ppj-folha-meta">página ${Number(f.pagina) || 1} · ${Number(f.largura_px) || 0} × ${Number(f.altura_px) || 0} px${f.ativa === false ? " · desativada" : ""}</span>
@@ -741,7 +751,9 @@ function ppjFolhasHTML(folhas, temLocais){
 }
 function ppjAtualizarFolhasJanela(){
   const el = $("ppj-folhas");
-  if(el) el.innerHTML = ppjFolhasHTML(_ppj.folhas || [], ppjTemLocais());
+  if(el) el.innerHTML = ppjFolhasHTML(_ppj.folhas || []);
+  const dl = $("ppj-locais");
+  if(dl) dl.outerHTML = ppjLocaisDatalistHTML();
 }
 /* PDFs de categoria projeto que a obra já tem em Documentos */
 async function ppjListarGuardados(){
@@ -810,14 +822,14 @@ async function ppjPrepararEnvio(base, lerDados){
 async function ppjMostrarPaginas(numeros){
   const envio = _ppjEnvio, cont = $("ppj-cartoes");
   if(!envio || !cont) return;
-  const temLocais = ppjLocaisDaObra(ppjEstacas()).length > 0, uma = numeros.length === 1, localPadrao = ppjFiltroLocal() === "__sem__" ? "" : ppjFiltroLocal();
+  const uma = numeros.length === 1, localPadrao = ppjFiltroLocal() === "__sem__" ? "" : ppjFiltroLocal();
   envio.paginas = numeros.map(n => ({ n, giro: 0 }));
   cont.innerHTML = `<p class="texto-apoio">${uma ? "Confira a folha e gere a imagem." : "Marque as páginas que são planta de locação. As outras ficam só no arquivo original."}</p>
     <div class="ppj-grade">${numeros.map(n => `<div class="ppj-pag" data-ppj-pag="${Number(n)}">
       <div class="ppj-mini" data-ppj-mini="${Number(n)}"><span class="ppj-mini-txt">página ${Number(n)}</span></div>
       <label class="ppj-check"><input type="checkbox" data-ppj-campo="usar"${uma ? " checked" : ""} /> Planta de locação</label>
       <div class="campo"><label>Título</label><input data-ppj-campo="titulo" value="Folha ${Number(n)}" maxlength="80" /></div>
-      ${temLocais ? `<div class="campo"><label>Local</label><select data-ppj-campo="local">${/* html */ ppjOpcoesLocal(localPadrao)}</select></div>` : ""}
+      ${/* html */ ppjCampoLocalHTML("data-ppj-campo", localPadrao)}
       <div class="campo"><label>Revisão</label><input data-ppj-campo="revisao" maxlength="30" placeholder="ex.: R02" /></div>
       <button type="button" class="btn-sec btn-sm" data-ppj-girar="${Number(n)}" title="Girar a página 90° antes de gerar a imagem">Girar 90°</button>
     </div>`).join("")}</div>

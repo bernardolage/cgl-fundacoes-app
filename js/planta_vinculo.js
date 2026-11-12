@@ -119,7 +119,10 @@ function ppjVinPrefixos(execs, estacas, localFolha){
    B2-P10A → P10A do bloco 02), aponta UMA estaca só, posicionada nesta folha, prevista, sem execução e sem medição.
    Fica de fora (para vincular uma a uma): desvinculada à mão, nome que casa com mais de uma estaca, estaca que duas
    execuções disputam. Devolve { pares: [{ x, estaca, conf }], fora: quantas tinham nome igual e ficaram de fora }.
-   Nada é gravado aqui: a tela mostra a lista e grava só no botão. */
+   Nada é gravado aqui: a tela mostra a lista e grava só no botão.
+   Hotfix da 8506 (12/11/2026): quando o campo escreve o prefixo de um bloco (B2P10A), o nome sem prefixo (P10A) é de
+   outro bloco. Então o nome igual sem prefixo não casa com estaca cujo local tem o número de um bloco que o campo
+   prefixa: P10A do bloco 01 nunca vai para a P10A do BLOCO 02. */
 function ppjVinNomeIgual(execs, estacas, mapa, prefixos, medidas){
   const lista = (Array.isArray(estacas) ? estacas : []).filter(e => e && e.id);
   if(typeof estvChaveNome !== "function" || typeof estvSemBloco !== "function" || typeof estvLocalNums !== "function") return { pares: [], fora: 0 };
@@ -130,8 +133,14 @@ function ppjVinNomeIgual(execs, estacas, mapa, prefixos, medidas){
     const k = estvChaveNome(e.numero);
     if(k){ if(!porChave.has(k)) porChave.set(k, []); porChave.get(k).push(e); }
   }
+  const numsPrefixados = new Set();
+  for(const x of Array.isArray(execs) ? execs : []){
+    const sb2 = x && estvSemBloco(x.estaca_numero, prefixos);
+    if(sb2) numsPrefixados.add(sb2.num);
+  }
+  const deBlocoPrefixado = (e) => numsPrefixados.size > 0 && [...estvLocalNums(e)].some(n => numsPrefixados.has(n));
   const candidatos = (x) => {
-    const iguais = porChave.get(estvChaveNome(x.estaca_numero)) || [];
+    const iguais = (porChave.get(estvChaveNome(x.estaca_numero)) || []).filter(e => !deBlocoPrefixado(e));
     if(iguais.length) return { l: iguais, conf: "igual" };
     const semB = estvSemBloco(x.estaca_numero, prefixos);
     if(!semB) return { l: [], conf: null };
