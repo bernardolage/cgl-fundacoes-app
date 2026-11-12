@@ -538,13 +538,13 @@ async function carregarOrcamentos(){
   if(Object.keys(_orcVarById).length === 0){
     try { await prepararCatalogoOrc(); } catch(_){ /* segue */ }
   }
-  const COLS = "id,numero,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade,iss_percentual,iss_por_dentro";
+  const COLS = "id,numero,numero_revisao,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade,iss_percentual,iss_por_dentro";
   const ler = (cols) => sb.from("orcamentos").select(cols).order("data_orcamento",{ ascending:false });
   let [{ data, error }, itensEixo] = await Promise.all([ler(COLS + ",concorrencia"), orcBuscarItensEixo()]);
   // lote S47 (#111): antes da migration 20261022_loteS47 a coluna não existe; lê sem ela e o campo fica escondido
   if(error && /concorrencia/i.test(error.message || "")) ({ data, error } = await ler(COLS));
   else if(!error) _orcTemConcorrencia = true;
-  _orcamentos = error ? [] : (data || []);
+  _orcamentos = orcSoVigentes(error ? [] : (data || []));   // lote S64-b: uma linha por número; as outras revisões ficam na aba Revisões
   orcAtualizarConcorrencias();
   // lote S44 (L3, #63): métodos de cada orçamento = tipo da proposta + eixo dos serviços dos itens
   // (orçamento misto aparece em cada método que tiver)
@@ -566,6 +566,23 @@ async function carregarOrcamentos(){
     selectObrOrc.value = atual;
   }
 }
+
+/* lote S64-b (#289): várias revisões do mesmo número. O painel, o kanban e as contagens mostram só a vigente de cada
+   número: a aprovada, se houver; senão a maior revisão. As demais abrem pela aba Revisões da ficha. */
+const orcRevNum = (o) => parseInt(o && o.numero_revisao, 10) || 0;
+function orcSoVigentes(lista){
+  const porNum = new Map();
+  lista.forEach(o => {
+    const k = o.numero || o.id;
+    const atual = porNum.get(k);
+    if(!atual){ porNum.set(k, o); return; }
+    const aprovA = atual.status === "aprovado", aprovO = o.status === "aprovado";
+    if(aprovO !== aprovA ? aprovO : orcRevNum(o) > orcRevNum(atual)) porNum.set(k, o);
+  });
+  const vig = new Set(porNum.values());
+  return lista.filter(o => vig.has(o));   // mantém a ordem da consulta
+}
+const orcRevTxt = (o) => orcRevNum(o) > 0 ? ` · Rev ${String(o.numero_revisao).trim()}` : "";
 
 /* lote S44 (L3): itens com variante de todos os orçamentos, em páginas de 1000 (limite do PostgREST) */
 async function orcBuscarItensEixo(){
@@ -746,7 +763,7 @@ function renderOrcLista(dados){
   const comConc = _orcTemConcorrencia;   // lote S47 (#111): coluna Concorrência depois da migration
   const nCols = comConc ? 8 : 7;
   const linha = (o) => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
-    <td>${esc(o.numero)}</td>
+    <td>${esc(o.numero)}${esc(orcRevTxt(o))}</td>
     <td>${esc(mapaClientes[o.cliente_id]||"—")}</td>
     ${comConc ? `<td>${o.concorrencia ? esc(o.concorrencia) : '<span class="meta">—</span>'}</td>` : ""}
     <td>${esc(_orcTipoPorteTxt(o))}</td>
@@ -790,7 +807,7 @@ function renderOrcKanban(dados){
     const stMeta = (STATUS.orcamento && STATUS.orcamento[st]) || { label: st, cor: "cinza" };
     const cards = itens.map(o => `
       <div class="serv-kan-card linha-clicavel" data-id="${esc(o.id)}">
-        <div class="serv-kan-card-nome">${esc(o.numero)} · ${esc(mapaClientes[o.cliente_id]||"—")}</div>
+        <div class="serv-kan-card-nome">${esc(o.numero)}${esc(orcRevTxt(o))} ·${esc(mapaClientes[o.cliente_id]||"—")}</div>
         <div class="serv-kan-card-meta">
           <span class="meta">${dataBR(o.data_orcamento)}${o.validade ? " · val " + dataBR(o.validade) : ""} · ${esc(_orcTipoPorteTxt(o))}</span>
           ${o.concorrencia ? `<span class="meta" title="Concorrência (lote S47, #111)">🏗️ ${esc(o.concorrencia)}</span>` : ""}
@@ -1132,7 +1149,9 @@ async function criarNovaRevisaoOrc(){
   if(!orcEditId){ aviso("app-aviso","Salve o orçamento atual primeiro.","erro"); return; }
   const { data: atual, error: e1 } = await sb.from("orcamentos").select("*").eq("id", orcEditId).single();
   if(e1){ aviso("app-aviso","Erro: "+e1.message,"erro"); return; }
-  const revAtual = parseInt(atual.numero_revisao, 10) || 0;
+  // hotfix 289: a nova revisão é a maior do mesmo número + 1 (a ficha aberta pode ser uma revisão antiga)
+  const { data: irmas } = await sb.from("orcamentos").select("numero_revisao").eq("numero", atual.numero);
+  const revAtual = Math.max(parseInt(atual.numero_revisao, 10) || 0, ...(irmas || []).map(r => parseInt(r.numero_revisao, 10) || 0));
   const novaRev  = String(revAtual + 1).padStart(2, "0");
   if(!confirm(`Criar nova revisão ${novaRev} a partir da atual (Rev ${atual.numero_revisao || "00"})?\n\nVai copiar todos os itens. Status inicial: rascunho.`)) return;
 

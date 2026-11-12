@@ -1277,10 +1277,16 @@ async function carregarDashOrcamentos(){
   const card = $("dash-card-orc");
   if(card) card.style.display = podeVerOrcamentos() ? "" : "none";   // hotfix 113: comercial ou módulo extra
   if(!podeVerOrcamentos()) return;
-  const [{ count: cntOrcAbertos }, { data: orcAbertos }] = await Promise.all([
-    sb.from("orcamentos").select("id",{count:"exact",head:true}).in("status",["rascunho","enviado","em_negociacao"]),
-    sb.from("orcamentos").select("valor_total").in("status",["rascunho","enviado","em_negociacao"])
-  ]);
+  // lote S64-b (#289): revisões repetem o número; conta só a maior revisão em aberto de cada número
+  const { data: orcLinhas } = await sb.from("orcamentos").select("numero,numero_revisao,valor_total")
+    .in("status",["rascunho","enviado","em_negociacao"]);
+  const porNum = new Map();
+  (orcLinhas||[]).forEach(o => {
+    const a = porNum.get(o.numero);
+    if(!a || (parseInt(o.numero_revisao,10)||0) > (parseInt(a.numero_revisao,10)||0)) porNum.set(o.numero, o);
+  });
+  const orcAbertos = [...porNum.values()];
+  const cntOrcAbertos = orcAbertos.length;
   const n = $("dash-orc-abertos");
   if(n){ n.textContent = cntOrcAbertos || 0; n.classList.toggle("dash-num-vazio", !(cntOrcAbertos > 0)); }
   const valorOrcAbertos = (orcAbertos||[]).reduce((s,o) => s + (Number(o.valor_total)||0), 0);
