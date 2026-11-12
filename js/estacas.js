@@ -1412,6 +1412,54 @@ function abrirModalImport(){
   $("est-import-preview").style.display = "none";
   $("est-import-preview-conteudo").innerHTML = "";
   $("est-import-modal").style.display = "flex";
+  estOfertaLeituraOrc();   // fase 174b
+}
+
+/* Fase 174b (D12): obra criada de um orçamento cujo projeto foi lido no assistente. A extrair-estacas-pdf procura a leitura
+   guardada (contrato do cliente → orçamento → orcamento_arquivos → ia_leituras), sem PDF e sem chamada paga. Contrato sem
+   orçamento ligado: a oferta não aparece (nunca se liga por número ou nome). A prévia é a mesma do PDF; nada é gravado
+   antes de "Importar todas". */
+async function estOfertaLeituraOrc(){
+  const box = $("est-orc-leitura");
+  if(!box) return;
+  box.style.display = "none";
+  const obraId = obraEditId;
+  try {
+    const { data, error } = await sb.functions.invoke("extrair-estacas-pdf", { body: { somente_cache: true, so_contar: true, obra_id: obraId } });
+    if(error || obraId !== obraEditId || !data?.leituras?.length) return;
+    const n = data.leituras.reduce((s, l) => s + (Number(l.estacas) || 0), 0);
+    $("est-orc-leitura-txt").textContent = `Projeto lido no orçamento ${data.orcamento_numero || ""}: ${n} estaca(s). Sem nova leitura paga.`;
+    box.style.display = "";
+  } catch(_){ /* sem oferta */ }
+}
+async function estUsarLeituraOrc(){
+  const btn = $("btn-est-orc-leitura");
+  if(btn) btn.disabled = true;
+  try {
+    const { data, error } = await iaInvocarComLimite("extrair-estacas-pdf", { somente_cache: true, obra_id: obraEditId },
+      "A busca da leitura do orçamento demorou demais. Tente de novo.", 60000);
+    if(error){
+      let msg = error.message;
+      try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){ /* corpo ilegível */ }
+      throw new Error(msg);
+    }
+    if(data?.error) throw new Error(data.error);
+    const leituras = data?.leituras || [];
+    if(!leituras.length){ avisoImport(`Nenhuma leitura do projeto guardada (${data?.motivo || "sem leitura"}). Envie o PDF abaixo.`, "aviso"); return; }
+    const r0 = leituras[0].resultado || {};
+    _importPreview = leituras.flatMap(l => Array.isArray(l.resultado?.estacas) ? l.resultado.estacas : []).map(e => extrairCoordsDaObservacao({ ...e }));
+    if(!_importPreview.length){ avisoImport("A leitura do orçamento não tem estacas. Envie o PDF abaixo.", "aviso"); return; }
+    _importUnidade = FATOR_UNIDADE[r0.unidade_coordenadas] ? r0.unidade_coordenadas : unidadeSugeridaCoords(_importPreview);
+    _importNomenclatura = r0.agrupamento_nomenclatura || null;
+    if(r0.local_detectado) _importPreview.forEach(e => { if(!e.local) e.local = r0.local_detectado; });
+    const origem = `Projeto lido no orçamento ${data.orcamento_numero || ""}: ${_importPreview.length} estacas (${leituras.map(l => l.nome).join(", ")}), sem nova leitura paga.`;
+    renderImportPreview(origem + (r0.observacoes ? "\n\n" + r0.observacoes : ""), { ...(r0._meta || {}), cache: true });
+    avisoImport(`${origem} Revise antes de importar.`, "ok");
+  } catch(err){
+    avisoImport("Não foi possível usar a leitura do orçamento: " + (err?.message || "falha"), "erro");
+  } finally {
+    if(btn) btn.disabled = false;
+  }
 }
 
 function fecharModalImport(){
@@ -4085,6 +4133,7 @@ function ligarEstacas(){
     abrirModalEstaca(null);
   });
   $("btn-est-importar")?.addEventListener("click", abrirModalImport);
+  $("btn-est-orc-leitura")?.addEventListener("click", estUsarLeituraOrc);   // fase 174b
   $("btn-est-importar-dxf")?.addEventListener("click", abrirModalDXF);
   $("btn-est-fechar-dxf")?.addEventListener("click", fecharModalDXF);
   $("btn-dxf-ler")?.addEventListener("click", lerArquivoDXF);

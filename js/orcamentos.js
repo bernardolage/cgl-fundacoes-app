@@ -838,8 +838,140 @@ function mostrarPainelOrc(){
   orcEditId = null;
 }
 
+/* ====================================================================
+   Fase 174b: orçamento montado pelo assistente (D7, D10, D12)
+   preencherOrcamentoDoAssistente abre um orçamento NOVO com os dados, flags e itens do resumo do assistente (texto da
+   proposta fica o padrão: D7a). Nada é gravado até Salvar; ao salvar grava assistente_conversa_id e liga os arquivos da
+   conversa ao orçamento (copia de <uid>/pendente/<conversa>/ para <orcamento_id>/ e registra em orcamento_arquivos).
+   ==================================================================== */
+const ORC_BUCKET_ARQ = "orcamentos-arquivos";
+const ORC_TIPO_ARQ_LBL = { projeto: "Projeto", sondagem: "Sondagem", planilha: "Planilha", pedido: "Pedido/e-mail" };
+let _orcAssistente = null;   // { conversa_id, arquivos } até salvar o orçamento montado pelo assistente
+function orcLimparAssistente(){
+  _orcAssistente = null;
+  const f = $("orc-aviso-assistente"); if(f) f.style.display = "none";
+}
+async function preencherOrcamentoDoAssistente(r, origem){
+  if(!r || !irParaSecao("orcamentos")) return;
+  await carregarOrcamentos();   // catálogo e número sugerido
+  novoOrcamento();
+  _orcAssistente = { conversa_id: origem?.conversa_id || null, arquivos: Array.isArray(origem?.arquivos) ? origem.arquivos : [] };
+  const set = (id, v) => { const el = $(id); if(el && v != null && v !== "") el.value = v; };
+  const setSel = (id, v) => { const el = $(id); if(el && v != null && [...el.options].some(o => o.value === String(v))) el.value = String(v); };
+  const chk = (id, v) => { const el = $(id); if(el && typeof v === "boolean") el.checked = v; };
+  setSel("orc-cliente", r.cliente?.id);
+  set("orc-ref-obra", r.referencia_obra);
+  set("orc-local", r.local_execucao);
+  set("orc-contato-nome", r.contato_nome);
+  set("orc-contato-tel", r.contato_telefone);
+  set("orc-contato-email", r.contato_email);
+  set("orc-prazo", r.prazo_execucao);
+  set("orc-sim-inicio", r.inicio_desejado);
+  setSel("orc-porte", r.porte_equipamento);
+  setSel("orc-faixa", r.faixa_profundidade);
+  if(r.tipo_obra) definirTipoObraOrc(r.tipo_obra);
+  chk("orc-proj-forn", r.projeto_fornecido);
+  chk("orc-sond-forn", r.sondagem_fornecida);
+  chk("orc-cgl-diesel", r.cgl_fornece_diesel);
+  chk("orc-cgl-hospedagem", r.cgl_fornece_hospedagem);
+  chk("orc-cgl-alimentacao", r.cgl_fornece_alimentacao);
+  if(r.iss_percentual != null) $("orc-iss-perc").value = r.iss_percentual;
+  chk("orc-iss-pdentro", r.iss_por_dentro);
+  setSel("orc-pagamento-forma", r.pagamento_forma);
+  setSel("orc-prazo-pagamento", r.prazo_pagamento_dias);
+  if((r.pagamento_forma || r.prazo_pagamento_dias) && typeof textoPagamentoPadrao === "function"){
+    $("orc-pagamento").value = textoPagamentoPadrao(Number($("orc-prazo-pagamento")?.value) || 15, $("orc-pagamento-forma")?.value || "deposito");
+  }
+  // método: troca o modelo (filtro do catálogo) e depois põe só os itens do resumo
+  setSel("orc-tipo-proposta", r.tipo_proposta);
+  orcTrocarModelo();
+  atualizarFiltroCatalogoOrc();
+  $("orc-itens").innerHTML = "";
+  (Array.isArray(r.itens) ? r.itens : []).forEach(x => {
+    const v = x.variante_id ? _orcVarById[x.variante_id] : null;
+    adicionarItemPreenchido({
+      variante_id: v ? v.id : null,
+      descricao: v ? _nomeItemCatalogoOrc(v) : (x.descricao || ""),
+      quantidade: Number(x.quantidade) || 0,
+      unidade: x.unidade || (v && (v.unidade || _orcServUnidade[v.servico_id])) || "un",
+      valor_unitario: x.valor_unitario != null ? Number(x.valor_unitario) : 0,
+      observacao: (v && _orcServObs[v.servico_id]) || ""   // observação padrão do catálogo, como no item escolhido à mão
+    });
+  });
+  recalcularOrc();
+  const faixa = $("orc-aviso-assistente"); if(faixa) faixa.style.display = "";
+  ativarTabOrc("itens");
+  // cliente fora do cadastro: o cadastro rápido (BrasilAPI) abre com o nome e o CNPJ do pedido
+  if(!r.cliente?.id && orcPodeCadastrarCliente()){
+    orcAbrirNovoCliente();
+    set("orc-cli-nome", r.cliente?.nome);
+    set("orc-cli-doc", r.cliente?.cnpj);
+  }
+  aviso("app-aviso", "Orçamento montado pelo assistente: confira e clique em Salvar. Nada foi gravado.", "aviso");
+}
+/* arquivos da conversa → orçamento salvo; devolve quantos falharam */
+async function orcLigarArquivosAssistente(orcId, arquivos){
+  let falhas = 0;
+  for(const a of arquivos || []){
+    const destino = `${orcId}/${String(a.caminho || "").split("/").pop()}`;
+    const cp = await sb.storage.from(ORC_BUCKET_ARQ).copy(a.caminho, destino);
+    if(cp.error){ falhas++; continue; }
+    const { error } = await sb.from("orcamento_arquivos").insert({ orcamento_id: orcId, tipo: a.tipo, caminho: destino, nome: a.nome,
+      sha256: a.sha256 || null, tamanho_bytes: a.tamanho || null });
+    if(error){ await sb.storage.from(ORC_BUCKET_ARQ).remove([destino]); falhas++; continue; }
+    await sb.storage.from(ORC_BUCKET_ARQ).remove([a.caminho]);
+  }
+  return falhas;
+}
+/* aba Arquivos da ficha (D10) */
+async function carregarArquivosOrc(orcId){
+  const cont = $("orc-arquivos-conteudo");
+  if(!cont) return;
+  if(!orcId){ cont.innerHTML = uiVazio("Os arquivos do pedido aparecem aqui depois de salvar."); if($("orc-arq-badge")) $("orc-arq-badge").textContent = ""; return; }
+  const { data, error } = await sb.from("orcamento_arquivos").select("id,tipo,caminho,nome,tamanho_bytes,criado_em").eq("orcamento_id", orcId).order("criado_em");
+  if(orcEditId !== orcId) return;
+  if(error){ cont.innerHTML = uiVazio("Não foi possível ler os arquivos: " + error.message); return; }
+  if($("orc-arq-badge")) $("orc-arq-badge").textContent = data.length || "";
+  cont.innerHTML = data.length ? `<div class="orc-arq-lista">${data.map(a => `<div class="orc-arq-linha">
+      <span class="chip">${esc(ORC_TIPO_ARQ_LBL[a.tipo] || a.tipo)}</span>
+      <span class="orc-arq-nome" title="${esc(a.nome)}">${esc(a.nome)}</span>
+      <span class="meta">${esc(a.tamanho_bytes ? (a.tamanho_bytes / 1048576).toFixed(1).replace(".", ",") + " MB · " : "")}${esc(dataBR(a.criado_em))}</span>
+      <button type="button" class="btn-sec btn-sm" data-orc-arq-abrir="${esc(a.caminho)}">Abrir</button></div>`).join("")}</div>`
+    : uiVazio("Nenhum arquivo do pedido neste orçamento.");
+}
+async function orcAbrirArquivo(caminho){
+  const { data, error } = await sb.storage.from(ORC_BUCKET_ARQ).createSignedUrl(caminho, 120);
+  if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o arquivo: " + (error?.message || ""), "erro"); return; }
+  window.open(data.signedUrl, "_blank", "noopener");
+}
+/* D12: obra criada do orçamento leva os arquivos para os documentos da obra (bucket obras-documentos) */
+async function orcCopiarArquivosParaObra(orc, obraId){
+  const { data: arqs, error } = await sb.from("orcamento_arquivos").select("tipo,caminho,nome,tamanho_bytes").eq("orcamento_id", orc.id);
+  if(error || !arqs?.length) return "";
+  let ok = 0;
+  for(const a of arqs){
+    const d = await sb.storage.from(ORC_BUCKET_ARQ).download(a.caminho);
+    if(d.error || !d.data) continue;
+    const ext = (String(a.caminho).split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
+    const mime = MIME_POR_EXTENSAO[ext] || d.data.type || "application/octet-stream";
+    const caminho = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const up = await sb.storage.from("obras-documentos").upload(caminho, new Blob([d.data], { type: mime }), { contentType: mime, upsert: false });
+    if(up.error) continue;
+    const { error: eDoc } = await sb.from("obras_documentos").insert({
+      obra_id: obraId, categoria: a.tipo === "projeto" ? "projeto" : a.tipo === "sondagem" ? "sondagem" : "outro",
+      nome: a.nome, descricao: `Do orçamento ${orc.numero} (${ORC_TIPO_ARQ_LBL[a.tipo] || a.tipo})`, storage_path: caminho,
+      mime_type: mime, tamanho_bytes: a.tamanho_bytes || d.data.size, enviado_por: usuarioAtual?.id || null, origem: "orcamento"
+    });
+    if(eDoc){ await sb.storage.from("obras-documentos").remove([caminho]); continue; }
+    ok++;
+  }
+  return ok ? ` ${ok} arquivo(s) do orçamento copiado(s) para os documentos da obra.` : "";
+}
+
 function novoOrcamento(){
   orcEditId = null;
+  orcLimparAssistente();   // fase 174b
+  carregarArquivosOrc(null);
   // limpa form
   ["orc-numero","orc-cliente","orc-descricao","orc-validade","orc-responsavel","orc-obs",
    "orc-ref-obra","orc-escopo","orc-equipamento","orc-pagamento","orc-prazo","orc-local",
@@ -881,6 +1013,7 @@ function novoOrcamento(){
 
 async function abrirOrcamento(id){
   orcEditId = id;
+  orcLimparAssistente();   // fase 174b
   const { data:o, error } = await sb.from("orcamentos").select("*").eq("id",id).single();
   if(orcEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(error){ aviso("app-aviso","Erro ao abrir o orçamento: "+error.message,"erro"); return; }
@@ -1055,6 +1188,7 @@ async function carregarAbasOrc(o){
   // Badge na aba Revisões
   if($("orc-rev-badge")) $("orc-rev-badge").textContent = revisoes.length > 1 ? revisoes.length - 1 : "";
 
+  carregarArquivosOrc(orcEditId);   // fase 174b: aba Arquivos
   // Renderiza aba Revisões
   renderizarRevisoesOrc(revisoes, o);
   // Renderiza aba Vínculos
@@ -1259,10 +1393,13 @@ async function criarObraDoOrcamento(){
   const { data: mobId, error: eMob } = await sb.rpc("mobilizacao_prevista_do_orcamento", { p_obra: novaObraReg.id });
   const txtMob = eMob ? ` A mobilização prevista não pôde ser criada (${eMob.message}); crie pela aba Máquinas da obra.`
     : mobId ? " Mobilização prevista criada no quadro de Mobilizações." : "";
+  // 2d) Fase 174b (D12): arquivos do pedido (projeto, sondagem…) vão para os documentos da obra; a leitura do projeto
+  // fica no cache e a aba Estacas da obra oferece usá-la sem nova chamada paga
+  const txtArq = await orcCopiarArquivosParaObra(orc, novaObraReg.id);
 
   aviso("app-aviso", eFin
-    ? `🏗️ Obra ${codigo} criada, mas o valor contratado não pôde ser gravado: ${eFin.message}.${txtMob}`
-    : `🏗️ Obra ${codigo} criada (status: planejada).${txtMob}`, eFin || eMob ? "erro" : "ok");
+    ? `🏗️ Obra ${codigo} criada, mas o valor contratado não pôde ser gravado: ${eFin.message}.${txtMob}${txtArq}`
+    : `🏗️ Obra ${codigo} criada (status: planejada).${txtMob}${txtArq}`, eFin || eMob ? "erro" : "ok");
   if(typeof carregarObras === "function")     await carregarObras();
   if(typeof carregarContratos === "function") await carregarContratos();
   await carregarAbasOrc(orc);
@@ -1739,6 +1876,10 @@ async function salvarOrcamento(novoStatus){
   // lote S47 (#111): só grava a concorrência quando a coluna existe (migration 20261022_loteS47)
   if(_orcTemConcorrencia) reg.concorrencia = ($("orc-concorrencia")?.value || "").trim().replace(/\s+/g, " ") || null;
 
+  // fase 174b: orçamento novo montado pelo assistente guarda a conversa e, depois de salvo, recebe os arquivos dela
+  const doAssistente = !orcEditId && _orcAssistente ? _orcAssistente : null;
+  if(doAssistente?.conversa_id) reg.assistente_conversa_id = doAssistente.conversa_id;
+
   let orcId = orcEditId;
   // lote S44 (L7): enquanto a migration 20261020_loteS44_orcamento_alimentacao não estiver aplicada, grava o
   // resto e avisa no console (mesmo padrão de obras.sinal_abatimento_modelo), em vez de perder o orçamento
@@ -1774,7 +1915,13 @@ async function salvarOrcamento(novoStatus){
 
   $("orc-status").value = reg.status;
   $("btn-excluir-orc").style.display = "";
-  aviso("app-aviso", "Orçamento salvo com sucesso.", "ok");
+  let txtArq = "";
+  if(doAssistente?.arquivos?.length){
+    const falhas = await orcLigarArquivosAssistente(orcId, doAssistente.arquivos);
+    txtArq = falhas ? ` ${falhas} arquivo(s) da conversa não foram ligados; anexe de novo pelo assistente.` : ` ${doAssistente.arquivos.length} arquivo(s) do pedido na aba Arquivos.`;
+  }
+  orcLimparAssistente();
+  aviso("app-aviso", "Orçamento salvo com sucesso." + txtArq, txtArq.includes("não foram") ? "aviso" : "ok");
   await carregarOrcamentos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
   await abrirOrcamento(orcId);
@@ -1859,6 +2006,9 @@ function ligarOrcamentos(){
   // Ações novas: nova revisão + criar contrato
   $("btn-orc-nova-revisao")?.addEventListener("click", criarNovaRevisaoOrc);
   $("btn-orc-criar-obra")?.addEventListener("click", criarObraDoOrcamento);
+  $("orc-arquivos-conteudo")?.addEventListener("click", (e) => {   // fase 174b
+    const b = e.target.closest("[data-orc-arq-abrir]"); if(b) orcAbrirArquivo(b.dataset.orcArqAbrir);
+  });
 
   // Smart-buttons: com um único vínculo abrem a ficha direto; senão vão para a aba
   const SB_ORC_LISTA = { "sb-orc-contratos": ["contratos", "contrato"], "sb-orc-obras": ["obras", "obra"], "sb-orc-medicoes": ["medicoes", "medicao"] };

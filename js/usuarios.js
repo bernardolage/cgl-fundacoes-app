@@ -421,6 +421,8 @@ const USR_MODULOS_EXTRAS = [
   { id: "orcamentos", el: "usr-extra-orc", rotulo: "Orçamentos (além do cargo)" },
   // lote S57b (#211, D-211a): Pedro e Sergio (engenheiros) leem as propostas sem gravar; o checkbox nasce no index.html
   { id: "orcamentos_leitura", el: "usr-extra-orcleit", rotulo: "Orçamentos (somente leitura)" },
+  // fase 174b (D1): "Montar orçamento" no assistente; o cargo diretor não libera sozinho, só a diretoria marca
+  { id: "assistente_orcamento", el: "usr-extra-astorc", rotulo: "Montar orçamento pelo assistente (IA)" },
   { id: "produtos_sesmt", el: "usr-extra-prodsesmt", rotulo: "Produtos do SESMT (cadastro de EPI e uniformes)" },
   // lote S55 (#173, #182, #180): Thayse e Maria Eduarda (produtos); Maria Eduarda (compras). Valores aceitos pelo check do banco.
   { id: "produtos", el: "usr-extra-prod", rotulo: "Produtos (cadastro: edita e cadastra, sem saldo nem custo)" },
@@ -451,7 +453,7 @@ function usrExtrasMarcados(antes){
 /* Hotfix admin portas (11/11/2026): o acesso extra a Orçamentos só a diretoria libera, retira ou muda o prazo, e ninguém
    mexe no próprio cargo, na própria situação nem nos próprios acessos extras. O banco barra nos gatilhos de profiles; aqui
    a caixa só fica desabilitada, com o motivo no title (no rótulo também: campo desabilitado não mostra a dica). */
-const USR_EXTRAS_SO_DIRETORIA = ["orcamentos", "orcamentos_leitura"];
+const USR_EXTRAS_SO_DIRETORIA = ["orcamentos", "orcamentos_leitura", "assistente_orcamento"];   // fase 174b: + assistente_orcamento
 const USR_TRAVA_SO_DIRETORIA = "Só a diretoria libera ou retira este acesso.";
 const USR_TRAVA_PRAZO_ORC = "Só a diretoria muda o prazo de quem tem acesso extra a Orçamentos.";
 const USR_TRAVA_PROPRIO = "Você não altera o próprio cadastro neste campo: outra pessoa da diretoria ou da administração faz.";
