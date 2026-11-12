@@ -663,7 +663,6 @@ function encargosTrado(flags){
     { d: "Fornecimento de concreto, bem como montagem e lançamento do aço conforme projeto.", r: "CONTRATANTE" },
     { d: "Bombeamento do concreto.", r: "CONTRATANTE" },
     { d: "Remoção dos materiais provenientes das escavações com equipamento mecanizado Retro escavadeira.", r: "CONTRATANTE" },
-    { d: "Fornecimento de 03 (três) ajudantes para limpeza dos trados e outros serviços de remoções de solo.", r: "CONTRATANTE", destaque: true },
     { d: TXT_RG.atestado, r: "CONTRATANTE" },
     { d: TXT_RG.frente, r: "CONTRATANTE" },
     { d: TXT_RG.tapumes, r: "CONTRATANTE" },
