@@ -1351,6 +1351,45 @@ function novoPedido(pre){
   _cmpItens = [];
   abrirFichaPedido(Object.assign({ id: null, numero: "(novo)", status: "rascunho", data_pedido: hojeISO(), local_entrega: "base", frete: 0, desconto: 0, total: 0, itens: [] }, pre || {}));
 }
+/* Lote S64-a (#288): Duplicar abre um rascunho novo com fornecedor, centro, destino, itens (quantidade, unidade, preço,
+   destino e rateio) e observação do pedido gravado. Número, anexos, aprovação, cotação, recebimento, NF e título não vêm:
+   o número sai ao salvar e, nesse salvar, o histórico do novo ganha "Duplicado de PC-..." (vira link pelo
+   linkificarCodigos). Produto provisório vai como está e continua travando o recebimento (regra do banco, S63-b). */
+async function cmpDuplicarPedido(){
+  const orig = _cmpAtual;
+  if(!orig?.id){ aviso("app-aviso", "Salve o pedido antes de duplicar.", "erro"); return; }
+  if(!cmpPodeOperar() && !cmpSoSesmt()){ aviso("app-aviso", "Seu perfil não opera compras.", "erro"); return; }
+  cmpRascGravar(); _cmpRascBase = null;   // o rascunho local do pedido de origem fica guardado, como no Voltar
+  const [{ data: p, error }, it] = await Promise.all([
+    sb.from("pedidos_compra").select("id,numero,fornecedor_id,centro_custo_id,local_entrega,obra_id,equipamento_id,tipo_compra,destino_centro_custo_id,observacoes").eq("id", orig.id).single(),
+    sb.from("pedido_compra_itens").select("*, produto:produtos(unidade,tipo_item), funcionario:funcionarios(nome)").eq("pedido_id", orig.id).order("ordem").order("created_at")
+  ]);
+  if(error || !p){ aviso("app-aviso", "Não foi possível ler o pedido para duplicar" + (error ? ": " + error.message : "."), "erro"); return; }
+  if(it.error){ aviso("app-aviso", "Itens não carregaram: " + it.error.message, "erro"); return; }
+  const ids = (it.data || []).map(i => i.id), rat = {};
+  if(ids.length){
+    const { data: r, error: eRat } = await sb.from("pedido_item_rateio").select("pedido_item_id,equipamento_id,fracao").in("pedido_item_id", ids);
+    if(eRat) console.warn("pedido_item_rateio:", eRat.message);
+    (r || []).forEach(x => { (rat[x.pedido_item_id] = rat[x.pedido_item_id] || []).push({ equipamento_id: x.equipamento_id, fracao: Number(x.fracao) }); });
+  }
+  const itens = (it.data || []).map(({ produto, funcionario, id, pedido_id, created_at, quantidade_recebida, requisicao_item_id, codigo_externo, valor_total, valor_ipi, ...i }) => {
+    i.descricao = semCodOdoo(i.descricao);
+    if(i.produto_id && produto?.unidade) _cmpProdUn[i.produto_id] = produto.unidade;
+    if(i.produto_id) _cmpProdSrv[i.produto_id] = produto?.tipo_item === "servico";
+    const l = rat[id], novo = { ...i, _funcNome: funcionario?.nome || null, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo };
+    if(l && l.length >= 2){ novo._rateio = cmpOrdenarRateio(l); novo._rateioDirty = true; }   // o rateio é gravado no 1º salvar
+    return novo;
+  });
+  _cmpItens = itens;
+  await cmpCarregarAces(itens.map(i => i.destino_acessorio_id));
+  const { id: _i, numero, ...cab } = p;
+  abrirFichaPedido(Object.assign({ id: null, numero: "(novo)", status: "rascunho", data_pedido: hojeISO(), frete: 0, desconto: 0, total: 0, itens: [] }, cab, { _dupDe: numero }));
+  aviso("app-aviso", `Rascunho novo com os itens de ${numero}. Confira e salve: o número sai ao salvar.`, "ok");
+}
+async function cmpDupRegistrar(id, numero){
+  const { error } = await sb.rpc("chatter_publicar", { p_entidade: "pedidos_compra", p_registro_id: id, p_tipo: "nota", p_texto: `Duplicado de ${numero}.`, p_mencionados: [] });
+  if(error) console.warn("histórico do pedido duplicado:", error.message);
+}
 async function abrirPedido(id){
   const [{ data: p, error }, it] = await Promise.all([
     sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), solicitante:profiles!pedidos_compra_solicitante_id_fkey(nome), aprovador:profiles!pedidos_compra_aprovador_id_fkey(nome)").eq("id", id).single(),
@@ -1397,7 +1436,7 @@ const cmpRascAgendar = debounce(cmpRascGravar, 400);
 function cmpRascOferecer(p){
   _cmpRascBase = null;
   if(!cmpEditavel()) return;
-  const base = JSON.stringify(cmpRascEstado()), chave = cmpRascChave(p.id), r = rascunhoLer(chave);
+  const base = JSON.stringify(cmpRascEstado()), chave = cmpRascChave(p.id), r = p._dupDe ? null : rascunhoLer(chave);   // lote S64-a: o duplicado não oferece o rascunho de outro pedido novo
   if(r){
     if(confirm(rascunhoPergunta(r.em, p.updated_at, "deste pedido"))) cmpRascRestaurar(r.dados);
     else rascunhoApagar(chave);
@@ -1751,6 +1790,7 @@ function cmpAtualizarBotoes(){
     "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && cmpPodeLancarNf() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180); hotfix 221: a NF é do financeiro, quem recebe usa "Receber material"
     "btn-cmp-receber-material": cmpPodeReceber() && ["aprovado","enviado","parcialmente_recebido"].includes(st) && cmpMateriaisPendentes().length > 0,   // lote S57a (#221): material sem a NF
     "btn-cmp-receber-servico": cmpPodeReceberServico(),
+    "btn-cmp-duplicar": !novo && !leitura && (pode || cmpSoSesmt()),   // lote S64-a (#288)
     "btn-cmp-pdf": !novo && st !== "cancelado", "btn-cmp-voltar-rascunho": pode && (st === "em_cotacao" || (["aguardando_aprovacao","aprovado"].includes(st) && usuarioAtual?.cargo === "diretor") || (st === "enviado" && dirSemRec)),   // hotfix 192e: depois do envio para aprovação, só a diretoria; fase 133: enviado também, sem recebimento
     "btn-cmp-reabrir": !novo && st === "cancelado" && dirSemRec,   // fase 133: cancelado volta a rascunho no mesmo número
     "btn-cmp-pdf-sem-valor": !novo && st !== "cancelado" && st !== "em_cotacao",   // lote S55 (#179): em cotação o PDF já é a solicitação
@@ -2760,6 +2800,7 @@ async function salvarPedido(silencioso){
   }
   if(!silencioso && !appAvisoComErro()) aviso("app-aviso", "Pedido salvo.", "ok");
   cmpRascDepoisDeSalvar(id);   // lote S60 (#177)
+  if(!_cmpEditId && _cmpAtual?._dupDe){ await cmpDupRegistrar(id, _cmpAtual._dupDe); _cmpAtual._dupDe = null; }   // lote S64-a (#288)
   _cmpEditId = id;
   return id;
 }
@@ -2776,6 +2817,7 @@ async function cmpAcao(acao){
   if(acao === "receber_servico"){ return abrirReceberServico(); }   // fase 78
   if(acao === "conferir"){ return cmpConferirRecebimentos(); }      // fase 102
   if(acao === "corrigir_fornecedor"){ return cmpCorrFornAbrir(); }   // lote S63-c (#245)
+  if(acao === "duplicar"){ return cmpDuplicarPedido(); }   // lote S64-a (#288)
   let id = _cmpEditId;
   try {
     if(acao === "em_cotacao"){

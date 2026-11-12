@@ -249,7 +249,7 @@ async function histCarregarTimeline(){
         : '<span class="tag ambar">Nota interna</span>';
       // lote S55: o "@Nome" dos mencionados conhecidos vira tag; o texto já está escapado e a troca é por texto
       // literal (o nome escapado do mesmo jeito), nunca por regex solta no HTML
-      let texto = esc(ev.texto).replace(/\n/g,"<br>");
+      let texto = linkificarCodigos(esc(ev.texto)).replace(/\n/g,"<br>");   // lote S64-a (#288): "Duplicado de PC-..." vira link
       (mencoes[ev.id] || []).forEach(nome => {
         texto = texto.split(esc("@" + nome)).join(`<span class="tag azul">@${esc(nome)}</span>`);
       });
@@ -271,6 +271,7 @@ async function histCarregarTimeline(){
       <div class="hist-item-corpo">${/* html */ corpo}</div>
     </div>`;
   }).join("");
+  if(typeof resolverCodigosDoc === "function") resolverCodigosDoc(tl);   // lote S64-a: código sem documento volta a texto
 }
 
 /* RPC ainda não existe no banco (migration do lote S55 não aplicada) */
