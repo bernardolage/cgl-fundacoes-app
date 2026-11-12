@@ -186,6 +186,7 @@ async function carregarChamados(silencioso){
   _chamTabelaOk = true;
   _chamados = data || [];
   _chamCarregado = true;
+  const bSem = $("btn-cham-sem-resposta"); if(bSem) bSem.hidden = !chamLeConversas();   // fase 174a
   await carregarPerfisChamados(_chamados.flatMap(c => [c[CHAM_COL.abertoPor], c.aguardando_de_id]));   // lote S47: quem responde
   preencherFiltrosChamados();
   renderChamados();
@@ -244,7 +245,9 @@ function chamadosFiltrados(){
   const fObra = $("cham-f-obra")?.value || "";
   const fPri  = $("cham-f-prioridade")?.value || "";
   const meus  = $("cham-f-meus")?.checked;
+  const fOri  = $("cham-f-origem")?.value || "";   // fase 174a
   return _chamados.filter(c => {
+    if(fOri && (c.origem || "usuario") !== fOri) return false;
     if(fSt === "") { if(chamFechado(c.status)) return false; }
     else if(fSt === "minha_resposta"){ if(!chamEsperaMinha(c)) return false; }   // lote S47
     else if(fSt === "atrasados"){ if(!chamPrazoVencido(c)) return false; }
@@ -376,6 +379,7 @@ function renderFichaChamado(erroComentarios){
       ${c.obra_id ? `<span class="chip">Obra: <strong>${linkObra(c.obra_id, mapaObras[c.obra_id] || c.obra_id)}</strong></span>` : ""}
       ${c.registro_tipo ? `<span class="chip">Registro: <strong>${esc(c.registro_tipo)}</strong> ${abreRegistro ? `<button type="button" class="btn-sec btn-sm" id="btn-cham-abrir-registro">abrir</button>` : ""}</span>` : ""}
       <span class="chip">Aberto por <strong>${esc(chamAutor(c[CHAM_COL.abertoPor], c.origem))}</strong> em ${esc(chamDataHora(c[CHAM_COL.criado]))}</span>
+      ${c.origem === "assistente" && c.assistente_conversa_id ? `<span class="chip">Pelo assistente <button type="button" class="btn-sec btn-sm" id="btn-cham-ver-conversa" title="Mostra a conversa que gerou o chamado (só para quem abriu e para a diretoria)">Ver conversa</button></span>` : ""}
     </div>
     ${chamChipsBacklog(c, podeTriar)}
     <div class="cham-status-bar" id="cham-status-bar">${stages}</div>
@@ -422,6 +426,7 @@ function renderFichaChamado(erroComentarios){
   $("btn-cham-comentar").addEventListener("click", () => comentarChamado(false));
   $("btn-cham-resolver")?.addEventListener("click", () => comentarChamado(true));
   $("btn-cham-abrir-registro")?.addEventListener("click", () => { fecharChamado(); CHAM_ABRIR_REGISTRO[c.registro_tipo](c.registro_id); });
+  $("btn-cham-ver-conversa")?.addEventListener("click", () => { if(typeof abrirConversaAssistente === "function") abrirConversaAssistente(c.assistente_conversa_id); });   // fase 174a
   // fase 64: chips de backlog salvam um a um; "Aprovar resposta" reaproveita o fluxo de resolver
   box.querySelectorAll("[data-cham-campo]").forEach(el => el.addEventListener("change", () => comBotaoTravado(el, () => chamSalvarCampo(el.dataset.chamCampo, el.value))));
   box.querySelectorAll(".btn-cham-aprovar").forEach(b => b.addEventListener("click", () => {
@@ -842,6 +847,41 @@ async function criarChamado(){
   if(falhasAnexo.length) aviso("app-aviso", `Chamado aberto, mas ${falhasAnexo.length} anexo(s) não subiram: ${falhasAnexo.join(" · ")}. Abra o chamado e anexe de novo.`, "erro");
 }
 
+/* ---------- Fase 174a: perguntas que o assistente não soube responder (fila do futuro manual por tela) ----------
+   Só a diretoria lê a conversa dos outros (has_role('auditor') no banco = diretor ou auditor). */
+const chamLeConversas = () => !!(usuarioAtual && ["diretor", "auditor"].includes(usuarioAtual.cargo));
+async function alternarPerguntasSemResposta(){
+  const box = $("cham-sem-resposta"), lista = $("cham-conteudo");
+  if(!box || !lista) return;
+  if(!box.hidden){ box.hidden = true; lista.hidden = false; return; }
+  box.hidden = false; lista.hidden = true;
+  box.innerHTML = uiVazio("Carregando…");
+  const { data, error } = await sb.from("assistente_mensagens").select("id,conversa_id,texto,criado_em")
+    .eq("sem_resposta", true).order("criado_em", { ascending: false }).limit(200);
+  if(error){ box.innerHTML = uiVazio("Não foi possível ler: " + error.message); return; }
+  const marcadas = data || [];
+  const convIds = [...new Set(marcadas.map(m => m.conversa_id))];
+  let perguntas = [], conversas = [];
+  if(convIds.length){
+    const [p, c] = await Promise.all([
+      sb.from("assistente_mensagens").select("conversa_id,texto,criado_em").eq("papel", "usuario").in("conversa_id", convIds).order("criado_em", { ascending: true }),
+      sb.from("assistente_conversas").select("id,usuario_id,secao").in("id", convIds)
+    ]);
+    perguntas = p.data || []; conversas = c.data || [];
+  }
+  await carregarPerfisChamados(conversas.map(c => c.usuario_id));
+  const conv = Object.fromEntries(conversas.map(c => [c.id, c]));
+  // a pergunta é a última mensagem da pessoa antes da resposta marcada
+  const pergunta = (m) => perguntas.filter(p => p.conversa_id === m.conversa_id && p.criado_em <= m.criado_em).pop();
+  const linhas = marcadas.map(m => {
+    const c = conv[m.conversa_id] || {}, p = pergunta(m);
+    return uiLinhaItem(p?.texto || "(pergunta não encontrada)", `${chamNome(c.usuario_id)} · ${chamModuloLabel(c.secao)} · ${chamDataHora(m.criado_em)}`, null, null);
+  }).join("");
+  box.innerHTML = uiSecao("nota", "Perguntas sem resposta", linhas || uiVazio("Nenhuma pergunta sem resposta."), marcadas.length ? String(marcadas.length) : null)
+    + `<div class="form-acoes compacta"><button type="button" class="btn-sec btn-sm" id="btn-cham-sem-resposta-voltar">Voltar aos chamados</button></div>`;
+  $("btn-cham-sem-resposta-voltar")?.addEventListener("click", alternarPerguntasSemResposta);
+}
+
 /* ---------- Listeners ---------- */
 function ligarChamados(){
   // Os modais nascem dentro de <section id="sec-chamados">, que fica display:none fora dessa tela.
@@ -850,12 +890,16 @@ function ligarChamados(){
   ["cham-novo-modal", "cham-modal"].forEach(id => { const m = $(id); if(m && m.closest(".secao")) document.body.appendChild(m); });
   document.querySelector('.sidebar-nav button[data-secao="chamados"]')?.addEventListener("click", () => carregarChamados(true));
   $("btn-cham-atualizar")?.addEventListener("click", () => carregarChamados(false));
-  $("btn-cham-novo")?.addEventListener("click", () => abrirNovoChamado({ modulo: "chamados", modulo_label: "Chamados" }));
+  // fase 174a: "Novo chamado" abre o assistente; o formulário de antes fica em "Preencher sem assistente"
+  $("btn-cham-novo")?.addEventListener("click", () => typeof abrirAssistente === "function"
+    ? abrirAssistente({ modulo: "chamados", modulo_label: "Chamados" }) : abrirNovoChamado({ modulo: "chamados", modulo_label: "Chamados" }));
+  $("btn-cham-sem-assistente")?.addEventListener("click", () => abrirNovoChamado({ modulo: "chamados", modulo_label: "Chamados" }));
+  $("btn-cham-sem-resposta")?.addEventListener("click", alternarPerguntasSemResposta);
   $("btn-reportar-problema")?.addEventListener("click", () => abrirNovoChamado(chamadosContextoAtual()));
   $("btn-chamn-fechar")?.addEventListener("click", fecharNovoChamado);
   $("btn-chamn-criar")?.addEventListener("click", () => comBotaoTravado("btn-chamn-criar", criarChamado));
   $("chamn-categoria")?.addEventListener("change", atualizarNotaCategoriaChamado);
-  ["cham-busca","cham-f-status","cham-f-prioridade","cham-f-categoria","cham-f-obra","cham-f-meus"].forEach(id => {
+  ["cham-busca","cham-f-status","cham-f-prioridade","cham-f-categoria","cham-f-obra","cham-f-origem","cham-f-meus"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "cham-busca" ? "input" : "change", renderChamados);
   });

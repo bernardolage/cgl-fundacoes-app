@@ -1460,14 +1460,18 @@ async function carregarDashIA(){
   if(error){ elNum.textContent = "US$ —"; elSub.textContent = "sem acesso ao registro"; return; }
   const linhas = data || [];
   const custo  = linhas.reduce((s, l) => s + Number(l.custo_usd || 0), 0);
-  const ok     = linhas.filter(l => l.status === "ok").length;
-  const erros  = linhas.length - ok;
+  // fase 174a: o assistente (uma linha por rodada da conversa) aparece separado das leituras
+  const leit   = linhas.filter(l => l.funcao !== "assistente");
+  const ast    = linhas.filter(l => l.funcao === "assistente");
+  const custoAst = ast.reduce((s, l) => s + Number(l.custo_usd || 0), 0);
+  const ok     = leit.filter(l => l.status === "ok").length;
+  const erros  = linhas.filter(l => l.status !== "ok").length;
   const rdo    = linhas.filter(l => l.funcao === "extrair-rdo-arquivo" && l.status === "ok").length;
   const est    = linhas.filter(l => l.funcao === "extrair-estacas-pdf" && l.status === "ok").length;
   const tokens = linhas.reduce((s, l) => s + Number(l.tokens_input || 0) + Number(l.tokens_output || 0), 0);
   elNum.textContent = "US$ " + custo.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   elNum.classList.toggle("dash-num-vazio", !(linhas.length > 0));
   elSub.textContent = linhas.length
-    ? `${ok} leitura(s): ${rdo} RDO · ${est} plantas${erros ? ` · ${erros} erro(s)` : ""} · ${num(Math.round(tokens / 1000))} mil tokens`
+    ? `${ok} leitura(s): ${rdo} RDO · ${est} plantas${ast.length ? ` · assistente US$ ${custoAst.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}${erros ? ` · ${erros} erro(s)` : ""} · ${num(Math.round(tokens / 1000))} mil tokens`
     : "nenhuma leitura este mês";
 }

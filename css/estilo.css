@@ -3968,3 +3968,43 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .ppj-area { flex-direction: column; }
   .ppj-painel { width: auto; max-height: 40vh; }
 }
+
+/* ===== Fase 174a: assistente de chat (js/assistente.js). Painel lateral fixo; tela cheia no celular. ===== */
+.ast-painel { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); z-index: 1200; display: flex; flex-direction: column;
+  background: var(--sup-0); border-left: 1px solid var(--borda); box-shadow: var(--shadow-lg); }
+.ast-painel[hidden] { display: none; }
+.ast-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--esp-2); padding: var(--esp-3) var(--esp-4);
+  border-bottom: 1px solid var(--borda); }
+.ast-topo .meta { font-size: var(--txt-xs); color: var(--txt-fraco); }
+.ast-topo-acoes { display: flex; gap: var(--esp-1); flex-wrap: wrap; justify-content: flex-end; }
+.ast-aviso-sensivel { margin: 0; padding: var(--esp-2) var(--esp-4); background: var(--aviso-bg); color: var(--aviso-txt); font-size: var(--txt-xs); }
+.ast-mensagens { flex: 1; overflow-y: auto; padding: var(--esp-3) var(--esp-4); display: flex; flex-direction: column; gap: var(--esp-2); }
+.ast-msg { max-width: 88%; padding: var(--esp-2) var(--esp-3); border-radius: var(--radius-md); font-size: var(--txt-sm); line-height: 1.45; }
+.ast-msg-txt { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ast-msg-eu { align-self: flex-end; background: var(--marca-50); color: var(--txt); border: 1px solid var(--marca-100); }
+.ast-msg-ia { align-self: flex-start; background: var(--sup-2); color: var(--txt); }
+.ast-msg-prints, .ast-msg-nota { margin-top: var(--esp-1); font-size: var(--txt-xs); color: var(--txt-fraco); }
+.ast-msg-erro { color: var(--perigo-txt); }
+.ast-digitando { color: var(--txt-fraco); font-style: italic; }
+.ast-cartao { border: 1px solid var(--borda-forte); border-radius: var(--radius-md); padding: var(--esp-3); background: var(--sup-1);
+  display: flex; flex-direction: column; gap: var(--esp-2); }
+.ast-cartao .campo { margin: 0; }
+.ast-cartao input, .ast-cartao select, .ast-cartao textarea { width: 100%; box-sizing: border-box; }
+.ast-cartao-linha { display: grid; grid-template-columns: 1fr 1fr; gap: var(--esp-2); }
+.ast-parecido { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-2); font-size: var(--txt-sm); }
+.ast-rodape { border-top: 1px solid var(--borda); padding: var(--esp-3) var(--esp-4); display: flex; flex-direction: column; gap: var(--esp-2); }
+.ast-rodape[hidden] { display: none; }
+.ast-rodape textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; }
+.ast-rodape-acoes { display: flex; gap: var(--esp-2); justify-content: flex-end; flex-wrap: wrap; }
+.ast-pendentes { display: flex; gap: var(--esp-2); flex-wrap: wrap; }
+.ast-pendentes[hidden] { display: none; }
+.ast-pendente { position: relative; }
+.ast-pendente img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--borda); display: block; }
+.ast-pendente button { position: absolute; top: -6px; right: -6px; padding: 0 6px; }
+#btn-assistente { display: inline-flex; align-items: center; gap: var(--esp-1); }
+#btn-assistente svg { width: 16px; height: 16px; }
+@media (max-width: 720px){
+  #btn-assistente span { display: none; }
+  .ast-painel { width: 100%; border-left: 0; }
+  .ast-cartao-linha { grid-template-columns: 1fr; }
+}
