@@ -464,7 +464,7 @@ async function dashCarregarRegularizar(){
   // fase 151: baixada vencida ou a vencer e diário fora da alocação (vw_sc_regularizar_log; só contagens, logística e diretoria)
   // fase 129c: diário do campo enviado sem conferência, devolvido sem reenvio e pendências do app (vw_sc_regularizar_campo; a view
   // devolve a cada um só o papel dele)
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
@@ -475,9 +475,11 @@ async function dashCarregarRegularizar(){
     usuarioAtual && ["diretor", "gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_apt", q => q.select("*")) : null,
     dashLer("vw_sc_regularizar_mob", q => q.select("*")),   // fase 157a: mobilizações (a view devolve a cada um só o papel dele)
     // lote S63-d (#276): Atualizar estoque em 7 dias (setor dono) e saída em rascunho e contagem esperando o diretor (vw_sc_regularizar_est)
-    usuarioAtual && (["diretor", "admin", "almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo) || (typeof sstPodeOperar === "function" && sstPodeOperar())) ? dashLer("vw_sc_regularizar_est", q => q.select("*")) : null]);
+    usuarioAtual && (["diretor", "admin", "almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo) || (typeof sstPodeOperar === "function" && sstPodeOperar())) ? dashLer("vw_sc_regularizar_est", q => q.select("*")) : null,
+    // lote S63-b (#272): produto aguardando aprovação do almoxarifado (view própria; quem aprova e a diretoria)
+    usuarioAtual && ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado", "logistica"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_prod", q => q.select("*")) : null]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   dashRenderRegularizar();
 }
@@ -700,6 +702,9 @@ async function dashAbrirRegularizar(a){
     if(irParaSecao("medicoes") && typeof medPmAbrirPreset === "function") medPmAbrirPreset(a.registro_id, a.filtro);
   } else if(a.secao === "medicoes" && a.filtro === "caucao_vencida"){ // fase 91: visão Caução filtrada nas vencidas
     if(irParaSecao("medicoes") && typeof medCauAbrirPreset === "function") medCauAbrirPreset("vencidas");
+  } else if(a.secao === "produtos" && a.filtro === "produto_pendente"){ // lote S63-b (#272): um produto abre a ficha; vários, a lista "Aguardando aprovação"
+    if(a.registro_id){ if(irParaSecao("produtos") && typeof abrirProduto === "function") abrirProduto(a.registro_id); }
+    else if(typeof prodAbrirPendentes === "function") await prodAbrirPendentes();
   } else if(a.secao === "manutencao"){ // fase 92: OS atrasadas → visão OS filtrada; uma só abre a ficha
     if(!irParaSecao("manutencao")) return;
     if(a.registro_id && typeof abrirManutencao === "function") abrirManutencao(a.registro_id);

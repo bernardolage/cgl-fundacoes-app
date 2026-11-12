@@ -2011,6 +2011,8 @@ async function cmpFecharCotacao(id){
    padrão fica o da categoria; o produto volta já na linha do pedido. O módulo extra do #150 não entra (sem decisão). */
 /* fase 102 (#160): mesmos cargos de produtos_write; lote S55 (#173): + módulo extra "produtos" (a Thayse opera Compras como
    financeiro e cadastra o produto a partir do item do pedido, D-173b) */
+/* lote S63-b (#272): quem aprova produto (almoxarifado, logística e diretoria); fora disso o cadastro nasce pendente e o grupo é obrigatório */
+function cmpProdutoAprova(){ return !!usuarioAtual && ["diretor","almoxarife","auxiliar_almoxarifado","logistica"].includes(usuarioAtual.cargo); }
 function cmpPodeCadastrarProduto(){
   if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
   return !!usuarioAtual && (["diretor","admin","almoxarife","comprador","gestor_acessorios"].includes(usuarioAtual.cargo) || (typeof temModuloExtra === "function" && temModuloExtra("produtos")));
@@ -2059,7 +2061,10 @@ async function cmpAbrirProdutoRapido(tipo, destino){
   const unPadrao = servico ? "vb" : "un";
   $("cmp-prod-un").innerHTML = (typeof UNIDADES !== "undefined" ? UNIDADES : ["un"]).map(u => `<option value="${esc(u)}"${u === unPadrao ? " selected" : ""}>${esc(u)}</option>`).join("");
   if($("cmp-prod-tipo")) $("cmp-prod-tipo").value = servico ? "servico" : "produto";
-  ["cmp-prod-nome", "cmp-prod-ncm", "cmp-prod-cod"].forEach(id => $(id).value = "");
+  ["cmp-prod-nome", "cmp-prod-ncm", "cmp-prod-cod", "cmp-prod-marca", "cmp-prod-codfab"].forEach(id => { if($(id)) $(id).value = ""; });
+  const aprova = cmpProdutoAprova();   // lote S63-b
+  if($("cmp-prod-cat-lbl")) $("cmp-prod-cat-lbl").textContent = aprova ? "Categoria" : "Grupo (categoria) *";
+  if($("cmp-prod-aprov-info")) $("cmp-prod-aprov-info").style.display = aprova ? "none" : "";
   const termo = ($(_cmpProdDestino === "rec" ? "cmp-rec-busca" : "cmp-busca-prod")?.value || "").trim();
   if(termo) $("cmp-prod-nome").value = termo.toUpperCase();
   const h3 = document.querySelector("#cmp-prod-modal h3"); if(h3) h3.textContent = servico ? "Novo serviço consumido" : "Novo produto";
@@ -2075,9 +2080,16 @@ let _cmpProdSugSeq = 0;
 async function cmpProdSugerir(){
   const lista = $("cmp-prod-sugest"); if(!lista) return;
   const termo = ($("cmp-prod-nome")?.value || "").trim(), seq = ++_cmpProdSugSeq;
-  if(termo.length < 3){ lista.innerHTML = ""; lista.style.display = "none"; return; }
+  if(termo.length < 3 && ($("cmp-prod-codfab")?.value || "").trim().length < 3){ lista.innerHTML = ""; lista.style.display = "none"; return; }
   const servico = $("cmp-prod-tipo")?.value === "servico";
   const res = (await cmpBuscarProdutos(termo)).filter(p => (p.tipo_item === "servico") === servico).slice(0, 10);
+  // lote S63-b (#272): parecidos também pelo código do fabricante
+  const codfab = ($("cmp-prod-codfab")?.value || "").replace(/[%,()]/g, " ").trim();
+  if(codfab.length >= 3){
+    const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo,categoria_custo,fornecedor_padrao_id,tipo_compra_padrao,tipo_item,categoria:categorias_produto(nome,tipo_compra_padrao)")
+      .eq("ativo", true).ilike("codigo_fabricante", `%${codfab}%`).limit(10);
+    (data || []).forEach(p => { if(!res.some(x => x.id === p.id)) res.unshift(p); });
+  }
   if(seq !== _cmpProdSugSeq) return;   // resposta de uma digitação antiga
   if(!res.length){ lista.innerHTML = ""; lista.style.display = "none"; return; }
   lista.innerHTML = `<div class="resultado-item vazio">Já cadastrados parecidos — clique para usar</div>`
@@ -2125,11 +2137,14 @@ async function cmpSalvarProdutoRapido(){
   // lote S58 (#238): NCM opcional, com aviso ao salvar; quando informado, 8 dígitos (o banco confere igual). A cobrança é na emissão
   const semNcm = tipo === "produto" && !ncm ? " Sem NCM: a nota fiscal só sai com o código." : "";
   if(ncm && ncm.length !== 8){ aviso("app-aviso", "NCM tem 8 dígitos (ex.: 8431.43.10).", "erro"); return; }
+  if(!cmpProdutoAprova() && !$("cmp-prod-cat").value){ aviso("app-aviso", "Escolha o grupo (categoria) do produto: o almoxarifado aprova o cadastro por ele.", "erro"); $("cmp-prod-cat").focus(); return; }   // lote S63-b
   // lote S56 (#197): código automático (iniciais do nome + número global, gerado no banco): p_codigo vai sempre nulo
   const { data, error } = await sb.rpc("produto_cadastro_rapido", { p_nome: nome, p_categoria_id: $("cmp-prod-cat").value || null, p_unidade: $("cmp-prod-un").value || "un",
-    p_ncm: ncm || null, p_codigo: null, p_tipo_item: tipo });
+    p_ncm: ncm || null, p_codigo: null, p_tipo_item: tipo,
+    p_marca: ($("cmp-prod-marca")?.value || "").trim() || null, p_codigo_fabricante: ($("cmp-prod-codfab")?.value || "").trim() || null });   // lote S63-b
   if(error){ aviso("app-aviso", "Produto não cadastrado: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   cmpFecharProdutoRapido();
+  if(data?.aprovacao === "pendente") setTimeout(() => aviso("app-aviso", `Produto ${data.codigo} aguardando aprovação do almoxarifado: o pedido pode ser aprovado; o recebimento espera a aprovação.`, "aviso"), 2500);   // lote S63-b
   if(_cmpProdDestino === "rec" && _cmpRec){
     if($("cmp-rec-busca")){ $("cmp-rec-busca").value = ""; if($("cmp-rec-res")){ $("cmp-rec-res").innerHTML = ""; $("cmp-rec-res").style.display = "none"; } }
     cmpRecAddItem(data);
@@ -3919,6 +3934,7 @@ function ligarCompras(){
   $("btn-cmp-rec-prod-novo")?.addEventListener("click", () => cmpAbrirProdutoRapido("produto", "rec"));
   $("cmp-prod-tipo")?.addEventListener("change", () => { cmpProdTipoMudou(); cmpProdSugerir(); });
   $("cmp-prod-nome")?.addEventListener("input", debounce(cmpProdSugerir, 300));   // lote S57a (#210)
+  $("cmp-prod-codfab")?.addEventListener("input", debounce(cmpProdSugerir, 300));   // lote S63-b
   // lote S53 (#149): rateio entre TAGs (modal) e "+ TAGs" do cabeçalho; trocar a TAG do cabeçalho à mão desfaz o padrão
   $("btn-cmp-rat-padrao")?.addEventListener("click", () => cmpAbrirRateio(null));
   $("cmp-equip")?.addEventListener("change", () => { if(_cmpRatPadrao.length && _cmpRatPadrao[0] !== $("cmp-equip").value){ _cmpRatPadrao = []; cmpRatPadraoTxt(); } });

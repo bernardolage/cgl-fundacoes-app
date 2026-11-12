@@ -105,6 +105,7 @@ async function carregarCategorias(){
 const PROD_CATEGORIAS_SESMT = ["EPI", "EPI / UNIFORMES", "UNIFORMES", "DOCUMENTACAO SESMT", "EXAMES SESMT"];
 const PROD_MSG_SO_SESMT = "Seu perfil edita só produtos do SESMT (EPI, uniformes, documentação e exames).";
 let _prodCatOriginal = null;   // categoria do produto aberto, como veio do banco (o SESMT só grava se ela for do SESMT)
+let _prodAprov = "aprovado";   // lote S63-b (#272): aprovacao do produto aberto (aprovado, pendente, substituido)
 let _prodAtivo = true;         // lote S58 (#237): situação do produto aberto; decide entre Arquivar e Reativar
 function prodCategoriaEhSesmt(catId){
   return !!catId && PROD_CATEGORIAS_SESMT.includes(String(_prodCategorias[catId] || "").trim().toUpperCase());
@@ -147,6 +148,88 @@ function prodAplicarPerfil(){
   const arq = $("btn-arquivar-prod");   // lote S58 (#237)
   if(arq){ arq.style.display = (perfil === "tudo" && prodEditId) ? "" : "none"; arq.textContent = _prodAtivo ? "📦 Arquivar" : "♻️ Reativar"; }
   const novaCat = $("btn-nova-cat"); if(novaCat) novaCat.style.display = prodPodeEditarCategoria() && !ehSomenteLeitura() ? "" : "none";
+  const pend = !!prodEditId && _prodAprov === "pendente" && prodPodeAprovar();   // lote S63-b
+  ["btn-prod-aprovar", "btn-prod-ja-existe"].forEach(id => { const b = $(id); if(b) b.style.display = pend ? "" : "none"; });
+}
+/* ---------- Lote S63-b (#272): produto provisório ----------
+   Cadastrado fora do almoxarifado, o produto nasce "aguardando aprovação" (gatilho no banco). Almoxarife, auxiliar de
+   almoxarifado, logística e diretor decidem na ficha: Aprovar (RPC produto_aprovar, completa mínimo, local e custo) ou
+   Já existe (RPC produto_ja_existe: os itens passam para o já cadastrado e o provisório é desativado). Os dois gravam log. */
+function prodPodeAprovar(){
+  return !!usuarioAtual && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura())
+    && ["diretor", "almoxarife", "auxiliar_almoxarifado", "logistica"].includes(usuarioAtual.cargo);
+}
+let _prodAprovModo = "aprovar", _prodAprovExistente = null, _prodAprovSeq = 0;
+function prodAprovAbrir(modo){
+  if(!prodEditId || !prodPodeAprovar()) return;
+  _prodAprovModo = modo === "ja_existe" ? "ja_existe" : "aprovar"; _prodAprovExistente = null;
+  const ja = _prodAprovModo === "ja_existe";
+  $("prod-aprov-titulo").textContent = ja ? "Produto já cadastrado" : "Aprovar produto";
+  $("prod-aprov-info").textContent = ja
+    ? "Escolha o produto que já existe no catálogo: os itens de pedido, requisição e recebimento que usam este provisório passam para ele, e o provisório é desativado."
+    : "O produto entra no catálogo. Complete o que o almoxarifado define (o custo só entra se o produto ainda não tem).";
+  $("prod-aprov-campos").style.display = ja ? "none" : "";
+  $("prod-aprov-busca-campo").style.display = ja ? "" : "none";
+  $("btn-prod-aprov-salvar").textContent = ja ? "Trocar pelo já cadastrado" : "Aprovar";
+  $("prod-aprov-min").value = $("prod-minimo")?.value || "";
+  $("prod-aprov-local").value = $("prod-localizacao")?.value || "";
+  $("prod-aprov-custo").value = "";
+  $("prod-aprov-busca").value = ""; $("prod-aprov-escolhido").textContent = "";
+  $("prod-aprov-res").innerHTML = ""; $("prod-aprov-res").style.display = "none";
+  $("prod-aprov-modal").style.display = "flex";
+  (ja ? $("prod-aprov-busca") : $("prod-aprov-min")).focus();
+}
+function prodAprovFechar(){ $("prod-aprov-modal").style.display = "none"; _prodAprovSeq++; }
+async function prodAprovBuscar(){
+  const inp = $("prod-aprov-busca"), res = $("prod-aprov-res"); if(!inp || !res) return;
+  const t = inp.value.replace(/[%,()]/g, " ").trim(), seq = ++_prodAprovSeq;
+  if(t.length < 2){ res.style.display = "none"; return; }
+  const { data, error } = await sb.from("produtos").select("id,codigo,nome,unidade,marca,codigo_fabricante")
+    .eq("ativo", true).eq("aprovacao", "aprovado").neq("id", prodEditId)
+    .or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_fabricante.ilike.%${t}%`).order("nome").limit(20);
+  if(seq !== _prodAprovSeq) return;
+  const lst = error ? [] : (data || []);
+  res.innerHTML = lst.map(p => `<div class="resultado-item" data-id="${esc(p.id)}"><strong>${esc(p.codigo || "")}</strong> ${esc(p.nome || "")} <span class="meta">${esc([p.marca, p.codigo_fabricante].filter(Boolean).join(" · "))} · ${esc(p.unidade || "un")}</span></div>`).join("")
+    || `<div class="resultado-item vazio">${error ? "Não foi possível buscar agora." : "Nenhum produto ativo com esse texto."}</div>`;
+  res.style.display = "";
+  res.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", e => {
+    e.preventDefault();
+    const p = lst.find(x => x.id === d.dataset.id); if(!p) return;
+    _prodAprovExistente = p; inp.value = `${p.codigo} — ${p.nome}`; res.style.display = "none";
+    $("prod-aprov-escolhido").textContent = `Os itens passam para ${p.codigo} — ${p.nome} (${p.unidade || "un"}).`;
+  }));
+}
+async function prodAprovSalvar(){
+  const id = prodEditId; if(!id) return;
+  const limpa = m => String(m || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})s*:s*/, "");
+  if(_prodAprovModo === "ja_existe"){
+    if(!_prodAprovExistente){ aviso("app-aviso", "Escolha na lista o produto já cadastrado.", "erro"); $("prod-aprov-busca").focus(); return; }
+    const { data, error } = await sb.rpc("produto_ja_existe", { p_id: id, p_existente: _prodAprovExistente.id });
+    if(error){ aviso("app-aviso", "Não trocado: " + limpa(error.message), "erro"); return; }
+    prodAprovFechar();
+    aviso("app-aviso", `Trocado por ${data?.codigo || _prodAprovExistente.codigo}: ${data?.itens_pedido ?? 0} item(ns) de pedido, ${data?.itens_requisicao ?? 0} de requisição e ${data?.itens_recebimento ?? 0} de recebimento passaram para ele. O provisório foi desativado.`, "ok");
+    await abrirProduto(_prodAprovExistente.id);
+    carregarProdutos();
+    return;
+  }
+  const num0 = v => v === "" || v == null ? null : Number(v);
+  const min = num0($("prod-aprov-min").value), custo = num0($("prod-aprov-custo").value);
+  if((min != null && !(min >= 0)) || (custo != null && !(custo >= 0))){ aviso("app-aviso", "Mínimo e custo não podem ser negativos.", "erro"); return; }
+  const { error } = await sb.rpc("produto_aprovar", { p_id: id, p_estoque_minimo: min, p_localizacao: $("prod-aprov-local").value.trim() || null, p_custo: custo });
+  if(error){ aviso("app-aviso", "Não aprovado: " + limpa(error.message), "erro"); return; }
+  prodAprovFechar();
+  aviso("app-aviso", "Produto aprovado: já está no catálogo e o recebimento dele está liberado.", "ok");
+  await abrirProduto(id);
+  carregarProdutos();
+}
+/* "Para regularizar" (dashboard.js): a lista filtrada nos que aguardam aprovação */
+async function prodAbrirPendentes(){
+  if($("prod-f-estoque")) $("prod-f-estoque").value = "pendentes";
+  if($("prod-busca")) $("prod-busca").value = "";
+  if($("prod-f-categoria")) $("prod-f-categoria").value = "";
+  if(!irParaSecao("produtos")) return;
+  _prodPagina = 0;
+  await carregarProdutos();
 }
 
 /* ---------- Produtos ---------- */
@@ -159,7 +242,8 @@ async function carregarProdutos(){
   if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo}`);
   if(fCat) q = q.eq("categoria_id", fCat);
   if(fTipo) q = q.eq("tipo_item", fTipo);   // lote S55 (#175): Produtos / Serviços consumidos
-  if(fEst === "zero") q = q.lte("estoque_atual", 0);
+  if(fEst === "pendentes") q = q.eq("aprovacao", "pendente");   // lote S63-b (#272)
+  else if(fEst === "zero") q = q.lte("estoque_atual", 0);
   else if(fEst === "sem_custo") q = q.gt("estoque_atual", 0).lte("custo_ultimo", 0);   // hotfix saída sem custo: o saneamento
   else if(fEst === "positivo") q = q.gt("estoque_atual", 0);
   else if(baixo) q = q.gt("estoque_minimo", 0);           // o banco não compara duas colunas: traz os que têm mínimo e filtra abaixo
@@ -562,6 +646,7 @@ async function abrirProduto(id){
   if(prodEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(error){ aviso("app-aviso","Erro ao abrir produto: "+error.message,"erro"); return; }
   _prodAtivo = data.ativo !== false;   // lote S58 (#237)
+  _prodAprov = data.aprovacao || "aprovado";   // lote S63-b (#272)
   $("prod-codigo").value      = data.codigo || "";
   _prodCodNum = null; _prodCodManual = false;   // lote S56b (#197): código existente não muda pelo gerador
   $("prod-codigo").placeholder = "";
@@ -732,6 +817,13 @@ function abrirFichaProdVisual(p){
   $("prod-ficha-custo-chip").textContent = brl(p.custo_ultimo||0);
   const bdc = $("btn-prod-definir-custo");   // hotfix saída sem custo: só produto salvo, sem custo, e quem pode
   if(bdc) bdc.style.display = prodEditId && !(Number(p.custo_ultimo) > 0) && p.tipo_item !== "servico" && prodPodeDefinirCusto() ? "" : "none";
+  const apBox = $("prod-ficha-aprov-box");   // lote S63-b (#272)
+  if(apBox){
+    const ap = prodEditId ? (p.aprovacao || "aprovado") : "aprovado";
+    apBox.style.display = ap === "aprovado" ? "none" : "";
+    $("prod-ficha-aprov-chip").innerHTML = ap === "pendente" ? '<span class="tag ambar">Aguardando aprovação do almoxarifado</span>'
+      : ap === "substituido" ? '<span class="tag cinza">Substituído pelo já cadastrado</span>' : "";
+  }
   const conf = p.inventario_conferido;
   $("prod-ficha-conf-chip").innerHTML = conf
     ? '<span class="tag verde">Conferido</span>'
@@ -1103,6 +1195,12 @@ function ligarProdutos(){
   $("btn-salvar-prod")?.addEventListener("click", () => comBotaoTravado("btn-salvar-prod", salvarProduto));
   $("btn-excluir-prod")?.addEventListener("click", excluirProduto);
   $("btn-arquivar-prod")?.addEventListener("click", () => comBotaoTravado("btn-arquivar-prod", arquivarProduto));   // lote S58 (#237)
+  // lote S63-b (#272): Aprovar / Já existe
+  $("btn-prod-aprovar")?.addEventListener("click", () => prodAprovAbrir("aprovar"));
+  $("btn-prod-ja-existe")?.addEventListener("click", () => prodAprovAbrir("ja_existe"));
+  $("btn-prod-aprov-fechar")?.addEventListener("click", prodAprovFechar);
+  $("prod-aprov-busca")?.addEventListener("input", debounce(prodAprovBuscar, 250));
+  $("btn-prod-aprov-salvar")?.addEventListener("click", () => comBotaoTravado("btn-prod-aprov-salvar", prodAprovSalvar));
   $("btn-nova-cat")?.addEventListener("click", criarNovaCategoria);
   $("btn-prod-gerar-cod")?.addEventListener("click", () => comBotaoTravado("btn-prod-gerar-cod", () => prodGerarCodigo(false)));   // lote S56b (#197)
   $("prod-codigo")?.addEventListener("blur", prodCodNormalizar);
