@@ -108,26 +108,32 @@ function rhdDataPorExtenso(iso){
   return esc(d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }));
 }
 
-/* ---------- cabeçalho do SGQ (todas as páginas dos modelos) ---------- */
+/* ---------- cabeçalho do SGQ (todas as páginas dos modelos) ----------
+   lote S64-d (#290): como no Word: logo à esquerda; "Sistema de Gestão da Qualidade" no alto; faixa laranja
+   "TIPO DE DOCUMENTO" com o título grande embaixo; à direita, coluna estreita com as faixas IDENTIFICAÇÃO, REVISÃO e
+   PÁGINA, cada uma com o valor logo abaixo. */
+const RHD_FAIXA = "#C55A11";   // laranja das faixas do cabeçalho do SGQ (gerador de PDF: exceção da paleta)
 function rhdCabecalho(titulo, rg, rev, pagina, total){
-  const cel = "border:1px solid #333;padding:2px 4px;font-size:8pt;";
-  return `<table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-bottom:5mm;" class="nao-quebrar">
+  const cel = "border:1px solid #333;padding:0 4px;font-size:7.5pt;line-height:1.25;";
+  const faixa = `${cel}background:${RHD_FAIXA};color:#fff;font-weight:700;`;
+  const val = `${cel}text-align:center;`;
+  return `<table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-bottom:4mm;" class="nao-quebrar">
     <tr>
-      <td rowspan="4" style="${cel}width:22mm;text-align:center;vertical-align:middle;"><img src="${esc(pdfUrl(PDF_LOGO_SRC))}" alt="CGL" style="height:16mm;width:16mm;display:block;margin:0 auto;"></td>
-      <td colspan="4" style="${cel}text-align:center;font-weight:700;font-size:9pt;">Sistema de Gestão da Qualidade</td>
+      <td rowspan="7" style="${cel}width:24mm;text-align:center;vertical-align:middle;padding:1mm;"><img src="${esc(pdfUrl(PDF_LOGO_SRC))}" alt="CGL" style="height:17mm;width:17mm;display:block;margin:0 auto;"></td>
+      <td colspan="2" style="${cel}text-align:center;font-weight:700;font-size:8pt;">Sistema de Gestão da Qualidade</td>
     </tr>
     <tr>
-      <td colspan="2" style="${cel}text-align:center;font-weight:700;">TIPO DE DOCUMENTO</td>
-      <td colspan="2" style="${cel}text-align:center;font-weight:700;">IDENTIFICAÇÃO</td>
+      <td style="${faixa}">TIPO DE DOCUMENTO</td>
+      <td style="${faixa}width:28mm;">IDENTIFICAÇÃO</td>
     </tr>
     <tr>
-      <td colspan="2" rowspan="2" style="${cel}text-align:center;font-weight:700;font-size:9pt;vertical-align:middle;">${esc(titulo)}</td>
-      <td style="${cel}text-align:center;">${esc(rg)}</td>
-      <td style="${cel}text-align:center;">REVISÃO<br>${esc(rev)}</td>
+      <td rowspan="5" style="${cel}text-align:center;font-weight:700;font-size:12.5pt;vertical-align:middle;padding:1mm 4px;">${esc(titulo)}</td>
+      <td style="${val}">${esc(rg)}</td>
     </tr>
-    <tr>
-      <td colspan="2" style="${cel}text-align:center;">PÁGINA ${esc(pagina)} de ${esc(total)}</td>
-    </tr>
+    <tr><td style="${faixa}">REVISÃO</td></tr>
+    <tr><td style="${val}">${esc(rev)}</td></tr>
+    <tr><td style="${faixa}">PÁGINA</td></tr>
+    <tr><td style="${val}">${esc(pagina)} de ${esc(total)}</td></tr>
   </table>`;
 }
 /* 10 pt justificado: o contrato de experiência (RG 5.4/5.5, 14 parágrafos + quadro do VT + assinaturas) tem de caber numa página A4 */
@@ -136,8 +142,11 @@ function rhdPagina(conteudo, primeira){
   return `<div style="${primeira ? "" : "page-break-before:always;"}font-family:Arial,Helvetica,sans-serif;color:#111;">${/* html */ conteudo}</div>`;
 }
 /* página cheia (contrato de experiência do ajudante com os dois §, contrato de trabalho): 9,5 pt para caber como no Word */
-function rhdDensa(html){
-  return html.replace(/font-size:10pt;line-height:1\.38;[^"]*margin:0 0 2\.4mm;/g, "font-size:9.5pt;line-height:1.3;color:#111;text-align:justify;margin:0 0 1.9mm;");
+function rhdDensa(html, extra){
+  // lote S64-d (#290): "extra" = contrato de trabalho (RG 5.7, 10 cláusulas): 9 pt para caber numa página só
+  const estilo = extra ? "font-size:9pt;line-height:1.2;color:#111;text-align:justify;margin:0 0 1.1mm;"
+                       : "font-size:9.5pt;line-height:1.3;color:#111;text-align:justify;margin:0 0 1.9mm;";
+  return html.replace(/font-size:10pt;line-height:1\.38;[^"]*margin:0 0 2\.4mm;/g, estilo);
 }
 function rhdAssinaturas(nomeEmpregado, comEmpresa = true, rotuloEmpregado = ""){
   const bloco = (t) => `<td style="width:50%;text-align:center;padding:14mm 4mm 0;font-size:10pt;"><div style="border-top:1px solid #111;padding-top:2mm;">${/* html */ t}</div></td>`;
@@ -175,65 +184,50 @@ function rhdCampos(d){
 
 /* ====================================================================
    RG 5.17 — Cadastro para admissão de empregados (ficha cadastral)
+   lote S64-d (#290): layout do modelo Word (rev. 02 – 21/05/2025): quadro "DADOS PARA ADMISSÃO" com o título dentro,
+   faixa "DADOS PESSOAIS" em quadro próprio, rótulo em cima e valor embaixo no mesmo corpo de letra, mãe e pai em linhas
+   próprias, linha de uniforme/EPI com os traços. Sem o "CHEK LIST COMPLEMENTAR" (pedido do RH no #290). "Ciente em" leva
+   a data de admissão, como a data de assinatura dos demais documentos. Texto da LGPD sem mudança.
    ==================================================================== */
 function rhdHtmlFicha(c){
   const m = RHD_MODELOS.admissao_ficha;
-  const td = "border:1px solid #333;padding:2px 5px;font-size:9.5pt;vertical-align:top;";
-  const rot = `<span style="font-size:7.5pt;color:#444;display:block;">`;
-  const cel = (rotulo, valor, extra = "") => `<td style="${td}${esc(extra)}">${rot}${esc(rotulo)}</span>${/* html */ valor || "&nbsp;"}</td>`;
-  const chk = (t) => `<td style="${td}width:50%;">☐ ${esc(t)}</td>`;
+  const F = "font-family:Arial,Helvetica,sans-serif;";
+  const td = "border:1px solid #111;padding:1px 4px 2px;font-size:9pt;line-height:1.3;vertical-align:top;";
+  const cel = (rotulo, valor, extra = "") => `<td style="${td}${esc(extra)}">${esc(rotulo)}<br>${/* html */ valor || "&nbsp;"}</td>`;
+  const linha = (cels) => `<table style="width:100%;border-collapse:collapse;${F}margin-top:-1px;"><tr>${/* html */ cels}</tr></table>`;
+  const quadro = (conteudo, extra = "") => `<div style="border:2px solid #111;${esc(extra)}">${/* html */ conteudo}</div>`;
+  const traco = (w) => `<span style="display:inline-block;width:${esc(w)};border-bottom:1px solid #111;margin:0 2mm;">&nbsp;</span>`;
   const corpo = `
     ${rhdCabecalho(m.titulo.toUpperCase(), m.rg, m.rev, 1, 1)}
-    <p style="${RHD_P}text-align:center;font-weight:700;font-size:11pt;">DADOS PARA ADMISSÃO CGL FUNDAÇÕES</p>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">
-      <tr>${cel("Empregado:", rhdOu(c.nome, ""), "width:70%;")}${cel("Data de admissão:", rhdDat(c.data_admissao))}</tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>
-        ${cel("Função:", rhdOu(c.funcao, ""), "width:34%;")}
-        ${cel("Tipo de contrato:", `PJ (${rhdX(c.tipo_contrato === "pj")}) &nbsp; Estagio (${rhdX(c.tipo_contrato === "estagiario")}) &nbsp; CLT (${rhdX(c.tipo_contrato === "clt")})`, "width:30%;")}
-        ${cel("Salário:", rhdBRL(c.salario), "width:18%;")}
-        ${cel("Contrato de experiência:", c.experiencia ? "SIM" : "NÃO")}
-      </tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>${cel("Uniforme/ EPI´s:", "", "width:22%;")}${cel("Nº calça", "")}${cel("Nº camisa", "")}${cel("Nº botina", "")}${cel("Outros:", "", "width:30%;")}</tr>
-    </table>
-    <p style="${RHD_P}text-align:center;font-weight:700;margin-top:4mm;">DADOS PESSOAIS</p>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">
-      <tr>${cel("Nome da mãe:", rhdOu(c.mae, ""), "width:50%;")}${cel("Nome do pai:", rhdOu(c.pai, ""))}</tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>${cel("Endereço:", esc([c.logradouro, c.numero, c.complemento].filter(Boolean).join(" ")), "width:65%;")}${cel("Bairro:", rhdOu(c.bairro, ""))}</tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>${cel("Cidade:", esc([c.cidade, c.uf].filter(Boolean).join(" / ")), "width:45%;")}${cel("CEP:", rhdOu(c.cep, ""), "width:20%;")}${cel("Fone:", rhdOu(c.celular, ""))}</tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>${cel("Data de Nascimento:", rhdDat(c.nascimento), "width:30%;")}${cel("Características Físicas:", rhdOu(c.raca_cor, ""), "width:40%;")}${cel("Dependentes:", rhdOu(c.dependentes, ""))}</tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>${cel("E-mail:", rhdOu(c.email, ""))}</tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>${cel("RG:", esc([c.rg, c.rg_orgao].filter(Boolean).join(" ")), "width:26%;")}${cel("Naturalidade:", rhdOu(c.naturalidade, ""), "width:26%;")}${cel("Tít. Eleitor:", rhdOu(c.titulo, ""), "width:24%;")}${cel("Zona:", rhdOu(c.zona, ""))}${cel("Seção", rhdOu(c.secao, ""))}</tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>${cel("PIS:", rhdOu(c.pis, ""), "width:22%;")}${cel("CPF:", rhdOu(c.cpf, ""), "width:22%;")}${cel("CTPS:", rhdOu(c.ctps, ""), "width:20%;")}${cel("Série:", rhdOu(c.serie, ""), "width:18%;")}${cel("CNH:", rhdOu(c.cnh, ""))}</tr>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;margin-top:-1px;">
-      <tr>${cel("Certificado Reservista:", rhdOu(c.reservista, ""), "width:30%;")}${cel("Escolaridade:", rhdOu(c.instrucao, ""), "width:30%;")}${cel("Dados Bancários:", esc([c.agencia && "Ag. " + c.agencia, c.operacao && "Op. " + c.operacao, c.conta && "Conta " + c.conta, c.banco].filter(Boolean).join(" ")))}</tr>
-    </table>
-    <p style="${RHD_P}text-align:center;font-weight:700;margin-top:4mm;">CHEK LIST COMPLEMENTAR</p>
-    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">
-      <tr>${chk("Cadastro no e-Social")}${chk("Criação login de acesso")}</tr>
-      <tr>${chk("Benefícios: VT; VR; Plano de Saúde")}${chk("Criação e-mail Corporativo")}</tr>
-      <tr>${chk("Local de trabalho Organizado (computador e mesa)")}${chk("Acesso aos sistemas e pastas")}</tr>
-    </table>
-    <p style="${RHD_P}margin-top:5mm;font-size:9.5pt;">Declaro que estou ciente, que meus dados pessoais serão armazenados no banco de dados da empresa, de forma sigilosa, conforme prevê a Lei de proteção de dados (LGPD).</p>
-    <p style="${RHD_P}font-size:9.5pt;">Os dados coletados serão utilizados e armazenados durante o tempo necessário para a prestação do serviço ou para que as finalidades elencadas na presente Política de Privacidade sejam atingidas.</p>
-    <p style="${RHD_P}font-size:9.5pt;">De modo geral, seus dados serão mantidos enquanto a relação contratual entre você e a empresa perdurar. Findado o período de armazenamento dos dados pessoais, estes serões excluídos de nossas bases de dados ou anonimizados.</p>
-    <p style="${RHD_P}margin-top:6mm;">Ciente em &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Assinatura: ________________________________________</p>`;
+    ${quadro(`
+      <div style="${F}font-size:9.5pt;font-weight:700;padding:1.5mm 4px;border-bottom:1px solid #111;">DADOS PARA ADMISSÃO CGL FUNDAÇÕES</div>
+      ${linha(cel("Empregado:", rhdOu(c.nome, ""), "width:76%;border-left:0;") + cel("Data de admissão:", rhdDat(c.data_admissao), "border-right:0;"))}
+      ${linha(
+        cel("Função:", rhdOu(c.funcao, ""), "width:40%;border-left:0;")
+        + cel("Tipo de contrato:", `PJ (${rhdX(c.tipo_contrato === "pj")}) Estagio (${rhdX(c.tipo_contrato === "estagiario")}) CLT (${rhdX(c.tipo_contrato === "clt")})`, "width:24%;white-space:nowrap;")
+        + cel("Salário:", rhdBRL(c.salario), "width:16%;")
+        + cel("Contrato de experiência:", c.experiencia ? "SIM" : "NÃO", "border-right:0;"))}
+      ${linha(`<td style="${td}border-left:0;border-right:0;border-bottom:0;height:13mm;">Uniforme/ EPI´s:<br>
+        <div style="margin-top:3mm;font-size:9pt;">${traco("18mm")}<i>Nº calça</i>${traco("18mm")}<i>Nº camisa</i>${traco("18mm")}Nº botina${traco("20mm")}&nbsp;Outros:${traco("36mm")}</div></td>`)}
+    `)}
+    ${quadro(`<div style="${F}font-size:9.5pt;font-weight:700;text-align:center;padding:0.8mm 4px;">DADOS PESSOAIS</div>`, "margin-top:4mm;")}
+    ${quadro(`
+      ${linha(cel("Nome da mãe:", rhdOu(c.mae, ""), "border-left:0;border-right:0;border-top:0;"))}
+      ${linha(cel("Nome do pai:", rhdOu(c.pai, ""), "border-left:0;border-right:0;"))}
+      ${linha(cel("Endereço:", esc([c.logradouro, c.numero, c.complemento].filter(Boolean).join(" ")), "width:65%;border-left:0;") + cel("Bairro:", rhdOu(c.bairro, ""), "border-right:0;"))}
+      ${linha(cel("Cidade:", esc([c.cidade, c.uf].filter(Boolean).join("/")), "width:50%;border-left:0;") + cel("CEP:", rhdOu(c.cep, ""), "width:25%;") + cel("Fone:", rhdOu(c.celular, ""), "border-right:0;"))}
+      ${linha(cel("Data de Nascimento:", rhdDat(c.nascimento), "width:40%;border-left:0;") + cel("Características Físicas:", rhdOu(c.raca_cor, ""), "width:35%;") + cel("Dependentes:", rhdOu(c.dependentes, ""), "border-right:0;"))}
+      ${linha(cel("E-mail:", rhdOu(c.email, ""), "border-left:0;border-right:0;"))}
+      ${linha(cel("RG:", esc([c.rg, c.rg_orgao].filter(Boolean).join(" ")), "width:30%;border-left:0;") + cel("Naturalidade:", rhdOu(c.naturalidade, ""), "width:27%;") + cel("Tít. Eleitor:", rhdOu(c.titulo, ""), "width:18%;") + cel("Zona:", rhdOu(c.zona, ""), "width:12%;") + cel("Seção", rhdOu(c.secao, ""), "border-right:0;"))}
+      ${linha(cel("PIS:", rhdOu(c.pis, ""), "width:26%;border-left:0;") + cel("CPF:", rhdOu(c.cpf, ""), "width:20%;") + cel("CTPS:", rhdOu(c.ctps, ""), "width:16%;") + cel("Série:", rhdOu(c.serie, ""), "width:16%;") + cel("CNH:", rhdOu(c.cnh, ""), "border-right:0;"))}
+      ${linha(cel("Certificado Reservista:", rhdOu(c.reservista, ""), "width:26%;border-left:0;border-bottom:0;") + cel("Escolaridade:", rhdOu(c.instrucao, ""), "width:37%;border-bottom:0;") + cel("Dados Bancários:", esc([c.agencia && "Ag. " + c.agencia, c.operacao && "Op. " + c.operacao, c.conta && "Conta " + c.conta, c.banco].filter(Boolean).join(" ")), "border-right:0;border-bottom:0;"))}
+    `, "margin-top:2mm;")}
+    <div style="${F}font-size:9.5pt;line-height:1.3;font-weight:700;font-style:italic;color:#111;margin:9mm 0 0 18mm;text-align:left;">
+      <p style="margin:0;">Declaro que estou ciente, que meus dados pessoais serão armazenados no banco de dados da empresa, de forma sigilosa, conforme prevê a Lei de proteção de dados (LGPD).</p>
+      <p style="margin:0;">Os dados coletados serão utilizados e armazenados durante o tempo necessário para a prestação do serviço ou para que as finalidades elencadas na presente Política de Privacidade sejam atingidas.</p>
+      <p style="margin:0;">De modo geral, seus dados serão mantidos enquanto a relação contratual entre você e a empresa perdurar. Findado o período de armazenamento dos dados pessoais, estes serões excluídos de nossas bases de dados ou anonimizados.</p>
+      <p style="margin:14mm 0 0;">Ciente em ${rhdDat(c.data_admissao)}<span style="display:inline-block;width:18mm;"></span>Assinatura: ________________________________________</p>
+    </div>`;
   return rhdPagina(corpo, true);
 }
 
@@ -361,7 +355,7 @@ function rhdHtmlContratoTrabalho(c){
     <p style="${RHD_P}">${esc(E.cidade)}, ${rhdDataPorExtenso(c.data_admissao)}</p>
     ${rhdAssinaturas(c.nome)}
     ${rhdTestemunhas()}`;
-  return rhdPagina(rhdDensa(corpo), true);
+  return rhdPagina(rhdDensa(corpo, true), true);
 }
 
 function rhdHtml(tipo, dados){
