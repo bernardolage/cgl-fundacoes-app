@@ -60,11 +60,19 @@ function astContextoTexto(){
   return [c.modulo_label && c.modulo_label !== "—" ? c.modulo_label : null, c.registro_label || (c.registro_tipo ? c.registro_tipo : null)]
     .filter(Boolean).join(" · ");
 }
+/* Resposta do assistente: escapa primeiro e só depois troca **negrito** e `código` (o resto do markdown fica como texto).
+   Mensagem de quem escreve continua literal. */
+function astFormatarResposta(texto){
+  return esc(texto || "")
+    .replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`\n]+?)`/g, '<code class="ast-msg-cod">$1</code>');
+}
 function astBolha(it){
   const quem = it.tipo === "usuario" ? "ast-msg ast-msg-eu" : "ast-msg ast-msg-ia";
   const prints = it.prints && it.prints.length ? `<div class="ast-msg-prints">${it.prints.length} print(s) anexado(s)</div>` : "";
   const sem = it.sem_resposta ? `<div class="ast-msg-nota">Pergunta guardada para o manual do app.</div>` : "";
-  return `<div class="${quem}"><div class="ast-msg-txt">${esc(it.texto || "")}</div>${prints}${sem}</div>`;
+  const txt = it.tipo === "usuario" ? esc(it.texto || "") : astFormatarResposta(it.texto);
+  return `<div class="${quem}"><div class="ast-msg-txt">${/* html */ txt}</div>${prints}${sem}</div>`;
 }
 function astCartaoRascunho(it, i){
   const r = it.rascunho;
