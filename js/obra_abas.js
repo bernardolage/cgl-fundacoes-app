@@ -506,7 +506,7 @@ async function carregarMedicoesDaObra(obraId){
   }
   const [{ data, error }, sinal] = await Promise.all([
     sb.from("medicoes")
-      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes,origem,nf_numero,doc_tipo")   // lote S46 (#104): NF/RR
+      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes,origem,nf_numero,doc_tipo,em_revisao,em_revisao_motivo")   // lote S46 (#104): NF/RR
       .eq("obra_id", obraId)
       .order("data_medicao", { ascending: false }),
     typeof calcularSaldoSinalObra === "function" ? calcularSaldoSinalObra(obraId, null) : Promise.resolve(null)
@@ -566,7 +566,7 @@ async function carregarMedicoesDaObra(obraId){
     <td>${dataBR(m.data_medicao)}</td>
     <td>${esc(tipoLbl[m.tipo_medicao] || m.tipo_medicao || "—")}</td>
     <td>${num(m.percentual)}%</td>
-    <td>${tagStatus("medicao", m.status)}</td>
+    <td>${tagStatus("medicao", m.status)}${typeof medRevisaoMarca === "function" ? medRevisaoMarca(m) : ""}</td>
     <td>${esc(typeof medDocTxt === "function" ? medDocTxt(m) : (m.nf_numero || "—"))}</td>
     <td class="num">${Number(m.desconto_sinal) ? "− " + brl(m.desconto_sinal) : "—"}</td>
     <td class="num">${brl(valorEfetivo(m))}</td>

@@ -3184,6 +3184,7 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .med-imp-fila li.feito { background: var(--sucesso-bg); color: var(--sucesso-txt); }
 .med-imp-fila li.erro { background: var(--perigo-bg); color: var(--perigo-txt); }
 .med-imp-fila li.pulado { text-decoration: line-through; }
+.med-imp-fila li.recusado { background: var(--aviso-bg); color: var(--aviso-txt); }
 .med-imp-cab .campo input[readonly] { background: var(--sup-2); }
 .med-imp-tabela td { vertical-align: middle; }
 .med-imp-tabela td.dif-alta { background: var(--aviso-bg); color: var(--aviso-txt); font-weight: 600; }

@@ -237,7 +237,7 @@ async function carregarDetalheCarteira(contratoId){
     if(det.obras.length){
       const temRet = typeof fiscalColunaExiste === "function" && await fiscalColunaExiste("medicoes", "ret_irrf");
       const { data: meds } = await sb.from("medicoes").select("obra_id,status,nf_numero,valor_final,valor_medido,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor" + (temRet ? ",ret_irrf,ret_pis,ret_cofins,ret_csll,ret_inss" : ""))
-        .in("obra_id", det.obras.map(x => x.id)).not("nf_numero", "is", null).in("status", ["aprovada", "faturada", "recebida"]);
+        .in("obra_id", det.obras.map(x => x.id)).not("nf_numero", "is", null).in("status", ["aprovada", "faturada", "recebida"]).eq("em_revisao", false);   // fase 177a: em revisão fica fora da carteira
       (meds || []).forEach(m => {
         const vf = Number(m.valor_final) || Number(m.valor_medido) || 0;
         const fed = ["ret_irrf", "ret_pis", "ret_cofins", "ret_csll", "ret_inss"].reduce((s, k) => s + (Number(m[k]) || 0), 0);

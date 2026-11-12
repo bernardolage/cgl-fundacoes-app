@@ -185,7 +185,7 @@ async function carregarDashFaixa(carga){
     dashLer("vw_sc_frota", q => q.select("*"), "dash-frota-lista"),
     dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-k-obras-sub"),
     dashLer("rdo", q => q.select("obra_id").gte("data", iv.ini).lte("data", iv.fim), "dash-k-obras-sub"),
-    dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada","recebida"]).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),   // fase 91: recebida conta como medida
+    dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada","recebida"]).eq("em_revisao", false).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),   // fase 91: recebida conta como medida; fase 177a: em revisão fica fora
     dashEhDiretoria() ? dashLer("vw_custos", q => q.select("valor").gte("data", iv.ini).lte("data", iv.fim), "dash-k-custo-sub") : Promise.resolve([]),
     // fase 89: viagens em trânsito agora e planejadas sem caminhão/motorista (aba Frota)
     dashLer("viagens", q => q.select("id,numero,data,status,finalidade,caminhao_id,funcionario_id,destino_tipo,destino_obra_id,destino_descricao,data_saida,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome)").in("status", ["planejada", "em_transito"]).order("data")),
@@ -1253,7 +1253,7 @@ async function carregarDashFinanceiro(){
   // financeiro; este bloco já é da diretoria), embutido 1:1 na obra.
   const [{ data: obrasAtivas }, { data: medsAprovadas }] = await Promise.all([
     sb.from("obras").select("id,financeiro:obras_financeiro(valor_contratado)").in("status", ["em_andamento","planejada","paralisada"]),
-    sb.from("medicoes").select("valor_final,valor_medido").in("status",["aprovada","faturada","recebida"])   // fase 91
+    sb.from("medicoes").select("valor_final,valor_medido").in("status",["aprovada","faturada","recebida"]).eq("em_revisao", false)   // fase 91; fase 177a: em revisão fica fora
   ]);
 
   const contratado = (obrasAtivas||[]).reduce((s,o) => s + (Number(o.financeiro?.valor_contratado)||0), 0);   // obras_financeiro

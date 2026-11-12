@@ -17,7 +17,7 @@ const MED_RET_FED = ["irrf", "pis", "cofins", "csll", "inss"];                 /
 async function carregarMedicoes(){
   if(!_medNfseOk && typeof fiscalColunaExiste === "function") _medNfseOk = await fiscalColunaExiste("medicoes", "nfse_status");   // fase 105c
   const { data, error } = await sb.from("medicoes")
-    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,permuta_percentual,permuta_valor,obra:obras(codigo,nome,cliente_id)"   // fase 91: líquido, recebido e cliente (indicadores e visão por cliente); fase 98: permuta
+    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,permuta_percentual,permuta_valor,em_revisao,em_revisao_motivo,obra:obras(codigo,nome,cliente_id)"   // fase 177a: em revisão; fase 91: líquido, recebido e cliente (indicadores e visão por cliente); fase 98: permuta
       + (_medNfseOk ? ",nfse_status,nfse_ambiente," + MED_RET_FED.map(k => "ret_" + k).join(",") : ""))   // fase 105c: NFS-e e retenções federais
     .order("data_medicao", { ascending: false });
   _medRegistros = error ? [] : (data || []);
@@ -96,6 +96,11 @@ function medNfseMarca(m){
   if(!m || !m.nfse_status) return "";
   return " " + tagStatus("nfse", m.nfse_status) + (m.nfse_ambiente === "homologacao" ? ' <span class="tag ambar" title="Emitida no ambiente de homologação da Focus: nota de teste, sem valor fiscal">homolog.</span>' : "");
 }
+/* fase 177a (D4): medição em revisão fica fora da carteira até o saneamento; o valor não muda */
+function medRevisaoMarca(m){
+  if(!m || !m.em_revisao) return "";
+  return ` <span class="tag ambar" title="${esc(m.em_revisao_motivo || "Em revisão: fora da carteira até a conferência; o valor não foi alterado")}">em revisão</span>`;
+}
 
 function renderMedLista(dados){
   const cont = $("med-conteudo");
@@ -109,7 +114,7 @@ function renderMedLista(dados){
     <td>${linkObra(m.obra_id, medObraTxt(m))}</td>
     <td>${medPeriodoTxt(m)}</td>
     <td>${num(m.percentual)}%</td>
-    <td>${tagStatus("medicao", m.status)}</td>
+    <td>${tagStatus("medicao", m.status)}${medRevisaoMarca(m)}</td>
     <td>${esc(medDocTxt(m))}${medNfseMarca(m)}${medRecebMarca(m)}${typeof medPmMarca === "function" ? medPmMarca(m) : ""}</td>
     <td class="num">${brl(m.valor_medido)}</td>
   </tr>`).join("");
@@ -1552,7 +1557,7 @@ async function excluirMedicao(){
    devolve JSON; aqui o usuário confere item a item contra a cascata de preço do app
    (RPC medicao_precos_cascata: orçamento aprovado > preço do cliente > referência), escolhe
    por item "usar o lido" (padrão: já foi ao cliente) ou "usar o do app", e confirma. A
-   medição nasce aprovada, origem = 'importada_pdf', com o PDF no bucket obras-documentos
+   medição nasce rascunho (enviada com prova de envio; fase 177a, depois de passar por js/medicao_regras_carga.js), origem = 'importada_pdf', com o PDF no bucket obras-documentos
    (medicoes/<obra>/). Vários PDFs entram em fila e são conferidos um a um.
    Fora: gerar a medição a partir do RDO; boletim do cliente/fiscalização.
    ==================================================================== */
@@ -1691,7 +1696,7 @@ function medImpAdicionarArquivos(files){
 }
 function medImpRenderFila(){
   const ul = $("med-imp-fila"); if(!ul || !_medImp) return;
-  const rot = { fila: "na fila", lendo: "lendo…", conferindo: "em conferência", feito: "gravada", erro: "erro", pulado: "pulado" };
+  const rot = { fila: "na fila", lendo: "lendo…", conferindo: "em conferência", feito: "gravada", erro: "erro", pulado: "pulado", recusado: "recusado (pendência de revisão)" };
   ul.innerHTML = _medImp.fila.map(a => `<li class="${(a.status === "lendo" || a.status === "conferindo") ? "atual" : esc(a.status)}" title="${esc(a.erro || "")}">📄 ${esc(a.nome)} · ${esc(rot[a.status]) || esc(a.status)}${a.erro ? " · " + esc(a.erro) : ""}</li>`).join("");
 }
 function medImpLerArquivo(file, modo){
@@ -1720,7 +1725,7 @@ async function medImpProcessarProximo(){
     if(st.fila.length){
       const feitas = st.fila.filter(a => a.status === "feito").length;
       cont.style.display = "";
-      cont.innerHTML = `<p class="vazio">Fila concluída: ${feitas} medição(ões) gravada(s) aprovada(s). Escolha outros PDFs ou feche.</p>`;
+      cont.innerHTML = `<p class="vazio">Fila concluída: ${feitas} medição(ões) gravada(s) como rascunho; ${st.fila.filter(a => a.status === "recusado").length} recusada(s) para revisão. Escolha outros PDFs ou feche.</p>`;
     }
     return;
   }
@@ -1892,7 +1897,7 @@ function medImpRenderConferencia(resp, arq){
     ${(resp.duvidas || []).length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${resp.duvidas.map(esc).join(" · ")}</div>` : ""}
     ${!refOk ? `<div class="ia-duvidas">⚠️ O boletim cita a obra/contrato "${esc(c.obra_ref)}", mas a obra aberta é ${esc(o.codigo || "")}${o.contrato?.numero ? " (contrato " + esc(o.contrato.numero) + ")" : ""}. Confira se é o PDF certo.</div>` : ""}
     ${st.cascataErro ? `<div class="ia-duvidas">Sem preço do app para comparar: ${esc(st.cascataErro)}</div>` : (!st.cascata.length ? `<div class="meta">Sem preço do app para comparar (obra sem orçamento aprovado, sem preço de cliente e sem referência, ou seu cargo não lê orçamentos e preços).</div>` : "")}
-    <div class="meta">Confira e corrija. Por item, escolha <strong>usar o lido</strong> (padrão: já foi ao cliente) ou <strong>usar o do app</strong> (cascata: orçamento › cliente › referência). Linhas removidas com ✕ não entram. A medição é gravada <strong>aprovada</strong>, com o PDF anexado.</div>
+    <div class="meta">Confira e corrija. Por item, escolha <strong>usar o lido</strong> (padrão: já foi ao cliente) ou <strong>usar o do app</strong> (cascata: orçamento › cliente › referência). Linhas removidas com ✕ não entram. A medição é gravada como <strong>rascunho</strong>, com o PDF anexado: a aprovação vem do cliente. Antes de gravar, o app confere período, NF, valor do contrato e arquivo repetido; se recusar, o boletim vira pendência de revisão e nada é gravado.</div>
   </div>
   <div class="grade med-imp-cab">
     <div class="campo"><label>Número *</label><input id="med-imp-h-numero" value="${esc(c.numero)}" placeholder="ex.: 03" /></div>
@@ -2096,11 +2101,11 @@ async function medImpConfirmar(){
   if(medImpChecarDuplicado()){ aviso("med-imp-aviso", `Já existe a medição ${numero} nesta obra. Altere o número ou pule o arquivo.`, "erro"); return; }
   const t = medImpCalcular();
   if(!t || !t.itens){ aviso("med-imp-aviso", "Nenhum item para gravar.", "erro"); return; }
-  if(!(t.valorFinal > 0)){ aviso("med-imp-aviso", MED_MSG_VALOR_ZERO, "erro"); return; }   // lote S56c (#183): o import grava aprovada
+  if(!(t.valorFinal > 0)){ aviso("med-imp-aviso", MED_MSG_VALOR_ZERO, "erro"); return; }   // lote S56c (#183): boletim com valor zero não entra
   const semDesc = st.itens.filter(it => !it.removido && !it.descricao).length;
   if(semDesc){ aviso("med-imp-aviso", `${semDesc} item(ns) sem descrição.`, "erro"); return; }
   const naoConf = st.itens.filter(it => !it.removido && !it.conferido).length;
-  if(naoConf && !confirm(`${naoConf} item(ns) ainda sem o ✓ de conferido. Gravar a medição aprovada mesmo assim?`)) return;
+  if(naoConf && !confirm(`${naoConf} item(ns) ainda sem o ✓ de conferido. Gravar a medição mesmo assim?`)) return;
   const o = st.obra || {};
   const valorObra = Number(o.financeiro?.valor_contratado) || 0;   // obras_financeiro (fase 90)
   const tipo = $("med-imp-h-tipo")?.value || "quinzenal";
@@ -2109,6 +2114,36 @@ async function medImpConfirmar(){
   if(tipo !== "sinal_contratual" && (!ini || !fim) && !confirm("Medição sem período (início e fim). Gravar assim mesmo?")) return;
 
   medImpLimparAviso();
+  // 0) fase 177a: regras da carga (js/medicao_regras_carga.js → RPC medicao_conferir_carga). Recusa vira pendência
+  //    de revisão em medicao_carga_pendencias, com o motivo, e nada é gravado; sem recusa, a medição nasce rascunho (R7).
+  let conf, sha;
+  try {
+    sha = await MedRegrasCarga.sha256Hex(arq.file);
+    const eqId = $("med-imp-h-equip")?.value || null;
+    const eqCod = eqId ? (st.equipamentos.find(e => e.id === eqId) || {}).codigo : null;
+    const tagItem = (st.itens.find(it => !it.removido && it.tag) || {}).tag || null;
+    const entrada = MedRegrasCarga.montarEntrada(st.resp, {
+      obraId: st.obraId, contratoId: o.contrato_id || null, numero, tag: eqCod || tagItem,
+      arquivoNome: arq.nome, sha256: sha, periodoInicio: ini, periodoFim: fim, dataMedicao: dataMed, tipoMedicao: tipo,
+      valorCalculado: t.valorFinal, valorImpresso: st.cab.valor_final_lido,
+      itens: st.itens.filter(it => !it.removido).map(it => ({ descricao: it.descricao, quantidade: it.quantidade, valor_total: medImpTotalItem(it) })),
+      acrescimoDescricao: ($("med-imp-h-acresc-obs")?.value || "").trim() || null, origem: "tela_pdf"
+    });
+    conf = await MedRegrasCarga.conferir(entrada, { rpc: (nome, args) => sb.rpc(nome, args), registrar: true });
+  } catch(e){
+    aviso("med-imp-aviso", (e && e.message) || "Não foi possível conferir o boletim antes de gravar.", "erro");
+    return;
+  }
+  if(!conf.ok){
+    const motivos = MedRegrasCarga.textoRecusas(conf);
+    arq.status = "recusado"; arq.erro = motivos.join(" · ");
+    medImpRenderFila();
+    aviso("med-imp-aviso", `${arq.nome}: não gravado. Ficou como pendência de revisão${conf.pendencia_id ? "" : " (não registrada)"} — ${motivos.join(" · ")}`, "erro");
+    st.atual = null; st.cab = null; st.resp = null; st.itens = [];
+    medImpProcessarProximo();
+    return;
+  }
+
   // 1) PDF no bucket privado obras-documentos (supabase-js ignora contentType com File: reembala em Blob)
   let storagePath = null, avisoAnexo = "";
   const caminho = `medicoes/${st.obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`;
@@ -2121,14 +2156,15 @@ async function medImpConfirmar(){
     avisoAnexo = `PDF não anexado (${e.message || e}). Anexe pela aba Documentos da obra.`;
   }
 
-  // 2) medição aprovada
+  // 2) medição (fase 177a: nasce rascunho, ou enviada com prova de envio; nunca aprovada)
   const duvidas = [...(st.resp?.aviso ? [st.resp.aviso] : []), ...(st.resp?.duvidas || [])];   // lote S46 (#105): aviso da v1.3 vai para as observações
   const obs = [($("med-imp-h-obs")?.value || "").trim(),
                `Importada do boletim "${arq.nome}" em ${dataBR(hojeISO())}${duvidas.length ? " · pontos conferidos: " + duvidas.join("; ") : ""}`].filter(Boolean);
   const reg = {
     numero, obra_id: st.obraId, contrato_id: o.contrato_id || null,
     tipo_medicao: tipo, multiplicador_pct: t.mult,
-    status: "aprovada", origem: "importada_pdf", arquivo_origem_url: storagePath, importada_em: new Date().toISOString(),
+    status: conf.status_nascimento, origem: "importada_pdf", arquivo_origem_url: storagePath, importada_em: new Date().toISOString(),
+    arquivo_sha256: sha,
     data_medicao: dataMed, periodo_inicio: ini, periodo_fim: fim,
     percentual: valorObra > 0 ? Math.min(999.999, +(t.valorFinal / valorObra * 100).toFixed(3)) : 0,
     valor_medido: t.valorFinal, subtotal: t.subtotal,
@@ -2199,7 +2235,7 @@ async function medImpConfirmar(){
   arq.status = "feito"; arq.medicaoId = medId;
   st.numerosExistentes.push(numero.toLowerCase());
   medImpRenderFila();
-  aviso("med-imp-aviso", `Medição ${numero} gravada aprovada (${brl(t.valorFinal)}).${avisoAnexo ? " " + avisoAnexo : ""}`, avisoAnexo ? "aviso" : "ok");
+  aviso("med-imp-aviso", `Medição ${numero} gravada como ${conf.status_nascimento === "enviada" ? "enviada" : "rascunho"} (${brl(t.valorFinal)}): a aprovação é do cliente.${avisoAnexo ? " " + avisoAnexo : ""}`, avisoAnexo ? "aviso" : "ok");
   if(_medRegistros.length) carregarMedicoes();
   if(typeof carregarMedicoesDaObra === "function" && typeof obraEditId !== "undefined" && obraEditId === st.obraId) carregarMedicoesDaObra(st.obraId);
   st.atual = null; st.cab = null; st.resp = null; st.itens = [];
