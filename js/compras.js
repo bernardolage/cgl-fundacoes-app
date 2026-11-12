@@ -162,6 +162,14 @@ function cmpPodeOperar(){
 /* Lote S55 (#180): espelha compras_pode_receber() do banco — quem opera Compras ou tem o módulo extra "compras" (Maria
    Eduarda: lê pedidos, abre requisição e recebe NF de pedido; sem alçada, sem pedido novo, compra direta, NF sem pedido,
    aprovação, cotação nem fornecedor novo). O auditor nunca. */
+/* Lote S63-e (#278, #279): espelha compras_sesmt_pode() do banco para quem NÃO opera Compras pelo cargo (Layane e Ivan,
+   cargo sesmt): cria e edita pedido em rascunho só com produto das categorias EPI, EPI / UNIFORMES e UNIFORMES, e lê só os
+   pedidos que criou (a RLS filtra). Envio para aprovação, cotação e recebimento continuam com Compras. O auditor nunca. */
+const CMP_CATS_EPI = ["EPI", "EPI / UNIFORMES", "UNIFORMES"];
+function cmpSoSesmt(){
+  if(cmpPodeOperar() || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return false;
+  return typeof temModuloExtra === "function" && temModuloExtra("compras_sesmt");
+}
 function cmpPodeReceber(){
   if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
   return cmpPodeOperar() || (typeof temModuloExtra === "function" && temModuloExtra("compras"));
@@ -792,13 +800,14 @@ async function carregarCompras(force){
   await cmpCarregarBase(force);
   const pode = cmpPodeOperar();
   ["btn-cmp-novo","btn-cmp-receber-avulso","btn-cmp-compra-direta"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
+  if($("btn-cmp-novo") && cmpSoSesmt()) $("btn-cmp-novo").style.display = "";   // lote S63-e: pedido de EPI e uniforme
   if($("btn-cmp-req-nova")) $("btn-cmp-req-nova").style.display = (typeof reqPodePedir === "function" && reqPodePedir()) ? "" : "none"; // fase 60
   if($("cmp-view-naturezas")) $("cmp-view-naturezas").style.display = cmpPodeVerNaturezas() ? "" : "none";   // fase 108b
   // fase 102: quem não opera Compras (encarregado, operador, assistente de engenharia) não lê pedidos; abre uma vez
   // direto nas requisições, que é onde ele pede e confere o que chegou (o atalho da Sala de Comando já escolhe a visão)
   if(!_cmpViewInicial){
     _cmpViewInicial = true;
-    if(!pode && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) && _cmpView === "kanban"){
+    if(!pode && !cmpSoSesmt() && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) && _cmpView === "kanban"){   // lote S63-e: o SESMT fica nos pedidos
       _cmpView = "requisicoes";
       if(typeof _reqFiltroSt !== "undefined") _reqFiltroSt = "";
     }
@@ -1338,7 +1347,7 @@ async function cmpAbrirParaAssinar(id){
   return true;
 }
 function novoPedido(pre){
-  if(!cmpPodeOperar()){ aviso("app-aviso", "Seu perfil não opera compras.", "erro"); return; }
+  if(!cmpPodeOperar() && !cmpSoSesmt()){ aviso("app-aviso", "Seu perfil não opera compras.", "erro"); return; }
   _cmpItens = [];
   abrirFichaPedido(Object.assign({ id: null, numero: "(novo)", status: "rascunho", data_pedido: hojeISO(), local_entrega: "base", frete: 0, desconto: 0, total: 0, itens: [] }, pre || {}));
 }
@@ -1412,7 +1421,12 @@ function cmpRascDepoisDeSalvar(id){
   rascunhoApagar(cmpRascChave(id)); rascunhoApagar(cmpRascChave(null));
   _cmpRascBase = JSON.stringify(cmpRascEstado());
 }
-function cmpEditavel(){ return cmpPodeOperar() && (_cmpAtual?.status || "rascunho") === "rascunho"; }
+function cmpEditavel(){
+  if((_cmpAtual?.status || "rascunho") !== "rascunho") return false;
+  if(cmpPodeOperar()) return true;
+  // lote S63-e: Compras do SESMT edita o pedido novo e o rascunho que criou
+  return cmpSoSesmt() && (!_cmpAtual?.id || _cmpAtual.criado_por === usuarioAtual?.id);
+}
 function abrirFichaPedido(p){
   _cmpAtual = p; _cmpEditId = p.id || null; cmpLigarModo(null);   // fase 132a
   const novo = !p.id;
@@ -1447,7 +1461,9 @@ function abrirFichaPedido(p){
   if($("cmp-rat-modal")) $("cmp-rat-modal").style.display = "none";
   _cmpCotacoes = []; _cmpCotEdit = null; _cmpConfAtual = { lista: [], pode: false, etapa: null, carregado: false };   // fase 102
   if($("cmp-cot-form")) $("cmp-cot-form").style.display = "none";
-  $("cmp-alcada-info").textContent = cmpPodeOperar()
+  $("cmp-alcada-info").textContent = cmpSoSesmt()
+    ? "Compras do SESMT: o pedido leva só EPI e uniforme do catálogo. Depois de salvo, Compras envia para aprovação (alçada e dono do custo)."   // lote S63-e
+    : cmpPodeOperar()
     ? `Sua alçada de aprovação: ${cmpAlcadaTxt()}. A aprovação de compras é do aprovador definido pela diretoria; pedido acima do limite pede também a diretoria; cada obra, TAG ou centro com item de aplicação direta pede o dono do custo (engenheiro responsável da obra, gestor de manutenção ou de frota, responsável do centro). Reposição de estoque só pede a aprovação de compras.`
     : cmpPodeReceber()
     ? `Você recebe notas e abre requisições; a aprovação é do comprador e do dono do custo.`   // lote S55 (#180): módulo extra compras
@@ -1729,7 +1745,7 @@ function cmpAtualizarBotoes(){
   // fase 133: só o cargo diretor, com a migration no banco e os recebimentos do pedido lidos (nenhum vivo)
   const dirSemRec = _cmp133 && !leitura && usuarioAtual?.cargo === "diretor" && !!_cmpEditId && _cmpRecsDe === _cmpEditId
     && !(_cmpRecsAtual || []).some(r => r.status !== "cancelado");
-  const mostra = { "btn-cmp-salvar": pode && st === "rascunho", "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
+  const mostra = { "btn-cmp-salvar": (pode && st === "rascunho") || (cmpSoSesmt() && cmpEditavel()),   // lote S63-e "btn-cmp-enviar-aprov": pode && st === "rascunho" && !novo, "btn-cmp-aprovar": podeAprovar,
     "btn-cmp-cotacao": pode && st === "rascunho" && !novo && !leitura,   // fase 102: rascunho → em cotação
     "btn-cmp-conferir": !novo && !leitura && _cmpConfAtual.pode && _cmpConfAtual.lista.some(r => r.pendente),   // fase 102
     "btn-cmp-enviado": pode && st === "aprovado", "btn-cmp-receber": cmpPodeReceber() && cmpPodeLancarNf() && ["aprovado","enviado","parcialmente_recebido"].includes(st),   // lote S55 (#180); hotfix 221: a NF é do financeiro, quem recebe usa "Receber material"
@@ -2575,7 +2591,11 @@ async function cmpBuscarProdutos(termo){
   if(!termo || termo.length < 2) return [];
   const t = termo.replace(/[%,()]/g, " ").trim();
   // fase 108b: tipo de compra padrão do produto e da categoria (o do produto vence)
-  const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo,categoria_custo,fornecedor_padrao_id,tipo_compra_padrao,tipo_item,categoria:categorias_produto(nome,tipo_compra_padrao)").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`).order("nome").limit(25);   // lote S55: tipo_item
+  // lote S63-e: Compras do SESMT só vê produto de EPI e uniforme (o banco recusa o resto)
+  const sesmt = cmpSoSesmt();
+  let q = sb.from("produtos").select(`id,codigo,nome,unidade,estoque_atual,custo_ultimo,categoria_custo,fornecedor_padrao_id,tipo_compra_padrao,tipo_item,categoria:categorias_produto${sesmt ? "!inner" : ""}(nome,tipo_compra_padrao)`).eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`);
+  if(sesmt) q = q.in("categoria.nome", CMP_CATS_EPI);
+  const { data } = await q.order("nome").limit(25);   // lote S55: tipo_item
   (data || []).forEach(p => { _cmpProdSrv[p.id] = p.tipo_item === "servico"; });
   return data || [];
 }
@@ -2666,6 +2686,8 @@ function cmpColetarCabecalho(){
     frete: Number($("cmp-frete").value || 0), desconto: Number($("cmp-desc").value || 0), observacoes: $("cmp-obs").value.trim() || null
   };
 }
+/* lote S63-e: a recusa da RLS ("row-level security") vira a regra do SESMT para quem só tem o extra */
+function cmpErroSesmt(msg){ return cmpSoSesmt() && /row-level security/i.test(msg || "") ? "Compras do SESMT: o pedido leva só EPI e uniforme do catálogo." : (msg || ""); }
 async function salvarPedido(silencioso){
   if(!cmpEditavel()){ if(!silencioso) aviso("app-aviso", "Este pedido não está em rascunho.", "erro"); return null; }
   const dados = cmpColetarCabecalho();
@@ -2719,12 +2741,12 @@ async function salvarPedido(silencioso){
   const comId = _cmpItens.map((it, i) => ({ it, i })).filter(x => manter.has(x.it.id));
   const res = await Promise.all(comId.map(x => sb.from("pedido_compra_itens").update(linha(x.it, x.i)).eq("id", x.it.id)));
   const eUpd = res.find(r => r.error);
-  if(eUpd){ aviso("app-aviso", "Erro ao salvar itens: " + eUpd.error.message, "erro"); return null; }
+  if(eUpd){ aviso("app-aviso", "Erro ao salvar itens: " + cmpErroSesmt(eUpd.error.message), "erro"); return null; }
   const novos = _cmpItens.map((it, i) => ({ it, i })).filter(x => !manter.has(x.it.id));
   if(novos.length){
     // lote S53 (#149): o insert devolve os ids (por ordem) para o rateio apontar para o item novo
     const { data: ins, error: eIns } = await sb.from("pedido_compra_itens").insert(novos.map(x => linha(x.it, x.i))).select("id,ordem");
-    if(eIns){ aviso("app-aviso", "Erro ao salvar itens: " + eIns.message, "erro"); return null; }
+    if(eIns){ aviso("app-aviso", "Erro ao salvar itens: " + cmpErroSesmt(eIns.message), "erro"); return null; }
     (ins || []).forEach(r => { const x = novos.find(n => n.i === r.ordem); if(x) x.it.id = r.id; });
   }
   // lote S53 (#149): rateio dos itens que mudaram (RPC pedido_item_rateio_definir; lista com uma TAG só ou vazia apaga o rateio)

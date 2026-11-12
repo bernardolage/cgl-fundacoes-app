@@ -425,9 +425,9 @@ const USR_MODULOS_EXTRAS = [
   // lote S55 (#173, #182, #180): Thayse e Maria Eduarda (produtos); Maria Eduarda (compras). Valores aceitos pelo check do banco.
   { id: "produtos", el: "usr-extra-prod", rotulo: "Produtos (cadastro: edita e cadastra, sem saldo nem custo)" },
   { id: "compras", el: "usr-extra-cmp", rotulo: "Compras (requisição e recebimento de NF, sem alçada)" },
-  // fase 109a (D1): a Iasmym (engenheiro) opera o SESMT; compras_sesmt é reservado para a 109e (Layane)
+  // fase 109a (D1): a Iasmym (engenheiro) opera o SESMT. Lote S63-e (#278, #279): compras_sesmt vale (compras_sesmt_pode() no banco)
   { id: "sesmt", el: "usr-extra-sesmt", rotulo: "SESMT (catálogo, matriz, documentos de segurança, programas legais)" },
-  { id: "compras_sesmt", el: "usr-extra-compsesmt", rotulo: "Compras do SESMT (fase 109e; ainda sem efeito)" },
+  { id: "compras_sesmt", el: "usr-extra-compsesmt", rotulo: "Compras do SESMT (cria e edita pedido só de EPI e uniforme; vê só os próprios pedidos, sem Contas a Pagar)" },
   // fase 93d (28/10/2026): o Isaque cria o login por CPF de operador, encarregado e mecânico para testar o diário do operador
   { id: "login_funcionario", el: "usr-extra-loginfunc", rotulo: "Login de funcionário (cria e redefine a senha de operador, encarregado e mecânico; não desativa; sem ver o CPF)" }
 ];
