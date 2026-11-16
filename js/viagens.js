@@ -12,7 +12,7 @@
    (fornecedor com busca, placa e motorista em texto) e o bloco km × R$/km pelo bloco Frete (valor combinado,
    vencimento, nº do CT-e/NF, emissão, observações). O valor vive em viagem_fretes (só pode_ler_contas_pagar() lê)
    e é gravado pela RPC viagem_frete_gravar: quem não lê informa e não vê de volta (a viagem guarda só
-   frete_status). O título a pagar nasce no banco (gatilho) e aparece no smart-button Título e na aba Custo.
+   frete_status). Fase 181b: na conclusão nasce o pedido de compra do frete (aba Custo); o título nasce do recebimento dele.
    Aba Documentos ganha "Anexos do transporte" (bucket privado viagens-anexos, MIME pela extensão + Blob).
    ==================================================================== */
 let _vgAtual = null;        // registro de viagens aberto (id null = nova)
@@ -23,6 +23,7 @@ let _vgTab = "geral";
 let _vgVoltarPara = null;   // callback do "Voltar" quando a ficha foi aberta de outra tela (mobilização)
 let _vgAnexos = [];         // fase 130: viagem_anexos (documentos do transportador)
 let _vgTitulo = null;       // fase 130: titulos_pagar da viagem (só para quem lê contas a pagar)
+let _vgPedFrete = null;     // fase 181b: pedido de compra do frete (número e situação, sem valor; viagem_frete_pedido_info)
 let _vgTranspSel = null;    // fase 130: transportador escolhido na busca { id, razao_social, ... }
 let _vgCteChave = null;      // fase 158: chave do CT-e gravada (nulo para quem não lê contas a pagar)
 let _vgTemCteChave = false;  // fase 158: a coluna viagem_fretes.cte_chave existe (migration aplicada)
@@ -82,7 +83,7 @@ async function novaViagem(pre = {}){
     km_saida: null, km_chegada: null, valor_km: null, data_saida: null, data_chegada: null, mobilizacao_id: pre.mobilizacao_id || null, observacoes: pre.observacoes || null,
     transportador_id: null, transportador_placa: null, transportador_motorista: null, frete_status: null, frete: null, transportador: null   // fase 130
   };
-  _vgMovs = []; _vgMdfes = []; _vgRateio = []; _vgAnexos = []; _vgTitulo = null; _vgTranspSel = null; _vgTab = "geral";
+  _vgMovs = []; _vgMdfes = []; _vgRateio = []; _vgAnexos = []; _vgTitulo = null; _vgPedFrete = null; _vgTranspSel = null; _vgTab = "geral";
   _vgCteChave = null;
   _vgVoltarPara = pre.voltar || null;
   vgMostrarFicha();
@@ -123,6 +124,11 @@ async function abrirViagem(id, voltarPara){
   _vgTitulo = tit && !tit.error ? (tit.data || null) : null;
   _vgTranspSel = _vgAtual.transportador || null;
   if(vgEhFrete(_vgAtual)) await vgCarregarCteChave(id); else _vgCteChave = null;   // fase 158
+  _vgPedFrete = null;   // fase 181b: sem a migration a RPC não existe e a aba Custo segue sem o chip
+  if(vgEhFrete(_vgAtual) && _vgAtual.frete_status === "pedido"){
+    const pf = await sb.rpc("viagem_frete_pedido_info", { p_viagem_id: id });
+    _vgPedFrete = pf.error ? null : (pf.data || null);
+  }
   if(voltarPara !== undefined) _vgVoltarPara = voltarPara || null;
   vgMostrarFicha();
 }
@@ -176,7 +182,6 @@ function vgPreencherForm(){
   $("vg-frete-valor").value = f && f.valor_frete != null ? f.valor_frete : "";
   $("vg-frete-venc").value = f?.frete_vencimento || "";
   $("vg-frete-doc").value = f?.frete_documento || "";
-  $("vg-frete-semcte").checked = !!(f ? f.sem_cte : v.frete_sem_cte);   // fase 181
   $("vg-frete-emissao").value = f?.frete_emissao || "";
   $("vg-frete-obs").value = f?.frete_observacoes || "";
   // fase 158: chave do CT-e (campo só aparece com a migration aplicada)
@@ -197,9 +202,9 @@ function vgPreencherForm(){
   const pode = logPodeOperar() && v.status !== "cancelada";
   document.querySelectorAll('#vg-ficha .odoo-tab[data-tab="geral"] input, #vg-ficha .odoo-tab[data-tab="geral"] select').forEach(el => { el.disabled = !pode; });
   // lote travas (BAN-05): o frete vira título a pagar; só logística, gestor de frota, financeiro e comprador informam (a RPC recusa os demais)
-  if(!vgPodeInformarFrete()) ["vg-frete-valor", "vg-frete-venc", "vg-frete-doc", "vg-frete-emissao", "vg-frete-obs", "vg-frete-semcte"].forEach(id => { $(id).disabled = true; });
+  if(!vgPodeInformarFrete()) ["vg-frete-valor", "vg-frete-venc", "vg-frete-doc", "vg-frete-emissao", "vg-frete-obs"].forEach(id => { $(id).disabled = true; });
   // título exportado: valor, vencimento, documento e emissão do frete travam no banco; a observação continua livre
-  if(v.frete_status === "exportado") ["vg-frete-valor", "vg-frete-venc", "vg-frete-doc", "vg-frete-emissao", "vg-frete-semcte", "vg-transp-busca"].forEach(id => { $(id).disabled = true; });
+  if(v.frete_status === "exportado") ["vg-frete-valor", "vg-frete-venc", "vg-frete-doc", "vg-frete-emissao", "vg-transp-busca"].forEach(id => { $(id).disabled = true; });
 }
 /* fase 130: a finalidade decide os blocos da aba Geral (frota própria × frete terceirizado) e os rótulos dos chips */
 /* fase 157a: a viagem liga à mobilização (e à perna) quando leva ou traz máquina: finalidade Mobilização, Desmobilização
@@ -241,10 +246,10 @@ function vgToggleFinalidade(){
   const nota = $("vg-frete-nota");
   if(nota && frete){
     nota.textContent = !vgPodeInformarFrete()
-      ? "O valor, o vencimento e o documento do frete são informados pela logística, pelo gestor de frota, pelo comprador ou pelo financeiro. Você registra a viagem e o transportador; o chip Frete mostra o estado do título."
+      ? "O valor, o vencimento e o documento do frete são informados pela logística, pelo gestor de frota, pelo comprador ou pelo financeiro. Você registra a viagem e o transportador; ao concluir a viagem nasce o pedido de compra do frete (aba Custo)."
       : vgPodeVerFrete()
-      ? "O título a pagar nasce no banco quando há valor maior que zero e vencimento, acompanha as alterações e some se a viagem for cancelada; depois de exportado ao financeiro ele não muda mais (\"título já exportado: ajuste em Contas a pagar\"). O custo cai nas obras atendidas (aba Custo)."
-      : "Você informa o valor, o vencimento e o documento; eles ficam visíveis só para quem lê Contas a pagar (financeiro, comprador, admin, diretoria). Depois de salvar o campo volta vazio e o chip Frete mostra o estado do título. Para corrigir, informe de novo.";
+      ? "Ao concluir a viagem, com transportador e valor maior que zero, nasce o pedido de compra do frete (aguardando aprovação, fornecedor = transportador). Depois é o fluxo de Compras: aprovação pela alçada, recebimento com o CT-e ou \"Sem CT-e\" e o título a pagar pelo recebimento. O custo cai nas obras atendidas (aba Custo)."
+      : "Você informa o valor, o vencimento e o documento; eles ficam visíveis só para quem lê Contas a pagar (financeiro, comprador, admin, diretoria). Depois de salvar o campo volta vazio. Ao concluir a viagem nasce o pedido de compra do frete (aba Custo). Para corrigir, informe de novo.";
   }
 }
 function vgToggleObra(){
@@ -344,62 +349,25 @@ function vgColetarFrete(){
     valor: valor === "" ? null : Number(valor),
     vencimento: $("vg-frete-venc").value || null,
     documento: $("vg-frete-doc").value.trim() || null,
-    semCte: $("vg-frete-semcte").checked,   // fase 181
     emissao: $("vg-frete-emissao").value || null,
     observacoes: $("vg-frete-obs").value.trim() || null,
     chave: _vgTemCteChave ? vgCteDigitos($("vg-frete-chave")?.value) : null   // fase 158
   };
 }
-/* fase 181: "Sem CT-e" pela RPC própria (vale no lugar do número do documento; o banco desfaz a aprovação se mudar). Devolve
-   { data, error } ou nulo quando não há o que mudar. Informar o número do documento desliga a marca no próprio banco. */
-async function vgGravarSemCte(viagemId, fr){
-  const antes = !!(vgFrete(_vgAtual) ? vgFrete(_vgAtual).sem_cte : _vgAtual.frete_sem_cte);
-  const depois = fr.semCte && !fr.documento;
-  if(depois === (fr.documento ? false : antes)) return null;
-  return await sb.rpc("viagem_frete_sem_cte", { p_viagem_id: viagemId, p_sem: depois });
-}
 /* grava o frete pela RPC (security definer: a logística informa sem ler viagem_fretes). Devolve false se o banco recusou.
-   Fase 181: o frete completo fica aguardando aprovação e só gera o título depois dela. */
+   Fase 181b: na viagem concluída o banco gera (ou atualiza) o pedido de compra do frete; o título nasce do recebimento dele. */
 async function vgGravarFrete(viagemId, fr){
   const { data, error } = await sb.rpc("viagem_frete_gravar", { p_viagem_id: viagemId, p_valor: fr.valor, p_vencimento: fr.vencimento, p_documento: fr.documento, p_emissao: fr.emissao, p_observacoes: fr.observacoes });
   if(error){ aviso("app-aviso", "Viagem salva, mas o frete não foi gravado: " + error.message, "erro"); return false; }
-  let st = data?.frete_status, exportado = data?.titulo_exportado;
-  const sc = await vgGravarSemCte(viagemId, fr);
-  if(sc?.error){ aviso("app-aviso", "Frete gravado, mas o \"Sem CT-e\" não: " + sc.error.message, "erro"); return false; }
-  if(sc?.data) st = sc.data.frete_status;
-  vgAvisoFreteStatus(st, exportado);
+  vgAvisoFreteStatus(data?.frete_status, data?.titulo_exportado);
   return true;
 }
 function vgAvisoFreteStatus(st, exportado){
   if(st === "gerado") aviso("app-aviso", "Frete informado; título a pagar " + (exportado ? "já exportado (valor mantido)." : "gerado em Contas a pagar."), "ok");
-  else if(st === "aguardando_aprovacao") aviso("app-aviso", "Frete enviado para aprovação da diretoria ou do comprador. O título só nasce depois de aprovado.", "ok");
-  else if(st === "a_gerar") aviso("app-aviso", "Frete informado. Para ir à aprovação falta valor maior que zero, vencimento e o nº do CT-e ou a marca Sem CT-e.", "ok");
+  else if(st === "pedido") aviso("app-aviso", "Frete informado; o pedido de compra do frete está em Compras (aprovação pela alçada, recebimento com o CT-e).", "ok");
+  else if(st === "a_gerar") aviso("app-aviso", "Frete informado. O pedido de compra do frete nasce quando a viagem for concluída, com transportador e valor maior que zero.", "ok");
   else if(st === "exportado") aviso("app-aviso", "Observação do frete gravada; o título já exportado não muda.", "ok");
 }
-/* fase 181: aprovar, reprovar e reenviar o frete (RPCs; a diretoria e o comprador aprovam, nunca quem lançou, exceto o diretor) */
-async function vgFreteAprovacao(rpc, args, msgOk){
-  const { data, error } = await sb.rpc(rpc, args);
-  if(error){ aviso("app-aviso", error.message, "erro"); return; }
-  aviso("app-aviso", msgOk(data), "ok");
-  _frotaViagens.chave = null; _frotaDocs = null;
-  await abrirViagem(args.p_viagem_id);
-}
-async function vgAprovarFrete(){
-  const v = _vgAtual; if(!v?.id) return;
-  if(!confirm("Aprovar este frete? O título a pagar será gerado e irá para Contas a pagar.")) return;
-  await vgFreteAprovacao("viagem_frete_aprovar", { p_viagem_id: v.id }, d => d?.titulo_id ? "Frete aprovado; título a pagar gerado." : "Frete aprovado.");
-}
-async function vgReprovarFrete(){
-  const v = _vgAtual; if(!v?.id) return;
-  const motivo = (prompt("Motivo da reprovação (a Logística lê e corrige):") || "").trim();
-  if(!motivo){ aviso("app-aviso", "Reprovação cancelada: informe o motivo.", "aviso"); return; }
-  await vgFreteAprovacao("viagem_frete_reprovar", { p_viagem_id: v.id, p_motivo: motivo }, () => "Frete reprovado; a Logística vê o motivo na viagem.");
-}
-async function vgReenviarFrete(){
-  const v = _vgAtual; if(!v?.id) return;
-  await vgFreteAprovacao("viagem_frete_reenviar", { p_viagem_id: v.id }, () => "Frete reenviado para aprovação.");
-}
-
 /* ---------- salvar e status ---------- */
 async function salvarViagem(extra = {}, silencioso){
   if(!logPodeOperar()){ aviso("app-aviso", "Seu perfil não registra viagens.", "erro"); return null; }
@@ -423,11 +391,6 @@ async function salvarViagem(extra = {}, silencioso){
   // valor/vencimento/documento do frete: só quando a pessoa digitou (quem não lê vê o campo vazio e não apaga o que já está lá)
   let freteOk = true;
   if(frete && fr.informado && !$("vg-frete-valor").disabled) freteOk = await vgGravarFrete(r.data.id, fr);
-  else if(frete && !$("vg-frete-semcte").disabled){   // fase 181: quem não lê o valor só marca ou desmarca "Sem CT-e"
-    const sc = await vgGravarSemCte(r.data.id, fr);
-    if(sc?.error){ aviso("app-aviso", "Viagem salva, mas o \"Sem CT-e\" não: " + sc.error.message, "erro"); freteOk = false; }
-    else if(sc?.data) vgAvisoFreteStatus(sc.data.frete_status, false);
-  }
   // fase 158: chave do CT-e pela RPC própria. Só quando mudou; vazio só apaga para quem lê o que estava gravado
   // (quem não lê contas a pagar vê o campo vazio e não pode apagar sem querer). Precisa do frete já informado.
   if(frete && _vgTemCteChave && freteOk && fr.chave !== (_vgCteChave || "") && (fr.chave || vgPodeVerFrete())){
@@ -533,7 +496,7 @@ function vgChips(){
   // fase 130: título do frete e anexos do transporte
   vgShow("sb-vg-titulo", frete);
   if(frete){
-    const stTit = { exportado: "exportado", gerado: "gerado", cancelado: "cancelado", aguardando_aprovacao: "aguardando aprovação", reprovado: "reprovado" }[v.frete_status] || "a gerar";
+    const stTit = { exportado: "exportado", gerado: "gerado", cancelado: "cancelado", pedido: "pelo pedido" }[v.frete_status] || "a gerar";
     setSb("sb-vg-titulo", ["gerado", "exportado"].includes(v.frete_status) ? 1 : 0, stTit);
   }
   setSb("sb-vg-anexos", _vgAnexos.length);
@@ -546,11 +509,6 @@ function vgBotoes(){
   vgShow("btn-vg-cancelar", pode && !novo && st !== "cancelada" && st !== "concluida");
   vgShow("btn-vg-excluir", pode && !novo && !_vgMovs.length && !_vgMdfes.length);
   vgShow("btn-vg-romaneio", !novo);
-  // fase 181: aprovação do frete terceirizado
-  const fs = vgEhFrete(v) && !novo ? v.frete_status : null;
-  vgShow("btn-vg-frete-aprovar", fs === "aguardando_aprovacao" && vgPodeAprovarFrete());
-  vgShow("btn-vg-frete-reprovar", fs === "aguardando_aprovacao" && vgPodeAprovarFrete());
-  vgShow("btn-vg-frete-reenviar", fs === "reprovado" && vgPodeInformarFrete());
 }
 function vgAtivarTab(nome){
   _vgTab = nome;
@@ -690,6 +648,18 @@ async function vgRemoverItem(id){
 }
 
 /* ---------- aba Custo ---------- */
+/* fase 181b: o frete segue o pedido de compra gerado na conclusão da viagem (aprovação pela alçada, recebimento com o CT-e ou
+   "Sem CT-e" e título pelo recebimento). Chip com número e situação, sem valor (a logística não lê pedidos). */
+const VG_PED_STATUS = { rascunho: "Rascunho", em_cotacao: "Em cotação", aguardando_aprovacao: "Aguardando aprovação", aprovado: "Aprovado", enviado: "Enviado", parcialmente_recebido: "Parcial", recebido: "Recebido", cancelado: "Cancelado" };
+function vgPedidoFreteCampo(v){
+  if(!vgEhFrete(v) || v.frete_status !== "pedido") return "";
+  const p = _vgPedFrete;
+  if(!p) return `<div class="campo"><label>Pedido de compra</label><strong>${/* html */ vgTagFreteStatus("pedido")}</strong></div>`;
+  const st = VG_PED_STATUS[p.status] || p.status || "—";
+  const doc = p.recebido_em ? ` <span class="meta">recebido em ${dataBR(p.recebido_em)}${p.sem_cte ? " · Sem CT-e" : p.cte ? " · CT-e " + esc(p.cte) : ""}</span>` : "";
+  const chip = `${/* html */ uiCodigo(p.numero || "pedido")} · ${esc(st)}`;
+  return `<div class="campo"><label>Pedido de compra</label><strong><button type="button" class="btn-sec btn-sm" id="vg-abrir-pedido-frete" data-pedido="${esc(p.id)}" title="Abre o pedido em Compras (quem não acessa Compras vê só o número e a situação)">${/* html */ chip}</button>${/* html */ doc}</strong></div>`;
+}
 function vgRenderCusto(){
   const box = $("vg-custo"); if(!box) return;
   const v = _vgAtual, frete = vgEhFrete(v), fr = vgFrete(v), podeVer = vgPodeVerFrete();
@@ -702,9 +672,10 @@ function vgRenderCusto(){
       <div class="campo"><label>Transportador</label><strong>${esc(vgTransportadorTxt(v))}</strong></div>
       <div class="campo"><label>Valor do frete</label><strong>${valorTxt}</strong></div>
       <div class="campo"><label>Vencimento</label><strong>${fr?.frete_vencimento ? dataBR(fr.frete_vencimento) : "—"}</strong></div>
-      <div class="campo"><label>CT-e / NF do transportador</label><strong>${esc(fr?.frete_documento || (fr?.sem_cte || v.frete_sem_cte ? "Sem CT-e" : "—"))}${fr?.frete_emissao ? ` <span class="meta">emitido em ${dataBR(fr.frete_emissao)}</span>` : ""}</strong></div>
+      <div class="campo"><label>CT-e / NF do transportador</label><strong>${esc(fr?.frete_documento || "—")}${fr?.frete_emissao ? ` <span class="meta">emitido em ${dataBR(fr.frete_emissao)}</span>` : ""}</strong></div>
       ${_vgCteChave ? `<div class="campo largo"><label>Chave do CT-e</label><strong>${esc(vgCteChaveFmt(_vgCteChave))}</strong></div>` : ""}
-      <div class="campo"><label>Título a pagar</label><strong>${vgTagFreteStatus(v.frete_status) || "—"}${v.frete_status === "reprovado" && v.frete_reprovado_motivo ? ` <span class="meta">motivo: ${esc(v.frete_reprovado_motivo)}</span>` : ""}${_vgTitulo ? ` <span class="meta">${frotaMoeda(_vgTitulo.valor)} · vence ${dataBR(_vgTitulo.vencimento)}${_vgTitulo.exportado_em ? " · exportado em " + dataBR(String(_vgTitulo.exportado_em).slice(0, 10)) : " · pendente de exportação"}</span>` : ""}</strong></div>
+      ${/* html */ vgPedidoFreteCampo(v)}
+      <div class="campo"${v.frete_status === "pedido" && !_vgTitulo ? ' style="display:none;"' : ""}><label>Título a pagar</label><strong>${vgTagFreteStatus(v.frete_status) || "—"}${_vgTitulo ? ` <span class="meta">${frotaMoeda(_vgTitulo.valor)} · vence ${dataBR(_vgTitulo.vencimento)}${_vgTitulo.exportado_em ? " · exportado em " + dataBR(String(_vgTitulo.exportado_em).slice(0, 10)) : " · pendente de exportação"}</span>` : ""}</strong></div>
       <div class="campo"><label>Saída → chegada</label><strong>${vgDtBR(v.data_saida)} → ${vgDtBR(v.data_chegada)}</strong></div>
     </div>
     ${podeVer ? `<p class="meta" style="margin:0 0 8px;"><a href="#" id="vg-abrir-titulos">Abrir em Contas a pagar (títulos com origem Viagem) ↗</a></p>` : ""}
@@ -724,13 +695,17 @@ function vgRenderCusto(){
         <td class="col-acao"><button type="button" class="btn-sec btn-sm vg-obra-custos" data-obra="${esc(o.obra_id)}" title="Aba Custos da obra">Custos da obra</button></td></tr>`).join("")}</tbody></table></div>`
       : `<p class="vazio">${frete ? "Viagem sem obra: o frete fica sem rateio (o título a pagar nasce sem obra). Defina a obra de destino ou ligue uma nota com destino em obra." : "Viagem sem obra: o custo fica só no caminhão (aba Custos do equipamento). Defina a obra de destino ou ligue uma nota com destino em obra."}</p>`}
     <p class="nota">${frete
-      ? 'O frete entra em <code>vw_custos</code> como origem "deslocamento", subtipo <code>frete_terceirizado</code>, com o transportador como fornecedor, sem equipamento e com a fração de cada obra; o valor aparece para quem lê Contas a pagar e para a engenharia (fase 130b). O título a pagar (origem Viagem) nasce com valor maior que zero e vencimento; viagem cancelada apaga o título não exportado.'
+      ? 'O frete entra em <code>vw_custos</code> como origem "deslocamento", subtipo <code>frete_terceirizado</code>, com o transportador como fornecedor, sem equipamento e com a fração de cada obra; o valor aparece para quem lê Contas a pagar e para a engenharia (fase 130b). O frete é pago pelo pedido de compra gerado na conclusão da viagem (título pelo recebimento, fora de <code>vw_custos</code> para não contar duas vezes); viagem cancelada cancela o pedido sem recebimento. Viagens antigas com título de origem Viagem continuam com ele.'
       : 'O custo entra em <code>vw_custos</code> como origem "deslocamento" (subtipo frota_propria, categoria deslocamento), com o caminhão como equipamento e a fração de cada obra. Viagem cancelada ou sem km não gera custo.'}</p>`;
   box.querySelectorAll(".vg-obra-custos").forEach(b => b.addEventListener("click", async () => {
     if(!irParaSecao("obras") || typeof abrirObra !== "function") return;
     await abrirObra(b.dataset.obra);
     document.querySelector('#obr-notebook button[data-tab="custos"]')?.click();
   }));
+  $("vg-abrir-pedido-frete")?.addEventListener("click", e => {   // fase 181b
+    const id = e.currentTarget.dataset.pedido; if(!id) return;
+    if(irParaSecao("compras") && typeof abrirPedido === "function") abrirPedido(id);
+  });
   $("vg-abrir-titulos")?.addEventListener("click", e => {
     e.preventDefault();
     if(!irParaSecao("contratos")) return;
@@ -1103,10 +1078,6 @@ function ligarViagens(){
   $("btn-vg-iniciar")?.addEventListener("click", () => comBotaoTravado("btn-vg-iniciar", vgIniciar));
   $("btn-vg-concluir")?.addEventListener("click", () => comBotaoTravado("btn-vg-concluir", vgConcluir));
   $("btn-vg-cancelar")?.addEventListener("click", vgCancelar);
-  $("btn-vg-frete-aprovar")?.addEventListener("click", () => comBotaoTravado("btn-vg-frete-aprovar", vgAprovarFrete));   // fase 181
-  $("btn-vg-frete-reprovar")?.addEventListener("click", () => comBotaoTravado("btn-vg-frete-reprovar", vgReprovarFrete));
-  $("btn-vg-frete-reenviar")?.addEventListener("click", () => comBotaoTravado("btn-vg-frete-reenviar", vgReenviarFrete));
-  $("vg-frete-semcte")?.addEventListener("change", () => { if($("vg-frete-semcte").checked) $("vg-frete-doc").value = ""; });
   $("btn-vg-excluir")?.addEventListener("click", excluirViagem);
   $("btn-vg-romaneio")?.addEventListener("click", () => { if(typeof vgRomaneio === "function") comBotaoTravado("btn-vg-romaneio", vgRomaneio); });
   document.querySelectorAll("#vg-statusbar .stage").forEach(el => el.addEventListener("click", () => {

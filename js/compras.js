@@ -78,7 +78,10 @@ let _cmpRat = null;               // lote S53 (#149): modal de rateio aberto { i
 let _cmpRatPadrao = [];           // lote S53 (#149): TAGs do "+ TAGs" do cabeçalho (itens novos nascem rateados em partes iguais)
 let _cmpCotEnviar = true;         // lote S53 (#163): "ao fechar, enviar para aprovação" (caixa da aba Cotações)
 /* colunas que o painel usa (a ficha abre o pedido inteiro em abrirPedido) */
-let CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at,observacoes,nf_informada,km_informado,tipo_compra,destino_centro_custo_id";
+let CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at,observacoes,nf_informada,km_informado,tipo_compra,destino_centro_custo_id,viagem_id,viagem:viagens!pedidos_compra_viagem_id_fkey(numero)";
+/* fase 181b: pedido do frete da viagem (número da viagem no card); sem a migration o painel segue sem eles */
+const CMP_COLS_181B = ",viagem_id,viagem:viagens!pedidos_compra_viagem_id_fkey(numero)";
+let _cmp181b = false;             // fase 181b: migration aplicada (pedidos_compra.viagem_id, pedido_frete_receber)
 /* lote S56: colunas da migration loteS56a; sem ela (42703) o painel volta ao seletor anterior */
 const CMP_COLS_S56 = ",nf_informada,km_informado";
 /* fase 133: tipo de compra e destino do custo no cabeçalho; sem a migration (42703) o painel segue sem eles */
@@ -760,7 +763,7 @@ async function cmpCarregarBase(force){
 }
 async function cmpCarregarBaseAgora(){
   {
-    const [fo, ob, eq, al, cc, pf, nat, s56, f133] = await Promise.all([
+    const [fo, ob, eq, al, cc, pf, nat, s56, f133, f181b] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").neq("status", "cancelada").order("codigo", { ascending: false }),   // lote S54 (#171): concluídas entram (grupo próprio nos selects)
       sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).order("codigo"),
@@ -769,8 +772,11 @@ async function cmpCarregarBaseAgora(){
       sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),   // fase 78
       sb.from("naturezas_custo").select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem").order("ordem").order("nome"),   // fase 108b
       sb.from("pedido_compra_itens").select("destino_acessorio_id").limit(1),   // lote S56: a coluna nova diz se a migration loteS56a está no banco
-      sb.from("pedidos_compra").select("tipo_compra").limit(1)   // fase 133: idem para a migration da 133
+      sb.from("pedidos_compra").select("tipo_compra").limit(1),   // fase 133: idem para a migration da 133
+      sb.from("pedidos_compra").select("viagem_id").limit(1)   // fase 181b: idem para a migration da 181b
     ]);
+    _cmp181b = !f181b.error;
+    if(!_cmp181b && CMP_COLS.includes(CMP_COLS_181B)) CMP_COLS = CMP_COLS.replace(CMP_COLS_181B, "");
     _cmpS56 = !s56.error;
     if(!_cmpS56 && CMP_COLS.includes(CMP_COLS_S56)) CMP_COLS = CMP_COLS.replace(CMP_COLS_S56, "");
     _cmp133 = !f133.error;
@@ -832,38 +838,6 @@ async function cmpCarregarKpis(){
   _cmpKpis = (!k.error && k.data) ? k.data : null;
   _cmpEtapasResumo = e;
   cmpRenderKpis();
-  cmpCarregarFretesAprov();   // fase 181: não bloqueia os demais cartões
-}
-/* fase 181: fretes terceirizados da Logística que esperam aprovação (diretoria ou comprador) antes de gerar o título a pagar.
-   Só o quadrinho de conferência: o frete continua sendo a viagem (não vira pedido de compra). O valor aparece só para quem
-   lê contas a pagar (o embed viagem_fretes vem nulo para os demais); a contagem vem de viagens.frete_status, que não tem valor. */
-let _cmpFretesAprov = [];
-async function cmpCarregarFretesAprov(){
-  const { data, error } = await sb.from("viagens")
-    .select("id,numero,data,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,transportador:fornecedores!transportador_id(razao_social,nome_fantasia),frete:viagem_fretes(valor_frete,frete_vencimento)")
-    .eq("finalidade", "frete_terceirizado").eq("frete_status", "aguardando_aprovacao").order("data", { ascending: false }).limit(200);
-  const n = $("cmp-kpi-frete");
-  if(error){ console.warn("fretes aguardando aprovação:", error.message); _cmpFretesAprov = []; if(n) n.textContent = "—"; return; }
-  _cmpFretesAprov = data || [];
-  if(n) n.textContent = _cmpFretesAprov.length;
-  cmpRenderFretesAprov();
-}
-function cmpRenderFretesAprov(){
-  const box = $("cmp-fretes-lista"); if(!box) return;
-  const lado = (tipo, obraId, desc) => (["obra", "cliente"].includes(tipo) && obraId ? cmpObra(obraId) : "") || desc || tipo || "—";
-  const verValor = typeof podeVerContasPagar === "function" && podeVerContasPagar();
-  $("cmp-fretes-contador").textContent = _cmpFretesAprov.length;
-  if(!_cmpFretesAprov.length){ box.innerHTML = `<p class="vazio">Nenhum frete aguardando aprovação.</p>`; return; }
-  box.innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr><th>Viagem</th><th>Data</th><th>Transportador</th><th>Trecho</th>${verValor ? '<th class="num">Valor</th><th>Vencimento</th>' : ""}<th class="col-acao"></th></tr></thead>
-    <tbody>${_cmpFretesAprov.map(v => {
-      const f = Array.isArray(v.frete) ? v.frete[0] : v.frete;
-      const t = v.transportador ? (v.transportador.razao_social || v.transportador.nome_fantasia) : "—";
-      return `<tr><td>${/* html */ uiCodigo(v.numero || "viagem")}</td><td>${dataBR(v.data)}</td><td>${esc(t)}</td>
-        <td>${esc(lado(v.origem_tipo, v.origem_obra_id, v.origem_descricao))} → ${esc(lado(v.destino_tipo, v.destino_obra_id, v.destino_descricao))}</td>
-        ${/* html */ verValor ? `<td class="num">${f ? brl(f.valor_frete) : "—"}</td><td>${f?.frete_vencimento ? dataBR(f.frete_vencimento) : "—"}</td>` : ""}
-        <td class="col-acao"><button type="button" class="btn-sec btn-sm cmp-frete-abrir" data-vg="${esc(v.id)}" title="Abre a viagem na aba Custo para aprovar ou reprovar">Abrir viagem</button></td></tr>`;
-    }).join("")}</tbody></table></div>`;
 }
 async function cmpLerEtapas(){
   const linhas = [];
@@ -936,6 +910,7 @@ async function cmpFetchPaginas(filtro){
     q = filtro(q);
     const pg = await q;
     if(pg.error){
+      if(["42703", "PGRST200"].includes(pg.error.code) && CMP_COLS.includes(CMP_COLS_181B)){ CMP_COLS = CMP_COLS.replace(CMP_COLS_181B, ""); _cmp181b = false; return cmpFetchPaginas(filtro); }   // fase 181b
       // lote S56 (#162/#203): sem nf_informada/km_informado (migration loteS56a não aplicada) o painel segue sem elas
       if(pg.error.code === "42703" && CMP_COLS.includes(CMP_COLS_133)){ CMP_COLS = CMP_COLS.replace(CMP_COLS_133, ""); _cmp133 = false; return cmpFetchPaginas(filtro); }   // fase 133
       if(pg.error.code === "42703" && CMP_COLS.includes(CMP_COLS_S56)){ CMP_COLS = CMP_COLS.replace(CMP_COLS_S56, ""); return cmpFetchPaginas(filtro); }
@@ -1216,7 +1191,7 @@ function cmpCardHTML(p){
   const it = p.itens;   // null = pedido fechado, itens só na ficha (lote S43)
   const tipo = cmpTipoPedido(p);   // fase 108b
   return `<div class="serv-kan-card${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
-    <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span>${cmpEuAssino(p.id) ? ` <span class="tag ambar" title="chave de aprovação pendente que você assina">falta sua assinatura</span>` : ""}${cmpEtapaExtra(p) ? " " + cmpEtapaExtra(p) : ""}</div>
+    <div class="serv-kan-card-nome"><strong>${esc(p.numero)}</strong> <span class="meta">${p.codigo_externo ? esc(p.codigo_externo) + " · " : ""}${dataBR(p.data_pedido)}</span>${cmpEuAssino(p.id) ? ` <span class="tag ambar" title="chave de aprovação pendente que você assina">falta sua assinatura</span>` : ""}${cmpEtapaExtra(p) ? " " + cmpEtapaExtra(p) : ""}${p.viagem_id ? ` <span class="tag azul" title="Pedido gerado pela conclusão da viagem de frete terceirizado; o custo fica no rateio da viagem">Frete · ${esc(p.viagem?.numero || "viagem")}</span>` : ""}</div>
     <div>${esc(p.fornecedor?.razao_social || "— sem fornecedor —")}</div>
     <div class="meta">${/* html */ dest}${it ? ` · ${it.length} item(ns)` : ""}${tipo ? ` · ${esc(tipo)}` : ""}${cmpNfTxt(p) ? ` · NF ${esc(cmpNfTxt(p))}` : ""}</div>
     <div class="meta" style="display:flex;justify-content:space-between;margin-top:4px;"><strong>${brl(p.total)}</strong>${p.previsao_entrega ? `<span class="${atras ? "txt-perigo" : ""}">${atras ? "⚠ " : "📅 "}${dataBR(p.previsao_entrega)}</span>` : ""}</div>
@@ -1254,7 +1229,7 @@ function renderComprasLista(dados){
   $("cmp-conteudo").innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>${th("numero", "Número")}${th("data", "Data")}${th("fornecedor", "Fornecedor")}${th("nf", "NF", { title: "nº da NF dos recebimentos do pedido" })}${th("destino", "Destino")}${th("tipo", "Tipo de compra")}<th class="num">Itens</th>${th("total", "Total", { cls: "num" })}${th("previsao", "Previsão")}${th("status", "Status")}<th>Para receber com</th></tr></thead>
     <tbody>${dados.map(p => `<tr class="linha-clicavel${cmpSrvAtraso(p) ? " cmp-srv-atraso" : ""}" data-id="${esc(p.id)}"${cmpSrvAtraso(p) ? ' title="serviço sem evidência há mais de 7 dias"' : ""}>
-      <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td><td>${cmpNfTxt(p) ? esc(cmpNfTxt(p)) : '<span class="meta">—</span>'}</td>
+      <td><strong>${esc(p.numero)}</strong>${p.codigo_externo ? ` <span class="meta">${esc(p.codigo_externo)}</span>` : ""}${p.viagem_id ? ` <span class="tag azul" title="Pedido gerado pela conclusão da viagem de frete terceirizado">Frete · ${esc(p.viagem?.numero || "viagem")}</span>` : ""}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.fornecedor?.razao_social || "—")}</td><td>${cmpNfTxt(p) ? esc(cmpNfTxt(p)) : '<span class="meta">—</span>'}</td>
       <td${p._dp.title ? ` title="${esc(p._dp.title)}"` : ""}>${p._dp.k === "obra" ? linkObra(p._dp.id, p._dp.txt) : esc(p._dp.txt)}</td>
       <td class="meta">${esc(cmpTipoPedido(p) || "—")}</td>
       <td class="num">${p.itens ? p.itens.length : "—"}</td><td class="num">${brl(p.total)}</td>
@@ -1424,7 +1399,7 @@ async function cmpDupRegistrar(id, numero){
 }
 async function abrirPedido(id){
   const [{ data: p, error }, it] = await Promise.all([
-    sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), solicitante:profiles!pedidos_compra_solicitante_id_fkey(nome), aprovador:profiles!pedidos_compra_aprovador_id_fkey(nome)").eq("id", id).single(),
+    sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), solicitante:profiles!pedidos_compra_solicitante_id_fkey(nome), aprovador:profiles!pedidos_compra_aprovador_id_fkey(nome)" + (_cmp181b ? ", viagem:viagens!pedidos_compra_viagem_id_fkey(numero)" : "")).eq("id", id).single(),   // fase 181b: viagem do frete
     sb.from("pedido_compra_itens").select("*, produto:produtos(unidade,tipo_item), funcionario:funcionarios(nome)").eq("pedido_id", id).order("ordem").order("created_at")   // lote S54 (#170): unidade do cadastro; S55: tipo_item; S57a (#212): colaborador
   ]);
   if(error || !p){ aviso("app-aviso", "Não foi possível abrir o pedido" + (error ? ": " + error.message : "."), "erro"); return; }
@@ -1577,6 +1552,7 @@ function cmpAtualizarChips(){
   const chOdoo = $("cmp-chip-odoo");   // fase 65: pedido importado do Odoo
   if(chOdoo){ const ext = p.codigo_externo_origem === "odoo"; chOdoo.style.display = ext ? "" : "none";
     if(ext) $("cmp-chip-odoo-txt").textContent = p.codigo_externo + (p.comprador_externo ? " · comprador " + p.comprador_externo : ""); }
+  cmpFreteChip(p);   // fase 181b
   $("cmp-chip-forn").textContent = cmpForn($("cmp-forn").value) || "—";
   // fase 133: "Destino" virou dois chips: Entrega (onde o material chega) e Custo (lido dos itens; sem itens, do cabeçalho)
   const dv = $("cmp-dest-custo")?.value || "", obraEnt = dv.startsWith("obra:") ? dv.slice(5) : $("cmp-obra").value;
@@ -1832,6 +1808,10 @@ function cmpAtualizarBotoes(){
     // lote S63-c (#245): fora do rascunho (lá o fornecedor se edita no Cabeçalho), com os títulos lidos e nenhum exportado
     "btn-cmp-corrigir-forn": !novo && !leitura && cmpPodeCorrigirForn() && !["rascunho","cancelado"].includes(st)
       && _cmpTitsDe === _cmpEditId && !(_cmpTitsAtual || []).some(t => t.exportado_em) };
+  // fase 181b: o frete da viagem é recebido só por "Receber frete" (CT-e ou Sem CT-e; o título nasce junto)
+  const frete = !!_cmpAtual?.viagem_id;
+  if(frete){ mostra["btn-cmp-receber"] = false; mostra["btn-cmp-receber-material"] = false; mostra["btn-cmp-receber-servico"] = false; }
+  mostra["btn-cmp-receber-frete"] = frete && !novo && cmpPodeLancarNf() && ["aprovado","enviado"].includes(st);
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   // lote S55 (#179): em cotação o botão PDF gera a "Solicitação de cotação" (sem preço, IPI, total nem aprovador)
   const bPdf = $("btn-cmp-pdf");
@@ -2849,6 +2829,7 @@ async function cmpAcao(acao){
     return abrirLancarNf(r.id);
   }
   if(acao === "receber_servico"){ return abrirReceberServico(); }   // fase 78
+  if(acao === "receber_frete"){ return abrirReceberFrete(); }   // fase 181b
   if(acao === "conferir"){ return cmpConferirRecebimentos(); }      // fase 102
   if(acao === "corrigir_fornecedor"){ return cmpCorrFornAbrir(); }   // lote S63-c (#245)
   if(acao === "duplicar"){ return cmpDuplicarPedido(); }   // lote S64-a (#288)
@@ -3580,6 +3561,63 @@ async function confirmarServico(){
   await abrirPedido(p.id);
 }
 
+/* ---------- fase 181b: frete da viagem pelo pedido de compra ----------
+   O pedido nasce na conclusão da viagem de frete terceirizado (aguardando aprovação, fornecedor = transportador) e segue o
+   fluxo de Compras. O custo fica na viagem, rateado pelas obras (o recebimento deste pedido não entra em vw_custos); o
+   recebimento é pela RPC pedido_frete_receber, com o CT-e ou "Sem CT-e" e o vencimento, e o título nasce junto. */
+let _cmpFreteRateioDe = null;
+async function cmpFreteChip(p){
+  const ch = $("cmp-chip-frete"), chR = $("cmp-chip-frete-rateio"); if(!ch) return;
+  const on = !!p?.viagem_id;
+  ch.style.display = on ? "" : "none";
+  if(!on){ if(chR) chR.style.display = "none"; _cmpFreteRateioDe = null; return; }
+  const b = $("cmp-chip-frete-vg"); b.textContent = p.viagem?.numero || "abrir viagem"; b.dataset.vg = p.viagem_id;
+  if(!chR || _cmpFreteRateioDe === p.id) return;
+  _cmpFreteRateioDe = p.id;
+  const { data, error } = await sb.from("vw_viagem_obras").select("obra_id,fracao").eq("viagem_id", p.viagem_id);
+  if(_cmpAtual?.id !== p.id) return;
+  if(error || !(data || []).length){ chR.style.display = "none"; return; }
+  $("cmp-chip-frete-rateio-txt").textContent = data.map(r => `${cmpObra(r.obra_id) || "obra"} ${Math.round(Number(r.fracao || 0) * 100)}%`).join(" · ");
+  chR.style.display = "";
+}
+function cmpFreteVencDoPedido(p){   // "Vencimento combinado na viagem: dd/mm/aaaa" (gravado pelo banco na condição de pagamento)
+  const m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(p?.condicao_pagamento || "");
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+function abrirReceberFrete(){
+  const p = _cmpAtual; if(!p?.viagem_id || !cmpPodeLancarNf()) return;
+  $("cmp-frete-titulo").textContent = `Receber frete — pedido ${p.numero}${p.viagem?.numero ? " · " + p.viagem.numero : ""}`;
+  $("cmp-frete-semcte").checked = false;
+  ["cmp-frete-num", "cmp-frete-chave", "cmp-frete-emissao"].forEach(id => { $(id).value = ""; $(id).disabled = false; });
+  $("cmp-frete-data").value = hojeISO();
+  $("cmp-frete-venc").value = cmpFreteVencDoPedido(p);
+  $("cmp-frete-total").textContent = "Total: " + brl(p.total);
+  $("cmp-frete-modal").style.display = "";
+  $("cmp-frete-num").focus();
+}
+function fecharReceberFrete(){ $("cmp-frete-modal").style.display = "none"; }
+function cmpFreteSemCteTrocar(){
+  const sem = $("cmp-frete-semcte").checked;
+  ["cmp-frete-num", "cmp-frete-chave", "cmp-frete-emissao"].forEach(id => { if(sem) $(id).value = ""; $(id).disabled = sem; });
+}
+async function confirmarReceberFrete(){
+  const p = _cmpAtual; if(!p?.viagem_id) return;
+  const sem = $("cmp-frete-semcte").checked, num = $("cmp-frete-num").value.trim(), chave = $("cmp-frete-chave").value.replace(/\D/g, "");
+  const venc = $("cmp-frete-venc").value;
+  if(!sem && !num){ aviso("app-aviso", "Informe o número do CT-e ou marque \"Sem CT-e\".", "erro"); $("cmp-frete-num").focus(); return; }
+  if(chave && chave.length !== 44){ aviso("app-aviso", `A chave do CT-e tem 44 dígitos (foram ${chave.length}).`, "erro"); $("cmp-frete-chave").focus(); return; }
+  if(!venc){ aviso("app-aviso", "Informe o vencimento: sem ele não nasce o título a pagar.", "erro"); $("cmp-frete-venc").focus(); return; }
+  const dados = { sem_cte: sem, vencimento: venc, data_recebimento: $("cmp-frete-data").value || hojeISO() };
+  if(!sem){ dados.cte_numero = num; if(chave) dados.cte_chave = chave; if($("cmp-frete-emissao").value) dados.cte_emissao = $("cmp-frete-emissao").value; }
+  const { data, error } = await sb.rpc("pedido_frete_receber", { p_pedido_id: p.id, p_dados: dados });
+  if(error){ aviso("app-aviso", "Frete não recebido: " + error.message, "erro"); return; }
+  const n = Number(data?.titulos || 0);
+  aviso("app-aviso", `Frete recebido${sem ? " (Sem CT-e)" : " com o CT-e " + num}: ${n} título${n === 1 ? "" : "s"} a pagar gerado${n === 1 ? "" : "s"}.`, "ok");
+  fecharReceberFrete();
+  await cmpFetchPedidos();
+  await abrirPedido(p.id);
+}
+
 /* ---------- XML da NF-e ---------- */
 function cmpLerXmlNfe(text){
   const doc = new DOMParser().parseFromString(text, "application/xml");
@@ -3963,19 +4001,6 @@ async function cmpPdfPedido(semValores){
 function ligarCompras(){
   if(!$("sec-compras")) return;
   document.querySelector('nav button[data-secao="compras"]')?.addEventListener("click", () => carregarCompras(false));
-  $("cmp-kpi-frete-box")?.addEventListener("click", () => {   // fase 181: mostra ou esconde a lista dos fretes
-    const card = $("cmp-fretes-aprov"); if(!card) return;
-    const abrir = card.style.display === "none";
-    card.style.display = abrir ? "" : "none";
-    $("cmp-kpi-frete-box").classList.toggle("ativo", abrir);
-    if(abrir) cmpRenderFretesAprov();
-  });
-  $("cmp-fretes-lista")?.addEventListener("click", e => {
-    const b = e.target.closest(".cmp-frete-abrir"); if(!b) return;
-    if(irParaSecao("frota") && typeof abrirViagem === "function"){
-      abrirViagem(b.dataset.vg, null).then(() => document.querySelector('#vg-notebook button[data-tab="custo"]')?.click());
-    }
-  });
   document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.addEventListener("click", () => { _cmpView = b.dataset.view; renderCompras(); }));
   document.querySelectorAll("#cmp-painel .ind[data-kpi]").forEach(el => el.addEventListener("click", () => {
     const k = el.dataset.kpi;
@@ -3993,6 +4018,16 @@ function ligarCompras(){
   $("cmp-f-meus")?.addEventListener("change", renderCompras);
   $("cmp-f-aprovar-eu")?.addEventListener("change", renderCompras);   // fase 108b: "para eu aprovar"
   $("btn-cmp-srv-fechar")?.addEventListener("click", fecharReceberServico);
+  // fase 181b: recebimento do frete da viagem e atalho para a viagem
+  $("btn-cmp-frete-fechar")?.addEventListener("click", fecharReceberFrete);
+  $("cmp-frete-semcte")?.addEventListener("change", cmpFreteSemCteTrocar);
+  $("btn-cmp-frete-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-frete-confirmar", confirmarReceberFrete));
+  $("cmp-chip-frete-vg")?.addEventListener("click", e => {
+    const vg = e.currentTarget.dataset.vg; if(!vg) return;
+    if(irParaSecao("frota") && typeof abrirViagem === "function"){
+      abrirViagem(vg, null).then(() => document.querySelector('#vg-notebook button[data-tab="custo"]')?.click());
+    }
+  });
   $("btn-cmp-srv-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-srv-confirmar", confirmarServico));
   $("cmp-resp-receb")?.addEventListener("change", async () => {
     if(!_cmpEditId || cmpEditavel()) return;   // rascunho grava no Salvar

@@ -34,12 +34,10 @@ const FROTA_STATUS_LBL = { disponivel: "Disponível", em_uso: "Em uso", manutenc
 const VG_STAGES = ["planejada", "em_transito", "concluida"];
 const VG_FINALIDADES = { mobilizacao: "Mobilização", desmobilizacao: "Desmobilização", apoio: "Apoio à obra", entrega_material: "Entrega de material", manutencao: "Manutenção", outro: "Outro", frete_terceirizado: "Frete terceirizado" };
 /* fase 130: viagens.frete_status (mantido pelo banco; texto sem valor, a logística lê) */
-const VG_FRETE_STATUS = { a_informar: ["Frete a informar", "ambar"], a_gerar: ["Falta valor, vencimento ou CT-e", "ambar"], aguardando_aprovacao: ["Aguardando aprovação", "ambar"], reprovado: ["Reprovado", "vermelho"], gerado: ["Título gerado", "azul"], exportado: ["Título exportado", "verde"], cancelado: ["Cancelado", "cinza"] };
+const VG_FRETE_STATUS = { a_informar: ["Frete a informar", "ambar"], a_gerar: ["Pedido na conclusão", "ambar"], pedido: ["Pedido de compra", "azul"], aguardando_aprovacao: ["Aguardando aprovação", "ambar"], reprovado: ["Reprovado", "vermelho"], gerado: ["Título gerado", "azul"], exportado: ["Título exportado", "verde"], cancelado: ["Cancelado", "cinza"] };
 function vgEhFrete(v){ return !!v && v.finalidade === "frete_terceirizado"; }
 /* viagem_fretes vem como objeto (1:1) ou nulo para quem não lê contas a pagar */
 function vgFrete(v){ if(!v || !v.frete) return null; return Array.isArray(v.frete) ? (v.frete[0] || null) : v.frete; }
-/* fase 181: aprovam o frete a diretoria e o comprador (a RPC recusa quem lançou o frete, exceto o diretor) */
-function vgPodeAprovarFrete(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "comprador"].includes(usuarioAtual.cargo); }
 function vgPodeVerFrete(){ return typeof podeVerContasPagar === "function" && podeVerContasPagar(); }
 /* lote travas 09/11/2026 (BAN-05): quem informa o frete. Mesma lista da RPC viagem_frete_gravar (admin, logistica, gestor_frota,
    financeiro, comprador); diretor entra por has_role() lá e aqui na lista. Os demais registram a viagem e deixam o frete para eles. */
