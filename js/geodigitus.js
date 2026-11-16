@@ -292,7 +292,7 @@ async function geoRenderPainel(){
           ${teste ? `<div><span class="tag ambar" title="Profundidade abaixo de 1 m. Nada é ignorado sozinho.">conferir: parece teste (${esc(teste)})</span></div>` : ""}
           ${aConfirmar ? `<div><span class="tag ambar" title="Arquivo sem o fim da perfuração, número de refuro, menos de 1 m ou o mesmo número no dia">a confirmar (${esc(aConfirmar)})</span></div>` : ""}
           <div class="meta" title="Com estaca = vinculada a uma estaca cadastrada; no diário = virou execução do RDO">Vínculos: ${esc(res.comEstaca)} de ${esc(res.estacas)} com estaca · ${esc(res.noDiario)} no diário</div>
-          ${avisos.length ? `<div class="meta">⚠️ ${esc(avisos.join(" · "))}</div>` : ""}</td>
+          ${avisos.length ? `<div class="meta">⚠️ ${esc(avisos.join(" · "))}${/* html */ geoLinkTipoServico(gr, avisos)}</div>` : ""}</td>
         <td class="col-acao">${/* html */ geoAcoesGrupoHTML(gr)}</td>
       </tr>${_geoAbertos.has(gr.chave) ? `<tr data-geo-grupo-aberto="${esc(gr.chave)}"><td colspan="9">${/* html */ geoLinhasEstacasHTML(gr)}</td></tr>` : ""}`;
     }).join("")}</tbody></table></div>`;
@@ -320,6 +320,12 @@ async function geoAbrirPreset(filtro, geoId){
 }
 
 /* ---------- ações do grupo (fase 134a) ---------- */
+/* lote S66-f (#320): "Definir agora" no aviso de máquina sem tipo de serviço padrão, para quem pode (RPC em equipamentos.js) */
+function geoLinkTipoServico(gr, avisos){
+  const eq = String(gr.chave || "").split("|")[1] || "";
+  if(!eq || eq.startsWith("cpu:") || !avisos.some(a => /tipo de servi/i.test(a)) || typeof eqpPodeDefinirTipoServico !== "function" || !eqpPodeDefinirTipoServico()) return "";
+  return ` <button type="button" class="btn-sec btn-sm" data-eqp-tipo-serv="${esc(eq)}" data-eqp-codigo="${esc(gr.maquina || "")}" title="Grava o tipo de serviço do diário desta máquina (fica no histórico)">Definir agora</button>`;
+}
 async function geoAcaoGrupo(acao, chave){
   const gr = (_geoGrupos || []).find(x => x.chave === chave); if(!gr) return;
   if(acao === "g-ver"){

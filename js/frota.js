@@ -500,7 +500,7 @@ let _frotaAbast = { chave: null, dados: [], rodadas: [] };
 let _frotaAbastModo = "lancamentos";  // lancamentos | colaborador
 let _frotaAbastMesPosto = false;      // o mês atual só é posto na primeira abertura; depois, vazio quer dizer todo o histórico
 
-const FROTA_ABAST_SELECT = "id,data,data_hora,placa,equipamento_id,funcionario_id,motorista_nome,ctipoproduto,cproduto,litros,valor,valor_litro,km_rodado,km_litro,credenciado,funcionario:funcionarios(nome),veic:equipamentos(codigo)";
+const FROTA_ABAST_SELECT = "id,data,data_hora,placa,equipamento_id,funcionario_id,motorista_nome,ctipoproduto,cproduto,litros,valor,valor_litro,odometro,km_rodado,km_litro,credenciado,funcionario:funcionarios(nome),veic:equipamentos(codigo)";
 /* odômetro digitado errado: fora disto o km não entra em R$/km nem em km/l */
 const FROTA_ABAST_KM_MAX = 3000, FROTA_ABAST_KML_MAX = 40;
 
@@ -588,21 +588,60 @@ function frotaAbastKpisHtml(lista){
   </div>`;
 }
 
+/* lote S66-d (#325): km atual de cada veículo = a leitura mais recente entre o odômetro informado no PlusFrota
+   (frota_abastecimentos.odometro, de qualquer mês) e as leituras do app (equipamento_leituras: semanal, viagem, compra, OS).
+   Mesmo dia: vale o maior. Lido uma vez por abertura da visão. */
+let _frotaKmAtual = null;   // Map placa -> { km, data, origem, app: { km, data, origem } | null }
+const FROTA_KM_ORIGEM = { semanal: "semanal", viagem: "viagem", compra: "pedido de compra", os: "OS", manual: "manual", planilha: "planilha" };
+async function frotaAbastCarregarKmAtual(){
+  const desde = dataLocalISO(new Date(Date.now() - 180 * 86400000));
+  const [ab, le] = await Promise.all([
+    lerTudo(() => sb.from("frota_abastecimentos").select("id,placa,equipamento_id,data,odometro").gt("odometro", 0).gte("data", desde)),
+    lerTudo(() => sb.from("equipamento_leituras").select("id,equipamento_id,data,km,origem").not("km", "is", null))
+  ]);
+  const mapa = new Map(), placaDoEquip = new Map();
+  const melhor = (a, b) => !a || b.data > a.data || (b.data === a.data && Number(b.km) > Number(a.km)) ? b : a;
+  (ab.data || []).forEach(l => {
+    if(!l.placa) return;
+    if(l.equipamento_id) placaDoEquip.set(l.equipamento_id, l.placa);
+    mapa.set(l.placa, melhor(mapa.get(l.placa), { km: Number(l.odometro), data: l.data, origem: "PlusFrota" }));
+  });
+  const app = new Map();
+  (le.data || []).forEach(l => app.set(l.equipamento_id, melhor(app.get(l.equipamento_id), { km: Number(l.km), data: l.data, origem: FROTA_KM_ORIGEM[l.origem] || l.origem || "app" })));
+  app.forEach((v, eq) => {
+    const placa = placaDoEquip.get(eq); if(!placa) return;
+    const pf = mapa.get(placa);
+    mapa.set(placa, { ...melhor(pf, v), app: v });
+  });
+  _frotaKmAtual = mapa;
+}
+function frotaKmAtualTxt(k){ return k ? `${frotaNum(k.km)} km · ${k.origem} ${dataBR(k.data).slice(0, 5)}` : "—"; }
+/* topo da lista quando um veículo está filtrado: km atual, data e origem */
+function frotaAbastKmAtualHtml(){
+  const placa = $("frota-a-veiculo")?.value || "";
+  if(!placa || !_frotaKmAtual) return "";
+  const k = _frotaKmAtual.get(placa);
+  const outra = k?.app && (k.app.km !== k.km || k.app.data !== k.data)
+    ? ` <span class="meta" title="Última leitura registrada no app (semanal, viagem, pedido de compra ou OS)">· no app: ${esc(frotaKmAtualTxt(k.app))}</span>` : "";
+  return `<div class="ui-secao" style="margin:0 0 8px;padding:8px 12px;">${uiRotuloValor("Km atual do veículo", k ? `<strong>${esc(frotaNum(k.km))} km</strong> <span class="meta">${esc(k.origem)} · ${esc(dataBR(k.data))}</span>${/* html */ outra}` : "Sem leitura de odômetro")}</div>`;
+}
+
 function frotaAbastLancamentosHtml(lista){
   const t = frotaAbastTotais(lista);
   const km = lista.reduce((s, l) => s + (frotaAbastEhCombustivel(l) && !frotaAbastKmSuspeito(l) ? Number(l.km_rodado || 0) : 0), 0);
   return `<div class="tabela-rola"><table>
-    <thead><tr><th>Data</th><th>Veículo</th><th>Motorista</th><th>Posto</th><th>Produto</th><th class="num">Litros</th><th class="num">R$/l</th><th class="num">Valor</th><th class="num">km</th><th class="num">km/l</th></tr></thead>
+    <thead><tr><th>Data</th><th>Veículo</th><th>Motorista</th><th>Posto</th><th>Produto</th><th class="num">Litros</th><th class="num">R$/l</th><th class="num">Valor</th><th class="num" title="Odômetro informado no abastecimento">Odômetro</th><th class="num">km</th><th class="num">km/l</th></tr></thead>
     <tbody>${lista.map(l => `<tr>
       <td>${dataBR(l.data)}</td>
-      <td>${l.equipamento_id ? esc(frotaAbastVeiculo(l)) : `${esc(l.placa || "—")} <span class="tag ambar">Sem veículo no app</span>`}</td>
+      <td title="${esc("Km atual: " + frotaKmAtualTxt(_frotaKmAtual?.get(l.placa)))}">${l.equipamento_id ? esc(frotaAbastVeiculo(l)) : `${esc(l.placa || "—")} <span class="tag ambar">Sem veículo no app</span>`}</td>
       <td>${esc(frotaAbastMotorista(l))}${l.funcionario_id ? "" : ` <span class="meta">(sem colaborador)</span>`}</td>
       <td>${esc(l.credenciado || "—")}</td><td>${esc(l.cproduto || "—")}</td>
       <td class="num">${frotaNum(l.litros, 2)}</td><td class="num">${l.valor_litro != null ? frotaMoeda(l.valor_litro) : "—"}</td><td class="num">${frotaMoeda(l.valor)}</td>
+      <td class="num">${Number(l.odometro) > 0 ? frotaNum(l.odometro) : "—"}</td>
       <td class="num">${frotaAbastKmSuspeito(l) ? `<span class="tag ambar" title="Fora da conta de R$/km e km/l">km suspeito</span>` : (Number(l.km_rodado) > 0 ? frotaNum(l.km_rodado) : "—")}</td>
       <td class="num">${!frotaAbastKmSuspeito(l) && Number(l.km_litro) > 0 ? frotaNum(l.km_litro, 2) : "—"}</td>
-    </tr>`).join("") || `<tr><td colspan="10" class="vazio">Nenhum abastecimento nesse filtro.</td></tr>`}</tbody>
-    <tfoot><tr><td colspan="5">Total</td><td class="num">${frotaNum(t.litros, 2)}</td><td class="num">${t.litros ? frotaMoeda(t.valor / t.litros) : "—"}</td><td class="num">${frotaMoeda(t.valor)}</td><td class="num">${frotaNum(km)}</td><td class="num">${t.litrosKm ? frotaNum(t.km / t.litrosKm, 2) : "—"}</td></tr></tfoot>
+    </tr>`).join("") || `<tr><td colspan="11" class="vazio">Nenhum abastecimento nesse filtro.</td></tr>`}</tbody>
+    <tfoot><tr><td colspan="5">Total</td><td class="num">${frotaNum(t.litros, 2)}</td><td class="num">${t.litros ? frotaMoeda(t.valor / t.litros) : "—"}</td><td class="num">${frotaMoeda(t.valor)}</td><td></td><td class="num">${frotaNum(km)}</td><td class="num">${t.litrosKm ? frotaNum(t.km / t.litrosKm, 2) : "—"}</td></tr></tfoot>
   </table></div>`;
 }
 
@@ -635,7 +674,8 @@ async function renderFrotaAbast(){
         if(mes) q = q.gte("data", mes + "-01").lte("data", dataLocalISO(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0)));
         return q;
       }),
-      sb.from("frota_abastecimentos_sync").select("fim,erro").order("inicio", { ascending: false }).limit(30)
+      sb.from("frota_abastecimentos_sync").select("fim,erro").order("inicio", { ascending: false }).limit(30),
+      _frotaKmAtual ? null : frotaAbastCarregarKmAtual()   // lote S66-d (#325)
     ]);
     if(_frotaView !== "abastecimentos" || ($("frota-a-mes")?.value || "todos") !== chave) return;   // o filtro mudou durante a leitura
     if(ab.error){ cont.innerHTML = `<p class="vazio">Erro ao carregar abastecimentos: ${esc(ab.error.message)}</p>`; return; }
@@ -648,7 +688,7 @@ async function renderFrotaAbast(){
   }
   const lista = frotaAbastFiltrados();
   const c = $("frota-contador"); if(c) c.textContent = `${lista.length} de ${_frotaAbast.dados.length}`;
-  cont.innerHTML = frotaAbastKpisHtml(lista)
+  cont.innerHTML = frotaAbastKpisHtml(lista) + frotaAbastKmAtualHtml()
     + (_frotaAbastModo === "colaborador" ? frotaAbastColaboradorHtml(lista) : frotaAbastLancamentosHtml(lista))
     + frotaAbastRodapeHtml();
   $("btn-frota-abast-sync")?.addEventListener("click", () => comBotaoTravado("btn-frota-abast-sync", frotaAbastSincronizar));
@@ -663,7 +703,7 @@ async function frotaAbastSincronizar(){
     aviso("app-aviso", "Sincronização: " + msg, "erro"); return;
   }
   aviso("app-aviso", `Sincronização: ${Number(data?.lidas || 0)} lida(s), ${Number(data?.novas || 0)} nova(s), ${Number(data?.atualizadas || 0)} atualizada(s)${data?.ok ? "" : ". A rodada teve erro; a próxima cobre os últimos 7 dias"}.`, data?.ok ? "ok" : "aviso");
-  _frotaAbast.chave = null;
+  _frotaAbast.chave = null; _frotaKmAtual = null;
   renderFrota();
 }
 

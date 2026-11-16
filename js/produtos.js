@@ -144,6 +144,7 @@ function prodAplicarPerfil(){
   const perfil = prodPerfilEdicao();
   const novo = $("btn-novo-produto"); if(novo) novo.style.display = perfil ? "" : "none";
   const salvar = $("btn-salvar-prod"); if(salvar) salvar.style.display = perfil ? "" : "none";
+  const etq = $("btn-prod-etiqueta"); if(etq) etq.style.display = prodEditId ? "" : "none";   // lote S66-e (#244)
   const excluir = $("btn-excluir-prod"); if(excluir) excluir.style.display = (perfil === "tudo" && prodEditId) ? "" : "none";
   const arq = $("btn-arquivar-prod");   // lote S58 (#237)
   if(arq){ arq.style.display = (perfil === "tudo" && prodEditId) ? "" : "none"; arq.textContent = _prodAtivo ? "📦 Arquivar" : "♻️ Reativar"; }
@@ -239,7 +240,7 @@ async function carregarProdutos(){
   const termo = prodTermo(), fCat = $("prod-f-categoria")?.value || "", fEst = $("prod-f-estoque")?.value || "", fTipo = $("prod-f-tipo")?.value || "";
   const baixo = fEst === "baixo";
   let q = sb.from("produtos").select(PROD_COLS, { count: "exact" }).eq("ativo", fEst !== "inativos").order("nome");
-  if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo}`);
+  if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo},aplicacao.ilike.%${termo}%`);   // lote S66-e: busca também pela aplicação
   if(fCat) q = q.eq("categoria_id", fCat);
   if(fTipo) q = q.eq("tipo_item", fTipo);   // lote S55 (#175): Produtos / Serviços consumidos
   if(fEst === "pendentes") q = q.eq("aprovacao", "pendente");   // lote S63-b (#272)
@@ -614,7 +615,7 @@ function novoProduto(){
   prodEditId = null;
   prodPreencherCatCusto(""); if($("prod-ca")) $("prod-ca").value = ""; if($("prod-epi-validade")) $("prod-epi-validade").value = "";
   prodAplicarCamposEpi();
-  ["prod-codigo","prod-nome","prod-codbarras","prod-refext","prod-localizacao","prod-descricao"
+  ["prod-codigo","prod-nome","prod-codbarras","prod-refext","prod-localizacao","prod-descricao","prod-aplicacao"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
   _prodCatOriginal = null;
   _prodCodNum = null; _prodCodManual = false;   // lote S56b (#197)
@@ -665,6 +666,7 @@ async function abrirProduto(id){
   $("prod-refext").value      = data.ref_externa || "";
   $("prod-localizacao").value = data.localizacao || "";
   $("prod-descricao").value   = data.descricao || "";
+  if($("prod-aplicacao")) $("prod-aplicacao").value = data.aplicacao || "";   // lote S66-e (#244)
   $("prod-conferido").checked = data.inventario_conferido === true;
   if($("prod-tipo-item")) $("prod-tipo-item").value = data.tipo_item === "servico" ? "servico" : "produto";   // lote S55 (#175)
   prodAplicarTipoItem();
@@ -886,6 +888,7 @@ async function salvarProduto(){
     ref_externa:   $("prod-refext").value.trim() || null,
     localizacao:   $("prod-localizacao").value.trim() || null,
     descricao:     $("prod-descricao").value.trim() || null,
+    aplicacao:     ($("prod-aplicacao")?.value || "").trim() || null,   // lote S66-e (#244)
     inventario_conferido: $("prod-conferido").checked
   };
   // fase 100: categoria de custo sempre (coluna da fase 53); CA e troca só com a migration da fase 100 aplicada
@@ -1194,6 +1197,7 @@ function ligarProdutos(){
   $("btn-voltar-prod")?.addEventListener("click", mostrarPainelProd);
   $("btn-salvar-prod")?.addEventListener("click", () => comBotaoTravado("btn-salvar-prod", salvarProduto));
   $("btn-excluir-prod")?.addEventListener("click", excluirProduto);
+  $("btn-prod-etiqueta")?.addEventListener("click", prodImprimirEtiqueta);   // lote S66-e (#244)
   $("btn-arquivar-prod")?.addEventListener("click", () => comBotaoTravado("btn-arquivar-prod", arquivarProduto));   // lote S58 (#237)
   // lote S63-b (#272): Aprovar / Já existe
   $("btn-prod-aprovar")?.addEventListener("click", () => prodAprovAbrir("aprovar"));
@@ -1219,4 +1223,77 @@ if(document.readyState === "loading"){
   document.addEventListener("DOMContentLoaded", ligarProdutos);
 } else {
   ligarProdutos();
+}
+
+/* ====================================================================
+   LOTE S66-e (#244, Júlio) — etiqueta do produto
+   Folha A4 com 2 × 7 etiquetas (o modelo "2 x 7" do Odoo que o Júlio mandou; ele pediu no mínimo 10 por folha).
+   Cada etiqueta: nome e código no topo, código de barras Code 128 (desenhado em SVG aqui, sem biblioteca) com o número
+   embaixo e a aplicação do produto. Sem código de barras no cadastro, o código interno vai no código de barras.
+   Sem preço (o custo não sai do sistema numa etiqueta).
+   ==================================================================== */
+const PROD_ETQ_POR_FOLHA = 14, PROD_ETQ_MAX = 500;
+/* larguras de barra/espaço dos 107 símbolos do Code 128 (103 = Start A, 104 = Start B, 105 = Start C, 106 = Stop) */
+const CODE128_PADROES = ("212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 "
+  + "123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 "
+  + "131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 "
+  + "213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 "
+  + "112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 "
+  + "421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112").split(" ");
+/* Code 128 B (ASCII 32 a 126); caractere fora disso vira "?". Devolve as larguras em módulos, sem a zona quieta. */
+function code128Larguras(txt){
+  const vals = [...String(txt)].map(ch => { const c = ch.charCodeAt(0); return c >= 32 && c <= 126 ? c - 32 : 31; });
+  const soma = vals.reduce((s, v, i) => s + v * (i + 1), 104);
+  return [104, ...vals, soma % 103, 106].map(v => CODE128_PADROES[v]).join("");
+}
+/* SVG do código de barras; as barras herdam a cor do texto (fill="currentColor") */
+function code128Svg(txt, alturaMm){
+  const larg = code128Larguras(txt), quieta = 10;
+  let x = quieta, barras = "";
+  [...larg].forEach((w, i) => { const n = Number(w); if(i % 2 === 0) barras += `<rect x="${esc(x)}" y="0" width="${esc(n)}" height="100"/>`; x += n; });
+  const total = x + quieta;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${esc(total)} 100" preserveAspectRatio="none" style="width:100%;height:${esc(alturaMm)}mm;display:block;" fill="currentColor" role="img" aria-label="${esc(txt)}">${/* html */ barras}</svg>`;
+}
+function prodEtiquetaHtml(p){
+  const cod = (p.codigo_barras || p.codigo || "").trim();
+  return `<div class="etq">
+    <div class="etq-tit">${esc(p.nome || "")}${p.codigo ? " - " + esc(p.codigo) : ""}</div>
+    <div class="etq-corpo">
+      <div class="etq-barras">${code128Svg(cod, 13)}<div class="etq-num">${esc(cod)}</div></div>
+      <div class="etq-apl"><span class="etq-rot">APLICAÇÃO:</span> ${esc(p.aplicacao || "—")}</div>
+    </div>
+  </div>`;
+}
+async function prodImprimirEtiqueta(){
+  if(!prodEditId){ aviso("app-aviso", "Salve o produto antes de imprimir a etiqueta.", "erro"); return; }
+  const resp = prompt(`Quantas etiquetas deste produto? (folha A4 com ${PROD_ETQ_POR_FOLHA} etiquetas, 2 colunas × 7 linhas)`, "1");
+  if(resp === null) return;
+  const qtd = Math.round(Number(String(resp).replace(",", ".")));
+  if(!(qtd >= 1 && qtd <= PROD_ETQ_MAX)){ aviso("app-aviso", `Informe de 1 a ${PROD_ETQ_MAX} etiquetas.`, "erro"); return; }
+  const ini = prompt(`Começar em qual posição da primeira folha? (1 a ${PROD_ETQ_POR_FOLHA}; use quando a folha já tiver etiquetas usadas)`, "1");
+  if(ini === null) return;
+  const pos = Math.min(PROD_ETQ_POR_FOLHA, Math.max(1, Math.round(Number(ini)) || 1));
+  const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }   // aberta no clique
+  const { data: p, error } = await sb.from("produtos").select("codigo,nome,codigo_barras,aplicacao").eq("id", prodEditId).single();
+  if(error){ w.close(); aviso("app-aviso", "Erro ao ler o produto: " + error.message, "erro"); return; }
+  if(!(p.codigo_barras || p.codigo)){ w.close(); aviso("app-aviso", "O produto não tem código nem código de barras.", "erro"); return; }
+  const um = prodEtiquetaHtml(p);
+  const celulas = Array(pos - 1).fill('<div class="etq vazia"></div>').concat(Array(qtd).fill(um));
+  const folhas = [];
+  for(let i = 0; i < celulas.length; i += PROD_ETQ_POR_FOLHA) folhas.push(`<div class="folha">${/* html */ celulas.slice(i, i + PROD_ETQ_POR_FOLHA).join("")}</div>`);
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Etiquetas ${esc(p.codigo || "")}</title><style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: black; background: white; }
+    .folha { width: 210mm; height: 297mm; padding: 11mm 6mm; display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(7, 1fr); gap: 0 4mm; page-break-after: always; }
+    .folha:last-child { page-break-after: auto; }
+    .etq { padding: 2.5mm 3mm; overflow: hidden; display: flex; flex-direction: column; gap: 1.5mm; }
+    .etq-tit { font-weight: bold; font-size: 10pt; line-height: 1.15; max-height: 2.4em; overflow: hidden; text-transform: uppercase; }
+    .etq-corpo { display: grid; grid-template-columns: 52% 1fr; gap: 3mm; align-items: start; }
+    .etq-num { font-size: 8pt; text-align: center; letter-spacing: .5px; margin-top: .5mm; }
+    .etq-apl { font-size: 8.5pt; line-height: 1.2; max-height: 6.2em; overflow: hidden; text-transform: uppercase; }
+    .etq-rot { font-size: 10pt; }
+    @media screen { body { background: lightgray; } .folha { background: white; margin: 6mm auto; } .etq:not(.vazia) { outline: 1px dashed gray; } }
+  </style></head><body>${/* html */ folhas.join("")}</body></html>`);
+  w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
 }

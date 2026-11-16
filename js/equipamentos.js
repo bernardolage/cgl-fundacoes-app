@@ -779,6 +779,10 @@ function abrirFichaEquipamento(e){
   if(temTipoServ && $("eqp-tipo-servico") && typeof TIPO_SERVICO === "object"){
     $("eqp-tipo-servico").innerHTML = `<option value="">— sem tipo (não recebe estacas do Geodigitus) —</option>` + Object.entries(TIPO_SERVICO).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
     $("eqp-tipo-servico").value = e.tipo_servico_padrao || "";
+    // lote S66-f (#320): máquina já salva grava o tipo pela RPC (só esse campo, com histórico); a engenharia edita sem gravar o cadastro
+    const rpcTipo = !novo && !vendido && eqpPodeDefinirTipoServico();
+    $("eqp-tipo-servico").disabled = novo ? !pode : !rpcTipo;
+    $("eqp-tipo-servico").dataset.rpc = rpcTipo ? "1" : "";
   }
   if(typeof cpbPreencherMaquina === "function") cpbPreencherMaquina(e);   // fase 107a: chip CPU e bloco Computador de bordo
   eqpPrincipalPreencher(e, pode);   // lote S63-g (#284): equipamento principal (munck no caminhão)
@@ -1121,7 +1125,8 @@ async function salvarEquipamento(){
   const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("eqp") : null;
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabEquipamento("fiscal"); return; }
   if(fis) Object.assign(reg, fis);
-  if($("eqp-tipo-servico-campo") && $("eqp-tipo-servico-campo").style.display !== "none") reg.tipo_servico_padrao = $("eqp-tipo-servico").value || null;   // fase 107a
+  // fase 107a; lote S66-f: em máquina já salva o tipo grava na hora pela RPC (equipamento_definir_tipo_servico), não aqui
+  if(!_eqpEditId && $("eqp-tipo-servico-campo") && $("eqp-tipo-servico-campo").style.display !== "none") reg.tipo_servico_padrao = $("eqp-tipo-servico").value || null;
   // lote S63-g (#284): vínculo com o principal; quem já é principal de outro fica travado (o banco também recusa)
   const selPrin = $("eqp-principal");
   if($("eqp-principal-campo") && $("eqp-principal-campo").style.display !== "none" && selPrin && selPrin.dataset.carregado === "1" && selPrin.dataset.travado !== "1") reg.equipamento_principal_id = selPrin.value || null;
@@ -1239,6 +1244,7 @@ function ligarEquipamentos(){
   // ficha
   $("btn-eqp-voltar")?.addEventListener("click", mostrarPainelEquipamentos);
   $("btn-eqp-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-salvar", salvarEquipamento));
+  $("eqp-tipo-servico")?.addEventListener("change", eqpTipoServicoMudou);   // lote S66-f (#320)
   $("btn-eqp-remessa")?.addEventListener("click", eqpNovaRemessa);
   $("btn-eqp-acessorios")?.addEventListener("click", eqpVerAcessorios);
   $("btn-eqp-vender")?.addEventListener("click", () => { if(_eqpAtual && typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); });   // fase 96
@@ -1269,3 +1275,49 @@ function ligarEquipamentos(){
 
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarEquipamentos);
 else ligarEquipamentos();
+
+/* ====================================================================
+   LOTE S66-f (#320) — tipo de serviço padrão da máquina pela engenharia
+   RPC equipamento_definir_tipo_servico (definer): muda só equipamentos.tipo_servico_padrao e grava registros_log. Quem
+   pode: engenheiro, assistente de engenharia e os cargos que já gravam equipamentos (lista igual à da RPC, com diretor).
+   ==================================================================== */
+const EQP_CARGOS_TIPO_SERVICO = ["diretor", "admin", "engenheiro", "assistente_engenharia", "mecanico", "logistica", "rh", "gestor_acessorios", "gestor_frota", "gestor_manutencao"];
+function eqpPodeDefinirTipoServico(){
+  return !!usuarioAtual && EQP_CARGOS_TIPO_SERVICO.includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+}
+async function eqpGravarTipoServico(equipId, tipo){
+  const { error } = await sb.rpc("equipamento_definir_tipo_servico", { p_equip: equipId, p_tipo: tipo });
+  if(error){ aviso("app-aviso", "Tipo de serviço não gravado: " + String(error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return false; }
+  [_eqpAtual, ...(_eqpRegistros || []).filter(r => r.id === equipId)].forEach(r => { if(r && r.id === equipId) r.tipo_servico_padrao = tipo; });
+  return true;
+}
+async function eqpTipoServicoMudou(ev){
+  const sel = ev.target;
+  if(sel.dataset.rpc !== "1" || !_eqpEditId) return;   // máquina nova: vai junto no Salvar
+  const ant = _eqpAtual?.tipo_servico_padrao || "", novo = sel.value || "";
+  if(!novo){ aviso("app-aviso", "Escolha um tipo de serviço: a máquina sem tipo não abre diário nem recebe estacas do Geodigitus.", "erro"); sel.value = ant; return; }
+  const rot = (typeof TIPO_SERVICO === "object" && TIPO_SERVICO[novo]?.label) || novo;
+  if(!confirm(`Gravar "${rot}" como tipo de serviço do diário desta máquina? Fica no histórico.`)){ sel.value = ant; return; }
+  sel.disabled = true;
+  const ok = await eqpGravarTipoServico(_eqpEditId, novo);
+  sel.disabled = false;
+  if(ok) aviso("app-aviso", `Tipo de serviço gravado: ${rot}.`, "ok"); else sel.value = ant;
+}
+/* "Definir agora" no aviso das Chegadas do Geodigitus (máquina sem tipo de serviço padrão) */
+async function eqpDefinirTipoServicoPrompt(equipId, codigo){
+  if(!eqpPodeDefinirTipoServico()){ aviso("app-aviso", "Seu perfil não define o tipo de serviço da máquina.", "erro"); return false; }
+  const ops = Object.entries(typeof TIPO_SERVICO === "object" ? TIPO_SERVICO : {});
+  const r = prompt(`Tipo de serviço do diário da máquina ${codigo || ""}:\n\n${ops.map(([, o], i) => `${i + 1}. ${o.label}`).join("\n")}\n\nDigite o número:`);
+  if(r === null) return false;
+  const op = ops[parseInt(r, 10) - 1];
+  if(!op){ aviso("app-aviso", "Número fora da lista.", "erro"); return false; }
+  const ok = await eqpGravarTipoServico(equipId, op[0]);
+  if(ok) aviso("app-aviso", `Tipo de serviço da ${codigo || "máquina"} gravado: ${op[1].label}. Use "Resolver" no grupo para reprocessar as estacas.`, "ok");
+  return ok;
+}
+document.addEventListener("click", async (ev) => {
+  const b = ev.target.closest("[data-eqp-tipo-serv]");
+  if(!b) return;
+  ev.preventDefault(); ev.stopPropagation();
+  await comBotaoTravado(b, () => eqpDefinirTipoServicoPrompt(b.dataset.eqpTipoServ, b.dataset.eqpCodigo));
+}, true);

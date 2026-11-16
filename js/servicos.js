@@ -323,6 +323,7 @@ function abrirFichaServ(id){
   $("serv-obs-proposta").value = (s && s.observacoes_padrao) || "";
   $("serv-nota-interna").value = (s && s.nota_interna) || "";
   ["serv-obs-proposta", "serv-nota-interna"].forEach(idc => { $(idc).disabled = !s || !servPodeOrdenar(); });
+  servPreencherEstrutura(s);   // lote S66-g (#316)
   $("serv-ativo").checked  = v.ativo !== false;
   $("serv-ficha-titulo").textContent = v.nome || "Editar serviço";
 
@@ -411,6 +412,19 @@ $("form-servico").addEventListener("submit", async (e) => {
     }
   }
 
+  /* 1c. lote S66-g (#316): estrutura do serviço (nome, categoria, natureza, unidade), só quando mudou e para quem pode */
+  if(servAtual && servPodeEstrutura()){
+    const est = servEstruturaValores();
+    if(!est.nome){ aviso("app-aviso", "Variante salva; informe o nome do serviço para gravar a estrutura.", "erro"); return; }
+    if(est.nome !== (servAtual.nome || "") || est.categoria_id !== (servAtual.categoria_id || null) || est.natureza !== servAtual.natureza || est.unidade !== servAtual.unidade){
+      const re = await sb.from("servicos").update(est).eq("id", servAtual.id).select("id");
+      if(re.error || !(re.data || []).length){
+        aviso("app-aviso", "Variante salva, mas a estrutura do serviço não foi gravada: " + (re.error ? re.error.message : "sem permissão"), "erro");
+        return;
+      }
+    }
+  }
+
   /* 2. grava o preço de referência (atualiza o vigente ou cria o primeiro) */
   const preco  = $("serv-preco").value  !== "" ? Number($("serv-preco").value)  : null;
   const custo  = $("serv-custo").value  !== "" ? Number($("serv-custo").value)  : null;
@@ -446,3 +460,34 @@ $("form-servico").addEventListener("submit", async (e) => {
   await carregarCatalogoServicos();
   mostrarPainelServ();
 });
+
+/* ====================================================================
+   LOTE S66-g (#316) — estrutura do serviço na ficha
+   Nome, categoria, natureza e unidade são do serviço (valem para todas as variantes). Antes só apareciam nos chips do
+   topo, sem campo para editar (causa do "travado" do Thales). Editam: o diretor e quem tem o acesso extra vigente
+   "catalogo_estrutura" (Usuários; só a diretoria concede). O banco confere no gatilho trg_servicos_estrutura_guard.
+   ==================================================================== */
+function servPodeEstrutura(){
+  if(!servPodeOrdenar()) return false;
+  return usuarioAtual.cargo === "diretor" || (typeof temModuloExtra === "function" && temModuloExtra("catalogo_estrutura"));
+}
+function servPreencherEstrutura(s){
+  const box = $("serv-estrutura"); if(!box) return;
+  const cats = _servCategorias.filter(c => c.ativo !== false || (s && c.id === s.categoria_id))
+    .map(c => ({ id: c.id, txt: servCatCaminho(c.id) })).sort((a, b) => a.txt.localeCompare(b.txt, "pt-BR"));
+  $("serv-s-categoria").innerHTML = cats.map(c => `<option value="${esc(c.id)}">${esc(c.txt)}</option>`).join("");
+  $("serv-s-natureza").innerHTML = Object.entries(SERV_NATUREZA).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  $("serv-s-unidade").innerHTML = (typeof UNIDADES !== "undefined" ? UNIDADES : []).map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join("");
+  $("serv-s-nome").value = s?.nome || "";
+  $("serv-s-categoria").value = s?.categoria_id || "";
+  $("serv-s-natureza").value = s?.natureza || "";
+  $("serv-s-unidade").value = s?.unidade || "";
+  const pode = !!s && servPodeEstrutura();
+  ["serv-s-nome", "serv-s-categoria", "serv-s-natureza", "serv-s-unidade"].forEach(id => { $(id).disabled = !pode; });
+  box.title = pode ? "Nome, categoria, natureza e unidade do serviço valem para todas as variantes"
+    : "Só o diretor ou quem tem o acesso extra Estrutura do catálogo (liberado pela diretoria em Usuários) muda estes campos";
+}
+function servEstruturaValores(){
+  return { nome: $("serv-s-nome").value.trim(), categoria_id: $("serv-s-categoria").value || null,
+    natureza: $("serv-s-natureza").value, unidade: $("serv-s-unidade").value };
+}

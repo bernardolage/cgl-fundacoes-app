@@ -1824,6 +1824,23 @@ const RDO_FUNCOES = [
   { v:"outro",        l:"Outro" }
 ];
 
+/* lote S66-b (#328): "Função do dia" sugerida pela função do cadastro (funcionarios.funcao, texto livre da CTPS),
+   mapeada para as opções acima. Sem par na lista, fica vazia (a tela mostra a função do cadastro no title). */
+const RDO_FUNCAO_CADASTRO = [
+  [/^operador de caminhao/, "motorista"], [/seguranca do trabalho/, "seguranca"], [/^encarregado/, "encarregado"],
+  [/^operador/, "operador"], [/^(ajudante|servente)/, "ajudante"], [/^sondador/, "sondador"], [/^motorista/, "motorista"],
+  [/soldador/, "soldador"], [/^apontador/, "apontador"], [/^tecnico/, "tecnico"], [/^engenheir/, "engenheiro"],
+  [/^terceirizado/, "terceirizado"]
+];
+function rdoFuncaoDoCadastro(funcId){
+  const f = funcId ? (_rdoFuncs || []).find(x => x.id === funcId) : null;
+  const txt = String(f?.funcao || "").trim();
+  if(!txt) return { v: "", txt: "" };
+  const n = txt.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const par = RDO_FUNCAO_CADASTRO.find(([re]) => re.test(n));
+  return { v: par ? par[1] : "", txt };
+}
+
 /* Fase 103 (#23): status do funcionário no dia (rdo_equipe.status_dia; vazio = presente), os dez status do chamado.
    A regra de horas é do banco (gatilho trg_rdo_equipe_status_dia): ausência zera as horas e apaga o horário; treinamento
    e viagem ficam sem HE; a viagem vira horas de viagem no fechamento do mês (vw_rh_horas_mes, rubrica horas_viagem);
@@ -1978,6 +1995,10 @@ function renderRdoEquipe(){
     if(!tr) return;
     if(e.funcionario_id) tr.querySelector(".eq-func").value = e.funcionario_id;
     if(e.funcao_no_dia)  tr.querySelector(".eq-funcao").value = e.funcao_no_dia;
+    else if(e.funcionario_id){   // lote S66-b: função do cadastro sem par na lista fica vazia, com a dica
+      const fc = rdoFuncaoDoCadastro(e.funcionario_id);
+      if(fc.txt && !fc.v) tr.querySelector(".eq-funcao").title = "Função do cadastro: " + fc.txt;
+    }
     if(rdoStatusDia(e.status_dia)) tr.querySelector(".eq-status").value = e.status_dia;   // fase 103
     if(e.liberado_em) tr.querySelectorAll("input,select").forEach(i => { if(!i.classList.contains("eq-obs")) i.disabled = true; });
   });
@@ -2008,6 +2029,11 @@ function renderRdoEquipe(){
     tr.addEventListener("change", ev => {
       sync();
       if(ev.target.classList.contains("eq-status")){ rdoAplicarStatusDia(_rdoEquipe[idx]); renderRdoEquipe(); }
+      else if(ev.target.classList.contains("eq-func") && !_rdoEquipe[idx].funcao_no_dia && _rdoEquipe[idx].funcionario_id){
+        // lote S66-b (#328): Função do dia vazia vem da função do cadastro; nunca sobrescreve o que a pessoa escolheu
+        _rdoEquipe[idx].funcao_no_dia = rdoFuncaoDoCadastro(_rdoEquipe[idx].funcionario_id).v || null;
+        renderRdoEquipe();
+      }
       else if(ev.target.matches(".eq-func, .eq-nome")) renderRdoEquipeResumo();
     });
     // Noturnas digitadas à mão valem (horas_noturnas_manual): o gatilho do banco não recalcula
@@ -2141,7 +2167,8 @@ async function importarEquipeCadastrada(){
     if(_rdoEquipe.find(x => x.funcionario_id === m.funcionario_id)) return; // dedup
     novos.push({
       funcionario_id: m.funcionario_id,
-      funcao_no_dia: (m.funcao_na_equipe || "outro").toLowerCase(),
+      // lote S66-b (#328): sem função na equipe, a do cadastro (vazia quando não tem par na lista)
+      funcao_no_dia: m.funcao_na_equipe ? String(m.funcao_na_equipe).toLowerCase() : (rdoFuncaoDoCadastro(m.funcionario_id).v || null),
       ordem: _rdoEquipe.length + novos.length
     });
   });

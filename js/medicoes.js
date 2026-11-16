@@ -65,6 +65,7 @@ function renderMedicoes(){
   medAplicarVisao();                                        // fase 91: filtros e "+ Nova" conforme a visão
   if(_medView === "caucao"){ renderMedCaucao(); return; }   // fase 91: visão Caução (retenções por NF)
   if(_medView === "permutas"){ renderMedPermutas(); return; }   // fase 98: visão Permutas (imóvel, crédito, saldo)
+  if(_medView === "nfse"){ renderMedNfs(); return; }           // lote S66-c (#327): NFS-e emitidas por obra e medição
   const dados = medFiltradas();
   const cont = $("med-contador");
   if(cont) cont.textContent = `${dados.length} de ${_medRegistros.length}`;
@@ -2473,6 +2474,13 @@ function medAplicarVisao(){
   if($("med-pm-filtros")) $("med-pm-filtros").style.display = pm ? "" : "none";
   if(pm && $("btn-nova-medicao")) $("btn-nova-medicao").style.display = "none";
   if(pm && h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = "Permutas: obras pagas em imóvel ";
+  // lote S66-c (#327): visão NFS-e emitidas, só com os seus filtros
+  const nfs = _medView === "nfse";
+  if(nfs) document.querySelectorAll("#med-painel .serv-filtros").forEach(f => { if(f.id !== "med-nfs-filtros") f.style.display = "none"; });
+  if($("med-nfs-filtros")) $("med-nfs-filtros").style.display = nfs ? "" : "none";
+  if(nfs && $("btn-nova-medicao")) $("btn-nova-medicao").style.display = "none";
+  if(nfs && $("med-indicadores")){ $("med-indicadores").style.display = "none"; $("med-indicadores").innerHTML = ""; }
+  if(nfs && h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = "NFS-e emitidas por obra e medição ";
 }
 function medAtivarView(view){
   document.querySelectorAll("#med-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === view));
@@ -4032,3 +4040,108 @@ if(document.readyState === "loading"){
 } else {
   ligarMedNfse();
 }
+
+/* ====================================================================
+   LOTE S66-c (#327, Tamires) — NFS-e emitidas por obra e medição
+   Uma linha por medição com nota (nf_numero ou nfse_numero), lida do banco por lerTudo (a policy de medicoes já é
+   pode_ler_financeiro()). Divergência: valor da nota diferente do valor final, ou emissão fora da competência
+   (antes do início do período medido ou mais de MED_NFS_DIAS_MAX dias depois do fim; a nota sai, em regra, até 60 dias
+   depois do fim do período). Competência = mês do fim do período (sem período, a data da medição).
+   ==================================================================== */
+const MED_NFS_DIAS_MAX = 90;
+let _medNfs = null;   // linhas lidas; null = ler de novo
+const MED_NFS_SELECT = "id,numero,obra_id,status,data_medicao,periodo_inicio,periodo_fim,doc_tipo,nf_numero,nf_data_emissao,nf_valor,valor_final,valor_medido,"
+  + "retencao_valor,iss_valor,iss_retido_fonte,nfse_status,nfse_numero,nfse_emitida_em,ret_irrf,ret_pis,ret_cofins,ret_csll,ret_inss,obra:obras(codigo,nome)";
+function medNfsCompetencia(m){ const d = m.periodo_fim || m.data_medicao; return d ? d.slice(5, 7) + "/" + d.slice(0, 4) : "—"; }
+function medNfsNumero(m){ return m.nfse_numero || m.nf_numero || ""; }
+function medNfsEmissao(m){ return m.nf_data_emissao || (m.nfse_emitida_em ? dataLocalISO(new Date(m.nfse_emitida_em)) : null); }
+function medNfsValorFinal(m){ return Number(m.valor_final) || Number(m.valor_medido) || 0; }
+function medNfsRetencoes(m){ return Math.round((medNfsValorFinal(m) - medLiquido(m)) * 100) / 100; }
+function medNfsDivergencias(m){
+  const out = [], em = medNfsEmissao(m);
+  if(m.nf_valor != null && Math.abs(Number(m.nf_valor) - medNfsValorFinal(m)) > 0.009) out.push("valor da nota diferente do valor final");
+  if(em){
+    const ini = m.periodo_inicio || m.periodo_fim || m.data_medicao, fim = m.periodo_fim || m.data_medicao;
+    const lim = fim ? dataLocalISO(new Date(new Date(fim + "T12:00:00").getTime() + MED_NFS_DIAS_MAX * 86400000)) : null;
+    if((ini && em < ini) || (lim && em > lim)) out.push("emissão fora da competência");
+  }
+  return out;
+}
+function medNfsFiltradas(){
+  const termo = ($("med-nfs-busca")?.value || "").trim().toLowerCase();
+  const de = $("med-nfs-de")?.value || "", ate = $("med-nfs-ate")?.value || "", obra = $("med-nfs-f-obra")?.value || "";
+  const soDiv = !!$("med-nfs-so-div")?.checked;
+  return (_medNfs || []).filter(m => {
+    const em = medNfsEmissao(m) || "";
+    if(de && (!em || em < de)) return false;
+    if(ate && (!em || em > ate)) return false;
+    if(obra && m.obra_id !== obra) return false;
+    if(soDiv && !medNfsDivergencias(m).length) return false;
+    if(termo && !`${medNfsNumero(m)} ${m.numero || ""} ${m.obra?.codigo || ""} ${m.obra?.nome || ""}`.toLowerCase().includes(termo)) return false;
+    return true;
+  });
+}
+async function renderMedNfs(){
+  const cont = $("med-conteudo"); if(!cont) return;
+  if(!_medNfs){
+    cont.innerHTML = `<p class="vazio">Carregando as notas…</p>`;
+    const { data, error } = await lerTudo(() => sb.from("medicoes").select(MED_NFS_SELECT).or("nf_numero.not.is.null,nfse_numero.not.is.null"));
+    if(_medView !== "nfse") return;
+    if(error){ cont.innerHTML = `<p class="vazio">Erro ao carregar as notas: ${esc(error.message)}</p>`; return; }
+    _medNfs = (data || []).sort((a, b) => String(medNfsEmissao(b) || b.data_medicao || "").localeCompare(String(medNfsEmissao(a) || a.data_medicao || "")));
+    const sel = $("med-nfs-f-obra");
+    if(sel){
+      const v = sel.value, obras = new Map(_medNfs.map(m => [m.obra_id, m.obra ? `${m.obra.codigo || ""} · ${m.obra.nome || ""}` : "—"]));
+      sel.innerHTML = `<option value="">Todas as obras</option>` + [...obras.entries()].sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
+        .map(([id, t]) => `<option value="${esc(id)}">${esc(t)}</option>`).join("");
+      sel.value = obras.has(v) ? v : "";
+    }
+  }
+  const lista = medNfsFiltradas();
+  const c = $("med-contador"); if(c) c.textContent = `${lista.length} de ${_medNfs.length}`;
+  const nDiv = lista.filter(m => medNfsDivergencias(m).length).length;
+  const soma = f => lista.reduce((s, m) => s + (Number(f(m)) || 0), 0);
+  const linhas = lista.map(m => {
+    const div = medNfsDivergencias(m), em = medNfsEmissao(m);
+    return `<tr class="med-nfs-linha" data-id="${esc(m.id)}" style="cursor:pointer;"${div.length ? ` title="${esc("Divergência: " + div.join("; "))}"` : ""}>
+      <td>${esc(m.obra?.codigo || "—")} <span class="meta">${esc(m.obra?.nome || "")}</span></td>
+      <td class="mono">${esc(m.numero || "—")}</td>
+      <td>${esc(medNfsCompetencia(m))}</td>
+      <td class="mono">${esc(medNfsNumero(m))}</td>
+      <td>${em ? dataBR(em) : "—"}</td>
+      <td class="num" data-val-sens>${brl(medNfsValorFinal(m))}</td>
+      <td class="num" data-val-sens>${m.nf_valor != null ? brl(m.nf_valor) : "—"}</td>
+      <td class="num" data-val-sens>${brl(medLiquido(m))}</td>
+      <td class="num" data-val-sens>${brl(medNfsRetencoes(m))}</td>
+      <td>${m.nfse_status ? tagStatus("nfse", m.nfse_status) : '<span class="tag cinza" title="Nota emitida fora do app e informada na medição">Fora do app</span>'}</td>
+      <td>${div.length ? div.map(d => `<span class="tag ambar">${esc(d)}</span>`).join(" ") : '<span class="meta">—</span>'}</td>
+    </tr>`;
+  }).join("");
+  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">${nDiv} de ${lista.length} com divergência (valor da nota diferente do valor final, ou emissão antes do período medido ou mais de ${MED_NFS_DIAS_MAX} dias depois dele). Clique na linha para abrir a medição.</p>
+  <div class="tabela-rola"><table>
+    <thead><tr><th>Obra</th><th>Medição</th><th>Competência</th><th>NFS-e</th><th>Emissão</th><th class="num">Valor final</th><th class="num">Valor da nota</th><th class="num">Líquido</th><th class="num">Retenções</th><th>Status da NFS-e</th><th>Divergência</th></tr></thead>
+    <tbody>${/* html */ linhas || '<tr><td colspan="11" class="vazio">Nenhuma nota nesse filtro.</td></tr>'}</tbody>
+    <tfoot><tr><td colspan="5">${lista.length} nota(s)</td><td class="num">${brl(soma(medNfsValorFinal))}</td><td class="num">${brl(soma(m => m.nf_valor))}</td><td class="num">${brl(soma(medLiquido))}</td><td class="num">${brl(soma(medNfsRetencoes))}</td><td colspan="2"></td></tr></tfoot>
+  </table></div>`;
+  cont.querySelectorAll(".med-nfs-linha").forEach(tr => tr.addEventListener("click", () => abrirMedicao(tr.dataset.id)));
+}
+function medNfsExportar(){
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
+  const dados = medNfsFiltradas();
+  if(!dados.length){ aviso("app-aviso", "Nada para exportar com esses filtros.", "erro"); return; }
+  const aoa = [["Obra", "Nome da obra", "Medição", "Competência", "NFS-e", "Emissão", "Valor final", "Valor da nota", "Líquido", "Retenções", "Status da NFS-e", "Divergência"]]
+    .concat(dados.map(m => { const em = medNfsEmissao(m); return [m.obra?.codigo || "", m.obra?.nome || "", m.numero || "", medNfsCompetencia(m), medNfsNumero(m),
+      em ? dataBR(em) : "", medNfsValorFinal(m), m.nf_valor != null ? Number(m.nf_valor) : "", medLiquido(m), medNfsRetencoes(m),
+      m.nfse_status ? ((STATUS.nfse || {})[m.nfse_status]?.label || m.nfse_status) : "Fora do app", medNfsDivergencias(m).join("; ")]; }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "NFS-e");
+  XLSX.writeFile(wb, `nfse-por-medicao-${hojeISO()}.xlsx`);
+}
+function ligarMedNfs(){
+  ["med-nfs-de", "med-nfs-ate", "med-nfs-f-obra", "med-nfs-so-div"].forEach(id => $(id)?.addEventListener("change", () => { if(_medView === "nfse") renderMedNfs(); }));
+  $("med-nfs-busca")?.addEventListener("input", debounce(() => { if(_medView === "nfse") renderMedNfs(); }));
+  $("btn-med-nfs-exportar")?.addEventListener("click", medNfsExportar);
+  $("btn-med-nfs-atualizar")?.addEventListener("click", () => { _medNfs = null; renderMedNfs(); });
+}
+if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarMedNfs);
+else ligarMedNfs();
