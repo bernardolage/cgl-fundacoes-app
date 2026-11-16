@@ -516,7 +516,30 @@ function limparAbaContratoObra(){
     .forEach(k => { const el = $(k); if(el) el.value = ""; });
   const cat = $("obr-con-categoria"); if(cat) cat.value = "empreitada";
   const st  = $("obr-con-status");    if(st)  st.value  = "em_elaboracao";
+  obrConModoResumo(null);
   atualizarBadgeContratoObra();
+}
+
+/* Fase 180a (D7): com contrato, a aba vira resumo (campos travados) e o link leva à ficha no módulo Contratos, onde fica a
+   edição. Sem contrato, os campos continuam abertos para gerar o contrato ao salvar a obra. */
+const OBR_CON_CAMPOS = ["obr-con-numero","obr-con-categoria","obr-con-status","obr-con-assinatura","obr-con-orcamento","obr-con-indice","obr-con-descricao"];
+function obrConModoResumo(contrato){
+  OBR_CON_CAMPOS.forEach(k => { const el = $(k); if(el) el.disabled = !!contrato; });
+  const ajuda = $("obr-con-ajuda"); if(ajuda) ajuda.style.display = contrato ? "none" : "";
+  const box = $("obr-con-modulo");
+  if(!box) return;
+  if(!contrato){ box.innerHTML = ""; return; }
+  const link = typeof podeVerContratosReceita === "function" && podeVerContratosReceita()
+    ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-con-abrir-modulo" title="Abre a ficha deste contrato no módulo Contratos">Abrir no módulo Contratos</button>`
+    : "";
+  box.innerHTML = `<div class="dist-aviso neutro" style="margin-bottom:12px;">
+    <strong>Contrato ${esc(contrato.numero)}</strong> ${tagStatus("contrato", contrato.status)}
+    <span class="meta">resumo; a edição do contrato fica no módulo Contratos (cliente, datas, valor e responsável continuam vindo desta obra)</span>
+    ${/* html */ link}
+  </div>`;
+  $("btn-obr-con-abrir-modulo")?.addEventListener("click", () => {
+    if(irParaSecao("contratos") && typeof abrirContrato === "function") abrirContrato(contrato.id);
+  });
 }
 
 async function carregarContratoDaObra(contratoId){
@@ -531,6 +554,7 @@ async function carregarContratoDaObra(contratoId){
   $("obr-con-orcamento").value  = data.orcamento_id || "";
   $("obr-con-indice").value     = data.indice_reajuste || "";
   $("obr-con-descricao").value  = data.descricao || "";
+  obrConModoResumo(data);   // fase 180a
   atualizarBadgeContratoObra();
   renderPendenciasContratoObra(contratoId);
 }
@@ -638,7 +662,11 @@ async function salvarContratoDaObra(obra){
 
   let result;
   if(_obrContrato){
-    result = await sb.from("contratos").update(reg).eq("id", _obrContrato.id).select().single();
+    // fase 180a (D7): contrato existente é editado no módulo Contratos; daqui só vão os campos que vêm da obra, para não
+    // desfazer o que foi mudado lá enquanto esta ficha estava aberta
+    const espelho = { cliente_id: reg.cliente_id, responsavel_id: reg.responsavel_id, data_inicio: reg.data_inicio,
+      data_fim_prevista: reg.data_fim_prevista, valor_total: reg.valor_total };
+    result = await sb.from("contratos").update(espelho).eq("id", _obrContrato.id).select().single();
   } else {
     result = await sb.from("contratos").insert(reg).select().single();
   }

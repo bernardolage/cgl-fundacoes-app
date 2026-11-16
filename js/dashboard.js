@@ -800,8 +800,8 @@ async function dashAbrirAcao(a){
       }
       break;
     case "contratos":
-      if(a.setor === "financeiro"){ // títulos a pagar (fase 56)
-        if(irParaSecao("contratos") && typeof capAtivarView === "function"){ _capFiltroVenc = a.nivel === "critico" ? "vencidos" : ""; _capIncluirExp = false; _capFiltroOrigem = ""; capAtivarView("titulos"); }
+      if(a.setor === "financeiro"){ // títulos a pagar (fase 56); seção própria desde a fase 180a
+        if(irParaSecao("contaspagar") && typeof capAtivarView === "function"){ _capFiltroVenc = a.nivel === "critico" ? "vencidos" : ""; _capIncluirExp = false; _capFiltroOrigem = ""; capAtivarView("titulos"); }
       } else if(id) dashAbrirContrato(id);
       else irParaSecao("contratos");
       break;

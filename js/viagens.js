@@ -708,7 +708,7 @@ function vgRenderCusto(){
   });
   $("vg-abrir-titulos")?.addEventListener("click", e => {
     e.preventDefault();
-    if(!irParaSecao("contratos")) return;
+    if(!irParaSecao("contaspagar")) return;   // fase 180a: Contas a pagar saiu da seção Contratos
     if(typeof _capFiltroOrigem !== "undefined"){ _capFiltroOrigem = "viagem"; _capIncluirExp = true; _capLote = null; }
     if(typeof capAtivarView === "function") capAtivarView("titulos");
   });

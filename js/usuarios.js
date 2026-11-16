@@ -35,14 +35,14 @@ const CARGO_DESCRICAO = {
   admin:        { frase: "Administra o sistema e os logins. Não vê Serviços, Orçamentos, Carteira nem Patrimônio e não emite nota fiscal", modulos: ["usuarios"], sem: ["servicos", "orcamentos", "carteira", "patrimonio"] },
   engenheiro:   { frase: "Obras, estacas, RDO, medições e mobilização; responde pelas pendências das obras dele", modulos: ["obras", "rdo", "medicoes", "mobilizacoes"], sem: [] },
   assistente_engenharia: { frase: "Lança e confere RDO e trata as pendências das obras", modulos: ["rdo", "obras"], sem: [] },
-  comercial:    { frase: "Serviços, orçamentos, propostas e contrato do cliente (na ficha da obra)", modulos: ["servicos", "orcamentos", "obras"], sem: [] },
-  financeiro:   { frase: "Medições, recebimentos, cauções e contas a pagar; emite nota fiscal", modulos: ["medicoes", "contratos"], sem: [] },
-  comprador:    { frase: "Requisições, cotações, pedidos, fornecedores e contas a pagar", modulos: ["compras", "fornecedores", "contratos"], sem: [] },
+  comercial:    { frase: "Serviços, orçamentos, propostas e contratos de receita", modulos: ["servicos", "orcamentos", "obras", "contratos"], sem: [] },
+  financeiro:   { frase: "Medições, recebimentos, cauções e contas a pagar; emite nota fiscal", modulos: ["medicoes", "contratos", "contaspagar"], sem: [] },
+  comprador:    { frase: "Requisições, cotações, pedidos, fornecedores e contas a pagar", modulos: ["compras", "fornecedores", "contratos", "contaspagar"], sem: [] },
   almoxarife:   { frase: "Estoque, separações, produtos e recebimento de material", modulos: ["estoque", "separacoes", "produtos", "compras"], sem: [] },
-  auxiliar_almoxarifado: { frase: "Estoque, separações, consulta de produtos e peças dos reparos; sem obras, compras nem valores", modulos: ["estoque", "separacoes", "produtos", "reparos"], sem: ["obras", "compras", "medicoes", "contratos"] },
+  auxiliar_almoxarifado: { frase: "Estoque, separações, consulta de produtos e peças dos reparos; sem obras, compras nem valores", modulos: ["estoque", "separacoes", "produtos", "reparos"], sem: ["obras", "compras", "medicoes", "contratos", "contaspagar"] },
   gestor_acessorios: { frase: "Acessórios, reparos, fabricação e remessas; emite a nota de remessa", modulos: ["acessorios", "reparos", "fabricacao", "movimentacoes"], sem: [] },
   gestor_frota: { frase: "Frota, equipamentos, manutenção e compras da frota", modulos: ["frota", "equipamentos", "manutencao", "compras"], sem: [] },
-  gestor_manutencao: { frase: "OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar", modulos: ["manutencao", "compras"], sem: ["obras", "medicoes", "contratos"] },
+  gestor_manutencao: { frase: "OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar", modulos: ["manutencao", "compras"], sem: ["obras", "medicoes", "contratos", "contaspagar"] },
   mecanico:     { frase: "OS, reparos, checklists e apontamento de horas", modulos: ["manutencao", "reparos", "apontamentos"], sem: [] },
   encarregado:  { frase: "Diário das obras dele, no escritório e no celular", modulos: ["rdo", "diario-campo"], sem: [] },
   operador:     { frase: "Só o diário de campo no celular, nas obras em que está", modulos: ["diario-campo"], sem: ["inicio", "rdo", "obras"] },
@@ -50,7 +50,7 @@ const CARGO_DESCRICAO = {
   sesmt:        { frase: "Segurança do trabalho: programas, exames, EPI e ocorrências", modulos: ["sesmt", "sesmt-ocorrencias", "estoque"], sem: [] },
   logistica:    { frase: "Viagens, veículos, mobilizações e remessas; emite a nota de remessa", modulos: ["frota", "mobilizacoes", "movimentacoes"], sem: [] },
   visualizador: { frase: "Só consulta o que é aberto a todo usuário. Não grava nos cadastros: só abre chamado e lança as próprias horas de viagem", modulos: ["chamados", "rhv"], sem: ["usuarios", "carteira", "patrimonio"] },
-  auditor:      { frase: "Só leitura: vê o que a diretoria vê, menos a gestão de logins, os dados sensíveis e a folha; não grava nada", modulos: ["carteira", "patrimonio", "medicoes", "contratos"], sem: ["usuarios"] }
+  auditor:      { frase: "Só leitura: vê o que a diretoria vê, menos a gestão de logins, os dados sensíveis e a folha; não grava nada", modulos: ["carteira", "patrimonio", "medicoes", "contratos", "contaspagar"], sem: ["usuarios"] }
 };
 
 let _usuarios   = [];

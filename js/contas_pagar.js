@@ -1,7 +1,8 @@
 /* ====================================================================
    Módulo: Contas a pagar (fase 55 — plano "Compras e Custos", §12, etapa A)
-   Vive dentro da seção Contratos ("Contratos & Contas a pagar"): as visões A pagar e
-   Lançamentos avulsos, os indicadores do painel e a exportação para o Compor 90.
+   Seção própria sec-contaspagar desde a fase 180a (D6); antes vivia em "Contratos & Contas a pagar". As visões
+   A pagar, Lançamentos avulsos e Exportações, os indicadores e a exportação para o Compor 90; mesmos cargos de
+   antes (podeVerContasPagar).
    Os títulos nascem em Compras (recebimento_confirmar) e, na etapa B, nos contratos
    recorrentes; aqui o financeiro os vê e exporta. O pagamento em si fica no Compor 90.
    Fase 130 (27/10/2026, #186): origem "Viagem" = frete terceirizado lançado em Logística (viagens com
@@ -27,6 +28,7 @@ function capLadoViagem(v, lado){
 }
 function capViagemTxt(t){ const v = t.viagem; return v ? `${v.numero} · ${capLadoViagem(v, "origem")} → ${capLadoViagem(v, "destino")}` : "viagem"; }
 let _capIncluirExp = false;
+let _capView = "titulos";       // fase 180a: titulos | avulsos | exportacoes
 let _capLote = null;            // fase 58: lote de exportação em foco (id) — mostra só os títulos daquele arquivo
 
 function capPodeExportar(){ return !!usuarioAtual && ["admin","diretor","financeiro","comprador"].includes(usuarioAtual.cargo); }
@@ -46,20 +48,30 @@ async function capKpis(){
   set("cap-kpi-titulos-valor", brl(capSoma(pend)));
   set("cap-kpi-vencidos", pend.filter(t => t.vencimento < hoje).length);
   set("cap-kpi-30", brl(capSoma(pend.filter(t => t.vencimento >= hoje && t.vencimento <= lim))));
-  set("cap-kpi-contratos", (typeof _contratos === "object" && _contratos ? _contratos : []).filter(c => typeof contratoEmAlerta === "function" && contratoEmAlerta(c)).length);
+  set("cap-kpi-contratos", (typeof _contratos === "object" && _contratos ? _contratos : []).filter(c => c.natureza === "fornecedor" && typeof contratoEmAlerta === "function" && contratoEmAlerta(c)).length);
 }
 
-/* troca a visão do painel de Contratos (botões .serv-view-btn) e renderiza */
+/* troca a visão de Contas a pagar (botões de #cap-views) e renderiza */
 function capAtivarView(view){
-  document.querySelectorAll("#con-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === view));
-  _conView = view;
-  renderContratos();
+  document.querySelectorAll("#cap-views [data-view]").forEach(x => x.classList.toggle("ativo", x.dataset.view === view));
+  _capView = view;
+  renderContasPagar();
+}
+/* fase 180a: render da seção (antes era um desvio de visão dentro de renderContratos) */
+function renderContasPagar(){
+  capKpis();
+  if(_capView !== "titulos") _capLote = null;
+  return _capView === "titulos" ? renderTitulosPagar() : _capView === "exportacoes" ? renderExportacoes() : renderCustosAvulsosCap();
+}
+/* abre a ficha do contrato de despesa no módulo Contratos */
+function capAbrirContrato(id){
+  if(irParaSecao("contratos") && typeof abrirContrato === "function") abrirContrato(id);
 }
 
 /* ---------- A pagar ---------- */
 async function renderTitulosPagar(){
-  const cont = $("con-conteudo"); if(!cont) return;
-  if($("con-lista-titulo")) $("con-lista-titulo").textContent = "A pagar";
+  const cont = $("cap-conteudo"); if(!cont) return;
+  if($("cap-lista-titulo")) $("cap-lista-titulo").textContent = "A pagar";
   if(!podeVerContasPagar()){ cont.innerHTML = `<p class="vazio">Seu perfil não tem acesso às contas a pagar.</p>`; return; }
   await cmpCarregarBase(false); // nomes de fornecedor, obra e TAG
   const hoje = hojeISO();
@@ -73,7 +85,7 @@ async function renderTitulosPagar(){
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   _capTitulos = data || [];
   const pend = _capTitulos.filter(t => !t.exportado_em);
-  if($("con-contador")) $("con-contador").textContent = `${_capTitulos.length} título(s)`;
+  if($("cap-contador")) $("cap-contador").textContent = `${_capTitulos.length} título(s)`;
   const podeExp = capPodeExportar();
   cont.innerHTML = `<div class="lista-topo compacta">
       <span class="meta">Títulos gerados no recebimento das notas (Compras), pelos contratos recorrentes e pelos fretes terceirizados de Logística (origem Viagem). O pagamento é feito no Compor 90; daqui sai o arquivo do que pagar.</span>
@@ -99,7 +111,7 @@ async function renderTitulosPagar(){
       <td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`; }).join("")}</tbody>
     <tfoot><tr><td colspan="6"><strong>Total</strong></td><td class="num"><strong>${brl(capSoma(_capTitulos))}</strong></td><td colspan="3"></td></tr></tfoot></table></div>`}`;
   $("cap-f-origem")?.addEventListener("change", e => { _capFiltroOrigem = e.target.value; renderTitulosPagar(); });
-  cont.querySelectorAll("a.cap-contrato").forEach(a => a.addEventListener("click", e => { e.preventDefault(); abrirContrato(a.dataset.contratoId); }));
+  cont.querySelectorAll("a.cap-contrato").forEach(a => a.addEventListener("click", e => { e.preventDefault(); capAbrirContrato(a.dataset.contratoId); }));
   $("cap-f-venc")?.addEventListener("change", e => { _capFiltroVenc = e.target.value; renderTitulosPagar(); });
   $("cap-incluir-exp")?.addEventListener("change", e => { _capIncluirExp = e.target.checked; renderTitulosPagar(); });
   $("btn-cap-exportar")?.addEventListener("click", () => comBotaoTravado("btn-cap-exportar", exportarTitulos));
@@ -140,18 +152,18 @@ async function exportarTitulos(){
   const marcados = new Set(lote?.ids || []);
   capBaixarCsv(pend.filter(t => marcados.has(t.id)), arquivo);   // só o que este lote marcou: outra pessoa pode ter exportado parte
   aviso("app-aviso", `${marcados.size} título(s) exportado(s) no lote ${arquivo}. Se o arquivo não baixar, ele está na visão Exportações.`, "ok");
-  renderContratos();
+  renderContasPagar();
 }
 
 /* ---------- Exportações (lotes) ---------- */
 async function renderExportacoes(){
-  const cont = $("con-conteudo"); if(!cont) return;
-  if($("con-lista-titulo")) $("con-lista-titulo").textContent = "Exportações";
+  const cont = $("cap-conteudo"); if(!cont) return;
+  if($("cap-lista-titulo")) $("cap-lista-titulo").textContent = "Exportações";
   if(!podeVerContasPagar()){ cont.innerHTML = `<p class="vazio">Seu perfil não tem acesso às contas a pagar.</p>`; return; }
   const { data, error } = await sb.from("titulos_exportacoes").select("*, autor:profiles(nome)").order("gerado_em", { ascending: false }).limit(300);
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   const lotes = data || [];
-  if($("con-contador")) $("con-contador").textContent = `${lotes.length} lote(s)`;
+  if($("cap-contador")) $("cap-contador").textContent = `${lotes.length} lote(s)`;
   if(!lotes.length){ cont.innerHTML = `<p class="vazio">Nenhuma exportação ainda. Na visão "A pagar", o botão Exportar gera o arquivo e registra o lote aqui.</p>`; return; }
   cont.innerHTML = `<p class="meta">Cada exportação para o Compor 90 fica registrada como um lote. Clique no lote para ver os títulos e baixar o mesmo arquivo de novo.</p>
     <div class="tabela-rola"><table><thead><tr><th>Gerado em</th><th>Por</th><th class="num">Títulos</th><th class="num">Valor</th><th>Arquivo</th></tr></thead>
@@ -163,12 +175,12 @@ async function renderExportacoes(){
 }
 /* ---------- Lançamentos avulsos (multa, IPVA, seguro, locação sem NF de produto) ---------- */
 async function renderCustosAvulsosCap(){
-  const cont = $("con-conteudo"); if(!cont) return;
-  if($("con-lista-titulo")) $("con-lista-titulo").textContent = "Lançamentos avulsos";
+  const cont = $("cap-conteudo"); if(!cont) return;
+  if($("cap-lista-titulo")) $("cap-lista-titulo").textContent = "Lançamentos avulsos";
   await cmpCarregarBase(false);
   const { data, error } = await sb.from("custos_avulsos").select("*").order("data", { ascending: false }).limit(500);
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
-  if($("con-contador")) $("con-contador").textContent = `${(data || []).length} lançamento(s)`;
+  if($("cap-contador")) $("cap-contador").textContent = `${(data || []).length} lançamento(s)`;
   if(!data?.length){ cont.innerHTML = `<p class="vazio">Nenhum lançamento avulso. Use "＋ Custo avulso" para multa, IPVA, seguro, locação… Com vencimento, o lançamento vira também título a pagar.</p>`; return; }
   const podeApagar = !!usuarioAtual && ["admin","diretor","financeiro"].includes(usuarioAtual.cargo);
   cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>TAG</th><th>Obra</th><th>Fornecedor</th><th>Documento</th><th>Vencimento</th><th class="num">Valor</th>${podeApagar ? "<th></th>" : ""}</tr></thead>
@@ -186,10 +198,17 @@ async function renderCustosAvulsosCap(){
 
 /* ---------- ligação ---------- */
 function ligarContasPagar(){
-  if(!$("con-painel")) return;
+  if(!$("cap-painel")) return;
+  document.querySelectorAll("#cap-views [data-view]").forEach(b => b.addEventListener("click", () => capAtivarView(b.dataset.view)));
+  document.querySelector('nav button[data-secao="contaspagar"]')?.addEventListener("click", () => capAtivarView(_capView));
   document.querySelectorAll("#cap-indicadores .ind[data-kpi]").forEach(el => el.addEventListener("click", () => {
     const k = el.dataset.kpi;
-    if(k === "contratos"){ if($("con-f-vencimento")) $("con-f-vencimento").value = "30"; capAtivarView("lista"); return; }
+    if(k === "contratos"){   // fase 180a: contratos de despesa que vencem em 30 dias, no módulo Contratos
+      if(!irParaSecao("contratos")) return;
+      if(typeof _conLado !== "undefined" && podeVerContratosDespesa() && podeVerContratosReceita()) _conLado = "despesa";
+      if($("con-f-vencimento")) $("con-f-vencimento").value = "30";
+      renderContratos(); return;
+    }
     _capFiltroVenc = k === "vencidos" ? "vencidos" : k === "30" ? "30" : "";
     _capIncluirExp = false; _capFiltroOrigem = ""; _capLote = null;
     capAtivarView("titulos");

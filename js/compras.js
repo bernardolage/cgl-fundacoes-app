@@ -1865,7 +1865,7 @@ async function cmpCarregarFilhas(id){
   $("cmp-rec-lista").querySelectorAll(".cmp-rec-lancar").forEach(b => b.addEventListener("click", () => abrirLancarNf(b.dataset.rec)));   // lote S57a (#221)
   $("cmp-rec-lista").querySelectorAll(".cmp-rec-estornar").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => cmpEstornarRecebimento(b.dataset.rec))));   // lote S57a (#206)
   cmpAtualizarChipFinanceiro(recs, tit.error ? [] : tits);   // fase 102
-  $("cmp-tit-lista").innerHTML = !podeVerContasPagar() ? `<p class="vazio">Os títulos deste pedido ficam em Contratos & Contas a pagar; seu perfil não tem acesso a esse módulo.</p>` : tit.error ? `<p class="vazio">Erro: ${esc(tit.error.message)}</p>` : !tits.length ? `<p class="vazio">Nenhum título. Eles nascem no recebimento da NF quando há vencimento informado.</p>` :
+  $("cmp-tit-lista").innerHTML = !podeVerContasPagar() ? `<p class="vazio">Os títulos deste pedido ficam em Contas a pagar; seu perfil não tem acesso a esse módulo.</p>` : tit.error ? `<p class="vazio">Erro: ${esc(tit.error.message)}</p>` : !tits.length ? `<p class="vazio">Nenhum título. Eles nascem no recebimento da NF quando há vencimento informado.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Vencimento</th><th>NF</th><th>Parcela</th><th class="num">Valor</th><th>Exportado ao financeiro</th></tr></thead><tbody>${tits.map(t => `<tr><td><strong>${dataBR(t.vencimento)}</strong></td><td>${esc(t.nf_numero || "—")}</td><td>${esc(t.parcela)}/${esc(t.total_parcelas)}</td><td class="num">${brl(t.valor)}</td><td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody></table></div>`;
 }
 

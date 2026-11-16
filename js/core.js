@@ -402,7 +402,7 @@ async function carregarClientesSelects(){
   const lista = data || [];
   mapaClientes = {};
   lista.forEach(c => mapaClientes[c.id] = c.nome);
-  ["orc-cliente","obr-cliente"].forEach(id=>{
+  ["orc-cliente","obr-cliente","con-cliente"].forEach(id=>{   // fase 180a: con-cliente = contrato de receita
     const el = $(id);
     if(el) preencherSelect(el, lista, "id", "nome", "— selecione —");
   });
@@ -1469,6 +1469,15 @@ function ehSomenteLeitura(){ return !!usuarioAtual && usuarioAtual.cargo === "au
 function podeVerContasPagar(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "auditor"].includes(usuarioAtual.cargo);
 }
+/* Fase 180a (D1): módulo Contratos com dois lados. Receita (contrato de cliente e venda de bem) espelha pode_ler_comercial()
+   do banco: comercial, financeiro, auditor, diretor e o módulo extra "orcamentos" (admin fora desde 11/11/2026). Despesa
+   (fornecedor, assinatura) espelha pode_ler_contas_pagar() = podeVerContasPagar(). O item do menu aparece para quem lê um
+   dos lados; o jurídico entra na 180d. */
+function podeVerContratosReceita(){
+  return !!usuarioAtual && (["diretor", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos"));
+}
+function podeVerContratosDespesa(){ return podeVerContasPagar(); }
+function podeVerContratos(){ return podeVerContratosReceita() || podeVerContratosDespesa(); }
 /* Fase 156a: Apontamentos da oficina. Quem grava hora em cada tipo de documento, espelhando as policies de reparo_horas,
    manutencao_horas (manutencao_pode_operar) e fabricacao_horas (fabricacao_pode_operar). O item do menu aparece para quem
    grava em pelo menos um tipo e para o auditor (só leitura); nasce escondido no index.html. */
@@ -1533,7 +1542,7 @@ const SECOES_OCULTAS_POR_CARGO = {
   auditor: ["usuarios"],
   // fase 90 (Bernardo, 19/10/2026): auxiliar de almoxarifado = equipe do Julio. Fica só com Início (fila de separação),
   // Estoque, Separações, Produtos (consulta), Reparos (aba Peças) e Chamados; o resto sai do menu e irParaSecao barra.
-  auxiliar_almoxarifado: ["clientes", "fornecedores", "funcionarios", "servicos", "compras", "orcamentos", "contratos", "centros",
+  auxiliar_almoxarifado: ["clientes", "fornecedores", "funcionarios", "servicos", "compras", "orcamentos", "contratos", "contaspagar", "centros",
     "carteira", "obras", "mobilizacoes", "equipamentos", "frota", "acessorios", "fabricacao", "medicoes", "rdo", "usuarios", "rhh"],
   // fase 92 (Bernardo, 19/10/2026, decisão 1): gestor da manutenção (Bruno) cuida de OS, planos, checklists, equipamentos, frota
   // e das compras do setor; obras, medições e contas a pagar (podeVerContasPagar) ficam fora
@@ -1569,7 +1578,10 @@ function aplicarMenuPorCargo(perfil){
   // dentro de Logística, da obra, do equipamento e do acessório. podeVerMovimentacoes() gateia só a ficha (irParaSecao).
   // Fase 55 (Bernardo, 21/09/2026): Contratos & Contas a pagar só para diretoria, admin, financeiro e comprador
   const navCon = document.querySelector('.sidebar-nav button[data-secao="contratos"]');
-  if(navCon) navCon.style.display = podeVerContasPagar() ? "" : "none";
+  // Fase 180a (D6): Contratos (quem lê Receita ou Despesa) e Contas a pagar (podeVerContasPagar) em itens separados
+  if(navCon) navCon.style.display = podeVerContratos() ? "" : "none";
+  const navCap = document.querySelector('.sidebar-nav button[data-secao="contaspagar"]');
+  if(navCap) navCap.style.display = podeVerContasPagar() ? "" : "none";
   const navCcu = document.querySelector('.sidebar-nav button[data-secao="centros"]');
   if(navCcu) navCcu.style.display = podeVerCentrosCusto() ? "" : "none";
   // Fase 156a: Apontamentos da oficina só para quem grava hora em RP, OS ou OF, e o auditor (só leitura)
