@@ -2649,6 +2649,9 @@ table td:has(> textarea) {
 .it-cat-wrap { min-width: 210px; }
 .it-desc { min-width: 260px; }
 .it-obs { min-width: 180px; }
+/* nota interna do catálogo na linha do item do orçamento: dica de quem orça, não sai na proposta */
+.it-nota { margin-top: var(--esp-1); font-size: var(--txt-xs); color: var(--txt-sec); max-width: 320px; white-space: normal; line-height: 1.35; }
+.it-nota[hidden] { display: none; }
 .it-un { min-width: 80px; }
 .eq-func { min-width: 225px; }
 .eq-funcao { min-width: 150px; }

@@ -51,6 +51,7 @@ let _orcCatOptions  = '<option value="">— item livre (digitar) —</option>';
 let _orcVarById     = {};
 let _orcServUnidade = {};
 let _orcServObs     = {};   // servico_id -> observação padrão do item (fase 40: vira "Obs: Item N - …")
+let _orcServNota    = {};   // servico_id -> nota interna do catálogo (só dica na tela; nunca vai para a observação)
 let _orcServByCod   = {};   // codigo do serviço -> serviço
 let _orcVarByCod    = {};   // codigo da variante -> variante
 let _orcPrecos      = {};
@@ -206,7 +207,7 @@ function _eixoServicoOrc(texto, tipoEstaca){
 
 async function prepararCatalogoOrc(){
   const [srv, vrt, prc, cat] = await Promise.all([
-    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao,tipo_estaca,ordem_exibicao").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),   // lote S65-e: ordem padrão do catálogo
+    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao,nota_interna,tipo_estaca,ordem_exibicao").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),   // lote S65-e: ordem padrão do catálogo
     sb.from("servico_variantes").select("id,servico_id,codigo,nome,ativo,tipo_obra,unidade,porte,faixa_prof,perna").order("codigo"),
     sb.from("servico_precos").select("variante_id,preco_referencia,vigente_desde")
       .order("vigente_desde",{ ascending:false }),
@@ -230,12 +231,14 @@ async function prepararCatalogoOrc(){
   _orcVarById = {};
   _orcServUnidade = {};
   _orcServObs = {};
+  _orcServNota = {};
   _orcServByCod = {};
   _orcVarByCod = {};
   _orcPrecos = {};
   _orcServicos.forEach(s => {
     _orcServUnidade[s.id] = s.unidade;
     if(s.observacoes_padrao) _orcServObs[s.id] = s.observacoes_padrao;
+    if(s.nota_interna && s.nota_interna.trim()) _orcServNota[s.id] = s.nota_interna.trim();
     if(s.codigo) _orcServByCod[s.codigo] = s;
   });
   _orcVariantes.forEach(v => { _orcVarById[v.id] = v; if(v.codigo) _orcVarByCod[v.codigo] = v; });
@@ -1595,7 +1598,7 @@ function linhaItemHTML(){
     <td><select class="it-un">${uns}</select></td>
     <td><input type="number" class="it-vu" step="0.01" min="0" value="0" /></td>
     <td class="it-total num">R$ 0,00</td>
-    <td><input type="text" class="it-obs" placeholder='(opcional) ex.: Obs: Item 3 - ...' /></td>
+    <td><input type="text" class="it-obs" placeholder='(opcional) ex.: Obs: Item 3 - ...' /><div class="it-nota" title="Nota interna do catálogo: não sai na proposta" hidden><span class="rotulo-caps">Nota do catálogo</span> <span class="it-nota-txt"></span></div></td>
     <td class="col-acao col-acao-ordem"><button type="button" class="btn-ordem" data-ordem="-1" title="Subir este item (a ordem vai para a proposta)" aria-label="Subir item">▲</button><button type="button" class="btn-ordem" data-ordem="1" title="Descer este item (a ordem vai para a proposta)" aria-label="Descer item">▼</button><button type="button" class="btn-rem" title="remover">&times;</button></td>
   </tr>`;
 }
@@ -1624,11 +1627,24 @@ function adicionarItemPreenchido(item){
   }
   tr.querySelector(".it-vu").value  = item.valor_unitario != null ? item.valor_unitario : 0;
   tr.querySelector(".it-obs").value = item.observacao || "";
+  orcMostrarNotaItem(tr);
+}
+
+/* Nota interna do catálogo (16/11/2026): a nota de quem orça aparece abaixo da observação do item como dica; não vai
+   para a observação e não sai no PDF. */
+function orcMostrarNotaItem(tr){
+  const box = tr && tr.querySelector(".it-nota");
+  if(!box) return;
+  const v = _orcVarById[tr.querySelector(".it-cat")?.value];
+  const nota = v ? _orcServNota[v.servico_id] : "";
+  box.querySelector(".it-nota-txt").textContent = nota || "";
+  box.hidden = !nota;
 }
 
 function aplicarItemCatalogo(select, semAviso){
   const tr = select.closest("tr");
   const vid = select.value;
+  orcMostrarNotaItem(tr);
   if(!vid){ recalcularOrc(); return; }
   const v = _orcVarById[vid];
   if(!v) return;
@@ -1648,7 +1664,8 @@ function aplicarItemCatalogo(select, semAviso){
   }
   const preco = _orcPrecos[vid];
   if(preco != null) tr.querySelector(".it-vu").value = Number(preco);
-  // fase 40: observação padrão do serviço entra na Obs do item (sai como "Obs: Item N - …")
+  // fase 40: observação padrão do serviço entra na Obs do item (sai como "Obs: Item N - …"). Só observacoes_padrao: a
+  // nota interna do catálogo fica na dica da linha (orcMostrarNotaItem), nunca na Obs.
   const obs = tr.querySelector(".it-obs");
   if(obs && !obs.value.trim() && _orcServObs[v.servico_id]) obs.value = _orcServObs[v.servico_id];
   recalcularOrc();

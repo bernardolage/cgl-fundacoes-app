@@ -319,6 +319,10 @@ function abrirFichaServ(id){
   $("serv-custo").value    = p.custo_estimado ?? "";
   $("serv-margem").value   = p.margem_minima_pct ?? "";
   $("serv-obs").value      = v.observacoes || "";
+  /* textos do serviço (nota interna do catálogo, 16/11/2026): ficam no serviço, não na variante; só quem grava o catálogo edita */
+  $("serv-obs-proposta").value = (s && s.observacoes_padrao) || "";
+  $("serv-nota-interna").value = (s && s.nota_interna) || "";
+  ["serv-obs-proposta", "serv-nota-interna"].forEach(idc => { $(idc).disabled = !s || !servPodeOrdenar(); });
   $("serv-ativo").checked  = v.ativo !== false;
   $("serv-ficha-titulo").textContent = v.nome || "Editar serviço";
 
@@ -390,6 +394,21 @@ $("form-servico").addEventListener("submit", async (e) => {
   if(rv.error){
     aviso("app-aviso","Não foi possível salvar a variante: "+rv.error.message,"erro");
     return;
+  }
+
+  /* 1b. textos do serviço (texto na proposta e nota interna), só quando mudaram */
+  const varAtual = _servVariantes.find(x => x.id === servEditId);
+  const servAtual = varAtual ? servById(varAtual.servico_id) : null;
+  if(servAtual && servPodeOrdenar()){
+    const obsProp = $("serv-obs-proposta").value.trim() || null;
+    const nota    = $("serv-nota-interna").value.trim() || null;
+    if(obsProp !== (servAtual.observacoes_padrao || null) || nota !== (servAtual.nota_interna || null)){
+      const rs = await sb.from("servicos").update({ observacoes_padrao: obsProp, nota_interna: nota }).eq("id", servAtual.id).select("id");
+      if(rs.error || !(rs.data || []).length){
+        aviso("app-aviso","Variante salva, mas os textos do serviço não foram gravados: "+(rs.error ? rs.error.message : "sem permissão"),"erro");
+        return;
+      }
+    }
   }
 
   /* 2. grava o preço de referência (atualiza o vigente ou cria o primeiro) */

@@ -412,9 +412,14 @@ function blocoQuadroPrecos(itens, orcamento){
 }
 
 /* observações dos itens listadas após o quadro. Fase 40: usa a numeração real do quadro
-   ("Obs: Item N - …"); texto que já começa com "Obs" (orçamentos antigos) sai como está. */
-function blocoObservacoesItens(itens){
-  const obs = (itens || []).filter(i => i.observacao && i.observacao.trim());
+   ("Obs: Item N - …"); texto que já começa com "Obs" (orçamentos antigos) sai como está.
+   Nota interna do catálogo (16/11/2026): `notasInternas` é o Set dos textos de servicos.nota_interna (sem espaços nas
+   pontas); observação idêntica a uma nota interna (orçamento feito antes da separação no catálogo) não sai. Compara com
+   todas as notas, não só a do serviço do item: em 13 itens a observação ficou na linha depois de trocar o item. Texto
+   escrito à mão sai. */
+function blocoObservacoesItens(itens, notasInternas){
+  const notas = notasInternas instanceof Set ? notasInternas : new Set();
+  const obs = (itens || []).filter(i => i.observacao && i.observacao.trim() && !notas.has(i.observacao.trim()));
   if(!obs.length) return "";
   const texto = (i) => {
     const t = i.observacao.trim();
@@ -969,7 +974,7 @@ function montarHtmlProposta(dados){
     ${blocoCondicoesGerais(orcamento.escopo_servicos || orcamento.observacoes, orcamento.equipamento_considerado, orcamento)}
     ${blocoQuadroPrecos(itensQuadro, orcamento)}
     ${blocoNotaINSS()}
-    ${blocoObservacoesItens(itensQuadro)}
+    ${blocoObservacoesItens(itensQuadro, dados.notasInternas)}
     ${blocoEncargos(encargosPorTipo(tipo, orcamento))}
     ${blocoClausulas("CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS", criteriosMedicaoPorTipo(tipo, orcamento))}
     ${blocoClausulas("CONDIÇÕES GERAIS", condicoesGeraisPorTipo(tipo))}
@@ -991,6 +996,15 @@ function montarHtmlProposta(dados){
 /* ====================================================================
    Funções públicas: buscar dados, visualizar e baixar
    ==================================================================== */
+
+/* nota interna do catálogo (16/11/2026): Set com os textos de servicos.nota_interna, para o PDF não imprimir texto
+   interno. Só lê quando algum item tem observação. */
+async function propostaNotasInternas(itens){
+  if(!itens.some(i => i.observacao && i.observacao.trim())) return new Set();
+  const { data, error } = await sb.from("servicos").select("nota_interna").not("nota_interna", "is", null);
+  if(error) throw new Error("Erro ao carregar as notas do catálogo: " + error.message);
+  return new Set((data || []).map(s => (s.nota_interna || "").trim()).filter(Boolean));
+}
 
 /* busca tudo necessário para montar a proposta */
 async function carregarDadosProposta(orcamentoId){
@@ -1022,7 +1036,10 @@ async function carregarDadosProposta(orcamentoId){
     }
   }
 
-  return { orcamento: orc, itens: itens || [], cliente, responsavel };
+  /* nota interna do catálogo de cada variante do orçamento, para o PDF não imprimir texto interno */
+  const notasInternas = await propostaNotasInternas(itens || []);
+
+  return { orcamento: orc, itens: itens || [], cliente, responsavel, notasInternas };
 }
 
 /* abre a proposta como HTML em nova aba (preview rápido) */
