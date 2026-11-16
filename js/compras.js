@@ -1075,7 +1075,10 @@ function cmpPreencherSelectsFixos(){
   const obraOpts = ph => `<option value="">${esc(ph)}</option>` + cmpObraOptgroups("", o => o.id, o => obraRotulo(o), "Obras");   // lote S54 (#171): + grupo Concluídas
   const eqOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
-  set("cmp-forn", fornOpts("— escolha o fornecedor —")); set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
+  const vForn = $("cmp-forn")?.value || "";
+  set("cmp-forn", fornOpts("— escolha o fornecedor —"));
+  if(vForn && $("cmp-forn").value !== vForn && _cmpAtual?.fornecedor_id === vForn){ cmpFornGarantirOpcao(_cmpAtual); $("cmp-forn").value = vForn; }   // lote S65-d (#310)
+  set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
   set("cmp-cot-forn", fornOpts("— fornecedor da cotação —"));   // fase 102
   set("cmp-corrforn-forn", fornOpts("— fornecedor certo —"));   // lote S63-c (#245)
   set("cmp-f-etapa", `<option value="">Etapa</option>` + Object.entries(CMP_ETAPA).filter(([k]) => k !== "cancelado").map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join("")
@@ -1400,6 +1403,9 @@ async function cmpDupRegistrar(id, numero){
   if(error) console.warn("histórico do pedido duplicado:", error.message);
 }
 async function abrirPedido(id){
+  // lote S65-d (#310): a ficha precisa da lista de fornecedores; aberta por link de outro módulo antes da carga, o select
+  // ficava sem a opção, o fornecedor aparecia "—" e um Salvar do rascunho gravaria o pedido sem ele
+  await cmpCarregarBase(false);
   const [{ data: p, error }, it] = await Promise.all([
     sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), solicitante:profiles!pedidos_compra_solicitante_id_fkey(nome), aprovador:profiles!pedidos_compra_aprovador_id_fkey(nome)" + (_cmp181b ? ", viagem:viagens!pedidos_compra_viagem_id_fkey(numero)" : "")).eq("id", id).single(),   // fase 181b: viagem do frete
     sb.from("pedido_compra_itens").select("*, produto:produtos(unidade,tipo_item), funcionario:funcionarios(nome)").eq("pedido_id", id).order("ordem").order("created_at")   // lote S54 (#170): unidade do cadastro; S55: tipo_item; S57a (#212): colaborador
@@ -1481,11 +1487,16 @@ function abrirFichaPedido(p){
   $("cmp-painel").style.display = "none"; $("cmp-ficha").style.display = "";
   $("cmp-ficha-titulo").textContent = novo ? "Novo pedido" : `${p.numero} · ${p.fornecedor?.razao_social || cmpForn(p.fornecedor_id) || "sem fornecedor"}`;
   const ed = cmpEditavel();
+  cmpFornGarantirOpcao(p); $("cmp-forn").dataset.limpo = "";   // lote S65-d (#310)
   $("cmp-forn").value = p.fornecedor_id || ""; $("cmp-data").value = p.data_pedido || hojeISO(); $("cmp-prev").value = p.previsao_entrega || "";
   $("cmp-cond").value = p.condicao_pagamento || ""; $("cmp-local").value = p.local_entrega || "base";
   $("cmp-obra").value = p.obra_id || ""; $("cmp-equip").value = p.equipamento_id || ""; $("cmp-centro").value = p.centro_custo_id || "";
   $("cmp-frete").value = p.frete ?? 0; $("cmp-desc").value = p.desconto ?? 0; $("cmp-obs").value = p.observacoes || "";
   $("cmp-ficha").querySelectorAll(".odoo-tab[data-tab=cabecalho] input, .odoo-tab[data-tab=cabecalho] select, .odoo-tab[data-tab=cabecalho] textarea").forEach(el => el.disabled = !ed);
+  // lote S65-d (#312): condição de pagamento, frete e desconto moram na aba Financeiro; quem recebe não os vê no Cabeçalho.
+  // Na aba, aparecem para quem lê contas a pagar e para quem edita o rascunho (precisa preenchê-los)
+  ["cmp-cond", "cmp-frete", "cmp-desc"].forEach(id => { if($(id)) $(id).disabled = !ed; });
+  if($("cmp-fin-campos")) $("cmp-fin-campos").style.display = ed || (typeof podeVerContasPagar === "function" && podeVerContasPagar()) ? "" : "none";
   // fase 133: tipo de compra primeiro (rascunho antigo: pelos itens) e destino do custo (pelos itens; sem destino neles, pelo cabeçalho)
   const tipo0 = cmpTipoInicial(p, _cmpItens);
   $("cmp-tipo").value = tipo0; $("cmp-tipo").dataset.prev = tipo0;
@@ -1555,7 +1566,8 @@ function cmpAtualizarChips(){
   if(chOdoo){ const ext = p.codigo_externo_origem === "odoo"; chOdoo.style.display = ext ? "" : "none";
     if(ext) $("cmp-chip-odoo-txt").textContent = p.codigo_externo + (p.comprador_externo ? " · comprador " + p.comprador_externo : ""); }
   cmpFreteChip(p);   // fase 181b
-  $("cmp-chip-forn").textContent = cmpForn($("cmp-forn").value) || "—";
+  const fornSel = $("cmp-forn").value;   // lote S65-d (#310): sem o id no mapa, o nome que veio com o pedido
+  $("cmp-chip-forn").textContent = cmpForn(fornSel) || (fornSel && fornSel === p.fornecedor_id ? p.fornecedor?.razao_social : "") || "—";
   // fase 133: "Destino" virou dois chips: Entrega (onde o material chega) e Custo (lido dos itens; sem itens, do cabeçalho)
   const dv = $("cmp-dest-custo")?.value || "", obraEnt = dv.startsWith("obra:") ? dv.slice(5) : $("cmp-obra").value;
   $("cmp-chip-entrega").textContent = $("cmp-local").value === "obra" ? "Obra " + (cmpObra(obraEnt) || "?") : "Base Itabira";
@@ -2915,6 +2927,14 @@ function cmpNatFrotaSugerir(it){
   it.natureza_id = id; return true;
 }
 function cmpFornAtualizar(idSelect){ const c = _cmpFornCampos[idSelect]; if(c) c.atualizar(); }
+/* lote S65-d (#310): o fornecedor do pedido sempre tem opção no select da ficha (fornecedor fora da lista de ativos ou lista
+   ainda não carregada); sem ela, sel.value = id não pega e o pedido aparece e pode ser salvo sem fornecedor */
+function cmpFornGarantirOpcao(p){
+  const sel = $("cmp-forn"), id = p?.fornecedor_id; if(!sel || !id) return;
+  if([...sel.options].some(o => o.value === id)) return;
+  const o = document.createElement("option"); o.value = id; o.textContent = p.fornecedor?.razao_social || cmpForn(id) || "fornecedor do pedido";
+  sel.appendChild(o);
+}
 
 /* salvar / ações */
 /* fase 133: o "Destino do custo" decide equipamento_id e destino_centro_custo_id (obra_id = a obra do destino ou a da entrega
@@ -2937,6 +2957,14 @@ function cmpErroSesmt(msg){ return cmpSoSesmt() && /row-level security/i.test(ms
 async function salvarPedido(silencioso){
   if(!cmpEditavel()){ if(!silencioso) aviso("app-aviso", "Este pedido não está em rascunho.", "erro"); return null; }
   const dados = cmpColetarCabecalho();
+  // lote S65-d (#310): fornecedor do pedido nunca vai de preenchido para vazio sem a pessoa tirar (× no campo). Select vazio
+  // por lista recarregada ou rascunho local antigo mantém o do pedido; fora de rascunho e cotação, nada é gravado
+  const fornAntes = _cmpAtual?.fornecedor_id || null;
+  if(fornAntes && !dados.fornecedor_id){
+    const tirou = $("cmp-forn")?.dataset.limpo === "1";
+    if(!["rascunho", "em_cotacao"].includes(_cmpAtual?.status || "rascunho")){ aviso("app-aviso", "O pedido já tem fornecedor e ele não pode ficar vazio nesta etapa. Use \"Corrigir fornecedor\".", "erro"); ativarTabPedido("cabecalho"); return null; }
+    if(!tirou) dados.fornecedor_id = fornAntes;
+  }
   if(dados.local_entrega === "obra" && !dados.obra_id){ aviso("app-aviso", "Entrega direto na obra: escolha a obra.", "erro"); ativarTabPedido("cabecalho"); return null; }
   for(const it of _cmpItens){
     if(!it.descricao || !String(it.descricao).trim()){ aviso("app-aviso", "Há item sem descrição.", "erro"); ativarTabPedido("itens"); return null; }
@@ -4155,7 +4183,7 @@ async function custosRender(containerId, filtro, cbTotal){
    logado (sem e-mail pessoal nem telefone da empresa, D-179a). Com valores: igual a antes. */
 async function cmpPdfPedido(semValores){
   const p = _cmpAtual; if(!p?.id) return;
-  const f = _cmpFornMap[p.fornecedor_id] || {};
+  const f = _cmpFornMap[p.fornecedor_id] || (p.fornecedor?.razao_social ? { razao_social: p.fornecedor.razao_social } : {});   // lote S65-d (#310)
   const itens = _cmpItens;
   const cotacao = p.status === "em_cotacao";
   semValores = semValores === true || cotacao;
@@ -4293,6 +4321,7 @@ function ligarCompras(){
   $("btn-cmp-ace-fechar")?.addEventListener("click", () => cmpAceFechar(null));
   $("cmp-ace-modal")?.addEventListener("click", e => { if(e.target.id === "cmp-ace-modal") cmpAceFechar(null); });
   ["cmp-frete","cmp-desc"].forEach(id => $(id)?.addEventListener("input", cmpAtualizarChips));
+  $("cmp-forn")?.addEventListener("change", e => { e.target.dataset.limpo = e.target.value ? "" : "1"; });   // lote S65-d (#310): a pessoa tirou o fornecedor (×)
   $("cmp-forn")?.addEventListener("change", () => { const f = _cmpFornMap[$("cmp-forn").value]; if(f?.condicao_pagamento_padrao && !$("cmp-cond").value) $("cmp-cond").value = f.condicao_pagamento_padrao;
     if(f?.prazo_entrega_dias && !$("cmp-prev").value){ const d = new Date(); d.setDate(d.getDate() + Number(f.prazo_entrega_dias)); $("cmp-prev").value = d.toISOString().slice(0, 10); cmpAtualizarChips(); } });
   cmpLigarBusca("cmp-busca-prod", "cmp-res-prod", p => cmpProdutoEscolhido(p));   // fase 132a: ou liga ao item livre
