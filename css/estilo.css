@@ -2954,6 +2954,17 @@ input:disabled, select:disabled, textarea:disabled {
 .crz-tabela tr.crz-alerta-etapa td { background: var(--aviso-bg); }
 .crz-tabela tr.crz-alerta-duplicidade td { background: var(--sup-2); box-shadow: inset 0 -1px 0 var(--marca-laranja); }
 .crz-tabela tr.crz-alerta-vinculo td { background: var(--perigo-bg); }
+/* ---- Fase 184b: corrigir e descartar execução fora do RDO (exc-) ---- */
+.exc-caixa { background: var(--sup-0); max-width: 720px; width: 94%; max-height: 90vh; overflow-y: auto; border-radius: 8px; padding: 20px; }
+.exc-caixa-p { max-width: 520px; }
+.exc-trechos { width: 100%; margin: var(--esp-2) 0; }
+.exc-trechos input, .exc-trechos select { width: 100%; min-width: 70px; }
+.btn.btn-perigo { background: var(--perigo); border-color: var(--perigo); color: var(--txt-sobre); }
+.exc-acao { padding: 0 6px !important; min-width: 26px; }
+.ert-tabela tr.ert-descartada td { color: var(--txt-sec); background: var(--sup-2); text-decoration: line-through; }
+.ert-tabela tr.ert-descartada td.ert-acoes-td { text-decoration: none; }
+.ert-acoes-td { white-space: nowrap; }
+.ert-mostrar-desc { display: inline-flex; align-items: center; gap: 4px; font-size: var(--txt-sm); color: var(--txt-sec); }
 .crz-acoes { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .crz-acoes select { font-size: var(--txt-xs); max-width: 180px; }
 .crz-menu { display: inline-block; position: relative; }

@@ -1,6 +1,7 @@
 /* ====================================================================
    js/estacas_raiz_conf.js — fase 184a (#293 e #241): a estaca raiz pelo histórico de trechos.
-   Carregado depois do js/estacas.js. Não grava nada.
+   Carregado depois do js/estacas.js. Fase 184b (prefixo exc-): corrige, descarta e restaura execução só pelas RPCs
+   execucao_corrigir, execucao_descartar e execucao_restaurar (engenharia e diretor; medição fechada recusa no banco).
 
    1) Vista "Trechos" da aba Estacas (prefixo ert-): uma linha por trecho de rdo_raiz_solo, nas colunas da aba
       ESTACAS DO PERÍODO da RG 11.1, com filtros, o resumo por estaca (profundidade máxima e equipamento) e a planilha.
@@ -167,7 +168,8 @@ function ertMontar(execs, estacaDe, opts){
         inicial: ini, final: fim, prof: ini != null && fim != null ? _crzR2(fim - ini) : null,
         inclinacao: x.inclinacao || "", classificacao: s.classificacao || "", ferramenta: s.ferramenta || "",
         rdo: String(x.rdo_num || x.numero_boletim_fisico || ""), bm, bloco: est ? est.bloco || "" : "", local: est ? est.local || "" : "",
-        eqp, periodo, refuro: (x.modalidade_execucao || "furo_normal") === "refuro"
+        eqp, periodo, refuro: (x.modalidade_execucao || "furo_normal") === "refuro",
+        descartada: !!x.descartada_em, desc_motivo: x.descartada_motivo || ""   // fase 184b: só com "Mostrar descartadas"
       });
     });
   });
@@ -175,6 +177,7 @@ function ertMontar(execs, estacaDe, opts){
   // resumo por estaca (colunas S a U da planilha): maior "final" entre os trechos de furo e o equipamento desse trecho
   const porEst = new Map();
   linhas.forEach(l => {
+    if(l.descartada) return;   // fase 184b: a descartada não conta na profundidade
     const k = l.estaca_id || "n:" + _crzNorm(l.campo);
     if(!porEst.has(k)) porEst.set(k, { estaca_id: l.estaca_id, campo: l.campo, projeto: l.projeto, bloco: l.bloco, local: l.local, profMax: null, eqp: "", trechos: 0 });
     const r = porEst.get(k);
@@ -231,6 +234,13 @@ async function ertRender(){
   }
   const execs = [];
   _raizDados.porEstaca.forEach(lst => lst.forEach(x => execs.push(x)));
+  // fase 184b: "Mostrar descartadas" traz as execuções descartadas (a view da obra não tem), em cinza e com Restaurar
+  if($("ert-f-desc")?.checked){
+    const obraAntes = obraEditId;
+    const desc = await excDescartadas(obraAntes);
+    if(obraAntes !== obraEditId || _estView !== "trechos") return;
+    desc.forEach(x => execs.push(x));
+  }
   const estPorId = new Map((_estacas || []).map(e => [e.id, e]));
   const m = ertMontar(execs, (id) => estPorId.get(id), { tag: _raizTag, bm: _ertBm, periodo: (x) => x._periodo || "" });
 
@@ -248,11 +258,12 @@ async function ertRender(){
         <select id="ert-f-bloco"><option value="">Todos os blocos</option>${/* html */ ops(blocos)}</select>
         <select id="ert-f-maq"><option value="">Todos os equipamentos</option>${/* html */ ops(maqs)}</select>
         <select id="ert-f-ferr"><option value="">Todas as ferramentas</option><option value="revestimento">Revestimento</option><option value="tricone">Tricone</option><option value="martelo">Martelo</option></select>
+        <label class="ert-mostrar-desc" title="Inclui as execuções descartadas (em cinza), com a opção de restaurar"><input type="checkbox" id="ert-f-desc"> Mostrar descartadas</label>
         <button type="button" class="btn-sec btn-sm" id="btn-ert-csv" title="Planilha com as colunas desta tela">CSV</button>
         <button type="button" class="btn-sec btn-sm" id="btn-ert-xlsx" title="Planilha com as colunas desta tela e o resumo por estaca">Excel</button>
       </div>
       <div id="ert-corpo"></div>`;
-    ["ert-f-de", "ert-f-ate", "ert-f-bloco", "ert-f-maq", "ert-f-ferr"].forEach(id => $(id)?.addEventListener("change", ertRender));
+    ["ert-f-de", "ert-f-ate", "ert-f-bloco", "ert-f-maq", "ert-f-ferr", "ert-f-desc"].forEach(id => $(id)?.addEventListener("change", ertRender));
     $("ert-f-estaca")?.addEventListener("input", typeof debounce === "function" ? debounce(ertRender) : ertRender);
     $("btn-ert-csv")?.addEventListener("click", ertExportarCSV);
     $("btn-ert-xlsx")?.addEventListener("click", ertExportarExcel);
@@ -264,7 +275,7 @@ async function ertRender(){
   const visiveis = new Set(linhas.map(l => l.estaca_id || "n:" + _crzNorm(l.campo)));
   // resumo pelo histórico inteiro da estaca (a profundidade máxima não depende do período escolhido)
   const resumo = m.resumo.filter(r => visiveis.has(r.estaca_id || "n:" + _crzNorm(r.campo)));
-  _ertLinhas = linhas; _ertResumo = resumo;
+  _ertLinhas = linhas.filter(l => !l.descartada); _ertResumo = resumo;   // a planilha nunca leva a descartada
   const corpo = $("ert-corpo");
   if(!corpo) return;
   if(!m.linhas.length){ corpo.innerHTML = `<p class="vazio">Nenhum trecho de solo lançado nos RDOs desta obra. Os trechos vêm da aba Dados Raiz do RDO.</p>`; return; }
@@ -272,10 +283,22 @@ async function ertRender(){
 
   const f2 = (v) => (v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const f0 = (v) => (v == null ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 }));
-  const somaProf = _crzR2(linhas.reduce((s, l) => s + (l.prof || 0), 0));
-  const trs = linhas.map(l => `<tr class="${l.refuro ? "ert-refuro" : ""}">
+  const validas = linhas.filter(l => !l.descartada);
+  const nDesc = linhas.length - validas.length;
+  const somaProf = _crzR2(validas.reduce((s, l) => s + (l.prof || 0), 0));
+  const pode = excPode();
+  // fase 184b: lápis (Corrigir) e × (Descartar) uma vez por execução; a descartada tem Restaurar
+  const vistas = new Set();
+  const acoesDe = (l) => {
+    if(!pode || vistas.has(l.exec_id)) return "";
+    vistas.add(l.exec_id);
+    if(l.descartada) return `<button type="button" class="btn-sec btn-sm exc-restaurar" data-exec="${esc(l.exec_id)}" title="Volta a execução para o avanço, a conferência e a medição">Restaurar</button>`;
+    return `<button type="button" class="btn-sec btn-sm exc-acao exc-corrigir" data-exec="${esc(l.exec_id)}" title="Corrigir a execução e os trechos (com motivo)">✎</button>
+      <button type="button" class="btn-sec btn-sm exc-acao txt-perigo exc-descartar" data-exec="${esc(l.exec_id)}" title="Descartar a execução lançada errada (com motivo)">×</button>`;
+  };
+  const trs = linhas.map(l => `<tr class="${l.refuro ? "ert-refuro" : ""}${l.descartada ? " ert-descartada" : ""}"${l.descartada ? ` title="Descartada: ${esc(l.desc_motivo)}"` : ""}>
       <td>${esc(l.data ? dataBR(l.data) : "—")}</td>
-      <td><strong>${esc(l.campo || "—")}</strong>${l.projeto && _crzNorm(l.projeto) !== _crzNorm(l.campo) ? ` <span class="meta" title="Estaca do projeto">${esc(l.projeto)}</span>` : ""}${l.refuro ? ` <span class="badge-alterado" title="Execução de refuro">refuro</span>` : ""}</td>
+      <td><strong>${esc(l.campo || "—")}</strong>${l.projeto && _crzNorm(l.projeto) !== _crzNorm(l.campo) ? ` <span class="meta" title="Estaca do projeto">${esc(l.projeto)}</span>` : ""}${l.refuro ? ` <span class="badge-alterado" title="Execução de refuro">refuro</span>` : ""}${l.descartada ? ` <span class="badge-alterado">descartada</span>` : ""}</td>
       <td class="num">${esc(f0(l.diametro))}</td>
       <td class="num">${esc(f2(l.inicial))}</td>
       <td class="num">${esc(f2(l.final))}</td>
@@ -288,6 +311,7 @@ async function ertRender(){
       <td>${esc(l.bloco || "—")}</td>
       <td>${esc(l.eqp || "—")}</td>
       <td>${esc(l.periodo || "—")}</td>
+      ${pode ? `<td class="ert-acoes-td">${/* html */ acoesDe(l)}</td>` : ""}
     </tr>`).join("");
   const trsRes = resumo.map(r => `<tr>
       <td><strong>${esc(r.campo || "—")}</strong>${r.projeto && _crzNorm(r.projeto) !== _crzNorm(r.campo) ? ` <span class="meta">${esc(r.projeto)}</span>` : ""}</td>
@@ -295,14 +319,14 @@ async function ertRender(){
       <td>${esc(r.eqp || "—")}</td>
     </tr>`).join("");
   corpo.innerHTML = `<div class="raiz-resumo">
-      <span><strong>${esc(linhas.length)}</strong> trechos</span>
+      <span><strong>${esc(validas.length)}</strong> trechos${nDesc ? ` <span class="meta">(+ ${esc(nDesc)} descartado(s))</span>` : ""}</span>
       <span><strong>${esc(resumo.length)}</strong> estacas</span>
       <span><strong>${esc(f2(somaProf))} m</strong> somados nos trechos (operações; a profundidade de cada estaca é a máxima, ao lado)</span>
     </div>
     <div class="ert-layout">
       <div class="tabela-rola"><table class="raiz-tabela ert-tabela">
         <thead><tr><th>Data</th><th>Estaca</th><th class="num">Diâmetro (mm)</th><th class="num">Inicial (m)</th><th class="num">Final (m)</th><th class="num">Prof. (m)</th>
-          <th>Inclinação</th><th>Classificação</th><th>Ferramenta</th><th>RDO</th><th>BM</th><th>Bloco</th><th>Equipamento</th><th>Período</th></tr></thead>
+          <th>Inclinação</th><th>Classificação</th><th>Ferramenta</th><th>RDO</th><th>BM</th><th>Bloco</th><th>Equipamento</th><th>Período</th>${pode ? "<th>Ações</th>" : ""}</tr></thead>
         <tbody>${/* html */ trs}</tbody>
       </table></div>
       <div class="tabela-rola ert-resumo"><table class="raiz-tabela">
@@ -310,6 +334,7 @@ async function ertRender(){
         <tbody>${/* html */ trsRes}</tbody>
       </table></div>
     </div>`;
+  excLigarBotoes(corpo);
 }
 
 const ERT_COLUNAS = ["Data", "Estaca", "Estaca do projeto", "Diâmetro (mm)", "Inicial (m)", "Final (m)", "Prof. (m)", "Inclinação", "Classificação",
@@ -352,7 +377,7 @@ async function crzCarregarExtras(obraId){
     lerTudo(() => sb.from("rdo_raiz_solo").select("id,execucao_id,ordem,inicio_ml,final_ml,ferramenta,classificacao,rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)),
     lerTudo(() => sb.from("rdo_execucao_estaca")
       .select("id,estaca_id,estaca_numero,estaca_numero_corrigido,perfuracao_inicio,perfuracao_de_m,perfuracao_ate_m,profundidade_executada,volume_concreto_m3,modalidade_execucao,etapa_final,ferramental,numero_boletim_fisico,equipamento_id,maquina_codigo,rdo:rdo_id!inner(id,obra_id,data,equipamento_id),estaca:estaca_id!inner(obra_id)")
-      .eq("estaca.obra_id", obraId).neq("rdo.obra_id", obraId))
+      .eq("estaca.obra_id", obraId).neq("rdo.obra_id", obraId).is("descartada_em", null))   // fase 184b: sem a descartada
   ]);
   const solo = new Map();
   (sRes.error ? [] : (sRes.data || [])).forEach(s => { if(!solo.has(s.execucao_id)) solo.set(s.execucao_id, []); solo.get(s.execucao_id).push(s); });
@@ -401,6 +426,7 @@ function crzRenderCartoes(lista){
   if(!vis.length){ box.innerHTML = `<p class="vazio">Nenhuma estaca raiz neste filtro.</p>`; return; }
   const f2 = (v) => (v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const prevs = (typeof _recPrevs !== "undefined" ? _recPrevs : []) || [];
+  const pode = excPode();   // fase 184b
   box.innerHTML = vis.map(g => {
     const r = g.raiz, e = g.estaca, sit = CRZ_SITUACOES[r.situacao];
     const optsPrev = prevs.filter(p => p.id !== e.id && p.status === "prevista").map(p => `<option value="${esc(p.id)}">${esc(p.numero)}</option>`).join("");
@@ -414,6 +440,8 @@ function crzRenderCartoes(lista){
         + ls.map(l => {
           const prim = !vistas.has(l.exec_id); vistas.add(l.exec_id);
           const acoes = prim ? `${l.rdo_id ? `<button type="button" class="btn-sec btn-sm crz-abrir-rdo" data-rdo="${esc(l.rdo_id)}">Abrir RDO</button>` : ""}
+              ${pode && l.obra_id === obraEditId ? `<button type="button" class="btn-sec btn-sm exc-corrigir" data-exec="${esc(l.exec_id)}" title="Corrigir a execução e os trechos fora do RDO (com motivo)">✎ Corrigir</button>
+                <button type="button" class="btn-sec btn-sm exc-acao txt-perigo exc-descartar" data-exec="${esc(l.exec_id)}" title="Descartar a execução lançada errada (com motivo)">×</button>` : ""}
               ${optsPrev ? `<select class="alt-realoc-sel" data-exec-id="${esc(l.exec_id)}" title="Estaca prevista para onde levar esta execução"><option value="">— manter aqui —</option>${/* html */ optsPrev}</select>
                 <button type="button" class="btn-sec btn-sm btn-alt-realocar" data-exec-id="${esc(l.exec_id)}" data-estaca-orig="${esc(e.id)}">Realocar</button>` : ""}
               <details class="crz-menu"><summary title="Mais ações">⋯</summary><button type="button" class="btn-sec btn-sm btn-alt-marcar-refuro" data-exec-id="${esc(l.exec_id)}" title="Só quando esta execução for um refuro de verdade">Marcar refuro</button></details>` : "";
@@ -467,4 +495,187 @@ function ligarAcoesAlteradas(cont){
   }));
   cont.querySelectorAll(".btn-alt-realocar").forEach(b => b.addEventListener("click", () => realocarExecucao(b.dataset.execId, b.dataset.estacaOrig)));
   cont.querySelectorAll(".btn-alt-marcar-refuro").forEach(b => b.addEventListener("click", () => marcarComoRefuro(b.dataset.execId)));
+  excLigarBotoes(cont);
+}
+
+/* ====================================================================
+   FASE 184b: CORRIGIR, DESCARTAR E RESTAURAR EXECUÇÃO FORA DO RDO (prefixo exc-)
+   Quem: engenharia (engenheiro, assistente de engenharia) e diretor (D1); o banco confere de novo.
+   Medição fechada (enviada, aprovada, faturada, recebida) recusa no banco, com o número do BM (D2).
+   ==================================================================== */
+let _excDescCache = null;   // { obra, execs } das descartadas da obra (vista Trechos com "Mostrar descartadas")
+let _excAtual = null;       // execução aberta no modal: { id, orig, solo }
+
+function excPode(){
+  const u = typeof usuarioAtual !== "undefined" ? usuarioAtual : null;
+  return !!u && ["diretor", "engenheiro", "assistente_engenharia"].includes(u.cargo);
+}
+
+/* Execuções descartadas da obra, no formato das linhas da view (vw_rdo_execucoes_obra não traz as descartadas) */
+async function excDescartadas(obraId){
+  if(_excDescCache && _excDescCache.obra === obraId) return _excDescCache.execs;
+  const eRes = await lerTudo(() => sb.from("rdo_execucao_estaca")
+    .select("id,estaca_id,estaca_numero,estaca_numero_corrigido,diametro_mm,inclinacao,numero_boletim_fisico,modalidade_execucao,etapa_final,equipamento_id,maquina_codigo,perfuracao_inicio,perfuracao_de_m,perfuracao_ate_m,profundidade_executada,descartada_em,descartada_motivo,rdo:rdo_id!inner(id,obra_id,data,equipamento_id,turno_campo)")
+    .eq("rdo.obra_id", obraId).not("descartada_em", "is", null));
+  if(eRes.error){ aviso("app-aviso", "Não foi possível ler as descartadas: " + eRes.error.message, "erro"); return []; }
+  const lst = eRes.data || [];
+  const ids = lst.map(x => x.id);
+  const solo = new Map();
+  for(let i = 0; i < ids.length; i += 150){   // .in() com centenas de ids é recusado pela API
+    const sRes = await sb.from("rdo_raiz_solo").select("id,execucao_id,ordem,inicio_ml,final_ml,ferramenta,classificacao").in("execucao_id", ids.slice(i, i + 150));
+    (sRes.data || []).forEach(s => { if(!solo.has(s.execucao_id)) solo.set(s.execucao_id, []); solo.get(s.execucao_id).push(s); });
+  }
+  const dois = !!(_raizDados && _raizDados.doisTurnos);
+  const execs = lst.map(x => {
+    const r = x.rdo || {};
+    const e = { ...x, rdo_id: r.id, obra_id: r.obra_id, data: r.data, rdo_equipamento_id: r.equipamento_id, _solo: solo.get(x.id) || [], _meds: [] };
+    e._periodo = typeof _raizPeriodo === "function" ? _raizPeriodo(r.turno_campo || "", dois) : "";
+    return e;
+  });
+  _excDescCache = { obra: obraId, execs };
+  return execs;
+}
+
+function excLigarBotoes(cont){
+  if(!cont) return;
+  cont.querySelectorAll(".exc-corrigir").forEach(b => b.addEventListener("click", () => excAbrirCorrigir(b.dataset.exec)));
+  cont.querySelectorAll(".exc-descartar").forEach(b => b.addEventListener("click", () => excAbrirDescartar(b.dataset.exec)));
+  cont.querySelectorAll(".exc-restaurar").forEach(b => b.addEventListener("click", () => excRestaurar(b.dataset.exec)));
+}
+
+/* Liga os botões dos dois modais uma vez (o HTML está no index.html) */
+function excLigarModais(){
+  const m = $("exc-cor-modal");
+  if(!m || m.dataset.ligado) return;
+  m.dataset.ligado = "1";
+  $("btn-exc-cor-fechar")?.addEventListener("click", () => excFechar("exc-cor-modal"));
+  $("btn-exc-desc-fechar")?.addEventListener("click", () => excFechar("exc-desc-modal"));
+  $("btn-exc-cor-salvar")?.addEventListener("click", () => comBotaoTravado("btn-exc-cor-salvar", excSalvarCorrigir));
+  $("btn-exc-desc-salvar")?.addEventListener("click", () => comBotaoTravado("btn-exc-desc-salvar", excSalvarDescartar));
+}
+function excFechar(id){ const m = $(id); if(m) m.style.display = "none"; _excAtual = null; }
+
+const EXC_FERR_SOLO = [["", "—"], ["revestimento", "Revestimento"], ["tricone", "Tricone"], ["martelo", "Martelo"], ["trado", "Trado"], ["outro", "Outro"]];
+function _excNum(v){ return v == null || v === "" ? null : Number(v); }
+
+async function excLerExec(execId){
+  const [xRes, sRes] = await Promise.all([
+    sb.from("rdo_execucao_estaca")
+      .select("id,estaca_numero,perfuracao_inicio,perfuracao_de_m,perfuracao_ate_m,profundidade_executada,ferramental,descartada_em,numero_boletim_fisico,rdo:rdo_id(data)")
+      .eq("id", execId).maybeSingle(),
+    sb.from("rdo_raiz_solo").select("id,ordem,inicio_ml,final_ml,ferramenta,classificacao").eq("execucao_id", execId).order("ordem")
+  ]);
+  if(xRes.error || !xRes.data){ aviso("app-aviso", "Não foi possível ler a execução" + (xRes.error ? ": " + xRes.error.message : "."), "erro"); return null; }
+  return { x: xRes.data, solo: sRes.error ? [] : (sRes.data || []) };
+}
+function _excInfo(x){
+  return `Estaca ${x.estaca_numero || "—"} · RDO ${x.numero_boletim_fisico || "sem número"} de ${x.rdo?.data ? dataBR(x.rdo.data) : "—"}`;
+}
+
+async function excAbrirCorrigir(execId){
+  if(!excPode()){ aviso("app-aviso", "Só engenharia e diretor corrigem execução.", "erro"); return; }
+  excLigarModais();
+  const r = await excLerExec(execId);
+  if(!r) return;
+  const x = r.x;
+  if(x.descartada_em){ aviso("app-aviso", "Execução descartada: restaure antes de corrigir.", "erro"); return; }
+  const data = x.perfuracao_inicio ? dataLocalISO(x.perfuracao_inicio) : "";
+  _excAtual = { id: x.id, orig: { estaca_numero: x.estaca_numero || "", data, perfuracao_de_m: _excNum(x.perfuracao_de_m),
+    perfuracao_ate_m: _excNum(x.perfuracao_ate_m), profundidade_executada: _excNum(x.profundidade_executada), ferramental: x.ferramental || "" }, solo: r.solo };
+  $("exc-cor-titulo").textContent = "Corrigir execução · " + (x.estaca_numero || "");
+  $("exc-cor-info").textContent = _excInfo(x);
+  $("exc-cor-estaca").value = x.estaca_numero || "";
+  $("exc-cor-data").value = data;
+  $("exc-cor-de").value = x.perfuracao_de_m ?? "";
+  $("exc-cor-ate").value = x.perfuracao_ate_m ?? "";
+  $("exc-cor-prof").value = x.profundidade_executada ?? "";
+  $("exc-cor-ferr").value = x.ferramental || "";
+  $("exc-cor-motivo").value = "";
+  const ops = (v) => EXC_FERR_SOLO.map(([k, t]) => `<option value="${esc(k)}"${k === (v || "") ? " selected" : ""}>${esc(t)}</option>`).join("");
+  $("exc-cor-trechos").innerHTML = r.solo.length ? `<p class="rotulo-caps">Trechos do solo (aba Dados Raiz do RDO)</p>
+    <div class="tabela-rola"><table class="raiz-tabela exc-trechos">
+      <thead><tr><th>#</th><th class="num">Inicial (m)</th><th class="num">Final (m)</th><th>Ferramenta</th><th>Classificação</th></tr></thead>
+      <tbody>${r.solo.map(s => `<tr data-trecho="${esc(s.id)}">
+        <td>${esc(s.ordem ?? "—")}</td>
+        <td><input type="number" step="0.01" min="0" data-campo="inicio_ml" value="${esc(s.inicio_ml ?? "")}"></td>
+        <td><input type="number" step="0.01" min="0" data-campo="final_ml" value="${esc(s.final_ml ?? "")}"></td>
+        <td><select data-campo="ferramenta">${/* html */ ops(s.ferramenta)}</select></td>
+        <td><input data-campo="classificacao" value="${esc(s.classificacao || "")}"></td>
+      </tr>`).join("")}</tbody>
+    </table></div>` : `<p class="meta">Execução sem trechos de solo.</p>`;
+  $("exc-cor-modal").style.display = "flex";
+}
+
+async function excSalvarCorrigir(){
+  if(!_excAtual) return;
+  const motivo = ($("exc-cor-motivo").value || "").trim();
+  if(!motivo){ aviso("app-aviso", "Informe o motivo da correção.", "erro"); return; }
+  const o = _excAtual.orig, campos = {};
+  const est = ($("exc-cor-estaca").value || "").trim().toUpperCase().replace(/\s+/g, " ");
+  if(est !== String(o.estaca_numero).trim().toUpperCase().replace(/\s+/g, " ")) campos.estaca_numero = est;
+  const data = $("exc-cor-data").value || "";
+  if(data && data !== o.data) campos.data = data;
+  [["exc-cor-de", "perfuracao_de_m"], ["exc-cor-ate", "perfuracao_ate_m"], ["exc-cor-prof", "profundidade_executada"]].forEach(([id, k]) => {
+    const v = _excNum($(id).value);
+    if(v !== o[k]) campos[k] = v;
+  });
+  const ferr = $("exc-cor-ferr").value || "";
+  if(ferr !== o.ferramental) campos.ferramental = ferr || null;
+  const trechos = [];
+  document.querySelectorAll("#exc-cor-trechos tr[data-trecho]").forEach(tr => {
+    const s = _excAtual.solo.find(z => z.id === tr.dataset.trecho);
+    if(!s) return;
+    const t = { id: s.id };
+    tr.querySelectorAll("[data-campo]").forEach(el => {
+      const k = el.dataset.campo;
+      if(k === "inicio_ml" || k === "final_ml"){ const v = _excNum(el.value); if(v !== _excNum(s[k])) t[k] = v; }
+      else { const v = (el.value || "").trim(); if(v !== (s[k] || "")) t[k] = v || null; }
+    });
+    if(Object.keys(t).length > 1) trechos.push(t);
+  });
+  if(trechos.length) campos.trechos = trechos;
+  if(!Object.keys(campos).length){ aviso("app-aviso", "Nada mudou.", "erro"); return; }
+  const { error } = await sb.rpc("execucao_corrigir", { p_exec: _excAtual.id, p_campos: campos, p_motivo: motivo });
+  if(error){ aviso("app-aviso", error.message, "erro"); return; }
+  excFechar("exc-cor-modal");
+  await excAposGravar("Correção gravada, com o motivo no histórico.");
+}
+
+async function excAbrirDescartar(execId){
+  if(!excPode()){ aviso("app-aviso", "Só engenharia e diretor descartam execução.", "erro"); return; }
+  excLigarModais();
+  const r = await excLerExec(execId);
+  if(!r) return;
+  if(r.x.descartada_em){ aviso("app-aviso", "Execução já descartada.", "erro"); return; }
+  _excAtual = { id: r.x.id };
+  $("exc-desc-titulo").textContent = "Descartar execução · " + (r.x.estaca_numero || "");
+  $("exc-desc-info").textContent = _excInfo(r.x) + (r.x.perfuracao_ate_m != null ? ` · até ${r.x.perfuracao_ate_m} m` : "");
+  $("exc-desc-motivo").value = "";
+  $("exc-desc-modal").style.display = "flex";
+}
+
+async function excSalvarDescartar(){
+  if(!_excAtual) return;
+  const motivo = ($("exc-desc-motivo").value || "").trim();
+  if(!motivo){ aviso("app-aviso", "Informe o motivo do descarte.", "erro"); return; }
+  const { error } = await sb.rpc("execucao_descartar", { p_exec: _excAtual.id, p_motivo: motivo });
+  if(error){ aviso("app-aviso", error.message, "erro"); return; }
+  excFechar("exc-desc-modal");
+  await excAposGravar("Execução descartada. Ela volta por \"Mostrar descartadas\" na vista Trechos.");
+}
+
+async function excRestaurar(execId){
+  if(!excPode()) return;
+  if(!confirm("Restaurar esta execução? Ela volta para o avanço, a conferência e a medição.")) return;
+  const { error } = await sb.rpc("execucao_restaurar", { p_exec: execId });
+  if(error){ aviso("app-aviso", error.message, "erro"); return; }
+  await excAposGravar("Execução restaurada.");
+}
+
+/* Depois de gravar: refaz a conferência (se aberta) e as estacas da obra (que refazem a vista Trechos) */
+async function excAposGravar(msg){
+  aviso("app-aviso", msg, "ok");
+  _excDescCache = null;
+  if($("est-reconciliar-modal")?.style.display === "flex" && typeof abrirModalReconciliacao === "function") await abrirModalReconciliacao();
+  if(typeof carregarEstacasDaObra === "function") await carregarEstacasDaObra(obraEditId);
 }

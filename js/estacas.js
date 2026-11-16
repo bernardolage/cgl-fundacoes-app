@@ -982,6 +982,21 @@ async function salvarEstaca(){
      && (reg.profundidade_m !== Number(_estacaEdit.profundidade_m) || $("est-proj-confirmado")?.checked))
     reg.projeto_pendente = false;
 
+  // fase 184b (#302): nome novo igual ao de outra estaca do mesmo local e bloco → oferece juntar (execuções vão para a outra)
+  if(_estacaEdit && _estacaEdit.id){
+    const chave = (e) => [(e.local || "").trim().toUpperCase(), (e.bloco || "").trim().toUpperCase(), (e.numero || "").trim().toUpperCase()].join("|");
+    const outra = (_estacas || []).find(e => e.id !== _estacaEdit.id && chave(e) === chave(reg));
+    if(outra){
+      if(!confirm(`Já existe a estaca ${outra.numero} neste local e bloco: juntar?\n\nAs execuções desta estaca vão para a ${outra.numero} e esta estaca sai da lista. O resto do que foi mudado aqui não é gravado.`)) return;
+      const { error: eJ } = await sb.rpc("estaca_juntar", { p_origem: _estacaEdit.id, p_destino: outra.id, p_motivo: "Editar estaca: mesmo nome, local e bloco" });
+      if(eJ){ aviso("app-aviso", "Não foi possível juntar: " + eJ.message, "erro"); return; }
+      aviso("app-aviso", `Estaca juntada na ${outra.numero}.`, "ok");
+      fecharModalEstaca();
+      await carregarEstacasDaObra(obraEditId);
+      return;
+    }
+  }
+
   let result;
   if(_estacaEdit && _estacaEdit.id){
     result = await sb.from("estacas").update(reg).eq("id", _estacaEdit.id);
@@ -1004,6 +1019,7 @@ async function salvarEstaca(){
 async function excluirEstaca(id){
   if(!confirm("Excluir esta estaca? A ação não pode ser desfeita.")) return;
   const { error } = await sb.from("estacas").delete().eq("id", id);
+  // fase 184b (#302): com execução ligada o banco recusa ("tem N execuções: descarte ou realoque antes")
   if(error){ aviso("app-aviso","Não foi possível excluir: "+error.message,"erro"); return; }
   aviso("app-aviso","Estaca excluída.","ok");
   await carregarEstacasDaObra(obraEditId);
@@ -3276,7 +3292,8 @@ async function renomearEstacaDuplicada(id, numAtual){
 }
 
 async function excluirEstacaDuplicada(id, num){
-  if(!confirm(`Excluir esta estaca "${num}"? A ação não pode ser desfeita.\n(Execuções vinculadas ficarão órfãs até serem realocadas).`)) return;
+  // fase 184b (#302): estaca com execução não se exclui (o banco recusa); descarte ou realoque antes
+  if(!confirm(`Excluir esta estaca "${num}"? A ação não pode ser desfeita.\n(Estaca com execução ligada não se exclui: descarte ou realoque a execução antes).`)) return;
   const { error } = await sb.from("estacas").delete().eq("id", id);
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   aviso("app-aviso","Estaca excluída.","ok");
