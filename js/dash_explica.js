@@ -235,6 +235,8 @@ const DASH_EXPLICA = {
     fazer: "Cobrar o reenvio.", origem: "Dos diários do aplicativo do campo." },
   "rdo_enviado_sem_conferencia": { regra: "Diários enviados pelo campo, ainda em rascunho, com mais de 1 dia útil desde o envio.",
     fazer: "Conferir e finalizar, ou devolver.", origem: "Dos diários do aplicativo do campo." },
+  "rdo_improdutivo_sem_motivo": { regra: "Diários a partir de 16/11/2026, já fechados (dia passado, enviado pelo campo ou finalizado), sem nenhuma estaca e sem nenhuma parada lançada.",
+    fazer: "Lançar a parada que explica o dia (motivo e se foi em razão do cliente) ou as estacas que faltam.", origem: "Do diário de obra: estacas executadas e paradas." },
   "estaca_nao_chegou": { regra: "Aviso do operador, ainda não resolvido, de estacas executadas que não chegaram do computador de bordo.",
     fazer: "Conferir o computador de bordo e lançar a estaca.", origem: "Das pendências abertas no aplicativo do campo." },
   "contestacao_campo": { regra: "Estaca do diário contestada pelo operador (não é dele, número errado ou outro motivo), ainda sem resolução.",

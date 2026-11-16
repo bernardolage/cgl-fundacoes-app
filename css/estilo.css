@@ -3732,6 +3732,14 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .obf-leg-cor.obf-devolvido { background: var(--perigo); border-color: var(--perigo); }
 .obf-leg-cor.obf-sem_diario { border-style: dashed; }
 .obf-leg-cor.obf-nao_conta { background: var(--sup-3); border-color: var(--borda); }
+/* fase 179: produção do dia (vw_rdo_dia) na barra de baixo da casa; o topo continua sendo o estado do diário */
+.obf-dia.obf-pr-produtivo { border-bottom: 3px solid var(--sucesso); }
+.obf-dia.obf-pr-parcial { border-bottom: 3px solid var(--aviso); }
+.obf-dia.obf-pr-improdutivo { border-bottom: 3px solid var(--perigo); }
+.obf-leg-cor.obf-pr-produtivo, .obf-leg-cor.obf-pr-parcial, .obf-leg-cor.obf-pr-improdutivo { height: 4px; border: 0; border-radius: 1px; }
+.obf-leg-cor.obf-pr-produtivo { background: var(--sucesso); }
+.obf-leg-cor.obf-pr-parcial { background: var(--aviso); }
+.obf-leg-cor.obf-pr-improdutivo { background: var(--perigo); }
 .obf-nota, .obf-resumo, .obf-previsao, .obf-bloco .ui-secao-corpo .meta { margin: var(--esp-2) 0 0; }
 .obf-nota[hidden] { display: none; }
 .obf-nota { font-size: var(--txt-sm); color: var(--txt-sec); }

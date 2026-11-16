@@ -143,7 +143,8 @@ function rdoResumoHTML(d){
   const tl = rdoResumoTimeline(d.atividades, d.paradas, d.turno);
   const eq = rdoResumoEquipe(d.equipe, d.funcs);
   const ass = rdoResumoAssinaturas(d.cab, d.status, d.fotos, d.nomeDe);
-  const climaTxt = (v) => (typeof CONDICAO_TEMPO === "object" && CONDICAO_TEMPO[v]) || "";
+  // fase 179 (D1): três opções na tela (Bom, Chuva, Impraticável); o detalhe (nublado, chuva forte, mm) vai ao lado
+  const climaTxt = (v) => (typeof climaOpcaoRotulo === "function" ? climaOpcaoRotulo(v) : "") || (typeof CONDICAO_TEMPO === "object" && CONDICAO_TEMPO[v]) || "";
   const periodo = d.mostraPeriodo ? (d.turno === "noturno" ? "Noturno" : "Diurno") : "";
   const codigo = ["RDO", d.dataISO || "sem data", d.maquina && d.maquina.codigo, periodo].filter(Boolean).join(" · ");
   const climaCurto = [climaTxt(d.climaManha), climaTxt(d.climaTarde)].filter(Boolean).join(" / ");
@@ -163,6 +164,7 @@ function rdoResumoHTML(d){
       ${/* html */ uiRotuloValor("Máquina", d.maquina ? esc(d.maquina.codigo) : '<span class="tag ambar">sem máquina</span>')}
       ${/* html */ uiRotuloValor("Local / frente", esc(d.local || "não informado"))}
       ${/* html */ uiRotuloValor("Clima", esc(climaCurto || "não informado"))}
+      ${/* html */ d.dia ? uiRotuloValor("Dia", `${/* html */ tagStatus("rdo_dia", d.dia.estado)}${d.dia.motivo && typeof rdoDiaMotivoTexto === "function" ? " " + esc(rdoDiaMotivoTexto(d.dia)) : ""}`) : ""}
     </div>
   </section>`;
 
@@ -212,7 +214,8 @@ function rdoResumoHTML(d){
       return '<span class="meta" title="O clima é preenchido sozinho quando a obra tem cidade e UF no cadastro ou estacas do Geodigitus com GPS">sem localização da obra</span>';
     return "";
   };
-  const clima = (rot, v, per) => `<div><span class="rotulo-caps">${esc(rot)}</span><strong>${esc(climaTxt(v) || "não informado")}</strong>${/* html */ notaClima(per, v)}</div>`;
+  const climaDet = (v, per) => { const t = typeof climaDetalhe === "function" ? climaDetalhe(v, ca && ca[per]) : ""; return t ? `<span class="meta">${esc(t)}</span>` : ""; };
+  const clima = (rot, v, per) => `<div><span class="rotulo-caps">${esc(rot)}</span><strong>${esc(climaTxt(v) || "não informado")}</strong>${/* html */ climaDet(v, per)}${/* html */ notaClima(per, v)}</div>`;
   const secClima = uiSecao("clima", "Clima e condições", `<div class="rdo-res-clima${d.climaManha || d.climaTarde ? "" : " vazio"}">${/* html */ clima("Manhã", d.climaManha, "manha")}${/* html */ clima("Tarde", d.climaTarde, "tarde")}</div>`);
 
   const maqs = [d.maquina ? uiLinhaItem(d.maquina.codigo, d.maquina.nome || "máquina do diário", "", "") : ""]
@@ -250,7 +253,10 @@ function renderRdoResumo(){
     maquina: maq, apoio,
     responsavel: selResp && selResp.value ? (selResp.selectedOptions[0]?.textContent || "").trim() : "",
     local: $("rdo-local")?.value || "",
-    climaManha: $("rdo-tempo-manha")?.value || "", climaTarde: $("rdo-tempo-tarde")?.value || "",
+    // fase 179: o select mostra a opção (bom, chuva, impraticavel); o Resumo recebe o valor do enum que será gravado
+    climaManha: (typeof rdoClimaValor === "function" ? rdoClimaValor("rdo-tempo-manha") : $("rdo-tempo-manha")?.value) || "",
+    climaTarde: (typeof rdoClimaValor === "function" ? rdoClimaValor("rdo-tempo-tarde") : $("rdo-tempo-tarde")?.value) || "",
+    dia: rdoEditId && typeof _rdoDia !== "undefined" ? _rdoDia : null,
     execs: _rdoExecucoes || [], equipe: _rdoEquipe || [], funcs: _rdoFuncs || [], atividades: _rdoAtividades || [],
     paradas: rdoEditId ? (_rdoCampo.paradas || []) : [], fotos: rdoEditId ? (_rdoCampo.fotos || []) : [],
     obs: $("rdo-obs")?.value || "", nomeDe: rdoNomeCampo

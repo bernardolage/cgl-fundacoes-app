@@ -705,7 +705,55 @@ function preencherParametrosObra(d){
   // fase 91: caução contratual da obra (obras_financeiro embutido; vazio para quem não lê financeiro ou obra nova)
   set("obr-caucao-pct",          d.financeiro?.caucao_percentual ?? "");
   set("obr-caucao-prazo",        d.financeiro?.caucao_prazo_dias ?? "");
+  obrProdMinPreencher(d);   // fase 179
   atualizarResumoParametrosObra();
+}
+
+/* ---------- Fase 179: produção mínima por dia (parâmetro do dia produtivo) ----------
+   Grava pela RPC obra_producao_minima_gravar (engenheiro da obra, gestor do tipo de serviço e diretoria; o banco confere).
+   A sugestão (obra_producao_minima_sugerir) devolve só metros e a fonte, sem R$, e nunca troca o valor já digitado. */
+let _obrProdSeq = 0;
+function obrProdMinPreencher(d){
+  const inp = $("obr-prod-min"), fonte = $("obr-prod-min-fonte");
+  if(!inp) return;
+  inp.value = d && d.producao_minima_dia_m != null ? d.producao_minima_dia_m : "";
+  if(fonte) fonte.textContent = d && d.producao_minima_dia_m != null ? (d.producao_minima_fonte || "manual") : "Sem parâmetro: vale a regra de reserva (com estaca e menos de 2 h paradas é produtivo).";
+  const seq = ++_obrProdSeq, id = d && d.id;
+  const travar = (pode) => { [inp, $("obr-btn-prod-sugerir"), $("obr-btn-prod-gravar")].forEach(el => { if(el) el.disabled = !pode; }); };
+  travar(false);
+  if(!id) return;
+  sb.rpc("obra_producao_minima_pode_editar", { p_obra: id }).then(({ data, error }) => {
+    if(seq !== _obrProdSeq) return;
+    travar(!error && data === true);
+    if(!error && data !== true && fonte) fonte.title = "Só o engenheiro da obra, o gestor do tipo de serviço ou a diretoria mudam este valor.";
+  });
+}
+async function obrProdMinSugerir(){
+  if(!obraEditId) return;
+  const { data, error } = await sb.rpc("obra_producao_minima_sugerir", { p_obra: obraEditId });
+  if(error){ aviso("app-aviso", "Não foi possível sugerir: " + error.message, "erro"); return; }
+  const s = (data || [])[0] || {};
+  const inp = $("obr-prod-min"), fonte = $("obr-prod-min-fonte");
+  if(s.metros == null){ if(fonte) fonte.textContent = s.fonte || "Sem sugestão: digite o valor."; return; }
+  const m = Number(s.metros);
+  if(inp && inp.value === ""){
+    inp.value = m;
+    if(fonte) fonte.textContent = `Sugestão: ${num(m)} m (${s.fonte}). Confira e clique em Gravar produção mínima.`;
+  } else if(fonte){
+    fonte.textContent = `Sugestão: ${num(m)} m (${s.fonte}). O valor digitado foi mantido; para usar a sugestão, apague o campo e sugira de novo.`;
+  }
+}
+async function obrProdMinGravar(){
+  if(!obraEditId) return;
+  const v = ($("obr-prod-min")?.value || "").trim();
+  const m = v === "" ? null : Number(v.replace(",", "."));
+  if(m !== null && !(m > 0)){ aviso("app-aviso", "A produção mínima precisa ser maior que zero (ou vazia para ficar sem parâmetro).", "erro"); return; }
+  const { data, error } = await sb.rpc("obra_producao_minima_gravar", { p_obra: obraEditId, p_metros: m });
+  if(error){ aviso("app-aviso", "Não foi possível gravar: " + error.message, "erro"); return; }
+  if(typeof _obrAberta !== "undefined" && _obrAberta && _obrAberta.id === obraEditId){ _obrAberta.producao_minima_dia_m = m; _obrAberta.producao_minima_fonte = data?.fonte || null; }
+  const fonte = $("obr-prod-min-fonte");
+  if(fonte) fonte.textContent = m === null ? "Sem parâmetro: vale a regra de reserva (com estaca e menos de 2 h paradas é produtivo)." : (data?.fonte || "manual");
+  aviso("app-aviso", m === null ? "Produção mínima apagada: a obra usa a regra de reserva." : `Produção mínima gravada: ${num(m)} m por dia.`, "ok");
 }
 function lerParametrosObra(){
   const t = (id) => { const v = $(id)?.value; return v ? v : null; };
@@ -916,6 +964,9 @@ async function excluirObra(){
 
 /* ---------- Listeners ---------- */
 function ligarObras(){
+  // fase 179: produção mínima por dia (aba Parâmetros), gravada à parte do Salvar da obra
+  $("obr-btn-prod-sugerir")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, obrProdMinSugerir));
+  $("obr-btn-prod-gravar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, obrProdMinGravar));
   // Painel: visões, filtros, clique nas linhas, nova obra
   document.querySelectorAll("#obr-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {

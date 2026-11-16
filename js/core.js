@@ -201,6 +201,40 @@ const CONDICAO_TEMPO = {
   chuva_forte:  "Chuva forte",
   impraticavel: "Impraticável"
 };
+/* Fase 179 (D1): na tela o clima tem 3 opções; o banco continua com os 5 valores de condicao_tempo.
+   valor gravado → opção; a opção grava o "padrão" dela, salvo se o valor já gravado for da mesma opção (nublado continua
+   nublado, chuva forte continua chuva forte). Cópia em js/op_core.js (o app do operador não carrega este arquivo). */
+const CLIMA_3 = { bom: "bom", nublado: "bom", chuva_fraca: "chuva", chuva_forte: "chuva", impraticavel: "impraticavel" };
+const CLIMA_3_OPCOES = [["bom", "Bom", "bom"], ["chuva", "Chuva", "chuva_fraca"], ["impraticavel", "Impraticável", "impraticavel"]];
+function climaOpcao(v){ return CLIMA_3[v] || ""; }
+function climaOpcaoRotulo(v){ const o = CLIMA_3_OPCOES.find(x => x[0] === climaOpcao(v)); return o ? o[1] : ""; }
+function climaGravar(opcao, atual){
+  if(!opcao) return null;
+  if(CLIMA_3[atual] === opcao) return atual;
+  const o = CLIMA_3_OPCOES.find(x => x[0] === opcao);
+  return o ? o[2] : null;
+}
+/* detalhe ao lado da opção: o do automático quando houver ("chuva forte, 7,2 mm"); senão o valor gravado quando ele é mais
+   fino que a opção (nublado, chuva forte) */
+function climaDetalhe(v, auto){
+  const a = auto && auto.valor ? auto : null;
+  const base = a ? a.valor : v;
+  if(!base) return "";
+  const rot = (CONDICAO_TEMPO[base] || "").toLowerCase();
+  const mm = a && a.chuva_mm != null && Number(a.chuva_mm) > 0 ? `${Number(a.chuva_mm).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mm` : "";
+  if(!a && CLIMA_3_OPCOES.some(o => o[2] === base)) return "";
+  return [rot, mm].filter(Boolean).join(", ");
+}
+/* Fase 179: estado do diário (vw_rdo_dia) e o texto da regra */
+const RDO_DIA_ESTADO = { produtivo: { label: "Produtivo", cor: "verde" }, parcial: { label: "Parcial", cor: "ambar" }, improdutivo: { label: "Improdutivo", cor: "vermelho" } };
+STATUS.rdo_dia = RDO_DIA_ESTADO;   // tagStatus("rdo_dia", estado)
+function rdoDiaRegraTexto(d){
+  if(!d) return "";
+  const n = (x) => Number(x || 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  if(d.estado === "improdutivo") return "Nenhuma estaca executada no dia";
+  if(d.regra === "parametro") return `${n(d.metros_dia)} m de ${n(d.minimo_dia_m)} m mínimos da obra`;
+  return `Sem parâmetro na obra: ${n(d.metros_dia)} m e paradas de ${n(d.horas_paradas)} h (parcial a partir de ${n(d.limite_horas_parada)} h)`;
+}
 
 /* Categoria e recorrência dos contratos.
    A natureza (cliente/fornecedor) continua na tabela, mas deixou de ser

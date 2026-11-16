@@ -90,8 +90,12 @@ OP.telas.dia = async function(){
   const par = paradaAberta();
   const ed = diaEditavel();
   const tipoRT = ehRaizOuTrado(r.tipo_servico);
-  const chipsTempo = (campo) => Object.entries(ROTULO_TEMPO).map(([v, rot]) =>
-    `<button type="button" class="op-chip-btn${r[campo] === v ? " ativo" : ""}" data-tempo="${esc(campo)}" data-valor="${esc(v)}" ${ed ? "" : "disabled"} aria-pressed="${r[campo] === v ? "true" : "false"}">${esc(rot)}</button>`).join("");
+  // fase 179 (D1): 3 opções; a ativa mostra o valor mais fino quando há (nublado, chuva forte)
+  const chipsTempo = (campo) => CLIMA_3_OPCOES.map(([v, rot, padrao]) => {
+    const at = CLIMA_3[r[campo]] === v;
+    const det = at && r[campo] !== padrao ? ` (${(ROTULO_TEMPO[r[campo]] || "").toLowerCase()})` : "";
+    return `<button type="button" class="op-chip-btn${at ? " ativo" : ""}" data-tempo="${esc(campo)}" data-valor="${esc(v)}" ${ed ? "" : "disabled"} aria-pressed="${at ? "true" : "false"}">${esc(rot)}${esc(det)}</button>`;
+  }).join("");
   const visto = OP.snapVistoEm ? horaDeTimestamp(OP.snapVistoEm) : "";
   box.innerHTML = `
     <p class="op-alerta ${esc(sit.cls)}">${esc(sit.txt)}</p>
@@ -101,6 +105,7 @@ OP.telas.dia = async function(){
       <div><strong>${num(n.metros, 1)}</strong><span>Metros</span></div>
       <div><strong>${num(n.horas, 2)}</strong><span>Horas paradas</span></div>
     </div>
+    <p class="op-meta" id="op-dia-estado" hidden></p>
     <p class="op-meta">${esc(ROTULO_TIPO[r.tipo_servico] || "")} · ${esc(s.obra?.nome || "")}${visto ? " · visto às " + esc(visto) : ""}</p>
     <div class="op-grade">
       <button type="button" class="op-cartao" data-ir="equipe"><span aria-hidden="true">👷</span><strong>Equipe</strong><span>${esc((s.equipe || []).length)} pessoa(s)</span></button>
@@ -118,7 +123,75 @@ OP.telas.dia = async function(){
       <label class="op-campo">Observações do dia<textarea id="op-obs" rows="3" maxlength="2000" ${ed ? "" : "disabled"}>${esc(r.observacoes || "")}</textarea></label>
       ${ed ? `<button type="button" class="op-btn" id="op-btn-cab-salvar">Salvar local e observações</button>` : ""}
     </section>`;
+  opDiaEstadoCarregar("op-dia-estado");
 };
+
+/* ---------- Fase 179: estado do dia e "Por que não produziu?" ----------
+   O estado vem da vw_rdo_dia (conta do servidor: o que ainda está na fila do aparelho entra depois de subir). Sem sinal, a
+   linha não aparece. No envio de um dia sem estaca e sem parada, a pergunta abre com os motivos de parada: escolher lança a
+   parada do turno pela rdo_campo_parada_lancar (com as respostas sugeridas da fase 166 à vista); Pular envia assim mesmo. */
+async function opDiaEstadoCarregar(idEl){
+  const rdo = OP.rdoId;
+  if(!$(idEl) || !rdo || !navigator.onLine) return;
+  const { data, error } = await sb.from("vw_rdo_dia").select("estado,minimo_dia_m,regra,motivo,motivo_cliente").eq("rdo_id", rdo).maybeSingle();
+  const alvo = $(idEl);
+  if(error || !data || !alvo || OP.rdoId !== rdo) return;
+  const mot = data.motivo ? " · " + ((typeof ROTULO_MOTIVO === "object" && ROTULO_MOTIVO[data.motivo]) || data.motivo) + (data.motivo_cliente === true ? " (em razão do cliente)" : "") : "";
+  const regra = data.regra === "parametro" ? ` · mínimo da obra ${num(data.minimo_dia_m, 1)} m` : "";
+  alvo.textContent = `Dia: ${RDO_DIA_ROTULO[data.estado] || data.estado}${regra}${mot}`;
+  alvo.title = "Conta do servidor: o que ainda está no aparelho entra depois de subir.";
+  alvo.hidden = false;
+}
+let _envPerg = null;   // { motivo, resp: { paralisado, em_razao_cliente }, desc, fim, obs, pronto }
+function diaSemEstacaNemParada(){
+  return !numerosDoDia(OP.snap).estacas && !(OP.snap.paradas || []).length;
+}
+/* período do turno para a parada da pergunta: a primeira entrada da equipe, senão a jornada da obra, até o fim do expediente */
+function periodoDoTurno(fim){
+  const ent = (OP.snap.equipe || []).map(e => hhmm(e.hora_entrada)).filter(Boolean).sort()[0];
+  return { ini: ent || hhmm(OP.snap.jornada?.entrada) || "07:00", fim: fim || horaAgora(15) };
+}
+function perguntaSemProducaoHTML(){
+  const p = _envPerg, m = p.motivo;
+  const per = periodoDoTurno(p.fim);
+  const helice = !ehRaizOuTrado(OP.snap.rdo.tipo_servico);
+  return `<section class="op-bloco" id="op-env-pergunta">
+    <h2>Por que não produziu?</h2>
+    <p class="op-meta">Nenhuma estaca e nenhuma parada hoje. O motivo vira uma parada de ${esc(per.ini)} a ${esc(per.fim)}.${helice ? " Se a máquina trabalhou e as estacas ainda não chegaram do computador de bordo, toque em Pular." : ""}</p>
+    <div class="op-chips">${MOTIVOS_PARADA.map(([v, rot]) =>
+      `<button type="button" class="op-chip-btn${m === v ? " ativo" : ""}" data-env-motivo="${esc(v)}" aria-pressed="${m === v}">${esc(rot)}</button>`).join("")}</div>
+    ${m ? PARADA_PERGUNTAS.map(([campo, texto]) => `<p class="op-meta" id="op-env-perg-${esc(campo)}">${esc(texto)}</p>
+    <div class="op-chips" role="group" aria-labelledby="op-env-perg-${esc(campo)}">${[["sim", "Sim", true], ["nao", "Não", false]].map(([v, r, b]) =>
+      `<button type="button" class="op-chip-btn${p.resp[campo] === b ? " ativo" : ""}" data-env-resp="${esc(campo)}" data-env-valor="${esc(v)}" aria-pressed="${p.resp[campo] === b}">${esc(r)}</button>`).join("")}</div>`).join("") : ""}
+    ${m === "outro" ? `<label class="op-campo">Descrição (obrigatória)<input type="text" id="op-env-desc" maxlength="200" value="${esc(p.desc || "")}"></label>` : ""}
+    <div class="op-acoes">
+      <button type="button" class="op-btn op-btn-primario" id="op-btn-env-lancar" ${m ? "" : "disabled"}>Lançar a parada e enviar</button>
+      <button type="button" class="op-btn" id="op-btn-env-pular">Pular e enviar assim mesmo</button>
+    </div>
+  </section>`;
+}
+function guardarCamposEnvio(){
+  if(!_envPerg) return;
+  if($("op-fim-exp")) _envPerg.fim = $("op-fim-exp").value;
+  if($("op-enviar-obs")) _envPerg.obs = $("op-enviar-obs").value;
+  if($("op-env-desc")) _envPerg.desc = $("op-env-desc").value;
+}
+async function lancarParadaSemProducao(){
+  guardarCamposEnvio();
+  const p = _envPerg;
+  if(!p || !p.motivo){ avisar("Escolha o motivo.", "aviso"); return; }
+  if(paradaRespostaFalta(p.resp)){ avisar(PARADA_AVISO_RESPOSTA, "aviso"); return; }
+  const desc = (p.desc || "").trim();
+  if(p.motivo === "outro" && !desc){ avisar("Descreva a parada quando o motivo é Outro.", "aviso"); return; }
+  const per = periodoDoTurno(p.fim);
+  const campos = { motivo: p.motivo, periodo_inicio: per.ini, periodo_fim: per.fim, paralisado: p.resp.paralisado, em_razao_cliente: p.resp.em_razao_cliente, descricao: desc || null };
+  const id = novoId();
+  (OP.snap.paradas || (OP.snap.paradas = [])).push(Object.assign({ id, origem: "app_operador" }, campos, { descricao: desc || ROTULO_MOTIVO[p.motivo] }));
+  await enfileirar("rdo_campo_parada_lancar", { p_rdo: OP.rdoId, p_id: id, p_campos: campos, p_motivo_correcao: null },
+    { rotulo: "Parada " + per.ini + "–" + per.fim, linha_id: id });
+  p.pronto = true;
+  await enviarDia();
+}
 
 async function gravarCabecalho(campos){
   const r = OP.snap.rdo;
@@ -136,6 +209,7 @@ OP.telas.enviar = async function(){
   const ruins = _filaCache.filter(o => o.rdo_id === OP.rdoId && (o.situacao === "rejeitada" || o.situacao === "conflito"));
   const enviando = _filaCache.some(o => o.rdo_id === OP.rdoId && o.rpc === "rdo_campo_enviar" && o.situacao === "pendente");
   const bloqueios = [], avisos = [];
+  if(_envPerg && (_envPerg.rdo !== OP.rdoId || !diaSemEstacaNemParada())) _envPerg = null;   // fase 179: outro dia, ou o dia já tem estaca ou parada
   if(paradaAberta()) bloqueios.push("Há uma parada em andamento: encerre antes de enviar.");
   if(ruins.length) bloqueios.push(`${ruins.length} registro(s) recusado(s): resolva em Eu › Pendências.`);
   if(r.status === "finalizado") bloqueios.push("O dia já foi finalizado pela engenharia.");
@@ -157,24 +231,37 @@ OP.telas.enviar = async function(){
       <div><strong>${num(n.metros, 1)}</strong><span>Metros</span></div>
       <div><strong>${num(n.horas, 2)}</strong><span>Horas paradas</span></div>
     </div>
+    <p class="op-meta" id="op-env-estado" hidden></p>
     <p class="op-meta">${esc((s.equipe || []).length)} pessoa(s) · ${esc((s.abastecimentos || []).length)} abastecimento(s) · ${esc((s.fotos || []).length)} foto(s)</p>
     ${bloqueios.length ? `<ul class="op-lista-alerta op-lista-perigo">${bloqueios.map(b => `<li>⛔ ${esc(b)}</li>`).join("")}</ul>` : ""}
     ${avisos.length ? `<ul class="op-lista-alerta">${avisos.map(a => `<li>⚠ ${esc(a)}</li>`).join("")}</ul>` : ""}
+    ${ed && _envPerg && podeEnviar ? perguntaSemProducaoHTML() : ""}
     ${ed ? `<section class="op-bloco">
       <label class="op-campo">Fim do expediente (preenche a saída de quem está sem)
-        <input type="time" id="op-fim-exp" step="900" value="${esc(horaAgora(15))}"></label>
+        <input type="time" id="op-fim-exp" step="900" value="${esc(_envPerg?.fim || horaAgora(15))}"></label>
       <div class="op-acoes"><button type="button" class="op-btn" id="op-fim-agora">Agora</button></div>
-      <label class="op-campo">Observações do dia<textarea id="op-enviar-obs" rows="3" maxlength="2000">${esc(r.observacoes || "")}</textarea></label>
+      <label class="op-campo">Observações do dia<textarea id="op-enviar-obs" rows="3" maxlength="2000">${esc(_envPerg?.obs ?? (r.observacoes || ""))}</textarea></label>
       <button type="button" class="op-btn op-btn-primario op-btn-grande" id="op-btn-enviar" ${podeEnviar ? "" : "disabled"}>📤 Enviar para conferência</button>
       <p class="op-meta">Depois de enviar, o dia fica só leitura no celular até a engenharia devolver ou finalizar.</p>
       <button type="button" class="op-btn" data-ir="dia">Salvar e enviar depois</button>
     </section>` : ""}`;
+  opDiaEstadoCarregar("op-env-estado");   // fase 179
 };
 
 async function enviarDia(){
-  const fim = $("op-fim-exp")?.value || null;
-  const obs = $("op-enviar-obs")?.value || null;
-  if(!confirm("Enviar o dia para a engenharia conferir? Depois disso você só altera se a engenharia devolver.")) return;
+  // fase 179 (D6): dia sem estaca e sem parada pergunta o motivo antes; nunca bloqueia (Pular envia)
+  if(_envPerg && _envPerg.rdo !== OP.rdoId) _envPerg = null;   // pergunta de outro dia
+  if(diaSemEstacaNemParada() && !(_envPerg && _envPerg.pronto)){
+    if(!_envPerg) _envPerg = { rdo: OP.rdoId, motivo: null, resp: { paralisado: null, em_razao_cliente: null }, desc: "", fim: null, obs: null, pronto: false };
+    guardarCamposEnvio();
+    renderTelaAtual();
+    $("op-env-pergunta")?.scrollIntoView({ block: "start" });
+    return;
+  }
+  const fim = $("op-fim-exp")?.value || _envPerg?.fim || null;
+  const obs = $("op-enviar-obs")?.value ?? _envPerg?.obs ?? null;
+  _envPerg = null;
+  if(!confirm("Enviar o dia para a engenharia conferir? Depois disso você só altera se a engenharia devolver.")){ renderTelaAtual(); return; }
   await enfileirar("rdo_campo_enviar", { p_rdo: OP.rdoId, p_fim_expediente: fim || null, p_observacoes: obs || null }, { rotulo: "Enviar o dia", linha_id: OP.rdoId });
   avisar("Envio na fila. Sobe depois dos outros registros.", "ok");
   agendarDrenagem(0);
@@ -340,7 +427,20 @@ document.addEventListener("click", async (ev) => {
   if(d.abrir){ el.disabled = true; try { await abrirDia(d.abrir, d.confirmada === "1"); } finally { el.disabled = false; } return; }
   if(d.abrirRdo){ await abrirDiaExistente(d.abrirRdo); return; }
   if(d.filtroDias){ _filtroDias = d.filtroDias; renderTelaAtual(); return; }
-  if(d.tempo){ await gravarCabecalho({ [d.tempo]: OP.snap.rdo[d.tempo] === d.valor ? "" : d.valor }); return; }
+  if(d.tempo){   // fase 179: tocar a opção ativa limpa; outra opção grava o padrão dela (a mesma opção mantém o valor gravado)
+    const atual = OP.snap.rdo[d.tempo];
+    await gravarCabecalho({ [d.tempo]: CLIMA_3[atual] === d.valor ? "" : climaGravar(d.valor, atual) }); return;
+  }
+  if(d.envMotivo && _envPerg){   // fase 179: o motivo refaz a sugestão das duas respostas, à vista do operador
+    guardarCamposEnvio();
+    _envPerg.motivo = d.envMotivo; _envPerg.resp = paradaSugestao(d.envMotivo);
+    renderTelaAtual(); return;
+  }
+  if(d.envResp && _envPerg){
+    guardarCamposEnvio();
+    if(d.envResp === "paralisado" || d.envResp === "em_razao_cliente") _envPerg.resp[d.envResp] = d.envValor === "sim";
+    renderTelaAtual(); return;
+  }
   if(d.pendTentar){ await pendenciaTentar(Number(d.pendTentar), false); return; }
   if(d.pendManter){ await pendenciaTentar(Number(d.pendManter), true); return; }
   if(d.pendDescartar){ await pendenciaDescartar(Number(d.pendDescartar)); return; }
@@ -348,6 +448,8 @@ document.addEventListener("click", async (ev) => {
     case "op-btn-cab-salvar": await gravarCabecalho({ local: $("op-local").value, observacoes: $("op-obs").value }); avisar("Guardado.", "ok"); break;
     case "op-fim-agora": $("op-fim-exp").value = horaAgora(15); break;
     case "op-btn-enviar": await enviarDia(); break;
+    case "op-btn-env-lancar": el.disabled = true; try { await lancarParadaSemProducao(); } finally { el.disabled = false; } break;   // fase 179
+    case "op-btn-env-pular": if(_envPerg){ guardarCamposEnvio(); _envPerg.pronto = true; } await enviarDia(); break;
     case "op-btn-sync": OP.forcarFotos = false; agendarDrenagem(0); avisar("Enviando…"); break;
     case "op-btn-sair": await sair(); break;
     case "op-btn-trocar-senha": mostrarTrocaSenha(false); break;

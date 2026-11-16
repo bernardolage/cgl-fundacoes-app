@@ -24,6 +24,17 @@ const OBF_SEMANA_LONGO = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "S
 const OBF_CURTO = { estaca_sem_diario: "! estaca", devolvido: "devolvido", rascunho: "rascunho", finalizado: "finalizado", sem_diario: "sem diário", hoje: "hoje", nao_conta: "—" };
 const OBF_MOTIVO = { domingo: "domingo", sabado: "sábado, e a obra não tem jornada de sábado", antes_inicio: "antes do início da obra" };
 const OBF_FERIADO = { nacional: "feriado nacional", uf: "feriado estadual", municipio: "feriado do município" };
+// fase 179: produção do dia (vw_rdo_dia), na barra de baixo da casa
+const OBF_PRODUCAO = { produtivo: "produtivo", parcial: "parcial", improdutivo: "improdutivo" };
+const OBF_LEGENDA_PRODUCAO = [["produtivo", "dia produtivo"], ["parcial", "parcial"], ["improdutivo", "improdutivo"]];
+/* um dia com várias máquinas: todas produtivas = produtivo; todas improdutivas = improdutivo; o resto, parcial */
+function obfProducaoDia(diarios){
+  const es = (diarios || []).map(x => x && x.producao).filter(e => OBF_PRODUCAO[e]);
+  if(!es.length) return null;
+  if(es.every(e => e === "produtivo")) return "produtivo";
+  if(es.every(e => e === "improdutivo")) return "improdutivo";
+  return "parcial";
+}
 const OBF_LEGENDA = [
   ["finalizado", "finalizado"], ["rascunho", "rascunho ou enviado pelo campo"], ["devolvido", "devolvido ao campo"],
   ["estaca_sem_diario", "estaca do computador de bordo sem diário"], ["sem_diario", "sem diário"],
@@ -101,7 +112,8 @@ function obfMontarDias(hojeISO, rdos, estacasGeo, obra, feriados){
       const finalizado = r.status === "finalizado", devolvido = !finalizado && obfDevolvido(r);
       return { id: r.id ?? null, maquina: r.equipamento_id ? (r.maquina || "?") : null, periodo: r.turno_campo === "noturno" ? "noturno" : "diurno",
         status: finalizado ? "finalizado" : "rascunho", enviado: !finalizado && !!r.enviado_em && !devolvido, devolvido,
-        estacas: Number(r.qtd_estacas_executadas) || 0, metros: Number(r.metragem_total) || 0 };
+        estacas: Number(r.qtd_estacas_executadas) || 0, metros: Number(r.metragem_total) || 0,
+        producao: OBF_PRODUCAO[r.estado_dia] ? r.estado_dia : null };   // fase 179
     }).sort((a, b) => (a.maquina == null) - (b.maquina == null) || String(a.maquina || "").localeCompare(String(b.maquina || ""), "pt-BR", { numeric: true })
       || (a.periodo === "noturno") - (b.periodo === "noturno"));
     const estacasSemDiario = semDiario.get(data) || 0;
@@ -116,7 +128,7 @@ function obfMontarDias(hojeISO, rdos, estacasGeo, obra, feriados){
     else if(c.conta) estado = "sem_diario";
     else estado = "nao_conta";
     dias.push({ data, diaSemana: obfDiaSemana(data), hoje: data === hoje, conta: c.conta, motivo: c.motivo, abrangencia: c.abrangencia,
-      estado, enviadoCampo, diarios, estacasSemDiario });
+      estado, enviadoCampo, diarios, estacasSemDiario, producao: obfProducaoDia(diarios) });
   }
   return dias;
 }
@@ -157,7 +169,7 @@ function obfTituloDia(d){
   const linhas = [`${OBF_SEMANA_LONGO[d.diaSemana] || ""}, ${obfDataBR(d.data)}: ${obfEstadoTexto(d)}`];
   (d.diarios || []).forEach(x => linhas.push(`${x.maquina || "sem máquina"} · ${x.periodo === "noturno" ? "noturno" : "diurno"} · ${
     x.status === "finalizado" ? "finalizado" : x.devolvido ? "devolvido ao campo" : x.enviado ? "enviado pelo campo" : "rascunho"} · ${
-    obfPlural(x.estacas, "estaca", "estacas")} · ${obfNumero(x.metros)} m`));
+    obfPlural(x.estacas, "estaca", "estacas")} · ${obfNumero(x.metros)} m${x.producao ? " · " + OBF_PRODUCAO[x.producao] : ""}`));
   const n = (d.diarios || []).length;
   if(n === 1) linhas.push("Clique para abrir o diário.");
   else if(n > 1) linhas.push(`Clique para ver os ${n} diários do dia na tabela abaixo.`);
@@ -198,7 +210,7 @@ function obfLinhaPrevisao(a, hojeISO){
 function obfCasaHTML(d){
   const n = d.diarios.length;
   const curto = d.estado === "rascunho" && d.enviadoCampo ? "do campo" : d.estado === "nao_conta" && d.motivo === "feriado" ? "feriado" : OBF_CURTO[d.estado];
-  const classes = `obf-dia obf-${esc(d.estado)}${d.hoje ? " obf-eh-hoje" : ""}`;
+  const classes = `obf-dia obf-${esc(d.estado)}${d.hoje ? " obf-eh-hoje" : ""}${d.producao && OBF_PRODUCAO[d.producao] ? " obf-pr-" + esc(d.producao) : ""}`;
   // o contador de diários fica na linha do dia, depois do número: no fluxo, nunca por cima do texto da casa
   const miolo = `<span class="obf-dia-topo"><span class="obf-dia-sem">${esc(OBF_SEMANA[d.diaSemana])}</span><span class="obf-dia-num">${esc(d.data.slice(8, 10))}</span>${
     n > 1 ? `<span class="obf-dia-qtd" aria-hidden="true">${esc(n)}</span>` : ""}</span><span class="obf-dia-est">${esc(curto)}</span>`;
@@ -211,7 +223,8 @@ function obfFaixaHTML(dias){
   return `<div class="obf-faixa" role="group" aria-label="Diário da obra nos últimos 14 dias">${dias.map(d => obfCasaHTML(d)).join("")}</div>`;
 }
 function obfLegendaHTML(){
-  return `<p class="obf-legenda">${OBF_LEGENDA.map(l => `<span class="obf-leg"><span class="obf-leg-cor obf-${esc(l[0])}" aria-hidden="true"></span>${esc(l[1])}</span>`).join("")}</p>`;
+  return `<p class="obf-legenda">${OBF_LEGENDA.map(l => `<span class="obf-leg"><span class="obf-leg-cor obf-${esc(l[0])}" aria-hidden="true"></span>${esc(l[1])}</span>`).join("")}${
+    OBF_LEGENDA_PRODUCAO.map(l => `<span class="obf-leg" title="Barra de baixo da casa: produção do dia pela fase 179"><span class="obf-leg-cor obf-pr-${esc(l[0])}" aria-hidden="true"></span>${esc(l[1])}</span>`).join("")}</p>`;
 }
 /* Corpo do bloco: faixa, legenda e resumo (ou só o aviso, na obra sem nenhum diário), a previsão e o que não deu para ler */
 function obfCorpoHTML(dias, o){
@@ -254,16 +267,18 @@ async function obfLer(obraId, hoje, comDiarioNaJanela){
   const ini = obfSomarDias(hoje, -(OBF_DIAS - 1));
   const seguro = (p) => Promise.resolve(p).then(r => r || { data: null, error: null }, e => ({ data: null, error: e }));
   const guardado = _obfFeriados.janela === ini + "|" + hoje ? _obfFeriados.lido : null;
-  const [campo, geo, feriados, previsao] = await Promise.all([
+  const [campo, geo, feriados, previsao, producao] = await Promise.all([
     // os envios do campo só interessam quando há diário na janela
     seguro(comDiarioNaJanela ? sb.from("rdo").select("id,data,enviado_em,devolvido_em").eq("obra_id", obraId).gte("data", ini).lte("data", hoje) : null),
     // só a estaca que ainda não está em diário (é a que avisa); o início da janela é a meia-noite de Brasília
     seguro(sb.from("geodigitus_estacas").select("perfuracao_inicio,rdo_id,equipamento_id,situacao").eq("obra_id", obraId).is("rdo_id", null).gte("perfuracao_inicio", `${ini}T00:00:00-03:00`)),
     seguro(guardado || sb.from("feriados").select("data,abrangencia,uf,codigo_ibge").gte("data", ini).lte("data", hoje)),
-    seguro(typeof obrPrevisaoLida === "function" ? obrPrevisaoLida(obraId) : null)
+    seguro(typeof obrPrevisaoLida === "function" ? obrPrevisaoLida(obraId) : null),
+    // fase 179: produção de cada diário da janela (vw_rdo_dia); sem a view, a faixa segue sem a barra
+    seguro(comDiarioNaJanela ? sb.from("vw_rdo_dia").select("rdo_id,estado").eq("obra_id", obraId).gte("data", ini).lte("data", hoje) : null)
   ]);
   if(!feriados.error) _obfFeriados = { janela: ini + "|" + hoje, lido: feriados };
-  return { campo, geo, feriados, previsao };
+  return { campo, geo, feriados, previsao, producao };
 }
 
 /* Desenha o bloco reservado por obfReservaHTML. o = { rdos (vw_rdo_resumo da obra, já no filtro de máquina), semRdo, filtroMaq } */
@@ -281,7 +296,10 @@ async function obfPreencher(obraId, o){
   if(lido.geo.error){ console.error("Faixa do diário, estacas do Geodigitus:", lido.geo.error); erros.push("as estacas do computador de bordo (o aviso de estaca sem diário não foi conferido)"); }
   if(lido.feriados.error){ console.error("Faixa do diário, feriados:", lido.feriados.error); erros.push("os feriados (feriado pode aparecer como dia sem diário)"); }
   const carimbo = new Map((lido.campo.data || []).map(r => [r.id, r]));
-  const rdos = (op.rdos || []).map(r => ({ ...r, enviado_em: carimbo.get(r.id)?.enviado_em ?? null, devolvido_em: carimbo.get(r.id)?.devolvido_em ?? null }));
+  if(lido.producao.error) console.error("Faixa do diário, produção do dia:", lido.producao.error);   // sem aviso na tela: só some a barra
+  const prod = new Map((lido.producao.data || []).map(r => [r.rdo_id, r.estado]));
+  const rdos = (op.rdos || []).map(r => ({ ...r, enviado_em: carimbo.get(r.id)?.enviado_em ?? null, devolvido_em: carimbo.get(r.id)?.devolvido_em ?? null,
+    estado_dia: prod.get(r.id) || null }));
   const geo = (lido.geo.data || []).filter(g => !op.filtroMaq ? true : op.filtroMaq === "sem" ? !g.equipamento_id : g.equipamento_id === op.filtroMaq);
   const dias = obfMontarDias(hoje, rdos, geo, obra, lido.feriados.data || []);
   // previsão: a view só traz obra em andamento; na paralisada a linha diz isso, e erro de leitura não vira texto
@@ -325,5 +343,5 @@ function obfFiltrarTabela(dia){
 // teste em Node (scripts/testar-fase163.mjs): as funções puras também saem por module.exports
 if(typeof module === "object" && module && module.exports){
   module.exports = { OBF_DIAS, OBF_VAZIO_SEM_RDO, obfSomarDias, obfDiaSemana, obfDiaGeo, obfDevolvido, obfDiaConta, obfMontarDias, obfResumo, obfFrases,
-    obfTituloDia, obfLinhaPrevisao, obfCasaHTML, obfFaixaHTML, obfLegendaHTML, obfCorpoHTML };
+    obfTituloDia, obfLinhaPrevisao, obfCasaHTML, obfFaixaHTML, obfLegendaHTML, obfCorpoHTML, obfProducaoDia };
 }

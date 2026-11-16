@@ -172,8 +172,9 @@ const TIPO_SERVICO = {
 
 /* ---------- Selects fixos ---------- */
 function rdoMontarSelectsFixos(){
+  // fase 179 (D1): 3 opções na tela; o valor gravado fica em data-gravado e o salvar usa rdoClimaValor
   const optTempo = '<option value="">—</option>' +
-    Object.entries(CONDICAO_TEMPO).map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join("");
+    CLIMA_3_OPCOES.map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join("");
   $("rdo-tempo-manha").innerHTML = optTempo;
   $("rdo-tempo-tarde").innerHTML = optTempo;
   $("rdo-status").innerHTML = opcoesStatus("rdo");
@@ -441,8 +442,9 @@ async function novoRDO(){
   if($("rdo-local")) $("rdo-local").value = "";
   carregarLocaisRDO(null);
   carregarParamsObraRDO(null); // limpa a jornada/concretagem da ficha anterior e esconde o chip de jornada
-  $("rdo-tempo-manha").value = "";
-  $("rdo-tempo-tarde").value = "";
+  rdoClimaPreencher("rdo-tempo-manha", null, null);   // fase 179
+  rdoClimaPreencher("rdo-tempo-tarde", null, null);
+  _rdoDia = null; rdoDiaRender();
   $("rdo-efetivo-proprio").value = 0;
   $("rdo-efetivo-terceiro").value = 0;
   $("rdo-atividades").value = "";
@@ -493,8 +495,8 @@ async function abrirRDO(id){
   if($("rdo-local")) $("rdo-local").value = data.local || "";
   carregarLocaisRDO(data.obra_id);
   carregarParamsObraRDO(data.obra_id);
-  $("rdo-tempo-manha").value      = data.tempo_manha || "";
-  $("rdo-tempo-tarde").value      = data.tempo_tarde || "";
+  rdoClimaPreencher("rdo-tempo-manha", data.tempo_manha, data.clima_auto?.manha);   // fase 179
+  rdoClimaPreencher("rdo-tempo-tarde", data.tempo_tarde, data.clima_auto?.tarde);
   $("rdo-efetivo-proprio").value  = data.efetivo_proprio ?? 0;
   $("rdo-efetivo-terceiro").value = data.efetivo_terceiro ?? 0;
   $("rdo-atividades").value       = data.atividades || "";
@@ -726,7 +728,61 @@ function rdoRenderCampo(r){
   if(tabF) tabF.textContent = nF ? `Fotos (${nF})` : "Fotos";
   renderRdoParadas();
 }
+/* ---------- Fase 179: clima com 3 opções (D1) e estado do dia (vw_rdo_dia) ----------
+   O select mostra Bom, Chuva e Impraticável; o valor gravado fica em data-gravado e volta igual ao salvar quando a opção não
+   mudou (nublado continua nublado, chuva forte continua chuva forte). O estado do dia é lido da view, nunca calculado aqui. */
+let _rdoDia = null;   // linha de vw_rdo_dia do diário aberto (null: novo, sem a view ou leitura recusada)
+function rdoClimaPreencher(id, valor, auto){
+  const sel = $(id);
+  if(!sel) return;
+  sel.value = climaOpcao(valor);
+  sel.dataset.gravado = valor || "";
+  const det = $(id + "-det");
+  if(det) det.textContent = climaDetalhe(valor, auto);
+}
+function rdoClimaValor(id){
+  const sel = $(id);
+  return sel ? climaGravar(sel.value, sel.dataset.gravado || "") : null;
+}
+async function rdoDiaCarregar(id){
+  if(!id){ _rdoDia = null; rdoDiaRender(); return; }
+  const { data, error } = await sb.from("vw_rdo_dia").select("*").eq("rdo_id", id).maybeSingle();
+  if(rdoEditId !== id) return;
+  _rdoDia = error ? null : (data || null);
+  rdoDiaRender();
+  if(typeof rdoResumoAtualizar === "function") rdoResumoAtualizar();
+}
+/* motivo do dia não produtivo: o rótulo da parada de mais horas e se foi em razão do cliente */
+function rdoDiaMotivoTexto(d){
+  if(!d || !d.motivo) return "";
+  return (RDO_MOTIVO_PARADA[d.motivo] || d.motivo) + (d.motivo_cliente === true ? " · em razão do cliente" : "");
+}
+function rdoDiaRender(){
+  const chip = $("rdo-ficha-dia-chip"), faixa = $("rdo-ficha-improdutivo");
+  const d = rdoEditId ? _rdoDia : null;
+  if(chip){
+    chip.style.display = d ? "" : "none";
+    if(d){
+      const mot = rdoDiaMotivoTexto(d);
+      chip.title = rdoDiaRegraTexto(d) + (mot ? ". Motivo (parada de mais horas): " + mot : "");
+      chip.querySelector("strong").innerHTML = `${/* html */ tagStatus("rdo_dia", d.estado)}${mot ? " " + esc(mot) : ""}`;
+    }
+  }
+  if(faixa){
+    const sem = !!(d && d.estado === "improdutivo" && !d.motivo);
+    faixa.style.display = sem ? "" : "none";
+    const b = $("btn-rdo-improdutivo-parada");
+    if(b) b.style.display = sem && rdoParPodeEditar() ? "" : "none";
+  }
+}
+if(typeof document !== "undefined" && document.addEventListener) document.addEventListener("click", (e) => {
+  if(!e.target || !e.target.closest || !e.target.closest("#btn-rdo-improdutivo-parada")) return;
+  ativarTabRDO("observacoes");
+  if(rdoParPodeEditar() && !_rdoParForm) rdoParAbrirForm();
+});
+
 async function rdoCarregarCampo(id){
+  rdoDiaCarregar(id);   // fase 179: estado do dia, sem segurar o resto
   const [fotos, paradas, pend, orig] = await Promise.all([
     sb.from("rdo_fotos").select("id,tipo,storage_path,legenda,tirada_em,autor_id,enviada,desconsiderada_motivo,execucao_id,ocorrencia_id").eq("rdo_id", id).order("tirada_em"),
     sb.from("ocorrencias").select(RDO_PARADA_COLS).eq("rdo_id", id).order("periodo_inicio", { nullsFirst: true }),
@@ -911,6 +967,7 @@ async function rdoParRecarregar(){
   if(error){ aviso("app-aviso", "A alteração foi gravada, mas a lista de paradas não pôde ser relida: " + error.message + ". Reabra o diário.", "erro"); return; }
   _rdoCampo.paradas = data || [];
   if(usuarioAtual && usuarioAtual.id && usuarioAtual.nome) _rdoCampo.nomes[usuarioAtual.id] = usuarioAtual.nome;
+  rdoDiaCarregar(id);   // fase 179: a parada muda o estado e o motivo do dia
   renderRdoParadas();
   if(typeof rdoResumoAtualizar === "function") rdoResumoAtualizar();
 }
@@ -995,7 +1052,7 @@ async function renderRdoFotos(){
 let _rdoPreset = null;
 async function rdoAbrirPresetCampo(a){
   if(!a || !irParaSecao("rdo")) return;
-  if(a.registro_id && /^rdo_(devolvido|enviado_sem_conferencia)$/.test(a.filtro || "")){ await abrirRDO(a.registro_id); return; }
+  if(a.registro_id && /^rdo_(devolvido|enviado_sem_conferencia|improdutivo_sem_motivo)$/.test(a.filtro || "")){ await abrirRDO(a.registro_id); return; }   // fase 179: dia improdutivo sem motivo
   if(a.registro_id){
     const { data } = await sb.from("campo_pendencias").select("rdo_id").eq("id", a.registro_id).maybeSingle();
     if(data?.rdo_id){ await abrirRDO(data.rdo_id); return; }
@@ -2158,8 +2215,8 @@ async function rdoSalvarAgora(novoStatus){
     status:           novoStatus || $("rdo-status").value || "rascunho",
     responsavel_id:   $("rdo-responsavel").value || null,
     local:            $("rdo-local")?.value.trim() || null,
-    tempo_manha:      $("rdo-tempo-manha").value || null,
-    tempo_tarde:      $("rdo-tempo-tarde").value || null,
+    tempo_manha:      rdoClimaValor("rdo-tempo-manha"),   // fase 179: opção da tela → valor do enum
+    tempo_tarde:      rdoClimaValor("rdo-tempo-tarde"),
     feriado:          !!$("rdo-feriado")?.checked,
     efetivo_proprio:  Number($("rdo-efetivo-proprio").value || 0),
     efetivo_terceiro: Number($("rdo-efetivo-terceiro").value || 0),

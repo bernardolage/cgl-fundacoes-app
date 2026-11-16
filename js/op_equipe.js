@@ -60,7 +60,7 @@ OP.telas.equipe = async function(){
       <h2>Chegada da equipe</h2>
       <label class="op-campo">Hora da chegada<input type="time" id="op-chegada-hora" step="60"></label>
       <p class="op-meta">Clima da manhã</p>
-      <div class="op-chips">${Object.entries(ROTULO_TEMPO).map(([v, rot]) => `<button type="button" class="op-chip-btn" data-chegada-tempo="${esc(v)}" aria-pressed="false">${esc(rot)}</button>`).join("")}</div>
+      <div class="op-chips">${CLIMA_3_OPCOES.map(([v, rot]) => `<button type="button" class="op-chip-btn" data-chegada-tempo="${esc(v)}" aria-pressed="false">${esc(rot)}</button>`).join("")}</div>
       <label class="op-check"><input type="checkbox" id="op-chegada-dds"> DDS feito</label>
       <div class="op-acoes"><button type="button" class="op-btn op-btn-primario" id="op-btn-chegada-ok">Confirmar chegada</button><button type="button" class="op-btn" id="op-btn-chegada-cancelar">Cancelar</button></div>
     </div>
@@ -101,7 +101,7 @@ async function confirmarChegada(){
   if(!semEntrada.length){ avisar("Todos já têm entrada. Adicione as pessoas antes de marcar a chegada.", "aviso"); return; }
   for(const e of semEntrada) await equipeGravar(e, { hora_chegada_real: hora });
   const cab = {};
-  if(_chegadaTempo) cab.tempo_manha = _chegadaTempo;
+  if(_chegadaTempo) cab.tempo_manha = climaGravar(_chegadaTempo, OP.snap.rdo.tempo_manha);   // fase 179: opção → valor (a mesma opção mantém o gravado)
   if($("op-chegada-dds").checked) cab.dds_feito = true;
   if(Object.keys(cab).length) await gravarCabecalho(cab);
   $("op-folha-chegada").hidden = true;
@@ -223,7 +223,7 @@ document.addEventListener("click", async (ev) => {
     return;
   }
   switch(el.id){
-    case "op-btn-chegamos": _chegadaTempo = OP.snap.rdo.tempo_manha || null; $("op-chegada-hora").value = horaAgora(1); $("op-chegada-dds").checked = !!OP.snap.rdo.dds_feito; $("op-folha-chegada").hidden = false; break;
+    case "op-btn-chegamos": _chegadaTempo = CLIMA_3[OP.snap.rdo.tempo_manha] || null; document.querySelectorAll("[data-chegada-tempo]").forEach(b => { b.classList.toggle("ativo", b.dataset.chegadaTempo === _chegadaTempo); b.setAttribute("aria-pressed", String(b.dataset.chegadaTempo === _chegadaTempo)); }); $("op-chegada-hora").value = horaAgora(1); $("op-chegada-dds").checked = !!OP.snap.rdo.dds_feito; $("op-folha-chegada").hidden = false; break;
     case "op-btn-chegada-cancelar": $("op-folha-chegada").hidden = true; break;
     case "op-btn-chegada-ok": await confirmarChegada(); break;
     case "op-btn-saida-equipe": await saidaDaEquipe(); break;

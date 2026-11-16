@@ -115,6 +115,17 @@ function prefGravar(k, v){ try { if(v == null) localStorage.removeItem("cgl_op_"
 
 const ROTULO_TIPO = { helice_continua: "Hélice contínua", helice_secante: "Hélice secante", estaca_raiz: "Estaca raiz", trado_mecanizado: "Trado mecanizado" };
 const ROTULO_TEMPO = { bom: "Bom", nublado: "Nublado", chuva_fraca: "Chuva fraca", chuva_forte: "Chuva forte", impraticavel: "Impraticável" };
+/* Fase 179 (D1): clima em 3 opções na tela, banco com os 5 valores. Cópia de CLIMA_3 / CLIMA_3_OPCOES / climaGravar de
+   js/core.js (este app não carrega o core.js): mudar lá é mudar aqui. */
+const CLIMA_3 = { bom: "bom", nublado: "bom", chuva_fraca: "chuva", chuva_forte: "chuva", impraticavel: "impraticavel" };
+const CLIMA_3_OPCOES = [["bom", "Bom", "bom"], ["chuva", "Chuva", "chuva_fraca"], ["impraticavel", "Impraticável", "impraticavel"]];
+function climaGravar(opcao, atual){
+  if(!opcao) return null;
+  if(CLIMA_3[atual] === opcao) return atual;
+  const o = CLIMA_3_OPCOES.find(x => x[0] === opcao);
+  return o ? o[2] : null;
+}
+const RDO_DIA_ROTULO = { produtivo: "✅ Produtivo", parcial: "◐ Parcial", improdutivo: "⛔ Improdutivo" };
 const ROTULO_STATUS_DIA = { falta: "Falta", folga: "Folga", folga_meio_periodo: "Folga meio período", dsr: "DSR", atestado: "Atestado",
   em_treinamento: "Treinamento", em_viagem: "Em viagem", viagem_retorno_casa: "Viagem de volta para casa", manutencao: "Manutenção",
   noturno: "Noturno", revisar_informacao: "Revisar informação" };
