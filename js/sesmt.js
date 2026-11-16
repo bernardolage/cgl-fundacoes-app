@@ -110,6 +110,7 @@ async function carregarSesmt(forcar){
   if(!$("sst-painel")) return;
   if(!podeVerSesmt()){ $("sst-conteudo").innerHTML = `<p class="vazio">Seu perfil não tem acesso ao SESMT.</p>`; return; }
   if(_sstCarregado && !forcar){ renderSesmt(); return; }
+  if(typeof _trnCarregado !== "undefined") _trnCarregado = false;   // fase 185a: "Atualizar" relê também os treinamentos
   $("sst-conteudo").innerHTML = `<p class="vazio">Carregando…</p>`;
   const [reqs, ghes, gfs, mat, progs, funcs, deps, obras, clis, eqps] = await Promise.all([
     sb.from("sst_requisitos").select("*").order("ordem").order("codigo"),
@@ -183,6 +184,8 @@ function renderSesmt(){
   else if(_sstView === "programas") renderSstProgramas();
   else if(_sstView === "matriz") renderSstMatriz();
   else if(_sstView === "ghe") renderSstGhe();
+  else if(_sstView === "treinamentos" && typeof renderSstTreinamentos === "function") renderSstTreinamentos();   // fase 185a
+  else if(_sstView === "custo" && typeof renderSstCustoSst === "function") renderSstCustoSst();                  // fase 185a (D10)
   else renderSstCatalogo();
 }
 
@@ -543,7 +546,15 @@ async function sstImportarMatriz(file){
 /* ---------- ficha do requisito ---------- */
 function sstMostrarPainel(){
   $("sst-painel").style.display = ""; $("sst-ficha-req").style.display = "none"; $("sst-ficha-prog").style.display = "none";
+  if($("trn-ficha")) $("trn-ficha").style.display = "none";   // fase 185a: ficha da turma
   sstReqEditId = null; sstProgEditId = null;
+}
+/* fase 185a (D5): empresa padrão do treinamento = fornecedor ativo (lista do js/sesmt_treinamentos.js) */
+async function sstPreencherFornecedorReq(valor){
+  const sel = $("sst-req-fornecedor"); if(!sel || typeof trnCarregarFornecedores !== "function") return;
+  await trnCarregarFornecedores();
+  sel.innerHTML = `<option value="">— nenhuma</option>` + _trnFornecedores.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
+  sel.value = valor || "";
 }
 function sstPreencherSelectsFicha(){
   const nat = $("sst-req-natureza"); if(nat && !nat.options.length) nat.innerHTML = Object.entries(SST_NATUREZA).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
@@ -558,6 +569,7 @@ function novoSstRequisito(){
   $("sst-req-natureza").value = "treinamento"; $("sst-req-grupo").value = "nr"; $("sst-req-emissor").value = "interno"; $("sst-req-legado").value = "";
   $("sst-req-sensivel").checked = false; $("sst-req-prova").checked = false; $("sst-req-ativo").checked = true; $("sst-req-nota").value = "70"; $("sst-req-ordem").value = "100";
   $("sst-req-codigo").disabled = false;
+  if($("sst-req-modalidade")) $("sst-req-modalidade").value = ""; sstPreencherFornecedorReq("");   // fase 185a
   sstAbrirFichaReqVisual({ codigo: "(novo)", natureza: "treinamento", grupo: "nr", ativo: true });
 }
 function abrirSstRequisito(id){
@@ -572,6 +584,7 @@ function abrirSstRequisito(id){
   $("sst-req-rg").value = r.rg_formulario || ""; $("sst-req-legado").value = r.doc_tipo_legado || ""; $("sst-req-ordem").value = r.ordem ?? 100;
   $("sst-req-conteudo").value = r.conteudo || ""; $("sst-req-normas").value = r.normas || ""; $("sst-req-sinonimos").value = (r.sinonimos || []).join("\n");
   $("sst-req-obs").value = r.observacoes || ""; $("sst-req-ativo").checked = r.ativo !== false;
+  if($("sst-req-modalidade")) $("sst-req-modalidade").value = r.modalidade_padrao || ""; sstPreencherFornecedorReq(r.fornecedor_padrao_id);   // fase 185a
   sstAbrirFichaReqVisual(r);
 }
 function sstAbrirFichaReqVisual(r){
@@ -635,7 +648,8 @@ async function salvarSstRequisito(){
     guarda_anos: num("sst-req-guarda"), rg_formulario: $("sst-req-rg").value.trim() || null, doc_tipo_legado: $("sst-req-legado").value || null,
     ordem: num("sst-req-ordem") ?? 100, conteudo: $("sst-req-conteudo").value.trim() || null, normas: $("sst-req-normas").value.trim() || null,
     sinonimos: $("sst-req-sinonimos").value.split(/\n|;/).map(s => s.trim()).filter(Boolean), observacoes: $("sst-req-obs").value.trim() || null,
-    ativo: $("sst-req-ativo").checked
+    ativo: $("sst-req-ativo").checked,
+    modalidade_padrao: $("sst-req-modalidade")?.value || null, fornecedor_padrao_id: $("sst-req-fornecedor")?.value || null   // fase 185a (D5)
   };
   const q = sstReqEditId ? sb.from("sst_requisitos").update(reg).eq("id", sstReqEditId) : sb.from("sst_requisitos").insert(reg);
   const { error } = await q;
@@ -845,8 +859,10 @@ async function sstFichaFuncCarregar(){
       </div>
       <div class="form-acoes"><button type="button" class="btn" id="btn-func-sst-salvar">Salvar documento</button><button type="button" class="btn-sec" id="btn-func-sst-cancelar">Cancelar</button></div>
     </div>
+    <div id="func-trn-bloco" style="margin-top:var(--esp-4);"></div>
     <h4 style="margin:var(--esp-4) 0 var(--esp-2);">Documentos de segurança</h4>
     ${/* html */ docsHtml}`;
+  if(typeof trnFichaFuncCarregar === "function") trnFichaFuncCarregar(fid);   // fase 185a: Lançar treinamento e status por treinamento
   $("func-sst-obra").addEventListener("change", sstFichaFuncCarregar);
   $("btn-func-sst-novo")?.addEventListener("click", () => { $("func-sst-form").style.display = ""; });
   $("btn-func-sst-cancelar")?.addEventListener("click", () => { $("func-sst-form").style.display = "none"; });

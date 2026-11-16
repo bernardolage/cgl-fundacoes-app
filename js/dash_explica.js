@@ -199,6 +199,8 @@ const DASH_EXPLICA = {
     fazer: "Cadastrar o PGR da obra.", origem: "Dos programas legais das obras." },
   "funcao_sem_ghe": { regra: "Funções de funcionários ativos sem grupo homogêneo de exposição (GHE). Só aparece depois que algum GHE foi ligado a uma função. O número conta funções.",
     fazer: "Vincular a função a um GHE.", origem: "Do cadastro de funcionários e dos GHE." },
+  "treinamento_vencendo": { regra: "Treinamentos obrigatórios pela matriz (função, GHE) de funcionários ativos com a validade já passada ou que termina em até 30 dias. O número conta pessoa × treinamento.",
+    fazer: "Agendar a turma de reciclagem (SESMT › Treinamentos) e, depois de feita, concluir a turma com o certificado.", origem: "Da matriz do SESMT, das turmas e dos documentos de segurança." },
   "sem_classificacao": { regra: "Ocorrências de SST registradas há mais de 2 dias e ainda sem categoria.",
     fazer: "Classificar a ocorrência.", origem: "Das ocorrências de SST." },
   "acao_vencida": { regra: "Ações de ocorrência de SST a fazer ou em andamento com o prazo já passado. Em Meus aparecem as ações em que você é o responsável.",
