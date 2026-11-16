@@ -3054,8 +3054,13 @@ async function montarPreviewDias(data, origem, obraSel){
         const maq = (e.equipamento_texto || e.maquina || d.equipamento_texto || d.maquina || "").trim();
         const ref = detectarRefuro(normalizarNumeroEstaca(e.numero || ""));
         const trechos = (Array.isArray(e.trechos) ? e.trechos : [])
-          .map(t => ({ de: numOrNull(t.de), ate: numOrNull(t.ate), ferramenta: t.ferramenta || null, solo: t.solo || null }))
+          .map(t => ({ de: numOrNull(t.de), ate: numOrNull(t.ate), ferramenta: t.ferramenta || null, solo: t.solo || null, a_conferir: t.a_conferir === true }))
           .filter(t => t.de != null || t.ate != null || t.solo || t.ferramenta);
+        // lote S65-c (#321): na estaca raiz, linha de armação/descida sem ferramenta sai dos trechos e da metragem (a function
+        // v4.2 já faz; aqui cobre resposta de versão anterior). Sem ferramenta e sem esse texto: fica, marcada "a conferir".
+        const filtroRaiz = (d.tipo_servico || ex.tipo_servico) === "estaca_raiz" ? iaFiltrarTrechosRaiz(trechos) : { trechos, fora: [] };
+        trechos.splice(0, trechos.length, ...filtroRaiz.trechos);
+        const obsFora = filtroRaiz.fora.map(t => `${t.solo || "Linha sem ferramenta"} ${t.de ?? "?"}–${t.ate ?? "?"} m (fora da metragem)`).join("; ");
         const inj = iaInjecaoDaEstaca(injecao, ref.nomeBase, e.agrupamento);
         const maxAte = iaMaxAte(trechos);
         // hotfix 15: profundidade_executada = metros perfurados NO DIA (o que a medição soma);
@@ -3069,7 +3074,7 @@ async function montarPreviewDias(data, origem, obraSel){
           estaca_numero: ref.nomeBase,
           agrupamento: (e.agrupamento || "").trim() || null,
           modalidade_execucao: (e.refuro || ref.isRefuro) ? "refuro" : "furo_normal",
-          profundidade_executada: numOrNull(e.profundidade_executada) ?? iaMetragemDia(trechos) ?? maxAte,
+          profundidade_executada: (filtroRaiz.fora.length ? iaMetragemDia(trechos) : numOrNull(e.profundidade_executada)) ?? iaMetragemDia(trechos) ?? maxAte,
           profundidade_acumulada_m: acumulada,
           profundidade_projeto: e.profundidade_projeto,
           perfuracao_de_m: numOrNull(e.perfuracao_de_m) ?? iaMinDe(trechos),
@@ -3093,7 +3098,7 @@ async function montarPreviewDias(data, origem, obraSel){
           // fase 101: no import por IA a mobilização única também é só sugestão (select "sem máquina" da prévia)
           maquina_codigo: maq || (maqSugerida && !_csvMaqEstrito ? maqSugerida.codigo : ""),
           equipamento_id: (rdoCasarMaquinaImport(maq) || (!maq && !_csvMaqEstrito ? maqSugerida : null) || {}).id || null,
-          observacoes: e.observacoes || null,
+          observacoes: [e.observacoes || "", obsFora].filter(Boolean).join(" · ") || null,
           // lote S57 (#220): nº do boletim físico (coluna RDO do RG 11.3)
           numero_boletim_fisico: e.numero_boletim_fisico != null && String(e.numero_boletim_fisico).trim() ? String(e.numero_boletim_fisico).trim() : null,
           origem_dados: origem
@@ -3285,6 +3290,16 @@ function rdoResumoMaquinasDia(dia){
   return grupos.map(g => g.eq
       ? `🚜 ${esc((_rdoEquipsCache.find(q => q.id === g.eq) || {}).codigo || "?")} ${g.linhas.length}`
       : `<span style="color:var(--aviso-txt);">⚠️ ${g.linhas.length} sem máquina</span>`).join(" · ");
+}
+/* lote S65-c (#321): mesma regra da extrair-rdo-arquivo v4.2 (filtrarTrechosRaiz) */
+function iaFiltrarTrechosRaiz(ts){
+  const ficam = [], fora = [];
+  (ts || []).forEach(t => {
+    if(t.ferramenta){ ficam.push(t); return; }
+    if(/arma[cç][aã]o|descida/i.test(t.solo || "")){ fora.push(t); return; }
+    ficam.push({ ...t, a_conferir: true });
+  });
+  return { trechos: ficam, fora };
 }
 const iaMinDe  = (ts) => (ts || []).reduce((m, t) => (t.de  != null && (m == null || t.de  < m)) ? t.de  : m, null);
 const iaMaxAte = (ts) => (ts || []).reduce((m, t) => (t.ate != null && (m == null || t.ate > m)) ? t.ate : m, null);
@@ -3541,7 +3556,7 @@ function renderConferenciaIA(resp){
               <td><input type="number" step="0.01" data-t="ate" value="${esc(v(t.ate))}" style="width:62px" /></td>
               <td><select data-t="ferramenta">${ferrOpts(t.ferramenta)}</select></td>
               <td><input data-t="solo" list="rdo-solo-classif-lista" value="${esc(v(t.solo))}" style="min-width:180px" /></td>
-              <td class="col-acao"><button type="button" class="btn-rem ia-rem-trecho" title="remover trecho">&times;</button></td>
+              <td class="col-acao">${t.a_conferir ? '<span class="tag ambar" title="Linha sem ferramenta marcada: confira no papel se é perfuração; se não for, remova o trecho">a conferir</span> ' : ""}<button type="button" class="btn-rem ia-rem-trecho" title="remover trecho">&times;</button></td>
             </tr>`).join("")}</tbody></table>
           </details>
         </td></tr>`; }).join("")}</tbody>

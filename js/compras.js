@@ -832,6 +832,38 @@ async function cmpCarregarKpis(){
   _cmpKpis = (!k.error && k.data) ? k.data : null;
   _cmpEtapasResumo = e;
   cmpRenderKpis();
+  cmpCarregarFretesAprov();   // fase 181: não bloqueia os demais cartões
+}
+/* fase 181: fretes terceirizados da Logística que esperam aprovação (diretoria ou comprador) antes de gerar o título a pagar.
+   Só o quadrinho de conferência: o frete continua sendo a viagem (não vira pedido de compra). O valor aparece só para quem
+   lê contas a pagar (o embed viagem_fretes vem nulo para os demais); a contagem vem de viagens.frete_status, que não tem valor. */
+let _cmpFretesAprov = [];
+async function cmpCarregarFretesAprov(){
+  const { data, error } = await sb.from("viagens")
+    .select("id,numero,data,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,transportador:fornecedores!transportador_id(razao_social,nome_fantasia),frete:viagem_fretes(valor_frete,frete_vencimento)")
+    .eq("finalidade", "frete_terceirizado").eq("frete_status", "aguardando_aprovacao").order("data", { ascending: false }).limit(200);
+  const n = $("cmp-kpi-frete");
+  if(error){ console.warn("fretes aguardando aprovação:", error.message); _cmpFretesAprov = []; if(n) n.textContent = "—"; return; }
+  _cmpFretesAprov = data || [];
+  if(n) n.textContent = _cmpFretesAprov.length;
+  cmpRenderFretesAprov();
+}
+function cmpRenderFretesAprov(){
+  const box = $("cmp-fretes-lista"); if(!box) return;
+  const lado = (tipo, obraId, desc) => (["obra", "cliente"].includes(tipo) && obraId ? cmpObra(obraId) : "") || desc || tipo || "—";
+  const verValor = typeof podeVerContasPagar === "function" && podeVerContasPagar();
+  $("cmp-fretes-contador").textContent = _cmpFretesAprov.length;
+  if(!_cmpFretesAprov.length){ box.innerHTML = `<p class="vazio">Nenhum frete aguardando aprovação.</p>`; return; }
+  box.innerHTML = `<div class="tabela-rola"><table>
+    <thead><tr><th>Viagem</th><th>Data</th><th>Transportador</th><th>Trecho</th>${verValor ? '<th class="num">Valor</th><th>Vencimento</th>' : ""}<th class="col-acao"></th></tr></thead>
+    <tbody>${_cmpFretesAprov.map(v => {
+      const f = Array.isArray(v.frete) ? v.frete[0] : v.frete;
+      const t = v.transportador ? (v.transportador.razao_social || v.transportador.nome_fantasia) : "—";
+      return `<tr><td>${/* html */ uiCodigo(v.numero || "viagem")}</td><td>${dataBR(v.data)}</td><td>${esc(t)}</td>
+        <td>${esc(lado(v.origem_tipo, v.origem_obra_id, v.origem_descricao))} → ${esc(lado(v.destino_tipo, v.destino_obra_id, v.destino_descricao))}</td>
+        ${/* html */ verValor ? `<td class="num">${f ? brl(f.valor_frete) : "—"}</td><td>${f?.frete_vencimento ? dataBR(f.frete_vencimento) : "—"}</td>` : ""}
+        <td class="col-acao"><button type="button" class="btn-sec btn-sm cmp-frete-abrir" data-vg="${esc(v.id)}" title="Abre a viagem na aba Custo para aprovar ou reprovar">Abrir viagem</button></td></tr>`;
+    }).join("")}</tbody></table></div>`;
 }
 async function cmpLerEtapas(){
   const linhas = [];
@@ -3931,6 +3963,19 @@ async function cmpPdfPedido(semValores){
 function ligarCompras(){
   if(!$("sec-compras")) return;
   document.querySelector('nav button[data-secao="compras"]')?.addEventListener("click", () => carregarCompras(false));
+  $("cmp-kpi-frete-box")?.addEventListener("click", () => {   // fase 181: mostra ou esconde a lista dos fretes
+    const card = $("cmp-fretes-aprov"); if(!card) return;
+    const abrir = card.style.display === "none";
+    card.style.display = abrir ? "" : "none";
+    $("cmp-kpi-frete-box").classList.toggle("ativo", abrir);
+    if(abrir) cmpRenderFretesAprov();
+  });
+  $("cmp-fretes-lista")?.addEventListener("click", e => {
+    const b = e.target.closest(".cmp-frete-abrir"); if(!b) return;
+    if(irParaSecao("frota") && typeof abrirViagem === "function"){
+      abrirViagem(b.dataset.vg, null).then(() => document.querySelector('#vg-notebook button[data-tab="custo"]')?.click());
+    }
+  });
   document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.addEventListener("click", () => { _cmpView = b.dataset.view; renderCompras(); }));
   document.querySelectorAll("#cmp-painel .ind[data-kpi]").forEach(el => el.addEventListener("click", () => {
     const k = el.dataset.kpi;
