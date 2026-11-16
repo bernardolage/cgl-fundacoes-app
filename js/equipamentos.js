@@ -783,6 +783,7 @@ function abrirFichaEquipamento(e){
     const rpcTipo = !novo && !vendido && eqpPodeDefinirTipoServico();
     $("eqp-tipo-servico").disabled = novo ? !pode : !rpcTipo;
     $("eqp-tipo-servico").dataset.rpc = rpcTipo ? "1" : "";
+    eqpTiposServicoPreencher(e, novo ? pode : rpcTipo, rpcTipo);   // hotfix 320: máquina de mais de um serviço
   }
   if(typeof cpbPreencherMaquina === "function") cpbPreencherMaquina(e);   // fase 107a: chip CPU e bloco Computador de bordo
   eqpPrincipalPreencher(e, pode);   // lote S63-g (#284): equipamento principal (munck no caminhão)
@@ -1127,6 +1128,8 @@ async function salvarEquipamento(){
   if(fis) Object.assign(reg, fis);
   // fase 107a; lote S66-f: em máquina já salva o tipo grava na hora pela RPC (equipamento_definir_tipo_servico), não aqui
   if(!_eqpEditId && $("eqp-tipo-servico-campo") && $("eqp-tipo-servico-campo").style.display !== "none") reg.tipo_servico_padrao = $("eqp-tipo-servico").value || null;
+  // hotfix 320: serviços da máquina nova (um só = nulo); na máquina salva grava pela RPC
+  if(!_eqpEditId && $("eqp-tipos-servico-campo") && $("eqp-tipos-servico-campo").style.display !== "none") reg.tipos_servico = eqpTiposServicoMarcados(reg.tipo_servico_padrao);
   // lote S63-g (#284): vínculo com o principal; quem já é principal de outro fica travado (o banco também recusa)
   const selPrin = $("eqp-principal");
   if($("eqp-principal-campo") && $("eqp-principal-campo").style.display !== "none" && selPrin && selPrin.dataset.carregado === "1" && selPrin.dataset.travado !== "1") reg.equipamento_principal_id = selPrin.value || null;
@@ -1245,6 +1248,7 @@ function ligarEquipamentos(){
   $("btn-eqp-voltar")?.addEventListener("click", mostrarPainelEquipamentos);
   $("btn-eqp-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-salvar", salvarEquipamento));
   $("eqp-tipo-servico")?.addEventListener("change", eqpTipoServicoMudou);   // lote S66-f (#320)
+  $("eqp-tipos-servico")?.addEventListener("change", eqpTiposServicoMudou);   // hotfix 320
   $("btn-eqp-remessa")?.addEventListener("click", eqpNovaRemessa);
   $("btn-eqp-acessorios")?.addEventListener("click", eqpVerAcessorios);
   $("btn-eqp-vender")?.addEventListener("click", () => { if(_eqpAtual && typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); });   // fase 96
@@ -1285,15 +1289,53 @@ const EQP_CARGOS_TIPO_SERVICO = ["diretor", "admin", "engenheiro", "assistente_e
 function eqpPodeDefinirTipoServico(){
   return !!usuarioAtual && EQP_CARGOS_TIPO_SERVICO.includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
 }
-async function eqpGravarTipoServico(equipId, tipo){
-  const { error } = await sb.rpc("equipamento_definir_tipo_servico", { p_equip: equipId, p_tipo: tipo });
+async function eqpGravarTipoServico(equipId, tipo, tipos){
+  // hotfix 320: p_tipos = serviços da máquina (omitido mantém os de hoje; um só grava nulo)
+  const args = { p_equip: equipId, p_tipo: tipo };
+  if(Array.isArray(tipos)) args.p_tipos = tipos;
+  const { error } = await sb.rpc("equipamento_definir_tipo_servico", args);
   if(error){ aviso("app-aviso", "Tipo de serviço não gravado: " + String(error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return false; }
-  [_eqpAtual, ...(_eqpRegistros || []).filter(r => r.id === equipId)].forEach(r => { if(r && r.id === equipId) r.tipo_servico_padrao = tipo; });
+  [_eqpAtual, ...(_eqpRegistros || []).filter(r => r.id === equipId)].forEach(r => {
+    if(!r || r.id !== equipId) return;
+    r.tipo_servico_padrao = tipo;
+    if(Array.isArray(tipos)){ const t = [...new Set([...tipos, tipo])]; r.tipos_servico = t.length > 1 ? t : null; }
+  });
   return true;
+}
+/* hotfix 320: "Serviços que esta máquina faz" (equipamentos.tipos_servico). O padrão fica sempre marcado. */
+function eqpTiposServicoPreencher(e, editavel, rpc){
+  const campo = $("eqp-tipos-servico-campo"), box = $("eqp-tipos-servico");
+  if(!campo || !box) return;
+  const tem = Object.prototype.hasOwnProperty.call(e, "tipos_servico") || (_eqpRegistros[0] && Object.prototype.hasOwnProperty.call(_eqpRegistros[0], "tipos_servico"));
+  campo.style.display = tem ? "" : "none";
+  if(!tem) return;
+  const padrao = $("eqp-tipo-servico")?.value || e.tipo_servico_padrao || "";
+  const marcados = new Set([...(e.tipos_servico || []), padrao].filter(Boolean));
+  box.dataset.rpc = rpc ? "1" : "";
+  box.innerHTML = Object.entries(TIPO_SERVICO).map(([v, o]) => `<label class="check-inline"><input type="checkbox" value="${esc(v)}"${marcados.has(v) ? " checked" : ""}${!editavel || v === padrao ? " disabled" : ""} /> ${esc(o.label)}</label>`).join(" ");
+}
+function eqpTiposServicoMarcados(padrao){
+  const t = [...document.querySelectorAll("#eqp-tipos-servico input[type=checkbox]:checked")].map(i => i.value);
+  const todos = [...new Set([...t, padrao].filter(Boolean))];
+  return todos.length > 1 ? todos : null;
+}
+async function eqpTiposServicoMudou(ev){
+  const chk = ev.target;
+  if(!chk.matches("input[type=checkbox]") || $("eqp-tipos-servico").dataset.rpc !== "1" || !_eqpEditId) return;   // máquina nova: vai junto no Salvar
+  const padrao = $("eqp-tipo-servico")?.value || "";
+  if(!padrao){ aviso("app-aviso", "Escolha antes o tipo de serviço padrão.", "erro"); chk.checked = !chk.checked; return; }
+  const tipos = [...new Set([...document.querySelectorAll("#eqp-tipos-servico input[type=checkbox]:checked")].map(i => i.value).concat(padrao))];
+  const rot = tipos.map(t => TIPO_SERVICO[t]?.label || t).join(", ");
+  if(!confirm(`Gravar os serviços desta máquina: ${rot}? Fica no histórico. A chegada do Geodigitus passa a escolher o diário entre eles.`)){ chk.checked = !chk.checked; return; }
+  const ok = await eqpGravarTipoServico(_eqpEditId, padrao, tipos);
+  if(ok) aviso("app-aviso", `Serviços gravados: ${rot}.`, "ok"); else chk.checked = !chk.checked;
 }
 async function eqpTipoServicoMudou(ev){
   const sel = ev.target;
-  if(sel.dataset.rpc !== "1" || !_eqpEditId) return;   // máquina nova: vai junto no Salvar
+  if(sel.dataset.rpc !== "1" || !_eqpEditId){   // máquina nova: vai junto no Salvar
+    if(!_eqpEditId) eqpTiposServicoPreencher({ tipos_servico: eqpTiposServicoMarcados(null) || [] }, true, false);   // hotfix 320
+    return;
+  }
   const ant = _eqpAtual?.tipo_servico_padrao || "", novo = sel.value || "";
   if(!novo){ aviso("app-aviso", "Escolha um tipo de serviço: a máquina sem tipo não abre diário nem recebe estacas do Geodigitus.", "erro"); sel.value = ant; return; }
   const rot = (typeof TIPO_SERVICO === "object" && TIPO_SERVICO[novo]?.label) || novo;
@@ -1302,6 +1344,7 @@ async function eqpTipoServicoMudou(ev){
   const ok = await eqpGravarTipoServico(_eqpEditId, novo);
   sel.disabled = false;
   if(ok) aviso("app-aviso", `Tipo de serviço gravado: ${rot}.`, "ok"); else sel.value = ant;
+  if(_eqpAtual) eqpTiposServicoPreencher(_eqpAtual, true, true);   // hotfix 320: o padrão novo fica marcado
 }
 /* "Definir agora" no aviso das Chegadas do Geodigitus (máquina sem tipo de serviço padrão) */
 async function eqpDefinirTipoServicoPrompt(equipId, codigo){

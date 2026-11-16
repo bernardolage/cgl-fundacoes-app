@@ -82,6 +82,15 @@ async function geoCarregar(force){
     const porId = new Map(conf.data.map(c => [c.id, c]));
     _geoDados.forEach(g => { const c = porId.get(g.id); if(c) Object.assign(g, c); });
   }
+  // hotfix 320: tipo do diário escolhido e de onde veio, só das máquinas de mais de um serviço ("maquina" = um serviço só,
+  // sem motivo a mostrar); leitura à parte: sem a migration, a tela segue sem o motivo
+  if(_geoDados.length){
+    const tip = await lerTudo(() => sb.from("geodigitus_estacas").select("id,tipo_servico,tipo_servico_origem").neq("tipo_servico_origem", "maquina"));
+    if(!tip.error){
+      const porId = new Map(tip.data.map(t => [t.id, t]));
+      _geoDados.forEach(g => { const t = porId.get(g.id); if(t) Object.assign(g, t); });
+    }
+  }
   geoPreencherFiltroMaquina();
   return _geoDados;
 }
@@ -240,6 +249,7 @@ function geoLinhasEstacasHTML(gr, comContexto){
       <td>${esc(geoHora(g.perfuracao_inicio))}–${esc(geoHora(g.perfuracao_fim))}</td>
       <td>${esc(geoHora(g.concretagem_inicio))}–${esc(geoHora(g.concretagem_fim))}</td>
       <td><span class="tag ${esc(GEO_SITUACAO_COR[g.situacao] || "cinza")}">${esc(GEO_SITUACAO_LBL[g.situacao] || g.situacao)}</span>${g.rdo && g.rdo.turno_campo === "noturno" ? " " + /* html */ geoTagTurno("noturno", g.rdo.data && g.rdo.data !== geoDia(g) ? "de " + dataBR(g.rdo.data) : "") : ""}${g.turno_manual ? ` <span class="meta" title="Período decidido por uma pessoa (Mudar período do grupo)">período manual</span>` : ""}
+        ${geoDiarioTxt(g) ? `<div class="meta" title="Máquina de mais de um serviço: o diário sai da estaca casada, do tipo de estaca da obra ou da proposta">${esc(geoDiarioTxt(g))}</div>` : ""}
         ${(g.avisos || []).length ? `<div class="meta" title="${esc((g.avisos || []).join("\n"))}">⚠️ ${esc(g.avisos.length)} aviso(s)</div>` : ""}${g.ignorado_motivo ? `<div class="meta">${esc(g.ignorado_motivo)}</div>` : ""}</td>
       <td class="col-acao">${/* html */ geoAcoesHTML(g)}</td>
     </tr>`).join("")}</tbody></table></div>`;
@@ -273,6 +283,7 @@ async function geoRenderPainel(){
     <tbody>${_geoGrupos.map(gr => {
       const contratos = geoDistintos(gr.estacas.map(g => g.contrato_txt));
       const avisos = geoDistintos(gr.estacas.flatMap(g => g.avisos || []));
+      const diarios = geoDistintos(gr.estacas.map(g => geoDiarioTxt(g, gr.estacas.length === 1)));   // hotfix 320
       const teste = gr.estacas.filter(g => g.profundidade_m != null && Number(g.profundidade_m) < 1).length;
       const aConfirmar = gr.estacas.filter(g => g.a_confirmar).length;
       const sit = geoSituacaoGrupo(gr.estacas);
@@ -292,6 +303,7 @@ async function geoRenderPainel(){
           ${teste ? `<div><span class="tag ambar" title="Profundidade abaixo de 1 m. Nada é ignorado sozinho.">conferir: parece teste (${esc(teste)})</span></div>` : ""}
           ${aConfirmar ? `<div><span class="tag ambar" title="Arquivo sem o fim da perfuração, número de refuro, menos de 1 m ou o mesmo número no dia">a confirmar (${esc(aConfirmar)})</span></div>` : ""}
           <div class="meta" title="Com estaca = vinculada a uma estaca cadastrada; no diário = virou execução do RDO">Vínculos: ${esc(res.comEstaca)} de ${esc(res.estacas)} com estaca · ${esc(res.noDiario)} no diário</div>
+          ${diarios.length ? `<div class="meta" title="Máquina de mais de um serviço: o diário sai da estaca casada, do tipo de estaca da obra ou da proposta">${esc(diarios.join(" · "))}</div>` : ""}
           ${avisos.length ? `<div class="meta">⚠️ ${esc(avisos.join(" · "))}${/* html */ geoLinkTipoServico(gr, avisos)}</div>` : ""}</td>
         <td class="col-acao">${/* html */ geoAcoesGrupoHTML(gr)}</td>
       </tr>${_geoAbertos.has(gr.chave) ? `<tr data-geo-grupo-aberto="${esc(gr.chave)}"><td colspan="9">${/* html */ geoLinhasEstacasHTML(gr)}</td></tr>` : ""}`;
@@ -319,11 +331,45 @@ async function geoAbrirPreset(filtro, geoId){
   }
 }
 
+/* hotfix 320: tipo do diário da chegada de máquina de mais de um serviço e de onde veio ("" para máquina de um serviço só) */
+const GEO_TIPO_ORIGEM_LBL = { obra: "pelo tipo de estaca da obra", proposta: "pela proposta", padrao: "pelo padrão da máquina", manual: "definido na chegada" };
+function geoDiarioTxt(g, comEstaca = true){
+  const o = g && g.tipo_servico_origem;
+  if(!o || o === "maquina") return "";
+  if(o === "definir") return "Diário: a definir (a obra tem dois serviços desta máquina)";
+  const rot = (typeof TIPO_SERVICO === "object" && TIPO_SERVICO[g.tipo_servico]?.label) || g.tipo_servico || "?";
+  const por = o === "estaca" ? (comEstaca && (g.estaca?.numero || g.numero_txt) ? `pela estaca ${g.estaca?.numero || g.numero_txt}` : "pela estaca") : (GEO_TIPO_ORIGEM_LBL[o] || o);
+  return `Diário: ${rot} (${por})`;
+}
+/* hotfix 320: "Definir agora" do caso 4: escolhe entre os serviços da máquina e grava nas chegadas do grupo (RPC definer) */
+async function geoDefinirTipoGrupo(gr){
+  const eq = String(gr.chave || "").split("|")[1] || "";
+  const ids = gr.estacas.filter(g => g.tipo_servico_origem === "definir" && !g.rdo_execucao_id).map(g => g.id);
+  if(!eq || !ids.length) return;
+  const { data: m, error: e1 } = await sb.from("equipamentos").select("tipo_servico_padrao,tipos_servico").eq("id", eq).maybeSingle();
+  if(e1 || !m){ aviso("app-aviso", "Não foi possível ler os serviços da máquina.", "erro"); return; }
+  const ops = [...new Set([...(m.tipos_servico || []), m.tipo_servico_padrao].filter(Boolean))];
+  const rot = (t) => (typeof TIPO_SERVICO === "object" && TIPO_SERVICO[t]?.label) || t;
+  const r = prompt(`Diário de ${ids.length} chegada(s) da ${gr.maquina || "máquina"}:\n\n${ops.map((t, i) => `${i + 1}. ${rot(t)}`).join("\n")}\n\nDigite o número:`);
+  if(r === null) return;
+  const tipo = ops[parseInt(r, 10) - 1];
+  if(!tipo){ aviso("app-aviso", "Número fora da lista.", "erro"); return; }
+  const { data, error } = await sb.rpc("geodigitus_definir_tipo_servico", { p_geos: ids, p_tipo: tipo });
+  if(error){ aviso("app-aviso", "Tipo não gravado: " + String(error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
+  aviso("app-aviso", `${Number(data?.definidas || 0)} chegada(s) com diário de ${rot(tipo)}.`, "ok");
+  _geoDados = null; return geoRenderPainel();
+}
 /* ---------- ações do grupo (fase 134a) ---------- */
 /* lote S66-f (#320): "Definir agora" no aviso de máquina sem tipo de serviço padrão, para quem pode (RPC em equipamentos.js) */
 function geoLinkTipoServico(gr, avisos){
   const eq = String(gr.chave || "").split("|")[1] || "";
-  if(!eq || eq.startsWith("cpu:") || !avisos.some(a => /tipo de servi/i.test(a)) || typeof eqpPodeDefinirTipoServico !== "function" || !eqpPodeDefinirTipoServico()) return "";
+  if(!eq || eq.startsWith("cpu:")) return "";
+  // hotfix 320: obra com dois serviços da máquina (caso 4): o tipo vai na chegada, não na ficha da máquina
+  if(gr.estacas.some(g => g.tipo_servico_origem === "definir" && !g.rdo_execucao_id)){
+    if(!geoPodeOperar()) return "";
+    return ` <button type="button" class="btn-sec btn-sm" data-geo-acao="g-tipo" data-geo-grupo="${esc(gr.chave)}" title="A obra tem dois serviços desta máquina e a chegada não casou com estaca: escolha o diário destas chegadas (fica no histórico)">Definir agora</button>`;
+  }
+  if(!avisos.some(a => /sem tipo de servi/i.test(a)) || typeof eqpPodeDefinirTipoServico !== "function" || !eqpPodeDefinirTipoServico()) return "";
   return ` <button type="button" class="btn-sec btn-sm" data-eqp-tipo-serv="${esc(eq)}" data-eqp-codigo="${esc(gr.maquina || "")}" title="Grava o tipo de serviço do diário desta máquina (fica no histórico)">Definir agora</button>`;
 }
 async function geoAcaoGrupo(acao, chave){
@@ -332,6 +378,7 @@ async function geoAcaoGrupo(acao, chave){
     if(_geoAbertos.has(chave)) _geoAbertos.delete(chave); else _geoAbertos.add(chave);
     return geoRenderPainel();
   }
+  if(acao === "g-tipo") return geoDefinirTipoGrupo(gr);   // hotfix 320
   if(acao === "g-rdo"){
     const rdo = gr.estacas.find(g => g.rdo_id)?.rdo_id;
     if(rdo && typeof abrirRDO === "function") abrirRDO(rdo);
