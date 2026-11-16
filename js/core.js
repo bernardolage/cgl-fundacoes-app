@@ -229,6 +229,14 @@ const INDICES_REAJUSTE = ["IPCA","IGP-M","INCC","IGP-DI","INPC","CDI"];
 const $ = (id) => document.getElementById(id);
 const brl = (v) => Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const num = (v) => Number(v||0).toLocaleString("pt-BR",{maximumFractionDigits:3});
+/* duração em horas decimais → "h:mm" (lote S65-a, #297). Arredonda para minutos só aqui, depois de somar: 8,75 → "8:45",
+   -1,25 → "−1:15", 7,999 → "8:00". Zero devolve "—" (padrão) ou "0:00" com {zero:true}. Só dígitos, ":" e "−": seguro em HTML. */
+function horasHM(h, opt){
+  const t = Math.round(Number(h || 0) * 60);
+  if(!t) return opt && opt.zero ? "0:00" : "—";
+  const a = Math.abs(t);
+  return `${t < 0 ? "−" : ""}${Math.floor(a / 60)}:${String(a % 60).padStart(2, "0")}`;
+}
 
 /* escapa texto antes de injetar em innerHTML (evita quebrar o HTML) */
 function esc(s){

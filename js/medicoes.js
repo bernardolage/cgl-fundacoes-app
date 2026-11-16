@@ -2410,9 +2410,18 @@ function medRecebSituacaoOk(m, f){
 function medRecebMarca(m){
   const s = medRecebSituacao(m);
   if(s === "recebida") return ` <span class="meta" title="Recebimento completo confirmado pelo financeiro">· recebida${m.recebida_em ? " " + dataBR(m.recebida_em) : ""}</span>`;
-  if(s === "vencida")  return ` <span class="meta txt-perigo" title="NF vencida sem recebimento completo">· vencida</span>`;
-  if(s === "parcial")  return ` <span class="meta" title="Recebida em parte">· parcial</span>`;
+  if(s === "vencida")  return ` <span class="meta txt-perigo" title="NF vencida sem recebimento completo">· vencida</span>${medRecebParcialEtq(m)}`;
+  if(s === "parcial" || s === "sem_nf") return medRecebParcialEtq(m);   // sem_nf: recebimento lançado antes da NF
   return "";
+}
+/* lote S65-b (#300): recebimento parcial à vista, também na medição vencida (antes a "vencida" escondia a parcial).
+   Vale com recebido > 0, status diferente de recebida e saldo > 0. Os R$ ficam no data-val-sens (Ocultar valores, S59). */
+function medRecebParcialEtq(m, recebidoVal){
+  const rec = recebidoVal != null ? Number(recebidoVal) || 0 : Number(m.recebido_valor) || 0;
+  if(rec <= 0 || m.status === "recebida") return "";
+  const liq = medLiquido(m);
+  if(liq - rec <= 0.009) return "";
+  return ` <span class="tag ambar" title="Parte da NF já foi recebida; o saldo continua em aberto">Recebida parcialmente · <span data-val-sens>${brl(rec)} de ${brl(liq)}</span></span>`;
 }
 
 /* ---------- visão: filtros e botão "+ Nova" conforme a visão ---------- */
@@ -2830,7 +2839,7 @@ function renderMedRecebFicha(med){
       ${chip("Líquido a receber", `<span style="color:var(--sucesso-txt);">${brl(liq)}</span>`, "valor final − retenção − ISS retido − retenções federais (fases 47 e 105c)")}
       ${chip("Recebido", brl(recebido))}
       ${chip("Saldo", `<span class="${saldo > 0.009 ? "txt-perigo" : ""}">${brl(saldo)}</span>`)}
-      ${chip("Situação", `<span class="tag ${esc(SIT[sit][1])}">${esc(SIT[sit][0])}</span>`)}
+      ${chip("Situação", `${sit === "parcial" && medRecebParcialEtq(med, recebido) ? "" : `<span class="tag ${esc(SIT[sit][1])}">${esc(SIT[sit][0])}</span>`}${["vencida", "parcial", "sem_nf"].includes(sit) ? medRecebParcialEtq(med, recebido) : ""}`)}
     </div>
     <h4 class="titulo-bloco">Recebimentos confirmados <small class="meta">(a medição fica "recebida" sozinha quando a soma atinge o líquido)</small></h4>
     ${_medRecebLista.length ? `<div class="tabela-rola"><table>

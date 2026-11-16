@@ -31,8 +31,8 @@ const RHV_RASTREIO_CARGOS = ["diretor", "admin", "rh", "logistica", "gestor_frot
 
 function rhhCargo(){ return usuarioAtual?.cargo || ""; }
 function rhhEhRhOuAdmin(){ return ["diretor", "admin", "rh"].includes(rhhCargo()); }
-function rhhH(n){ const v = Number(n || 0); return v ? v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : "—"; }
-function rhhHz(n){ return Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+function rhhH(n){ return horasHM(n); }   // lote S65-a (#297): duração em h:min; o export (rhhExportar) continua decimal
+function rhhHz(n){ return horasHM(n, { zero: true }); }
 function rhhHHMM(t){ return t ? String(t).slice(0, 5) : ""; }
 function rhhMesAtual(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function rhhObraTxt(id, cod, nome){ return cod ? `${cod}${nome ? " — " + nome : ""}` : (id ? (mapaObras?.[id] || "obra") : "sem obra"); }
@@ -309,7 +309,7 @@ function renderRhhLiberar(){
   let html = `<div class="tabela-rola"><table><thead><tr>
     <th style="width:28px;"><input type="checkbox" id="rhh-sel-todos" title="Selecionar tudo que você pode liberar/estornar" /></th>
     <th>Funcionário</th><th>Dia</th><th>Obra</th><th>Horário / trajeto</th>
-    <th class="num" title="Horas normais da linha do diário (quando gravadas)">Normais</th><th class="num">HE 100 %</th><th class="num" title="22h–5h">Noturnas</th><th class="num">Viagem</th><th>Situação</th>
+    <th class="num" title="Horas normais da linha do diário (quando gravadas)">Normais (h:min)</th><th class="num">HE 100 % (h:min)</th><th class="num" title="22h–5h">Noturnas (h:min)</th><th class="num">Viagem (h:min)</th><th>Situação</th>
   </tr></thead><tbody>`;
   for(const [fid, ls] of grupos){
     const g = ls[0];
@@ -473,7 +473,7 @@ function renderRhhFechamento(){
   const comp = new Date(mesIni + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   let html = _rhhPendMes ? `<div class="aviso atencao" style="display:block;">⚠️ ${esc(_rhhPendMes)} linha(s) da equipe do RDO de ${esc(comp)} ainda sem liberação não entram aqui nem em "Lançar na folha". Peça a liberação em "A liberar".</div>` : "";
   if(!linhas.length){ cont.innerHTML = html + `<p class="vazio">Nenhuma hora liberada em ${esc(comp)}.</p>`; return; }
-  html += `<div class="tabela-rola"><table><thead><tr><th>Funcionário</th><th>Matr.</th><th>Função</th><th>Obra</th><th title="Cadastro Nacional de Obras do cliente">CNO</th><th class="num" title="Dias no RDO da obra; Falta, Folga, DSR e Atestado não contam (fase 103)">Dias</th><th class="num">Normais</th><th class="num">HE 100 %</th><th class="num">Noturnas</th><th class="num">Viagem</th>${cols.map(c => `<th class="num" title="${esc(c.t)}">${esc(c.l)}</th>`).join("")}</tr></thead><tbody>`;
+  html += `<div class="tabela-rola"><table><thead><tr><th>Funcionário</th><th>Matr.</th><th>Função</th><th>Obra</th><th title="Cadastro Nacional de Obras do cliente">CNO</th><th class="num" title="Dias no RDO da obra; Falta, Folga, DSR e Atestado não contam (fase 103)">Dias</th><th class="num">Normais (h:min)</th><th class="num">HE 100 % (h:min)</th><th class="num">Noturnas (h:min)</th><th class="num">Viagem (h:min)</th>${cols.map(c => `<th class="num" title="${esc(c.t)}">${esc(c.h ? c.l.replace("(h)", "(h:min)") : c.l)}</th>`).join("")}</tr></thead><tbody>`;
   let ultimo = null;
   linhas.forEach(r => {
     const primeiro = r.funcionario_id !== ultimo; ultimo = r.funcionario_id;
@@ -699,7 +699,7 @@ function rhvHorasPrev(){
   const ms = minutosHHMM(s), mc = minutosHHMM(c);
   if(ms == null || mc == null){ el.textContent = ""; return; }
   let min = mc - ms; if(min < 0) min += 1440;
-  el.textContent = `${rhhHz(Math.round(min / 60 * 100) / 100)} h de viagem${mc < ms ? " (chegada no dia seguinte)" : ""}`;
+  el.textContent = `${rhhHz(min / 60)} h de viagem${mc < ms ? " (chegada no dia seguinte)" : ""}`;
 }
 
 async function rhvPreparar(){
@@ -763,7 +763,7 @@ function renderRhv(){
   if(!_rhvLista.length){ cont.innerHTML = `<p class="vazio">Nenhuma viagem lançada neste mês.</p>`; return; }
   const podeRastreio = RHV_RASTREIO_CARGOS.includes(rhhCargo()) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
   const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
-  cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Trajeto</th><th>Saída–chegada</th><th class="num">Horas</th><th>Veículo</th><th>Situação</th><th class="col-acao"></th></tr></thead><tbody>` +
+  cont.innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Trajeto</th><th>Saída–chegada</th><th class="num">Horas (h:min)</th><th>Veículo</th><th>Situação</th><th class="col-acao"></th></tr></thead><tbody>` +
     _rhvLista.map(v => {
       const destino = v.destino || (v.obra ? `${v.obra.codigo} — ${v.obra.nome}` : "?");
       const sit = v.liberado_em

@@ -461,7 +461,8 @@ function renderDrawerMob(){
           <div class="campo"><label for="mob-diesel">Diesel por</label>${porQuem("mob-diesel", m.diesel_por)}</div>
           <div class="campo"><label for="mob-hosp">Hospedagem por</label>${porQuem("mob-hosp", m.hospedagem_por)}</div>
           <div class="campo largo"><label for="mob-obs">Observações</label><textarea id="mob-obs" rows="2">${esc(m.observacoes || "")}</textarea></div>
-        </div>`))}
+        </div>`)
+      + uiSecao("documento", "CNO da obra", `<div id="mob-cno">${uiVazio("Carregando o CNO…")}</div>`))}
 
     ${pane("pendencias",
       uiSecao("check", "Do contrato (uma vez por obra)", mobPendLinhasHTML(_mobPendObra), `${pendAbCtr} aberta(s)`)
@@ -507,10 +508,37 @@ function renderDrawerMob(){
   mobRenderSeparacao();
   mobRenderViagens();
   mobRenderCusto();
+  mobRenderCno();
   if(typeof manRenderChecklistMob === "function") manRenderChecklistMob(m, "mob-checklist");
   $("mob-ver-origem")?.addEventListener("click", e => { e.preventDefault(); abrirMobilizacao(m.origem_mobilizacao_id); });
   ["mob-cobrar-ida", "mob-cobrar-volta"].forEach(id => $(id)?.addEventListener("change", () => mobSalvarCobranca(m)));
   mobSugerirDesmobPrev(m);
+}
+
+/* ---------- Lote S65-f (#319): CNO da obra na ficha da mobilização ----------
+   Número de obras.cno e o PDF mais recente da categoria CNO (vw_obra_cno_documento, a mesma do RH). O bucket
+   obras-documentos é lido por todo usuário ativo; o link abre por URL assinada, como a aba Documentos da obra. */
+async function mobRenderCno(){
+  const box = $("mob-cno"); const m = _mobAberta; if(!box || !m) return;
+  if(!m.obra_id){ box.innerHTML = uiVazio("Mobilização sem obra."); return; }
+  const [ob, doc] = await Promise.all([
+    sb.from("obras").select("cno").eq("id", m.obra_id).maybeSingle(),
+    sb.from("vw_obra_cno_documento").select("storage_path,nome").eq("obra_id", m.obra_id).maybeSingle()
+  ]);
+  if(!$("mob-cno") || _mobAberta !== m) return;
+  const cno = ob.data?.cno || "", d = doc.error ? null : doc.data;
+  const numero = uiRotuloValor("Número do CNO", cno ? uiCodigo(cno) : '<span class="meta">não preenchido na obra</span>');
+  const arquivo = uiRotuloValor("Documento", d
+    ? `<a href="#" id="mob-cno-abrir" class="tag azul" title="Abrir o PDF do CNO (${esc(d.nome || "documento")})">📄 ${esc(d.nome || "CNO (PDF)")}</a>`
+    : '<span class="meta">Sem documento CNO. Anexe na aba Documentos da obra.</span>');
+  box.innerHTML = `<div class="grade">${numero}${arquivo}</div>`;
+  $("mob-cno-abrir")?.addEventListener("click", async e => {
+    e.preventDefault();
+    const { data, error } = await sb.storage.from("obras-documentos").createSignedUrl(d.storage_path, 120);
+    if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o CNO" + (error ? ": " + error.message : "."), "erro"); return; }
+    const a = document.createElement("a"); a.href = data.signedUrl; a.target = "_blank"; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+  });
 }
 
 /* ---------- Fase 157c: receita × custo por perna ----------

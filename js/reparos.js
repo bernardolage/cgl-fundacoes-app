@@ -157,10 +157,8 @@ let _rephAberto = null;        // chave do colaborador com o detalhe aberto
 let _rephCarga = 0;            // token da carga (trocar o período cancela a anterior)
 let _rephPeriodo = "";         // "de|ate" da última carga
 const REPH_ORIGEM = { reparo: ["RP", "Reparo"], fabricacao: ["OF", "Fabricação"], manutencao: ["OS", "Manutenção"] };
-function rephHmin(h){
-  const t = Math.round(Number(h || 0) * 60), neg = t < 0, a = Math.abs(t);
-  return `${neg ? "-" : ""}${Math.floor(a / 60)}:${esc(String(a % 60).padStart(2, "0"))}`;
-}
+function rephHmin(h){ return horasHM(h, { zero: true }); }   // lote S65-a: formatador único do core.js
+const REPH_ORDEM_HE = ["reparo", "fabricacao", "manutencao"];   // lote S65-a (#301): HE por origem no resumo
 function rephMesISO(d){ return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function rephPeriodoPadrao(){
   const de = $("rep-h-de"), ate = $("rep-h-ate"); if(!de || !ate) return;
@@ -232,8 +230,8 @@ function rephResumo(linhas){
   const por = {};
   linhas.forEach(l => {
     const k = rephChave(l);
-    const o = por[k] = por[k] || { chave: k, nome: l.funcionario_nome || "Sem colaborador", dep: l.departamento_nome || "Sem departamento", ordens: new Set(), horas: 0, he: 0, n: 0, linhas: [] };
-    o.ordens.add(l.origem + ":" + l.ordem_id); o.horas += Number(l.horas || 0); if(l.hora_extra) o.he += Number(l.horas || 0); o.n++; o.linhas.push(l);
+    const o = por[k] = por[k] || { chave: k, nome: l.funcionario_nome || "Sem colaborador", dep: l.departamento_nome || "Sem departamento", ordens: new Set(), horas: 0, he: 0, heOri: { reparo: 0, fabricacao: 0, manutencao: 0 }, n: 0, linhas: [] };
+    o.ordens.add(l.origem + ":" + l.ordem_id); o.horas += Number(l.horas || 0); if(l.hora_extra){ o.he += Number(l.horas || 0); if(l.origem in o.heOri) o.heOri[l.origem] += Number(l.horas || 0); } o.n++; o.linhas.push(l);
   });
   return Object.values(por).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
@@ -250,10 +248,10 @@ function rephRender(){
   if(!_rephLinhas.length && _rephPeriodo !== `${de}|${ate}`){ rephCarregar(); return; }   // 1ª abertura ou período trocado sem carga
   const linhas = rephFiltradas(), res = rephResumo(linhas);
   const tot = res.reduce((s, r) => s + r.horas, 0), totHe = res.reduce((s, r) => s + r.he, 0), totOrd = new Set(linhas.map(l => l.origem + ":" + l.ordem_id)).size;
-  $("rep-contador").textContent = `${res.length} colaborador(es) · ${num(tot)} h`;
+  $("rep-contador").textContent = `${res.length} colaborador(es) · ${horasHM(tot, { zero: true })} h`;
   if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma hora lançada em reparos, fabricação ou manutenção nesse período com esses filtros.</p>`; return; }
   const hr = l => l.inicio && l.fim ? `${esc(String(l.inicio).slice(0, 5))}–${esc(String(l.fim).slice(0, 5))}` : "—";   // linha do Odoo sem horário
-  const detalhe = r => `<tr class="reph-det"><td colspan="6"><div class="tabela-rola" style="margin:2px 0 6px;"><table>
+  const detalhe = r => `<tr class="reph-det"><td colspan="9"><div class="tabela-rola" style="margin:2px 0 6px;"><table>
       <thead><tr><th>Data</th><th>Ordem</th><th>Descrição</th><th>Abertura</th><th>Início–fim</th><th class="num">Horas</th><th class="num">h:min</th><th>Obs.</th></tr></thead>
       <tbody>${r.linhas.slice().sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.inicio || "").localeCompare(String(b.inicio || ""))).map(l => `<tr>
         <td>${dataBR(l.data)}</td><td><span class="tag cinza">${esc(REPH_ORIGEM[l.origem]?.[0] || l.origem)}</span> ${rephOrdemLink(l)}${l.hora_extra ? ' <span class="tag ambar" title="hora extra">HE</span>' : ""}</td>
@@ -261,11 +259,11 @@ function rephRender(){
         <td class="num">${num(l.horas)}</td><td class="num">${rephHmin(l.horas)}</td><td class="meta">${esc(l.observacao || "")}${l.codigo_externo ? (l.observacao ? " · " : "") + "Odoo" : ""}</td></tr>`).join("")}</tbody>
       <tfoot><tr><th colspan="5">${r.ordens.size} ordem(ns) · ${esc(r.n)} lançamento(s)</th><th class="num">${num(r.horas)}</th><th class="num">${rephHmin(r.horas)}</th><th></th></tr></tfoot></table></div></td></tr>`;
   cont.innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr><th>Colaborador</th><th>Departamento</th><th class="num">Ordens</th><th class="num">Horas</th><th class="num">Horas (h:min)</th><th class="num" title="hora extra, só nas ordens de fabricação">HE (h)</th></tr></thead>
+    <thead><tr><th>Colaborador</th><th>Departamento</th><th class="num">Ordens</th><th class="num">Horas</th><th class="num">Horas (h:min)</th>${REPH_ORDEM_HE.map(o => `<th class="num" title="hora extra lançada em ${esc(REPH_ORIGEM[o][1].toLowerCase())} (${esc(REPH_ORIGEM[o][0])})">HE ${esc(REPH_ORIGEM[o][0])}</th>`).join("")}<th class="num" title="hora extra das três origens: reparo, fabricação e manutenção">HE total (h:min)</th></tr></thead>
     <tbody>${res.map(r => `<tr class="linha-clicavel reph-linha" data-chave="${esc(r.chave)}" title="${_rephAberto === r.chave ? "fechar o detalhe" : "ver as ordens e os lançamentos"}">
         <td><strong>${esc(r.nome)}</strong></td><td class="meta">${esc(r.dep)}</td><td class="num">${r.ordens.size}</td>
-        <td class="num">${num(r.horas)}</td><td class="num">${rephHmin(r.horas)}</td><td class="num">${r.he ? num(r.he) : '<span class="meta">—</span>'}</td></tr>${_rephAberto === r.chave ? detalhe(r) : ""}`).join("")}</tbody>
-    <tfoot><tr><th>Total · ${res.length} colaborador(es)</th><th></th><th class="num">${esc(totOrd)}</th><th class="num">${num(tot)}</th><th class="num">${rephHmin(tot)}</th><th class="num">${totHe ? num(totHe) : "—"}</th></tr></tfoot></table></div>
+        <td class="num">${num(r.horas)}</td><td class="num">${rephHmin(r.horas)}</td>${REPH_ORDEM_HE.map(o => `<td class="num">${horasHM(r.heOri[o])}</td>`).join("")}<td class="num">${r.he ? `<strong>${horasHM(r.he)}</strong>` : '<span class="meta">—</span>'}</td></tr>${_rephAberto === r.chave ? detalhe(r) : ""}`).join("")}</tbody>
+    <tfoot><tr><th>Total · ${res.length} colaborador(es)</th><th></th><th class="num">${esc(totOrd)}</th><th class="num">${num(tot)}</th><th class="num">${rephHmin(tot)}</th>${REPH_ORDEM_HE.map(o => `<th class="num">${horasHM(res.reduce((s, r) => s + r.heOri[o], 0))}</th>`).join("")}<th class="num">${horasHM(totHe)}</th></tr></tfoot></table></div>
     <p class="meta" style="margin-top:6px;">Período ${dataBR(de)} a ${dataBR(ate)} · ${linhas.length} lançamento(s). O almoço já está descontado (lançamento que atravessa 12:00–13:00 perde 1 h); "—" em início–fim é lançamento do Odoo só com a duração. Sem valores: o custo da hora fica na ficha de cada ordem.</p>`;
 }
 function rephExportar(){
