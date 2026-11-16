@@ -35,7 +35,7 @@ function eqpPodeEditar(){
   return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","rh","gestor_acessorios","gestor_frota"].includes(usuarioAtual.cargo);
 }
 function eqpLbl(v){ const o = (STATUS.equipamento || {})[v]; return o ? o.label : (v || "—"); }
-function eqpObra(id){ const o = _eqpObraMap[id]; return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
+function eqpObra(id){ const o = _eqpObraMap[id]; return o ? obraRotulo(o) : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
 function eqpOnde(e){
   const d = e.localizacao_descricao ? ` · ${e.localizacao_descricao}` : "";
   switch(e.localizacao_tipo){
@@ -485,7 +485,7 @@ function eqpPreencherSelectsFixos(){
   const ac = $("eqp-acopl");
   if(ac && typeof ACE_ACOPL_LBL === "object") ac.innerHTML = `<option value="">—</option>` + Object.entries(ACE_ACOPL_LBL).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
   const lo = $("eqp-local-obra");
-  if(lo) preencherSelect(lo, _eqpObras.map(o => ({ id: o.id, txt: `${o.codigo} — ${o.nome}` })), "id", "txt", "— obra —");
+  if(lo) preencherSelect(lo, _eqpObras.map(o => ({ id: o.id, txt: obraRotulo(o) })), "id", "txt", "— obra —");
   const fs = $("eqp-f-status");
   if(fs) fs.innerHTML = `<option value="">Status</option>` + Object.entries(STATUS.equipamento || {}).filter(([k]) => !EQP_FORA_OPERACAO.includes(k)).map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join("");
   const fl = $("eqp-f-local");

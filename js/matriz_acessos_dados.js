@@ -6,8 +6,8 @@
    Depois de ":" vêm os números das frases (lista `frases`) que explicam a célula.
    ==================================================================== */
 const MATRIZ_ACESSOS = {
-  retrato: "2026-11-12",
-  carimbo: "cdc739404aeed8c075d5f5dda0d8e31d",
+  retrato: "2026-11-16",
+  carimbo: "415b8e7bb00c54c8e2bb8251ebb0ad9d",
   acoes: ["ver","incluir","alterar","apagar"],
   grupos: ["Geral","Cadastros","Suprimentos","Comercial e financeiro","Campo","Pessoas e segurança","Sistema","Fora do menu"],
   modulos: [

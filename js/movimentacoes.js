@@ -79,7 +79,7 @@ async function carregarObrasMov(){
   ["mov-origem-obra","mov-destino-obra"].forEach(id => {
     const sel = $(id); if(!sel) return;
     const v = sel.value;
-    preencherSelect(sel, _movObras.map(o => ({ id: o.id, txt: `${o.codigo} — ${o.nome}${o.status === "em_andamento" ? "" : " (" + o.status + ")"}` })), "id", "txt", "— escolha a obra —");
+    preencherSelect(sel, _movObras.map(o => ({ id: o.id, txt: `${obraRotulo(o)}${o.status === "em_andamento" ? "" : " (" + o.status + ")"}` })), "id", "txt", "— escolha a obra —");
     sel.value = v;
   });
 }

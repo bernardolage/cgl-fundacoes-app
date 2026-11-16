@@ -1356,6 +1356,8 @@ async function criarObraDoOrcamento(){
   const sugNome = `${mapaClientes[orc.cliente_id] || "Obra"} — ${orc.numero}`;
   const nome = prompt("Nome da obra:", sugNome);
   if(!nome) return;
+  // fase 182a: a concorrência (empreendimento do cliente final) sugere o nome do projeto; opcional, vazio = sem nome
+  const nomeProjeto = prompt("Nome do projeto (como o cliente chama o empreendimento; deixe em branco se não houver):", String(orc.concorrencia || "").trim());
 
   const origem = `orçamento ${orc.numero} Rev${orc.numero_revisao || "00"}`;
   // lote S45 (L9, decisão do Bernardo em 19/10): o valor contratado é o total COM ISS (o ISS por dentro está somado no
@@ -1388,6 +1390,7 @@ async function criarObraDoOrcamento(){
   const { data: novaObraReg, error: eObra } = await sb.from("obras").insert({
     codigo: codigo.trim(),
     nome: nome.trim(),
+    nome_projeto: String(nomeProjeto || "").trim() || null,
     cliente_id: orc.cliente_id,
     contrato_id: contr.id,
     status: "planejada",

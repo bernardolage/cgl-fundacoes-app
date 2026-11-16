@@ -94,7 +94,7 @@ function ssoTagAcao(st){
   const m = SSO_ACAO_STATUS[st] || { label: st, cor: "cinza" };
   return `<span class="tag ${esc(m.cor)}">${esc(m.label)}</span>`;
 }
-function ssoObraRotulo(o){ return o ? `${o.codigo} — ${o.nome}` : "—"; }
+function ssoObraRotulo(o){ return o ? obraRotulo(o) : "—"; }
 function ssoEquipRotulo(e){ return e ? `${e.codigo}${e.nome ? " · " + e.nome : ""}` : "—"; }
 function ssoNomeProfile(id){ const p = _ssoBase.profiles.find(x => x.id === id); return p ? p.nome : "—"; }
 function ssoNomeFunc(id){ const f = _ssoBase.funcionarios.find(x => x.id === id); return f ? f.nome : "—"; }
@@ -237,7 +237,7 @@ function renderSsoLista(dados){
         <td><strong>${esc(o.numero || "—")}</strong></td>
         <td style="white-space:nowrap;">${ssoDtBR(o.data_hora)}</td>
         <td>${ssoTagCategoria(o.categoria)}</td>
-        <td>${o.obra ? linkObra(o.obra_id, `${o.obra.codigo} — ${o.obra.nome}`) : esc(SSO_LOCAIS[o.local_tipo] || o.local_tipo || "—")}${o.local_descricao ? `<div class="meta">${esc(o.local_descricao)}</div>` : ""}</td>
+        <td>${o.obra ? linkObra(o.obra_id, obraRotulo({ id: o.obra_id, ...o.obra })) : esc(SSO_LOCAIS[o.local_tipo] || o.local_tipo || "—")}${o.local_descricao ? `<div class="meta">${esc(o.local_descricao)}</div>` : ""}</td>
         <td>${esc(o.equipamento ? o.equipamento.codigo : "—")}</td>
         <td>${esc(String(o.descricao || "").slice(0, 120))}${String(o.descricao || "").length > 120 ? "…" : ""}</td>
         <td style="white-space:nowrap;">${acoes.length ? `${acoes.filter(a => a.status === "realizada").length}/${acoes.length}` : "—"}${venc ? ` <span class="tag vermelho" title="ações vencidas">${Number(venc)} vencida(s)</span>` : ""}</td>
@@ -394,7 +394,7 @@ function ssoPreencherFicha(o){
   $("sso-chip-numero").textContent = o.numero || "—";
   $("sso-chip-categoria").innerHTML = ssoTagCategoria(o.categoria);
   $("sso-chip-data").innerHTML = ssoDtBR(o.data_hora);
-  $("sso-chip-obra").innerHTML = o.obra ? linkObra(o.obra_id, `${o.obra.codigo} — ${o.obra.nome}`) : esc(SSO_LOCAIS[o.local_tipo] || "—");
+  $("sso-chip-obra").innerHTML = o.obra ? linkObra(o.obra_id, obraRotulo({ id: o.obra_id, ...o.obra })) : esc(SSO_LOCAIS[o.local_tipo] || "—");
   $("sso-chip-equip").textContent = o.equipamento ? ssoEquipRotulo(o.equipamento) : "—";
   $("sso-chip-registrado").textContent = o.registrado?.nome || "—";
   ssoAtualizarStatusbar(o.status);

@@ -13,6 +13,7 @@ let _obrContratoPend = []; // pendências do contrato da obra aberta (fase 26)
 let _obrPendMap   = {};   // contrato_id -> [pendências] (badge na lista, fase 26)
 let _obrFiltroIds = null; // { ids:Set, rotulo, aba, foco } — lista vinda do "Para regularizar" (fase 75)
 let _obrAberta    = null; // fase 163: a obra da ficha aberta, como veio do banco (a faixa de 14 dias da aba RDOs lê status, início, UF, município e jornada de sábado)
+let _obrEtq       = {};   // fase 182a: id -> linha da vw_obras_etiqueta (etiqueta, nome do projeto, cliente, obra para, grupo)
 
 /* Etapas do statusbar (ordem do enum obra_status) */
 const OBR_STAGES = ["planejada","em_andamento","paralisada","concluida"];
@@ -49,16 +50,27 @@ async function carregarObras(){
     mapaObras = {};
     _obrRegistros.forEach(o => mapaObras[o.id] = `${o.codigo} — ${o.nome}`);
   }
-  await carregarPendenciasObras();
+  await Promise.all([carregarPendenciasObras(), obrCarregarEtiquetas()]);
   renderObras();
 
   // alimenta selects que dependem de obras
   const selectMedObra = $("med-obra");
   if(selectMedObra){
     preencherSelect(selectMedObra,
-      _obrRegistros.map(o => ({ id:o.id, txt:`${o.codigo} — ${o.nome}` })),
+      _obrRegistros.map(o => ({ id:o.id, txt:obraRotulo(o) })),
       "id","txt","— selecione —");
   }
+}
+
+/* Fase 182a: etiqueta (D4), nome do projeto, "obra para" e grupo de cada obra. Banco sem a migration → segue com
+   "código — nome" (obraRotulo cai nele). mapaObras continua "código — nome": PDFs e contas antigas leem dele. */
+async function obrCarregarEtiquetas(){
+  _obrEtq = {};
+  mapaObraEtiqueta = {};
+  const { data, error } = await lerTudo(() => sb.from("vw_obras_etiqueta")
+    .select("id,codigo,nome_projeto,cliente_id,cliente,obra_para_id,obra_para,obra_para_outro,grupo_id,grupo,etiqueta"));
+  if(error) return;
+  data.forEach(e => { _obrEtq[e.id] = e; if(e.etiqueta) mapaObraEtiqueta[e.id] = e.etiqueta; });
 }
 
 /* Carrega as pendências de contrato (mesma fonte da Carteira) e indexa por
@@ -94,7 +106,9 @@ function obrFiltradas(){
     if(fStatus && o.status !== fStatus) return false;
     if(fCliente && o.cliente_id !== fCliente) return false;
     if(termo){
-      const alvo = `${o.codigo||""} ${o.nome||""} ${mapaClientes[o.cliente_id]||""} ${o.cidade||""}`.toLowerCase();
+      // fase 182a: acha também por nome do projeto, cliente (fantasia), "obra para" e grupo
+      const e = _obrEtq[o.id] || {};
+      const alvo = `${o.codigo||""} ${o.nome||""} ${mapaClientes[o.cliente_id]||""} ${o.cidade||""} ${e.nome_projeto||""} ${e.cliente||""} ${e.obra_para||""} ${e.grupo||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -137,8 +151,9 @@ function renderObras(opts){
   const dados = obrFiltradas();
   const cont = $("obr-contador");
   if(cont) cont.textContent = `${dados.length} de ${_obrRegistros.length}`;
-  if(_obrView === "kanban") renderObrasKanban(dados);
-  else                       renderObrasLista(dados);
+  if(_obrView === "kanban")     renderObrasKanban(dados);
+  else if(_obrView === "nomes") renderObrasNomes(dados);   // fase 182a
+  else                          renderObrasLista(dados);
   // mantém compatibilidade com código antigo que esperava #tab-obras populado
   const legacy = $("tab-obras");
   if(legacy && _obrView === "lista"){
@@ -191,10 +206,11 @@ function renderObrasLista(dados){
     return;
   }
   const comValor = podeVerValorObra();   // fase 90: a coluna de valor só para quem lê financeiro
+  // fase 182a: a coluna Obra mostra a etiqueta (D4); o nome cadastrado fica no title e, se diferente, embaixo
   const linhas = dados.map(o => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
     <td>${esc(o.codigo)} ${obrPendBadge(o)}</td>
-    <td>${esc(o.nome)}</td>
-    <td>${esc(mapaClientes[o.cliente_id] || "—")}</td>
+    <td title="${esc("Nome cadastrado: " + (o.nome || ""))}">${esc(obraRotulo(o))}</td>
+    <td>${esc(mapaClientes[o.cliente_id] || "—")}${obrObraParaMeta(o)}</td>
     <td>${esc((o.cidade||"") + (o.uf ? "/" + o.uf.toUpperCase() : ""))}</td>
     <td>${dataBR(o.data_inicio)}</td>
     <td>${obrTerminoHtml(o)}</td>
@@ -203,7 +219,7 @@ function renderObrasLista(dados){
   </tr>`).join("");
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Código</th><th>Nome</th><th>Cliente</th><th>Cidade/UF</th>
+      <th>Código</th><th>Obra</th><th>Cliente</th><th>Cidade/UF</th>
       <th>Início</th><th>Término</th><th>Status</th>${comValor ? '<th class="num">Valor contratado</th>' : ""}
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
@@ -218,9 +234,9 @@ function renderObrasKanban(dados){
     const stMeta = (STATUS.obra && STATUS.obra[st]) || { label: st, cor: "cinza" };
     const cards = itens.map(o => `
       <div class="serv-kan-card linha-clicavel" data-id="${esc(o.id)}">
-        <div class="serv-kan-card-nome">${esc(o.codigo)} · ${esc(o.nome)}</div>
+        <div class="serv-kan-card-nome" title="${esc("Nome cadastrado: " + (o.nome || ""))}">${esc(obraRotulo(o))}</div>
         <div class="serv-kan-card-meta">
-          <span class="meta">${esc(mapaClientes[o.cliente_id]||"—")}</span>
+          <span class="meta">${esc(mapaClientes[o.cliente_id]||"—")}${obrObraParaMeta(o)}</span>
           ${obrPendBadge(o)}
         </div>
         <div class="serv-kan-card-rod">
@@ -241,6 +257,143 @@ function renderObrasKanban(dados){
   });
 }
 
+/* ---------- Fase 182a: grupo, "Obra para", nome do projeto e etiqueta ---------- */
+// "· para X" embaixo do cliente quando o empreendimento é de outra empresa
+function obrObraParaMeta(o){
+  const e = _obrEtq[o.id];
+  return e && e.obra_para_outro && e.obra_para ? ` <span class="meta" title="Dono do empreendimento (Obra para)">· para ${esc(e.obra_para)}</span>` : "";
+}
+function obrEtiquetaFicha(obra){
+  return (_obrEtq[obra.id] && _obrEtq[obra.id].etiqueta)
+    || obraEtiquetaMontar(obra, typeof cliRotulo === "function" ? cliRotulo(obra.cliente_id) : (mapaClientes[obra.cliente_id] || ""));
+}
+// grupo econômico: só leitura, herdado do cliente escolhido no formulário
+function obrAtualizarGrupo(){
+  const el = $("obr-grupo");
+  if(!el) return;
+  const cli = typeof cliPorId === "function" ? cliPorId($("obr-cliente")?.value) : null;
+  el.value = cli && cli.grupo_id && typeof cliGrupoNome === "function" ? cliGrupoNome(cli.grupo_id) : "";
+  el.placeholder = cli ? "cliente sem grupo" : "";
+}
+// "Obra para" nasce igual ao cliente (D2); nome do projeto é digitado (D3), com a concorrência do orçamento como sugestão
+function obrPreencherProjeto(d){
+  const np = $("obr-nome-projeto"); if(np) np.value = d.nome_projeto || "";
+  const op = $("obr-obra-para");
+  if(op){ op.value = d.obra_para_id || d.cliente_id || ""; op.dataset.cliente = d.cliente_id || ""; }
+  const sug = $("obr-projeto-sugestao"); if(sug){ sug.innerHTML = ""; delete sug.dataset.valor; }
+  obrAtualizarGrupo();
+  if(!d.nome_projeto && d.contrato_id) obrSugerirProjetoDoOrcamento(d.id, d.contrato_id);
+}
+async function obrSugerirProjetoDoOrcamento(obraId, contratoId){
+  const { data } = await sb.from("contratos").select("orcamento:orcamento_id(numero,concorrencia)").eq("id", contratoId).maybeSingle();
+  const conc = data && data.orcamento && String(data.orcamento.concorrencia || "").trim();
+  const sug = $("obr-projeto-sugestao");
+  if(!conc || !sug || obraEditId !== obraId || ($("obr-nome-projeto")?.value || "").trim()) return;
+  sug.dataset.valor = conc;
+  sug.innerHTML = `Sugestão do orçamento ${esc(data.orcamento.numero || "")}: <em>${esc(conc)}</em> <button type="button" class="btn-sec btn-sm" data-obr-projeto-usar="1" title="Copia a sugestão para o campo; grava só ao Salvar">Usar</button>`;
+}
+// cliente trocado: "Obra para" acompanha enquanto era o próprio cliente; o grupo é relido
+function obrClienteMudou(){
+  const op = $("obr-obra-para"), novo = $("obr-cliente")?.value || "";
+  if(op && (!op.value || op.value === op.dataset.cliente)) op.value = novo;
+  if(op) op.dataset.cliente = novo;
+  obrAtualizarGrupo();
+}
+
+/* Lista de nomes a completar (visão "Nomes a completar"): obras sem nome do projeto cujo nome começa pelo cliente.
+   Sugere o nome do projeto com o que sobra depois do cliente e do código, e "Obra para" quando a primeira palavra do
+   que sobra é de outro cliente. Nada é gravado sem o clique em Gravar na linha (spec: parar e perguntar antes de lote). */
+const OBR_PALAVRAS_GENERICAS = new Set(["CONSTRUTORA", "CONSTRUCOES", "CONSTRUCAO", "ENGENHARIA", "EMPREENDIMENTOS", "INCORPORADORA", "CONSORCIO", "GRUPO", "EMPRESA", "COMPANHIA", "CIA"]);
+function obrNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function obrPalavrasNorm(s){ return String(s || "").split(/\s+/).map(obrNorm).filter(Boolean); }
+function obrNomeSugestao(o){
+  const lista = typeof _clientes !== "undefined" ? _clientes : [];
+  const c = lista.find(x => x.id === o.cliente_id) || { nome: mapaClientes[o.cliente_id] || "" };
+  const orig = String(o.nome || "").trim().split(/\s+/);
+  // prefixos do cliente: razão social, fantasia e a primeira palavra (do mais longo ao mais curto); palavra genérica
+  // ("Construtora", "Engenharia"...) sozinha não serve: vai com a seguinte
+  const pal = String(c.nome || "").split(/[\s,\-–—]+/).filter(Boolean);
+  const curto = OBR_PALAVRAS_GENERICAS.has(obrNorm(pal[0])) ? pal.slice(0, 2).join(" ") : pal[0];
+  const prefixos = [c.nome, c.nome_fantasia, curto]
+    .map(obrPalavrasNorm).filter(p => p.length && p.join("").length >= 3).sort((a, b) => b.length - a.length);
+  let corte = -1;
+  for(const p of prefixos){
+    let i = 0, k = 0;
+    while(i < orig.length && k < p.length){
+      const w = obrNorm(orig[i]);
+      if(!w){ i++; continue; }
+      if(w !== p[k]) break;
+      i++; k++;
+    }
+    if(k === p.length){ corte = i; break; }
+  }
+  if(corte < 0) return null;
+  const num = String(o.codigo || "").split(/[-\/]/)[0];
+  const codigos = new Set([obrNorm(o.codigo), obrNorm(num)].filter(Boolean));
+  const resto = orig.slice(corte).filter(w => {
+    const n = obrNorm(w);
+    if(n && codigos.has(n)) return false;                    // 8910-2026, 8910
+    if(num && new RegExp("^" + num + "[\\/\\-]\\d{4}$").test(w.replace(/[^\d\/\-]/g, ""))) return false;   // 8910/2026
+    return true;
+  });
+  // separadores soltos só saem das pontas ("— Belo Oriente / VALE" fica "Belo Oriente / VALE")
+  while(resto.length && !obrNorm(resto[0])) resto.shift();
+  while(resto.length && !obrNorm(resto[resto.length - 1])) resto.pop();
+  if(resto.length){ resto[0] = resto[0].replace(/^[,\-–—·]+/, ""); resto[resto.length - 1] = resto[resto.length - 1].replace(/[,\-–—·]+$/, ""); }
+  // tudo em caixa alta ("GERDAU 647CC") vira "Gerdau 647CC"; com minúsculas, fica como foi digitado
+  const caixaAlta = !/[a-zà-ú]/.test(resto.join(" "));
+  const titulo = !caixaAlta ? resto : resto.map(w => /\d/.test(w) ? w : w.length <= 2 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  let obraPara = null;
+  if(resto.length){
+    const prim = obrNorm(resto[0]);
+    if(prim.length >= 4) obraPara = lista.find(x => x.id !== o.cliente_id && x.ativo !== false
+      && (obrPalavrasNorm(x.nome_fantasia)[0] === prim || obrPalavrasNorm(x.nome)[0] === prim)) || null;
+  }
+  return { sugestao: titulo.join(" "), obraPara };
+}
+function obrPodeEditar(){
+  return !!usuarioAtual && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura())
+    && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial"].includes(usuarioAtual.cargo);
+}
+function renderObrasNomes(dados){
+  const cont = $("obr-conteudo");
+  if(!cont) return;
+  const linhas = dados.filter(o => !(_obrEtq[o.id] && _obrEtq[o.id].nome_projeto))
+    .map(o => ({ o, s: obrNomeSugestao(o) })).filter(x => x.s);
+  const cnt = $("obr-contador"); if(cnt) cnt.textContent = `${linhas.length} a completar`;
+  if(!linhas.length){ cont.innerHTML = uiVazio("Nenhuma obra com nome a completar nos filtros atuais."); return; }
+  const pode = obrPodeEditar();
+  const tr = linhas.map(({ o, s }) => {
+    const opOutro = _obrEtq[o.id] && _obrEtq[o.id].obra_para_outro;
+    return `<tr data-obr-nome-id="${esc(o.id)}">
+      <td>${linkObra(o.id, o.codigo || "")}</td>
+      <td>${esc(o.nome || "")}<div class="meta">${esc(mapaClientes[o.cliente_id] || "")}</div></td>
+      <td><input data-obr-nome-sug value="${esc(s.sugestao)}" placeholder="${s.sugestao ? "" : "só cliente + código: digite se houver"}" ${pode ? "" : "disabled"} title="Como o cliente chama o empreendimento; deixe em branco se não houver" /></td>
+      <td>${s.obraPara && !opOutro
+        ? `<label class="check-inline" title="Marque só se o empreendimento for desta empresa"><input type="checkbox" data-obr-nome-para="${esc(s.obraPara.id)}" ${pode ? "" : "disabled"} /> ${esc(s.obraPara.nome_fantasia || s.obraPara.nome)}?</label>`
+        : `<span class="meta">${opOutro ? esc(_obrEtq[o.id].obra_para || "") : "—"}</span>`}</td>
+      <td>${pode ? `<button type="button" class="btn-sec btn-sm" data-obr-nome-gravar="${esc(o.id)}" title="Grava o nome do projeto (e a Obra para, se marcada) só desta obra">Gravar</button>` : ""}</td>
+    </tr>`;
+  }).join("");
+  cont.innerHTML = `<p class="texto-apoio compacto">Obras sem nome do projeto cujo nome começa pelo cliente. A sugestão sai do que sobra depois do cliente e do código; confira e grave uma por uma. O nome cadastrado não muda.</p>
+    <div class="tabela-rola"><table>
+    <thead><tr><th>Código</th><th>Nome cadastrado</th><th>Nome do projeto (sugestão)</th><th>Obra para</th><th></th></tr></thead>
+    <tbody>${tr}</tbody></table></div>`;
+}
+async function obrNomesGravar(id){
+  const linha = document.querySelector(`#obr-conteudo tr[data-obr-nome-id="${CSS.escape(id)}"]`);
+  if(!linha) return;
+  const reg = { nome_projeto: (linha.querySelector("[data-obr-nome-sug]")?.value || "").trim() || null };
+  const para = linha.querySelector("[data-obr-nome-para]");
+  if(para && para.checked) reg.obra_para_id = para.dataset.obrNomePara;
+  if(!reg.nome_projeto && !reg.obra_para_id){ aviso("app-aviso", "Digite o nome do projeto ou marque a Obra para.", "aviso"); return; }
+  const { error } = await sb.from("obras").update(reg).eq("id", id);
+  if(error){ aviso("app-aviso", "Não foi possível gravar: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Nome do projeto gravado.", "ok");
+  await obrCarregarEtiquetas();
+  renderObras();
+}
+
 /* ---------- Painel <-> Ficha ---------- */
 function mostrarPainelObra(){
   $("obr-painel").style.display = "";
@@ -256,6 +409,7 @@ function novaObra(){
   $("obr-codigo").value = "";
   $("obr-nome").value = "";
   $("obr-cliente").value = "";
+  obrPreencherProjeto({});   // fase 182a
   $("obr-status").value = "planejada";
   obrValorResponsavel(null);
   $("obr-inicio").value = "";
@@ -321,6 +475,7 @@ async function abrirObra(id){
   $("obr-codigo").value = data.codigo || "";
   $("obr-nome").value = data.nome || "";
   $("obr-cliente").value = data.cliente_id || "";
+  obrPreencherProjeto(data);   // fase 182a
   $("obr-status").value = data.status || "planejada";
   obrValorResponsavel(data.responsavel_id);
   $("obr-inicio").value = data.data_inicio || "";
@@ -516,7 +671,9 @@ function abrirFichaObra(obra){
   $("obr-ficha-cidade-chip").textContent = obra.cidade
     ? `${obra.cidade}${obra.uf ? "/" + obra.uf.toUpperCase() : ""}`
     : "—";
-  $("obr-ficha-titulo").textContent = obra.codigo ? `${obra.codigo} — ${obra.nome}` : "Nova obra";
+  $("obr-ficha-titulo").textContent = obra.codigo ? obrEtiquetaFicha(obra) : "Nova obra";   // fase 182a: etiqueta (D4)
+  if($("obr-ficha-titulo")) $("obr-ficha-titulo").title = obra.codigo ? "Nome cadastrado: " + (obra.nome || "") : "";
+  obrAtualizarGrupo();   // fase 182a
   obrCarregarPrevisaoChip(obra.id);   // fase 140
 
   atualizarStatusbarObra(obra.status);
@@ -876,6 +1033,9 @@ async function salvarObra(novoStatus){
     uf: $("obr-uf").value || null,
     descricao: $("obr-descricao").value.trim() || null,
     observacoes: $("obr-obs").value.trim() || null,
+    // fase 182a: nome do projeto (digitado, opcional) e "obra para" (nulo = o próprio cliente); obras.nome não muda
+    nome_projeto: ($("obr-nome-projeto")?.value || "").trim() || null,
+    obra_para_id: (($("obr-obra-para")?.value || "") !== cliente_id && $("obr-obra-para")?.value) || null,
     ...lerParametrosObra()
   };
   // fase 155b: mesma regra do gatilho trg_obras_dois_turnos_guarda, dita antes de ir ao banco
@@ -981,6 +1141,8 @@ function ligarObras(){
     if(el) el.addEventListener(id === "obr-busca" ? "input" : "change", id === "obr-busca" ? debounce(renderObras) : renderObras);
   });
   $("obr-conteudo")?.addEventListener("click", async (e) => {
+    const gravar = e.target.closest("[data-obr-nome-gravar]");   // fase 182a: Nomes a completar, uma linha por vez
+    if(gravar){ await comBotaoTravado(gravar, () => obrNomesGravar(gravar.dataset.obrNomeGravar)); return; }
     const tr = e.target.closest(".linha-clicavel");
     if(!tr || !tr.dataset.id) return;
     await abrirObra(tr.dataset.id);
@@ -989,6 +1151,15 @@ function ligarObras(){
   });
   $("obr-f-ids")?.addEventListener("click", (e) => {
     if(e.target.closest("#obr-f-ids-limpar")){ _obrFiltroIds = null; renderObras(); }
+  });
+
+  // fase 182a: "Obra para" acompanha o cliente; sugestão do orçamento só copia para o campo
+  $("obr-cliente")?.addEventListener("change", obrClienteMudou);
+  $("obr-projeto-sugestao")?.addEventListener("click", (e) => {
+    const sug = e.currentTarget;
+    if(!e.target.closest("[data-obr-projeto-usar]") || !sug.dataset.valor) return;
+    $("obr-nome-projeto").value = sug.dataset.valor;
+    sug.innerHTML = ""; delete sug.dataset.valor;
   });
 
   $("btn-nova-obra")?.addEventListener("click", novaObra);

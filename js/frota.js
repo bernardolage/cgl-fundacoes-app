@@ -129,7 +129,7 @@ function frotaPreencherSelects(){
   const opt = (lista, rot) => lista.map(v => `<option value="${esc(v.id)}">${esc(rot(v))}</option>`).join("");
   const manter = (sel, html, vazio) => { if(!sel) return; const v = sel.value; sel.innerHTML = `<option value="">${esc(vazio)}</option>` + html; sel.value = v; };
   manter($("frota-f-caminhao"), opt(_frotaVeic, v => `${v.codigo} · ${v.nome || ""}`), "Todos os caminhões");
-  manter($("frota-f-obra"), opt(_frotaObras, o => `${o.codigo} — ${o.nome}`), "Todas as obras");
+  manter($("frota-f-obra"), opt(_frotaObras, o => obraRotulo(o)), "Todas as obras");
   manter($("frota-f-finalidade"), Object.entries(VG_FINALIDADES).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join(""), "Toda finalidade");
   manter($("frota-f-status"), Object.entries(STATUS.viagem).map(([k, o]) => `<option value="${esc(k)}">${esc(o.label)}</option>`).join(""), "Todo status");
 }

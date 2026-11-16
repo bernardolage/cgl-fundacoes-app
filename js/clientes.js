@@ -36,10 +36,86 @@ function cliAplicarPermissoes(){
   const excl = $("btn-excluir-cli"); if(excl) excl.style.display = cliEditId && cliPodeExcluir() ? "" : "none";
 }
 
+/* ---------- Fase 182a: grupo econômico ----------
+   O grupo fica no cadastro do cliente (D1); a obra herda. Campo com busca e criação na hora ("Criar grupo 'X'" ao
+   Salvar). Sugestão pela raiz do CNPJ (8 primeiros dígitos) só na tela: nunca grava sozinha. */
+let _cliGrupos = [];
+function cliPorId(id){ return id ? _clientes.find(c => c.id === id) || null : null; }
+function cliRotulo(id){ const c = cliPorId(id); return c ? (String(c.nome_fantasia || "").trim() || c.nome || "") : (mapaClientes[id] || ""); }
+function cliGrupoNome(id){ const g = _cliGrupos.find(x => x.id === id); return g ? g.nome : ""; }
+function cliRaiz(doc){ const d = String(doc || "").replace(/\D/g, ""); return d.length === 14 ? d.slice(0, 8) : ""; }
+async function cliCarregarGrupos(){
+  const { data, error } = await sb.from("grupos_economicos").select("id,nome,cnpj_raiz,ativo").order("nome");
+  _cliGrupos = error ? [] : (data || []);
+  const dl = $("cli-grupos-lista");
+  if(dl) dl.innerHTML = _cliGrupos.filter(g => g.ativo !== false).map(g => `<option value="${esc(g.nome)}"></option>`).join("");
+  const f = $("cli-f-grupo");
+  if(f){
+    const atual = f.value;
+    f.innerHTML = `<option value="">Todos os grupos</option><option value="__sem">Sem grupo</option>`
+      + _cliGrupos.map(g => `<option value="${esc(g.id)}">${esc(g.nome)}</option>`).join("");
+    f.value = atual;
+  }
+}
+function cliGrupoPorNome(txt){ const n = String(txt || "").trim().toLowerCase(); return n ? _cliGrupos.find(g => g.nome.trim().toLowerCase() === n) || null : null; }
+// dica embaixo do campo: grupo novo é criado ao Salvar
+function cliGrupoDica(){
+  const el = $("cli-grupo-dica"); if(!el) return;
+  const txt = ($("cli-grupo")?.value || "").trim();
+  el.textContent = txt && !cliGrupoPorNome(txt) ? `Criar grupo "${txt}" ao salvar.` : "";
+}
+// mesma raiz de CNPJ de outro cliente já agrupado → pergunta se usa o mesmo grupo
+function cliAvisoRaiz(){
+  const box = $("cli-grupo-aviso"); if(!box) return;
+  box.innerHTML = ""; delete box.dataset.grupo;
+  const raiz = cliRaiz($("cli-doc")?.value);
+  if(!raiz) return;
+  const atual = cliGrupoPorNome($("cli-grupo")?.value);
+  const outro = _clientes.find(c => c.id !== cliEditId && c.grupo_id && cliRaiz(c.cpf_cnpj) === raiz && (!atual || atual.id !== c.grupo_id));
+  const grupo = outro ? _cliGrupos.find(g => g.id === outro.grupo_id) : _cliGrupos.find(g => g.cnpj_raiz === raiz && (!atual || atual.id !== g.id));
+  if(!grupo) return;
+  box.dataset.grupo = grupo.nome;
+  box.innerHTML = `${outro ? `Este CNPJ é da mesma raiz de ${esc(outro.nome)} (grupo ${esc(grupo.nome)}).` : `Este CNPJ é da raiz do grupo ${esc(grupo.nome)}.`} Usar o mesmo grupo?
+    ${cliPodeEditar() ? `<button type="button" class="btn-sec btn-sm" data-cli-usar-grupo="1" title="Preenche o campo; grava só ao Salvar">Usar este grupo</button>` : ""}`;
+}
+// grupo do formulário → id (cria o grupo novo depois de confirmar). undefined = cancelou.
+async function cliResolverGrupo(){
+  const txt = ($("cli-grupo")?.value || "").trim();
+  if(!txt) return null;
+  const g = cliGrupoPorNome(txt);
+  if(g) return g.id;
+  if(!confirm(`Criar o grupo econômico "${txt}"?`)) return undefined;
+  const raiz = cliRaiz($("cli-doc")?.value);
+  const ja = raiz && _cliGrupos.some(x => x.cnpj_raiz === raiz);
+  const { data, error } = await sb.from("grupos_economicos").insert({ nome: txt, cnpj_raiz: raiz && !ja ? raiz : null }).select("id").single();
+  if(error){ aviso("app-aviso", "Não foi possível criar o grupo: " + error.message, "erro"); return undefined; }
+  await cliCarregarGrupos();
+  return data.id;
+}
+// smart-button "Obras do grupo": abre o painel de Obras só com as obras dos clientes do grupo
+function cliObrasDoGrupo(grupoId){
+  const ids = new Set(_clientes.filter(c => c.grupo_id === grupoId).map(c => c.id));
+  return (typeof _obrRegistros !== "undefined" ? _obrRegistros : []).filter(o => ids.has(o.cliente_id)).map(o => o.id);
+}
+function cliAtualizarSmartGrupo(c){
+  const b = $("cli-sb-obras-grupo"); if(!b) return;
+  const gid = c && c.grupo_id;
+  b.style.display = gid ? "" : "none";
+  if(!gid) return;
+  b.dataset.grupo = gid;
+  b.querySelector(".sb-num").textContent = String(cliObrasDoGrupo(gid).length);
+}
+async function cliAbrirObrasDoGrupo(){
+  const gid = $("cli-sb-obras-grupo")?.dataset.grupo;
+  if(!gid || !irParaSecao("obras")) return;
+  if(typeof mostrarPainelObra === "function") mostrarPainelObra();
+  renderObras({ ids: cliObrasDoGrupo(gid), rotulo: "Grupo " + cliGrupoNome(gid) });
+}
+
 /* ---------- Carga ---------- */
 async function carregarClientes(){
   // select("*"): as colunas fiscais (fase 105a) vêm quando existirem, sem quebrar antes da migration
-  const { data, error } = await sb.from("clientes").select("*").order("nome");
+  const [{ data, error }] = await Promise.all([sb.from("clientes").select("*").order("nome"), cliCarregarGrupos()]);
   _clientes = error ? [] : (data || []);
   _cliTemFiscal = _clientes.length ? Object.prototype.hasOwnProperty.call(_clientes[0], "codigo_ibge")
                                    : await fiscalColunaExiste("clientes", "codigo_ibge");
@@ -51,12 +127,15 @@ function cliFiltrados(){
   const termo = ($("cli-busca")?.value || "").trim().toLowerCase();
   const fTipo = $("cli-f-tipo")?.value || "";
   const fAtivo = $("cli-f-ativo")?.value || "";
+  const fGrupo = $("cli-f-grupo")?.value || "";   // fase 182a
   return _clientes.filter(c => {
     if(fTipo && c.tipo_pessoa !== fTipo) return false;
+    if(fGrupo === "__sem" && c.grupo_id) return false;
+    if(fGrupo && fGrupo !== "__sem" && c.grupo_id !== fGrupo) return false;
     if(fAtivo === "ativos" && c.ativo === false) return false;
     if(fAtivo === "inativos" && c.ativo !== false) return false;
     if(termo){
-      const alvo = `${c.nome||""} ${c.nome_fantasia||""} ${c.cpf_cnpj||""} ${c.cidade||""}`.toLowerCase();
+      const alvo = `${c.nome||""} ${c.nome_fantasia||""} ${c.cpf_cnpj||""} ${c.cidade||""} ${cliGrupoNome(c.grupo_id)}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -86,7 +165,7 @@ function renderCliLista(dados){
     return;
   }
   const linhas = dados.map(c => `<tr class="linha-clicavel" data-id="${esc(c.id)}">
-    <td>${esc(c.nome)} ${tagSituacao(c.ativo)}</td>
+    <td>${esc(c.nome)} ${tagSituacao(c.ativo)}${c.grupo_id ? `<div class="meta" title="Grupo econômico">${esc(cliGrupoNome(c.grupo_id))}</div>` : ""}</td>
     <td>${esc(c.cpf_cnpj||"—")}</td>
     <td>${esc(c.tipo_pessoa === "fisica" ? "Pessoa Física" : "Pessoa Jurídica")}</td>
     <td>${esc([c.cidade,(c.uf||"").toUpperCase()].filter(Boolean).join("/")||"—")}</td>
@@ -254,8 +333,9 @@ function novoCliente(){
   _cliDocOriginal = "";
   ["cli-nome","cli-fantasia","cli-doc","cli-ie","cli-email","cli-tel","cli-contato",
    "cli-cep","cli-logradouro","cli-numero","cli-complemento","cli-bairro","cli-cidade","cli-uf","cli-obs",
-   "cli-ibge","cli-ind-ie","cli-email-nf"
+   "cli-ibge","cli-ind-ie","cli-email-nf","cli-grupo"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
+  cliGrupoDica(); cliAvisoRaiz();   // fase 182a
   $("cli-tipo").value = "juridica";
   $("cli-ativo").checked = true;
   if($("cli-cep-status")) $("cli-cep-status").textContent = "";
@@ -294,6 +374,8 @@ async function abrirCliente(id, aba){
   if($("cli-ibge"))     $("cli-ibge").value     = data.codigo_ibge || "";
   if($("cli-ind-ie"))   $("cli-ind-ie").value   = data.indicador_ie || "";
   if($("cli-email-nf")) $("cli-email-nf").value = data.email_nf || "";
+  if($("cli-grupo")) $("cli-grupo").value = cliGrupoNome(data.grupo_id);   // fase 182a
+  cliGrupoDica(); cliAvisoRaiz();
   if($("cli-cep-status")) $("cli-cep-status").textContent = "";
   if($("cli-cep")) $("cli-cep").dataset.ultimo = String(data.cep || "").replace(/\D/g, "");
   cliAplicarCamposFiscais();
@@ -314,6 +396,8 @@ function abrirFichaCliVisual(c){
     ? `${c.cidade}${c.uf ? "/" + c.uf.toUpperCase() : ""}`
     : "—";
   $("cli-ficha-tel-chip").textContent = c.telefone || "—";
+  if($("cli-ficha-grupo-chip")) $("cli-ficha-grupo-chip").textContent = cliGrupoNome(c.grupo_id) || "—";   // fase 182a
+  cliAtualizarSmartGrupo(c);
   $("cli-ficha-ativo-chip").innerHTML = (c.ativo === false)
     ? '<span class="tag cinza">Inativo</span>'
     : '<span class="tag verde">Ativo</span>';
@@ -426,6 +510,10 @@ async function salvarCliente(){
       aviso("app-aviso", "E-mail para a nota inválido (vários: separe por vírgula).", "erro"); ativarTabCli("fiscal"); return;
     }
   }
+  // fase 182a: grupo econômico (existente pelo nome, ou criado agora depois do OK)
+  const grupoId = await cliResolverGrupo();
+  if(grupoId === undefined){ ativarTabCli("geral"); return; }
+  reg.grupo_id = grupoId;
   let result;
   if(cliEditId){
     result = await sb.from("clientes").update(reg).eq("id", cliEditId).select().single();
@@ -504,6 +592,17 @@ function ligarClientes(){
   $("btn-salvar-cli")?.addEventListener("click", () => comBotaoTravado("btn-salvar-cli", salvarCliente));
   $("btn-excluir-cli")?.addEventListener("click", excluirCliente);
   $("btn-cli-cnpj")?.addEventListener("click", () => comBotaoTravado("btn-cli-cnpj", cliBuscarCnpj));   // lote S58 (#228)
+  // fase 182a: grupo econômico
+  $("cli-f-grupo")?.addEventListener("change", renderClientes);
+  $("cli-grupo")?.addEventListener("input", () => { cliGrupoDica(); cliAvisoRaiz(); });
+  $("cli-doc")?.addEventListener("input", cliAvisoRaiz);
+  $("cli-grupo-aviso")?.addEventListener("click", (e) => {
+    const box = e.currentTarget;
+    if(!e.target.closest("[data-cli-usar-grupo]") || !box.dataset.grupo) return;
+    $("cli-grupo").value = box.dataset.grupo;
+    cliGrupoDica(); cliAvisoRaiz();
+  });
+  $("cli-sb-obras-grupo")?.addEventListener("click", cliAbrirObrasDoGrupo);
 
   document.querySelectorAll("#cli-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabCli(b.dataset.tab));

@@ -67,7 +67,7 @@ function vgPreencherSelects(){
   $("vg-equip").innerHTML = opt(_frotaEquipOutros.filter(e => e.ativo !== false), e => `${e.codigo} · ${e.nome || ""}`, "— nenhum —");
   $("vg-finalidade").innerHTML = Object.entries(VG_FINALIDADES).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
   ["vg-origem-tipo", "vg-destino-tipo"].forEach(id => { $(id).innerHTML = Object.entries(VG_LOC).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join(""); });
-  ["vg-origem-obra", "vg-destino-obra"].forEach(id => { $(id).innerHTML = opt(_frotaObras, o => `${o.codigo} — ${o.nome}${o.status === "em_andamento" ? "" : " (" + o.status + ")"}`, "— escolha a obra —"); });
+  ["vg-origem-obra", "vg-destino-obra"].forEach(id => { $(id).innerHTML = opt(_frotaObras, o => `${obraRotulo(o)}${o.status === "em_andamento" ? "" : " (" + o.status + ")"}`, "— escolha a obra —"); });
 }
 
 /* ---------- abrir / nova ---------- */

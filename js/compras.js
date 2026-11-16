@@ -581,7 +581,7 @@ function cmpObraOptgroups(sel, val, rot, rotuloAbertas){
     + (_cmpObrasConcluidas.length ? `<optgroup label="Concluídas">${_cmpObrasConcluidas.map(o => op(o, true)).join("")}</optgroup>` : "");
 }
 function cmpDestinoOptions(sel, semAcessorio){
-  const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => `Obra: ${o.codigo} — ${o.nome}`, "Aplicação direta na obra");
+  const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => "Obra: " + obraRotulo(o), "Aplicação direta na obra");
   const eqs = _cmpEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
   return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Reposição de estoque (almoxarifado)</option>${/* html */ obras}<optgroup label="Aplicação direta na TAG">${eqs}</optgroup><optgroup label="Aplicação direta no setor / obra interna">${centros}</optgroup>${semAcessorio ? "" : cmpAceOptgroup(sel)}`;
@@ -589,7 +589,7 @@ function cmpDestinoOptions(sel, semAcessorio){
 /* fase 108b: destino de item de aplicação direta (sem a opção do estoque; vazio = falta escolher). Fase 133: cab = o
    "Destino do custo" do cabeçalho, sem acessório (fica na linha) e com "Vários destinos (um por item)" */
 function cmpDestinoDiretoOptions(sel, cab){
-  const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => `${o.codigo} — ${o.nome}`, "Obra");
+  const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => obraRotulo(o), "Obra");
   const eqs = _cmpEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc([c.codigo, c.nome].filter(Boolean).join(" "))}</option>`).join("");
   if(cab) return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou setor —</option><option value="varios"${sel === "varios" ? " selected" : ""}>Vários destinos (um por item)</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>`;
@@ -1096,7 +1096,7 @@ async function cmpBuscar(){
 }
 function cmpPreencherSelectsFixos(){
   const fornOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
-  const obraOpts = ph => `<option value="">${esc(ph)}</option>` + cmpObraOptgroups("", o => o.id, o => `${o.codigo} — ${o.nome}`, "Obras");   // lote S54 (#171): + grupo Concluídas
+  const obraOpts = ph => `<option value="">${esc(ph)}</option>` + cmpObraOptgroups("", o => o.id, o => obraRotulo(o), "Obras");   // lote S54 (#171): + grupo Concluídas
   const eqOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
   set("cmp-forn", fornOpts("— escolha o fornecedor —")); set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));

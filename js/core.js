@@ -88,6 +88,25 @@ let mapaClientes = {};
 let mapaFornecedores = {};
 let mapaObras = {};
 
+/* Fase 182a (D4): etiqueta de exibição da obra, montada pelo sistema (vw_obras_etiqueta, lida em carregarObras):
+   "código · cliente · nome do projeto"; sem nome do projeto, "código · cliente · cidade/UF"; sem cidade, "código · cliente".
+   Só para listas, buscas, seletores e títulos: nunca gravar, nem usar em PDF, importação ou número de contrato (esses
+   continuam com obras.nome e mapaObras). obraRotulo aceita o id ou a linha da obra; sem etiqueta, cai em "código — nome". */
+let mapaObraEtiqueta = {};
+function obraRotulo(o){
+  if(!o) return "";
+  const id = typeof o === "string" ? o : o.id;
+  if(id && mapaObraEtiqueta[id]) return mapaObraEtiqueta[id];
+  if(typeof o === "string") return (mapaObras && mapaObras[o]) || "";
+  return o.codigo ? `${o.codigo} — ${o.nome || ""}`.trim() : "";
+}
+/* mesma regra de public.obra_etiqueta(obras), para a ficha aberta antes de salvar */
+function obraEtiquetaMontar(o, cliente){
+  const t = (v) => String(v == null ? "" : v).trim();
+  const local = t(o.cidade) ? t(o.cidade) + (o.uf ? "/" + String(o.uf).toUpperCase() : "") : "";
+  return [t(o.codigo), t(cliente), t(o.nome_projeto) || local].filter(Boolean).join(" · ");
+}
+
 /* ---------- Constantes ---------- */
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 const UNIDADES = ["un","pc","cx","kg","g","ton","m","m2","m3","l","ml","sc","par","rl","jg","km","vb","diária","mês","h"]; // vb/diária/mês: fase 40 (proposta RG 11.8); km: lote S54 (#170, já existia no enum unidade_medida); h: lote S45 (L8), migration 20261020_loteS45_unidade_h. O enum tem um rótulo vazio: nunca oferecer aqui.
@@ -387,6 +406,8 @@ async function carregarClientesSelects(){
     const el = $(id);
     if(el) preencherSelect(el, lista, "id", "nome", "— selecione —");
   });
+  const op = $("obr-obra-para");   // fase 182a: vazio = o próprio cliente
+  if(op){ const v = op.value; preencherSelect(op, lista, "id", "nome", "— o próprio cliente —"); op.value = v; }
 }
 
 /* fornecedores ativos -> select de contrato */
