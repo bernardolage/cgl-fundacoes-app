@@ -9,6 +9,10 @@
      "O que foi?" e chips (geodigitus_confirmar, prévia em geodigitus_confirmar_previa).
      Tudo grava pelas RPCs geodigitus_* (rdo_pode_operar() no banco: admin, engenheiro, assistente de engenharia,
      encarregado; diretor). As tabelas geodigitus_* só a service role grava.
+   - Fase 184d (#240): indicadores do topo (grupos separados de execuções, metragem, concreto, grupos a conferir),
+     troca "Agrupado / Lista" (guardada no navegador), vínculos e "Obra/contrato a conferir" no grupo (obra que não veio
+     por regra firme: manual, de-para ou contrato exato) e a busca por estaca abre o grupo dela. Só tela: nada muda na
+     resolução da obra nem no vínculo CPU × máquina. Teste: scripts/testar-fase184d.mjs.
    - Badge "Geodigitus" e sobreconsumo na execução do RDO (geoBadgeExec, chamado por renderExecucoes em rdo.js).
    - Fase 162: a ação "Perfil" de cada estaca das Chegadas e o selo do RDO, agora clicável, abrem o perfil e o replay da
      estaca (abrirPerfilEstaca, em js/estaca_perfil.js). É leitura: aparece para todo usuário que vê a tela.
@@ -24,6 +28,8 @@ let _geoIndisponivel = false;
 let _geoModal = null;          // { tipo: "obra" | "estaca", geo } ou { tipo: "grupo_obra" | "grupo_estaca" | "grupo_ignorar" | "grupo_periodo", grupo, geos }
 let _geoGrupos = [];           // grupos da última tela
 const _geoAbertos = new Set(); // chaves dos grupos com as estacas abertas
+let _geoUltimaBusca = "";      // fase 184d: a busca que já abriu os grupos dela
+let _geoModo = (() => { try { return localStorage.getItem("geo-modo") === "lista" ? "lista" : "agrupado"; } catch(e){ return "agrupado"; } })();   // fase 184d
 
 const GEO_SITUACAO_LBL = {
   pendente_maquina: "Sem máquina", pendente_obra: "Sem obra", pendente_estaca: "Estaca a vincular",
@@ -95,7 +101,7 @@ function geoFiltradas(){
     if(maq === "sem" ? g.equipamento_id : (maq && g.equipamento_id !== maq)) return false;
     if(sit === "a_confirmar" ? !g.a_confirmar : sit === "pendentes" ? !GEO_PENDENTES.includes(g.situacao) : (sit && g.situacao !== sit)) return false;
     if(!q) return true;
-    return `${g.numero_txt || ""} ${g.obra_txt || ""} ${g.contrato_txt || ""} ${g.obra?.codigo || ""} ${g.obra?.nome || ""} ${g.obra_sugerida?.codigo || ""} ${g.equipamento?.codigo || ""} ${g.arquivo?.imei || ""}`.toLowerCase().includes(q);
+    return `${g.numero_txt || ""} ${g.obra_txt || ""} ${g.contrato_txt || ""} ${g.obra?.codigo || ""} ${g.obra?.nome || ""} ${g.obra_sugerida?.codigo || ""} ${g.estaca?.numero || ""} ${g.equipamento?.codigo || ""} ${g.arquivo?.imei || ""}`.toLowerCase().includes(q);
   });
 }
 function geoAcoesHTML(g){
@@ -140,6 +146,40 @@ function geoGrupos(dados){
   grupos.forEach(gr => gr.estacas.sort((a, b) => String(a.perfuracao_inicio || "").localeCompare(String(b.perfuracao_inicio || "")) || String(a.numero_txt || "").localeCompare(String(b.numero_txt || ""), "pt-BR", { numeric: true })));
   return grupos;
 }
+/* ---------- fase 184d (#240): resumo do grupo, indicadores do topo e busca por estaca (funções puras) ---------- */
+// regra firme de geodigitus_obra_avaliar: manual, de-para e contrato com o código exato. O resto (contrato de outro ano,
+// texto da CPU compatível, conferência) é sugestão: o grupo mostra "Obra/contrato a conferir". Nada muda na resolução.
+const GEO_REGRAS_FIRMES = ["manual", "de_para", "contrato"];
+const GEO_REGRA_LBL = { manual: "definida à mão", de_para: "de-para", contrato: "contrato exato", contrato_ano: "contrato de outro ano",
+  maquina_compativel: "máquina com texto da CPU compatível", conferencia: "em conferência" };
+function geoRegraFirme(regra){ return GEO_REGRAS_FIRMES.includes(regra); }
+function geoResumoGrupo(gr){
+  const l = gr.estacas || [];
+  const soma = (campo) => l.reduce((s, g) => s + Number(g[campo] || 0), 0);
+  const regras = geoDistintos(l.map(g => g.obra_regra));
+  const sugestao = l.some(g => g.obra_sugerida_id && g.obra_sugerida_id !== g.obra_id);
+  return {
+    estacas: l.length, metragem: soma("profundidade_m"), concreto: soma("volume_concreto_m3"),
+    comEstaca: l.filter(g => g.estaca_id).length, noDiario: l.filter(g => g.rdo_execucao_id).length,
+    regras, aConferir: !!gr.obra_id && (sugestao || l.some(g => g.obra_id && !geoRegraFirme(g.obra_regra)))
+  };
+}
+function geoIndicadores(grupos){
+  const k = { grupos: grupos.length, execucoes: 0, metragem: 0, concreto: 0, gruposConferir: 0, pendentes: 0 };
+  grupos.forEach(gr => {
+    const r = geoResumoGrupo(gr);
+    k.execucoes += r.estacas; k.metragem += r.metragem; k.concreto += r.concreto;
+    if(r.aConferir) k.gruposConferir++;
+    k.pendentes += gr.estacas.filter(g => GEO_PENDENTES.includes(g.situacao)).length;
+  });
+  return k;
+}
+// grupos que têm a estaca procurada (número da CPU ou da estaca vinculada)
+function geoChavesBusca(grupos, q){
+  q = String(q || "").trim().toLowerCase();
+  if(!q) return [];
+  return grupos.filter(gr => gr.estacas.some(g => `${g.numero_txt || ""} ${g.estaca?.numero || ""}`.toLowerCase().includes(q))).map(gr => gr.chave);
+}
 /* a obra que a CPU aponta, quando não é a gravada; com mais de uma, a de mais estacas */
 function geoSugestaoGrupo(lista){
   const n = new Map();
@@ -160,9 +200,10 @@ function geoSituacaoGrupo(lista){
 }
 function geoObraGrupoHTML(gr){
   const sug = geoSugestaoGrupo(gr.estacas);
-  const conferir = gr.obra_id && (sug || gr.estacas.some(g => g.obra_regra === "conferencia"));
+  const res = geoResumoGrupo(gr), conferir = res.aConferir;   // fase 184d: regra que não é firme também pede conferência
+  const regrasTxt = res.regras.map(r => GEO_REGRA_LBL[r] || r).join(", ") || "sem regra";
   const txts = geoDistintos(gr.estacas.map(g => g.obra_txt));
-  return `${gr.obra_id ? linkObra(gr.obra_id, gr.obra?.codigo || "obra") : `<span class="tag vermelho">Sem obra</span>`}${gr.estacas.some(g => g.obra_inferida) ? ` <span class="tag cinza" title="Obra vinda da mobilização ou do vínculo da máquina, com o que o operador digitou na CPU compatível">pela máquina</span>` : ""}${conferir ? ` <span class="tag ambar" title="O que a CPU traz não confirma esta obra">conferir obra</span>` : ""}
+  return `${gr.obra_id ? linkObra(gr.obra_id, gr.obra?.codigo || "obra") : `<span class="tag vermelho">Sem obra</span>`}${gr.estacas.some(g => g.obra_inferida) ? ` <span class="tag cinza" title="Obra vinda da mobilização ou do vínculo da máquina, com o que o operador digitou na CPU compatível">pela máquina</span>` : ""}${conferir ? ` <span class="tag ambar" title="A obra veio por sugestão (${esc(regrasTxt)}${sug ? ", e a CPU aponta outra" : ""}), não por regra firme (definida à mão, de-para ou contrato exato). Confira obra e contrato.">Obra/contrato a conferir</span>` : ""}
     ${sug ? `<div class="meta">CPU aponta <strong>${esc(sug.obra?.codigo || "?")}</strong>${sug.obra?.nome ? " — " + esc(sug.obra.nome) : ""}</div>` : ""}
     <div class="meta">CPU: "${esc(txts.length > 1 ? txts.length + " textos" : (txts[0] || "—"))}"</div>`;
 }
@@ -182,10 +223,15 @@ function geoAcoesGrupoHTML(gr){
   if(pode && vivas.some(g => !g.rdo_execucao_id)) b.push(botao("g-ignorar", "Ignorar", true));
   return b.join(" ");
 }
-function geoLinhasEstacasHTML(gr){
+// fase 184d: comContexto = vista "Lista" (uma linha por execução, com data, obra e máquina na frente)
+function geoLinhasEstacasHTML(gr, comContexto){
+  const ctxTh = comContexto ? `<th>Data</th><th>Obra</th><th>Máquina</th>` : "";
+  const ctxTd = (g) => comContexto ? `<td>${esc(dataBR(geoDia(g)))}</td>
+      <td>${g.obra_id ? /* html */ linkObra(g.obra_id, g.obra?.codigo || "obra") : `<span class="tag vermelho">Sem obra</span>`}${g.obra_id && !geoRegraFirme(g.obra_regra) ? ` <span class="tag ambar" title="A obra veio por sugestão (${esc(GEO_REGRA_LBL[g.obra_regra] || g.obra_regra || "sem regra")}), não por regra firme">a conferir</span>` : ""}${g.contrato_txt ? `<div class="meta">Contrato ${esc(g.contrato_txt)}</div>` : ""}</td>
+      <td>${g.equipamento?.codigo ? `<strong>${esc(g.equipamento.codigo)}</strong>` : `<span class="meta">CPU ${esc(g.arquivo?.imei || "?")}</span>`}</td>` : "";
   return `<div class="tabela-rola"><table>
-    <thead><tr><th>Estaca</th><th class="num">Ø (mm)</th><th class="num">Prof. (m)</th><th class="num">Volume (m³)</th><th>Sobreconsumo</th><th>Perfuração</th><th>Concretagem</th><th>Situação</th><th></th></tr></thead>
-    <tbody>${gr.estacas.map(g => `<tr data-geo-linha="${esc(g.id)}">
+    <thead><tr>${/* html */ ctxTh}<th>Estaca</th><th class="num">Ø (mm)</th><th class="num">Prof. (m)</th><th class="num">Volume (m³)</th><th>Sobreconsumo</th><th>Perfuração</th><th>Concretagem</th><th>Situação</th><th></th></tr></thead>
+    <tbody>${gr.estacas.map(g => `<tr data-geo-linha="${esc(g.id)}">${/* html */ ctxTd(g)}
       <td><strong>${esc(g.numero_txt || "—")}</strong>${g.refuro ? ` <span class="tag ambar">Refurada</span>` : ""}${g.profundidade_m != null && Number(g.profundidade_m) < 1 ? ` <span class="tag ambar" title="Profundidade abaixo de 1 m. Nada é ignorado sozinho.">conferir: parece teste</span>` : ""}${g.a_confirmar ? ` <span class="tag ambar" title="${esc(geoRazoesTxt(g))}">a confirmar</span>` : ""}${g.confirmacao ? `<div class="meta" title="${esc(g.confirmacao_obs || "")}">Confirmada: ${esc(geoConfirmacaoLbl(g))}</div>` : ""}${g.estaca?.numero ? `<div class="meta">${esc(g.estaca.numero)}${g.estaca.local ? " · " + esc(g.estaca.local) : ""}</div>` : (g.candidatos?.length > 1 ? `<div class="meta">${esc(g.candidatos.length)} candidatas</div>` : "")}</td>
       <td class="num">${esc(geoNum(g.diametro_mm, 0))}</td>
       <td class="num">${esc(geoNum(g.profundidade_m))}</td>
@@ -206,18 +252,31 @@ async function geoRenderPainel(){
   if(_geoIndisponivel){ cont.innerHTML = `<p class="vazio">Chegadas do Geodigitus ainda não disponíveis (a migration da fase 134a não foi aplicada).</p>`; return; }
   const dados = geoFiltradas();
   _geoGrupos = geoGrupos(dados);
-  const pend = (_geoDados || []).filter(g => GEO_PENDENTES.includes(g.situacao)).length;
-  const c = $("rdo-contador"); if(c) c.textContent = `${_geoGrupos.length} grupo(s) · ${dados.length} de ${_geoDados.length} estaca(s)${pend ? ` · ${pend} pendente(s)` : ""}`;
-  if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhuma estaca do Geodigitus com esses filtros.</p>`; return; }
-  cont.innerHTML = `<div class="tabela-rola"><table>
-    <thead><tr><th>Data</th><th>Obra</th><th>Contrato</th><th>Máquina</th><th class="num">Estacas</th><th class="num">Metragem (m)</th><th class="num">Volume (m³)</th><th>Situação</th><th></th></tr></thead>
+  // fase 184d: a busca por estaca abre o grupo dela (só quando a busca muda; depois dá para fechar)
+  const q = ($("geo-busca")?.value || "").trim();
+  if(q !== _geoUltimaBusca){ _geoUltimaBusca = q; geoChavesBusca(_geoGrupos, q).forEach(ch => _geoAbertos.add(ch)); }
+  const k = geoIndicadores(_geoGrupos);
+  const c = $("rdo-contador"); if(c) c.textContent = `${k.grupos} grupo(s) · ${k.execucoes} de ${_geoDados.length} execução(ões)${k.pendentes ? ` · ${k.pendentes} pendente(s)` : ""}`;
+  const modoBtn = (m, rot, tit) => `<button type="button" class="geo-modo-btn${_geoModo === m ? " ativo" : ""}" data-geo-modo="${esc(m)}" title="${esc(tit)}">${esc(rot)}</button>`;
+  const topo = `<div class="lista-topo">
+      <div class="ui-kpis">${uiKpi(String(k.grupos), "Grupos", "dia + máquina + obra")}${uiKpi(String(k.execucoes), "Execuções", "estacas que chegaram da CPU")}${uiKpi(geoNum(k.metragem), "Metragem (m)")}${uiKpi(geoNum(k.concreto, 3), "Concreto (m³)")}${uiKpi(String(k.gruposConferir), "Grupos a conferir", "obra ou contrato por sugestão")}${uiKpi(String(k.pendentes), "Execuções pendentes")}</div>
+      <div class="serv-views">${/* html */ modoBtn("agrupado", "Agrupado", "Um grupo por dia, máquina e obra, com os totais")}${/* html */ modoBtn("lista", "Lista", "Uma linha por execução")}</div>
+    </div>`;
+  if(!dados.length){ cont.innerHTML = topo + `<p class="vazio">Nenhuma estaca do Geodigitus com esses filtros.</p>`; return; }
+  if(_geoModo === "lista"){
+    const lista = [...dados].sort((a, b) => geoDia(b).localeCompare(geoDia(a)) || String(a.perfuracao_inicio || "").localeCompare(String(b.perfuracao_inicio || "")));
+    cont.innerHTML = topo + geoLinhasEstacasHTML({ estacas: lista }, true);
+    return;
+  }
+  cont.innerHTML = topo + `<div class="tabela-rola"><table>
+    <thead><tr><th>Data</th><th>Obra</th><th>Contrato</th><th>Máquina</th><th class="num">Estacas</th><th class="num">Metragem (m)</th><th class="num">Concreto (m³)</th><th>Situação</th><th></th></tr></thead>
     <tbody>${_geoGrupos.map(gr => {
       const contratos = geoDistintos(gr.estacas.map(g => g.contrato_txt));
       const avisos = geoDistintos(gr.estacas.flatMap(g => g.avisos || []));
       const teste = gr.estacas.filter(g => g.profundidade_m != null && Number(g.profundidade_m) < 1).length;
       const aConfirmar = gr.estacas.filter(g => g.a_confirmar).length;
       const sit = geoSituacaoGrupo(gr.estacas);
-      const soma = (campo) => gr.estacas.reduce((s, g) => s + Number(g[campo] || 0), 0);
+      const res = geoResumoGrupo(gr);   // fase 184d: totais e vínculos do grupo
       // fase 134b: período dos diários do grupo (o mesmo dia pode ter diurno e noturno)
       const nNot = gr.estacas.filter(g => geoTurno(g) === "noturno").length, nDiu = gr.estacas.filter(g => geoTurno(g) === "diurno").length;
       const periodo = nNot && nDiu ? geoTagTurno("diurno", nDiu) + " " + geoTagTurno("noturno", nNot) : nNot ? geoTagTurno("noturno") : "";
@@ -227,11 +286,12 @@ async function geoRenderPainel(){
         <td>${esc(contratos.length > 1 ? contratos.length + " contratos" : (contratos[0] || "—"))}</td>
         <td>${gr.maquina ? `<strong>${esc(gr.maquina)}</strong>` : `<span class="meta">CPU ${esc(gr.imei)}</span>`}</td>
         <td class="num">${esc(gr.estacas.length)}</td>
-        <td class="num">${esc(geoNum(soma("profundidade_m")))}</td>
-        <td class="num">${esc(geoNum(soma("volume_concreto_m3"), 3))}</td>
+        <td class="num">${esc(geoNum(res.metragem))}</td>
+        <td class="num">${esc(geoNum(res.concreto, 3))}</td>
         <td><span class="tag ${esc(sit.cor)}">${esc(sit.texto)}</span>
           ${teste ? `<div><span class="tag ambar" title="Profundidade abaixo de 1 m. Nada é ignorado sozinho.">conferir: parece teste (${esc(teste)})</span></div>` : ""}
           ${aConfirmar ? `<div><span class="tag ambar" title="Arquivo sem o fim da perfuração, número de refuro, menos de 1 m ou o mesmo número no dia">a confirmar (${esc(aConfirmar)})</span></div>` : ""}
+          <div class="meta" title="Com estaca = vinculada a uma estaca cadastrada; no diário = virou execução do RDO">Vínculos: ${esc(res.comEstaca)} de ${esc(res.estacas)} com estaca · ${esc(res.noDiario)} no diário</div>
           ${avisos.length ? `<div class="meta">⚠️ ${esc(avisos.join(" · "))}</div>` : ""}</td>
         <td class="col-acao">${/* html */ geoAcoesGrupoHTML(gr)}</td>
       </tr>${_geoAbertos.has(gr.chave) ? `<tr data-geo-grupo-aberto="${esc(gr.chave)}"><td colspan="9">${/* html */ geoLinhasEstacasHTML(gr)}</td></tr>` : ""}`;
@@ -701,6 +761,8 @@ function ligarGeodigitus(){
   $("btn-geo-sincronizar")?.addEventListener("click", () => comBotaoTravado("btn-geo-sincronizar", geoSincronizarTudo));
   const bs = $("btn-geo-sincronizar"); if(bs) bs.style.display = "none";
   $("rdo-conteudo")?.addEventListener("click", (ev) => {
+    const m = ev.target.closest("[data-geo-modo]");   // fase 184d: Agrupado / Lista
+    if(m){ ev.stopPropagation(); ev.preventDefault(); _geoModo = m.dataset.geoModo === "lista" ? "lista" : "agrupado"; try { localStorage.setItem("geo-modo", _geoModo); } catch(e){} geoRenderPainel(); return; }
     const b = ev.target.closest("[data-geo-acao]");
     if(!b) return;
     ev.stopPropagation(); ev.preventDefault();

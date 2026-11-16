@@ -1125,7 +1125,9 @@ td.num, th.num {
   padding: 3px;
   gap: 2px;
 }
-.serv-view-btn {
+/* .geo-modo-btn (fase 184d): o mesmo botão, com outra classe para o toggle "Agrupado / Lista" das Chegadas não cair
+   no seletor "#rdo-painel .serv-view-btn" do rdo.js, que troca a visão do painel */
+.serv-view-btn, .geo-modo-btn {
   min-height: calc(var(--ctl-h) - 8px);   /* 3 px de respiro e 1 px de borda de .serv-views, em cima e embaixo */
   padding: 0 var(--esp-3);
   font-size: 13px;
@@ -1133,8 +1135,8 @@ td.num, th.num {
   color: var(--text-sec);
   border-radius: var(--radius-sm);
 }
-.serv-view-btn:hover { color: var(--acao-txt); }
-.serv-view-btn.ativo {
+.serv-view-btn:hover, .geo-modo-btn:hover { color: var(--acao-txt); }
+.serv-view-btn.ativo, .geo-modo-btn.ativo {
   background: var(--sup-0);
   color: var(--marca-txt);
   box-shadow: var(--shadow-sm);
@@ -2811,7 +2813,7 @@ tr.cart-aberta td { background: var(--info-bg); }
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
-.btn:focus-visible, .btn-sec:focus-visible, .serv-view-btn:focus-visible,
+.btn:focus-visible, .btn-sec:focus-visible, .serv-view-btn:focus-visible, .geo-modo-btn:focus-visible,
 .odoo-notebook button:focus-visible, .odoo-statusbar .stage:focus-visible,
 .sb-btn:focus-visible, .chip:focus-visible, .linha-clicavel:focus-visible,
 .serv-kan-card:focus-visible, .ind-click:focus-visible, .dash-card.clicavel:focus-visible,
