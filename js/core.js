@@ -664,9 +664,21 @@ async function lerTudo(montar, chave = "id"){
 const MOTIVOS_REFURADA = [
   { valor: "obstrucao", rotulo: "Obstrução" }, { valor: "desmoronamento", rotulo: "Desmoronamento" }, { valor: "desvio_locacao", rotulo: "Desvio de locação" },
   { valor: "ferramenta_quebrou", rotulo: "Ferramenta quebrou" }, { valor: "maquina_parou", rotulo: "Máquina parou" }, { valor: "projeto_alterado", rotulo: "Projeto alterado" },
-  { valor: "erro_operacional", rotulo: "Erro operacional" }, { valor: "teste", rotulo: "Teste" }, { valor: "outro", rotulo: "Outro" }
+  { valor: "erro_operacional", rotulo: "Erro operacional" }, { valor: "teste", rotulo: "Teste" },
+  { valor: "concreto", rotulo: "Concreto" }, { valor: "armacao", rotulo: "Armação" }, { valor: "outro", rotulo: "Outro" }   // fase 145a: concreto e armação
 ];
 function motivoRefuradaLbl(v){ return (MOTIVOS_REFURADA.find(m => m.valor === v) || {}).rotulo || v || ""; }
+/* Fase 145a: cobrança do refuro. Quem decide é o engenheiro da obra; a responsabilidade sugerida pelo motivo só pré-marca o chip. */
+const REFURO_COBRANCA = {
+  pendente:        { label: "Aguarda decisão",    cor: "ambar" },
+  cobrar:          { label: "Cobrar",             cor: "verde" },
+  nao_cobrar:      { label: "Não cobrar",         cor: "cinza" },
+  fora_de_medicao: { label: "Período já medido",  cor: "cinza" }
+};
+const REFURO_RESPONSABILIDADE = [{ valor: "cliente", rotulo: "Cliente" }, { valor: "terceiro", rotulo: "Terceiro" }, { valor: "cgl", rotulo: "CGL" }];
+const REFURO_RESP_SUGERIDA = { concreto: "cliente", armacao: "cliente", projeto_alterado: "cliente",
+  erro_operacional: "cgl", ferramenta_quebrou: "cgl", maquina_parou: "cgl" };
+function refuroRespLbl(v){ return (REFURO_RESPONSABILIDADE.find(r => r.valor === v) || {}).rotulo || v || ""; }
 function chipsMotivo(container, opcoes, valor, aoMudar){
   let atual = valor ?? null;
   container.setAttribute("role", "radiogroup");

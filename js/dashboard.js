@@ -465,7 +465,7 @@ async function dashCarregarRegularizar(){
   // fase 129c: diário do campo enviado sem conferência, devolvido sem reenvio e pendências do app (vw_sc_regularizar_campo; a view
   // devolve a cada um só o papel dele)
   // fase 179: diário sem estaca e sem parada, a partir da data de corte (vw_sc_regularizar_rdo_dia; view própria, fora de vw_sc_acoes)
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia, refuro] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
@@ -479,9 +479,10 @@ async function dashCarregarRegularizar(){
     usuarioAtual && (["diretor", "admin", "almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo) || (typeof sstPodeOperar === "function" && sstPodeOperar())) ? dashLer("vw_sc_regularizar_est", q => q.select("*")) : null,
     // lote S63-b (#272): produto aguardando aprovação do almoxarifado (view própria; quem aprova e a diretoria)
     usuarioAtual && ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado", "logistica"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_prod", q => q.select("*")) : null,
-    dashLer("vw_sc_regularizar_rdo_dia", q => q.select("*"))]);   // a view devolve a cada um só o papel dele
+    dashLer("vw_sc_regularizar_rdo_dia", q => q.select("*")),   // a view devolve a cada um só o papel dele
+    dashLer("vw_sc_regularizar_refuro", q => q.select("*"))]);   // fase 145a: refuro sem decisão de cobrança (engenheiro da obra ou gestor)
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || [], rdoDia || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || [], rdoDia || [], refuro || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   dashRenderRegularizar();
 }
@@ -633,6 +634,13 @@ async function dashAbrirRegularizar(a){
   // fase 107a: Geodigitus. cpu_* e sync parada → ficha da CPU (uma só) ou visão Computadores de bordo filtrada;
   // geodigitus_estaca_* e diário finalizado → Chegadas do Geodigitus filtrada pela situação (uma só com diário abre o RDO)
   if(a.setor === "campo"){ if(typeof rdoAbrirPresetCampo === "function") await rdoAbrirPresetCampo(a); return; }   // fase 129c
+  // fase 145a: refuro sem decisão de cobrança → Conferência da obra, aba Refuradas (uma obra) ou a lista das obras
+  if(a.filtro === "refuro_cobranca_pendente"){
+    if(ids.length === 1 && typeof confAbrirRefurosDaObra === "function"){ await confAbrirRefurosDaObra(ids[0]); return; }
+    irParaSecao("obras");
+    if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "estacas", foco: null });
+    return;
+  }
   // fase 157a: obra com diário sem mobilização (uma só) → aba Máquinas da obra; o resto → Mobilizações, visão Para regularizar no tipo
   if(a.setor === "mobilizacoes"){
     // o clique no botão da aba é o que carrega a aba Máquinas (ativarTabObra só troca a aba visível)

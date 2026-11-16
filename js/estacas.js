@@ -2510,6 +2510,7 @@ let _confAlteradas = [];  // estacas com 2+ execuções: [{ estaca, execs:[...] 
 let _confAbaAtual = "orfas";
 let _confTemMotivo = false; // fase 141: vw_estacas_refuradas disponível
 let _confRefuros = [];      // fase 141d: estacas que não são Refuradas, mas têm execução de refuro
+let _confCobranca = null;   // fase 145a: execuções de refuro com a cobrança (vw_refuros_cobranca); null = sem a migration
 
 function confSuspeitas(alteradas){
   return alteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
@@ -2519,7 +2520,7 @@ function confSuspeitas(alteradas){
 async function confCarregarDados(obraId){
   const COLS_RDO = "rdo_id,obra_id,data,rdo_equipamento_id";
   const execsDaObra = (cols) => sb.from("vw_rdo_execucoes_obra").select(`${cols},${COLS_RDO}`).eq("obra_id", obraId);
-  const [orfasRes, estsRes, vinculadasRes, refRes] = await Promise.all([
+  const [orfasRes, estsRes, vinculadasRes, refRes, cobRes] = await Promise.all([
     lerTudo(() => execsDaObra("id,estaca_numero,diametro_mm,perfuracao_inicio,profundidade_executada,equipamento_id").is("estaca_id", null)),
     lerTudo(() => sb.from("estacas")
       .select("id,numero,bloco,local,tipo,diametro_mm,profundidade_m,status,data_execucao,observacoes")
@@ -2527,8 +2528,11 @@ async function confCarregarDados(obraId){
       .order("numero")),
     lerTudo(() => execsDaObra("id,estaca_id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao").not("estaca_id", "is", null)),
     // fase 141: motivo e substituta da Refurada; sem a migration a aba segue sem a coluna
-    lerTudo(() => sb.from("vw_estacas_refuradas").select("estaca_id,motivo,refuro_obs,substituta_id,substituta_numero,maquina,execucoes_refuro,data_refuro").eq("obra_id", obraId), "estaca_id")
+    lerTudo(() => sb.from("vw_estacas_refuradas").select("estaca_id,motivo,refuro_obs,substituta_id,substituta_numero,maquina,execucoes_refuro,data_refuro").eq("obra_id", obraId), "estaca_id"),
+    // fase 145a: cobrança de cada execução de refuro (com ou sem estaca); sem a migration o bloco não aparece
+    lerTudo(() => sb.from("vw_refuros_cobranca").select("execucao_id,data,estaca_id,estaca_numero,profundidade_executada,maquina,motivo,refuro_obs,cobranca,responsabilidade,decidido_em,decidido_por_nome,fotos,pode_decidir").eq("obra_id", obraId).order("data"), "execucao_id")
   ]);
+  _confCobranca = cobRes.error ? null : (cobRes.data || []);
   const estacas = estsRes.data;
   _confTemMotivo = !refRes.error;
   (refRes.data || []).forEach(r => { const e = estacas.find(x => x.id === r.estaca_id); if(e) e.ref = r; });
@@ -2652,7 +2656,7 @@ async function abrirModalReconciliacao(){
   // Abre na primeira aba que tem algo a conferir (antes ficava na última aba usada,
   // então a obra seguinte abria direto em "duplicadas" mesmo sem duplicata).
   const altSuspeitas = confSuspeitas(_confAlteradas);
-  _confAbaAtual = _recOrfas.length ? "orfas" : altSuspeitas ? "alteradas" : _confDuplicadas.length ? "duplicadas" : (_confRefuradas.length || _confRefuros.length) ? "refuradas" : "orfas";
+  _confAbaAtual = _recOrfas.length ? "orfas" : altSuspeitas ? "alteradas" : _confDuplicadas.length ? "duplicadas" : (_confRefuradas.length || _confRefuros.length || confCobPendentes()) ? "refuradas" : "orfas";
   ativarConfAba(_confAbaAtual);
 }
 
@@ -3292,7 +3296,7 @@ async function salvarMotivoRefuro(){
 function renderizarRefuradas(){
   const cont = $("conf-refuradas-conteudo");
   if(!cont) return;
-  if(!_confRefuradas.length && !_confRefuros.length){
+  if(!_confRefuradas.length && !_confRefuros.length && !(_confCobranca || []).length){
     cont.innerHTML = `<p class="vazio">🎉 Não há estacas refuradas nem execuções de refuro nesta obra.</p>`;
     return;
   }
@@ -3334,8 +3338,10 @@ function renderizarRefuradas(){
       <thead><tr>
         <th>Nº</th><th>Bloco</th><th>Último refuro</th><th>Máquina</th><th class="num">Refuros</th><th>Status</th><th>Motivo</th><th class="col-acao"></th>
       </tr></thead>
-      <tbody>${/* html */ linhasRefuro}</tbody></table></div>` : ""}`;
+      <tbody>${/* html */ linhasRefuro}</tbody></table></div>` : ""}
+    ${/* html */ confHtmlCobranca()}`;
 
+  confLigarCobranca(cont);
   cont.querySelectorAll(".btn-ref-motivo").forEach(b => {
     b.addEventListener("click", () => abrirModalMotivoRefuro(b.dataset.id));
   });
@@ -3345,6 +3351,105 @@ function renderizarRefuradas(){
   cont.querySelectorAll(".btn-ref-restaurar").forEach(b => {
     b.addEventListener("click", () => restaurarRefurada(b.dataset.id));
   });
+}
+
+/* ====================================================================
+   FASE 145a — Cobrança do refuro (spec docs/specs/fase-145-refuro-cobranca-lancamento.md)
+   Uma linha por execução de refuro (vw_refuros_cobranca), com ou sem estaca. O engenheiro responsável da obra decide
+   (sem ele, o gestor do serviço; o diretor sempre) pela RPC estaca_refuro_cobranca. Refuro pendente trava a medição do
+   período no banco (trg_medicoes_refuro_trava). Período já medido = fora_de_medicao, sem decisão.
+   ==================================================================== */
+let _estRcIds = [], _estRcCob = null, _estRcResp = null;
+function confCobPendentes(){ return (_confCobranca || []).filter(r => r.cobranca === "pendente").length; }
+function confHtmlCobranca(){
+  if(!_confCobranca || !_confCobranca.length) return "";
+  const ro = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+  const pend = confCobPendentes();
+  const podeAlgum = !ro && _confCobranca.some(r => r.pode_decidir && r.cobranca === "pendente");
+  const linhas = _confCobranca.map(r => {
+    const st = REFURO_COBRANCA[r.cobranca] || { label: r.cobranca, cor: "cinza" };
+    const decidivel = !ro && r.pode_decidir && r.cobranca !== "fora_de_medicao";
+    const quem = r.decidido_por_nome ? `<div class="meta">${esc(r.decidido_por_nome)} · ${dataBR(r.decidido_em)}</div>` : "";
+    return `<tr data-id="${esc(r.execucao_id)}">
+      <td>${decidivel && r.cobranca === "pendente" ? `<input type="checkbox" class="est-rc-sel" data-id="${esc(r.execucao_id)}" aria-label="Selecionar o refuro ${esc(r.estaca_numero)}">` : ""}</td>
+      <td>${dataBR(r.data)}</td>
+      <td><strong>${esc(r.estaca_numero || "—")}</strong>${r.estaca_id ? "" : ` <span class="meta" title="Execução sem estaca vinculada: está em Órfãs">sem estaca</span>`}</td>
+      <td>${esc(r.maquina || "—")}</td>
+      <td class="num">${r.profundidade_executada != null ? num(r.profundidade_executada) + " m" : "—"}</td>
+      <td>${r.motivo ? `<span class="tag ambar">${esc(motivoRefuradaLbl(r.motivo))}</span>` : `<span class="meta">sem motivo</span>`}${r.refuro_obs ? `<div class="meta">${esc(r.refuro_obs)}</div>` : ""}</td>
+      <td>${Number(r.fotos) ? esc(r.fotos) + " foto(s)" : `<span class="meta">sem foto</span>`}</td>
+      <td><span class="tag ${esc(st.cor)}">${esc(st.label)}</span>${r.responsabilidade ? `<div class="meta">${esc(refuroRespLbl(r.responsabilidade))}</div>` : ""}${quem}</td>
+      <td class="col-acao">${decidivel ? `<button type="button" class="btn-sec btn-sm btn-rc-decidir" data-id="${esc(r.execucao_id)}">${r.cobranca === "pendente" ? "Decidir" : "Trocar"}</button>` : ""}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="lista-topo compacta">
+      <h4 class="titulo-linha">Cobrança dos refuros <span class="contador">(${esc(_confCobranca.length)})</span></h4>
+      ${podeAlgum ? `<button type="button" class="btn-sec btn-sm" id="btn-rc-lote" title="Aplica a mesma decisão aos refuros marcados">Decidir os marcados</button>` : ""}
+    </div>
+    <p class="meta">${pend ? `${esc(pend)} refuro(s) aguardam a decisão do engenheiro da obra e travam a medição do período.` : "Nenhum refuro aguardando decisão."} Refuro por responsabilidade da CGL não é cobrado. Período já medido fica fora da medição.</p>
+    <div class="tabela-rola"><table>
+      <thead><tr>
+        <th style="width:28px;">${podeAlgum ? `<input type="checkbox" id="est-rc-todos" aria-label="Marcar todos os pendentes">` : ""}</th>
+        <th>Data</th><th>Estaca</th><th>Máquina</th><th class="num">Profund.</th><th>Motivo</th><th>Foto</th><th>Cobrança</th><th class="col-acao"></th>
+      </tr></thead>
+      <tbody>${/* html */ linhas}</tbody></table></div>`;
+}
+function confLigarCobranca(cont){
+  cont.querySelectorAll(".btn-rc-decidir").forEach(b => b.addEventListener("click", () => abrirModalCobrancaRefuro([b.dataset.id])));
+  $("est-rc-todos")?.addEventListener("change", e => cont.querySelectorAll(".est-rc-sel").forEach(c => { c.checked = e.target.checked; }));
+  $("btn-rc-lote")?.addEventListener("click", () => {
+    const ids = [...cont.querySelectorAll(".est-rc-sel:checked")].map(c => c.dataset.id);
+    if(!ids.length){ aviso("app-aviso", "Marque os refuros que vão receber a mesma decisão.", "erro"); return; }
+    abrirModalCobrancaRefuro(ids);
+  });
+}
+function abrirModalCobrancaRefuro(ids){
+  const regs = ids.map(id => (_confCobranca || []).find(r => r.execucao_id === id)).filter(Boolean);
+  if(!regs.length) return;
+  _estRcIds = regs.map(r => r.execucao_id);
+  const r0 = regs[0];
+  $("est-rc-titulo").textContent = regs.length === 1 ? `Cobrança do refuro · ${r0.estaca_numero || ""} (${dataBR(r0.data)})` : `Cobrança de ${regs.length} refuros`;
+  const semFoto = regs.filter(r => !Number(r.fotos)).length;
+  const semMotivo = regs.filter(r => !r.motivo).length;
+  $("est-rc-info").textContent = regs.length === 1
+    ? `${r0.profundidade_executada != null ? num(r0.profundidade_executada) + " m" : "Sem profundidade"} · ${r0.motivo ? "Motivo: " + motivoRefuradaLbl(r0.motivo) : "sem motivo"} · ${Number(r0.fotos) ? r0.fotos + " foto(s)" : "sem foto"}`
+    : `${regs.length} refuros · ${semMotivo} sem motivo · ${semFoto} sem foto`;
+  // responsabilidade sugerida pelo motivo (só quando todos sugerem a mesma); quem decide é o engenheiro
+  const sug = [...new Set(regs.map(r => REFURO_RESP_SUGERIDA[r.motivo] || ""))];
+  const respIni = regs.length === 1 && r0.responsabilidade ? r0.responsabilidade : (sug.length === 1 && sug[0] ? sug[0] : null);
+  const cobIni = regs.length === 1 && ["cobrar", "nao_cobrar"].includes(r0.cobranca) ? r0.cobranca : (respIni === "cgl" ? "nao_cobrar" : null);
+  _estRcCob = chipsMotivo($("est-rc-cobranca"), [{ valor: "cobrar", rotulo: "Cobrar" }, { valor: "nao_cobrar", rotulo: "Não cobrar" }], cobIni,
+    v => { if(v === "cobrar" && _estRcResp?.valor === "cgl") _estRcResp.definir(null); });
+  _estRcResp = chipsMotivo($("est-rc-resp"), REFURO_RESPONSABILIDADE, respIni,
+    v => { if(v === "cgl") _estRcCob.definir("nao_cobrar"); });
+  $("est-rc-sugestao").textContent = respIni && !(regs.length === 1 && r0.responsabilidade) ? `Sugestão pelo motivo: ${refuroRespLbl(respIni)}. Confira antes de gravar.` : "";
+  $("est-rc-obs").value = "";
+  $("est-rc-modal").style.display = "flex";
+}
+function fecharModalCobrancaRefuro(){ $("est-rc-modal").style.display = "none"; _estRcIds = []; }
+async function salvarCobrancaRefuro(){
+  const cob = _estRcCob?.valor, resp = _estRcResp?.valor || null, obs = $("est-rc-obs").value.trim();
+  if(!_estRcIds.length) return;
+  if(!cob){ aviso("app-aviso", "Escolha Cobrar ou Não cobrar.", "erro"); return; }
+  if(cob === "nao_cobrar" && !resp){ aviso("app-aviso", "Para não cobrar, diga de quem foi a responsabilidade.", "erro"); return; }
+  if(cob === "cobrar" && resp === "cgl"){ aviso("app-aviso", "Refuro por responsabilidade da CGL não é cobrado.", "erro"); return; }
+  let ok = 0; const erros = [];
+  for(const id of _estRcIds){
+    const { error } = await sb.rpc("estaca_refuro_cobranca", { p_execucao: id, p_cobranca: cob, p_responsabilidade: resp, p_obs: obs || null });
+    if(error) erros.push(error.message); else ok++;
+  }
+  fecharModalCobrancaRefuro();
+  aviso("app-aviso", erros.length ? `${ok} decisão(ões) gravada(s); ${erros.length} recusada(s): ${erros[0]}` : `${ok} decisão(ões) de cobrança gravada(s): ${REFURO_COBRANCA[cob].label}.`, erros.length ? "erro" : "ok");
+  const obraId = obraEditId, dados = await confCarregarDados(obraId);
+  if(obraId === obraEditId){ _confRefuradas = dados.refuradas; _confRefuros = dados.refuros; atualizarBadgesConferencia(); renderizarRefuradas(); }
+}
+/* Atalho da medição e do "Para regularizar": abre a obra, a Conferência e a aba Refuradas */
+async function confAbrirRefurosDaObra(obraId){
+  if(!obraId || !irParaSecao("obras") || typeof abrirObra !== "function") return;
+  await abrirObra(obraId);
+  if(typeof ativarTabObra === "function") ativarTabObra("estacas");
+  await abrirModalReconciliacao();
+  ativarConfAba("refuradas");
 }
 
 async function criarSubstitutaRefurada(idOriginal, numOriginal){
@@ -4176,6 +4281,8 @@ function ligarEstacas(){
   $("btn-est-rf-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rf-salvar", salvarRefurar));
   $("btn-est-rm-fechar")?.addEventListener("click", fecharModalMotivoRefuro);
   $("btn-est-rm-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rm-salvar", salvarMotivoRefuro));
+  $("btn-est-rc-fechar")?.addEventListener("click", fecharModalCobrancaRefuro);   // fase 145a
+  $("btn-est-rc-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rc-salvar", salvarCobrancaRefuro));
 }
 
 if(document.readyState === "loading"){

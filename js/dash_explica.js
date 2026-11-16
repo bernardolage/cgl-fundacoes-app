@@ -237,6 +237,8 @@ const DASH_EXPLICA = {
     fazer: "Conferir e finalizar, ou devolver.", origem: "Dos diários do aplicativo do campo." },
   "rdo_improdutivo_sem_motivo": { regra: "Diários a partir de 16/11/2026, já fechados (dia passado, enviado pelo campo ou finalizado), sem nenhuma estaca e sem nenhuma parada lançada.",
     fazer: "Lançar a parada que explica o dia (motivo e se foi em razão do cliente) ou as estacas que faltam.", origem: "Do diário de obra: estacas executadas e paradas." },
+  "refuro_cobranca_pendente": { regra: "Refuros de período ainda não medido sem a decisão de cobrança. Decide o engenheiro responsável da obra; sem ele, o gestor do serviço. Enquanto houver um no período, a medição não sai de rascunho.",
+    fazer: "Na Conferência da obra, aba Refuradas, marcar Cobrar ou Não cobrar (com a responsabilidade).", origem: "Das execuções de refuro dos diários." },
   "estaca_nao_chegou": { regra: "Aviso do operador, ainda não resolvido, de estacas executadas que não chegaram do computador de bordo.",
     fazer: "Conferir o computador de bordo e lançar a estaca.", origem: "Das pendências abertas no aplicativo do campo." },
   "contestacao_campo": { regra: "Estaca do diário contestada pelo operador (não é dele, número errado ou outro motivo), ainda sem resolução.",

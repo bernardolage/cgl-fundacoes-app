@@ -10,7 +10,7 @@ const ETAPAS = {
 };
 const ROTULO_REFURO = { obstrucao: "Obstrução", desmoronamento: "Desmoronamento", desvio_locacao: "Desvio de locação",
   ferramenta_quebrou: "Ferramenta quebrou", maquina_parou: "Máquina parou", projeto_alterado: "Projeto alterado",
-  erro_operacional: "Erro operacional", teste: "Teste", outro: "Outro" };
+  erro_operacional: "Erro operacional", teste: "Teste", concreto: "Concreto", armacao: "Armação", outro: "Outro" };
 const ROTULO_CONTESTAR = { nao_e_minha: "Não é minha", numero_errado: "Número errado", outro: "Outro" };
 
 function etapaDaExecucao(x){

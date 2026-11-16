@@ -354,6 +354,7 @@ function abrirFichaMed(med){
   medAtualizarOrigemFicha(med); // fase 88: chip "Origem" e botão do PDF do boletim importado
   ativarTabMed("geral");
   medAtualizarProducaoPendente(med.id);
+  medRefPendAtualizar();        // fase 145a: refuros sem decisão no período
   medRecebCarregarFicha(med);   // fase 91: aba NF/Recebimento
   medCauCarregarFicha(med);     // fase 91: aba Caução
   if(typeof medPmCarregarFicha === "function") medPmCarregarFicha(med);   // fase 98: % e crédito de permuta (aba Geral)
@@ -924,9 +925,37 @@ async function sugerirItensMedicao(){
   const semPreco = _medItens.filter(i => !i.valor_unitario).length;
   let msg = `✨ Sugestão: ${partes.join(" + ")}.`;
   if(semPreco) msg += ` ⚠️ ${semPreco} sem preço — ajuste manualmente.`;
-  if(ref) msg += " ⚠️ Refuro: confirme com o engenheiro da obra antes de cobrar; refuro por responsabilidade da CGL sai da medição.";
+  // fase 145a: o Sugerir só traz o refuro que o engenheiro liberou; o pendente trava a medição
+  const pend = await medRefPendAtualizar();
+  if(ref) msg += " Refuro: só entra o que o engenheiro da obra liberou para cobrança.";
+  if(pend) msg += ` ⚠️ ${pend} refuro(s) aguardam a decisão do engenheiro da obra: a medição não sai de rascunho antes disso.`;
   msg += erroExtras;
-  aviso("app-aviso", msg, semPreco || ref || erroExtras ? "erro" : "ok");
+  aviso("app-aviso", msg, semPreco || pend || erroExtras ? "erro" : "ok");
+}
+
+/* Fase 145a: refuros sem decisão de cobrança no período da medição (medicao_refuros_pendentes). O banco recusa tirar a
+   medição de rascunho enquanto houver algum (trg_medicoes_refuro_trava); aqui só mostra a lista e o caminho da decisão.
+   Devolve a quantidade (0 sem obra, sem a migration ou fora de rascunho). */
+let _medRefPendSeq = 0;
+async function medRefPendAtualizar(){
+  const box = $("med-ref-pend");
+  if(!box) return 0;
+  const obra = $("med-obra")?.value, ini = $("med-inicio")?.value || null, fim = $("med-fim")?.value || $("med-data")?.value || null;
+  const st = $("med-status")?.value || "rascunho", tipo = $("med-tipo")?.value || "";
+  const seq = ++_medRefPendSeq;
+  if(!obra || !["rascunho", "rejeitada"].includes(st) || tipo === "sinal_contratual"){ box.style.display = "none"; return 0; }
+  const { data, error } = await sb.rpc("medicao_refuros_pendentes", { p_obra: obra, p_inicio: ini, p_fim: fim });
+  if(seq !== _medRefPendSeq) return 0;   // a obra ou o período mudou no meio
+  const lista = error ? [] : (data || []);
+  if(!lista.length){ box.style.display = "none"; box.innerHTML = ""; return 0; }
+  const mostra = lista.slice(0, 15).map(r => `${esc(r.estaca_numero || "?")} (${dataBR(r.data)})`).join(", ");
+  box.innerHTML = `<div><strong>${esc(lista.length)} refuro(s) do período aguardam a decisão de cobrança do engenheiro da obra.</strong>
+      A medição não sai de rascunho até a decisão.
+      <div class="meta">${/* html */ mostra}${lista.length > 15 ? ` e mais ${esc(lista.length - 15)}` : ""}</div></div>
+    <button type="button" class="btn-sec btn-sm" id="btn-med-ref-pend" title="Abre a Conferência da obra na aba Refuradas">Abrir a decisão</button>`;
+  box.style.display = "";
+  $("btn-med-ref-pend")?.addEventListener("click", () => { if(typeof confAbrirRefurosDaObra === "function") confAbrirRefurosDaObra(obra); });
+  return lista.length;
 }
 
 function atualizarStatusbarMed(st){
@@ -1031,6 +1060,8 @@ async function salvarMedicao(novoStatus){
   }
   if(result.error){
     aviso("app-aviso","Não foi possível salvar a medição: "+result.error.message,"erro");
+    // fase 145a: refuro sem decisão no período trava a saída de rascunho; a lista fica na aba Itens
+    if(/Medição travada/.test(result.error.message || "")){ atualizarStatusbarMed($("med-status").value); ativarTabMed("itens"); medRefPendAtualizar(); }
     return;
   }
   medEditId = result.data.id;
@@ -2299,6 +2330,8 @@ function ligarMedicoes(){
 
   // Aba Itens: sugerir, compor sinal e adicionar manual
   $("btn-med-sugerir")?.addEventListener("click", sugerirItensMedicao);
+  // fase 145a: refuros sem decisão acompanham a obra e o período
+  ["med-obra", "med-inicio", "med-fim", "med-tipo"].forEach(id => $(id)?.addEventListener("change", debounce(medRefPendAtualizar, 300)));
   $("btn-med-compor-sinal")?.addEventListener("click", comporMedicaoSinal);
   $("btn-med-add-item")?.addEventListener("click", adicionarItemMedicaoManual);
 
