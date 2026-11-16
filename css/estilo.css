@@ -1008,6 +1008,19 @@ td.num, th.num {
   background: var(--danger);
   color: var(--txt-sobre);
 }
+/* lote S65-e (#317): setas de ordem dos itens (orçamento e catálogo de Serviços) */
+.itens-tabela .col-acao-ordem { width: 112px; white-space: nowrap; }
+.btn-ordem {
+  background: var(--sup-3);
+  color: var(--txt-sec);
+  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 32px;
+  margin-right: 2px;
+  font-size: 12px;
+}
+.btn-ordem:hover { color: var(--marca-600); }
+.btn-ordem[hidden] { display: none; }
 .itens-total {
   margin-top: 20px;
   text-align: right;

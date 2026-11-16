@@ -70,7 +70,7 @@ async function carregarCatalogoServicos(){
   if(cont) cont.innerHTML = `<p class="vazio">Carregando catálogo...</p>`;
   const [cat, srv, vrt, prc] = await Promise.all([
     sb.from("categorias_servico").select("*").order("ordem_exibicao"),
-    sb.from("servicos").select("*").order("codigo"),
+    sb.from("servicos").select("*").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),   // lote S65-e: ordem padrão
     sb.from("servico_variantes").select("*").order("codigo"),
     sb.from("servico_precos").select("*").order("vigente_desde", { ascending:false })
   ]);
@@ -125,6 +125,37 @@ function variantesFiltradas(){
       }
       return true;
     });
+}
+
+/* ---------- Lote S65-e (#317): ordem padrão dos serviços ----------
+   servicos.ordem_exibicao define a ordem no catálogo (visão Catálogo e Kanban) e no seletor de itens do orçamento.
+   As setas aparecem na visão Catálogo para quem grava o catálogo (comercial; diretor pelo has_role, policy servicos_write).
+   Mover troca o serviço com o vizinho da mesma categoria principal e renumera o catálogo inteiro (10, 20, 30…) na ordem
+   categoria principal › serviço, para o seletor do orçamento seguir as categorias; grava só os que mudaram. */
+function servOrdenar(grupos){
+  const o = s => s.ordem_exibicao == null ? Infinity : Number(s.ordem_exibicao);
+  return grupos.sort((a, b) => (o(a.s) - o(b.s)) || String(a.s.codigo || "").localeCompare(String(b.s.codigo || ""), "pt-BR"));
+}
+function servPodeOrdenar(){
+  return !!usuarioAtual && ["diretor", "comercial"].includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
+}
+async function servMoverOrdem(servId, passo){
+  if(!servPodeOrdenar()) return;
+  const s = servById(servId); if(!s) return;
+  const rOrd = x => { const r = servCatRaiz(x.categoria_id); return r ? Number(r.ordem_exibicao || 0) : Infinity; };
+  const rId = x => servCatRaiz(x.categoria_id)?.id || "";
+  const o = x => x.ordem_exibicao == null ? Infinity : Number(x.ordem_exibicao);
+  const todos = _servServicos.slice().sort((a, b) => (rOrd(a) - rOrd(b)) || String(rId(a)).localeCompare(String(rId(b))) || (o(a) - o(b)) || String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR"));
+  const i = todos.findIndex(x => x.id === servId), j = i + passo;
+  if(i < 0 || j < 0 || j >= todos.length || rId(todos[j]) !== rId(s)) return;   // só dentro da mesma categoria principal
+  [todos[i], todos[j]] = [todos[j], todos[i]];
+  const mudar = todos.map((x, k) => ({ x, nova: (k + 1) * 10 })).filter(m => Number(m.x.ordem_exibicao) !== m.nova);
+  const res = await Promise.all(mudar.map(m => sb.from("servicos").update({ ordem_exibicao: m.nova }).eq("id", m.x.id).select("id")));
+  const erro = res.find(r => r.error || !(r.data || []).length);
+  if(erro){ aviso("app-aviso", "Não foi possível gravar a ordem" + (erro.error ? ": " + erro.error.message : " (sem permissão para gravar o catálogo).") , "erro"); await carregarCatalogoServicos(); return; }
+  mudar.forEach(m => { m.x.ordem_exibicao = m.nova; });
+  renderServicos();
+  document.querySelector(`[data-serv="${CSS.escape(servId)}"][data-serv-ordem="${passo}"]`)?.focus();
 }
 
 /* ---------- Render: despachante ---------- */
@@ -190,7 +221,7 @@ function renderServKanban(dados){
     .filter(c => c.nivel === 1)
     .sort((a,b) => (a.ordem_exibicao||0) - (b.ordem_exibicao||0));
   const colunas = raizes.map(r => {
-    const servs = Object.values(grupos).filter(g => g.raiz && g.raiz.id === r.id);
+    const servs = servOrdenar(Object.values(grupos).filter(g => g.raiz && g.raiz.id === r.id));
     if(!servs.length) return "";
     const cards = servs.map(g => `
       <div class="serv-kan-card">
@@ -222,7 +253,7 @@ function renderServCatalogo(dados){
     .sort((a,b) => (a.ordem_exibicao||0) - (b.ordem_exibicao||0));
   let html = "";
   raizes.forEach(r => {
-    const servs = Object.values(grupos).filter(g => g.raiz && g.raiz.id === r.id);
+    const servs = servOrdenar(Object.values(grupos).filter(g => g.raiz && g.raiz.id === r.id));
     if(!servs.length) return;
     html += `<div class="serv-cat-grupo">
       <div class="serv-cat-head">${esc(r.nome)}<span>${servs.length} serviço${servs.length>1?'s':''}</span></div>`;
@@ -239,6 +270,7 @@ function renderServCatalogo(dados){
       html += `<div class="serv-serv-card">
         <div class="serv-serv-head">
           <div>
+            ${servPodeOrdenar() ? `<span class="serv-ordem"><button type="button" class="btn-ordem" data-serv-ordem="-1" data-serv="${esc(g.s.id)}" title="Subir este serviço na ordem padrão (vale para o seletor do orçamento)" aria-label="Subir serviço">▲</button><button type="button" class="btn-ordem" data-serv-ordem="1" data-serv="${esc(g.s.id)}" title="Descer este serviço na ordem padrão (vale para o seletor do orçamento)" aria-label="Descer serviço">▼</button></span>` : ""}
             <strong>${esc(g.s.nome)}</strong>
             <span class="serv-caminho">${esc(servCatCaminho(g.s.categoria_id))} · ${esc(g.s.unidade||"")}</span>
           </div>
@@ -311,6 +343,8 @@ document.querySelectorAll(".serv-view-btn").forEach(b => {
 });
 
 $("serv-conteudo").addEventListener("click", (e) => {
+  const seta = e.target.closest("[data-serv-ordem]");
+  if(seta){ servMoverOrdem(seta.dataset.serv, Number(seta.dataset.servOrdem)); return; }
   const tr = e.target.closest("tr.linha-clicavel");
   if(tr) abrirFichaServ(tr.dataset.id);
 });

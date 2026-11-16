@@ -30,7 +30,20 @@ function orcAplicarModoLeitura(){
   ORC_BOTOES_ESCRITA.forEach(id => { const b = $(id); if(b) b.style.display = "none"; });
   document.querySelectorAll("#orc-ficha .odoo-tab input, #orc-ficha .odoo-tab select, #orc-ficha .odoo-tab textarea")
     .forEach(el => { el.disabled = true; });
-  document.querySelectorAll("#orc-itens .btn-rem, #orc-itens .it-cat-all").forEach(b => { b.style.display = "none"; });
+  document.querySelectorAll("#orc-itens .btn-rem, #orc-itens .it-cat-all, #orc-itens .btn-ordem").forEach(b => { b.style.display = "none"; });
+}
+/* lote S65-e (#317): as setas de ordem só aparecem para quem edita e com o orçamento em rascunho (aprovado não reordena).
+   A ordem é a posição da linha: salvarOrcamento grava orcamento_itens.ordem 1..n e a proposta lê .order("ordem"). */
+function orcAtualizarSetasOrdem(st){
+  const ok = orcPodeEditar() && (st || $("orc-status")?.value || "rascunho") === "rascunho";
+  document.querySelectorAll("#orc-itens .btn-ordem").forEach(b => { b.hidden = !ok; });
+}
+function orcMoverItem(tr, passo){
+  const alvo = passo < 0 ? tr.previousElementSibling : tr.nextElementSibling;
+  if(!alvo) return;
+  if(passo < 0) alvo.before(tr); else alvo.after(tr);
+  tr.querySelector(`.btn-ordem[data-ordem="${passo}"]`)?.focus();
+  recalcularOrc();
 }
 
 /* ---------- Cache do catálogo ---------- */
@@ -193,7 +206,7 @@ function _eixoServicoOrc(texto, tipoEstaca){
 
 async function prepararCatalogoOrc(){
   const [srv, vrt, prc, cat] = await Promise.all([
-    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao,tipo_estaca").order("codigo"),
+    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao,tipo_estaca,ordem_exibicao").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),   // lote S65-e: ordem padrão do catálogo
     sb.from("servico_variantes").select("id,servico_id,codigo,nome,ativo,tipo_obra,unidade,porte,faixa_prof,perna").order("codigo"),
     sb.from("servico_precos").select("variante_id,preco_referencia,vigente_desde")
       .order("vigente_desde",{ ascending:false }),
@@ -1421,6 +1434,7 @@ async function criarObraDoOrcamento(){
 
 function atualizarStatusbarOrc(st){
   const bar = $("orc-statusbar");
+  orcAtualizarSetasOrdem(st);   // lote S65-e: aprovado não reordena
   if(!bar) return;
   const idxAtual = ORC_STAGES.indexOf(st);
   bar.querySelectorAll(".stage").forEach(el => {
@@ -1579,7 +1593,7 @@ function linhaItemHTML(){
     <td><input type="number" class="it-vu" step="0.01" min="0" value="0" /></td>
     <td class="it-total num">R$ 0,00</td>
     <td><input type="text" class="it-obs" placeholder='(opcional) ex.: Obs: Item 3 - ...' /></td>
-    <td class="col-acao"><button type="button" class="btn-rem" title="remover">&times;</button></td>
+    <td class="col-acao col-acao-ordem"><button type="button" class="btn-ordem" data-ordem="-1" title="Subir este item (a ordem vai para a proposta)" aria-label="Subir item">▲</button><button type="button" class="btn-ordem" data-ordem="1" title="Descer este item (a ordem vai para a proposta)" aria-label="Descer item">▼</button><button type="button" class="btn-rem" title="remover">&times;</button></td>
   </tr>`;
 }
 
@@ -1650,6 +1664,7 @@ function recalcularOrc(){
   });
   const totalEl = $("orc-total");
   if(totalEl) totalEl.textContent = brl(soma);
+  orcAtualizarSetasOrdem();   // lote S65-e
   // Fase 40: ISS da proposta (por dentro = soma × p/(100-p), como na RG 11.8)
   // Chamado #18 (Thales, 21/09/2026): checkbox desmarcado = ISS NÃO compõe o somatório
   // (antes desmarcado virava "por fora" e continuava somando).
@@ -2050,6 +2065,10 @@ function ligarOrcamentos(){
         btn.setAttribute("aria-pressed", ativo ? "true" : "false");
         btn.title = ativo ? "Voltar ao catálogo filtrado" : "Ver todo o catálogo nesta linha";
         _trocarOpcoesSelect(sel, ativo ? _orcCatOptions : _opcoesFiltradasOrc());
+        return;
+      }
+      if(e.target.classList.contains("btn-ordem")){
+        if(!e.target.hidden) orcMoverItem(e.target.closest("tr"), Number(e.target.dataset.ordem));
         return;
       }
       if(e.target.classList.contains("btn-rem")){
