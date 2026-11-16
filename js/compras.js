@@ -464,6 +464,7 @@ function cmpDestCabMudou(){
       Object.assign(it, d);
       if(d._rateio) it._rateio = d._rateio.map(r => ({ ...r })); else if(tinha){ it._rateio = null; it._rateioDirty = true; }
       if(it.destino !== "equipamento") it.horimetro = null;
+      cmpNatFrotaSugerir(it);   // fase 131a
       cmpAplicarMetodoPadrao(it);
     });
   }
@@ -766,7 +767,7 @@ async function cmpCarregarBaseAgora(){
     const [fo, ob, eq, al, cc, pf, nat, s56, f133, f181b] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").neq("status", "cancelada").order("codigo", { ascending: false }),   // lote S54 (#171): concluídas entram (grupo próprio nos selects)
-      sb.from("equipamentos").select("id,codigo,nome,tipo").eq("ativo", true).order("codigo"),
+      sb.from("equipamentos").select("id,codigo,nome,tipo,placa").eq("ativo", true).order("codigo"),   // fase 131a: placa na busca da TAG
       sb.rpc("compras_alcada_usuario"),
       sb.from("centros_custo").select("id,codigo,nome,tipo,ativo,odoo_naturezas").order("tipo", { ascending: false }).order("nome"),   // lote S57a (#212): naturezas sugerem o centro
       sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),   // fase 78
@@ -1086,6 +1087,7 @@ function cmpPreencherSelectsFixos(){
   const fs = $("cmp-f-status"); if(fs){ const atual = fs.value || "_abertos"; fs.innerHTML = `<option value="_abertos">Abertos</option><option value="">Todos os status</option>` + Object.entries(CMP_STATUS).map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join(""); fs.value = atual; }
   const ac = $("cmp-av-cat"); if(ac) ac.innerHTML = cmpCatOptions("outro");
   ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-f-forn", "cmp-cot-forn", "cmp-corrforn-forn"].forEach(cmpFornAtualizar);   // lote S43 (#53); S45: filtro do painel; fase 102: cotação
+  cmpCampoTag($("cmp-dest-custo"), "obra, TAG, placa ou setor…"); cmpCampoTag($("cmp-av-equip")); cmpCampoTag($("cmp-f-equip"), "TAG ou placa…");   // fase 131a
 }
 
 /* ---------- painel ---------- */
@@ -2312,6 +2314,7 @@ function renderItensPedido(){
       if(bRat) bRat.style.display = it.destino === "equipamento" ? "" : "none";
       if(tRat) tRat.innerHTML = cmpDestinoRateioHTML(it);
       if(it.categoria_custo === "combustivel"){ if(it.destino !== "equipamento") it.horimetro = null; renderItensPedido(); }   // #215: campo do horímetro aparece/some
+      else if(cmpNatFrotaSugerir(it)) renderItensPedido();   // fase 131a: caminhão ou veículo sugere a natureza de manutenção da frota
       cmpAplicarMetodoPadrao(it); cmpDestCabSincronizar(); cmpAtualizarChips(); return;   // fase 133: o cabeçalho acompanha
     }
     if(f === "natureza_id"){ it.natureza_id = v || null; it._natAuto = false; cmpSugerirDestinoNatureza(it); return; }
@@ -2322,7 +2325,7 @@ function renderItensPedido(){
       it.unidade = v || "un"; renderItensPedido(); return;
     }
     if(f === "categoria_custo" && it._natAuto){   // natureza ainda não escolhida à mão: segue a categoria de custo
-      it.categoria_custo = v; it.natureza_id = cmpNatPadrao(cmpItemTipo(it), v); if(v !== "combustivel") it.horimetro = null; renderItensPedido(); return;
+      it.categoria_custo = v; it.natureza_id = cmpNatPadrao(cmpItemTipo(it), v); cmpNatFrotaSugerir(it); if(v !== "combustivel") it.horimetro = null; renderItensPedido(); return;
     }
     if(f === "categoria_custo"){ it.categoria_custo = v; if(v !== "combustivel") it.horimetro = null; renderItensPedido(); return; }   // lote S57a (#215)
     if(["quantidade", "valor_unitario", "ipi_percentual", "icms_percentual"].includes(f)) it[f] = Number(v || 0);
@@ -2342,6 +2345,7 @@ function renderItensPedido(){
   tb.querySelectorAll(".cmp-it-func").forEach(inp => cmpLigarColaborador(inp));
   tb.querySelectorAll(".cmp-it-rat").forEach(b => b.addEventListener("click", e => cmpAbrirRateio(Number(e.target.closest("tr").dataset.idx))));
   tb.querySelectorAll(".cmp-it-rem").forEach(b => b.addEventListener("click", e => { _cmpItens.splice(Number(e.target.closest("tr").dataset.idx), 1); renderItensPedido(); }));
+  tb.querySelectorAll('select.cmp-it[data-f="destino"]').forEach(s => cmpCampoTag(s, "obra, TAG, placa ou setor…"));   // fase 131a
   cmpDestCabSincronizar();   // fase 133: itens com destinos diferentes → "Vários destinos" no cabeçalho
   cmpAtualizarSbItens();
   cmpAtualizarChips();
@@ -2458,7 +2462,7 @@ function cmpAplicarTipoItem(it, tipo){
     Object.assign(it, d);
     if(d._rateio) it._rateio = d._rateio.map(r => ({ ...r }));
   }
-  if(it._natAuto){ it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo); }
+  if(it._natAuto){ it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo); cmpNatFrotaSugerir(it); }
 }
 /* lote S55 (#175): acabou o item livre (cmpAddItem(null)); todo item nasce de um produto do catálogo — serviço consumido
    também é produto (tipo_item = servico: aplicação direta, nunca estoque; o banco força e recusa) */
@@ -2476,7 +2480,7 @@ function cmpAddItem(p){
   const it = { produto_id: p.id, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade: 1,
     valor_unitario: Number(p.custo_ultimo || 0), categoria_custo: p.categoria_custo || (srv ? "servico_terceiro" : "peca"), ipi_percentual: 0, icms_percentual: 0, ...d, quantidade_recebida: 0,   // lote S53 (#166)
     _tipo: tipo, natureza_id: null, _natAuto: true, metodo: null, _metAuto: true };
-  it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo);
+  it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo); cmpNatFrotaSugerir(it);   // fase 131a
   _cmpItens.push(it);
   renderItensPedido();
   if(tipo === "aplicacao_direta") cmpAplicarMetodoPadrao(it);
@@ -2545,10 +2549,12 @@ function cmpRatRender(){
   const f = cmpNorm($("cmp-rat-busca").value.trim());
   const comRs = !!r.rs;
   if($("cmp-rat-th-rs")) $("cmp-rat-th-rs").style.display = comRs ? "" : "none";
-  const lista = _cmpEquips.filter(e => r.sel.has(e.id) || !f || cmpNorm(e.codigo + " " + (e.nome || "")).includes(f));
+  // fase 131a: busca também por placa e tipo (todas as palavras), na ordem caminhões, veículos leves, perfuratrizes...
+  const termos = f.split(/\s+/).filter(Boolean);
+  const lista = cmpEquipsPorTipo().filter(e => r.sel.has(e.id) || !termos.length || termos.every(t => cmpTagBuscaTxt(e).includes(t)));
   $("cmp-rat-lista").innerHTML = lista.map(e => { const on = r.sel.has(e.id); return `<tr data-eq="${esc(e.id)}"${on ? ' class="sep-ok"' : ""}>
     <td><input type="checkbox" class="cmp-rat-chk"${on ? " checked" : ""} /></td>
-    <td>TAG ${esc(e.codigo)}${e.nome ? ` <span class="meta">${esc(e.nome)}</span>` : ""}</td>
+    <td>TAG ${esc(e.codigo)}${e.nome ? ` <span class="meta">${esc(e.nome)}</span>` : ""} <span class="meta">${esc([e.placa, CMP_TAG_TIPO_LBL[e.tipo] || e.tipo].filter(Boolean).join(" · "))}</span></td>
     <td>${on ? `<input type="number" class="cmp-rat-pct" min="0.0001" max="100" step="0.0001" value="${esc(r.sel.get(e.id))}" style="width:90px;text-align:right;" />` : ""}</td>
     ${comRs ? `<td>${on ? `<input type="number" class="cmp-rat-rs" min="0.01" step="0.01" value="${esc((r.rs.get(e.id) ?? 0).toFixed(2))}" style="width:110px;text-align:right;" />` : ""}</td>` : ""}</tr>`; }).join("")
     || `<tr><td colspan="${comRs ? 4 : 3}" class="vazio">Nenhuma TAG com esse texto.</td></tr>`;
@@ -2721,6 +2727,135 @@ function cmpCampoFornecedor(idSelect, placeholder){
   _cmpFornCampos[idSelect] = { atualizar };
   atualizar();
   return _cmpFornCampos[idSelect];
+}
+/* ---------- fase 131a: TAG com busca em Compras ----------
+   O <select> do destino (ou da TAG) continua existindo, escondido, com o mesmo valor e os mesmos eventos: quem lê .value,
+   troca o innerHTML ou escuta "change" não muda. Em cima dele entra um campo que mostra a opção escolhida e, ao focar,
+   abre a lista com as opções do próprio select; as TAGs (valor "eq:<id>" ou o id puro) saem agrupadas por tipo, caminhões
+   e veículos leves primeiro, com "TAG · nome · placa · tipo", e a busca acha por código, nome, placa ou tipo.
+   "Só frota" (caminhões e veículos) já vem ligado para gestor_frota e logistica e desliga com um clique. */
+const CMP_TAG_GRUPOS = [["caminhao", "Caminhões"], ["veiculo", "Veículos leves"], ["perfuratriz", "Perfuratrizes"], ["bomba", "Bombas"],
+  ["compressor", "Compressores"], ["gerador", "Geradores"], ["escavadeira", "Escavadeiras"]];
+const CMP_TAG_TIPO_LBL = { caminhao: "caminhão", veiculo: "veículo leve", perfuratriz: "perfuratriz", bomba: "bomba", compressor: "compressor",
+  gerador: "gerador", escavadeira: "escavadeira", retroescavadeira: "retroescavadeira", outro: "outro" };
+let _cmpTagSoFrota = null;   // null = padrão do cargo; depois, o que a pessoa escolheu (vale para todos os campos até recarregar)
+function cmpEqFrota(e){ return !!e && (e.tipo === "caminhao" || e.tipo === "veiculo"); }
+function cmpTagSoFrota(){ return _cmpTagSoFrota === null ? ["gestor_frota", "logistica"].includes(usuarioAtual?.cargo) : _cmpTagSoFrota; }
+function cmpEqDoValor(v){ const s = String(v || ""), id = s.startsWith("eq:") ? s.slice(3) : s; return id ? (_cmpEqMap[id] || null) : null; }
+function cmpTagRotulo(e){ return [e.codigo, e.nome, e.placa, CMP_TAG_TIPO_LBL[e.tipo] || e.tipo].filter(Boolean).join(" · "); }
+function cmpTagBuscaTxt(e){ return cmpNorm([e.codigo, e.nome, e.placa, String(e.placa || "").replace(/\W/g, ""), CMP_TAG_TIPO_LBL[e.tipo], e.tipo].filter(Boolean).join(" ")); }
+function cmpTagGrupoIdx(e){ const i = CMP_TAG_GRUPOS.findIndex(g => g[0] === e.tipo); return i < 0 ? CMP_TAG_GRUPOS.length : i; }
+/* TAGs na ordem de quem compra: grupo do tipo, depois o código */
+function cmpEquipsPorTipo(lista){ return (lista || _cmpEquips).slice().sort((a, b) => cmpTagGrupoIdx(a) - cmpTagGrupoIdx(b) || String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true })); }
+function cmpCampoTag(sel, placeholder){
+  if(!sel) return null;
+  if(sel._cmpTag) return sel._cmpTag;
+  const ph = placeholder || "TAG, nome, placa ou tipo…";
+  const wrap = document.createElement("div"); wrap.className = "cmp-tag-campo";
+  wrap.style.cssText = sel.style.cssText;
+  sel.style.display = "none";
+  wrap.innerHTML = `<input class="cmp-tag-busca" autocomplete="off" /><div class="autocomplete-lista" style="display:none;"></div>`;
+  sel.insertAdjacentElement("afterend", wrap);
+  const inp = wrap.querySelector("input"), lista = wrap.querySelector(".autocomplete-lista");
+  let aberto = false, ents = [];
+  const rotuloOpc = o => { const e = cmpEqDoValor(o.value); return e ? cmpTagRotulo(e) : o.textContent; };
+  function atualizar(){
+    const o = sel.options[sel.selectedIndex];
+    inp.disabled = sel.disabled;
+    inp.classList.toggle("txt-perigo", sel.classList.contains("txt-perigo"));
+    if(aberto) return;
+    inp.value = o && o.value ? rotuloOpc(o) : "";
+    inp.placeholder = o && !o.value ? o.textContent : ph;
+    inp.title = inp.value ? inp.value : "Digite o código, o nome, a placa ou o tipo (ex.: polo, 62, munck)";
+  }
+  // a lista flutua presa ao campo (position fixed): dentro da tabela de itens, que rola na horizontal, ela seria cortada
+  function posicionar(){
+    if(lista.style.display === "none") return;
+    const r = inp.getBoundingClientRect(), h = lista.offsetHeight, abaixo = window.innerHeight - r.bottom;
+    lista.style.left = Math.max(4, Math.min(r.left, window.innerWidth - lista.offsetWidth - 4)) + "px";
+    lista.style.minWidth = r.width + "px";
+    lista.style.top = (abaixo < h + 8 && r.top > abaixo ? Math.max(4, r.top - h - 2) : r.bottom + 2) + "px";
+  }
+  const fechar = () => { lista.style.display = "none"; lista.innerHTML = ""; window.removeEventListener("scroll", posicionar, true); };
+  function render(){
+    const termos = cmpNorm(inp.value.trim()).split(/\s+/).filter(Boolean), soFrota = cmpTagSoFrota();
+    const casa = txt => termos.every(t => txt.includes(t));
+    ents = [...sel.options].map(o => ({ v: o.value, o, e: cmpEqDoValor(o.value), grupo: o.parentElement?.tagName === "OPTGROUP" ? o.parentElement.label : "" }));
+    const ordem = [], grupos = {}, tagGrupos = {};
+    let escondidas = 0, temTag = false;
+    ents.forEach((x, i) => {
+      if(x.e){
+        temTag = true;
+        if(termos.length && !casa(cmpTagBuscaTxt(x.e))) return;
+        if(soFrota && !cmpEqFrota(x.e) && x.v !== sel.value){ escondidas++; return; }
+        if(!ordem.includes("__tags")) ordem.push("__tags");
+        const gi = cmpTagGrupoIdx(x.e);
+        (tagGrupos[gi] = tagGrupos[gi] || []).push(i);
+        return;
+      }
+      if(termos.length && !casa(cmpNorm(x.o.textContent + " " + x.grupo))) return;
+      const k = "g:" + x.grupo;
+      if(!grupos[k]){ grupos[k] = []; ordem.push(k); }
+      grupos[k].push(i);
+    });
+    const item = i => { const x = ents[i], e = x.e, on = x.v === sel.value ? " ativo-sel" : "";   // on: classe fixa
+      return e
+        ? `<div class="resultado-item${/* html */ on}" data-i="${i}"><strong>${esc(e.codigo)}</strong> ${esc(e.nome || "")}<span class="meta" style="float:right;">${esc([e.placa, CMP_TAG_TIPO_LBL[e.tipo] || e.tipo].filter(Boolean).join(" · "))}</span></div>`
+        : `<div class="resultado-item${/* html */ on}" data-i="${i}">${esc(x.o.textContent)}</div>`; };
+    const cab = rot => rot ? `<div class="cmp-tag-grupo rotulo-caps">${esc(rot)}</div>` : "";
+    let html = temTag ? `<label class="cmp-tag-frota" title="Mostra só caminhões e veículos leves; desligue para ver as máquinas"><input type="checkbox"${soFrota ? " checked" : ""} /> Só frota (caminhões e veículos)</label>` : "";
+    ordem.forEach(k => {
+      if(k === "__tags"){
+        Object.keys(tagGrupos).map(Number).sort((a, b) => a - b).forEach(gi => { html += cab(gi < CMP_TAG_GRUPOS.length ? CMP_TAG_GRUPOS[gi][1] : "Demais TAGs") + tagGrupos[gi].map(item).join(""); });
+      } else html += cab(k.slice(2)) + grupos[k].map(item).join("");
+    });
+    if(escondidas) html += `<div class="resultado-item cmp-tag-mais" data-acao="todas">Mostrar também ${num(escondidas)} TAG(s) de máquinas</div>`;
+    if(!ordem.length && !escondidas) html += `<div class="resultado-item vazio">Nada com esse texto.</div>`;
+    lista.innerHTML = html; lista.style.display = "";
+    posicionar(); window.addEventListener("scroll", posicionar, true);
+    lista.querySelector(".cmp-tag-frota")?.addEventListener("mousedown", ev => { ev.preventDefault(); _cmpTagSoFrota = !cmpTagSoFrota(); render(); });
+    lista.querySelector(".cmp-tag-mais")?.addEventListener("mousedown", ev => { ev.preventDefault(); _cmpTagSoFrota = false; render(); });
+    lista.querySelectorAll(".resultado-item[data-i]").forEach(d => d.addEventListener("mousedown", ev => { ev.preventDefault(); escolher(Number(d.dataset.i)); }));
+  }
+  function escolher(i){
+    const x = ents[i]; if(!x) return;
+    aberto = false; fechar();
+    const mudou = sel.value !== x.v;
+    sel.value = x.v; atualizar(); inp.blur();
+    if(mudou) sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  inp.addEventListener("focus", () => { if(sel.disabled) return; const atual = inp.value; aberto = true; inp.value = ""; inp.placeholder = atual || inp.placeholder; render(); });
+  inp.addEventListener("input", debounce(() => { if(aberto) render(); }, 120));
+  inp.addEventListener("keydown", ev => {
+    const itens = [...lista.querySelectorAll(".resultado-item[data-i]")], at = lista.querySelector(".resultado-item.ativo");
+    if(ev.key === "ArrowDown" || ev.key === "ArrowUp"){
+      ev.preventDefault(); if(!itens.length) return;
+      let n = itens.indexOf(at) + (ev.key === "ArrowDown" ? 1 : -1);
+      n = Math.max(0, Math.min(itens.length - 1, n));
+      at?.classList.remove("ativo"); itens[n].classList.add("ativo"); itens[n].scrollIntoView({ block: "nearest" });
+    }
+    if(ev.key === "Enter"){ const d = at || itens[0]; if(d){ ev.preventDefault(); escolher(Number(d.dataset.i)); } }
+    if(ev.key === "Escape") inp.blur();
+  });
+  inp.addEventListener("blur", () => setTimeout(() => { aberto = false; fechar(); atualizar(); }, 150));
+  // quem troca o valor pelo código (sel.value = …), o innerHTML ou o disabled continua igual: o campo acompanha
+  const pv = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+  Object.defineProperty(sel, "value", { configurable: true, get(){ return pv.get.call(this); }, set(v){ pv.set.call(this, v); atualizar(); } });
+  new MutationObserver(atualizar).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "class"] });
+  sel.addEventListener("change", atualizar);
+  sel._cmpTag = { atualizar };
+  atualizar();
+  return sel._cmpTag;
+}
+/* fase 131a: item de aplicação direta em caminhão ou veículo, com a natureza ainda automática, sugere MANUTENCAO VEICULO
+   (a natureza do Odoo para manutenção da frota). Combustível, frete, locação, multa, seguro e afins ficam como estão. */
+const CMP_CAT_NAT_FROTA = ["peca", "lubrificante", "servico_terceiro", "outro"];
+function cmpNatFrotaId(){ const n = _cmpNaturezas.find(x => x.ativo && cmpNorm(x.odoo_nome || x.nome).trim() === "manutencao veiculo"); return n ? n.id : null; }
+function cmpNatFrotaSugerir(it){
+  if(!it || !it._natAuto || it.destino !== "equipamento" || !cmpEqFrota(_cmpEqMap[it.equipamento_id])) return false;
+  if(!CMP_CAT_NAT_FROTA.includes(it.categoria_custo || "peca")) return false;
+  const id = cmpNatFrotaId(); if(!id || it.natureza_id === id) return false;
+  it.natureza_id = id; return true;
 }
 function cmpFornAtualizar(idSelect){ const c = _cmpFornCampos[idSelect]; if(c) c.atualizar(); }
 
@@ -3198,6 +3333,7 @@ function renderItensRecebimento(){
     it.fator_conversao = Number(b.dataset.v); it._fatorAprendido = false; cmpRiConverter(it); renderItensRecebimento();
   }));
   tb.querySelectorAll(".cmp-ri-rem").forEach(b => b.addEventListener("click", e => { _cmpRec.itens.splice(Number(e.target.closest("tr").dataset.idx), 1); renderItensRecebimento(); }));
+  tb.querySelectorAll('select.cmp-ri[data-f="destino"]').forEach(s => cmpCampoTag(s, "obra, TAG, placa ou setor…"));   // fase 131a: balcão e compra direta
   tb.querySelectorAll("tr[data-idx]").forEach(tr => { const inp = tr.querySelector(".cmp-ri-prod"); if(inp) cmpRiPicker(tr, inp); });
   cmpRecRenderSobras();
   cmpRecSoma();
@@ -3514,6 +3650,7 @@ function renderServicoItens(){
     if(e.target.value === "ac:"){ cmpEscolherAcessorio(id => { if(id) Object.assign(it, cmpDestinoDoValor("ac:" + id)); renderServicoItens(); }); return; }   // lote S56 (#202)
     Object.assign(it, cmpDestinoDoValor(e.target.value)); renderServicoItens();
   }));
+  tb.querySelectorAll(".cmp-srv-d").forEach(s => cmpCampoTag(s, "obra, TAG, placa ou setor…"));   // fase 131a
   cmpSrvSoma();
 }
 function cmpSrvSoma(){ $("cmp-srv-soma").textContent = "Total: " + brl((_cmpSrv?.itens || []).filter(i => i.quantidade > 0).reduce((s, i) => s + Number(i.valor || 0), 0)); }

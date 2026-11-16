@@ -3125,6 +3125,19 @@ tr.orc-grupo-conc td { background: var(--sup-3); font-weight: 600; color: var(--
 .forn-chip-x { border: 0; background: transparent; cursor: pointer; color: var(--txt-sec); font-size: 15px; line-height: 1; padding: 0 2px; }
 .forn-chip-x:hover { color: var(--perigo-txt); }
 
+/* ---- Fase 131a: TAG com busca em Compras (select escondido + campo que abre a lista agrupada por tipo) ---- */
+.cmp-tag-campo { position: relative; }
+td .cmp-tag-campo { display: inline-block; vertical-align: middle; }
+.cmp-tag-campo .cmp-tag-busca { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.cmp-tag-campo .autocomplete-lista { position: fixed; z-index: 1100; margin-top: 0; width: max-content; max-width: min(460px, 92vw); max-height: 320px; background: var(--sup-0); }
+.cmp-tag-campo .resultado-item { padding: 5px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmp-tag-campo .resultado-item .meta { margin-left: 12px; }
+.cmp-tag-campo .resultado-item.ativo-sel { font-weight: 600; }
+.cmp-tag-grupo { position: sticky; top: 0; padding: 4px 12px; background: var(--sup-2); border-bottom: 1px solid var(--sup-3); }
+.cmp-tag-frota { display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; border-bottom: 1px solid var(--sup-3); background: var(--sup-1); }
+.cmp-tag-frota input { width: auto; min-height: 0; margin: 0; }
+.cmp-tag-mais { color: var(--marca-600); }
+
 /* ---- Bens do contrato na ficha da obra (fase 80) ---- */
 .obr-bens-fam { margin: 2px 0; border-bottom: 1px solid var(--borda); }
 .obr-bens-fam summary { cursor: pointer; padding: 6px 0; }

@@ -160,6 +160,7 @@ async function abrirRequisicao(r){
   if(r?.obra_id && !reqObras.some(o => o.id === r.obra_id) && typeof _cmpObraMap === "object" && _cmpObraMap[r.obra_id]) reqObras.push(_cmpObraMap[r.obra_id]);
   set("req-obra", `<option value="">— nenhuma —</option>` + reqObras.map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}${o.status === "concluida" ? " · concluída" : ""}</option>`).join(""));
   set("req-equip", `<option value="">— nenhuma —</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join(""));
+  if(typeof cmpCampoTag === "function") cmpCampoTag($("req-equip"));   // fase 131a: TAG com busca (código, nome, placa ou tipo)
   // fase 102: setor / obra interna (centros de custo ativos; o da requisição aparece mesmo inativo)
   set("req-centro", `<option value="">— nenhum —</option>` + _cmpCentros.filter(c => c.ativo || c.id === r?.centro_custo_id)
     .map(c => `<option value="${esc(c.id)}">${esc((typeof CMP_CENTRO_TIPO === "object" && CMP_CENTRO_TIPO[c.tipo]) || c.tipo)}: ${esc(c.nome)}</option>`).join(""));
