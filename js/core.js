@@ -427,7 +427,7 @@ const CARGOS_RESP_OBRA = ["engenheiro", "assistente_engenharia", "diretor"];
 async function carregarResponsaveis(){
   const { data } = await sb.from("profiles").select("id,nome,cargo").eq("ativo",true).order("nome");
   const lista = data || [];
-  ["orc-responsavel","con-responsavel"].forEach(id=>{
+  ["orc-responsavel","con-responsavel","orc-neg-resp"].forEach(id=>{   // fase 187c: quem retorna na aba Negociação
     const el = $(id);
     if(el) preencherSelect(el, lista, "id", "nome", "— não informado —");
   });

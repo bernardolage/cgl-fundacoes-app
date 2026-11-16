@@ -7,7 +7,7 @@
    ==================================================================== */
 const MATRIZ_ACESSOS = {
   retrato: "2026-11-16",
-  carimbo: "415b8e7bb00c54c8e2bb8251ebb0ad9d",
+  carimbo: "bd20d126defa9e0f28fb12d6b75ce80b",
   acoes: ["ver","incluir","alterar","apagar"],
   grupos: ["Geral","Cadastros","Suprimentos","Comercial e financeiro","Campo","Pessoas e segurança","Sistema","Fora do menu"],
   modulos: [
@@ -600,7 +600,7 @@ const MATRIZ_ACESSOS = {
       "mecanico": "s s s s",
       "encarregado": "n:3 n n n",
       "operador": "n:1 n n n",
-      "rh": "n:3 n n n",
+      "rh": "s n n n",
       "sesmt": "n:3 n n n",
       "logistica": "s s s s",
       "gestor_frota": "s p:18 p:18 p:18",

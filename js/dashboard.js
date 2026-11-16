@@ -362,12 +362,13 @@ async function dashCarregarFila(){
   // fase 83: separações; lote S55 (#176): menções "@usuário" não lidas (vw_sc_minha_fila_mencoes, ordem 45; tolerante à ausência da view)
   // fase 146: vw_sc_minha_fila_custo, um cartão por produto que saiu sem custo (só almoxarife e comprador)
   // lote S63-i (#280): vw_sc_minha_fila_sst, ação de ocorrência SST atribuída a mim (a fazer ou em andamento), com o prazo
-  const [dados, sep, menc, custo, sst] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*")), dashLer("vw_sc_minha_fila_custo", q => q.select("*")), dashLer("vw_sc_minha_fila_sst", q => q.select("*"))]);
+  // fase 187c (#324): vw_sc_minha_fila_retornos, retorno ao cliente agendado na aba Negociação do orçamento (hoje ou vencido)
+  const [dados, sep, menc, custo, sst, ret] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*")), dashLer("vw_sc_minha_fila_custo", q => q.select("*")), dashLer("vw_sc_minha_fila_sst", q => q.select("*")), dashLer("vw_sc_minha_fila_retornos", q => q.select("*"))]);
   if(!dados) return;
   if(typeof histMencoesPendentesDefinir === "function") histMencoesPendentesDefinir((menc || []).map(m => m.registro_id));
   if(menc) dashRenderMencoes(menc);   // lote S57b (#218): menções no card do topo e no badge do menu, não na fila
-  dashMarcarFonte(dados, "fila"); dashMarcarFonte(sep, "fila_sep"); dashMarcarFonte(custo, "fila_custo"); dashMarcarFonte(sst, "fila_sst");   // fase 164
-  _dashFila = dados.concat(sep || [], custo || [], sst || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
+  dashMarcarFonte(dados, "fila"); dashMarcarFonte(sep, "fila_sep"); dashMarcarFonte(custo, "fila_custo"); dashMarcarFonte(sst, "fila_sst"); dashMarcarFonte(ret, "fila_ret");   // fase 164
+  _dashFila = dados.concat(sep || [], custo || [], sst || [], ret || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
     ? _dashFila.map((a, i) => dashChamadoEsperando(a) || dashChamadoConfirmar(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
@@ -816,7 +817,7 @@ async function dashAbrirAcao(a){
       else irParaSecao("contratos");
       break;
     case "orcamentos":
-      if(id) dashAbrirOrcamento(id); else irParaSecao("orcamentos");
+      if(id) dashAbrirOrcamento(id, a._fonte === "fila_ret" ? "negociacao" : null); else irParaSecao("orcamentos");   // fase 187c: retorno abre a aba Negociação
       break;
     case "compras":
       // fase 108b: chave de dono do custo → ficha do pedido para assinar (com ou sem Compras no menu)
@@ -1221,7 +1222,12 @@ async function dashAbrirObra(obraId, tab){
   }
 }
 function dashAbrirMedicao(id){ irParaSecao("medicoes"); if(id && typeof abrirMedicao === "function") abrirMedicao(id); }
-function dashAbrirOrcamento(id){ irParaSecao("orcamentos"); if(id && typeof abrirOrcamento === "function") abrirOrcamento(id); }
+async function dashAbrirOrcamento(id, aba){
+  irParaSecao("orcamentos");
+  if(!id || typeof abrirOrcamento !== "function") return;
+  await abrirOrcamento(id);
+  if(aba && orcEditId === id && typeof ativarTabOrc === "function") ativarTabOrc(aba);
+}
 function dashAbrirContrato(id){ irParaSecao("contratos"); if(id && typeof abrirContrato === "function") abrirContrato(id); }
 function dashIrObrasAtivas(){
   if(typeof _obrFiltroIds !== "undefined") _obrFiltroIds = null; // sai do filtro do "Para regularizar"

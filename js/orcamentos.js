@@ -556,6 +556,7 @@ async function carregarOrcamentos(){
   }
   const COLS = "id,numero,numero_revisao,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade,iss_percentual,iss_por_dentro";
   const ler = (cols) => sb.from("orcamentos").select(cols).order("data_orcamento",{ ascending:false });
+  const pRetornos = orcCarregarRetornos();   // fase 187c: retorno em aberto de cada orçamento (filtro "Retornos da semana")
   let [{ data, error }, itensEixo] = await Promise.all([ler(COLS + ",concorrencia"), orcBuscarItensEixo()]);
   // lote S47 (#111): antes da migration 20261022_loteS47 a coluna não existe; lê sem ela e o campo fica escondido
   if(error && /concorrencia/i.test(error.message || "")) ({ data, error } = await ler(COLS));
@@ -570,6 +571,7 @@ async function carregarOrcamentos(){
     if(!eixo) return;
     (_orcMetodos[it.orcamento_id] = _orcMetodos[it.orcamento_id] || new Set()).add(eixo);
   });
+  _orcRetornos = await pRetornos;
   renderOrcamentos();
 
   // Select de orçamento de origem na aba Contrato da obra (fase 21)
@@ -698,7 +700,10 @@ function orcFiltrados(){
   const fPorte = $("orc-f-porte")?.value || "";
   const fMet   = $("orc-f-metodo")?.value || "";
   const fConc  = $("orc-f-conc")?.value || "";   // lote S47 (#111)
+  const fRet   = $("orc-f-retorno")?.value || "";   // fase 187c: "semana" = retorno em aberto até domingo, vencidos inclusive
+  const fimSem = fRet === "semana" ? orcFimDaSemanaISO() : "";
   return _orcamentos.filter(o => {
+    if(fRet === "semana" && !(_orcRetornos[o.id] && _orcRetornos[o.id] <= fimSem)) return false;
     if(fStat && o.status !== fStat) return false;
     if(fCli && o.cliente_id !== fCli) return false;
     if(fPorte && (o.porte_equipamento || "") !== fPorte) return false;
@@ -779,7 +784,7 @@ function renderOrcLista(dados){
   const comConc = _orcTemConcorrencia;   // lote S47 (#111): coluna Concorrência depois da migration
   const nCols = comConc ? 8 : 7;
   const linha = (o) => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
-    <td>${esc(o.numero)}${esc(orcRevTxt(o))}</td>
+    <td>${esc(o.numero)}${esc(orcRevTxt(o))}${_orcRetornos[o.id] ? ` <span class="meta" title="Próximo retorno ao cliente (aba Negociação)">· retorno ${dataBR(_orcRetornos[o.id])}</span>` : ""}</td>
     <td>${esc(mapaClientes[o.cliente_id]||"—")}</td>
     ${comConc ? `<td>${o.concorrencia ? esc(o.concorrencia) : '<span class="meta">—</span>'}</td>` : ""}
     <td>${esc(_orcTipoPorteTxt(o))}</td>
@@ -1125,6 +1130,7 @@ function abrirFichaOrcVisual(o){
   // Carrega smart-buttons + revisões + vínculos em paralelo
   if(orcEditId) carregarAbasOrc(o);
   else zerarAbasOrc();
+  orcCarregarNegociacao(orcEditId);   // fase 187c: aba Negociação e chip do próximo retorno
   ativarTabOrc("geral");
 }
 
@@ -1578,6 +1584,142 @@ function ligarOrcSimulador(){
   });
 }
 
+/* ====================================================================
+   Fase 187c (#324): aba Negociação. Cada contato com o cliente vira uma interação (orcamento_interacoes) com canal,
+   resumo, contato e o próximo retorno (data e quem). O último registro de cada orçamento manda: com data e sem
+   "Sem retorno", é o retorno em aberto, que aparece na Minha fila de quem retorna no dia (vw_sc_minha_fila_retornos),
+   no chip da ficha e no filtro "Retornos da semana" do painel. Leitura como pode_ler_comercial() do banco.
+   ==================================================================== */
+const ORC_NEG_CANAL = { ligacao: "Ligação", email: "E-mail", whatsapp: "WhatsApp", reuniao: "Reunião", visita: "Visita" };
+let _orcRetornos = {};   // orcamento_id → data do retorno em aberto (AAAA-MM-DD)
+let _orcNegLista = [];   // interações do orçamento aberto, da mais nova para a mais antiga
+
+function orcPodeLerNegociacao(){
+  if(!usuarioAtual) return false;
+  return ["diretor", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
+}
+const _orcNegMaisNova = (a, b) => String(b.data_hora).localeCompare(String(a.data_hora)) || String(b.created_at).localeCompare(String(a.created_at));
+/* Retorno em aberto de uma lista de interações do mesmo orçamento: o da mais nova, se tiver data e não for "Sem retorno" */
+function orcNegRetornoAberto(lista){
+  const ult = (lista || []).slice().sort(_orcNegMaisNova)[0];
+  return ult && ult.proximo_em && !ult.sem_retorno ? ult : null;
+}
+async function orcCarregarRetornos(){
+  if(!orcPodeLerNegociacao()) return {};
+  const { data, error } = await lerTudo(() => sb.from("orcamento_interacoes").select("id,orcamento_id,data_hora,created_at,proximo_em,sem_retorno"));
+  if(error) return {};
+  const porOrc = {};
+  data.forEach(i => { (porOrc[i.orcamento_id] = porOrc[i.orcamento_id] || []).push(i); });
+  const out = {};
+  Object.entries(porOrc).forEach(([id, l]) => { const ab = orcNegRetornoAberto(l); if(ab) out[id] = ab.proximo_em; });
+  return out;
+}
+/* Domingo da semana corrente (a semana vai de segunda a domingo); "Retornos da semana" inclui os vencidos */
+function orcFimDaSemanaISO(){
+  const [a, m, d] = hojeISO().split("-").map(Number);
+  const dt = new Date(a, m - 1, d);
+  dt.setDate(dt.getDate() + (7 - dt.getDay()) % 7);
+  return dataLocalISO(dt);
+}
+function orcNegNomeUsuario(id){
+  const op = id && $("orc-responsavel") ? [...$("orc-responsavel").options].find(o => o.value === id) : null;
+  return op ? op.textContent : "";
+}
+function orcNegAgoraLocal(){
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return `${dataLocalISO(d)}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function orcNegLimparForm(){
+  if(!$("orc-neg-data")) return;
+  $("orc-neg-data").value = orcNegAgoraLocal();
+  $("orc-neg-canal").value = "ligacao";
+  $("orc-neg-contato").value = $("orc-contato-nome")?.value || "";
+  $("orc-neg-resumo").value = "";
+  $("orc-neg-proximo").value = "";
+  const sel = $("orc-neg-resp");
+  sel.value = usuarioAtual && [...sel.options].some(o => o.value === usuarioAtual.id) ? usuarioAtual.id : "";
+  $("orc-neg-aviso").textContent = "";
+}
+function orcNegAtualizarChip(aberto){
+  const wrap = $("orc-ficha-retorno-wrap");
+  if(!wrap) return;
+  wrap.style.display = aberto ? "" : "none";
+  if(!aberto) return;
+  const venc = aberto.proximo_em < hojeISO();
+  const quem = orcNegNomeUsuario(aberto.proximo_responsavel_id);
+  $("orc-ficha-retorno-chip").textContent = `em ${dataBR(aberto.proximo_em)}${venc ? " (vencido)" : ""}`;
+  wrap.title = `Próximo retorno agendado na aba Negociação${quem ? ", com " + quem : ""}`;
+}
+function renderOrcNegociacao(){
+  const cont = $("orc-neg-lista");
+  if(!cont) return;
+  const pode = orcPodeEditar() && !!orcEditId;
+  if($("orc-neg-form")) $("orc-neg-form").style.display = pode ? "" : "none";
+  const aberto = orcNegRetornoAberto(_orcNegLista);
+  const btnSem = $("btn-orc-neg-sem-retorno");
+  if(btnSem) btnSem.style.display = pode && aberto ? "" : "none";
+  if($("btn-orc-neg-registrar")) $("btn-orc-neg-registrar").title = aberto ? `Registrar o contato; o retorno de ${dataBR(aberto.proximo_em)} sai da Minha fila` : "Registrar o contato com o cliente";
+  if($("orc-neg-badge")) $("orc-neg-badge").textContent = _orcNegLista.length || "";
+  orcNegAtualizarChip(aberto);
+  if(!orcEditId){ cont.innerHTML = uiVazio("Salve o orçamento para registrar a negociação."); return; }
+  if(!_orcNegLista.length){ cont.innerHTML = uiVazio("Nenhuma interação registrada."); return; }
+  const linhas = _orcNegLista.map(i => {
+    const titulo = [ORC_NEG_CANAL[i.canal] || i.canal, i.contato_nome].filter(Boolean).join(" · ");
+    const resp = orcNegNomeUsuario(i.proximo_responsavel_id);
+    const ret = !i.proximo_em ? "" : i.sem_retorno ? `Retorno de ${dataBR(i.proximo_em)} encerrado sem retorno`
+      : `Retorno em ${dataBR(i.proximo_em)}${resp ? " com " + resp : ""}`;
+    const por = orcNegNomeUsuario(i.criado_por);
+    const sub = [i.resumo, ret, por ? "por " + por : ""].filter(Boolean).join(" · ");
+    return uiLinhaItem(titulo, sub, dataHoraBR(i.data_hora));
+  }).join("");
+  cont.innerHTML = `<h4 class="rotulo-caps">Histórico de negociação</h4>${/* html */ linhas}`;
+}
+async function orcCarregarNegociacao(id){
+  _orcNegLista = [];
+  const tab = $("orc-tab-negociacao");
+  const pode = orcPodeLerNegociacao();
+  if(tab) tab.style.display = pode ? "" : "none";
+  if(!pode){ orcNegAtualizarChip(null); return; }
+  orcNegLimparForm();
+  if(!id){ renderOrcNegociacao(); return; }
+  if($("orc-neg-lista")) $("orc-neg-lista").innerHTML = uiVazio("Carregando...");
+  const { data, error } = await sb.from("orcamento_interacoes").select("*").eq("orcamento_id", id)
+    .order("data_hora", { ascending: false }).order("created_at", { ascending: false });
+  if(orcEditId !== id) return;   // abriu outra ficha enquanto carregava
+  if(error){ $("orc-neg-lista").innerHTML = uiVazio("Não foi possível carregar a negociação: " + error.message); return; }
+  _orcNegLista = data || [];
+  const ab = orcNegRetornoAberto(_orcNegLista);
+  if(ab) _orcRetornos[id] = ab.proximo_em; else delete _orcRetornos[id];
+  renderOrcNegociacao();
+}
+async function orcRegistrarInteracao(){
+  const id = orcEditId;
+  if(!id || !orcPodeEditar()) return;
+  const resumo = $("orc-neg-resumo").value.trim();
+  const proximo = $("orc-neg-proximo").value || null;
+  const resp = $("orc-neg-resp").value || null;
+  const dataHora = $("orc-neg-data").value ? new Date($("orc-neg-data").value) : new Date();
+  if(!resumo){ $("orc-neg-aviso").textContent = "Escreva o resumo do contato."; $("orc-neg-resumo").focus(); return; }
+  if(proximo && !resp){ $("orc-neg-aviso").textContent = "Escolha quem retorna ao cliente."; $("orc-neg-resp").focus(); return; }
+  if(isNaN(dataHora.getTime())){ $("orc-neg-aviso").textContent = "Data e hora inválidas."; return; }
+  const { error } = await sb.from("orcamento_interacoes").insert({
+    orcamento_id: id, data_hora: dataHora.toISOString(), canal: $("orc-neg-canal").value, resumo,
+    contato_nome: $("orc-neg-contato").value.trim() || null, proximo_em: proximo, proximo_responsavel_id: proximo ? resp : null
+  });
+  if(error){ aviso("app-aviso", "Erro ao registrar a interação: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Interação registrada.", "sucesso");
+  await orcCarregarNegociacao(id);
+}
+async function orcMarcarSemRetorno(){
+  const id = orcEditId;
+  const aberto = orcNegRetornoAberto(_orcNegLista);
+  if(!id || !aberto || !orcPodeEditar()) return;
+  const { error } = await sb.from("orcamento_interacoes").update({ sem_retorno: true }).eq("id", aberto.id);
+  if(error){ aviso("app-aviso", "Erro ao encerrar o retorno: " + error.message, "erro"); return; }
+  aviso("app-aviso", `Retorno de ${dataBR(aberto.proximo_em)} encerrado sem retorno.`, "sucesso");
+  await orcCarregarNegociacao(id);
+}
+
 function ativarTabOrc(nome){
   if(nome === "proposta") orcSimDoItens();   // fase 140c
   document.querySelectorAll("#orc-notebook button").forEach(b => {
@@ -2004,6 +2146,9 @@ function ligarOrcamentos(){
   // lote S47: #112 cabeçalho ordena (estado na sessão); #111 concorrência no filtro e no Modelo
   _orcOrdem.ligar("orc-conteudo", renderOrcamentos);
   $("orc-f-conc")?.addEventListener("change", renderOrcamentos);
+  $("orc-f-retorno")?.addEventListener("change", renderOrcamentos);   // fase 187c
+  $("btn-orc-neg-registrar")?.addEventListener("click", () => comBotaoTravado("btn-orc-neg-registrar", orcRegistrarInteracao));
+  $("btn-orc-neg-sem-retorno")?.addEventListener("click", () => comBotaoTravado("btn-orc-neg-sem-retorno", orcMarcarSemRetorno));
   $("orc-concorrencia")?.addEventListener("change", orcAoEscolherConcorrencia);
   $("btn-voltar-orc")?.addEventListener("click", mostrarPainelOrc);
   $("btn-salvar-orc")?.addEventListener("click", () => comBotaoTravado("btn-salvar-orc", () => salvarOrcamento()));
