@@ -399,13 +399,14 @@ function atualizarBotaoRaiz(){
   // classificadas como raiz pela IA virava painel raiz e escondia a lista).
   const predominante = tem && nRaiz * 2 > _estacas.length;
   b.style.display = tem ? "" : "none";
+  if(typeof ertBotao === "function") ertBotao(tem);   // fase 184a: vista Trechos (js/estacas_raiz_conf.js)
   // Obra de raiz: o Acompanhamento substitui a Lista (Bernardo, 02/09/2026) — a aba Lista some
   // e a vista padrão passa a ser o acompanhamento; em obra mista ou sem raiz, a Lista fica.
   const bLista = document.querySelector('[data-est-view="lista"]');
   if(bLista) bLista.style.display = predominante ? "none" : "";
   const irPara = (v) => { _estView = v; document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === v)); };
   if(predominante && _estView === "lista") irPara("raiz");
-  if(!tem && _estView === "raiz") irPara("lista");
+  if(!tem && (_estView === "raiz" || _estView === "trechos")) irPara("lista");
 }
 
 /* ====================================================================
@@ -487,10 +488,11 @@ async function carregarAcompanhamentoRaiz(){
   // fase 154: tudo por obra e paginado (corte de 1.000 linhas; .in() com centenas de ids é recusado pela API)
   const [eRes, rRes, sRes, iRes, mRes, oRes] = await Promise.all([
     lerTudo(() => sb.from("vw_rdo_execucoes_obra")
-      .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,volume_injetado_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,observacoes,rdo_id,obra_id,data,rdo_equipamento_id")
+      .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,volume_injetado_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,observacoes,rdo_id,obra_id,data,rdo_equipamento_id,numero_boletim_fisico,inclinacao,perfuracao_de_m,estaca_numero_corrigido,diametro_mm")
       .eq("obra_id", obraId)),
     lerTudo(() => sb.from("rdo").select("id,turno_campo").eq("obra_id", obraId)),
-    lerTudo(() => sb.from("rdo_raiz_solo").select("execucao_id,inicio_ml,final_ml,ferramenta,rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)),
+    // fase 184a: ordem e classificação do solo para a vista Trechos (js/estacas_raiz_conf.js)
+    lerTudo(() => sb.from("rdo_raiz_solo").select("id,execucao_id,ordem,inicio_ml,final_ml,ferramenta,classificacao,rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)),
     // medição: só quem lê medição (pode_ler_financeiro); para os outros vem vazio e a coluna fica "—"
     lerTudo(() => sb.from("medicao_itens").select("execucao_id,medicao:medicao_id!inner(id,numero,status,periodo_inicio,periodo_fim,obra_id)")
       .eq("medicao.obra_id", obraId).not("execucao_id", "is", null)),
@@ -755,6 +757,7 @@ function renderEstacas(){
   const wrapPlanta = $("est-planta-wrap");
   const wrapRaiz   = $("est-raiz-wrap");
   const mostrar = (el, on) => { if(el) el.style.display = on ? "" : "none"; };
+  if(typeof ertVisao === "function" && ertVisao(_estView, [wrapLista, wrapPlanta, wrapRaiz, $("est-gps-wrap")])) return;   // fase 184a: vista Trechos (js/estacas_raiz_conf.js)
   if(typeof egpVisao === "function" && egpVisao(_estView, [wrapLista, wrapPlanta, wrapRaiz])) return;   // visão GPS: js/estacas_gps.js cuida do próprio bloco
   if(_estView === "planta"){
     mostrar(wrapLista, false); mostrar(wrapRaiz, false); mostrar(wrapPlanta, true);
@@ -873,7 +876,7 @@ function estFiltroProfRegularizar(e, f){
 function estDefinirFiltroProf(valor){
   const sel = $("est-f-prof");
   if(sel) sel.value = valor || "";
-  if(_estView === "planta" || _estView === "gps"){
+  if(_estView === "planta" || _estView === "gps" || _estView === "trechos"){
     _estView = "lista";
     document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === "lista"));
   }
@@ -2513,7 +2516,8 @@ let _confRefuros = [];      // fase 141d: estacas que não são Refuradas, mas t
 let _confCobranca = null;   // fase 145a: execuções de refuro com a cobrança (vw_refuros_cobranca); null = sem a migration
 
 function confSuspeitas(alteradas){
-  return alteradas.filter(g => g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
+  // fase 184a: estaca raiz conta pela situação do histórico (js/estacas_raiz_conf.js); as outras pela regra de sempre
+  return alteradas.filter(g => g.raiz ? g.raiz.situacao !== "normal" : g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
 }
 
 /* hotfix Conferência: leitura e conta únicas do botão e das abas */
@@ -2526,7 +2530,7 @@ async function confCarregarDados(obraId){
       .select("id,numero,bloco,local,tipo,diametro_mm,profundidade_m,status,data_execucao,observacoes")
       .eq("obra_id", obraId)
       .order("numero")),
-    lerTudo(() => execsDaObra("id,estaca_id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao").not("estaca_id", "is", null)),
+    lerTudo(() => execsDaObra("id,estaca_id,estaca_numero,estaca_numero_corrigido,perfuracao_inicio,perfuracao_de_m,perfuracao_ate_m,profundidade_executada,volume_concreto_m3,modalidade_execucao,etapa_final,ferramental,numero_boletim_fisico,equipamento_id,maquina_codigo").not("estaca_id", "is", null)),
     // fase 141: motivo e substituta da Refurada; sem a migration a aba segue sem a coluna
     lerTudo(() => sb.from("vw_estacas_refuradas").select("estaca_id,motivo,refuro_obs,substituta_id,substituta_numero,maquina,execucoes_refuro,data_refuro").eq("obra_id", obraId), "estaca_id"),
     // fase 145a: cobrança de cada execução de refuro (com ou sem estaca); sem a migration o bloco não aparece
@@ -2558,15 +2562,32 @@ async function confCarregarDados(obraId){
     if(!porEstaca[re.estaca_id]) porEstaca[re.estaca_id] = [];
     porEstaca[re.estaca_id].push(re);
   });
+  // fase 184a (#241): estaca raiz pelo histórico de trechos (js/estacas_raiz_conf.js). Entra com 2+ execuções ou com alerta
+  // (execução de outra obra, início maior que o fim...); as outras continuam só com 2+ execuções.
+  const estPorId = new Map(estacas.map(e => [e.id, e]));
+  const temRaiz = typeof confClassificarGrupo === "function" && estacas.some(e => e.tipo === "raiz");
+  let extras = null;
+  if(temRaiz){
+    extras = await crzCarregarExtras(obraId);
+    extras.outras.forEach(x => {
+      if(estPorId.get(x.estaca_id)?.tipo !== "raiz") return;
+      (porEstaca[x.estaca_id] = porEstaca[x.estaca_id] || []).push(x);
+    });
+  }
   const alteradas = Object.entries(porEstaca)
-    .filter(([_, execs]) => execs.length > 1)
     .map(([estId, execs]) => {
-      const estaca = estacas.find(p => p.id === estId);
+      const estaca = estPorId.get(estId);
       // Ordena por data (mais antiga primeiro)
       execs.sort((a,b) => (a.perfuracao_inicio||"").localeCompare(b.perfuracao_inicio||""));
-      return { estaca, execs };
+      const g = { estaca, execs };
+      if(temRaiz && estaca?.tipo === "raiz"){
+        execs.forEach(x => crzPrepararExec(execComRdo(x), extras.solo));
+        g.raiz = confClassificarGrupo(g, obraId);
+      }
+      return g;
     })
-    .filter(g => g.estaca); // ignora se a estaca já foi deletada
+    .filter(g => g.estaca) // ignora se a estaca já foi deletada
+    .filter(g => g.execs.length > 1 || (g.raiz && g.raiz.situacao !== "normal"));
 
   return {
     orfas: orfasRes.data.map(execComRdo),
@@ -3052,8 +3073,11 @@ function renderizarAlteradas(){
     cont.innerHTML = `<p class="vazio">🎉 Todas as estacas têm execução única ou são refuros marcados corretamente.</p>`;
     return;
   }
+  // fase 184a (#241): estaca raiz em cartões pelo histórico (js/estacas_raiz_conf.js); as outras seguem abaixo como sempre
+  const gruposRaiz = _confAlteradas.filter(g => g.raiz);
+  const gruposOutros = _confAlteradas.filter(g => !g.raiz);
 
-  const linhas = _confAlteradas.map(g => {
+  const linhas = gruposOutros.map(g => {
     const todasRefuro = g.execs.every(e => e.modalidade_execucao === "refuro" || g.execs.indexOf(e) === 0);
     const algumRefuro = g.execs.some(e => e.modalidade_execucao === "refuro");
     const isSuspeito  = !algumRefuro;  // 2+ execs sem nenhuma marcada como refuro = suspeito
@@ -3112,20 +3136,22 @@ function renderizarAlteradas(){
     </div>`;
   }).join("");
 
-  cont.innerHTML = `
+  cont.innerHTML = `${gruposRaiz.length ? `<div id="crz-bloco"></div>` : ""}<div id="conf-alt-outras">${gruposOutros.length ? `
     <div style="background:var(--info-bg);border-left:3px solid var(--marca-600);padding:10px 14px;margin-bottom:12px;font-size:var(--txt-sm);">
-      📊 <strong>${_confAlteradas.length} estaca(s) com múltiplas execuções.</strong>
+      📊 <strong>${gruposOutros.length} estaca(s) com múltiplas execuções.</strong>
       Refuros legítimos (mesmo nome + R no CSV) já vêm marcados em verde.
       Casos suspeitos em <strong>vermelho</strong> precisam de revisão.
     </div>
-    ${/* html */ linhas}
+    ${/* html */ linhas}` : ""}</div>
   `;
+  if(gruposRaiz.length) crzRender($("crz-bloco"), gruposRaiz);   // liga as próprias ações
 
-  // Listeners
-  cont.querySelectorAll(".btn-alt-realocar").forEach(b => {
+  // Listeners (só os cartões de hélice; os da raiz são ligados pelo crzRender)
+  const outras = $("conf-alt-outras");
+  outras.querySelectorAll(".btn-alt-realocar").forEach(b => {
     b.addEventListener("click", () => realocarExecucao(b.dataset.execId, b.dataset.estacaOrig));
   });
-  cont.querySelectorAll(".btn-alt-marcar-refuro").forEach(b => {
+  outras.querySelectorAll(".btn-alt-marcar-refuro").forEach(b => {
     b.addEventListener("click", () => marcarComoRefuro(b.dataset.execId));
   });
 }
