@@ -1500,7 +1500,8 @@ const APT_CARGOS_GRAVAM = {
 };
 function podeVerApontamentos(){
   if(!usuarioAtual) return false;
-  return usuarioAtual.cargo === "auditor" || Object.values(APT_CARGOS_GRAVAM).some(l => l.includes(usuarioAtual.cargo));
+  // fase 188b: o RH preenche o expediente da oficina (botão "Expediente da oficina" do menu Apontamento)
+  return ["auditor", "rh"].includes(usuarioAtual.cargo) || Object.values(APT_CARGOS_GRAVAM).some(l => l.includes(usuarioAtual.cargo));
 }
 /* Fase 76: Centros de custo internos (setores e obras internas): quem lê custos de compras e acessórios */
 function podeVerCentrosCusto(){

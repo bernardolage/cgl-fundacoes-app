@@ -419,11 +419,32 @@ async function fabAddHoras(){
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!reg.centro_trabalho_id){ aviso("app-aviso", "Escolha o centro de trabalho.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
-  if(reg.inicio && reg.fim) reg.horas = 0;   // o gatilho calcula
-  const { error } = await sb.from("fabricacao_horas").insert(reg);
+  let regs = [reg], avisoExp = "";
+  if(reg.inicio && reg.fim){
+    reg.horas = 0;   // o gatilho calcula
+    if(reg.fim <= reg.inicio){ aviso("app-aviso", "O fim precisa ser depois do início (hora que passa da meia-noite: uma linha por dia).", "erro"); return; }
+    // fase 188b (#322): a mesma divisão do "Lançar horas" (aptDividirHE, js/apontamentos.js); a pessoa confere antes de gravar
+    let r;
+    try { r = await aptDividirHE(reg.data, reg.inicio, reg.fim); }
+    catch(e){ aviso("app-aviso", e.message, "erro"); return; }
+    avisoExp = r.aviso;
+    if(r.partes.length > 1){
+      if(confirm(`${String(reg.inicio).slice(0, 5)}–${String(reg.fim).slice(0, 5)} passa do expediente da oficina e vai gravar em ${r.partes.length} linhas:\n${aptPartesTxt(r.partes)}\n\nOK grava assim. Cancelar para manter numa linha só (pede o motivo).`))
+        regs = r.partes.map(p => ({ ...reg, inicio: p.inicio, fim: p.fim, hora_extra: p.hora_extra }));
+      else {
+        const motivo = prompt("Motivo para manter numa linha só, sem separar a hora extra (obrigatório; fica na observação):", "");
+        if(motivo === null) return;
+        if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo para manter numa linha.", "erro"); return; }
+        reg.observacao = aptObsComMotivo(reg.observacao, motivo);
+      }
+    } else if(!r.aviso && r.partes[0]?.hora_extra) reg.hora_extra = true;   // toda fora do expediente
+  }
+  const { error } = await sb.from("fabricacao_horas").insert(regs);
   if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   ["fab-h-inicio", "fab-h-fim", "fab-h-horas", "fab-h-obs"].forEach(id => $(id).value = ""); $("fab-h-he").checked = false;
   await abrirOrdemFabricacao(_fabAtual.id); fabAtivarTab("horas");
+  if(regs.length > 1) aviso("app-aviso", `Hora gravada em ${regs.length} linhas (normal e hora extra pelo expediente da oficina).`, "ok");
+  else if(avisoExp) aviso("app-aviso", `Hora gravada. ${avisoExp}: a hora extra de dia útil não foi separada.`, "aviso");
 }
 
 /* custos */

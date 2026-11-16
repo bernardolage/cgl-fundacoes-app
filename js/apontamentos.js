@@ -7,6 +7,9 @@
    acessórios; o diretor aprova qualquer uma; quem lançou nunca aprova a própria.
    Documento concluído ou cancelado não aceita hora pela tela única. Prefixo: apt-.
    Fase 156b: a foto do quadro (js/apontamentos_quadro.js) vira linhas desta mesma grade, com origem 'quadro'.
+   Fase 188b (#322): ao sair do Início, do Fim ou da Data, a linha que passa do expediente da oficina (fabricacao_expediente)
+   se desdobra em partes normal e HE (RPC apontamento_dividir_he); "Manter numa linha" desfaz, com motivo. Sábado, domingo
+   e feriado continuam com o dia inteiro em HE e indo para aprovação; a HE de dia útil grava direto, marcada, como antes.
    ==================================================================== */
 
 let _aptHoras = [];        // vw_apontamentos no período
@@ -19,6 +22,8 @@ let _aptGrade = [];        // linhas da grade de lançamento
 let _aptView = "horas";
 let _aptDiaAprov = {};     // data → exige aprovação (cache do apontamento_dia_aprovacao)
 let _aptAtiv = {};         // manutencao_id → atividades pendentes da OS
+let _aptExp = null;        // fase 188b: { seg_qui: {entrada, saida}, sexta: {...} } (null = não lido)
+let _aptDivSeq = 0;        // fase 188b: grupo das partes de uma linha dividida
 
 const APT_TIPO = {
   RP: { rotulo: "RP (reparo)", tabela: "reparo_horas", col: "reparo_id", secao: "reparos" },
@@ -230,6 +235,101 @@ async function aptAbrirAguardando(filtro){
   await carregarApontamentos();
 }
 
+/* ---------- fase 188b: expediente da oficina e divisão da hora extra (#322) ---------- */
+/* Quem grava o expediente: espelha as policies de fabricacao_expediente (has_role cobre o diretor; auditor barrado) */
+const APT_EXP_CARGOS = ["diretor", "admin", "gestor_acessorios", "gestor_manutencao", "rh"];
+function aptPodeEditarExpediente(){ return !!usuarioAtual && !ehSomenteLeitura() && APT_EXP_CARGOS.includes(usuarioAtual.cargo); }
+/* Divide [início, fim] do dia pelo expediente da oficina (RPC apontamento_dividir_he). Usada no "Lançar horas" e no
+   lançamento rápido da ficha da OF (js/fabricacao.js). Devolve { partes: [{inicio, fim, hora_extra}], aviso }. */
+async function aptDividirHE(data, inicio, fim){
+  const { data: partes, error } = await sb.rpc("apontamento_dividir_he", { p_data: data, p_inicio: inicio, p_fim: fim });
+  if(error) throw new Error("Não foi possível conferir o expediente da oficina: " + error.message.replace(/^.*?: /, ""));
+  const lista = (partes || []).map(p => ({ inicio: aptHora(p.inicio), fim: aptHora(p.fim), hora_extra: !!p.hora_extra }));
+  return { partes: lista, aviso: (partes || []).map(p => p.aviso).find(Boolean) || "" };
+}
+function aptPartesTxt(partes){ return partes.map(p => `${p.inicio}–${p.fim} ${p.hora_extra ? "hora extra" : "normal"}`).join(" · "); }
+function aptObsComMotivo(obs, motivo){
+  const o = String(obs || "").trim(), m = String(motivo || "").trim();
+  return [o, m ? `[numa linha: ${m}]` : ""].filter(Boolean).join(" ") || null;
+}
+async function aptCarregarExpediente(){
+  const { data, error } = await sb.from("fabricacao_expediente").select("grupo,entrada,saida,atualizado_em");
+  if(error){ _aptExp = null; return error; }
+  _aptExp = {}; (data || []).forEach(r => { _aptExp[r.grupo] = r; });
+  return null;
+}
+function aptExpResumo(){
+  if(!_aptExp) return "";
+  const g = k => _aptExp[k] ? `${aptHora(_aptExp[k].entrada)}–${aptHora(_aptExp[k].saida)}` : "—";
+  return _aptExp.seg_qui || _aptExp.sexta
+    ? `Expediente da oficina: segunda a quinta ${g("seg_qui")} · sexta ${g("sexta")}. O que passa disso vira hora extra sozinho.`
+    : "Expediente da oficina não configurado: a hora extra de dia útil não é separada sozinha.";
+}
+async function aptAbrirExpediente(){
+  $("apt-exp-box").style.display = "";
+  const err = await aptCarregarExpediente();
+  if(err){ $("apt-exp-status").textContent = "Não foi possível ler o expediente: " + err.message; return; }
+  const pode = aptPodeEditarExpediente();
+  [["seg_qui", "sq"], ["sexta", "sx"]].forEach(([k, p]) => {
+    $(`apt-exp-${p}-ent`).value = _aptExp[k] ? aptHora(_aptExp[k].entrada) : "";
+    $(`apt-exp-${p}-sai`).value = _aptExp[k] ? aptHora(_aptExp[k].saida) : "";
+    $(`apt-exp-${p}-ent`).disabled = !pode; $(`apt-exp-${p}-sai`).disabled = !pode;
+  });
+  $("btn-apt-exp-salvar").style.display = pode ? "" : "none";
+  $("apt-exp-status").textContent = aptExpResumo() + (pode ? "" : " Só gestor de acessórios, gestor de manutenção, RH, admin ou diretor alteram.");
+}
+async function aptSalvarExpediente(){
+  if(!aptPodeEditarExpediente()) return;
+  const linhas = [["seg_qui", "sq", "segunda a quinta"], ["sexta", "sx", "sexta"]].map(([k, p, nome]) => ({ grupo: k, nome,
+    entrada: $(`apt-exp-${p}-ent`).value, saida: $(`apt-exp-${p}-sai`).value }));
+  for(const l of linhas){
+    if(!l.entrada || !l.saida){ aviso("app-aviso", `Informe a entrada e a saída de ${l.nome}.`, "erro"); return; }
+    if(l.saida <= l.entrada){ aviso("app-aviso", `A saída de ${l.nome} precisa ser depois da entrada.`, "erro"); return; }
+  }
+  const { error } = await sb.from("fabricacao_expediente").upsert(linhas.map(({ grupo, entrada, saida }) => ({ grupo, entrada, saida })), { onConflict: "grupo" });
+  if(error){ aviso("app-aviso", "Não foi possível salvar o expediente: " + error.message, "erro"); return; }
+  await aptCarregarExpediente();
+  $("apt-exp-status").textContent = aptExpResumo();
+  if($("apt-exp-resumo")) $("apt-exp-resumo").textContent = aptExpResumo();
+  aviso("app-aviso", "Expediente da oficina salvo.", "ok");
+}
+/* Linha da grade que passa do expediente vira duas ou três (normal e HE); a pessoa confere antes de gravar */
+async function aptAplicarDivisao(i){
+  const l = _aptGrade[i];
+  if(!l || l.semDividir || ["gravada", "aguardando"].includes(l.estado) || !l.data || !l.inicio || !l.fim || l.fim <= l.inicio) return false;
+  const { partes, aviso: av } = await aptDividirHE(l.data, l.inicio, l.fim);
+  if(av){ l.msg = av; l.avisoExp = true; }
+  else if(l.avisoExp){ l.msg = ""; l.avisoExp = false; }
+  if(partes.length <= 1){
+    // parte de linha dividida, linha toda fora do expediente ou HE que o app marcou antes: segue o expediente;
+    // HE marcada à mão numa linha dentro do expediente fica como a pessoa deixou
+    if(!av && partes[0] && (l.div || partes[0].hora_extra || l.heAuto)){ l.hora_extra = partes[0].hora_extra; l.heAuto = partes[0].hora_extra; }
+    return true;
+  }
+  const grupo = l.div || ("d" + (++_aptDivSeq));
+  const orig = l.divOrig || { inicio: l.inicio, fim: l.fim };
+  const novas = partes.map(p => ({ ...l, inicio: p.inicio, fim: p.fim, hora_extra: p.hora_extra, div: grupo, divOrig: orig,
+    estado: "", msg: "", existente: null, avisoExp: false }));
+  _aptGrade.splice(i, 1, ...novas);
+  return true;
+}
+function aptManterUmaLinha(i){
+  const l = _aptGrade[i]; if(!l?.div) return;
+  const grupo = l.div, idx = _aptGrade.map((x, k) => x.div === grupo ? k : -1).filter(k => k >= 0);
+  if(idx.some(k => ["gravada", "aguardando"].includes(_aptGrade[k].estado))){
+    aviso("app-aviso", "Parte desta linha já foi gravada: apague a hora na ficha do documento antes de juntar.", "erro"); return;
+  }
+  const motivo = prompt(`Manter ${l.divOrig.inicio}–${l.divOrig.fim} numa linha só, sem separar a hora extra.\n\nMotivo (obrigatório; fica na observação da hora):`, "");
+  if(motivo === null) return;
+  if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo para manter numa linha.", "erro"); return; }
+  const base = _aptGrade[idx[0]];
+  const una = { ...base, inicio: base.divOrig.inicio, fim: base.divOrig.fim, hora_extra: false, div: null, divOrig: null,
+    semDividir: true, motivoUmaLinha: motivo.trim(), estado: "", msg: `Mantida numa linha: ${motivo.trim()}`, existente: null };
+  idx.slice().reverse().forEach(k => _aptGrade.splice(k, 1));
+  _aptGrade.splice(idx[0], 0, una);
+  aptRenderGrade();
+}
+
 /* ---------- grade de lançamento ---------- */
 function aptLinhaNova(base){
   return { doc: null, docTxt: "", funcionario_id: base?.funcionario_id || "", data: base?.data || $("apt-de").value || hojeISO(),
@@ -242,6 +342,8 @@ async function aptAbrirGrade(){
   if(!_aptFuncs.length || !_aptCentros.length) await aptCarregarCadastros();
   if(!_aptGrade.length) _aptGrade = [aptLinhaNova(), aptLinhaNova(), aptLinhaNova()];
   aptRenderGrade();
+  const err = await aptCarregarExpediente();
+  $("apt-exp-resumo").textContent = err ? "Não foi possível ler o expediente da oficina: " + err.message : aptExpResumo();
 }
 async function aptCarregDocsComAviso(){
   $("apt-grade").innerHTML = `<tr><td colspan="9" class="vazio">Carregando documentos abertos…</td></tr>`;
@@ -306,6 +408,13 @@ function aptQuadroInfo(l, i){
   return `<div class="meta">Quadro: <span class="ui-codigo">${esc(q.texto || "—")}</span> · ${esc(q.responsavel || "—")}${q.situacao ? " · " + esc({ ok: "OK", paralisado: "paralisada", em_andamento: "em andamento" }[q.situacao] || q.situacao) : ""}${conf.length ? ` · <span class="txt-perigo">leitura duvidosa: ${esc(conf.join(", "))}</span>` : ""}</div>
     ${/* html */ sel}${q.porque ? `<div class="meta">${esc(q.porque)}</div>` : ""}`;
 }
+/* fase 188b: parte de uma linha dividida pelo expediente (etiqueta HE e "Manter numa linha" na primeira parte) */
+function aptDivInfo(l, i){
+  if(!l.div || ["gravada", "aguardando"].includes(l.estado)) return "";
+  const primeira = _aptGrade.findIndex(x => x.div === l.div) === i;
+  return `<div class="meta">${l.hora_extra ? '<span class="tag ambar" title="parte fora do expediente da oficina: hora extra, custa ×2">HE</span> ' : '<span class="tag cinza" title="parte dentro do expediente da oficina">normal</span> '}dividida pelo expediente (${esc(l.divOrig.inicio)}–${esc(l.divOrig.fim)})</div>`
+    + (primeira ? `<button type="button" class="btn-sec btn-sm apt-uma-linha" data-i="${esc(i)}" title="desfaz a divisão e grava ${esc(l.divOrig.inicio)}–${esc(l.divOrig.fim)} numa linha só; pede o motivo">Manter numa linha</button> ` : "");
+}
 function aptRenderGrade(){
   const funcs = `<option value="">— funcionário —</option>` + _aptFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
   const centros = `<option value="">— centro de trabalho * —</option>` + _aptCentros.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
@@ -313,7 +422,7 @@ function aptRenderGrade(){
   $("apt-grade").innerHTML = _aptGrade.map((l, i) => {
     const d = l.doc;
     let extra = "";
-    const he = d ? `<label class="meta" title="hora extra, custa ×2; sábado, domingo e feriado vêm marcados"><input type="checkbox" data-i="${i}" data-c="hora_extra" ${l.hora_extra ? "checked" : ""} /> HE</label>` : "";
+    const he = d ? `<label class="meta" title="hora extra, custa ×2; sábado, domingo e feriado vêm marcados; em dia útil, o que passa do expediente da oficina vira linha HE sozinho"><input type="checkbox" data-i="${i}" data-c="hora_extra" ${l.hora_extra ? "checked" : ""} /> HE</label>` : "";
     if(d?.tipo === "OF") extra = `<select data-i="${i}" data-c="centro_trabalho_id">${/* html */ centros}</select>
       ${/* html */ he}`;
     else if(d?.tipo === "OS"){
@@ -332,7 +441,7 @@ function aptRenderGrade(){
       <td><input type="time" data-i="${i}" data-c="fim" value="${esc(l.fim)}" /></td>
       <td><input data-i="${i}" data-c="observacao" value="${esc(l.observacao)}" placeholder="atividade" /></td>
       <td>${/* html */ extra}</td>
-      <td>${l.quadro ? `<label class="meta" title="sem a marca a linha não grava"><input type="checkbox" data-i="${i}" data-c="incluir" ${l.incluir !== false ? "checked" : ""} /> incluir</label> ` : ""}${l.estado ? `<span class="tag ${esc(tagEst[l.estado] || "cinza")}">${esc({ gravada: "gravada", aguardando: "aguardando aprovação", recusada: "não gravou", repetida: "já lançada" }[l.estado])}</span>` : ""}
+      <td>${/* html */ aptDivInfo(l, i)}${l.quadro ? `<label class="meta" title="sem a marca a linha não grava"><input type="checkbox" data-i="${i}" data-c="incluir" ${l.incluir !== false ? "checked" : ""} /> incluir</label> ` : ""}${l.estado ? `<span class="tag ${esc(tagEst[l.estado] || "cinza")}">${esc({ gravada: "gravada", aguardando: "aguardando aprovação", recusada: "não gravou", repetida: "já lançada" }[l.estado])}</span>` : ""}
         ${l.msg ? `<div class="meta">${esc(l.msg)}</div>` : ""}
         ${l.estado === "repetida" && l.existente && aptHora(l.existente.fim) !== l.fim ? `<button type="button" class="btn-sec btn-sm apt-atualizar-fim" data-i="${i}">Atualizar o fim para ${esc(l.fim)}</button>` : ""}</td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo apt-linha-rem" data-i="${i}" title="tirar a linha" aria-label="tirar a linha">×</button></td></tr>`;
@@ -362,8 +471,30 @@ async function aptGradeMudou(el){
   } else if(c === "observacao" && l.doc?.tipo === "OS" && !l.atividade_id){
     l.atividade_id = aptSugerirAtividade(l);
     const a = $("apt-grade").querySelector(`tr[data-i="${i}"] [data-c="atividade_id"]`); if(a) a.value = l.atividade_id;
-  } else if(c === "data" && l.doc){
-    l.hora_extra = await aptExigeAprovacao(l.data); aptRenderGrade();
+  } else if(c === "data"){
+    if(l.doc) l.hora_extra = await aptExigeAprovacao(l.data);
+    l.divChave = `${l.data}|${l.inicio}|${l.fim}`;
+    await aptAplicarDivisao(i);   // fase 188b: a data muda o expediente (sexta tem o seu; fim de semana é HE inteiro)
+    aptRenderGrade();
+  } else if(c === "hora_extra") l.heAuto = false;   // marcada ou desmarcada à mão: o app não troca sozinho
+}
+/* fase 188b: ao sair do Início ou do Fim, confere o expediente e divide a linha; o foco segue para o campo clicado */
+async function aptGradeSaiuHora(e){
+  const el = e.target.closest('[data-c="inicio"], [data-c="fim"]'); if(!el) return;
+  const i = Number(el.dataset.i), l = _aptGrade[i]; if(!l) return;
+  l[el.dataset.c] = el.value;
+  const chave = `${l.data}|${l.inicio}|${l.fim}`;
+  if(l.divChave === chave) return;   // nada mudou desde a última conferência
+  l.divChave = chave;
+  const antes = _aptGrade.length, heAntes = l.hora_extra, msgAntes = l.msg;
+  await aptAplicarDivisao(i);
+  if(_aptGrade.length === antes && _aptGrade[i] === l && l.hora_extra === heAntes && l.msg === msgAntes) return;
+  const rel = e.relatedTarget?.closest?.("[data-c][data-i]");
+  const relC = rel?.dataset.c, relI = rel ? Number(rel.dataset.i) : null;
+  aptRenderGrade();
+  if(relC != null){
+    const novoI = relI > i ? relI + _aptGrade.length - antes : relI;
+    $("apt-grade").querySelector(`tr[data-i="${novoI}"] [data-c="${relC}"]`)?.focus();
   }
 }
 async function aptExigeAprovacao(d){
@@ -402,7 +533,7 @@ async function aptGravarLinha(l){
     const { data: jaAp } = await sb.from("apontamento_aprovacoes").select("id").eq("documento_id", d.id).eq("funcionario_id", l.funcionario_id).eq("data", l.data).eq("inicio", l.inicio).eq("status", "aguardando").range(0, 0);
     if(jaAp && jaAp[0]){ l.estado = "repetida"; l.existente = null; l.msg = "Já está aguardando aprovação."; return; }
     const reg = { tipo: d.tipo, documento_id: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim,
-      observacao: l.observacao.trim() || null, lancado_por: usuarioAtual.id, origem: l.origem || "apontamento" };
+      observacao: aptObsComMotivo(l.observacao, l.motivoUmaLinha), lancado_por: usuarioAtual.id, origem: l.origem || "apontamento" };
     reg.hora_extra = !!l.hora_extra;
     if(d.tipo === "OF") reg.centro_trabalho_id = l.centro_trabalho_id;
     const { error } = await sb.from("apontamento_aprovacoes").insert(reg);
@@ -413,7 +544,7 @@ async function aptGravarLinha(l){
     return;
   }
   const reg = { [t.col]: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim, horas: 0,   // o gatilho calcula
-    observacao: l.observacao.trim() || null, origem: l.origem || "apontamento" };
+    observacao: aptObsComMotivo(l.observacao, l.motivoUmaLinha), origem: l.origem || "apontamento" };
   if(d.tipo === "OS") reg.funcionario_nome = aptNomeFunc(l.funcionario_id) || null;
   reg.hora_extra = !!l.hora_extra;   // HE nas três tabelas; sábado, domingo e feriado o banco marca de qualquer jeito
   if(d.tipo === "OF") reg.centro_trabalho_id = l.centro_trabalho_id;
@@ -473,11 +604,17 @@ function ligarApontamentos(){
   $("apt-views").addEventListener("click", e => { const b = e.target.closest(".serv-view-btn"); if(!b) return; _aptView = b.dataset.view; aptRender(); });
   $("btn-apt-lancar").addEventListener("click", () => comBotaoTravado("btn-apt-lancar", aptAbrirGrade));
   $("btn-apt-fechar-grade").addEventListener("click", () => { $("apt-grade-box").style.display = "none"; });
+  $("btn-apt-expediente").addEventListener("click", () => comBotaoTravado("btn-apt-expediente", aptAbrirExpediente));
+  $("btn-apt-exp-salvar").addEventListener("click", () => comBotaoTravado("btn-apt-exp-salvar", aptSalvarExpediente));
+  $("btn-apt-exp-fechar").addEventListener("click", () => { $("apt-exp-box").style.display = "none"; });
   $("btn-apt-linha").addEventListener("click", () => { _aptGrade.push(aptLinhaNova(_aptGrade[_aptGrade.length - 1])); aptRenderGrade(); });
   $("btn-apt-gravar").addEventListener("click", () => comBotaoTravado("btn-apt-gravar", aptGravarGrade));
   const grade = $("apt-grade");
   grade.addEventListener("change", e => { const el = e.target.closest("[data-c]"); if(el) aptGradeMudou(el).catch(err => aviso("app-aviso", err.message, "erro")); });
+  grade.addEventListener("focusout", e => { aptGradeSaiuHora(e).catch(err => aviso("app-aviso", err.message, "erro")); });
   grade.addEventListener("click", e => {
+    const um = e.target.closest(".apt-uma-linha");
+    if(um){ aptManterUmaLinha(Number(um.dataset.i)); return; }
     const rem = e.target.closest(".apt-linha-rem");
     if(rem){ _aptGrade.splice(Number(rem.dataset.i), 1); aptRenderGrade(); return; }
     const up = e.target.closest(".apt-atualizar-fim");
