@@ -1592,6 +1592,7 @@ function cmpNfKmPreparar(p){
   cmpKmAtualizar();
 }
 async function cmpKmAtualizar(){
+  cmpOsAtualizar();   // fase 131b: a OS acompanha a TAG do cabeçalho
   const campo = $("cmp-km-campo"), inp = $("cmp-km"), dica = $("cmp-km-dica"); if(!campo || !inp) return;
   const p = _cmpAtual, eqId = $("cmp-equip").value, eq = _cmpEqMap[eqId];
   const veic = _cmpS56 && !!p && !!eq && ["veiculo", "caminhao"].includes(eq.tipo);
@@ -1631,6 +1632,62 @@ async function cmpSalvarKm(){
   aviso("app-aviso", `km ${num(p.km_informado)} registrado na TAG ${cmpEq(p.equipamento_id)} (leitura de compra).`, "ok");
   cmpKmAtualizar();
   if(typeof montarHistorico === "function") montarHistorico("pedidos_compra", p.id, "cmp-chatter");
+}
+/* ---------- fase 131b: pedido ligado à OS de manutenção ----------
+   pedidos_compra.manutencao_id vem no select("*") do pedido; sem a migration a chave não existe e campo, chip e botão ficam
+   ocultos. A ligação é pela RPC pedido_ligar_os (qualquer status vivo; a TAG do pedido passa a ser a da OS; log no histórico),
+   como o km: fora de cmpEditavel e gravada ao escolher. O recebimento confirmado copia os itens com destino na TAG da OS
+   para a aba Materiais dela (gatilho no banco); o custo continua entrando uma vez só, pelo recebimento. */
+function cmpOsOn(p){ return !!p && Object.prototype.hasOwnProperty.call(p, "manutencao_id"); }
+const CMP_OS_ST = { agendada: "aberta", em_andamento: "em execução", concluida: "concluída", cancelada: "cancelada" };
+let _cmpOsDe = null;   // pedido cuja lista de OS está montada no select
+async function cmpOsAtualizar(){
+  const p = _cmpAtual, campo = $("cmp-os-campo"), sel = $("cmp-os"), dica = $("cmp-os-dica");
+  const on = cmpOsOn(p), lig = on && !!p.manutencao_id;
+  if($("cmp-chip-os")) $("cmp-chip-os").style.display = lig ? "" : "none";
+  if($("sb-cmp-os")) $("sb-cmp-os").style.display = lig ? "" : "none";
+  if(!campo || !sel) return;
+  const eqId = $("cmp-equip").value;
+  campo.style.display = on && (eqId || lig) ? "" : "none";
+  if(!on || !(eqId || lig)) return;
+  const salvo = !!p.id && p.equipamento_id === eqId, eqBusca = lig ? p.equipamento_id : eqId;
+  const [ab, at] = await Promise.all([
+    sb.from("manutencoes").select("id,numero,status,descricao").eq("equipamento_id", eqBusca).in("status", ["agendada", "em_andamento"]).order("created_at", { ascending: false }),
+    lig ? sb.from("manutencoes").select("id,numero,status,descricao").eq("id", p.manutencao_id).maybeSingle() : Promise.resolve({ data: null })
+  ]);
+  if(_cmpAtual !== p) return;
+  const lista = ab.error ? [] : (ab.data || []), atual = at.data || null;
+  if(atual && !lista.some(o => o.id === atual.id)) lista.unshift(atual);
+  const rot = o => `${o.numero} · ${CMP_OS_ST[o.status] || o.status}${o.descricao ? " · " + String(o.descricao).slice(0, 50) : ""}`;
+  sel.innerHTML = `<option value="">— sem OS —</option>` + lista.map(o => `<option value="${esc(o.id)}">${esc(rot(o))}</option>`).join("");
+  sel.value = p.manutencao_id || "";
+  sel.disabled = !(salvo && cmpNfKmPode(p));
+  if(dica) dica.textContent = !p.id || !salvo ? "Salve o pedido com esta TAG para ligar a OS." : !lista.length ? "Nenhuma OS aberta ou em execução nesta TAG." : "";
+  _cmpOsDe = p.id;
+  const ch = $("cmp-chip-os-txt");
+  if(ch) ch.innerHTML = atual ? `${linkManutencao(atual.id, atual.numero)} <span class="meta">${esc(CMP_OS_ST[atual.status] || atual.status)}</span>` : lig ? "OS" : "—";
+  const b = $("sb-cmp-os");
+  if(b){ b.querySelector(".sb-num").textContent = atual ? atual.numero : "—"; b.dataset.os = p.manutencao_id || ""; }
+}
+async function cmpSalvarOs(){
+  const p = _cmpAtual, sel = $("cmp-os"); if(!p?.id || !sel || sel.disabled || !cmpOsOn(p)) return;
+  const v = sel.value || null;
+  if(v === (p.manutencao_id || null)) return;
+  if(!v && !confirm("Desligar o pedido da OS? As peças e o serviço recebidos por este pedido saem da aba Materiais da OS (o custo da TAG não muda).")){ sel.value = p.manutencao_id || ""; return; }
+  const { error } = await sb.rpc("pedido_ligar_os", { p_pedido_id: p.id, p_manutencao_id: v });
+  if(error){ aviso("app-aviso", "OS não ligada: " + cmpMsgErro(error), "erro"); sel.value = p.manutencao_id || ""; return; }
+  aviso("app-aviso", v ? `Pedido ${p.numero} ligado à OS: o recebido na TAG entra na aba Materiais dela.` : `Pedido ${p.numero} desligado da OS.`, "ok");
+  await abrirPedido(p.id);
+}
+/* fase 131b: compra de manutenção da frota sem OS pede o km (a leitura nasce ao informar o km, lote S56) */
+function cmpKmFaltando(p){
+  if(!_cmpS56 || !p || (cmpOsOn(p) && p.manutencao_id) || p.km_informado != null) return false;
+  const eq = _cmpEqMap[$("cmp-equip").value];
+  if(!eq || !["veiculo", "caminhao"].includes(eq.tipo)) return false;
+  return _cmpItens.some(i => {
+    const n = i.natureza_id ? _cmpNatMap[i.natureza_id] : null, txt = n ? (n.odoo_nome || n.nome) : (i.natureza || "");
+    return cmpNorm(txt).trim().startsWith("manutencao");
+  });
 }
 /* ---------- lote S56 (#174): aviso de período da obra no pedido e no recebimento ----------
    Lê vw_obras_controle.data_inicio_ref / data_termino / termino_origem (frente c). Data do documento fora de
@@ -2987,6 +3044,13 @@ async function cmpAcao(acao){
       if(cmpTipoCab() === "aplicacao_direta" && !$("cmp-dest-custo").value){ aviso("app-aviso", "Escolha o destino do custo no Cabeçalho (obra, TAG, setor ou Vários destinos, um por item).", "erro"); ativarTabPedido("cabecalho"); return; }
       const semNat = _cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta" && !i.natureza_id && !i.natureza).length;
       if(semNat && !confirm(`${semNat} item(ns) de aplicação direta sem natureza do gasto. Enviar para aprovação assim mesmo?`)){ ativarTabPedido("itens"); return; }
+      // fase 131b: manutenção de caminhão ou veículo sem OS ligada pede o km (vira leitura da TAG)
+      if(cmpKmFaltando(_cmpAtual)){
+        const sid = await salvarPedido(true); if(!sid) return;
+        await abrirPedido(sid);   // o km grava pela RPC sobre a TAG salva
+        aviso("app-aviso", "Compra de manutenção da frota sem OS: informe o km do veículo no Cabeçalho antes de enviar (ou ligue o pedido à OS).", "erro");
+        ativarTabPedido("cabecalho"); $("cmp-km")?.focus(); return;
+      }
       id = await salvarPedido(true); if(!id) return;
       const { data, error } = await sb.rpc("pedido_enviar_aprovacao", { p_id: id }); if(error) throw error;
       if(data === "aprovado") aviso("app-aviso", "Pedido aprovado: a sua assinatura fechou todas as chaves. Marque como enviado quando mandar ao fornecedor.", "ok");
@@ -3435,7 +3499,7 @@ function cmpRecSoma(){
 function cmpRecAddItem(p){
   if(!p?.id) return;
   const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv;
-  const d = _cmpRec.pedido ? cmpDestinoDoValor(cmpDestinoPadraoDe(_cmpRec.pedido)) : { destino: "estoque", obra_id: null, equipamento_id: null };
+  const d = _cmpRec.pedido ? cmpDestinoDoValor(cmpDestinoPadraoDe(_cmpRec.pedido)) : _cmpRec.os ? cmpDestinoDoValor("eq:" + _cmpRec.os.equipamento_id) : { destino: "estoque", obra_id: null, equipamento_id: null };   // fase 131b: nota da oficina nasce na TAG da OS
   if(srv && d.destino === "estoque"){ d.destino = "obra"; d.obra_id = _cmpRec.pedido?.obra_id || null; }
   _cmpRec.itens.push({ pedido_item_id: null, produto_id: p.id, produto_txt: `${prodTxt(p)}`, casamento: "manual", livre: false, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", pendente: null, quantidade_nf: 1,
     valor_unitario_nf: Number(p.custo_ultimo || 0), categoria_custo: p.categoria_custo || (srv ? "servico_terceiro" : "peca"), ...d });
@@ -3531,6 +3595,16 @@ function abrirCompraDireta(){
   _cmpItens = [];
   abrirRecebimento(null, "compra_direta");
 }
+/* fase 131b: "Registrar nota da oficina" pela OS: a compra direta de sempre, com as linhas nascendo na TAG da OS; registrada,
+   o pedido é ligado à OS (pedido_ligar_os) e o que entrou na TAG vai para a aba Materiais dela. os = { id, numero, equipamento_id, codigo } */
+function abrirCompraDiretaOS(os){
+  if(!cmpPodeOperar()){ aviso("app-aviso", "Seu perfil não opera compras.", "erro"); return; }
+  _cmpItens = [];
+  abrirRecebimento(null, "compra_direta");
+  if(!_cmpRec) return;
+  _cmpRec.os = os;
+  $("cmp-rec-titulo").textContent = `Nota da oficina · ${os.numero} · TAG ${os.codigo || ""}`;
+}
 async function registrarCompraDireta(){
   const r = _cmpRec; if(!r) return;
   const forn = $("cmp-rec-forn").value;
@@ -3563,9 +3637,15 @@ async function registrarCompraDireta(){
     xml_texto: r.xml?.texto || null, anexos };
   const { data, error } = await sb.rpc("compra_direta_registrar", { p_cabecalho: cab, p_itens: its, p_recebimento: rec });
   if(error){ await cmpRemoverAnexos(anexos); aviso("app-aviso", "Compra não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  const os = r.os || null;   // fase 131b: nota da oficina registrada pela OS
+  if(os && data?.pedido_id){
+    const { error: eOs } = await sb.rpc("pedido_ligar_os", { p_pedido_id: data.pedido_id, p_manutencao_id: os.id });
+    if(eOs){ fecharRecebimento(); await cmpFetchPedidos(); await abrirPedido(data.pedido_id); aviso("app-aviso", `Compra registrada, mas não foi ligada à ${os.numero}: ${cmpMsgErro(eOs)} Ligue pelo campo OS do Cabeçalho.`, "erro"); return; }
+  }
   if(data?.status === "aguardando_aprovacao")
     aviso("app-aviso", `Compra registrada acima da sua alçada (${cmpAlcadaTxt()}): o pedido foi para aprovação. Estoque, custo e títulos entram quando quem tem alçada aprovar.`, "ok");
   else aviso("app-aviso", "Compra direta registrada: pedido recebido, estoque/custos atualizados" + (venc || dups ? " e títulos gerados." : "."), "ok");
+  if(os && data?.status !== "aguardando_aprovacao") aviso("app-aviso", `Nota da oficina registrada e ligada à ${os.numero}: o que entrou na TAG está na aba Materiais da OS` + (venc || dups ? "; títulos gerados." : "."), "ok");
   fecharRecebimento();
   if(typeof aceInvalidar === "function") aceInvalidar();
   if(typeof carregarProdutos === "function") carregarProdutos();
@@ -3852,7 +3932,7 @@ async function cmpImportarXml(file){
   const mapCod = {}, mapFator = {};
   (cod.data || []).forEach(c => { if(c.produto && c.produto.ativo !== false){ mapCod[c.codigo_fornecedor] = c.produto; mapFator[c.codigo_fornecedor] = { fator: Number(c.fator_conversao || 0), un: c.unidade_fornecedor || null }; } });
   const mapEan = {}; (ean.data || []).forEach(p => mapEan[p.codigo_barras] = p);
-  const destPadrao = cmpDestinoDoValor(_cmpRec.pedido ? cmpDestinoPadraoDe(_cmpRec.pedido) : "estoque");
+  const destPadrao = cmpDestinoDoValor(_cmpRec.pedido ? cmpDestinoPadraoDe(_cmpRec.pedido) : _cmpRec.os ? "eq:" + _cmpRec.os.equipamento_id : "estoque");   // fase 131b
   _cmpRec._xmlMap = { cod: mapCod, ean: mapEan, fator: mapFator, destPadrao };
   const somaItens = nf.itens.reduce((s, d) => s + d.qCom * d.vUnCom, 0);
   const dif = nf.totais.vNF - somaItens - (nf.totais.vFrete || 0);
@@ -4201,6 +4281,11 @@ function ligarCompras(){
   // lote S56: NF informada (#162), km do veículo (#203), aviso de período (#174) e seletor de acessório (#202)
   $("cmp-nf-inf")?.addEventListener("change", debounce(cmpSalvarNfInformada, 300));
   $("cmp-km")?.addEventListener("change", cmpSalvarKm);
+  $("cmp-os")?.addEventListener("change", cmpSalvarOs);   // fase 131b
+  $("sb-cmp-os")?.addEventListener("click", e => {
+    const os = e.currentTarget.dataset.os; if(!os) return;
+    if(irParaSecao("manutencao") && typeof abrirManutencao === "function") abrirManutencao(os);
+  });
   $("cmp-equip")?.addEventListener("change", cmpKmAtualizar);
   $("cmp-data")?.addEventListener("change", cmpPeriodoAvisoPedidoD);
   $("cmp-rec-data")?.addEventListener("change", cmpPeriodoAvisoRecD);

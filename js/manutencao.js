@@ -44,6 +44,8 @@ let _manAnexoUrl = {};
 let _manPendBaixa = {};       // lote S56b (#194): id da OS -> peças de estoque sem baixa
 let _manSeps = [];            // lote S56b (#193): separações da OS aberta (separacoes.manutencao_id)
 let _manMatSep = {};          // lote S56b (#193): id do material -> { numero, status, separado } do item de separação
+let _man131b = false;         // fase 131b: migration do pedido ligado à OS aplicada (manutencoes.custo_compras)
+let _manPeds = [];            // fase 131b: pedidos de compra ligados à OS aberta (pedidos_compra.manutencao_id)
 
 const MAN_STATUS = { agendada: ["Aberta", "azul"], em_andamento: ["Em execução", "ambar"], concluida: ["Concluída", "verde"], cancelada: ["Cancelada", "cinza"] };
 const MAN_STAGES = ["agendada", "em_andamento", "concluida"];
@@ -71,6 +73,9 @@ function manMatPendente(i){ return i.tipo === "consumo" && i.origem === "app" &&
 /* pendente e numa separação viva: sai pela separação */
 function manMatNaSeparacao(i){ const x = _manMatSep[i.id]; return !!x && !x.separado && ["aberta", "em_separacao", "separada"].includes(x.status); }
 function manTagBaixaPend(n){ return n ? `<span class="tag ambar" title="Peças de estoque lançadas na OS e ainda sem baixa: o almoxarifado dá baixa">Baixa pendente (${esc(n)})</span>` : ""; }
+/* fase 131b: comprar pela OS = compras_pode_operar() (inclui gestor de frota e de manutenção e o mecânico); auditor e só leitura nunca */
+function manPodeComprar(){ return _man131b && typeof cmpPodeOperar === "function" && cmpPodeOperar() && !ehSomenteLeitura(); }
+function manPedVivos(){ return _manPeds.filter(p => p.status !== "cancelado"); }
 function manPodeChecklist(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["encarregado", "operador", "logistica", "assistente_engenharia", "gestor_acessorios"].includes(usuarioAtual.cargo)); }
 
 /* ---------- utilitários ---------- */
@@ -124,13 +129,15 @@ async function manTodas(q){   // PostgREST pagina em 1.000: busca em páginas
 /* ---------- carga ---------- */
 async function manCarregarBase(force){
   if(_manCarregado && !force) return;
-  const [eq, fu, pr, cfg, mod] = await Promise.all([
+  const [eq, fu, pr, cfg, mod, f131b] = await Promise.all([
     sb.from("equipamentos").select("id,codigo,nome,tipo,horimetro,km,ativo,status,placa,localizacao_tipo").order("codigo"),
     sb.from("funcionarios").select("id,nome,funcao").eq("ativo", true).order("nome"),
     sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),
     sb.from("empresa_config").select("custo_hora_oficina,manutencao_atencao_h,manutencao_atencao_km").eq("id", 1).maybeSingle(),
-    sb.from("checklist_modelos").select("id,nome,versao,tipo,ativo").eq("ativo", true).order("nome")
+    sb.from("checklist_modelos").select("id,nome,versao,tipo,ativo").eq("ativo", true).order("nome"),
+    sb.from("manutencoes").select("custo_compras").limit(1)   // fase 131b: a coluna nova diz se a migration está no banco
   ]);
+  _man131b = !f131b.error;
   _manEquips = (eq.data || []).sort(manOrdEq);
   _manFuncs = fu.data || []; _manProfiles = pr.data || []; _manModelos = mod.data || [];
   if(cfg.data) _manCfg = { ..._manCfg, ...cfg.data };
@@ -323,7 +330,7 @@ function renderManPreventivas(){
       <td>${t.proximo ? `${esc(manAtividadeTxt(t.proximo))} <span class="meta">· ${esc(manRestanteTxt(t.proximo))}</span>` : "—"}</td>
       <td>${t.semPlano ? "—" : manTagSem(t.pior)}</td>
       <td class="col-acao" style="white-space:nowrap;">${t.semPlano ? (pode ? `<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">+ Plano</button>` : "") :
-        `${pode && (t.n.critico || t.n.atencao) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(t.equipamento_id)}" title="Abre a OS preventiva com os itens vencidos e em atenção; o kit de peças vira a separação do almoxarifado">Gerar OS e separação</button> ` : ""}<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">Plano</button>`}</td>
+        `${pode && (t.n.critico || t.n.atencao) ? `<button type="button" class="btn btn-sm man-prev-gerar" data-eq="${esc(t.equipamento_id)}" title="Abre a OS preventiva com os itens vencidos e em atenção; o kit de peças vira a separação do almoxarifado">Gerar OS e separação</button> ${manPodeComprar() ? `<button type="button" class="btn btn-sm man-prev-pedido" data-eq="${esc(t.equipamento_id)}" title="Abre a OS preventiva com os itens vencidos e em atenção e o pedido de compra em rascunho com o kit de peças (oficina de fora: sem separação no almoxarifado)">Gerar OS e pedido</button> ` : ""}` : ""}<button type="button" class="btn-sec btn-sm man-prev-plano" data-eq="${esc(t.equipamento_id)}">Plano</button>`}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
 async function manGerarPreventiva(eqId, itemIds){
@@ -347,6 +354,49 @@ async function manGerarPreventiva(eqId, itemIds){
   }
   await manFetchOS(); manRenderKpis();
   abrirManutencao(data);
+}
+/* ---------- fase 131b: compra ligada à OS ----------
+   D1: Preventivas → "Gerar OS e pedido" abre a OS sem separação (p_sem_kit) e o pedido em rascunho com o kit
+   (manutencao_gerar_pedido). Na OS, "Comprar peças / serviço" gera o pedido e "Registrar nota da oficina" é a compra direta
+   já ligada. O recebimento copia os itens para a aba Materiais (origem compra, sem baixa de estoque); o custo entra na TAG
+   uma vez só, pelo recebimento. */
+async function manAbrirPedido(id){
+  if(!id || !irParaSecao("compras")) return;
+  if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false);
+  if(typeof abrirPedido === "function") await abrirPedido(id);
+}
+async function manGerarPreventivaPedido(eqId){
+  if(!manPodeEditar() || !manPodeComprar()) return;
+  const e = manEq(eqId);
+  const { data: vencendo } = await sb.from("vw_manutencao_preventiva").select("item_id,semaforo").eq("equipamento_id", eqId);
+  const ids = (vencendo || []).filter(i => ["critico", "atencao"].includes(i.semaforo)).map(i => i.item_id);
+  const { data: kits } = ids.length ? await sb.from("manutencao_plano_materiais").select("plano_item_id").in("plano_item_id", ids).not("produto_id", "is", null) : { data: [] };
+  const comKit = new Set((kits || []).map(k => k.plano_item_id)).size;
+  if(!confirm(`Gerar a OS preventiva e o pedido de compra da TAG ${e ? e.codigo : ""}?\n\n${ids.length} item(ns) vencidos e em atenção: ${comKit} com kit de peças e ${ids.length - comKit} sem kit.\nO kit vai para o pedido em rascunho (sem separação no almoxarifado). Ao concluir a OS, informe o km ou o horímetro.`)) return;
+  const { data: osId, error } = await sb.rpc("manutencao_gerar_preventiva", { p_equipamento_id: eqId, p_item_ids: null, p_sem_kit: true });
+  if(error){ aviso("app-aviso", "Não foi possível gerar a OS: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  const { data: pedId, error: eP } = await sb.rpc("manutencao_gerar_pedido", { p_manutencao_id: osId });
+  await manFetchOS(); manRenderKpis();
+  if(eP){ aviso("app-aviso", "OS preventiva aberta, mas o pedido não foi gerado: " + eP.message.replace(/^.*?: /, "") + " Use \"Comprar peças / serviço\" na OS.", "erro"); return abrirManutencao(osId); }
+  await manAbrirPedido(pedId);
+  aviso("app-aviso", `OS preventiva aberta e pedido em rascunho com o kit${comKit ? "" : " (sem kit com produto: lance os itens)"}. Escolha o fornecedor e envie para aprovação.`, "ok");
+}
+async function manComprar(){
+  const m = _manAtual; if(!m?.id || !manPodeComprar()) return;
+  const vivos = manPedVivos();
+  if(vivos.length && !confirm(`A ${m.numero} já tem ${vivos.length} pedido(s) ligado(s) (${vivos.map(p => p.numero).join(", ")}). Gerar mais um? Ele só traz o kit que ainda não está em pedido.`)) return;
+  const { data, error } = await sb.rpc("manutencao_gerar_pedido", { p_manutencao_id: m.id });
+  if(error){ aviso("app-aviso", "Pedido não gerado: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  await manAbrirPedido(data);
+  aviso("app-aviso", `Pedido em rascunho ligado à ${m.numero}. Escolha o fornecedor, confira os itens e envie para aprovação.`, "ok");
+}
+async function manNotaOficina(){
+  const m = _manAtual; if(!m?.id || !manPodeComprar()) return;
+  if(Number(m.custo || 0) > 0){ aviso("app-aviso", "Esta OS tem serviço externo digitado: zere o campo e salve antes de registrar a nota (com nota ligada o custo vem dela).", "erro"); manAtivarTab("geral"); return; }
+  const e = m.equipamento || manEq(m.equipamento_id);
+  if(!irParaSecao("compras")) return;
+  if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false);
+  if(typeof abrirCompraDiretaOS === "function") abrirCompraDiretaOS({ id: m.id, numero: m.numero, equipamento_id: m.equipamento_id, codigo: e?.codigo || "" });
 }
 
 /* ---------- visão Planos (RG 3.14) ---------- */
@@ -724,6 +774,8 @@ async function abrirManutencao(id){
   ]);
   if(m.error || !m.data){ aviso("app-aviso", "Não foi possível abrir a OS" + (m.error ? ": " + m.error.message : "."), "erro"); return; }
   await manCarregarSeparacaoOS(id, mt.data || []);   // lote S56b (#193)
+  _manPeds = [];   // fase 131b: pedidos ligados (a RLS de pedidos_compra decide quem vê)
+  if(_man131b){ const pd = await sb.from("pedidos_compra").select("id,numero,status").eq("manutencao_id", id).order("created_at"); if(!pd.error) _manPeds = pd.data || []; }
   manAbrirFicha(m.data, at.data || [], hs.data || [], mt.data || [], ax.data || [], ck.data || []);
 }
 /* lote S56b (#193): separação do kit da OS preventiva e o item de cada material. Sem a migration (coluna ausente) fica vazio. */
@@ -737,7 +789,7 @@ async function manCarregarSeparacaoOS(id, mats){
   if(!it.error) (it.data || []).forEach(r => { if(r.manutencao_material_id && r.separacao) _manMatSep[r.manutencao_material_id] = { numero: r.separacao.numero, status: r.separacao.status, separado: r.separado }; });
 }
 function manAbrirFicha(m, ativs, horas, mats, anexos, checks){
-  if(!m.id){ _manSeps = []; _manMatSep = {}; }   // lote S56b: OS nova não herda a separação da anterior
+  if(!m.id){ _manSeps = []; _manMatSep = {}; _manPeds = []; }   // lote S56b: OS nova não herda a separação da anterior (fase 131b: nem os pedidos)
   _manAtual = m; _manAtivs = ativs; _manHoras = horas; _manMats = mats; _manAnexos = anexos; _manChecksOS = checks;
   $("man-painel").style.display = "none"; $("man-ficha").style.display = "";
   const novo = !m.id, pode = manPodeEditar() && m.status !== "cancelada";
@@ -748,6 +800,11 @@ function manAbrirFicha(m, ativs, horas, mats, anexos, checks){
   $("man-hor").value = m.horimetro_km ?? ""; $("man-km").value = m.km ?? ""; $("man-forn").value = m.fornecedor_id || ""; $("man-custo").value = m.custo ?? ""; $("man-obs").value = m.observacoes || "";
   $("man-ficha").querySelectorAll(".odoo-tab[data-tab=geral] input, .odoo-tab[data-tab=geral] select, #man-obs").forEach(el => el.disabled = !pode);
   $("man-equip").disabled = !pode || (!novo && m.origem === "planilha");
+  // fase 131b (D2): com pedido ligado o serviço externo vem da nota; o campo trava (o banco também recusa)
+  const comPed = manPedVivos().length > 0;
+  if(comPed){ $("man-custo").disabled = true; }
+  $("man-custo").title = comPed ? "Com pedido de compra ligado, o serviço externo vem da nota do pedido (aba Materiais)." : "";
+  $("man-equip").disabled = $("man-equip").disabled || comPed;
   // lote S50 (#146, parte 1): atividades digitadas no cadastro, uma por linha; só na OS ainda não salva
   $("man-ativs-novas-campo").style.display = novo ? "" : "none";
   $("man-ativs-novas").value = ""; $("man-ativs-novas").disabled = !pode;
@@ -787,7 +844,10 @@ function manAtualizarCabecalho(){
   const pend = _manMats.filter(manMatPendente), pendSep = pend.filter(manMatNaSeparacao), pendBaixa = pend.length > pendSep.length;
   const mostra = { "btn-man-salvar": pode && st !== "cancelada", "btn-man-iniciar": pode && !novo && st === "agendada", "btn-man-concluir": pode && !novo && ["agendada", "em_andamento"].includes(st),
     "btn-man-cancelar": pode && !novo && ["agendada", "em_andamento"].includes(st), "btn-man-reabrir": pode && !novo && st === "concluida",
-    "btn-man-baixa": manBaixaPode() && !novo && st !== "cancelada" && m.origem === "app" && pendBaixa, "btn-man-imprimir": !novo };
+    "btn-man-baixa": manBaixaPode() && !novo && st !== "cancelada" && m.origem === "app" && pendBaixa, "btn-man-imprimir": !novo,
+    // fase 131b: compra pela OS só aberta ou em execução e sem serviço externo digitado (D2)
+    "btn-man-comprar": manPodeComprar() && !novo && ["agendada", "em_andamento"].includes(st) && !(Number(m.custo || 0) > 0),
+    "btn-man-nota-oficina": manPodeComprar() && !novo && ["agendada", "em_andamento"].includes(st) && !(Number(m.custo || 0) > 0) };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   const sb2 = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n || n === "R$ 0,00" || n === "—"); } };
   sb2("sb-man-equip", e?.codigo || "—"); sb2("sb-man-ativ", _manAtivs.length);
@@ -802,6 +862,15 @@ function manAtualizarCabecalho(){
     bSep.dataset.sep = sep ? sep.id : "";
     bSep.querySelector(".sb-num").textContent = sep ? sep.numero : "—";
     bSep.querySelector(".sb-lbl").textContent = sep ? "separação · " + (sep.status === "em_separacao" ? "em separação" : sep.status) : "separação";
+  }
+  // fase 131b: smart-button dos pedidos ligados (com um só, abre o pedido; com vários, a aba Materiais)
+  const bPed = $("sb-man-ped");
+  if(bPed){
+    const vivos = manPedVivos();
+    bPed.style.display = !novo && _man131b && vivos.length ? "" : "none";
+    bPed.querySelector(".sb-num").textContent = vivos.length === 1 ? vivos[0].numero : vivos.length;
+    bPed.querySelector(".sb-lbl").textContent = vivos.length === 1 ? "pedido" : "pedidos";
+    bPed.title = vivos.length ? "Pedidos ligados: " + vivos.map(p => `${p.numero} (${p.status})`).join(", ") : "";
   }
   // lote S56b (#194): chip "Baixa pendente" para todos que leem a OS
   const chipB = $("man-chip-baixa-box");
@@ -1019,13 +1088,15 @@ function manRenderMats(){
   const tb = $("man-mats"), pode = manPodeMateriais() && _manAtual?.status !== "cancelada";
   if(!_manMats.length){ tb.innerHTML = `<tr><td colspan="8" class="vazio">${_manAtual?.id ? "Nenhuma peça lançada." : "Salve a OS para lançar peças."}</td></tr>`; return; }
   tb.innerHTML = _manMats.map(i => {
-    const baixa = i.movimentacao_estoque_id ? '<span class="tag verde">baixada no estoque</span>' : i.origem === "planilha" ? '<span class="tag cinza" title="histórico da planilha: não mexe no estoque">planilha</span>'
+    const compra = i.origem === "compra";   // fase 131b: veio do recebimento de pedido ligado; nunca baixa estoque nem se remove aqui
+    const baixa = compra ? `<span class="tag azul" title="Recebido pelo pedido de compra ligado à OS: o custo entra na TAG pelo recebimento, sem baixa de estoque">compra</span>${i.observacoes ? ` <span class="meta">${esc(i.observacoes)}</span>` : ""}`
+      : i.movimentacao_estoque_id ? '<span class="tag verde">baixada no estoque</span>' : i.origem === "planilha" ? '<span class="tag cinza" title="histórico da planilha: não mexe no estoque">planilha</span>'
       : i.tipo === "retirada" ? '<span class="meta">—</span>' : !i.produto_id ? '<span class="meta" title="sem produto no catálogo: só texto">sem cadastro</span>'
       : manMatNaSeparacao(i) ? `<span class="tag azul" title="Sai pela separação do kit: o almoxarifado marca separado e a baixa entra aqui">na separação ${esc(_manMatSep[i.id].numero)}</span>`
       : '<span class="tag ambar" title="O almoxarifado dá baixa (botão Dar baixa das peças)">pendente</span>';   // lote S56b (#193/#194)
     return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, semCodOdoo(i.descricao)) : esc(semCodOdoo(i.descricao))}${i.codigo_peca ? ` <span class="meta">${esc(i.codigo_peca)}</span>` : ""}${i.plano_item_id ? ' <span class="tag azul" title="kit do item do plano">kit</span>' : ""}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td>
-      <td class="num">${brl(i.custo_unitario)}</td><td class="num">${brl(Number(i.quantidade) * Number(i.custo_unitario))}</td><td>${i.tipo === "retirada" ? "Retirada" : "Consumo"}</td><td>${baixa}</td>
-      <td>${pode && !i.movimentacao_estoque_id ? `<button type="button" class="btn-sec btn-sm txt-perigo man-mat-rem" data-id="${esc(i.id)}" title="remover">×</button>` : ""}</td></tr>`; }).join("");
+      <td class="num">${brl(i.custo_unitario)}</td><td class="num">${brl(Number(i.quantidade) * Number(i.custo_unitario))}</td><td>${i.tipo === "retirada" ? "Retirada" : i.tipo === "servico" ? "Mão de obra" : "Consumo"}</td><td>${baixa}</td>
+      <td>${pode && !compra && !i.movimentacao_estoque_id ? `<button type="button" class="btn-sec btn-sm txt-perigo man-mat-rem" data-id="${esc(i.id)}" title="remover">×</button>` : ""}</td></tr>`; }).join("");
   tb.querySelectorAll(".man-mat-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("manutencao_materiais").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
@@ -1048,12 +1119,15 @@ function manRenderCustos(){
   const m = _manAtual, c = $("man-custos"); if(!m || !c) return;
   const pode = manPodeEditar() && !!m.id;
   const horas = _manHoras.reduce((t, h) => t + Number(h.horas || 0), 0), he = _manHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
+  const compras = _manMats.filter(i => i.origem === "compra").reduce((t, i) => t + Math.round(Number(i.quantidade) * Number(i.custo_unitario) * 100) / 100, 0);   // fase 131b (= custo_compras)
   c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição do custo</div>
         <div class="custos-linha"><span>Serviço externo (fornecedor)</span><strong>${brl(m.custo || 0)}</strong></div>
         <div class="custos-linha"><span>Peças consumidas</span><strong>${brl(m.custo_pecas || 0)}</strong></div>
         <div class="custos-linha"><span>Mão de obra (${num(horas)} h${he ? `, ${num(he)} h de HE ×2` : ""} × ${_manCfg.custo_hora_oficina ? brl(_manCfg.custo_hora_oficina) : "hora não definida"})</span><strong>${brl(m.custo_horas || 0)}</strong></div>
         <div class="custos-linha"><span><strong>Custo real</strong>${m.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brl(m.custo_real || 0)}</strong></div>
+        ${compras || _manPeds.length ? `<div class="custos-linha" title="Peças e serviço recebidos pelos pedidos ligados (com IPI). Já estão no custo da TAG pelo recebimento; ficam fora do custo real da OS para não contar duas vezes."><span>Compras ligadas (${esc(manPedVivos().map(p => p.numero).join(", ") || "pedido")})</span><strong>${brl(compras)}</strong></div>
+        <div class="custos-linha"><span><strong>Total da OS com as compras</strong></span><strong>${brl(Number(m.custo_real || 0) + compras)}</strong></div>` : ""}
       </div>
       <div><div class="mov-ace-sug-grupo-t">Custo digitado à mão</div>
         <p class="meta">Use quando o custo real não sai do serviço, das peças e das horas (OS antiga da planilha).</p>
@@ -1289,6 +1363,7 @@ function ligarManutencao(){
   $("man-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a")) return;
     const bGerar = e.target.closest(".man-prev-gerar"); if(bGerar){ manGerarPreventiva(bGerar.dataset.eq, null); return; }
+    const bPed = e.target.closest(".man-prev-pedido"); if(bPed){ if(!bPed.disabled){ bPed.disabled = true; manGerarPreventivaPedido(bPed.dataset.eq).finally(() => { bPed.disabled = false; }); } return; }   // fase 131b
     const bPlano = e.target.closest(".man-prev-plano"); if(bPlano){ manAbrirPlano(bPlano.dataset.eq); return; }
     if(e.target.closest("button")) return;
     const os = e.target.closest("[data-id]"); if(os && _manView === "os"){ abrirManutencao(os.dataset.id); return; }
@@ -1305,6 +1380,13 @@ function ligarManutencao(){
   $("sb-man-sep")?.addEventListener("click", () => {   // lote S56b (#193)
     const id = $("sb-man-sep").dataset.sep;
     if(id && irParaSecao("separacoes") && typeof abrirSeparacao === "function") abrirSeparacao(id);
+  });
+  // fase 131b: pedido de compra pela OS e nota da oficina
+  $("btn-man-comprar")?.addEventListener("click", () => comBotaoTravado("btn-man-comprar", manComprar));
+  $("btn-man-nota-oficina")?.addEventListener("click", () => comBotaoTravado("btn-man-nota-oficina", manNotaOficina));
+  $("sb-man-ped")?.addEventListener("click", () => {
+    const vivos = manPedVivos(), p = vivos.length === 1 ? vivos[0] : null;
+    if(p) manAbrirPedido(p.id); else manAtivarTab("materiais");
   });
   $("sb-man-equip")?.addEventListener("click", () => { if(_manAtual?.equipamento_id && irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(_manAtual.equipamento_id); });
   document.querySelectorAll("#man-statusbar .stage").forEach(el => el.addEventListener("click", () => {
