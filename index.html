@@ -9,103 +9,104 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="239cfa6" />
+<meta name="app-versao" content="11e2d7c" />
 <!-- pré-carregamento (gerado pelo scripts/preload-scripts.sh na publicação): baixa os scripts em paralelo -->
-<link rel="preload" as="script" href="js/tema.js?v=239cfa6">
-<link rel="preload" as="script" href="vendor/supabase-js-2.118.0.min.js?v=239cfa6">
-<link rel="preload" as="script" href="vendor/xlsx-0.20.3.full.min.js?v=239cfa6">
-<link rel="preload" as="script" href="vendor/html2pdf-0.10.1.bundle.min.js?v=239cfa6">
-<link rel="preload" as="script" href="js/core.js?v=239cfa6">
-<link rel="preload" as="script" href="js/ui.js?v=239cfa6">
-<link rel="preload" as="script" href="js/historico.js?v=239cfa6">
-<link rel="preload" as="script" href="js/fiscal.js?v=239cfa6">
-<link rel="preload" as="script" href="js/fiscal_ncm.js?v=239cfa6">
-<link rel="preload" as="script" href="js/clientes.js?v=239cfa6">
-<link rel="preload" as="script" href="js/fornecedores.js?v=239cfa6">
-<link rel="preload" as="script" href="js/apropriacoes.js?v=239cfa6">
-<link rel="preload" as="script" href="js/funcionarios.js?v=239cfa6">
-<link rel="preload" as="script" href="js/funcionarios_importar.js?v=239cfa6">
-<link rel="preload" as="script" href="js/funcionarios_lotacao.js?v=239cfa6">
-<link rel="preload" as="script" href="js/rh_documentos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/servicos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/produtos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/estoque.js?v=239cfa6">
-<link rel="preload" as="script" href="js/separacoes.js?v=239cfa6">
-<link rel="preload" as="script" href="js/epi.js?v=239cfa6">
-<link rel="preload" as="script" href="js/compras.js?v=239cfa6">
-<link rel="preload" as="script" href="js/requisicoes.js?v=239cfa6">
-<link rel="preload" as="script" href="js/orcamentos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/propostas.js?v=239cfa6">
-<link rel="preload" as="script" href="js/contratos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/contas_pagar.js?v=239cfa6">
-<link rel="preload" as="script" href="js/centros_custo.js?v=239cfa6">
-<link rel="preload" as="script" href="js/encontro_contas.js?v=239cfa6">
-<link rel="preload" as="script" href="js/carteira.js?v=239cfa6">
-<link rel="preload" as="script" href="js/obras.js?v=239cfa6">
-<link rel="preload" as="script" href="js/frota.js?v=239cfa6">
-<link rel="preload" as="script" href="js/viagens.js?v=239cfa6">
-<link rel="preload" as="script" href="js/equipamentos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/vendas_bens.js?v=239cfa6">
-<link rel="preload" as="script" href="js/acessorios.js?v=239cfa6">
-<link rel="preload" as="script" href="js/reparos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/manutencao.js?v=239cfa6">
-<link rel="preload" as="script" href="js/fabricacao.js?v=239cfa6">
-<link rel="preload" as="script" href="js/mobilizacoes.js?v=239cfa6">
-<link rel="preload" as="script" href="js/mobilizacoes_contrato.js?v=239cfa6">
-<link rel="preload" as="script" href="js/mobilizacoes_cronograma.js?v=239cfa6">
-<link rel="preload" as="script" href="js/mobilizacoes_grafico.js?v=239cfa6">
-<link rel="preload" as="script" href="js/estacas.js?v=239cfa6">
-<link rel="preload" as="script" href="js/estacas_prof_projeto.js?v=239cfa6">
-<link rel="preload" as="script" href="js/estacas_raiz_conf.js?v=239cfa6">
-<link rel="preload" as="script" href="js/obra_abas.js?v=239cfa6">
-<link rel="preload" as="script" href="js/obra_faixa.js?v=239cfa6">
-<link rel="preload" as="script" href="js/medicao_regras_carga.js?v=239cfa6">
-<link rel="preload" as="script" href="js/medicoes.js?v=239cfa6">
-<link rel="preload" as="script" href="js/movimentacoes.js?v=239cfa6">
-<link rel="preload" as="script" href="js/rdo_import_rg113.js?v=239cfa6">
-<link rel="preload" as="script" href="js/rdo.js?v=239cfa6">
-<link rel="preload" as="script" href="js/rdo_resumo.js?v=239cfa6">
-<link rel="preload" as="script" href="js/rdo_import_maya.js?v=239cfa6">
-<link rel="preload" as="script" href="js/geodigitus.js?v=239cfa6">
-<link rel="preload" as="script" href="js/estaca_perfil.js?v=239cfa6">
-<link rel="preload" as="script" href="js/estacas_gps.js?v=239cfa6">
-<link rel="preload" as="script" href="js/estacas_perfuracao.js?v=239cfa6">
-<link rel="preload" as="script" href="js/planta_projeto.js?v=239cfa6">
-<link rel="preload" as="script" href="js/planta_posicoes.js?v=239cfa6">
-<link rel="preload" as="script" href="js/computadores_bordo.js?v=239cfa6">
-<link rel="preload" as="script" href="js/planta_vinculo.js?v=239cfa6">
-<link rel="preload" as="script" href="js/planta_sequencia.js?v=239cfa6">
-<link rel="preload" as="script" href="js/planta_detector.js?v=239cfa6">
-<link rel="preload" as="script" href="js/planta_leitura_regras.js?v=239cfa6">
-<link rel="preload" as="script" href="js/planta_leitura.js?v=239cfa6">
-<link rel="preload" as="script" href="js/matriz_acessos_dados.js?v=239cfa6">
-<link rel="preload" as="script" href="js/matriz_acessos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/usuarios.js?v=239cfa6">
-<link rel="preload" as="script" href="js/chamados.js?v=239cfa6">
-<link rel="preload" as="script" href="js/assistente.js?v=239cfa6">
-<link rel="preload" as="script" href="js/apontamentos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/apontamentos_quadro.js?v=239cfa6">
-<link rel="preload" as="script" href="js/dash_explica.js?v=239cfa6">
-<link rel="preload" as="script" href="js/dashboard.js?v=239cfa6">
-<link rel="preload" as="script" href="js/rh_horas.js?v=239cfa6">
-<link rel="preload" as="script" href="js/sesmt.js?v=239cfa6">
-<link rel="preload" as="script" href="js/sesmt_treinamentos.js?v=239cfa6">
-<link rel="preload" as="script" href="js/patrimonio.js?v=239cfa6">
-<link rel="preload" as="script" href="js/sesmt_ocorrencias.js?v=239cfa6">
-<link rel="preload" as="script" href="js/init.js?v=239cfa6">
+<link rel="preload" as="script" href="js/tema.js?v=11e2d7c">
+<link rel="preload" as="script" href="vendor/supabase-js-2.118.0.min.js?v=11e2d7c">
+<link rel="preload" as="script" href="vendor/xlsx-0.20.3.full.min.js?v=11e2d7c">
+<link rel="preload" as="script" href="vendor/html2pdf-0.10.1.bundle.min.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/core.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/ui.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/historico.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/fiscal.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/fiscal_ncm.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/clientes.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/fornecedores.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/apropriacoes.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/funcionarios.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/funcionarios_importar.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/funcionarios_lotacao.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/rh_documentos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/servicos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/produtos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/estoque.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/separacoes.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/epi.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/compras.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/requisicoes.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/orcamentos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/propostas.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/contratos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/contas_pagar.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/centros_custo.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/encontro_contas.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/ferramentas.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/carteira.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/obras.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/frota.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/viagens.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/equipamentos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/vendas_bens.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/acessorios.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/reparos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/manutencao.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/fabricacao.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/mobilizacoes.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/mobilizacoes_contrato.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/mobilizacoes_cronograma.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/mobilizacoes_grafico.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/estacas.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/estacas_prof_projeto.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/estacas_raiz_conf.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/obra_abas.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/obra_faixa.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/medicao_regras_carga.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/medicoes.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/movimentacoes.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/rdo_import_rg113.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/rdo.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/rdo_resumo.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/rdo_import_maya.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/geodigitus.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/estaca_perfil.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/estacas_gps.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/estacas_perfuracao.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/planta_projeto.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/planta_posicoes.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/computadores_bordo.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/planta_vinculo.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/planta_sequencia.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/planta_detector.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/planta_leitura_regras.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/planta_leitura.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/matriz_acessos_dados.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/matriz_acessos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/usuarios.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/chamados.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/assistente.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/apontamentos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/apontamentos_quadro.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/dash_explica.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/dashboard.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/rh_horas.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/sesmt.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/sesmt_treinamentos.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/patrimonio.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/sesmt_ocorrencias.js?v=11e2d7c">
+<link rel="preload" as="script" href="js/init.js?v=11e2d7c">
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=239cfa6" />
+<link rel="stylesheet" href="css/estilo.css?v=11e2d7c" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=239cfa6"></script>
+<script src="js/tema.js?v=11e2d7c"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=239cfa6"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=239cfa6"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=239cfa6"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=11e2d7c"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=11e2d7c"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=11e2d7c"></script>
 </head>
 <body>
 
@@ -241,6 +242,11 @@
         <button data-secao="separacoes">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
           <span>Separações</span>
+        </button>
+        <!-- fase 191a: Ferramentas (estoque e empréstimo de ferramentas; js/ferramentas.js) -->
+        <button data-secao="ferramentas" id="nav-ferramentas">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 21l7.5-7.5"></path><path d="M14 4l6 6-3 3-6-6z"></path><path d="M10 8l6 6"></path></svg>
+          <span>Ferramentas</span>
         </button>
         <button data-secao="compras">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
@@ -1045,6 +1051,11 @@
               <button type="button" class="sb-btn" id="func-sb-caixa" style="display:none;" title="Abre o caixa do funcionário no Encontro de Contas">
                 <span class="sb-num" id="func-sb-caixa-num">0</span>
                 <span class="sb-lbl">Caixa</span>
+              </button>
+              <!-- fase 191a: empréstimos de ferramenta em aberto (frmSmartFuncionario em js/ferramentas.js) -->
+              <button type="button" class="sb-btn" id="func-sb-ferramentas" style="display:none;" title="Abre os empréstimos de ferramenta em aberto deste funcionário">
+                <span class="sb-num" id="func-sb-ferramentas-num">0</span>
+                <span class="sb-lbl">Ferramentas</span>
               </button>
             </div>
           </div>
@@ -3094,6 +3105,144 @@
           <p class="meta" id="ecc-f-resumo" style="margin-top:8px;"></p>
           <div id="ecc-f-aviso" class="aviso"></div>
           <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ecc-f-confirmar">Fechar caixa</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="secao" id="sec-ferramentas">
+      <!-- Fase 191a (#217): Ferramentas. Cadastro ligado a Produtos, empréstimo a funcionário e ocorrências; saldo lido da
+           vw_ferramentas_saldo (o front não calcula disponível). -->
+      <div id="frm-painel">
+        <h2>Ferramentas</h2>
+        <p class="texto-apoio ajuda-tela">O estoque de ferramentas do almoxarifado: cada ferramenta tem o código da planilha, a quantidade e aponta para um produto do catálogo. O disponível é a quantidade menos o que está emprestado, na máquina, danificado ou perdido.</p>
+        <div class="indicadores">
+          <div class="ind"><div class="num" id="frm-kpi-unidades">—</div><div class="rot">Unidades</div></div>
+          <div class="ind"><div class="num" id="frm-kpi-emprestadas">—</div><div class="rot">Emprestadas</div></div>
+          <div class="ind"><div class="num" id="frm-kpi-danificadas">—</div><div class="rot">Danificadas</div></div>
+          <div class="ind"><div class="num" id="frm-kpi-perdidas">—</div><div class="rot">Perdidas</div></div>
+          <div class="ind" id="frm-kpi-valor-box" style="display:none;" title="Quantidade em mãos (sem as perdidas) vezes o valor unitário das ferramentas ativas"><div class="num" id="frm-kpi-valor" data-val-sens>—</div><div class="rot">Valor em ferramentas</div></div>
+        </div>
+        <div class="card">
+          <div class="lista-topo">
+            <h3 id="frm-titulo-lista">Ferramentas <span id="frm-contador" class="contador"></span></h3>
+            <div class="serv-views" id="frm-views">
+              <button type="button" class="serv-view-btn ativo" data-view="ferramentas">Ferramentas</button>
+              <button type="button" class="serv-view-btn" data-view="emprestimos">Empréstimos em aberto</button>
+              <button type="button" class="serv-view-btn" data-view="ocorrencias">Ocorrências</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-frm-atualizar" style="margin-left:auto;">Atualizar</button>
+            <button type="button" class="btn-sec" id="btn-frm-nova" style="display:none;" title="Cadastra uma ferramenta ligada a um produto do catálogo">＋ Nova ferramenta</button>
+            <button type="button" class="btn" id="btn-frm-emprestar" style="display:none;" title="Empresta uma ou várias ferramentas ao mesmo funcionário">Emprestar</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="frm-busca" placeholder="Buscar por código, nome, produto ou funcionário…" />
+            <select id="frm-situacao" title="Filtra pela situação do saldo">
+              <option value="">Todas as situações</option>
+              <option value="disponivel">Com disponível</option>
+              <option value="emprestada">Emprestada</option>
+              <option value="danificada">Danificada</option>
+              <option value="perdida">Perdida</option>
+              <option value="atrasada">Aberto há mais de 30 dias</option>
+            </select>
+            <select id="frm-ativo" title="Ferramenta ativa ou que saiu do cadastro"><option value="ativo">Só ativas</option><option value="">Ativas e inativas</option><option value="inativo">Só inativas</option></select>
+            <span id="frm-filtro-func" style="display:none;"></span>
+          </div>
+          <div id="frm-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <div id="frm-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-frm-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-frm-salvar" title="Grava o cadastro da ferramenta">Salvar</button>
+              <button type="button" class="btn-sec" id="btn-frm-f-emprestar" title="Empresta esta ferramenta a um funcionário">Emprestar</button>
+              <button type="button" class="btn-sec" id="btn-frm-ocorrencia" title="Danificada, perdida, volta do conserto ou ajuste de inventário">Lançar ocorrência</button>
+              <button type="button" class="btn-sec acao-perigo" id="btn-frm-excluir" title="Só ferramenta sem empréstimo nem ocorrência">Excluir</button>
+            </div>
+            <div class="actions-right"><span id="frm-ficha-codigo"></span> <strong id="frm-ficha-titulo">Ferramenta</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="frm-statusbar" title="Ativa ou fora do cadastro: clique para mudar (quem opera o almoxarifado)"></div>
+          <div class="odoo-contexto">
+            <div class="chip" title="Quantidade cadastrada mais os ajustes de inventário"><span>Quantidade</span><strong id="frm-chip-qtd">—</strong></div>
+            <div class="chip" title="Pronta para emprestar"><span>Disponível</span><strong id="frm-chip-disp">—</strong></div>
+            <div class="chip" title="Com funcionário"><span>Emprestada</span><strong id="frm-chip-emp">—</strong></div>
+            <div class="chip" title="No kit de uma máquina"><span>Em máquina</span><strong id="frm-chip-eqp">—</strong></div>
+            <div class="chip" title="Danificada, já descontado o que voltou do conserto"><span>Danificada</span><strong id="frm-chip-dan">—</strong></div>
+            <div class="chip" title="Perdida"><span>Perdida</span><strong id="frm-chip-per">—</strong></div>
+            <div class="chip" id="frm-chip-valor-box" style="display:none;"><span>Valor unitário</span><strong id="frm-chip-valor" data-val-sens>—</strong></div>
+          </div>
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-frm-emprestimos" data-goto-tab="emprestimos"><span class="sb-num">0</span><span class="sb-lbl">em aberto</span></button>
+            <button type="button" class="sb-btn" id="sb-frm-ocorrencias" data-goto-tab="ocorrencias"><span class="sb-num">0</span><span class="sb-lbl">ocorrências</span></button>
+            <button type="button" class="sb-btn" id="sb-frm-produto" title="Abre a ficha do produto ligado"><span class="sb-num">↗</span><span class="sb-lbl">produto</span></button>
+          </div>
+          <div class="odoo-notebook" id="frm-notebook">
+            <button type="button" data-tab="dados" class="ativo">Dados</button>
+            <button type="button" data-tab="emprestimos">Empréstimos</button>
+            <button type="button" data-tab="ocorrencias">Ocorrências</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="dados">
+              <div class="grade">
+                <div class="campo"><label for="frm-f-codigo">Código *</label><input id="frm-f-codigo" maxlength="40" title="O código da planilha (CGL068, CC10): único" /></div>
+                <div class="campo largo"><label for="frm-f-produto">Produto *</label><input id="frm-f-produto" list="frm-produtos-dl" autocomplete="off" placeholder="código ou nome do produto" title="O tipo de ferramenta no catálogo de Produtos (o mesmo de Compras)" /></div>
+                <div class="campo largo"><label for="frm-f-descricao">Descrição</label><input id="frm-f-descricao" maxlength="200" placeholder="marca, modelo, voltagem…" /></div>
+                <div class="campo"><label for="frm-f-qtd">Quantidade *</label><input id="frm-f-qtd" type="number" min="0.01" step="1" inputmode="decimal" title="1 para ferramenta controlada por unidade; a quantidade do lote para o resto" /></div>
+                <div class="campo" id="frm-f-valor-campo"><label for="frm-f-valor">Valor unitário (R$)</label><input id="frm-f-valor" type="number" min="0" step="0.01" inputmode="decimal" /></div>
+                <div class="campo"><label for="frm-f-local">Localização</label><input id="frm-f-local" maxlength="80" placeholder="prateleira, armário…" /></div>
+                <div class="campo largo"><label for="frm-f-obs">Observação</label><input id="frm-f-obs" /></div>
+              </div>
+              <p class="meta" id="frm-f-origem"></p>
+              <datalist id="frm-produtos-dl"></datalist>
+            </div>
+            <div class="odoo-tab" data-tab="emprestimos"><div id="frm-emprestimos"></div></div>
+            <div class="odoo-tab" data-tab="ocorrencias"><div id="frm-ocorrencias"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-fundo" id="frm-emp-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:720px;">
+          <div class="modal-topo"><h3>Emprestar ferramentas</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <div class="grade">
+            <div class="campo largo"><label for="frm-e-func">Funcionário *</label><input id="frm-e-func" list="frm-funcs-dl" autocomplete="off" placeholder="nome ou matrícula" /></div>
+            <div class="campo largo"><label for="frm-e-obs">Observação</label><input id="frm-e-obs" /></div>
+          </div>
+          <div id="frm-e-itens"></div>
+          <button type="button" class="btn-sec btn-sm" id="btn-frm-e-mais">＋ Outra ferramenta</button>
+          <datalist id="frm-funcs-dl"></datalist>
+          <datalist id="frm-ferramentas-dl"></datalist>
+          <div id="frm-e-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-frm-e-confirmar">Emprestar</button></div>
+        </div>
+      </div>
+      <div class="modal-fundo" id="frm-dev-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:820px;">
+          <div class="modal-topo"><h3 id="frm-d-titulo">Devolver</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <p class="meta">Informe quanto voltou em cada linha. A parte danificada ou perdida vira ocorrência com o funcionário do empréstimo; o que ficar em branco continua emprestado.</p>
+          <div id="frm-d-itens"></div>
+          <div class="grade"><div class="campo largo"><label for="frm-d-obs">Observação</label><input id="frm-d-obs" /></div></div>
+          <div id="frm-d-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-frm-d-confirmar">Registrar devolução</button></div>
+        </div>
+      </div>
+      <div class="modal-fundo" id="frm-oco-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:560px;">
+          <div class="modal-topo"><h3 id="frm-o-titulo">Lançar ocorrência</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <div class="grade">
+            <div class="campo"><label for="frm-o-tipo">Tipo *</label><select id="frm-o-tipo">
+              <option value="danificada">Danificada</option><option value="perdida">Perdida</option>
+              <option value="reparo">Voltou do conserto (reparo)</option><option value="ajuste">Ajuste de inventário</option></select></div>
+            <div class="campo"><label for="frm-o-qtd">Quantidade *</label><input id="frm-o-qtd" type="number" step="1" inputmode="decimal" title="No ajuste, negativa para baixar e positiva para somar" /></div>
+            <div class="campo"><label for="frm-o-data">Data *</label><input id="frm-o-data" type="date" /></div>
+            <div class="campo largo"><label for="frm-o-func">Funcionário responsável</label><input id="frm-o-func" list="frm-funcs-dl" autocomplete="off" placeholder="opcional" /></div>
+            <div class="campo largo"><label for="frm-o-obs">Observação</label><input id="frm-o-obs" /></div>
+          </div>
+          <p class="meta">O que está emprestado se baixa na devolução, não aqui.</p>
+          <div id="frm-o-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-frm-o-salvar">Lançar</button></div>
         </div>
       </div>
     </section>
@@ -8099,91 +8248,92 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=239cfa6"></script>
-<script src="js/ui.js?v=239cfa6"></script>
+<script src="js/core.js?v=11e2d7c"></script>
+<script src="js/ui.js?v=11e2d7c"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=239cfa6"></script>
+<script src="js/historico.js?v=11e2d7c"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=239cfa6"></script>
-<script src="js/fiscal_ncm.js?v=239cfa6"></script>
+<script src="js/fiscal.js?v=11e2d7c"></script>
+<script src="js/fiscal_ncm.js?v=11e2d7c"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=239cfa6"></script>
-<script src="js/fornecedores.js?v=239cfa6"></script>
-<script src="js/apropriacoes.js?v=239cfa6"></script>
-<script src="js/funcionarios.js?v=239cfa6"></script>
-<script src="js/funcionarios_importar.js?v=239cfa6"></script>
-<script src="js/funcionarios_lotacao.js?v=239cfa6"></script>
-<script src="js/rh_documentos.js?v=239cfa6"></script>
-<script src="js/servicos.js?v=239cfa6"></script>
-<script src="js/produtos.js?v=239cfa6"></script>
-<script src="js/estoque.js?v=239cfa6"></script>
-<script src="js/separacoes.js?v=239cfa6"></script>
-<script src="js/epi.js?v=239cfa6"></script>
-<script src="js/compras.js?v=239cfa6"></script>
-<script src="js/requisicoes.js?v=239cfa6"></script>
-<script src="js/orcamentos.js?v=239cfa6"></script>
-<script src="js/propostas.js?v=239cfa6"></script>
-<script src="js/contratos.js?v=239cfa6"></script>
-<script src="js/contas_pagar.js?v=239cfa6"></script>
-<script src="js/centros_custo.js?v=239cfa6"></script>
-<script src="js/encontro_contas.js?v=239cfa6"></script>
-<script src="js/carteira.js?v=239cfa6"></script>
-<script src="js/obras.js?v=239cfa6"></script>
-<script src="js/frota.js?v=239cfa6"></script>
-<script src="js/viagens.js?v=239cfa6"></script>
-<script src="js/equipamentos.js?v=239cfa6"></script>
-<script src="js/vendas_bens.js?v=239cfa6"></script>
-<script src="js/acessorios.js?v=239cfa6"></script>
-<script src="js/reparos.js?v=239cfa6"></script>
-<script src="js/manutencao.js?v=239cfa6"></script>
-<script src="js/fabricacao.js?v=239cfa6"></script>
-<script src="js/mobilizacoes.js?v=239cfa6"></script>
-<script src="js/mobilizacoes_contrato.js?v=239cfa6"></script>
-<script src="js/mobilizacoes_cronograma.js?v=239cfa6"></script>
-<script src="js/mobilizacoes_grafico.js?v=239cfa6"></script>
-<script src="js/estacas.js?v=239cfa6"></script>
-<script src="js/estacas_prof_projeto.js?v=239cfa6"></script>
+<script src="js/clientes.js?v=11e2d7c"></script>
+<script src="js/fornecedores.js?v=11e2d7c"></script>
+<script src="js/apropriacoes.js?v=11e2d7c"></script>
+<script src="js/funcionarios.js?v=11e2d7c"></script>
+<script src="js/funcionarios_importar.js?v=11e2d7c"></script>
+<script src="js/funcionarios_lotacao.js?v=11e2d7c"></script>
+<script src="js/rh_documentos.js?v=11e2d7c"></script>
+<script src="js/servicos.js?v=11e2d7c"></script>
+<script src="js/produtos.js?v=11e2d7c"></script>
+<script src="js/estoque.js?v=11e2d7c"></script>
+<script src="js/separacoes.js?v=11e2d7c"></script>
+<script src="js/epi.js?v=11e2d7c"></script>
+<script src="js/compras.js?v=11e2d7c"></script>
+<script src="js/requisicoes.js?v=11e2d7c"></script>
+<script src="js/orcamentos.js?v=11e2d7c"></script>
+<script src="js/propostas.js?v=11e2d7c"></script>
+<script src="js/contratos.js?v=11e2d7c"></script>
+<script src="js/contas_pagar.js?v=11e2d7c"></script>
+<script src="js/centros_custo.js?v=11e2d7c"></script>
+<script src="js/encontro_contas.js?v=11e2d7c"></script>
+<script src="js/ferramentas.js?v=11e2d7c"></script>
+<script src="js/carteira.js?v=11e2d7c"></script>
+<script src="js/obras.js?v=11e2d7c"></script>
+<script src="js/frota.js?v=11e2d7c"></script>
+<script src="js/viagens.js?v=11e2d7c"></script>
+<script src="js/equipamentos.js?v=11e2d7c"></script>
+<script src="js/vendas_bens.js?v=11e2d7c"></script>
+<script src="js/acessorios.js?v=11e2d7c"></script>
+<script src="js/reparos.js?v=11e2d7c"></script>
+<script src="js/manutencao.js?v=11e2d7c"></script>
+<script src="js/fabricacao.js?v=11e2d7c"></script>
+<script src="js/mobilizacoes.js?v=11e2d7c"></script>
+<script src="js/mobilizacoes_contrato.js?v=11e2d7c"></script>
+<script src="js/mobilizacoes_cronograma.js?v=11e2d7c"></script>
+<script src="js/mobilizacoes_grafico.js?v=11e2d7c"></script>
+<script src="js/estacas.js?v=11e2d7c"></script>
+<script src="js/estacas_prof_projeto.js?v=11e2d7c"></script>
 <!-- fase 184a: vista Trechos da estaca raiz e conferência da raiz pelo histórico (não grava) -->
-<script src="js/estacas_raiz_conf.js?v=239cfa6"></script>
-<script src="js/obra_abas.js?v=239cfa6"></script>
-<script src="js/obra_faixa.js?v=239cfa6"></script>
-<script src="js/medicao_regras_carga.js?v=239cfa6"></script>
-<script src="js/medicoes.js?v=239cfa6"></script>
-<script src="js/movimentacoes.js?v=239cfa6"></script>
-<script src="js/rdo_import_rg113.js?v=239cfa6"></script>
-<script src="js/rdo.js?v=239cfa6"></script>
-<script src="js/rdo_resumo.js?v=239cfa6"></script>
-<script src="js/rdo_import_maya.js?v=239cfa6"></script>
-<script src="js/geodigitus.js?v=239cfa6"></script>
-<script src="js/estaca_perfil.js?v=239cfa6"></script>
-<script src="js/estacas_gps.js?v=239cfa6"></script>
+<script src="js/estacas_raiz_conf.js?v=11e2d7c"></script>
+<script src="js/obra_abas.js?v=11e2d7c"></script>
+<script src="js/obra_faixa.js?v=11e2d7c"></script>
+<script src="js/medicao_regras_carga.js?v=11e2d7c"></script>
+<script src="js/medicoes.js?v=11e2d7c"></script>
+<script src="js/movimentacoes.js?v=11e2d7c"></script>
+<script src="js/rdo_import_rg113.js?v=11e2d7c"></script>
+<script src="js/rdo.js?v=11e2d7c"></script>
+<script src="js/rdo_resumo.js?v=11e2d7c"></script>
+<script src="js/rdo_import_maya.js?v=11e2d7c"></script>
+<script src="js/geodigitus.js?v=11e2d7c"></script>
+<script src="js/estaca_perfil.js?v=11e2d7c"></script>
+<script src="js/estacas_gps.js?v=11e2d7c"></script>
 <!-- fase 173a: estaca raiz só com injeção (etiqueta, filtros e "Lançar perfuração" pelo diário); usa a aba Estacas e a ficha do RDO, não grava -->
-<script src="js/estacas_perfuracao.js?v=239cfa6"></script>
-<script src="js/planta_projeto.js?v=239cfa6"></script>
-<script src="js/planta_posicoes.js?v=239cfa6"></script>
-<script src="js/computadores_bordo.js?v=239cfa6"></script>
-<script src="js/planta_vinculo.js?v=239cfa6"></script>
-<script src="js/planta_sequencia.js?v=239cfa6"></script>
+<script src="js/estacas_perfuracao.js?v=11e2d7c"></script>
+<script src="js/planta_projeto.js?v=11e2d7c"></script>
+<script src="js/planta_posicoes.js?v=11e2d7c"></script>
+<script src="js/computadores_bordo.js?v=11e2d7c"></script>
+<script src="js/planta_vinculo.js?v=11e2d7c"></script>
+<script src="js/planta_sequencia.js?v=11e2d7c"></script>
 <!-- fase 175b: ler as estacas da folha do projeto (símbolos pelo pdf.js, nomes pela IA em ladrilhos, prévia antes de gravar) -->
-<script src="js/planta_detector.js?v=239cfa6"></script>
-<script src="js/planta_leitura_regras.js?v=239cfa6"></script>
-<script src="js/planta_leitura.js?v=239cfa6"></script>
-<script src="js/matriz_acessos_dados.js?v=239cfa6"></script>
-<script src="js/matriz_acessos.js?v=239cfa6"></script>
-<script src="js/usuarios.js?v=239cfa6"></script>
-<script src="js/chamados.js?v=239cfa6"></script>
-<script src="js/assistente.js?v=239cfa6"></script>
-<script src="js/apontamentos.js?v=239cfa6"></script>
-<script src="js/apontamentos_quadro.js?v=239cfa6"></script>
-<script src="js/dash_explica.js?v=239cfa6"></script>
-<script src="js/dashboard.js?v=239cfa6"></script>
-<script src="js/rh_horas.js?v=239cfa6"></script>
-<script src="js/sesmt.js?v=239cfa6"></script>
-<script src="js/sesmt_treinamentos.js?v=239cfa6"></script>
-<script src="js/patrimonio.js?v=239cfa6"></script>
+<script src="js/planta_detector.js?v=11e2d7c"></script>
+<script src="js/planta_leitura_regras.js?v=11e2d7c"></script>
+<script src="js/planta_leitura.js?v=11e2d7c"></script>
+<script src="js/matriz_acessos_dados.js?v=11e2d7c"></script>
+<script src="js/matriz_acessos.js?v=11e2d7c"></script>
+<script src="js/usuarios.js?v=11e2d7c"></script>
+<script src="js/chamados.js?v=11e2d7c"></script>
+<script src="js/assistente.js?v=11e2d7c"></script>
+<script src="js/apontamentos.js?v=11e2d7c"></script>
+<script src="js/apontamentos_quadro.js?v=11e2d7c"></script>
+<script src="js/dash_explica.js?v=11e2d7c"></script>
+<script src="js/dashboard.js?v=11e2d7c"></script>
+<script src="js/rh_horas.js?v=11e2d7c"></script>
+<script src="js/sesmt.js?v=11e2d7c"></script>
+<script src="js/sesmt_treinamentos.js?v=11e2d7c"></script>
+<script src="js/patrimonio.js?v=11e2d7c"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=239cfa6"></script>
+<script src="js/sesmt_ocorrencias.js?v=11e2d7c"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=239cfa6"></script>
+<script src="js/init.js?v=11e2d7c"></script>
 </body>
 </html>

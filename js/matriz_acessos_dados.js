@@ -7,7 +7,7 @@
    ==================================================================== */
 const MATRIZ_ACESSOS = {
   retrato: "2026-11-16",
-  carimbo: "3f0764fa1a17befd64ae77393463b2d7",
+  carimbo: "ae1e9cdadeec1dcc7280a21d761b7707",
   acoes: ["ver","incluir","alterar","apagar"],
   grupos: ["Geral","Cadastros","Suprimentos","Comercial e financeiro","Campo","Pessoas e segurança","Sistema","Fora do menu"],
   modulos: [
@@ -18,6 +18,7 @@ const MATRIZ_ACESSOS = {
     {"id":"produtos","rotulo":"Produtos","grupo":"Cadastros"},
     {"id":"estoque","rotulo":"Estoque","grupo":"Suprimentos"},
     {"id":"separacoes","rotulo":"Separações","grupo":"Suprimentos"},
+    {"id":"ferramentas","rotulo":"Ferramentas","grupo":"Suprimentos"},
     {"id":"compras","rotulo":"Compras","grupo":"Suprimentos"},
     {"id":"acessorios","rotulo":"Acessórios","grupo":"Suprimentos"},
     {"id":"reparos","rotulo":"Reparos","grupo":"Suprimentos"},
@@ -236,6 +237,28 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s s s n",
       "gestor_manutencao": "s s s n"
+    },
+    "ferramentas": {
+      "diretor": "s s s s",
+      "admin": "s s s s",
+      "engenheiro": "s s s s",
+      "assistente_engenharia": "s n n n",
+      "comercial": "s n n n",
+      "financeiro": "s s s s",
+      "comprador": "x=s x=s x=s x=s",
+      "almoxarife": "s s s s",
+      "gestor_acessorios": "s s s s",
+      "mecanico": "s s s s",
+      "encarregado": "s n n n",
+      "operador": "n:1 n n n",
+      "rh": "s n n n",
+      "sesmt": "s n n n",
+      "logistica": "s s s s",
+      "gestor_frota": "s s s s",
+      "visualizador": "x=s x=n x=n x=n",
+      "auditor": "s n n n",
+      "auxiliar_almoxarifado": "s s s s",
+      "gestor_manutencao": "s s s s"
     },
     "compras": {
       "diretor": "s s s s",
