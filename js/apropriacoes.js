@@ -19,14 +19,14 @@ let _aprop = { comp: null, folha: [], custo: [], pres: [], lanc: [], params: [],
 
 const APROP_RUBRICA_LBL = {
   salario_contabil: "Salário contábil", salario_particular: "Salário particular",
-  gratificacao: "Gratificação", insalubridade: "Insalubridade", periculosidade: "Periculosidade", ajuda_mensal: "Ajuda mensal (238)", unimed: "Unimed", unimed_copart: "Unimed copart.", metlife: "MetLife",
-  seguro_vida: "Seguro de vida", vale_transporte: "Vale-transporte", vr: "VR", flash: "Flash", inss: "INSS patronal", irrf: "IRRF", fgts: "FGTS",
+  gratificacao: "Gratificação", insalubridade: "Insalubridade", periculosidade: "Periculosidade", ajuda_mensal: "Ajuda mensal (238)", unimed: "Unimed (desconto do funcionário)", unimed_empresa: "Unimed (paga pela empresa)", unimed_copart: "Unimed copart.", metlife: "MetLife",
+  seguro_vida: "Seguro de vida", vale_transporte: "Vale-transporte", vr: "VR", flash: "Flash", inss: "INSS patronal", gps: "GPS", irrf: "IRRF", fgts: "FGTS",
   contribuicao_sindical: "Contrib. sindical", consignado: "Consignado", decimo_terceiro_1: "13º 1ª parcela", decimo_terceiro_2: "13º 2ª parcela", ferias: "Férias / provisão", rescisao: "Rescisão", outro: "Outros (HE, prêmio…)",
 };
 // Grupos iguais aos de vw_custo_mao_obra_por_obra (carga do RH, 16/10: adicionais e gratificação são salário; ajuda mensal é benefício)
 const APROP_GRUPO = { salario_contabil: "sal", salario_particular: "sal", gratificacao: "sal", insalubridade: "sal", periculosidade: "sal", ajuda_mensal: "ben", decimo_terceiro_1: "sal", decimo_terceiro_2: "sal", ferias: "sal", rescisao: "sal",
-  unimed: "ben", unimed_copart: "ben", metlife: "ben", seguro_vida: "ben", vale_transporte: "ben", vr: "ben", flash: "ben", outro: "ben",
-  inss: "enc", irrf: "enc", fgts: "enc", contribuicao_sindical: "enc", consignado: "enc" };
+  unimed: "ben", unimed_empresa: "ben", unimed_copart: "ben", metlife: "ben", seguro_vida: "ben", vale_transporte: "ben", vr: "ben", flash: "ben", outro: "ben",
+  inss: "enc", gps: "enc", irrf: "enc", fgts: "enc", contribuicao_sindical: "enc", consignado: "enc" };
 const APROP_SENS_BENEF = ["unimed", "metlife", "unimed_copart", "seguro_vida", "vale_transporte", "vr", "flash", "consignado"];
 // Rubricas geradas por "Lançar na folha" (fase 93c; lote S54 #178: débito de folga, valor negativo). Só rótulo de leitura: não
 // entram no select do lançamento manual (o botão do RH as regrava a cada clique).
@@ -65,7 +65,7 @@ async function apropCarregar(comp){
   const mes = comp.slice(0, 7);
   const [f, c, p, l, pa, fe] = await Promise.all([
     lerTudo(() => sb.from("folha_apropriacoes").select("funcionario_id,obra_id,centro_custo,rubrica,valor,origem_import").eq("competencia", comp)),
-    sb.from("vw_custo_mao_obra_por_obra").select("obra_id,centro_custo,salarios,beneficios,encargos,total").eq("competencia", comp),
+    sb.from("vw_custo_mao_obra_por_obra").select("*").eq("competencia", comp),   // fase 187b: + uma coluna por rubrica (r_*)
     sb.from("vw_presencas_rdo_mes").select("funcionario_id,obra_id,dias").eq("competencia", comp),
     sb.from("folha_lancamentos").select("id,funcionario_id,rubrica,valor,obra_id,observacoes").eq("competencia", comp).order("created_at"),
     sb.from("apropriacao_parametros").select("chave,valor,descricao").order("chave"),
@@ -136,6 +136,7 @@ async function renderFuncAprop(){
     ${semFicha.length ? `<p class="txt-perigo" style="margin:0 0 10px;">⚠️ ${semFicha.length} funcionário(s) ativo(s) ficaram fora por não terem salário na ficha: ${semFicha.slice(0, 12).map(f => `<a href="#" class="aprop-abrir-func" data-id="${esc(f.id)}">${esc(f.nome)}</a>`).join(", ")}${semFicha.length > 12 ? "…" : ""}</p>` : ""}
 
     ${apropTabelaObras(_aprop.custo, tot, obraDe)}
+    ${apropTabelaRubricas(_aprop.custo, obraDe)}
 
     <h4 style="margin:0 0 6px;">Por funcionário <span class="meta">(${listaFiltrada.length})</span></h4>
     <div class="tabela-rola" style="margin-bottom:14px;"><table>
@@ -162,6 +163,8 @@ async function renderFuncAprop(){
       <div class="form-acoes compacta"><button type="button" class="btn-sec btn-sm" id="btn-aprop-params">Salvar parâmetros</button></div>
     </details>
 
+    ${apropImportarBloco(fechada)}
+
     <details><summary style="cursor:pointer;"><strong>Carga inicial da ficha</strong> <span class="meta">— só uma vez: lê a planilha antiga (.xlsx) e preenche banco, salário e benefícios de cada funcionário. Depois disso a planilha não é mais necessária.</span></summary>
       <p class="meta" style="margin:8px 0;"><label class="btn-sec btn-sm" style="cursor:pointer;">Escolher planilha FINANCEIRO – APROPRIAÇÕES (.xlsx)<input type="file" id="aprop-arquivo" accept=".xlsx,.xlsm" style="display:none;" /></label> A leitura é feita no seu navegador; os dados vão direto para a ficha sensível.</p>
     </details>`;
@@ -173,6 +176,8 @@ async function renderFuncAprop(){
   $("btn-lanc-add")?.addEventListener("click", () => comBotaoTravado("btn-lanc-add", apropLancar));
   $("btn-aprop-params")?.addEventListener("click", () => comBotaoTravado("btn-aprop-params", apropSalvarParams));
   $("aprop-arquivo")?.addEventListener("change", e => { const f = e.target.files[0]; if(f) apropLerArquivo(f); e.target.value = ""; });
+  $("aprop-imp-arquivo")?.addEventListener("change", e => { const fs = [...e.target.files]; if(fs.length) apropImpLer(fs); e.target.value = ""; });
+  $("btn-aprop-rub-xlsx")?.addEventListener("click", () => apropRubricasXlsx(obraDe));
   cont.querySelectorAll(".aprop-lanc-del").forEach(b => b.addEventListener("click", async () => {
     if(!confirm("Excluir este lançamento?")) return;
     const { error } = await sb.from("folha_lancamentos").delete().eq("id", b.dataset.id);
@@ -349,4 +354,174 @@ async function apropConfirmarFicha(){
   aviso("app-aviso", `${regs.length} fichas atualizadas. Agora clique em "Calcular apropriação".`, "ok");
   _aprop.parse = null;
   await renderFuncAprop();
+}
+
+/* ---------- fase 187b (#291): importação dos relatórios do mês e apropriação por rubrica ----------
+   A Jucirlene sobe os relatórios da folha do mês (.xlsx, .xls ou .csv). A leitura é toda no navegador (SheetJS): nome,
+   CPF e salário não passam por servidor nosso nem pelo chat. O app acha o cabeçalho (coluna de nome do funcionário),
+   sugere a rubrica de cada coluna pelo título (dá para trocar), casa cada pessoa com o cadastro pela matrícula ou pelo
+   nome e mostra a conferência antes de gravar: total por rubrica do arquivo, total que será gravado e quem ficou sem
+   casamento. Os totais da empresa (GPS, contribuição sindical patronal, seguro de vida) são digitados e o banco divide
+   pela proporção do salário de cada pessoa (folha_importar_competencia, RH/diretoria em aal2). A competência fica
+   aberta: o app não fecha. Depois de gravar, "Calcular apropriação" rateia pelos dias de RDO, como sempre (D6). */
+const APROP_IMP_SUGESTAO = [
+  [/SALARIO.*PARTICULAR/, "salario_particular"], [/GRATIFICA/, "gratificacao"], [/INSALUBR/, "insalubridade"],
+  [/PERICULOS/, "periculosidade"], [/^(SALARIO|SAL\.? BASE|VENCIMENTO)/, "salario_contabil"],
+  [/GPS/, "gps"], [/FGTS/, "fgts"], [/IRRF|IMPOSTO DE RENDA/, "irrf"], [/INSS/, "inss"],
+  [/COPART/, "unimed_copart"], [/UNIMED.*(EMPRESA|PATRONAL)/, "unimed_empresa"], [/UNIMED|PLANO DE SAUDE/, "unimed"],
+  [/METLIFE/, "metlife"], [/SEGURO/, "seguro_vida"], [/VALE.?TRANSP|^VT\b/, "vale_transporte"],
+  [/^VR\b|VALE.?REFEI/, "vr"], [/FLASH/, "flash"], [/SINDICA/, "contribuicao_sindical"], [/CONSIGNADO/, "consignado"],
+  [/RESCIS/, "rescisao"],
+];
+// rubricas que o relatório traz só como total da empresa (D7): digitadas, divididas pela proporção do salário
+const APROP_IMP_EMPRESA = [["gps", "GPS (total da guia)"], ["contribuicao_sindical", "Contribuição sindical patronal"], ["seguro_vida", "Seguro de vida (total da apólice)"]];
+const APROP_IMP_NOME = /^(NOME|FUNCIONARIO|EMPREGADO|COLABORADOR)/;
+const APROP_IMP_MAT = /^(MATRIC|CHAPA|COD(IGO)?\b|COD\.)/;
+
+function apropImpSugerir(titulo){
+  const t = apropNorm(titulo);
+  if(!t || /^(TOTAL|LIQUIDO|BRUTO|DESCONTOS?$|PROVENTOS?$)/.test(t)) return "";
+  const s = APROP_IMP_SUGESTAO.find(([re]) => re.test(t));
+  return s ? s[1] : "";
+}
+function apropImpMat(v){ return String(v ?? "").trim().replace(/\.0$/, "").replace(/^0+/, ""); }
+
+function apropImportarBloco(fechada){
+  const res = _aprop.impRes && _aprop.impRes.competencia === _aprop.comp ? _aprop.impRes : null;
+  const conf = res ? `<div class="card" style="border-left:4px solid var(--sucesso);margin:8px 0;">
+      <h4 style="margin:0 0 6px;">Importação gravada: ${Number(res.funcionarios || 0)} funcionário(s), ${Number(res.linhas || 0)} linha(s)</h4>
+      <div class="tabela-rola"><table><thead><tr><th>Rubrica</th><th class="num">No arquivo</th><th class="num">Gravado</th><th class="num">Diferença</th></tr></thead>
+        <tbody>${(res.por_rubrica || []).map(r => `<tr><td>${esc(APROP_RUBRICA_LBL[r.rubrica] || APROP_RUBRICA_AUTO[r.rubrica] || r.rubrica)}${r.empresa ? " <span class=\"meta\">(total da empresa)</span>" : ""}</td><td class="num" data-val-sens>${apropMoeda(r.arquivo)}</td><td class="num" data-val-sens>${apropMoeda(r.gravado)}</td><td class="num" data-val-sens>${Math.abs(Number(r.arquivo) - Number(r.gravado)) > 0.005 ? `<span class="txt-perigo">${apropMoeda(Number(r.arquivo) - Number(r.gravado))}</span>` : "—"}</td></tr>`).join("")}</tbody>
+      </table></div>
+      <p class="meta" style="margin:6px 0 0;">Agora clique em <strong>Calcular apropriação</strong> para ratear pelos dias de RDO. A competência continua aberta.</p></div>` : "";
+  return `<details style="margin-bottom:12px;" ${res ? "open" : ""}><summary style="cursor:pointer;"><strong>Importar relatórios do mês</strong> <span class="meta">— os valores de cada rubrica vêm da folha do mês, não da ficha</span></summary>
+      <p class="meta" style="margin:8px 0;">${fechada ? "Competência fechada: não se importa em mês fechado." : `<label class="btn-sec btn-sm" style="cursor:pointer;" title="Relatórios da folha do mês em .xlsx, .xls ou .csv; pode escolher vários">Escolher relatórios (.xlsx, .xls, .csv)<input type="file" id="aprop-imp-arquivo" accept=".xlsx,.xls,.xlsm,.csv" multiple style="display:none;" /></label> A leitura é feita no seu navegador. Reimportar substitui a importação anterior desta competência.`}</p>
+      ${/* html */ conf}
+      <div id="aprop-imp-area"></div>
+    </details>`;
+}
+
+async function apropImpLer(files){
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de leitura de planilhas não carregou. Recarregue a página.", "erro"); return; }
+  const area = $("aprop-imp-area"); if(!area) return;
+  area.innerHTML = `<p class="vazio">Lendo ${files.length} arquivo(s)…</p>`;
+  const tabelas = []; const semCab = [];
+  for(const file of files){
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false });
+      wb.SheetNames.forEach(aba => {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: true, defval: "" });
+        const iCab = rows.slice(0, 40).findIndex(r => r.some(c => APROP_IMP_NOME.test(apropNorm(c))));
+        if(iCab < 0){ semCab.push(`${file.name} / ${aba}`); return; }
+        const cab = rows[iCab].map(c => String(c ?? "").trim());
+        const iNome = cab.findIndex(c => APROP_IMP_NOME.test(apropNorm(c)));
+        const iMat = cab.findIndex(c => APROP_IMP_MAT.test(apropNorm(c)));
+        const linhas = rows.slice(iCab + 1).filter(r => { const n = String(r[iNome] ?? "").trim(); return n && !/^TOTA/.test(apropNorm(n)); });
+        const cols = cab.map((titulo, i) => ({ i, titulo, rubrica: apropImpSugerir(titulo) }))
+          .filter(c => c.i !== iNome && c.i !== iMat && c.titulo && linhas.some(r => apropNum(r[c.i]) != null));
+        tabelas.push({ arquivo: file.name, aba, iNome, iMat, linhas, cols });
+      });
+    } catch(e){ semCab.push(`${file.name} (${e.message || e})`); }
+  }
+  _aprop.imp = { tabelas, semCab, empresa: {} };
+  apropImpRender();
+}
+
+/* monta as linhas da RPC e a conferência; nada sai do navegador até "Gravar importação" */
+function apropImpLinhas(){
+  const imp = _aprop.imp; const porMat = new Map(); const porNome = new Map();
+  _funcs.forEach(f => { if(f.matricula) porMat.set(apropImpMat(f.matricula), f.id); porNome.set(apropNorm(f.nome), f.id); });
+  const linhas = []; const semCasamento = new Set(); const conf = new Map();
+  const somar = (rub, campo, v) => { const c = conf.get(rub) || { arquivo: 0, gravar: 0, empresa: false }; c[campo] += v; conf.set(rub, c); };
+  imp.tabelas.forEach(t => t.linhas.forEach(r => {
+    const nome = String(r[t.iNome] ?? "").trim();
+    const fid = (t.iMat >= 0 && porMat.get(apropImpMat(r[t.iMat]))) || porNome.get(apropNorm(nome)) || null;
+    t.cols.filter(c => c.rubrica).forEach(c => {
+      const v = apropNum(r[c.i]); if(v == null || v === 0) return;
+      somar(c.rubrica, "arquivo", v);
+      if(fid){ somar(c.rubrica, "gravar", v); linhas.push({ funcionario_id: fid, rubrica: c.rubrica, valor: Math.round(v * 100) / 100 }); }
+    });
+    if(!fid && t.cols.some(c => c.rubrica && apropNum(r[c.i]))) semCasamento.add(nome);
+  }));
+  APROP_IMP_EMPRESA.forEach(([rub]) => {
+    const v = apropNum(imp.empresa[rub]); if(v == null || v === 0) return;
+    somar(rub, "arquivo", v); somar(rub, "gravar", v); conf.get(rub).empresa = true;
+    linhas.push({ funcionario_id: null, rubrica: rub, valor: Math.round(v * 100) / 100 });
+  });
+  return { linhas, semCasamento: [...semCasamento].sort((a, b) => a.localeCompare(b, "pt-BR")), conf };
+}
+
+function apropImpRender(){
+  const area = $("aprop-imp-area"); const imp = _aprop.imp; if(!area || !imp) return;
+  const opcoes = (sel) => `<option value="">— ignorar —</option>` + Object.entries(APROP_RUBRICA_LBL).map(([k, v]) => `<option value="${esc(k)}" ${k === sel ? "selected" : ""}>${esc(v)}</option>`).join("");
+  const { linhas, semCasamento, conf } = apropImpLinhas();
+  const temSal = linhas.some(l => l.funcionario_id && l.rubrica === "salario_contabil");
+  const temEmp = linhas.some(l => !l.funcionario_id);
+  area.innerHTML = `
+    ${imp.semCab.length ? `<p class="txt-perigo" style="margin:4px 0;">Sem cabeçalho com a coluna do nome do funcionário (ignorados): ${esc(imp.semCab.join("; "))}</p>` : ""}
+    ${imp.tabelas.length ? "" : `<p class="vazio">Nenhum relatório reconhecido. O cabeçalho precisa de uma coluna Nome, Funcionário, Empregado ou Colaborador.</p>`}
+    ${imp.tabelas.map((t, ti) => `<div class="card" style="margin:8px 0;">
+      <h4 style="margin:0 0 6px;"><span style="font-family:var(--font-mono);">${esc(t.arquivo)}</span> · ${esc(t.aba)} <span class="meta">(${t.linhas.length} linhas${t.iMat >= 0 ? ", casa pela matrícula e pelo nome" : ", casa pelo nome"})</span></h4>
+      <div class="tabela-rola"><table><thead><tr><th>Coluna do relatório</th><th>Rubrica</th><th class="num">Total da coluna</th></tr></thead>
+        <tbody>${t.cols.map((c, ci) => `<tr><td>${esc(c.titulo)}</td><td><select class="aprop-imp-rub" data-t="${ti}" data-c="${ci}" title="Rubrica em que esta coluna é gravada; ignorar deixa a coluna de fora">${opcoes(c.rubrica)}</select></td><td class="num" data-val-sens>${apropMoeda(t.linhas.reduce((s, r) => s + (apropNum(r[c.i]) || 0), 0))}</td></tr>`).join("") || `<tr><td colspan="3" class="vazio">Nenhuma coluna com valor.</td></tr>`}</tbody>
+      </table></div></div>`).join("")}
+    <div class="card" style="margin:8px 0;">
+      <h4 style="margin:0 0 6px;">Totais da empresa <span class="meta">— divididos pela proporção do salário contábil importado de cada pessoa e depois pelos dias em cada obra</span></h4>
+      <div class="grade">${APROP_IMP_EMPRESA.map(([rub, rot]) => `<div class="campo"><label>${esc(rot)}</label><input type="number" step="0.01" class="aprop-imp-emp" data-rub="${esc(rub)}" value="${esc(imp.empresa[rub] ?? "")}" /></div>`).join("")}</div>
+      ${temEmp && !temSal ? `<p class="txt-perigo" style="margin:4px 0;">Para dividir os totais da empresa, uma coluna precisa estar como Salário contábil.</p>` : ""}
+    </div>
+    <h4 style="margin:8px 0 6px;">Conferência antes de gravar</h4>
+    <div class="tabela-rola"><table><thead><tr><th>Rubrica</th><th class="num">No arquivo</th><th class="num">Será gravado</th><th class="num">Fica de fora</th></tr></thead>
+      <tbody>${[...conf.entries()].map(([rub, c]) => `<tr><td>${esc(APROP_RUBRICA_LBL[rub] || rub)}${c.empresa ? " <span class=\"meta\">(total da empresa)</span>" : ""}</td><td class="num" data-val-sens>${apropMoeda(c.arquivo)}</td><td class="num" data-val-sens>${apropMoeda(c.gravar)}</td><td class="num" data-val-sens>${Math.abs(c.arquivo - c.gravar) > 0.005 ? `<span class="txt-perigo">${apropMoeda(c.arquivo - c.gravar)}</span>` : "—"}</td></tr>`).join("") || `<tr><td colspan="4" class="vazio">Nenhuma coluna marcada com rubrica.</td></tr>`}</tbody>
+    </table></div>
+    ${semCasamento.length ? `<p class="txt-perigo" style="margin:6px 0;">${semCasamento.length} pessoa(s) sem casamento com o cadastro (ficam de fora): ${esc(semCasamento.slice(0, 30).join(", "))}${semCasamento.length > 30 ? "…" : ""}</p>` : `<p class="meta" style="margin:6px 0;">Todas as pessoas com valor casaram com o cadastro.</p>`}
+    <div class="form-acoes compacta"><button type="button" class="btn-sec" id="btn-aprop-imp-cancelar">Cancelar</button><button type="button" class="btn" id="btn-aprop-imp-gravar" ${linhas.length && (!temEmp || temSal) ? "" : "disabled"} title="Grava em ${esc(apropCompLabel(_aprop.comp))}, substituindo a importação anterior desta competência">Gravar importação</button></div>`;
+  area.querySelectorAll(".aprop-imp-rub").forEach(s => s.addEventListener("change", () => { imp.tabelas[Number(s.dataset.t)].cols[Number(s.dataset.c)].rubrica = s.value; apropImpRender(); }));
+  area.querySelectorAll(".aprop-imp-emp").forEach(i => i.addEventListener("change", () => { imp.empresa[i.dataset.rub] = i.value; apropImpRender(); }));
+  $("btn-aprop-imp-cancelar")?.addEventListener("click", () => { _aprop.imp = null; area.innerHTML = ""; });
+  $("btn-aprop-imp-gravar")?.addEventListener("click", () => comBotaoTravado("btn-aprop-imp-gravar", apropImpGravar));
+}
+
+async function apropImpGravar(){
+  const { linhas, semCasamento } = apropImpLinhas();
+  if(!linhas.length){ aviso("app-aviso", "Nada para gravar: marque ao menos uma coluna com rubrica.", "erro"); return; }
+  if(!confirm(`Gravar a importação em ${apropCompLabel(_aprop.comp)}? A importação anterior desta competência é substituída.${semCasamento.length ? `\n\n${semCasamento.length} pessoa(s) sem casamento ficam de fora.` : ""}`)) return;
+  const { data, error } = await sb.rpc("folha_importar_competencia", { p_comp: _aprop.comp, p_linhas: linhas });
+  if(error){
+    const mfa = error.hint === "mfa_obrigatorio" || /dois fatores/i.test(error.message || "");
+    aviso("app-aviso", mfa ? "Importar a folha exige autenticação em dois fatores nesta sessão: saia e entre de novo concluindo o MFA." : "Erro ao importar: " + error.message, "erro");
+    return;
+  }
+  _aprop.imp = null; _aprop.impRes = data;
+  aviso("app-aviso", `Importação gravada em ${apropCompLabel(_aprop.comp)}. Agora clique em "Calcular apropriação".`, "ok");
+  await renderFuncAprop();
+}
+
+/* tabela obra × rubrica (colunas r_* de vw_custo_mao_obra_por_obra) e exportação .xlsx */
+function apropRubricasPresentes(linhas){
+  const rotulos = { ...APROP_RUBRICA_LBL, ...APROP_RUBRICA_AUTO };
+  return Object.keys(rotulos).filter(k => linhas.some(r => Number(r["r_" + k] || 0) !== 0)).map(k => [k, rotulos[k]]);
+}
+function apropTabelaRubricas(linhas, obraDe){
+  const rubs = apropRubricasPresentes(linhas);
+  if(!rubs.length) return "";
+  const ord = linhas.slice().sort((a, b) => Number(b.total) - Number(a.total));
+  const totCol = (k) => linhas.reduce((s, r) => s + Number(r["r_" + k] || 0), 0);
+  return `<div style="display:flex;align-items:center;gap:8px;margin:0 0 6px;"><h4 style="margin:0;">Custo por obra e rubrica</h4>
+      <button type="button" class="btn-sec btn-sm" id="btn-aprop-rub-xlsx" style="margin-left:auto;" title="Planilha .xlsx com a mesma tabela (obra × rubrica)">Exportar .xlsx</button></div>
+    <div class="tabela-rola" style="margin-bottom:14px;"><table>
+      <thead><tr><th>Obra / centro de custo</th>${rubs.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">Total</th></tr></thead>
+      <tbody>${ord.map(r => `<tr><td>${esc(obraDe(r))}</td>${rubs.map(([k]) => `<td class="num" data-val-sens>${Number(r["r_" + k] || 0) ? apropMoeda(r["r_" + k]) : "—"}</td>`).join("")}<td class="num" data-val-sens><strong>${apropMoeda(r.total)}</strong></td></tr>`).join("")}</tbody>
+      <tfoot><tr><td>Total</td>${rubs.map(([k]) => `<td class="num" data-val-sens>${apropMoeda(totCol(k))}</td>`).join("")}<td class="num" data-val-sens>${apropMoeda(linhas.reduce((s, r) => s + Number(r.total || 0), 0))}</td></tr></tfoot>
+    </table></div>`;
+}
+function apropRubricasXlsx(obraDe){
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilhas não carregou. Recarregue a página.", "erro"); return; }
+  const linhas = _aprop.custo; const rubs = apropRubricasPresentes(linhas);
+  const ord = linhas.slice().sort((a, b) => Number(b.total) - Number(a.total));
+  const aoa = [["Obra / centro de custo", ...rubs.map(([, rot]) => rot), "Total"]]
+    .concat(ord.map(r => [obraDe(r), ...rubs.map(([k]) => Number(r["r_" + k] || 0)), Number(r.total || 0)]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Obra x rubrica");
+  XLSX.writeFile(wb, `apropriacao-por-rubrica-${_aprop.comp.slice(0, 7)}.xlsx`);
 }
