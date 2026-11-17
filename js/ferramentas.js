@@ -12,6 +12,7 @@ let _frmSaldos = [];       // vw_ferramentas_saldo
 let _frmProdutos = {};     // id -> { id, codigo, nome }
 let _frmFuncs = [];        // funcionários (id, nome, matricula, ativo)
 let _frmEqps = {};         // id -> rótulo da máquina
+let _frmEqpNomes = {};     // id -> nome da máquina (folha do kit)
 let _frmAbertos = [];      // ferramenta_emprestimos com situação aberto ou parcial
 let _frmOcorr = [];        // ferramenta_ocorrencias
 let _frmView = "ferramentas";
@@ -53,6 +54,17 @@ async function carregarFerramentas(force){
   const cont = $("frm-conteudo"); if(!cont) return;
   if(force || !_frmCarregado){
     cont.innerHTML = `<p class="vazio">Carregando…</p>`;
+    const erro = await frmCarregarBase();
+    if(erro){ cont.innerHTML = `<p class="vazio">Erro: ${esc(erro)}</p>`; return; }
+  }
+  const opera = frmPodeOperar();
+  $("btn-frm-nova").style.display = opera ? "" : "none";
+  $("btn-frm-emprestar").style.display = opera ? "" : "none";
+  renderFerramentas();
+}
+/* lê saldos, catálogo, funcionários, máquinas, abertos e ocorrências; devolve a mensagem de erro ou null */
+async function frmCarregarBase(){
+  {
     const [sal, pr, fu, eq, ab, oc] = await Promise.all([
       lerTudo(() => sb.from("vw_ferramentas_saldo").select("*"), "ferramenta_id"),
       lerTudo(() => sb.from("produtos").select("id,codigo,nome,ativo"), "id"),
@@ -62,19 +74,16 @@ async function carregarFerramentas(force){
       lerTudo(() => sb.from("ferramenta_ocorrencias").select("*"), "id")
     ]);
     const erro = [sal, pr, fu, eq, ab, oc].find(r => r.error);
-    if(erro){ cont.innerHTML = `<p class="vazio">Erro: ${esc(erro.error.message)}</p>`; return; }
+    if(erro) return erro.error.message;
     _frmSaldos = sal.data;
     _frmProdutos = {}; pr.data.forEach(p => { _frmProdutos[p.id] = p; });
     _frmFuncs = fu.data.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-    _frmEqps = {}; eq.data.forEach(e => { _frmEqps[e.id] = e.codigo || e.nome; });
+    _frmEqps = {}; _frmEqpNomes = {}; eq.data.forEach(e => { _frmEqps[e.id] = e.codigo || e.nome; _frmEqpNomes[e.id] = e.nome || ""; });
     _frmAbertos = ab.data; _frmOcorr = oc.data;
     _frmCarregado = true;
     frmPreencherListas();
   }
-  const opera = frmPodeOperar();
-  $("btn-frm-nova").style.display = opera ? "" : "none";
-  $("btn-frm-emprestar").style.display = opera ? "" : "none";
-  renderFerramentas();
+  return null;
 }
 function frmPreencherListas(){
   $("frm-funcs-dl").innerHTML = _frmFuncs.filter(f => f.ativo)
@@ -438,6 +447,267 @@ async function frmAbrirDoFuncionario(funcId){
   _frmFunc = funcId; _frmView = "emprestimos";
   mostrarPainelFerramentas();
   await carregarFerramentas(false);
+}
+
+/* ====================================================================
+   Fase 191b: kit de ferramentas da máquina (D7)
+   O modelo do kit fica em ferramenta_kit_itens (aba "Kit de ferramentas" da ficha do equipamento). Na ficha da
+   mobilização, "Enviar kit" chama ferramenta_kit_enviar (cria os empréstimos da máquina; o que não tem disponível vai
+   para a lista "faltou no envio") e "Receber kit" chama ferramenta_kit_receber (ok, danificado, faltando, pela mesma
+   regra da devolução). O kit não mexe em status nem em localização da mobilização (§8).
+   ==================================================================== */
+let _frmKitEqp = null;   // { e, itens, abertos } da ficha do equipamento
+let _frmKitMob = null;   // { m, tags, eqpId, itens, emps, ocorr, faltou, recebendo } da ficha da mobilização
+
+function frmSaldoDe(id){ return _frmSaldos.find(x => x.ferramenta_id === id) || null; }
+function frmCodFer(id){ return frmSaldoDe(id)?.codigo || "—"; }
+function frmNomeFer(id){ const s = frmSaldoDe(id); return s ? (_frmProdutos[s.produto_id]?.nome || "") + (s.descricao ? " · " + s.descricao : "") : ""; }
+function frmOrdCod(a, b){ return String(frmCodFer(a)).localeCompare(String(frmCodFer(b)), "pt-BR", { numeric: true }); }
+function frmQtdOuVazio(v){ return Number(v) ? frmQ(v) : ""; }
+
+/* ---------- folha de conferência (leiaute da planilha: saída, local, operador, entrada e os dois responsáveis) ---------- */
+async function frmKitImprimir(ctx){
+  const td = "border:1px solid;padding:3px 4px;";
+  const linhas = ctx.linhas.map((l, i) => `<tr><td style="${td}text-align:center;">${esc(i + 1)}</td><td style="${td}">${esc(l.codigo)}</td><td style="${td}">${esc(l.nome)}</td>
+    <td style="${td}text-align:right;">${esc(frmQtdOuVazio(l.kit))}</td><td style="${td}text-align:right;">${esc(frmQtdOuVazio(l.saida))}</td>
+    <td style="${td}text-align:right;">${esc(frmQtdOuVazio(l.ok))}</td><td style="${td}text-align:right;">${esc(frmQtdOuVazio(l.dan))}</td>
+    <td style="${td}text-align:right;">${esc(frmQtdOuVazio(l.falt))}</td><td style="${td}width:120px;"></td></tr>`).join("");
+  const campo = (rot, val) => `<td style="padding:3px;width:50%;"><b>${esc(rot)}:</b> ${esc(val || "______________________________")}</td>`;
+  const html = `<div style="font-family:'Outfit',Arial,sans-serif;font-size:11px;">
+    ${typeof pdfCabecalhoHTML === "function" ? pdfCabecalhoHTML("Kit de ferramentas", ctx.tag + (ctx.nome ? " · " + ctx.nome : "")) : `<h2>Kit de ferramentas ${esc(ctx.tag)}</h2>`}
+    <table style="width:100%;border-collapse:collapse;margin:8px 0 12px;">
+      <tr>${/* html */ campo("Saída", ctx.saida ? dataBR(ctx.saida) : "")}${/* html */ campo("Local", ctx.local)}</tr>
+      <tr>${/* html */ campo("Operador", ctx.operador)}${/* html */ campo("Entrada", ctx.entrada ? dataBR(ctx.entrada) : "")}</tr>
+    </table>
+    <table style="width:100%;border-collapse:collapse;"><thead>
+      <tr><th style="${td}" rowspan="2">#</th><th style="${td}" rowspan="2">Código</th><th style="${td}text-align:left;" rowspan="2">Ferramenta</th>
+        <th style="${td}" rowspan="2">Qtd. kit</th><th style="${td}" rowspan="2">Saída</th><th style="${td}" colspan="3">Entrada</th><th style="${td}" rowspan="2">Observação</th></tr>
+      <tr><th style="${td}">OK</th><th style="${td}">Danif.</th><th style="${td}">Falta</th></tr>
+    </thead><tbody>${/* html */ linhas || `<tr><td style="${td}" colspan="9">Kit vazio.</td></tr>`}</tbody></table>
+    <table style="width:100%;border-collapse:collapse;margin-top:28px;"><tr>
+      <td style="padding:3px;width:50%;"><b>Responsável carga:</b> ______________________________</td>
+      <td style="padding:3px;width:50%;"><b>Responsável vistoria:</b> ______________________________</td></tr></table>
+  </div>`;
+  const arquivo = "Kit_ferramentas_" + String(ctx.tag || "maquina").replace(/[^A-Za-z0-9_-]/g, "_");
+  const wrap = document.createElement("div"); wrap.innerHTML = html;
+  if(typeof html2pdf === "undefined" || typeof pdfGerar !== "function"){
+    const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }
+    w.document.write(`<html><head><title>${esc(arquivo)}</title><style>@page { size: A4; margin: 12mm; }</style></head><body>${/* html */ html}</body></html>`); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); return;
+  }
+  try { await pdfGerar(wrap, { filename: arquivo + ".pdf", largura: 186, topo: 12 }); }
+  catch(e){ aviso("app-aviso", "Não foi possível gerar o PDF: " + (e.message || e), "erro"); }
+}
+
+/* ---------- aba "Kit de ferramentas" da ficha do equipamento ---------- */
+async function frmKitEquipamento(e){
+  const cont = $("eqp-frm-kit"), sbb = $("sb-eqp-kitfrm");
+  if(sbb){ sbb.querySelector(".sb-num").textContent = "0"; sbb.classList.add("zero"); }
+  if(!cont) return;
+  _frmKitEqp = null;
+  if(!e || !e.id){ cont.innerHTML = uiVazio("Salve o equipamento para montar o kit de ferramentas."); return; }
+  cont.innerHTML = uiVazio("Carregando o kit…");
+  const id = e.id;
+  const [erroBase, ki, ab] = await Promise.all([
+    _frmCarregado ? Promise.resolve(null) : frmCarregarBase(),
+    lerTudo(() => sb.from("ferramenta_kit_itens").select("*").eq("equipamento_id", id), "id"),
+    lerTudo(() => sb.from("ferramenta_emprestimos").select("*").eq("equipamento_id", id).neq("situacao", "devolvido"), "id")
+  ]);
+  if(typeof _eqpAtual !== "undefined" && _eqpAtual?.id !== id) return;
+  const erro = erroBase || ki.error?.message || ab.error?.message;
+  if(erro){ cont.innerHTML = uiVazio("Erro ao ler o kit: " + erro); return; }
+  _frmKitEqp = { e, itens: ki.data, abertos: ab.data };
+  renderFrmKitEquipamento();
+}
+function renderFrmKitEquipamento(){
+  const k = _frmKitEqp, cont = $("eqp-frm-kit"); if(!k || !cont) return;
+  const opera = frmPodeOperar();
+  const sbb = $("sb-eqp-kitfrm");
+  if(sbb){ sbb.querySelector(".sb-num").textContent = k.itens.length; sbb.classList.toggle("zero", !k.itens.length); }
+  const itens = [...k.itens].sort((a, b) => frmOrdCod(a.ferramenta_id, b.ferramenta_id));
+  const emMaquina = {}; k.abertos.forEach(x => { emMaquina[x.ferramenta_id] = (emMaquina[x.ferramenta_id] || 0) + frmAberto(x); });
+  const modelo = !itens.length ? uiVazio(opera ? "Nenhuma ferramenta no kit. Adicione abaixo." : "Nenhuma ferramenta no kit desta máquina.") : `<div class="tabela-rola"><table>
+    <thead><tr><th>Código</th><th>Ferramenta</th><th class="num">Qtd. no kit</th><th class="num" title="Pronta para emprestar no almoxarifado">Disponível</th><th class="num" title="Empréstimos abertos para esta máquina">Na máquina</th><th>Observação</th><th></th></tr></thead>
+    <tbody>${itens.map(i => `<tr>
+      <td>${/* html */ uiCodigo(frmCodFer(i.ferramenta_id))}</td><td>${esc(frmNomeFer(i.ferramenta_id))}</td>
+      <td class="num">${opera ? `<input type="number" min="0.01" step="1" inputmode="decimal" style="width:80px;" data-frm-kit-qtd="${esc(i.id)}" value="${esc(i.quantidade)}" aria-label="Quantidade no kit" />` : esc(frmQ(i.quantidade))}</td>
+      <td class="num">${esc(frmQ(frmSaldoDe(i.ferramenta_id)?.disponivel))}</td><td class="num">${esc(frmQtdOuVazio(emMaquina[i.ferramenta_id]) || "—")}</td>
+      <td>${opera ? `<input data-frm-kit-obs="${esc(i.id)}" value="${esc(i.observacao || "")}" aria-label="Observação do item" />` : `<span class="meta">${esc(i.observacao || "")}</span>`}</td>
+      <td>${opera ? `<button type="button" class="btn-sec btn-sm acao-perigo" data-frm-kit-rem="${esc(i.id)}" title="Tira a ferramenta do modelo do kit (os empréstimos abertos continuam)">Tirar</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+  const naKit = new Set(k.itens.map(i => i.ferramenta_id));
+  const opcoes = _frmSaldos.filter(s => s.ativo && !naKit.has(s.ferramenta_id)).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }))
+    .map(s => `<option value="${esc(s.codigo + " — " + frmNomeFer(s.ferramenta_id))}"></option>`).join("");
+  const adicionar = opera ? `<div class="grade" style="margin-top:8px;">
+      <div class="campo largo"><label for="frm-kit-nova">Adicionar ferramenta ao kit</label><input id="frm-kit-nova" list="frm-kit-dl" autocomplete="off" placeholder="código ou nome" /><datalist id="frm-kit-dl">${/* html */ opcoes}</datalist></div>
+      <div class="campo"><label for="frm-kit-nova-qtd">Quantidade</label><input id="frm-kit-nova-qtd" type="number" min="0.01" step="1" inputmode="decimal" value="1" /></div>
+      <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-frm-kit-add">Adicionar</button></div></div>` : "";
+  const abertos = [...k.abertos].sort((a, b) => String(a.data_saida).localeCompare(String(b.data_saida)));
+  const naMaquina = !abertos.length ? uiVazio("Nenhuma ferramenta emprestada a esta máquina agora.") : `<div class="tabela-rola"><table>
+    <thead><tr><th>Saída</th><th>Ferramenta</th><th class="num">Em aberto</th><th>Origem</th><th>Observação</th></tr></thead>
+    <tbody>${abertos.map(x => `<tr><td>${dataBR(x.data_saida)}</td><td>${/* html */ uiCodigo(frmCodFer(x.ferramenta_id))} ${esc(frmNomeFer(x.ferramenta_id))}</td>
+      <td class="num">${esc(frmQ(frmAberto(x)))}</td><td>${x.mobilizacao_id ? "Kit da mobilização" : "Empréstimo avulso"}${x.obra_id && typeof linkObra === "function" ? " · " + linkObra(x.obra_id, (typeof mapaObras === "object" && mapaObras && mapaObras[x.obra_id]) || "obra") : ""}</td>
+      <td class="meta">${esc(x.observacao || "")}</td></tr>`).join("")}</tbody></table></div>`;
+  cont.innerHTML = `<div class="lista-topo compacta"><p class="meta" style="margin:0;">O kit é o que a máquina leva em toda mobilização. Enviar e receber ficam na ficha da mobilização (aba Kit).</p>
+      <button type="button" class="btn-sec btn-sm" id="btn-frm-kit-folha" style="margin-left:auto;" title="Folha de conferência do kit em branco, no leiaute da planilha">Imprimir folha do kit</button></div>`
+    + uiSecao("documento", "Modelo do kit", modelo + adicionar, `${itens.length} item(ns)`)
+    + uiSecao("maquina", "Na máquina agora", naMaquina, `${abertos.length}`);
+  $("btn-frm-kit-folha")?.addEventListener("click", () => comBotaoTravado("btn-frm-kit-folha", () => frmKitImprimir({
+    tag: k.e.codigo || "", nome: k.e.nome || "", saida: null, entrada: null, local: "", operador: "",
+    linhas: itens.map(i => ({ codigo: frmCodFer(i.ferramenta_id), nome: frmNomeFer(i.ferramenta_id), kit: i.quantidade }))
+  })));
+  if(!opera) return;
+  $("btn-frm-kit-add")?.addEventListener("click", () => comBotaoTravado("btn-frm-kit-add", frmKitAdicionar));
+  cont.querySelectorAll("[data-frm-kit-qtd]").forEach(inp => inp.addEventListener("change", () => frmKitAtualizar(inp.dataset.frmKitQtd, { quantidade: Number(inp.value) })));
+  cont.querySelectorAll("[data-frm-kit-obs]").forEach(inp => inp.addEventListener("change", () => frmKitAtualizar(inp.dataset.frmKitObs, { observacao: inp.value.trim() || null })));
+  cont.querySelectorAll("[data-frm-kit-rem]").forEach(b => b.addEventListener("click", () => frmKitRemover(b.dataset.frmKitRem)));
+}
+async function frmKitAdicionar(){
+  const k = _frmKitEqp; if(!k || !frmPodeOperar()) return;
+  const s = frmSaldoPorCodigo($("frm-kit-nova").value), qtd = Number($("frm-kit-nova-qtd").value);
+  if(!s){ aviso("app-aviso", "Escolha a ferramenta na lista (código — nome).", "erro"); return; }
+  if(!(qtd > 0)){ aviso("app-aviso", "A quantidade tem de ser maior que zero.", "erro"); return; }
+  const { error } = await sb.from("ferramenta_kit_itens").insert({ equipamento_id: k.e.id, ferramenta_id: s.ferramenta_id, quantidade: qtd });
+  if(error){ aviso("app-aviso", error.code === "23505" ? "A ferramenta já está no kit desta máquina." : error.message, "erro"); return; }
+  await frmKitEquipamento(k.e);
+}
+async function frmKitAtualizar(id, campos){
+  const k = _frmKitEqp; if(!k || !frmPodeOperar()) return;
+  if("quantidade" in campos && !(campos.quantidade > 0)){ aviso("app-aviso", "A quantidade tem de ser maior que zero.", "erro"); renderFrmKitEquipamento(); return; }
+  const { error } = await sb.from("ferramenta_kit_itens").update(campos).eq("id", id);
+  if(error){ aviso("app-aviso", error.message, "erro"); }
+  await frmKitEquipamento(k.e);
+}
+async function frmKitRemover(id){
+  const k = _frmKitEqp; if(!k || !frmPodeOperar()) return;
+  if(!confirm("Tirar esta ferramenta do modelo do kit? O que já está emprestado à máquina continua aberto.")) return;
+  const { error } = await sb.from("ferramenta_kit_itens").delete().eq("id", id);
+  if(error){ aviso("app-aviso", error.message, "erro"); return; }
+  await frmKitEquipamento(k.e);
+}
+
+/* ---------- ficha da mobilização: Enviar kit e Receber kit ---------- */
+async function frmKitMobRender(m){
+  const cont = $("mob-frm-kit"); if(!cont || !m) return;
+  const tags = [m.equipamento_id, ...(m.equipamentos_apoio || [])].filter(Boolean);
+  if(!tags.length){ cont.innerHTML = uiVazio("Defina a TAG principal para enviar o kit de ferramentas."); return; }
+  const mesma = _frmKitMob && _frmKitMob.m.id === m.id;
+  const eqpId = mesma && tags.includes(_frmKitMob.eqpId) ? _frmKitMob.eqpId : tags[0];
+  cont.innerHTML = uiVazio("Carregando o kit de ferramentas…");
+  const [erroBase, ki, em] = await Promise.all([
+    _frmCarregado ? Promise.resolve(null) : frmCarregarBase(),
+    lerTudo(() => sb.from("ferramenta_kit_itens").select("*").in("equipamento_id", tags), "id"),
+    lerTudo(() => sb.from("ferramenta_emprestimos").select("*").eq("mobilizacao_id", m.id), "id")
+  ]);
+  const erro = erroBase || ki.error?.message || em.error?.message;
+  if(erro){ cont.innerHTML = uiVazio("Erro ao ler o kit: " + erro); return; }
+  const ids = em.data.map(x => x.id);
+  const oc = ids.length ? await lerTudo(() => sb.from("ferramenta_ocorrencias").select("id,emprestimo_id,tipo,quantidade").in("emprestimo_id", ids), "id") : { data: [] };
+  if(typeof _mobAberta !== "undefined" && _mobAberta && _mobAberta.id !== m.id) return;
+  _frmKitMob = { m, tags, eqpId, itens: ki.data, emps: em.data, ocorr: oc.data || [], faltou: mesma ? _frmKitMob.faltou : null, recebendo: false };
+  renderFrmKitMob();
+}
+/* uma linha por ferramenta (kit da TAG escolhida + o que saiu nesta mobilização) */
+function frmKitMobLinhas(){
+  const k = _frmKitMob;
+  const emps = k.emps.filter(x => x.equipamento_id === k.eqpId);
+  const porFer = {};
+  const linha = id => porFer[id] || (porFer[id] = { ferramenta_id: id, codigo: frmCodFer(id), nome: frmNomeFer(id), kit: 0, saida: 0, ok: 0, dan: 0, falt: 0, aberto: 0 });
+  k.itens.filter(i => i.equipamento_id === k.eqpId).forEach(i => { linha(i.ferramenta_id).kit = Number(i.quantidade); });
+  emps.forEach(x => {
+    const l = linha(x.ferramenta_id);
+    const dan = k.ocorr.filter(o => o.emprestimo_id === x.id && o.tipo === "danificada").reduce((t, o) => t + Number(o.quantidade), 0);
+    const per = k.ocorr.filter(o => o.emprestimo_id === x.id && o.tipo === "perdida").reduce((t, o) => t + Number(o.quantidade), 0);
+    l.saida += Number(x.quantidade); l.dan += dan; l.falt += per; l.ok += Number(x.quantidade_devolvida) - dan - per; l.aberto += frmAberto(x);
+  });
+  return Object.values(porFer).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
+}
+function renderFrmKitMob(){
+  const k = _frmKitMob, cont = $("mob-frm-kit"); if(!k || !cont) return;
+  const m = k.m, opera = frmPodeOperar();
+  const linhas = frmKitMobLinhas();
+  const abertos = k.emps.filter(x => x.equipamento_id === k.eqpId && x.situacao !== "devolvido")
+    .sort((a, b) => frmOrdCod(a.ferramenta_id, b.ferramenta_id));
+  const temKit = k.itens.some(i => i.equipamento_id === k.eqpId);
+  const podeEnviar = opera && temKit && !["cancelada", "desmobilizada"].includes(m.status);
+  const seletor = k.tags.length > 1 ? `<select id="frm-kit-mob-tag" aria-label="Máquina do kit">${k.tags.map(t => `<option value="${esc(t)}"${t === k.eqpId ? " selected" : ""}>${esc(_frmEqps[t] || "?")}${t === m.equipamento_id ? " (principal)" : " (apoio)"}</option>`).join("")}</select>` : "";
+  const faltou = k.faltou && k.faltou.eqpId === k.eqpId && k.faltou.lista.length
+    ? `<p class="aviso atencao mob-aviso-bloco"><strong>Faltou no envio:</strong> ${k.faltou.lista.map(f => `${esc(f.codigo)} (faltou ${esc(frmQ(f.faltou))} de ${esc(frmQ(f.pedido))})`).join(", ")}. O resto do kit saiu; quando houver disponível, "Enviar kit" de novo completa só o que faltou.</p>` : "";
+  const tabela = !linhas.length ? uiVazio(temKit ? "Kit ainda não enviado." : "Esta máquina não tem kit de ferramentas. Monte o modelo na ficha do equipamento, aba Kit de ferramentas.") : `<div class="tabela-rola"><table>
+    <thead><tr><th>Código</th><th>Ferramenta</th><th class="num">No kit</th><th class="num">Saiu</th><th class="num">Voltou ok</th><th class="num">Danificada</th><th class="num">Faltou</th><th class="num">Em aberto</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr><td>${/* html */ uiCodigo(l.codigo)}</td><td>${esc(l.nome)}</td><td class="num">${esc(frmQtdOuVazio(l.kit) || "—")}</td>
+      <td class="num">${esc(frmQtdOuVazio(l.saida) || "—")}</td><td class="num">${esc(frmQtdOuVazio(l.ok))}</td>
+      <td class="num">${l.dan ? `<span class="tag ambar">${esc(frmQ(l.dan))}</span>` : ""}</td><td class="num">${l.falt ? `<span class="tag vermelho">${esc(frmQ(l.falt))}</span>` : ""}</td>
+      <td class="num">${l.aberto ? `<strong>${esc(frmQ(l.aberto))}</strong>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+  const receber = k.recebendo && abertos.length ? uiSecao("check", "Receber kit: conferir item por item", `<div class="tabela-rola"><table>
+      <thead><tr><th>Ferramenta</th><th>Saída</th><th class="num">Em aberto</th><th class="num">Voltou ok</th><th class="num">Danificada</th><th class="num">Faltando</th></tr></thead>
+      <tbody>${abertos.map((x, i) => `<tr><td>${/* html */ uiCodigo(frmCodFer(x.ferramenta_id))} ${esc(frmNomeFer(x.ferramenta_id))}</td><td>${dataBR(x.data_saida)}</td><td class="num">${esc(frmQ(frmAberto(x)))}</td>
+        <td class="num"><input type="number" min="0" step="1" inputmode="decimal" style="width:80px;" data-frm-kr="ok" data-i="${esc(i)}" value="${esc(frmAberto(x))}" aria-label="Voltou ok" /></td>
+        <td class="num"><input type="number" min="0" step="1" inputmode="decimal" style="width:80px;" data-frm-kr="dan" data-i="${esc(i)}" aria-label="Danificada" /></td>
+        <td class="num"><input type="number" min="0" step="1" inputmode="decimal" style="width:80px;" data-frm-kr="fal" data-i="${esc(i)}" aria-label="Faltando" /></td></tr>`).join("")}</tbody></table></div>
+      <p class="meta">Danificada e faltando viram ocorrência da ferramenta. Linha em branco fica aberta.</p>
+      <div class="mob-acoes"><button type="button" class="btn" id="btn-frm-kit-receber-ok">Confirmar recebimento</button><button type="button" class="btn-sec" id="btn-frm-kit-receber-cancelar">Cancelar</button></div>`) : "";
+  cont.innerHTML = `<div class="mob-acoes">
+      ${seletor}
+      ${podeEnviar ? `<button type="button" class="btn-sec btn-sm" id="btn-frm-kit-enviar" title="Empresta à máquina cada item do kit que tem disponível; o que faltar aparece na lista">Enviar kit</button>` : ""}
+      ${opera && abertos.length && !k.recebendo ? `<button type="button" class="btn-sec btn-sm" id="btn-frm-kit-receber" title="Confere a volta do kit item por item: ok, danificada ou faltando">Receber kit</button>` : ""}
+      <button type="button" class="btn-sec btn-sm" id="btn-frm-kit-mob-folha" title="Folha de conferência no leiaute da planilha: saída, local, operador, entrada e os responsáveis">Imprimir folha</button>
+      <span class="meta">O kit não muda o status nem a localização da máquina.</span>
+    </div>${/* html */ faltou}${/* html */ tabela}${/* html */ receber}`;
+  $("frm-kit-mob-tag")?.addEventListener("change", ev => { k.eqpId = ev.target.value; k.recebendo = false; renderFrmKitMob(); });
+  $("btn-frm-kit-enviar")?.addEventListener("click", () => comBotaoTravado("btn-frm-kit-enviar", frmKitEnviar));
+  $("btn-frm-kit-receber")?.addEventListener("click", () => { k.recebendo = true; renderFrmKitMob(); });
+  $("btn-frm-kit-receber-cancelar")?.addEventListener("click", () => { k.recebendo = false; renderFrmKitMob(); });
+  $("btn-frm-kit-receber-ok")?.addEventListener("click", () => comBotaoTravado("btn-frm-kit-receber-ok", () => frmKitReceber(abertos)));
+  $("btn-frm-kit-mob-folha")?.addEventListener("click", () => comBotaoTravado("btn-frm-kit-mob-folha", () => frmKitMobImprimir(linhas)));
+}
+async function frmKitEnviar(){
+  const k = _frmKitMob; if(!k || !frmPodeOperar()) return;
+  const tag = _frmEqps[k.eqpId] || "?";
+  if(!confirm(`Enviar o kit de ferramentas da ${tag} nesta mobilização? Cada item com disponível vira empréstimo à máquina.`)) return;
+  const { data, error } = await sb.rpc("ferramenta_kit_enviar", { p_equipamento: k.eqpId, p_mobilizacao: k.m.id, p_obs: null });
+  if(error){ aviso("app-aviso", error.message, "erro"); return; }
+  const lista = (data && data.faltou) || [];
+  aviso("app-aviso", `${data?.enviados || 0} item(ns) do kit enviados${lista.length ? `; ${lista.length} faltou(aram) no envio` : ""}.`, lista.length ? "aviso" : "ok");
+  k.faltou = { eqpId: k.eqpId, lista };
+  _frmCarregado = false;   // saldos mudaram
+  await frmKitMobRender(k.m);
+}
+async function frmKitReceber(abertos){
+  const k = _frmKitMob; if(!k || !frmPodeOperar()) return;
+  const val = (i, c) => Number(document.querySelector(`#mob-frm-kit input[data-frm-kr="${c}"][data-i="${i}"]`)?.value || 0);
+  const itens = [];
+  for(let i = 0; i < abertos.length; i++){
+    const x = abertos[i], ok = val(i, "ok"), dan = val(i, "dan"), fal = val(i, "fal");
+    if(ok < 0 || dan < 0 || fal < 0){ aviso("app-aviso", "Quantidades não podem ser negativas.", "erro"); return; }
+    if(ok + dan + fal > frmAberto(x)){ aviso("app-aviso", `${frmCodFer(x.ferramenta_id)}: a soma passa do que está em aberto (${frmQ(frmAberto(x))}).`, "erro"); return; }
+    if(ok + dan + fal > 0) itens.push({ emprestimo_id: x.id, ok, danificado: dan, faltando: fal });
+  }
+  if(!itens.length){ aviso("app-aviso", "Informe o que voltou em ao menos uma linha.", "erro"); return; }
+  const { data, error } = await sb.rpc("ferramenta_kit_receber", { p_mobilizacao: k.m.id, p_itens: itens });
+  if(error){ aviso("app-aviso", error.message, "erro"); return; }
+  aviso("app-aviso", `${data?.recebidos || 0} item(ns) recebidos${data?.abertos ? `; ${data.abertos} continua(m) em aberto` : ""}.`, "ok");
+  _frmCarregado = false;
+  k.recebendo = false;
+  await frmKitMobRender(k.m);
+}
+async function frmKitMobImprimir(linhas){
+  const k = _frmKitMob; if(!k) return;
+  const m = k.m;
+  const { data: obra } = await sb.from("obras").select("codigo,nome,cidade").eq("id", m.obra_id).maybeSingle();
+  const operador = typeof mobEquipeDe === "function"
+    ? mobEquipeDe(m.id).filter(x => /operador/i.test(x.funcao || "") && !/caminh/i.test(x.funcao || "")).map(x => (x.funcionario && x.funcionario.nome) || "").filter(Boolean).join(", ")
+    : "";
+  const emps = k.emps.filter(x => x.equipamento_id === k.eqpId);
+  const saidas = emps.map(x => x.data_saida).filter(Boolean).sort();
+  const voltas = emps.filter(x => x.situacao === "devolvido").map(x => x.data_devolucao).filter(Boolean).sort();
+  const tudoVoltou = emps.length && emps.every(x => x.situacao === "devolvido");
+  await frmKitImprimir({
+    tag: _frmEqps[k.eqpId] || "", nome: _frmEqpNomes[k.eqpId] || "",
+    saida: m.data_saida_real || saidas[0] || null,
+    entrada: m.data_desmob_real || (tudoVoltou ? voltas[voltas.length - 1] : null),
+    local: obra ? [obra.codigo, obra.nome, obra.cidade].filter(Boolean).join(" · ") : "",
+    operador,
+    linhas
+  });
 }
 
 /* ---------- ligação ---------- */

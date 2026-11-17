@@ -807,6 +807,7 @@ function abrirFichaEquipamento(e){
   $("eqp-man-lista").innerHTML = "";
 
   if(!novo){ eqpCarregarFilhas(e); eqpCarregarRdos(e); eqpCarregarTrabalho(e); }   // fase 101: RDOs da máquina; obra e condutor do vínculo
+  if(typeof frmKitEquipamento === "function") frmKitEquipamento(novo ? null : e);   // fase 191b: kit de ferramentas
   // fase 96: aba Venda (js/vendas_bens.js)
   const vCont = $("eqp-venda");
   if(vCont){ if(novo || typeof vbRenderAba !== "function") vCont.innerHTML = `<p class="vazio">—</p>`; else vbRenderAba(e, "eqp-venda"); }

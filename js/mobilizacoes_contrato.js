@@ -441,6 +441,7 @@ function renderDrawerMob(){
       (anterior && mobKitEditavel() && (anterior.acessorios_ids || []).length ? `<p class="aviso atencao mob-aviso-bloco" id="mob-kit-troca">Troca de máquina: a ${esc(mobTagDe(anterior) || "máquina anterior")} saiu com ${esc((anterior.acessorios_ids || []).length)} peça(s) no kit. <button type="button" class="btn-sec btn-sm" id="btn-mob-kit-troca" title="Coloca as peças do kit da máquina trocada como sugestão; confira e salve o kit">Usar como sugestão</button></p>` : "")
       + uiSecao("documento", `Separação · ${tag}`, `<div id="mob-sep" class="mob-card-chips"></div>`)
       + uiSecao("documento", `Acessórios (kit) · ${tag}`, `<div id="mob-kit">${uiVazio("Carregando peças…")}</div>`)
+      + uiSecao("documento", `Kit de ferramentas · ${tag}`, `<div id="mob-frm-kit">${uiVazio("Carregando…")}</div>`)
       + uiSecao("documento", `Materiais · ${tag}`, `<p class="meta">Consumíveis e peças sem marcação; viram itens da separação.</p><div id="mob-materiais">${uiVazio("Carregando…")}</div>`))}
 
     ${pane("escopo", uiSecao("documento", `Estacas · ${tag}`, `<p class="meta">Resumo do projeto para a máquina; o detalhe fica na aba Estacas da obra.</p>
@@ -504,6 +505,7 @@ function renderDrawerMob(){
   mobLigarApoio("mob", m.obra_id, "mob-equip");
   mobRenderEquipeFicha();
   mobRenderKit();
+  if(typeof frmKitMobRender === "function") frmKitMobRender(m); else if($("mob-frm-kit")) $("mob-frm-kit").innerHTML = "";   // fase 191b
   mobRenderMateriais();
   mobRenderSeparacao();
   mobRenderViagens();
