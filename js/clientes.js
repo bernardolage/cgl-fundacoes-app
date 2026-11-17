@@ -212,8 +212,8 @@ function renderCliKanban(dados){
 }
 
 /* ---------- Pendências fiscais (fase 105a) ----------
-   Mesma regra do "Para regularizar" (vw_sc_regularizar): cliente de obra em andamento sem CPF/CNPJ válido, sem
-   indicador da IE (ou contribuinte sem IE), sem CEP ou sem código IBGE; obra em andamento sem IBGE; máquina ou
+   Cliente de obra em andamento com o cadastro incompleto para a NF-e (fiscalClientePendencias, a mesma regra da function
+   focus-nfe desde o hotfix NF-e de remessa A; o aviso urgente sai de vw_pendencias_cliente_fiscal); obra em andamento sem IBGE; máquina ou
    acessório de mobilização ativa (em preparação, em trânsito, em obra) sem NCM. */
 const CLI_MOB_ATIVA = ["em_preparacao", "em_transito", "em_obra"];
 async function cliCarregarFiscal(force){
@@ -409,8 +409,10 @@ function abrirFichaCliVisual(c){
 
 /* situação fiscal ao vivo (aba Fiscal, badge e o aviso do documento) a partir do que está no formulário */
 function cliLerFormFiscal(){
-  return { cpf_cnpj: $("cli-doc")?.value.trim(), inscricao_estadual: $("cli-ie")?.value.trim(), indicador_ie: $("cli-ind-ie")?.value || "",
-           cep: $("cli-cep")?.value.trim(), codigo_ibge: $("cli-ibge")?.value.trim() };
+  const v = id => $(id)?.value.trim();
+  return { nome: v("cli-nome"), cpf_cnpj: v("cli-doc"), inscricao_estadual: v("cli-ie"), indicador_ie: $("cli-ind-ie")?.value || "",
+           logradouro: v("cli-logradouro"), bairro: v("cli-bairro"), cidade: v("cli-cidade"), uf: $("cli-uf")?.value || "",
+           cep: v("cli-cep"), codigo_ibge: v("cli-ibge") };
 }
 function cliAtualizarFiscal(){
   const f = cliLerFormFiscal();
@@ -418,7 +420,7 @@ function cliAtualizarFiscal(){
   const box = $("cli-fiscal-situacao");
   if(box) box.innerHTML = falta.length
     ? `<p class="meta">Falta para a nota: ${falta.map(x => `<span class="tag ambar">${esc(x)}</span>`).join(" ")}</p>`
-    : `<p class="meta"><span class="tag verde">completo</span> CPF/CNPJ, IE, CEP e município prontos para a nota.</p>`;
+    : `<p class="meta"><span class="tag verde">completo</span> CPF/CNPJ, IE e endereço com município prontos para a nota.</p>`;
   const badge = $("cli-fiscal-badge");
   if(badge) badge.textContent = _cliTemFiscal && falta.length ? String(falta.length) : "";
   const st = $("cli-doc-status");
@@ -611,7 +613,7 @@ function ligarClientes(){
   // fase 105a: CEP → endereço, cidade, UF e IBGE (ViaCEP); situação fiscal ao vivo
   fiscalLigarCep({ cep: "cli-cep", botao: "btn-cli-cep", status: "cli-cep-status", logradouro: "cli-logradouro",
                    bairro: "cli-bairro", cidade: "cli-cidade", uf: "cli-uf", ibge: "cli-ibge" });
-  ["cli-doc", "cli-ie", "cli-ind-ie", "cli-cep", "cli-ibge"].forEach(id => {
+  ["cli-nome", "cli-doc", "cli-ie", "cli-ind-ie", "cli-cep", "cli-ibge", "cli-logradouro", "cli-bairro", "cli-cidade", "cli-uf"].forEach(id => {
     const el = $(id); if(el) el.addEventListener(el.tagName === "SELECT" ? "change" : "input", cliAtualizarFiscal);
   });
 

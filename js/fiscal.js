@@ -527,14 +527,36 @@ async function fiscalEmpresaSalvar(pref){
   await Promise.all(["usr-fe", "cli-fe"].map(p => $(p) && $(p).innerHTML ? fiscalEmpresaRender(p) : null));
 }
 
-/* ---------- Cliente: o que falta para a nota ---------- */
+/* ---------- Cliente e obra: o que falta para a nota ----------
+   Regra única (hotfix NF-e de remessa A): a MESMA lista, com os mesmos rótulos, de verificarPendencias da function
+   focus-nfe (destinatário) e de fiscal_cliente_pendencias() no banco (vw_pendencias_cliente_fiscal). Mudou uma, muda as
+   três; scripts/testar-hotfix-nfe-remessa-a.mjs confere a do front com a da function. */
 function fiscalClientePendencias(c){
   if(!c) return [];
   const vazio = v => v == null || String(v).trim() === "";
+  const dig = v => String(v ?? "").replace(/\D/g, "");
   return [
-    !fiscalDocValido(c.cpf_cnpj) && (vazio(c.cpf_cnpj) ? "sem CNPJ/CPF" : "CNPJ/CPF inválido"),
-    (vazio(c.indicador_ie) && "indicador da IE") || (c.indicador_ie === "contribuinte" && vazio(c.inscricao_estadual) && "IE"),
-    vazio(c.cep) && "CEP",
-    vazio(c.codigo_ibge) && "código IBGE"
+    vazio(c.nome) && "nome",
+    !fiscalDocValido(c.cpf_cnpj) && (vazio(c.cpf_cnpj) ? "CPF/CNPJ" : "CPF/CNPJ válido"),
+    (vazio(c.indicador_ie) && "indicador da IE") || (c.indicador_ie === "contribuinte" && vazio(c.inscricao_estadual) && "inscrição estadual"),
+    vazio(c.logradouro) && "logradouro",
+    vazio(c.bairro) && "bairro",
+    vazio(c.cidade) && "cidade",
+    vazio(c.uf) && "UF",
+    dig(c.cep).length !== 8 && "CEP",
+    !/^\d{7}$/.test(String(c.codigo_ibge || "")) && "código IBGE do município"
+  ].filter(Boolean);
+}
+/* Endereço da obra (local de entrega da remessa): igual a fiscal_obra_pendencias() do banco */
+function fiscalObraPendencias(o){
+  if(!o) return [];
+  const vazio = v => v == null || String(v).trim() === "";
+  return [
+    vazio(o.logradouro) && "logradouro",
+    vazio(o.bairro) && "bairro",
+    vazio(o.cidade) && "cidade",
+    vazio(o.uf) && "UF",
+    String(o.cep ?? "").replace(/\D/g, "").length !== 8 && "CEP",
+    !/^\d{7}$/.test(String(o.codigo_ibge || "")) && "código IBGE do município"
   ].filter(Boolean);
 }

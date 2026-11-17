@@ -254,13 +254,17 @@ async function dashCarregarAcoes(){
   // fase 108b: chave de dono do custo pendente do usuário logado (vw_pedidos_aprovacao_pendente.dono_meu) entra em Compras
   // lote S63-0: cotação parada, recebimento sem conferência e saída sem custo saíram de vw_sc_acoes (carga) e vêm de
   // vw_sc_acoes_cmp, marcadas como "acoes" para o "o que é este número" seguir igual. Pendência nova: view própria, nunca vw_sc_acoes
-  const [dados, sep, fab, fin, man, ass, cmp] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
+  // hotfix NF-e de remessa A: cliente sem cadastro fiscal com remessa a caminho (vw_pendencias_cliente_fiscal; o banco só
+  // devolve a linha do cliente ao financeiro, à diretoria e ao auditor), um item por cliente no setor financeiro
+  const [dados, sep, fab, fin, man, ass, cmp, cliFis] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
     dashLer("vw_pedidos_aprovacao_pendente", q => q.select("pedido_id,numero,total,quem_assina,criado_em").eq("dono_meu", true).order("criado_em")),
-    dashLer("vw_sc_acoes_cmp", q => q.select("*"))]);
+    dashLer("vw_sc_acoes_cmp", q => q.select("*")),
+    dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "cliente").order("cliente_nome"))]);
   if(!dados) return;
   // fase 164: cada lista leva a fonte de onde veio; a chave do "o que é este número" é fonte:ordem[:nível], nunca o título
   dashMarcarFonte(dados, "acoes"); dashMarcarFonte(cmp, "acoes"); dashMarcarFonte(sep, "sep"); dashMarcarFonte(fab, "fab"); dashMarcarFonte(fin, "fin"); dashMarcarFonte(man, "man");
-  _dashAcoes = dados.concat(cmp || [], sep || [], fab || [], fin || [], man || []).filter(a => dashGereSetor(a.setor))
+  const cliNfe = dashMarcarFonte(dashAcoesClienteFiscal(cliFis || []), "fin");
+  _dashAcoes = dados.concat(cmp || [], sep || [], fab || [], fin || [], cliNfe, man || []).filter(a => dashGereSetor(a.setor))
     .concat(dashAcoesAssinatura(ass || []))   // é do usuário (ele é o dono do custo): não passa pelo filtro de setor
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
@@ -276,6 +280,29 @@ async function dashCarregarAcoes(){
       <div class="dash-setor-tit">${esc(DASH_SETOR[s] || s)}</div>
       ${_dashAcoes.map((a, i) => a.setor !== s ? "" : dashLinhaAcao(a, i, "acao")).join("")}
     </div>`).join("");
+}
+/* Hotfix NF-e de remessa A: um item por cliente com o cadastro incompleto para a NF-e e remessa a caminho (mobilização
+   prevista ou em andamento, ou remessa em rascunho). Abre a ficha do cliente na aba Fiscal. O que falta vem do banco
+   (fiscal_cliente_pendencias, a mesma regra da function focus-nfe). */
+function dashAcoesClienteFiscal(linhas){
+  return (linhas || []).map(l => ({
+    setor: "financeiro", nivel: "atencao", ordem: 42, quantidade: 1, secao: "clientes", registro_id: l.cliente_id,
+    obra_id: l.obra_id || null, _cliFiscal: true,
+    titulo: `Cliente sem cadastro fiscal com remessa a caminho: ${l.cliente_nome || "?"}`,
+    detalhe: [`falta ${(l.falta || []).join(", ")}`, l.obra_codigo ? `obra ${l.obra_codigo}` : "", (l.motivos || []).join(", ")].filter(Boolean).join(" · ")
+  }));
+}
+/* Hotfix NF-e de remessa A: obras com o endereço incompleto (local de entrega da nota) e remessa a caminho, uma linha por
+   papel (responsável da obra, ou o gestor do serviço enquanto não houver; diretoria). Abre a obra na aba Endereço. */
+function dashRegObraEndereco(linhas){
+  const porPapel = {};
+  (linhas || []).forEach(l => { (porPapel[l.papel] = porPapel[l.papel] || []).push(l); });
+  return Object.entries(porPapel).map(([papel, ls]) => ({
+    setor: "obras", secao: "obras", filtro: "obra_endereco_remessa", papel, ordem: 115, quantidade: ls.length,
+    titulo: "Endereço da obra incompleto com remessa a caminho",
+    detalhe: ls.map(l => `${l.obra_codigo || "?"} (falta ${(l.falta || []).join(", ")})`).join(" · "),
+    obra_ids: ls.map(l => l.obra_id), obra_id: ls.length === 1 ? ls[0].obra_id : null
+  }));
 }
 /* Fase 108b: uma linha por pedido com chave de dono do custo pendente que é do usuário logado (engenheiro responsável
    da obra, gestor de manutenção ou de frota da TAG, responsável do centro). Abre a ficha do pedido para assinar, mesmo
@@ -467,7 +494,7 @@ async function dashCarregarRegularizar(){
   // fase 129c: diário do campo enviado sem conferência, devolvido sem reenvio e pendências do app (vw_sc_regularizar_campo; a view
   // devolve a cada um só o papel dele)
   // fase 179: diário sem estaca e sem parada, a partir da data de corte (vw_sc_regularizar_rdo_dia; view própria, fora de vw_sc_acoes)
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia, refuro, cat] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia, refuro, cat, obraFis] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
@@ -483,9 +510,12 @@ async function dashCarregarRegularizar(){
     usuarioAtual && ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado", "logistica"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_prod", q => q.select("*")) : null,
     dashLer("vw_sc_regularizar_rdo_dia", q => q.select("*")),   // a view devolve a cada um só o papel dele
     dashLer("vw_sc_regularizar_refuro", q => q.select("*")),   // fase 145a: refuro sem decisão de cobrança (engenheiro da obra ou gestor)
-    usuarioAtual?.cargo === "diretor" ? dashLer("vw_sc_regularizar_cat", q => q.select("*")) : null]);   // lote S66-g: liberação do catálogo vence em 7 dias
+    usuarioAtual?.cargo === "diretor" ? dashLer("vw_sc_regularizar_cat", q => q.select("*")) : null,   // lote S66-g: liberação do catálogo vence em 7 dias
+    // hotfix NF-e de remessa A: obra com endereço incompleto e remessa a caminho (a view devolve a cada um só o papel dele)
+    dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "obra").order("obra_codigo"))]);
   if(!dados) return;
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || [], rdoDia || [], refuro || [], cat || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  const obrEnd = dashRegObraEndereco(obraFis || []);
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || [], rdoDia || [], refuro || [], cat || [], obrEnd).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   dashRenderRegularizar();
 }
@@ -633,7 +663,8 @@ async function dashAbrirRegularizar(a){
                   responsavel_inativo: { aba: "geral", foco: "obr-responsavel" },
                   sem_jornada:     { aba: "parametros", foco: "obr-jornada-entrada" },
                   sem_estacas:     { aba: "estacas", foco: null },
-                  obra_sem_ibge:   { aba: "endereco", foco: "obr-cep" } };   // fase 105a: o CEP preenche o IBGE
+                  obra_sem_ibge:   { aba: "endereco", foco: "obr-cep" },   // fase 105a: o CEP preenche o IBGE
+                  obra_endereco_remessa: { aba: "endereco", foco: "obr-cep" } };   // hotfix NF-e de remessa A
   // fase 107a: Geodigitus. cpu_* e sync parada → ficha da CPU (uma só) ou visão Computadores de bordo filtrada;
   // geodigitus_estaca_* e diário finalizado → Chegadas do Geodigitus filtrada pela situação (uma só com diário abre o RDO)
   if(a.setor === "campo"){ if(typeof rdoAbrirPresetCampo === "function") await rdoAbrirPresetCampo(a); return; }   // fase 129c
@@ -841,6 +872,9 @@ async function dashAbrirAcao(a){
     case "produtos": // hotfix saída sem custo (29/10/2026): "Saídas de estoque sem custo" → Produtos › Saídas sem custo
       // fase 146: "Produto saiu sem custo: <código>" abre a lista filtrada naquele produto; o agregado continua abrindo a lista inteira
       if(irParaSecao("produtos") && /sem custo/i.test(a.titulo || "") && typeof prodAbrirSaidasSemCusto === "function") prodAbrirSaidasSemCusto(/^Produto saiu sem custo/.test(a.titulo || "") ? id : null);
+      break;
+    case "clientes": // hotfix NF-e de remessa A: cliente sem cadastro fiscal → ficha do cliente na aba Fiscal
+      if(typeof cliAbrirPendenciasFiscais === "function") await cliAbrirPendenciasFiscais(id || null); else irParaSecao("clientes");
       break;
     case "sesmt_ocorrencias": // lote S63-i (#280): ação de ocorrência SST da Minha fila → a ficha da ocorrência
       if(irParaSecao("sesmt-ocorrencias") && typeof ssoAbrirPreset === "function") ssoAbrirPreset(null, id || null);

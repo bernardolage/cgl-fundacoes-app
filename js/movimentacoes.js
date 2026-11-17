@@ -1214,10 +1214,34 @@ function movNfeModal({ titulo, corpo, texto, rotulo, min, max, botao, perigo, on
   if(texto) ta.focus();
 }
 function movNfeModalFechar(){ $("mov-nfe-modal").style.display = "none"; _movNfeModalOk = null; }
-function movNfeResumoHtml(d){
+/* Hotfix NF-e de remessa A: quem emite (acessórios, logística) não corrige cliente nem obra. Quando o bloqueio é o
+   cadastro do cliente, a mensagem diz o que falta e que o pedido já está com o financeiro (vw_pendencias_cliente_fiscal
+   leva o aviso à tela inicial dele); o endereço incompleto da obra já está no "Para regularizar" do responsável da obra. */
+const MOV_NFE_PEND_CLIENTE = /^(Cliente .*: falta .+?) \(abas Fiscal e Endereço do cliente\)\.$/;
+function movNfePendenciaTexto(p){
+  const m = String(p || "").match(MOV_NFE_PEND_CLIENTE);
+  return m ? `${m[1]}. O pedido já está com o financeiro (aparece na tela inicial do financeiro): não é preciso abrir o cliente.` : String(p || "");
+}
+async function movNfeCadastroObra(m){
+  const obraId = m?.tipo === "retorno" ? (m.origem_obra_id || m.destino_obra_id) : (m?.destino_obra_id || m?.origem_obra_id);
+  if(!obraId) return null;
+  const { data: o } = await sb.from("obras").select("id,codigo,responsavel_id,logradouro,bairro,cidade,uf,cep,codigo_ibge").eq("id", obraId).maybeSingle();
+  if(!o) return null;
+  const falta = fiscalObraPendencias(o);
+  if(!falta.length) return null;
+  let resp = "";
+  if(o.responsavel_id){
+    const { data: p } = await sb.from("profiles").select("nome").eq("id", o.responsavel_id).maybeSingle();
+    resp = p?.nome || "";
+  }
+  return { codigo: o.codigo, falta, resp };
+}
+function movNfeResumoHtml(d, obraCad){
   const r = d.resumo || {}, pend = d.pendencias || [];
   const prod = r.ambiente === "producao";
-  return `${pend.length ? `<div class="dist-aviso alerta"><strong>Falta completar antes de emitir (nada foi enviado):</strong><ul>${pend.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
+  const quemObra = obraCad ? (obraCad.resp ? `${obraCad.resp} (responsável da obra)` : "o gestor do serviço (a obra está sem responsável)") : "";
+  return `${pend.length ? `<div class="dist-aviso alerta"><strong>Falta completar antes de emitir (nada foi enviado):</strong><ul>${pend.map(p => `<li>${esc(movNfePendenciaTexto(p))}</li>`).join("")}</ul></div>` : ""}
+    ${obraCad ? `<div class="dist-aviso neutro">Endereço da obra ${esc(obraCad.codigo || "")} incompleto: falta ${esc(obraCad.falta.join(", "))}. Sem ele a nota sai sem o local de entrega. O aviso já está no "Para regularizar" de ${esc(quemObra)}.</div>` : ""}
     <div class="dist-aviso ${prod ? "perigo" : "neutro"}"><strong>${prod ? "PRODUÇÃO: nota com valor fiscal na SEFAZ" : "Homologação: nota de teste, sem valor fiscal"}</strong></div>
     <div class="grade">
       <div class="campo"><label>Natureza</label><div>${esc(r.natureza || "")}</div></div>
@@ -1255,7 +1279,7 @@ async function movNfeSimular(previa){
 }
 async function movNfeSimularMostrar(){
   if(!(await movNfeSalvarAntes())) return;
-  const d = await movNfeSimular(true);
+  const [d, obraCad] = await Promise.all([movNfeSimular(true), movNfeCadastroObra(movimentacaoAtual)]);
   if(!d) return;
   const previa = d.previa_url
     ? `<p><a href="${esc(d.previa_url)}" target="_blank" rel="noopener">📄 Abrir a prévia do DANFE (sem valor fiscal)</a></p>`
@@ -1263,18 +1287,18 @@ async function movNfeSimularMostrar(){
     : (d.pendencias || []).length ? "" : '<p class="nota">A prévia do DANFE aparece quando o token da Focus estiver configurado.</p>';
   movNfeModal({
     titulo: `Simulação da NF-e · ${movimentacaoAtual.numero}`,
-    corpo: movNfeResumoHtml(d) + previa + `<details><summary class="meta">JSON que vai para a Focus</summary><pre class="mov-nfe-json">${esc(JSON.stringify(d.nfe, null, 2))}</pre></details>`
+    corpo: movNfeResumoHtml(d, obraCad) + previa + `<details><summary class="meta">JSON que vai para a Focus</summary><pre class="mov-nfe-json">${esc(JSON.stringify(d.nfe, null, 2))}</pre></details>`
   });
 }
 async function movNfeEmitir(){
   if(!(await movNfeSalvarAntes())) return;
-  const d = await movNfeSimular(false);
+  const [d, obraCad] = await Promise.all([movNfeSimular(false), movNfeCadastroObra(movimentacaoAtual)]);
   if(!d) return;
   const prod = d.ambiente === "producao";
   const doc = movimentacaoAtual;
   movNfeModal({
     titulo: `Emitir NF-e · ${doc.numero}`,
-    corpo: movNfeResumoHtml(d),
+    corpo: movNfeResumoHtml(d, obraCad),
     botao: prod ? "🧾 Emitir em PRODUÇÃO" : "🧾 Emitir em homologação",
     onOk: (d.pendencias || []).length ? null : async () => {
       if(prod && !confirm("Emitir a NF-e em PRODUÇÃO, com valor fiscal na SEFAZ?")) return;
@@ -1282,7 +1306,7 @@ async function movNfeEmitir(){
       movNfeModalFechar();
       if(r.erro){
         const pend = r.corpo?.pendencias || [];
-        aviso("app-aviso", "NF-e: " + r.erro + (pend.length ? " " + pend.join(" ") : ""), "erro");
+        aviso("app-aviso", "NF-e: " + r.erro + (pend.length ? " " + pend.map(movNfePendenciaTexto).join(" ") : ""), "erro");
       } else {
         aviso("app-aviso", r.data.nf_status === "autorizada" ? `NF-e autorizada${r.data.mensagem ? ": " + r.data.mensagem : "."}` : (r.data.mensagem || "NF-e enviada."), r.data.nf_status === "rejeitada" ? "erro" : "ok");
       }
