@@ -468,7 +468,7 @@ async function abrirRDO(id){
     sb.from("rdo_equipe").select("*").eq("rdo_id", id).order("ordem"),
     sb.from("rdo_abastecimento").select("*").eq("rdo_id", id).order("ordem"),
     // chamado #5: atividades hora-a-hora do dia (linhas sem execucao_id; as com execucao_id são as paradas do boletim raiz)
-    sb.from("rdo_raiz_justificativa").select("id,ordem,h_inicial,h_final,motivo").eq("rdo_id", id).is("execucao_id", null).order("ordem")
+    sb.from("rdo_raiz_justificativa").select("*").eq("rdo_id", id).is("execucao_id", null).order("ordem")   // fase 184c: com categoria, tipo_linha e solo_id
   ]);
   if(rdoEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
   if(rdo.error){ aviso("app-aviso","Erro: "+rdo.error.message,"erro"); return; }
@@ -509,7 +509,8 @@ async function abrirRDO(id){
   _rdoRaizEquipe = _rdoEquipe.map(e => ({ funcionario_id: e.funcionario_id, nome_avulso: e.nome_avulso }));
   _rdoRaizDados  = dadosRaiz.data || null;
   _rdoRaizSolo   = [];
-  _rdoAtividades = (ativs.data || []).map(a => ({ h_inicial: a.h_inicial, h_final: a.h_final, motivo: a.motivo }));
+  _rdoAtividades = (ativs.data || []).map(a => ({ h_inicial: a.h_inicial, h_final: a.h_final, motivo: a.motivo,
+    categoria: a.categoria || null, tipo_linha: a.tipo_linha || null, solo_id: a.solo_id || null }));   // fase 184c
   // fase 46 + correção de 06/10/2026: o abastecimento do dia era lido em abrirFichaRDOVisual, onde `abast` não existe;
   // o RDO aberto ficava sem abastecimento na tela e salvar apagava o que estava gravado
   _rdoAbast = (abast.data || []).map(a => ({ ...a }));
@@ -1180,6 +1181,7 @@ function ativarTabRDO(nome){
   // Ao entrar em Execuções, refresca pra pegar mudanças na Equipe (selects de operador)
   if(nome === "execucoes" && typeof renderExecucoes === "function") renderExecucoes();
   if(nome === "fotos") renderRdoFotos();   // fase 129c: URL assinada só quando a aba abre
+  if(nome === "grade" && typeof abrirGradeRDO === "function") abrirGradeRDO();   // fase 184c: grade sai do que a ficha tem agora
   if(nome === "resumo" && typeof renderRdoResumo === "function") renderRdoResumo();   // fase 161: leitura do dia, sempre com o que está na ficha
 }
 
@@ -1781,6 +1783,7 @@ function renderRdoAtividades(){
     const idx = Number(tr.dataset.idx);
     tr.addEventListener("input", () => {
       _rdoAtividades[idx] = {
+        ..._rdoAtividades[idx],   // fase 184c: categoria, tipo da linha e trecho da Grade do dia ficam
         h_inicial: tr.querySelector(".ra-hi").value || null,
         h_final:   tr.querySelector(".ra-hf").value || null,
         motivo:    tr.querySelector(".ra-mot").value.trim() || null
@@ -2230,6 +2233,9 @@ async function rdoSalvarAgora(novoStatus){
   if(!dataRDO){ aviso("app-aviso","Informe a data.","erro"); ativarTabRDO("cabecalho"); return; }
 
   const tipo = $("rdo-tipo-servico").value;
+  // fase 184c: com a Grade do dia aberta, linha com erro (perfuração sem estaca, final menor que o inicial, hora inválida) não grava
+  const errGrade = tipo === "estaca_raiz" && typeof rgdConferirAntesDeSalvar === "function" ? rgdConferirAntesDeSalvar() : null;
+  if(errGrade){ aviso("app-aviso", errGrade, "erro"); return; }
   // lote S46 (#96): execução sem Ø herda o da estaca/serviço ou o usuário informa antes de gravar
   if(!(await rdoGarantirDiametros(obra_id, tipo, _rdoExecucoes))){ ativarTabRDO("execucoes"); return; }
 
@@ -2389,6 +2395,7 @@ async function rdoSalvarAgora(novoStatus){
           consumo_areia_unidade:    e.consumo_areia_unidade    || null,
           pressao_injecao_kgcm2:    numOrNull(e.pressao_injecao_kgcm2),
           identificacao_acessorios: e.identificacao_acessorios || null,
+          modalidade_execucao:      e.modalidade_execucao || "furo_normal",   // fase 184c: Refuro da Grade do dia
           ...rdoCamposInjecao(e)   // fase 101 (#99): m³ injetado e água
         });
       }
@@ -2410,6 +2417,7 @@ async function rdoSalvarAgora(novoStatus){
         if(!execId) return;
         (e._solo || []).filter(s => s.inicio_ml!=null || s.final_ml!=null || s.classificacao)
           .forEach((s, si) => solosAll.push({
+            id: s.id || (s.id = novoIdLinha()),   // fase 184c: a atividade da Grade do dia aponta para o trecho (solo_id)
             execucao_id: execId, rdo_id: savedId,
             inicio_ml: s.inicio_ml, final_ml: s.final_ml,
             classificacao: s.classificacao || null, ferramenta: s.ferramenta || null, ordem: si + 1
@@ -2434,10 +2442,21 @@ async function rdoSalvarAgora(novoStatus){
 
   // Chamado #5: atividades hora a hora do dia (todos os tipos de RDO; execucao_id nulo).
   // O delete de rdo_raiz_justificativa por rdo_id acima removeu as antigas: reinsere a lista da tela.
+  // fase 184c: categoria, tipo da linha e trecho (solo_id só quando o trecho foi gravado agora: delete e insert por diário)
+  const solosGravados = new Set();
+  if(tipo === "estaca_raiz") execsParaSalvar.forEach(e => (e._solo || []).forEach(s => { if(s.id && (s.inicio_ml != null || s.final_ml != null || s.classificacao)) solosGravados.add(s.id); }));
   const ativLimpa = _rdoAtividades
     .filter(a => a.h_inicial || a.h_final || a.motivo)
-    .map((a, i) => ({ rdo_id: savedId, execucao_id: null, ordem: i + 1,
-      h_inicial: a.h_inicial || null, h_final: a.h_final || null, motivo: a.motivo || null }));
+    .map((a, i) => {
+      const l = { rdo_id: savedId, execucao_id: null, ordem: i + 1,
+        h_inicial: a.h_inicial || null, h_final: a.h_final || null, motivo: a.motivo || null };
+      const soloId = a._soloRef ? a._soloRef.id : a.solo_id;
+      if(a.categoria || a.tipo_linha || soloId){
+        l.categoria = a.categoria || null; l.tipo_linha = a.tipo_linha || null;
+        l.solo_id = soloId && solosGravados.has(soloId) ? soloId : null;
+      }
+      return l;
+    });
   if(ativLimpa.length){
     const { error: errAtiv } = await sb.from("rdo_raiz_justificativa").insert(ativLimpa);
     if(errAtiv){ aviso("app-aviso","Erro ao salvar as atividades do dia: "+errAtiv.message,"erro"); return; }

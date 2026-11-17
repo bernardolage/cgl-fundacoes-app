@@ -4315,3 +4315,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .mgr-legenda i.mgr-leg-reserva { background: transparent; border: 1.5px dashed var(--txt-sec); }
 .mgr-legenda i.mgr-leg-livre { background: transparent; height: 0; border-top: 2px dotted var(--sucesso); border-radius: 0; }
 .mgr-legenda i.mgr-leg-hoje { width: 2px; height: 14px; background: var(--perigo); border-radius: 0; }
+
+/* fase 184c: Grade do dia do RDO de raiz (js/rdo_grade.js) */
+.rgd-grade input.rgd-invalido { border-color: var(--perigo); background: var(--perigo-bg); }
+.rgd-grade tr.rgd-sem-hora td { background: var(--sup-1); }
+.rgd-grade td input:disabled, .rgd-grade td select:disabled { opacity: .45; }
+.rgd-totais { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; margin: var(--esp-2) 0; }
