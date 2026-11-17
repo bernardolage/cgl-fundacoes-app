@@ -343,7 +343,6 @@ function renderFuncionariosAgora(){
   const selComp = $("func-he-competencia"); if(selComp) selComp.style.display = _funcView === "he" ? "" : "none";
   if(_funcView==="kanban") renderFuncKanban(dados);
   else if(_funcView==="logistica") renderFuncLogistica();
-  else if(_funcView==="lotacao") renderFuncLotacao();   // fase 151
   else if(_funcView==="he"){ funcPreencherCompetencias(); renderFuncHE(); }
   else if(_funcView==="aprop") renderFuncAprop();
   else if(_funcView==="promocoes") renderFuncPromocoes();   // fase 93a: plano de cargos

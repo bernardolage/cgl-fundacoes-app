@@ -724,7 +724,9 @@ async function dashAbrirRegularizar(a){
     else if(typeof manAbrirPreset === "function") manAbrirPreset("os_atrasadas");
   } else if(a.secao === "funcionarios" && /^promocao_/.test(a.filtro || "")){ // fase 93a: visão Funções (plano de cargos) filtrada
     if(irParaSecao("funcionarios") && typeof funcAbrirPromocoes === "function") funcAbrirPromocoes(a.filtro === "promocao_vencida" ? "vencidas" : "60dias");
-  } else if(a.secao === "funcionarios" && /^(baixada_|lotacao_)/.test(a.filtro || "")){ // fase 151: Logística ou Conferir alocação já filtradas
+  } else if(/^lotacao_/.test(a.filtro || "")){ // fase 187a (#296): Conferir alocação mora em Horas e alocação, já filtrada
+    if(typeof rhhAbrirConferir === "function") rhhAbrirConferir(a.filtro);
+  } else if(a.secao === "funcionarios" && /^baixada_/.test(a.filtro || "")){ // fase 151: Logística já filtrada
     if(irParaSecao("funcionarios") && typeof funcAbrirLogisticaPreset === "function") funcAbrirLogisticaPreset(a.filtro);
   } else if(a.secao === "estoque" && /^estoque_/.test(a.filtro || "")){ // lote S63-d (#276): quadro Pendências de estoque
     if(typeof estAbrirPendencias === "function") estAbrirPendencias();

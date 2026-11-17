@@ -1,7 +1,8 @@
 /* ====================================================================
    Fase 151 (#253 e #131): linha do tempo do funcionário.
    Movimentar (func-mov-), baixada feita ou comprada (func-bx-), aba Linha do tempo e
-   correção de período (func-lt-) e visão Conferir alocação (func-lot-).
+   correção de período (func-lt-) e visão Conferir alocação (func-lot-; desde a fase 187a, desenhada no rhh-conteudo de
+   Horas e alocação). A aba Linha do tempo também mostra os períodos do RDO (vw_rh_alocacao_periodos, fase 187a).
    A logística lança a obra; o diário só confere. Período errado se corrige, nunca se cancela:
    fn_apropriar_competencia lê alocacoes sem olhar status. Nada aqui gera título: a baixada comprada
    e a feita só guardam a decisão, o título é da fase seguinte.
@@ -22,8 +23,7 @@ function funcPodeLerAvaliacao(){ return !!usuarioAtual && FUNC_AVAL_CARGOS.inclu
 
 function funcLotAplicarVisibilidade(){
   const pode = lotacaoPodeOperar();
-  const v = document.querySelector('#func-painel .serv-view-btn[data-view="lotacao"]');
-  if(v) v.style.display = pode ? "" : "none";
+  // fase 187a (#296): o botão "Conferir alocação" saiu de Funcionários; o de Horas e alocação é tratado em rhhMarcarView
   const acoes = $("func-lt-acoes"); if(acoes) acoes.style.display = pode ? "" : "none";
   const lista = $("func-lt-lista"); if(lista) lista.innerHTML = "";
   const cont = $("func-lt-cont"); if(cont) cont.textContent = "";
@@ -69,7 +69,15 @@ async function funcLotAposGravar(id, recarregarFicha){
     if(funcLotFichaAberta(id)){ await abrirFuncionario(id); ativarTabFunc("linhatempo"); }
   }
   if(funcLotFichaAberta(id)) await funcLtCarregar(id);
+  else if(funcLotConferirVisivel()) await renderFuncLotacao();   // fase 187a: Movimentar a partir de Horas e alocação
   else renderFuncionarios();
+}
+/* fase 187a (#296): a visão Conferir alocação mora em Horas e alocação (sec-rhh, visão "conferir") */
+function funcLotConferirVisivel(){ return typeof _rhhView !== "undefined" && _rhhView === "conferir" && !!$("sec-rhh")?.classList.contains("ativa"); }
+function funcLotLimparCache(){ _funcLotConf = null; }
+function funcLotDefinirFiltro(filtro){
+  _funcLotConf = null;
+  _funcLotFiltro = filtro === "lotacao_ausente" ? "sem_lotacao" : filtro === "lotacao_diferente" ? "diferente" : "a_conferir";
 }
 
 /* ---------- Movimentar ---------- */
@@ -292,17 +300,29 @@ async function funcLtCarregar(id){
   const cont = $("func-lt-lista"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
   const le = funcPodeLerAvaliacao();
-  const [aloc, bx, fn, hist, aval] = await Promise.all([
+  const [aloc, bx, fn, hist, aval, perRdo] = await Promise.all([
     sb.from("alocacoes").select("id,status,data_inicio,data_fim,motivo,observacoes,conferida_em,created_at,obra:obras(codigo,nome),equipamento:equipamentos(codigo)").eq("funcionario_id", id),
     sb.from("funcionario_baixadas").select("*,origem:obras(codigo)").eq("funcionario_id", id),
     sb.from("funcionario_funcoes").select("id,funcao,data_inicio,data_fim,motivo,observacoes,created_at").eq("funcionario_id", id),
     le ? sb.from("funcionario_historico").select("*").eq("funcionario_id", id) : Promise.resolve({ data: [] }),
-    le ? sb.from("funcionario_avaliacoes").select("*").eq("funcionario_id", id) : Promise.resolve({ data: [] })
+    le ? sb.from("funcionario_avaliacoes").select("*").eq("funcionario_id", id) : Promise.resolve({ data: [] }),
+    // fase 187a (#131): períodos do RDO (a view só devolve linhas a quem lê horas: rh_pode_ler_horas no banco)
+    sb.from("vw_rh_alocacao_periodos").select("obra_codigo,obra_nome,cno,equipamento_codigo,data_inicio,data_fim,hora_entrada,hora_saida,dias")
+      .eq("funcionario_id", id).eq("origem", "rdo").order("data_inicio")
   ]);
   if(funcEditId !== id) return;
   const erro = aloc.error || bx.error || fn.error || hist.error || aval.error;
   if(erro){ cont.innerHTML = `<p class="vazio">Erro: ${esc(erro.message)}</p>`; return; }
   const pode = lotacaoPodeOperar(), ev = [];
+  const hm = (t) => t ? String(t).slice(0, 5) : "";
+  (perRdo.error ? [] : (perRdo.data || [])).forEach(p => ev.push({
+    data: p.data_inicio, em: p.data_fim, tipo: "Diário", cor: "verde",
+    o_que: `${p.obra_codigo || ""} · ${p.obra_nome || ""}` + (p.equipamento_codigo ? ` · ${p.equipamento_codigo}` : ""),
+    atual: false,
+    detalhe: [`${dataBR(p.data_inicio)} a ${dataBR(p.data_fim)}`, `${p.dias} dia(s) com diário`,
+      p.hora_entrada || p.hora_saida ? `${hm(p.hora_entrada) || "—"} – ${hm(p.hora_saida) || "—"}` : "", p.cno ? `CNO ${p.cno}` : ""].filter(Boolean).join(" · "),
+    acao: ""
+  }));
   (aloc.data || []).forEach(a => ev.push({
     data: a.data_inicio, em: a.created_at, tipo: "Obra", cor: "azul",
     o_que: (a.obra ? `${a.obra.codigo || ""} · ${a.obra.nome || ""}` : "Sem obra") + (a.equipamento?.codigo ? ` · ${a.equipamento.codigo}` : ""),
@@ -374,16 +394,16 @@ function funcLotUsarDiario(r){
   });
 }
 async function renderFuncLotacao(){
-  const cont = $("func-conteudo"); if(!cont) return;
+  const cont = $("rhh-conteudo"); if(!cont) return;   // fase 187a (#296): mora em Horas e alocação › Conferir alocação
   if(!lotacaoPodeOperar()){ cont.innerHTML = `<p class="vazio">Sem acesso à conferência de alocação.</p>`; return; }
   if(!_funcLotConf){
     cont.innerHTML = `<p class="vazio">Carregando conferência…</p>`;
     const { data, error } = await lerTudo(() => sb.from("vw_funcionarios_lotacao_conferir").select("*"), "funcionario_id");
     if(error){ cont.innerHTML = `<p class="vazio">Erro ao carregar: ${esc(error.message)}</p>`; return; }
-    if(_funcView !== "lotacao") return;
+    if(typeof _rhhView === "undefined" || _rhhView !== "conferir") return;
     _funcLotConf = data || [];
   }
-  const termo = ($("func-busca")?.value || "").trim().toLowerCase();
+  const termo = ($("rhh-busca")?.value || "").trim().toLowerCase();
   const ativos = _funcLotConf.filter(r => r.situacao !== "demitido_com_obra");
   const conferidos = ativos.filter(r => r.conferida_em).length;
   const lista = _funcLotConf.filter(funcLotPassaFiltro)
@@ -474,12 +494,11 @@ async function funcLotConfirmarSelecionadas(){
   await funcLotGravar(linhas);
 }
 
-/* Sala de Comando → Logística ou Conferir alocação já filtradas */
+/* Sala de Comando → Logística (Funcionários) ou Conferir alocação (Horas e alocação, fase 187a) já filtradas */
 function funcAbrirLogisticaPreset(filtro){
-  const conf = /^lotacao_/.test(filtro || "");
-  _funcView = conf ? "lotacao" : "logistica";
-  if(conf) _funcLotFiltro = filtro === "lotacao_ausente" ? "sem_lotacao" : "diferente";
-  else _funcLogFiltro = filtro === "baixada_vencida" ? "vencida" : "a_vencer";
+  if(/^lotacao_/.test(filtro || "")){ if(typeof rhhAbrirConferir === "function") rhhAbrirConferir(filtro); return; }
+  _funcView = "logistica";
+  _funcLogFiltro = filtro === "baixada_vencida" ? "vencida" : "a_vencer";
   document.querySelectorAll("#func-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === _funcView));
   mostrarPainelFunc();
   renderFuncionarios();

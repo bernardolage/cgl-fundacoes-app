@@ -17,6 +17,8 @@ let _rhhEquipe = [];        // rdo_equipe do período (rdo e funcionário embuti
 let _rhhViagens = [];       // horas_viagem do período
 let _rhhMes = [];           // vw_rh_horas_mes da competência
 let _rhhAloc = [];          // vw_rh_alocacao_mes + vw_rh_alocacao_lancada_mes (so_alocacao: true) da competência
+let _rhhPer = [];           // fase 187a (#131): vw_rh_alocacao_periodos da competência (modo Períodos)
+let _rhhAlocModo = "periodos";   // fase 187a: "periodos" (padrão) ou "mensal"
 let _rhhPendMes = 0;        // linhas do RDO do mês ainda sem liberação (aviso no fechamento)
 let _rhhCnoDoc = {};        // lote S48 (#122): obra_id → { storage_path, nome } do PDF do CNO mais recente (vw_obra_cno_documento)
 let _rhhPodeLiberar = {};   // obra_id → boolean (rh_horas_liberar no banco)
@@ -169,13 +171,23 @@ function rhhMarcarView(){
   document.querySelectorAll("#rhh-painel .serv-view-btn[data-view]").forEach(b => b.classList.toggle("ativo", b.dataset.view === _rhhView));
   const mostra = (id, sim) => { const el = $(id); if(el) el.style.display = sim ? "" : "none"; };
   const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
-  const liberar = _rhhView === "liberar", aloc = _rhhView === "alocacao", fech = _rhhView === "fechamento";
+  // fase 187a (#296): "Conferir alocação" veio de Funcionários; só quem opera a alocação (lotacaoPodeOperar)
+  const podeConf = typeof lotacaoPodeOperar === "function" && lotacaoPodeOperar();
+  const bConf = document.querySelector('#rhh-painel .serv-view-btn[data-view="conferir"]'); if(bConf) bConf.style.display = podeConf ? "" : "none";
+  if(_rhhView === "conferir" && !podeConf) _rhhView = "liberar";
+  document.querySelectorAll("#rhh-painel .serv-view-btn[data-view]").forEach(b => b.classList.toggle("ativo", b.dataset.view === _rhhView));
+  const liberar = _rhhView === "liberar", aloc = _rhhView === "alocacao", fech = _rhhView === "fechamento", conf = _rhhView === "conferir";
+  const mensal = aloc && _rhhAlocModo === "mensal";   // fase 187a: a conferência por obra e mês fica no modo Mensal
   mostra("btn-rhh-liberar", liberar && !leitura);
   mostra("btn-rhh-estornar", liberar && !leitura);
-  mostra("btn-rhh-materializar", aloc && !leitura && RHH_CONFERIR_CARGOS.includes(rhhCargo()));
-  mostra("btn-rhh-conferir", aloc && !leitura && RHH_CONFERIR_CARGOS.includes(rhhCargo()));
-  mostra("btn-rhh-desconferir", aloc && !leitura && RHH_CONFERIR_CARGOS.includes(rhhCargo()));
+  mostra("btn-rhh-materializar", mensal && !leitura && RHH_CONFERIR_CARGOS.includes(rhhCargo()));
+  mostra("btn-rhh-conferir", mensal && !leitura && RHH_CONFERIR_CARGOS.includes(rhhCargo()));
+  mostra("btn-rhh-desconferir", mensal && !leitura && RHH_CONFERIR_CARGOS.includes(rhhCargo()));
   mostra("btn-rhh-folha", fech && !leitura && RHH_FOLHA_CARGOS.includes(rhhCargo()));
+  mostra("btn-rhh-xlsx", !conf);
+  mostra("rhh-f-aloc-modo", aloc);
+  const modo = $("rhh-f-aloc-modo"); if(modo) modo.value = _rhhAlocModo;
+  ["rhh-f-mes", "rhh-f-obra"].forEach(id => { const el = $(id); if(el) el.disabled = conf; });
   // quinzena só faz sentido em "A liberar"; fechamento e alocação são por competência
   const q = $("rhh-f-quinzena"); if(q){ q.disabled = !liberar; if(!liberar && q.value) q.value = ""; }
   const s = $("rhh-f-situacao"); if(s) s.disabled = !liberar;
@@ -196,6 +208,7 @@ async function carregarRhh(){
     if(cont) cont.innerHTML = `<p class="vazio">Carregando…</p>`;
     if(_rhhView === "liberar") await rhhCarregarLiberar();
     else if(_rhhView === "fechamento") await rhhCarregarFechamento();
+    else if(_rhhView === "conferir") await rhhCarregarConferir();
     else await rhhCarregarAlocacao();
   }catch(e){
     console.error("Horas e alocação:", e);
@@ -512,6 +525,12 @@ async function rhhLancarFolha(){
 async function rhhCarregarAlocacao(){
   const { mesIni } = rhhPeriodo();
   const obraId = $("rhh-f-obra")?.value || "";
+  if(_rhhAlocModo === "periodos"){   // fase 187a (#131 e #296)
+    _rhhPer = await rhhLerTudo("vw_rh_alocacao_periodos", q => { let x = q.select("*").eq("competencia", mesIni).order("funcionario").order("funcionario_id").order("data_inicio").order("obra_codigo"); if(obraId) x = x.eq("obra_id", obraId); return x; });
+    await rhhCarregarCno(_rhhPer.map(r => r.obra_id));
+    renderRhhPeriodos();
+    return;
+  }
   const [doDiario, lancadas] = await Promise.all([
     rhhLerTudo("vw_rh_alocacao_mes", q => { let x = q.select("*").eq("competencia", mesIni).order("obra_codigo").order("funcionario"); if(obraId) x = x.eq("obra_id", obraId); return x; }),
     rhhLerTudo("vw_rh_alocacao_lancada_mes", q => { let x = q.select("*").eq("competencia", mesIni).order("obra_codigo").order("funcionario").order("funcionario_id").order("obra_id"); if(obraId) x = x.eq("obra_id", obraId); return x; })
@@ -590,6 +609,67 @@ function renderRhhAlocacao(){
   rhhAtualizarBotoes();
 }
 
+/* ---------- fase 187a (#131 e #296): modo Períodos, um período por linha, do RDO (vw_rh_alocacao_periodos) ----------
+   O RDO manda; a alocação lançada só aparece para quem não tem diário no mês (origem "lancada"). Fim de semana e
+   feriado sem diário não quebram o período; dia útil sem presença ou dia em outra obra fecha. Nada é gravado aqui. */
+const RHH_PER_ORIGEM = { rdo: { label: "RDO", cor: "verde", title: "Período montado a partir dos diários de obra" },
+  lancada: { label: "Lançada", cor: "cinza", title: "Alocação lançada pela Logística; a pessoa não tem diário no mês" } };
+function rhhPerFiltrada(){
+  const busca = ($("rhh-busca")?.value || "").trim().toLowerCase();
+  return _rhhPer.filter(r => !busca || `${r.funcionario} ${r.matricula || ""} ${r.funcao || ""} ${r.obra_codigo || ""} ${r.obra_nome || ""} ${r.cno || ""} ${r.equipamento_codigo || ""}`.toLowerCase().includes(busca))
+    .sort((a, b) => String(a.funcionario).localeCompare(String(b.funcionario), "pt-BR") || String(a.funcionario_id).localeCompare(String(b.funcionario_id))
+      || String(a.data_inicio).localeCompare(String(b.data_inicio)) || String(a.obra_codigo || "").localeCompare(String(b.obra_codigo || ""), "pt-BR", { numeric: true }));
+}
+function rhhHorarioTxt(r){ return r.hora_entrada || r.hora_saida ? `${rhhHHMM(r.hora_entrada) || "—"} – ${rhhHHMM(r.hora_saida) || "—"}` : "—"; }
+function renderRhhPeriodos(){
+  const cont = $("rhh-conteudo"); if(!cont) return;
+  const linhas = rhhPerFiltrada();
+  if($("rhh-contador")) $("rhh-contador").textContent = `${linhas.length} de ${_rhhPer.length}`;
+  const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
+  kpi("rhh-kpi-linhas", linhas.length); kpi("rhh-kpi-he", "—"); kpi("rhh-kpi-not", "—"); kpi("rhh-kpi-viag", "—"); kpi("rhh-kpi-pend", "—");
+  const { mesIni } = rhhPeriodo();
+  const comp = new Date(mesIni + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhum período de alocação em ${esc(comp)}.</p>`; return; }
+  let html = `<p class="nota">Cada linha é um período contínuo na obra, em ordem de data. Sábado, domingo e feriado sem diário não interrompem o período; um dia útil sem diário ou um dia em outra obra começa um período novo. A conferência por obra e mês fica no modo Mensal.</p>
+    <div class="tabela-rola"><table><thead><tr>
+    <th>Obra</th><th>CNO</th><th>De</th><th>Até</th><th>Entrada – saída</th><th class="num">Dias</th><th>Equipamento</th><th>Origem</th>
+  </tr></thead><tbody>`;
+  const grupos = new Map();
+  linhas.forEach(r => { if(!grupos.has(r.funcionario_id)) grupos.set(r.funcionario_id, []); grupos.get(r.funcionario_id).push(r); });
+  for(const ls of grupos.values()){
+    const g = ls[0];
+    html += `<tr class="rhh-grupo"><td colspan="8"><strong>${esc(g.funcionario)}</strong>
+      <span class="meta">${g.matricula ? "· " + esc(g.matricula) : ""}${g.funcao ? " · " + esc(g.funcao) : ""} · ${ls.length} período(s)</span></td></tr>`;
+    ls.forEach(r => {
+      const o = RHH_PER_ORIGEM[r.origem] || { label: r.origem, cor: "cinza", title: "" };
+      html += `<tr>
+        <td>${linkObra(r.obra_id, rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome))}</td>
+        <td>${rhhCnoHTML(r.obra_id, r.cno, false)}</td>
+        <td>${esc(dataBR(r.data_inicio))}</td><td>${esc(dataBR(r.data_fim))}</td>
+        <td>${esc(rhhHorarioTxt(r))}</td>
+        <td class="num">${esc(r.dias)}</td><td>${esc(r.equipamento_codigo || "—")}</td>
+        <td><span class="tag ${esc(o.cor)}" title="${esc(o.title)}">${esc(o.label)}</span></td></tr>`;
+    });
+  }
+  html += `</tbody></table></div>`;
+  cont.innerHTML = html;
+  rhhLigarCno(cont);
+}
+
+/* ---------- fase 187a (#296): visão Conferir alocação (render em js/funcionarios_lotacao.js, no rhh-conteudo) ---------- */
+async function rhhCarregarConferir(){
+  const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
+  ["rhh-kpi-linhas", "rhh-kpi-he", "rhh-kpi-not", "rhh-kpi-viag", "rhh-kpi-pend"].forEach(id => kpi(id, "—"));
+  if($("rhh-contador")) $("rhh-contador").textContent = "";
+  if(typeof renderFuncLotacao === "function") await renderFuncLotacao();
+}
+/* Sala de Comando (lotacao_diferente, lotacao_ausente) → Horas e alocação › Conferir alocação já filtrada */
+function rhhAbrirConferir(filtro){
+  if(typeof funcLotDefinirFiltro === "function") funcLotDefinirFiltro(filtro);
+  _rhhView = "conferir";
+  if(!irParaSecao("rhh")) return;
+}
+
 /* fase 151 (#131): vai, sai e volta aparece como períodos separados, um por linha da célula */
 function rhhPeriodoTxt(p){ return dataBR(p.ini) + (p.fim !== p.ini ? " – " + dataBR(p.fim) : ""); }
 function rhhPeriodosHTML(r){
@@ -647,6 +727,12 @@ function rhhExportar(){
     aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "Dias", "Normais", "HE 100 %", "Noturnas", "Viagem"].concat(cols.map(c => c.l))]
       .concat(linhas.map(r => [mes, r.matricula || "", r.funcionario, r.funcao || "", rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome), r.cno || "", num(r.dias), num(r.horas_normais), num(r.horas_100), num(r.horas_noturnas), num(r.horas_viagem)].concat(cols.map(c => num(r[c.c])))));
     nome = `fechamento-horas-${mes}.xlsx`; aba = "FECHAMENTO";
+  } else if(_rhhAlocModo === "periodos"){   // fase 187a: as mesmas colunas da tela, um período por linha
+    const linhas = rhhPerFiltrada();
+    if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
+    aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "De", "Até", "Entrada", "Saída", "Dias", "Equipamento", "Origem"]]
+      .concat(linhas.map(r => [mes, r.matricula || "", r.funcionario, r.funcao || "", rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome), r.cno || "", dataBR(r.data_inicio), dataBR(r.data_fim), rhhHHMM(r.hora_entrada), rhhHHMM(r.hora_saida), num(r.dias), r.equipamento_codigo || "", (RHH_PER_ORIGEM[r.origem] || { label: r.origem }).label]));
+    nome = `alocacao-periodos-${mes}.xlsx`; aba = "PERÍODOS";
   } else {
     const linhas = rhhAlocFiltrada();
     if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
@@ -665,7 +751,8 @@ function ligarRhh(){
   if(!$("rhh-painel")) return;
   document.querySelector('nav button[data-secao="rhh"]')?.addEventListener("click", () => carregarRhh());
   document.querySelectorAll("#rhh-painel .serv-view-btn[data-view]").forEach(b => b.addEventListener("click", () => { _rhhView = b.dataset.view; carregarRhh(); }));
-  $("btn-rhh-atualizar")?.addEventListener("click", () => { _rhhPodeLiberar = {}; carregarRhh(); });
+  $("btn-rhh-atualizar")?.addEventListener("click", () => { _rhhPodeLiberar = {}; if(typeof funcLotLimparCache === "function") funcLotLimparCache(); carregarRhh(); });
+  $("rhh-f-aloc-modo")?.addEventListener("change", e => { _rhhAlocModo = e.target.value === "mensal" ? "mensal" : "periodos"; carregarRhh(); });   // fase 187a
   $("btn-rhh-xlsx")?.addEventListener("click", rhhExportar);
   $("btn-rhh-liberar")?.addEventListener("click", () => comBotaoTravado("btn-rhh-liberar", () => rhhLiberar(false)));
   $("btn-rhh-estornar")?.addEventListener("click", () => comBotaoTravado("btn-rhh-estornar", () => rhhLiberar(true)));
@@ -675,7 +762,11 @@ function ligarRhh(){
   $("btn-rhh-folha")?.addEventListener("click", rhhLancarFolha);
   ["rhh-f-mes", "rhh-f-quinzena", "rhh-f-obra"].forEach(id => $(id)?.addEventListener("change", () => carregarRhh()));
   // situação, extras e busca filtram o que já está na memória
-  const refiltrar = () => { if(_rhhView === "liberar") renderRhhLiberar(); else if(_rhhView === "fechamento") renderRhhFechamento(); else renderRhhAlocacao(); };
+  const refiltrar = () => {
+    if(_rhhView === "liberar") renderRhhLiberar(); else if(_rhhView === "fechamento") renderRhhFechamento();
+    else if(_rhhView === "conferir"){ if(typeof renderFuncLotacao === "function") renderFuncLotacao(); }   // fase 187a
+    else if(_rhhAlocModo === "periodos") renderRhhPeriodos(); else renderRhhAlocacao();
+  };
   ["rhh-f-situacao", "rhh-f-extras"].forEach(id => $(id)?.addEventListener("change", refiltrar));
   $("rhh-busca")?.addEventListener("input", debounce(refiltrar, 150));
   $("rhh-kpi-card-pend")?.addEventListener("click", () => { if(_rhhView !== "liberar") return; const s = $("rhh-f-situacao"); if(s){ s.value = s.value === "pendente" ? "" : "pendente"; refiltrar(); } });
