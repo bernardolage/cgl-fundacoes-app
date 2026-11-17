@@ -181,10 +181,13 @@ function mcrLigar(cont){
   cont.querySelectorAll("button[data-mcr-conv]").forEach(b => b.addEventListener("click", () => mcrAbrirReserva(b.dataset.mcrEq, b.dataset.mcrConv, true)));
 }
 
+// fase 189b: o modal de reserva também abre pelo Gráfico; redesenha a visão que estiver aberta
+function mcrRerender(){ if(_mobView === "grafico" && typeof renderGraficoMob === "function") renderGraficoMob(); else renderCronogramaMob(); }
+
 async function mcrRecarregar(){
   _mcrCarregado = false;
   if(typeof carregarMobilizacoes === "function") await carregarMobilizacoes(true);   // renderMobilizacoes relê o cronograma
-  else { await mcrCarregar(true); renderCronogramaMob(); }
+  else { await mcrCarregar(true); mcrRerender(); }
 }
 
 /* ---------- Previsão de término (D1, D9) ---------- */
@@ -270,7 +273,7 @@ async function mcrSalvarReserva(){
   if(error){ aviso("app-aviso", "Não foi possível salvar a reserva: " + error.message, "erro"); return; }
   aviso("app-aviso", `Reserva da ${_mcrRes.linha.codigo} salva.`, "ok");
   mcrFecharReserva();
-  _mcrCarregado = false; await mcrCarregar(true); renderCronogramaMob();
+  _mcrCarregado = false; await mcrCarregar(true); mcrRerender();
 }
 
 async function mcrCancelarReserva(){
@@ -280,7 +283,7 @@ async function mcrCancelarReserva(){
   if(error){ aviso("app-aviso", "Não foi possível cancelar a reserva: " + error.message, "erro"); return; }
   aviso("app-aviso", "Reserva cancelada.", "ok");
   mcrFecharReserva();
-  _mcrCarregado = false; await mcrCarregar(true); renderCronogramaMob();
+  _mcrCarregado = false; await mcrCarregar(true); mcrRerender();
 }
 
 async function mcrConverterReserva(){

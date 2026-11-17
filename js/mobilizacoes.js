@@ -16,7 +16,7 @@
 
 let _mobCards      = [];      // linhas de vw_mobilizacoes_quadro
 let _mobPendSetor  = [];      // linhas de vw_mobilizacao_pendencias_setor
-let _mobView       = "quadro"; // quadro (contratos) | maquinas | cronograma (fase 189a) | lista | pendencias | regularizar
+let _mobView       = "quadro"; // quadro (contratos) | maquinas | cronograma (fase 189a) | grafico (fase 189b) | lista | pendencias | regularizar
 let _mobReg        = null;    // fase 157a: linhas de vw_mobilizacoes_regularizar (null = view indisponível)
 let _mobRegFiltro  = "";      // fase 157a: tipo escolhido na visão Para regularizar (vazio = todos)
 let _mobCarregado  = false;
@@ -152,8 +152,9 @@ function renderMobilizacoes(){
   // fase 157d: o filtro de setor só vale em Minhas pendências
   if($("mob-f-setor")) $("mob-f-setor").style.display = _mobView === "pendencias" ? "" : "none";
   // fase 189a: o Cronograma tem filtros próprios (metodologia, cliente, situação, livre até); a busca continua valendo
-  ["mob-f-cliente", "mob-f-tag", "mob-f-tipo", "mob-f-resp"].forEach(id => { if($(id)) $(id).style.display = _mobView === "cronograma" ? "none" : ""; });
+  ["mob-f-cliente", "mob-f-tag", "mob-f-tipo", "mob-f-resp"].forEach(id => { if($(id)) $(id).style.display = ["cronograma", "grafico"].includes(_mobView) ? "none" : ""; });
   if(_mobView === "cronograma" && typeof renderCronogramaMob === "function") renderCronogramaMob();
+  else if(_mobView === "grafico" && typeof renderGraficoMob === "function") renderGraficoMob();   // fase 189b
   else if(_mobView === "pendencias") renderMinhasPendenciasMob();
   else if(_mobView === "regularizar") renderRegularizarMob();
   else if(_mobView === "maquinas") renderPorMaquinaMob();

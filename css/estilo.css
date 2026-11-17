@@ -4289,3 +4289,26 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .mcr-reserva { display: inline-block; border: 1px dashed var(--txt-sec); border-radius: var(--radius-pill); padding: 1px 8px; font-size: var(--txt-xs); color: var(--txt-sec); background: transparent; cursor: pointer; }
 .mcr-reserva:hover, .mcr-reserva:focus-visible { border-color: var(--acao-txt); color: var(--acao-txt); }
 .mcr-aviso { color: var(--aviso-txt); }
+/* Fase 189b: gráfico (Gantt) de equipamentos (js/mobilizacoes_grafico.js, prefixo mgr-). Cor da barra vem do JS (style.fill) */
+.mgr-rola { overflow: auto; max-height: 72vh; border: 1px solid var(--borda); border-radius: var(--radius-md); background: var(--sup-1); }
+.mgr-svg { display: block; font-family: var(--font-family); }
+.mgr-svg .mgr-txt-mes { font-size: 11px; font-weight: 700; }
+.mgr-svg .mgr-txt-tick, .mgr-svg .mgr-txt-nome { font-size: 10px; }
+.mgr-svg .mgr-txt-grupo { font-size: 11px; font-weight: 700; }
+.mgr-svg .mgr-txt-tag { font-size: 11px; font-weight: 700; font-family: var(--font-mono); }
+.mgr-svg .mgr-txt-barra, .mgr-svg .mgr-txt-livre, .mgr-svg .mgr-txt-hoje { font-size: 10px; pointer-events: none; }
+.mgr-svg .mgr-barra { cursor: pointer; outline: none; }
+.mgr-svg .mgr-barra:hover rect, .mgr-svg .mgr-barra:focus-visible rect { stroke: var(--txt); stroke-width: 1.5; }
+.mgr-legenda { display: flex; flex-wrap: wrap; gap: var(--esp-3); margin-bottom: var(--esp-2); font-size: var(--txt-xs); color: var(--txt-sec); }
+.mgr-legenda span { display: inline-flex; align-items: center; gap: 6px; }
+.mgr-legenda i { display: inline-block; width: 18px; height: 10px; border-radius: 2px; background: var(--txt-sec); }
+.mgr-legenda i[data-metodo="helice"] { background: var(--metodo-helice); }
+.mgr-legenda i[data-metodo="secante"] { background: var(--metodo-secante); }
+.mgr-legenda i[data-metodo="raiz"] { background: var(--metodo-raiz); }
+.mgr-legenda i[data-metodo="trado"] { background: var(--metodo-trado); }
+.mgr-legenda i[data-metodo="bomba"] { background: var(--metodo-bomba); }
+.mgr-legenda i[data-metodo="compressor"] { background: var(--metodo-compressor); }
+.mgr-legenda i[data-metodo="gerador"] { background: var(--metodo-gerador); }
+.mgr-legenda i.mgr-leg-reserva { background: transparent; border: 1.5px dashed var(--txt-sec); }
+.mgr-legenda i.mgr-leg-livre { background: transparent; height: 0; border-top: 2px dotted var(--sucesso); border-radius: 0; }
+.mgr-legenda i.mgr-leg-hoje { width: 2px; height: 14px; background: var(--perigo); border-radius: 0; }
