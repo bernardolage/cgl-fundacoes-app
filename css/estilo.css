@@ -171,6 +171,15 @@
   --border-color: var(--borda);
   --text-main: var(--txt);
   --text-sec: var(--txt-sec);   /* alinhado ao PT (era --txt-fraco: cores diferentes p/ o mesmo nome) */
+
+  /* ---- Metodologia no cronograma de equipamentos (fase 189, D7; no SVG só por elemento.style.fill) ---- */
+  --metodo-helice:     #E8772E;   /* laranja */
+  --metodo-secante:    #2B6CB0;   /* azul */
+  --metodo-raiz:       #2F855A;   /* verde */
+  --metodo-bomba:      #B794F4;   /* roxo claro */
+  --metodo-compressor: #2C7A7B;   /* azul petróleo */
+  --metodo-gerador:    #B7791F;   /* amarelo escuro */
+  --metodo-trado:      #F56565;   /* vermelho claro */
 }
 
 /* --------------------------------------------------------------------
@@ -249,6 +258,15 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45), 0 2px 4px -2px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
   --shadow-premium: 0 20px 25px -5px rgba(0, 0, 0, 0.45), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+
+  /* ---- Metodologia no cronograma (fase 189): um pouco mais claras sobre o fundo escuro ---- */
+  --metodo-helice:     #F08A45;
+  --metodo-secante:    #5B9BE0;
+  --metodo-raiz:       #48A878;
+  --metodo-bomba:      #C4A6F7;
+  --metodo-compressor: #3FA3A4;
+  --metodo-gerador:    #D69E2E;
+  --metodo-trado:      #F87171;
 }
 
 /* Reset Geral */
@@ -4255,3 +4273,19 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppl-prev-nova circle { stroke: var(--sucesso); }
 .ppl-prev-ambigua circle { stroke: var(--aviso); }
 .ppl-prev-sem circle { stroke: var(--perigo); }
+
+/* Fase 189a: cronograma de equipamentos no quadro de Mobilizações (js/mobilizacoes_cronograma.js, prefixo mcr-) */
+.mcr-filtros { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; margin-bottom: var(--esp-2); }
+.mcr-filtros label { display: inline-flex; gap: 6px; align-items: center; font-size: var(--txt-xs); color: var(--txt-sec); }
+.mcr-grupo td { background: var(--sup-2); font-weight: 700; border-left: 4px solid var(--borda); }
+.mcr-grupo[data-metodo="helice"] td { border-left-color: var(--metodo-helice); }
+.mcr-grupo[data-metodo="secante"] td { border-left-color: var(--metodo-secante); }
+.mcr-grupo[data-metodo="raiz"] td { border-left-color: var(--metodo-raiz); }
+.mcr-grupo[data-metodo="trado"] td { border-left-color: var(--metodo-trado); }
+.mcr-grupo[data-metodo="bomba"] td { border-left-color: var(--metodo-bomba); }
+.mcr-grupo[data-metodo="compressor"] td { border-left-color: var(--metodo-compressor); }
+.mcr-grupo[data-metodo="gerador"] td { border-left-color: var(--metodo-gerador); }
+.mcr-termino { width: 9.5em; }
+.mcr-reserva { display: inline-block; border: 1px dashed var(--txt-sec); border-radius: var(--radius-pill); padding: 1px 8px; font-size: var(--txt-xs); color: var(--txt-sec); background: transparent; cursor: pointer; }
+.mcr-reserva:hover, .mcr-reserva:focus-visible { border-color: var(--acao-txt); color: var(--acao-txt); }
+.mcr-aviso { color: var(--aviso-txt); }

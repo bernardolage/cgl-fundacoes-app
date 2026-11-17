@@ -772,6 +772,7 @@ function abrirFichaEquipamento(e){
   $("eqp-encaixe").value = e.encaixe_trado || ""; $("eqp-acopl").value = e.acoplamento_trado || "";
   $("eqp-diam-max").value = e.diametro_max_mm ?? ""; $("eqp-prof-max").value = e.profundidade_max_m ?? "";
   $("eqp-pino").value = e.pino_trado_mm ?? ""; $("eqp-obs-ace").value = e.obs_acessorios || "";
+  if($("eqp-grupo-crono")) $("eqp-grupo-crono").value = e.grupo_cronograma || "";   // fase 189a
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("eqp", "equipamento", e, pode);   // fase 105a: aba Fiscal (NCM)
   // fase 107a: tipo de serviço do diário (equipamentos.tipo_servico_padrao; o campo só aparece com a coluna no banco)
   const temTipoServ = Object.prototype.hasOwnProperty.call(e, "tipo_servico_padrao") || (_eqpRegistros[0] && Object.prototype.hasOwnProperty.call(_eqpRegistros[0], "tipo_servico_padrao"));
@@ -1118,7 +1119,8 @@ async function salvarEquipamento(){
     observacoes: $("eqp-obs").value.trim() || null,
     encaixe_trado: $("eqp-encaixe").value.trim() || null, acoplamento_trado: $("eqp-acopl").value || null,
     diametro_max_mm: n($("eqp-diam-max").value), profundidade_max_m: n($("eqp-prof-max").value), pino_trado_mm: n($("eqp-pino").value),
-    obs_acessorios: $("eqp-obs-ace").value.trim() || null
+    obs_acessorios: $("eqp-obs-ace").value.trim() || null,
+    grupo_cronograma: ($("eqp-grupo-crono")?.value || "").trim() || null   // fase 189a: grupo no cronograma (RG 11.15)
   };
   if(!reg.nome){ aviso("app-aviso", "Informe o nome do equipamento.", "erro"); $("eqp-nome").focus(); return; }
   if(reg.localizacao_tipo === "obra" && !reg.localizacao_obra_id){ aviso("app-aviso", "Escolha a obra em que a máquina está.", "erro"); return; }
