@@ -181,20 +181,22 @@ async function renderSstCustoSst(){
     if(t.status === "planejada") g.planejado += Number(t.valor) || 0;
     grupos.set(k, g);
   });
-  const linhas = [...grupos.values()].sort((a, b) => a.dest.localeCompare(b.dest) || b.mes.localeCompare(a.mes) || a.req.localeCompare(b.req));
+  // fase 185b: os ASO entram agregados (mês, destino, obra e tipo; sem pessoa nem exame)
+  const asos = typeof asoCustoLinhas === "function" ? await asoCustoLinhas() : [];
+  const linhas = [...grupos.values()].concat(asos).sort((a, b) => a.dest.localeCompare(b.dest) || b.mes.localeCompare(a.mes) || a.req.localeCompare(b.req));
   if($("sst-contador")) $("sst-contador").textContent = `${linhas.length} linha(s)`;
   const total = linhas.reduce((s, l) => s + l.valor, 0), plan = linhas.reduce((s, l) => s + l.planejado, 0);
   const mesTxt = m => /^\d{4}-\d{2}$/.test(m) ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : m;
-  cont.innerHTML = `<p class="texto-apoio">Custo dos treinamentos pelas turmas (valor de cada turma, não cancelada). <strong>Só relatório:</strong> não entra no custo da obra (vw_custos), porque a cobrança do instrutor ou da empresa chega por NF em Compras e contaria duas vezes. Destino = a obra quando a turma é exigência do cliente; senão a sede (centro SESMT).</p>
-    ${linhas.length ? `<div class="tabela-rola"><table><thead><tr><th>Destino</th><th>Mês</th><th>Treinamento</th><th>Turmas</th><th>Pessoas</th><th>Valor</th><th>Ainda planejado</th></tr></thead>
+  cont.innerHTML = `<p class="texto-apoio">Custo dos treinamentos pelas turmas (valor de cada turma, não cancelada) e dos ASO (soma dos exames pelo preço da clínica, ou o valor digitado). <strong>Só relatório:</strong> não entra no custo da obra (vw_custos), porque a cobrança do instrutor, da empresa ou da clínica chega por NF em Compras e contaria duas vezes. Destino = a obra quando a turma é exigência do cliente ou o ASO é admissional por obra; senão a sede (centro SESMT).</p>
+    ${linhas.length ? `<div class="tabela-rola"><table><thead><tr><th>Destino</th><th>Mês</th><th>Treinamento ou ASO</th><th>Turmas / ASO</th><th>Pessoas</th><th>Valor</th><th>Ainda planejado</th></tr></thead>
       <tbody>${linhas.map(l => `<tr><td>${esc(l.dest)}</td><td>${esc(mesTxt(l.mes))}</td><td>${esc(l.req)}</td><td>${Number(l.turmas)}</td><td>${Number(l.pessoas)}</td><td data-val-sens>${brl(l.valor)}</td><td data-val-sens>${l.planejado ? brl(l.planejado) : "—"}</td></tr>`).join("")}</tbody>
       <tfoot><tr><td colspan="5"><strong>Total</strong></td><td data-val-sens><strong>${brl(total)}</strong></td><td data-val-sens>${plan ? brl(plan) : "—"}</td></tr></tfoot></table></div>`
-      : uiVazio("Nenhuma turma com valor ainda.")}`;
+      : uiVazio("Nenhuma turma nem ASO com valor ainda.")}`;
 }
 
 /* ---------- ficha da turma ---------- */
 function trnMostrarFicha(){
-  ["sst-painel", "sst-ficha-req", "sst-ficha-prog"].forEach(id => { if($(id)) $(id).style.display = "none"; });
+  ["sst-painel", "sst-ficha-req", "sst-ficha-prog", "aso-ficha"].forEach(id => { if($(id)) $(id).style.display = "none"; });
   $("trn-ficha").style.display = "";
 }
 function trnFecharFicha(){

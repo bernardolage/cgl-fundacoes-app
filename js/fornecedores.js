@@ -277,6 +277,7 @@ function abrirFichaFornVisual(f){
   _fornPag = { pedidos: 0, notas: 0, titulos: 0 };   // lote S46 (#106)
   carregarPedidosDoFornecedor(fornEditId);
   carregarNotasDoFornecedor(fornEditId);
+  if(typeof asoFornAplicarVisibilidade === "function") asoFornAplicarVisibilidade();   // fase 185b: aba SESMT (preço da clínica, js/sesmt_aso.js)
 }
 
 /* ====================================================================

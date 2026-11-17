@@ -149,6 +149,8 @@ function preencherFiltrosSesmt(){
 function sstAplicarPermissoes(){
   const opera = sstPodeOperar();
   ["btn-sst-novo-req", "btn-sst-novo-prog", "btn-sst-importar"].forEach(id => { const b = $(id); if(b) b.style.display = opera ? "" : "none"; });
+  const bEx = document.querySelector('#sst-views .serv-view-btn[data-view="exames"]');   // fase 185b: ASO só para quem lê saúde
+  if(bEx) bEx.style.display = typeof asoPodeVer === "function" && asoPodeVer() ? "" : "none";
 }
 
 function sstFiltros(){
@@ -186,6 +188,7 @@ function renderSesmt(){
   else if(_sstView === "ghe") renderSstGhe();
   else if(_sstView === "treinamentos" && typeof renderSstTreinamentos === "function") renderSstTreinamentos();   // fase 185a
   else if(_sstView === "custo" && typeof renderSstCustoSst === "function") renderSstCustoSst();                  // fase 185a (D10)
+  else if(_sstView === "exames" && typeof renderSstExames === "function") renderSstExames();                     // fase 185b (ASO)
   else renderSstCatalogo();
 }
 
@@ -547,6 +550,7 @@ async function sstImportarMatriz(file){
 function sstMostrarPainel(){
   $("sst-painel").style.display = ""; $("sst-ficha-req").style.display = "none"; $("sst-ficha-prog").style.display = "none";
   if($("trn-ficha")) $("trn-ficha").style.display = "none";   // fase 185a: ficha da turma
+  if($("aso-ficha")) $("aso-ficha").style.display = "none";   // fase 185b: ficha do ASO
   sstReqEditId = null; sstProgEditId = null;
 }
 /* fase 185a (D5): empresa padrão do treinamento = fornecedor ativo (lista do js/sesmt_treinamentos.js) */
@@ -838,7 +842,7 @@ async function sstFichaFuncCarregar(){
           <td class="${dias == null ? "" : dias < 0 ? "func-doc-vencido" : dias <= 30 ? "func-doc-vencendo" : "func-doc-ok"}">${dataBR(d.validade)}</td>
           <td>${esc(SST_ORIGEM_DOC[d.origem] || d.origem || "—")}${d.obra_id ? ' <span class="meta">(obra)</span>' : ""}</td>
           <td>${d.storage_path ? `<a href="#" class="sst-doc-abrir" data-i="${i}">Abrir</a>` : (d.arquivo_url ? `<a href="${esc(d.arquivo_url)}" target="_blank" rel="noopener">Link</a>` : "—")}</td>
-          ${opera ? `<td class="col-acao"><button type="button" class="btn-sec btn-sm sst-doc-del" data-i="${i}">Excluir</button></td>` : ""}
+          ${opera ? `<td class="col-acao">${d.aso_id ? '<span class="meta" title="Muda pela ficha do ASO (SESMT › Exames)">pelo ASO</span>' : `<button type="button" class="btn-sec btn-sm sst-doc-del" data-i="${i}">Excluir</button>`}</td>` : ""}
         </tr>`; }).join("")}</tbody></table></div>` : `<p class="vazio">Nenhum documento de segurança.</p>`);
   const reqOpts = _sstReqs.filter(r => r.ativo && r.natureza !== "programa").map(r => `<option value="${esc(r.id)}" data-sensivel="${r.sensivel ? 1 : 0}">${esc(r.codigo)} · ${esc(r.nome)}${r.sensivel ? " (saúde, exige MFA)" : ""}</option>`).join("");
   cont.innerHTML = `
@@ -859,10 +863,12 @@ async function sstFichaFuncCarregar(){
       </div>
       <div class="form-acoes"><button type="button" class="btn" id="btn-func-sst-salvar">Salvar documento</button><button type="button" class="btn-sec" id="btn-func-sst-cancelar">Cancelar</button></div>
     </div>
+    <div id="func-aso-bloco" style="margin-top:var(--esp-4);"></div>
     <div id="func-trn-bloco" style="margin-top:var(--esp-4);"></div>
     <h4 style="margin:var(--esp-4) 0 var(--esp-2);">Documentos de segurança</h4>
     ${/* html */ docsHtml}`;
   if(typeof trnFichaFuncCarregar === "function") trnFichaFuncCarregar(fid);   // fase 185a: Lançar treinamento e status por treinamento
+  if(typeof asoFichaFuncCarregar === "function") asoFichaFuncCarregar(fid);   // fase 185b: ASO válido até (detalhe só com MFA)
   $("func-sst-obra").addEventListener("change", sstFichaFuncCarregar);
   $("btn-func-sst-novo")?.addEventListener("click", () => { $("func-sst-form").style.display = ""; });
   $("btn-func-sst-cancelar")?.addEventListener("click", () => { $("func-sst-form").style.display = "none"; });
