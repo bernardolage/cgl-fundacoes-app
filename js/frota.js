@@ -15,6 +15,8 @@
    para os demais e a tela mostra só o frete_status (texto). O custo é direto e gera o título a pagar.
    Fase 118a (04/11/2026): visão Abastecimentos, só leitura, do cartão da PlusFrota (frota_abastecimentos, gravada só pela
    function plusfrota-sync). Não entra em custo nem em km da máquina: isso é a 118b.
+   Fase 186c (16/11/2026, #281): notinha dos postos (frota_abastecimentos_posto) na mesma visão, com filtro de origem e
+   fechamento do mês por posto (frota_posto_fechamento_salvar). Fora da vw_custos: o custo vem do pedido ao posto com a NF.
    ==================================================================== */
 let _frotaView = "viagens";          // viagens | veiculos | documentos | abastecimentos
 let _frotaModo = "lista";            // lista | kanban (visão Viagens)
@@ -65,6 +67,8 @@ function frotaPodeEditar(){
 /* fase 118a: mesmas listas de frota_abast_pode_ler() e frota_abast_pode_sync(); diretor entra por has_role() lá e aqui na lista */
 function frotaPodeVerAbast(){ return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_frota", "financeiro", "auditor"].includes(usuarioAtual.cargo); }
 function frotaPodeSyncAbast(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "logistica", "gestor_frota"].includes(usuarioAtual.cargo); }
+/* fase 186c: mesma lista de frota_posto_pode_operar() (notinha e fechamento do posto); auditor fica fora pelo ehSomenteLeitura e no banco */
+function frotaPodeOperarPosto(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "logistica", "gestor_frota"].includes(usuarioAtual.cargo); }
 function frotaMoeda(v){ return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function frotaNum(v, d = 0){ return Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: d, minimumFractionDigits: d }); }
 function frotaMesAtual(){ return hojeISO().slice(0, 7); }
@@ -147,6 +151,8 @@ function renderFrota(){
   const modos = $("frota-modos"); if(modos) modos.style.display = ehViagens ? "" : "none";
   const btnNova = $("btn-frota-nova-viagem"); if(btnNova) btnNova.style.display = (ehViagens && logPodeOperar()) ? "" : "none";
   const btnVeic = $("btn-frota-novo-veic"); if(btnVeic) btnVeic.style.display = (_frotaView === "veiculos" && frotaPodeEditar()) ? "" : "none";
+  const btnNot = $("btn-frota-posto-nova"); if(btnNot) btnNot.style.display = (ehAbast && frotaPodeOperarPosto()) ? "" : "none";
+  const btnFech = $("btn-frota-posto-fech"); if(btnFech) btnFech.style.display = ehAbast ? "" : "none";
   frotaKpisFixos();
   if(_frotaView === "veiculos") renderFrotaVeiculos();
   else if(_frotaView === "documentos") renderFrotaDocumentos();
@@ -504,6 +510,20 @@ const FROTA_ABAST_SELECT = "id,data,data_hora,placa,equipamento_id,funcionario_i
 /* odômetro digitado errado: fora disto o km não entra em R$/km nem em km/l */
 const FROTA_ABAST_KM_MAX = 3000, FROTA_ABAST_KML_MAX = 40;
 
+/* fase 186c: notinha do posto, lida junto e posta no mesmo formato da linha da PlusFrota (origem "posto") */
+const FROTA_POSTO_SELECT = "id,data,data_hora,fornecedor_id,equipamento_id,placa,motorista_id,motorista_nome,produto,litros,preco_unitario,desconto,valor,km,horimetro,notinha_numero,foto_path,observacoes,fechamento_id,posto:fornecedores(razao_social,nome_fantasia),funcionario:funcionarios(nome),veic:equipamentos(codigo)";
+const FROTA_ORIGEM_ROT = { plusfrota: "PlusFrota", posto: "Postos" };
+function frotaPostoNome(f){ return f ? (f.nome_fantasia || f.razao_social || "Posto") : "Posto"; }
+function frotaPostoParaLinha(n){
+  const litros = Number(n.litros || 0);
+  return {
+    ...n, origem: "posto", funcionario_id: n.motorista_id, credenciado: frotaPostoNome(n.posto), cproduto: n.produto || null,
+    ctipoproduto: /ARLA/i.test(n.produto || "") ? "ARLA" : "COMBUSTÍVEIS",
+    valor_litro: n.preco_unitario != null ? Number(n.preco_unitario) : (litros ? Number(n.valor || 0) / litros : null),
+    odometro: n.km, km_rodado: null, km_litro: null,
+  };
+}
+
 function frotaAbastEhCombustivel(l){ return l.ctipoproduto === "COMBUSTÍVEIS"; }
 function frotaAbastKmSuspeito(l){ return Number(l.km_rodado) > FROTA_ABAST_KM_MAX || Number(l.km_litro) > FROTA_ABAST_KML_MAX; }
 function frotaAbastKmValido(l){ return frotaAbastEhCombustivel(l) && Number(l.km_rodado) > 0 && !frotaAbastKmSuspeito(l); }
@@ -527,12 +547,14 @@ function frotaAbastFiltrados(){
   const termo = ($("frota-busca")?.value || "").trim().toLowerCase();
   const veic = $("frota-a-veiculo")?.value || "", mot = $("frota-a-motorista")?.value || "", prod = $("frota-a-produto")?.value || "";
   const semVeic = !!$("frota-a-semveic")?.checked;
+  const origem = $("frota-a-origem")?.value || "";
   return _frotaAbast.dados.filter(l => {
+    if(origem && l.origem !== origem) return false;
     if(veic && l.placa !== veic) return false;
     if(mot && frotaAbastMotorista(l) !== mot) return false;
     if(prod && l.cproduto !== prod) return false;
     if(semVeic && l.equipamento_id) return false;
-    if(termo && !`${frotaAbastVeiculo(l)} ${frotaAbastMotorista(l)} ${l.credenciado || ""} ${l.cproduto || ""}`.toLowerCase().includes(termo)) return false;
+    if(termo && !`${frotaAbastVeiculo(l)} ${frotaAbastMotorista(l)} ${l.credenciado || ""} ${l.cproduto || ""} ${l.notinha_numero || ""}`.toLowerCase().includes(termo)) return false;
     return true;
   });
 }
@@ -626,28 +648,36 @@ function frotaAbastKmAtualHtml(){
   return `<div class="ui-secao" style="margin:0 0 8px;padding:8px 12px;">${uiRotuloValor("Km atual do veículo", k ? `<strong>${esc(frotaNum(k.km))} km</strong> <span class="meta">${esc(k.origem)} · ${esc(dataBR(k.data))}</span>${/* html */ outra}` : "Sem leitura de odômetro")}</div>`;
 }
 
+/* fase 186c: com as duas origens na lista, o tfoot traz uma linha por origem e o total */
+function frotaAbastPorOrigem(lista){
+  const grupos = ["plusfrota", "posto"].map(o => [FROTA_ORIGEM_ROT[o], lista.filter(l => l.origem === o)]).filter(([, ls]) => ls.length);
+  return grupos.length > 1 ? [...grupos.map(([r, ls]) => [`Total ${r}`, ls]), ["Total", lista]] : [["Total", lista]];
+}
 function frotaAbastLancamentosHtml(lista){
-  const t = frotaAbastTotais(lista);
-  const km = lista.reduce((s, l) => s + (frotaAbastEhCombustivel(l) && !frotaAbastKmSuspeito(l) ? Number(l.km_rodado || 0) : 0), 0);
+  const kmDe = ls => ls.reduce((s, l) => s + (frotaAbastEhCombustivel(l) && !frotaAbastKmSuspeito(l) ? Number(l.km_rodado || 0) : 0), 0);
+  const rodape = frotaAbastPorOrigem(lista).map(([rot, ls]) => {
+    const t = frotaAbastTotais(ls);
+    return `<tr><td colspan="5">${esc(rot)}</td><td class="num">${frotaNum(t.litros, 2)}</td><td class="num">${t.litros ? frotaMoeda(t.valor / t.litros) : "—"}</td><td class="num">${frotaMoeda(t.valor)}</td><td></td><td class="num">${frotaNum(kmDe(ls))}</td><td class="num">${t.litrosKm ? frotaNum(t.km / t.litrosKm, 2) : "—"}</td></tr>`;
+  }).join("");
+  const podePosto = frotaPodeOperarPosto();
   return `<div class="tabela-rola"><table>
     <thead><tr><th>Data</th><th>Veículo</th><th>Motorista</th><th>Posto</th><th>Produto</th><th class="num">Litros</th><th class="num">R$/l</th><th class="num">Valor</th><th class="num" title="Odômetro informado no abastecimento">Odômetro</th><th class="num">km</th><th class="num">km/l</th></tr></thead>
-    <tbody>${lista.map(l => `<tr>
+    <tbody>${lista.map(l => `<tr${l.origem === "posto" ? ` data-abposto="${esc(l.id)}"${podePosto ? ' class="clicavel" title="Abrir a notinha"' : ""}` : ""}>
       <td>${dataBR(l.data)}</td>
       <td title="${esc("Km atual: " + frotaKmAtualTxt(_frotaKmAtual?.get(l.placa)))}">${l.equipamento_id ? esc(frotaAbastVeiculo(l)) : `${esc(l.placa || "—")} <span class="tag ambar">Sem veículo no app</span>`}</td>
       <td>${esc(frotaAbastMotorista(l))}${l.funcionario_id ? "" : ` <span class="meta">(sem colaborador)</span>`}</td>
-      <td>${esc(l.credenciado || "—")}</td><td>${esc(l.cproduto || "—")}</td>
+      <td>${esc(l.credenciado || "—")}${l.origem === "posto" ? ` <span class="tag azul" title="Notinha lançada no app${l.notinha_numero ? " · cupom " + esc(l.notinha_numero) : ""}">Notinha</span>` : ""}</td><td>${esc(l.cproduto || "—")}</td>
       <td class="num">${frotaNum(l.litros, 2)}</td><td class="num">${l.valor_litro != null ? frotaMoeda(l.valor_litro) : "—"}</td><td class="num">${frotaMoeda(l.valor)}</td>
       <td class="num">${Number(l.odometro) > 0 ? frotaNum(l.odometro) : "—"}</td>
       <td class="num">${frotaAbastKmSuspeito(l) ? `<span class="tag ambar" title="Fora da conta de R$/km e km/l">km suspeito</span>` : (Number(l.km_rodado) > 0 ? frotaNum(l.km_rodado) : "—")}</td>
       <td class="num">${!frotaAbastKmSuspeito(l) && Number(l.km_litro) > 0 ? frotaNum(l.km_litro, 2) : "—"}</td>
     </tr>`).join("") || `<tr><td colspan="11" class="vazio">Nenhum abastecimento nesse filtro.</td></tr>`}</tbody>
-    <tfoot><tr><td colspan="5">Total</td><td class="num">${frotaNum(t.litros, 2)}</td><td class="num">${t.litros ? frotaMoeda(t.valor / t.litros) : "—"}</td><td class="num">${frotaMoeda(t.valor)}</td><td></td><td class="num">${frotaNum(km)}</td><td class="num">${t.litrosKm ? frotaNum(t.km / t.litrosKm, 2) : "—"}</td></tr></tfoot>
+    <tfoot>${/* html */ rodape}</tfoot>
   </table></div>`;
 }
 
 function frotaAbastColaboradorHtml(lista){
   const grupos = frotaAbastPorColaborador(lista);
-  const t = frotaAbastTotais(lista);
   return `<p class="meta" style="margin:0 0 8px;">Ordenado pelo maior R$/km. Abastecimento lançado no código de outro motorista conta para o dono do código. Caminhão e veículo leve têm R$/km diferentes: para comparar, filtre o veículo. Odômetro acima de ${frotaNum(FROTA_ABAST_KM_MAX)} km ou ${frotaNum(FROTA_ABAST_KML_MAX)} km/l fica fora da conta.</p>
   <div class="tabela-rola"><table>
     <thead><tr><th>Colaborador</th><th class="num">Abastecimentos</th><th class="num">Litros</th><th class="num">Valor</th><th class="num">km rodado</th><th class="num">R$/km</th><th class="num">km/l</th></tr></thead>
@@ -656,7 +686,7 @@ function frotaAbastColaboradorHtml(lista){
       <td class="num">${frotaNum(g.n)}</td><td class="num">${frotaNum(g.litros, 2)}</td><td class="num" data-val-sens>${frotaMoeda(g.valor)}</td>
       <td class="num">${g.km ? frotaNum(g.km) : "—"}</td><td class="num" data-val-sens>${g.rsKm != null ? frotaMoeda(g.rsKm) : "—"}</td><td class="num">${g.kmL != null ? frotaNum(g.kmL, 2) : "—"}</td>
     </tr>`).join("") || `<tr><td colspan="7" class="vazio">Nenhum abastecimento nesse filtro.</td></tr>`}</tbody>
-    <tfoot><tr><td>Total</td><td class="num">${frotaNum(t.n)}</td><td class="num">${frotaNum(t.litros, 2)}</td><td class="num">${frotaMoeda(t.valor)}</td><td class="num">${frotaNum(t.km)}</td><td class="num">${t.km ? frotaMoeda(t.valorKm / t.km) : "—"}</td><td class="num">${t.litrosKm ? frotaNum(t.km / t.litrosKm, 2) : "—"}</td></tr></tfoot>
+    <tfoot>${frotaAbastPorOrigem(lista).map(([rot, ls]) => { const t = frotaAbastTotais(ls); return `<tr><td>${esc(rot)}</td><td class="num">${frotaNum(t.n)}</td><td class="num">${frotaNum(t.litros, 2)}</td><td class="num">${frotaMoeda(t.valor)}</td><td class="num">${frotaNum(t.km)}</td><td class="num">${t.km ? frotaMoeda(t.valorKm / t.km) : "—"}</td><td class="num">${t.litrosKm ? frotaNum(t.km / t.litrosKm, 2) : "—"}</td></tr>`; }).join("")}</tfoot>
   </table></div>`;
 }
 
@@ -668,20 +698,29 @@ async function renderFrotaAbast(){
   const chave = mes || "todos";
   if(_frotaAbast.chave !== chave){
     cont.innerHTML = `<p class="vazio">Carregando abastecimentos…</p>`;
-    const [ab, ro] = await Promise.all([
+    const fimMes = mes ? dataLocalISO(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0)) : null;
+    const [ab, ro, , po] = await Promise.all([
       lerTudo(() => {
         let q = sb.from("frota_abastecimentos").select(FROTA_ABAST_SELECT);
-        if(mes) q = q.gte("data", mes + "-01").lte("data", dataLocalISO(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0)));
+        if(mes) q = q.gte("data", mes + "-01").lte("data", fimMes);
         return q;
       }),
       sb.from("frota_abastecimentos_sync").select("fim,erro").order("inicio", { ascending: false }).limit(30),
-      _frotaKmAtual ? null : frotaAbastCarregarKmAtual()   // lote S66-d (#325)
+      _frotaKmAtual ? null : frotaAbastCarregarKmAtual(),   // lote S66-d (#325)
+      lerTudo(() => {   // fase 186c: notinhas dos postos
+        let q = sb.from("frota_abastecimentos_posto").select(FROTA_POSTO_SELECT);
+        if(mes) q = q.gte("data", mes + "-01").lte("data", fimMes);
+        return q;
+      })
     ]);
     if(_frotaView !== "abastecimentos" || ($("frota-a-mes")?.value || "todos") !== chave) return;   // o filtro mudou durante a leitura
     if(ab.error){ cont.innerHTML = `<p class="vazio">Erro ao carregar abastecimentos: ${esc(ab.error.message)}</p>`; return; }
+    if(po.error) aviso("app-aviso", "Notinhas dos postos: " + po.error.message, "erro");
+    const postos = (po.data || []).map(frotaPostoParaLinha);
     _frotaAbast = {
       chave,
-      dados: ab.data.sort((a, b) => String(b.data_hora || b.data).localeCompare(String(a.data_hora || a.data))),
+      dados: ab.data.map(l => ({ ...l, origem: "plusfrota" })).concat(postos)
+        .sort((a, b) => String(b.data_hora || b.data).localeCompare(String(a.data_hora || a.data))),
       rodadas: ro.data || [],
     };
     frotaAbastPreencherFiltros();
@@ -707,6 +746,227 @@ async function frotaAbastSincronizar(){
   renderFrota();
 }
 
+/* ---------- notinha do posto e fechamento do mês (fase 186c, #281) ---------- */
+const FROTA_POSTO_BUCKET = "viagens-anexos";   // logística grava nesse bucket (logistica_pode_operar); caminho abastecimento-posto/
+let _frotaPostos = null;                         // fornecedores que são posto (nome com "posto" ou "combust", categoria diesel/combustível)
+let _frotaPostoEditId = null;
+let _frotaFechPedidos = [];
+
+async function frotaCarregarPostos(){
+  if(_frotaPostos) return _frotaPostos;
+  const { data, error } = await sb.from("fornecedores").select("id,razao_social,nome_fantasia,ativo")
+    .or("razao_social.ilike.%posto%,nome_fantasia.ilike.%posto%,razao_social.ilike.%combust%,categoria.ilike.%diesel%,categoria.ilike.%combust%")
+    .order("nome_fantasia", { ascending: true, nullsFirst: false });
+  if(error){ aviso("app-aviso", "Postos: " + error.message, "erro"); return []; }
+  _frotaPostos = (data || []).filter(f => f.ativo !== false)
+    .map(f => ({ id: f.id, nome: f.nome_fantasia && f.nome_fantasia !== f.razao_social ? `${f.nome_fantasia} (${f.razao_social})` : (f.nome_fantasia || f.razao_social) }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  return _frotaPostos;
+}
+function frotaPostoOpcoes(sel, valor){
+  sel.innerHTML = `<option value="">Escolha o posto</option>` + (_frotaPostos || []).map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join("");
+  sel.value = valor || "";
+}
+function frotaAvisoModal(id, msg, tipo){
+  const el = $(id); if(!el) return;
+  el.textContent = msg; el.className = "aviso " + tipo;
+}
+
+async function abrirNotinhaPosto(id){
+  if(!frotaPodeOperarPosto()) return;
+  await frotaCarregarPostos();
+  const n = id ? _frotaAbast.dados.find(l => l.origem === "posto" && l.id === id) : null;
+  _frotaPostoEditId = n ? n.id : null;
+  $("fpn-titulo").textContent = n ? `Notinha${n.notinha_numero ? " " + n.notinha_numero : ""}` : "Nova notinha de posto";
+  $("fpn-data").value = n?.data || hojeISO();
+  frotaPostoOpcoes($("fpn-posto"), n?.fornecedor_id);
+  const equips = [..._frotaVeic, ..._frotaEquipOutros].filter(e => e.ativo !== false || e.id === n?.equipamento_id);
+  $("fpn-equip").innerHTML = `<option value="">Sem TAG (informe a placa)</option>` + equips.map(e => `<option value="${esc(e.id)}">${esc(`${e.codigo}${e.placa ? " · " + e.placa : ""}${e.nome ? " · " + e.nome : ""}`)}</option>`).join("");
+  $("fpn-equip").value = n?.equipamento_id || "";
+  $("fpn-placa").value = n?.placa || "";
+  $("fpn-motorista").innerHTML = `<option value="">—</option>` + _frotaFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
+  $("fpn-motorista").value = n?.motorista_id || "";
+  $("fpn-produto").value = n?.produto || "";
+  $("fpn-litros").value = n?.litros ?? "";
+  $("fpn-preco").value = n?.preco_unitario ?? "";
+  $("fpn-desconto").value = n && Number(n.desconto) ? n.desconto : "";
+  $("fpn-valor").value = n?.valor ?? "";
+  $("fpn-km").value = n?.km ?? "";
+  $("fpn-horimetro").value = n?.horimetro ?? "";
+  $("fpn-numero").value = n?.notinha_numero || "";
+  $("fpn-obs").value = n?.observacoes || "";
+  $("fpn-foto").value = "";
+  $("fpn-foto-atual").innerHTML = n?.foto_path ? `<a href="#" id="fpn-foto-ver">Ver foto anexada</a>` : "";
+  $("btn-fpn-excluir").style.display = n ? "" : "none";
+  frotaAvisoModal("fpn-aviso", "", "");
+  $("frota-posto-modal").style.display = "flex";
+}
+function fecharNotinhaPosto(){ $("frota-posto-modal").style.display = "none"; _frotaPostoEditId = null; }
+
+/* litros × preço − desconto preenche o valor; o valor digitado à mão continua valendo */
+function frotaPostoCalcularValor(){
+  const litros = Number($("fpn-litros").value || 0), preco = Number($("fpn-preco").value || 0), desc = Number($("fpn-desconto").value || 0);
+  if(litros > 0 && preco > 0) $("fpn-valor").value = Math.max(0, Math.round((litros * preco - desc) * 100) / 100).toFixed(2);
+}
+
+async function salvarNotinhaPosto(){
+  if(!frotaPodeOperarPosto()) return;
+  const num = id => { const v = $(id).value; return v === "" ? null : Number(v); };
+  const reg = {
+    data: $("fpn-data").value || null,
+    fornecedor_id: $("fpn-posto").value || null,
+    equipamento_id: $("fpn-equip").value || null,
+    placa: $("fpn-placa").value.trim() || null,
+    motorista_id: $("fpn-motorista").value || null,
+    produto: $("fpn-produto").value.trim().toUpperCase() || null,
+    litros: num("fpn-litros"), preco_unitario: num("fpn-preco"), desconto: num("fpn-desconto") || 0, valor: num("fpn-valor"),
+    km: num("fpn-km"), horimetro: num("fpn-horimetro"),
+    notinha_numero: $("fpn-numero").value.trim() || null,
+    observacoes: $("fpn-obs").value.trim() || null,
+  };
+  const falta = [];
+  if(!reg.data) falta.push("data");
+  if(!reg.fornecedor_id) falta.push("posto");
+  if(!reg.equipamento_id && !reg.placa) falta.push("veículo ou placa");
+  if(!(reg.litros > 0)) falta.push("litros");
+  if(reg.valor == null || reg.valor < 0) falta.push("valor");
+  if(falta.length){ frotaAvisoModal("fpn-aviso", "Preencha: " + falta.join(", ") + ".", "erro"); return; }
+  if(reg.equipamento_id && !$("fpn-placa").value.trim()) reg.placa = null;   // o banco preenche a placa pela TAG
+
+  const arq = $("fpn-foto").files?.[0];
+  if(arq){
+    const ext = extensaoArquivo(arq), mime = mimeDoArquivo(arq, ext);
+    const caminho = `abastecimento-posto/${reg.data.slice(0, 7)}/${crypto.randomUUID()}.${ext}`;
+    const up = await sb.storage.from(FROTA_POSTO_BUCKET).upload(caminho, corpoComMime(arq, mime), { cacheControl: "3600", contentType: mime, upsert: false });
+    if(up.error){ frotaAvisoModal("fpn-aviso", "Foto não enviada: " + up.error.message, "erro"); return; }
+    reg.foto_path = caminho;
+  }
+  const r = _frotaPostoEditId
+    ? await sb.from("frota_abastecimentos_posto").update(reg).eq("id", _frotaPostoEditId)
+    : await sb.from("frota_abastecimentos_posto").insert(reg);
+  if(r.error){
+    if(reg.foto_path) await sb.storage.from(FROTA_POSTO_BUCKET).remove([reg.foto_path]);
+    const msg = r.error.code === "23505" ? "Já existe notinha com esse número neste posto." : r.error.message;
+    frotaAvisoModal("fpn-aviso", "Não salvou: " + msg, "erro"); return;
+  }
+  const nova = !_frotaPostoEditId;
+  fecharNotinhaPosto();
+  aviso("app-aviso", nova ? "Notinha lançada." : "Notinha salva.", "ok");
+  _frotaAbast.chave = null;
+  renderFrota();
+}
+
+async function excluirNotinhaPosto(){
+  if(!frotaPodeOperarPosto() || !_frotaPostoEditId) return;
+  if(!confirm("Excluir esta notinha? Se o mês do posto já estava conferido, ele volta para aberto.")) return;
+  const n = _frotaAbast.dados.find(l => l.origem === "posto" && l.id === _frotaPostoEditId);
+  const { error } = await sb.from("frota_abastecimentos_posto").delete().eq("id", _frotaPostoEditId);
+  if(error){ frotaAvisoModal("fpn-aviso", "Não excluiu: " + error.message, "erro"); return; }
+  if(n?.foto_path) await sb.storage.from(FROTA_POSTO_BUCKET).remove([n.foto_path]);
+  fecharNotinhaPosto();
+  aviso("app-aviso", "Notinha excluída.", "ok");
+  _frotaAbast.chave = null;
+  renderFrota();
+}
+
+async function frotaPostoVerFoto(){
+  const n = _frotaAbast.dados.find(l => l.origem === "posto" && l.id === _frotaPostoEditId);
+  if(!n?.foto_path) return;
+  const { data, error } = await sb.storage.from(FROTA_POSTO_BUCKET).createSignedUrl(n.foto_path, 120);
+  if(error){ frotaAvisoModal("fpn-aviso", "Foto: " + error.message, "erro"); return; }
+  window.open(data.signedUrl, "_blank", "noopener");
+}
+
+/* Fechamento do mês: soma das notinhas do posto na competência contra o(s) pedido(s) do posto ou o valor da NF */
+async function abrirFechamentoPosto(){
+  if(!frotaPodeVerAbast()) return;
+  await frotaCarregarPostos();
+  frotaPostoOpcoes($("ffc-posto"), $("ffc-posto").value);
+  $("ffc-mes").value = $("frota-a-mes")?.value || frotaMesAtual();
+  const pode = frotaPodeOperarPosto();
+  ["btn-ffc-salvar", "btn-ffc-concluir"].forEach(id => { $(id).style.display = pode ? "" : "none"; });
+  ["ffc-nf", "ffc-total-nf", "ffc-obs"].forEach(id => { $(id).disabled = !pode; });
+  frotaAvisoModal("ffc-aviso", "", "");
+  $("frota-fech-modal").style.display = "flex";
+  await carregarFechamentoPosto();
+}
+function fecharFechamentoPosto(){ $("frota-fech-modal").style.display = "none"; }
+
+async function carregarFechamentoPosto(){
+  const posto = $("ffc-posto").value, mes = $("ffc-mes").value;
+  const corpo = $("ffc-corpo");
+  _frotaFechPedidos = [];
+  if(!posto || !mes){
+    corpo.innerHTML = `<p class="meta">Escolha o posto e a competência.</p>`;
+    $("ffc-resumo").innerHTML = "";
+    return;
+  }
+  corpo.innerHTML = `<p class="vazio">Carregando…</p>`;
+  const ini = mes + "-01", fim = dataLocalISO(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0));
+  const [no, pe, fe] = await Promise.all([
+    lerTudo(() => sb.from("frota_abastecimentos_posto").select("id,valor,litros").eq("fornecedor_id", posto).gte("data", ini).lte("data", fim)),
+    sb.rpc("frota_posto_pedidos", { p_fornecedor: posto, p_competencia: ini }),
+    sb.from("frota_abastecimentos_posto_fechamento").select("*").eq("fornecedor_id", posto).eq("competencia", ini).maybeSingle()
+  ]);
+  if(($("ffc-posto").value !== posto) || ($("ffc-mes").value !== mes)) return;   // mudou durante a leitura
+  if(no.error || pe.error || fe.error){ corpo.innerHTML = `<p class="vazio">Erro: ${esc((no.error || pe.error || fe.error).message)}</p>`; return; }
+  const notinhas = no.data || [];
+  _frotaFechPedidos = pe.data || [];
+  const f = fe.data;
+  const marcados = new Set(f?.pedido_ids || []);
+  const pode = frotaPodeOperarPosto();
+  corpo.innerHTML = `${uiSecao("documento", "Pedidos do posto", _frotaFechPedidos.length
+      ? `<p class="meta" style="margin:0 0 6px;">Pedidos do mês e do mês seguinte (a NF do mês costuma vir depois). Marque os que pagam estas notinhas.</p>
+        <div class="tabela-rola"><table><thead><tr><th></th><th>Pedido</th><th>Data</th><th>Status</th><th>NF</th><th class="num">Total</th></tr></thead>
+        <tbody>${_frotaFechPedidos.map(p => `<tr>
+          <td><input type="checkbox" class="ffc-ped" value="${esc(p.id)}" aria-label="${esc("Usar o pedido " + p.numero)}"${marcados.has(p.id) ? " checked" : ""}${pode ? "" : " disabled"} /></td>
+          <td>${uiCodigo(p.numero)}</td><td>${dataBR(p.data_pedido)}</td><td>${esc(p.status)}</td><td>${esc(p.nf_informada || "—")}</td><td class="num" data-val-sens>${frotaMoeda(p.total)}</td>
+        </tr>`).join("")}</tbody></table></div>`
+      : uiVazio("Nenhum pedido deste posto no mês nem no seguinte. Informe o valor da NF ou peça o pedido em Compras."))}
+    <p class="meta" style="margin:8px 0;">${frotaNum(notinhas.length)} notinha(s) lançada(s) neste posto no mês · ${frotaNum(notinhas.reduce((s, n) => s + Number(n.litros || 0), 0), 2)} litros.
+      ${f ? ` Situação: ${frotaFechStatusTag(f.status)}${f.conferido_em ? ` <span class="meta">em ${esc(dataBR(dataLocalISO(new Date(f.conferido_em))))}</span>` : ""}` : " Ainda sem fechamento."}</p>`;
+  $("ffc-nf").value = f?.nf_numero || ([...new Set(_frotaFechPedidos.filter(p => marcados.has(p.id)).map(p => p.nf_informada).filter(Boolean))].join(", "));
+  $("ffc-total-nf").value = f && f.total_nf != null && (f.pedido_ids || []).length === 0 ? f.total_nf : "";
+  $("ffc-obs").value = f?.observacoes || "";
+  corpo.dataset.totalNotinhas = String(notinhas.reduce((s, n) => s + Number(n.valor || 0), 0));
+  frotaFechResumo();
+}
+function frotaFechStatusTag(st){
+  const m = { aberto: ["cinza", "Aberto"], conferido: ["ok", "Conferido"], com_diferenca: ["ambar", "Com diferença"] }[st] || ["cinza", st];
+  return `<span class="tag ${esc(m[0])}">${esc(m[1])}</span>`;
+}
+function frotaFechPedidosMarcados(){ return [...document.querySelectorAll("#ffc-corpo .ffc-ped:checked")].map(c => c.value); }
+function frotaFechResumo(){
+  const totNot = Number($("ffc-corpo").dataset.totalNotinhas || 0);
+  const ids = new Set(frotaFechPedidosMarcados());
+  const totPed = _frotaFechPedidos.filter(p => ids.has(p.id)).reduce((s, p) => s + Number(p.total || 0), 0);
+  const nfDig = $("ffc-total-nf").value;
+  const ref = nfDig !== "" ? Number(nfDig) : (ids.size ? totPed : null);
+  const dif = ref == null ? null : Math.round((ref - totNot) * 100) / 100;
+  $("ffc-resumo").innerHTML = `<div class="indicadores">
+    <div class="ind"><div class="num">${frotaMoeda(totNot)}</div><div class="rot">Soma das notinhas</div></div>
+    <div class="ind"><div class="num">${ref == null ? "—" : frotaMoeda(ref)}</div><div class="rot">${nfDig !== "" ? "Valor da NF" : "Pedidos marcados"}</div></div>
+    <div class="ind"><div class="num">${dif == null ? "—" : frotaMoeda(dif)}</div><div class="rot">${dif == null ? "Diferença" : (Math.abs(dif) <= 0.01 ? "Sem diferença" : (dif > 0 ? "NF acima das notinhas" : "Notinhas acima da NF"))}</div></div>
+  </div>`;
+}
+
+async function salvarFechamentoPosto(concluir){
+  if(!frotaPodeOperarPosto()) return;
+  const posto = $("ffc-posto").value, mes = $("ffc-mes").value;
+  if(!posto || !mes){ frotaAvisoModal("ffc-aviso", "Escolha o posto e a competência.", "erro"); return; }
+  const nfDig = $("ffc-total-nf").value;
+  const { data, error } = await sb.rpc("frota_posto_fechamento_salvar", {
+    p_fornecedor: posto, p_competencia: mes + "-01", p_pedidos: frotaFechPedidosMarcados(),
+    p_nf_numero: $("ffc-nf").value.trim() || null, p_total_nf: nfDig === "" ? null : Number(nfDig),
+    p_concluir: !!concluir, p_observacoes: $("ffc-obs").value.trim() || null
+  });
+  if(error){ frotaAvisoModal("ffc-aviso", "Não salvou: " + error.message, "erro"); return; }
+  const msg = data?.status === "conferido" ? "Mês conferido: a soma das notinhas bate com o pedido ou a NF."
+    : data?.status === "com_diferenca" ? `Mês concluído com diferença de ${frotaMoeda(data.diferenca)}.` : "Fechamento salvo em aberto.";
+  frotaAvisoModal("ffc-aviso", msg, data?.status === "com_diferenca" ? "aviso" : "ok");
+  await carregarFechamentoPosto();
+}
+
 /* ---------- ligação ---------- */
 function ligarFrota(){
   document.querySelectorAll("#sec-frota .serv-view-btn[data-view]").forEach(b => b.addEventListener("click", () => { _frotaView = b.dataset.view; _frotaTipoFiltro = ""; renderFrota(); }));
@@ -724,8 +984,25 @@ function ligarFrota(){
   $("frota-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a.link-cad, a.link-obra, select, button")) return;
     const tv = e.target.closest("[data-vg]"); if(tv){ if(typeof abrirViagem === "function") abrirViagem(tv.dataset.vg, null); return; }
+    const tp = e.target.closest("tr[data-abposto]"); if(tp){ if(frotaPodeOperarPosto()) abrirNotinhaPosto(tp.dataset.abposto); return; }
     const tr = e.target.closest("tr[data-veic]"); if(tr) abrirVeiculo(tr.dataset.veic);
   });
+  // fase 186c: notinha do posto e fechamento do mês
+  $("frota-a-origem")?.addEventListener("change", renderFrota);
+  $("btn-frota-posto-nova")?.addEventListener("click", () => abrirNotinhaPosto(null));
+  $("btn-frota-posto-fech")?.addEventListener("click", abrirFechamentoPosto);
+  $("btn-fpn-fechar")?.addEventListener("click", fecharNotinhaPosto);
+  $("btn-fpn-salvar")?.addEventListener("click", () => comBotaoTravado("btn-fpn-salvar", salvarNotinhaPosto));
+  $("btn-fpn-excluir")?.addEventListener("click", () => comBotaoTravado("btn-fpn-excluir", excluirNotinhaPosto));
+  ["fpn-litros", "fpn-preco", "fpn-desconto"].forEach(id => $(id)?.addEventListener("input", frotaPostoCalcularValor));
+  $("fpn-foto-atual")?.addEventListener("click", e => { if(e.target.closest("#fpn-foto-ver")){ e.preventDefault(); frotaPostoVerFoto(); } });
+  $("btn-ffc-fechar")?.addEventListener("click", fecharFechamentoPosto);
+  $("ffc-posto")?.addEventListener("change", carregarFechamentoPosto);
+  $("ffc-mes")?.addEventListener("change", carregarFechamentoPosto);
+  $("ffc-total-nf")?.addEventListener("input", frotaFechResumo);
+  $("ffc-corpo")?.addEventListener("change", e => { if(e.target.classList.contains("ffc-ped")) frotaFechResumo(); });
+  $("btn-ffc-salvar")?.addEventListener("click", () => comBotaoTravado("btn-ffc-salvar", () => salvarFechamentoPosto(false)));
+  $("btn-ffc-concluir")?.addEventListener("click", () => comBotaoTravado("btn-ffc-concluir", () => salvarFechamentoPosto(true)));
   $("btn-fveic-fechar")?.addEventListener("click", fecharVeiculo);
   $("btn-fveic-salvar")?.addEventListener("click", () => comBotaoTravado("btn-fveic-salvar", salvarVeiculo));
   $("btn-fveic-vender")?.addEventListener("click", () => {   // fase 96
