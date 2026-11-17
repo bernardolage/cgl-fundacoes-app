@@ -21,7 +21,14 @@ let _repCarregado = false;
 const REP_STATUS = { aberto: ["Aberto", "azul"], em_execucao: ["Em execução", "ambar"], concluido: ["Concluído", "verde"], cancelado: ["Cancelado", "cinza"] };
 const REP_STAGES = ["aberto", "em_execucao", "concluido"];
 const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: "Mecânica", eletrica: "Elétrica", pintura: "Pintura", externo: "Externo" };
-const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)";
+const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)"
+  // fase 186b (#226): reparo externo (fornecedor, envio, orçamento, pedido ligado, retorno); etapa_externa e pedido_externo são campos calculados no banco
+  + ",externo,fornecedor_id,enviado_em,nf_remessa_numero,orcamento_recebido_em,orcamento_valor,orcamento_pdf_path,pedido_id,retornou_em,nf_retorno_numero,etapa_externa,pedido_externo,fornecedor:fornecedores(razao_social,nome_fantasia)";
+/* fase 186b: etapas do reparo externo (o status do reparo continua aberto, em execução, concluído ou cancelado) */
+const REP_ETAPAS = [["aguardando_envio", "Aguardando envio"], ["enviado", "Enviado"], ["aguardando_orcamento", "Aguardando orçamento"], ["orcamento_recebido", "Orçamento recebido"], ["pedido_aprovado", "Pedido aprovado"], ["retornou", "Retornou"]];
+const REP_PED_STATUS = { rascunho: "rascunho", em_cotacao: "em cotação", aguardando_aprovacao: "aguardando aprovação", aprovado: "aprovado", enviado: "enviado ao fornecedor", parcialmente_recebido: "recebido em parte", recebido: "recebido", cancelado: "cancelado" };
+const REP_ORC_BUCKET = "manutencao-anexos";   // fase 186b: PDF do orçamento em reparos/<id>/
+let _repForn = null;           // fase 186b: fornecedor do conserto escolhido na ficha
 
 /* lote S45 (L7): `logistica` registra reparo como registra fabricação (fabPodeEditar / fabricacao_pode_operar);
    espelha reparos_caldeiraria_write, reparo_horas_write e reparo_itens_write da migration 20261020_loteS45_hoje_br. */
@@ -40,6 +47,11 @@ function repRenderExtras(){
   respExtrasRender({ wrap: "rep-resp-extras", sel: "rep-resp-extra-add", extras: _repExtras, principal: $("rep-resp").value, funcs: _repFuncs, pode: repPodeEditar(),
     aoMudar: l => { _repExtras = l; repRenderExtras(); } });
 }
+/* fase 186b: peça no fornecedor = reparo externo enviado, sem retorno, aberto ou em execução */
+function repNoFornecedor(r){ return !!(r.externo && r.enviado_em && !r.retornou_em && ["aberto", "em_execucao"].includes(r.status)); }
+function repDiasFornecedor(r){ return r.enviado_em ? Math.max(0, Math.round((new Date(hojeISO() + "T00:00:00") - new Date(r.enviado_em + "T00:00:00")) / 864e5)) : null; }
+function repFornNome(r){ return r.fornecedor ? (r.fornecedor.nome_fantasia || r.fornecedor.razao_social || "") : ""; }
+function repTagFornecedor(r){ return `<span class="tag ambar" title="Peça no fornecedor${repFornNome(r) ? " " + esc(repFornNome(r)) : ""} desde ${esc(dataBR(r.enviado_em))}">No fornecedor · ${esc(repDiasFornecedor(r))} d</span>`; }
 function repDias(r){
   if(!r.data_abertura) return null;
   const fim = r.data_conclusao || hojeISO();
@@ -106,6 +118,7 @@ function repFiltrados(){
   const st = $("rep-f-status")?.value || "", se = $("rep-f-setor")?.value || "", rs = $("rep-f-resp")?.value || "";
   return _repLista.filter(r => {
     if(st === "_abertos"){ if(!["aberto", "em_execucao"].includes(r.status)) return false; }
+    else if(st === "_fornecedor"){ if(!repNoFornecedor(r)) return false; }   // fase 186b
     else if(st && r.status !== st) return false;
     if(se && r.setor !== se) return false;
     if(rs && r.responsavel_id !== rs && !(r.responsaveis_extra_ids || []).includes(rs)) return false;
@@ -126,12 +139,16 @@ function renderReparos(){
   repRenderContagem(dados);
   if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhum reparo com esses filtros.</p>`; return; }
   if(_repView === "kanban"){
-    const cols = REP_STAGES.concat(dados.some(r => r.status === "cancelado") ? ["cancelado"] : []);
-    cont.innerHTML = `<div class="serv-kanban">${cols.map(st => { const its = dados.filter(r => r.status === st);
-      return `<div class="serv-kan-col"><div class="serv-kan-col-head">${repTag(st)} <span class="contador">${its.length}</span></div>
+    // fase 186b: coluna "No fornecedor" entre Em execução e Concluído; o reparo enviado sai das colunas de aberto e em execução
+    const cols = ["aberto", "em_execucao", "_fornecedor", "concluido"].concat(dados.some(r => r.status === "cancelado") ? ["cancelado"] : []);
+    cont.innerHTML = `<div class="serv-kanban">${cols.map(st => { const its = st === "_fornecedor" ? dados.filter(repNoFornecedor).sort((a, b) => String(a.enviado_em).localeCompare(String(b.enviado_em)))
+        : dados.filter(r => r.status === st && !repNoFornecedor(r));
+      const cab = st === "_fornecedor" ? `<span class="tag ambar" title="Reparo externo enviado ao fornecedor e ainda sem retorno">No fornecedor</span>` : repTag(st);
+      return `<div class="serv-kan-col"><div class="serv-kan-col-head">${/* html */ cab} <span class="contador">${its.length}</span></div>
         ${its.slice(0, 200).map(r => `<div class="serv-kan-card" data-id="${esc(r.id)}">
           <div class="serv-kan-card-nome"><strong>${esc(r.numero || "")}</strong> <span class="meta">${dataBR(r.data_abertura)}${r.codigo_externo ? " · " + esc(r.codigo_externo) : ""}</span></div>
           <div>${esc(repAlvoTxt(r))}</div><div class="meta">${esc(r.descricao || "")}</div>
+          ${st === "_fornecedor" ? `<div class="meta">${esc(repFornNome(r) || "fornecedor não informado")} · <strong>${esc(repDiasFornecedor(r))} dia(s)</strong> desde o envio</div>` : ""}
           <div class="meta" style="display:flex;justify-content:space-between;"><span>${esc(REP_SETOR[r.setor] || "")}</span><strong>${brl(r.custo_real)}</strong></div>
         </div>`).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
@@ -140,7 +157,7 @@ function renderReparos(){
       <tbody>${dados.map(r => `<tr class="linha-clicavel" data-id="${esc(r.id)}">
         <td><strong>${esc(r.numero || "")}</strong>${r.codigo_externo ? ` <span class="meta">${esc(r.codigo_externo)}</span>` : ""}</td><td>${dataBR(r.data_abertura)}</td>
         <td>${repAlvoLink(r)}</td><td>${esc(r.descricao || "")}</td><td>${esc(REP_SETOR[r.setor] || "—")}</td><td class="meta" title="${esc(repRespNomes(r).join(", "))}">${esc(respResumo(repRespNomes(r)))}</td>
-        <td class="num">${repDias(r) ?? "—"}</td><td class="num">${brl(r.custo_real)}</td><td>${repTag(r.status)}</td></tr>`).join("")}</tbody></table></div>`;
+        <td class="num">${repDias(r) ?? "—"}</td><td class="num">${brl(r.custo_real)}</td><td>${repTag(r.status)}${repNoFornecedor(r) ? " " + repTagFornecedor(r) : ""}</td></tr>`).join("")}</tbody></table></div>`;
   }
 }
 
@@ -320,6 +337,7 @@ function abrirFichaReparo(r, itens, horas){
   $("rep-resp").value = r.responsavel_id || ""; $("rep-desc").value = r.descricao || ""; $("rep-motivo").value = r.motivo || "";
   $("rep-abertura").value = r.data_abertura || ""; $("rep-inicio").value = r.data_inicio || ""; $("rep-conclusao").value = r.data_conclusao || ""; $("rep-obs").value = r.observacoes || "";
   $("rep-ficha").querySelectorAll(".odoo-tab[data-tab=geral] input, .odoo-tab[data-tab=geral] select, .odoo-tab[data-tab=geral] textarea").forEach(el => el.disabled = !pode);
+  repPreencherExterno();   // fase 186b
   _repExtras = (r.responsaveis_extra_ids || []).slice(); repRenderExtras();   // lote S60 (#254)
   $("rep-h-data").value = hojeISO();
   repAtualizarCabecalho();
@@ -341,9 +359,17 @@ function repAtualizarCabecalho(){
   $("rep-chip-resp").textContent = respResumo(repRespNomes(r)) || "—"; $("rep-chip-resp").title = repRespNomes(r).join(", ");
   $("rep-chip-dias").textContent = repDias(r) ?? "—";
   $("rep-chip-odoo").style.display = r.codigo_externo ? "" : "none"; $("rep-chip-odoo-txt").textContent = r.codigo_externo || "";
+  // fase 186b: chip do pedido do conserto
+  const ped = r.pedido_externo;
+  $("rep-chip-pedido").style.display = ped ? "" : "none";
+  $("rep-chip-pedido-txt").innerHTML = ped ? `<a href="#" class="rep-ped-link" data-id="${esc(ped.id)}" title="Abrir o pedido em Compras">${esc(ped.numero || "pedido")}</a> <span class="meta">${esc(REP_PED_STATUS[ped.status] || ped.status || "")}</span>` : "";
+  const ext = !!r.externo && !novo && ["aberto", "em_execucao"].includes(st), pedAtivo = !!ped && ped.status !== "cancelado";
   const pendBaixa = _repItens.some(i => i.tipo === "consumo" && !i.movimentacao_estoque_id && !i.codigo_externo && i.produto_id);
   const mostra = { "btn-rep-salvar": pode && st !== "cancelado", "btn-rep-iniciar": pode && !novo && st === "aberto", "btn-rep-concluir": pode && !novo && ["aberto", "em_execucao"].includes(st),
-    "btn-rep-cancelar": pode && !novo && ["aberto", "em_execucao"].includes(st), "btn-rep-baixa": repPodeItens() && !novo && st !== "cancelado" && pendBaixa, "btn-rep-imprimir": !novo };
+    "btn-rep-cancelar": pode && !novo && ["aberto", "em_execucao"].includes(st), "btn-rep-baixa": repPodeItens() && !novo && st !== "cancelado" && pendBaixa, "btn-rep-imprimir": !novo,
+    // fase 186b: ações do reparo externo
+    "btn-rep-orcamento": pode && ext && !pedAtivo, "btn-rep-pedido": pode && ext && !pedAtivo && Number(r.orcamento_valor || 0) > 0,
+    "btn-rep-retorno": pode && !!r.externo && !novo && !!r.enviado_em && !r.retornou_em && st !== "cancelado" };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   const sb2 = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n || n === "R$ 0,00"); } };
   sb2("sb-rep-pecas", _repItens.length); sb2("sb-rep-horas", num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0)));
@@ -405,6 +431,13 @@ async function salvarReparo(){
   const reg = { acessorio_id: _repAce ? _repAce.id : null, equipamento_id: $("rep-equip").value || null, setor: $("rep-setor").value || null, tipo_servico: $("rep-tipo").value,
     responsavel_id: $("rep-resp").value || null, responsaveis_extra_ids: _repExtras.filter(x => x !== $("rep-resp").value), descricao: $("rep-desc").value.trim(), motivo: $("rep-motivo").value.trim() || null,
     data_abertura: $("rep-abertura").value || hojeISO(), data_inicio: $("rep-inicio").value || null, data_conclusao: $("rep-conclusao").value || null, observacoes: $("rep-obs").value.trim() || null };
+  // fase 186b: dados do reparo externo (sem a marca, o banco não aceita fornecedor, envio nem retorno)
+  const ext = $("rep-x-externo").checked;
+  Object.assign(reg, { externo: ext, fornecedor_id: ext && _repForn ? _repForn.id : null, enviado_em: ext ? $("rep-x-enviado").value || null : null,
+    nf_remessa_numero: ext ? $("rep-x-nf-rem").value.trim() || null : null, retornou_em: ext ? $("rep-x-retorno").value || null : null,
+    nf_retorno_numero: ext ? $("rep-x-nf-ret").value.trim() || null : null });
+  if(ext && reg.enviado_em && !reg.fornecedor_id){ aviso("app-aviso", "Informe o fornecedor do conserto antes da data de envio.", "erro"); repAtivarTab("externo"); return null; }
+  if(ext && reg.retornou_em && reg.enviado_em && reg.retornou_em < reg.enviado_em){ aviso("app-aviso", "O retorno não pode ser antes do envio.", "erro"); repAtivarTab("externo"); return null; }
   if(!reg.descricao){ aviso("app-aviso", "Informe a descrição do reparo.", "erro"); repAtivarTab("geral"); return null; }
   if(!reg.acessorio_id && !reg.equipamento_id){ aviso("app-aviso", "Informe o acessório ou a TAG.", "erro"); repAtivarTab("geral"); return null; }
   let id = _repAtual.id;
@@ -505,6 +538,20 @@ function repRenderCustos(){
   const r = _repAtual, c = $("rep-custos"); if(!r || !c) return;
   const pode = repPodeEditar() && !!r.id;
   const horas = _repHoras.reduce((t, h) => t + Number(h.horas || 0), 0), he = _repHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
+  if(r.pedido_id){   // fase 186b (D11): com pedido ligado o custo real é o total do pedido e não se digita
+    const ped = r.pedido_externo || {};
+    c.innerHTML = `<div class="custos-resumo">
+        <div><div class="mov-ace-sug-grupo-t">Composição</div>
+          <div class="custos-linha"><span>Conserto externo · pedido ${esc(ped.numero || "")} (${esc(REP_PED_STATUS[ped.status] || ped.status || "")})</span><strong>${brl(r.custo_real || 0)}</strong></div>
+          <div class="custos-linha"><span>Peças consumidas na oficina</span><strong>${brl(r.custo_pecas || 0)}</strong></div>
+          <div class="custos-linha"><span>Mão de obra da oficina (${num(horas)} h)</span><strong>${brl(r.custo_horas || 0)}</strong></div>
+        </div>
+        <div><div class="mov-ace-sug-grupo-t">Custo do reparo externo</div>
+          <p class="meta">O custo real é o total do pedido de compra ligado e acompanha o pedido (cancelado, fica zero). Não se digita aqui.</p>
+        </div></div>
+      <p class="meta">O conserto entra em Custos da TAG ou da peça pelo recebimento do pedido. Peças e horas da oficina, se houver, entram pelo reparo concluído.</p>`;
+    return;
+  }
   c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição</div>
         <div class="custos-linha"><span>Peças consumidas</span><strong>${brl(r.custo_pecas || 0)}</strong></div>
@@ -527,6 +574,124 @@ function repRenderCustos(){
     aviso("app-aviso", manual ? "Custo manual salvo." : "Custo volta a ser peças + horas.", "ok");
     await abrirReparo(r.id); repAtivarTab("custos");
   });
+}
+
+/* ---------- reparo externo (fase 186b, #226) ----------
+   Etapa do reparo, não cadastro novo (D11): fornecedor, envio com a NF de remessa feita como hoje (D3, sem NF-e pelo app),
+   orçamento com PDF, pedido de compra gerado pela RPC reparo_externo_gerar_pedido (aplicação direta, rascunho, segue o fluxo
+   de Compras) e retorno. Com pedido ligado o custo real é o total do pedido (gatilho no banco). A peça fica "No fornecedor"
+   (acessorios.local_tipo) do envio até o retorno, pelo gatilho fn_reparo_externo_local. */
+function repPreencherExterno(){
+  const r = _repAtual; if(!r) return;
+  const pode = repPodeEditar() && r.status !== "cancelado";
+  _repForn = r.fornecedor_id ? { id: r.fornecedor_id, nome: repFornNome(r) || "fornecedor" } : null;
+  $("rep-x-externo").checked = !!r.externo;
+  $("rep-x-forn-busca").value = _repForn ? _repForn.nome : ""; $("rep-x-forn-info").textContent = "";
+  $("rep-x-enviado").value = r.enviado_em || ""; $("rep-x-nf-rem").value = r.nf_remessa_numero || "";
+  $("rep-x-retorno").value = r.retornou_em || ""; $("rep-x-nf-ret").value = r.nf_retorno_numero || "";
+  $("rep-ficha").querySelectorAll(".odoo-tab[data-tab=externo] .grade input").forEach(el => el.disabled = !pode);
+  // com pedido ligado a marca não sai (o pedido continua sendo o custo do reparo)
+  $("rep-x-externo").disabled = !pode || !!r.pedido_id;
+  $("rep-x-externo").title = r.pedido_id ? "Reparo com pedido de compra ligado continua externo" : "Peça enviada ao fornecedor para conserto";
+  repRenderExterno();
+}
+function repRenderExterno(){
+  const r = _repAtual, box = $("rep-x-orc"); if(!r || !box) return;
+  const ext = $("rep-x-externo").checked;
+  $("rep-x-campos").style.display = ext ? "" : "none";
+  $("rep-x-etapas").style.display = ext && r.id ? "" : "none";
+  $("rep-x-etapas").innerHTML = ext && r.id ? uiStatusbar(REP_ETAPAS, r.etapa_externa || "aguardando_envio") : "";
+  if(!ext){ box.innerHTML = uiVazio("Marque \"Reparo externo\" quando a peça for enviada ao fornecedor para conserto. Salve para gravar."); return; }
+  if(!r.id){ box.innerHTML = uiVazio("Salve o reparo para registrar o orçamento e gerar o pedido."); return; }
+  const ped = r.pedido_externo, pedAtivo = !!ped && ped.status !== "cancelado";
+  const pode = repPodeEditar() && ["aberto", "em_execucao"].includes(r.status) && !!r.externo && !pedAtivo;
+  const pdf = r.orcamento_pdf_path ? `<button type="button" class="btn-sec btn-sm" id="btn-rep-x-pdf" title="Abrir o PDF do orçamento">Abrir PDF</button>` : "—";
+  const resumo = uiRotuloValor("Orçamento recebido em", esc(dataBR(r.orcamento_recebido_em) || "—"))
+    + uiRotuloValor("Valor do orçamento", r.orcamento_valor != null ? `<span data-val-sens>${brl(r.orcamento_valor)}</span>` : "—")
+    + uiRotuloValor("PDF do orçamento", pdf)
+    + uiRotuloValor("Pedido de compra", ped ? `<a href="#" class="rep-ped-link" data-id="${esc(ped.id)}" title="Abrir o pedido em Compras">${esc(ped.numero || "pedido")}</a> <span class="meta">${esc(REP_PED_STATUS[ped.status] || ped.status || "")} · </span><span data-val-sens>${brl(ped.total)}</span>` : "ainda não gerado");
+  const form = pode ? `<div class="grade" style="margin-top:10px;">
+      <div class="campo"><label>Valor do orçamento (R$) *</label><input type="number" id="rep-x-orc-valor" min="0.01" step="0.01" value="${esc(r.orcamento_valor ?? "")}" /></div>
+      <div class="campo"><label>Recebido em</label><input type="date" id="rep-x-orc-data" value="${esc(r.orcamento_recebido_em || hojeISO())}" /></div>
+      <div class="campo largo"><label>PDF do orçamento${r.orcamento_pdf_path ? " (troca o atual)" : ""}</label><input type="file" id="rep-x-orc-pdf" accept="application/pdf,.pdf" /></div>
+      <div class="campo"><label>&nbsp;</label><button type="button" class="btn-sec" id="btn-rep-x-orc-salvar" title="Grava o valor, a data e o PDF do orçamento do fornecedor">Registrar orçamento</button></div>
+    </div>` : "";
+  box.innerHTML = uiSecao("documento", "Orçamento e pedido do conserto", resumo + form
+    + `<p class="meta" style="margin-top:8px;">O pedido sai em rascunho, aplicação direta, com um item de serviço no destino do reparo e o valor do orçamento, e segue o fluxo normal de Compras (aprovação, recebimento e título). O custo do conserto entra pelo recebimento do pedido.</p>`);
+  $("btn-rep-x-pdf")?.addEventListener("click", repAbrirOrcPdf);
+  $("btn-rep-x-orc-salvar")?.addEventListener("click", () => comBotaoTravado("btn-rep-x-orc-salvar", repSalvarOrcamento));
+}
+async function repAbrirOrcPdf(){
+  const p = _repAtual?.orcamento_pdf_path; if(!p) return;
+  const { data, error } = await sb.storage.from(REP_ORC_BUCKET).createSignedUrl(p, 3600);
+  if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o PDF" + (error ? ": " + error.message : "."), "erro"); return; }
+  window.open(data.signedUrl, "_blank", "noopener");
+}
+async function repSalvarOrcamento(){
+  const r = _repAtual; if(!r?.id || !repPodeEditar()) return;
+  const valor = Number($("rep-x-orc-valor").value || 0), data = $("rep-x-orc-data").value || hojeISO();
+  if(!(valor > 0)){ aviso("app-aviso", "Informe o valor do orçamento.", "erro"); return; }
+  const upd = { orcamento_valor: valor, orcamento_recebido_em: data };
+  const f = $("rep-x-orc-pdf").files?.[0];
+  if(f){
+    if(!/\.pdf$/i.test(f.name)){ aviso("app-aviso", "O orçamento anexado tem de ser PDF.", "erro"); return; }
+    if(f.size > 20 * 1024 * 1024){ aviso("app-aviso", "PDF acima de 20 MB.", "erro"); return; }
+    // supabase-js ignora contentType quando o corpo é File: reembala em Blob com o MIME da extensão
+    const caminho = `reparos/${r.id}/orcamento_${Date.now()}.pdf`;
+    const up = await sb.storage.from(REP_ORC_BUCKET).upload(caminho, new Blob([f], { type: "application/pdf" }), { cacheControl: "3600", contentType: "application/pdf", upsert: false });
+    if(up.error){ aviso("app-aviso", "PDF não enviado: " + up.error.message, "erro"); return; }
+    upd.orcamento_pdf_path = caminho;
+  }
+  const { error } = await sb.from("reparos_caldeiraria").update(upd).eq("id", r.id);
+  if(error){
+    if(upd.orcamento_pdf_path) await sb.storage.from(REP_ORC_BUCKET).remove([upd.orcamento_pdf_path]);
+    aviso("app-aviso", "Não foi possível registrar o orçamento: " + error.message, "erro"); return;
+  }
+  if(upd.orcamento_pdf_path && r.orcamento_pdf_path) await sb.storage.from(REP_ORC_BUCKET).remove([r.orcamento_pdf_path]);
+  aviso("app-aviso", "Orçamento registrado. Gere o pedido de compra quando for aprovar o conserto.", "ok");
+  await abrirReparo(r.id); repAtivarTab("externo");
+}
+async function repGerarPedido(){
+  const r = _repAtual; if(!r?.id) return;
+  if(!confirm(`Gerar o pedido de compra do conserto (${brl(r.orcamento_valor || 0)}) para ${repFornNome(r) || "o fornecedor"}? Ele nasce em rascunho e segue o fluxo de Compras.`)) return;
+  const { error } = await sb.rpc("reparo_externo_gerar_pedido", { p_reparo: r.id });
+  if(error){ aviso("app-aviso", "Pedido não gerado: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  aviso("app-aviso", "Pedido de compra gerado em rascunho. O custo do reparo passa a ser o total do pedido.", "ok");
+  await abrirReparo(r.id); repAtivarTab("externo");
+}
+async function repRegistrarRetorno(){
+  const r = _repAtual; if(!r?.id) return;
+  const nf = prompt("Retorno da peça hoje. Número da NF de retorno do fornecedor (deixe em branco se não houver):", r.nf_retorno_numero || "");
+  if(nf === null) return;
+  const { error } = await sb.from("reparos_caldeiraria").update({ retornou_em: hojeISO(), nf_retorno_numero: nf.trim() || null }).eq("id", r.id);
+  if(error){ aviso("app-aviso", "Retorno não registrado: " + error.message, "erro"); return; }
+  aviso("app-aviso", "Retorno registrado: a peça volta para a oficina. Conclua o reparo quando terminar.", "ok");
+  if(typeof aceInvalidar === "function") aceInvalidar();
+  await abrirReparo(r.id); repAtivarTab("externo");
+}
+function repAbrirPedido(id){
+  if(!id) return;
+  if(irParaSecao("compras") && typeof abrirPedido === "function") setTimeout(() => abrirPedido(id), 300);
+}
+function repLigarBuscaFornecedor(){
+  const inp = $("rep-x-forn-busca"), lista = $("rep-x-forn-res"); if(!inp || !lista) return;
+  inp.addEventListener("input", debounce(async () => {
+    const t = inp.value.trim().replace(/[%,()]/g, " ");
+    if(!t){ _repForn = null; lista.style.display = "none"; return; }
+    if(t.length < 2){ lista.style.display = "none"; return; }
+    const { data } = await sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj").eq("ativo", true)
+      .or(`razao_social.ilike.%${t}%,nome_fantasia.ilike.%${t}%`).order("razao_social").limit(25);
+    const res = data || [];
+    lista.innerHTML = res.map(f => `<div class="resultado-item" data-id="${esc(f.id)}"><strong>${esc(f.razao_social)}</strong>${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? ` <span class="meta">${esc(f.nome_fantasia)}</span>` : ""}<span class="meta" style="float:right;">${esc(f.cpf_cnpj || "")}</span></div>`).join("")
+      || `<div class="resultado-item vazio">Nenhum fornecedor ativo com esse nome. Cadastre em Fornecedores.</div>`;
+    lista.style.display = "";
+    lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => {
+      ev.preventDefault(); const f = res.find(x => x.id === d.dataset.id);
+      _repForn = { id: f.id, nome: f.nome_fantasia || f.razao_social }; inp.value = _repForn.nome; lista.style.display = "none";
+      $("rep-x-forn-info").textContent = [f.razao_social, f.cpf_cnpj].filter(Boolean).join(" · ");
+    }));
+  }, 250));
+  inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 150));
 }
 
 /* buscas */
@@ -596,6 +761,13 @@ function ligarReparos(){
   $("btn-rep-h-add")?.addEventListener("click", () => comBotaoTravado("btn-rep-h-add", repAddHoras));
   repLigarBuscaAcessorio();
   repLigarBuscaProduto();
+  // fase 186b: reparo externo
+  repLigarBuscaFornecedor();
+  $("rep-x-externo")?.addEventListener("change", repRenderExterno);
+  $("btn-rep-orcamento")?.addEventListener("click", () => { repAtivarTab("externo"); $("rep-x-orc-valor")?.focus(); });
+  $("btn-rep-pedido")?.addEventListener("click", () => comBotaoTravado("btn-rep-pedido", repGerarPedido));
+  $("btn-rep-retorno")?.addEventListener("click", () => comBotaoTravado("btn-rep-retorno", repRegistrarRetorno));
+  $("rep-ficha")?.addEventListener("click", e => { const a = e.target.closest(".rep-ped-link"); if(a){ e.preventDefault(); repAbrirPedido(a.dataset.id); } });
 }
 
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarReparos);
