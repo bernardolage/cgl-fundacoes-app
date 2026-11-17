@@ -876,7 +876,7 @@ function preencherParametrosObra(d){
   set("obr-jornada-not-saida",       hhmm(d.jornada_noturno_saida));
   set("obr-jornada-not-sex-entrada", hhmm(d.jornada_noturno_sexta_entrada));
   set("obr-jornada-not-sex-saida",   hhmm(d.jornada_noturno_sexta_saida));
-  obrMostrarJornadaNoturna();
+  obrMostrarJornadaNoturna("diurno");   // hotfix 295: a ficha abre na aba diurna
   set("obr-iss-pct",             d.iss_percentual ?? 5);
   set("obr-cno",                 d.cno || "");                 // fase 93c: CNO do cliente (alocação mensal do RH)
   set("obr-meta-estacas",        d.meta_estacas || "");        // fase 140 (decisão 3): 0 no banco = sem meta
@@ -1028,12 +1028,25 @@ function atualizarResumoParametrosObra(){
   else linhas.push("Sinal: cada medição desconta subtotal × saldo do sinal ÷ saldo a medir; aditivo ou redução do contrato ajustam a fração sozinhos.");
   el.textContent = linhas.join(" ");
 }
-/* Fase 155b: o bloco da jornada noturna aparece com a chave dos dois turnos (ou quando já tem jornada noturna gravada) */
-function obrMostrarJornadaNoturna(){
+/* Fase 155b: o bloco da jornada noturna aparece com a chave dos dois turnos (ou quando já tem jornada noturna gravada).
+   Hotfix 295: o bloco virou as abas "diurno" e "noturno"; sem os dois turnos fica só a jornada diurna, sem abas.
+   aba = "diurno" ou "noturno"; sem argumento mantém a aba aberta. */
+function obrMostrarJornadaNoturna(aba){
   const bloco = $("obr-jornada-noturna-bloco");
   if(!bloco) return;
   const tem = ["obr-jornada-not-entrada","obr-jornada-not-saida","obr-jornada-not-sex-entrada","obr-jornada-not-sex-saida"].some(id => $(id)?.value);
-  bloco.style.display = $("obr-dois-turnos")?.checked || tem ? "" : "none";
+  const abas = !!($("obr-dois-turnos")?.checked || tem);
+  bloco.style.display = abas ? "" : "none";
+  if(aba === "diurno" || aba === "noturno") obrMostrarJornadaNoturna.aba = aba;   // a aba aberta fica guardada na própria função
+  const atual = abas && obrMostrarJornadaNoturna.aba === "noturno" ? "noturno" : "diurno";
+  const pd = $("obr-jornada-painel-diurno"), pn = $("obr-jornada-painel-noturno");
+  if(pd) pd.style.display = atual === "diurno" ? "" : "none";
+  if(pn) pn.style.display = atual === "noturno" ? "" : "none";
+  if(typeof document !== "undefined") document.querySelectorAll("#obr-jornada-abas [data-turno]").forEach(b => {
+    const on = b.dataset.turno === atual;
+    b.classList.toggle("ativo", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
 }
 
 /* ---------- Salvar (insert ou update) ---------- */
@@ -1069,7 +1082,7 @@ async function salvarObra(novoStatus){
   // fase 155b: mesma regra do gatilho trg_obras_dois_turnos_guarda, dita antes de ir ao banco
   if(reg.dois_turnos && "jornada_noturno_entrada" in reg && (!reg.jornada_noturno_entrada || !reg.jornada_noturno_saida)){
     aviso("app-aviso", "Preencha a jornada noturna (segunda a quinta) antes de ligar os dois turnos.", "erro");
-    ativarTabObra("parametros"); obrMostrarJornadaNoturna(); obrFocarCampo(reg.jornada_noturno_entrada ? "obr-jornada-not-saida" : "obr-jornada-not-entrada");
+    ativarTabObra("parametros"); obrMostrarJornadaNoturna("noturno"); obrFocarCampo(reg.jornada_noturno_entrada ? "obr-jornada-not-saida" : "obr-jornada-not-entrada");
     return;
   }
   // fase 105a: município da prestação (só com a coluna no banco)
@@ -1205,7 +1218,11 @@ function ligarObras(){
   if(typeof fiscalLigarCep === "function") fiscalLigarCep({ cep: "obr-cep", botao: "btn-obr-cep", status: "obr-cep-status",
     logradouro: "obr-logradouro", bairro: "obr-bairro", cidade: "obr-cidade", uf: "obr-uf", ibge: "obr-ibge" });
   // Aba Parâmetros: resumo ao vivo da jornada/concretagem
-  $("obr-dois-turnos")?.addEventListener("change", () => { obrMostrarJornadaNoturna(); atualizarResumoParametrosObra(); });   // fase 155b
+  // fase 155b; hotfix 295: ligar a chave abre a aba noturna (obrigatória para salvar), desligar volta à diurna
+  $("obr-dois-turnos")?.addEventListener("change", (e) => { obrMostrarJornadaNoturna(e.target.checked ? "noturno" : "diurno"); atualizarResumoParametrosObra(); });
+  document.querySelectorAll("#obr-jornada-abas [data-turno]").forEach(b => {
+    b.addEventListener("click", () => obrMostrarJornadaNoturna(b.dataset.turno));
+  });
   ["obr-jornada-entrada","obr-jornada-saida","obr-jornada-sex-entrada","obr-jornada-sex-saida",
    "obr-jornada-not-entrada","obr-jornada-not-saida","obr-jornada-not-sex-entrada","obr-jornada-not-sex-saida",
    "obr-conc-tipo","obr-conc-fornecedor","obr-conc-traco","obr-conc-peso-saco","obr-conc-fator-perda","obr-sinal-modelo"].forEach(id => {
