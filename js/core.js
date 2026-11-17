@@ -617,6 +617,33 @@ function pdfCarimbarRodape(pdf, selo, margem){
   }
 }
 
+/* Fase 187d (#306): PDF com texto nativo, escrito pela API do jsPDF que vem dentro do bundle do html2pdf (nenhuma
+   biblioteca nova). O bundle não expõe o jsPDF em window; a porta é o worker do html2pdf, que cria o documento a partir
+   de um elemento. Um div de 1 px vira a página 1, que é apagada: sobra o documento A4 vazio, em mm. */
+async function pdfNovoDocumento(){
+  if(typeof html2pdf === "undefined") throw new Error("Biblioteca html2pdf não carregada.");
+  const el = document.createElement("div");
+  el.style.cssText = "width:1px;height:1px;";
+  const pdf = await html2pdf().set({
+    margin: 0, image: { type: "png" }, html2canvas: { scale: 1, width: 1, height: 1, logging: false },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+  }).from(el).toPdf().get("pdf");
+  pdf.addPage("a4", "portrait");
+  pdf.deletePage(1);
+  return pdf;
+}
+
+/* A fonte padrão do jsPDF (Helvetica) escreve em WinAnsi: acento, ç, º, ³, –, “ ” e • saem como texto. Um caractere
+   fora dela faria o jsPDF gravar a frase inteira em 16 bits e o PDF sairia ilegível, então ele é trocado aqui.
+   Espaço inquebrável (o brl() põe um depois do R$) vira espaço comum, para o Ctrl+F achar "R$ 1.234,56". */
+const _PDF_WINANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
+const _PDF_TROCAS = { "≥": ">=", "≤": "<=", "−": "-", "→": "->", "←": "<-", "✓": "X", "✔": "X", " ": " ", " ": " ",
+  " ": " ", "\t": " ", "​": "", "\r": "" };
+function pdfTextoWinAnsi(s){
+  return String(s ?? "").normalize("NFC").replace(/[^\n\x20-\x7e\xa1-\xff]/g,
+    c => c in _PDF_TROCAS ? _PDF_TROCAS[c] : (_PDF_WINANSI_EXTRA.includes(c) ? c : "?"));
+}
+
 /* gera e baixa o PDF; `elemento` é um container temporário (o rodapé HTML dele é retirado).
    opcoes: filename, largura (mm úteis, padrão 190), topo (mm, padrão 12) */
 async function pdfGerar(elemento, opcoes = {}){

@@ -254,18 +254,21 @@ function blocoIntroducao(referenciaObra, tipo){
    orcamentos.projeto_fornecido / sondagem_fornecida; o campo antigo
    projeto_sondagem_fornecido = true continua valendo como "forneceu os dois").
    Prazo e local de execução, quando preenchidos, saem aqui. */
+function _propostaRessalva(o){
+  const temProj = o.projeto_fornecido === true || o.projeto_sondagem_fornecido === true;
+  const temSond = o.sondagem_fornecida === true || o.projeto_sondagem_fornecido === true;
+  if(!temProj && !temSond) return "Proposta sujeita a alteração após análise de projeto e sondagem.";
+  if(!temProj)             return "Proposta sujeita a alteração após análise do projeto de fundações.";
+  if(!temSond)             return "Proposta sujeita a alteração após análise da sondagem.";
+  return "";
+}
 function blocoCondicoesGerais(escopo, equipamento, orcamento){
   const o = orcamento || {};
   const linhas = (escopo || "").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   const escopoHTML = linhas.length
     ? linhas.map(l => `<div class="escopo">• ${esc(l)}</div>`).join("")
     : `<div class="escopo">• Escopo a ser preenchido na ficha do orçamento.</div>`;
-  const temProj = o.projeto_fornecido === true || o.projeto_sondagem_fornecido === true;
-  const temSond = o.sondagem_fornecida === true || o.projeto_sondagem_fornecido === true;
-  let ressalva = "";
-  if(!temProj && !temSond) ressalva = "Proposta sujeita a alteração após análise de projeto e sondagem.";
-  else if(!temProj)        ressalva = "Proposta sujeita a alteração após análise do projeto de fundações.";
-  else if(!temSond)        ressalva = "Proposta sujeita a alteração após análise da sondagem.";
+  const ressalva = _propostaRessalva(o);
   return `
     <div class="nao-quebrar">
     <div class="secao-titulo">CONDIÇÕES GERAIS DA PROPOSTA</div>
@@ -322,6 +325,32 @@ function calcularTotaisProposta(itens, orcamento){
   return { subtotal, iss, total: subtotal + iss, rotulo };
 }
 
+/* numeração do quadro: `secao` define o agrupador (N) e os subitens recebem N.1, N.2; grava it._num (usado nas
+   "Obs: Item N"). Devolve as linhas na ordem ({ secao } ou { it, num }) e o próximo número (o da linha do ISS). */
+function _propostaLinhasQuadro(itens){
+  const linhas = [];
+  let nivel = 1, secaoAtual = null, secaoNumero = null, subIndex = 0;
+  (itens || []).forEach(it => {
+    let rotuloNum;
+    if(it.secao && it.secao.trim()){
+      if(it.secao !== secaoAtual){
+        secaoAtual = it.secao; secaoNumero = nivel; subIndex = 0;
+        linhas.push({ secao: secaoNumero + "- " + it.secao });
+        nivel++;
+      }
+      subIndex++;
+      rotuloNum = secaoNumero + "." + subIndex;
+    } else {
+      secaoAtual = null;
+      rotuloNum = String(nivel);
+      nivel++;
+    }
+    it._num = rotuloNum;
+    linhas.push({ it, num: rotuloNum });
+  });
+  return { linhas, proximo: nivel };
+}
+
 /* quadro de preços com auto-numeração 1, 2, ..., 7.1, 7.2 quando há `secao`.
    Fase 40: grava it._num (usado nas "Obs: Item N"), quantidade 0 sai como "-" e
    a linha do ISS entra no fim do quadro, somada ao Valor Total Estimado. */
@@ -347,41 +376,24 @@ function blocoQuadroPrecos(itens, orcamento){
       </thead>
       <tbody>`;
 
-  /* auto-numeração: secao define agrupador (N), subitens recebem N.1, N.2 */
-  let nivel = 1;             /* próximo número de seção/item individual */
-  let secaoAtual = null;     /* nome da seção corrente */
-  let secaoNumero = null;    /* número atribuído à seção corrente */
-  let subIndex = 0;          /* contador dentro da seção */
+  /* auto-numeração: secao define agrupador (N), subitens recebem N.1, N.2 (fase 187d: em _propostaLinhasQuadro, a
+     mesma do PDF com texto) */
+  const quadro = _propostaLinhasQuadro(itens);
+  const nivel = quadro.proximo;
 
-  itens.forEach(it => {
-    const temSecao = it.secao && it.secao.trim();
-    let rotuloNum;
-
-    if(temSecao){
-      if(it.secao !== secaoAtual){
-        /* nova seção: imprime linha-agrupador e reseta sub-índice */
-        secaoAtual  = it.secao;
-        secaoNumero = nivel;
-        subIndex    = 0;
-        html += `<tr class="item-secao"><td colspan="6">${esc(secaoNumero)}- ${esc(it.secao)}</td></tr>`;
-        nivel++;
-      }
-      subIndex++;
-      rotuloNum = `${secaoNumero}.${subIndex}`;
-    } else {
-      secaoAtual = null;
-      rotuloNum  = String(nivel);
-      nivel++;
+  quadro.linhas.forEach(l => {
+    if(l.secao){
+      html += `<tr class="item-secao"><td colspan="6">${esc(l.secao)}</td></tr>`;
+      return;
     }
-
+    const it = l.it;
     const qtd = Number(it.quantidade || 0);
     const vu  = Number(it.valor_unitario || 0);
     const vt  = qtd * vu;
-    it._num = rotuloNum;
 
     html += `
       <tr>
-        <td>${esc(rotuloNum)}- ${esc(it.descricao || "")}</td>
+        <td>${esc(l.num)}- ${esc(it.descricao || "")}</td>
         <td class="col-un">${esc(it.unidade || "")}</td>
         <td class="col-qtd">${qtd ? num(qtd) : "–"}</td>
         <td class="col-vu">${brl(vu)}</td>
@@ -417,18 +429,20 @@ function blocoQuadroPrecos(itens, orcamento){
    pontas); observação idêntica a uma nota interna (orçamento feito antes da separação no catálogo) não sai. Compara com
    todas as notas, não só a do serviço do item: em 13 itens a observação ficou na linha depois de trocar o item. Texto
    escrito à mão sai. */
-function blocoObservacoesItens(itens, notasInternas){
+function _propostaObservacoes(itens, notasInternas){
   const notas = notasInternas instanceof Set ? notasInternas : new Set();
-  const obs = (itens || []).filter(i => i.observacao && i.observacao.trim() && !notas.has(i.observacao.trim()));
-  if(!obs.length) return "";
-  const texto = (i) => {
+  return (itens || []).filter(i => i.observacao && i.observacao.trim() && !notas.has(i.observacao.trim())).map(i => {
     const t = i.observacao.trim();
     if(/^obs\b/i.test(t)) return t;
-    return i._num ? `Obs: Item ${i._num} - ${t}` : `Obs: ${t}`;
-  };
+    return i._num ? "Obs: Item " + i._num + " - " + t : "Obs: " + t;
+  });
+}
+function blocoObservacoesItens(itens, notasInternas){
+  const obs = _propostaObservacoes(itens, notasInternas);
+  if(!obs.length) return "";
   return `
     <div class="obs-itens">
-      ${obs.map(i => `<div class="obs nao-quebrar">${esc(texto(i))}</div>`).join("")}
+      ${obs.map(t => `<div class="obs nao-quebrar">${esc(t)}</div>`).join("")}
     </div>`;
 }
 
@@ -994,6 +1008,422 @@ function montarHtmlProposta(dados){
 }
 
 /* ====================================================================
+   Fase 187d (#306): proposta em PDF com texto nativo.
+   O html2pdf fotografava a página e o PDF era uma imagem: o Ctrl+F não achava o cliente nem o total e o texto copiado
+   não saía. Aqui o mesmo layout é escrito pela API do jsPDF que já vem no bundle do html2pdf (pdfNovoDocumento,
+   core.js): cabeçalho, destinatário, número, introdução, condições gerais, quadro de preços, nota do INSS,
+   observações, encargos, cláusulas, assinatura, "De acordo" e endereço; o rodapé (texto ISO 9001, "Página i de N" e
+   selo) é o mesmo pdfCarimbarRodape dos outros PDFs. Bloco que não cabe no fim da página vai inteiro para a seguinte
+   (como o .nao-quebrar do HTML); tabela repete o cabeçalho na página nova. Cores em RGB: exceção dos geradores de PDF.
+   A pré-visualização em HTML (visualizarProposta) continua pelo montarHtmlProposta.
+   ==================================================================== */
+const PPDF_ESQ = 10, PPDF_LARG = 190, PPDF_TOPO = 12;
+const PPDF_LIMITE = 297 - PDF_BASE_MIN_MM;   // abaixo ficam o texto e o selo do rodapé
+const PPDF_PT = 0.352778;                     // mm por ponto
+const PPDF_COR = { preto: [0, 0, 0], cinza: [217, 217, 217], cinzaEsc: [192, 192, 192], laranja: [249, 115, 22],
+  laranjaEsc: [194, 65, 12], amarelo: [255, 247, 214], ambar: [161, 98, 7], branco: [255, 255, 255] };
+const PPDF_NB = "\u0001";   // espaço que não quebra a linha (sigla NBR, valor em R$); sai como espaço comum
+
+function _ppFonte(pdf, estilo, tam, cor){
+  pdf.setFont("helvetica", estilo || "normal");
+  pdf.setFontSize(tam);
+  pdf.setTextColor(...(cor || PPDF_COR.preto));
+}
+function _ppLh(tam){ return tam * PPDF_PT * 1.3; }
+function _ppBase(y, h, tam){ return y + h / 2 + tam * PPDF_PT * 0.359; }   // linha de base que centra a letra maiúscula
+function _ppEstilo(p){ return p.b && p.i ? "bolditalic" : p.b ? "bold" : p.i ? "italic" : "normal"; }
+function _ppPagina(L){ L.pdf.addPage("a4", "portrait"); L.y = PPDF_TOPO; }
+function _ppGarantir(L, h){ if(L.y + h > PPDF_LIMITE && h <= PPDF_LIMITE - PPDF_TOPO && L.y > PPDF_TOPO + 0.1) _ppPagina(L); }
+
+/* "texto com <b>negrito</b>" → trechos { t, b, i, cor }. Só para os textos fixos deste arquivo (TEXTO_INSTITUCIONAL). */
+function _ppMarcado(s, base){
+  const out = []; let b = !!(base && base.b), i = !!(base && base.i);
+  String(s || "").split(/(<\/?[bi]>)/).forEach(p => {
+    if(p === "<b>") b = true; else if(p === "</b>") b = false;
+    else if(p === "<i>") i = true; else if(p === "</i>") i = false;
+    else if(p) out.push({ t: p, b, i, cor: base && base.cor });
+  });
+  return out;
+}
+
+/* trechos → palavras medidas. Palavra sem espaço entre dois trechos (negrito colado em pontuação) fica junta. */
+function _ppPalavras(pdf, trechos, tam){
+  const palavras = []; let atual = null, espaco = true;
+  trechos.forEach(tr => {
+    const est = _ppEstilo(tr);
+    const txt = String(tr.t ?? "").split(PPDF_NB).map(pdfTextoWinAnsi).join(PPDF_NB)
+      .replace(/NBR-? (?=\d)/g, m => m.replace(" ", PPDF_NB));   // lote S42 (L3): sigla de norma não quebra
+    txt.split(/(\n| +)/).forEach(tok => {
+      if(!tok) return;
+      if(tok === "\n"){ palavras.push({ quebra: true }); atual = null; espaco = true; return; }
+      if(/^ +$/.test(tok)){ espaco = true; return; }
+      _ppFonte(pdf, est, tam);
+      const t = tok.split(PPDF_NB).join(" ");
+      const pedaco = { t, est, cor: tr.cor, w: pdf.getTextWidth(t) };
+      if(atual && !espaco){ atual.pedacos.push(pedaco); atual.w += pedaco.w; }
+      else { atual = { pedacos: [pedaco], w: pedaco.w }; palavras.push(atual); }
+      espaco = false;
+    });
+  });
+  return palavras;
+}
+
+/* palavra mais larga que a linha (e-mail, endereço sem espaço) é cortada por letra */
+function _ppCortarPalavra(pdf, p, larg, tam){
+  if(p.w <= larg || p.pedacos.length !== 1) return [p];
+  const pc = p.pedacos[0], partes = [];
+  _ppFonte(pdf, pc.est, tam);
+  let buf = "";
+  for(const c of pc.t){
+    if(buf && pdf.getTextWidth(buf + c) > larg){ partes.push(buf); buf = ""; }
+    buf += c;
+  }
+  if(buf) partes.push(buf);
+  return partes.map(t => { const w = pdf.getTextWidth(t); return { pedacos: [{ ...pc, t, w }], w }; });
+}
+
+/* quebra em linhas de largura `larg` (mm). Linha com fim = true termina parágrafo (não é justificada). */
+function _ppLinhas(pdf, trechos, larg, tam){
+  _ppFonte(pdf, "normal", tam);
+  const esp = pdf.getTextWidth(" ");
+  const linhas = [];
+  let lin = { palavras: [], w: 0 };
+  const fechar = (fim) => { lin.fim = fim; linhas.push(lin); lin = { palavras: [], w: 0 }; };
+  _ppPalavras(pdf, trechos, tam).forEach(p => {
+    if(p.quebra){ fechar(true); return; }
+    _ppCortarPalavra(pdf, p, larg, tam).forEach(parte => {
+      if(lin.palavras.length && lin.w + esp + parte.w > larg + 0.01) fechar(false);
+      lin.w += lin.palavras.length ? esp + parte.w : parte.w;
+      lin.palavras.push(parte);
+    });
+  });
+  if(lin.palavras.length || !linhas.length) fechar(true);
+  return { linhas, esp };
+}
+
+/* escreve as linhas a partir do topo y. Cada palavra sai com o espaço depois dela, para o texto copiado sair legível. */
+function _ppDesenharLinhas(pdf, info, linhas, x, y, larg, tam, alinh){
+  const lh = _ppLh(tam);
+  linhas.forEach((lin, k) => {
+    const n = lin.palavras.length;
+    if(!n) return;
+    const base = _ppBase(y + k * lh, lh, tam);
+    let gap = info.esp, cx = x;
+    if(alinh === "justify" && !lin.fim && n > 1) gap = (larg - lin.palavras.reduce((s, p) => s + p.w, 0)) / (n - 1);
+    else if(alinh === "center") cx = x + (larg - lin.w) / 2;
+    else if(alinh === "right") cx = x + larg - lin.w;
+    lin.palavras.forEach((p, j) => {
+      p.pedacos.forEach((pc, m) => {
+        _ppFonte(pdf, pc.est, tam, pc.cor);
+        pdf.text(pc.t + (m === p.pedacos.length - 1 && j < n - 1 ? " " : ""), cx, base);
+        cx += pc.w;
+      });
+      cx += gap;
+    });
+  });
+}
+
+function _ppRet(pdf, x, y, w, h, fundo, borda, semTopo){
+  if(fundo){ pdf.setFillColor(...fundo); pdf.rect(x, y, w, h, "F"); }
+  if(!borda) return;
+  pdf.setDrawColor(0); pdf.setLineWidth(0.25);
+  if(semTopo){ pdf.line(x, y, x, y + h); pdf.line(x + w, y, x + w, y + h); pdf.line(x, y + h, x + w, y + h); }
+  else pdf.rect(x, y, w, h, "S");
+}
+function _ppTextoCentro(pdf, txt, x, y, w, h, tam, est, cor){
+  _ppFonte(pdf, est, tam, cor);
+  pdf.text(pdfTextoWinAnsi(txt), x + w / 2, _ppBase(y, h, tam), { align: "center" });
+}
+
+/* caixa de texto na largura útil. op: tam, alinh (left|center|right|justify), padX, padY, fundo, borda, semTopo,
+   antes (mm acima), junto (não parte entre páginas; padrão true). Texto maior que uma página continua na seguinte. */
+function _ppOpCaixa(op){ return Object.assign({ tam: 9.5, alinh: "left", padX: 0, padY: 0, antes: 0, junto: true }, op); }
+function _ppAlturaCaixa(L, trechos, op){
+  const o = _ppOpCaixa(op);
+  return o.antes + _ppLinhas(L.pdf, trechos, PPDF_LARG - 2 * o.padX, o.tam).linhas.length * _ppLh(o.tam) + 2 * o.padY;
+}
+function _ppCaixa(L, trechos, op){
+  const o = _ppOpCaixa(op), pdf = L.pdf, lh = _ppLh(o.tam), largTxt = PPDF_LARG - 2 * o.padX;
+  const info = _ppLinhas(pdf, trechos, largTxt, o.tam);
+  let resto = info.linhas;
+  L.y += o.antes;
+  if(o.junto) _ppGarantir(L, resto.length * lh + 2 * o.padY);
+  while(resto.length){
+    const cabe = Math.floor((PPDF_LIMITE - L.y - 2 * o.padY) / lh + 1e-6);
+    if(cabe < 1){ _ppPagina(L); continue; }
+    const fatia = resto.slice(0, cabe);
+    resto = resto.slice(cabe);
+    const h = fatia.length * lh + 2 * o.padY;
+    _ppRet(pdf, PPDF_ESQ, L.y, PPDF_LARG, h, o.fundo, o.borda, o.semTopo);
+    _ppDesenharLinhas(pdf, info, fatia, PPDF_ESQ + o.padX, L.y + o.padY, largTxt, o.tam, o.alinh);
+    L.y += h;
+    if(resto.length) _ppPagina(L);
+  }
+}
+const PPDF_TITULO = { tam: 9.5, alinh: "center", padY: 1.06, fundo: PPDF_COR.cinza, borda: true };
+function _ppTitulo(t){ return [{ t, b: true }]; }
+
+/* tabela. cols = larguras (mm); linha = { cels: [{ t | trechos, span, alinh, b, i, fundo, cor, semQuebra, tam, padX }],
+   fundo, tam }. Célula semQuebra (valor em R$, título de coluna) não quebra: a fonte diminui até caber, como o
+   white-space: nowrap do HTML. As linhas de `cab` repetem no topo de cada página; linha não parte entre páginas. */
+function _ppTabela(L, cols, cab, corpo, op){
+  const o = Object.assign({ tam: 9.5, padX: 1.6, padY: 1.06, antes: 0 }, op), pdf = L.pdf;
+  const medir = (lin) => {
+    let x = PPDF_ESQ, c = 0;
+    lin._h = 0;
+    lin._cels = lin.cels.map(cel => {
+      const span = cel.span || 1, w = cols.slice(c, c + span).reduce((s, v) => s + v, 0);
+      c += span;
+      const padX = cel.padX ?? o.padX;
+      const trechos = cel.trechos || [{ t: cel.semQuebra ? String(cel.t ?? "").replace(/[  ]/g, PPDF_NB) : String(cel.t ?? ""),
+        b: cel.b, i: cel.i, cor: cel.cor }];
+      let tam = cel.tam || lin.tam || o.tam;
+      let info = _ppLinhas(pdf, trechos, w - 2 * padX, tam);
+      while(cel.semQuebra && info.linhas.length > 1 && tam > 5.5){ tam -= 0.5; info = _ppLinhas(pdf, trechos, w - 2 * padX, tam); }
+      const r = { x, w, tam, info, cel, padX, h: info.linhas.length * _ppLh(tam) + 2 * o.padY };
+      x += w;
+      lin._h = Math.max(lin._h, r.h);
+      return r;
+    });
+  };
+  const desenhar = (lin) => {
+    lin._cels.forEach(r => {
+      _ppRet(pdf, r.x, L.y, r.w, lin._h, r.cel.fundo || lin.fundo, true);
+      _ppDesenharLinhas(pdf, r.info, r.info.linhas, r.x + r.padX, L.y + o.padY, r.w - 2 * r.padX, r.tam, r.cel.alinh || "left");
+    });
+    L.y += lin._h;
+  };
+  cab.forEach(medir);
+  corpo.forEach(medir);
+  L.y += o.antes;
+  _ppGarantir(L, cab.reduce((s, l) => s + l._h, 0) + (corpo[0] ? corpo[0]._h : 0));
+  cab.forEach(desenhar);
+  corpo.forEach(lin => {
+    if(L.y + lin._h > PPDF_LIMITE){ _ppPagina(L); cab.forEach(desenhar); }
+    desenhar(lin);
+  });
+}
+
+/* cabeçalho institucional: logo | Sistema de Gestão da Qualidade / Tipo de Documento + nome | Identificação e Revisão */
+function _ppCabecalho(L, tipo, codigo, rev, logo){
+  const pdf = L.pdf, x = PPDF_ESQ, y = L.y, t = PROPOSTA_TIPOS[tipo] || PROPOSTA_TIPOS.outro;
+  const wLogo = 24, wMeta = 34, wMeio = PPDF_LARG - wLogo - wMeta;
+  const h1 = 5.5, hMeta = 4.6, h2 = hMeta * 4, hTipo = 4.4;
+  _ppRet(pdf, x, y, wLogo, h1 + h2, null, true);
+  if(logo) pdf.addImage(logo, "PNG", x + (wLogo - 18) / 2, y + (h1 + h2 - 18) / 2, 18, 18, "logo-cgl", "FAST");
+  _ppRet(pdf, x + wLogo, y, wMeio + wMeta, h1, null, true);
+  _ppTextoCentro(pdf, "Sistema de Gestão da Qualidade", x + wLogo, y, wMeio + wMeta, h1, 8.5, "normal");
+  _ppRet(pdf, x + wLogo, y + h1, wMeio, hTipo, PPDF_COR.cinzaEsc, false);
+  _ppRet(pdf, x + wLogo, y + h1, wMeio, h2, null, true);
+  _ppFonte(pdf, "normal", 8.5);
+  pdf.text("Tipo de Documento", x + wLogo + 1.6, _ppBase(y + h1, hTipo, 8.5));
+  _ppTextoCentro(pdf, "PROPOSTA COMERCIAL - " + t.rotulo, x + wLogo, y + h1 + hTipo, wMeio, h2 - hTipo, 12, "bold");
+  const xm = x + wLogo + wMeio;
+  [["Identificação", true], [codigo || t.codigo, false], ["Revisão", true], [rev || t.revisao_padrao, false]].forEach(([txt, lbl], k) => {
+    const yy = y + h1 + k * hMeta;
+    _ppRet(pdf, xm, yy, wMeta, hMeta, lbl ? PPDF_COR.laranja : null, true);
+    if(lbl){ _ppFonte(pdf, "bold", 7, PPDF_COR.branco); pdf.text(pdfTextoWinAnsi(txt), xm + 1.2, _ppBase(yy, hMeta, 7)); }
+    else _ppTextoCentro(pdf, txt, xm, yy, wMeta, hMeta, 7.5, "normal");
+  });
+  L.y = y + h1 + h2;
+}
+
+/* "Itabira/MG, 01 Julho de 2026" à direita, "À", nome do cliente e os campos (contato do orçamento antes do cadastro) */
+function _ppDestinatario(L, cliente, o){
+  const pdf = L.pdf, c = cliente || {};
+  L.y += 2.6;
+  _ppFonte(pdf, "normal", 9);
+  pdf.text(pdfTextoWinAnsi((o.cidade_emissao || "Itabira/MG") + ", " + dataPorExtensoBR(o.data_orcamento)),
+    PPDF_ESQ + PPDF_LARG, _ppBase(L.y, _ppLh(9.5), 9), { align: "right" });
+  _ppCaixa(L, [{ t: "À" }], { junto: false });
+  _ppCaixa(L, [{ t: c.nome_fantasia || c.nome || "—", b: true }], { tam: 14, junto: false });
+  _ppCaixa(L, [{ t: [
+    "Razão Social: " + (c.nome || ""),
+    "CNPJ de faturamento: " + (c.cpf_cnpj || ""),
+    "E-mail: " + (o.contato_email || c.email || ""),
+    "A/c: " + (o.contato_nome || c.contato_nome || ""),
+    "Tel.: " + (o.contato_telefone || c.telefone || "")
+  ].join("\n") }], { tam: 9, antes: 1, junto: false });
+}
+
+/* PROPOSTA CONTRATO: NNNN/AAAA   REV: xx, centrado */
+function _ppNumero(L, o, rev){
+  const pdf = L.pdf;
+  const partes = [
+    { t: "PROPOSTA CONTRATO: ", tam: 12, cor: PPDF_COR.laranjaEsc },
+    { t: orcNumeroExibicao(o.numero, o.data_orcamento), tam: 14, cor: PPDF_COR.laranjaEsc },
+    { t: "REV: " + rev, tam: 9, cor: PPDF_COR.preto, antes: 5.3 }
+  ].map(p => { _ppFonte(pdf, "bold", p.tam); p.t = pdfTextoWinAnsi(p.t); p.w = pdf.getTextWidth(p.t); return p; });
+  L.y += 3.7;
+  const h = _ppLh(14), base = _ppBase(L.y, h, 12);
+  let x = PPDF_ESQ + (PPDF_LARG - partes.reduce((s, p) => s + p.w + (p.antes || 0), 0)) / 2;
+  partes.forEach(p => { x += p.antes || 0; _ppFonte(pdf, "bold", p.tam, p.cor); pdf.text(p.t, x, base); x += p.w; });
+  L.y += h + 1.6;
+}
+
+/* CONDIÇÕES GERAIS DA PROPOSTA: título cinza e quadro amarelo em itálico, com escopo, ressalva, equipamento, local e prazo */
+function _ppCondicoesGerais(L, o){
+  const escopo = String(o.escopo_servicos || o.observacoes || "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const ressalva = _propostaRessalva(o);
+  const tr = [{ t: "Baseado nas informações fornecidas por V. Sas., previmos executar as estacas conforme discriminado abaixo:\n", i: true }];
+  (escopo.length ? escopo : ["Escopo a ser preenchido na ficha do orçamento."])
+    .forEach(l => tr.push({ t: "• " + l + "\n", b: true, i: true, cor: PPDF_COR.ambar }));
+  if(ressalva) tr.push({ t: ressalva + "\n", i: true });
+  if(o.equipamento_considerado) tr.push({ t: "Considerado equipamento " + o.equipamento_considerado + ".\n", i: true });
+  if(o.local_execucao) tr.push({ t: "Local de execução: ", i: true }, { t: o.local_execucao + "\n", b: true, i: true });
+  if(o.prazo_execucao) tr.push({ t: "Prazo de execução previsto: ", i: true }, { t: o.prazo_execucao + "\n", b: true, i: true });
+  const opT = { ...PPDF_TITULO, antes: 2.6 }, opC = { alinh: "center", padX: 2.6, padY: 1.6, fundo: PPDF_COR.amarelo, borda: true, semTopo: true };
+  _ppGarantir(L, _ppAlturaCaixa(L, _ppTitulo("x"), opT) + _ppAlturaCaixa(L, tr, opC));
+  _ppCaixa(L, _ppTitulo("CONDIÇÕES GERAIS DA PROPOSTA"), opT);
+  _ppCaixa(L, tr, opC);
+}
+
+/* quadro de preços: mesma numeração, mesmas colunas e a linha do ISS antes do Valor Total Estimado */
+function _ppQuadroPrecos(L, itens, o){
+  if(!itens.length){
+    _ppCaixa(L, _ppTitulo("Quadro de Preços"), { ...PPDF_TITULO, antes: 2.1 });
+    _ppCaixa(L, [{ t: "Sem itens cadastrados.", i: true }], { alinh: "center", padY: 1.6, fundo: PPDF_COR.amarelo, borda: true, semTopo: true });
+    return;
+  }
+  const tot = calcularTotaisProposta(itens, o), quadro = _propostaLinhasQuadro(itens);
+  const cols = [106.4, 17.1, 17.1, 22.8, 26.6];
+  const tit = (t) => ({ t, b: true, alinh: "center", semQuebra: true });
+  const cab = [
+    { fundo: PPDF_COR.cinza, tam: 9, cels: [{ t: "Quadro de Preços: Seguem abaixo os preços unitários para execução dos serviços.", span: 5, b: true, alinh: "center" }] },
+    { fundo: PPDF_COR.cinza, tam: 9, cels: [tit("ITEM"), tit("Unidade"), tit("Quant."), tit("Valor Unit (R$)"), tit("Valor Total (R$)")] }
+  ];
+  const corpo = quadro.linhas.map(l => {
+    if(l.secao) return { fundo: PPDF_COR.cinza, cels: [{ t: l.secao, span: 5, b: true, alinh: "center" }] };
+    const it = l.it, qtd = Number(it.quantidade || 0), vu = Number(it.valor_unitario || 0);
+    return { cels: [
+      { t: l.num + "- " + (it.descricao || "") },
+      { t: it.unidade || "", alinh: "center" },
+      { t: qtd ? num(qtd) : "–", alinh: "center" },
+      { t: brl(vu), alinh: "right", semQuebra: true },
+      { t: qtd ? brl(qtd * vu) : "–", alinh: qtd ? "right" : "center", semQuebra: true }
+    ] };
+  });
+  if(tot.iss > 0) corpo.push({ cels: [{ t: quadro.proximo + "- " + tot.rotulo }, { t: "" }, { t: "" }, { t: "" },
+    { t: brl(tot.iss), alinh: "right", semQuebra: true }] });
+  corpo.push({ fundo: PPDF_COR.cinza, cels: [{ t: "Valor Total Estimado", span: 4, b: true, alinh: "right" },
+    { t: brl(tot.total), b: true, alinh: "right", semQuebra: true }] });
+  _ppTabela(L, cols, cab, corpo, { antes: 2.1 });
+}
+
+/* ENCARGOS DE RESPONSABILIDADE: DESCRIÇÃO | CONTRATANTE | CGL | Não Aplica, linha de destaque em amarelo */
+function _ppEncargos(L, encargos){
+  if(!encargos || !encargos.length) return;
+  const tit = (t) => ({ t, b: true, alinh: "center", semQuebra: true });
+  const cab = [
+    { fundo: PPDF_COR.cinza, tam: 9, cels: [{ t: "ENCARGOS DE RESPONSABILIDADE", span: 4, b: true, alinh: "center" }] },
+    { fundo: PPDF_COR.cinza, tam: 9, cels: [{ t: "DESCRIÇÃO", b: true, padX: 2.1 }, tit("CONTRATANTE"), tit("CGL"), tit("Não Aplica")] }
+  ];
+  const x = (v) => ({ t: v ? "X" : "", b: true, alinh: "center" });
+  const corpo = encargos.map(it => ({ fundo: it.destaque ? PPDF_COR.amarelo : null,
+    cels: [{ t: it.d }, x(it.r === "CONTRATANTE"), x(it.r === "CGL"), x(it.r === "NAO")] }));
+  _ppTabela(L, [121.6, 22.8, 22.8, 22.8], cab, corpo, { antes: 3.2 });
+}
+
+/* cláusulas: título cinza e um quadro por cláusula (o título não fica sozinho no pé da página) */
+function _ppClausulas(L, titulo, itens){
+  if(!itens || !itens.length) return;
+  const opT = { ...PPDF_TITULO, antes: 3.2 };
+  const opI = { tam: 8.5, alinh: "justify", padX: 1.6, padY: 1.06, borda: true, semTopo: true };
+  const tr = (it) => [{ t: it.t, b: !!it.destaque, i: !!it.destaque }];
+  _ppGarantir(L, _ppAlturaCaixa(L, _ppTitulo(titulo), opT) + _ppAlturaCaixa(L, tr(itens[0]), opI));
+  _ppCaixa(L, _ppTitulo(titulo), opT);
+  itens.forEach(it => _ppCaixa(L, tr(it), opI));
+}
+
+/* assinatura da CGL e dados do responsável comercial */
+function _ppComercial(L, responsavel){
+  const pdf = L.pdf, r = responsavel || {};
+  const linhas = [{ t: (r.nome || "—") + "\n", b: true }, { t: _propostaCargo(r.cargo) + "\n" }];
+  if(r.telefone) linhas.push({ t: "Cel.: " + _propostaTelefone(r.telefone) + "\n" });
+  if(r.email) linhas.push({ t: r.email + "\n" });
+  linhas.push({ t: CGL_INFO.site });
+  const opC = { tam: 9, alinh: "center", antes: 2.1 };
+  _ppGarantir(L, 3.7 + 8 + _ppLh(9.5) + 1 + _ppAlturaCaixa(L, linhas, opC));
+  L.y += 3.7 + 8;
+  const meio = PPDF_ESQ + PPDF_LARG / 2;
+  pdf.setDrawColor(0); pdf.setLineWidth(0.25);
+  pdf.line(meio - 37, L.y, meio + 37, L.y);
+  L.y += 1;
+  _ppTextoCentro(pdf, CGL_INFO.razao_social, PPDF_ESQ, L.y, PPDF_LARG, _ppLh(9.5), 9.5, "normal");
+  L.y += _ppLh(9.5);
+  _ppCaixa(L, linhas, opC);
+}
+
+/* "De acordo: Em ___/___/____." com linha para assinatura, e a observação da alteração contratual */
+function _ppDeAcordo(L){
+  const pdf = L.pdf;
+  const obs = [{ t: "Obs: Favor enviar junto com o \"De acordo\" última alteração contratual e caso não seja assinado pelo representante legal da empresa enviar procuração." }];
+  const opO = { tam: 8, padX: 2.1, padY: 1.06, borda: true };
+  const hCorpo = 2.1 + 3.7 + _ppLh(11) + 1 + _ppLh(8.5) + 2.1;
+  _ppGarantir(L, 2.6 + hCorpo + _ppAlturaCaixa(L, obs, opO));
+  L.y += 2.6;
+  const y0 = L.y;
+  _ppRet(pdf, PPDF_ESQ, y0, PPDF_LARG, hCorpo, null, true);
+  const yTxt = y0 + 2.1 + 3.7, txt = "De acordo: Em ___/___/____. ";
+  _ppFonte(pdf, "bold", 11);
+  const x = PPDF_ESQ + 2.1, base = _ppBase(yTxt, _ppLh(11), 11);
+  pdf.text(txt, x, base);
+  const xl = x + pdf.getTextWidth(txt);
+  pdf.setDrawColor(0); pdf.setLineWidth(0.25);
+  pdf.line(xl, base + 0.6, xl + (PPDF_LARG - 4.2) / 2, base + 0.6);
+  _ppTextoCentro(pdf, "(Assinatura e Carimbo)", PPDF_ESQ, yTxt + _ppLh(11) + 1, PPDF_LARG, _ppLh(8.5), 8.5, "normal");
+  L.y = y0 + hCorpo;
+  _ppCaixa(L, obs, { ...opO, junto: false });
+}
+
+/* monta o PDF da proposta (devolve o documento jsPDF; quem chama salva) */
+async function gerarPropostaPdfTexto(dados){
+  const { orcamento: o, itens, cliente, responsavel } = dados;
+  const tipo = o.tipo_proposta || "helice";
+  const tInfo = PROPOSTA_TIPOS[tipo] || PROPOSTA_TIPOS.outro;
+  const rev = o.numero_revisao || "00";
+  const itensQuadro = [...(itens || []), ...itensVirtuais(o, itens)];
+  const pdf = await pdfNovoDocumento();
+  const logo = await pdfCarregarImagem(PDF_LOGO_SRC, 300).catch(() => null);
+  const selo = await pdfCarregarImagem(PDF_SELO_SRC, 300).catch(() => null);
+  const L = { pdf, y: PPDF_TOPO };
+
+  _ppCabecalho(L, tipo, o.codigo_modelo || tInfo.codigo, rev, logo);
+  _ppDestinatario(L, cliente, o);
+  _ppNumero(L, o, rev);
+  _ppCaixa(L, [{ t: "Proposta contrato para execução de Fundações Especiais por empreitada com emprego de todos materiais e apuração através de medições das quantidades por preços unitários, conforme dados e condições abaixo:" }],
+    { alinh: "justify", antes: 1 });
+  _ppCaixa(L, [{ t: "Ref:", b: true }, { t: " Execução de estacas tipo " }, { t: tInfo.rotulo, b: true }, { t: " " + (o.referencia_obra || o.descricao || "") }],
+    { antes: 1.6 });
+  _ppCaixa(L, _ppMarcado(TEXTO_INSTITUCIONAL), { alinh: "justify", antes: 2.6 });
+  _ppCondicoesGerais(L, o);
+  _ppQuadroPrecos(L, itensQuadro, o);
+  _ppCaixa(L, [{ t: NOTA_INSS }], { tam: 7.5, alinh: "justify", padX: 1.6, padY: 1.06, borda: true, semTopo: true });
+  _propostaObservacoes(itensQuadro, dados.notasInternas).forEach((t, k) =>
+    _ppCaixa(L, [{ t }], { tam: 8.5, padX: 1.6, padY: 1.06, borda: true, semTopo: k > 0, antes: k ? 0 : 2.1 }));
+  _ppEncargos(L, encargosPorTipo(tipo, o));
+  _ppClausulas(L, "CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS", criteriosMedicaoPorTipo(tipo, o));
+  _ppClausulas(L, "CONDIÇÕES GERAIS", condicoesGeraisPorTipo(tipo));
+  _ppClausulas(L, "CONTRATAÇÃO DOS SERVIÇOS", contratacaoServicosTextoComum());
+  _ppClausulas(L, "VALIDADE DA PROPOSTA", validadeTextoComum(o.validade_dias || 30));
+  _ppComercial(L, responsavel);
+  _ppDeAcordo(L);
+  _ppCaixa(L, [
+    { t: CGL_INFO.endereco + "   FONE: " + CGL_INFO.telefone + "\n", b: true },
+    { t: "E-mail: " + CGL_INFO.emails + "\n" },
+    { t: "Site: " + CGL_INFO.site }
+  ], { tam: 8, alinh: "center", padX: 1.6, padY: 1.6, borda: true, semTopo: true });
+
+  pdfCarimbarRodape(pdf, selo, [PPDF_TOPO, PPDF_ESQ, PDF_BASE_MIN_MM, PPDF_ESQ]);
+  const c = cliente || {};
+  pdf.setProperties({
+    title: pdfTextoWinAnsi("Proposta " + orcNumeroExibicao(o.numero, o.data_orcamento) + " - " + (c.nome_fantasia || c.nome || "")),
+    subject: "Proposta comercial", author: "CGL Fundações", creator: "Controle CGL"
+  });
+  return pdf;
+}
+
+/* ====================================================================
    Funções públicas: buscar dados, visualizar e baixar
    ==================================================================== */
 
@@ -1055,15 +1485,24 @@ async function visualizarProposta(orcamentoId){
   }
 }
 
-/* baixa a proposta como PDF (via html2pdf.js) */
+/* baixa a proposta como PDF. Fase 187d: com texto nativo (gerarPropostaPdfTexto); se ele falhar, sai como antes,
+   pelo html2pdf (imagem), para o comercial não ficar sem a proposta. */
 async function baixarProposta(orcamentoId){
   try {
     const dados = await carregarDadosProposta(orcamentoId);
-    const html  = montarHtmlProposta(dados);
     const pNum  = orcNumeroPartes(dados.orcamento.numero, dados.orcamento.data_orcamento);
     const num   = `${pNum.num || "0000"}_${pNum.ano}`.replace(/[^\w.-]+/g, "_");
     const tipo  = (PROPOSTA_TIPOS[dados.orcamento.tipo_proposta] || PROPOSTA_TIPOS.outro).rotulo;
     const nomeArq = `Proposta_${tipo}_${num}.pdf`;
+
+    try {
+      const pdf = await gerarPropostaPdfTexto(dados);
+      pdf.save(nomeArq);
+      return;
+    } catch(errTexto){
+      console.error("Proposta: o PDF com texto falhou; gerando pelo modo antigo (imagem).", errTexto);
+    }
+    const html  = montarHtmlProposta(dados);
 
     /* html2pdf precisa do HTML montado num container vivo no DOM */
     const wrap = document.createElement("div");
