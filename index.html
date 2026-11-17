@@ -9,102 +9,103 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="8ce2080" />
+<meta name="app-versao" content="b141405" />
 <!-- pré-carregamento (gerado pelo scripts/preload-scripts.sh na publicação): baixa os scripts em paralelo -->
-<link rel="preload" as="script" href="js/tema.js?v=8ce2080">
-<link rel="preload" as="script" href="vendor/supabase-js-2.118.0.min.js?v=8ce2080">
-<link rel="preload" as="script" href="vendor/xlsx-0.20.3.full.min.js?v=8ce2080">
-<link rel="preload" as="script" href="vendor/html2pdf-0.10.1.bundle.min.js?v=8ce2080">
-<link rel="preload" as="script" href="js/core.js?v=8ce2080">
-<link rel="preload" as="script" href="js/ui.js?v=8ce2080">
-<link rel="preload" as="script" href="js/historico.js?v=8ce2080">
-<link rel="preload" as="script" href="js/fiscal.js?v=8ce2080">
-<link rel="preload" as="script" href="js/fiscal_ncm.js?v=8ce2080">
-<link rel="preload" as="script" href="js/clientes.js?v=8ce2080">
-<link rel="preload" as="script" href="js/fornecedores.js?v=8ce2080">
-<link rel="preload" as="script" href="js/apropriacoes.js?v=8ce2080">
-<link rel="preload" as="script" href="js/funcionarios.js?v=8ce2080">
-<link rel="preload" as="script" href="js/funcionarios_importar.js?v=8ce2080">
-<link rel="preload" as="script" href="js/funcionarios_lotacao.js?v=8ce2080">
-<link rel="preload" as="script" href="js/rh_documentos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/servicos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/produtos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/estoque.js?v=8ce2080">
-<link rel="preload" as="script" href="js/separacoes.js?v=8ce2080">
-<link rel="preload" as="script" href="js/epi.js?v=8ce2080">
-<link rel="preload" as="script" href="js/compras.js?v=8ce2080">
-<link rel="preload" as="script" href="js/requisicoes.js?v=8ce2080">
-<link rel="preload" as="script" href="js/orcamentos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/propostas.js?v=8ce2080">
-<link rel="preload" as="script" href="js/contratos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/contas_pagar.js?v=8ce2080">
-<link rel="preload" as="script" href="js/centros_custo.js?v=8ce2080">
-<link rel="preload" as="script" href="js/carteira.js?v=8ce2080">
-<link rel="preload" as="script" href="js/obras.js?v=8ce2080">
-<link rel="preload" as="script" href="js/frota.js?v=8ce2080">
-<link rel="preload" as="script" href="js/viagens.js?v=8ce2080">
-<link rel="preload" as="script" href="js/equipamentos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/vendas_bens.js?v=8ce2080">
-<link rel="preload" as="script" href="js/acessorios.js?v=8ce2080">
-<link rel="preload" as="script" href="js/reparos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/manutencao.js?v=8ce2080">
-<link rel="preload" as="script" href="js/fabricacao.js?v=8ce2080">
-<link rel="preload" as="script" href="js/mobilizacoes.js?v=8ce2080">
-<link rel="preload" as="script" href="js/mobilizacoes_contrato.js?v=8ce2080">
-<link rel="preload" as="script" href="js/mobilizacoes_cronograma.js?v=8ce2080">
-<link rel="preload" as="script" href="js/mobilizacoes_grafico.js?v=8ce2080">
-<link rel="preload" as="script" href="js/estacas.js?v=8ce2080">
-<link rel="preload" as="script" href="js/estacas_prof_projeto.js?v=8ce2080">
-<link rel="preload" as="script" href="js/estacas_raiz_conf.js?v=8ce2080">
-<link rel="preload" as="script" href="js/obra_abas.js?v=8ce2080">
-<link rel="preload" as="script" href="js/obra_faixa.js?v=8ce2080">
-<link rel="preload" as="script" href="js/medicao_regras_carga.js?v=8ce2080">
-<link rel="preload" as="script" href="js/medicoes.js?v=8ce2080">
-<link rel="preload" as="script" href="js/movimentacoes.js?v=8ce2080">
-<link rel="preload" as="script" href="js/rdo_import_rg113.js?v=8ce2080">
-<link rel="preload" as="script" href="js/rdo.js?v=8ce2080">
-<link rel="preload" as="script" href="js/rdo_resumo.js?v=8ce2080">
-<link rel="preload" as="script" href="js/rdo_import_maya.js?v=8ce2080">
-<link rel="preload" as="script" href="js/geodigitus.js?v=8ce2080">
-<link rel="preload" as="script" href="js/estaca_perfil.js?v=8ce2080">
-<link rel="preload" as="script" href="js/estacas_gps.js?v=8ce2080">
-<link rel="preload" as="script" href="js/estacas_perfuracao.js?v=8ce2080">
-<link rel="preload" as="script" href="js/planta_projeto.js?v=8ce2080">
-<link rel="preload" as="script" href="js/planta_posicoes.js?v=8ce2080">
-<link rel="preload" as="script" href="js/computadores_bordo.js?v=8ce2080">
-<link rel="preload" as="script" href="js/planta_vinculo.js?v=8ce2080">
-<link rel="preload" as="script" href="js/planta_sequencia.js?v=8ce2080">
-<link rel="preload" as="script" href="js/planta_detector.js?v=8ce2080">
-<link rel="preload" as="script" href="js/planta_leitura_regras.js?v=8ce2080">
-<link rel="preload" as="script" href="js/planta_leitura.js?v=8ce2080">
-<link rel="preload" as="script" href="js/matriz_acessos_dados.js?v=8ce2080">
-<link rel="preload" as="script" href="js/matriz_acessos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/usuarios.js?v=8ce2080">
-<link rel="preload" as="script" href="js/chamados.js?v=8ce2080">
-<link rel="preload" as="script" href="js/assistente.js?v=8ce2080">
-<link rel="preload" as="script" href="js/apontamentos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/apontamentos_quadro.js?v=8ce2080">
-<link rel="preload" as="script" href="js/dash_explica.js?v=8ce2080">
-<link rel="preload" as="script" href="js/dashboard.js?v=8ce2080">
-<link rel="preload" as="script" href="js/rh_horas.js?v=8ce2080">
-<link rel="preload" as="script" href="js/sesmt.js?v=8ce2080">
-<link rel="preload" as="script" href="js/sesmt_treinamentos.js?v=8ce2080">
-<link rel="preload" as="script" href="js/patrimonio.js?v=8ce2080">
-<link rel="preload" as="script" href="js/sesmt_ocorrencias.js?v=8ce2080">
-<link rel="preload" as="script" href="js/init.js?v=8ce2080">
+<link rel="preload" as="script" href="js/tema.js?v=b141405">
+<link rel="preload" as="script" href="vendor/supabase-js-2.118.0.min.js?v=b141405">
+<link rel="preload" as="script" href="vendor/xlsx-0.20.3.full.min.js?v=b141405">
+<link rel="preload" as="script" href="vendor/html2pdf-0.10.1.bundle.min.js?v=b141405">
+<link rel="preload" as="script" href="js/core.js?v=b141405">
+<link rel="preload" as="script" href="js/ui.js?v=b141405">
+<link rel="preload" as="script" href="js/historico.js?v=b141405">
+<link rel="preload" as="script" href="js/fiscal.js?v=b141405">
+<link rel="preload" as="script" href="js/fiscal_ncm.js?v=b141405">
+<link rel="preload" as="script" href="js/clientes.js?v=b141405">
+<link rel="preload" as="script" href="js/fornecedores.js?v=b141405">
+<link rel="preload" as="script" href="js/apropriacoes.js?v=b141405">
+<link rel="preload" as="script" href="js/funcionarios.js?v=b141405">
+<link rel="preload" as="script" href="js/funcionarios_importar.js?v=b141405">
+<link rel="preload" as="script" href="js/funcionarios_lotacao.js?v=b141405">
+<link rel="preload" as="script" href="js/rh_documentos.js?v=b141405">
+<link rel="preload" as="script" href="js/servicos.js?v=b141405">
+<link rel="preload" as="script" href="js/produtos.js?v=b141405">
+<link rel="preload" as="script" href="js/estoque.js?v=b141405">
+<link rel="preload" as="script" href="js/separacoes.js?v=b141405">
+<link rel="preload" as="script" href="js/epi.js?v=b141405">
+<link rel="preload" as="script" href="js/compras.js?v=b141405">
+<link rel="preload" as="script" href="js/requisicoes.js?v=b141405">
+<link rel="preload" as="script" href="js/orcamentos.js?v=b141405">
+<link rel="preload" as="script" href="js/propostas.js?v=b141405">
+<link rel="preload" as="script" href="js/contratos.js?v=b141405">
+<link rel="preload" as="script" href="js/contas_pagar.js?v=b141405">
+<link rel="preload" as="script" href="js/centros_custo.js?v=b141405">
+<link rel="preload" as="script" href="js/encontro_contas.js?v=b141405">
+<link rel="preload" as="script" href="js/carteira.js?v=b141405">
+<link rel="preload" as="script" href="js/obras.js?v=b141405">
+<link rel="preload" as="script" href="js/frota.js?v=b141405">
+<link rel="preload" as="script" href="js/viagens.js?v=b141405">
+<link rel="preload" as="script" href="js/equipamentos.js?v=b141405">
+<link rel="preload" as="script" href="js/vendas_bens.js?v=b141405">
+<link rel="preload" as="script" href="js/acessorios.js?v=b141405">
+<link rel="preload" as="script" href="js/reparos.js?v=b141405">
+<link rel="preload" as="script" href="js/manutencao.js?v=b141405">
+<link rel="preload" as="script" href="js/fabricacao.js?v=b141405">
+<link rel="preload" as="script" href="js/mobilizacoes.js?v=b141405">
+<link rel="preload" as="script" href="js/mobilizacoes_contrato.js?v=b141405">
+<link rel="preload" as="script" href="js/mobilizacoes_cronograma.js?v=b141405">
+<link rel="preload" as="script" href="js/mobilizacoes_grafico.js?v=b141405">
+<link rel="preload" as="script" href="js/estacas.js?v=b141405">
+<link rel="preload" as="script" href="js/estacas_prof_projeto.js?v=b141405">
+<link rel="preload" as="script" href="js/estacas_raiz_conf.js?v=b141405">
+<link rel="preload" as="script" href="js/obra_abas.js?v=b141405">
+<link rel="preload" as="script" href="js/obra_faixa.js?v=b141405">
+<link rel="preload" as="script" href="js/medicao_regras_carga.js?v=b141405">
+<link rel="preload" as="script" href="js/medicoes.js?v=b141405">
+<link rel="preload" as="script" href="js/movimentacoes.js?v=b141405">
+<link rel="preload" as="script" href="js/rdo_import_rg113.js?v=b141405">
+<link rel="preload" as="script" href="js/rdo.js?v=b141405">
+<link rel="preload" as="script" href="js/rdo_resumo.js?v=b141405">
+<link rel="preload" as="script" href="js/rdo_import_maya.js?v=b141405">
+<link rel="preload" as="script" href="js/geodigitus.js?v=b141405">
+<link rel="preload" as="script" href="js/estaca_perfil.js?v=b141405">
+<link rel="preload" as="script" href="js/estacas_gps.js?v=b141405">
+<link rel="preload" as="script" href="js/estacas_perfuracao.js?v=b141405">
+<link rel="preload" as="script" href="js/planta_projeto.js?v=b141405">
+<link rel="preload" as="script" href="js/planta_posicoes.js?v=b141405">
+<link rel="preload" as="script" href="js/computadores_bordo.js?v=b141405">
+<link rel="preload" as="script" href="js/planta_vinculo.js?v=b141405">
+<link rel="preload" as="script" href="js/planta_sequencia.js?v=b141405">
+<link rel="preload" as="script" href="js/planta_detector.js?v=b141405">
+<link rel="preload" as="script" href="js/planta_leitura_regras.js?v=b141405">
+<link rel="preload" as="script" href="js/planta_leitura.js?v=b141405">
+<link rel="preload" as="script" href="js/matriz_acessos_dados.js?v=b141405">
+<link rel="preload" as="script" href="js/matriz_acessos.js?v=b141405">
+<link rel="preload" as="script" href="js/usuarios.js?v=b141405">
+<link rel="preload" as="script" href="js/chamados.js?v=b141405">
+<link rel="preload" as="script" href="js/assistente.js?v=b141405">
+<link rel="preload" as="script" href="js/apontamentos.js?v=b141405">
+<link rel="preload" as="script" href="js/apontamentos_quadro.js?v=b141405">
+<link rel="preload" as="script" href="js/dash_explica.js?v=b141405">
+<link rel="preload" as="script" href="js/dashboard.js?v=b141405">
+<link rel="preload" as="script" href="js/rh_horas.js?v=b141405">
+<link rel="preload" as="script" href="js/sesmt.js?v=b141405">
+<link rel="preload" as="script" href="js/sesmt_treinamentos.js?v=b141405">
+<link rel="preload" as="script" href="js/patrimonio.js?v=b141405">
+<link rel="preload" as="script" href="js/sesmt_ocorrencias.js?v=b141405">
+<link rel="preload" as="script" href="js/init.js?v=b141405">
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=8ce2080" />
+<link rel="stylesheet" href="css/estilo.css?v=b141405" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=8ce2080"></script>
+<script src="js/tema.js?v=b141405"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=8ce2080"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=8ce2080"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=8ce2080"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=b141405"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=b141405"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=b141405"></script>
 </head>
 <body>
 
@@ -279,6 +280,11 @@
         <button data-secao="centros" style="display:none;">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
           <span>Centros de custo</span>
+        </button>
+        <!-- fase 190a: Encontro de Contas (caixa por funcionário); nasce escondido (eccPodeVer em js/encontro_contas.js) -->
+        <button data-secao="encontro-contas" id="nav-encontro-contas" style="display:none;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M20 7H5a2 2 0 0 1 0-4h13v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h15V7"></path><path d="M16 14h.01"></path></svg>
+          <span>Encontro de Contas</span>
         </button>
         <button data-secao="carteira" id="nav-carteira" style="display:none;">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg>
@@ -1034,6 +1040,11 @@
               <button type="button" class="sb-btn func-sb-alerta" id="func-sb-vencendo" style="display:none;" title="Documentos vencendo ou vencidos">
                 <span class="sb-num" id="func-sb-vencendo-num">0</span>
                 <span class="sb-lbl">Vencendo</span>
+              </button>
+              <!-- fase 190a: saldo do Encontro de Contas, só para quem lê (eccSmartFuncionario em js/encontro_contas.js) -->
+              <button type="button" class="sb-btn" id="func-sb-caixa" style="display:none;" title="Abre o caixa do funcionário no Encontro de Contas">
+                <span class="sb-num" id="func-sb-caixa-num">0</span>
+                <span class="sb-lbl">Caixa</span>
               </button>
             </div>
           </div>
@@ -2980,6 +2991,109 @@
             <div class="odoo-tab" data-tab="pedidos"><div id="ccu-pedidos"></div></div>
             <div class="odoo-tab" data-tab="timeline"><div id="ccu-chatter"></div></div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="secao" id="sec-encontro-contas">
+      <!-- Fase 190a (#214): Encontro de Contas, o fechamento de caixa por funcionário (RG 8.5). Saldo lido da vw_ec_saldos. -->
+      <div id="ecc-painel">
+        <h2>Encontro de Contas</h2>
+        <p class="texto-apoio ajuda-tela">O caixa de cada funcionário: o dinheiro que ele recebeu (entradas) menos os relatórios de despesas aprovados. Saldo positivo é dinheiro da empresa a prestar contas; negativo, a empresa deve a ele. A prestação de contas (notinha entregue em mãos) é só informação e não entra no saldo.</p>
+        <div class="indicadores">
+          <div class="ind"><div class="num" id="ecc-kpi-prestar" data-val-sens>—</div><div class="rot">A prestar contas</div></div>
+          <div class="ind"><div class="num" id="ecc-kpi-devolver" data-val-sens>—</div><div class="rot">A devolver aos funcionários</div></div>
+          <div class="ind"><div class="num" id="ecc-kpi-com-saldo">—</div><div class="rot">Funcionários com saldo</div></div>
+          <div class="ind"><div class="num" id="ecc-kpi-abertos">—</div><div class="rot">Com lançamento aberto</div></div>
+        </div>
+        <div class="card">
+          <div class="lista-topo">
+            <h3>Colaboradores <span id="ecc-contador" class="contador"></span></h3>
+            <div class="serv-views" id="ecc-views">
+              <button type="button" class="serv-view-btn ativo" data-view="lista">Lista</button>
+              <button type="button" class="serv-view-btn" data-view="cartoes">Cartões</button>
+            </div>
+            <button type="button" class="btn-sec" id="btn-ecc-atualizar" style="margin-left:auto;">Atualizar</button>
+            <select id="ecc-novo-func" style="display:none;" title="Abre o caixa de um funcionário, mesmo sem lançamento, para lançar"></select>
+            <button type="button" class="btn" id="btn-ecc-abrir-func" style="display:none;" title="Abre o caixa do funcionário escolhido para lançar">Abrir caixa</button>
+          </div>
+          <div class="serv-filtros">
+            <input id="ecc-busca" placeholder="Buscar pelo nome…" />
+            <select id="ecc-situacao" title="Filtra pelo saldo ou pelo que ainda não foi fechado">
+              <option value="">Todos</option><option value="com_saldo">Com saldo</option><option value="negativo">Saldo negativo</option><option value="aberto">Com lançamento aberto</option>
+            </select>
+            <select id="ecc-ativo" title="Funcionário ativo ou que já saiu"><option value="">Ativos e inativos</option><option value="ativo">Só ativos</option><option value="inativo">Só inativos</option></select>
+            <select id="ecc-obra" title="Obra em que o funcionário está alocado (competência atual ou anterior)"><option value="">Todas as obras</option></select>
+          </div>
+          <div id="ecc-conteudo"><p class="vazio">Carregando…</p></div>
+        </div>
+      </div>
+
+      <div id="ecc-ficha" style="display:none;">
+        <div class="odoo-sheet">
+          <div class="odoo-actions-header">
+            <div class="actions-left">
+              <button type="button" class="btn-sec" id="btn-ecc-voltar">← Voltar</button>
+              <button type="button" class="btn" id="btn-ecc-nova-entrada" title="Dinheiro que o funcionário recebeu: depósito, cartão, caixa do financeiro, reembolso">＋ Nova entrada</button>
+              <button type="button" class="btn-sec" id="btn-ecc-novo-relatorio" title="Relatório de despesas aprovado: abate o saldo">＋ Novo relatório aprovado</button>
+              <button type="button" class="btn-sec" id="btn-ecc-nova-prestacao" title="Notinha entregue em mãos: só informação, não entra no saldo">＋ Nova prestação</button>
+              <button type="button" class="btn-sec" id="btn-ecc-fechar" title="Fecha as entradas e os relatórios em aberto até a data e grava o saldo levado para frente">Fechar caixa</button>
+            </div>
+            <div class="actions-right"><strong id="ecc-ficha-titulo">Caixa</strong></div>
+          </div>
+          <div class="odoo-statusbar" id="ecc-statusbar" title="Situação do caixa: muda pelo Fechar caixa"></div>
+          <div class="odoo-contexto">
+            <div class="chip" title="Soma das entradas"><span>Caixa de obra</span><strong id="ecc-chip-entradas" data-val-sens>—</strong></div>
+            <div class="chip" title="Soma dos relatórios aprovados"><span>Relatórios</span><strong id="ecc-chip-relatorios" data-val-sens>—</strong></div>
+            <div class="chip" title="Caixa de obra menos relatórios: positivo, a prestar contas; negativo, a empresa deve"><span>Saldo</span><strong id="ecc-chip-saldo" data-val-sens>—</strong></div>
+            <div class="chip"><span>Último fechamento</span><strong id="ecc-chip-fechamento">—</strong></div>
+          </div>
+          <div class="odoo-smart-buttons">
+            <button type="button" class="sb-btn" id="sb-ecc-entradas" data-goto-tab="entradas"><span class="sb-num">0</span><span class="sb-lbl">entradas</span></button>
+            <button type="button" class="sb-btn" id="sb-ecc-relatorios" data-goto-tab="relatorios"><span class="sb-num">0</span><span class="sb-lbl">relatórios</span></button>
+            <button type="button" class="sb-btn" id="sb-ecc-prestacoes" data-goto-tab="prestacoes"><span class="sb-num">0</span><span class="sb-lbl">prestações</span></button>
+            <button type="button" class="sb-btn" id="sb-ecc-fechamentos" data-goto-tab="fechamentos"><span class="sb-num">0</span><span class="sb-lbl">fechamentos</span></button>
+          </div>
+          <div class="odoo-notebook" id="ecc-notebook">
+            <button type="button" data-tab="entradas" class="ativo">Entradas</button>
+            <button type="button" data-tab="relatorios">Relatórios aprovados</button>
+            <button type="button" data-tab="prestacoes">Prestação de contas</button>
+            <button type="button" data-tab="fechamentos">Fechamentos</button>
+          </div>
+          <div class="odoo-body">
+            <div class="odoo-tab ativa" data-tab="entradas"><div id="ecc-entradas"></div></div>
+            <div class="odoo-tab" data-tab="relatorios"><div id="ecc-relatorios"></div></div>
+            <div class="odoo-tab" data-tab="prestacoes"><div id="ecc-prestacoes"></div></div>
+            <div class="odoo-tab" data-tab="fechamentos"><div id="ecc-fechamentos"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-fundo" id="ecc-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:620px;">
+          <div class="modal-topo"><h3 id="ecc-m-titulo">Lançamento</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <div class="grade">
+            <div class="campo"><label for="ecc-m-data">Data *</label><input id="ecc-m-data" type="date" /></div>
+            <div class="campo"><label for="ecc-m-valor">Valor (R$) *</label><input id="ecc-m-valor" type="number" step="0.01" inputmode="decimal" /></div>
+            <div class="campo" id="ecc-m-campo-tipo"><label for="ecc-m-tipo">Tipo *</label><select id="ecc-m-tipo"></select></div>
+            <div class="campo largo"><label for="ecc-m-desc" id="ecc-m-desc-rot">Descrição</label><input id="ecc-m-desc" /></div>
+            <div class="campo largo" id="ecc-m-campo-obra"><label for="ecc-m-obra">Obra</label><select id="ecc-m-obra"></select></div>
+            <div class="campo largo"><label for="ecc-m-obs">Observação</label><input id="ecc-m-obs" /></div>
+          </div>
+          <div id="ecc-m-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ecc-m-salvar">Salvar</button></div>
+        </div>
+      </div>
+      <div class="modal-fundo" id="ecc-fechar-modal" style="display:none;">
+        <div class="modal-caixa" style="max-width:560px;">
+          <div class="modal-topo"><h3 id="ecc-f-titulo">Fechar caixa</h3><button type="button" class="btn-sec" aria-label="Fechar">×</button></div>
+          <div class="grade">
+            <div class="campo"><label for="ecc-f-data">Fechar até *</label><input id="ecc-f-data" type="date" /></div>
+            <div class="campo largo"><label for="ecc-f-obs">Observação</label><input id="ecc-f-obs" /></div>
+          </div>
+          <p class="meta" id="ecc-f-resumo" style="margin-top:8px;"></p>
+          <div id="ecc-f-aviso" class="aviso"></div>
+          <div class="form-acoes compacta"><button type="button" class="btn" id="btn-ecc-f-confirmar">Fechar caixa</button></div>
         </div>
       </div>
     </section>
@@ -7959,90 +8073,91 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=8ce2080"></script>
-<script src="js/ui.js?v=8ce2080"></script>
+<script src="js/core.js?v=b141405"></script>
+<script src="js/ui.js?v=b141405"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=8ce2080"></script>
+<script src="js/historico.js?v=b141405"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=8ce2080"></script>
-<script src="js/fiscal_ncm.js?v=8ce2080"></script>
+<script src="js/fiscal.js?v=b141405"></script>
+<script src="js/fiscal_ncm.js?v=b141405"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=8ce2080"></script>
-<script src="js/fornecedores.js?v=8ce2080"></script>
-<script src="js/apropriacoes.js?v=8ce2080"></script>
-<script src="js/funcionarios.js?v=8ce2080"></script>
-<script src="js/funcionarios_importar.js?v=8ce2080"></script>
-<script src="js/funcionarios_lotacao.js?v=8ce2080"></script>
-<script src="js/rh_documentos.js?v=8ce2080"></script>
-<script src="js/servicos.js?v=8ce2080"></script>
-<script src="js/produtos.js?v=8ce2080"></script>
-<script src="js/estoque.js?v=8ce2080"></script>
-<script src="js/separacoes.js?v=8ce2080"></script>
-<script src="js/epi.js?v=8ce2080"></script>
-<script src="js/compras.js?v=8ce2080"></script>
-<script src="js/requisicoes.js?v=8ce2080"></script>
-<script src="js/orcamentos.js?v=8ce2080"></script>
-<script src="js/propostas.js?v=8ce2080"></script>
-<script src="js/contratos.js?v=8ce2080"></script>
-<script src="js/contas_pagar.js?v=8ce2080"></script>
-<script src="js/centros_custo.js?v=8ce2080"></script>
-<script src="js/carteira.js?v=8ce2080"></script>
-<script src="js/obras.js?v=8ce2080"></script>
-<script src="js/frota.js?v=8ce2080"></script>
-<script src="js/viagens.js?v=8ce2080"></script>
-<script src="js/equipamentos.js?v=8ce2080"></script>
-<script src="js/vendas_bens.js?v=8ce2080"></script>
-<script src="js/acessorios.js?v=8ce2080"></script>
-<script src="js/reparos.js?v=8ce2080"></script>
-<script src="js/manutencao.js?v=8ce2080"></script>
-<script src="js/fabricacao.js?v=8ce2080"></script>
-<script src="js/mobilizacoes.js?v=8ce2080"></script>
-<script src="js/mobilizacoes_contrato.js?v=8ce2080"></script>
-<script src="js/mobilizacoes_cronograma.js?v=8ce2080"></script>
-<script src="js/mobilizacoes_grafico.js?v=8ce2080"></script>
-<script src="js/estacas.js?v=8ce2080"></script>
-<script src="js/estacas_prof_projeto.js?v=8ce2080"></script>
+<script src="js/clientes.js?v=b141405"></script>
+<script src="js/fornecedores.js?v=b141405"></script>
+<script src="js/apropriacoes.js?v=b141405"></script>
+<script src="js/funcionarios.js?v=b141405"></script>
+<script src="js/funcionarios_importar.js?v=b141405"></script>
+<script src="js/funcionarios_lotacao.js?v=b141405"></script>
+<script src="js/rh_documentos.js?v=b141405"></script>
+<script src="js/servicos.js?v=b141405"></script>
+<script src="js/produtos.js?v=b141405"></script>
+<script src="js/estoque.js?v=b141405"></script>
+<script src="js/separacoes.js?v=b141405"></script>
+<script src="js/epi.js?v=b141405"></script>
+<script src="js/compras.js?v=b141405"></script>
+<script src="js/requisicoes.js?v=b141405"></script>
+<script src="js/orcamentos.js?v=b141405"></script>
+<script src="js/propostas.js?v=b141405"></script>
+<script src="js/contratos.js?v=b141405"></script>
+<script src="js/contas_pagar.js?v=b141405"></script>
+<script src="js/centros_custo.js?v=b141405"></script>
+<script src="js/encontro_contas.js?v=b141405"></script>
+<script src="js/carteira.js?v=b141405"></script>
+<script src="js/obras.js?v=b141405"></script>
+<script src="js/frota.js?v=b141405"></script>
+<script src="js/viagens.js?v=b141405"></script>
+<script src="js/equipamentos.js?v=b141405"></script>
+<script src="js/vendas_bens.js?v=b141405"></script>
+<script src="js/acessorios.js?v=b141405"></script>
+<script src="js/reparos.js?v=b141405"></script>
+<script src="js/manutencao.js?v=b141405"></script>
+<script src="js/fabricacao.js?v=b141405"></script>
+<script src="js/mobilizacoes.js?v=b141405"></script>
+<script src="js/mobilizacoes_contrato.js?v=b141405"></script>
+<script src="js/mobilizacoes_cronograma.js?v=b141405"></script>
+<script src="js/mobilizacoes_grafico.js?v=b141405"></script>
+<script src="js/estacas.js?v=b141405"></script>
+<script src="js/estacas_prof_projeto.js?v=b141405"></script>
 <!-- fase 184a: vista Trechos da estaca raiz e conferência da raiz pelo histórico (não grava) -->
-<script src="js/estacas_raiz_conf.js?v=8ce2080"></script>
-<script src="js/obra_abas.js?v=8ce2080"></script>
-<script src="js/obra_faixa.js?v=8ce2080"></script>
-<script src="js/medicao_regras_carga.js?v=8ce2080"></script>
-<script src="js/medicoes.js?v=8ce2080"></script>
-<script src="js/movimentacoes.js?v=8ce2080"></script>
-<script src="js/rdo_import_rg113.js?v=8ce2080"></script>
-<script src="js/rdo.js?v=8ce2080"></script>
-<script src="js/rdo_resumo.js?v=8ce2080"></script>
-<script src="js/rdo_import_maya.js?v=8ce2080"></script>
-<script src="js/geodigitus.js?v=8ce2080"></script>
-<script src="js/estaca_perfil.js?v=8ce2080"></script>
-<script src="js/estacas_gps.js?v=8ce2080"></script>
+<script src="js/estacas_raiz_conf.js?v=b141405"></script>
+<script src="js/obra_abas.js?v=b141405"></script>
+<script src="js/obra_faixa.js?v=b141405"></script>
+<script src="js/medicao_regras_carga.js?v=b141405"></script>
+<script src="js/medicoes.js?v=b141405"></script>
+<script src="js/movimentacoes.js?v=b141405"></script>
+<script src="js/rdo_import_rg113.js?v=b141405"></script>
+<script src="js/rdo.js?v=b141405"></script>
+<script src="js/rdo_resumo.js?v=b141405"></script>
+<script src="js/rdo_import_maya.js?v=b141405"></script>
+<script src="js/geodigitus.js?v=b141405"></script>
+<script src="js/estaca_perfil.js?v=b141405"></script>
+<script src="js/estacas_gps.js?v=b141405"></script>
 <!-- fase 173a: estaca raiz só com injeção (etiqueta, filtros e "Lançar perfuração" pelo diário); usa a aba Estacas e a ficha do RDO, não grava -->
-<script src="js/estacas_perfuracao.js?v=8ce2080"></script>
-<script src="js/planta_projeto.js?v=8ce2080"></script>
-<script src="js/planta_posicoes.js?v=8ce2080"></script>
-<script src="js/computadores_bordo.js?v=8ce2080"></script>
-<script src="js/planta_vinculo.js?v=8ce2080"></script>
-<script src="js/planta_sequencia.js?v=8ce2080"></script>
+<script src="js/estacas_perfuracao.js?v=b141405"></script>
+<script src="js/planta_projeto.js?v=b141405"></script>
+<script src="js/planta_posicoes.js?v=b141405"></script>
+<script src="js/computadores_bordo.js?v=b141405"></script>
+<script src="js/planta_vinculo.js?v=b141405"></script>
+<script src="js/planta_sequencia.js?v=b141405"></script>
 <!-- fase 175b: ler as estacas da folha do projeto (símbolos pelo pdf.js, nomes pela IA em ladrilhos, prévia antes de gravar) -->
-<script src="js/planta_detector.js?v=8ce2080"></script>
-<script src="js/planta_leitura_regras.js?v=8ce2080"></script>
-<script src="js/planta_leitura.js?v=8ce2080"></script>
-<script src="js/matriz_acessos_dados.js?v=8ce2080"></script>
-<script src="js/matriz_acessos.js?v=8ce2080"></script>
-<script src="js/usuarios.js?v=8ce2080"></script>
-<script src="js/chamados.js?v=8ce2080"></script>
-<script src="js/assistente.js?v=8ce2080"></script>
-<script src="js/apontamentos.js?v=8ce2080"></script>
-<script src="js/apontamentos_quadro.js?v=8ce2080"></script>
-<script src="js/dash_explica.js?v=8ce2080"></script>
-<script src="js/dashboard.js?v=8ce2080"></script>
-<script src="js/rh_horas.js?v=8ce2080"></script>
-<script src="js/sesmt.js?v=8ce2080"></script>
-<script src="js/sesmt_treinamentos.js?v=8ce2080"></script>
-<script src="js/patrimonio.js?v=8ce2080"></script>
+<script src="js/planta_detector.js?v=b141405"></script>
+<script src="js/planta_leitura_regras.js?v=b141405"></script>
+<script src="js/planta_leitura.js?v=b141405"></script>
+<script src="js/matriz_acessos_dados.js?v=b141405"></script>
+<script src="js/matriz_acessos.js?v=b141405"></script>
+<script src="js/usuarios.js?v=b141405"></script>
+<script src="js/chamados.js?v=b141405"></script>
+<script src="js/assistente.js?v=b141405"></script>
+<script src="js/apontamentos.js?v=b141405"></script>
+<script src="js/apontamentos_quadro.js?v=b141405"></script>
+<script src="js/dash_explica.js?v=b141405"></script>
+<script src="js/dashboard.js?v=b141405"></script>
+<script src="js/rh_horas.js?v=b141405"></script>
+<script src="js/sesmt.js?v=b141405"></script>
+<script src="js/sesmt_treinamentos.js?v=b141405"></script>
+<script src="js/patrimonio.js?v=b141405"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=8ce2080"></script>
+<script src="js/sesmt_ocorrencias.js?v=b141405"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=8ce2080"></script>
+<script src="js/init.js?v=b141405"></script>
 </body>
 </html>

@@ -441,6 +441,7 @@ function novoFuncionario(){
   $("func-doc-form").style.display = "none";
   $("func-sb-docs").style.display = "none";
   $("func-sb-vencendo").style.display = "none";
+  if($("func-sb-caixa")) $("func-sb-caixa").style.display = "none";   // fase 190a
   abrirFichaFuncVisual({ nome:"(novo)", status:"ativo", ativo:true });
 }
 
@@ -506,6 +507,7 @@ async function abrirFuncionario(id){
   $("btn-excluir-func").style.display = "";
   $("func-doc-form").style.display = "none";
   await carregarDocsFuncionario();
+  if(typeof eccSmartFuncionario === "function") eccSmartFuncionario(id);   // fase 190a: smart-button "Caixa"
   abrirFichaFuncVisual(data);
 }
 

@@ -1550,6 +1550,12 @@ function podeGravarValorBem(){ return !!usuarioAtual && ["diretor", "financeiro"
 function semValorBem(reg){ if(reg && typeof reg === "object"){ delete reg.valor_aquisicao; delete reg.data_aquisicao; } return reg; }
 /* Fase 98: permutas (obra paga em imóvel: teto, crédito, saldo, documentos). Espelha pode_ler_permutas() do banco:
    sem engenharia nem comercial, ao contrário de podeVerValorObra(). */
+/* Fase 190a (D1): Encontro de Contas (caixa por funcionário). Espelha o lado por cargo de ec_pode_ler() do banco: quem lê
+   financeiro, menos o comercial. O gestor da obra lê no banco o caixa de quem está alocado nas obras dele; hoje todos os
+   gestores são engenheiros, que já estão na lista. */
+function podeVerEncontroContas(){
+  return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "financeiro", "auditor"].includes(usuarioAtual.cargo);
+}
 function podeVerPermutas(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
@@ -1624,6 +1630,9 @@ function aplicarMenuPorCargo(perfil){
   if(navCap) navCap.style.display = podeVerContasPagar() ? "" : "none";
   const navCcu = document.querySelector('.sidebar-nav button[data-secao="centros"]');
   if(navCcu) navCcu.style.display = podeVerCentrosCusto() ? "" : "none";
+  // Fase 190a: Encontro de Contas só para quem lê financeiro, menos o comercial; nasce escondido no index.html
+  const navEcc = $("nav-encontro-contas");
+  if(navEcc) navEcc.style.display = podeVerEncontroContas() ? "" : "none";
   // Fase 156a: Apontamentos da oficina só para quem grava hora em RP, OS ou OF, e o auditor (só leitura)
   const navApt = $("nav-apontamentos");
   if(navApt) navApt.style.display = podeVerApontamentos() ? "" : "none";
