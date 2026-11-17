@@ -772,6 +772,7 @@ async function abrirManutencao(id){
     sb.from("manutencao_anexos").select("*").eq("manutencao_id", id).order("created_at"),
     sb.from("checklists").select("id,data,resultado,horimetro,itens:checklist_itens(situacao)").eq("manutencao_id", id).order("data", { ascending: false })
   ]);
+  await aptCarregarAguardandoDoc(id);   // fase 188c
   if(m.error || !m.data){ aviso("app-aviso", "Não foi possível abrir a OS" + (m.error ? ": " + m.error.message : "."), "erro"); return; }
   await manCarregarSeparacaoOS(id, mt.data || []);   // lote S56b (#193)
   _manPeds = [];   // fase 131b: pedidos ligados (a RLS de pedidos_compra decide quem vê)
@@ -1056,13 +1057,14 @@ async function manAtivAdd(){
 /* mão de obra */
 function manRenderHoras(){
   const tb = $("man-horas"), pode = manPodeEditar() && _manAtual?.status !== "cancelada";
-  if(!_manHoras.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">${_manAtual?.id ? "Nenhuma hora lançada." : "Salve a OS para lançar horas."}</td></tr>`; $("man-horas-total").textContent = ""; return; }
+  const ag = _manAtual?.id ? aptTxtAguardando(_manAtual.id, "OS") : "";   // fase 188c: HE aguardando, fora do total
+  if(!_manHoras.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">${_manAtual?.id ? "Nenhuma hora lançada." : "Salve a OS para lançar horas."}</td></tr>`; $("man-horas-total").innerHTML = ag; return; }
   tb.innerHTML = _manHoras.map(h => `<tr><td>${esc(manFunc(h.funcionario_id) || h.funcionario_nome || "—")}</td><td>${dataBR(h.data)}</td><td>${h.inicio ? esc(String(h.inicio).slice(0, 5)) : "—"}</td><td>${h.fim ? esc(String(h.fim).slice(0, 5)) : "—"}</td>
     <td class="num">${num(h.horas)}${h.hora_extra ? ' <span class="tag ambar" title="hora extra, custa ×2">HE</span>' : ""}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · planilha" : ""}</td>
     <td>${pode ? `<button type="button" class="btn-sec btn-sm txt-perigo man-h-rem" data-id="${esc(h.id)}" title="remover">×</button>` : ""}</td></tr>`).join("");
   const porF = {}; _manHoras.forEach(h => { const n = manFunc(h.funcionario_id) || h.funcionario_nome || "sem funcionário"; porF[n] = (porF[n] || 0) + Number(h.horas || 0); });
   const heMan = _manHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);   // fase 156a (HE)
-  $("man-horas-total").innerHTML = `Total: <strong>${num(_manHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong>${heMan ? ` (${num(heMan)} h de hora extra)` : ""} · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ");
+  $("man-horas-total").innerHTML = `Total: <strong>${num(_manHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong>${heMan ? ` (${num(heMan)} h de hora extra)` : ""} · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ") + ag;
   tb.querySelectorAll(".man-h-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("manutencao_horas").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
@@ -1077,10 +1079,12 @@ async function manAddHoras(){
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim) reg.horas = 0;   // o gatilho calcula
-  const { error } = await sb.from("manutencao_horas").insert(reg);
-  if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  // fase 188c (#322, D9): hora extra (marcada, ou sábado, domingo e feriado) vai para aprovação do gestor de manutenção
+  const g = await aptGravarFicha("OS", _manAtual.id, [reg]);
+  if(g.erro){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
   ["man-h-inicio", "man-h-fim", "man-h-horas", "man-h-obs"].forEach(id => $(id).value = ""); $("man-h-he").checked = false;
   await abrirManutencao(_manAtual.id); manAtivarTab("horas");
+  if(g.aguardando) aviso("app-aviso", aptAvisoAprovacao("OS") + " Ela aparece em Aguardando aprovação até lá.", "ok");
 }
 
 /* materiais */

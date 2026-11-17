@@ -305,6 +305,7 @@ async function abrirReparo(id){
     sb.from("reparo_itens").select("*").eq("reparo_id", id).order("created_at"),
     sb.from("reparo_horas").select("*").eq("reparo_id", id).order("data").order("inicio")
   ]);
+  await aptCarregarAguardandoDoc(id);   // fase 188c
   if(r.error || !r.data){ aviso("app-aviso", "Não foi possível abrir o reparo" + (r.error ? ": " + r.error.message : "."), "erro"); return; }
   abrirFichaReparo(r.data, it.data || [], hs.data || []);
 }
@@ -469,13 +470,14 @@ async function repAddItem(p){
 function repRenderHoras(){
   const tb = $("rep-horas"), pode = repPodeEditar() && _repAtual?.status !== "cancelado";
   const nomeF = id => (_repFuncs.find(f => f.id === id) || {}).nome || "";
-  if(!_repHoras.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">${_repAtual?.id ? "Nenhuma hora lançada." : "Salve o reparo para lançar horas."}</td></tr>`; $("rep-horas-total").textContent = ""; return; }
+  const ag = _repAtual?.id ? aptTxtAguardando(_repAtual.id, "RP") : "";   // fase 188c: HE aguardando, fora do total
+  if(!_repHoras.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">${_repAtual?.id ? "Nenhuma hora lançada." : "Salve o reparo para lançar horas."}</td></tr>`; $("rep-horas-total").innerHTML = ag; return; }
   tb.innerHTML = _repHoras.map(h => `<tr><td>${esc(nomeF(h.funcionario_id) || "—")}</td><td>${dataBR(h.data)}</td><td>${h.inicio ? esc(String(h.inicio).slice(0, 5)) : "—"}</td><td>${h.fim ? esc(String(h.fim).slice(0, 5)) : "—"}</td>
     <td class="num">${num(h.horas)}${h.hora_extra ? ' <span class="tag ambar" title="hora extra, custa ×2">HE</span>' : ""}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · Odoo" : ""}</td>
     <td>${pode && !h.codigo_externo ? `<button type="button" class="btn-sec btn-sm rep-h-rem" data-id="${esc(h.id)}" title="remover">×</button>` : ""}</td></tr>`).join("");
   const porF = {}; _repHoras.forEach(h => { const n = nomeF(h.funcionario_id) || "sem funcionário"; porF[n] = (porF[n] || 0) + Number(h.horas || 0); });
   const heRep = _repHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);   // fase 156a (HE)
-  $("rep-horas-total").innerHTML = `Total: <strong>${num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong>${heRep ? ` (${num(heRep)} h de hora extra)` : ""} · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ");
+  $("rep-horas-total").innerHTML = `Total: <strong>${num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong>${heRep ? ` (${num(heRep)} h de hora extra)` : ""} · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ") + ag;
   tb.querySelectorAll(".rep-h-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("reparo_horas").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
@@ -490,10 +492,12 @@ async function repAddHoras(){
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim) reg.horas = 0;   // o gatilho calcula
-  const { error } = await sb.from("reparo_horas").insert(reg);
-  if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  // fase 188c (#322, D9): hora extra (marcada, ou sábado, domingo e feriado) vai para aprovação do gestor de acessórios
+  const g = await aptGravarFicha("RP", _repAtual.id, [reg]);
+  if(g.erro){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
   ["rep-h-inicio", "rep-h-fim", "rep-h-horas", "rep-h-obs"].forEach(id => $(id).value = ""); $("rep-h-he").checked = false;
   await abrirReparo(_repAtual.id); repAtivarTab("horas");
+  if(g.aguardando) aviso("app-aviso", aptAvisoAprovacao("RP") + " Ela aparece em Aguardando aprovação até lá.", "ok");
 }
 
 /* custos */

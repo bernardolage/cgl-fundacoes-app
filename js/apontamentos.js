@@ -9,7 +9,9 @@
    Fase 156b: a foto do quadro (js/apontamentos_quadro.js) vira linhas desta mesma grade, com origem 'quadro'.
    Fase 188b (#322): ao sair do Início, do Fim ou da Data, a linha que passa do expediente da oficina (fabricacao_expediente)
    se desdobra em partes normal e HE (RPC apontamento_dividir_he); "Manter numa linha" desfaz, com motivo. Sábado, domingo
-   e feriado continuam com o dia inteiro em HE e indo para aprovação; a HE de dia útil grava direto, marcada, como antes.
+   e feriado continuam com o dia inteiro em HE e indo para aprovação.
+   Fase 188c (#322): toda hora extra vai para aprovação, também a de dia útil (a parte normal grava direto). A ficha do RP,
+   da OS e da OF usa aptGravarFicha; a HE aguardando aparece na ficha fora do total (aptTxtAguardando).
    ==================================================================== */
 
 let _aptHoras = [];        // vw_apontamentos no período
@@ -248,6 +250,45 @@ async function aptDividirHE(data, inicio, fim){
   return { partes: lista, aviso: (partes || []).map(p => p.aviso).find(Boolean) || "" };
 }
 function aptPartesTxt(partes){ return partes.map(p => `${p.inicio}–${p.fim} ${p.hora_extra ? "hora extra" : "normal"}`).join(" · "); }
+
+/* ---------- fase 188c (#322): toda hora extra vai para aprovação, também a de dia útil ---------- */
+/* Quem aprova (decisão 9 da fase 156): OS = gestor de manutenção; RP e OF = gestor de acessórios; a diretoria aprova qualquer uma */
+function aptQuemAprova(tipo){ return tipo === "OS" ? "gestor de manutenção" : "gestor de acessórios"; }
+function aptAvisoAprovacao(tipo){ return `Hora extra vai para aprovação do ${aptQuemAprova(tipo)}.`; }
+/* Ficha do RP, da OS ou da OF: as linhas normais gravam direto na tabela do documento; as de hora extra (marcadas, ou em
+   sábado, domingo e feriado) vão para apontamento_aprovacoes. O banco recusa HE gravada direto (trg_*_horas_he_aprovacao).
+   regs = linhas no formato da tabela de horas. Devolve { gravadas, aguardando, erro }. */
+async function aptGravarFicha(tipo, docId, regs){
+  for(const r of regs) if(!r.hora_extra && r.data && await aptExigeAprovacao(r.data)) r.hora_extra = true;
+  const he = regs.filter(r => r.hora_extra), normais = regs.filter(r => !r.hora_extra);
+  if(he.some(r => !r.inicio || !r.fim)) return { gravadas: 0, aguardando: 0, erro: "Hora extra vai para aprovação e precisa de início e fim." };
+  if(normais.length){
+    const { error } = await sb.from(APT_TIPO[tipo].tabela).insert(normais);
+    if(error) return { gravadas: 0, aguardando: 0, erro: error.message.replace(/^.*?: /, "") };
+  }
+  if(he.length){
+    const ap = he.map(r => ({ tipo, documento_id: docId, funcionario_id: r.funcionario_id, data: r.data, inicio: r.inicio, fim: r.fim,
+      observacao: r.observacao || null, hora_extra: true, origem: "ficha", lancado_por: usuarioAtual.id,
+      centro_trabalho_id: tipo === "OF" ? r.centro_trabalho_id : null }));
+    const { error } = await sb.from("apontamento_aprovacoes").insert(ap);
+    if(error) return { gravadas: normais.length, aguardando: 0,
+      erro: (normais.length ? "A parte normal gravou; a hora extra não foi para aprovação: " : "") + error.message.replace(/^.*?: /, "") };
+  }
+  return { gravadas: normais.length, aguardando: he.length, erro: "" };
+}
+/* Hora extra aguardando aprovação de um documento: aparece na ficha numa linha à parte, fora do total e do custo (D12) */
+let _aptAgDoc = {};   // documento_id → [{data, inicio, fim}]
+async function aptCarregarAguardandoDoc(docId){
+  if(!docId) return;
+  const { data, error } = await sb.from("apontamento_aprovacoes").select("id,data,inicio,fim").eq("documento_id", docId).eq("status", "aguardando").order("data").range(0, 999);
+  _aptAgDoc[docId] = error ? [] : (data || []);
+}
+function aptTxtAguardando(docId, tipo){
+  const l = _aptAgDoc[docId] || []; if(!l.length) return "";
+  const min = t => { const [h, m] = String(t || "0:0").split(":").map(Number); return h * 60 + (m || 0); };
+  const h = l.reduce((t, a) => t + Math.max(0, min(a.fim) - min(a.inicio)) / 60, 0);
+  return `<div class="meta" title="Hora extra lançada e ainda não aprovada: não entra no total nem no custo até o ${esc(aptQuemAprova(tipo))} (ou a diretoria) aprovar"><span class="tag ambar">Aguardando aprovação</span> ${esc(num(h))} h de hora extra em ${esc(l.length)} lançamento(s), fora do total</div>`;
+}
 function aptObsComMotivo(obs, motivo){
   const o = String(obs || "").trim(), m = String(motivo || "").trim();
   return [o, m ? `[numa linha: ${m}]` : ""].filter(Boolean).join(" ") || null;
@@ -412,7 +453,7 @@ function aptQuadroInfo(l, i){
 function aptDivInfo(l, i){
   if(!l.div || ["gravada", "aguardando"].includes(l.estado)) return "";
   const primeira = _aptGrade.findIndex(x => x.div === l.div) === i;
-  return `<div class="meta">${l.hora_extra ? '<span class="tag ambar" title="parte fora do expediente da oficina: hora extra, custa ×2">HE</span> ' : '<span class="tag cinza" title="parte dentro do expediente da oficina">normal</span> '}dividida pelo expediente (${esc(l.divOrig.inicio)}–${esc(l.divOrig.fim)})</div>`
+  return `<div class="meta">${l.hora_extra ? '<span class="tag ambar" title="parte fora do expediente da oficina: hora extra, custa ×2 e vai para aprovação">HE</span> ' : '<span class="tag cinza" title="parte dentro do expediente da oficina">normal</span> '}dividida pelo expediente (${esc(l.divOrig.inicio)}–${esc(l.divOrig.fim)})${l.hora_extra && l.doc ? ` · ${esc(aptAvisoAprovacao(l.doc.tipo))}` : ""}</div>`
     + (primeira ? `<button type="button" class="btn-sec btn-sm apt-uma-linha" data-i="${esc(i)}" title="desfaz a divisão e grava ${esc(l.divOrig.inicio)}–${esc(l.divOrig.fim)} numa linha só; pede o motivo">Manter numa linha</button> ` : "");
 }
 function aptRenderGrade(){
@@ -422,7 +463,7 @@ function aptRenderGrade(){
   $("apt-grade").innerHTML = _aptGrade.map((l, i) => {
     const d = l.doc;
     let extra = "";
-    const he = d ? `<label class="meta" title="hora extra, custa ×2; sábado, domingo e feriado vêm marcados; em dia útil, o que passa do expediente da oficina vira linha HE sozinho"><input type="checkbox" data-i="${i}" data-c="hora_extra" ${l.hora_extra ? "checked" : ""} /> HE</label>` : "";
+    const he = d ? `<label class="meta" title="hora extra, custa ×2 e vai para aprovação do responsável do setor (OS: gestor de manutenção; RP e OF: gestor de acessórios); sábado, domingo e feriado vêm marcados; em dia útil, o que passa do expediente da oficina vira linha HE sozinho"><input type="checkbox" data-i="${i}" data-c="hora_extra" ${l.hora_extra ? "checked" : ""} /> HE</label>` : "";
     if(d?.tipo === "OF") extra = `<select data-i="${i}" data-c="centro_trabalho_id">${/* html */ centros}</select>
       ${/* html */ he}`;
     else if(d?.tipo === "OS"){
@@ -512,7 +553,8 @@ async function aptJaLancada(d, l){
   const { data, error } = await sb.from(t.tabela).select("id,fim").eq(t.col, d.id).eq("funcionario_id", l.funcionario_id).eq("data", l.data).eq("inicio", l.inicio).range(0, 0);
   return { ja: data && data[0] ? data[0] : null, erro: error || null };
 }
-/* Uma linha: confere, procura repetida e grava na tabela do documento (dia útil) ou em apontamento_aprovacoes (fim de semana e feriado) */
+/* Uma linha: confere, procura repetida e grava na tabela do documento (hora normal) ou em apontamento_aprovacoes (hora extra:
+   sábado, domingo, feriado ou marcada HE em dia útil, fase 188c) */
 async function aptGravarLinha(l){
   const d = l.doc;
   const recusa = msg => { l.estado = "recusada"; l.msg = msg; };
@@ -524,7 +566,8 @@ async function aptGravarLinha(l){
   if(l.fim <= l.inicio) return recusa("O fim precisa ser depois do início (hora que passa da meia-noite: uma linha por dia).");
   if(d.tipo === "OF" && !l.centro_trabalho_id) return recusa("Escolha o centro de trabalho da OF.");
   const t = APT_TIPO[d.tipo];
-  const aprovar = await aptExigeAprovacao(l.data);
+  const fdsFer = await aptExigeAprovacao(l.data);
+  const aprovar = fdsFer || !!l.hora_extra;   // fase 188c (D9): toda hora extra vai para aprovação, também a de dia útil
   // repetida: mesma hora já gravada no documento ou já esperando aprovação
   const { ja, erro: eJa } = await aptJaLancada(d, l);
   if(eJa) return recusa("Não foi possível conferir repetição: " + eJa.message);
@@ -539,14 +582,14 @@ async function aptGravarLinha(l){
     const { error } = await sb.from("apontamento_aprovacoes").insert(reg);
     if(error) return recusa(error.message.replace(/^.*?: /, ""));
     l.estado = "aguardando";
-    l.msg = `${aptDiaSemana(l.data) === "sáb" || aptDiaSemana(l.data) === "dom" ? "Fim de semana" : "Feriado"}: espera o ${d.tipo === "OS" ? "gestor de manutenção" : "gestor de acessórios"} aprovar.`
+    l.msg = `${!fdsFer ? "Hora extra" : aptDiaSemana(l.data) === "sáb" || aptDiaSemana(l.data) === "dom" ? "Fim de semana" : "Feriado"}: espera o ${aptQuemAprova(d.tipo)} aprovar.`
       + (l.atividade_id && l.concluir_atividade ? " A atividade da OS não foi marcada: marque na ficha depois da aprovação." : "");
     return;
   }
   const reg = { [t.col]: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim, horas: 0,   // o gatilho calcula
     observacao: aptObsComMotivo(l.observacao, l.motivoUmaLinha), origem: l.origem || "apontamento" };
   if(d.tipo === "OS") reg.funcionario_nome = aptNomeFunc(l.funcionario_id) || null;
-  reg.hora_extra = !!l.hora_extra;   // HE nas três tabelas; sábado, domingo e feriado o banco marca de qualquer jeito
+  reg.hora_extra = false;   // fase 188c: aqui só chega hora normal; a HE foi para aprovação acima
   if(d.tipo === "OF") reg.centro_trabalho_id = l.centro_trabalho_id;
   const { error } = await sb.from(t.tabela).insert(reg);
   if(error) return recusa(error.message.replace(/^.*?: /, ""));

@@ -186,6 +186,7 @@ async function abrirOrdemFabricacao(id){
     sb.from("fabricacao_itens").select("*").eq("ordem_id", id).order("created_at"),
     sb.from("fabricacao_horas").select("*").eq("ordem_id", id).order("data").order("inicio").order("created_at")
   ]);
+  await aptCarregarAguardandoDoc(id);   // fase 188c
   if(o.error || !o.data){ aviso("app-aviso", "Não foi possível abrir a ordem de fabricação" + (o.error ? ": " + o.error.message : "."), "erro"); return; }
   abrirFichaFabricacao(o.data, it.data || [], hs.data || []);
 }
@@ -395,7 +396,8 @@ async function fabAddItem(p){
 function fabRenderHoras(){
   const tb = $("fab-horas"), pode = fabPodeEditar() && !["concluida", "cancelada"].includes(_fabAtual?.status);
   const nomeF = id => (_fabFuncs.find(f => f.id === id) || {}).nome || "";
-  if(!_fabHoras.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${_fabAtual?.id ? "Nenhuma hora lançada." : "Salve a ordem para lançar horas."}</td></tr>`; $("fab-horas-total").textContent = ""; return; }
+  const ag = _fabAtual?.id ? aptTxtAguardando(_fabAtual.id, "OF") : "";   // fase 188c: HE aguardando, fora do total
+  if(!_fabHoras.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${_fabAtual?.id ? "Nenhuma hora lançada." : "Salve a ordem para lançar horas."}</td></tr>`; $("fab-horas-total").innerHTML = ag; return; }
   tb.innerHTML = _fabHoras.map(h => `<tr><td>${esc(nomeF(h.funcionario_id) || "—")}</td><td>${esc(fabCentroNome(h.centro_trabalho_id) || "—")}</td><td>${dataBR(h.data)}</td>
     <td>${h.inicio ? esc(String(h.inicio).slice(0, 5)) : "—"}</td><td>${h.fim ? esc(String(h.fim).slice(0, 5)) : "—"}</td><td>${h.hora_extra ? '<span class="tag ambar">HE</span>' : ""}</td>
     <td class="num">${num(h.horas)}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · Odoo" : ""}</td>
@@ -404,7 +406,7 @@ function fabRenderHoras(){
   const porC = {}; _fabHoras.forEach(h => { const n = fabCentroNome(h.centro_trabalho_id) || "sem centro"; porC[n] = (porC[n] || 0) + Number(h.horas || 0); });
   const porF = {}; _fabHoras.forEach(h => { const n = nomeF(h.funcionario_id) || "sem funcionário"; porF[n] = (porF[n] || 0) + Number(h.horas || 0); });
   const lista = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ");
-  $("fab-horas-total").innerHTML = `Total: <strong>${num(soma(() => true))} h</strong>${soma(h => h.hora_extra) ? ` (${num(soma(h => h.hora_extra))} h de hora extra)` : ""}<br>Por centro: ${lista(porC)}<br>Por funcionário: ${lista(porF)}`;
+  $("fab-horas-total").innerHTML = `Total: <strong>${num(soma(() => true))} h</strong>${soma(h => h.hora_extra) ? ` (${num(soma(h => h.hora_extra))} h de hora extra)` : ""}<br>Por centro: ${lista(porC)}<br>Por funcionário: ${lista(porF)}${/* html */ ag}`;
   tb.querySelectorAll(".fab-h-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("fabricacao_horas").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
@@ -439,11 +441,14 @@ async function fabAddHoras(){
       }
     } else if(!r.aviso && r.partes[0]?.hora_extra) reg.hora_extra = true;   // toda fora do expediente
   }
-  const { error } = await sb.from("fabricacao_horas").insert(regs);
-  if(error){ aviso("app-aviso", "Não foi possível lançar: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
+  // fase 188c (#322, D9): a parte normal grava direto; a hora extra vai para aprovação do gestor de acessórios
+  const g = await aptGravarFicha("OF", _fabAtual.id, regs);
+  if(g.erro && !g.gravadas){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
   ["fab-h-inicio", "fab-h-fim", "fab-h-horas", "fab-h-obs"].forEach(id => $(id).value = ""); $("fab-h-he").checked = false;
   await abrirOrdemFabricacao(_fabAtual.id); fabAtivarTab("horas");
-  if(regs.length > 1) aviso("app-aviso", `Hora gravada em ${regs.length} linhas (normal e hora extra pelo expediente da oficina).`, "ok");
+  if(g.erro) aviso("app-aviso", g.erro, "erro");
+  else if(g.aguardando) aviso("app-aviso", `${g.gravadas ? `${g.gravadas} linha(s) normal(is) gravada(s); ` : ""}${g.aguardando} de hora extra aguardando aprovação. ${aptAvisoAprovacao("OF")}`, "ok");
+  else if(regs.length > 1) aviso("app-aviso", `Hora gravada em ${regs.length} linhas.`, "ok");
   else if(avisoExp) aviso("app-aviso", `Hora gravada. ${avisoExp}: a hora extra de dia útil não foi separada.`, "aviso");
 }
 
