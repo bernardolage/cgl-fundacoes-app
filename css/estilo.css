@@ -4274,6 +4274,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppl-prev-ambigua circle { stroke: var(--aviso); }
 .ppl-prev-sem circle { stroke: var(--perigo); }
 
+/* fase 186a (#236, #308): linha do rateio com destino recusado (natureza só máquina fora de TAG ou acessório) */
+.cmp-rd-erro td { background: var(--perigo-bg); }
+#cmp-obras-rateio .chip { margin: 2px 4px 0 0; }
 /* Fase 189a: cronograma de equipamentos no quadro de Mobilizações (js/mobilizacoes_cronograma.js, prefixo mcr-) */
 .mcr-filtros { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; margin-bottom: var(--esp-2); }
 .mcr-filtros label { display: inline-flex; gap: 6px; align-items: center; font-size: var(--txt-xs); color: var(--txt-sec); }

@@ -27,6 +27,10 @@
    fn_pedido_compra_total), descrição do item livre em textarea que cresce, rodapé Itens · IPI · Frete · Desconto · Total;
    rateio de um item com destino TAG entre equipamentos (pedido_item_rateio, RPC pedido_item_rateio_definir, modal ⚖ e
    "+ TAGs" no cabeçalho): vw_custos abre uma linha por TAG e cada TAG pede a chave do seu dono do custo.
+   Fase 186a (16/11/2026, chamados #236 e #308): rateio por destino. "Vários destinos (ratear)" no Cabeçalho abre o rateio do
+   pedido entre obras, TAGs, setores e acessórios (pedido_rateio, RPC pedido_rateio_definir), copiado para os itens de
+   aplicação direta; o ⚖ do item abre o mesmo modal para o rateio próprio (vence o do pedido). Cada linha tem natureza,
+   método, R$ e %. Natureza só máquina (naturezas_custo.so_maquina) só aceita TAG ou acessório.
    ==================================================================== */
 
 let _cmpView = "kanban";
@@ -76,6 +80,9 @@ let _cmpCategorias = null;        // fase 102 (#160): categorias_produto para o 
 let _cmpViewInicial = false;      // fase 102: quem não opera Compras abre direto em Requisições (uma vez)
 let _cmpRat = null;               // lote S53 (#149): modal de rateio aberto { idx: índice do item | null = cabeçalho, sel: Map(equipamento_id -> %) }
 let _cmpRatPadrao = [];           // lote S53 (#149): TAGs do "+ TAGs" do cabeçalho (itens novos nascem rateados em partes iguais)
+let _cmpRatPed = [];              // fase 186a (#308): rateio do pedido ("Vários destinos"): linhas copiadas para os itens de aplicação direta
+let _cmpRatPedDirty = false;      // fase 186a: o rateio do pedido vai à RPC pedido_rateio_definir no Salvar
+let _cmpRd = null;                // fase 186a: modal de rateio aberto { alvo: "pedido" | índice do item, total, linhas: [{ dv, natureza_id, metodo, pct, rs }] }
 let _cmpCotEnviar = true;         // lote S53 (#163): "ao fechar, enviar para aprovação" (caixa da aba Cotações)
 /* colunas que o painel usa (a ficha abre o pedido inteiro em abrirPedido) */
 let CMP_COLS = "id,numero,status,fornecedor_id,solicitante_id,data_pedido,previsao_entrega,condicao_pagamento,local_entrega,obra_id,equipamento_id,centro_custo_id,total,codigo_externo,codigo_externo_origem,comprador_externo,responsavel_recebimento_id,compra_direta,created_at,observacoes,nf_informada,km_informado,tipo_compra,destino_centro_custo_id,viagem_id,viagem:viagens!pedidos_compra_viagem_id_fkey(numero)";
@@ -280,10 +287,23 @@ function cmpPct(v){ return v === null || v === undefined || v === "" || !Number(
 /* ---------- lote S53 (#149): rateio do item entre TAGs ----------
    it._rateio = [{ equipamento_id, fracao }] com 2+ TAGs (nulo = sem rateio), na ordem do código da TAG; it._rateioDirty
    marca o que vai à RPC pedido_item_rateio_definir depois do Salvar. O equipamento_id do item fica = primeira TAG. */
-function cmpTemRateio(it){ return it.destino === "equipamento" && Array.isArray(it._rateio) && it._rateio.length >= 2; }
+/* Fase 186a (#236, #308): a linha do rateio tem um destino (TAG, obra, setor ou acessório), natureza e método:
+   { destino, equipamento_id, obra_id, centro_custo_id, destino_acessorio_id, natureza_id, metodo, fracao, valor }, na ordem
+   da tela (a última fica com o resto). it._segue = linhas copiadas do rateio do pedido (_cmpRatPed); rateio próprio vence. */
+function cmpTemRateio(it){ return Array.isArray(it._rateio) && it._rateio.length >= 1 && cmpItemTipo(it) !== "reposicao"; }
 function cmpPctFracao(f){ return (Math.round(Number(f || 0) * 10000) / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "%"; }
-function cmpRateioTxt(it){ return cmpTemRateio(it) ? it._rateio.map(r => `TAG ${cmpEq(r.equipamento_id) || "?"} ${cmpPctFracao(r.fracao)}`).join(" · ") : ""; }
-function cmpDestinoRateioHTML(it){ return cmpTemRateio(it) ? `<div class="meta" title="${esc(cmpRateioTxt(it))}">+ ${it._rateio.length - 1} TAG(s) (rateio)</div>` : ""; }
+function cmpRatLinhaValor(l){ return cmpDestinoValor({ ...l, destino: l.destino || (l.equipamento_id ? "equipamento" : "") }); }
+function cmpRatLinhaTxt(l){ return cmpCustoChaveTxt(cmpRatLinhaValor(l)); }
+function cmpRateioTxt(it){ return cmpTemRateio(it) ? it._rateio.map(r => `${cmpRatLinhaTxt(r)} ${cmpPctFracao(r.fracao)}`).join(" · ") : ""; }
+function cmpDestinoRateioHTML(it){
+  if(cmpTemRateio(it)) return `<div class="meta" title="${esc(cmpRateioTxt(it))}">${it._segue ? "Segue o pedido" : `Rateado em ${esc(it._rateio.length)} ${it._rateio.length === 1 ? "destino" : "destinos"}`}</div>`;
+  if(_cmpRatPed.length && cmpItemTipo(it) !== "reposicao") return `<div class="meta txt-aviso" title="Natureza só máquina: a peça fica na TAG e não segue o rateio do pedido entre obras.">fora do rateio do pedido</div>`;
+  return "";
+}
+/* natureza só máquina (D2): com destino que não é TAG nem acessório, a linha fica vermelha e não grava */
+function cmpNatSoMaquina(id){ return !!(id && _cmpNatMap[id] && _cmpNatMap[id].so_maquina); }
+function cmpRatLinhaViola(l, natItem){ const v = cmpRatLinhaValor(l); return cmpNatSoMaquina(l.natureza_id || natItem) && !!v && !/^(eq|ac):/.test(v); }
+const CMP_SO_MAQUINA_TXT = "Natureza só máquina (peça e manutenção): o custo vai só para TAG ou acessório, nunca para obra ou setor.";
 /* ---------- lote S62 (#271): apropriação do pedido ----------
    Uma linha por parcela de custo: item sem rateio = uma parcela de 100%; item rateado entre TAGs = uma por TAG, com a fração.
    O valor da parcela é total do item (com IPI) × fração; o centavo que sobra fica na última, para a soma bater com o item.
@@ -295,7 +315,7 @@ function cmpApropriacaoLinhas(itens){
     const valorC = cent(cmpItemTotal(it)); totalC += valorC;
     const rateado = cmpTemRateio(it);
     const txt = cmpDestinoTxt(it);
-    const partes = rateado ? it._rateio.map(r => ({ destino: "TAG " + (cmpEq(r.equipamento_id) || "?"), fracao: Number(r.fracao || 0) }))
+    const partes = rateado ? it._rateio.map(r => ({ destino: cmpRatLinhaTxt(r), fracao: Number(r.fracao || 0) }))   // fase 186a: qualquer destino
                            : [{ destino: !it.destino || txt === "— escolher —" ? "Sem destino" : txt, fracao: 1 }];
     let usadoC = 0;
     partes.forEach((p, k) => {
@@ -320,7 +340,7 @@ function cmpApropriacaoHTML(a){
   const corpo = `<div class="cmp-aprop-grade">
     <div><div class="rotulo-caps">Por item</div><div class="tabela-rola">${/* html */ porItem}</div></div>
     <div><div class="rotulo-caps">Por destino</div><div class="tabela-rola">${/* html */ porDestino}</div></div>
-  </div><p class="meta">Frete e desconto do pedido não entram nesta conta. O rateio entre TAGs é definido no botão ⚖ do item.</p>`;
+  </div><p class="meta">Frete e desconto do pedido não entram nesta conta. O rateio entre obras e destinos é definido em "Vários destinos", no Cabeçalho, ou no botão ⚖ do item.</p>`;
   return uiSecao("nota", "Apropriação do custo", corpo, `${a.resumo.length} ${a.resumo.length === 1 ? "destino" : "destinos"} · ${a.linhas.length} ${a.linhas.length === 1 ? "parcela" : "parcelas"}`);
 }
 function cmpRenderApropriacao(){
@@ -371,7 +391,7 @@ function cmpCustoDosItens(itens){
   itens.forEach(it => {
     const k = cmpCustoChave(it);
     if(!k){ falta = true; return; }
-    if(cmpTemRateio(it)) it._rateio.forEach(r => chaves.add("eq:" + r.equipamento_id)); else chaves.add(k);
+    if(cmpTemRateio(it)) it._rateio.forEach(r => chaves.add(cmpRatLinhaValor(r))); else chaves.add(k);   // fase 186a: qualquer destino
   });
   const lst = [...chaves];
   if(falta) return { k: "falta", chaves: lst };
@@ -451,6 +471,12 @@ function cmpDestCabSincronizar(){
 /* Destino do custo trocado à mão: preenche os itens de aplicação direta sem destino; os que já têm só mudam se a pessoa confirmar */
 function cmpDestCabMudou(){
   const v = $("cmp-dest-custo").value;
+  // fase 186a (#308): "Vários destinos" abre o rateio do pedido; sair dele (com rateio) pede confirmação e tira o rateio
+  if(v === "varios" && cmpEditavel()){ cmpDestCabDefinir("varios"); cmpRdAbrir("pedido"); return; }
+  if(_cmpRatPed.length){
+    if(!confirm("O pedido está rateado entre obras e destinos. Tirar o rateio do pedido? Os itens que seguiam o rateio ficam com o destino escolhido agora.")){ cmpDestCabDefinir("varios"); return; }
+    cmpRatPedAplicar([]);
+  }
   const ad = _cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta");
   let alvo = ad.filter(i => !i.destino);
   if(v && v !== "varios"){
@@ -463,6 +489,7 @@ function cmpDestCabMudou(){
       const tinha = cmpTemRateio(it), d = cmpDestinoDiretoPadrao();
       Object.assign(it, d);
       if(d._rateio) it._rateio = d._rateio.map(r => ({ ...r })); else if(tinha){ it._rateio = null; it._rateioDirty = true; }
+      it._segue = !!d._segue;   // fase 186a
       if(it.destino !== "equipamento") it.horimetro = null;
       cmpNatFrotaSugerir(it);   // fase 131a
       cmpAplicarMetodoPadrao(it);
@@ -481,9 +508,20 @@ function cmpCabVisibilidade(){
   loc.disabled = !ed || repo;
   loc.title = repo ? "Reposição de estoque entra pela Base Itabira." : "";
   const entregaObra = loc.value === "obra";
-  mostra("cmp-obra-campo", !repo && !destObra && (entregaObra || (ad && (dv.startsWith("eq:") || !!$("cmp-obra").value))));
-  if($("cmp-obra-rot")) $("cmp-obra-rot").textContent = entregaObra ? "Obra da entrega" : "Obra (referência, não entra no custo)";
+  // fase 186a (#308): com rateio do pedido entre obras, "Obra da entrega" vira "Obras da entrega", com chips das obras e do %
+  const obrasRat = ad ? cmpRatPedObras() : [];
+  mostra("cmp-obra-campo", !repo && !destObra && (obrasRat.length > 0 || entregaObra || (ad && (dv.startsWith("eq:") || !!$("cmp-obra").value))));
+  if($("cmp-obra-rot")) $("cmp-obra-rot").textContent = obrasRat.length ? "Obras da entrega" : entregaObra ? "Obra da entrega" : "Obra (referência, não entra no custo)";
+  mostra("cmp-obra", !obrasRat.length);
+  const chips = $("cmp-obras-rateio");
+  if(chips){
+    chips.style.display = obrasRat.length ? "" : "none";
+    chips.innerHTML = obrasRat.map(o => `<span class="tag azul" title="${esc(cmpObra(o.obra_id) || "")}">${esc(cmpObraCurta(o.obra_id))} · ${esc(cmpPctFracao(o.fracao))}</span>`).join(" ");
+  }
   mostra("btn-cmp-rat-padrao", ed && dv.startsWith("eq:"));
+  mostra("btn-cmp-ratped", ed && ad && dv === "varios");
+  const rtxt = $("cmp-ratped-txt");
+  if(rtxt){ rtxt.style.display = ad && _cmpRatPed.length ? "" : "none"; rtxt.textContent = _cmpRatPed.length ? "Rateio do pedido: " + _cmpRatPed.map(l => `${cmpRatLinhaTxt(l)} ${cmpPctFracao(l.fracao)}`).join(" · ") : ""; }
   const dica = $("cmp-tipo-dica");
   if(dica) dica.textContent = repo ? "Entra no almoxarifado pela Base; o custo aparece na saída do estoque." : ad ? "O custo cai no destino de cada item, no recebimento." : "Escolha antes de lançar os itens.";
   cmpItensAddEstado();
@@ -591,12 +629,12 @@ function cmpDestinoOptions(sel, semAcessorio){
   return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Reposição de estoque (almoxarifado)</option>${/* html */ obras}<optgroup label="Aplicação direta na TAG">${eqs}</optgroup><optgroup label="Aplicação direta no setor / obra interna">${centros}</optgroup>${semAcessorio ? "" : cmpAceOptgroup(sel)}`;
 }
 /* fase 108b: destino de item de aplicação direta (sem a opção do estoque; vazio = falta escolher). Fase 133: cab = o
-   "Destino do custo" do cabeçalho, sem acessório (fica na linha) e com "Vários destinos (um por item)" */
+   "Destino do custo" do cabeçalho, sem acessório (fica na linha) e com "Vários destinos (ratear)" */
 function cmpDestinoDiretoOptions(sel, cab){
   const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => obraRotulo(o), "Obra");
   const eqs = _cmpEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc([c.codigo, c.nome].filter(Boolean).join(" "))}</option>`).join("");
-  if(cab) return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou setor —</option><option value="varios"${sel === "varios" ? " selected" : ""}>Vários destinos (um por item)</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>`;
+  if(cab) return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou setor —</option><option value="varios"${sel === "varios" ? " selected" : ""}>Vários destinos (ratear)</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>`;
   return `<option value=""${sel ? "" : " selected"}>— obra, TAG, centro ou acessório —</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>${cmpAceOptgroup(sel)}`;
 }
 function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${esc(k)}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
@@ -771,7 +809,7 @@ async function cmpCarregarBaseAgora(){
       sb.rpc("compras_alcada_usuario"),
       sb.from("centros_custo").select("id,codigo,nome,tipo,ativo,odoo_naturezas").order("tipo", { ascending: false }).order("nome"),   // lote S57a (#212): naturezas sugerem o centro
       sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),   // fase 78
-      sb.from("naturezas_custo").select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem").order("ordem").order("nome"),   // fase 108b
+      sb.from("naturezas_custo").select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem,so_maquina").order("ordem").order("nome"),   // fase 108b; 186a: so_maquina
       sb.from("pedido_compra_itens").select("destino_acessorio_id").limit(1),   // lote S56: a coluna nova diz se a migration loteS56a está no banco
       sb.from("pedidos_compra").select("tipo_compra").limit(1),   // fase 133: idem para a migration da 133
       sb.from("pedidos_compra").select("viagem_id").limit(1)   // fase 181b: idem para a migration da 181b
@@ -1295,7 +1333,7 @@ const CMP_NAT_CODIGO = /^[0-9]+(\.[0-9]+)*$/;   // mesmo formato do check nature
 async function cmpSalvarNatureza(id, campo, valor){
   if(campo === "codigo" && valor && !CMP_NAT_CODIGO.test(valor)){ aviso("app-aviso", "Código no formato do plano do Odoo: números separados por ponto (ex.: 2.06.003).", "erro"); renderNaturezas(); return; }
   if(campo === "nome" && !valor){ aviso("app-aviso", "A natureza precisa de nome.", "erro"); renderNaturezas(); return; }
-  const { data, error } = await sb.from("naturezas_custo").update({ [campo]: valor }).eq("id", id).select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem").single();
+  const { data, error } = await sb.from("naturezas_custo").update({ [campo]: valor }).eq("id", id).select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem,so_maquina").single();
   if(error){ aviso("app-aviso", "Não foi possível gravar a natureza: " + (/duplicate|unique/i.test(error.message) ? "já existe outra com esse código ou nome." : error.message), "erro"); renderNaturezas(); return; }
   const i = _cmpNaturezas.findIndex(n => n.id === id); if(i >= 0) _cmpNaturezas[i] = data;
   _cmpNatMap[id] = data;
@@ -1307,7 +1345,7 @@ async function cmpNovaNatureza(){
   if(codigo && !CMP_NAT_CODIGO.test(codigo)){ aviso("app-aviso", "Código no formato do plano do Odoo: números separados por ponto (ex.: 2.06.003).", "erro"); return; }
   const ordem = _cmpNaturezas.reduce((m, n) => Math.max(m, Number(n.ordem || 0)), 0) + 10;
   const { data, error } = await sb.from("naturezas_custo").insert({ nome, codigo, categoria_custo: $("cmp-nat-novo-cat").value || null, tipo_compra_padrao: $("cmp-nat-novo-tipo").value || null, ordem })
-    .select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem").single();
+    .select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem,so_maquina").single();
   if(error){ aviso("app-aviso", "Não foi possível criar a natureza: " + (/duplicate|unique/i.test(error.message) ? "já existe outra com esse código ou nome." : error.message), "erro"); return; }
   _cmpNaturezas.push(data); _cmpNatMap[data.id] = data;
   aviso("app-aviso", `Natureza "${data.nome}" criada.`, "ok");
@@ -1378,24 +1416,20 @@ async function cmpDuplicarPedido(){
   ]);
   if(error || !p){ aviso("app-aviso", "Não foi possível ler o pedido para duplicar" + (error ? ": " + error.message : "."), "erro"); return; }
   if(it.error){ aviso("app-aviso", "Itens não carregaram: " + it.error.message, "erro"); return; }
-  const ids = (it.data || []).map(i => i.id), rat = {};
-  if(ids.length){
-    const { data: r, error: eRat } = await sb.from("pedido_item_rateio").select("pedido_item_id,equipamento_id,fracao").in("pedido_item_id", ids);
-    if(eRat) console.warn("pedido_item_rateio:", eRat.message);
-    (r || []).forEach(x => { (rat[x.pedido_item_id] = rat[x.pedido_item_id] || []).push({ equipamento_id: x.equipamento_id, fracao: Number(x.fracao) }); });
-  }
+  const ids = (it.data || []).map(i => i.id);
+  const ratC = await cmpRatCarregar(orig.id, ids), rat = ratC.porItem;   // fase 186a: rateio por destino e o do pedido
   const itens = (it.data || []).map(({ produto, funcionario, id, pedido_id, created_at, quantidade_recebida, requisicao_item_id, codigo_externo, valor_total, valor_ipi, ...i }) => {
     i.descricao = semCodOdoo(i.descricao);
     if(i.produto_id && produto?.unidade) _cmpProdUn[i.produto_id] = produto.unidade;
     if(i.produto_id) _cmpProdSrv[i.produto_id] = produto?.tipo_item === "servico";
     const l = rat[id], novo = { ...i, _funcNome: funcionario?.nome || null, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo };
-    if(l && l.length >= 2){ novo._rateio = cmpOrdenarRateio(l); novo._rateioDirty = true; }   // o rateio é gravado no 1º salvar
+    if(l && l.linhas.length){ novo._rateio = l.linhas.map(x => ({ ...x })); novo._segue = l.segue; novo._rateioDirty = true; }   // o rateio é gravado no 1º salvar
     return novo;
   });
   _cmpItens = itens;
   await cmpCarregarAces(itens.map(i => i.destino_acessorio_id));
   const { id: _i, numero, ...cab } = p;
-  abrirFichaPedido(Object.assign({ id: null, numero: "(novo)", status: "rascunho", data_pedido: hojeISO(), frete: 0, desconto: 0, total: 0, itens: [] }, cab, { _dupDe: numero }));
+  abrirFichaPedido(Object.assign({ id: null, numero: "(novo)", status: "rascunho", data_pedido: hojeISO(), frete: 0, desconto: 0, total: 0, itens: [] }, cab, { _dupDe: numero, _ratPed: ratC.pedido, _ratPedDirty: ratC.pedido.length > 0 }));
   aviso("app-aviso", `Rascunho novo com os itens de ${numero}. Confira e salve: o número sai ao salvar.`, "ok");
 }
 async function cmpDupRegistrar(id, numero){
@@ -1419,17 +1453,10 @@ async function abrirPedido(id){
     if(i.produto_id) _cmpProdSrv[i.produto_id] = produto?.tipo_item === "servico";    // lote S55 (#175)
     return { ...i, _funcNome: funcionario?.nome || null, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo };
   });
-  // lote S53 (#149): rateio dos itens com destino TAG (tabela nova; sem a migration a consulta falha e a ficha segue sem rateio)
-  const ids = itens.map(i => i.id);
-  if(ids.length){
-    const { data: rat, error: eRat } = await sb.from("pedido_item_rateio").select("pedido_item_id,equipamento_id,fracao").in("pedido_item_id", ids);
-    if(eRat) console.warn("pedido_item_rateio:", eRat.message);
-    else {
-      const por = {};
-      (rat || []).forEach(r => { (por[r.pedido_item_id] = por[r.pedido_item_id] || []).push({ equipamento_id: r.equipamento_id, fracao: Number(r.fracao) }); });
-      itens.forEach(i => { const l = por[i.id]; if(l && l.length >= 2) i._rateio = cmpOrdenarRateio(l); });
-    }
-  }
+  // lote S53 (#149) e fase 186a (#236, #308): rateio dos itens por destino (na ordem gravada) e o rateio do pedido
+  const ratC = await cmpRatCarregar(id, itens.map(i => i.id));
+  itens.forEach(i => { const l = ratC.porItem[i.id]; if(l && l.linhas.length){ i._rateio = l.linhas; i._segue = l.segue; } });
+  p._ratPed = ratC.pedido;
   _cmpItens = itens;
   await cmpCarregarAces(itens.map(i => i.destino_acessorio_id));   // lote S56 (#202): rótulo do acessório de destino
   abrirFichaPedido(p);
@@ -1440,7 +1467,8 @@ function cmpRascChave(id){ return rascunhoChave("pedido", id); }
 function cmpRascEstado(){
   const ids = _cmpItens.map(i => i.produto_id).filter(Boolean);
   return { cab: cmpColetarCabecalho(), tipo: cmpTipoCab(), dest: $("cmp-dest-custo")?.value || "", itens: _cmpItens,   // fase 133: tipo e destino do custo
-    un: Object.fromEntries(ids.map(id => [id, _cmpProdUn[id]])), srv: Object.fromEntries(ids.map(id => [id, _cmpProdSrv[id]])) };
+    un: Object.fromEntries(ids.map(id => [id, _cmpProdUn[id]])), srv: Object.fromEntries(ids.map(id => [id, _cmpProdSrv[id]])),
+    ratPed: _cmpRatPed, ratPedDirty: _cmpRatPedDirty };   // fase 186a: rateio do pedido
 }
 function cmpRascGravar(){
   if(_cmpRascBase === null || !_cmpAtual || !cmpEditavel()) return;
@@ -1463,6 +1491,7 @@ function cmpRascRestaurar(d){
   const campos = { "cmp-forn": c.fornecedor_id, "cmp-data": c.data_pedido, "cmp-prev": c.previsao_entrega, "cmp-cond": c.condicao_pagamento, "cmp-local": c.local_entrega,
     "cmp-obra": c.obra_id, "cmp-equip": c.equipamento_id, "cmp-centro": c.centro_custo_id, "cmp-resp-receb": c.responsavel_recebimento_id, "cmp-frete": c.frete, "cmp-desc": c.desconto, "cmp-obs": c.observacoes };
   Object.entries(campos).forEach(([id, v]) => { const el = $(id); if(el) el.value = v ?? ""; });
+  if(Array.isArray(d.ratPed)){ _cmpRatPed = d.ratPed; _cmpRatPedDirty = !!d.ratPedDirty; }   // fase 186a
   if(d.tipo !== undefined){ $("cmp-tipo").value = d.tipo || ""; $("cmp-tipo").dataset.prev = d.tipo || ""; cmpDestCabDefinir(d.dest || ""); }   // fase 133
   cmpFornAtualizar("cmp-forn");
   Object.assign(_cmpProdUn, d.un || {}); Object.assign(_cmpProdSrv, d.srv || {});
@@ -1501,7 +1530,10 @@ function abrirFichaPedido(p){
   const tipo0 = cmpTipoInicial(p, _cmpItens);
   $("cmp-tipo").value = tipo0; $("cmp-tipo").dataset.prev = tipo0;
   _cmpRatPadrao = [];
-  cmpDestCabDefinir(tipo0 === "aplicacao_direta" ? (cmpDestCabDosItens() || cmpDestCabDoPedido(p, tipo0)) : "");
+  // fase 186a (#308): rateio do pedido gravado (ou copiado do pedido duplicado) abre em "Vários destinos"
+  _cmpRatPed = (p._ratPed || []).map(l => ({ ...l })); _cmpRatPedDirty = !!p._ratPedDirty; _cmpRd = null;
+  if($("cmp-rd-modal")) $("cmp-rd-modal").style.display = "none";
+  cmpDestCabDefinir(tipo0 === "aplicacao_direta" ? (_cmpRatPed.length ? "varios" : (cmpDestCabDosItens() || cmpDestCabDoPedido(p, tipo0))) : "");
   cmpNfKmPreparar(p);   // lote S56 (#162/#203): NF informada e km ficam editáveis em qualquer status vivo
   cmpPeriodoRender("cmp-periodo-aviso", []);
   cmpFornAtualizar("cmp-forn");   // lote S43 (#53): chip do fornecedor acompanha o select
@@ -2307,10 +2339,12 @@ function cmpDestinoDiretoPadrao(){
   if(dv.startsWith("eq:")){
     const eq = dv.slice(3), d = cmpDestinoDoValor(dv);
     // lote S53 (#149): "+ TAGs" do cabeçalho → o item novo nasce rateado em partes iguais (a primeira TAG é o equipamento_id)
-    if(_cmpRatPadrao.length >= 2 && _cmpRatPadrao[0] === eq){ d._rateio = _cmpRatPadrao.map(id => ({ equipamento_id: id, fracao: 1 / _cmpRatPadrao.length })); d._rateioDirty = true; }
+    if(_cmpRatPadrao.length >= 2 && _cmpRatPadrao[0] === eq){ d._rateio = _cmpRatPadrao.map(id => ({ destino: "equipamento", equipamento_id: id, fracao: 1 / _cmpRatPadrao.length })); d._rateioDirty = true; d._segue = false; }
     return d;
   }
   if(dv.startsWith("obra:") || dv.startsWith("cc:")) return cmpDestinoDoValor(dv);
+  // fase 186a (#308): pedido rateado: o item novo segue o rateio do pedido (o Salvar copia pela RPC pedido_rateio_definir)
+  if(dv === "varios" && _cmpRatPed.length) return { ...cmpDestinoDoValor(cmpRatLinhaValor(_cmpRatPed[0])), _rateio: _cmpRatPed.map(l => ({ ...l })), _segue: true };
   return { ...CMP_SEM_DESTINO };
 }
 /* Fase 108b: colunas Tipo de compra (antes do destino), Natureza e Método. Reposição de estoque: o destino é o
@@ -2337,11 +2371,15 @@ function renderItensPedido(){
     // fase 133: item com tipo diferente do cabeçalho é exceção (pedido misto)
     const cabTipo = cmpTipoCab(), excecao = cabTipo && tipo !== cabTipo
       ? ` <span class="tag ambar" title="O pedido é ${esc(CMP_TIPO_CURTO[cabTipo])} e este item é ${esc(CMP_TIPO_CURTO[tipo])}: pedido misto">exceção</span>` : "";
-    // lote S53 (#149): destino TAG ganha o botão ⚖ (rateio entre equipamentos) e a linha "+ N TAG(s) (rateio)"
+    // lote S53 (#149); fase 186a (#236): todo item de aplicação direta ganha o botão ⚖ (rateio entre obras, TAGs, setores e
+    // acessórios, o mesmo modal do pedido) e a linha "Rateado em N destinos" ou "Segue o pedido"; natureza só máquina com
+    // destino que não é TAG nem acessório fica vermelha
+    const viola = !repo && cmpItemViolaSoMaquina(it);
+    const avisoMaq = viola ? `<div class="meta txt-perigo" title="${esc(CMP_SO_MAQUINA_TXT)}">só TAG ou acessório (natureza só máquina)</div>` : "";
     const destinoCel = repo
       ? `<span class="meta" title="${esc(cmpDicaDestinoEstoque(it))}">${esc(cmpDestinoTxt({ destino: "estoque", centro_custo_id: ed ? $("cmp-centro").value : it.centro_custo_id }))}</span>`
-      : ed ? `<select class="cmp-it${it.destino ? "" : " txt-perigo"}" data-f="destino" style="min-width:150px;max-width:190px;">${cmpDestinoDiretoOptions(cmpDestinoValor(it))}</select> <button type="button" class="btn-sec btn-sm cmp-it-rat" title="Ratear este item entre TAGs (partes iguais, ajustáveis)" style="${it.destino === "equipamento" ? "" : "display:none;"}">Ratear</button><div class="cmp-it-rat-txt">${cmpDestinoRateioHTML(it)}</div>`
-      : esc(cmpDestinoTxt(it)) + cmpDestinoRateioHTML(it);
+      : ed ? `<select class="cmp-it${it.destino && !viola ? "" : " txt-perigo"}" data-f="destino" style="min-width:150px;max-width:190px;">${cmpDestinoDiretoOptions(cmpDestinoValor(it))}</select> <button type="button" class="btn-sec btn-sm cmp-it-rat" title="Ratear este item entre obras, TAGs, setores ou acessórios, por % ou por valor (o rateio do item vence o do pedido)">⚖</button><div class="cmp-it-rat-txt">${cmpDestinoRateioHTML(it)}${avisoMaq}</div>`
+      : esc(cmpDestinoTxt(it)) + cmpDestinoRateioHTML(it) + avisoMaq;
     const natCel = ed && _cmpNaturezas.length
       ? `<select class="cmp-it" data-f="natureza_id" style="min-width:150px;max-width:190px;"${it.natureza && !_cmpNatMap[it.natureza_id] ? ` title="Odoo: ${esc(it.natureza)}"` : ""}>${cmpNatOptions(it.natureza_id || "")}</select>`
       : `<span class="meta"${it.natureza ? ` title="Odoo: ${esc(it.natureza)}"` : ""}>${esc(cmpNatTxt(it) || "—")}</span>`;
@@ -2372,21 +2410,21 @@ function renderItensPedido(){
       const tinhaRateio = cmpTemRateio(it);
       if(v === "ac:"){   // lote S56 (#202): "Acessório… (buscar)" abre o seletor; cancelar volta ao destino anterior
         cmpEscolherAcessorio(id => {
-          if(id){ Object.assign(it, cmpDestinoDoValor("ac:" + id)); if(tinhaRateio){ it._rateio = null; it._rateioDirty = true; } cmpAplicarMetodoPadrao(it); }
+          if(id){ Object.assign(it, cmpDestinoDoValor("ac:" + id)); cmpItemDestinoTrocado(it, tinhaRateio); cmpAplicarMetodoPadrao(it); }
           renderItensPedido();
         });
         return;
       }
       Object.assign(it, cmpDestinoDiretoDoValor(v)); e.target.classList.toggle("txt-perigo", !v);
-      if(tinhaRateio){ it._rateio = null; it._rateioDirty = true; }   // lote S53 (#149): trocar a TAG (ou sair dela) desfaz o rateio
-      const bRat = tr.querySelector(".cmp-it-rat"), tRat = tr.querySelector(".cmp-it-rat-txt");
-      if(bRat) bRat.style.display = it.destino === "equipamento" ? "" : "none";
-      if(tRat) tRat.innerHTML = cmpDestinoRateioHTML(it);
+      cmpItemDestinoTrocado(it, tinhaRateio);   // lote S53 (#149): trocar o destino desfaz o rateio; fase 186a: com rateio do pedido, vira rateio próprio de 100%
+      const tRat = tr.querySelector(".cmp-it-rat-txt");
+      if(tRat) tRat.innerHTML = cmpDestinoRateioHTML(it) + (cmpItemViolaSoMaquina(it) ? `<div class="meta txt-perigo" title="${esc(CMP_SO_MAQUINA_TXT)}">só TAG ou acessório (natureza só máquina)</div>` : "");
+      e.target.classList.toggle("txt-perigo", !v || cmpItemViolaSoMaquina(it));
       if(it.categoria_custo === "combustivel"){ if(it.destino !== "equipamento") it.horimetro = null; renderItensPedido(); }   // #215: campo do horímetro aparece/some
       else if(cmpNatFrotaSugerir(it)) renderItensPedido();   // fase 131a: caminhão ou veículo sugere a natureza de manutenção da frota
       cmpAplicarMetodoPadrao(it); cmpDestCabSincronizar(); cmpAtualizarChips(); return;   // fase 133: o cabeçalho acompanha
     }
-    if(f === "natureza_id"){ it.natureza_id = v || null; it._natAuto = false; cmpSugerirDestinoNatureza(it); return; }
+    if(f === "natureza_id"){ it.natureza_id = v || null; it._natAuto = false; cmpSugerirDestinoNatureza(it); if(cmpNatSoMaquina(it.natureza_id) || cmpTemRateio(it)) renderItensPedido(); return; }   // fase 186a: marca só máquina
     if(f === "horimetro"){ it.horimetro = v === "" ? null : Number(v); return; }   // lote S57a (#215): só informação do item
     if(f === "metodo"){ it.metodo = v || null; it._metAuto = false; return; }
     if(f === "unidade"){   // lote S54 (#170): "— outra unidade —" volta à anterior e abre o chamado; o resto regrava a linha (marca ≠)
@@ -2412,7 +2450,7 @@ function renderItensPedido(){
     box.style.display = ""; e.target.style.display = "none"; box.querySelector(".cmp-it-func")?.focus();
   }));
   tb.querySelectorAll(".cmp-it-func").forEach(inp => cmpLigarColaborador(inp));
-  tb.querySelectorAll(".cmp-it-rat").forEach(b => b.addEventListener("click", e => cmpAbrirRateio(Number(e.target.closest("tr").dataset.idx))));
+  tb.querySelectorAll(".cmp-it-rat").forEach(b => b.addEventListener("click", e => cmpRdAbrir(Number(e.target.closest("tr").dataset.idx))));   // fase 186a: modal único (destino, natureza, método, R$ e %)
   tb.querySelectorAll(".cmp-it-rem").forEach(b => b.addEventListener("click", e => { _cmpItens.splice(Number(e.target.closest("tr").dataset.idx), 1); renderItensPedido(); }));
   tb.querySelectorAll('select.cmp-it[data-f="destino"]').forEach(s => cmpCampoTag(s, "obra, TAG, placa ou setor…"));   // fase 131a
   cmpDestCabSincronizar();   // fase 133: itens com destinos diferentes → "Vários destinos" no cabeçalho
@@ -2490,7 +2528,7 @@ function cmpSugerirDestinoNatureza(it){
   }
   const tinhaRateio = cmpTemRateio(it);
   Object.assign(it, cmpDestinoDoValor("cc:" + c.id));
-  if(tinhaRateio){ it._rateio = null; it._rateioDirty = true; }   // sair da TAG desfaz o rateio (como na troca à mão)
+  cmpItemDestinoTrocado(it, tinhaRateio);   // sair da TAG desfaz o rateio (como na troca à mão); fase 186a: com rateio do pedido, rateio próprio de 100%
   it.horimetro = null;
   renderItensPedido(); cmpAplicarMetodoPadrao(it);
   aviso("app-aviso", `Destino sugerido pela natureza: ${rotulo}. Dá para trocar na coluna Destino.`, "ok");
@@ -2522,7 +2560,7 @@ function cmpTrocarTipoItem(it, tipo){
 /* fase 133: a troca de um item, sem redesenhar (a troca do tipo do cabeçalho aplica em vários e redesenha uma vez) */
 function cmpAplicarTipoItem(it, tipo){
   it._tipo = tipo;
-  if(cmpTemRateio(it)){ it._rateio = null; it._rateioDirty = true; }   // o rateio sai junto com a TAG (o Salvar apaga pela RPC)
+  if(Array.isArray(it._rateio) && it._rateio.length){ it._rateio = null; it._segue = false; it._rateioDirty = true; }   // o rateio sai junto com a TAG (o Salvar apaga)
   if(tipo === "reposicao"){
     Object.assign(it, { destino: "estoque", obra_id: null, equipamento_id: null, centro_custo_id: null, destino_acessorio_id: null, metodo: null, horimetro: null });
     it._metAuto = true;
@@ -2530,6 +2568,7 @@ function cmpAplicarTipoItem(it, tipo){
     const d = cmpDestinoDiretoPadrao();
     Object.assign(it, d);
     if(d._rateio) it._rateio = d._rateio.map(r => ({ ...r }));
+    it._segue = !!d._segue;   // fase 186a
   }
   if(it._natAuto){ it.natureza_id = cmpNatPadrao(tipo, it.categoria_custo); cmpNatFrotaSugerir(it); }
 }
@@ -2682,12 +2721,12 @@ function cmpRatAplicar(){
     if(ids.some(id => !(Number(r.rs.get(id)) > 0))){ aviso("app-aviso", "Os valores em R$ precisam ser maiores que zero.", "erro"); return; }
     const soma = cmpR2(ids.reduce((s, id) => s + Number(r.rs.get(id)), 0));
     if(Math.abs(soma - r.total) > 0.01){ aviso("app-aviso", `A soma do rateio (${brl(soma)}) não bate com o total do item (${brl(r.total)}). Ajuste os valores ou use Igualar.`, "erro"); return; }
-    rateio = cmpOrdenarRateio(ids.map(id => ({ equipamento_id: id, fracao: Number(r.rs.get(id)) / r.total, valor: Number(r.rs.get(id)) })));
+    rateio = cmpOrdenarRateio(ids.map(id => ({ destino: "equipamento", equipamento_id: id, fracao: Number(r.rs.get(id)) / r.total, valor: Number(r.rs.get(id)) })));
   } else {
     ids = [...r.sel.keys()].filter(id => Number(r.sel.get(id)) > 0);
     if(r.sel.size && !ids.length){ aviso("app-aviso", "Os percentuais precisam ser maiores que zero.", "erro"); return; }
     const soma = ids.reduce((s, id) => s + Number(r.sel.get(id)), 0);
-    rateio = cmpOrdenarRateio(ids.map(id => ({ equipamento_id: id, fracao: Number(r.sel.get(id)) / soma })));
+    rateio = cmpOrdenarRateio(ids.map(id => ({ destino: "equipamento", equipamento_id: id, fracao: Number(r.sel.get(id)) / soma })));
   }
   if(r.idx === null){
     _cmpRatPadrao = rateio.length >= 2 ? rateio.map(x => x.equipamento_id) : [];
@@ -2715,6 +2754,216 @@ function cmpRatPadraoTxt(){
   const el = $("cmp-rat-padrao-txt"); if(!el) return;
   if(_cmpRatPadrao.length >= 2){ el.style.display = ""; el.textContent = "Itens novos rateados em partes iguais: " + _cmpRatPadrao.map(id => "TAG " + (cmpEq(id) || "?")).join(" + "); }
   else { el.style.display = "none"; el.textContent = ""; }
+}
+/* ---------- fase 186a (#236, #308): rateio do pedido e do item entre obras e destinos ----------
+   Um modal só para o pedido ("Vários destinos" do Cabeçalho) e para o item (⚖): linhas com destino, natureza, método, R$ e
+   %; um recalcula o outro; "Igualar" e "Resto na última". O rateio do pedido é um modelo: os itens de aplicação direta sem
+   rateio próprio seguem o pedido (RPC pedido_rateio_definir); o do item vence (pedido_item_rateio_definir). Natureza só
+   máquina só aceita TAG ou acessório. Grava no Salvar. */
+function cmpItemViolaSoMaquina(it){
+  if(!it || cmpItemTipo(it) === "reposicao") return false;
+  return cmpTemRateio(it) ? it._rateio.some(l => cmpRatLinhaViola(l, it.natureza_id)) : cmpRatLinhaViola(it, it.natureza_id);
+}
+function cmpRatLinhaDoItem(it, fracao){
+  return { destino: it.destino, equipamento_id: it.equipamento_id || null, obra_id: it.destino === "obra" ? it.obra_id || null : null,
+           centro_custo_id: it.centro_custo_id || null, destino_acessorio_id: it.destino_acessorio_id || null, natureza_id: null, metodo: null, fracao: fracao ?? 1 };
+}
+/* destino do item trocado na linha: sem rateio do pedido, o rateio do item sai; com ele, o item fica com rateio próprio de 100%
+   no destino novo (senão o Salvar o levaria de volta ao rateio do pedido) */
+function cmpItemDestinoTrocado(it, tinhaRateio){
+  if(_cmpRatPed.length && it.destino && it.destino !== "estoque"){ it._rateio = [cmpRatLinhaDoItem(it, 1)]; it._segue = false; it._rateioDirty = true; return; }
+  if(tinhaRateio){ it._rateio = null; it._segue = false; it._rateioDirty = true; }
+}
+function cmpObraCurta(id){ const o = _cmpObraMap[id]; return o ? o.codigo : (cmpObra(id) || "Obra ?"); }
+/* obras do rateio do pedido, com a fração (chips "Obras da entrega") */
+function cmpRatPedObras(){ return _cmpRatPed.filter(l => l.destino === "obra" && l.obra_id); }
+/* o item segue o rateio do pedido? natureza só máquina (a do item, quando a linha não tem) com destino que não é TAG nem
+   acessório fica fora, como na RPC */
+function cmpRatPedPula(it){ return _cmpRatPed.some(l => cmpRatLinhaViola(l, it.natureza_id)); }
+/* aplica o rateio do pedido na tela: cada item de aplicação direta sem rateio próprio passa a segui-lo */
+function cmpRatPedAplicar(lins){
+  _cmpRatPed = lins.map(l => ({ ...l })); _cmpRatPedDirty = true;
+  const pulados = [];
+  _cmpItens.filter(it => cmpItemTipo(it) === "aplicacao_direta" && (!cmpTemRateio(it) || it._segue)).forEach(it => {
+    if(!_cmpRatPed.length){ if(it._segue){ it._rateio = null; it._segue = false; } return; }
+    if(cmpRatPedPula(it)){ if(it._segue){ it._rateio = null; it._segue = false; } pulados.push(it); return; }
+    Object.assign(it, cmpDestinoDoValor(cmpRatLinhaValor(_cmpRatPed[0])));
+    it._rateio = _cmpRatPed.map(l => ({ ...l })); it._segue = true;
+  });
+  const obras = cmpRatPedObras();
+  if(obras.length && cmpEditavel()) $("cmp-obra").value = obras[0].obra_id;   // a primeira obra do rateio é a do cabeçalho (título, D9)
+  cmpCabVisibilidade(); renderItensPedido();
+  if(pulados.length) aviso("app-aviso", `${pulados.length} item(ns) de natureza só máquina não seguem o rateio do pedido e ficam na TAG: ${pulados.map(i => String(semCodOdoo(i.descricao) || "").slice(0, 40)).join(" · ")}. Use ⚖ no item para outra TAG ou acessório.`, "aviso");
+}
+function cmpRdTotal(alvo){
+  // pedido: os itens que seguem (ou seguiriam) o rateio do pedido; fora os de rateio próprio e os de natureza só máquina
+  if(alvo === "pedido") return cmpR2(_cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta" && (!cmpTemRateio(i) || i._segue) && !cmpNatSoMaquina(i.natureza_id)).reduce((s, i) => s + cmpItemTotal(i), 0));
+  const it = _cmpItens[alvo]; return it ? cmpItemTotal(it) : 0;
+}
+function cmpRdAbrir(alvo){
+  if(!cmpEditavel()) return;
+  const it = alvo === "pedido" ? null : _cmpItens[alvo]; if(alvo !== "pedido" && !it) return;
+  const total = cmpRdTotal(alvo);
+  const base = it ? (cmpTemRateio(it) ? it._rateio : (it.destino && it.destino !== "estoque" ? [cmpRatLinhaDoItem(it, 1)] : []))
+                  : (_cmpRatPed.length ? _cmpRatPed : []);
+  const lins = base.map(l => ({ dv: cmpRatLinhaValor(l), natureza_id: l.natureza_id || "", metodo: l.metodo || "", pct: Math.round(Number(l.fracao || 0) * 1000000) / 10000, rs: total > 0 ? cmpR2(total * Number(l.fracao || 0)) : 0 }));
+  while(lins.length < 2) lins.push({ dv: "", natureza_id: "", metodo: "", pct: 0, rs: 0 });
+  _cmpRd = { alvo, total, linhas: lins };
+  $("cmp-rd-titulo").textContent = it ? `Ratear o item — ${String(semCodOdoo(it.descricao) || "item").slice(0, 60)}` : "Ratear o pedido entre obras e destinos";
+  $("cmp-rd-ajuda").textContent = (it
+    ? "Cada linha leva um destino (obra, TAG, setor ou acessório), com natureza e método; vazio = os do item. O rateio do item vence o do pedido."
+    : "Vale para todos os itens de aplicação direta. Um item que precisa ser diferente (a peça de uma máquina, por exemplo) recebe rateio próprio no ⚖. Natureza e método vazios = os de cada item.")
+    + (total > 0 ? ` A soma tem de dar 100% (${brl(total)}); um campo recalcula o outro e a última linha fica com o resto dos centavos.` : " Sem preço, o rateio é só por %.")
+    + " O rateio é gravado no Salvar.";
+  if($("btn-cmp-rd-seguir")) $("btn-cmp-rd-seguir").style.display = it && _cmpRatPed.length ? "" : "none";
+  if($("btn-cmp-rd-limpar")) $("btn-cmp-rd-limpar").style.display = it && _cmpRatPed.length ? "none" : "";
+  cmpRdRender();
+  $("cmp-rd-modal").style.display = "flex";
+}
+function cmpRdNatItem(){ const r = _cmpRd; return r && r.alvo !== "pedido" ? (_cmpItens[r.alvo]?.natureza_id || null) : null; }
+function cmpRdLinhaObj(l){ return { ...cmpDestinoDoValor(l.dv || ""), destino: l.dv ? cmpDestinoDoValor(l.dv).destino : "", natureza_id: l.natureza_id || null, metodo: l.metodo || null }; }
+function cmpRdRender(){
+  const r = _cmpRd; if(!r) return;
+  const comRs = r.total > 0, natItem = cmpRdNatItem();
+  if($("cmp-rd-th-rs")) $("cmp-rd-th-rs").style.display = comRs ? "" : "none";
+  $("cmp-rd-linhas").innerHTML = r.linhas.map((l, i) => {
+    const viola = cmpRatLinhaViola(cmpRdLinhaObj(l), natItem);
+    return `<tr data-i="${i}"${viola ? ` class="cmp-rd-erro" title="${esc(CMP_SO_MAQUINA_TXT)}"` : ""}>
+      <td><select class="cmp-rd-dest" style="min-width:200px;max-width:260px;">${cmpDestinoDiretoOptions(l.dv)}</select>${viola ? `<div class="meta txt-perigo">só TAG ou acessório (natureza só máquina)</div>` : ""}</td>
+      <td><select class="cmp-rd-nat" style="min-width:150px;max-width:190px;" title="Vazio = a natureza de cada item">${cmpNatOptions(l.natureza_id || "")}</select></td>
+      <td><select class="cmp-rd-met" style="min-width:120px;max-width:140px;" title="Vazio = o método de cada item">${cmpMetodoOptions(l.metodo || "")}</select></td>
+      ${comRs ? `<td class="num"><input type="number" class="cmp-rd-rs" min="0" step="0.01" value="${esc(Number(l.rs || 0).toFixed(2))}" style="width:110px;text-align:right;" /></td>` : ""}
+      <td class="num"><input type="number" class="cmp-rd-pct" min="0" max="100" step="0.0001" value="${esc(l.pct || 0)}" style="width:90px;text-align:right;" /></td>
+      <td><button type="button" class="btn-sec btn-sm cmp-rd-rem" title="tirar esta linha">×</button></td>
+    </tr>`; }).join("") || `<tr><td colspan="${comRs ? 6 : 5}" class="vazio">Nenhuma linha. Use "+ linha".</td></tr>`;
+  const tb = $("cmp-rd-linhas");
+  tb.querySelectorAll("tr[data-i]").forEach(tr => {
+    const i = Number(tr.dataset.i), l = r.linhas[i];
+    const sd = tr.querySelector(".cmp-rd-dest");
+    sd.addEventListener("change", () => {
+      if(sd.value === "ac:"){ cmpEscolherAcessorio(id => { if(id) l.dv = "ac:" + id; cmpRdRender(); }); return; }   // lote S56: o acessório se escolhe no seletor
+      l.dv = sd.value; cmpRdRender();
+    });
+    cmpCampoTag(sd, "obra, TAG, placa ou setor…");
+    tr.querySelector(".cmp-rd-nat").addEventListener("change", e => { l.natureza_id = e.target.value; cmpRdRender(); });
+    tr.querySelector(".cmp-rd-met").addEventListener("change", e => { l.metodo = e.target.value; });
+    const ip = tr.querySelector(".cmp-rd-pct"), iv = tr.querySelector(".cmp-rd-rs");
+    ip.addEventListener("input", () => { l.pct = Number(ip.value || 0); if(iv){ l.rs = cmpR2(r.total * l.pct / 100); iv.value = l.rs.toFixed(2); } cmpRdSoma(); });
+    if(iv) iv.addEventListener("input", () => { l.rs = cmpR2(iv.value); l.pct = r.total > 0 ? Math.round(l.rs / r.total * 1000000) / 10000 : 0; ip.value = l.pct; cmpRdSoma(); });
+    tr.querySelector(".cmp-rd-rem").addEventListener("click", () => { r.linhas.splice(i, 1); cmpRdRender(); });
+  });
+  cmpRdSoma();
+}
+function cmpRdSoma(){
+  const r = _cmpRd; if(!r) return;
+  const pct = Math.round(r.linhas.reduce((s, l) => s + Number(l.pct || 0), 0) * 10000) / 10000;
+  const rs = cmpR2(r.linhas.reduce((s, l) => s + Number(l.rs || 0), 0));
+  const fora = r.total > 0 ? Math.abs(rs - r.total) > 0.01 : Math.abs(pct - 100) > 0.01;
+  $("cmp-rd-soma").innerHTML = `${esc(r.linhas.length)} ${r.linhas.length === 1 ? "linha" : "linhas"} · soma <strong>${esc(pct.toLocaleString("pt-BR", { maximumFractionDigits: 4 }))}%</strong>`
+    + (r.total > 0 ? ` · ${esc(brl(rs))} de ${esc(brl(r.total))}` : "") + (fora ? ' <span class="txt-aviso">(a soma tem de dar 100%)</span>' : "");
+}
+function cmpRdIgualar(){
+  const r = _cmpRd; if(!r || !r.linhas.length) return;
+  const n = r.linhas.length;
+  if(r.total > 0){
+    const base = Math.floor(r.total * 100 / n) / 100;
+    r.linhas.forEach((l, i) => { l.rs = i === n - 1 ? cmpR2(r.total - base * (n - 1)) : base; l.pct = Math.round(l.rs / r.total * 1000000) / 10000; });
+  } else {
+    const base = Math.floor(10000 / n) / 100;
+    r.linhas.forEach((l, i) => { l.pct = i === n - 1 ? Math.round((100 - base * (n - 1)) * 100) / 100 : base; });
+  }
+  cmpRdRender();
+}
+/* a última linha fica com o que falta para 100% (ou para o total em R$) */
+function cmpRdResto(){
+  const r = _cmpRd; if(!r || !r.linhas.length) return;
+  const ult = r.linhas[r.linhas.length - 1], outros = r.linhas.slice(0, -1);
+  if(r.total > 0){ ult.rs = cmpR2(r.total - outros.reduce((s, l) => s + Number(l.rs || 0), 0)); ult.pct = Math.round(ult.rs / r.total * 1000000) / 10000; }
+  else ult.pct = Math.round((100 - outros.reduce((s, l) => s + Number(l.pct || 0), 0)) * 10000) / 10000;
+  cmpRdRender();
+}
+function cmpRdAplicar(){
+  const r = _cmpRd; if(!r) return;
+  const natItem = cmpRdNatItem();
+  const linhas = r.linhas.filter(l => l.dv || Number(l.pct) > 0 || Number(l.rs) > 0);
+  if(linhas.some(l => !l.dv || l.dv === "estoque" || /:$/.test(l.dv))){ aviso("app-aviso", "Escolha o destino de cada linha (obra, TAG, setor ou acessório).", "erro"); return; }
+  if(linhas.some(l => cmpRatLinhaViola(cmpRdLinhaObj(l), natItem))){ aviso("app-aviso", CMP_SO_MAQUINA_TXT + " Troque o destino da linha em vermelho.", "erro"); return; }
+  let fr;
+  if(r.total > 0){
+    if(linhas.some(l => !(Number(l.rs) > 0))){ aviso("app-aviso", "Os valores em R$ precisam ser maiores que zero.", "erro"); return; }
+    const soma = cmpR2(linhas.reduce((s, l) => s + Number(l.rs), 0));
+    if(Math.abs(soma - r.total) > 0.01){ aviso("app-aviso", `A soma do rateio (${brl(soma)}) não bate com o total (${brl(r.total)}). Ajuste os valores, use Igualar ou Resto na última.`, "erro"); return; }
+    fr = linhas.map(l => Number(l.rs) / soma);
+  } else {
+    if(linhas.some(l => !(Number(l.pct) > 0))){ aviso("app-aviso", "Os percentuais precisam ser maiores que zero.", "erro"); return; }
+    const soma = linhas.reduce((s, l) => s + Number(l.pct), 0);
+    if(Math.abs(soma - 100) > 0.01){ aviso("app-aviso", `A soma do rateio (${soma.toLocaleString("pt-BR")}%) tem de dar 100%. Use Igualar ou Resto na última.`, "erro"); return; }
+    fr = linhas.map(l => Number(l.pct) / soma);
+  }
+  // frações com 6 casas; a última fica com o resto até 1 (a RPC faz o mesmo)
+  fr = fr.map(f => Math.round(f * 1000000) / 1000000);
+  if(fr.length) fr[fr.length - 1] = Math.round((1 - fr.slice(0, -1).reduce((s, f) => s + f, 0)) * 1000000) / 1000000;
+  const novas = linhas.map((l, i) => ({ ...cmpRdLinhaObj(l), fracao: fr[i], valor: r.total > 0 ? cmpR2(l.rs) : null }));
+  if(r.alvo === "pedido"){
+    cmpRatPedAplicar(novas);
+    if(!novas.length) cmpDestCabDefinir("varios");
+  } else {
+    const it = _cmpItens[r.alvo]; if(!it) return;
+    if(!novas.length){ aviso("app-aviso", "Inclua ao menos uma linha.", "erro"); return; }
+    const tinha = cmpTemRateio(it);
+    if(novas.length === 1 && !_cmpRatPed.length){   // um destino só e sem rateio do pedido: é o destino do item, sem rateio
+      Object.assign(it, cmpDestinoDoValor(cmpRatLinhaValor(novas[0])));
+      if(novas[0].natureza_id) it.natureza_id = novas[0].natureza_id;
+      if(novas[0].metodo){ it.metodo = novas[0].metodo; it._metAuto = false; }
+      it._rateio = null; it._segue = false; it._rateioDirty = it._rateioDirty || tinha;
+    } else {
+      Object.assign(it, cmpDestinoDoValor(cmpRatLinhaValor(novas[0])));   // o item guarda o primeiro destino (como a RPC)
+      it._rateio = novas; it._segue = false; it._rateioDirty = true;
+    }
+    if(it.destino !== "equipamento") it.horimetro = null;
+    renderItensPedido();
+  }
+  cmpRdFechar();
+}
+/* item: "Seguir o pedido" desfaz o rateio próprio (o Salvar manda a lista vazia e a RPC copia o rateio do pedido) */
+function cmpRdSeguir(){
+  const r = _cmpRd; if(!r || r.alvo === "pedido") return;
+  const it = _cmpItens[r.alvo]; if(!it) return;
+  if(cmpRatPedPula(it)){ aviso("app-aviso", CMP_SO_MAQUINA_TXT + " Este item não pode seguir o rateio do pedido entre obras.", "erro"); return; }
+  Object.assign(it, cmpDestinoDoValor(cmpRatLinhaValor(_cmpRatPed[0])));
+  it._rateio = _cmpRatPed.map(l => ({ ...l })); it._segue = true; it._rateioDirty = true;
+  renderItensPedido(); cmpRdFechar();
+}
+function cmpRdLimpar(){
+  const r = _cmpRd; if(!r) return;
+  if(r.alvo === "pedido"){ cmpRatPedAplicar([]); cmpDestCabDefinir("varios"); }
+  else {
+    const it = _cmpItens[r.alvo];
+    if(it && cmpTemRateio(it)){ Object.assign(it, cmpDestinoDoValor(cmpRatLinhaValor(it._rateio[0]))); it._rateio = null; it._segue = false; it._rateioDirty = true; renderItensPedido(); }
+  }
+  cmpRdFechar();
+}
+function cmpRdFechar(){ _cmpRd = null; if($("cmp-rd-modal")) $("cmp-rd-modal").style.display = "none"; }
+/* linhas para as RPCs (jsonb) */
+function cmpRatPayload(lins){
+  return (lins || []).map(l => ({ destino: l.destino, equipamento_id: l.equipamento_id || null, obra_id: l.obra_id || null, centro_custo_id: l.centro_custo_id || null,
+    destino_acessorio_id: l.destino_acessorio_id || null, natureza_id: l.natureza_id || null, metodo: l.metodo || null, fracao: Number(l.fracao), valor: l.valor ?? null }));
+}
+/* rateio gravado: { porItem: { item_id: { linhas, segue } }, pedido: [linhas] } (falha só avisa no console: a ficha segue sem rateio) */
+const CMP_RAT_COLS = "pedido_item_id,ordem,destino,equipamento_id,obra_id,centro_custo_id,destino_acessorio_id,natureza_id,metodo,fracao,valor,segue_pedido";
+async function cmpRatCarregar(pedidoId, itemIds){
+  const out = { porItem: {}, pedido: [] };
+  const numerico = l => ({ ...l, fracao: Number(l.fracao), valor: l.valor === null ? null : Number(l.valor) });
+  for(let i = 0; i < (itemIds || []).length; i += 200){
+    const { data, error } = await sb.from("pedido_item_rateio").select(CMP_RAT_COLS).in("pedido_item_id", itemIds.slice(i, i + 200)).order("ordem");
+    if(error){ console.warn("pedido_item_rateio:", error.message); break; }
+    (data || []).forEach(r => { const x = out.porItem[r.pedido_item_id] = out.porItem[r.pedido_item_id] || { linhas: [], segue: true }; x.linhas.push(numerico(r)); if(!r.segue_pedido) x.segue = false; });
+  }
+  if(pedidoId){
+    const { data, error } = await sb.from("pedido_rateio").select("ordem,destino,equipamento_id,obra_id,centro_custo_id,destino_acessorio_id,natureza_id,metodo,fracao,valor").eq("pedido_id", pedidoId).order("ordem");
+    if(error) console.warn("pedido_rateio:", error.message); else out.pedido = (data || []).map(numerico);
+  }
+  return out;
 }
 async function cmpBuscarProdutos(termo){
   if(!termo || termo.length < 2) return [];
@@ -2974,6 +3223,8 @@ async function salvarPedido(silencioso){
     if(tipo === "aplicacao_direta" && (!it.destino || it.destino === "estoque")){ aviso("app-aviso", `"${it.descricao}" é aplicação direta: escolha a obra, a TAG, o centro de custo ou o acessório.`, "erro"); ativarTabPedido("itens"); return null; }
     if(tipo === "reposicao" && !it.produto_id){ aviso("app-aviso", `"${it.descricao}" não tem produto do catálogo e não entra no estoque: mude para aplicação direta.`, "erro"); ativarTabPedido("itens"); return null; }
     if(cmpDestinoIncompleto(it)){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); ativarTabPedido("itens"); return null; }
+    // fase 186a (#236): natureza só máquina só vai para TAG ou acessório (a RPC também recusa)
+    if(tipo === "aplicacao_direta" && cmpItemViolaSoMaquina(it)){ aviso("app-aviso", `"${it.descricao}": ${CMP_SO_MAQUINA_TXT}`, "erro"); ativarTabPedido("itens"); return null; }
   }
   let id = _cmpEditId;
   if(id){
@@ -3021,16 +3272,34 @@ async function salvarPedido(silencioso){
     // lote S53 (#149): o insert devolve os ids (por ordem) para o rateio apontar para o item novo
     const { data: ins, error: eIns } = await sb.from("pedido_compra_itens").insert(novos.map(x => linha(x.it, x.i))).select("id,ordem");
     if(eIns){ aviso("app-aviso", "Erro ao salvar itens: " + cmpErroSesmt(eIns.message), "erro"); return null; }
-    (ins || []).forEach(r => { const x = novos.find(n => n.i === r.ordem); if(x) x.it.id = r.id; });
+    (ins || []).forEach(r => { const x = novos.find(n => n.i === r.ordem); if(x){ x.it.id = r.id; x.it._novoRat = true; } });   // fase 186a: item novo segue o rateio do pedido
   }
   // lote S53 (#149): rateio dos itens que mudaram (RPC pedido_item_rateio_definir; lista com uma TAG só ou vazia apaga o rateio)
-  for(const it of _cmpItens.filter(x => x.id && x._rateioDirty)){
-    const eqs = cmpTemRateio(it) ? it._rateio.map(r => r.equipamento_id) : (it.destino === "equipamento" && it.equipamento_id ? [it.equipamento_id] : []);
-    // lote S56 (#209): rateio feito em R$ vai em R$ (a RPC divide pela soma); o resto vai pela fração
-    const frs = cmpTemRateio(it) ? it._rateio.map(r => Number(r.valor) > 0 ? Number(r.valor) : r.fracao) : null;
-    const { error: eRat } = await sb.rpc("pedido_item_rateio_definir", { p_item: it.id, p_equipamentos: eqs, p_fracoes: frs });
-    if(eRat){ aviso("app-aviso", `Pedido salvo, mas o rateio de "${it.descricao}" não foi gravado: ` + (eRat.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); }
-    else it._rateioDirty = false;
+  // fase 186a (#236, #308): lista vazia = sem rateio próprio (o item segue o do pedido). Item que virou reposição perde as
+  // linhas. O rateio do pedido vai por último (pedido_rateio_definir), e a RPC copia o modelo para os itens que o seguem.
+  const limpaErro = e => (e?.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, "");
+  const comModelo = _cmpRatPed.length > 0;
+  for(const it of _cmpItens.filter(x => x.id && (x._rateioDirty || (x._novoRat && comModelo)))){
+    if(cmpItemTipo(it) === "reposicao"){
+      const { error: eDel } = await sb.from("pedido_item_rateio").delete().eq("pedido_item_id", it.id);
+      if(eDel) aviso("app-aviso", `Pedido salvo, mas o rateio antigo de "${it.descricao}" não saiu: ` + limpaErro(eDel), "erro");
+      else { it._rateio = null; it._segue = false; it._rateioDirty = false; }
+      it._novoRat = false; continue;
+    }
+    if(it._segue && _cmpRatPedDirty){ it._rateioDirty = false; it._novoRat = false; continue; }   // o rateio do pedido, logo abaixo, copia
+    const linhas = it._segue || !cmpTemRateio(it) ? [] : cmpRatPayload(it._rateio);
+    const { error: eRat } = await sb.rpc("pedido_item_rateio_definir", { p_item: it.id, p_linhas: linhas });
+    if(eRat) aviso("app-aviso", `Pedido salvo, mas o rateio de "${it.descricao}" não foi gravado: ` + limpaErro(eRat), "erro");
+    else { it._rateioDirty = false; it._novoRat = false; }
+  }
+  if(_cmpRatPedDirty){
+    const { data: rp, error: eRp } = await sb.rpc("pedido_rateio_definir", { p_pedido: id, p_linhas: cmpRatPayload(_cmpRatPed) });
+    if(eRp) aviso("app-aviso", "Pedido salvo, mas o rateio do pedido não foi gravado: " + limpaErro(eRp), "erro");
+    else {
+      _cmpRatPedDirty = false;
+      const pul = rp?.pulados || [];
+      if(pul.length && !silencioso) aviso("app-aviso", `Pedido salvo. ${pul.length} item(ns) de natureza só máquina ficaram fora do rateio do pedido: ${pul.map(x => String(semCodOdoo(x.descricao) || "").slice(0, 40)).join(" · ")}.`, "aviso");
+    }
   }
   if(!silencioso && !appAvisoComErro()) aviso("app-aviso", "Pedido salvo.", "ok");
   cmpRascDepoisDeSalvar(id);   // lote S60 (#177)
@@ -4341,6 +4610,16 @@ function ligarCompras(){
   $("btn-cmp-rat-limpar")?.addEventListener("click", cmpRatLimpar);
   $("cmp-rat-busca")?.addEventListener("input", debounce(cmpRatRender, 150));
   $("cmp-rat-modal")?.addEventListener("click", e => { if(e.target.id === "cmp-rat-modal") cmpRatFechar(); });
+  // fase 186a (#236, #308): rateio do pedido e do item entre obras e destinos
+  $("btn-cmp-ratped")?.addEventListener("click", () => cmpRdAbrir("pedido"));
+  $("btn-cmp-rd-add")?.addEventListener("click", () => { if(_cmpRd){ _cmpRd.linhas.push({ dv: "", natureza_id: "", metodo: "", pct: 0, rs: 0 }); cmpRdRender(); } });
+  $("btn-cmp-rd-igualar")?.addEventListener("click", cmpRdIgualar);
+  $("btn-cmp-rd-resto")?.addEventListener("click", cmpRdResto);
+  $("btn-cmp-rd-seguir")?.addEventListener("click", cmpRdSeguir);
+  $("btn-cmp-rd-limpar")?.addEventListener("click", cmpRdLimpar);
+  $("btn-cmp-rd-ok")?.addEventListener("click", cmpRdAplicar);
+  $("btn-cmp-rd-fechar")?.addEventListener("click", cmpRdFechar);
+  $("cmp-rd-modal")?.addEventListener("click", e => { if(e.target.id === "cmp-rd-modal") cmpRdFechar(); });
   ["cmp-forn", "cmp-rec-forn", "cmp-av-forn", "cmp-cot-forn", "cmp-corrforn-forn"].forEach(id => cmpCampoFornecedor(id));   // lote S63-c: corrigir fornecedor
   $("btn-cmp-corrforn-fechar")?.addEventListener("click", cmpCorrFornFechar);
   $("btn-cmp-corrforn-cancelar")?.addEventListener("click", cmpCorrFornFechar);
