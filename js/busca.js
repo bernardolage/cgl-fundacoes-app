@@ -19,8 +19,13 @@ function busTelas(termo){
   const t = busNormal(termo);
   return [...document.querySelectorAll(".sidebar-nav button[data-secao]")]
     .filter(b => b.style.display !== "none")
-    .map(b => ({ texto: (b.querySelector("span")?.textContent || "").trim(), detalhe: b.closest(".nav-grupo")?.getAttribute("aria-label") || "", tipo: "tela", id: b.dataset.secao }))
-    .filter(i => i.texto && (busNormal(i.texto).includes(t) || busNormal(i.detalhe).includes(t)))
+    .map(b => {
+      // o nome completo da tela vem do h2 da seção (o mesmo da trilha): "Diário de Obra (RDO)" acha por "rdo"
+      const h2 = document.querySelector(`#sec-${CSS.escape(b.dataset.secao)} > h2:first-child`);
+      const rotulo = (b.querySelector("span")?.textContent || "").trim();
+      return { texto: (h2 && h2.textContent.trim()) || rotulo, rotulo, detalhe: b.closest(".nav-grupo")?.getAttribute("aria-label") || "", tipo: "tela", id: b.dataset.secao };
+    })
+    .filter(i => i.texto && [i.texto, i.rotulo, i.detalhe].some(x => busNormal(x).includes(t)))
     .slice(0, BUS_MAX);
 }
 
