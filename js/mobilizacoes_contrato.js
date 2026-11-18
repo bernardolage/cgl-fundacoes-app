@@ -444,7 +444,7 @@ function renderDrawerMob(){
       + uiSecao("documento", `Kit de ferramentas · ${tag}`, `<div id="mob-frm-kit">${uiVazio("Carregando…")}</div>`)
       + uiSecao("documento", `Materiais · ${tag}`, `<p class="meta">Consumíveis e peças sem marcação; viram itens da separação.</p><div id="mob-materiais">${uiVazio("Carregando…")}</div>`))}
 
-    ${pane("escopo", uiSecao("documento", `Estacas · ${tag}`, `<p class="meta">Resumo do projeto para a máquina; o detalhe fica na aba Estacas da obra.</p>
+    ${pane("escopo", `<div id="mob-escopo-orc"></div>` + uiSecao("documento", `Estacas · ${tag}`, `<p class="meta">Resumo do projeto para a máquina; o detalhe fica na aba Estacas da obra.</p>
       <div class="tabela-rola"><table class="itens-tabela mob-est-tabela">
         <thead><tr><th>Qtd.</th><th>Ø (mm)</th><th>Prof. mín. (m)</th><th>Prof. máx. (m)</th><th>Obs.</th><th></th></tr></thead>
         <tbody id="mob-est-tbody">${est.map(e => mobEstacaLinhaHTML(e)).join("")}</tbody>
@@ -511,6 +511,7 @@ function renderDrawerMob(){
   mobRenderViagens();
   mobRenderCusto();
   mobRenderCno();
+  if(typeof renderEscopoContratado === "function") renderEscopoContratado($("mob-escopo-orc"), m.obra_id, () => _mobAberta === m);   // lote S65-g (#318)
   if(typeof manRenderChecklistMob === "function") manRenderChecklistMob(m, "mob-checklist");
   $("mob-ver-origem")?.addEventListener("click", e => { e.preventDefault(); abrirMobilizacao(m.origem_mobilizacao_id); });
   ["mob-cobrar-ida", "mob-cobrar-volta"].forEach(id => $(id)?.addEventListener("change", () => mobSalvarCobranca(m)));

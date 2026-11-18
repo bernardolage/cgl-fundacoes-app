@@ -47,6 +47,7 @@ async function carregarAbasObra(obraId){
   };
   atualizarSmartButtons();
   if(typeof obrPmCarregar === "function") obrPmCarregar(obraId);   // fase 98: bloco Permuta da aba Contrato
+  renderEscopoContratado($("obr-escopo-bloco"), obraId, () => obraId === obraEditId);   // lote S65-g (#318)
   if(typeof sstObraSmartButton === "function") sstObraSmartButton(obraId);   // fase 109a: smart-button "programas legais" (js/sesmt.js)
 }
 
@@ -1559,4 +1560,48 @@ async function obrPmDesligar(obraId, pc, p){
   const { error } = await sb.from("permuta_contratos").delete().eq("id", pc.id);
   if(error){ aviso("app-aviso", "Não foi possível desligar: " + error.message, "erro"); return; }
   await obrPmCarregar(obraId);
+}
+
+/* ====================================================================
+   Lote S65-g (#318): escopo do orçamento aprovado, sem preço, na aba Contrato da obra e na aba Escopo da mobilização.
+   Lê vw_obra_escopo_orcamento (definer, sem coluna de valor; o banco filtra por pode_ler_escopo_obra()). O orçamento não
+   traz número de estacas: sai metro linear por diâmetro e faixa de profundidade. Itens com quantidade 0 (opcionais do
+   orçamento) ficam fora da tabela e só são contados na nota.
+   ==================================================================== */
+const ESCOPO_OBRA_CARGOS = ["diretor", "comercial", "engenheiro", "assistente_engenharia", "logistica", "encarregado", "gestor_acessorios", "sesmt"];
+function podeLerEscopoObra(){
+  return !!usuarioAtual && (ESCOPO_OBRA_CARGOS.includes(usuarioAtual.cargo) || (typeof podeVerOrcamentos === "function" && podeVerOrcamentos()));
+}
+function escopoFaixaTxt(l){
+  const mn = l.faixa_prof_min != null ? Number(l.faixa_prof_min) : null, mx = l.faixa_prof_max != null ? Number(l.faixa_prof_max) : null;
+  if(mn && mx) return `${num(mn)} a ${num(mx)} m`;
+  if(mx) return `até ${num(mx)} m`;
+  if(mn) return `acima de ${num(mn)} m`;
+  return "—";
+}
+/* box = elemento onde o bloco entra; valido() = guarda de corrida (outra ficha aberta enquanto carregava) */
+async function renderEscopoContratado(box, obraId, valido){
+  if(!box) return;
+  if(!obraId || !podeLerEscopoObra()){ box.innerHTML = ""; return; }
+  const titulo = "Escopo contratado (sem preço)";
+  box.innerHTML = uiSecao("documento", titulo, uiCarregando("Carregando o escopo do orçamento…"));
+  const { data, error } = await sb.from("vw_obra_escopo_orcamento")
+    .select("ordem,descricao,quantidade,unidade,diametro_mm,faixa_prof_min,faixa_prof_max").eq("obra_id", obraId).order("ordem");
+  if(valido && !valido()) return;
+  if(error){ box.innerHTML = uiSecao("documento", titulo, uiTabela({ colunas: [{ chave: "descricao", rotulo: "Item" }], erro: "Não foi possível ler o escopo: " + error.message })); return; }
+  const todas = data || [], linhas = todas.filter(l => Number(l.quantidade) > 0), zeradas = todas.length - linhas.length;
+  if(!todas.length){ box.innerHTML = uiSecao("documento", titulo, uiVazio("Contrato sem orçamento aprovado vinculado.")); return; }
+  const totalMl = linhas.filter(l => l.unidade === "ml").reduce((t, l) => t + Number(l.quantidade || 0), 0);
+  const tabela = uiTabela({
+    colunas: [
+      { chave: "descricao", rotulo: "Item" },
+      { chave: "diametro_mm", rotulo: "Ø (mm)", tipo: "int" },
+      { chave: "faixa", rotulo: "Profundidade", html: l => esc(escopoFaixaTxt(l)) },
+      { chave: "quantidade", rotulo: "Quantidade", tipo: "num" },
+      { chave: "unidade", rotulo: "Un." }
+    ],
+    linhas, vazio: "Nenhum item com quantidade no orçamento aprovado."
+  });
+  const nota = `<p class="meta">Do orçamento aprovado do contrato: metro linear por diâmetro e faixa de profundidade; o orçamento não traz número de estacas.${zeradas ? ` ${esc(zeradas)} item(ns) sem quantidade (opcionais) fora da lista.` : ""}</p>`;
+  box.innerHTML = uiSecao("documento", titulo, nota + tabela, totalMl ? `${num(totalMl)} ml` : "");
 }
