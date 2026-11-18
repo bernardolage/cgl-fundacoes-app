@@ -256,15 +256,18 @@ async function dashCarregarAcoes(){
   // vw_sc_acoes_cmp, marcadas como "acoes" para o "o que é este número" seguir igual. Pendência nova: view própria, nunca vw_sc_acoes
   // hotfix NF-e de remessa A: cliente sem cadastro fiscal com remessa a caminho (vw_pendencias_cliente_fiscal; o banco só
   // devolve a linha do cliente ao financeiro, à diretoria e ao auditor), um item por cliente no setor financeiro
-  const [dados, sep, fab, fin, man, ass, cmp, cliFis] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
+  // fase 195c: pedidos do site com o prazo prometido vencido ou hoje (73) e sem resposta (74) em vw_sc_acoes_psi, setor
+  // "Contratos e propostas"; marcadas como "acoes" para o "o que é este número" (acoes:73 e acoes:74)
+  const [dados, sep, fab, fin, man, ass, cmp, cliFis, psi] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
     dashLer("vw_pedidos_aprovacao_pendente", q => q.select("pedido_id,numero,total,quem_assina,criado_em").eq("dono_meu", true).order("criado_em")),
     dashLer("vw_sc_acoes_cmp", q => q.select("*")),
-    dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "cliente").order("cliente_nome"))]);
+    dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "cliente").order("cliente_nome")),
+    dashLer("vw_sc_acoes_psi", q => q.select("*"))]);
   if(!dados) return;
   // fase 164: cada lista leva a fonte de onde veio; a chave do "o que é este número" é fonte:ordem[:nível], nunca o título
-  dashMarcarFonte(dados, "acoes"); dashMarcarFonte(cmp, "acoes"); dashMarcarFonte(sep, "sep"); dashMarcarFonte(fab, "fab"); dashMarcarFonte(fin, "fin"); dashMarcarFonte(man, "man");
+  dashMarcarFonte(dados, "acoes"); dashMarcarFonte(cmp, "acoes"); dashMarcarFonte(psi, "acoes");dashMarcarFonte(sep, "sep"); dashMarcarFonte(fab, "fab"); dashMarcarFonte(fin, "fin"); dashMarcarFonte(man, "man");
   const cliNfe = dashMarcarFonte(dashAcoesClienteFiscal(cliFis || []), "fin");
-  _dashAcoes = dados.concat(cmp || [], sep || [], fab || [], fin || [], cliNfe, man || []).filter(a => dashGereSetor(a.setor))
+  _dashAcoes = dados.concat(cmp || [], psi || [], sep || [], fab || [], fin || [], cliNfe, man || []).filter(a => dashGereSetor(a.setor))
     .concat(dashAcoesAssinatura(ass || []))   // é do usuário (ele é o dono do custo): não passa pelo filtro de setor
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
@@ -852,6 +855,9 @@ async function dashAbrirAcao(a){
         if(irParaSecao("contaspagar") && typeof capAtivarView === "function"){ _capFiltroVenc = a.nivel === "critico" ? "vencidos" : ""; _capIncluirExp = false; _capFiltroOrigem = ""; capAtivarView("titulos"); }
       } else if(id) dashAbrirContrato(id);
       else irParaSecao("contratos");
+      break;
+    case "pedidos_site":   // fase 195c: aba "Pedidos do site" em Orçamentos; um pedido só abre a ficha dele
+      if(typeof psiAbrirDaInicio === "function") psiAbrirDaInicio(id); else irParaSecao("orcamentos");
       break;
     case "orcamentos":
       if(id) dashAbrirOrcamento(id, a._fonte === "fila_ret" ? "negociacao" : null); else irParaSecao("orcamentos");   // fase 187c: retorno abre a aba Negociação

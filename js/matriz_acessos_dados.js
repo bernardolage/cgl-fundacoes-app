@@ -7,7 +7,7 @@
    ==================================================================== */
 const MATRIZ_ACESSOS = {
   retrato: "2026-11-18",
-  carimbo: "114509f41481a3e0ef493f18fb51e5d7",
+  carimbo: "6590bddd1f0a29fe7940fe9997b89626",
   acoes: ["ver","incluir","alterar","apagar"],
   grupos: ["Geral","Cadastros","Suprimentos","Comercial e financeiro","Campo","Pessoas e segurança","Sistema","Fora do menu"],
   modulos: [
@@ -52,8 +52,7 @@ const MATRIZ_ACESSOS = {
   sem_conferencia: {
     "comprador": "Nenhum usuário ativo com este cargo para simular: as células que dependem de regra de cargo saíram pela leitura das regras.",
     "visualizador": "Nenhum usuário ativo com este cargo para simular: as células que dependem de regra de cargo saíram pela leitura das regras.",
-    "gestor_manutencao": "Falta usuário ativo deste cargo sem liberação por pessoa: 1 regra(s) saíram pela leitura das regras, não pela simulação.",
-    "juridico": "Nenhum usuário ativo com este cargo para simular: as células que dependem de regra de cargo saíram pela leitura das regras."
+    "gestor_manutencao": "Falta usuário ativo deste cargo sem liberação por pessoa: 1 regra(s) saíram pela leitura das regras, não pela simulação."
   },
   frases: [
     "Tela de consulta: não há registro para incluir, alterar ou apagar.",
@@ -129,7 +128,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n:2 n:2 n",
       "gestor_manutencao": "s n:2 n:2 n",
-      "juridico": "x=s x=n:2 x=n:2 x=n"
+      "juridico": "s n:2 n:2 n"
     },
     "fornecedores": {
       "diretor": "s s s s",
@@ -152,7 +151,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s s s s",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "servicos": {
       "diretor": "s s s s",
@@ -175,7 +174,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "produtos": {
       "diretor": "s s s s",
@@ -198,7 +197,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s n:2 n:2 n",
       "gestor_manutencao": "s x=n:2 x=n:2 n",
-      "juridico": "x=s x=n:2 x=n:2 x=n"
+      "juridico": "s n:2 n:2 n"
     },
     "estoque": {
       "diretor": "s p:5 p:5 s",
@@ -221,7 +220,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s p:5 p:5 s",
       "gestor_manutencao": "s n n n",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "separacoes": {
       "diretor": "s s s s",
@@ -244,7 +243,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s s s n",
       "gestor_manutencao": "s s s n",
-      "juridico": "x=s x=n x=p:6,5 x=n"
+      "juridico": "s n p:6,5 n"
     },
     "ferramentas": {
       "diretor": "s s s s",
@@ -267,7 +266,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s s s s",
       "gestor_manutencao": "s s s s",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "compras": {
       "diretor": "s s s s",
@@ -290,7 +289,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s p:9,6,5,12 p:9,6,5,12 n",
       "auxiliar_almoxarifado": "n:3 p:9,6,5,12,7 p:9,6,5,8,12,7 n:2",
       "gestor_manutencao": "s s s s",
-      "juridico": "x=p:8,9,6,12,2 x=p:9,6,5,12 x=p:9,6,5,8,12 x=n:2"
+      "juridico": "p:8,9,6,12,2 p:9,6,5,12 p:9,6,5,8,12 n:2"
     },
     "acessorios": {
       "diretor": "s s s s",
@@ -313,7 +312,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s n n n",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "reparos": {
       "diretor": "s s s s",
@@ -336,7 +335,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s n n n",
       "gestor_manutencao": "s n n n",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "fabricacao": {
       "diretor": "s s s s",
@@ -359,7 +358,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s n n n",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "orcamentos": {
       "diretor": "s s s s",
@@ -382,7 +381,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n:2 n:2 n:2",
       "gestor_manutencao": "n:3 n:2 n:2 n:2",
-      "juridico": "n:3 x=n:2 x=n:2 x=n:2"
+      "juridico": "n:3 n:2 n:2 n:2"
     },
     "contratos": {
       "diretor": "s s s p:9",
@@ -405,7 +404,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "x=s x=s x=s x=p:9"
+      "juridico": "s s s p:9"
     },
     "contaspagar": {
       "diretor": "s s s s",
@@ -428,7 +427,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "medicoes": {
       "diretor": "s s s s",
@@ -451,7 +450,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "centros": {
       "diretor": "s s s s",
@@ -474,7 +473,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "encontro-contas": {
       "diretor": "s s s s",
@@ -497,7 +496,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "p:9,14 n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "carteira": {
       "diretor": "s z:0 z:0 z:0",
@@ -543,7 +542,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s:15 n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "obras": {
       "diretor": "s s s s",
@@ -566,7 +565,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "rdo": {
       "diretor": "s s s s",
@@ -589,7 +588,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s n n n",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "mobilizacoes": {
       "diretor": "s s s s",
@@ -612,7 +611,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s n n n",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "equipamentos": {
       "diretor": "s s s s",
@@ -635,7 +634,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s s s s",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "manutencao": {
       "diretor": "s s s s",
@@ -658,7 +657,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s n n n",
       "gestor_manutencao": "s s s s",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "apontamentos": {
       "diretor": "s s s s",
@@ -681,7 +680,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s p:19 p:19 p:19",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "frota": {
       "diretor": "s s s s",
@@ -704,7 +703,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s n n n",
-      "juridico": "x=s x=n x=n x=n"
+      "juridico": "s n n n"
     },
     "funcionarios": {
       "diretor": "s s s s",
@@ -727,7 +726,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "s n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "rhh": {
       "diretor": "s s s s",
@@ -750,7 +749,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "rhv": {
       "diretor": "s p:5 s s",
@@ -773,7 +772,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "p:20 p:5,20 p:20,5 p:20,5",
       "gestor_manutencao": "p:20 p:5,20 p:20,5 p:20,5",
-      "juridico": "x=p:20 x=p:5,20 x=p:20,5 x=p:20,5"
+      "juridico": "p:20 p:5,20 p:20,5 p:20,5"
     },
     "sesmt": {
       "diretor": "s s s s",
@@ -796,7 +795,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n:2 n:2 n:2",
       "gestor_manutencao": "n:3 n:2 n:2 n:2",
-      "juridico": "n:3 x=n:2 x=n:2 x=n:2"
+      "juridico": "n:3 n:2 n:2 n:2"
     },
     "sesmt-ocorrencias": {
       "diretor": "s s s p:5",
@@ -819,7 +818,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "p:6,2 n:2 n:2 n:2",
       "gestor_manutencao": "s n:2 n:2 n:2",
-      "juridico": "x=p:6,2 x=n:2 x=n:2 x=n:2"
+      "juridico": "p:6,2 n:2 n:2 n:2"
     },
     "chamados": {
       "diretor": "s p:6,5 s z:21",
@@ -842,7 +841,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n z:21",
       "auxiliar_almoxarifado": "s p:6,5 p:6,5 z:21",
       "gestor_manutencao": "s p:6,5 p:6,5 z:21",
-      "juridico": "x=s x=p:6,5 x=p:6,5 z:21"
+      "juridico": "s p:6,5 p:6,5 z:21"
     },
     "usuarios": {
       "diretor": "s s s s",
@@ -865,7 +864,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "n:3 n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "movimentacoes": {
       "diretor": "s s s s",
@@ -888,7 +887,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     },
     "diario-campo": {
       "diretor": "s s p:23 p:24",
@@ -911,7 +910,7 @@ const MATRIZ_ACESSOS = {
       "auditor": "n:3 n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
       "gestor_manutencao": "n:3 n n n",
-      "juridico": "n:3 x=n x=n x=n"
+      "juridico": "n:3 n n n"
     }
   }
 };

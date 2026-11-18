@@ -4613,3 +4613,29 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .orc-envio-dest { font-size: var(--txt-sm); color: var(--txt-sec); overflow-wrap: anywhere; }
 .orc-envio-previa { width: 100%; height: 340px; border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-0); }
 }
+
+/* ---- Pedidos do site (fase 195c): aba em Orçamentos, ficha do pedido e envio da proposta pelo WhatsApp ---- */
+@layer componentes {
+#orc-filtros[hidden], #psi-conteudo[hidden], #orc-contador[hidden], #btn-orc-whatsapp[hidden] { display: none; }
+.psi-painel { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
+.psi-kpis .ui-kpi { flex: 1 1 170px; }
+.psi-controles { display: flex; flex-wrap: wrap; gap: var(--esp-3); }
+.psi-controles .ui-campo { flex: 0 1 220px; }
+.psi-tabela tbody tr[data-id] { cursor: pointer; }
+.psi-tabela tbody tr[data-id]:hover td { background: var(--sup-2); }
+.psi-prazo { display: inline-block; padding: 0 var(--esp-1); border-radius: var(--radius-sm); font-size: var(--txt-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.psi-prazo.tom-ok { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.psi-prazo.tom-aviso { background: var(--aviso-bg); color: var(--aviso-txt); }
+.psi-prazo.tom-perigo { background: var(--perigo-bg); color: var(--perigo-txt); }
+.psi-prazo.tom-info { background: var(--info-bg); color: var(--info-txt); }
+.psi-prazo.tom-neutro { color: var(--txt-sec); }
+.psi-ficha { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
+.psi-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--esp-3); min-width: 0; }
+.psi-grade .ui-rv-valor { font-size: var(--txt-md); font-weight: 500; }
+.psi-anexos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--esp-2); }
+.psi-anexo { white-space: normal; text-align: left; }
+.psi-wa { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
+.psi-wa textarea { min-height: 180px; }
+.psi-wa-passos { margin: 0; font-size: var(--txt-sm); color: var(--txt-sec); line-height: var(--lh-folgada); }
+.btn-sec.psi-wa-destaque { background: var(--sucesso-bg); border-color: var(--sucesso); color: var(--sucesso-txt); }
+}

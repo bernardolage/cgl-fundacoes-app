@@ -20,7 +20,8 @@ function orcPodeEditar(){
   return ["diretor", "comercial"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
 }
 const ORC_BOTOES_ESCRITA = ["btn-novo-orcamento", "btn-salvar-orc", "btn-excluir-orc", "btn-orc-nova-revisao",
-  "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente", "btn-orc-sim-usar", "btn-orc-enviar"];
+  "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente", "btn-orc-sim-usar", "btn-orc-enviar",
+  "btn-orc-whatsapp"];
 /* Só trava quando não pode editar; para quem edita os botões seguem as regras de exibição de cada um. */
 function orcAplicarModoLeitura(){
   const pode = orcPodeEditar();
@@ -573,6 +574,7 @@ async function carregarOrcamentos(){
   });
   _orcRetornos = await pRetornos;
   renderOrcamentos();
+  if(typeof psiAtualizarBadge === "function") psiAtualizarBadge();   // fase 195c: contador da aba "Pedidos do site"
 
   // Select de orçamento de origem na aba Contrato da obra (fase 21)
   const aprov = _orcamentos.filter(o => ["aprovado","enviado","em_negociacao"].includes(o.status));
@@ -762,6 +764,11 @@ function _orcTipoPorteTxt(o){
 }
 
 function renderOrcamentos(){
+  // fase 195c: aba "Pedidos do site" (js/pedidos-site.js) no lugar da lista; sem pode_ler_comercial a aba some
+  const podePsi = typeof psiPodeLer === "function" && psiPodeLer();
+  if(_orcView === "pedidos_site" && !podePsi) _orcView = "lista";
+  if(typeof psiMostrarAba === "function") psiMostrarAba(_orcView === "pedidos_site");
+  if(_orcView === "pedidos_site") return;
   preencherFiltrosOrc();
   const dados = orcFiltrados();
   const cont = $("orc-contador");
@@ -870,6 +877,7 @@ const ORC_TIPO_ARQ_LBL = { projeto: "Projeto", sondagem: "Sondagem", planilha: "
 let _orcAssistente = null;   // { conversa_id, arquivos } até salvar o orçamento montado pelo assistente
 function orcLimparAssistente(){
   _orcAssistente = null;
+  if(typeof psiLimparPendente === "function") psiLimparPendente();   // fase 195c: pedido do site do "Criar orçamento"
   const f = $("orc-aviso-assistente"); if(f) f.style.display = "none";
 }
 /* cabeçalho da ficha: o chip do cliente segue o select (antes só mudava ao abrir um orçamento salvo ou pelo cadastro rápido) */
@@ -1126,6 +1134,7 @@ function abrirFichaOrcVisual(o){
 
   atualizarStatusbarOrc(o.status);
   atualizarAcoesOrc(o);
+  if(typeof psiAtualizarBotaoWhatsapp === "function") psiAtualizarBotaoWhatsapp();   // fase 195c
   orcAplicarModoLeitura();   // lote S57b (#211)
   // Carrega smart-buttons + revisões + vínculos em paralelo
   if(orcEditId) carregarAbasOrc(o);
@@ -2063,6 +2072,9 @@ async function salvarOrcamento(novoStatus){
   // fase 174b: orçamento novo montado pelo assistente guarda a conversa e, depois de salvo, recebe os arquivos dela
   const doAssistente = !orcEditId && _orcAssistente ? _orcAssistente : null;
   if(doAssistente?.conversa_id) reg.assistente_conversa_id = doAssistente.conversa_id;
+  // fase 195c: orçamento novo do "Criar orçamento" de um pedido do site leva o WhatsApp do cliente e, salvo, liga o pedido
+  const doPedidoSite = !orcEditId && typeof psiPedidoPendente === "function" ? psiPedidoPendente() : null;
+  if(doPedidoSite?.whatsapp) reg.whatsapp_cliente = doPedidoSite.whatsapp;
 
   let orcId = orcEditId;
   // lote S44 (L7): enquanto a migration 20261020_loteS44_orcamento_alimentacao não estiver aplicada, grava o
@@ -2104,8 +2116,13 @@ async function salvarOrcamento(novoStatus){
     const falhas = await orcLigarArquivosAssistente(orcId, doAssistente.arquivos);
     txtArq = falhas ? ` ${falhas} arquivo(s) da conversa não foram ligados; anexe de novo pelo assistente.` : ` ${doAssistente.arquivos.length} arquivo(s) do pedido na aba Arquivos.`;
   }
+  let erroLigar = null;
+  if(doPedidoSite && typeof psiLigarOrcamento === "function"){
+    erroLigar = await psiLigarOrcamento(doPedidoSite, orcId);
+    txtArq += erroLigar ? " " + erroLigar : ` Pedido do site ${doPedidoSite.protocolo || ""} ligado a este orçamento.`;
+  }
   orcLimparAssistente();
-  aviso("app-aviso", "Orçamento salvo com sucesso." + txtArq, txtArq.includes("não foram") ? "aviso" : "ok");
+  aviso("app-aviso", "Orçamento salvo com sucesso." + txtArq, txtArq.includes("não foram") || erroLigar ? "aviso" : "ok");
   await carregarOrcamentos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
   await abrirOrcamento(orcId);
@@ -2294,12 +2311,12 @@ async function carregarEnviosOrc(orcId){
   if(!cont) return;
   if(!orcId){ cont.innerHTML = ""; return; }
   const { data, error } = await sb.from("orcamento_envios")
-    .select("id,enviado_em,enviado_por,destinatarios_para,destinatarios_cc,anexos,status_envio,erro_mensagem")
+    .select("id,enviado_em,enviado_por,destinatarios_para,destinatarios_cc,anexos,status_envio,erro_mensagem,metodo")
     .eq("orcamento_id", orcId).order("enviado_em", { ascending: false }).limit(50);
   if(orcEditId !== orcId) return;
   if(error){ cont.innerHTML = uiSecao("documento", "Propostas enviadas", uiErro("Não foi possível carregar os envios: " + error.message)); return; }
   const envios = data || [];
-  if(!envios.length){ cont.innerHTML = uiSecao("documento", "Propostas enviadas", uiVazio("Nenhuma proposta enviada pela orcamento@ ainda.")); return; }
+  if(!envios.length){ cont.innerHTML = uiSecao("documento", "Propostas enviadas", uiVazio("Nenhuma proposta enviada ainda, nem pela orcamento@ nem pelo WhatsApp.")); return; }
   const ids = [...new Set(envios.map(e => e.enviado_por).filter(Boolean))];
   const nomes = {};
   if(ids.length){
@@ -2308,9 +2325,11 @@ async function carregarEnviosOrc(orcId){
   }
   const linhas = envios.map(e => {
     const quem = nomes[e.enviado_por] || "—";
-    const para = (e.destinatarios_para || []).join(", ");
+    // fase 195c: o canal aparece na linha ("WhatsApp para (31) 99999-0000" ou "E-mail para ...")
+    const wa = e.metodo === "whatsapp";
+    const para = (e.destinatarios_para || []).map(x => wa && typeof psiFoneBR === "function" ? psiFoneBR(x) : x).join(", ");
     const anexos = (e.anexos || []).join(" · ");
-    const sub = [`Para ${para}`, anexos, e.status_envio === "falhou" && e.erro_mensagem ? "Erro: " + e.erro_mensagem : ""].filter(Boolean).join(" — ");
+    const sub = [`${wa ? "WhatsApp" : "E-mail"} para ${para}`, anexos, e.status_envio === "falhou" && e.erro_mensagem ? "Erro: " + e.erro_mensagem : ""].filter(Boolean).join(" — ");
     return uiLinhaItem(`${orcDataHora(e.enviado_em)} · ${quem}`, sub, ORC_ENVIO_STATUS[e.status_envio] || e.status_envio, "");
   }).join("");
   cont.innerHTML = uiSecao("documento", "Propostas enviadas", linhas, String(envios.length));
