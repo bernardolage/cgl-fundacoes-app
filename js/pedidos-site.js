@@ -393,7 +393,7 @@ function psiFichaHTML(p, anexos, erroAnexos){
     : uiVazio("Sem respostas além das do pedido.");
   const faltou = (p.selo_faltou || []).map(f => PSI_FALTOU[f] || f);
   const selo = p.selo_mesmo_dia
-    ? uiLinhaItem("Com selo: proposta prometida para o mesmo dia", `Prazo ${psiDataHora(p.prazo_prometido)}`, "", "")
+    ? uiLinhaItem("Com selo: proposta prometida até o prazo", `Prazo ${psiDataHora(p.prazo_prometido)}`, "", "")
     : uiLinhaItem("Sem selo", faltou.length ? "Faltou: " + faltou.join(", ") : "Selo desligado no site ou pedido marcado como spam", "", "");
   const listaAnexos = erroAnexos ? uiErro("Não foi possível ler os anexos: " + erroAnexos.message)
     : !anexos.length ? uiVazio("O cliente não mandou anexo.")
