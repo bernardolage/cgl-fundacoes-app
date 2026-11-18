@@ -2550,7 +2550,7 @@ async function confCarregarDados(obraId){
     // fase 141: motivo e substituta da Refurada; sem a migration a aba segue sem a coluna
     lerTudo(() => sb.from("vw_estacas_refuradas").select("estaca_id,motivo,refuro_obs,substituta_id,substituta_numero,maquina,execucoes_refuro,data_refuro").eq("obra_id", obraId), "estaca_id"),
     // fase 145a: cobrança de cada execução de refuro (com ou sem estaca); sem a migration o bloco não aparece
-    lerTudo(() => sb.from("vw_refuros_cobranca").select("execucao_id,data,estaca_id,estaca_numero,profundidade_executada,maquina,motivo,refuro_obs,cobranca,responsabilidade,decidido_em,decidido_por_nome,fotos,pode_decidir").eq("obra_id", obraId).order("data"), "execucao_id")
+    lerTudo(() => sb.from("vw_refuros_cobranca").select("execucao_id,data,estaca_id,estaca_numero,profundidade_executada,maquina,motivo,refuro_obs,cobranca,responsabilidade,decidido_em,decidido_por_nome,fotos,pode_decidir,modalidade").eq("obra_id", obraId).order("data"), "execucao_id")
   ]);
   _confCobranca = cobRes.error ? null : (cobRes.data || []);
   const estacas = estsRes.data;
@@ -3403,6 +3403,9 @@ function renderizarRefuradas(){
    período no banco (trg_medicoes_refuro_trava). Período já medido = fora_de_medicao, sem decisão.
    ==================================================================== */
 let _estRcIds = [], _estRcCob = null, _estRcResp = null;
+/* Fase 145b: a limpeza segue a mesma decisão do refuro; a linha diz qual é */
+function rcEhLimpeza(r){ return r && r.modalidade === "limpeza"; }
+function rcRotulo(r){ return rcEhLimpeza(r) ? "limpeza" : "refuro"; }
 function confCobPendentes(){ return (_confCobranca || []).filter(r => r.cobranca === "pendente").length; }
 function confHtmlCobranca(){
   if(!_confCobranca || !_confCobranca.length) return "";
@@ -3414,9 +3417,9 @@ function confHtmlCobranca(){
     const decidivel = !ro && r.pode_decidir && r.cobranca !== "fora_de_medicao";
     const quem = r.decidido_por_nome ? `<div class="meta">${esc(r.decidido_por_nome)} · ${dataBR(r.decidido_em)}</div>` : "";
     return `<tr data-id="${esc(r.execucao_id)}">
-      <td>${decidivel && r.cobranca === "pendente" ? `<input type="checkbox" class="est-rc-sel" data-id="${esc(r.execucao_id)}" aria-label="Selecionar o refuro ${esc(r.estaca_numero)}">` : ""}</td>
+      <td>${decidivel && r.cobranca === "pendente" ? `<input type="checkbox" class="est-rc-sel" data-id="${esc(r.execucao_id)}" aria-label="Selecionar ${esc(rcRotulo(r))} ${esc(r.estaca_numero)}">` : ""}</td>
       <td>${dataBR(r.data)}</td>
-      <td><strong>${esc(r.estaca_numero || "—")}</strong>${r.estaca_id ? "" : ` <span class="meta" title="Execução sem estaca vinculada: está em Órfãs">sem estaca</span>`}</td>
+      <td><strong>${esc(r.estaca_numero || "—")}</strong>${rcEhLimpeza(r) ? ` <span class="tag azul" title="Limpeza do furo: cobrada à parte, com o preço do item de limpeza do orçamento ou metade do furo">Limpeza</span>` : ""}${r.estaca_id ? "" : ` <span class="meta" title="Execução sem estaca vinculada: está em Órfãs">sem estaca</span>`}</td>
       <td>${esc(r.maquina || "—")}</td>
       <td class="num">${r.profundidade_executada != null ? num(r.profundidade_executada) + " m" : "—"}</td>
       <td>${r.motivo ? `<span class="tag ambar">${esc(motivoRefuradaLbl(r.motivo))}</span>` : `<span class="meta">sem motivo</span>`}${r.refuro_obs ? `<div class="meta">${esc(r.refuro_obs)}</div>` : ""}</td>
@@ -3426,10 +3429,10 @@ function confHtmlCobranca(){
     </tr>`;
   }).join("");
   return `<div class="lista-topo compacta">
-      <h4 class="titulo-linha">Cobrança dos refuros <span class="contador">(${esc(_confCobranca.length)})</span></h4>
-      ${podeAlgum ? `<button type="button" class="btn-sec btn-sm" id="btn-rc-lote" title="Aplica a mesma decisão aos refuros marcados">Decidir os marcados</button>` : ""}
+      <h4 class="titulo-linha">Cobrança dos refuros e limpezas <span class="contador">(${esc(_confCobranca.length)})</span></h4>
+      ${podeAlgum ? `<button type="button" class="btn-sec btn-sm" id="btn-rc-lote" title="Aplica a mesma decisão aos refuros e limpezas marcados">Decidir os marcados</button>` : ""}
     </div>
-    <p class="meta">${pend ? `${esc(pend)} refuro(s) aguardam a decisão do engenheiro da obra e travam a medição do período.` : "Nenhum refuro aguardando decisão."} Refuro por responsabilidade da CGL não é cobrado. Período já medido fica fora da medição.</p>
+    <p class="meta">${pend ? `${esc(pend)} refuro(s) ou limpeza(s) aguardam a decisão do engenheiro da obra e travam a medição do período.` : "Nenhum refuro ou limpeza aguardando decisão."} Refuro ou limpeza por responsabilidade da CGL não é cobrado. Período já medido fica fora da medição.</p>
     <div class="tabela-rola"><table>
       <thead><tr>
         <th style="width:28px;">${podeAlgum ? `<input type="checkbox" id="est-rc-todos" aria-label="Marcar todos os pendentes">` : ""}</th>
@@ -3442,7 +3445,7 @@ function confLigarCobranca(cont){
   $("est-rc-todos")?.addEventListener("change", e => cont.querySelectorAll(".est-rc-sel").forEach(c => { c.checked = e.target.checked; }));
   $("btn-rc-lote")?.addEventListener("click", () => {
     const ids = [...cont.querySelectorAll(".est-rc-sel:checked")].map(c => c.dataset.id);
-    if(!ids.length){ aviso("app-aviso", "Marque os refuros que vão receber a mesma decisão.", "erro"); return; }
+    if(!ids.length){ aviso("app-aviso", "Marque os refuros ou limpezas que vão receber a mesma decisão.", "erro"); return; }
     abrirModalCobrancaRefuro(ids);
   });
 }
@@ -3451,12 +3454,12 @@ function abrirModalCobrancaRefuro(ids){
   if(!regs.length) return;
   _estRcIds = regs.map(r => r.execucao_id);
   const r0 = regs[0];
-  $("est-rc-titulo").textContent = regs.length === 1 ? `Cobrança do refuro · ${r0.estaca_numero || ""} (${dataBR(r0.data)})` : `Cobrança de ${regs.length} refuros`;
+  $("est-rc-titulo").textContent = regs.length === 1 ? `Cobrança ${rcEhLimpeza(r0) ? "da limpeza" : "do refuro"} · ${r0.estaca_numero || ""} (${dataBR(r0.data)})` : `Cobrança de ${regs.length} refuros e limpezas`;
   const semFoto = regs.filter(r => !Number(r.fotos)).length;
   const semMotivo = regs.filter(r => !r.motivo).length;
   $("est-rc-info").textContent = regs.length === 1
     ? `${r0.profundidade_executada != null ? num(r0.profundidade_executada) + " m" : "Sem profundidade"} · ${r0.motivo ? "Motivo: " + motivoRefuradaLbl(r0.motivo) : "sem motivo"} · ${Number(r0.fotos) ? r0.fotos + " foto(s)" : "sem foto"}`
-    : `${regs.length} refuros · ${semMotivo} sem motivo · ${semFoto} sem foto`;
+    : `${regs.length} execuções · ${semMotivo} sem motivo · ${semFoto} sem foto`;
   // responsabilidade sugerida pelo motivo (só quando todos sugerem a mesma); quem decide é o engenheiro
   const sug = [...new Set(regs.map(r => REFURO_RESP_SUGERIDA[r.motivo] || ""))];
   const respIni = regs.length === 1 && r0.responsabilidade ? r0.responsabilidade : (sug.length === 1 && sug[0] ? sug[0] : null);
@@ -3475,7 +3478,7 @@ async function salvarCobrancaRefuro(){
   if(!_estRcIds.length) return;
   if(!cob){ aviso("app-aviso", "Escolha Cobrar ou Não cobrar.", "erro"); return; }
   if(cob === "nao_cobrar" && !resp){ aviso("app-aviso", "Para não cobrar, diga de quem foi a responsabilidade.", "erro"); return; }
-  if(cob === "cobrar" && resp === "cgl"){ aviso("app-aviso", "Refuro por responsabilidade da CGL não é cobrado.", "erro"); return; }
+  if(cob === "cobrar" && resp === "cgl"){ aviso("app-aviso", "Refuro ou limpeza por responsabilidade da CGL não é cobrado.", "erro"); return; }
   let ok = 0; const erros = [];
   for(const id of _estRcIds){
     const { error } = await sb.rpc("estaca_refuro_cobranca", { p_execucao: id, p_cobranca: cob, p_responsabilidade: resp, p_obs: obs || null });

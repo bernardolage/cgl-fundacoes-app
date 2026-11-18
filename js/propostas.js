@@ -612,6 +612,16 @@ function encargosHelice(flags){
   ];
 }
 
+/* Fase 145b: a limpeza entra na cláusula do refuro, com o mesmo texto de valor, só nas propostas novas (orçamento criado
+   a partir de 19/11/2026). A proposta já emitida continua a imprimir o texto com que foi enviada. */
+const CLAUSULA_LIMPEZA_DESDE = "2026-11-19";
+function _clausulaRefuro(orcamento){
+  const criado = orcamento && orcamento.created_at ? String(orcamento.created_at).slice(0, 10) : null;
+  if(criado && criado < CLAUSULA_LIMPEZA_DESDE){
+    return "Nos casos em que for preciso refurar estacas, por qualquer motivo alheio à CGL (exemplos: dificuldade na inserção da armação, concreto insuficiente para finalização da estaca, concreto fora da especificação causando entupimentos, etc.), será cobrado o metro linear do refuro no mesmo valor praticado para o furo.";
+  }
+  return "Nos casos em que for preciso refurar ou fazer a limpeza de estacas, por qualquer motivo alheio à CGL (exemplos: dificuldade na inserção da armação, concreto insuficiente para finalização da estaca, concreto fora da especificação causando entupimentos, etc.), será cobrado o metro linear do refuro ou da limpeza no mesmo valor praticado para o furo.";
+}
 /* CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS — texto integral do PDF.
    Itens com destaque=true são impressos em negrito + itálico no PDF original. */
 function criteriosMedicaoHelice(orcamento){
@@ -634,7 +644,7 @@ function criteriosMedicaoHelice(orcamento){
     { t: "O atraso no pagamento pela CONTRATANTE, acarretará a mesma, multa de 2,0% (dois por cento) ao mês, mais juros diários de 0,10% (dez centésimos) ao dia, até o pagamento." },
     { t: "Em caso de ser necessário atividades no segundo turno, será cobrado 25% adicionais sobre os valores dos serviços executados.", destaque: true },
     { t: "Nos casos de eventual demanda da CONTRATANTE por fornecimento de ajudantes-extras para limpeza de terra dos trados, considerar o custo adicional de R$ 10,00/m³ (dez reais por metro cúbico escavado), garantindo-se o mínimo de R$ 420,00 por dia por ajudante-extra disponibilizado pela CONTRATADA." },
-    { t: "Nos casos em que for preciso refurar estacas, por qualquer motivo alheio à CGL (exemplos: dificuldade na inserção da armação, concreto insuficiente para finalização da estaca, concreto fora da especificação causando entupimentos, etc.), será cobrado o metro linear do refuro no mesmo valor praticado para o furo." },
+    { t: _clausulaRefuro(orcamento) },
     { t: "A responsabilidade pelas condições de acesso ao local da obra para fins de mobilização e desmobilização dos equipamentos será da CONTRATANTE, incluindo a garantia de rotas adequadas e liberadas para o tráfego. Caberá à CONTRATANTE providenciar, quando necessário, autorizações, sinalizações, bloqueios de vias e comunicação junto aos órgãos públicos competentes. Eventuais custos, penalidades ou multas decorrentes de restrições de acesso, autuações de trânsito ou ausência das devidas liberações serão de responsabilidade da CONTRATANTE." },
     { t: "Em casos em que a mobilização for de responsabilidade da CGL Fundações, o respectivo valor do frete deverá ser faturado diretamente ao Contratante, a fim de evitar a ocorrência de bitributação. Na hipótese de a mobilização ser de responsabilidade da CGL Fundações e o faturamento do frete ocorrer em nome da própria CGL Fundações, o valor correspondente ao custo do frete será acrescido em 30% (trinta por cento), a título de compensação pelos encargos tributários incidentes sobre a operação." },
     { t: "Em casos em que o fornecimento do óleo diesel for de responsabilidade da CGL Fundações, o respectivo valor deverá ser faturado diretamente ao Contratante, a fim de evitar a ocorrência de bitributação. Na hipótese de o fornecimento ser de responsabilidade da CGL Fundações e o faturamento ocorrer em nome da própria CGL Fundações, o valor correspondente ao custo do diesel será acrescido em 30% (trinta por cento), a título de compensação pelos encargos tributários incidentes sobre a operação." },
@@ -865,7 +875,7 @@ function criteriosMedicaoSecante(orcamento){
     { t: TXT_RG.acesso },
     { t: TXT_RG.frete30 },
     { t: TXT_RG.diesel30 },
-    { t: "Nos casos em que for preciso refurar estacas, por qualquer motivo alheio à CGL (exemplos: dificuldade na inserção da armação, concreto insuficiente para finalização da estaca, concreto fora da especificação causando entupimentos, etc.), será cobrado o metro linear do refuro no mesmo valor praticado para o furo." },
+    { t: _clausulaRefuro(orcamento) },
     { t: "Nos casos em que for solicitada a execução de pré-furos/furos secos pelo equipamento, considerar o preço do metro linear escavado igual a 80% do valor do metro linear de hélice contínua monitorada acordado para o diâmetro correspondente. Nesses casos, além do furo seco, a estaca hélice continua monitorada será cobrada em sua integralidade, desde a cota de apoio do equipamento até a cota de fundo da estaca." },
     { t: TXT_RG.dieselVariacao },
     { t: "Caberá à CONTRATANTE ressarcir a CONTRATADA os prejuízos com danos e/ou perdas de ferramentas de perfuração (trado, ponteira, etc.) em razão de obstáculos e/ou alteração no subsolo não prevista pela sondagem (pedras, matacões, rocha sã, estruturas de concreto, etc.). Ao final dos serviços, se houver danos e/ou perdas, devem ser apresentadas à CONTRATANTE pela CONTRATADA." },

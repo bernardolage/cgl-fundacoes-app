@@ -921,15 +921,17 @@ async function sugerirItensMedicao(){
   if(itensBase.length)   partes.push(`${itensBase.length} estaca(s) agrupada(s)`);
   const mob = itensExtras.filter(i => i._categoria === "mobilizacao").length;
   const ref = itensExtras.filter(i => i._categoria === "refuro").length;
+  const limp = itensExtras.filter(i => i._categoria === "limpeza").length;   // fase 145b
   if(mob) partes.push(`${mob} mobilização`);
   if(ref) partes.push(`${ref} refuro(s)`);
+  if(limp) partes.push(`${limp} limpeza(s)`);
   const semPreco = _medItens.filter(i => !i.valor_unitario).length;
   let msg = `✨ Sugestão: ${partes.join(" + ")}.`;
   if(semPreco) msg += ` ⚠️ ${semPreco} sem preço — ajuste manualmente.`;
   // fase 145a: o Sugerir só traz o refuro que o engenheiro liberou; o pendente trava a medição
   const pend = await medRefPendAtualizar();
-  if(ref) msg += " Refuro: só entra o que o engenheiro da obra liberou para cobrança.";
-  if(pend) msg += ` ⚠️ ${pend} refuro(s) aguardam a decisão do engenheiro da obra: a medição não sai de rascunho antes disso.`;
+  if(ref || limp) msg += " Refuro e limpeza: só entra o que o engenheiro da obra liberou para cobrança.";
+  if(pend) msg += ` ⚠️ ${pend} refuro(s) ou limpeza(s) aguardam a decisão do engenheiro da obra: a medição não sai de rascunho antes disso.`;
   msg += erroExtras;
   aviso("app-aviso", msg, semPreco || pend || erroExtras ? "erro" : "ok");
 }
@@ -950,7 +952,7 @@ async function medRefPendAtualizar(){
   const lista = error ? [] : (data || []);
   if(!lista.length){ box.style.display = "none"; box.innerHTML = ""; return 0; }
   const mostra = lista.slice(0, 15).map(r => `${esc(r.estaca_numero || "?")} (${dataBR(r.data)})`).join(", ");
-  box.innerHTML = `<div><strong>${esc(lista.length)} refuro(s) do período aguardam a decisão de cobrança do engenheiro da obra.</strong>
+  box.innerHTML = `<div><strong>${esc(lista.length)} refuro(s) ou limpeza(s) do período aguardam a decisão de cobrança do engenheiro da obra.</strong>
       A medição não sai de rascunho até a decisão.
       <div class="meta">${/* html */ mostra}${lista.length > 15 ? ` e mais ${esc(lista.length - 15)}` : ""}</div></div>
     <button type="button" class="btn-sec btn-sm" id="btn-med-ref-pend" title="Abre a Conferência da obra na aba Refuradas">Abrir a decisão</button>`;
