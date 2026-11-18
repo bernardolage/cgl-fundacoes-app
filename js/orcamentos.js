@@ -20,7 +20,7 @@ function orcPodeEditar(){
   return ["diretor", "comercial"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
 }
 const ORC_BOTOES_ESCRITA = ["btn-novo-orcamento", "btn-salvar-orc", "btn-excluir-orc", "btn-orc-nova-revisao",
-  "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente", "btn-orc-sim-usar"];
+  "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente", "btn-orc-sim-usar", "btn-orc-enviar"];
 /* Só trava quando não pode editar; para quem edita os botões seguem as regras de exibição de cada um. */
 function orcAplicarModoLeitura(){
   const pode = orcPodeEditar();
@@ -1217,6 +1217,7 @@ async function carregarAbasOrc(o){
   if($("orc-rev-badge")) $("orc-rev-badge").textContent = revisoes.length > 1 ? revisoes.length - 1 : "";
 
   carregarArquivosOrc(orcEditId);   // fase 174b: aba Arquivos
+  carregarEnviosOrc(orcEditId);     // fase 192b: propostas enviadas pela orcamento@
   // Renderiza aba Revisões
   renderizarRevisoesOrc(revisoes, o);
   // Renderiza aba Vínculos
@@ -2260,8 +2261,195 @@ function ligarOrcamentos(){
     });
   });
 
+  $("btn-orc-enviar")?.addEventListener("click", abrirEnvioOrc);   // fase 192b
+
   const navOrc = document.querySelector('nav button[data-secao="orcamentos"]');
   if(navOrc) navOrc.addEventListener("click", mostrarPainelOrc);
+}
+
+/* ====================================================================
+   Fase 192b: envio da proposta pela caixa orcamento@ (edge function enviar-orcamento)
+   O texto do e-mail, o nome do anexo e a lista de anexos saem da function (ação "previa"), então a prévia é o que sai.
+   O PDF é o mesmo do botão PDF, gerado do que está gravado; o front sobe em orcamentos-envio/<orcamento_id>/ e a
+   function anexa a proposta e o institucional, envia, registra em orcamento_envios e passa o status para Enviado.
+   ==================================================================== */
+async function orcEnvioChamar(corpo){
+  const { data, error } = await sb.functions.invoke("enviar-orcamento", { body: corpo });
+  if(error){
+    let msg = error.message || "erro";
+    try { const c = await error.context?.json(); if(c?.error) msg = c.error; } catch(_e){}
+    throw new Error(msg);
+  }
+  return data || {};
+}
+function orcFmtTamanho(n){
+  if(n == null) return "";
+  return n >= 1048576 ? (n / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+}
+function orcDataHora(iso){ return iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : ""; }
+const ORC_ENVIO_STATUS = { enviado: "Enviado", falhou: "Falhou", rascunho: "Enviando" };
+
+async function carregarEnviosOrc(orcId){
+  const cont = $("orc-envios");
+  if(!cont) return;
+  if(!orcId){ cont.innerHTML = ""; return; }
+  const { data, error } = await sb.from("orcamento_envios")
+    .select("id,enviado_em,enviado_por,destinatarios_para,destinatarios_cc,anexos,status_envio,erro_mensagem")
+    .eq("orcamento_id", orcId).order("enviado_em", { ascending: false }).limit(50);
+  if(orcEditId !== orcId) return;
+  if(error){ cont.innerHTML = uiSecao("documento", "Propostas enviadas", uiErro("Não foi possível carregar os envios: " + error.message)); return; }
+  const envios = data || [];
+  if(!envios.length){ cont.innerHTML = uiSecao("documento", "Propostas enviadas", uiVazio("Nenhuma proposta enviada pela orcamento@ ainda.")); return; }
+  const ids = [...new Set(envios.map(e => e.enviado_por).filter(Boolean))];
+  const nomes = {};
+  if(ids.length){
+    const { data: ps } = await sb.from("profiles").select("id,nome").in("id", ids);
+    (ps || []).forEach(p => { nomes[p.id] = p.nome; });
+  }
+  const linhas = envios.map(e => {
+    const quem = nomes[e.enviado_por] || "—";
+    const para = (e.destinatarios_para || []).join(", ");
+    const anexos = (e.anexos || []).join(" · ");
+    const sub = [`Para ${para}`, anexos, e.status_envio === "falhou" && e.erro_mensagem ? "Erro: " + e.erro_mensagem : ""].filter(Boolean).join(" — ");
+    return uiLinhaItem(`${orcDataHora(e.enviado_em)} · ${quem}`, sub, ORC_ENVIO_STATUS[e.status_envio] || e.status_envio, "");
+  }).join("");
+  cont.innerHTML = uiSecao("documento", "Propostas enviadas", linhas, String(envios.length));
+}
+
+async function abrirEnvioOrc(){
+  if(!orcPodeEditar()) return;
+  if(!orcEditId){ uiAvisar("Salve o orçamento antes de enviar a proposta.", "aviso"); return; }
+  if(appFormSujo()){ uiAvisar("Salve o orçamento antes de enviar: a proposta sai do que está gravado.", "aviso"); return; }
+  const orcId = orcEditId;
+  const { data: o, error: eO } = await sb.from("orcamentos").select("contato_email,email_origem_id,email_origem_assunto").eq("id", orcId).single();
+  if(eO){ uiAvisar("Não foi possível abrir o envio: " + eO.message, "perigo"); return; }
+
+  const corpo = `<div class="orc-envio">
+    <div class="orc-envio-campos">
+      ${/* html */ uiCampo({ id: "orc-env-para", rotulo: "Para", valor: o.contato_email || "", obrigatorio: true, placeholder: "e-mail do cliente", ajuda: "Vários: separe por vírgula." })}
+      ${/* html */ uiCampo({ id: "orc-env-cc", rotulo: "Cc (além da orcamento@)", placeholder: "opcional" })}
+      ${/* html */ uiCampo({ id: "orc-env-fio", rotulo: "Responder ao pedido", tipo: "select", placeholder: "Mensagem nova", opcoes: [["", "Procurando pedidos na orcamento@…"]] })}
+      ${/* html */ uiCampo({ id: "orc-env-obs", rotulo: "Observação (parágrafo opcional no e-mail)", tipo: "textarea" })}
+    </div>
+    <div class="orc-envio-previa-cab"><span class="rotulo-caps">Assunto</span> <strong id="orc-env-assunto">…</strong></div>
+    <div class="orc-envio-dest" id="orc-env-dest"></div>
+    <iframe id="orc-env-previa" class="orc-envio-previa" sandbox="" title="Prévia do e-mail como vai sair"></iframe>
+    <div id="orc-env-anexos">${/* html */ uiCarregando("Montando os anexos…")}</div>
+    <div id="orc-env-msg"></div>
+  </div>`;
+  const d = document.createElement("dialog");
+  d.className = "ui-modal";
+  d.setAttribute("aria-label", "Enviar proposta");
+  d.innerHTML = uiModalHTML({ titulo: "Enviar proposta pela orcamento@", corpoHTML: corpo, largura: "g", acoes: [
+    { id: "cancelar", texto: "Cancelar" }, { id: "enviar", texto: "Enviar", primaria: true }
+  ] });
+  document.body.appendChild(d);
+  const q = sel => d.querySelector(sel);
+  let enviando = false, pdfBlob = null, pdfErro = null, anexosPrevia = [], seqPrevia = 0;
+  const fechar = () => { if(!enviando) d.close(); };
+  d.addEventListener("close", () => d.remove());
+  d.addEventListener("cancel", ev => { if(enviando) ev.preventDefault(); });
+
+  const fioSel = q("#orc-env-fio");
+  // a proposta é gerada já na abertura: o tamanho entra na lista e o envio não espera de novo
+  const pdfPronto = gerarPropostaPdfBlob(orcId).then(b => { pdfBlob = b; }).catch(err => { pdfErro = err; }).finally(() => renderAnexos());
+
+  function renderAnexos(){
+    const alvo = q("#orc-env-anexos");
+    if(!alvo || !anexosPrevia.length) return;
+    alvo.innerHTML = uiSecao("documento", "Anexos", anexosPrevia.map((a, i) => {
+      const tam = i === 0 ? (pdfBlob ? orcFmtTamanho(pdfBlob.size) : pdfErro ? "erro" : "gerando…") : orcFmtTamanho(a.tamanho);
+      return uiLinhaItem(a.nome, i === 0 ? "Proposta (mesmo PDF do botão PDF)" : "Anexo fixo", tam, "");
+    }).join(""), String(anexosPrevia.length));
+    if(pdfErro) q("#orc-env-msg").innerHTML = uiErro("Não foi possível gerar o PDF da proposta: " + (pdfErro.message || pdfErro));
+  }
+
+  function lerCampos(){
+    return { para: q("#orc-env-para").value, cc: q("#orc-env-cc").value, observacao: q("#orc-env-obs").value,
+      email_origem_id: fioSel.value && fioSel.value !== "" ? fioSel.value : null };
+  }
+
+  async function atualizarPrevia(){
+    const seq = ++seqPrevia;
+    const c = lerCampos();
+    if(!c.para.trim()){ q("#orc-env-assunto").textContent = "—"; q("#orc-env-dest").textContent = "Informe o e-mail do cliente em Para."; return; }
+    try {
+      const r = await orcEnvioChamar({ acao: "previa", orcamento_id: orcId, ...c });
+      if(seq !== seqPrevia || !d.isConnected) return;
+      q("#orc-env-assunto").textContent = r.assunto || "";
+      q("#orc-env-dest").textContent = `Para: ${(r.para || []).join(", ")} · Cc: ${(r.cc || []).join(", ")}${r.no_fio ? " · resposta no fio do pedido" : ""}`;
+      q("#orc-env-previa").srcdoc = r.html || "";
+      anexosPrevia = r.anexos || [];
+      renderAnexos();
+      if(!pdfErro) q("#orc-env-msg").innerHTML = "";
+    } catch(err){
+      if(seq !== seqPrevia || !d.isConnected) return;
+      q("#orc-env-dest").textContent = "";
+      q("#orc-env-msg").innerHTML = uiErro("Prévia: " + (err.message || err));
+    }
+  }
+  const previaDepois = debounce(atualizarPrevia, 500);
+  ["#orc-env-para", "#orc-env-cc", "#orc-env-obs"].forEach(s => q(s).addEventListener("input", previaDepois));
+  fioSel.addEventListener("change", atualizarPrevia);
+
+  async function carregarPedidos(){
+    let pedidos = [], aviso = "";
+    try { const r = await orcEnvioChamar({ acao: "pedidos", orcamento_id: orcId, para: q("#orc-env-para").value }); pedidos = r.pedidos || []; aviso = r.aviso || ""; }
+    catch(err){ aviso = "Não foi possível ler a orcamento@: " + (err.message || err); }
+    if(!d.isConnected) return;
+    fioSel.innerHTML = "";
+    const novo = document.createElement("option");
+    novo.value = ""; novo.textContent = pedidos.length ? "Mensagem nova" : "Mensagem nova (nenhum pedido do domínio do contato)";
+    fioSel.appendChild(novo);
+    if(o.email_origem_id && !pedidos.some(p => p.id === o.email_origem_id)){
+      pedidos.unshift({ id: o.email_origem_id, assunto: o.email_origem_assunto || "pedido usado no último envio", nome: "", de: "", recebido_em: null });
+    }
+    pedidos.forEach(p => {
+      const op = document.createElement("option");
+      op.value = p.id;
+      op.textContent = [p.recebido_em ? orcDataHora(p.recebido_em) : "último envio", p.nome || p.de, p.assunto].filter(Boolean).join(" · ").slice(0, 160);
+      fioSel.appendChild(op);
+    });
+    fioSel.disabled = false;
+    if(o.email_origem_id) fioSel.value = o.email_origem_id;
+    if(aviso) q("#orc-env-msg").innerHTML = uiErro(aviso);
+    atualizarPrevia();
+  }
+
+  async function enviar(btn){
+    const c = lerCampos();
+    if(!c.para.trim()){ q("#orc-env-msg").innerHTML = uiErro("Informe o e-mail do cliente em Para."); return; }
+    enviando = true;
+    q("#orc-env-msg").innerHTML = uiCarregando("Enviando pela orcamento@…");
+    try {
+      await pdfPronto;
+      if(!pdfBlob) throw new Error("O PDF da proposta não foi gerado" + (pdfErro ? ": " + (pdfErro.message || pdfErro) : "."));
+      const caminho = `${orcId}/${Date.now()}.pdf`;
+      const { error: eUp } = await sb.storage.from("orcamentos-envio").upload(caminho, new Blob([pdfBlob], { type: "application/pdf" }), { contentType: "application/pdf", upsert: false });
+      if(eUp) throw new Error("Não foi possível subir o PDF: " + eUp.message);
+      const r = await orcEnvioChamar({ acao: "enviar", orcamento_id: orcId, pdf_path: caminho, ...c });
+      enviando = false;
+      d.close();
+      uiAvisar(`Proposta enviada pela orcamento@${r.no_fio ? " no fio do pedido" : ""}.${r.aviso ? " " + r.aviso : ""}`, r.aviso ? "aviso" : "ok");
+      if(orcEditId === orcId) await abrirOrcamento(orcId);
+    } catch(err){
+      enviando = false;
+      q("#orc-env-msg").innerHTML = uiErro(err.message || String(err));
+      uiAvisar("A proposta não foi enviada: " + (err.message || err), "perigo");
+      if(orcEditId === orcId) carregarEnviosOrc(orcId);
+    }
+  }
+
+  d.addEventListener("click", ev => {
+    const b = ev.target.closest("[data-acao]");
+    if(b){
+      if(b.dataset.acao === "enviar") comBotaoTravado(b, () => enviar(b));
+      else fechar();
+    } else if(ev.target === d) fechar();
+  });
+  d.showModal();
+  q("#orc-env-para").focus();
+  carregarPedidos();
 }
 
 if(document.readyState === "loading"){

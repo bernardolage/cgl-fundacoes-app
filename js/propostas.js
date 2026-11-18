@@ -1516,6 +1516,14 @@ async function baixarProposta(orcamentoId){
   }
 }
 
+/* fase 192b: o mesmo PDF com texto do botão PDF, em Blob, para o envio pela orcamento@ (sem o modo imagem: se o PDF
+   com texto falhar, o envio para e avisa, para nunca mandar ao cliente uma proposta diferente da baixada) */
+async function gerarPropostaPdfBlob(orcamentoId){
+  const dados = await carregarDadosProposta(orcamentoId);
+  const pdf = await gerarPropostaPdfTexto(dados);
+  return pdf.output("blob");
+}
+
 /* ---------- Listeners (botões da ficha) ---------- */
 const btnVerProposta = $("btn-ver-proposta");
 if(btnVerProposta){
