@@ -1511,11 +1511,17 @@ function podeVerContasPagar(){
 /* Fase 180a (D1): módulo Contratos com dois lados. Receita (contrato de cliente e venda de bem) espelha pode_ler_comercial()
    do banco: comercial, financeiro, auditor, diretor e o módulo extra "orcamentos" (admin fora desde 11/11/2026). Despesa
    (fornecedor, assinatura) espelha pode_ler_contas_pagar() = podeVerContasPagar(). O item do menu aparece para quem lê um
-   dos lados; o jurídico entra na 180d. */
+   dos lados; o jurídico lê os dois (fase 180d: contratos_select e contrato_pode_ler no banco). */
 function podeVerContratosReceita(){
-  return !!usuarioAtual && (["diretor", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos"));
+  return !!usuarioAtual && (["diretor", "comercial", "financeiro", "auditor", "juridico"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos"));
 }
-function podeVerContratosDespesa(){ return podeVerContasPagar(); }
+function podeVerContratosDespesa(){ return podeVerContasPagar() || ehJuridico(); }
+/* Fase 180d (D2): cargo jurídico (Badaró). Lê e edita contratos dos dois lados e vê o valor de cada contrato, mas nunca
+   valor somado (rodapé de soma, KPI de valor, carteira); no banco, as views de soma do módulo saem vazias para ele
+   (eh_juridico). podeVerSomaContratos() é a trava das somas do módulo Contratos: a soma continua só para quem já a via
+   (cada tela mantém a regra dela, como podeVerContasPagar) e nunca para o jurídico. */
+function ehJuridico(){ return !!usuarioAtual && usuarioAtual.cargo === "juridico"; }
+function podeVerSomaContratos(){ return !!usuarioAtual && !ehJuridico(); }
 function podeVerContratos(){ return podeVerContratosReceita() || podeVerContratosDespesa(); }
 /* Fase 156a: Apontamentos da oficina. Quem grava hora em cada tipo de documento, espelhando as policies de reparo_horas,
    manutencao_horas (manutencao_pode_operar) e fabricacao_horas (fabricacao_pode_operar). O item do menu aparece para quem
@@ -1592,7 +1598,9 @@ const SECOES_OCULTAS_POR_CARGO = {
     "carteira", "obras", "mobilizacoes", "equipamentos", "frota", "acessorios", "fabricacao", "medicoes", "rdo", "usuarios", "rhh"],
   // fase 92 (Bernardo, 19/10/2026, decisão 1): gestor da manutenção (Bruno) cuida de OS, planos, checklists, equipamentos, frota
   // e das compras do setor; obras, medições e contas a pagar (podeVerContasPagar) ficam fora
-  gestor_manutencao: ["obras", "medicoes"]
+  gestor_manutencao: ["obras", "medicoes"],
+  // fase 180d (D2): jurídico fica com Contratos; sem folha, RH nem financeiro geral (a RLS já barra o dado)
+  juridico: ["medicoes", "contaspagar", "carteira", "centros", "funcionarios", "rhh"]
 };
 /* Fase 97: Patrimônio sai do menu de todo cargo que não é diretor nem auditor (admin incluído). O item também nasce
    escondido no index.html e só aplicarMenuPorCargo o mostra (podeVerPatrimonio), então cargo novo fica sem ele. */
@@ -2090,7 +2098,7 @@ function iniciarVerificacaoVersao(){
      ("Sair" no lugar de Cancelar) e menu travado (body.mfa-obrigatorio) até concluir. Quem já tem MFA
      passa pelo desafio no login (fluxo da fase 24).
    O servidor reforça (painel do Supabase: JWT 10 min, Time-box 12 h, Inactivity 4 h). */
-const POL_SESSAO_PADRAO = { inatividade_min: 240, maxima_h: 12, lembrar_dias: 7, mfa_cargos: ["diretor", "admin", "rh", "financeiro"] };
+const POL_SESSAO_PADRAO = { inatividade_min: 240, maxima_h: 12, lembrar_dias: 7, mfa_cargos: ["diretor", "admin", "rh", "financeiro", "juridico"] };   // fase 180d: + juridico
 const POL_TICK_MS = 60 * 1000;
 const POL_AVISO_MS = 5 * 60 * 1000;
 const POL_REVOGACAO_TICKS = 5;

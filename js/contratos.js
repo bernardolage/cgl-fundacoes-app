@@ -40,12 +40,21 @@ const CON_DOC_CATEGORIAS = {
 
 /* ---------- Permissões (fase 180a) ----------
    Escrita espelha a policy contratos_write: admin, financeiro e comprador em qualquer contrato (diretor por has_role) e
-   comercial no contrato de cliente. O lado só é oferecido a quem também o lê. Auditor não grava. */
+   comercial no contrato de cliente. O lado só é oferecido a quem também o lê. Auditor não grava.
+   Fase 180d (D2): o jurídico grava nos dois lados, menos a parcela do contrato de despesa (recorrência, valor da parcela,
+   dia de vencimento e geração de títulos: gatilho fn_contratos_juridico_parcela) e sem excluir contrato. */
 function conPodeEditar(natureza){
   if(!usuarioAtual || ehSomenteLeitura()) return false;
   const c = usuarioAtual.cargo;
-  if(natureza === "cliente") return podeVerContratosReceita() && ["diretor","admin","financeiro","comprador","comercial"].includes(c);
-  return podeVerContratosDespesa() && ["diretor","admin","financeiro","comprador"].includes(c);
+  if(natureza === "cliente") return podeVerContratosReceita() && ["diretor","admin","financeiro","comprador","comercial","juridico"].includes(c);
+  return podeVerContratosDespesa() && ["diretor","admin","financeiro","comprador","juridico"].includes(c);
+}
+/* fase 180d: campos que viram título a pagar ficam travados para o jurídico (o financeiro completa) */
+const CON_CAMPOS_PARCELA = ["con-recorrencia", "con-valor-rec", "con-dia-venc", "con-gera-titulos"];
+function conTravarParcelaJuridico(){
+  const travar = ehJuridico();
+  CON_CAMPOS_PARCELA.forEach(id => { const el = $(id); if(el) el.disabled = travar; });
+  if(travar && !conEditId && $("con-gera-titulos")) $("con-gera-titulos").checked = false;
 }
 function conLadosVisiveis(){
   const l = [];
@@ -235,13 +244,13 @@ function renderContratos(){
   else                       renderConLista(dados);
 }
 
-/* Filtro "Assinaturas": custo mensal de cada contrato na lista; a soma só para quem lê contas a pagar */
+/* Filtro "Assinaturas": custo mensal de cada contrato na lista; a soma só para quem lê contas a pagar (nunca o jurídico, D2) */
 function renderResumoAssinaturas(dados){
   const box = $("con-assin-resumo");
   if(!box) return;
   if(($("con-f-categoria")?.value || "") !== "assinatura"){ box.innerHTML = ""; return; }
   const vigentes = dados.filter(c => ["vigente","renovado"].includes(c.status));
-  const soma = podeVerContasPagar()
+  const soma = podeVerContasPagar() && podeVerSomaContratos()
     ? ` Custo mensal das vigentes: <strong data-val-sens>${brl(vigentes.reduce((s, c) => s + (conCustoMensal(c) || 0), 0))}</strong>.`
     : "";
   box.innerHTML = `<p class="meta">${vigentes.length} assinatura(s) vigente(s).${/* html */ soma} O custo mensal de cada uma é a parcela dividida pelos meses do período.</p>`;
@@ -488,7 +497,8 @@ function abrirFichaConVisual(c){
   const podeEditar = conPodeEditar(c.natureza);
   $("btn-salvar-con").style.display = podeEditar ? "" : "none";
   $("con-ficha-mais").style.display = podeEditar && conEditId && !conObrasDe(c).length ? "" : "none";
-  $("btn-excluir-con").style.display = conEditId ? "" : "none";
+  $("btn-excluir-con").style.display = conEditId && !ehJuridico() ? "" : "none";   // fase 180d: o jurídico não exclui
+  conTravarParcelaJuridico();
 
   $("con-ficha-numero").textContent = c.numero || "(novo)";
   $("con-ficha-natureza-chip").innerHTML = c.natureza ? tagLado(c) : "—";
@@ -601,6 +611,11 @@ async function salvarContrato(novoStatus){
       categoria_custo: $("con-cat-custo").value || null,
       gera_titulos: $("con-gera-titulos").checked
     });
+    // fase 180d: o jurídico não grava a parcela; contrato novo dele nasce sem recorrência e sem títulos
+    if(ehJuridico()){
+      ["forma_recorrencia", "valor_recorrente", "dia_vencimento", "gera_titulos"].forEach(k => delete reg[k]);
+      if(!conEditId) reg.gera_titulos = false;
+    }
   }
 
   let result;
@@ -664,7 +679,7 @@ const CON_DOC_PADRAO = {
    contratos-docs: admin, financeiro e comercial em qualquer contrato (diretor por has_role); engenheiro e assistente de
    engenharia só no contrato de cliente (o contrato assinado e o aditivo chegam por eles, em campo). Excluir anexo e
    cadastrar aditivo (contrato_aditivos: valor e prazo) continuam com admin, financeiro e comercial. */
-const CON_DOC_CARGOS_GESTAO = ["diretor", "admin", "financeiro", "comercial"];
+const CON_DOC_CARGOS_GESTAO = ["diretor", "admin", "financeiro", "comercial", "juridico"];   // fase 180d: + juridico
 const CON_DOC_CARGOS_ENGENHARIA = ["engenheiro", "assistente_engenharia"];
 const CON_DOC_EXTENSOES = ["pdf", "doc", "docx", "jpg", "jpeg", "png"];   // = allowed_mime_types do bucket contratos-docs
 const CON_DOC_LIMITE_BYTES = 20971520;                                    // = file_size_limit do bucket (20 MB)
@@ -1092,7 +1107,7 @@ async function conCarregarTitulos(id){
       <tbody>${tits.map(t => `<tr><td>${t.competencia ? esc(String(t.competencia).slice(5, 7)) + "/" + esc(String(t.competencia).slice(0, 4)) : "—"}</td><td class="${!t.exportado_em && t.vencimento < hoje ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong></td><td class="num">${brl(t.valor)}</td>
         <td>${t.obra_id ? linkObra(t.obra_id, (typeof cmpObra === "function" && cmpObra(t.obra_id)) || "obra") : "—"}</td><td>${t.equipamento_id ? esc((typeof cmpEq === "function" && cmpEq(t.equipamento_id)) || "TAG") : "—"}</td>
         <td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody>
-      <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${brl(tits.reduce((s, t) => s + Number(t.valor || 0), 0))}</strong></td><td colspan="3"></td></tr></tfoot></table></div>`;
+      ${podeVerSomaContratos() ? `<tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${brl(tits.reduce((s, t) => s + Number(t.valor || 0), 0))}</strong></td><td colspan="3"></td></tr></tfoot>` : ""}</table></div>`;
   }
   $("btn-con-gerar-titulos")?.addEventListener("click", () => comBotaoTravado("btn-con-gerar-titulos", async () => {
     const { data: n, error: e } = await sb.rpc("contrato_gerar_titulos", { p_contrato: id, p_meses: 3 });
@@ -1147,7 +1162,7 @@ async function conCarregarAditivos(id){
   if(conEditId !== id) return;
   if(error){ setSb(0); cont.innerHTML = uiVazio("Seu perfil não vê os aditivos deste contrato."); return; }
   setSb(count || 0);
-  const html = await conAditivosHTML(id, podeVerValorObra() || podeVerContasPagar());
+  const html = await conAditivosHTML(id, podeVerValorObra() || podeVerContasPagar() || ehJuridico());   // fase 180d: valor de cada aditivo
   if(conEditId !== id) return;
   cont.innerHTML = html || uiVazio("Seu perfil não vê os aditivos deste contrato.");
 }
@@ -1171,15 +1186,16 @@ const CON_ESTADO_CIVIL = [["solteiro", "Solteiro(a)"], ["casado", "Casado(a)"], 
   ["separado", "Separado(a)"], ["divorciado", "Divorciado(a)"], ["viuvo", "Viúvo(a)"]];
 
 /* escrita nas filhas = contrato_pode_escrever no banco (Receita: financeiro e comercial; Despesa: admin, financeiro e
-   comprador; diretor sempre; auditor nunca) */
+   comprador; jurídico nos dois lados, fase 180d; diretor sempre; auditor nunca) */
 function conPodeEditarFilhas(natureza){
   if(!usuarioAtual || ehSomenteLeitura()) return false;
-  const lista = natureza === "cliente" ? ["diretor", "financeiro", "comercial"] : ["diretor", "admin", "financeiro", "comprador"];
+  const lista = natureza === "cliente" ? ["diretor", "financeiro", "comercial", "juridico"] : ["diretor", "admin", "financeiro", "comprador", "juridico"];
   return lista.includes(usuarioAtual.cargo);
 }
-/* dado pessoal da parte física = contrato_pode_ler_sensivel no banco (a sessão ainda precisa de MFA) */
+/* dado pessoal da parte física = contrato_pode_ler_sensivel no banco: diretor, financeiro e jurídico (fase 180d); a sessão
+   ainda precisa de MFA */
 function conPodeVerSensivel(){
-  return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "financeiro"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "financeiro", "juridico"].includes(usuarioAtual.cargo);
 }
 function conTagSit(sit){
   const s = CON_OBR_SIT[sit] || [sit || "—", "cinza"];

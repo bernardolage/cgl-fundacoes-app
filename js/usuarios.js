@@ -23,8 +23,12 @@ const CARGOS = {
   visualizador: "Visualizador",
   auditor:      "Auditor (só leitura)",  /* usuário de revisão: vê o que a diretoria vê, menos dados sensíveis; não grava (fase 79) */
   auxiliar_almoxarifado: "Auxiliar de almoxarifado",  /* equipe do Julio: estoque, separações, produtos (consulta) e peças dos reparos; sem obras, compras nem valores (fase 90) */
-  gestor_manutencao: "Gestor de manutenção"  /* Bruno: OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar (fase 92) */
+  gestor_manutencao: "Gestor de manutenção",  /* Bruno: OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar (fase 92) */
+  juridico:     "Jurídico (contratos)"   /* fase 180d: lê e edita contratos dos dois lados, vê o valor de cada um e nunca soma; só diretor atribui — trigger proteger_cargo_rh */
 };
+/* cargos que só a diretoria atribui e que a ficha só oferece ao diretor (trigger proteger_cargo_rh no banco, que também
+   protege o Diretor; CARGOS.convite na function convidar-usuario) */
+const CARGOS_SO_DIRETORIA = ["rh", "juridico"];
 
 /* Fase 165: o que cada cargo é, em uma frase, para quem escolhe o cargo de um usuário. Aparece sob o campo Cargo da
    ficha e no topo da matriz de acessos. Cada frase foi conferida contra a matriz gerada do banco (js/matriz_acessos_dados.js):
@@ -50,7 +54,8 @@ const CARGO_DESCRICAO = {
   sesmt:        { frase: "Segurança do trabalho: programas, exames, EPI e ocorrências", modulos: ["sesmt", "sesmt-ocorrencias", "estoque"], sem: [] },
   logistica:    { frase: "Viagens, veículos, mobilizações e remessas; emite a nota de remessa", modulos: ["frota", "mobilizacoes", "movimentacoes"], sem: [] },
   visualizador: { frase: "Só consulta o que é aberto a todo usuário. Não grava nos cadastros: só abre chamado e lança as próprias horas de viagem", modulos: ["chamados", "rhv"], sem: ["usuarios", "carteira", "patrimonio"] },
-  auditor:      { frase: "Só leitura: vê o que a diretoria vê, menos a gestão de logins, os dados sensíveis e a folha; não grava nada", modulos: ["carteira", "patrimonio", "medicoes", "contratos", "contaspagar"], sem: ["usuarios"] }
+  auditor:      { frase: "Só leitura: vê o que a diretoria vê, menos a gestão de logins, os dados sensíveis e a folha; não grava nada", modulos: ["carteira", "patrimonio", "medicoes", "contratos", "contaspagar"], sem: ["usuarios"] },
+  juridico:     { frase: "Contratos dos dois lados, partes, garantias e obrigações; vê o valor de cada contrato e nunca a soma. Só diretor atribui", modulos: ["contratos"], sem: ["usuarios", "carteira", "patrimonio", "medicoes", "contaspagar"] }
 };
 
 let _usuarios   = [];
@@ -407,9 +412,9 @@ function mostrarPainelUsr(){
 }
 
 function preencherCargosFicha(){
-  // perfil RH (vê salários e dados pessoais): só a diretoria atribui
+  // perfis RH (vê salários e dados pessoais) e Jurídico (dado pessoal de parte de contrato, fase 180d): só a diretoria atribui
   $("usr-cargo").innerHTML = Object.entries(CARGOS)
-    .filter(([v]) => v !== "rh" || usuarioAtual?.cargo === "diretor")
+    .filter(([v]) => !CARGOS_SO_DIRETORIA.includes(v) || usuarioAtual?.cargo === "diretor")
     .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   usrGarantirChecksExtras();
 }
