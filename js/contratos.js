@@ -410,7 +410,7 @@ function conTravarCamposDaObra(c){
 
 function conLimparCampos(){
   ["con-descricao","con-fornecedor","con-cliente","con-responsavel","con-assinatura",
-   "con-inicio","con-fim","con-indice","con-obs"
+   "con-inicio","con-fim","con-indice","con-obs","con-venc-antecipado"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
 }
 
@@ -462,6 +462,7 @@ async function abrirContrato(id){
   $("con-fim").value = c.data_fim_prevista || "";
   $("con-renovacao").checked = c.renovacao_automatica === true;
   $("con-aviso").value = c.aviso_vencimento_dias != null ? c.aviso_vencimento_dias : 30;
+  $("con-venc-antecipado").value = c.regra_vencimento_antecipado || "";   // fase 180b
   $("con-recorrencia").value = c.forma_recorrencia || "unica";
   $("con-valor-rec").value = c.valor_recorrente || 0;
   $("con-dia-venc").value = c.dia_vencimento || "";
@@ -502,6 +503,9 @@ function abrirFichaConVisual(c){
   conCarregarTitulos(c.natureza === "fornecedor" ? (c.id || null) : null); // fase 56
   conCarregarParcelas(c.natureza === "cliente" ? c : null);                 // fase 180a
   conCarregarAditivos(c.id || null);                                        // fase 180a
+  conCarregarPartes(c);                                                     // fase 180b
+  conCarregarGarantias(c);
+  conCarregarObrigacoes(c);
   const dias = diasParaVencer(c);
   $("con-ficha-vigencia-chip").innerHTML = c.data_inicio || c.data_fim_prevista
     ? `${dataBR(c.data_inicio)}${c.data_fim_prevista ? " → " + dataBR(c.data_fim_prevista) : ""}${tagDias(c)}`
@@ -566,6 +570,7 @@ async function salvarContrato(novoStatus){
     data_assinatura: $("con-assinatura").value || null,
     renovacao_automatica: $("con-renovacao").checked,
     aviso_vencimento_dias: Number($("con-aviso").value || 0),
+    regra_vencimento_antecipado: $("con-venc-antecipado").value ? Number($("con-venc-antecipado").value) : null,   // fase 180b
     indice_reajuste: $("con-indice").value.trim() || null,
     equipamento_id: $("con-equip").value || null,
     observacoes: $("con-obs").value.trim() || null
@@ -1147,7 +1152,458 @@ async function conCarregarAditivos(id){
   cont.innerHTML = html || uiVazio("Seu perfil não vê os aditivos deste contrato.");
 }
 
+/* ---------- Fase 180b: Partes, Garantias e Obrigações ----------
+   Tudo grava por RPC com nome e regra própria (contrato_parte_salvar, contrato_garantia_salvar, contrato_obrigacao_salvar,
+   contrato_obrigacao_confirmar, contrato_obrigacao_dispensar e as de excluir); as tabelas não aceitam escrita direta.
+   Leitura pelo lado do contrato (Receita: pode_ler_comercial; Despesa: pode_ler_contas_pagar), decidida no banco.
+   D9: CPF, RG, estado civil e endereço da parte pessoa física ficam em contrato_partes_sensiveis e só passam por
+   fn_contrato_parte_sensivel (leitura auditada) e contrato_parte_sensivel_salvar, para diretor e financeiro com MFA
+   concluído na sessão. Nada desse dado vai para console, aviso ou log do front. */
+const CON_PAPEL = { contratante: "Contratante", contratada: "Contratada", compradora: "Compradora", vendedora: "Vendedora",
+  fiador: "Fiador", avalista: "Avalista", testemunha: "Testemunha", representante: "Representante" };
+const CON_GARANTIA = { reserva_dominio: "Reserva de domínio", fianca: "Fiança", seguro: "Seguro", caucao: "Caução",
+  rastreador: "Rastreador", alienacao: "Alienação fiduciária", outro: "Outra" };
+const CON_OBR_SIT = { pendente: ["Pendente", "ambar"], vencida: ["Vencida", "vermelho"], cumprida: ["Cumprida", "verde"], dispensada: ["Dispensada", "cinza"] };
+const CON_PRAZO_TIPO = { data: "Data fixa", dias_apos_assinatura: "Dias após a assinatura", continua: "Contínua (enquanto durar o contrato)" };
+const CON_AGENDA_TIPO = { vigencia: "Fim da vigência", obrigacao: "Obrigação", parcela_receber: "Parcela a receber",
+  parcela_pagar: "Título a pagar", vencimento_antecipado: "Vencimento antecipado" };
+const CON_ESTADO_CIVIL = [["solteiro", "Solteiro(a)"], ["casado", "Casado(a)"], ["uniao_estavel", "União estável"],
+  ["separado", "Separado(a)"], ["divorciado", "Divorciado(a)"], ["viuvo", "Viúvo(a)"]];
+
+/* escrita nas filhas = contrato_pode_escrever no banco (Receita: financeiro e comercial; Despesa: admin, financeiro e
+   comprador; diretor sempre; auditor nunca) */
+function conPodeEditarFilhas(natureza){
+  if(!usuarioAtual || ehSomenteLeitura()) return false;
+  const lista = natureza === "cliente" ? ["diretor", "financeiro", "comercial"] : ["diretor", "admin", "financeiro", "comprador"];
+  return lista.includes(usuarioAtual.cargo);
+}
+/* dado pessoal da parte física = contrato_pode_ler_sensivel no banco (a sessão ainda precisa de MFA) */
+function conPodeVerSensivel(){
+  return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "financeiro"].includes(usuarioAtual.cargo);
+}
+function conTagSit(sit){
+  const s = CON_OBR_SIT[sit] || [sit || "—", "cinza"];
+  return `<span class="tag ${esc(s[1])}">${esc(s[0])}</span>`;
+}
+function conSetSb(id, n){
+  const sb = $(id);
+  if(!sb) return;
+  sb.querySelector(".sb-num").textContent = n || 0;
+  sb.classList.toggle("zero", !n);
+}
+function conBotoesLinha(acoes){
+  return `<span class="con-acoes-linha">${acoes.map(a => `<button type="button" class="ui-btn" data-con-acao="${esc(a.acao)}" data-id="${esc(a.id)}" title="${esc(a.titulo || a.texto)}">${esc(a.texto)}</button>`).join("")}</span>`;
+}
+function conMsgErro(error, padrao){
+  if(!error) return "";
+  if(error.hint === "mfa_obrigatorio" || /dois fatores/.test(error.message || "")) return "Dados pessoais exigem a verificação em duas etapas (MFA) nesta sessão. Entre de novo com o segundo fator.";
+  if(ehErroDePermissao(error)) return padrao || "Seu cargo não pode fazer isso neste contrato.";
+  return error.message || String(error);
+}
+
+/* Diálogo de formulário do módulo (mesmo molde do envio da proposta, fase 192b: uiModalHTML + uiCampo). "Salvar" chama
+   aoSalvar(valores) — valores = { id do campo: valor } — e só fecha quando ela não devolve mensagem de erro; o erro
+   aparece dentro do diálogo. */
+function conDialogo(titulo, camposHTML, aoSalvar, opts){
+  const o = opts || {};
+  const d = document.createElement("dialog");
+  d.className = "ui-modal";
+  d.setAttribute("aria-label", titulo);
+  d.innerHTML = uiModalHTML({ titulo, largura: o.largura || "m",
+    corpoHTML: `${o.introHTML ? /* html */ o.introHTML : ""}<div class="con-form">${/* html */ camposHTML}</div><div class="con-form-msg" aria-live="polite"></div>`,
+    acoes: [{ id: "cancelar", texto: "Cancelar" }, { id: "salvar", texto: o.textoSalvar || "Salvar", primaria: !o.perigo, perigo: !!o.perigo }] });
+  document.body.appendChild(d);
+  let ocupado = false;
+  d.addEventListener("close", () => d.remove());
+  d.addEventListener("cancel", ev => { if(ocupado) ev.preventDefault(); });
+  d.addEventListener("click", async ev => {
+    const b = ev.target.closest("[data-acao]");
+    if(!b){ if(ev.target === d && !ocupado) d.close(); return; }
+    if(b.dataset.acao !== "salvar"){ if(!ocupado) d.close(); return; }
+    if(ocupado) return;
+    const valores = {};
+    d.querySelectorAll(".con-form [name]").forEach(el => { valores[el.name] = el.value; });
+    const msg = d.querySelector(".con-form-msg");
+    msg.innerHTML = "";
+    ocupado = true; b.disabled = true;
+    try {
+      const erro = await aoSalvar(valores);
+      if(erro){ msg.innerHTML = uiErro(erro); return; }
+      d.close();
+    } catch(e){
+      msg.innerHTML = uiErro(e && e.message ? e.message : "Não foi possível salvar.");
+    } finally { ocupado = false; b.disabled = false; }
+  });
+  d.showModal();
+  if(typeof o.aoAbrir === "function") o.aoAbrir(d);
+  const foco = d.querySelector(".con-form input, .con-form select, .con-form textarea");
+  if(foco) foco.focus();
+}
+
+/* documentos do contrato para escolher como comprovante */
+async function conDocumentosOpcoes(contratoId){
+  const { data } = await sb.from("contratos_documentos").select("id,nome,categoria").eq("contrato_id", contratoId).order("created_at");
+  return (data || []).map(d => [d.id, `${d.nome}${CON_DOC_CATEGORIAS[d.categoria] ? " (" + CON_DOC_CATEGORIAS[d.categoria] + ")" : ""}`]);
+}
+function conNomeParte(p){
+  if(!p) return "—";
+  if(p.cliente_id) return mapaClientes[p.cliente_id] || "cliente";
+  if(p.fornecedor_id) return mapaFornecedores[p.fornecedor_id] || "fornecedor";
+  return p.nome || "—";
+}
+
+/* ---- Partes ---- */
+let _conPartes = [];
+async function conCarregarPartes(c){
+  const cont = $("con-partes-conteudo");
+  if(!cont) return;
+  _conPartes = [];
+  if(!c || !c.id){ cont.innerHTML = uiVazio("Salve o contrato para cadastrar as partes."); return; }
+  const id = c.id;
+  cont.innerHTML = uiCarregando();
+  const { data, error } = await sb.from("contrato_partes").select("*").eq("contrato_id", id).order("created_at");
+  if(conEditId !== id) return;
+  if(error){ cont.innerHTML = uiErro(ehErroDePermissao(error) ? "Seu perfil não vê as partes deste contrato." : "Erro: " + error.message); return; }
+  _conPartes = data || [];
+  const pode = conPodeEditarFilhas(c.natureza), sens = conPodeVerSensivel();
+  const tabela = uiTabela({
+    chaveLinha: "id",
+    vazio: "Nenhuma parte cadastrada. Inclua contratante, contratada, fiadores, avalistas, testemunhas e representantes.",
+    colunas: [
+      { chave: "papel", rotulo: "Papel", html: p => esc(CON_PAPEL[p.papel] || p.papel) },
+      { chave: "quem", rotulo: "Parte", html: p => `${esc(conNomeParte(p))}${p.pessoa_fisica ? ' <span class="tag cinza">pessoa física</span>' : ""}` },
+      { chave: "dados", rotulo: "Dados pessoais", html: p => !p.pessoa_fisica ? "—"
+          : `${p.tem_dado_sensivel ? '<span class="tag verde">guardados</span>' : '<span class="tag ambar">não informados</span>'}${sens ? " " + conBotoesLinha([{ acao: "parte-sensivel", id: p.id, texto: p.tem_dado_sensivel ? "Ver e editar" : "Informar", titulo: "CPF, RG, estado civil e endereço (só diretor e financeiro, com MFA; a leitura fica registrada)" }]) : ""}` },
+      { chave: "observacao", rotulo: "Observação" },
+      { chave: "acoes", rotulo: "", html: p => pode ? conBotoesLinha([{ acao: "parte-editar", id: p.id, texto: "Editar" }, { acao: "parte-excluir", id: p.id, texto: "Excluir" }]) : "" }
+    ],
+    linhas: _conPartes
+  });
+  const botao = pode ? `<div class="lista-topo compacta"><span class="meta">Dado pessoal de fiador, avalista e representante fica guardado à parte e só diretor e financeiro o veem.</span><button type="button" class="ui-btn" data-con-acao="parte-nova" data-id="">Adicionar parte</button></div>` : "";
+  cont.innerHTML = uiSecao("equipe", "Partes", botao + tabela, String(_conPartes.length));
+}
+
+function conAbrirParte(parte){
+  const c = _conAtual;
+  if(!c || !conEditId) return;
+  const p = parte || {};
+  const tipo = p.id ? (p.pessoa_fisica ? "fisica" : p.cliente_id ? "cliente" : p.fornecedor_id ? "fornecedor" : "juridica") : (c.natureza === "cliente" ? "cliente" : "fornecedor");
+  const opcoesCli = Object.entries(mapaClientes || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR"));
+  const opcoesForn = Object.entries(mapaFornecedores || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR"));
+  const campos = [
+    uiCampo({ id: "con-pt-papel", rotulo: "Papel", tipo: "select", obrigatorio: true, valor: p.papel || "", opcoes: Object.entries(CON_PAPEL) }),
+    uiCampo({ id: "con-pt-tipo", rotulo: "Quem é", tipo: "select", obrigatorio: true, valor: tipo, placeholder: "Selecione",
+      opcoes: [["cliente", "Cliente cadastrado"], ["fornecedor", "Fornecedor cadastrado"], ["fisica", "Pessoa física (pelo nome)"], ["juridica", "Outra empresa (pelo nome)"]],
+      ajuda: "Pessoa física: o CPF e o endereço entram depois, em Dados pessoais." }),
+    uiCampo({ id: "con-pt-cliente", rotulo: "Cliente", tipo: "select", valor: p.cliente_id || (tipo === "cliente" && !p.id ? c.cliente_id : "") || "", opcoes: opcoesCli }),
+    uiCampo({ id: "con-pt-fornecedor", rotulo: "Fornecedor", tipo: "select", valor: p.fornecedor_id || (tipo === "fornecedor" && !p.id ? c.fornecedor_id : "") || "", opcoes: opcoesForn }),
+    uiCampo({ id: "con-pt-nome", rotulo: "Nome (pessoa física ou outra empresa)", valor: p.nome || "" }),
+    uiCampo({ id: "con-pt-obs", rotulo: "Observação", tipo: "textarea", valor: p.observacao || "" })
+  ].join("");
+  conDialogo(p.id ? "Editar parte" : "Adicionar parte", campos, async v => {
+    if(!v["con-pt-papel"]) return "Escolha o papel.";
+    const t = v["con-pt-tipo"];
+    if(t === "cliente" && !v["con-pt-cliente"]) return "Escolha o cliente.";
+    if(t === "fornecedor" && !v["con-pt-fornecedor"]) return "Escolha o fornecedor.";
+    if((t === "fisica" || t === "juridica") && !v["con-pt-nome"].trim()) return "Informe o nome.";
+    const { error } = await sb.rpc("contrato_parte_salvar", {
+      p_contrato: c.id, p_papel: v["con-pt-papel"], p_pessoa_fisica: t === "fisica",
+      p_cliente: t === "cliente" ? v["con-pt-cliente"] : null, p_fornecedor: t === "fornecedor" ? v["con-pt-fornecedor"] : null,
+      p_nome: t === "fisica" || t === "juridica" ? v["con-pt-nome"].trim() : null, p_observacao: v["con-pt-obs"].trim() || null, p_parte: p.id || null });
+    if(error) return conMsgErro(error, "Seu cargo não grava as partes deste contrato.");
+    uiAvisar("Parte salva.", "ok");
+    conCarregarPartes(c);
+    return "";
+  });
+}
+
+async function conAbrirParteSensivel(parte){
+  if(!parte || !conPodeVerSensivel()) return;
+  const { data, error } = await sb.rpc("fn_contrato_parte_sensivel", { p_parte: parte.id });
+  if(error){ uiAvisar(conMsgErro(error, "Seu cargo não vê dados pessoais."), "perigo"); return; }
+  const s = (Array.isArray(data) ? data[0] : data) || {};
+  const campos = [
+    uiCampo({ id: "con-ps-cpf", rotulo: "CPF", valor: s.cpf || "", placeholder: "000.000.000-00" }),
+    uiCampo({ id: "con-ps-rg", rotulo: "RG", valor: s.rg || "" }),
+    uiCampo({ id: "con-ps-rg-orgao", rotulo: "Órgão emissor do RG", valor: s.rg_orgao_emissor || "" }),
+    uiCampo({ id: "con-ps-estado-civil", rotulo: "Estado civil", tipo: "select", valor: s.estado_civil || "", opcoes: CON_ESTADO_CIVIL, placeholder: "Não informado" }),
+    uiCampo({ id: "con-ps-profissao", rotulo: "Profissão", valor: s.profissao || "" }),
+    uiCampo({ id: "con-ps-nacionalidade", rotulo: "Nacionalidade", valor: s.nacionalidade || "" }),
+    uiCampo({ id: "con-ps-cep", rotulo: "CEP", valor: s.cep || "" }),
+    uiCampo({ id: "con-ps-logradouro", rotulo: "Logradouro", valor: s.logradouro || "" }),
+    uiCampo({ id: "con-ps-numero", rotulo: "Número", valor: s.numero || "" }),
+    uiCampo({ id: "con-ps-complemento", rotulo: "Complemento", valor: s.complemento || "" }),
+    uiCampo({ id: "con-ps-bairro", rotulo: "Bairro", valor: s.bairro || "" }),
+    uiCampo({ id: "con-ps-cidade", rotulo: "Cidade", valor: s.cidade || "" }),
+    uiCampo({ id: "con-ps-uf", rotulo: "UF", tipo: "select", valor: s.uf ? String(s.uf).toUpperCase() : "", opcoes: UFS.map(u => [u, u]), placeholder: "—" }),
+    uiCampo({ id: "con-ps-obs", rotulo: "Observações", tipo: "textarea", valor: s.observacoes || "" })
+  ].join("");
+  const intro = `<p class="meta">${esc(conNomeParte(parte))} · ${esc(CON_PAPEL[parte.papel] || parte.papel)}. Esta leitura ficou registrada. Deixe tudo em branco para apagar os dados pessoais.</p>`;
+  conDialogo("Dados pessoais da parte", campos, async v => {
+    const cpf = v["con-ps-cpf"].replace(/\D/g, "");
+    if(cpf && cpf.length !== 11) return "CPF deve ter 11 dígitos.";
+    const { error: e } = await sb.rpc("contrato_parte_sensivel_salvar", { p_parte: parte.id, p_dados: {
+      cpf: v["con-ps-cpf"], rg: v["con-ps-rg"], rg_orgao_emissor: v["con-ps-rg-orgao"], estado_civil: v["con-ps-estado-civil"],
+      profissao: v["con-ps-profissao"], nacionalidade: v["con-ps-nacionalidade"], cep: v["con-ps-cep"], logradouro: v["con-ps-logradouro"],
+      numero: v["con-ps-numero"], complemento: v["con-ps-complemento"], bairro: v["con-ps-bairro"], cidade: v["con-ps-cidade"],
+      uf: v["con-ps-uf"], observacoes: v["con-ps-obs"] } });
+    if(e) return conMsgErro(e, "Seu cargo não grava dados pessoais.");
+    uiAvisar("Dados pessoais salvos.", "ok");
+    conCarregarPartes(_conAtual);
+    return "";
+  }, { introHTML: intro, largura: "g" });
+}
+
+/* ---- Garantias ---- */
+let _conGarantias = [];
+async function conCarregarGarantias(c){
+  const cont = $("con-garantias-conteudo");
+  if(!cont) return;
+  _conGarantias = [];
+  if(!c || !c.id){ cont.innerHTML = uiVazio("Salve o contrato para cadastrar as garantias."); return; }
+  const id = c.id;
+  cont.innerHTML = uiCarregando();
+  const [{ data, error }, { data: docs }] = await Promise.all([
+    sb.from("contrato_garantias").select("*").eq("contrato_id", id).order("created_at"),
+    sb.from("contratos_documentos").select("id,nome").eq("contrato_id", id)
+  ]);
+  if(conEditId !== id) return;
+  if(error){ cont.innerHTML = uiErro(ehErroDePermissao(error) ? "Seu perfil não vê as garantias deste contrato." : "Erro: " + error.message); return; }
+  _conGarantias = data || [];
+  const nomeDoc = Object.fromEntries((docs || []).map(d => [d.id, d.nome]));
+  const pode = conPodeEditarFilhas(c.natureza);
+  const tabela = uiTabela({
+    chaveLinha: "id",
+    vazio: "Nenhuma garantia cadastrada (reserva de domínio, fiança, seguro, caução, rastreador, alienação).",
+    colunas: [
+      { chave: "tipo", rotulo: "Tipo", html: g => esc(CON_GARANTIA[g.tipo] || g.tipo) },
+      { chave: "descricao", rotulo: "Descrição" },
+      { chave: "valor_coberto", rotulo: "Valor coberto", tipo: "brl" },
+      { chave: "vigencia", rotulo: "Vigência", html: g => g.vigencia_inicio || g.vigencia_fim ? `${dataBR(g.vigencia_inicio)} a ${dataBR(g.vigencia_fim)}` : "—" },
+      { chave: "beneficiario", rotulo: "Beneficiário" },
+      { chave: "documento", rotulo: "Documento", html: g => g.documento_id ? esc(nomeDoc[g.documento_id] || "documento") : "—" },
+      { chave: "acoes", rotulo: "", html: g => pode ? conBotoesLinha([{ acao: "garantia-editar", id: g.id, texto: "Editar" }, { acao: "garantia-excluir", id: g.id, texto: "Excluir" }]) : "" }
+    ],
+    linhas: _conGarantias
+  });
+  const botao = pode ? `<div class="lista-topo compacta"><span class="meta">A apólice, a fiança ou o termo de reserva de domínio entram na aba Documentos e são escolhidos aqui.</span><button type="button" class="ui-btn" data-con-acao="garantia-nova" data-id="">Adicionar garantia</button></div>` : "";
+  cont.innerHTML = uiSecao("assinatura", "Garantias", botao + tabela, String(_conGarantias.length));
+}
+
+async function conAbrirGarantia(gar){
+  const c = _conAtual;
+  if(!c || !conEditId) return;
+  const g = gar || {};
+  const docs = await conDocumentosOpcoes(c.id);
+  const campos = [
+    uiCampo({ id: "con-gr-tipo", rotulo: "Tipo", tipo: "select", obrigatorio: true, valor: g.tipo || "", opcoes: Object.entries(CON_GARANTIA) }),
+    uiCampo({ id: "con-gr-descricao", rotulo: "Descrição", valor: g.descricao || "", placeholder: "ex.: fiança dos sócios" }),
+    uiCampo({ id: "con-gr-valor", rotulo: "Valor coberto (R$)", tipo: "number", valor: g.valor_coberto ?? "" }),
+    uiCampo({ id: "con-gr-inicio", rotulo: "Vigência: início", tipo: "date", valor: g.vigencia_inicio || "" }),
+    uiCampo({ id: "con-gr-fim", rotulo: "Vigência: fim", tipo: "date", valor: g.vigencia_fim || "" }),
+    uiCampo({ id: "con-gr-beneficiario", rotulo: "Beneficiário", valor: g.beneficiario || "" }),
+    uiCampo({ id: "con-gr-documento", rotulo: "Documento", tipo: "select", valor: g.documento_id || "", opcoes: docs, placeholder: "Nenhum" }),
+    uiCampo({ id: "con-gr-obs", rotulo: "Observação", tipo: "textarea", valor: g.observacao || "" })
+  ].join("");
+  conDialogo(g.id ? "Editar garantia" : "Adicionar garantia", campos, async v => {
+    if(!v["con-gr-tipo"]) return "Escolha o tipo.";
+    if(v["con-gr-inicio"] && v["con-gr-fim"] && v["con-gr-fim"] < v["con-gr-inicio"]) return "O fim da vigência é anterior ao início.";
+    const valor = v["con-gr-valor"] === "" ? null : Number(v["con-gr-valor"]);
+    if(valor != null && !(valor >= 0)) return "Valor coberto inválido.";
+    const { error } = await sb.rpc("contrato_garantia_salvar", {
+      p_contrato: c.id, p_tipo: v["con-gr-tipo"], p_descricao: v["con-gr-descricao"].trim() || null, p_valor_coberto: valor,
+      p_vigencia_inicio: v["con-gr-inicio"] || null, p_vigencia_fim: v["con-gr-fim"] || null, p_beneficiario: v["con-gr-beneficiario"].trim() || null,
+      p_documento: v["con-gr-documento"] || null, p_observacao: v["con-gr-obs"].trim() || null, p_garantia: g.id || null });
+    if(error) return conMsgErro(error, "Seu cargo não grava as garantias deste contrato.");
+    uiAvisar("Garantia salva.", "ok");
+    conCarregarGarantias(c);
+    return "";
+  });
+}
+
+/* ---- Obrigações e agenda do contrato ---- */
+let _conObrigacoes = [];
+function conPrazoTexto(o){
+  if(o.prazo_tipo === "dias_apos_assinatura") return `${o.prazo_dias} dia(s) após a assinatura${o.data_assinatura ? "" : " (contrato sem data de assinatura)"}`;
+  if(o.prazo_tipo === "continua") return "Contínua";
+  return "Data fixa";
+}
+async function conCarregarObrigacoes(c){
+  const cont = $("con-obrigacoes-conteudo"), ag = $("con-agenda-conteudo");
+  if(!cont) return;
+  _conObrigacoes = [];
+  if(!c || !c.id){ conSetSb("sb-con-obrigacoes", 0); cont.innerHTML = uiVazio("Salve o contrato para cadastrar as obrigações."); if(ag) ag.innerHTML = ""; return; }
+  const id = c.id;
+  cont.innerHTML = uiCarregando();
+  const [{ data, error }, { data: agenda, error: eAg }] = await Promise.all([
+    sb.from("vw_contrato_obrigacoes").select("*").eq("contrato_id", id).order("vencimento", { ascending: true, nullsFirst: false }),
+    sb.from("vw_contratos_agenda").select("*").eq("contrato_id", id).order("data")
+  ]);
+  if(conEditId !== id) return;
+  if(error){ conSetSb("sb-con-obrigacoes", 0); cont.innerHTML = uiErro(ehErroDePermissao(error) ? "Seu perfil não vê as obrigações deste contrato." : "Erro: " + error.message); if(ag) ag.innerHTML = ""; return; }
+  _conObrigacoes = data || [];
+  const abertas = _conObrigacoes.filter(o => o.situacao_efetiva === "pendente" || o.situacao_efetiva === "vencida");
+  const vencidas = abertas.filter(o => o.situacao_efetiva === "vencida").length;
+  conSetSb("sb-con-obrigacoes", abertas.length);
+  $("sb-con-obrigacoes")?.classList.toggle("func-sb-alerta", vencidas > 0);
+  const pode = conPodeEditarFilhas(c.natureza);
+  const alertas = (agenda || []).filter(a => a.tipo === "vencimento_antecipado");
+  const faixa = alertas.length ? uiFaixaSituacao(alertas.map(a => a.titulo).concat(["a situação do contrato não muda sozinha"]), "perigo")
+    : vencidas ? uiFaixaSituacao([`${vencidas} obrigação(ões) vencida(s)`, "aparece(m) no Para regularizar do responsável"], "aviso") : "";
+  const tabela = uiTabela({
+    chaveLinha: "id",
+    vazio: "Nenhuma obrigação cadastrada (registro em cartório, apólice, rastreador ligado...).",
+    colunas: [
+      { chave: "situacao_efetiva", rotulo: "Situação", html: o => conTagSit(o.situacao_efetiva) },
+      { chave: "descricao", rotulo: "Obrigação", html: o => `${esc(o.descricao)}${o.observacao ? `<div class="meta">${esc(o.observacao)}</div>` : ""}` },
+      { chave: "devedor", rotulo: "Quem deve", html: o => {
+          const parte = o.parte_id ? _conPartes.find(p => p.id === o.parte_id) : null;
+          return esc(o.devedor === "cgl" ? "CGL" : (parte ? conNomeParte(parte) : "Outra parte"));
+        } },
+      { chave: "prazo", rotulo: "Prazo", html: o => esc(conPrazoTexto(o)) },
+      { chave: "vencimento", rotulo: "Vence em", tipo: "data" },
+      { chave: "comprovante_exigido", rotulo: "Comprovante exigido" },
+      { chave: "confirmacao", rotulo: "Baixa", html: o => o.confirmado_em ? `${dataBR(String(o.confirmado_em).slice(0, 10))}${o.confirmacao_obs ? " · " + esc(o.confirmacao_obs) : ""}` : "—" },
+      { chave: "acoes", rotulo: "", html: o => pode && o.situacao === "pendente" ? conBotoesLinha([
+          { acao: "obrigacao-confirmar", id: o.id, texto: "Cumprida", titulo: "Marcar como cumprida (com o comprovante, quando exigido)" },
+          { acao: "obrigacao-dispensar", id: o.id, texto: "Dispensar", titulo: "Dispensar com motivo" },
+          { acao: "obrigacao-editar", id: o.id, texto: "Editar" },
+          { acao: "obrigacao-excluir", id: o.id, texto: "Excluir" }]) : "" }
+    ],
+    linhas: _conObrigacoes
+  });
+  const botao = pode ? `<div class="lista-topo compacta"><span class="meta">Prazo por data ou por dias após a assinatura (a data é calculada). Vencida = pendente com a data passada.</span><button type="button" class="ui-btn" data-con-acao="obrigacao-nova" data-id="">Adicionar obrigação</button></div>` : "";
+  cont.innerHTML = faixa + uiSecao("check", "Obrigações", botao + tabela, String(_conObrigacoes.length));
+  if(ag){
+    ag.innerHTML = uiSecao("relogio", "Agenda do contrato", uiTabela({
+      erro: eAg ? (ehErroDePermissao(eAg) ? "Seu perfil não vê a agenda deste contrato." : eAg.message) : null,
+      vazio: "Nada com data neste contrato.",
+      colunas: [
+        { chave: "data", rotulo: "Data", tipo: "data" },
+        { chave: "tipo", rotulo: "O quê", html: a => esc(CON_AGENDA_TIPO[a.tipo] || a.tipo) },
+        { chave: "titulo", rotulo: "Item" },
+        { chave: "detalhe", rotulo: "Detalhe" },
+        { chave: "situacao", rotulo: "Situação", html: a => a.situacao === "vencida" ? conTagSit("vencida") : a.situacao === "alerta" ? '<span class="tag vermelho">alerta</span>' : '<span class="tag cinza">a vencer</span>' },
+        { chave: "valor", rotulo: "Valor", tipo: "brl" }
+      ],
+      linhas: agenda || []
+    }), String((agenda || []).length));
+  }
+}
+
+async function conAbrirObrigacao(obr){
+  const c = _conAtual;
+  if(!c || !conEditId) return;
+  const o = obr || {};
+  const campos = [
+    uiCampo({ id: "con-ob-descricao", rotulo: "Obrigação", obrigatorio: true, valor: o.descricao || "", placeholder: "ex.: registrar o contrato em cartório" }),
+    uiCampo({ id: "con-ob-devedor", rotulo: "Quem deve", tipo: "select", obrigatorio: true, valor: o.devedor || "outra_parte", opcoes: [["outra_parte", "A outra parte"], ["cgl", "A CGL"]] }),
+    uiCampo({ id: "con-ob-parte", rotulo: "Parte (opcional)", tipo: "select", valor: o.parte_id || "", placeholder: "—",
+      opcoes: _conPartes.map(p => [p.id, `${conNomeParte(p)} (${CON_PAPEL[p.papel] || p.papel})`]) }),
+    uiCampo({ id: "con-ob-prazo-tipo", rotulo: "Prazo", tipo: "select", obrigatorio: true, valor: o.prazo_tipo || "data", opcoes: Object.entries(CON_PRAZO_TIPO) }),
+    uiCampo({ id: "con-ob-data", rotulo: "Data (prazo por data)", tipo: "date", valor: o.prazo_data || "" }),
+    uiCampo({ id: "con-ob-dias", rotulo: "Dias após a assinatura", tipo: "number", valor: o.prazo_dias ?? "",
+      ajuda: c.data_assinatura ? `Assinatura em ${dataBR(c.data_assinatura)}.` : "O contrato ainda não tem data de assinatura: a data sai quando ela for preenchida." }),
+    uiCampo({ id: "con-ob-comprovante", rotulo: "Comprovante exigido", valor: o.comprovante_exigido || "", placeholder: "ex.: certidão do cartório", ajuda: "Preenchido, a baixa pede o documento." }),
+    uiCampo({ id: "con-ob-obs", rotulo: "Observação", tipo: "textarea", valor: o.observacao || "" })
+  ].join("");
+  conDialogo(o.id ? "Editar obrigação" : "Adicionar obrigação", campos, async v => {
+    const tipo = v["con-ob-prazo-tipo"];
+    if(!v["con-ob-descricao"].trim()) return "Descreva a obrigação.";
+    if(tipo === "data" && !v["con-ob-data"]) return "Informe a data.";
+    const dias = v["con-ob-dias"] === "" ? null : Number(v["con-ob-dias"]);
+    if(tipo === "dias_apos_assinatura" && !(Number.isInteger(dias) && dias >= 0)) return "Informe os dias (número inteiro).";
+    const { error } = await sb.rpc("contrato_obrigacao_salvar", {
+      p_contrato: c.id, p_devedor: v["con-ob-devedor"], p_descricao: v["con-ob-descricao"].trim(), p_prazo_tipo: tipo,
+      p_prazo_data: tipo === "data" ? v["con-ob-data"] : null, p_prazo_dias: tipo === "dias_apos_assinatura" ? dias : null,
+      p_comprovante_exigido: v["con-ob-comprovante"].trim() || null, p_parte: v["con-ob-parte"] || null,
+      p_observacao: v["con-ob-obs"].trim() || null, p_obrigacao: o.id || null });
+    if(error) return conMsgErro(error, "Seu cargo não grava as obrigações deste contrato.");
+    uiAvisar("Obrigação salva.", "ok");
+    conCarregarObrigacoes(c);
+    return "";
+  });
+}
+
+async function conConfirmarObrigacao(o){
+  const c = _conAtual;
+  if(!c || !o) return;
+  const docs = await conDocumentosOpcoes(c.id);
+  const campos = [
+    uiCampo({ id: "con-obc-documento", rotulo: o.comprovante_exigido ? `Comprovante (${o.comprovante_exigido})` : "Comprovante (opcional)", tipo: "select",
+      obrigatorio: !!o.comprovante_exigido, opcoes: docs, placeholder: "Nenhum",
+      ajuda: docs.length ? "Anexe antes na aba Documentos, se ainda não estiver na lista." : "Nenhum documento no contrato: anexe na aba Documentos." }),
+    uiCampo({ id: "con-obc-obs", rotulo: "Observação", tipo: "textarea" })
+  ].join("");
+  conDialogo("Obrigação cumprida", campos, async v => {
+    if(o.comprovante_exigido && !v["con-obc-documento"]) return "Esta obrigação exige comprovante: escolha o documento.";
+    const { error } = await sb.rpc("contrato_obrigacao_confirmar", { p_obrigacao: o.id, p_documento: v["con-obc-documento"] || null, p_observacao: v["con-obc-obs"].trim() || null });
+    if(error) return conMsgErro(error, "Seu cargo não confirma as obrigações deste contrato.");
+    uiAvisar("Obrigação marcada como cumprida.", "ok");
+    conCarregarObrigacoes(c);
+    return "";
+  }, { introHTML: `<p class="meta">${esc(o.descricao)}</p>`, textoSalvar: "Marcar como cumprida" });
+}
+
+function conDispensarObrigacao(o){
+  const c = _conAtual;
+  if(!c || !o) return;
+  conDialogo("Dispensar obrigação", uiCampo({ id: "con-obd-motivo", rotulo: "Motivo", tipo: "textarea", obrigatorio: true }), async v => {
+    if(!v["con-obd-motivo"].trim()) return "Informe o motivo da dispensa.";
+    const { error } = await sb.rpc("contrato_obrigacao_dispensar", { p_obrigacao: o.id, p_motivo: v["con-obd-motivo"].trim() });
+    if(error) return conMsgErro(error, "Seu cargo não dispensa as obrigações deste contrato.");
+    uiAvisar("Obrigação dispensada.", "ok");
+    conCarregarObrigacoes(c);
+    return "";
+  }, { introHTML: `<p class="meta">${esc(o.descricao)}</p>`, textoSalvar: "Dispensar" });
+}
+
+/* exclusão com confirmação; rpc = nome da RPC, recarregar = função da aba */
+async function conExcluirFilha(titulo, texto, rpc, params, recarregar){
+  if(!(await uiConfirmar({ titulo, texto, confirmar: "Excluir", perigo: true }))) return;
+  const { error } = await sb.rpc(rpc, params);
+  if(error){ uiAvisar(conMsgErro(error), "perigo"); return; }
+  uiAvisar("Excluído.", "ok");
+  recarregar(_conAtual);
+}
+
+/* um só ouvinte por aba: os botões só marcam data-con-acao e data-id */
+function ligarContratosFilhas(){
+  const acha = (lista, id) => lista.find(x => x.id === id);
+  const tratar = ev => {
+    const b = ev.target.closest("[data-con-acao]");
+    if(!b) return;
+    const id = b.dataset.id;
+    switch(b.dataset.conAcao){
+      case "parte-nova": conAbrirParte(null); break;
+      case "parte-editar": conAbrirParte(acha(_conPartes, id)); break;
+      case "parte-sensivel": conAbrirParteSensivel(acha(_conPartes, id)); break;
+      case "parte-excluir": conExcluirFilha("Excluir parte", `A parte ${conNomeParte(acha(_conPartes, id))} sai do contrato.`, "contrato_parte_excluir", { p_parte: id }, conCarregarPartes); break;
+      case "garantia-nova": conAbrirGarantia(null); break;
+      case "garantia-editar": conAbrirGarantia(acha(_conGarantias, id)); break;
+      case "garantia-excluir": conExcluirFilha("Excluir garantia", "A garantia sai do contrato.", "contrato_garantia_excluir", { p_garantia: id }, conCarregarGarantias); break;
+      case "obrigacao-nova": conAbrirObrigacao(null); break;
+      case "obrigacao-editar": conAbrirObrigacao(acha(_conObrigacoes, id)); break;
+      case "obrigacao-confirmar": conConfirmarObrigacao(acha(_conObrigacoes, id)); break;
+      case "obrigacao-dispensar": conDispensarObrigacao(acha(_conObrigacoes, id)); break;
+      case "obrigacao-excluir": conExcluirFilha("Excluir obrigação", "A obrigação pendente sai do contrato. Para registrar que não vale mais, prefira Dispensar.", "contrato_obrigacao_excluir", { p_obrigacao: id }, conCarregarObrigacoes); break;
+    }
+  };
+  ["con-partes-conteudo", "con-garantias-conteudo", "con-obrigacoes-conteudo"].forEach(k => $(k)?.addEventListener("click", tratar));
+}
+
+/* Para regularizar → "Obrigação de contrato vencida": abre a ficha (um contrato) na aba Obrigações, ou a lista */
+async function conAbrirObrigacoesVencidas(a){
+  if(!irParaSecao("contratos")) return;
+  if(!_contratos.length) await carregarContratos();
+  const ids = (a && a.contrato_ids) || [];
+  if(ids.length === 1){ await abrirContrato(ids[0]); ativarTabCon("obrigacoes"); return; }
+  mostrarPainelCon();
+  renderContratos();
+}
+
 function ligarContratos(){
+  ligarContratosFilhas();   // fase 180b
   $("btn-d4s-enviar")?.addEventListener("click", enviarAssinaturaD4S);
   $("btn-d4s-cancelar")?.addEventListener("click", fecharModalAssinatura);
   // fase 180a: lado (Receita | Despesa | Todos) e visão (Lista | Kanban)
@@ -1184,7 +1640,7 @@ function ligarContratos(){
   document.querySelectorAll("#con-notebook button").forEach(b => {
     b.addEventListener("click", () => ativarTabCon(b.dataset.tab));
   });
-  ["documentos","titulos","parcelas","aditivos"].forEach(t => $("sb-con-" + t)?.addEventListener("click", () => ativarTabCon(t)));
+  ["documentos","titulos","parcelas","aditivos","obrigacoes"].forEach(t => $("sb-con-" + t)?.addEventListener("click", () => ativarTabCon(t)));
 
   document.querySelectorAll("#con-statusbar .stage").forEach(el => {
     el.addEventListener("click", async () => {

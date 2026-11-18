@@ -4596,6 +4596,15 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .cat-uso pre { margin: var(--esp-2) 0 0; padding: var(--esp-3); max-width: 100%; overflow-x: auto; background: var(--sup-2); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--txt-xs); line-height: var(--lh-base); color: var(--txt); }
 }
 
+/* ---- Contratos (fase 180b): formulário das partes, garantias e obrigações e os botões de cada linha ---- */
+@layer componentes {
+.con-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--esp-3); min-width: 0; }
+.con-form-msg:not(:empty) { margin-top: var(--esp-3); }
+.ui-modal-corpo > .meta { display: block; margin: 0 0 var(--esp-3); }
+.con-acoes-linha { display: inline-flex; gap: var(--esp-1); flex-wrap: wrap; }
+.con-acoes-linha .ui-btn { min-height: var(--ctl-h-sm); padding: 0 var(--esp-2); font-size: var(--txt-sm); }
+}
+
 /* ---- Envio da proposta pela orcamento@ (fase 192b): modal com campos, prévia do e-mail e anexos ---- */
 @layer componentes {
 .orc-envio { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
