@@ -57,7 +57,7 @@ const MAN_SEM_ORDEM = { critico: 0, atencao: 1, sem_base: 2, ok: 3 };
 const MAN_OPERACAO = { trocar: "Trocar", inspecionar: "Inspecionar", verificar: "Verificar", limpar: "Limpar", lubrificar: "Lubrificar", amostra: "Obter amostra", outros: "Outros" };
 const MAN_CHECK_RES = { aprovado: ["Aprovado", "verde"], com_pendencias: ["Com pendências", "ambar"], reprovado: ["Reprovado", "vermelho"] };
 const MAN_TIPO_EQ = { perfuratriz: "Perfuratriz", bate_estaca: "Bate-estaca", escavadeira: "Escavadeira", retroescavadeira: "Retroescavadeira", guindaste: "Guindaste", caminhao: "Caminhão", compressor: "Compressor", gerador: "Gerador", bomba: "Bomba", ferramenta: "Ferramenta", veiculo: "Veículo", outro: "Outro" };
-const MAN_SELECT = "id,numero,tipo,status,descricao,setor,local,prioridade,equipamento_id,responsavel_id,fornecedor_id,data_prevista,data_inicio,data_conclusao,horimetro_km,km,custo,custo_pecas,custo_horas,custo_real,custo_manual,observacoes,plano_item_ids,checklist_id,origem,codigo_externo,created_at,equipamento:equipamentos(codigo,nome,tipo,horimetro,km)";
+const MAN_SELECT = "id,numero,tipo,status,descricao,setor,local,prioridade,equipamento_id,responsavel_id,fornecedor_id,data_prevista,data_inicio,data_conclusao,horimetro_km,km,custo,custo_pecas,custo_horas,custo_real,custo_manual,observacoes,plano_item_ids,checklist_id,origem,codigo_externo,created_at,aberto_por,autor:profiles!manutencoes_aberto_por_fkey(nome),equipamento:equipamentos(codigo,nome,tipo,horimetro,km)";
 const MAN_ANEXO_BUCKET = "manutencao-anexos";
 const MAN_ANEXO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", pdf: "application/pdf", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xls: "application/vnd.ms-excel", csv: "text/csv", txt: "text/plain", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", doc: "application/msword" };
 
@@ -840,6 +840,7 @@ function manAtualizarCabecalho(){
   $("man-chip-hor").textContent = [m.horimetro_km != null ? num(m.horimetro_km) + " h" : null, m.km != null ? num(m.km) + " km" : null].filter(Boolean).join(" · ") || "—";
   $("man-chip-resp").textContent = manFunc(m.responsavel_id) || "—";
   $("man-chip-dias").textContent = manDias(m) ?? "—";
+  $("man-chip-autor").textContent = autorOrdemTexto(m, m.autor);   // lote S65-h (#323)
   $("man-chip-origem").style.display = m.origem === "planilha" ? "" : "none"; $("man-chip-origem-txt").textContent = m.codigo_externo ? "OS " + m.codigo_externo : "RG 3.1";
   // lote S56b (#194/#193): o "Dar baixa" é do almoxarifado e só para a peça que não está numa separação viva
   const pend = _manMats.filter(manMatPendente), pendSep = pend.filter(manMatNaSeparacao), pendBaixa = pend.length > pendSep.length;

@@ -34,7 +34,7 @@ const FAB_STAGES = ["rascunho", "confirmada", "em_producao", "concluida"];
 const FAB_ABERTAS = ["rascunho", "planejada", "confirmada", "em_producao", "pausada"];
 const FAB_DESTINO = { estoque: "Estoque", acessorio: "Acessório", obra: "Obra", equipamento: "TAG", centro_custo: "Centro de custo" };
 const FAB_SETOR_CT = { usinagem: "Usinagem", solda: "Solda", corte: "Corte", manual: "Manual", eletrica: "Elétrica", outro: "Outro" };
-const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_real,custo_componentes,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
+const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_real,custo_componentes,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,created_at,criado_por,autor:profiles!ordens_fabricacao_criado_por_fkey(nome),produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
 
 function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "logistica", "almoxarife"].includes(usuarioAtual.cargo); }
 function fabEhDiretoria(){ return !!usuarioAtual && ["admin", "diretor"].includes(usuarioAtual.cargo); }
@@ -237,6 +237,7 @@ function fabAtualizarCabecalho(){
   $("fab-chip-dest").innerHTML = fabDestinoLink(o);
   $("fab-chip-resp").textContent = respResumo(fabRespNomes(o)) || "—"; $("fab-chip-resp").title = fabRespNomes(o).join(", ");
   $("fab-chip-dias").textContent = novo ? "—" : (fabDias(o) ?? "—");
+  $("fab-chip-autor").textContent = autorOrdemTexto(o, o.autor);   // lote S65-h (#323)
   $("fab-chip-odoo").style.display = o.codigo_externo ? "" : "none"; $("fab-chip-odoo-txt").textContent = o.codigo_externo || "";
   const pend = fabPendentes().length > 0;
   const temLista = !!o.modelo_id || _fabModelos.some(m => m.ativo !== false && (m.produto_id === o.produto_id || !o.produto_id));

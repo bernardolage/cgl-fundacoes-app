@@ -1884,6 +1884,18 @@ function dataHoraBR(iso){
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/* lote S65-h (#323): texto do chip "Aberto por" das fichas de reparo, fabricação e manutenção.
+   o = a ordem (codigo_externo, created_at); autor = { nome } do embed em profiles (ou null).
+   Importada: tem código do Odoo ou nasceu nas cargas de 19 e 20/10/2026 (feitas com o login do diretor). */
+const CARGAS_ODOO_ORDENS = ["2026-10-19", "2026-10-20"];
+function autorOrdemTexto(o, autor){
+  if(!o || !o.id) return usuarioAtual?.nome ? `${usuarioAtual.nome} (ao salvar)` : "—";
+  const dia = o.created_at ? dataLocalISO(new Date(o.created_at)) : "";
+  if(o.codigo_externo || CARGAS_ODOO_ORDENS.includes(dia)) return "Importada do Odoo";
+  if(autor && autor.nome) return `${autor.nome}${dia ? " em " + dataBR(dia) : ""}`;
+  return "Autor não registrado";
+}
+
 /* sessionStorage pode estar bloqueado (navegação privada): nunca deixar isso derrubar o app */
 function sessaoLer(chave){ try { return sessionStorage.getItem(chave); } catch(_){ return null; } }
 function sessaoGravar(chave, valor){ try { sessionStorage.setItem(chave, valor); } catch(_){} }

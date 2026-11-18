@@ -21,7 +21,7 @@ let _repCarregado = false;
 const REP_STATUS = { aberto: ["Aberto", "azul"], em_execucao: ["Em execução", "ambar"], concluido: ["Concluído", "verde"], cancelado: ["Cancelado", "cinza"] };
 const REP_STAGES = ["aberto", "em_execucao", "concluido"];
 const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: "Mecânica", eletrica: "Elétrica", pintura: "Pintura", externo: "Externo" };
-const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)"
+const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,created_at,criado_por,autor:profiles!reparos_caldeiraria_criado_por_fkey(nome),acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)"
   // fase 186b (#226): reparo externo (fornecedor, envio, orçamento, pedido ligado, retorno); etapa_externa e pedido_externo são campos calculados no banco
   + ",externo,fornecedor_id,enviado_em,nf_remessa_numero,orcamento_recebido_em,orcamento_valor,orcamento_pdf_path,pedido_id,retornou_em,nf_retorno_numero,etapa_externa,pedido_externo,fornecedor:fornecedores(razao_social,nome_fantasia)";
 /* fase 186b: etapas do reparo externo (o status do reparo continua aberto, em execução, concluído ou cancelado) */
@@ -358,6 +358,7 @@ function repAtualizarCabecalho(){
   $("rep-chip-setor").textContent = REP_SETOR[r.setor] || "—";
   $("rep-chip-resp").textContent = respResumo(repRespNomes(r)) || "—"; $("rep-chip-resp").title = repRespNomes(r).join(", ");
   $("rep-chip-dias").textContent = repDias(r) ?? "—";
+  $("rep-chip-autor").textContent = autorOrdemTexto(r, r.autor);   // lote S65-h (#323)
   $("rep-chip-odoo").style.display = r.codigo_externo ? "" : "none"; $("rep-chip-odoo-txt").textContent = r.codigo_externo || "";
   // fase 186b: chip do pedido do conserto
   const ped = r.pedido_externo;
