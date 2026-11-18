@@ -1,6 +1,10 @@
 /* ====================================================================
-   js/ui.js — componentes de apresentação da base visual (fase 161, redesign lote 1).
-   Carregado logo depois do core.js. Só devolve HTML: nenhuma função aqui lê o banco, guarda estado ou liga evento.
+   js/ui.js — componentes de apresentação da base visual (fase 161, redesign lote 1; catálogo na fase 193a).
+   Carregado logo depois do core.js. Catálogo vivo de todos eles, com o trecho de uso: ui.html (raiz).
+   Os componentes de tela só devolvem HTML: nenhuma função aqui lê o banco ou guarda estado. As exceções são as três
+   de diálogo (uiModal, uiAvisar, uiConfirmar), que montam o elemento na página e ligam o próprio clique.
+   Estados: todo componente da fase 193a aceita { erro } (mostra uiErro no lugar do conteúdo) e tem estado vazio próprio;
+   uiCarregando(texto) é o estado de espera de qualquer bloco.
    Todo texto recebido passa por esc(); o que já chega como HTML pronto está no nome do parâmetro (corpoHTML, valorHTML)
    e é responsabilidade de quem chama. Estilo em css/estilo.css (classes .ui-*), sem cor fixa e sem estilo inline.
    Ícones em SVG de traço (nunca emoji), na cor do texto ao redor.
@@ -28,8 +32,21 @@ function uiLinhaItem(titulo, sub, valor, unidade){
   return `<div class="ui-linha"><div class="ui-linha-txt"><div class="ui-linha-titulo">${esc(titulo)}</div>${sub ? `<div class="ui-linha-sub">${esc(sub)}</div>` : ""}</div>${valor != null && valor !== "" ? `<div class="ui-linha-valor"><strong>${esc(valor)}</strong>${unidade ? `<span>${esc(unidade)}</span>` : ""}</div>` : ""}</div>`;
 }
 /* KPI: número grande, rótulo pequeno em caixa alta e uma linha de contexto (comparação ou consequência) */
-function uiKpi(valor, rotulo, contexto){
-  return `<div class="ui-kpi"><div class="ui-kpi-valor">${esc(valor)}</div><div class="rotulo-caps">${esc(rotulo)}</div>${contexto ? `<div class="ui-kpi-contexto">${esc(contexto)}</div>` : ""}</div>`;
+/* fase 193a: comparacao = { delta, texto, melhor } acrescenta a linha "▼ 13% vs média". delta é a variação em fração
+   (-0.13 = 13% abaixo); melhor = "maior" (padrão) ou "menor" diz se subir é bom (verde) ou ruim (vermelho).
+   comparacao = { erro } mostra o erro no lugar do número; valor vazio vira "—". */
+function uiKpi(valor, rotulo, contexto, comparacao){
+  const c = comparacao || {};
+  if(c.erro) return `<div class="ui-kpi ui-kpi-erro"><div class="ui-kpi-valor">—</div><div class="rotulo-caps">${esc(rotulo)}</div>${uiErro(c.erro)}</div>`;
+  const v = valor == null || valor === "" ? "—" : valor;
+  let cmp = "";
+  if(c.delta != null && Number.isFinite(Number(c.delta))){
+    const d = Number(c.delta), pct = Math.round(Math.abs(d) * 100);
+    const seta = pct === 0 ? "=" : d > 0 ? "▲" : "▼";
+    const bom = pct === 0 ? "igual" : (d > 0) === (c.melhor !== "menor") ? "bom" : "ruim";
+    cmp = `<div class="ui-kpi-cmp ${bom}"><span aria-hidden="true">${seta}</span> ${pct}%${c.texto ? ` ${esc(c.texto)}` : ""}</div>`;
+  }
+  return `<div class="ui-kpi"><div class="ui-kpi-valor">${esc(v)}</div><div class="rotulo-caps">${esc(rotulo)}</div>${contexto ? `<div class="ui-kpi-contexto">${esc(contexto)}</div>` : ""}${/* html */ cmp}</div>`;
 }
 /* Iniciais de um nome ("Marcos Vinícius Silva" = "MS"; um nome só = as duas primeiras letras) */
 function uiIniciais(nome){
@@ -63,3 +80,270 @@ function uiRotuloValor(rotulo, valorHTML){
 }
 /* Estado vazio de um bloco: uma frase discreta, sem quebrar o desenho do cartão */
 function uiVazio(texto){ return `<p class="ui-vazio">${esc(texto)}</p>`; }
+
+/* ====================================================================
+   FASE 193a — componentes da base (catálogo em ui.html)
+   Convenções:
+   - Todo texto vindo do banco passa por esc() aqui dentro; parâmetro que já chega como HTML pronto tem "HTML" no nome.
+   - Classes de tom só de lista fechada (uiTom); nada vindo do banco vira classe ou atributo sem esc().
+   - Cor em SVG por classe CSS (fill e stroke com token na camada componentes); nenhum estilo inline.
+   - Clique: o componente só marca data-* (data-acao, data-aba, data-remover, data-tipo...); quem chama liga o evento.
+   ==================================================================== */
+const UI_TONS = ["ok", "aviso", "perigo", "info", "neutro"];
+/* classe de tom ("tom-ok", "tom-aviso"...; desconhecido = "tom-neutro"): nunca devolve texto de fora da lista.
+   O prefixo evita colidir com .aviso/.ok do legado (o .aviso do legado tem display:none). */
+function uiTom(t){ return "tom-" + (UI_TONS.includes(t) ? esc(t) : "neutro"); }
+/* id seguro para atributo id/for (letras, números, _ e -) */
+function uiId(id){ return String(id ?? "").replace(/[^A-Za-z0-9_-]/g, ""); }
+
+/* Estado de erro de um bloco: frase em tom de perigo, com papel de alerta para o leitor de tela */
+function uiErro(texto){ return `<p class="ui-erro" role="alert">${esc(texto || "Não foi possível carregar.")}</p>`; }
+/* Estado de espera de um bloco */
+function uiCarregando(texto){ return `<p class="ui-carregando" role="status">${esc(texto || "Carregando…")}</p>`; }
+
+/* Formata valor de célula ou KPI por tipo: "num", "int", "brl", "pct" (fração: 0.42 = 42%), "data", "texto".
+   Sempre devolve texto escapado. */
+function uiFmt(v, tipo){
+  if(v == null || v === "") return "—";
+  const n = Number(v);
+  if(tipo === "num" && Number.isFinite(n)) return esc(n.toLocaleString("pt-BR", { maximumFractionDigits: 2 }));
+  if(tipo === "int" && Number.isFinite(n)) return esc(Math.round(n).toLocaleString("pt-BR"));
+  if(tipo === "brl" && Number.isFinite(n)) return esc(n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+  if(tipo === "pct" && Number.isFinite(n)) return esc(Math.round(n * 100) + "%");
+  if(tipo === "data"){ const p = String(v).slice(0, 10).split("-"); return esc(p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : v); }
+  return esc(v);
+}
+
+/* ---- Cabeçalho de página: trilha, título, uma ação primária, menu "Ações ▾" e paginador ----
+   cfg = { trilha:[{texto,id}], titulo, sub, acoes:[{id,texto,primaria,titulo}], menuAcoes:[{id,texto,perigo}],
+           paginador:{ pos, total }, erro }
+   Só a primeira ação com primaria:true sai como botão primário (uma por página). O menu é <details>, abre sem JS. */
+function uiPagina(cfg){
+  const c = cfg || {};
+  let prim = false;
+  const acoes = (c.acoes || []).filter(a => a && a.texto).map(a => {
+    const ehPrim = a.primaria && !prim; if(ehPrim) prim = true;
+    return `<button type="button" class="${ehPrim ? "ui-btn ui-btn-prim" : "ui-btn"}" data-acao="${esc(a.id)}"${a.titulo ? ` title="${esc(a.titulo)}"` : ""}>${esc(a.texto)}</button>`;
+  }).join("");
+  const menu = (c.menuAcoes || []).filter(a => a && a.texto);
+  const menuHTML = menu.length ? `<details class="ui-menu"><summary class="ui-btn">Ações <span aria-hidden="true">▾</span></summary><div class="ui-menu-lista" role="menu">${menu.map(a =>
+    `<button type="button" role="menuitem" class="${a.perigo ? "ui-menu-item perigo" : "ui-menu-item"}" data-acao="${esc(a.id)}">${esc(a.texto)}</button>`).join("")}</div></details>` : "";
+  const p = c.paginador;
+  const pos = p ? Math.trunc(Number(p.pos)) || 0 : 0, tot = p ? Math.trunc(Number(p.total)) || 0 : 0;
+  const pagHTML = tot > 0 ? `<div class="ui-pag" role="group" aria-label="Registro ${Number(pos)} de ${Number(tot)}"><button type="button" class="ui-btn" data-pag="ant"${pos <= 1 ? " disabled" : ""} aria-label="Anterior">‹</button><span>${Number(pos)} / ${Number(tot)}</span><button type="button" class="ui-btn" data-pag="prox"${pos >= tot ? " disabled" : ""} aria-label="Próximo">›</button></div>` : "";
+  return `<header class="ui-pagina">${c.trilha && c.trilha.length ? uiBreadcrumb(c.trilha) : ""}<div class="ui-pagina-linha"><div class="ui-pagina-tit"><h1>${esc(c.titulo || "Sem título")}</h1>${c.sub ? `<p>${esc(c.sub)}</p>` : ""}</div><div class="ui-pagina-acoes">${/* html */ acoes}${/* html */ menuHTML}${/* html */ pagHTML}</div></div>${c.erro ? uiErro(c.erro) : ""}</header>`;
+}
+
+/* ---- Faixa de situação: a frase do topo da ficha ("Em execução · 87% concluída · parada há 11 dias") ----
+   frases = lista de textos (vazios saem); tom = ok | aviso | perigo | info | neutro; opcoes = { erro, vazio } */
+function uiFaixaSituacao(frases, tom, opcoes){
+  const o = opcoes || {};
+  if(o.erro) return `<div class="ui-faixa tom-perigo">${uiErro(o.erro)}</div>`;
+  const l = (Array.isArray(frases) ? frases : [frases]).filter(x => x != null && String(x).trim() !== "");
+  if(!l.length) return `<div class="ui-faixa tom-neutro"><span class="ui-faixa-txt">${esc(o.vazio || "Sem situação calculada.")}</span></div>`;
+  return `<div class="ui-faixa ${uiTom(tom)}" role="status"><span class="ui-faixa-marca" aria-hidden="true"></span><span class="ui-faixa-txt">${l.map((x, i) => (i ? '<span class="sep" aria-hidden="true"> · </span>' : "") + (i === 0 ? `<strong>${esc(x)}</strong>` : `<span>${esc(x)}</span>`)).join("")}</span></div>`;
+}
+
+/* ---- Abas com resumo embaixo do nome ----
+   abas = [{ id, rotulo, resumo, grupo }]; abas com o mesmo grupo viram um item "Grupo ▾" (<details>) no fim da barra.
+   opcoes = { ativa, erro, rotulo } (rotulo = aria-label da barra). Cada aba é button[role=tab][data-aba]. */
+function uiAbas(abas, opcoes){
+  const o = opcoes || {};
+  if(o.erro) return uiErro(o.erro);
+  const l = (abas || []).filter(a => a && a.id != null && a.rotulo);
+  if(!l.length) return uiVazio("Nenhuma aba disponível.");
+  const btn = a => `<button type="button" role="tab" class="ui-aba${a.id === o.ativa ? " ativa" : ""}" data-aba="${esc(a.id)}" aria-selected="${a.id === o.ativa ? "true" : "false"}"><span class="ui-aba-nome">${esc(a.rotulo)}</span>${a.resumo != null && a.resumo !== "" ? `<span class="ui-aba-resumo">${esc(a.resumo)}</span>` : ""}</button>`;
+  const soltas = l.filter(a => !a.grupo);
+  const grupos = [...new Set(l.filter(a => a.grupo).map(a => a.grupo))];
+  const gruposHTML = grupos.map(g => {
+    const dentro = l.filter(a => a.grupo === g);
+    const temAtiva = dentro.some(a => a.id === o.ativa);
+    return `<details class="ui-abas-grupo${temAtiva ? " ativa" : ""}"><summary class="ui-aba"><span class="ui-aba-nome">${esc(g)} <span aria-hidden="true">▾</span></span><span class="ui-aba-resumo">${dentro.length} ${dentro.length === 1 ? "aba" : "abas"}</span></summary><div class="ui-abas-grupo-lista">${dentro.map(btn).join("")}</div></details>`;
+  }).join("");
+  return `<div class="ui-abas" role="tablist" aria-label="${esc(o.rotulo || "Abas")}">${soltas.map(btn).join("")}${/* html */ gruposHTML}</div>`;
+}
+
+/* ---- Tabela densa de ERP ----
+   cfg = { colunas:[{ chave, rotulo, tipo, html }], linhas:[{...}], vazio, erro, carregando, rodape:{chave: valor}, chaveLinha }
+   tipo "num" | "int" | "brl" | "pct" alinha à direita com números tabulares; "data" formata; "codigo" sai em mono.
+   html(linha) devolve HTML pronto (quem escreve escapa); chaveLinha sai em data-id de cada <tr>. Cabeçalho fixo ao rolar. */
+function uiTabela(cfg){
+  const c = cfg || {};
+  const cols = (c.colunas || []).filter(x => x && x.chave != null);
+  const num = t => ["num", "int", "brl", "pct"].includes(t);
+  const cls = x => num(x.tipo) ? ' class="num"' : x.tipo === "codigo" ? ' class="cod"' : "";
+  const cab = `<thead><tr>${cols.map(x => `<th scope="col"${cls(x)}>${esc(x.rotulo ?? x.chave)}</th>`).join("")}</tr></thead>`;
+  const n = Math.max(cols.length, 1);
+  const linhas = c.linhas || [];
+  const celula = (x, l) => typeof x.html === "function" ? /* html */ (x.html(l) ?? "") : uiFmt(l[x.chave], num(x.tipo) || x.tipo === "data" ? x.tipo : "texto");
+  let corpo;
+  if(c.erro) corpo = `<tr class="ui-tabela-estado"><td colspan="${n}">${uiErro(c.erro)}</td></tr>`;
+  else if(c.carregando) corpo = `<tr class="ui-tabela-estado"><td colspan="${n}">${uiCarregando(typeof c.carregando === "string" ? c.carregando : "")}</td></tr>`;
+  else if(!linhas.length) corpo = `<tr class="ui-tabela-estado"><td colspan="${n}">${uiVazio(c.vazio || "Nenhum registro.")}</td></tr>`;
+  else corpo = linhas.map(l => `<tr${c.chaveLinha && l[c.chaveLinha] != null ? ` data-id="${esc(l[c.chaveLinha])}"` : ""}>${cols.map(x => `<td${cls(x)}>${/* html */ celula(x, l)}</td>`).join("")}</tr>`).join("");
+  const rod = c.rodape && !c.erro && linhas.length ? `<tfoot><tr>${cols.map(x => `<td${cls(x)}>${c.rodape[x.chave] != null ? uiFmt(c.rodape[x.chave], num(x.tipo) ? x.tipo : "texto") : ""}</td>`).join("")}</tr></tfoot>` : "";
+  return `<div class="ui-tabela-rola"><table class="ui-tabela">${/* html */ cab}<tbody>${/* html */ corpo}</tbody>${/* html */ rod}</table></div>`;
+}
+
+/* ---- Filtros: busca + filtros removíveis + contador ----
+   cfg = { busca, placeholder, filtros:[{ id, rotulo, valor }], total, unidade:["obra","obras"], erro, id }
+   O campo de busca tem data-filtro="busca"; cada filtro ativo é um botão data-remover="<id>"; "Limpar" tem data-remover="*". */
+function uiFiltros(cfg){
+  const c = cfg || {};
+  const fs = (c.filtros || []).filter(f => f && f.valor != null && f.valor !== "");
+  const un = c.unidade || ["registro", "registros"];
+  const tot = Number(c.total);
+  const temTot = c.total != null && c.total !== "" && Number.isFinite(tot);
+  const cont = c.erro ? uiErro(c.erro) : temTot ? `<span class="ui-filtros-cont" role="status">${esc(tot.toLocaleString("pt-BR"))} ${esc(tot === 1 ? un[0] : un[1])}</span>` : "";
+  const ativos = fs.length ? `<div class="ui-filtros-ativos">${fs.map(f =>
+    `<button type="button" class="ui-filtro" data-remover="${esc(f.id)}" aria-label="Remover filtro ${esc(f.rotulo)}: ${esc(f.valor)}"><span>${esc(f.rotulo)}:</span> <strong>${esc(f.valor)}</strong> <span aria-hidden="true">×</span></button>`).join("")}${fs.length > 1 ? '<button type="button" class="ui-filtro-limpar" data-remover="*">Limpar</button>' : ""}</div>` : "";
+  return `<div class="ui-filtros"><label class="ui-filtros-busca"><span class="sr-only">Buscar</span><input type="search" id="${esc(uiId(c.id || "ui-busca"))}" data-filtro="busca" value="${esc(c.busca || "")}" placeholder="${esc(c.placeholder || "Buscar")}" autocomplete="off"></label>${/* html */ ativos}${/* html */ cont}</div>`;
+}
+
+/* ---- Campo de formulário: rótulo, controle, ajuda e erro ----
+   cfg = { id, rotulo, tipo ("text","number","date","email","tel","time","month","textarea","select"), valor, ajuda, erro,
+           obrigatorio, opcoes:[[valor, rótulo]], placeholder, somenteLeitura }. Select sem opção mostra o estado vazio. */
+function uiCampo(cfg){
+  const c = cfg || {};
+  const id = uiId(c.id || "campo");
+  const desc = [c.ajuda ? `${id}-ajuda` : "", c.erro ? `${id}-erro` : ""].filter(Boolean).join(" ");
+  const attrs = `id="${esc(id)}" name="${esc(id)}"${c.obrigatorio ? " required" : ""}${c.somenteLeitura ? " readonly" : ""}${c.erro ? ' aria-invalid="true"' : ""}${desc ? ` aria-describedby="${esc(desc)}"` : ""}`;
+  let ctl;
+  if(c.tipo === "textarea") ctl = `<textarea ${/* html */ attrs} rows="3" placeholder="${esc(c.placeholder || "")}">${esc(c.valor ?? "")}</textarea>`;
+  else if(c.tipo === "select"){
+    const op = c.opcoes || [];
+    ctl = op.length ? `<select ${/* html */ attrs}><option value="">${esc(c.placeholder || "Selecione")}</option>${op.map(o => `<option value="${esc(o[0])}"${String(o[0]) === String(c.valor ?? "") ? " selected" : ""}>${esc(o[1] ?? o[0])}</option>`).join("")}</select>`
+      : `<select ${/* html */ attrs} disabled><option value="">Nenhuma opção cadastrada</option></select>`;
+  } else {
+    const tipo = ["text", "number", "date", "email", "tel", "time", "month"].includes(c.tipo) ? c.tipo : "text";
+    ctl = `<input type="${esc(tipo)}" ${/* html */ attrs} value="${esc(c.valor ?? "")}" placeholder="${esc(c.placeholder || "")}">`;
+  }
+  return `<div class="ui-campo${c.erro ? " com-erro" : ""}"><label for="${esc(id)}">${esc(c.rotulo || "")}${c.obrigatorio ? ' <span class="ui-campo-obrig" aria-hidden="true">*</span>' : ""}</label>${/* html */ ctl}${c.ajuda ? `<p class="ui-campo-ajuda" id="${esc(id)}-ajuda">${esc(c.ajuda)}</p>` : ""}${c.erro ? `<p class="ui-campo-erro" id="${esc(id)}-erro" role="alert">${esc(c.erro)}</p>` : ""}</div>`;
+}
+
+/* ---- Linha do tempo por dia e hora, com filtro por tipo ----
+   eventos = [{ quando (ISO "2026-11-18T14:30" ou só a data), tipo, titulo, detalhe }]; sai do mais novo para o mais antigo.
+   opcoes = { tipos:[{ id, rotulo, tom }], filtro (id do tipo visível; vazio = todos), erro, vazio }.
+   Os filtros são button[data-tipo]; o tom do marcador vem do tipo (lista fechada). */
+function uiLinhaTempo(eventos, opcoes){
+  const o = opcoes || {};
+  if(o.erro) return `<div class="ui-tempo">${uiErro(o.erro)}</div>`;
+  const tipos = o.tipos || [];
+  const tomDe = t => uiTom((tipos.find(x => x.id === t) || {}).tom);
+  const filtros = tipos.length ? `<div class="ui-tempo-filtros" role="group" aria-label="Filtrar por tipo"><button type="button" class="ui-filtro${!o.filtro ? " ativo" : ""}" data-tipo="" aria-pressed="${!o.filtro ? "true" : "false"}">Todos</button>${tipos.map(t =>
+    `<button type="button" class="ui-filtro${o.filtro === t.id ? " ativo" : ""}" data-tipo="${esc(t.id)}" aria-pressed="${o.filtro === t.id ? "true" : "false"}">${esc(t.rotulo)}</button>`).join("")}</div>` : "";
+  const l = (eventos || []).filter(e => e && e.quando && (!o.filtro || e.tipo === o.filtro))
+    .slice().sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+  if(!l.length) return `<div class="ui-tempo">${/* html */ filtros}${uiVazio(o.vazio || "Nenhum evento no período.")}</div>`;
+  const dias = [];
+  for(const e of l){
+    const d = String(e.quando).slice(0, 10);
+    if(!dias.length || dias[dias.length - 1].d !== d) dias.push({ d, itens: [] });
+    dias[dias.length - 1].itens.push(e);
+  }
+  const hora = q => { const m = /T(\d{2}:\d{2})/.exec(String(q)); return m ? m[1] : ""; };
+  const item = e => `<li class="ui-tempo-item ${tomDe(e.tipo)}"><span class="ui-tempo-hora">${esc(hora(e.quando))}</span><span class="ui-tempo-marca" aria-hidden="true"></span><div class="ui-tempo-txt"><div class="ui-tempo-titulo">${esc(e.titulo || "")}</div>${e.detalhe ? `<div class="ui-tempo-detalhe">${esc(e.detalhe)}</div>` : ""}</div></li>`;
+  return `<div class="ui-tempo">${/* html */ filtros}${dias.map(g => `<section class="ui-tempo-dia"><h4 class="rotulo-caps">${uiFmt(g.d, "data")}</h4><ol>${g.itens.map(item).join("")}</ol></section>`).join("")}</div>`;
+}
+
+/* ---- Pulso: barras da produção por dia contra a média ----
+   valores = números, um por dia, do mais antigo ao mais novo; media = linha de referência (padrão: média dos dias > 0).
+   opcoes = { rotulos (um por barra, ex.: "12/11"), unidade ("m"), erro, vazio }. SVG sem estilo inline: a cor vem das
+   classes .acima / .abaixo / .zero (fill com token na camada componentes). */
+function uiPulso(valores, media, opcoes){
+  const o = opcoes || {};
+  if(o.erro) return `<div class="ui-pulso">${uiErro(o.erro)}</div>`;
+  const v = (valores || []).map(x => Number(x) || 0);
+  if(!v.length) return `<div class="ui-pulso">${uiVazio(o.vazio || "Sem produção no período.")}</div>`;
+  const pos = v.filter(x => x > 0);
+  const med = media != null && media !== "" && Number.isFinite(Number(media)) ? Number(media) : pos.length ? pos.reduce((a, b) => a + b, 0) / pos.length : 0;
+  const max = Math.max(...v, med, 1);
+  const W = 100, H = 40, gap = v.length > 1 ? 1 : 0, bw = (W - gap * (v.length - 1)) / v.length;
+  const un = o.unidade ? " " + o.unidade : "";
+  const rot = o.rotulos || [];
+  const fmt = x => Number(x).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  const barras = v.map((x, i) => {
+    const h = x > 0 ? Math.max(1, x / max * H) : 1;
+    const classe = x <= 0 ? "zero" : x >= med ? "acima" : "abaixo";
+    return `<rect class="${classe}" x="${(i * (bw + gap)).toFixed(2)}" y="${(H - h).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}"><title>${esc((rot[i] ? rot[i] + ": " : "") + fmt(x) + un)}</title></rect>`;
+  }).join("");
+  const ym = (H - med / max * H).toFixed(2);
+  const linha = med > 0 ? `<line class="ui-pulso-media" x1="0" x2="${W}" y1="${ym}" y2="${ym}"/>` : "";
+  const resumo = `${v.length} ${v.length === 1 ? "dia" : "dias"}, média ${fmt(med)}${un}`;
+  return `<figure class="ui-pulso"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(resumo)}">${/* html */ barras}${/* html */ linha}</svg><figcaption>${rot.length ? `<span>${esc(rot[0])}</span>` : ""}<span class="ui-pulso-leg">média ${esc(fmt(med) + un)}</span>${rot.length > 1 ? `<span>${esc(rot[rot.length - 1])}</span>` : ""}</figcaption></figure>`;
+}
+
+/* ---- Progresso: barra ou anel ----
+   uiProgresso(feito, total, rotulo, { forma: "barra" | "anel", erro, vazio }). Total 0 ou vazio = estado vazio
+   ("Sem previsto"); acima de 100% o desenho para no cheio e o número mostra o real. */
+function uiProgresso(feito, total, rotulo, opcoes){
+  const o = opcoes || {};
+  const anel = o.forma === "anel";
+  if(o.erro) return `<div class="ui-prog${anel ? " anel" : ""}">${uiErro(o.erro)}</div>`;
+  const f = Number(feito) || 0, t = Number(total) || 0;
+  if(t <= 0) return `<div class="ui-prog sem-dado${anel ? " anel" : ""}"><span class="rotulo-caps">${esc(rotulo || "")}</span>${uiVazio(o.vazio || "Sem previsto.")}</div>`;
+  const pct = f / t, p = Math.max(0, Math.min(1, pct)), txt = Math.round(pct * 100) + "%";
+  const meta = `${f.toLocaleString("pt-BR")} de ${t.toLocaleString("pt-BR")}`;
+  const aria = `role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p * 100)}" aria-label="${esc((rotulo ? rotulo + ": " : "") + txt)}"`;
+  if(anel){
+    const C = 2 * Math.PI * 16;
+    return `<div class="ui-prog anel" ${/* html */ aria}><svg viewBox="0 0 40 40" aria-hidden="true"><circle class="trilho" cx="20" cy="20" r="16"/><circle class="feito" cx="20" cy="20" r="16" stroke-dasharray="${(p * C).toFixed(2)} ${C.toFixed(2)}" transform="rotate(-90 20 20)"/></svg><div class="ui-prog-anel-txt"><strong>${esc(txt)}</strong><span>${esc(rotulo || "")}</span><span class="ui-prog-meta">${esc(meta)}</span></div></div>`;
+  }
+  return `<div class="ui-prog" ${/* html */ aria}><div class="ui-prog-cab"><span class="rotulo-caps">${esc(rotulo || "")}</span><strong>${esc(txt)}</strong></div><svg class="ui-prog-barra" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="trilho" width="100" height="6" rx="3"/><rect class="feito" width="${(p * 100).toFixed(2)}" height="6" rx="3"/></svg><div class="ui-prog-meta">${esc(meta)}</div></div>`;
+}
+
+/* ---- Diálogos: modal, aviso (toast) e confirmação — no lugar dos espalhados e de alert/confirm nativos ----
+   uiModalHTML monta o HTML (testável); uiModal abre num <dialog> e devolve Promise com o id da ação clicada (null = fechou).
+   cfg = { titulo, corpoHTML, texto, acoes:[{ id, texto, primaria, perigo }], largura: "p" | "m" | "g", erro } */
+function uiModalHTML(cfg){
+  const c = cfg || {};
+  const larg = ["p", "m", "g"].includes(c.largura) ? c.largura : "m";
+  const corpo = c.erro ? uiErro(c.erro) : c.corpoHTML ? /* html */ c.corpoHTML : c.texto ? `<p>${esc(c.texto)}</p>` : uiVazio("Nada a mostrar.");
+  const acoes = (c.acoes && c.acoes.length ? c.acoes : [{ id: "fechar", texto: "Fechar" }]).map(a =>
+    `<button type="button" class="ui-btn${a.primaria ? " ui-btn-prim" : ""}${a.perigo ? " ui-btn-perigo" : ""}" data-acao="${esc(a.id)}">${esc(a.texto)}</button>`).join("");
+  return `<div class="ui-modal-caixa ${esc(larg)}"><header class="ui-modal-cab"><h2>${esc(c.titulo || "")}</h2><button type="button" class="ui-modal-x" data-acao="" aria-label="Fechar">×</button></header><div class="ui-modal-corpo">${/* html */ corpo}</div><footer class="ui-modal-acoes">${/* html */ acoes}</footer></div>`;
+}
+function uiModal(cfg){
+  return new Promise(resolve => {
+    const d = document.createElement("dialog");
+    d.className = "ui-modal";
+    d.setAttribute("aria-label", String((cfg && cfg.titulo) || "Diálogo"));
+    d.innerHTML = uiModalHTML(cfg);
+    let res = null;
+    d.addEventListener("click", ev => {
+      const b = ev.target.closest("[data-acao]");
+      if(b){ res = b.dataset.acao || null; d.close(); }
+      else if(ev.target === d){ d.close(); }   // clique no véu fecha
+    });
+    d.addEventListener("close", () => { d.remove(); resolve(res); });
+    document.body.appendChild(d);
+    d.showModal();
+    const foco = d.querySelector(".ui-btn-prim") || d.querySelector(".ui-modal-acoes .ui-btn");
+    if(foco) foco.focus();
+  });
+}
+/* Confirmação: Promise<boolean>. cfg = { titulo, texto, confirmar ("Confirmar"), cancelar ("Cancelar"), perigo } */
+function uiConfirmar(cfg){
+  const c = cfg || {};
+  return uiModal({ titulo: c.titulo || "Confirmar", texto: c.texto, largura: "p", acoes: [
+    { id: "nao", texto: c.cancelar || "Cancelar" },
+    { id: "sim", texto: c.confirmar || "Confirmar", primaria: !c.perigo, perigo: !!c.perigo }
+  ] }).then(r => r === "sim");
+}
+/* Aviso (toast): HTML testável + função que mostra no canto. tipo = ok | aviso | perigo (ou "erro") | info.
+   "ok" e "info" somem sozinhos em 4 s; "aviso" e "perigo" ficam até fechar. */
+function uiAvisoHTML(msg, tipo){
+  const t = uiTom(tipo === "erro" ? "perigo" : tipo);   // "tom-..."
+  return `<div class="ui-aviso ${esc(t)}" role="${t === "tom-perigo" ? "alert" : "status"}"><span class="ui-aviso-txt">${esc(msg || "")}</span><button type="button" class="ui-aviso-x" aria-label="Fechar aviso">×</button></div>`;
+}
+function uiAvisar(msg, tipo){
+  let pilha = document.getElementById("ui-avisos");
+  if(!pilha){ pilha = document.createElement("div"); pilha.id = "ui-avisos"; pilha.className = "ui-avisos"; document.body.appendChild(pilha); }
+  const tmp = document.createElement("div");
+  tmp.innerHTML = uiAvisoHTML(msg, tipo);
+  const el = tmp.firstElementChild;
+  el.querySelector(".ui-aviso-x").addEventListener("click", () => el.remove());
+  pilha.appendChild(el);
+  if(!el.classList.contains("tom-aviso") && !el.classList.contains("tom-perigo")) setTimeout(() => el.remove(), 4000);
+  return el;
+}

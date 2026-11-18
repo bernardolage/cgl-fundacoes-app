@@ -1218,9 +1218,14 @@ function movNfeModalFechar(){ $("mov-nfe-modal").style.display = "none"; _movNfe
    cadastro do cliente, a mensagem diz o que falta e que o pedido já está com o financeiro (vw_pendencias_cliente_fiscal
    leva o aviso à tela inicial dele); o endereço incompleto da obra já está no "Para regularizar" do responsável da obra. */
 const MOV_NFE_PEND_CLIENTE = /^(Cliente .*: falta .+?) \(abas Fiscal e Endereço do cliente\)\.$/;
+// hotfix NF-e de remessa C: o endereço completo da obra passou a ser pendência da function (local de entrega/retirada)
+const MOV_NFE_PEND_OBRA = /^(Obra .*: falta .+? no endereço) \(aba Endereço da obra\)\.$/;
 function movNfePendenciaTexto(p){
-  const m = String(p || "").match(MOV_NFE_PEND_CLIENTE);
-  return m ? `${m[1]}. O pedido já está com o financeiro (aparece na tela inicial do financeiro): não é preciso abrir o cliente.` : String(p || "");
+  const s = String(p || "");
+  const m = s.match(MOV_NFE_PEND_CLIENTE);
+  if(m) return `${m[1]}. O pedido já está com o financeiro (aparece na tela inicial do financeiro): não é preciso abrir o cliente.`;
+  const o = s.match(MOV_NFE_PEND_OBRA);
+  return o ? `${o[1]}. O aviso já está no "Para regularizar" do responsável da obra.` : s;
 }
 async function movNfeCadastroObra(m){
   const obraId = m?.tipo === "retorno" ? (m.origem_obra_id || m.destino_obra_id) : (m?.destino_obra_id || m?.origem_obra_id);
@@ -1240,19 +1245,32 @@ function movNfeResumoHtml(d, obraCad){
   const r = d.resumo || {}, pend = d.pendencias || [];
   const prod = r.ambiente === "producao";
   const quemObra = obraCad ? (obraCad.resp ? `${obraCad.resp} (responsável da obra)` : "o gestor do serviço (a obra está sem responsável)") : "";
+  const avisos = d.avisos || r.avisos || [];
+  const bd = r.bloco_destinatario, bo = r.bloco_obra;
+  // hotfix NF-e de remessa C: quem recebe a nota (cliente) e para onde a carga vai ou de onde volta (obra), lado a lado
+  const blocoDest = bd
+    ? `<strong>${esc(bd.nome || "—")}</strong>${bd.doc ? ` ${uiCodigo(bd.doc)}` : ""}<br>${esc(bd.endereco || "endereço incompleto")}`
+    : esc(r.destinatario || "—");
+  const blocoObra = bo
+    ? `<strong>Obra</strong> ${uiCodigo(bo.codigo || "—")}${bo.nome ? ` · ${esc(bo.nome)}` : ""}<br>${esc(bo.endereco || "endereço incompleto")}<br><span class="meta">${esc(bo.situacao || "")}</span>`
+    : '<span class="meta">sem obra</span>';
   return `${pend.length ? `<div class="dist-aviso alerta"><strong>Falta completar antes de emitir (nada foi enviado):</strong><ul>${pend.map(p => `<li>${esc(movNfePendenciaTexto(p))}</li>`).join("")}</ul></div>` : ""}
-    ${obraCad ? `<div class="dist-aviso neutro">Endereço da obra ${esc(obraCad.codigo || "")} incompleto: falta ${esc(obraCad.falta.join(", "))}. Sem ele a nota sai sem o local de entrega. O aviso já está no "Para regularizar" de ${esc(quemObra)}.</div>` : ""}
+    ${obraCad ? `<div class="dist-aviso neutro">Endereço da obra ${esc(obraCad.codigo || "")} incompleto: falta ${esc(obraCad.falta.join(", "))}. A nota não sai sem ele (é o local de entrega). O aviso já está no "Para regularizar" de ${esc(quemObra)}.</div>` : ""}
+    ${avisos.length ? `<div class="dist-aviso alerta"><ul>${avisos.map(a => `<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}
     <div class="dist-aviso ${prod ? "perigo" : "neutro"}"><strong>${prod ? "PRODUÇÃO: nota com valor fiscal na SEFAZ" : "Homologação: nota de teste, sem valor fiscal"}</strong></div>
     <div class="grade">
       <div class="campo"><label>Natureza</label><div>${esc(r.natureza || "")}</div></div>
-      <div class="campo"><label>CFOP</label><div>${esc(r.cfop || "—")} <span class="meta">${esc(r.tipo_documento || "")} · ${esc(r.operacao || "")}</span></div></div>
+      <div class="campo"><label>CFOP</label><div>${uiCodigo(r.cfop || "—")} <span class="meta">${esc(r.tipo_documento || "")} · ${esc(r.operacao || "")}</span></div></div>
       <div class="campo"><label>Número</label><div>${esc(r.numero || "")}</div></div>
-      <div class="campo largo"><label>Destinatário</label><div>${esc(r.destinatario || "—")}${r.entrega ? ` <span class="meta">· entrega/retirada: ${esc(r.entrega)}</span>` : ""}</div></div>
+    </div>
+    <div class="grade">
+      <div class="campo"><label>Destinatário (cliente)</label><div>${/* html */ blocoDest}</div></div>
+      <div class="campo"><label>${esc(bo?.rotulo || "Entrega (obra)")}</label><div>${/* html */ blocoObra}</div></div>
     </div>
     <div class="tabela-rola"><table>
-      <thead><tr><th>Item</th><th>NCM</th><th class="num">Qtd</th><th>Un</th><th class="num">Valor</th></tr></thead>
-      <tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td>${esc(i.ncm || "—")}</td><td class="num">${esc(i.quantidade)}</td><td>${esc(i.unidade)}</td><td class="num">${brl(i.valor)}</td></tr>`).join("")}
-        <tr><td colspan="4"><strong>Total</strong></td><td class="num"><strong>${brl(r.total)}</strong></td></tr></tbody>
+      <thead><tr><th>Item</th><th>NCM</th><th>CFOP</th><th class="num">Qtd</th><th>Un</th><th class="num">Valor</th></tr></thead>
+      <tbody>${(r.itens || []).map(i => `<tr><td>${esc(i.descricao)}</td><td>${esc(i.ncm || "—")}</td><td>${uiCodigo(i.cfop || "—")}</td><td class="num">${esc(i.quantidade)}</td><td>${esc(i.unidade)}</td><td class="num">${brl(i.valor)}</td></tr>`).join("")}
+        <tr><td colspan="5"><strong>Total</strong></td><td class="num"><strong>${brl(r.total)}</strong></td></tr></tbody>
     </table></div>
     ${r.informacoes ? `<p class="nota"><strong>Informações complementares:</strong> ${esc(r.informacoes)}</p>` : ""}`;
 }

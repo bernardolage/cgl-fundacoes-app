@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Catálogo vivo dos componentes (fase 193a). Sem login, sem dado real e sem rede: nem a fonte do Google (cai na fonte
+     do sistema). Mesma CSP do app, ainda mais fechada: só arquivos deste site. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+<meta name="app-versao" content="f0b909d" />
+<title>Catálogo de componentes — CGL Fundações</title>
+<link rel="icon" type="image/png" href="img/icone-cgl.png" />
+<link rel="stylesheet" href="css/estilo.css?v=f0b909d" />
+<script src="js/tema.js?v=f0b909d"></script>
+</head>
+<body class="ui-doc">
+<header class="cat-topo">
+  <div class="cat-topo-tit">
+    <strong>Catálogo de componentes</strong>
+    <span>Referência visual do sistema: toda tela nova é montada com estes componentes de <code>js/ui.js</code>.</span>
+  </div>
+  <div class="cat-topo-ctl" role="group" aria-label="Opções de visualização">
+    <button type="button" class="ui-btn" id="cat-tema" aria-pressed="false" title="Alterna entre o tema claro e o escuro">Tema escuro</button>
+    <button type="button" class="ui-btn" id="cat-largura" aria-pressed="false" title="Mostra os exemplos na largura de um celular (360 px)">Largura 360 px</button>
+  </div>
+</header>
+<nav class="cat-indice" id="cat-indice" aria-label="Componentes"></nav>
+<main class="cat-corpo" id="cat-corpo"></main>
+<script src="js/ui.js?v=f0b909d"></script>
+<script src="js/ui_catalogo.js?v=f0b909d"></script>
+</body>
+</html>
