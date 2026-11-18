@@ -206,6 +206,21 @@ uiAvisar("RDO salvo.", "ok");   // ok e info somem em 4 s; aviso e perigo ficam`
     ]
   },
   {
+    fn: "uiDiffLinhas · uiTextoBloco", titulo: "Comparar versões e texto longo",
+    para: "Texto de modelo de contrato ou de proposta: leitura em fonte fixa (com número de linha, para citar o erro) e a diferença por linha entre a versão vigente e a nova, que o diretor vê antes de aprovar. Para textareas longos, uiCampo aceita linhas.",
+    uso: `uiTextoBloco(versao.texto, { numerar: true })
+uiDiffLinhas(vigente.texto, rascunho.texto, { rotuloAntes: "vigente v1", rotuloDepois: "rascunho v2" })
+uiCampo({ id: "mdl-texto", rotulo: "Texto", tipo: "textarea", linhas: 24, valor: texto })`,
+    exemplos: () => [
+      ["Diferença", uiDiffLinhas("## Encargos\n[CGL] Elaboração do Diário de Obra.\n[CONTRATANTE] Bombeamento do concreto.\n[CONTRATANTE] Fornecimento de água.\n[CONTRATANTE] Vigilância dos equipamentos.\n[CONTRATANTE] Bota fora do material.\n[CONTRATANTE] Canteiro limpo.",
+        "## Encargos\n[CGL] Elaboração do Diário de Obra.\n[CONTRATANTE] Bombeamento do concreto.\n[CONTRATANTE] Fornecimento de água e energia.\n[CONTRATANTE] Vigilância dos equipamentos.\n[CONTRATANTE] Bota fora do material.\n[CONTRATANTE] Canteiro limpo.\n[CGL; destaque] Seguro dos equipamentos.",
+        { rotuloAntes: "vigente v1", rotuloDepois: "rascunho v2", contexto: 1 })],
+      ["Sem diferença", uiDiffLinhas("mesmo texto", "mesmo texto")],
+      ["Texto com linhas", uiTextoBloco("## Cláusulas: VALIDADE DA PROPOSTA\nA presente proposta tem validade de {{validade_dias}} dias.\n\nApós assinatura da proposta, será providenciado o contrato.", { numerar: true })],
+      ["Vazio e erro", `<div class="cat-grade">${uiTextoBloco("", { vazio: "Rascunho sem texto." })}${uiDiffLinhas("", "", { erro: "Não foi possível carregar as versões." })}</div>`]
+    ]
+  },
+  {
     fn: "uiSecao · uiLinhaItem · uiRotuloValor · uiAvatar · uiCodigo · uiStatusbar · uiBreadcrumb · uiVazio", titulo: "Componentes da fase 161",
     para: "Continuam valendo: cartão de seção, linha de item, rótulo e valor, avatar de iniciais, código, barra de etapas, trilha e vazio.",
     uso: `uiSecao("equipe", "Equipe", uiLinhaItem("Fulano de Tal", "Operador", "8,5", "h"), "3 pessoas")

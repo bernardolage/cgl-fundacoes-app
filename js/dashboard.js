@@ -393,12 +393,16 @@ async function dashCarregarFila(){
   // fase 146: vw_sc_minha_fila_custo, um cartão por produto que saiu sem custo (só almoxarife e comprador)
   // lote S63-i (#280): vw_sc_minha_fila_sst, ação de ocorrência SST atribuída a mim (a fazer ou em andamento), com o prazo
   // fase 187c (#324): vw_sc_minha_fila_retornos, retorno ao cliente agendado na aba Negociação do orçamento (hoje ou vencido)
-  const [dados, sep, menc, custo, sst, ret] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*")), dashLer("vw_sc_minha_fila_custo", q => q.select("*")), dashLer("vw_sc_minha_fila_sst", q => q.select("*")), dashLer("vw_sc_minha_fila_retornos", q => q.select("*"))]);
+  // fase 180e: vw_sc_minha_fila_modelos, "Aprovar modelo" (diretor) e "Modelo devolvido" (autor do rascunho; jurídico ou diretor)
+  // fase 180f: vw_sc_minha_fila_prc, audiência e prazo de processo vencidos ou nos próximos 7 dias (jurídico e diretor)
+  const lerMdl = typeof ehJuridico === "function" && usuarioAtual && (usuarioAtual.cargo === "diretor" || ehJuridico());
+  const lerPrc = usuarioAtual && ["diretor", "juridico"].includes(usuarioAtual.cargo);
+  const [dados, sep, menc, custo, sst, ret, mdl, prc] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*")), dashLer("vw_sc_minha_fila_custo", q => q.select("*")), dashLer("vw_sc_minha_fila_sst", q => q.select("*")), dashLer("vw_sc_minha_fila_retornos", q => q.select("*")), lerMdl ? dashLer("vw_sc_minha_fila_modelos", q => q.select("*")) : null, lerPrc ? dashLer("vw_sc_minha_fila_prc", q => q.select("*")) : null]);
   if(!dados) return;
   if(typeof histMencoesPendentesDefinir === "function") histMencoesPendentesDefinir((menc || []).map(m => m.registro_id));
   if(menc) dashRenderMencoes(menc);   // lote S57b (#218): menções no card do topo e no badge do menu, não na fila
-  dashMarcarFonte(dados, "fila"); dashMarcarFonte(sep, "fila_sep"); dashMarcarFonte(custo, "fila_custo"); dashMarcarFonte(sst, "fila_sst"); dashMarcarFonte(ret, "fila_ret");   // fase 164
-  _dashFila = dados.concat(sep || [], custo || [], sst || [], ret || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
+  dashMarcarFonte(dados, "fila"); dashMarcarFonte(sep, "fila_sep"); dashMarcarFonte(custo, "fila_custo"); dashMarcarFonte(sst, "fila_sst"); dashMarcarFonte(ret, "fila_ret"); dashMarcarFonte(mdl, "fila_mdl"); dashMarcarFonte(prc, "fila_prc");   // fase 164
+  _dashFila = dados.concat(sep || [], custo || [], sst || [], ret || [], mdl || [], prc || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
     ? _dashFila.map((a, i) => dashChamadoEsperando(a) || dashChamadoConfirmar(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
@@ -853,10 +857,15 @@ async function dashAbrirAcao(a){
       }
       break;
     case "contratos":
-      if(a.setor === "financeiro"){ // títulos a pagar (fase 56); seção própria desde a fase 180a
+      if(a.filtro === "modelo_aprovar" || a.filtro === "modelo_devolvido"){ // fase 180e: a versão do modelo em Contratos › Modelos
+        if(irParaSecao("contratos") && typeof mdlAbrirVersao === "function") mdlAbrirVersao(id);
+      } else if(a.setor === "financeiro"){ // títulos a pagar (fase 56); seção própria desde a fase 180a
         if(irParaSecao("contaspagar") && typeof capAtivarView === "function"){ _capFiltroVenc = a.nivel === "critico" ? "vencidos" : ""; _capIncluirExp = false; _capFiltroOrigem = ""; capAtivarView("titulos"); }
       } else if(id) dashAbrirContrato(id);
       else irParaSecao("contratos");
+      break;
+    case "processos":   // fase 180f: audiência ou prazo de processo na Minha fila → a ficha do processo (Contratos › Processos)
+      if(typeof prcAbrirDaInicio === "function") prcAbrirDaInicio(id); else irParaSecao("contratos");
       break;
     case "pedidos_site":   // fase 195c: aba "Pedidos do site" em Orçamentos; um pedido só abre a ficha dele
       if(typeof psiAbrirDaInicio === "function") psiAbrirDaInicio(id); else irParaSecao("orcamentos");

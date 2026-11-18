@@ -4616,6 +4616,22 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 #vb-modal [hidden] { display: none; }
 }
 
+/* ---- Processos (fase 180f): Contratos › Processos (prefixo prc-) ---- */
+@layer componentes {
+#btn-con-processos[hidden], #con-painel[hidden], #prc-painel[hidden] { display: none; }
+.prc-painel { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
+.prc-kpis .ui-kpi { flex: 1 1 170px; }
+.prc-kpi-sens { display: flex; flex: 1 1 170px; min-width: 0; }
+.prc-kpi-sens .ui-kpi { flex: 1 1 auto; }
+.prc-tabela tbody tr[data-id] { cursor: pointer; }
+.prc-tabela tbody tr[data-id]:hover td { background: var(--sup-2); }
+.prc-acoes { display: flex; gap: var(--esp-2); flex-wrap: wrap; margin-bottom: var(--esp-3); }
+.prc-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--esp-3); min-width: 0; }
+.prc-grade .ui-rv-valor { font-size: var(--txt-md); font-weight: 500; }
+.prc-aba-corpo { min-width: 0; }
+.prc-aba-corpo .ui-tabela .ui-btn { min-height: var(--ctl-h-sm); padding: 0 var(--esp-2); font-size: var(--txt-sm); }
+}
+
 /* ---- Envio da proposta pela orcamento@ (fase 192b): modal com campos, prévia do e-mail e anexos ---- */
 @layer componentes {
 .orc-envio { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
@@ -4738,4 +4754,33 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .psi-wa textarea { min-height: 180px; }
 .psi-wa-passos { margin: 0; font-size: var(--txt-sm); color: var(--txt-sec); line-height: var(--lh-folgada); }
 .btn-sec.psi-wa-destaque { background: var(--sucesso-bg); border-color: var(--sucesso); color: var(--sucesso-txt); }
+}
+
+/* Fase 180e: texto longo (uiTextoBloco), comparação de versões (uiDiffLinhas) e a tela Modelos de Contratos (mdl-) */
+@layer componentes {
+.ui-texto { margin: 0; padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-1); color: var(--txt); font-family: var(--font-mono); font-size: var(--txt-sm); line-height: var(--lh-base); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 70vh; overflow: auto; }
+.ui-texto.numerado { list-style: decimal; padding-left: calc(var(--esp-8) + var(--esp-2)); }
+.ui-texto.numerado li { padding-left: var(--esp-1); white-space: pre-wrap; }
+.ui-texto.numerado li::marker { color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
+.ui-diff { display: flex; flex-direction: column; gap: var(--esp-2); min-width: 0; }
+.ui-diff-cab { display: flex; flex-wrap: wrap; gap: var(--esp-3); font-size: var(--txt-sm); }
+.ui-diff-leg { padding: 0 var(--esp-2); border-radius: var(--radius-sm); }
+.ui-diff-leg.mais { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.ui-diff-leg.menos { background: var(--perigo-bg); color: var(--perigo-txt); }
+.ui-diff-lista { list-style: none; margin: 0; padding: 0; border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-1); font-family: var(--font-mono); font-size: var(--txt-sm); line-height: var(--lh-base); max-height: 70vh; overflow: auto; }
+.ui-diff-linha { display: grid; grid-template-columns: 3.5em 3.5em 1.5em minmax(0, 1fr); color: var(--txt); }
+.ui-diff-linha.mais { background: var(--sucesso-bg); color: var(--sucesso-txt); }
+.ui-diff-linha.menos { background: var(--perigo-bg); color: var(--perigo-txt); text-decoration: line-through; text-decoration-color: var(--perigo); }
+.ui-diff-linha.pulo { display: block; padding: var(--esp-1) var(--esp-3); color: var(--txt-fraco); background: var(--sup-2); }
+.ui-diff-num { padding-right: var(--esp-2); text-align: right; color: var(--txt-fraco); font-variant-numeric: tabular-nums; user-select: none; }
+.ui-diff-sinal { text-align: center; font-weight: 600; }
+.ui-diff-txt { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: var(--esp-2); }
+.mdl-ficha { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
+.mdl-barra { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; }
+.mdl-ajuda { margin: 0; font-size: var(--txt-sm); color: var(--txt-sec); line-height: var(--lh-folgada); }
+.mdl-erros { margin: 0; padding-left: var(--esp-5); font-size: var(--txt-sm); color: var(--perigo-txt); }
+.mdl-editor textarea { font-family: var(--font-mono); font-size: var(--txt-sm); }
+.mdl-lista tbody tr[data-id] { cursor: pointer; }
+.mdl-lista tbody tr[data-id]:hover td { background: var(--sup-2); }
+.con-modos { margin-bottom: var(--esp-3); }
 }

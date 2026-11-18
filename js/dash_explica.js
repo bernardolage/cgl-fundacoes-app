@@ -111,6 +111,10 @@ const DASH_EXPLICA = {
     fazer: "Confirmar que funcionou ou reabrir.", origem: "Dos chamados resolvidos." },
   "fila:50": { regra: "Medição de obra sob a sua responsabilidade com valor de NF informado que difere do valor produzido por mais que o maior entre 50 reais e 1 % da NF. Fica crítico quando a medição foi criada há mais de 15 dias.",
     fazer: "Lançar no RDO a produção que falta, ou corrigir a medição.", origem: "Das medições: o valor da NF comparado com o valor final medido." },
+  "fila_prc:29": { regra: "Audiência de processo pendente nos próximos 7 dias, ou com a data já passada e sem o resultado registrado. Aparece para o jurídico e a diretoria; fica crítica no dia e depois dele.",
+    fazer: "Abrir o processo e, depois da audiência, dar a baixa com o resultado (ou cancelar com o motivo, se foi redesignada).", origem: "Dos eventos dos processos em Contratos › Processos." },
+  "fila_prc:30": { regra: "Prazo de processo pendente nos próximos 7 dias, ou vencido sem baixa. Aparece para o jurídico e a diretoria; fica crítico no dia do prazo e depois dele.",
+    fazer: "Abrir o processo, cumprir o prazo e dar a baixa (ou cancelar com o motivo, se foi suspenso ou devolvido).", origem: "Dos eventos dos processos em Contratos › Processos." },
   "fila_sep:25": { regra: "Separação de material atribuída a você, aberta, em separação ou já separada. Fica crítico com o prazo vencido.",
     fazer: "Separar os itens e entregar.", origem: "Das separações de material." },
   "fila_sep:26": { regra: "Separação de material que você pediu e que já está separada.",
@@ -119,6 +123,10 @@ const DASH_EXPLICA = {
     fazer: "Dar a baixa na aba Materiais da OS.", origem: "Dos materiais das ordens de serviço e das separações." },
   "fila_ret:23": { regra: "Orçamento em que você ficou de retornar ao cliente, com a data do retorno hoje ou já passada (fase 187c). Fica crítico quando a data passou; orçamento aprovado, rejeitado ou cancelado sai da lista.",
     fazer: "Abrir a aba Negociação, falar com o cliente e registrar a interação (ou marcar Sem retorno).", origem: "Da aba Negociação dos orçamentos." },
+  "fila_mdl:27": { regra: "Versão de modelo de contrato ou de proposta enviada pelo jurídico e aguardando a sua aprovação. Só o diretor aprova; até lá vale a versão vigente.",
+    fazer: "Abrir o modelo, conferir o que mudou na comparação e aprovar ou devolver com o motivo.", origem: "Das versões dos modelos em Contratos › Modelos." },
+  "fila_mdl:28": { regra: "Rascunho de modelo que você escreveu e que o diretor devolveu, com o motivo. Sai da lista quando você envia de novo ou exclui o rascunho.",
+    fazer: "Abrir o rascunho, ajustar o texto e enviar de novo para aprovação.", origem: "Das versões dos modelos em Contratos › Modelos." },
   "fila_sst:22": { regra: "Ação de ocorrência SST em que você é o responsável, a fazer ou em andamento. Aparece assim que a ação é atribuída, com o prazo; fica crítico quando o prazo passou.",
     fazer: "Abrir a ocorrência, executar a ação e marcar como realizada.", origem: "Das ações das ocorrências SST." },
   "fila_custo:27": { regra: "Produto sem custo cadastrado que teve saída de estoque a custo zero a partir da data configurada (EPI e uniforme não entram). Uma linha por produto; fica crítico quando a primeira dessas saídas tem mais de 3 dias.",
@@ -295,7 +303,7 @@ const DASH_EXPLICA_FAIXA = {
 
 /* Famílias de acessório: em "Para regularizar", a linha de modelo sem preço traz a família no lugar do filtro */
 const DASH_EXPLICA_FAMILIAS = ["helice", "raiz", "secante", "trado", "comum"];
-const DASH_EXPLICA_FONTES = ["acoes", "sep", "fab", "fin", "man", "assinar", "fila", "fila_sep", "fila_custo", "fila_sst", "fila_ret"];
+const DASH_EXPLICA_FONTES = ["acoes", "sep", "fab", "fin", "man", "assinar", "fila", "fila_sep", "fila_custo", "fila_sst", "fila_ret", "fila_mdl", "fila_prc"];
 const dashExplicaTem = (k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(DASH_EXPLICA, k);
 
 /* Chave do texto de uma linha, ou null quando não há texto conferido para ela.

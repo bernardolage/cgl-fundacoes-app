@@ -934,6 +934,147 @@ function condicoesGeraisPorTipo(tipo){
   }
 }
 
+/* ====================================================================
+   Fase 180e: modelo de proposta com versão aprovada pelo diretor.
+   O texto dos encargos e das cláusulas de cada segmento (hélice, trado, raiz, secante) vem da versão vigente do modelo
+   (tabelas modelos_documento e modelos_documento_versoes; view vw_modelos_vigentes), editada pelo jurídico em
+   Contratos › Modelos e aprovada só pelo diretor. A primeira versão vigente de cada segmento nasceu na migration com o
+   texto embutido abaixo (encargos*, criteriosMedicao*, condicoesGerais*, contratacao*, validade*), gerado por
+   scripts/gerar-modelos-proposta-180e.js; scripts/testar-fase180e-proposta.js confere que o HTML e o PDF saem iguais.
+   O texto embutido continua como reserva: sem a migration aplicada (tabela inexistente) ou sem versão vigente.
+   O comercial não edita texto (só flags e desconto): o texto é do modelo, não do orçamento.
+
+   Formato do texto do modelo (uma linha = um item; linha em branco é ignorada):
+     ## Encargos                         seção da tabela ENCARGOS DE RESPONSABILIDADE (uma só por modelo)
+     [CGL; destaque] texto               encargo: responsável CGL, CONTRATANTE ou NÃO APLICA; "destaque" = linha amarela
+     [CGL se diesel] texto               CGL quando o orçamento marca o flag, senão CONTRATANTE
+     [só com alimentação; CGL] texto     a linha só entra com o flag marcado ("só sem ..." = só sem o flag)
+     ## Cláusulas: TÍTULO DA SEÇÃO       seção de cláusulas, na ordem em que aparecem
+     [destaque] texto                    cláusula em negrito e itálico; sem colchete, cláusula normal
+   Flags: diesel, hospedagem, alimentação. Campos: {{pagamento}} (condição de pagamento do orçamento ou a padrão),
+   {{clausula_refuro}} (texto do refuro conforme a data do orçamento), {{validade_dias}} e {{validade_extenso}}.
+   ==================================================================== */
+const PROPOSTA_SEGMENTOS_MODELO = ["helice", "trado", "raiz", "secante"];
+const PROPOSTA_MODELO_FLAGS = { diesel: "cgl_fornece_diesel", hospedagem: "cgl_fornece_hospedagem", alimentacao: "cgl_fornece_alimentacao" };
+const PROPOSTA_MODELO_RESP = { cgl: "CGL", contratante: "CONTRATANTE", "nao aplica": "NAO" };
+const PROPOSTA_MODELO_CAMPOS = ["pagamento", "clausula_refuro", "validade_dias", "validade_extenso"];
+const _pmNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
+/* lê o texto do modelo: { encargos: [...] | null, clausulas: [{ titulo, itens }], erros: [{ linha, msg }] } */
+function propostaModeloLer(texto){
+  const r = { encargos: null, clausulas: [], erros: [] };
+  let atual = null;   // "encargos" ou o objeto da seção de cláusulas
+  const erro = (linha, msg) => r.erros.push({ linha, msg });
+  String(texto || "").split(/\r?\n/).forEach((bruta, i) => {
+    const nl = i + 1;
+    const linha = bruta.trim();
+    if(!linha) return;
+    for(const m of linha.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g)){
+      if(!PROPOSTA_MODELO_CAMPOS.includes(m[1])) erro(nl, `campo desconhecido {{${m[1]}}} (use ${PROPOSTA_MODELO_CAMPOS.map(c => "{{" + c + "}}").join(", ")})`);
+    }
+    if(linha.startsWith("##")){
+      const cab = linha.replace(/^#+\s*/, "");
+      const mc = /^cl[aá]usulas\s*:\s*(.+)$/i.exec(cab);
+      if(_pmNorm(cab) === "encargos"){
+        if(r.encargos) erro(nl, "a seção Encargos aparece duas vezes");
+        r.encargos = r.encargos || []; atual = "encargos";
+      } else if(mc){
+        atual = { titulo: mc[1].trim(), itens: [] }; r.clausulas.push(atual);
+      } else erro(nl, 'cabeçalho desconhecido: use "## Encargos" ou "## Cláusulas: TÍTULO"');
+      return;
+    }
+    if(!atual){ erro(nl, "texto antes do primeiro cabeçalho (## Encargos ou ## Cláusulas: TÍTULO)"); return; }
+    const mt = /^\[([^\]]*)\]\s*(.*)$/.exec(linha);
+    const fichas = mt ? mt[1].split(";").map(_pmNorm).filter(Boolean) : [];
+    const corpo = mt ? mt[2].trim() : linha;
+    if(!corpo){ erro(nl, "item sem texto"); return; }
+    if(atual !== "encargos"){
+      const ruins = fichas.filter(f => f !== "destaque");
+      if(ruins.length) erro(nl, `marcação de cláusula desconhecida: [${ruins.join("; ")}] (só [destaque])`);
+      atual.itens.push({ t: corpo, destaque: fichas.includes("destaque") });
+      return;
+    }
+    if(!mt){ erro(nl, "encargo sem responsável: comece com [CGL], [CONTRATANTE] ou [NÃO APLICA]"); return; }
+    const it = { d: corpo, destaque: false, resp: null, so: null };
+    for(const f of fichas){
+      let m;
+      if(f === "destaque") it.destaque = true;
+      else if(PROPOSTA_MODELO_RESP[f]){ if(it.resp) erro(nl, "mais de um responsável"); it.resp = { fixo: PROPOSTA_MODELO_RESP[f] }; }
+      else if((m = /^cgl se (.+)$/.exec(f))){
+        if(!PROPOSTA_MODELO_FLAGS[m[1]]){ erro(nl, `flag desconhecido "${m[1]}" (diesel, hospedagem ou alimentação)`); continue; }
+        if(it.resp) erro(nl, "mais de um responsável");
+        it.resp = { flag: PROPOSTA_MODELO_FLAGS[m[1]] };
+      } else if((m = /^so (com|sem) (.+)$/.exec(f))){
+        if(!PROPOSTA_MODELO_FLAGS[m[2]]){ erro(nl, `flag desconhecido "${m[2]}" (diesel, hospedagem ou alimentação)`); continue; }
+        it.so = { flag: PROPOSTA_MODELO_FLAGS[m[2]], com: m[1] === "com" };
+      } else erro(nl, `marcação de encargo desconhecida: "${f}"`);
+    }
+    if(!it.resp){ erro(nl, 'encargo sem responsável: CGL, CONTRATANTE, NÃO APLICA ou "CGL se <flag>"'); return; }
+    r.encargos.push(it);
+  });
+  if(!r.encargos) erro(0, "falta a seção ## Encargos");
+  if(!r.clausulas.length) erro(0, "falta ao menos uma seção ## Cláusulas: TÍTULO");
+  r.clausulas.forEach(c => { if(!c.itens.length) erro(0, `a seção "${c.titulo}" está vazia`); });
+  return r;
+}
+
+/* aplica o modelo lido ao orçamento: as mesmas listas que o texto embutido devolve ({ d, r, destaque } e { t, destaque }) */
+function propostaModeloAplicar(modelo, o){
+  const orc = o || {};
+  const d = orc.validade_dias || 30;
+  const valores = { pagamento: () => _clausulaPagamento(orc), clausula_refuro: () => _clausulaRefuro(orc),
+    validade_dias: () => `${d}`, validade_extenso: () => `${d === 30 ? "trinta" : d}` };
+  const campos = (t) => String(t).replace(/\{\{\s*([^}]*?)\s*\}\}/g, (x, k) => valores[k] ? valores[k]() : x);
+  const encargos = (modelo.encargos || [])
+    .filter(it => !it.so || !!orc[it.so.flag] === it.so.com)
+    .map(it => {
+      const e = { d: campos(it.d), r: it.resp.fixo || (orc[it.resp.flag] ? "CGL" : "CONTRATANTE") };
+      if(it.destaque) e.destaque = true;
+      return e;
+    });
+  const clausulas = modelo.clausulas.map(c => ({ titulo: c.titulo,
+    itens: c.itens.map(it => it.destaque ? { t: campos(it.t), destaque: true } : { t: campos(it.t) }) }));
+  return { encargos, clausulas };
+}
+
+/* texto embutido (reserva e origem da primeira versão de cada modelo) */
+function propostaSecoesCodigo(tipo, o){
+  return {
+    encargos: encargosPorTipo(tipo, o),
+    clausulas: [
+      { titulo: "CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS", itens: criteriosMedicaoPorTipo(tipo, o) },
+      { titulo: "CONDIÇÕES GERAIS", itens: condicoesGeraisPorTipo(tipo) },
+      { titulo: "CONTRATAÇÃO DOS SERVIÇOS", itens: contratacaoServicosTextoComum() },
+      { titulo: "VALIDADE DA PROPOSTA", itens: validadeTextoComum(o.validade_dias || 30) }
+    ]
+  };
+}
+/* encargos e cláusulas da proposta, para o HTML e o PDF: do modelo vigente quando há, senão o texto embutido */
+function propostaSecoes(tipo, o, modelo){
+  return modelo ? propostaModeloAplicar(modelo, o) : propostaSecoesCodigo(tipo, o);
+}
+
+/* versão vigente do modelo do segmento, já lida. null = texto embutido (segmento sem modelo, migration não aplicada
+   ou nenhuma versão vigente). Modelo vigente com erro de formato para a geração: nunca sai, sem aviso, um texto
+   diferente do aprovado. */
+async function propostaCarregarModelo(tipo){
+  if(!PROPOSTA_SEGMENTOS_MODELO.includes(tipo)) return null;
+  const { data, error } = await sb.from("vw_modelos_vigentes").select("versao_id,numero,texto,nome")
+    .eq("tipo", "proposta").eq("segmento", tipo).maybeSingle();
+  if(error){
+    if(["42P01", "PGRST205", "PGRST200", "42703"].includes(error.code)) return null;
+    throw new Error("Erro ao carregar o modelo da proposta: " + error.message);
+  }
+  if(!data) return null;
+  const m = propostaModeloLer(data.texto);
+  if(m.erros.length){
+    const e = m.erros[0];
+    throw new Error(`O modelo vigente "${data.nome}" (versão ${data.numero}) tem erro${e.linha ? " na linha " + e.linha : ""}: ${e.msg}. Avise o jurídico.`);
+  }
+  m.versao = data.numero;
+  return m;
+}
+
 /* renderiza tabela de encargos */
 function blocoEncargos(encargos){
   if(!encargos || !encargos.length) return "";
@@ -989,6 +1130,7 @@ function montarHtmlProposta(dados){
      fase 40: sem duplicar item que já está no quadro */
   const extras = itensVirtuais(orcamento, itens);
   const itensQuadro = [...(itens || []), ...extras];
+  const secoes = propostaSecoes(tipo, orcamento, dados.modelo);   // fase 180e: texto do modelo vigente do segmento
 
   const corpo = `
     ${blocoCabecalho(tipo, codigoModelo, revisao)}
@@ -999,11 +1141,8 @@ function montarHtmlProposta(dados){
     ${blocoQuadroPrecos(itensQuadro, orcamento)}
     ${blocoNotaINSS()}
     ${blocoObservacoesItens(itensQuadro, dados.notasInternas)}
-    ${blocoEncargos(encargosPorTipo(tipo, orcamento))}
-    ${blocoClausulas("CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS", criteriosMedicaoPorTipo(tipo, orcamento))}
-    ${blocoClausulas("CONDIÇÕES GERAIS", condicoesGeraisPorTipo(tipo))}
-    ${blocoClausulas("CONTRATAÇÃO DOS SERVIÇOS", contratacaoServicosTextoComum())}
-    ${blocoClausulas("VALIDADE DA PROPOSTA", validadeTextoComum(orcamento.validade_dias || 30))}
+    ${blocoEncargos(secoes.encargos)}
+    ${secoes.clausulas.map(c => blocoClausulas(c.titulo, c.itens)).join("")}
     ${blocoComercial(responsavel)}
     ${blocoDeAcordo()}
     ${blocoRodapeEmpresa()}
@@ -1411,11 +1550,9 @@ async function gerarPropostaPdfTexto(dados){
   _ppCaixa(L, [{ t: NOTA_INSS }], { tam: 7.5, alinh: "justify", padX: 1.6, padY: 1.06, borda: true, semTopo: true });
   _propostaObservacoes(itensQuadro, dados.notasInternas).forEach((t, k) =>
     _ppCaixa(L, [{ t }], { tam: 8.5, padX: 1.6, padY: 1.06, borda: true, semTopo: k > 0, antes: k ? 0 : 2.1 }));
-  _ppEncargos(L, encargosPorTipo(tipo, o));
-  _ppClausulas(L, "CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS", criteriosMedicaoPorTipo(tipo, o));
-  _ppClausulas(L, "CONDIÇÕES GERAIS", condicoesGeraisPorTipo(tipo));
-  _ppClausulas(L, "CONTRATAÇÃO DOS SERVIÇOS", contratacaoServicosTextoComum());
-  _ppClausulas(L, "VALIDADE DA PROPOSTA", validadeTextoComum(o.validade_dias || 30));
+  const secoes = propostaSecoes(tipo, o, dados.modelo);   // fase 180e: o mesmo texto do HTML
+  _ppEncargos(L, secoes.encargos);
+  secoes.clausulas.forEach(c => _ppClausulas(L, c.titulo, c.itens));
   _ppComercial(L, responsavel);
   _ppDeAcordo(L);
   _ppCaixa(L, [
@@ -1479,7 +1616,10 @@ async function carregarDadosProposta(orcamentoId){
   /* nota interna do catálogo de cada variante do orçamento, para o PDF não imprimir texto interno */
   const notasInternas = await propostaNotasInternas(itens || []);
 
-  return { orcamento: orc, itens: itens || [], cliente, responsavel, notasInternas };
+  /* fase 180e: encargos e cláusulas vêm do modelo vigente do segmento (Contratos › Modelos) */
+  const modelo = await propostaCarregarModelo(orc.tipo_proposta || "helice");
+
+  return { orcamento: orc, itens: itens || [], cliente, responsavel, notasInternas, modelo };
 }
 
 /* abre a proposta como HTML em nova aba (preview rápido) */

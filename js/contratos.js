@@ -488,6 +488,7 @@ let _conAtual = null; // registro completo do contrato aberto (usado pela assina
 
 function abrirFichaConVisual(c){
   _conAtual = c;
+  if(typeof prcFechar === "function") prcFechar();   // fase 180f: a ficha pode abrir a partir da tela de processos
   $("con-painel").style.display = "none";
   $("con-ficha").style.display = "";
   conAplicarNatureza(c.natureza);
@@ -1210,7 +1211,8 @@ const CON_GARANTIA = { reserva_dominio: "Reserva de domínio", fianca: "Fiança"
 const CON_OBR_SIT = { pendente: ["Pendente", "ambar"], vencida: ["Vencida", "vermelho"], cumprida: ["Cumprida", "verde"], dispensada: ["Dispensada", "cinza"] };
 const CON_PRAZO_TIPO = { data: "Data fixa", dias_apos_assinatura: "Dias após a assinatura", continua: "Contínua (enquanto durar o contrato)" };
 const CON_AGENDA_TIPO = { vigencia: "Fim da vigência", obrigacao: "Obrigação", parcela_receber: "Parcela a receber",
-  parcela_pagar: "Título a pagar", vencimento_antecipado: "Vencimento antecipado", parcela_venda: "Parcela de venda" };
+  parcela_pagar: "Título a pagar", vencimento_antecipado: "Vencimento antecipado", parcela_venda: "Parcela de venda",
+  audiencia: "Audiência", prazo_processo: "Prazo de processo" };   // fase 180f
 const CON_ESTADO_CIVIL = [["solteiro", "Solteiro(a)"], ["casado", "Casado(a)"], ["uniao_estavel", "União estável"],
   ["separado", "Separado(a)"], ["divorciado", "Divorciado(a)"], ["viuvo", "Viúvo(a)"]];
 

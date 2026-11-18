@@ -204,14 +204,15 @@ function uiFiltros(cfg){
 
 /* ---- Campo de formulário: rótulo, controle, ajuda e erro ----
    cfg = { id, rotulo, tipo ("text","number","date","email","tel","time","month","textarea","select"), valor, ajuda, erro,
-           obrigatorio, opcoes:[[valor, rótulo]], placeholder, somenteLeitura }. Select sem opção mostra o estado vazio. */
+           obrigatorio, opcoes:[[valor, rótulo]], placeholder, somenteLeitura, linhas }. Select sem opção mostra o estado vazio.
+   linhas = altura do textarea em linhas (padrão 3; fase 180e, editor de modelo). */
 function uiCampo(cfg){
   const c = cfg || {};
   const id = uiId(c.id || "campo");
   const desc = [c.ajuda ? `${id}-ajuda` : "", c.erro ? `${id}-erro` : ""].filter(Boolean).join(" ");
   const attrs = `id="${esc(id)}" name="${esc(id)}"${c.obrigatorio ? " required" : ""}${c.somenteLeitura ? " readonly" : ""}${c.erro ? ' aria-invalid="true"' : ""}${desc ? ` aria-describedby="${esc(desc)}"` : ""}`;
   let ctl;
-  if(c.tipo === "textarea") ctl = `<textarea ${/* html */ attrs} rows="3" placeholder="${esc(c.placeholder || "")}">${esc(c.valor ?? "")}</textarea>`;
+  if(c.tipo === "textarea") ctl = `<textarea ${/* html */ attrs} rows="${Math.max(2, Math.min(60, Math.trunc(Number(c.linhas)) || 3))}" placeholder="${esc(c.placeholder || "")}">${esc(c.valor ?? "")}</textarea>`;
   else if(c.tipo === "select"){
     const op = c.opcoes || [];
     ctl = op.length ? `<select ${/* html */ attrs}><option value="">${esc(c.placeholder || "Selecione")}</option>${op.map(o => `<option value="${esc(o[0])}"${String(o[0]) === String(c.valor ?? "") ? " selected" : ""}>${esc(o[1] ?? o[0])}</option>`).join("")}</select>`
@@ -366,4 +367,57 @@ function uiBuscaResultados(grupos, opcoes){
   }
   return gs.map(g => `<div class="ui-busca-grupo" role="group" aria-label="${esc(g.titulo)}"><div class="ui-busca-grupo-tit" aria-hidden="true">${esc(g.titulo)}</div>${g.itens.map(i =>
     `<button type="button" class="ui-busca-item" role="option" aria-selected="false" data-bus-tipo="${esc(i.tipo || "")}" data-bus-id="${esc(i.id ?? "")}"><span class="ui-busca-item-txt">${esc(i.texto)}</span>${i.detalhe ? `<span class="ui-busca-item-det">${esc(i.detalhe)}</span>` : ""}</button>`).join("")}</div>`).join("") + espera;
+}
+
+/* ====================================================================
+   FASE 180e — texto longo e comparação de versões (modelos de contrato e de proposta).
+   ==================================================================== */
+/* Texto longo de leitura (cláusulas, modelo), em fonte fixa com quebra preservada. opcoes = { erro, vazio, numerar }.
+   numerar = número da linha à esquerda (o jurídico cita a linha do erro). */
+function uiTextoBloco(texto, opcoes){
+  const o = opcoes || {};
+  if(o.erro) return uiErro(o.erro);
+  const t = String(texto ?? "");
+  if(!t.trim()) return uiVazio(o.vazio || "Sem texto.");
+  if(!o.numerar) return `<pre class="ui-texto">${esc(t)}</pre>`;
+  const linhas = t.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
+  return `<ol class="ui-texto numerado">${linhas.map(l => `<li>${l ? esc(l) : "&nbsp;"}</li>`).join("")}</ol>`;
+}
+
+/* Diferença por linha entre duas versões de um texto (LCS). opcoes = { rotuloAntes, rotuloDepois, contexto (linhas
+   iguais mantidas em volta de cada mudança, padrão 2), erro, vazio }. Linha removida em tom de perigo com "−", incluída
+   em tom ok com "+"; trecho igual longo vira "… N linhas iguais". Sem diferença, o estado vazio. */
+function uiDiffLinhas(antes, depois, opcoes){
+  const o = opcoes || {};
+  if(o.erro) return `<div class="ui-diff">${uiErro(o.erro)}</div>`;
+  const quebra = s => String(s ?? "").replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n").filter((x, k, l) => l.length > 1 || x !== "");
+  const a = quebra(antes), b = quebra(depois), qa = a.length, qb = b.length;
+  // tabela LCS de baixo para cima (texto de modelo: algumas centenas de linhas)
+  const L = Array.from({ length: qa + 1 }, () => new Uint16Array(qb + 1));
+  for(let i = qa - 1; i >= 0; i--) for(let j = qb - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const ops = [];
+  let i = 0, j = 0;
+  while(i < qa || j < qb){
+    if(i < qa && j < qb && a[i] === b[j]){ ops.push({ k: "=", t: a[i], na: ++i, nb: ++j }); }
+    else if(i < qa && (j >= qb || L[i + 1][j] >= L[i][j + 1])){ ops.push({ k: "-", t: a[i], na: ++i }); }   // removida antes da incluída
+    else { ops.push({ k: "+", t: b[j], nb: ++j }); }
+  }
+  const mais = ops.filter(x => x.k === "+").length, menos = ops.filter(x => x.k === "-").length;
+  if(!mais && !menos) return `<div class="ui-diff">${uiVazio(o.vazio || "As duas versões têm o mesmo texto.")}</div>`;
+  const ctx = Number.isFinite(Number(o.contexto)) ? Math.max(0, Number(o.contexto)) : 2;
+  const perto = ops.map((x, k) => x.k !== "=" || ops.slice(Math.max(0, k - ctx), k + ctx + 1).some(y => y.k !== "="));
+  const linhas = [];
+  for(let k = 0; k < ops.length; k++){
+    if(perto[k]){
+      const x = ops[k];
+      const cls = x.k === "+" ? "mais" : x.k === "-" ? "menos" : "igual";
+      const sinal = x.k === "+" ? "+" : x.k === "-" ? "−" : " ";
+      linhas.push(`<li class="ui-diff-linha ${cls}"><span class="ui-diff-num">${x.na ? Number(x.na) : ""}</span><span class="ui-diff-num">${x.nb ? Number(x.nb) : ""}</span><span class="ui-diff-sinal" aria-hidden="true">${sinal}</span><span class="ui-diff-txt">${x.t ? esc(x.t) : "&nbsp;"}</span></li>`);
+    } else {
+      let q = 0; while(k < ops.length && !perto[k]){ q++; k++; } k--;
+      linhas.push(`<li class="ui-diff-linha pulo"><span class="ui-diff-txt">… ${q} ${q === 1 ? "linha igual" : "linhas iguais"}</span></li>`);
+    }
+  }
+  const rot = `<div class="ui-diff-cab"><span class="ui-diff-leg menos">− ${esc(o.rotuloAntes || "antes")}: ${Number(menos)} ${menos === 1 ? "linha" : "linhas"}</span><span class="ui-diff-leg mais">+ ${esc(o.rotuloDepois || "depois")}: ${Number(mais)} ${mais === 1 ? "linha" : "linhas"}</span></div>`;
+  return `<div class="ui-diff">${/* html */ rot}<ol class="ui-diff-lista">${/* html */ linhas.join("")}</ol></div>`;
 }
