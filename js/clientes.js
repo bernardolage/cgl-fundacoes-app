@@ -148,6 +148,7 @@ function renderClientes(){
   if(card) card.style.display = _cliView === "fiscal" ? "" : "none";
   cliAplicarPermissoes();   // lote S49 (#140)
   if(_cliView === "fiscal"){ renderCliFiscal(); return; }
+  if(_cliView === "corrigir" && typeof clsRender === "function"){ clsRender(); return; }   // fase 182b
   const dados = cliFiltrados();
   const cont = $("cli-contador");
   if(cont) cont.textContent = `${dados.length} de ${_clientes.length}`;
