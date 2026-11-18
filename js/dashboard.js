@@ -497,7 +497,8 @@ async function dashCarregarRegularizar(){
   // fase 129c: diário do campo enviado sem conferência, devolvido sem reenvio e pendências do app (vw_sc_regularizar_campo; a view
   // devolve a cada um só o papel dele)
   // fase 179: diário sem estaca e sem parada, a partir da data de corte (vw_sc_regularizar_rdo_dia; view própria, fora de vw_sc_acoes)
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia, refuro, ctr, cat, obraFis] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+  // fase 180c: "Emitir boleto da parcela NN/TT · comprador" (vw_sc_regularizar_vbol; view própria, fora de vw_sc_acoes)
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia, refuro, ctr, cat, vbol, obraFis] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
@@ -516,11 +517,12 @@ async function dashCarregarRegularizar(){
     // fase 180b: obrigação de contrato vencida (view própria; a RLS das obrigações limita ao lado que cada um lê)
     typeof podeVerContratos === "function" && podeVerContratos() ? dashLer("vw_sc_regularizar_ctr", q => q.select("*")) : null,
     usuarioAtual?.cargo === "diretor" ? dashLer("vw_sc_regularizar_cat", q => q.select("*")) : null,   // lote S66-g: liberação do catálogo vence em 7 dias
+    usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_vbol", q => q.select("*")) : null,
     // hotfix NF-e de remessa A: obra com endereço incompleto e remessa a caminho (a view devolve a cada um só o papel dele)
     dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "obra").order("obra_codigo"))]);
   if(!dados) return;
   const obrEnd = dashRegObraEndereco(obraFis || []);
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || [], rdoDia || [], refuro || [], ctr || [], cat || [], obrEnd).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || [], rdoDia || [], refuro || [], ctr || [], cat || [], vbol || [], obrEnd).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   dashRenderRegularizar();
 }

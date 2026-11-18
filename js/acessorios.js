@@ -267,7 +267,7 @@ function acePreencherSelectsFixos(){
   ["ace-familia","ace-md-familia"].forEach(id => { const el = $(id); if(el) el.innerHTML = fam; });
   const ac = $("ace-acopl"); if(ac) ac.innerHTML = `<option value="">—</option>` + Object.entries(ACE_ACOPL_LBL).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   const mv = $("ace-mv-tipo"); if(mv) mv.innerHTML = ACE_LOCAIS_MOVER.map(v => `<option value="${esc(v)}">${esc(aceLbl("acessorio_local", v))}</option>`).join("");
-  const cd = $("ace-cd-cond"); if(cd) cd.innerHTML = opcoesStatus("acessorio");
+  const cd = $("ace-cd-cond"); if(cd){ cd.innerHTML = opcoesStatus("acessorio"); cd.querySelector('option[value="vendido"]')?.remove(); }   // fase 180c: "vendido" nasce da venda do bem
   const rt = $("ace-rp-tipo"); if(rt) rt.innerHTML = Object.entries(ACE_REPARO_TIPOS).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   const fc = $("ace-f-condicao"); if(fc) fc.innerHTML = `<option value="">Condição</option>` + opcoesStatus("acessorio");
   const fl = $("ace-f-local"); if(fl) fl.innerHTML = `<option value="">Onde está</option>` + opcoesStatus("acessorio_local");
@@ -326,7 +326,7 @@ function aceFiltradas(){
   const fC = $("ace-f-condicao")?.value || "", fL = $("ace-f-local")?.value || "", fE = $("ace-f-equip")?.value || "";
   const fO = $("ace-f-obra")?.value || "", fJ = $("ace-f-jogo")?.value || "";
   return aceDaFamilia().filter(a => {
-    if(a.ativo === false && fC !== "baixado") return false;
+    if(a.ativo === false && fC !== "baixado" && fC !== "vendido") return false;   // fase 180c: vendido junto com o bem
     if(fT && a.tipo !== fT) return false;
     if(fM === "sem" ? Number(a.diametro_mm) > 0 : (fM && String(Number(a.diametro_mm)) !== fM)) return false;   // lote S46 (#87): Ø externo
     if(fD && (fD === "sem" ? !!aceDetalheChave(a.detalhe) : aceDetalheChave(a.detalhe) !== fD)) return false;   // lote S48 (#126)

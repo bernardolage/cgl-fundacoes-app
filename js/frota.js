@@ -187,8 +187,8 @@ function renderFrotaVeiculos(){
   const cont = $("frota-conteudo");
   const termo = ($("frota-busca")?.value || "").trim().toLowerCase();
   // fase 96: veículo vendido sai da lista operacional (continua em _frotaVeic para as viagens antigas acharem o caminhão)
-  const vendidos = _frotaVeic.filter(v => v.status === "vendido");
-  const lista = _frotaVeic.filter(v => v.status !== "vendido" && (!termo || `${v.codigo} ${v.nome || ""} ${v.placa || ""}`.toLowerCase().includes(termo))
+  const vendidos = _frotaVeic.filter(v => bemVendido(v));   // fase 180c: inclui reserva de domínio e liberado para retirada
+  const lista = _frotaVeic.filter(v => !bemVendido(v) && (!termo || `${v.codigo} ${v.nome || ""} ${v.placa || ""}`.toLowerCase().includes(termo))
     && (!_frotaTipoFiltro || (v.tipo === _frotaTipoFiltro && v.ativo !== false)));   // lote S46 (#95): cartão clicado
   const c = $("frota-contador"); if(c) c.textContent = `${lista.length} de ${_frotaVeic.length - vendidos.length}`;
   const ativos = _frotaVeic.filter(v => v.ativo !== false);
@@ -435,7 +435,7 @@ function abrirVeiculo(id){
   $("fveic-obs").value = v?.observacoes || "";
   // fase 96: venda do veículo (js/vendas_bens.js); vendido não chega aqui (sai da lista)
   const bVend = $("btn-fveic-vender");
-  if(bVend) bVend.style.display = (v && v.status !== "vendido" && typeof vbPodeRegistrar === "function" && vbPodeRegistrar(v)) ? "" : "none";
+  if(bVend) bVend.style.display = (v && !bemVendido(v) && typeof vbPodeRegistrar === "function" && vbPodeRegistrar(v)) ? "" : "none";
   $("frota-veic-modal").style.display = "flex";
 }
 function fecharVeiculo(){ $("frota-veic-modal").style.display = "none"; _frotaVeicEditId = null; }

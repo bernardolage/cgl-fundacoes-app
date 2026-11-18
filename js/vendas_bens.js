@@ -16,6 +16,10 @@
    Permissões (espelho das policies): registrar e editar = diretor, admin e financeiro; gestor de frota nos veículos e
    caminhões. Confirmar e estornar recebimento = diretor, admin e financeiro. Valores: quem lê financeiro
    (podeVerValorObra = pode_ler_financeiro no banco) e o gestor de frota nos veículos; os demais veem só "vendido".
+   Fase 180c (venda dentro de Contratos): o registro da venda cria o contrato venda_bem (no banco); cronograma colado
+   (venda_cronograma_previa/gravar); correção pela Selic com spread e piso (venda_parcela_valor_boleto grava a memória em
+   vendas_bens_boletos; o ajuste da parcela anterior entra na seguinte); boleto anexado à parcela; reserva de domínio
+   (bem vendido_reserva → liberado_retirada → vendido); acessórios que vão com o bem (venda_acessorios_*).
    ==================================================================== */
 const VB_STATUS = {
   em_andamento: { label: "Em andamento", cor: "azul" },
@@ -52,6 +56,8 @@ let _vbEquipModal = null;    // bem do modal "Registrar venda"
 let _vbEditVenda = null;     // venda em edição no modal (null = nova)
 let _vbParcAtual = null;     // parcela do modal { modo: receber | editar | nova, p }
 let _vbClientes = null;      // clientes para o comprador da casa
+let _vbExtras = null;        // fase 180c: { venda (colunas novas + contrato), parcelas (vw_vendas_parcelas_correcao), acessorios }
+let _vbBoletoParc = null;    // fase 180c: parcela que recebe o boleto anexado
 
 /* ---------- permissões (espelho das policies da 96b) ---------- */
 function vbEhVeiculo(e){ return !!e && VB_VEICULO.includes(e.tipo); }
@@ -114,7 +120,7 @@ async function vbCarregarVendas(forcar){
   if(_vbVendas && !forcar) return _vbVendas;
   if(!vbPodeLer(null)){
     // quem não lê financeiro vê só que o bem foi vendido (equipamentos é legível por todos)
-    const { data, error } = await sb.from("equipamentos").select("id,codigo,nome,tipo,placa,baixa_em,status").eq("status", "vendido").order("codigo");
+    const { data, error } = await sb.from("equipamentos").select("id,codigo,nome,tipo,placa,baixa_em,status").in("status", EQP_STATUS_VENDIDO).order("codigo");
     _vbVendas = { soStatus: true, lista: data || [], erro: error };
     return _vbVendas;
   }
@@ -305,7 +311,7 @@ async function vbRenderAba(e, contId){
   const cont = $(contId);
   if(!cont || !e?.id) return;
   _vbAlvo = { equipId: e.id, contId, equip: e };
-  const vendido = e.status === "vendido" || !!e.venda_id;
+  const vendido = bemVendido(e);
   const podeReg = vbPodeRegistrar(e);
   if(!vendido){
     let hist = [];
@@ -320,7 +326,7 @@ async function vbRenderAba(e, contId){
   }
   if(!vbPodeLer(e)){
     cont.innerHTML = `<div class="odoo-contexto" style="padding:0 0 12px;">
-        <div class="chip"><span>Situação</span><strong>${tagStatus("equipamento", "vendido")}</strong></div>
+        <div class="chip"><span>Situação</span><strong>${tagStatus("equipamento", e.status || "vendido")}</strong></div>
         <div class="chip"><span>Vendido em</span><strong>${dataBR(e.baixa_em)}</strong></div></div>
       <p class="nota">Comprador, valores e parcelas da venda ficam com o financeiro.</p>`;
     return;
@@ -337,6 +343,7 @@ async function vbRenderAba(e, contId){
   _vbParcelas = pr.data || [];
   cont.innerHTML = vbHTMLVenda(_vbVendaAtual, _vbParcelas, e) + vbHistHTML(hr.data || []);
   vbLigarAba(cont, e);
+  await vbRenderExtras(e);
 }
 function vbHTMLVenda(v, parcelas, e){
   const podeReg = vbPodeRegistrar(e) && v.status !== "cancelada";
@@ -403,7 +410,8 @@ function vbHTMLVenda(v, parcelas, e){
       <thead><tr><th>Nº</th><th>Descrição</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Recebido</th><th class="num">Juros/multa</th><th>Recebido em</th><th>Forma</th><th>Status</th><th>Observação</th><th class="col-acao"></th></tr></thead>
       <tbody>${linhas}</tbody>
       <tfoot><tr><th colspan="3">Total</th><th class="num">${brl(somaP)}</th><th class="num">${brl(v.recebido)}</th><th class="num">${Number(v.encargos_recebidos) > 0 ? brl(v.encargos_recebidos) : ""}</th><th colspan="5"></th></tr></tfoot>
-    </table></div>` : `<p class="vazio">${v.valor_venda > 0 ? "Sem parcelas: informe o 1º vencimento em \"Editar venda\" ou lance as parcelas uma a uma (+ Parcela)." : "Sem valor de venda: complete em \"Editar venda\"."}</p>`}
+    </table></div>` : `<p class="vazio">${v.valor_venda > 0 ? "Sem parcelas: informe o 1º vencimento em \"Editar venda\", cole a tabela do contrato ou lance as parcelas uma a uma (+ Parcela)." : "Sem valor de venda: complete em \"Editar venda\"."}</p>`}
+    <div id="vb-extras">${uiCarregando("Carregando contrato, correção e acessórios…")}</div>
     ${veic ? `<h4 class="titulo-bloco" style="margin-top:16px;">Transferência do veículo ${v.transferencia_concluida ? '<span class="tag verde">concluída</span>' : '<span class="tag ambar">pendente</span>'}</h4>
       <div class="grade grade-3">
         <div class="campo"><label>Comunicação de venda ao Detran em</label><input type="date" id="vb-tr-comunic" value="${esc(v.comunicacao_venda_em || "")}" ${podeReg ? "" : "disabled"} /></div>
@@ -496,6 +504,12 @@ function vbAbrirParcela(modo, p){
     $("vb-pr-data").value = hojeISO();
     $("vb-pr-valor").value = saldo > 0 ? saldo.toFixed(2) : "";
     $("vb-pr-encargos").value = p.encargo_sugerido ? Number(p.encargo_sugerido).toFixed(2) : "";
+    // fase 180c: parcela corrigida sugere o valor do último boleto calculado (correção + ajuste no campo juros/multa)
+    const pc = (_vbExtras?.parcelas || []).find(x => x.id === p.id);
+    if(pc && pc.corrigida && pc.valor_boleto != null && saldo > 0 && !(Number(p.valor_recebido) > 0)){
+      $("vb-pr-encargos").value = Math.max(0, vbR2(Number(pc.valor_boleto) - saldo)).toFixed(2);
+      $("vb-parc-info").innerHTML += `<br>Boleto calculado em ${dataBR(pc.boleto_calculado_em)}: <strong>${brl(pc.valor_boleto)}</strong> (valor-base ${brl(saldo)} + correção e ajuste ${brl(Math.max(0, vbR2(Number(pc.valor_boleto) - saldo)))}). Pago em outra data, a diferença entra no boleto da parcela seguinte.`;
+    }
     $("vb-pr-forma").innerHTML = Object.entries(VB_FORMAS_REC).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
     $("vb-pr-forma").value = p.forma_recebimento || "transferencia";
     $("vb-pr-banco").value = p.banco || "";
@@ -573,12 +587,15 @@ async function vbCarregarClientes(){
 async function vbAbrirRegistro(e, venda){
   if(!e?.id){ aviso("app-aviso", "Salve o bem antes de registrar a venda.", "erro"); return; }
   if(!vbPodeRegistrar(e)){ aviso("app-aviso", vbEhVeiculo(e) ? "Só o financeiro, o admin, a diretoria e o gestor de frota registram a venda de veículos." : "Só o financeiro, o admin e a diretoria registram a venda de equipamentos.", "erro"); return; }
-  if(!venda && (e.status === "vendido" || e.venda_id)){ aviso("app-aviso", `${e.codigo} já está vendido. Abra a aba Venda.`, "erro"); return; }
+  if(!venda && bemVendido(e)){ aviso("app-aviso", `${e.codigo} já está vendido. Abra a aba Venda.`, "erro"); return; }
   _vbEquipModal = e; _vbEditVenda = venda || null;
   vbLimparAviso("vb-aviso");
-  const cli = await vbCarregarClientes();
-  $("vb-cliente").innerHTML = `<option value="">— comprador não é cliente da casa —</option>` + cli.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}${c.cpf_cnpj ? " · " + esc(c.cpf_cnpj) : ""}</option>`).join("");
-  const v = venda || {};
+  await vbCarregarClientes();
+  // fase 180c: correção e reserva não estão na vw_vendas_bens; vêm da tabela
+  const novas = venda ? (await sb.from("vendas_bens").select("indice,spread_aa,piso_aa,reserva_dominio").eq("id", venda.id).maybeSingle()).data : null;
+  const v = venda ? { ...venda, ...(novas || {}) } : {};
+  $("vb-cliente-busca").value = "";
+  vbFiltrarClientes(v.cliente_id || "");
   $("vb-titulo").textContent = venda ? `✏️ Editar venda ${venda.numero}` : "💰 Registrar venda";
   $("vb-bem-txt").innerHTML = `Bem: <strong>${esc(e.codigo)}</strong>${e.nome ? " · " + esc(e.nome) : ""}${e.placa ? " · " + esc(e.placa) : ""}${venda ? "" : " — a venda dá baixa no bem (status Vendido) e desliga o plano preventivo; o histórico (OS, custos, viagens, RDOs) continua ligado."}`;
   $("vb-cliente").value = v.cliente_id || "";
@@ -604,13 +621,43 @@ async function vbAbrirRegistro(e, venda){
   $("vb-bloco-veic").style.display = vbEhVeiculo(e) ? "" : "none";
   $("vb-contrato").value = "";
   $("vb-contrato-campo").style.display = venda ? "none" : "";
-  $("vb-ja-recebidas").checked = false;
-  $("vb-ja-recebidas-campo").style.display = (!venda && vbPodeReceber()) ? "" : "none";
+  $("vb-ja-recebidas").checked = false;   // fase 180c: sempre desmarcado; só aparece com data da venda no passado
+  $("vb-indice").value = v.indice || "nenhum";
+  $("vb-spread").value = v.spread_aa ?? "";
+  $("vb-piso").value = v.piso_aa ?? "";
+  $("vb-reserva").checked = !!v.reserva_dominio;
   $("btn-vb-salvar").textContent = venda ? "Salvar venda" : "Registrar venda";
   vbToggleForma();
+  vbToggleIndice();
+  vbToggleJaRecebidas();
   $("vb-modal").style.display = "flex";
 }
 function vbFecharRegistro(){ $("vb-modal").style.display = "none"; _vbEquipModal = null; _vbEditVenda = null; }
+/* fase 180c: busca no cliente da casa (a lista tem centenas de nomes); mantém o escolhido mesmo fora do filtro */
+function vbFiltrarClientes(selecionado){
+  const sel = $("vb-cliente"); if(!sel) return;
+  const atual = selecionado != null ? selecionado : sel.value;
+  const termo = ($("vb-cliente-busca")?.value || "").trim().toLowerCase();
+  const soDig = termo.replace(/\D/g, "");
+  const lista = (_vbClientes || []).filter(c => c.id === atual || !termo
+    || String(c.nome || "").toLowerCase().includes(termo) || (soDig.length >= 3 && String(c.cpf_cnpj || "").replace(/\D/g, "").includes(soDig)));
+  const rot = termo ? `— ${lista.length} cliente(s) com "${termo}" —` : "— comprador não é cliente da casa —";
+  sel.innerHTML = `<option value="">${esc(rot)}</option>`
+    + lista.slice(0, 300).map(c => `<option value="${esc(c.id)}">${esc(c.nome)}${c.cpf_cnpj ? " · " + esc(c.cpf_cnpj) : " · sem CNPJ"}</option>`).join("");
+  sel.value = atual || "";
+}
+/* fase 180c: "já recebidas" só para venda antiga (data no passado), nunca marcado de saída */
+function vbToggleJaRecebidas(){
+  const campo = $("vb-ja-recebidas-campo"); if(!campo) return;
+  const d = $("vb-data").value;
+  const mostra = !_vbEditVenda && vbPodeReceber() && !!d && d < hojeISO();
+  campo.hidden = !mostra;
+  if(!mostra) $("vb-ja-recebidas").checked = false;
+}
+function vbToggleIndice(){
+  const com = $("vb-indice")?.value && $("vb-indice").value !== "nenhum";
+  document.querySelectorAll("#vb-modal .vb-so-indice").forEach(el => { el.hidden = !com; });
+}
 function vbToggleForma(){
   const parc = $("vb-forma").value === "parcelado";
   document.querySelectorAll("#vb-modal .vb-so-parc").forEach(el => el.style.display = parc ? "" : "none");
@@ -623,7 +670,7 @@ function vbPrevia(){
   const el = $("vb-previa"); if(!el) return;
   const valor = Number($("vb-valor").value || 0), ent = Number($("vb-entrada").value || 0), venc = $("vb-venc").value;
   const parc = $("vb-forma").value === "parcelado", n = Math.max(1, parseInt($("vb-n").value || "1", 10) || 1);
-  if(!(valor > 0) || !venc){ el.textContent = valor > 0 ? "Sem vencimento: as parcelas não são geradas (a venda fica com a pendência \"sem parcelas\")." : ""; return; }
+  if(!(valor > 0) || !venc){ el.textContent = valor > 0 ? "Sem vencimento: as parcelas não são geradas. Para o cronograma do contrato (datas e valores diferentes), registre assim e use \"Colar tabela de vencimentos\" na aba Venda." : ""; return; }
   const saldo = vbR2(valor - ent);
   if(saldo < 0){ el.innerHTML = `<span class="txt-perigo">A entrada é maior que o valor da venda.</span>`; return; }
   const per = $("vb-period").value, intv = parseInt($("vb-intervalo").value || "30", 10) || 30;
@@ -667,7 +714,12 @@ async function vbSalvarRegistro(){
     intervalo_dias: forma === "parcelado" && $("vb-period").value === "personalizada" ? n("vb-intervalo") : null,
     juros_mora_pct: n("vb-juros"), multa_atraso_pct: n("vb-multa"),
     nf_numero: $("vb-nf").value.trim() || null, nf_data: $("vb-nf-data").value || null,
-    observacoes: $("vb-obs").value.trim() || null
+    observacoes: $("vb-obs").value.trim() || null,
+    // fase 180c: correção e reserva de domínio (o banco zera spread e piso sem índice e põe a data-base na data da venda)
+    indice: $("vb-indice").value || "nenhum",
+    spread_aa: $("vb-indice").value !== "nenhum" ? n("vb-spread") : null,
+    piso_aa: $("vb-indice").value !== "nenhum" ? n("vb-piso") : null,
+    reserva_dominio: $("vb-reserva").checked
   };
   if(vbEhVeiculo(e)){ reg.comunicacao_venda_em = $("vb-comunic").value || null; reg.crv_entregue_em = $("vb-crv").value || null; }
   const ehCarga = ed && ed.origem === "planilha";
@@ -677,7 +729,9 @@ async function vbSalvarRegistro(){
   if(reg.valor_venda != null && reg.valor_entrada > reg.valor_venda){ vbAvisoModal("vb-aviso", "A entrada é maior que o valor da venda.", "erro"); return; }
   if(forma === "parcelado" && !(reg.n_parcelas >= 1)){ vbAvisoModal("vb-aviso", "Informe o número de parcelas.", "erro"); return; }
   if(reg.intervalo_dias == null && reg.periodicidade === "personalizada"){ vbAvisoModal("vb-aviso", "Informe o intervalo em dias.", "erro"); return; }
-  if(reg.valor_venda > 0 && !reg.primeiro_vencimento && !ehCarga){ vbAvisoModal("vb-aviso", forma === "parcelado" ? "Informe o 1º vencimento." : "Informe o vencimento do saldo (a data da venda, se foi pago no ato).", "erro"); return; }
+  // fase 180c: parcelado sem 1º vencimento é a venda com cronograma do contrato (colado depois, na aba Venda)
+  if(reg.valor_venda > 0 && !reg.primeiro_vencimento && !ehCarga && forma !== "parcelado"){ vbAvisoModal("vb-aviso", "Informe o vencimento do saldo (a data da venda, se foi pago no ato).", "erro"); return; }
+  if(!(await vbConferirCnpjCliente(reg))) return;
   if(ed){
     const mudaPlano = VB_CAMPOS_PLANO.some(k => !vbIgual(reg[k], ed[k]));
     if(mudaPlano && ed.n_parcelas_geradas > 0 && !confirm("Mudar valor, entrada ou plano refaz as parcelas pelo novo plano (as editadas uma a uma voltam ao plano). Com parcela já recebida o banco recusa: aí ajuste as parcelas uma a uma. Continuar?")) return;
@@ -692,26 +746,356 @@ async function vbSalvarRegistro(){
   const arquivo = $("vb-contrato").files && $("vb-contrato").files[0];
   if(arquivo && !VB_MIME[String(arquivo.name).split(".").pop().toLowerCase()]){ vbAvisoModal("vb-aviso", "Contrato em PDF, JPG ou PNG.", "erro"); return; }
   const jaRecebidas = $("vb-ja-recebidas").checked && vbPodeReceber();
-  const { data: nova, error } = await sb.from("vendas_bens").insert({ ...reg, equipamento_id: e.id }).select("id,numero,equipamento_id").single();
+  const { data: nova, error } = await sb.from("vendas_bens").insert({ ...reg, equipamento_id: e.id }).select("id,numero,equipamento_id,contrato_id").single();
   if(error){ vbAvisoModal("vb-aviso", "Não foi possível registrar a venda: " + vbMsgErro(error), "erro"); return; }
   const avisos = [];
   if(arquivo){
     try { await vbEnviarContrato(nova, arquivo); } catch(err){ avisos.push("o contrato não subiu (" + vbMsgErro(err) + "): anexe na aba Venda"); }
   }
-  if(jaRecebidas){
-    const { data: ps } = await sb.from("vendas_bens_parcelas").select("id,valor,vencimento").eq("venda_id", nova.id).lte("vencimento", hojeISO());
-    let falhas = 0;
-    for(const p of (ps || [])){
-      const { error: ep } = await sb.from("vendas_bens_parcelas").update({ valor_recebido: p.valor, recebido_em: p.vencimento, forma_recebimento: "transferencia" }).eq("id", p.id);
-      if(ep) falhas++;
-    }
-    if(falhas) avisos.push(`${falhas} parcela(s) não foram marcadas como recebidas`);
+  if(jaRecebidas && reg.data_venda && reg.data_venda < hojeISO()){
+    // fase 180c: o banco marca entrada e parcelas vencidas antes de hoje (recusa venda com data de hoje ou futura)
+    const { error: ep } = await sb.rpc("venda_marcar_ja_recebidas", { p_venda: nova.id });
+    if(ep) avisos.push("as parcelas antigas não foram marcadas como recebidas (" + vbMsgErro(ep) + ")");
   }
   vbFecharRegistro();
-  aviso("app-aviso", `Venda ${nova.numero} registrada: ${e.codigo} saiu do cadastro operacional.${avisos.length ? " Atenção: " + avisos.join("; ") + "." : ""}`, avisos.length ? "aviso" : "ok");
+  aviso("app-aviso", `Venda ${nova.numero} registrada${nova.contrato_id ? " com o contrato de venda em Contratos" : ""}: ${e.codigo} saiu do cadastro operacional${reg.reserva_dominio ? " (reserva de domínio até o crédito da 1ª parcela)" : ""}.${avisos.length ? " Atenção: " + avisos.join("; ") + "." : ""}`, avisos.length ? "aviso" : "ok");
   await vbAposGravar(e.id);
   // veículo não tem ficha própria: mostra a venda recém-criada (parcelas geradas, checklist de transferência)
   if(vbEhVeiculo(e) && $("vb-ficha-modal")?.style.display !== "flex") await vbAbrirVendaDoBem(e.id);
+}
+
+/* ====================================================================
+   Fase 180c: contrato, cronograma colado, correção, boleto, reserva de domínio e acessórios
+   ==================================================================== */
+function vbPodeAcessorios(){ return !!vbCargo() && !vbSoLeitura() && ["diretor", "admin", "financeiro", "gestor_acessorios"].includes(vbCargo()); }
+const vbPct = v => v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 4 }) + "%";
+const vbFator = v => v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 8, maximumFractionDigits: 8 });
+
+/* uiModal com campos: devolve { acao, valores } lendo os campos pelo id enquanto o diálogo está aberto */
+async function vbModalForm(cfg, ids){
+  const valores = {};
+  const ler = el => el.type === "checkbox" ? el.checked : el.value;
+  const ouvir = ev => { const el = ev.target; if(el && ids.includes(el.id)) valores[el.id] = ler(el); };
+  document.addEventListener("input", ouvir, true);
+  document.addEventListener("change", ouvir, true);
+  const p = uiModal(cfg);   // o <dialog> entra no DOM na hora: lê os valores iniciais
+  ids.forEach(id => { const el = document.getElementById(id); if(el) valores[id] = ler(el); });
+  try { return { acao: await p, valores }; }
+  finally { document.removeEventListener("input", ouvir, true); document.removeEventListener("change", ouvir, true); }
+}
+
+/* cliente da casa sem CNPJ: pede o documento e grava no cliente (só quando o cadastro está vazio) */
+async function vbConferirCnpjCliente(reg){
+  if(!reg.cliente_id) return true;
+  const c = (_vbClientes || []).find(x => x.id === reg.cliente_id);
+  if(!c || String(c.cpf_cnpj || "").replace(/\D/g, "")) return true;
+  const r = await vbModalForm({ titulo: "Cliente sem CNPJ", largura: "p",
+    corpoHTML: `<p>${esc(c.nome)} está cadastrado sem CNPJ. O contrato, a NF e o boleto da venda precisam do documento do comprador.</p>`
+      + uiCampo({ id: "vb-cli-cnpj", rotulo: "CNPJ (ou CPF, se for pessoa física)", valor: reg.comprador_cpf_cnpj || "", ajuda: "Só números ou com pontuação. Fica gravado no cadastro do cliente." }),
+    acoes: [{ id: "pular", texto: "Seguir sem CNPJ" }, { id: "gravar", texto: "Gravar no cliente", primaria: true }] }, ["vb-cli-cnpj"]);
+  if(r.acao == null) return false;
+  if(r.acao !== "gravar") return true;
+  const { data, error } = await sb.rpc("venda_cliente_definir_cnpj", { p_cliente: c.id, p_documento: r.valores["vb-cli-cnpj"] || "" });
+  if(error){ vbAvisoModal("vb-aviso", "O CNPJ não foi gravado: " + vbMsgErro(error), "erro"); return false; }
+  c.cpf_cnpj = data;
+  if(!reg.comprador_cpf_cnpj) reg.comprador_cpf_cnpj = data;
+  return true;
+}
+
+async function vbRenderExtras(e){
+  const v = _vbVendaAtual, alvo = $("vb-extras");
+  if(!alvo || !v) return;
+  const [vr, pr, ar] = await Promise.all([
+    sb.from("vendas_bens").select("id,contrato_id,cronograma,indice,spread_aa,piso_aa,data_base,boleto_antecedencia_dias,reserva_dominio,liberacao_parcela_id,acessorios_conferidos_em,acessorios_divergencias,contratos(numero,status)").eq("id", v.id).maybeSingle(),
+    sb.from("vw_vendas_parcelas_correcao").select("*").eq("venda_id", v.id).order("ordem"),
+    sb.from("vendas_bens_acessorios").select("id,acessorio_id,incluido,conferido,divergencia,conferido_em,baixado_em,acessorios(marcacao,tipo,condicao)").eq("venda_id", v.id)
+  ]);
+  if(_vbVendaAtual?.id !== v.id || !$("vb-extras")) return;
+  if(vr.error || !vr.data){ alvo.innerHTML = uiErro("Não foi possível ler contrato e correção: " + (vr.error ? vbMsgErro(vr.error) : "venda não encontrada")); return; }
+  _vbExtras = { venda: vr.data, parcelas: pr.data || [], acessorios: ar.data || [], erroParc: pr.error, erroAce: ar.error };
+  alvo.innerHTML = vbHTMLExtras(_vbExtras, e);
+  vbLigarExtras(alvo, e);
+}
+
+function vbHTMLExtras(x, e){
+  const v = x.venda, ativa = _vbVendaAtual && _vbVendaAtual.status !== "cancelada";
+  const podeRec = vbPodeReceber() && ativa, podeReg = vbPodeRegistrar(e) && ativa, podeAce = vbPodeAcessorios() && ativa;
+  const corr = v.indice && v.indice !== "nenhum";
+  const ctr = v.contratos;
+  const btn = (acao, texto, titulo, prim) => `<button type="button" class="ui-btn${prim ? " ui-btn-prim" : ""}" data-vbx="${esc(acao)}"${titulo ? ` title="${esc(titulo)}"` : ""}>${esc(texto)}</button>`;
+  const libera = x.parcelas.find(p => p.libera_retirada);
+  const corrTxt = corr ? `Selic acumulada${Number(v.spread_aa) ? " + " + vbPct(v.spread_aa) + " a.a." : ""}${v.piso_aa != null ? ", piso de " + vbPct(v.piso_aa) + " a.a." : ""}, desde ${dataBR(v.data_base)}, por dia útil (base 252)` : "Sem correção: o boleto sai pelo valor da parcela";
+  const resumo = [
+    uiRotuloValor("Contrato", v.contrato_id ? `<a href="#" data-vbx="contrato">${uiCodigo(ctr?.numero || "abrir")}</a>${ctr ? " " + tagStatus("contrato", ctr.status) : ""}` : '<span class="meta">sem contrato ligado</span>'),
+    uiRotuloValor("Cronograma", esc(v.cronograma === "colado" ? "Tabela do contrato (colada)" : "Parcelas iguais (plano)")),
+    uiRotuloValor("Correção", esc(corrTxt)),
+    uiRotuloValor("Reserva de domínio", v.reserva_dominio
+      ? tagStatus("equipamento", e.status) + (libera ? ` <span class="meta">libera a retirada: parcela ${esc(libera.rotulo)} (${dataBR(libera.vencimento_util)})</span>` : "")
+      : esc("Não")),
+    corr ? uiRotuloValor("Fila do boleto", esc(`${v.boleto_antecedencia_dias} dia(s) úteis antes do vencimento`)) : ""
+  ].join("");
+  const acoes = [
+    podeRec ? btn("colar", "Colar tabela de vencimentos", "Troca as parcelas pela tabela do contrato (só sem parcela recebida)") : "",
+    podeReg ? btn("correcao", "Correção e reserva", "Índice, spread, piso, data-base, antecedência do boleto e parcela que libera a retirada") : ""
+  ].filter(Boolean).join(" ");
+  let boletos = "";
+  if(corr){
+    const abertas = x.parcelas.filter(p => p.corrigida && Number(p.valor_recebido) < Number(p.valor) - 0.01);
+    const hoje = hojeISO();
+    const colunas = [
+      { chave: "rotulo", rotulo: "Parcela", tipo: "codigo" },
+      { chave: "vencimento_util", rotulo: "Vence", html: p => dataBR(p.vencimento_util) + (p.vencimento_util !== p.vencimento ? ` <span class="meta" title="Vencimento em dia não útil passa para o dia útil seguinte">(${dataBR(p.vencimento)})</span>` : "") },
+      { chave: "valor", rotulo: "Valor-base", tipo: "brl" },
+      { chave: "boleto_a_partir_de", rotulo: "Boleto a partir de", html: p => `<span class="${p.boleto_a_partir_de <= hoje && !p.boleto_path ? "txt-perigo" : ""}">${dataBR(p.boleto_a_partir_de)}</span>` },
+      { chave: "boleto_calculado_em", rotulo: "Calculado em", tipo: "data" },
+      { chave: "ajuste_anterior", rotulo: "Ajuste anterior", tipo: "brl" },
+      { chave: "valor_boleto", rotulo: "Valor do boleto", tipo: "brl" },
+      { chave: "acoes", rotulo: "", html: p => [
+        podeRec ? `<button type="button" class="ui-btn" data-vbx="calcular" data-id="${esc(p.id)}" title="Calcula o valor do boleto até o vencimento útil e grava a memória de cálculo">Calcular</button>` : "",
+        p.boleto_memoria_id ? `<button type="button" class="ui-btn" data-vbx="pdf" data-id="${esc(p.id)}" title="PDF de uma página com a memória de cálculo">PDF</button>` : "",
+        p.boleto_path ? `<button type="button" class="ui-btn" data-vbx="boleto-ver" data-id="${esc(p.id)}" title="Abrir o boleto anexado">Boleto</button>` : "",
+        podeRec ? `<button type="button" class="ui-btn" data-vbx="boleto-anexar" data-id="${esc(p.id)}" title="Anexar o boleto emitido no banco (tira a parcela da fila do financeiro)">${p.boleto_path ? "Trocar boleto" : "Anexar boleto"}</button>` : ""
+      ].filter(Boolean).join(" ") }
+    ];
+    boletos = uiSecao("documento", "Boletos das parcelas corrigidas",
+      `<p class="meta">O valor do boleto usa a Selic publicada até a véspera do cálculo e a Selic meta para os dias úteis que faltam até o vencimento. A diferença entre o projetado e a Selic real (ou o pagamento em outra data) entra na parcela seguinte.</p>`
+      + uiTabela({ colunas, linhas: abertas, chaveLinha: "id", erro: x.erroParc ? vbMsgErro(x.erroParc) : null, vazio: "Nenhuma parcela corrigida em aberto." })
+      + `<input type="file" id="vb-boleto-arquivo" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden />`,
+      abertas.length ? `${abertas.length} em aberto` : "");
+  }
+  const aces = x.acessorios.slice().sort((a, b) => String(a.acessorios?.marcacao || "").localeCompare(String(b.acessorios?.marcacao || ""), "pt-BR", { numeric: true }));
+  const colA = [
+    { chave: "marcacao", rotulo: "Marcação", html: a => uiCodigo(a.acessorios?.marcacao || "—") },
+    { chave: "tipo", rotulo: "Tipo", html: a => esc(String(a.acessorios?.tipo || "").replace(/_/g, " ")) },
+    { chave: "condicao", rotulo: "Condição", html: a => tagStatus("acessorio", a.acessorios?.condicao) },
+    { chave: "incluido", rotulo: "Vai com o bem", html: a => `<input type="checkbox" data-vbx-inc="${esc(a.id)}" aria-label="Vai com o bem"${a.incluido ? " checked" : ""}${podeAce && !a.baixado_em ? "" : " disabled"} />` },
+    { chave: "conferido", rotulo: "Conferido na entrega", html: a => `<input type="checkbox" data-vbx-conf="${esc(a.id)}" aria-label="Conferido na entrega"${a.conferido ? " checked" : ""}${podeAce && a.incluido && !a.baixado_em ? "" : " disabled"} />` },
+    { chave: "baixado_em", rotulo: "Baixado", tipo: "data" }
+  ];
+  const pendBaixa = aces.filter(a => a.incluido && !a.baixado_em).length;
+  const ultBaixa = v.acessorios_conferidos_em
+    ? ` Última baixa em ${dataBR(String(v.acessorios_conferidos_em).slice(0, 10))}${v.acessorios_divergencias ? " · divergências: " + v.acessorios_divergencias : ""}.` : "";
+  const acessorios = uiSecao("maquina", "Acessórios na venda",
+    `<p class="meta">Os acessórios do bem (cadastro de acessórios, equipamento padrão) entram na lista; desmarque o que não vai. Na entrega, confira um a um e dê a baixa: eles saem do estoque com a condição "Vendido".${esc(ultBaixa)}</p>`
+    + (podeAce ? `<div class="vb-acoes">${btn("ace-carregar", "Trazer acessórios do bem", "Lista os acessórios ativos cujo equipamento padrão é este bem")}${pendBaixa ? " " + btn("ace-baixar", "Baixar acessórios vendidos", "Só com o bem liberado para retirada (ou sem reserva de domínio)") : ""}</div>` : "")
+    + uiTabela({ colunas: colA, linhas: aces, chaveLinha: "id", erro: x.erroAce ? vbMsgErro(x.erroAce) : null, vazio: "Nenhum acessório listado nesta venda." }),
+    aces.length ? `${aces.length} listado(s)` : "");
+  return uiSecao("documento", "Contrato, correção e reserva", `<div class="vb-rv-grade">${/* html */ resumo}</div>${acoes ? `<div class="vb-acoes">${/* html */ acoes}</div>` : ""}`) + boletos + acessorios;
+}
+
+function vbLigarExtras(alvo, e){
+  alvo.addEventListener("click", async ev => {
+    const b = ev.target.closest("[data-vbx]"); if(!b) return;
+    const acao = b.dataset.vbx, id = b.dataset.id;
+    if(acao === "contrato"){ ev.preventDefault(); vbAbrirContratoVenda(); return; }
+    if(acao === "colar") return vbColarCronograma(e);
+    if(acao === "correcao") return vbEditarCorrecao(e);
+    if(acao === "calcular") return vbCalcularBoleto(id, e);
+    if(acao === "pdf") return vbPDFBoletoPorParcela(id);
+    if(acao === "boleto-ver"){ const p = _vbExtras?.parcelas.find(x => x.id === id); if(p?.boleto_path) vbAbrirContrato(p.boleto_path); return; }
+    if(acao === "boleto-anexar"){ _vbBoletoParc = id; $("vb-boleto-arquivo")?.click(); return; }
+    if(acao === "ace-carregar") return vbAcessoriosCarregar(e);
+    if(acao === "ace-baixar") return vbAcessoriosBaixar(e);
+  });
+  alvo.addEventListener("change", async ev => {
+    const el = ev.target;
+    if(el.id === "vb-boleto-arquivo"){
+      const f = el.files && el.files[0]; el.value = "";
+      if(f && _vbBoletoParc) await vbAnexarBoleto(_vbBoletoParc, f, e);
+      return;
+    }
+    const inc = el.dataset.vbxInc, conf = el.dataset.vbxConf;
+    if(!inc && !conf) return;
+    const { error } = await sb.rpc("venda_acessorio_marcar", inc
+      ? { p_item: inc, p_incluido: el.checked, p_conferido: null, p_divergencia: null }
+      : { p_item: conf, p_incluido: null, p_conferido: el.checked, p_divergencia: null });
+    if(error){ uiAvisar("Não foi possível marcar o acessório: " + vbMsgErro(error), "perigo"); el.checked = !el.checked; return; }
+    await vbRenderExtras(e);
+  });
+}
+
+async function vbAbrirContratoVenda(){
+  const id = _vbExtras?.venda?.contrato_id; if(!id) return;
+  vbFecharFicha();
+  if(typeof irParaSecao === "function" && irParaSecao("contratos") && typeof abrirContrato === "function") abrirContrato(id);
+}
+
+/* ---------- cronograma colado ---------- */
+function vbPreviaCronHTML(p){
+  const dif = Number(p.diferenca || 0), erros = p.erros || [];
+  const ok = !erros.length && dif === 0;
+  const frases = [`${p.quantidade} parcela(s)`, `soma ${brl(p.soma)}`, `valor da venda ${p.valor_venda != null ? brl(p.valor_venda) : "—"}`,
+    dif === 0 ? "soma confere" : `diferença ${brl(dif)}`, p.ignoradas ? `${p.ignoradas} linha(s) sem data ignoradas` : ""];
+  const colunas = [
+    { chave: "ordem", rotulo: "Nº", tipo: "int" },
+    { chave: "vencimento", rotulo: "Vencimento", tipo: "data" },
+    { chave: "vencimento_util", rotulo: "Vence (dia útil)", html: l => l.vencimento_util !== l.vencimento ? `<strong>${dataBR(l.vencimento_util)}</strong>` : dataBR(l.vencimento_util) },
+    { chave: "valor", rotulo: "Valor-base", tipo: "brl" },
+    { chave: "marca", rotulo: "Marca", html: l => esc(l.entrada ? "entrada (sem correção)" : l.intermediaria ? "intermediária" : "") }
+  ];
+  return uiFaixaSituacao(frases, ok ? "ok" : "perigo")
+    + (erros.length ? `<ul class="vb-erros">${erros.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "")
+    + uiTabela({ colunas, linhas: p.linhas || [], vazio: "Nenhuma linha com vencimento." });
+}
+async function vbColarCronograma(e){
+  const v = _vbVendaAtual; if(!v) return;
+  let texto = "", previa = null, previaDe = null;
+  for(;;){
+    const ok = previa && previaDe === texto && !(previa.erros || []).length && Number(previa.diferenca) === 0;
+    const acoes = [{ id: "cancelar", texto: "Cancelar" }, { id: "conferir", texto: "Conferir", primaria: !ok }];
+    if(ok) acoes.push({ id: "gravar", texto: `Gravar ${previa.quantidade} parcelas`, primaria: true });
+    const r = await vbModalForm({ titulo: `Colar tabela de vencimentos · ${v.numero}`, largura: "g", acoes,
+      corpoHTML: `<p class="meta">Cole a tabela do contrato (Word, PDF ou planilha): uma linha por parcela com o vencimento (DD/MM/AAAA) e o valor-base. Marque a entrada paga na assinatura com E (sem correção) e as intermediárias com I. Linha sem data (cabeçalho, total) é ignorada. As parcelas atuais são trocadas, desde que nenhuma tenha recebimento.</p>`
+        + uiCampo({ id: "vb-cron-texto", rotulo: "Tabela de vencimentos", tipo: "textarea", valor: texto, placeholder: "01  16/11/2026  500.000,00  E" })
+        + (previa ? vbPreviaCronHTML(previa) : "") }, ["vb-cron-texto"]);
+    if(r.acao == null || r.acao === "cancelar") return;
+    const novo = r.valores["vb-cron-texto"] ?? texto;
+    if(r.acao === "gravar" && novo === previaDe){
+      const { data: n, error } = await sb.rpc("venda_cronograma_gravar", { p_venda: v.id, p_texto: novo });
+      if(error){ uiAvisar("O cronograma não foi gravado: " + vbMsgErro(error), "perigo"); texto = novo; continue; }
+      uiAvisar(`${n} parcelas gravadas pela tabela do contrato.`, "ok");
+      await vbAposGravar(_vbAlvo?.equipId || v.equipamento_id);
+      return;
+    }
+    texto = novo;
+    if(!texto.trim()){ previa = null; continue; }
+    const { data, error } = await sb.rpc("venda_cronograma_previa", { p_venda: v.id, p_texto: texto });
+    if(error){ uiAvisar("Não foi possível conferir: " + vbMsgErro(error), "perigo"); previa = null; continue; }
+    previa = data; previaDe = texto;
+  }
+}
+
+/* ---------- correção e reserva ---------- */
+async function vbEditarCorrecao(e){
+  const x = _vbExtras; if(!x) return;
+  const v = x.venda;
+  const parcOp = x.parcelas.map(p => [p.id, `${p.rotulo} · ${dataBR(p.vencimento_util)} · ${brl(p.valor)}`]);
+  const corpo = `<div class="vb-form">`
+    + uiCampo({ id: "vb-cor-indice", rotulo: "Correção das parcelas", tipo: "select", valor: v.indice, placeholder: "Sem correção", opcoes: [["selic", "Selic acumulada (Banco Central)"]] })
+    + uiCampo({ id: "vb-cor-spread", rotulo: "Mais (% ao ano)", tipo: "number", valor: v.spread_aa ?? "", ajuda: "Somado à Selic, por dia útil" })
+    + uiCampo({ id: "vb-cor-piso", rotulo: "Piso (% ao ano)", tipo: "number", valor: v.piso_aa ?? "", ajuda: "Correção mínima, por dia útil" })
+    + uiCampo({ id: "vb-cor-base", rotulo: "Corrigir desde", tipo: "date", valor: v.data_base || "", ajuda: "Vazio = data da venda" })
+    + uiCampo({ id: "vb-cor-antec", rotulo: "Boleto na fila (dias úteis antes)", tipo: "number", valor: v.boleto_antecedencia_dias ?? 5 })
+    + uiCampo({ id: "vb-cor-reserva", rotulo: "Reserva de domínio", tipo: "select", valor: v.reserva_dominio ? "sim" : "nao", placeholder: "Selecione", opcoes: [["sim", "Sim: o bem só sai depois da liberação"], ["nao", "Não"]] })
+    + uiCampo({ id: "vb-cor-libera", rotulo: "Parcela que libera a retirada", tipo: "select", valor: v.liberacao_parcela_id || "", placeholder: "A primeira pelo vencimento", opcoes: parcOp })
+    + `</div><p class="meta">Mudar a correção não muda boleto já calculado: recalcule a parcela. Com reserva de domínio a remessa de saída do bem é recusada até o crédito da parcela de liberação; na quitação o bem vira "Vendido".</p>`;
+  const ids = ["vb-cor-indice", "vb-cor-spread", "vb-cor-piso", "vb-cor-base", "vb-cor-antec", "vb-cor-reserva", "vb-cor-libera"];
+  const r = await vbModalForm({ titulo: `Correção e reserva · ${_vbVendaAtual?.numero || ""}`, largura: "g", corpoHTML: corpo,
+    acoes: [{ id: "cancelar", texto: "Cancelar" }, { id: "salvar", texto: "Salvar", primaria: true }] }, ids);
+  if(r.acao !== "salvar") return;
+  const val = r.valores, numOuNulo = s => s === "" || s == null ? null : Number(s);
+  const indice = val["vb-cor-indice"] || "nenhum";
+  const reg = { indice, spread_aa: indice === "nenhum" ? null : numOuNulo(val["vb-cor-spread"]), piso_aa: indice === "nenhum" ? null : numOuNulo(val["vb-cor-piso"]),
+    data_base: val["vb-cor-base"] || null, boleto_antecedencia_dias: numOuNulo(val["vb-cor-antec"]) ?? 5,
+    reserva_dominio: val["vb-cor-reserva"] === "sim", liberacao_parcela_id: val["vb-cor-libera"] || null };
+  const { data, error } = await sb.from("vendas_bens").update(reg).eq("id", v.id).select("id");
+  if(error || !data?.length){ uiAvisar("Não foi possível salvar: " + (error ? vbMsgErro(error) : "seu perfil não altera esta venda"), "perigo"); return; }
+  uiAvisar("Correção e reserva salvas. A situação do bem foi refeita no banco.", "ok");
+  await vbAposGravar(_vbAlvo?.equipId || e.id);
+}
+
+/* ---------- boleto: cálculo, memória em PDF e anexo ---------- */
+function vbMemoriaLinhas(b, p){
+  const aj = b.ajuste_memoria || {};
+  return [
+    ["Parcela", `${p?.rotulo || ""} · ${p?.descricao || ""}`],
+    ["Vencimento", dataBR(b.vencimento) + (b.vencimento_util !== b.vencimento ? ` (dia não útil: vence ${dataBR(b.vencimento_util)})` : "")],
+    ["Calculado em", dataBR(b.data_calculo)],
+    ["Valor-base", brl(b.valor_base)],
+    ["Correção desde", dataBR(b.data_base)],
+    ["Selic publicada", b.du_real ? `${b.du_real} dia(s) útil(eis) até ${dataBR(b.selic_ate)} · fator ${vbFator(b.fator_real)}` : "nenhum dia útil publicado no período"],
+    ["Selic meta projetada", b.du_projetado ? `${b.du_projetado} dia(s) útil(eis) a ${vbPct(b.selic_meta)} a.a. · fator ${vbFator(b.fator_projetado)}` : "sem projeção"],
+    ["Spread", `${vbPct(b.spread_aa || 0)} a.a. · fator ${vbFator(b.fator_spread)}`],
+    ["Piso", b.piso_aa != null ? `${vbPct(b.piso_aa)} a.a. · fator ${vbFator(b.fator_piso)}` : "sem piso"],
+    ["Fator aplicado", `${vbFator(b.fator)}${b.piso_aplicado ? " (valeu o piso)" : " (Selic + spread)"}`],
+    ["Valor corrigido", brl(b.valor_corrigido)],
+    ["Ajuste da parcela anterior", Number(b.ajuste_anterior) ? `${brl(b.ajuste_anterior)} · ${aj.parcela || ""} paga em ${dataBR(aj.pago_em)} (${brl(aj.valor_pago)}; devido na data ${brl(aj.devido_na_data)})` : (aj.aviso || "nenhum")],
+    ["Valor do boleto", brl(b.valor_boleto)]
+  ];
+}
+async function vbCalcularBoleto(parcId, e){
+  const p = _vbExtras?.parcelas.find(x => x.id === parcId); if(!p) return;
+  const { data: b, error } = await sb.rpc("venda_parcela_valor_boleto", { p_parcela: parcId });
+  if(error){ uiAvisar("Não foi possível calcular: " + vbMsgErro(error), "perigo"); return; }
+  const corpo = `<div class="vb-rv-grade">${vbMemoriaLinhas(b, p).map(([r, val]) => uiRotuloValor(r, esc(val))).join("")}</div>
+    <p class="meta">Memória gravada. Emita o boleto no banco por este valor e anexe-o na parcela.</p>`;
+  const acao = await uiModal({ titulo: `Boleto da parcela ${p.rotulo}`, corpoHTML: corpo, largura: "m",
+    acoes: [{ id: "fechar", texto: "Fechar" }, { id: "pdf", texto: "PDF da memória", primaria: true }] });
+  if(acao === "pdf") await vbPDFBoleto(b, p);
+  await vbRenderExtras(e);
+}
+async function vbPDFBoletoPorParcela(parcId){
+  const p = _vbExtras?.parcelas.find(x => x.id === parcId); if(!p) return;
+  const { data: b, error } = await sb.from("vendas_bens_boletos").select("*").eq("parcela_id", parcId).order("data_calculo", { ascending: false }).limit(1).maybeSingle();
+  if(error || !b){ uiAvisar("Sem memória de cálculo desta parcela: calcule o boleto primeiro.", "aviso"); return; }
+  await vbPDFBoleto(b, p);
+}
+/* PDF de uma página com a memória (texto nativo do jsPDF, mesmo rodapé e selo dos outros PDFs) */
+async function vbPDFBoleto(b, p){
+  try {
+    const v = _vbVendaAtual || {};
+    const pdf = await pdfNovoDocumento();
+    const T = s => pdfTextoWinAnsi(s);
+    const esq = 15, larg = 180;
+    try { const logo = await pdfCarregarImagem(PDF_LOGO_SRC, 300); pdf.addImage(logo, "PNG", esq, 10, 16, 16, "logo-cgl", "FAST"); } catch(_){ /* sem logo segue */ }
+    pdf.setFont("helvetica", "bold"); pdf.setFontSize(13); pdf.setTextColor(17);
+    pdf.text(T("Memória de cálculo do boleto"), esq + 20, 16);
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(9); pdf.setTextColor(68);
+    pdf.text(T(`Venda ${v.numero || ""} · ${vbBemTxt(v)} · comprador ${v.comprador || "—"}`), esq + 20, 21, { maxWidth: larg - 20 });
+    let y = 36;
+    vbMemoriaLinhas(b, p).forEach(([rot, val], i, arr) => {
+      const forte = i === arr.length - 1;
+      pdf.setFont("helvetica", forte ? "bold" : "normal"); pdf.setFontSize(forte ? 11 : 9.5);
+      pdf.setTextColor(90); pdf.text(T(rot), esq, y);
+      pdf.setTextColor(17);
+      const linhas = pdf.splitTextToSize(T(val), larg - 55);
+      pdf.text(linhas, esq + 55, y);
+      y += Math.max(1, linhas.length) * 5 + 2.5;
+      if(i === arr.length - 2){ pdf.setDrawColor(180); pdf.setLineWidth(0.2); pdf.line(esq, y - 3, esq + larg, y - 3); y += 1; }
+    });
+    y += 4;
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5); pdf.setTextColor(85);
+    const nota = pdf.splitTextToSize(T("Fator = maior entre (Selic diária acumulada × spread) e o piso, compostos pelos dias úteis entre a data-base (inclusive) e o vencimento útil (exclusive), base 252. A Selic publicada pelo Banco Central (série 11) vale até a véspera do cálculo; os dias úteis que faltam usam a Selic meta (série 432). A diferença entre o projetado e a Selic real, ou o pagamento em outra data, entra como ajuste na parcela seguinte."), larg);
+    pdf.text(nota, esq, y);
+    let selo = null;
+    try { selo = await pdfCarregarImagem(PDF_SELO_SRC, 300); } catch(_){ /* sem selo segue */ }
+    pdfCarimbarRodape(pdf, selo, [10, esq, PDF_BASE_MIN_MM, esq]);
+    pdf.save(`boleto-${String(v.numero || "venda").replace(/[^\w-]+/g, "_")}-parcela-${String(p.rotulo || "").replace(/\//g, "-")}.pdf`);
+  } catch(err){ uiAvisar("Não foi possível gerar o PDF: " + (err?.message || err), "perigo"); }
+}
+async function vbAnexarBoleto(parcId, file, e){
+  const v = _vbVendaAtual; if(!v) return;
+  const ext = String(file.name || "").split(".").pop().toLowerCase();
+  const mime = VB_MIME[ext];
+  if(!mime){ uiAvisar("Envie o boleto em PDF, JPG ou PNG.", "perigo"); return; }
+  if(file.size > 20 * 1024 * 1024){ uiAvisar("Arquivo acima de 20 MB.", "perigo"); return; }
+  const nome = String(file.name).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.\-]+/g, "_").slice(-80);
+  const caminho = `${v.equipamento_id}/${v.id}/boletos/${Date.now()}-${nome}`;
+  const up = await sb.storage.from(VB_BUCKET).upload(caminho, new Blob([file], { type: mime }), { cacheControl: "3600", contentType: mime, upsert: false });
+  if(up.error){ uiAvisar("O boleto não subiu: " + vbMsgErro(up.error), "perigo"); return; }
+  const { data, error } = await sb.from("vendas_bens_parcelas").update({ boleto_path: caminho, boleto_nome: file.name }).eq("id", parcId).select("id");
+  if(error || !data?.length){ await sb.storage.from(VB_BUCKET).remove([caminho]); uiAvisar("Não foi possível ligar o boleto à parcela: " + (error ? vbMsgErro(error) : "sem permissão"), "perigo"); return; }
+  uiAvisar("Boleto anexado: a parcela saiu da fila do financeiro.", "ok");
+  await vbRenderExtras(e);
+}
+
+/* ---------- acessórios ---------- */
+async function vbAcessoriosCarregar(e){
+  const { data: n, error } = await sb.rpc("venda_acessorios_carregar", { p_venda: _vbVendaAtual.id });
+  if(error){ uiAvisar("Não foi possível listar os acessórios: " + vbMsgErro(error), "perigo"); return; }
+  uiAvisar(n ? `${n} acessório(s) do bem entraram na lista.` : "Nenhum acessório novo: o cadastro não tem outro acessório com este bem como equipamento padrão.", n ? "ok" : "info");
+  await vbRenderExtras(e);
+}
+async function vbAcessoriosBaixar(e){
+  const r = await vbModalForm({ titulo: "Baixar acessórios vendidos", largura: "p",
+    corpoHTML: `<p>Os acessórios marcados e conferidos saem do estoque com a condição "Vendido" (continuam no histórico).</p>`
+      + uiCampo({ id: "vb-ace-div", rotulo: "Divergências na entrega (opcional)", tipo: "textarea", placeholder: "ex.: faltou um trado de 30 cm, combinado abater na parcela 03" }),
+    acoes: [{ id: "cancelar", texto: "Cancelar" }, { id: "baixar", texto: "Baixar", primaria: true }] }, ["vb-ace-div"]);
+  if(r.acao !== "baixar") return;
+  const { data: n, error } = await sb.rpc("venda_acessorios_baixar", { p_venda: _vbVendaAtual.id, p_divergencias: r.valores["vb-ace-div"] || null });
+  if(error){ uiAvisar("Não foi possível baixar: " + vbMsgErro(error), "perigo"); return; }
+  uiAvisar(`${n} acessório(s) baixado(s) como vendidos.`, "ok");
+  await vbRenderExtras(e);
 }
 
 /* Depois de gravar: redesenha onde a venda estiver na tela (ficha do equipamento, modal do veículo, painel, Logística) */
@@ -800,6 +1184,9 @@ function ligarVendasBens(){
   $("vb-forma")?.addEventListener("change", vbToggleForma);
   $("vb-period")?.addEventListener("change", vbToggleForma);
   ["vb-valor", "vb-entrada", "vb-n", "vb-venc", "vb-intervalo", "vb-data"].forEach(id => $(id)?.addEventListener("input", vbPrevia));
+  $("vb-data")?.addEventListener("input", vbToggleJaRecebidas);   // fase 180c
+  $("vb-indice")?.addEventListener("change", vbToggleIndice);
+  $("vb-cliente-busca")?.addEventListener("input", debounce(() => vbFiltrarClientes(null)));
   $("vb-cliente")?.addEventListener("change", () => {
     const c = (_vbClientes || []).find(x => x.id === $("vb-cliente").value);
     if(c && !$("vb-comprador-nome").value.trim()) $("vb-comprador-nome").value = c.nome || "";

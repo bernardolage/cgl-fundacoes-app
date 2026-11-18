@@ -28,7 +28,7 @@ const EQP_LOCAL_LBL = { base: "Base", obra: "Obra", em_transito: "Em trânsito",
 const EQP_LOCAL_COR = { base: "verde", obra: "azul", em_transito: "ambar", fornecedor_manutencao: "ambar", cliente: "azul", vendido: "cinza" };
 /* fase 96: bem vendido (status e localização "vendido", nascidos do registro da venda) sai das visões operacionais
    (kanban, lista, filtros, KPIs) e fica só na visão Vendas e na própria ficha, para consulta */
-const EQP_FORA_OPERACAO = ["vendido"];
+const EQP_FORA_OPERACAO = EQP_STATUS_VENDIDO;   // fase 180c: vendido, vendido_reserva e liberado_retirada (core.js)
 const EQP_MOB_ATIVA = ["em_preparacao","em_transito","em_obra"];
 
 function eqpPodeEditar(){
@@ -43,7 +43,7 @@ function eqpOnde(e){
     case "em_transito": return "Em trânsito" + (e.localizacao_obra_id ? " → " + eqpObra(e.localizacao_obra_id) : "") + d;
     case "fornecedor_manutencao": return "Fornecedor / manutenção" + d;
     case "cliente":     return "Cliente" + d;
-    case "vendido":     return "Vendido" + (e.baixa_em ? " em " + dataBR(e.baixa_em) : "");   // fase 96
+    case "vendido":     return e.status && e.status !== "vendido" ? eqpLbl(e.status) : "Vendido" + (e.baixa_em ? " em " + dataBR(e.baixa_em) : "");   // fase 96; 180c: reserva de domínio
     default:            return "Base" + d;
   }
 }
@@ -742,7 +742,7 @@ function abrirFichaEquipamento(e){
   $("eqp-ficha").style.display = "";
   $("eqp-ficha-titulo").textContent = novo ? "Novo equipamento" : eqpTag(e);
   // fase 96: bem vendido fica só para consulta (o estado volta só cancelando a venda, na aba Venda)
-  const vendido = e.status === "vendido" || !!e.venda_id;
+  const vendido = bemVendido(e);
   document.querySelectorAll("#eqp-ficha .eqp-so-existente").forEach(b => b.style.display = (novo || vendido) ? "none" : "");
   const pode = eqpPodeEditar() && !vendido;
   const bVend = $("btn-eqp-vender");
@@ -1082,7 +1082,7 @@ function eqpRenderAcessorios(){
 
 /* ---------- salvar ---------- */
 async function salvarEquipamento(){
-  const vendido = !!_eqpAtual && (_eqpAtual.status === "vendido" || !!_eqpAtual.venda_id);
+  const vendido = bemVendido(_eqpAtual);
   const podeCadastro = eqpPodeEditar() && !vendido;   // fase 96: bem vendido fica só para consulta
   const mudouValor = eqpValorBemMudou();              // valor e data de aquisição: diretoria e financeiro, também em bem vendido
   // valor para remessa: só diretoria e financeiro, pela RPC (nunca no update do cadastro)
@@ -1163,7 +1163,7 @@ async function eqpMudarStatus(novo){
   if(!_eqpEditId) return;
   if(novo === (_eqpAtual.status || "disponivel")) return;
   // fase 96: "Vendido" nasce do registro da venda (modal); sair de vendido só cancelando a venda
-  if(_eqpAtual.status === "vendido" || _eqpAtual.venda_id){ aviso("app-aviso", `${_eqpAtual.codigo} foi vendido. Para devolvê-lo ao cadastro, cancele a venda na aba Venda.`, "erro"); ativarTabEquipamento("venda"); return; }
+  if(bemVendido(_eqpAtual)){ aviso("app-aviso", `${_eqpAtual.codigo} foi vendido. Para devolvê-lo ao cadastro, cancele a venda na aba Venda.`, "erro"); ativarTabEquipamento("venda"); return; }
   if(novo === "vendido"){ if(typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); return; }
   if(!eqpPodeEditar()) return;
   const lbl = eqpLbl(novo);

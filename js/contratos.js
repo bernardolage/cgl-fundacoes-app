@@ -1126,6 +1126,7 @@ async function conCarregarParcelas(c){
   if(!cont) return;
   if(!c || !c.id){ setSb(0); cont.innerHTML = uiVazio("Salve o contrato. As medições da obra ligada a ele aparecem aqui como parcelas a receber."); return; }
   const id = c.id;
+  if(c.categoria === "venda_bem") return conCarregarParcelasVenda(c, cont, setSb);   // fase 180c
   const obraIds = conObrasDe(c).map(o => o.id);
   let q = sb.from("medicoes").select("id,numero,obra_id,status,data_medicao,periodo_inicio,periodo_fim,valor_final,nf_numero,nf_vencimento,recebido_valor,recebida_em");
   q = obraIds.length ? q.or(`contrato_id.eq.${id},obra_id.in.(${obraIds.join(",")})`) : q.eq("contrato_id", id);
@@ -1151,6 +1152,34 @@ async function conCarregarParcelas(c){
     if(e.target.closest("a")) return;
     if(irParaSecao("medicoes") && typeof abrirMedicao === "function") abrirMedicao(tr.dataset.med);
   }));
+}
+
+/* Fase 180c: contrato de venda de bem. As parcelas são as da venda (cronograma do contrato), lidas pela
+   vw_vendas_parcelas_correcao (rótulo NN/TT e vencimento útil). Recebimento, boleto e correção ficam na aba Venda do bem. */
+async function conCarregarParcelasVenda(c, cont, setSb){
+  const id = c.id;
+  const { data, error } = await sb.from("vw_vendas_parcelas_correcao")
+    .select("id,venda_id,venda_numero,equipamento_id,codigo,rotulo,descricao,vencimento,vencimento_util,valor,valor_recebido,encargos,recebido_em,corrigida,intermediaria,boleto_path")
+    .eq("contrato_id", id).order("ordem");
+  if(conEditId !== id) return;
+  if(error){ setSb(0); cont.innerHTML = uiVazio(ehErroDePermissao(error) ? "As parcelas da venda ficam com o financeiro." : "Erro: " + error.message); return; }
+  const ps = data || [];
+  setSb(ps.length);
+  if(!ps.length){ cont.innerHTML = uiVazio("Seu perfil não vê as parcelas desta venda, ou a venda ainda não tem cronograma."); return; }
+  const situ = p => Number(p.valor_recebido) >= Number(p.valor) - 0.01 ? '<span class="tag verde">Recebida</span>'
+    : p.vencimento_util < hojeISO() ? '<span class="tag vermelho">Vencida</span>' : '<span class="tag cinza">A vencer</span>';
+  const colunas = [
+    { chave: "rotulo", rotulo: "Parcela", tipo: "codigo" },
+    { chave: "vencimento", rotulo: "Vencimento", html: p => dataBR(p.vencimento) + (p.vencimento_util !== p.vencimento ? ` <span class="meta" title="Dia não útil: vence no dia útil seguinte">→ ${dataBR(p.vencimento_util)}</span>` : "") },
+    { chave: "descricao", rotulo: "Descrição", html: p => esc(p.descricao || "") + (p.corrigida ? "" : ' <span class="meta">sem correção</span>') },
+    { chave: "valor", rotulo: "Valor-base", tipo: "brl" },
+    { chave: "recebido_em", rotulo: "Recebida em", tipo: "data" },
+    { chave: "sit", rotulo: "Situação", html: p => situ(p) + (p.boleto_path ? ' <span class="meta">boleto anexado</span>' : "") }
+  ];
+  const v0 = ps[0];
+  cont.innerHTML = `<p class="meta">Cronograma da venda ${esc(v0.venda_numero)} (${esc(v0.codigo)}). Valor-base de cada parcela, sem correção: recebimento, valor do boleto e correção ficam na aba Venda do bem.
+    <a href="#" id="con-vb-abrir">Abrir a venda</a></p>` + uiTabela({ colunas, linhas: ps, chaveLinha: "id" });
+  $("con-vb-abrir")?.addEventListener("click", ev => { ev.preventDefault(); if(typeof vbAbrirVendaPorId === "function") vbAbrirVendaPorId(v0.venda_id); });
 }
 
 async function conCarregarAditivos(id){
@@ -1181,7 +1210,7 @@ const CON_GARANTIA = { reserva_dominio: "Reserva de domínio", fianca: "Fiança"
 const CON_OBR_SIT = { pendente: ["Pendente", "ambar"], vencida: ["Vencida", "vermelho"], cumprida: ["Cumprida", "verde"], dispensada: ["Dispensada", "cinza"] };
 const CON_PRAZO_TIPO = { data: "Data fixa", dias_apos_assinatura: "Dias após a assinatura", continua: "Contínua (enquanto durar o contrato)" };
 const CON_AGENDA_TIPO = { vigencia: "Fim da vigência", obrigacao: "Obrigação", parcela_receber: "Parcela a receber",
-  parcela_pagar: "Título a pagar", vencimento_antecipado: "Vencimento antecipado" };
+  parcela_pagar: "Título a pagar", vencimento_antecipado: "Vencimento antecipado", parcela_venda: "Parcela de venda" };
 const CON_ESTADO_CIVIL = [["solteiro", "Solteiro(a)"], ["casado", "Casado(a)"], ["uniao_estavel", "União estável"],
   ["separado", "Separado(a)"], ["divorciado", "Divorciado(a)"], ["viuvo", "Viúvo(a)"]];
 

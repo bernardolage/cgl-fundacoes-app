@@ -4605,6 +4605,17 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .con-acoes-linha .ui-btn { min-height: var(--ctl-h-sm); padding: 0 var(--esp-2); font-size: var(--txt-sm); }
 }
 
+/* ---- Venda de bem (fase 180c): resumo do contrato e da correção, botões das linhas, formulário e erros do cronograma ---- */
+@layer componentes {
+.vb-rv-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--esp-3); min-width: 0; }
+.vb-acoes { display: flex; gap: var(--esp-2); flex-wrap: wrap; margin: var(--esp-3) 0; }
+.vb-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--esp-3); min-width: 0; }
+.vb-erros { margin: var(--esp-2) 0; padding-left: var(--esp-5); color: var(--perigo-txt); font-size: var(--txt-sm); }
+#vb-extras .ui-secao { margin-top: var(--esp-4); }
+#vb-extras .ui-tabela .ui-btn { min-height: var(--ctl-h-sm); padding: 0 var(--esp-2); font-size: var(--txt-sm); }
+#vb-modal [hidden] { display: none; }
+}
+
 /* ---- Envio da proposta pela orcamento@ (fase 192b): modal com campos, prévia do e-mail e anexos ---- */
 @layer componentes {
 .orc-envio { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }

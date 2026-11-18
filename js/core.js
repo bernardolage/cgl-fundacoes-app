@@ -163,7 +163,9 @@ const STATUS = {
     em_uso:         { label:"Em uso",         cor:"azul"     },
     em_manutencao:  { label:"Em manutenção",  cor:"ambar"    },
     inativo:        { label:"Inativo",        cor:"cinza"    },
-    vendido:        { label:"Vendido",        cor:"cinza"    }   // fase 96: nasce do registro da venda (js/vendas_bens.js)
+    vendido:        { label:"Vendido",        cor:"cinza"    },  // fase 96: nasce do registro da venda (js/vendas_bens.js)
+    vendido_reserva:   { label:"Vendido · reserva de domínio", cor:"ambar" },   // fase 180c: até o crédito da parcela de liberação
+    liberado_retirada: { label:"Vendido · liberado p/ retirada", cor:"azul" }   // fase 180c: vira "Vendido" na quitação
   },
   acessorio: {
     sem_avaliacao:      { label:"Sem avaliação",      cor:"cinza"    },
@@ -172,7 +174,8 @@ const STATUS = {
     precisa_manutencao: { label:"Precisa manutenção", cor:"ambar"    },
     em_manutencao:      { label:"Em manutenção",      cor:"azul"     },
     sucata:             { label:"Sucata",             cor:"vermelho" },
-    baixado:            { label:"Baixado",            cor:"vermelho" }
+    baixado:            { label:"Baixado",            cor:"vermelho" },
+    vendido:            { label:"Vendido",            cor:"cinza"    }   // fase 180c: baixa junto com o bem vendido
   },
   acessorio_local: {
     patio:        { label:"Pátio",          cor:"verde"    },
@@ -267,8 +270,12 @@ const CONTRATO_CATEGORIA = {
   fornecimento:      "Fornecimento",
   empreitada:        "Empreitada",
   consultoria:       "Consultoria",
-  outro:             "Outro"
+  outro:             "Outro",
+  venda_bem:         "Venda de bem"   // fase 180c: nasce do registro da venda (aba Venda do bem), nunca à mão
 };
+/* fase 180c: os três status de bem vendido (reserva de domínio, liberado para retirada e vendido); todos com ativo = false */
+const EQP_STATUS_VENDIDO = ["vendido", "vendido_reserva", "liberado_retirada"];
+function bemVendido(e){ return !!e && (EQP_STATUS_VENDIDO.includes(e.status) || !!e.venda_id); }
 const RECORRENCIA = {
   unica:      "Única",
   mensal:     "Mensal",
