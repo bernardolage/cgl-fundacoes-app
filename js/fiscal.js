@@ -184,6 +184,8 @@ async function fiscalBuscarCnpj(cnpj){
 const FISCAL_REGIMES = { simples_nacional: "Simples Nacional", lucro_presumido: "Lucro presumido", lucro_real: "Lucro real" };
 const FISCAL_EMPRESA_COLS = "fiscal_cnpj,fiscal_razao_social,fiscal_ie,fiscal_im,fiscal_regime_tributario,fiscal_cnae,fiscal_codigo_servico,fiscal_item_lc116,fiscal_iss_aliquota,fiscal_nfe_serie,fiscal_nfe_proximo_numero,fiscal_nfse_serie,fiscal_nfse_proximo_numero,fiscal_ambiente,fiscal_contador_email";
 const FISCAL_EMPRESA_COLS_105B = "fiscal_uf,fiscal_codigo_municipio,fiscal_cst_icms_remessa,fiscal_cst_pis_cofins_remessa,fiscal_cst_pis_cofins_retorno,fiscal_texto_legal_remessa,fiscal_cfop_remessa_dentro_uf,fiscal_cfop_remessa_fora_uf,fiscal_cfop_retorno_dentro_uf,fiscal_cfop_retorno_fora_uf,fiscal_ibs_cbs_cst_remessa,fiscal_ibs_cbs_cclass_remessa,fiscal_certificado_validade,fiscal_certificado_enviado_em,fiscal_focus_webhook_registrado_em,fiscal_focus_webhook_ambiente";
+// hotfix NF-e de remessa C: CFOP, natureza e texto por tipo de item (máquina do imobilizado × acessório e produto)
+const FISCAL_EMPRESA_COLS_REMESSA_TIPO = "fiscal_cfop_imobilizado_dentro_uf,fiscal_cfop_imobilizado_fora_uf,fiscal_natureza_imobilizado,fiscal_natureza_material,fiscal_texto_imobilizado,fiscal_texto_material,fiscal_texto_patio";
 const FISCAL_EMPRESA_COLS_105C = "fiscal_codigo_tributacao_nacional_iss,fiscal_codigo_tributacao_municipal_iss,fiscal_codigo_nbs,fiscal_nfse_natureza_operacao,fiscal_optante_simples,fiscal_nfse_modelo,fiscal_nfse_ambiente_nacional,fiscal_nfse_texto_discriminacao,fiscal_nfse_municipios_liberados,fiscal_nfse_ibs_cbs_cst,fiscal_nfse_ibs_cbs_cclass";
 const _fiscalEmpresa = {};   // por prefixo: último registro lido
 /* o que falta para a primeira emissão (a 105b confere de novo antes de emitir) */
@@ -211,7 +213,8 @@ async function fiscalEmpresaRender(pref){
   if(!box) return;
   const tem105b = await fiscalColunaExiste("empresa_config", "fiscal_cfop_remessa_dentro_uf");
   const tem105c = tem105b && await fiscalColunaExiste("empresa_config", "fiscal_nfse_modelo");
-  const { data, error } = await sb.from("empresa_config").select(FISCAL_EMPRESA_COLS + (tem105b ? "," + FISCAL_EMPRESA_COLS_105B : "") + (tem105c ? "," + FISCAL_EMPRESA_COLS_105C : "")).eq("id", 1).maybeSingle();
+  const temTipo = tem105b && await fiscalColunaExiste("empresa_config", "fiscal_cfop_imobilizado_dentro_uf");
+  const { data, error } = await sb.from("empresa_config").select(FISCAL_EMPRESA_COLS + (tem105b ? "," + FISCAL_EMPRESA_COLS_105B : "") + (temTipo ? "," + FISCAL_EMPRESA_COLS_REMESSA_TIPO : "") + (tem105c ? "," + FISCAL_EMPRESA_COLS_105C : "")).eq("id", 1).maybeSingle();
   if(error){
     const semColuna = error.code === "42703" || /fiscal_/i.test(error.message || "");
     box.innerHTML = `<div class="lista-topo"><h3>Dados fiscais da empresa</h3></div>
@@ -248,7 +251,7 @@ async function fiscalEmpresaRender(pref){
       <div class="campo"><label>Ambiente</label><select id="${id("ambiente")}"><option value="homologacao" ${amb === "homologacao" ? "selected" : ""}>Homologação (teste, sem valor fiscal)</option><option value="producao" ${amb === "producao" ? "selected" : ""}>Produção</option></select></div>
       <div class="campo largo"><label>E-mail do contador</label><input id="${id("contador")}" type="email" value="${v(e.fiscal_contador_email)}" /></div>
     </div>
-    ${tem105b ? fiscalEmpresaHtml105b(pref, e) : ""}
+    ${tem105b ? fiscalEmpresaHtml105b(pref, e, temTipo) : ""}
     ${tem105c ? fiscalEmpresaHtml105c(pref, e) : ""}
     <div class="form-acoes compacta">
       <button type="button" class="btn" id="${id("salvar")}"${pode ? "" : ' style="display:none;"'}>Salvar dados fiscais</button>
@@ -262,23 +265,36 @@ async function fiscalEmpresaRender(pref){
 
 /* ---------- Fase 105b: NF-e de remessa e retorno (campos da empresa) ---------- */
 const FISCAL_CST_SUGESTOES = [["41", "não tributada (regime normal)"], ["50", "suspensão (regime normal)"], ["90", "outras (regime normal)"], ["400", "não tributada pelo Simples (CSOSN)"], ["900", "outras do Simples (CSOSN)"]];
-function fiscalEmpresaHtml105b(pref, e){
+/* temTipo: colunas do hotfix NF-e de remessa C. Com elas, a remessa e o retorno saem com o CFOP do tipo do item
+   (máquina do imobilizado × acessório e produto), o retorno é nota de saída e os campos de retorno (1949/2949, CST 98)
+   deixam de aparecer: a function não os usa mais e o salvar não os toca. */
+function fiscalEmpresaHtml105b(pref, e, temTipo){
   const id = s => `${esc(pref)}-${esc(s)}`;
   const v = x => esc(x == null ? "" : x);
   const uf = String(e.fiscal_uf || "").toUpperCase();
-  return `<h3 class="titulo-bloco">NF-e de remessa e retorno (fase 105b)</h3>
-    <p class="nota">Sem destaque de ICMS. O contador define CST/CSOSN, CFOPs e o texto legal antes da primeira nota; item com CFOP próprio usa o dele.</p>
+  const rotMat = temTipo ? "acessório e material" : "remessa";
+  return `<h3 class="titulo-bloco">NF-e de remessa e retorno</h3>
+    <p class="nota">${esc(temTipo
+      ? "Sem destaque de ICMS. O CFOP sai pelo tipo do item: máquina do imobilizado ou acessório e material, que não vão juntos na mesma nota. O retorno é nota de saída com o mesmo CFOP da ida. A UF do cliente decide entre dentro e fora do estado."
+      : "Sem destaque de ICMS. O contador define CST/CSOSN, CFOPs e o texto legal antes da primeira nota; item com CFOP próprio usa o dele.")}</p>
     <div class="grade">
       <div class="campo"><label>UF da sede</label><select id="${id("uf")}"><option value="">—</option>${UFS.map(u => `<option value="${esc(u.toLowerCase())}" ${uf === u ? "selected" : ""}>${esc(u)}</option>`).join("")}</select></div>
       <div class="campo"><label>Município da sede (IBGE)</label><input id="${id("mun")}" maxlength="7" value="${v(e.fiscal_codigo_municipio)}" placeholder="3131703 = Itabira" /></div>
       <div class="campo"><label>CST/CSOSN do ICMS</label><input id="${id("cst")}" maxlength="3" list="${id("cst-lista")}" value="${v(e.fiscal_cst_icms_remessa)}" placeholder="41 (normal) ou 400 (Simples)" />
         <datalist id="${id("cst-lista")}">${FISCAL_CST_SUGESTOES.map(([c, t]) => `<option value="${esc(c)}">${esc(t)}</option>`).join("")}</datalist></div>
-      <div class="campo"><label>CST PIS/COFINS na remessa</label><input id="${id("pis-rem")}" maxlength="2" value="${v(e.fiscal_cst_pis_cofins_remessa)}" placeholder="49" title="49 = outras operações de saída" /></div>
-      <div class="campo"><label>CST PIS/COFINS no retorno</label><input id="${id("pis-ret")}" maxlength="2" value="${v(e.fiscal_cst_pis_cofins_retorno)}" placeholder="98" title="98 = outras operações de entrada" /></div>
-      <div class="campo"><label>CFOP remessa dentro da UF</label><input id="${id("cfop-rd")}" maxlength="4" value="${v(e.fiscal_cfop_remessa_dentro_uf)}" placeholder="5949" /></div>
-      <div class="campo"><label>CFOP remessa fora da UF</label><input id="${id("cfop-rf")}" maxlength="4" value="${v(e.fiscal_cfop_remessa_fora_uf)}" placeholder="6949" /></div>
-      <div class="campo"><label>CFOP retorno dentro da UF</label><input id="${id("cfop-td")}" maxlength="4" value="${v(e.fiscal_cfop_retorno_dentro_uf)}" placeholder="1949" /></div>
-      <div class="campo"><label>CFOP retorno fora da UF</label><input id="${id("cfop-tf")}" maxlength="4" value="${v(e.fiscal_cfop_retorno_fora_uf)}" placeholder="2949" /></div>
+      <div class="campo"><label>CST PIS/COFINS ${temTipo ? "(remessa e retorno)" : "na remessa"}</label><input id="${id("pis-rem")}" maxlength="2" value="${v(e.fiscal_cst_pis_cofins_remessa)}" placeholder="49" title="49 = outras operações de saída" /></div>
+      ${temTipo ? "" : `<div class="campo"><label>CST PIS/COFINS no retorno</label><input id="${id("pis-ret")}" maxlength="2" value="${v(e.fiscal_cst_pis_cofins_retorno)}" placeholder="98" title="98 = outras operações de entrada" /></div>`}
+      ${temTipo ? `<div class="campo"><label>CFOP máquina dentro da UF</label><input id="${id("cfop-id")}" maxlength="4" value="${v(e.fiscal_cfop_imobilizado_dentro_uf)}" placeholder="5554" title="Máquina do ativo imobilizado, cliente no mesmo estado" /></div>
+      <div class="campo"><label>CFOP máquina fora da UF</label><input id="${id("cfop-if")}" maxlength="4" value="${v(e.fiscal_cfop_imobilizado_fora_uf)}" placeholder="6554" title="Máquina do ativo imobilizado, cliente em outro estado" /></div>` : ""}
+      <div class="campo"><label>CFOP ${esc(rotMat)} dentro da UF</label><input id="${id("cfop-rd")}" maxlength="4" value="${v(e.fiscal_cfop_remessa_dentro_uf)}" placeholder="5949" /></div>
+      <div class="campo"><label>CFOP ${esc(rotMat)} fora da UF</label><input id="${id("cfop-rf")}" maxlength="4" value="${v(e.fiscal_cfop_remessa_fora_uf)}" placeholder="6949" /></div>
+      ${temTipo ? "" : `<div class="campo"><label>CFOP retorno dentro da UF</label><input id="${id("cfop-td")}" maxlength="4" value="${v(e.fiscal_cfop_retorno_dentro_uf)}" placeholder="1949" /></div>
+      <div class="campo"><label>CFOP retorno fora da UF</label><input id="${id("cfop-tf")}" maxlength="4" value="${v(e.fiscal_cfop_retorno_fora_uf)}" placeholder="2949" /></div>`}
+      ${temTipo ? `<div class="campo"><label>Natureza da nota de máquina</label><input id="${id("nat-imob")}" maxlength="60" value="${v(e.fiscal_natureza_imobilizado)}" placeholder="Remessa de bem do ativo imobilizado" /></div>
+      <div class="campo"><label>Natureza da nota de acessório e material</label><input id="${id("nat-mat")}" maxlength="60" value="${v(e.fiscal_natureza_material)}" placeholder="Simples remessa" /></div>
+      <div class="campo largo"><label>Texto de uso da nota de máquina</label><input id="${id("txt-imob")}" maxlength="500" value="${v(e.fiscal_texto_imobilizado)}" placeholder="BEM DO ATIVO IMOBILIZADO PARA USO FORA DO ESTABELECIMENTO" title="Abre as informações complementares, antes de SAIDA e DESTINO" /></div>
+      <div class="campo largo"><label>Texto de uso da nota de acessório e material</label><input id="${id("txt-mat")}" maxlength="500" value="${v(e.fiscal_texto_material)}" placeholder="MATERIAL PERTENCENTE AO ALMOXARIFADO DA EMPRESA EM TRANSITO PARA OBRA" title="Abre as informações complementares, antes de SAIDA e DESTINO" /></div>
+      <div class="campo largo"><label>Pátio no texto da nota</label><input id="${id("txt-patio")}" maxlength="200" value="${v(e.fiscal_texto_patio)}" placeholder="PATIO CGL FUNDACOES ITABIRA/MG" title="SAIDA da remessa e DESTINO do retorno" /></div>` : ""}
       <div class="campo"><label>IBS/CBS: CST</label><input id="${id("ibs-cst")}" maxlength="3" value="${v(e.fiscal_ibs_cbs_cst_remessa)}" placeholder="vazio = sem o grupo" title="Reforma tributária: 3 dígitos; vazio, a nota vai sem o grupo IBS/CBS" /></div>
       <div class="campo"><label>IBS/CBS: classificação</label><input id="${id("ibs-class")}" maxlength="6" value="${v(e.fiscal_ibs_cbs_cclass_remessa)}" placeholder="6 dígitos (cClassTrib)" /></div>
       <div class="campo largo"><label>Texto legal (informações complementares)</label><textarea id="${id("texto-legal")}" rows="2" maxlength="2000" placeholder="ex.: base legal da não incidência do ICMS na remessa para prestação de serviço">${v(e.fiscal_texto_legal_remessa)}</textarea></div>
@@ -293,23 +309,41 @@ function fiscalEmpresaValores105b(pref){
     fiscal_codigo_municipio: g("mun").replace(/\D/g, "") || null,
     fiscal_cst_icms_remessa: g("cst").replace(/\D/g, "") || null,
     fiscal_cst_pis_cofins_remessa: g("pis-rem").replace(/\D/g, "") || "49",
-    fiscal_cst_pis_cofins_retorno: g("pis-ret").replace(/\D/g, "") || "98",
     fiscal_cfop_remessa_dentro_uf: g("cfop-rd").replace(/\D/g, "") || "5949",
     fiscal_cfop_remessa_fora_uf: g("cfop-rf").replace(/\D/g, "") || "6949",
-    fiscal_cfop_retorno_dentro_uf: g("cfop-td").replace(/\D/g, "") || "1949",
-    fiscal_cfop_retorno_fora_uf: g("cfop-tf").replace(/\D/g, "") || "2949",
     fiscal_ibs_cbs_cst_remessa: g("ibs-cst").replace(/\D/g, "") || null,
     fiscal_ibs_cbs_cclass_remessa: g("ibs-class").replace(/\D/g, "") || null,
     fiscal_texto_legal_remessa: g("texto-legal") || null
   };
+  // campos de retorno só quando aparecem (sem as colunas do hotfix NF-e de remessa C); com elas, ficam como estão no banco
+  const temRetorno = !!$(`${pref}-cfop-td`);
+  if(temRetorno){
+    reg.fiscal_cst_pis_cofins_retorno = g("pis-ret").replace(/\D/g, "") || "98";
+    reg.fiscal_cfop_retorno_dentro_uf = g("cfop-td").replace(/\D/g, "") || "1949";
+    reg.fiscal_cfop_retorno_fora_uf = g("cfop-tf").replace(/\D/g, "") || "2949";
+  }
+  const temTipo = !!$(`${pref}-cfop-id`);
+  if(temTipo){
+    reg.fiscal_cfop_imobilizado_dentro_uf = g("cfop-id").replace(/\D/g, "") || "5554";
+    reg.fiscal_cfop_imobilizado_fora_uf = g("cfop-if").replace(/\D/g, "") || "6554";
+    reg.fiscal_natureza_imobilizado = g("nat-imob") || "Remessa de bem do ativo imobilizado";
+    reg.fiscal_natureza_material = g("nat-mat") || "Simples remessa";
+    reg.fiscal_texto_imobilizado = g("txt-imob") || "BEM DO ATIVO IMOBILIZADO PARA USO FORA DO ESTABELECIMENTO";
+    reg.fiscal_texto_material = g("txt-mat") || "MATERIAL PERTENCENTE AO ALMOXARIFADO DA EMPRESA EM TRANSITO PARA OBRA";
+    reg.fiscal_texto_patio = g("txt-patio") || "PATIO CGL FUNDACOES ITABIRA/MG";
+  }
   const erros = [];
   if(reg.fiscal_codigo_municipio && !/^\d{7}$/.test(reg.fiscal_codigo_municipio)) erros.push("município da sede com 7 dígitos (IBGE)");
   if(reg.fiscal_cst_icms_remessa && !/^\d{2,3}$/.test(reg.fiscal_cst_icms_remessa)) erros.push("CST (2 dígitos) ou CSOSN (3 dígitos) do ICMS");
-  if(!/^\d{2}$/.test(reg.fiscal_cst_pis_cofins_remessa) || !/^\d{2}$/.test(reg.fiscal_cst_pis_cofins_retorno)) erros.push("CST de PIS/COFINS com 2 dígitos");
-  [["fiscal_cfop_remessa_dentro_uf", "5", "remessa dentro da UF"], ["fiscal_cfop_remessa_fora_uf", "6", "remessa fora da UF"],
-   ["fiscal_cfop_retorno_dentro_uf", "1", "retorno dentro da UF"], ["fiscal_cfop_retorno_fora_uf", "2", "retorno fora da UF"]].forEach(([k, ini, t]) => {
+  if(!/^\d{2}$/.test(reg.fiscal_cst_pis_cofins_remessa) || (temRetorno && !/^\d{2}$/.test(reg.fiscal_cst_pis_cofins_retorno))) erros.push("CST de PIS/COFINS com 2 dígitos");
+  const mat = temTipo ? "acessório e material" : "remessa";
+  [["fiscal_cfop_remessa_dentro_uf", "5", `${mat} dentro da UF`], ["fiscal_cfop_remessa_fora_uf", "6", `${mat} fora da UF`],
+   ...(temRetorno ? [["fiscal_cfop_retorno_dentro_uf", "1", "retorno dentro da UF"], ["fiscal_cfop_retorno_fora_uf", "2", "retorno fora da UF"]] : []),
+   ...(temTipo ? [["fiscal_cfop_imobilizado_dentro_uf", "5", "máquina dentro da UF"], ["fiscal_cfop_imobilizado_fora_uf", "6", "máquina fora da UF"]] : [])].forEach(([k, ini, t]) => {
     if(!new RegExp(`^${ini}\\d{3}$`).test(reg[k])) erros.push(`CFOP de ${t} começa com ${ini} (4 dígitos)`);
   });
+  if(temTipo && reg.fiscal_natureza_imobilizado.length > 60) erros.push("natureza da nota de máquina com até 60 caracteres");
+  if(temTipo && reg.fiscal_natureza_material.length > 60) erros.push("natureza da nota de acessório e material com até 60 caracteres");
   if(!!reg.fiscal_ibs_cbs_cst_remessa !== !!reg.fiscal_ibs_cbs_cclass_remessa) erros.push("IBS/CBS: CST e classificação juntos (ou os dois vazios)");
   if(reg.fiscal_ibs_cbs_cst_remessa && !/^\d{3}$/.test(reg.fiscal_ibs_cbs_cst_remessa)) erros.push("CST do IBS/CBS com 3 dígitos");
   if(reg.fiscal_ibs_cbs_cclass_remessa && !/^\d{6}$/.test(reg.fiscal_ibs_cbs_cclass_remessa)) erros.push("classificação do IBS/CBS com 6 dígitos");
