@@ -4614,6 +4614,95 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .orc-envio-previa { width: 100%; height: 340px; border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-0); }
 }
 
+/* ---- camada utilitarios (fase 193b): classe única para o estilo fixo que se repetia no index.html.
+   Fica na camada mais alta para valer como o style="" valia sobre o legado. ---- */
+@layer utilitarios {
+  .u-ml-auto { margin-left: auto; }
+  .u-flex-1 { flex: 1; }
+  .u-peso-normal { font-weight: 400; }
+  .u-txt-perigo { color: var(--perigo-txt); }
+  .u-txt-aviso { color: var(--aviso-txt); }
+  .u-txt-acao { color: var(--acao-txt); }
+  .u-txt-fraco { color: var(--txt-fraco); }
+}
+
+/* ---- Casca (fase 193b): barra superior única com trilha, busca Ctrl K e botões de ícone; área de conteúdo ---- */
+@layer componentes {
+  .header-esquerda { min-width: 0; }
+  .app-trilha { min-width: 0; }
+  #app-header .ui-trilha { flex-wrap: nowrap; min-width: 0; }
+  #app-header .ui-trilha > span { white-space: nowrap; }
+  #app-header .ui-trilha h1.atual {
+    margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: var(--txt-xl); font-weight: 700; color: var(--marca-txt);
+  }
+  .header-direita { gap: var(--esp-1); }
+  .topo-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--esp-2);
+    height: 36px; min-width: 36px; padding: 0 var(--esp-2);
+    border: 1px solid transparent; border-radius: var(--radius-sm); background: none;
+    color: var(--txt-sec); font: inherit; font-size: var(--txt-sm); cursor: pointer;
+  }
+  .topo-btn:hover { background: var(--sup-2); color: var(--txt); }
+  .topo-btn:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
+  .topo-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .topo-busca { min-width: 240px; justify-content: flex-start; border-color: var(--borda-forte); background: var(--sup-1); color: var(--txt-fraco); }
+  .topo-busca .topo-kbd { margin-left: auto; }
+  .topo-kbd {
+    padding: 1px var(--esp-1); border: 1px solid var(--borda); border-radius: var(--radius-sm);
+    background: var(--sup-0); color: var(--txt-fraco); font-family: var(--font-mono); font-size: var(--txt-xs); line-height: 1.4;
+  }
+  /* ícone do tema: o do tema para o qual o botão leva (antes era style.display no JS) */
+  .btn-tema .tema-sol { display: none; }
+  :root[data-theme="escuro"] .btn-tema .tema-sol { display: inline; }
+  :root[data-theme="escuro"] .btn-tema .tema-lua { display: none; }
+  /* Mostrar valores: olho aberto mostra; olho cortado oculta de novo */
+  #btn-val-sens .olho-fechado { display: none; }
+  #btn-val-sens[aria-pressed="true"] .olho-aberto { display: none; }
+  #btn-val-sens[aria-pressed="true"] .olho-fechado { display: inline; }
+  /* Ajuda: só o logo na barra; o nome fica no aria-label */
+  #app-header #btn-assistente { width: 40px; padding: 0; justify-content: center; }
+  @media (max-width: 760px) {
+    .topo-busca { min-width: 36px; justify-content: center; border-color: transparent; background: none; }
+    .topo-busca-txt, .topo-busca .topo-kbd { display: none; }
+    #app-header .ui-trilha > span { display: none; }   /* no celular fica só o nome da tela */
+    #app-header #btn-assistente { width: 44px; }
+  }
+
+  /* área de conteúdo: fundo da aplicação; cartão dentro de cartão perde a moldura (sem mudar medida) */
+  #app-conteudo { background: var(--sup-1); }
+  .card .card, .odoo-sheet .card, .card .odoo-sheet { border-color: transparent; background: transparent; }
+  .card .card:hover, .odoo-sheet .card:hover { box-shadow: none; }
+  /* ficha-documento (sem tabela) com largura de leitura; painel com tabela usa a largura toda */
+  .odoo-sheet:not(:has(table)) { max-width: var(--ficha-max); }
+
+  /* busca (Ctrl K) */
+  .ui-busca {
+    width: min(640px, calc(100vw - 2 * var(--esp-4))); max-height: min(560px, calc(100vh - 2 * var(--esp-8)));
+    margin: 10vh auto auto; padding: 0; border: 1px solid var(--borda-forte); border-radius: var(--radius-md);
+    background: var(--sup-0); color: var(--txt); box-shadow: var(--elev-3); overflow: hidden;
+  }
+  .ui-busca[open] { display: flex; flex-direction: column; }
+  .ui-busca::backdrop { background: color-mix(in srgb, var(--marca-900) 35%, transparent); }
+  .ui-busca-caixa { display: flex; align-items: center; gap: var(--esp-2); padding: var(--esp-3) var(--esp-4); border-bottom: 1px solid var(--borda); }
+  .ui-busca-caixa svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--txt-fraco); }
+  .ui-busca-caixa input { flex: 1; min-width: 0; height: 32px; border: 0; background: none; color: var(--txt); font: inherit; font-size: var(--txt-lg); outline: none; }
+  .ui-busca-resultados { overflow-y: auto; padding: var(--esp-2); }
+  .ui-busca-resultados > .ui-vazio, .ui-busca-resultados > .ui-carregando, .ui-busca-resultados > .ui-erro { margin: var(--esp-3); }
+  .ui-busca-grupo + .ui-busca-grupo { margin-top: var(--esp-2); }
+  .ui-busca-grupo-tit { padding: var(--esp-1) var(--esp-2); color: var(--txt-fraco); font-size: var(--txt-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .ui-busca-item {
+    display: flex; align-items: baseline; gap: var(--esp-3); width: 100%; padding: var(--esp-2); border: 0; border-radius: var(--radius-sm);
+    background: none; color: var(--txt); font: inherit; text-align: left; cursor: pointer;
+  }
+  .ui-busca-item:hover, .ui-busca-item[aria-selected="true"] { background: var(--sup-2); }
+  .ui-busca-item[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--acao); }
+  .ui-busca-item-txt { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ui-busca-item-det { margin-left: auto; color: var(--txt-fraco); font-size: var(--txt-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cat-topo { display: flex; align-items: center; height: 56px; padding: 0 var(--esp-4); border: 1px solid var(--borda); background: var(--sup-0); }
+  .cat-topo h1.atual { margin: 0; font-size: var(--txt-xl); color: var(--marca-txt); }
+}
+
 /* ---- Pedidos do site (fase 195c): aba em Orçamentos, ficha do pedido e envio da proposta pelo WhatsApp ---- */
 @layer componentes {
 #orc-filtros[hidden], #psi-conteudo[hidden], #orc-contador[hidden], #btn-orc-whatsapp[hidden] { display: none; }

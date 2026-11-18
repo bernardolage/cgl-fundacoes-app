@@ -65,11 +65,13 @@ function uiStatusbar(etapas, atual){
   const i = (etapas || []).findIndex(e => e[0] === atual);
   return (etapas || []).map((e, k) => `<div class="stage${k === i ? " atual" : k < i ? " passada" : ""}" data-status="${esc(e[0])}"${k === i ? ' aria-current="step"' : ""}>${esc(e[1])}</div>`).join("");
 }
-/* Trilha: itens = [{ texto, id }]. Item com id vira botão (data-trilha), o último é a página atual. Quem chama liga o clique. */
-function uiBreadcrumb(itens){
+/* Trilha: itens = [{ texto, id }]. Item com id vira botão (data-trilha), o último é a página atual. Quem chama liga o clique.
+   opcoes.tituloId (193b): o último item sai como <h1 id> — é a trilha da barra superior (#app-secao-titulo). */
+function uiBreadcrumb(itens, opcoes){
   const l = (itens || []).filter(x => x && x.texto);
+  const tid = opcoes && opcoes.tituloId ? uiId(opcoes.tituloId) : "";
   return `<nav class="ui-trilha" aria-label="Você está em">${l.map((x, k) => (k ? '<span class="sep" aria-hidden="true">›</span>' : "")
-    + (k === l.length - 1 ? `<span class="atual" aria-current="page">${esc(x.texto)}</span>`
+    + (k === l.length - 1 ? (tid ? `<h1 id="${esc(tid)}" class="atual" aria-current="page">${esc(x.texto)}</h1>` : `<span class="atual" aria-current="page">${esc(x.texto)}</span>`)
       : x.id ? `<button type="button" data-trilha="${esc(x.id)}">${esc(x.texto)}</button>` : `<span>${esc(x.texto)}</span>`)).join("")}</nav>`;
 }
 /* Código ou número de documento, em fonte mono */
@@ -346,4 +348,22 @@ function uiAvisar(msg, tipo){
   pilha.appendChild(el);
   if(!el.classList.contains("tom-aviso") && !el.classList.contains("tom-perigo")) setTimeout(() => el.remove(), 4000);
   return el;
+}
+
+/* ====================================================================
+   FASE 193b — resultados da busca (Ctrl K). grupos = [{ titulo, itens: [{ texto, detalhe, tipo, id }] }].
+   Cada item vira um botão role="option" com data-bus-tipo e data-bus-id; quem chama (js/busca.js) liga o clique e o
+   teclado. opcoes: { termo, erro, carregando, vazio }. Sem termo, mostra a dica; termo sem resultado, o estado vazio.
+   ==================================================================== */
+function uiBuscaResultados(grupos, opcoes){
+  const o = opcoes || {};
+  if(o.erro) return uiErro(o.erro);
+  const gs = (grupos || []).filter(g => g && g.itens && g.itens.length);
+  const espera = o.carregando ? uiCarregando("Buscando…") : "";
+  if(!gs.length){
+    if(o.carregando) return espera;
+    return uiVazio(o.termo ? (o.vazio || "Nada encontrado para essa busca.") : "Digite o nome de uma tela, o código ou nome de uma obra, a TAG de uma máquina, um funcionário ou o número de um pedido.");
+  }
+  return gs.map(g => `<div class="ui-busca-grupo" role="group" aria-label="${esc(g.titulo)}"><div class="ui-busca-grupo-tit" aria-hidden="true">${esc(g.titulo)}</div>${g.itens.map(i =>
+    `<button type="button" class="ui-busca-item" role="option" aria-selected="false" data-bus-tipo="${esc(i.tipo || "")}" data-bus-id="${esc(i.id ?? "")}"><span class="ui-busca-item-txt">${esc(i.texto)}</span>${i.detalhe ? `<span class="ui-busca-item-det">${esc(i.detalhe)}</span>` : ""}</button>`).join("")}</div>`).join("") + espera;
 }

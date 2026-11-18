@@ -178,6 +178,34 @@ uiAvisar("RDO salvo.", "ok");   // ok e info somem em 4 s; aviso e perigo ficam`
     ]
   },
   {
+    fn: "uiBreadcrumb", titulo: "Trilha da barra superior",
+    para: "Grupo do menu e tela atual no topo do app. Com tituloId, o último item é o <h1> da página (no app, #app-secao-titulo).",
+    uso: `uiBreadcrumb([{ texto: "Campo" }, { texto: "Diário de Obra (RDO)" }], { tituloId: "app-secao-titulo" })`,
+    exemplos: () => [
+      ["Barra superior", `<div class="cat-topo">${uiBreadcrumb([{ texto: "Campo" }, { texto: "Diário de Obra (RDO)" }], { tituloId: "cat-titulo-exemplo" })}</div>`],
+      ["Com volta", uiBreadcrumb([{ texto: "Obras", id: "obras" }, { texto: "8242 · Residencial Exemplo" }])],
+      ["Só a tela", `<div class="cat-topo">${uiBreadcrumb([{ texto: "Início" }], { tituloId: "cat-titulo-exemplo2" })}</div>`]
+    ]
+  },
+  {
+    fn: "uiBuscaResultados", titulo: "Busca (Ctrl K)",
+    para: "Resultado da busca da barra superior: telas e registros (obra, máquina, funcionário, pedido), até 8 por tipo. O js/busca.js liga clique e teclado.",
+    uso: `uiBuscaResultados([
+  { titulo: "Telas", itens: [{ texto: "Obras", detalhe: "Cadastros", tipo: "tela", id: "obras" }] },
+  { titulo: "Obras", itens: [{ texto: "8242 · Residencial Exemplo", detalhe: "Cliente Exemplo Ltda", tipo: "obra", id: "uuid" }] }
+], { termo: "exemplo" })`,
+    exemplos: () => [
+      ["Com resultado", `<div class="ui-busca-resultados">${uiBuscaResultados([
+        { titulo: "Telas", itens: [{ texto: "Obras", detalhe: "Cadastros", tipo: "tela", id: "obras" }] },
+        { titulo: "Obras", itens: [{ texto: "8242 · Residencial Exemplo", detalhe: "Cliente Exemplo Ltda · Em andamento", tipo: "obra", id: "1" }, { texto: "8250 · Galpão Exemplo", detalhe: "Outro Cliente Ltda · Planejada", tipo: "obra", id: "2" }] },
+        { titulo: "Máquinas", itens: [{ texto: "HC-07 · Perfuratriz exemplo", tipo: "maquina", id: "3" }] }
+      ], { termo: "exemplo" })}</div>`],
+      ["Sem termo", `<div class="ui-busca-resultados">${uiBuscaResultados([], {})}</div>`],
+      ["Nada achado", `<div class="ui-busca-resultados">${uiBuscaResultados([], { termo: "zzz" })}</div>`],
+      ["Erro", `<div class="ui-busca-resultados">${uiBuscaResultados(null, { erro: "A busca não respondeu. Tente de novo." })}</div>`]
+    ]
+  },
+  {
     fn: "uiSecao · uiLinhaItem · uiRotuloValor · uiAvatar · uiCodigo · uiStatusbar · uiBreadcrumb · uiVazio", titulo: "Componentes da fase 161",
     para: "Continuam valendo: cartão de seção, linha de item, rótulo e valor, avatar de iniciais, código, barra de etapas, trilha e vazio.",
     uso: `uiSecao("equipe", "Equipe", uiLinhaItem("Fulano de Tal", "Operador", "8,5", "h"), "3 pessoas")

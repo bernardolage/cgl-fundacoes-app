@@ -1085,10 +1085,7 @@ function temaSincronizarBotoes(){
     btn.setAttribute("aria-pressed", escuro ? "true" : "false");
     btn.title = titulo;
     btn.setAttribute("aria-label", titulo);
-    // o ícone é o do tema para o qual o botão leva: no escuro mostra o sol, no claro a lua
-    const sol = btn.querySelector(".tema-sol"), lua = btn.querySelector(".tema-lua");
-    if(sol) sol.style.display = escuro ? "" : "none";
-    if(lua) lua.style.display = escuro ? "none" : "";
+    // o ícone (sol no escuro, lua no claro) vem do CSS pelo data-theme da raiz (fase 193b)
   });
 }
 /* liga o clique dos botões (#btn-tema no cabeçalho, #btn-tema-login no login); idempotente, chamado na carga e em iniciarApp() */
@@ -1399,6 +1396,8 @@ function menuRecolher(sim){
   btn.setAttribute("aria-pressed", sim ? "true" : "false");
   btn.setAttribute("aria-label", txt);
   btn.title = txt;
+  // trilho de ícones: o nome de cada item fica no title (fase 193b); o mouseover abaixo refaz se o rótulo mudar por cargo
+  document.querySelectorAll(".sidebar-nav button").forEach(b => { b.title = sim ? (b.querySelector("span")?.textContent || "").trim() : ""; });
 }
 try { menuRecolher(localStorage.getItem(MENU_RECOLHIDO_CHAVE) === "1"); } catch(_){}
 $("btn-menu-recolher")?.addEventListener("click", () => {
@@ -1442,7 +1441,11 @@ function ativarSecao(secao, b){
   const spanText = b ? b.querySelector("span") : null;
   const h2 = secEl ? secEl.querySelector(":scope > h2:first-child") : null;
   const titulo = (h2 && h2.textContent.trim()) || (spanText && spanText.textContent.trim());
-  if(titulo && $("app-secao-titulo")) {
+  // fase 193b: a barra superior mostra a trilha "grupo do menu › tela"; o último item é o h1 #app-secao-titulo
+  if(titulo && $("app-trilha") && typeof uiBreadcrumb === "function") {
+    const grupo = b ? (b.closest(".nav-grupo")?.getAttribute("aria-label") || "") : "";
+    $("app-trilha").innerHTML = uiBreadcrumb([{ texto: grupo }, { texto: titulo }], { tituloId: "app-secao-titulo" });
+  } else if(titulo && $("app-secao-titulo")) {
     $("app-secao-titulo").textContent = titulo;
   }
   ajudaTelaAtualizar(secEl);
