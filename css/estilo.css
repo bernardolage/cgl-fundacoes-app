@@ -4807,6 +4807,10 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .cli-doc-grupo { margin: var(--esp-2) 0; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); }
   .cli-doc-grupo legend { padding: 0 var(--esp-1); font-size: var(--txt-sm); font-weight: 600; }
   .cli-doc-form-acoes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-2); }
+  /* fase 183c: prévia da leitura por IA */
+  .cli-doc-ia-linha { display: flex; gap: var(--esp-2); align-items: flex-start; padding: var(--esp-2) 0; border-bottom: 1px solid var(--borda); }
+  .cli-doc-ia-linha .meta { display: block; }
+  .cli-doc-ia-duvidas { margin: var(--esp-2) 0; padding-left: var(--esp-4); font-size: var(--txt-sm); }
 }
 
 /* Fase 183a: contatos do cliente por papel (js/cliente_contatos.js) */
