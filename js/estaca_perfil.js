@@ -15,7 +15,7 @@
 const EPF_FATIA_M = 0.08;   // espessura da fatia do computador de bordo (SACI.FATIA_M)
 const EPF_COLUNAS = "id,numero_txt,refuro,diametro_mm,profundidade_m,volume_concreto_m3,volume_teorico_m3,sobreconsumo_pct," +
   "torque_max_bar,torque_medio_bar,rotacao_media_rpm,pressao_media_bar,tempo_perfuracao_s,tempo_concretagem_s,inclinacao_x,inclinacao_y," +
-  "perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,obra_id,equipamento_id,perfil," +
+  "perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,obra_id,equipamento_id,perfil,situacao," +
   "equipamento:equipamentos(codigo),obra:obras!geodigitus_estacas_obra_id_fkey(codigo,nome)";
 // curvas do gráfico: cada uma na escala do máximo da própria estaca. Cor por token de texto (vale nos dois temas).
 // tetoRobusto (só a velocidade): uma fatia de tempo muito curto dá um pico isolado que achataria a curva; ver epfTetoRobusto.
@@ -205,7 +205,7 @@ function epfCabecalhoHTML(l){
 function epfResumoHTML(r, l){
   const un = (v, casas, u, semValor) => esc(v == null ? semValor : epfNum(v, casas) + " " + u);
   const grau = (v) => v == null ? "—" : epfNum(Number(v) / 10, 1) + "°";   // a linha guarda décimos de grau
-  const sobre = r.sobreconsumo_pct == null ? "não medido" : geoTagSobre(r.sobreconsumo_pct);
+  const sobre = r.sobreconsumo_pct == null ? "não medido" : geoTagSobre(r.sobreconsumo_pct, r.volume_m3);
   return `<div class="epf-resumo">
     ${/* html */ uiRotuloValor("Ø", un(r.diametro_mm, 0, "mm", "—"))}
     ${/* html */ uiRotuloValor("Profundidade", un(r.profundidade_m, 2, "m", "—"))}
@@ -406,7 +406,10 @@ async function abrirPerfilEstaca(geoEstacaId){
   _epf = { linha: data, passos, resumo, series: epfSeries(passos), i: 0, t: 0, vel: 16, tocando: false, timer: null, ultimo: 0,
     profMax, profFuro: profFuro || profMax, el: null };
   const area = passos.length ? epfAreaHTML(_epf) : uiVazio("O computador de bordo não mandou o perfil desta estaca: sem as fatias não há gráfico nem replay.");
-  corpo.innerHTML = `${/* html */ epfCabecalhoHTML(data)}${/* html */ epfResumoHTML(resumo, data)}${/* html */ area}`;
+  // fase 171a: leitura automática (js/estaca_parecer.js) entre o resumo e o gráfico
+  const leitura = typeof eppMostrarLeitura === "function" ? `<div id="epp-leitura"></div>` : "";
+  corpo.innerHTML = `${/* html */ epfCabecalhoHTML(data)}${/* html */ epfResumoHTML(resumo, data)}${/* html */ leitura}${/* html */ area}`;
+  if(leitura) eppMostrarLeitura(data, passos);
   if(!passos.length) return;
   corpo.querySelectorAll("[data-epf-cor]").forEach(el => { const s = _epf.series.find(x => x.chave === el.dataset.epfCor); if(s) el.style.background = s.cor; });
   epfDesenharGrafico(_epf);

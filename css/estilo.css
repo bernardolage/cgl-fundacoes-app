@@ -4784,3 +4784,15 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .mdl-lista tbody tr[data-id]:hover td { background: var(--sup-2); }
 .con-modos { margin-bottom: var(--esp-3); }
 }
+
+/* Leitura automática do perfil da estaca (fase 171a, js/estaca_parecer.js): bloco entre o resumo e o gráfico do perfil e
+   bloco "Medição de concreto por máquina" acima das Chegadas. */
+@layer componentes {
+  #epp-leitura { margin-bottom: var(--esp-3); }
+  .epp-situacao { margin-bottom: var(--esp-2); }
+  .epp-item + .epp-item { border-top: 1px solid var(--borda); }
+  .epp-item-pe { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); padding-bottom: var(--esp-2); }
+  .epp-aviso { margin-top: var(--esp-2); }
+  #epp-maquinas { margin-bottom: var(--esp-3); }
+  .epp-maquina { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--esp-2); padding: var(--esp-1) 0; }
+}

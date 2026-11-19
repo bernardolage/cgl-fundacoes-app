@@ -60,7 +60,11 @@ function geoPodeOperar(){
 const geoIndisp = (err) => !!err && ["42P01", "PGRST205", "PGRST200", "42703", "PGRST202", "42883"].includes(err.code);
 const geoNum = (v, casas = 2) => v == null ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 const geoHora = (ts) => ts ? new Date(ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "—";
-function geoTagSobre(pct){
+function geoTagSobre(pct, volumeM3){
+  // fase 171a: volume zero e sobreconsumo fora de −5% a +60% são medição ruim, não sobreconsumo (js/estaca_parecer.js)
+  const faixa = typeof eppFaixaSobre === "function" ? eppFaixaSobre(pct, volumeM3) : null;
+  if(faixa === "nao_medido") return `<span class="tag cinza" title="Nenhum litro de concreto foi medido: confira o sensor de pulsos da bomba">não medido</span>`;
+  if(faixa === "implausivel") return `<span class="tag azul" title="Sobreconsumo de ${esc(geoNum(pct, 1))}%, fora da faixa plausível: confira os litros por pulso da bomba e o Ø digitado">fora do plausível</span>`;
   if(pct == null) return "";
   const alerta = Number(pct) > (window._geoAlertaPct ?? 15);
   return `<span class="tag ${alerta ? "ambar" : "cinza"}" title="Sobreconsumo de concreto sobre o volume teórico (Ø × profundidade)">${Number(pct) > 0 ? "+" : ""}${esc(geoNum(pct, 1))}%</span>`;
@@ -245,7 +249,7 @@ function geoLinhasEstacasHTML(gr, comContexto){
       <td class="num">${esc(geoNum(g.diametro_mm, 0))}</td>
       <td class="num">${esc(geoNum(g.profundidade_m))}</td>
       <td class="num">${esc(geoNum(g.volume_concreto_m3, 3))}</td>
-      <td>${/* html */ geoTagSobre(g.sobreconsumo_pct)}</td>
+      <td>${/* html */ geoTagSobre(g.sobreconsumo_pct, g.volume_concreto_m3)}</td>
       <td>${esc(geoHora(g.perfuracao_inicio))}–${esc(geoHora(g.perfuracao_fim))}</td>
       <td>${esc(geoHora(g.concretagem_inicio))}–${esc(geoHora(g.concretagem_fim))}</td>
       <td><span class="tag ${esc(GEO_SITUACAO_COR[g.situacao] || "cinza")}">${esc(GEO_SITUACAO_LBL[g.situacao] || g.situacao)}</span>${g.rdo && g.rdo.turno_campo === "noturno" ? " " + /* html */ geoTagTurno("noturno", g.rdo.data && g.rdo.data !== geoDia(g) ? "de " + dataBR(g.rdo.data) : "") : ""}${g.turno_manual ? ` <span class="meta" title="Período decidido por uma pessoa (Mudar período do grupo)">período manual</span>` : ""}
@@ -273,12 +277,13 @@ async function geoRenderPainel(){
       <div class="serv-views">${/* html */ modoBtn("agrupado", "Agrupado", "Um grupo por dia, máquina e obra, com os totais")}${/* html */ modoBtn("lista", "Lista", "Uma linha por execução")}</div>
     </div>`;
   if(!dados.length){ cont.innerHTML = topo + `<p class="vazio">Nenhuma estaca do Geodigitus com esses filtros.</p>`; return; }
+  const maquinas = typeof eppMaquinasHTML === "function" ? eppMaquinasHTML(dados) : "";   // fase 171a
   if(_geoModo === "lista"){
     const lista = [...dados].sort((a, b) => geoDia(b).localeCompare(geoDia(a)) || String(a.perfuracao_inicio || "").localeCompare(String(b.perfuracao_inicio || "")));
-    cont.innerHTML = topo + geoLinhasEstacasHTML({ estacas: lista }, true);
+    cont.innerHTML = topo + maquinas + geoLinhasEstacasHTML({ estacas: lista }, true);
     return;
   }
-  cont.innerHTML = topo + `<div class="tabela-rola"><table>
+  cont.innerHTML = topo + maquinas + `<div class="tabela-rola"><table>
     <thead><tr><th>Data</th><th>Obra</th><th>Contrato</th><th>Máquina</th><th class="num">Estacas</th><th class="num">Metragem (m)</th><th class="num">Concreto (m³)</th><th>Situação</th><th></th></tr></thead>
     <tbody>${_geoGrupos.map(gr => {
       const contratos = geoDistintos(gr.estacas.map(g => g.contrato_txt));
