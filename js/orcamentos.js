@@ -2369,6 +2369,8 @@ async function abrirEnvioOrc(){
   const q = sel => d.querySelector(sel);
   let enviando = false, pdfBlob = null, pdfErro = null, anexosPrevia = [], seqPrevia = 0;
   // fase 196c: manual do equipamento do método (a function diz se existe); desmarcado por padrão: nem todo equipamento tem manual cadastrado, quem finaliza decide (19/11)
+  // TODO (adiado em 19/11): o envio do manual junto fica para uma versão futura. Nada a mudar aqui: sem o PDF em
+  // orcamentos-envio/fixos/manuais/ a function não devolve manual, a caixa não aparece e a proposta sai como antes.
   let manualInfo = null, anexarManual = false;
   const fechar = () => { if(!enviando) d.close(); };
   d.addEventListener("close", () => d.remove());

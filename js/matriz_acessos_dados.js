@@ -6,8 +6,8 @@
    Depois de ":" vêm os números das frases (lista `frases`) que explicam a célula.
    ==================================================================== */
 const MATRIZ_ACESSOS = {
-  retrato: "2026-11-18",
-  carimbo: "4fd864746f2d98c52f7b2474188ac689",
+  retrato: "2026-11-19",
+  carimbo: "3a6c0b3ad81c25b2ed8e9897ea32ebb4",
   acoes: ["ver","incluir","alterar","apagar"],
   grupos: ["Geral","Cadastros","Suprimentos","Comercial e financeiro","Campo","Pessoas e segurança","Sistema","Fora do menu"],
   modulos: [
@@ -127,7 +127,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n:2 x=n:2 x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n:2 n:2 n",
-      "gestor_manutencao": "s n:2 n:2 n",
+      "gestor_manutencao": "n:3 n:2 n:2 n",
       "juridico": "s n:2 n:2 n"
     },
     "fornecedores": {
@@ -196,7 +196,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n:2 x=n:2 x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s n:2 n:2 n",
-      "gestor_manutencao": "s x=n:2 x=n:2 n",
+      "gestor_manutencao": "s s s s",
       "juridico": "s n:2 n:2 n"
     },
     "estoque": {
@@ -219,7 +219,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s p:5 p:5 s",
-      "gestor_manutencao": "s n n n",
+      "gestor_manutencao": "s p:5 p:5 s",
       "juridico": "s n n n"
     },
     "separacoes": {
@@ -311,7 +311,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
-      "gestor_manutencao": "s n n n",
+      "gestor_manutencao": "s s s s",
       "juridico": "s n n n"
     },
     "reparos": {
@@ -334,7 +334,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "s n n n",
-      "gestor_manutencao": "s n n n",
+      "gestor_manutencao": "s s s s",
       "juridico": "s n n n"
     },
     "fabricacao": {
@@ -357,7 +357,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
-      "gestor_manutencao": "s n n n",
+      "gestor_manutencao": "s s s s",
       "juridico": "s n n n"
     },
     "orcamentos": {
@@ -472,7 +472,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "n:3 x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
-      "gestor_manutencao": "n:3 n n n",
+      "gestor_manutencao": "s n n n",
       "juridico": "n:3 n n n"
     },
     "encontro-contas": {
@@ -564,7 +564,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
-      "gestor_manutencao": "n:3 n n n",
+      "gestor_manutencao": "s n n n",
       "juridico": "s n n n"
     },
     "rdo": {
@@ -610,7 +610,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
-      "gestor_manutencao": "s n n n",
+      "gestor_manutencao": "s s s n",
       "juridico": "s n n n"
     },
     "equipamentos": {
@@ -679,7 +679,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "n:3 x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
-      "gestor_manutencao": "s p:19 p:19 p:19",
+      "gestor_manutencao": "s s s s",
       "juridico": "n:3 n n n"
     },
     "frota": {
@@ -702,7 +702,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "x=s x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
-      "gestor_manutencao": "s n n n",
+      "gestor_manutencao": "s s s s",
       "juridico": "s n n n"
     },
     "funcionarios": {
@@ -886,7 +886,7 @@ const MATRIZ_ACESSOS = {
       "visualizador": "n:3 x=n x=n x=n",
       "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 n n n",
-      "gestor_manutencao": "n:3 n n n",
+      "gestor_manutencao": "s s s s",
       "juridico": "n:3 n n n"
     },
     "diario-campo": {
