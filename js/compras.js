@@ -672,7 +672,30 @@ const CMP_REC_TIPO = { servico: ["serviço", "azul"], compra_direta: ["compra di
 function cmpItemServico(it){ return CMP_CAT_SERVICO.includes(it.categoria_custo); }
 function cmpSrvAtraso(p){ const r = _cmpParaReceber[p.id]; return !!r && r.tem_servico && !r.tem_evidencia && Number(r.dias_desde_envio || 0) > 7; }
 /* anexos do recebimento (bucket privado compras-evidencias, caminho <recebimento>/<arquivo>); MIME pela extensão */
-const CMP_ANEXO_MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic",
+/* hotfix 330: material aguardando aprovação do almoxarifado trava o recebimento no banco (lote S63-b, gatilho
+   fn_recebimento_produto_pendente; serviço não trava). A tela confere antes de gravar e diz o que aprovar e onde; quem
+   pode aprovar (prodPodeAprovar) ganha o botão para abrir o produto. Devolve true quando travou. */
+async function cmpTravaProdutoPendente(itens){
+  const ids = [...new Set((itens || []).map(i => i.produto_id).filter(Boolean))];
+  if(!ids.length) return false;
+  const { data, error } = await sb.from("produtos").select("id,codigo,nome,tipo_item").in("id", ids).eq("aprovacao", "pendente");
+  if(error || !data) return false;   // sem a leitura o banco ainda trava, e a mensagem dele sai inteira (cmpMsgRecebimento)
+  const pend = data.filter(p => (p.tipo_item || "produto") !== "servico");
+  if(!pend.length) return false;
+  const varios = pend.length > 1;
+  const txt = `Recebimento travado: ${varios ? "os produtos" : "o produto"} ${pend.map(p => `${p.codigo || "?"} — ${p.nome || ""}`).join(", ")} `
+    + `${varios ? "aguardam" : "aguarda"} aprovação do almoxarifado. Aprovam: almoxarifado, auxiliar de almoxarifado, logística ou diretoria, `
+    + "em Produtos › Aguardando aprovação. Depois de Aprovar (ou Já existe), receba de novo.";
+  if(typeof prodPodeAprovar === "function" && prodPodeAprovar() && typeof abrirProduto === "function"){
+    const r = await uiModal({ titulo: "Produto aguardando aprovação", texto: txt + " Você pode aprovar agora.", largura: "p",
+      acoes: [{ id: "fechar", texto: "Fechar" }, { id: "abrir", texto: varios ? "Abrir o primeiro produto" : "Abrir o produto", primaria: true }] });
+    if(r === "abrir" && irParaSecao("produtos")) abrirProduto(pend[0].id);
+  } else aviso("app-aviso", txt, "erro");
+  return true;
+}
+/* hotfix 330: o erro do produto pendente (hint produto_pendente) sai inteiro; os demais sem o prefixo técnico */
+function cmpMsgRecebimento(e){ return e && e.hint === "produto_pendente" ? e.message : String(e?.message || e || "").replace(/^.*?: /, ""); }
+const CMP_ANEXO_MIME = { pdf:"application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic",
   xml: "application/xml", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", txt: "text/plain" };
 async function cmpEnviarAnexos(recId, files){
@@ -3834,6 +3857,7 @@ async function confirmarRecebimento(){
     if(cmpDestinoIncompleto(it)){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
     if(it.pendente != null && Number(it.quantidade_nf) > it.pendente * 1.1 && !confirm(`"${it.descricao}": a nota traz ${num(it.quantidade_nf)} e o pedido tem ${num(it.pendente)} pendente. Receber assim mesmo?`)) return;
   }
+  if(await cmpTravaProdutoPendente(itens)) return;   // hotfix 330: antes de gravar, explica o produto aguardando aprovação
   // lote S57a (#206): linha com quantidade e unitário zero (PC-2026-01280: 250 peças entraram a custo zero)
   const zero = itens.filter(it => !(Number(it.valor_unitario_nf) > 0)).length;
   if(zero && !confirm(`${zero} linha(s) com valor zero. Se o item não veio, zere a QUANTIDADE, não o valor. Confirmar mesmo assim?`)) return;
@@ -3872,7 +3896,7 @@ async function confirmarRecebimento(){
   })));
   if(eIt){ await sb.from("recebimentos").delete().eq("id", rec.id); aviso("app-aviso", "Erro nos itens do recebimento: " + eIt.message, "erro"); return; }
   const { error: eRpc } = await sb.rpc("recebimento_confirmar", { p_id: rec.id });
-  if(eRpc){ await sb.from("recebimentos").delete().eq("id", rec.id); aviso("app-aviso", "Recebimento não confirmado: " + eRpc.message.replace(/^.*?: /, ""), "erro"); return; }
+  if(eRpc){ await sb.from("recebimentos").delete().eq("id", rec.id); aviso("app-aviso", "Recebimento não confirmado: " + cmpMsgRecebimento(eRpc), "erro"); return; }
   aviso("app-aviso", (material ? "Material recebido: estoque/custos atualizados. O pedido fica em \"Aguardando NF\" até o financeiro lançar a nota." : "Recebimento confirmado: estoque/custos atualizados" + (venc || dups ? " e títulos gerados." : "."))
     + (r.pedido?.exige_conferencia ? " Falta quem fez a requisição conferir o material (\"Recebi e conferi\")." : ""), "ok");   // fase 102
   fecharRecebimento();
@@ -4045,6 +4069,7 @@ async function confirmarServico(){
     if(cmpDestinoIncompleto(it)){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
     if(Number(it.quantidade) > it.pendente * 1.1 && !confirm(`"${it.descricao}": recebendo ${num(it.quantidade)} e o pedido tem ${num(it.pendente)} pendente. Continuar?`)) return;
   }
+  if(await cmpTravaProdutoPendente(itens)) return;   // hotfix 330: antes de subir a evidência e gravar
   const recId = crypto.randomUUID();
   let anexos = [];
   try { anexos = await cmpEnviarAnexos(recId, files); } catch(e){ aviso("app-aviso", e.message || String(e), "erro"); return; }
@@ -4068,7 +4093,7 @@ async function confirmarServico(){
     if(eAn){ await desfazer(); aviso("app-aviso", "Erro ao registrar a evidência: " + eAn.message, "erro"); return; }
   }
   const { error: eRpc } = await sb.rpc("recebimento_confirmar", { p_id: recId });
-  if(eRpc){ await desfazer(); aviso("app-aviso", "Serviço não recebido: " + eRpc.message.replace(/^.*?: /, ""), "erro"); return; }
+  if(eRpc){ await desfazer(); aviso("app-aviso", "Serviço não recebido: " + cmpMsgRecebimento(eRpc), "erro"); return; }
   aviso("app-aviso", `Serviço recebido${anexos.length ? " com evidência" : ""}: custo lançado. A NF e o título saem em Lançar NF.`, "ok");
   fecharReceberServico();
   await cmpFetchPedidos();
