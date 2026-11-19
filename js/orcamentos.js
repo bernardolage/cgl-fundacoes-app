@@ -2351,6 +2351,7 @@ async function abrirEnvioOrc(){
       ${/* html */ uiCampo({ id: "orc-env-cc", rotulo: "Cc (além da orcamento@)", placeholder: "opcional" })}
       ${/* html */ uiCampo({ id: "orc-env-fio", rotulo: "Responder ao pedido", tipo: "select", placeholder: "Mensagem nova", opcoes: [["", "Procurando pedidos na orcamento@…"]] })}
       ${/* html */ uiCampo({ id: "orc-env-obs", rotulo: "Observação (parágrafo opcional no e-mail)", tipo: "textarea" })}
+      <div id="orc-env-manual"></div>
     </div>
     <div class="orc-envio-previa-cab"><span class="rotulo-caps">Assunto</span> <strong id="orc-env-assunto">…</strong></div>
     <div class="orc-envio-dest" id="orc-env-dest"></div>
@@ -2367,6 +2368,8 @@ async function abrirEnvioOrc(){
   document.body.appendChild(d);
   const q = sel => d.querySelector(sel);
   let enviando = false, pdfBlob = null, pdfErro = null, anexosPrevia = [], seqPrevia = 0;
+  // fase 196c: manual do equipamento do método (a function diz se existe); marcado por padrão
+  let manualInfo = null, anexarManual = true;
   const fechar = () => { if(!enviando) d.close(); };
   d.addEventListener("close", () => d.remove());
   d.addEventListener("cancel", ev => { if(enviando) ev.preventDefault(); });
@@ -2380,14 +2383,23 @@ async function abrirEnvioOrc(){
     if(!alvo || !anexosPrevia.length) return;
     alvo.innerHTML = uiSecao("documento", "Anexos", anexosPrevia.map((a, i) => {
       const tam = i === 0 ? (pdfBlob ? orcFmtTamanho(pdfBlob.size) : pdfErro ? "erro" : "gerando…") : orcFmtTamanho(a.tamanho);
-      return uiLinhaItem(a.nome, i === 0 ? "Proposta (mesmo PDF do botão PDF)" : "Anexo fixo", tam, "");
+      return uiLinhaItem(a.nome, i === 0 ? "Proposta (mesmo PDF do botão PDF)" : a.tipo === "manual" ? "Manual do equipamento" : "Anexo fixo", tam, "");
     }).join(""), String(anexosPrevia.length));
     if(pdfErro) q("#orc-env-msg").innerHTML = uiErro("Não foi possível gerar o PDF da proposta: " + (pdfErro.message || pdfErro));
   }
 
   function lerCampos(){
     return { para: q("#orc-env-para").value, cc: q("#orc-env-cc").value, observacao: q("#orc-env-obs").value,
-      email_origem_id: fioSel.value && fioSel.value !== "" ? fioSel.value : null };
+      email_origem_id: fioSel.value && fioSel.value !== "" ? fioSel.value : null, anexar_manual: !!manualInfo && anexarManual };
+  }
+  // caixa do manual: só aparece quando a function acha o manual do método no servidor
+  function renderManual(){
+    const alvo = q("#orc-env-manual");
+    if(!alvo) return;
+    if(!manualInfo){ alvo.innerHTML = ""; return; }
+    if(q("#orc-env-manual-cx")) return;
+    alvo.innerHTML = `<label class="check-inline" title="Anexa o manual do equipamento do método desta proposta"><input type="checkbox" id="orc-env-manual-cx" ${anexarManual ? "checked" : ""} /> Anexar manual do equipamento (${esc(manualInfo.nome)})</label>`;
+    q("#orc-env-manual-cx").addEventListener("change", ev => { anexarManual = ev.target.checked; atualizarPrevia(); });
   }
 
   async function atualizarPrevia(){
@@ -2401,7 +2413,12 @@ async function abrirEnvioOrc(){
       q("#orc-env-dest").textContent = `Para: ${(r.para || []).join(", ")} · Cc: ${(r.cc || []).join(", ")}${r.no_fio ? " · resposta no fio do pedido" : ""}`;
       q("#orc-env-previa").srcdoc = r.html || "";
       anexosPrevia = r.anexos || [];
+      const achouManual = !manualInfo && !!r.manual;
+      manualInfo = r.manual || null;
+      renderManual();
       renderAnexos();
+      // a primeira prévia não sabia do manual: refaz já com ele marcado, para a lista de anexos ser a que sai
+      if(achouManual && anexarManual) atualizarPrevia();
       if(!pdfErro) q("#orc-env-msg").innerHTML = "";
     } catch(err){
       if(seq !== seqPrevia || !d.isConnected) return;
