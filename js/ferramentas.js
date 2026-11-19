@@ -22,7 +22,7 @@ let _frmAtual = null;      // { reg (ferramentas), saldo, emprestimos, ocorrenci
 let _frmDev = [];          // empréstimos no modal de devolução
 
 const FRM_OCORR = { danificada: "Danificada", perdida: "Perdida", reparo: "Voltou do conserto", ajuste: "Ajuste de inventário" };
-const FRM_OPERA = ["diretor", "admin", "comprador", "almoxarife", "gestor_acessorios", "engenheiro", "logistica", "financeiro",
+const FRM_OPERA = ["diretor", "admin", "comprador", "almoxarife", "gestor_acessorios", "gestor_manutencao", "engenheiro", "logistica", "financeiro",
   "mecanico", "gestor_frota", "gestor_manutencao", "auxiliar_almoxarifado"];   // espelha almoxarifado_pode_operar()
 
 function frmPodeOperar(){ return !!usuarioAtual && FRM_OPERA.includes(usuarioAtual.cargo); }

@@ -32,7 +32,7 @@ let _repForn = null;           // fase 186b: fornecedor do conserto escolhido na
 
 /* lote S45 (L7): `logistica` registra reparo como registra fabricação (fabPodeEditar / fabricacao_pode_operar);
    espelha reparos_caldeiraria_write, reparo_horas_write e reparo_itens_write da migration 20261020_loteS45_hoje_br. */
-function repPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "logistica"].includes(usuarioAtual.cargo); }
+function repPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "gestor_manutencao", "logistica"].includes(usuarioAtual.cargo); }
 /* lote S43 (L10, pedido do Julio em 18/10): o almoxarife lança as peças consumidas e dá a baixa, como no Odoo;
    status, horas, motivo e o resto da ficha seguem repPodeEditar(). Espelha reparo_itens_write e reparo_consumir_pecas.
    Fase 90: o auxiliar de almoxarifado (equipe do Julio) faz o mesmo que ele na aba Peças. */

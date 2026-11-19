@@ -32,7 +32,7 @@ const EQP_FORA_OPERACAO = EQP_STATUS_VENDIDO;   // fase 180c: vendido, vendido_r
 const EQP_MOB_ATIVA = ["em_preparacao","em_transito","em_obra"];
 
 function eqpPodeEditar(){
-  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","rh","gestor_acessorios","gestor_frota"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","logistica","rh","gestor_acessorios", "gestor_manutencao","gestor_frota"].includes(usuarioAtual.cargo);
 }
 function eqpLbl(v){ const o = (STATUS.equipamento || {})[v]; return o ? o.label : (v || "—"); }
 function eqpObra(id){ const o = _eqpObraMap[id]; return o ? obraRotulo(o) : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }

@@ -1568,7 +1568,7 @@ async function obrPmDesligar(obraId, pc, p){
    traz número de estacas: sai metro linear por diâmetro e faixa de profundidade. Itens com quantidade 0 (opcionais do
    orçamento) ficam fora da tabela e só são contados na nota.
    ==================================================================== */
-const ESCOPO_OBRA_CARGOS = ["diretor", "comercial", "engenheiro", "assistente_engenharia", "logistica", "encarregado", "gestor_acessorios", "sesmt"];
+const ESCOPO_OBRA_CARGOS = ["diretor", "comercial", "engenheiro", "assistente_engenharia", "logistica", "encarregado", "gestor_acessorios", "gestor_manutencao", "sesmt"];
 function podeLerEscopoObra(){
   return !!usuarioAtual && (ESCOPO_OBRA_CARGOS.includes(usuarioAtual.cargo) || (typeof podeVerOrcamentos === "function" && podeVerOrcamentos()));
 }

@@ -1476,7 +1476,7 @@ const SECOES_COMERCIAIS = ["servicos", "orcamentos"];
    Os demais cargos seguem gerando remessa/retorno pela mobilização, sem precisar da tela.
    Fase 105b: o financeiro entra (decisão 6: emite e cancela a NF-e de remessa, que vive na ficha do documento). */
 function podeVerMovimentacoes(){
-  return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_acessorios", "almoxarife", "financeiro", "auditor"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_acessorios", "gestor_manutencao", "almoxarife", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
 function podeVerComercial(){
   return !!usuarioAtual && ["diretor", "comercial", "auditor"].includes(usuarioAtual.cargo);
@@ -1537,9 +1537,9 @@ function podeVerContratos(){ return podeVerContratosReceita() || podeVerContrato
    manutencao_horas (manutencao_pode_operar) e fabricacao_horas (fabricacao_pode_operar). O item do menu aparece para quem
    grava em pelo menos um tipo e para o auditor (só leitura); nasce escondido no index.html. */
 const APT_CARGOS_GRAVAM = {
-  RP: ["diretor", "admin", "mecanico", "engenheiro", "gestor_acessorios", "logistica"],
+  RP: ["diretor", "admin", "mecanico", "engenheiro", "gestor_acessorios", "gestor_manutencao", "logistica"],
   OS: ["diretor", "admin", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"],
-  OF: ["diretor", "admin", "gestor_acessorios", "mecanico", "logistica", "engenheiro", "almoxarife"]
+  OF: ["diretor", "admin", "gestor_acessorios", "gestor_manutencao", "mecanico", "logistica", "engenheiro", "almoxarife"]
 };
 function podeVerApontamentos(){
   if(!usuarioAtual) return false;
@@ -1548,7 +1548,7 @@ function podeVerApontamentos(){
 }
 /* Fase 76: Centros de custo internos (setores e obras internas): quem lê custos de compras e acessórios */
 function podeVerCentrosCusto(){
-  return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "gestor_acessorios", "gestor_frota", "auditor"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "gestor_acessorios", "gestor_manutencao", "gestor_frota", "auditor"].includes(usuarioAtual.cargo);
 }
 /* Fase 90 (áudios do Julio, 18/10/2026): o valor contratado da obra vive em obras_financeiro, que no banco só
    pode_ler_financeiro() lê (admin, engenheiro, assistente de engenharia, comercial, financeiro, auditor; diretor por
@@ -1592,7 +1592,7 @@ function podeVerPatrimonio(perfil){
    empresa, o gestor de acessórios, o financeiro e a logística; ADMIN FORA. Espelha fiscal_pode_emitir() do banco.
    Fase 105c: a NFS-e da medição ainda exige ler a medição (pode_ler_financeiro), conferido pela function focus-nfe. */
 function podeEmitirFiscal(){
-  return !!usuarioAtual && ["diretor", "gestor_acessorios", "financeiro", "logistica"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["diretor", "gestor_acessorios", "gestor_manutencao", "financeiro", "logistica"].includes(usuarioAtual.cargo);
 }
 /* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
    22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
@@ -1607,8 +1607,9 @@ const SECOES_OCULTAS_POR_CARGO = {
   auxiliar_almoxarifado: ["clientes", "fornecedores", "funcionarios", "servicos", "compras", "orcamentos", "contratos", "contaspagar", "centros",
     "carteira", "obras", "mobilizacoes", "equipamentos", "frota", "acessorios", "fabricacao", "medicoes", "rdo", "usuarios", "rhh"],
   // fase 92 (Bernardo, 19/10/2026, decisão 1): gestor da manutenção (Bruno) cuida de OS, planos, checklists, equipamentos, frota
-  // e das compras do setor; obras, medições e contas a pagar (podeVerContasPagar) ficam fora
-  gestor_manutencao: ["obras", "medicoes"],
+  // e das compras do setor; medições e contas a pagar (podeVerContasPagar) ficam fora.
+  // fase 197 (Bernardo, 19/11/2026): Obras volta ao menu dele (mesma liberação de acessórios do Walison); Clientes sai (não precisa).
+  gestor_manutencao: ["medicoes", "clientes"],
   // fase 180d (D2): jurídico fica com Contratos; sem folha, RH nem financeiro geral (a RLS já barra o dado)
   juridico: ["medicoes", "contaspagar", "carteira", "centros", "funcionarios", "rhh"]
 };

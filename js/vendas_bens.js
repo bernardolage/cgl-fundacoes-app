@@ -767,7 +767,7 @@ async function vbSalvarRegistro(){
 /* ====================================================================
    Fase 180c: contrato, cronograma colado, correção, boleto, reserva de domínio e acessórios
    ==================================================================== */
-function vbPodeAcessorios(){ return !!vbCargo() && !vbSoLeitura() && ["diretor", "admin", "financeiro", "gestor_acessorios"].includes(vbCargo()); }
+function vbPodeAcessorios(){ return !!vbCargo() && !vbSoLeitura() && ["diretor", "admin", "financeiro", "gestor_acessorios", "gestor_manutencao"].includes(vbCargo()); }
 const vbPct = v => v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 4 }) + "%";
 const vbFator = v => v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 8, maximumFractionDigits: 8 });
 

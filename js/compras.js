@@ -2188,7 +2188,7 @@ async function cmpFecharCotacao(id){
 function cmpProdutoAprova(){ return !!usuarioAtual && ["diretor","almoxarife","auxiliar_almoxarifado","logistica"].includes(usuarioAtual.cargo); }
 function cmpPodeCadastrarProduto(){
   if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
-  return !!usuarioAtual && (["diretor","admin","almoxarife","comprador","gestor_acessorios"].includes(usuarioAtual.cargo) || (typeof temModuloExtra === "function" && temModuloExtra("produtos")));
+  return !!usuarioAtual && (["diretor","admin","almoxarife","comprador","gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo) || (typeof temModuloExtra === "function" && temModuloExtra("produtos")));
 }
 /* Lote S55 (#175): o cadastro rápido ganha o tipo (produto / serviço consumido) e serve ao pedido (destino "pedido", padrão)
    e ao recebimento (destino "rec": a linha da nota que não casou com nada). Serviço: unidade sugerida vb, aplicação direta. */

@@ -67,7 +67,7 @@ const MOB_TRANSICOES = {
 /* fase 95: quem cria e edita a mobilização (dados, kit e status). Espelha mobilizacoes_write +
    mobilizacoes_insert_acessorios/mobilizacoes_update_acessorios no banco; lá has_role() já cobre diretor, aqui a
    lista precisa trazê-lo. Quem está fora vê a ficha sem "Salvar", sem botões de status e sem "+ Nova mobilização". */
-const MOB_CARGOS_EDITAM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica", "gestor_acessorios"];
+const MOB_CARGOS_EDITAM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica", "gestor_acessorios", "gestor_manutencao"];
 const MOB_MSG_SEM_PERMISSAO = "Seu cargo não pode alterar esta mobilização.";
 function mobPodeEditar(){ return !!usuarioAtual && MOB_CARGOS_EDITAM.includes(usuarioAtual.cargo); }
 
@@ -422,7 +422,7 @@ function mobAbrirViagem(id){
 let _mobMatN = 0;
 function mobMatPodeEditar(){
   return !!usuarioAtual && !["concluida", "cancelada", "desmobilizada"].includes(_mobAberta?.status)
-    && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica", "almoxarife", "gestor_acessorios", "comprador"].includes(usuarioAtual.cargo);
+    && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica", "almoxarife", "gestor_acessorios", "gestor_manutencao", "comprador"].includes(usuarioAtual.cargo);
 }
 async function mobRenderMateriais(){
   const box = $("mob-materiais"); const m = _mobAberta; if(!box || !m) return;

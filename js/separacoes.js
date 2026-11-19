@@ -37,7 +37,7 @@ const SEP_PROD_COLS = "id,codigo,nome,unidade,estoque_atual,controle_reposicao,c
 const SEP_ACE_COLS = "id,marcacao,familia,tipo,diametro_mm,local_tipo,local_obra_id,local_equipamento_id,local_descricao,condicao";   // lote S53 (#64)
 
 /* quem separa e entrega = quem opera compras/estoque + auxiliar de almoxarifado (almoxarifado_pode_operar() no banco, fase 90) */
-function sepPodeOperar(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "gestor_acessorios", "engenheiro", "logistica", "financeiro", "mecanico", "gestor_frota", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
+function sepPodeOperar(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "gestor_acessorios", "gestor_manutencao", "engenheiro", "logistica", "financeiro", "mecanico", "gestor_frota", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
 /* quem pede material para a obra (separacoes_pode_pedir() no banco); lote S48 (#124): + gestor_manutencao */
 function sepPodePedir(){ return !!usuarioAtual && ["admin", "diretor", "comprador", "almoxarife", "encarregado", "engenheiro", "assistente_engenharia", "mecanico", "operador", "logistica", "gestor_acessorios", "financeiro", "gestor_frota", "gestor_manutencao"].includes(usuarioAtual.cargo); }
 function sepTag(st){ const o = SEP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
@@ -173,7 +173,7 @@ function sepRenderPlantao(){
   el.innerHTML = `Almoxarife de plantão: <strong>${_sepPlantao ? esc(sepPerfil(_sepPlantao) || "?") : "não definido"}</strong>${pode ? ` <a href="#" id="sep-plantao-ed">alterar</a>` : ""}`;
   $("sep-plantao-ed")?.addEventListener("click", e => {
     e.preventDefault();
-    const nomes = _sepPerfis.filter(p => ["almoxarife", "logistica", "comprador", "gestor_acessorios", "admin"].includes(p.cargo));
+    const nomes = _sepPerfis.filter(p => ["almoxarife", "logistica", "comprador", "gestor_acessorios", "gestor_manutencao", "admin"].includes(p.cargo));
     el.innerHTML = `Almoxarife de plantão: <select id="sep-plantao-sel"><option value="">— ninguém —</option>${nomes.map(p => `<option value="${esc(p.id)}"${p.id === _sepPlantao ? " selected" : ""}>${esc(p.nome)}</option>`).join("")}</select> <button type="button" class="btn-sec btn-sm" id="sep-plantao-ok">ok</button>`;
     $("sep-plantao-ok").addEventListener("click", async () => {
       const id = $("sep-plantao-sel").value || null;

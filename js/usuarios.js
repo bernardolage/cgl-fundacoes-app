@@ -46,7 +46,7 @@ const CARGO_DESCRICAO = {
   auxiliar_almoxarifado: { frase: "Estoque, separações, consulta de produtos e peças dos reparos; sem obras, compras nem valores", modulos: ["estoque", "separacoes", "produtos", "reparos"], sem: ["obras", "compras", "medicoes", "contratos", "contaspagar"] },
   gestor_acessorios: { frase: "Acessórios, reparos, fabricação e remessas; emite a nota de remessa", modulos: ["acessorios", "reparos", "fabricacao", "movimentacoes"], sem: [] },
   gestor_frota: { frase: "Frota, equipamentos, manutenção e compras da frota", modulos: ["frota", "equipamentos", "manutencao", "compras"], sem: [] },
-  gestor_manutencao: { frase: "OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar", modulos: ["manutencao", "compras"], sem: ["obras", "medicoes", "contratos", "contaspagar"] },
+  gestor_manutencao: { frase: "OS, planos preventivos, checklists, compras do setor, acessórios, reparos, fabricação, estoque e logística; sem clientes, medições nem contas a pagar", modulos: ["manutencao", "compras"], sem: ["clientes", "medicoes", "contratos", "contaspagar"] },
   mecanico:     { frase: "OS, reparos, checklists e apontamento de horas", modulos: ["manutencao", "reparos", "apontamentos"], sem: [] },
   encarregado:  { frase: "Diário das obras dele, no escritório e no celular", modulos: ["rdo", "diario-campo"], sem: [] },
   operador:     { frase: "Só o diário de campo no celular, nas obras em que está", modulos: ["diario-campo"], sem: ["inicio", "rdo", "obras"] },

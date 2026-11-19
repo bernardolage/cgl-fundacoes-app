@@ -42,14 +42,14 @@ const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", c
    As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
 const DASH_SETOR_GESTORES = {
   obras:       ["engenheiro", "assistente_engenharia", "encarregado"],
-  frota:       ["mecanico", "logistica", "gestor_acessorios", "gestor_frota"],
+  frota:       ["mecanico", "logistica", "gestor_acessorios", "gestor_manutencao", "gestor_frota"],
   financeiro:  ["financeiro"],
   compras:     ["comprador", "almoxarife"],
   mobilizacao: ["logistica", "engenheiro"],
   chamados:    [],
   contratos:   ["comercial"],
-  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios", "auxiliar_almoxarifado"],   // fase 83: separações; fase 90: equipe do Julio
-  oficina:     ["mecanico", "gestor_acessorios", "logistica", "almoxarife", "engenheiro"],   // fase 84: ordens de fabricação
+  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios", "gestor_manutencao", "auxiliar_almoxarifado"],   // fase 83: separações; fase 90: equipe do Julio
+  oficina:     ["mecanico", "gestor_acessorios", "gestor_manutencao", "logistica", "almoxarife", "engenheiro"],   // fase 84: ordens de fabricação
   manutencao:  ["gestor_manutencao", "mecanico", "engenheiro", "gestor_frota", "logistica"],   // fase 92: preventivas vencidas e checklist de mobilização
   rh:          ["rh"],   // fase 93a: mudanças de função do plano de cargos
   sesmt:       ["sesmt", "almoxarife", "rh"]   // fase 100: EPI por colaborador

@@ -36,7 +36,7 @@ const FAB_DESTINO = { estoque: "Estoque", acessorio: "Acessório", obra: "Obra",
 const FAB_SETOR_CT = { usinagem: "Usinagem", solda: "Solda", corte: "Corte", manual: "Manual", eletrica: "Elétrica", outro: "Outro" };
 const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_real,custo_componentes,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,created_at,criado_por,autor:profiles!ordens_fabricacao_criado_por_fkey(nome),produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
 
-function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "logistica", "almoxarife"].includes(usuarioAtual.cargo); }
+function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "gestor_manutencao", "logistica", "almoxarife"].includes(usuarioAtual.cargo); }
 function fabEhDiretoria(){ return !!usuarioAtual && ["admin", "diretor"].includes(usuarioAtual.cargo); }
 function fabSt(st){ return st === "planejada" ? "rascunho" : st; }   // valor antigo do enum (fase 6) lido como rascunho
 function fabTag(st){ const o = FAB_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }

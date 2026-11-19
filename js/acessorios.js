@@ -74,7 +74,7 @@ const ACE_REPARO_STATUS = { aberto: "Aberto", em_execucao: "Em execução", conc
 const ACE_LOCAIS_MOVER = ["patio","oficina","equipamento","obra","em_transito","fornecedor","desconhecido"];
 
 function acePodeEditar(){
-  return ["admin","diretor","gestor_acessorios","mecanico","logistica","engenheiro"].includes(usuarioAtual?.cargo);
+  return ["admin","diretor","gestor_acessorios", "gestor_manutencao","mecanico","logistica","engenheiro"].includes(usuarioAtual?.cargo);
 }
 function aceLbl(grupo, v){ const o = (STATUS[grupo] || {})[v]; return o ? o.label : (v || "—"); }
 function aceEqTag(id){ const e = _aceEq[id]; return e ? e.codigo : ""; }

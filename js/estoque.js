@@ -46,7 +46,7 @@ const EST_AJUDA = {
 function estPodeEditar(){
   // fase 78: logistica (Fabrício, dono de Compras e do balcão) também movimenta
   // fase 90: auxiliar de almoxarifado (equipe do Julio) dá baixa, devolve e conta (movimentacoes_estoque_write no banco)
-  return !!usuarioAtual && ["admin","diretor","almoxarife","comprador","gestor_acessorios","logistica","auxiliar_almoxarifado"].includes(usuarioAtual.cargo);
+  return !!usuarioAtual && ["admin","diretor","almoxarife","comprador","gestor_acessorios", "gestor_manutencao","logistica","auxiliar_almoxarifado"].includes(usuarioAtual.cargo);
 }
 /* fase 144-0b: o SESMT (cargo ou módulo extra) usa o balcão só para EPI e uniforme. estPodeEditar() não muda, porque libera o resto do
    Estoque; a regra vale de novo no banco (estoque_saida_registrar). */

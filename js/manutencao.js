@@ -64,7 +64,7 @@ const MAN_ANEXO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png"
 /* ---------- permissões (espelho do banco) ---------- */
 function manPodeEditar(){ return !!usuarioAtual && !ehSomenteLeitura() && ["admin", "diretor", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"].includes(usuarioAtual.cargo); }
 /* peças: manutencao_pode_operar() ou almoxarifado_pode_operar() (= compras_pode_operar() ou auxiliar de almoxarifado) */
-function manPodeMateriais(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["comprador", "almoxarife", "auxiliar_almoxarifado", "gestor_acessorios", "logistica", "financeiro"].includes(usuarioAtual.cargo)); }
+function manPodeMateriais(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["comprador", "almoxarife", "auxiliar_almoxarifado", "gestor_acessorios", "gestor_manutencao", "logistica", "financeiro"].includes(usuarioAtual.cargo)); }
 /* lote S56b (#194): só o almoxarifado dá baixa (espelho de almoxarifado_baixa_pecas(): almoxarife, auxiliar de almoxarifado,
    admin; diretor). Lançar a peça na OS continua por manPodeMateriais(). */
 function manBaixaPode(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
@@ -76,7 +76,7 @@ function manTagBaixaPend(n){ return n ? `<span class="tag ambar" title="Peças d
 /* fase 131b: comprar pela OS = compras_pode_operar() (inclui gestor de frota e de manutenção e o mecânico); auditor e só leitura nunca */
 function manPodeComprar(){ return _man131b && typeof cmpPodeOperar === "function" && cmpPodeOperar() && !ehSomenteLeitura(); }
 function manPedVivos(){ return _manPeds.filter(p => p.status !== "cancelado"); }
-function manPodeChecklist(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["encarregado", "operador", "logistica", "assistente_engenharia", "gestor_acessorios"].includes(usuarioAtual.cargo)); }
+function manPodeChecklist(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["encarregado", "operador", "logistica", "assistente_engenharia", "gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo)); }
 
 /* ---------- utilitários ---------- */
 function manTag(st){ const o = MAN_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }

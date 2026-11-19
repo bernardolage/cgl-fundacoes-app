@@ -32,7 +32,7 @@ function epiPodeOperar(){
 /* marcar EPI/uniforme na conferência (epi_marcar_produtos) e CA/validade (produtos_write) */
 function epiPodeMarcar(){ return !!usuarioAtual && (["diretor", "admin", "almoxarife", "sesmt"].includes(usuarioAtual.cargo) || sstPodeOperar()); }
 /* fase 144-0: CA e validade também pelo SESMT, como o banco já permite (produto_sesmt_pode_editar: cargo sesmt ou extra produtos_sesmt) */
-function epiPodeEditarProduto(){ return !!usuarioAtual && !ehSomenteLeitura() && (["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios", "sesmt"].includes(usuarioAtual.cargo) || temModuloExtra("produtos_sesmt")); }
+function epiPodeEditarProduto(){ return !!usuarioAtual && !ehSomenteLeitura() && (["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios", "gestor_manutencao", "sesmt"].includes(usuarioAtual.cargo) || temModuloExtra("produtos_sesmt")); }
 function epiViewAusente(error){ return !!error && ["42P01", "PGRST205", "42703", "PGRST204"].includes(error.code); }
 const EPI_MSG_MIGRATION = "O controle de EPI por colaborador entra quando a migration da fase 100 for aplicada no banco.";
 function epiNorm(s){ return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }

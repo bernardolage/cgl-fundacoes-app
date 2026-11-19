@@ -118,7 +118,7 @@ const PROD_MSG_SO_CADASTRO = "Seu perfil edita o cadastro do produto, não o sal
    "sesmt" ou "" (só consulta) */
 function prodPerfilEdicao(){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return "";
-  if(["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios"].includes(usuarioAtual.cargo)) return "tudo";
+  if(["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo)) return "tudo";
   if(typeof temModuloExtra === "function" && temModuloExtra("produtos")) return "cadastro";   // lote S55
   if(usuarioAtual.cargo === "sesmt" || (typeof temModuloExtra === "function" && temModuloExtra("produtos_sesmt"))) return "sesmt";
   return "";

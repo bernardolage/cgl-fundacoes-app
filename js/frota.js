@@ -58,7 +58,7 @@ function vgTransportadorTxt(v){
 function vgTagFreteStatus(st){ const m = VG_FRETE_STATUS[st]; return m ? `<span class="tag ${esc(m[1])}">${esc(m[0])}</span>` : ""; }
 const VG_LOC = { base: "Base CGL", obra: "Obra", cliente: "Cliente", fornecedor_manutencao: "Fornecedor / manutenção" };
 /* Mesma lista de logistica_pode_operar() (migration da fase 89); diretor entra por has_role() lá e aqui na lista. */
-const VG_LOGISTICA_CARGOS = ["diretor", "admin", "logistica", "gestor_frota", "encarregado", "almoxarife", "engenheiro", "assistente_engenharia", "mecanico", "rh", "gestor_acessorios", "comercial"];
+const VG_LOGISTICA_CARGOS = ["diretor", "admin", "logistica", "gestor_frota", "encarregado", "almoxarife", "engenheiro", "assistente_engenharia", "mecanico", "rh", "gestor_acessorios", "gestor_manutencao", "comercial"];
 
 function logPodeOperar(){ return !!usuarioAtual && !ehSomenteLeitura() && VG_LOGISTICA_CARGOS.includes(usuarioAtual.cargo); }
 function frotaPodeEditar(){
