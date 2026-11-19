@@ -2368,8 +2368,8 @@ async function abrirEnvioOrc(){
   document.body.appendChild(d);
   const q = sel => d.querySelector(sel);
   let enviando = false, pdfBlob = null, pdfErro = null, anexosPrevia = [], seqPrevia = 0;
-  // fase 196c: manual do equipamento do método (a function diz se existe); marcado por padrão
-  let manualInfo = null, anexarManual = true;
+  // fase 196c: manual do equipamento do método (a function diz se existe); desmarcado por padrão: nem todo equipamento tem manual cadastrado, quem finaliza decide (19/11)
+  let manualInfo = null, anexarManual = false;
   const fechar = () => { if(!enviando) d.close(); };
   d.addEventListener("close", () => d.remove());
   d.addEventListener("cancel", ev => { if(enviando) ev.preventDefault(); });
