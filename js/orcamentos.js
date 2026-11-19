@@ -1075,6 +1075,7 @@ async function abrirOrcamento(id){
   $("orc-contato-nome").value    = o.contato_nome || "";
   $("orc-contato-tel").value     = o.contato_telefone || "";
   $("orc-contato-email").value   = o.contato_email || "";
+  if(typeof cctOrcCarregar === "function") cctOrcCarregar(o.cliente_id || "");   // fase 183a: contatos Comercial do cliente
   $("orc-ref-obra").value        = o.referencia_obra || "";
   $("orc-escopo").value          = o.escopo_servicos || "";
   $("orc-equipamento").value     = o.equipamento_considerado || "";
@@ -2346,6 +2347,7 @@ async function abrirEnvioOrc(){
   const corpo = `<div class="orc-envio">
     <div class="orc-envio-campos">
       ${/* html */ uiCampo({ id: "orc-env-para", rotulo: "Para", valor: o.contato_email || "", obrigatorio: true, placeholder: "e-mail do cliente", ajuda: "Vários: separe por vírgula." })}
+      <div id="orc-env-sug" class="orc-env-sug"></div>
       ${/* html */ uiCampo({ id: "orc-env-cc", rotulo: "Cc (além da orcamento@)", placeholder: "opcional" })}
       ${/* html */ uiCampo({ id: "orc-env-fio", rotulo: "Responder ao pedido", tipo: "select", placeholder: "Mensagem nova", opcoes: [["", "Procurando pedidos na orcamento@…"]] })}
       ${/* html */ uiCampo({ id: "orc-env-obs", rotulo: "Observação (parágrafo opcional no e-mail)", tipo: "textarea" })}
@@ -2468,6 +2470,7 @@ async function abrirEnvioOrc(){
   });
   d.showModal();
   q("#orc-env-para").focus();
+  if(typeof cctOrcSugerirEmails === "function") cctOrcSugerirEmails(d, $("orc-cliente")?.value || "");   // fase 183a
   carregarPedidos();
 }
 

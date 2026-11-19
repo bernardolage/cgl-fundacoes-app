@@ -404,6 +404,7 @@ function mostrarPainelObra(){
 
 function novaObra(){
   obraEditId = null;
+  if(typeof cctAvisoObra === "function") cctAvisoObra(null);   // fase 183a
   _obrContrato = null;
   // limpa form
   $("obr-codigo").value = "";
@@ -471,6 +472,7 @@ async function abrirObra(id){
   const { data, error } = await sb.from("obras").select("*, financeiro:obras_financeiro(valor_contratado,caucao_percentual,caucao_prazo_dias)").eq("id", id).single();   // fase 91: caução da obra
   if(error){ aviso("app-aviso","Erro ao abrir obra: "+error.message, "erro"); return; }
   obraEditId = id;
+  if(typeof cctAvisoObra === "function") cctAvisoObra(id);   // fase 183a: obra em andamento sem "Aprova a medição"
 
   $("obr-codigo").value = data.codigo || "";
   $("obr-nome").value = data.nome || "";

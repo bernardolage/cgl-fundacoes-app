@@ -241,6 +241,7 @@ function novaMedicao(){
   $("med-numero").value = "";
   $("med-obra").value = "";
   if($("med-equip")){ $("med-equip").value = ""; $("med-equip").dataset.orig = ""; $("med-equip").dataset.obra = ""; }
+  if(typeof cctMedPreencher === "function") cctMedPreencher(null, "");   // fase 183a
   if($("med-tipo")) $("med-tipo").value = "quinzenal";
   if($("med-multiplicador")) $("med-multiplicador").value = 100;
   $("med-status").value = "rascunho";
@@ -300,6 +301,7 @@ async function abrirMedicao(id){
   $("med-numero").value = data.numero || "";
   $("med-obra").value = data.obra_id || "";
   if($("med-equip")){ $("med-equip").dataset.orig = data.equipamento_id || ""; medPreencherMaquinas(data.obra_id, "med-equip", data.equipamento_id || ""); }   // fase 101
+  if(typeof cctMedPreencher === "function") cctMedPreencher(data.obra_id, data.aprovador_cliente_contato_id || "");   // fase 183a
   if($("med-tipo")) $("med-tipo").value = data.tipo_medicao || "quinzenal";
   if($("med-multiplicador")) $("med-multiplicador").value = data.multiplicador_pct ?? 100;
   ajustarUISinalContratual();
@@ -1041,6 +1043,7 @@ async function salvarMedicao(novoStatus){
   if(msgZero){ aviso("app-aviso", msgZero, "erro"); ativarTabMed("geral"); return; }
   if(typeof medPmLerCampos === "function") Object.assign(reg, medPmLerCampos());   // fase 98: só financeiro/admin/diretor mandam a permuta
   Object.assign(reg, medEquipParaGravar("med-equip"));   // fase 101 (#94): máquina da medição
+  if(typeof cctMedParaGravar === "function") Object.assign(reg, cctMedParaGravar());   // fase 183a: aprovador pelo cliente
   // fase 105c: retenções federais (só depois da migration) e medição travada pela NFS-e emitida pelo app
   if(_medNfseOk){
     for(const k of MED_RET_FED){
@@ -1140,6 +1143,8 @@ async function gerarPDFMedicao(){
       .eq("id", medEditId).single();
     if(medRes.error) throw new Error(medRes.error.message);
     const m = medRes.data;
+    // fase 183a: aprovador pelo cliente no boletim (vazio sem a migration ou sem contato escolhido)
+    m._aprovadorCliente = typeof cctNomeContato === "function" ? await cctNomeContato(m.aprovador_cliente_contato_id) : "";
     const obraId = m.obra?.id;
     const pIni = m.periodo_inicio;
     const pFim = m.periodo_fim;
@@ -1232,7 +1237,7 @@ function montarHTMLSinalContratualPDF(m, itens){
       <td style="padding:3px 6px;width:50%;"><strong>CLIENTE:</strong> ${esc((cli.nome||"").toUpperCase())}</td>
     </tr>
     <tr>
-      <td style="padding:3px 6px;"><strong>Operador:</strong> ${esc(cli.contato_nome || "—")}</td>
+      <td style="padding:3px 6px;"><strong>Operador:</strong> ${esc(cli.contato_nome || "—")}${m._aprovadorCliente ? ` · <strong>Aprovador pelo cliente:</strong> ${esc(m._aprovadorCliente)}` : ""}</td>
       <td style="padding:3px 6px;"><strong>CONTRATO:</strong> ${esc(contr.numero || "—")}</td>
     </tr>
   </table>
@@ -1514,7 +1519,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
     </tr>
     <tr>
       <td style="padding:5px 10px;border:1px solid #000;" colspan="2">
-        <strong>Realizado entre:</strong> ${esc(periodo)}
+        <strong>Realizado entre:</strong> ${esc(periodo)}${m._aprovadorCliente ? ` · <strong>Aprovador pelo cliente:</strong> ${esc(m._aprovadorCliente)}` : ""}
       </td>
       <td style="padding:5px 10px;border:1px solid #000;">
         <strong>Contrato:</strong> ${esc(contr.numero||"—")}

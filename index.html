@@ -9,112 +9,114 @@
      Um escape esquecido não executa nem manda dado para fora. O Pages não aceita
      header, por isso vai em <meta> (frame-ancestors não vale em meta). style 'unsafe-inline': html2pdf e os PDFs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co https://viacep.com.br https://brasilapi.com.br; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="8c611f5" />
+<meta name="app-versao" content="575eabf" />
 <!-- pré-carregamento (gerado pelo scripts/preload-scripts.sh na publicação): baixa os scripts em paralelo -->
-<link rel="preload" as="script" href="js/tema.js?v=8c611f5">
-<link rel="preload" as="script" href="vendor/supabase-js-2.118.0.min.js?v=8c611f5">
-<link rel="preload" as="script" href="vendor/xlsx-0.20.3.full.min.js?v=8c611f5">
-<link rel="preload" as="script" href="vendor/html2pdf-0.10.1.bundle.min.js?v=8c611f5">
-<link rel="preload" as="script" href="js/core.js?v=8c611f5">
-<link rel="preload" as="script" href="js/ui.js?v=8c611f5">
-<link rel="preload" as="script" href="js/historico.js?v=8c611f5">
-<link rel="preload" as="script" href="js/fiscal.js?v=8c611f5">
-<link rel="preload" as="script" href="js/fiscal_ncm.js?v=8c611f5">
-<link rel="preload" as="script" href="js/clientes.js?v=8c611f5">
-<link rel="preload" as="script" href="js/clientes_saneamento.js?v=8c611f5">
-<link rel="preload" as="script" href="js/fornecedores.js?v=8c611f5">
-<link rel="preload" as="script" href="js/apropriacoes.js?v=8c611f5">
-<link rel="preload" as="script" href="js/funcionarios.js?v=8c611f5">
-<link rel="preload" as="script" href="js/funcionarios_importar.js?v=8c611f5">
-<link rel="preload" as="script" href="js/funcionarios_lotacao.js?v=8c611f5">
-<link rel="preload" as="script" href="js/rh_documentos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/servicos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/produtos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/estoque.js?v=8c611f5">
-<link rel="preload" as="script" href="js/separacoes.js?v=8c611f5">
-<link rel="preload" as="script" href="js/epi.js?v=8c611f5">
-<link rel="preload" as="script" href="js/compras.js?v=8c611f5">
-<link rel="preload" as="script" href="js/requisicoes.js?v=8c611f5">
-<link rel="preload" as="script" href="js/orcamentos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/propostas.js?v=8c611f5">
-<link rel="preload" as="script" href="js/pedidos-site.js?v=8c611f5">
-<link rel="preload" as="script" href="js/contratos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/modelos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/contas_pagar.js?v=8c611f5">
-<link rel="preload" as="script" href="js/centros_custo.js?v=8c611f5">
-<link rel="preload" as="script" href="js/encontro_contas.js?v=8c611f5">
-<link rel="preload" as="script" href="js/processos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/ferramentas.js?v=8c611f5">
-<link rel="preload" as="script" href="js/carteira.js?v=8c611f5">
-<link rel="preload" as="script" href="js/obras.js?v=8c611f5">
-<link rel="preload" as="script" href="js/frota.js?v=8c611f5">
-<link rel="preload" as="script" href="js/viagens.js?v=8c611f5">
-<link rel="preload" as="script" href="js/equipamentos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/vendas_bens.js?v=8c611f5">
-<link rel="preload" as="script" href="js/acessorios.js?v=8c611f5">
-<link rel="preload" as="script" href="js/reparos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/manutencao.js?v=8c611f5">
-<link rel="preload" as="script" href="js/fabricacao.js?v=8c611f5">
-<link rel="preload" as="script" href="js/mobilizacoes.js?v=8c611f5">
-<link rel="preload" as="script" href="js/mobilizacoes_contrato.js?v=8c611f5">
-<link rel="preload" as="script" href="js/mobilizacoes_cronograma.js?v=8c611f5">
-<link rel="preload" as="script" href="js/mobilizacoes_grafico.js?v=8c611f5">
-<link rel="preload" as="script" href="js/estacas.js?v=8c611f5">
-<link rel="preload" as="script" href="js/estacas_prof_projeto.js?v=8c611f5">
-<link rel="preload" as="script" href="js/estacas_raiz_conf.js?v=8c611f5">
-<link rel="preload" as="script" href="js/obra_abas.js?v=8c611f5">
-<link rel="preload" as="script" href="js/obra_faixa.js?v=8c611f5">
-<link rel="preload" as="script" href="js/medicao_regras_carga.js?v=8c611f5">
-<link rel="preload" as="script" href="js/medicoes.js?v=8c611f5">
-<link rel="preload" as="script" href="js/movimentacoes.js?v=8c611f5">
-<link rel="preload" as="script" href="js/rdo_import_rg113.js?v=8c611f5">
-<link rel="preload" as="script" href="js/rdo.js?v=8c611f5">
-<link rel="preload" as="script" href="js/rdo_grade.js?v=8c611f5">
-<link rel="preload" as="script" href="js/rdo_resumo.js?v=8c611f5">
-<link rel="preload" as="script" href="js/rdo_import_maya.js?v=8c611f5">
-<link rel="preload" as="script" href="js/geodigitus.js?v=8c611f5">
-<link rel="preload" as="script" href="js/estaca_perfil.js?v=8c611f5">
-<link rel="preload" as="script" href="js/estaca_parecer.js?v=8c611f5">
-<link rel="preload" as="script" href="js/estacas_gps.js?v=8c611f5">
-<link rel="preload" as="script" href="js/estacas_perfuracao.js?v=8c611f5">
-<link rel="preload" as="script" href="js/planta_projeto.js?v=8c611f5">
-<link rel="preload" as="script" href="js/planta_posicoes.js?v=8c611f5">
-<link rel="preload" as="script" href="js/computadores_bordo.js?v=8c611f5">
-<link rel="preload" as="script" href="js/planta_vinculo.js?v=8c611f5">
-<link rel="preload" as="script" href="js/planta_sequencia.js?v=8c611f5">
-<link rel="preload" as="script" href="js/planta_detector.js?v=8c611f5">
-<link rel="preload" as="script" href="js/planta_leitura_regras.js?v=8c611f5">
-<link rel="preload" as="script" href="js/planta_leitura.js?v=8c611f5">
-<link rel="preload" as="script" href="js/matriz_acessos_dados.js?v=8c611f5">
-<link rel="preload" as="script" href="js/matriz_acessos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/usuarios.js?v=8c611f5">
-<link rel="preload" as="script" href="js/chamados.js?v=8c611f5">
-<link rel="preload" as="script" href="js/assistente.js?v=8c611f5">
-<link rel="preload" as="script" href="js/apontamentos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/apontamentos_quadro.js?v=8c611f5">
-<link rel="preload" as="script" href="js/dash_explica.js?v=8c611f5">
-<link rel="preload" as="script" href="js/dashboard.js?v=8c611f5">
-<link rel="preload" as="script" href="js/rh_horas.js?v=8c611f5">
-<link rel="preload" as="script" href="js/sesmt.js?v=8c611f5">
-<link rel="preload" as="script" href="js/sesmt_treinamentos.js?v=8c611f5">
-<link rel="preload" as="script" href="js/sesmt_aso.js?v=8c611f5">
-<link rel="preload" as="script" href="js/patrimonio.js?v=8c611f5">
-<link rel="preload" as="script" href="js/sesmt_ocorrencias.js?v=8c611f5">
-<link rel="preload" as="script" href="js/busca.js?v=8c611f5">
-<link rel="preload" as="script" href="js/init.js?v=8c611f5">
+<link rel="preload" as="script" href="js/tema.js?v=575eabf">
+<link rel="preload" as="script" href="vendor/supabase-js-2.118.0.min.js?v=575eabf">
+<link rel="preload" as="script" href="vendor/xlsx-0.20.3.full.min.js?v=575eabf">
+<link rel="preload" as="script" href="vendor/html2pdf-0.10.1.bundle.min.js?v=575eabf">
+<link rel="preload" as="script" href="js/core.js?v=575eabf">
+<link rel="preload" as="script" href="js/ui.js?v=575eabf">
+<link rel="preload" as="script" href="js/historico.js?v=575eabf">
+<link rel="preload" as="script" href="js/fiscal.js?v=575eabf">
+<link rel="preload" as="script" href="js/fiscal_ncm.js?v=575eabf">
+<link rel="preload" as="script" href="js/clientes.js?v=575eabf">
+<link rel="preload" as="script" href="js/cliente_documentos.js?v=575eabf">
+<link rel="preload" as="script" href="js/cliente_contatos.js?v=575eabf">
+<link rel="preload" as="script" href="js/clientes_saneamento.js?v=575eabf">
+<link rel="preload" as="script" href="js/fornecedores.js?v=575eabf">
+<link rel="preload" as="script" href="js/apropriacoes.js?v=575eabf">
+<link rel="preload" as="script" href="js/funcionarios.js?v=575eabf">
+<link rel="preload" as="script" href="js/funcionarios_importar.js?v=575eabf">
+<link rel="preload" as="script" href="js/funcionarios_lotacao.js?v=575eabf">
+<link rel="preload" as="script" href="js/rh_documentos.js?v=575eabf">
+<link rel="preload" as="script" href="js/servicos.js?v=575eabf">
+<link rel="preload" as="script" href="js/produtos.js?v=575eabf">
+<link rel="preload" as="script" href="js/estoque.js?v=575eabf">
+<link rel="preload" as="script" href="js/separacoes.js?v=575eabf">
+<link rel="preload" as="script" href="js/epi.js?v=575eabf">
+<link rel="preload" as="script" href="js/compras.js?v=575eabf">
+<link rel="preload" as="script" href="js/requisicoes.js?v=575eabf">
+<link rel="preload" as="script" href="js/orcamentos.js?v=575eabf">
+<link rel="preload" as="script" href="js/propostas.js?v=575eabf">
+<link rel="preload" as="script" href="js/pedidos-site.js?v=575eabf">
+<link rel="preload" as="script" href="js/contratos.js?v=575eabf">
+<link rel="preload" as="script" href="js/modelos.js?v=575eabf">
+<link rel="preload" as="script" href="js/contas_pagar.js?v=575eabf">
+<link rel="preload" as="script" href="js/centros_custo.js?v=575eabf">
+<link rel="preload" as="script" href="js/encontro_contas.js?v=575eabf">
+<link rel="preload" as="script" href="js/processos.js?v=575eabf">
+<link rel="preload" as="script" href="js/ferramentas.js?v=575eabf">
+<link rel="preload" as="script" href="js/carteira.js?v=575eabf">
+<link rel="preload" as="script" href="js/obras.js?v=575eabf">
+<link rel="preload" as="script" href="js/frota.js?v=575eabf">
+<link rel="preload" as="script" href="js/viagens.js?v=575eabf">
+<link rel="preload" as="script" href="js/equipamentos.js?v=575eabf">
+<link rel="preload" as="script" href="js/vendas_bens.js?v=575eabf">
+<link rel="preload" as="script" href="js/acessorios.js?v=575eabf">
+<link rel="preload" as="script" href="js/reparos.js?v=575eabf">
+<link rel="preload" as="script" href="js/manutencao.js?v=575eabf">
+<link rel="preload" as="script" href="js/fabricacao.js?v=575eabf">
+<link rel="preload" as="script" href="js/mobilizacoes.js?v=575eabf">
+<link rel="preload" as="script" href="js/mobilizacoes_contrato.js?v=575eabf">
+<link rel="preload" as="script" href="js/mobilizacoes_cronograma.js?v=575eabf">
+<link rel="preload" as="script" href="js/mobilizacoes_grafico.js?v=575eabf">
+<link rel="preload" as="script" href="js/estacas.js?v=575eabf">
+<link rel="preload" as="script" href="js/estacas_prof_projeto.js?v=575eabf">
+<link rel="preload" as="script" href="js/estacas_raiz_conf.js?v=575eabf">
+<link rel="preload" as="script" href="js/obra_abas.js?v=575eabf">
+<link rel="preload" as="script" href="js/obra_faixa.js?v=575eabf">
+<link rel="preload" as="script" href="js/medicao_regras_carga.js?v=575eabf">
+<link rel="preload" as="script" href="js/medicoes.js?v=575eabf">
+<link rel="preload" as="script" href="js/movimentacoes.js?v=575eabf">
+<link rel="preload" as="script" href="js/rdo_import_rg113.js?v=575eabf">
+<link rel="preload" as="script" href="js/rdo.js?v=575eabf">
+<link rel="preload" as="script" href="js/rdo_grade.js?v=575eabf">
+<link rel="preload" as="script" href="js/rdo_resumo.js?v=575eabf">
+<link rel="preload" as="script" href="js/rdo_import_maya.js?v=575eabf">
+<link rel="preload" as="script" href="js/geodigitus.js?v=575eabf">
+<link rel="preload" as="script" href="js/estaca_perfil.js?v=575eabf">
+<link rel="preload" as="script" href="js/estaca_parecer.js?v=575eabf">
+<link rel="preload" as="script" href="js/estacas_gps.js?v=575eabf">
+<link rel="preload" as="script" href="js/estacas_perfuracao.js?v=575eabf">
+<link rel="preload" as="script" href="js/planta_projeto.js?v=575eabf">
+<link rel="preload" as="script" href="js/planta_posicoes.js?v=575eabf">
+<link rel="preload" as="script" href="js/computadores_bordo.js?v=575eabf">
+<link rel="preload" as="script" href="js/planta_vinculo.js?v=575eabf">
+<link rel="preload" as="script" href="js/planta_sequencia.js?v=575eabf">
+<link rel="preload" as="script" href="js/planta_detector.js?v=575eabf">
+<link rel="preload" as="script" href="js/planta_leitura_regras.js?v=575eabf">
+<link rel="preload" as="script" href="js/planta_leitura.js?v=575eabf">
+<link rel="preload" as="script" href="js/matriz_acessos_dados.js?v=575eabf">
+<link rel="preload" as="script" href="js/matriz_acessos.js?v=575eabf">
+<link rel="preload" as="script" href="js/usuarios.js?v=575eabf">
+<link rel="preload" as="script" href="js/chamados.js?v=575eabf">
+<link rel="preload" as="script" href="js/assistente.js?v=575eabf">
+<link rel="preload" as="script" href="js/apontamentos.js?v=575eabf">
+<link rel="preload" as="script" href="js/apontamentos_quadro.js?v=575eabf">
+<link rel="preload" as="script" href="js/dash_explica.js?v=575eabf">
+<link rel="preload" as="script" href="js/dashboard.js?v=575eabf">
+<link rel="preload" as="script" href="js/rh_horas.js?v=575eabf">
+<link rel="preload" as="script" href="js/sesmt.js?v=575eabf">
+<link rel="preload" as="script" href="js/sesmt_treinamentos.js?v=575eabf">
+<link rel="preload" as="script" href="js/sesmt_aso.js?v=575eabf">
+<link rel="preload" as="script" href="js/patrimonio.js?v=575eabf">
+<link rel="preload" as="script" href="js/sesmt_ocorrencias.js?v=575eabf">
+<link rel="preload" as="script" href="js/busca.js?v=575eabf">
+<link rel="preload" as="script" href="js/init.js?v=575eabf">
 <title>CGL Fundações — Sistema de Gestão</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=8c611f5" />
+<link rel="stylesheet" href="css/estilo.css?v=575eabf" />
 <!-- fase 138: carimba data-theme="escuro" no <html> antes da primeira pintura (preferência em localStorage "cgl-tema").
      Fica no <head>, antes de tudo, para não piscar branco a cada carga; os outros scripts entram no fim do body. -->
-<script src="js/tema.js?v=8c611f5"></script>
+<script src="js/tema.js?v=575eabf"></script>
 <!-- fase 99a: bibliotecas vendorizadas (versão no nome; hash em vendor/HASHES.txt, conferido pelo publicar-app.sh) -->
-<script src="vendor/supabase-js-2.118.0.min.js?v=8c611f5"></script>
-<script src="vendor/xlsx-0.20.3.full.min.js?v=8c611f5"></script>
-<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=8c611f5"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=575eabf"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=575eabf"></script>
+<script src="vendor/html2pdf-0.10.1.bundle.min.js?v=575eabf"></script>
 </head>
 <body>
 
@@ -772,6 +774,7 @@
             <div class="chip"><span>Situação</span><strong id="cli-ficha-ativo-chip">—</strong></div>
             <div class="chip"><span>Grupo</span><strong id="cli-ficha-grupo-chip">—</strong></div>
           </div>
+          <!-- Fase 183a: pendência de contato (obra em andamento sem "Aprova a medição" ou sem Financeiro) --><div id="cli-ct-aviso" class="cli-ct-aviso" hidden></div>
 
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="cli-sb-obras-grupo" style="display:none;" title="Abre o painel de Obras só com as obras dos clientes deste grupo econômico">
@@ -783,7 +786,8 @@
             <button type="button" data-tab="geral" class="ativo">Geral</button>
             <button type="button" data-tab="endereco">Endereço</button>
             <!-- Fase 105a --><button type="button" data-tab="fiscal" title="O que a nota fiscal exige do cliente">Fiscal <span id="cli-fiscal-badge" class="aba-badge" title="Itens que faltam para a nota"></span></button>
-            <button type="button" data-tab="contato">Contato</button>
+            <!-- Fase 183a --><button type="button" data-tab="contato" title="Pessoas do cliente por papel: comercial, quem aprova a medição e financeiro">Contatos <span id="cli-ct-badge" class="aba-badge" title="Contatos ativos"></span></button>
+            <!-- Fase 183b --><button type="button" data-tab="documentos" title="Contrato social, procuração e quem assina pelo cliente, com conferência">Documentos e assinaturas <span id="cli-doc-badge" class="aba-badge alerta" title="Signatários aguardando conferência ou vencendo"></span></button>
             <button type="button" data-tab="observacoes">Observações</button>
             <button type="button" data-tab="historico">Histórico</button>
           </div>
@@ -836,11 +840,15 @@
                     <option value="nao_contribuinte">Não contribuinte (pessoa física, órgão sem IE)</option>
                   </select></div>
                 <div class="campo"><label>Inscrição estadual</label><input id="cli-ie" /></div>
-                <div class="campo largo cli-fiscal-novo"><label>E-mail para a nota fiscal</label><input id="cli-email-nf" placeholder="vazio = e-mail do cadastro; vários separados por vírgula" /></div>
+                <div class="campo largo cli-fiscal-novo"><label>E-mail para a nota fiscal</label><input id="cli-email-nf" placeholder="vazio = e-mail do cadastro; vários separados por vírgula" /><datalist id="cli-ct-dl-nf"></datalist><p class="meta" id="cli-ct-nf-dica"></p></div>
               </div>
               <p class="meta" id="cli-fiscal-aviso" style="display:none;">Indicador da IE, código IBGE e e-mail da nota chegam com a atualização do banco da fase 105a.</p>
             </div>
             <div class="odoo-tab" data-tab="contato">
+              <!-- Fase 183a: contatos por papel (js/cliente_contatos.js) -->
+              <div class="cli-ct-topo"><p class="meta">Quem cuida do comercial, quem aprova a medição e quem recebe a nota. O principal de cada papel vai para o cadastro.</p><button type="button" class="ui-btn ui-btn-prim" id="btn-cli-ct-novo" hidden>Novo contato</button></div>
+              <div id="cli-ct-conteudo"></div>
+              <h3 class="cli-ct-sub">Contato do cadastro <span class="meta">(com contatos por papel, vem do principal Comercial)</span></h3>
               <div class="grade">
                 <div class="campo"><label>E-mail</label><input id="cli-email" type="email" /></div>
                 <div class="campo"><label>Telefone</label><input id="cli-tel" /></div>
@@ -851,6 +859,10 @@
               <div class="grade">
                 <div class="campo largo"><label>Observações</label><textarea id="cli-obs" rows="6"></textarea></div>
               </div>
+            </div>
+            <!-- Fase 183b: documentos e quem assina (js/cliente_documentos.js) -->
+            <div class="odoo-tab" data-tab="documentos">
+              <div id="cli-doc-conteudo"></div>
             </div>
             <div class="odoo-tab" data-tab="historico">
               <div id="cli-historico" class="historico"></div>
@@ -2730,6 +2742,7 @@
                 <div class="campo"><label>A/c (contato da proposta)</label><input id="orc-contato-nome" placeholder="puxa do cadastro do cliente" /></div>
                 <div class="campo"><label>Tel. do contato</label><input id="orc-contato-tel" placeholder="ex.: 31 9 8654-4743" /></div>
                 <div class="campo"><label>E-mail do contato</label><input id="orc-contato-email" type="email" /></div>
+                <!-- Fase 183a --><div class="campo largo" id="orc-ct-box" hidden><label for="orc-ct-sel">Contato Comercial do cliente</label><div class="it-cat-wrap"><select id="orc-ct-sel"></select><button type="button" class="ui-btn" id="btn-orc-ct-gravar" hidden title="Grava o nome, o telefone e o e-mail digitados como contato Comercial do cliente">Gravar como contato do cliente</button></div></div>
               </div>
             </div>
 
@@ -3636,6 +3649,7 @@
             <div class="chip" id="obr-ficha-previsao-chip-box" style="display:none;"><span>Previsão</span><strong id="obr-ficha-previsao-chip">—</strong></div>
           </div>
 
+          <!-- Fase 183a --><div id="obr-cct-aviso" class="cli-ct-aviso" hidden></div>
           <!-- Smart buttons (Odoo style) -->
           <div class="odoo-smart-buttons">
             <button type="button" class="sb-btn" id="sb-estacas" data-goto-tab="estacas">
@@ -6765,6 +6779,7 @@
                 </div>
                 <div class="campo"><label>Status</label><select id="med-status"></select></div>
                 <!-- Fase 101 (#94) --><div class="campo" title="Máquina da medição; vale para os itens sem TAG própria na receita por máquina"><label>Máquina (TAG) <small class="meta">itens sem TAG</small></label><select id="med-equip"><option value="">—</option></select></div>
+                <!-- Fase 183a --><div class="campo" id="med-aprov-cli-campo" hidden title="Quem aprova a medição pelo cliente (contatos com o papel Aprova a medição). Não é o aceite formal."><label for="med-aprov-cli">Aprovador pelo cliente</label><select id="med-aprov-cli"><option value="">— não informado —</option></select></div>
                 <div class="campo"><label>Data da medição</label><input id="med-data" type="date" /></div>
                 <div class="campo"><label>Período — início</label><input id="med-inicio" type="date" /></div>
                 <div class="campo"><label>Período — fim</label><input id="med-fim" type="date" /></div>
@@ -8435,102 +8450,104 @@
 
 <!-- ====================== SCRIPTS ====================== -->
 <!-- core.js define o cliente Supabase, helpers, login e navegação -->
-<script src="js/core.js?v=8c611f5"></script>
-<script src="js/ui.js?v=8c611f5"></script>
+<script src="js/core.js?v=575eabf"></script>
+<script src="js/ui.js?v=575eabf"></script>
 <!-- historico.js: painel de histórico (chatter) reutilizável pelas fichas -->
-<script src="js/historico.js?v=8c611f5"></script>
+<script src="js/historico.js?v=575eabf"></script>
 <!-- fase 105a: cadastro fiscal (CPF/CNPJ, CEP → IBGE, dados fiscais da empresa) e NCM (tabela de apoio + bloco Fiscal das fichas) -->
-<script src="js/fiscal.js?v=8c611f5"></script>
-<script src="js/fiscal_ncm.js?v=8c611f5"></script>
+<script src="js/fiscal.js?v=575eabf"></script>
+<script src="js/fiscal_ncm.js?v=575eabf"></script>
 <!-- módulos: cada arquivo registra seus formulários e funções de carga -->
-<script src="js/clientes.js?v=8c611f5"></script>
-<script src="js/clientes_saneamento.js?v=8c611f5"></script>
-<script src="js/fornecedores.js?v=8c611f5"></script>
-<script src="js/apropriacoes.js?v=8c611f5"></script>
-<script src="js/funcionarios.js?v=8c611f5"></script>
-<script src="js/funcionarios_importar.js?v=8c611f5"></script>
-<script src="js/funcionarios_lotacao.js?v=8c611f5"></script>
-<script src="js/rh_documentos.js?v=8c611f5"></script>
-<script src="js/servicos.js?v=8c611f5"></script>
-<script src="js/produtos.js?v=8c611f5"></script>
-<script src="js/estoque.js?v=8c611f5"></script>
-<script src="js/separacoes.js?v=8c611f5"></script>
-<script src="js/epi.js?v=8c611f5"></script>
-<script src="js/compras.js?v=8c611f5"></script>
-<script src="js/requisicoes.js?v=8c611f5"></script>
-<script src="js/orcamentos.js?v=8c611f5"></script>
-<script src="js/propostas.js?v=8c611f5"></script>
-<script src="js/pedidos-site.js?v=8c611f5"></script>
-<script src="js/contratos.js?v=8c611f5"></script>
+<script src="js/clientes.js?v=575eabf"></script>
+<script src="js/cliente_documentos.js?v=575eabf"></script>
+<script src="js/cliente_contatos.js?v=575eabf"></script>
+<script src="js/clientes_saneamento.js?v=575eabf"></script>
+<script src="js/fornecedores.js?v=575eabf"></script>
+<script src="js/apropriacoes.js?v=575eabf"></script>
+<script src="js/funcionarios.js?v=575eabf"></script>
+<script src="js/funcionarios_importar.js?v=575eabf"></script>
+<script src="js/funcionarios_lotacao.js?v=575eabf"></script>
+<script src="js/rh_documentos.js?v=575eabf"></script>
+<script src="js/servicos.js?v=575eabf"></script>
+<script src="js/produtos.js?v=575eabf"></script>
+<script src="js/estoque.js?v=575eabf"></script>
+<script src="js/separacoes.js?v=575eabf"></script>
+<script src="js/epi.js?v=575eabf"></script>
+<script src="js/compras.js?v=575eabf"></script>
+<script src="js/requisicoes.js?v=575eabf"></script>
+<script src="js/orcamentos.js?v=575eabf"></script>
+<script src="js/propostas.js?v=575eabf"></script>
+<script src="js/pedidos-site.js?v=575eabf"></script>
+<script src="js/contratos.js?v=575eabf"></script>
 <!-- fase 180e: Contratos › Modelos (modelos de contrato e de proposta; aprovação do diretor) -->
-<script src="js/modelos.js?v=8c611f5"></script>
-<script src="js/contas_pagar.js?v=8c611f5"></script>
-<script src="js/centros_custo.js?v=8c611f5"></script>
-<script src="js/encontro_contas.js?v=8c611f5"></script>
+<script src="js/modelos.js?v=575eabf"></script>
+<script src="js/contas_pagar.js?v=575eabf"></script>
+<script src="js/centros_custo.js?v=575eabf"></script>
+<script src="js/encontro_contas.js?v=575eabf"></script>
 <!-- fase 180f: Contratos › Processos (processos, audiências e prazos) -->
-<script src="js/processos.js?v=8c611f5"></script>
-<script src="js/ferramentas.js?v=8c611f5"></script>
-<script src="js/carteira.js?v=8c611f5"></script>
-<script src="js/obras.js?v=8c611f5"></script>
-<script src="js/frota.js?v=8c611f5"></script>
-<script src="js/viagens.js?v=8c611f5"></script>
-<script src="js/equipamentos.js?v=8c611f5"></script>
-<script src="js/vendas_bens.js?v=8c611f5"></script>
-<script src="js/acessorios.js?v=8c611f5"></script>
-<script src="js/reparos.js?v=8c611f5"></script>
-<script src="js/manutencao.js?v=8c611f5"></script>
-<script src="js/fabricacao.js?v=8c611f5"></script>
-<script src="js/mobilizacoes.js?v=8c611f5"></script>
-<script src="js/mobilizacoes_contrato.js?v=8c611f5"></script>
-<script src="js/mobilizacoes_cronograma.js?v=8c611f5"></script>
-<script src="js/mobilizacoes_grafico.js?v=8c611f5"></script>
-<script src="js/estacas.js?v=8c611f5"></script>
-<script src="js/estacas_prof_projeto.js?v=8c611f5"></script>
+<script src="js/processos.js?v=575eabf"></script>
+<script src="js/ferramentas.js?v=575eabf"></script>
+<script src="js/carteira.js?v=575eabf"></script>
+<script src="js/obras.js?v=575eabf"></script>
+<script src="js/frota.js?v=575eabf"></script>
+<script src="js/viagens.js?v=575eabf"></script>
+<script src="js/equipamentos.js?v=575eabf"></script>
+<script src="js/vendas_bens.js?v=575eabf"></script>
+<script src="js/acessorios.js?v=575eabf"></script>
+<script src="js/reparos.js?v=575eabf"></script>
+<script src="js/manutencao.js?v=575eabf"></script>
+<script src="js/fabricacao.js?v=575eabf"></script>
+<script src="js/mobilizacoes.js?v=575eabf"></script>
+<script src="js/mobilizacoes_contrato.js?v=575eabf"></script>
+<script src="js/mobilizacoes_cronograma.js?v=575eabf"></script>
+<script src="js/mobilizacoes_grafico.js?v=575eabf"></script>
+<script src="js/estacas.js?v=575eabf"></script>
+<script src="js/estacas_prof_projeto.js?v=575eabf"></script>
 <!-- fase 184a: vista Trechos da estaca raiz e conferência da raiz pelo histórico (não grava) -->
-<script src="js/estacas_raiz_conf.js?v=8c611f5"></script>
-<script src="js/obra_abas.js?v=8c611f5"></script>
-<script src="js/obra_faixa.js?v=8c611f5"></script>
-<script src="js/medicao_regras_carga.js?v=8c611f5"></script>
-<script src="js/medicoes.js?v=8c611f5"></script>
-<script src="js/movimentacoes.js?v=8c611f5"></script>
-<script src="js/rdo_import_rg113.js?v=8c611f5"></script>
-<script src="js/rdo.js?v=8c611f5"></script>
-<script src="js/rdo_grade.js?v=8c611f5"></script>
-<script src="js/rdo_resumo.js?v=8c611f5"></script>
-<script src="js/rdo_import_maya.js?v=8c611f5"></script>
-<script src="js/geodigitus.js?v=8c611f5"></script>
-<script src="js/estaca_perfil.js?v=8c611f5"></script>
-<script src="js/estaca_parecer.js?v=8c611f5"></script>
-<script src="js/estacas_gps.js?v=8c611f5"></script>
+<script src="js/estacas_raiz_conf.js?v=575eabf"></script>
+<script src="js/obra_abas.js?v=575eabf"></script>
+<script src="js/obra_faixa.js?v=575eabf"></script>
+<script src="js/medicao_regras_carga.js?v=575eabf"></script>
+<script src="js/medicoes.js?v=575eabf"></script>
+<script src="js/movimentacoes.js?v=575eabf"></script>
+<script src="js/rdo_import_rg113.js?v=575eabf"></script>
+<script src="js/rdo.js?v=575eabf"></script>
+<script src="js/rdo_grade.js?v=575eabf"></script>
+<script src="js/rdo_resumo.js?v=575eabf"></script>
+<script src="js/rdo_import_maya.js?v=575eabf"></script>
+<script src="js/geodigitus.js?v=575eabf"></script>
+<script src="js/estaca_perfil.js?v=575eabf"></script>
+<script src="js/estaca_parecer.js?v=575eabf"></script>
+<script src="js/estacas_gps.js?v=575eabf"></script>
 <!-- fase 173a: estaca raiz só com injeção (etiqueta, filtros e "Lançar perfuração" pelo diário); usa a aba Estacas e a ficha do RDO, não grava -->
-<script src="js/estacas_perfuracao.js?v=8c611f5"></script>
-<script src="js/planta_projeto.js?v=8c611f5"></script>
-<script src="js/planta_posicoes.js?v=8c611f5"></script>
-<script src="js/computadores_bordo.js?v=8c611f5"></script>
-<script src="js/planta_vinculo.js?v=8c611f5"></script>
-<script src="js/planta_sequencia.js?v=8c611f5"></script>
+<script src="js/estacas_perfuracao.js?v=575eabf"></script>
+<script src="js/planta_projeto.js?v=575eabf"></script>
+<script src="js/planta_posicoes.js?v=575eabf"></script>
+<script src="js/computadores_bordo.js?v=575eabf"></script>
+<script src="js/planta_vinculo.js?v=575eabf"></script>
+<script src="js/planta_sequencia.js?v=575eabf"></script>
 <!-- fase 175b: ler as estacas da folha do projeto (símbolos pelo pdf.js, nomes pela IA em ladrilhos, prévia antes de gravar) -->
-<script src="js/planta_detector.js?v=8c611f5"></script>
-<script src="js/planta_leitura_regras.js?v=8c611f5"></script>
-<script src="js/planta_leitura.js?v=8c611f5"></script>
-<script src="js/matriz_acessos_dados.js?v=8c611f5"></script>
-<script src="js/matriz_acessos.js?v=8c611f5"></script>
-<script src="js/usuarios.js?v=8c611f5"></script>
-<script src="js/chamados.js?v=8c611f5"></script>
-<script src="js/assistente.js?v=8c611f5"></script>
-<script src="js/apontamentos.js?v=8c611f5"></script>
-<script src="js/apontamentos_quadro.js?v=8c611f5"></script>
-<script src="js/dash_explica.js?v=8c611f5"></script>
-<script src="js/dashboard.js?v=8c611f5"></script>
-<script src="js/rh_horas.js?v=8c611f5"></script>
-<script src="js/sesmt.js?v=8c611f5"></script>
-<script src="js/sesmt_treinamentos.js?v=8c611f5"></script>
-<script src="js/sesmt_aso.js?v=8c611f5"></script>
-<script src="js/patrimonio.js?v=8c611f5"></script>
+<script src="js/planta_detector.js?v=575eabf"></script>
+<script src="js/planta_leitura_regras.js?v=575eabf"></script>
+<script src="js/planta_leitura.js?v=575eabf"></script>
+<script src="js/matriz_acessos_dados.js?v=575eabf"></script>
+<script src="js/matriz_acessos.js?v=575eabf"></script>
+<script src="js/usuarios.js?v=575eabf"></script>
+<script src="js/chamados.js?v=575eabf"></script>
+<script src="js/assistente.js?v=575eabf"></script>
+<script src="js/apontamentos.js?v=575eabf"></script>
+<script src="js/apontamentos_quadro.js?v=575eabf"></script>
+<script src="js/dash_explica.js?v=575eabf"></script>
+<script src="js/dashboard.js?v=575eabf"></script>
+<script src="js/rh_horas.js?v=575eabf"></script>
+<script src="js/sesmt.js?v=575eabf"></script>
+<script src="js/sesmt_treinamentos.js?v=575eabf"></script>
+<script src="js/sesmt_aso.js?v=575eabf"></script>
+<script src="js/patrimonio.js?v=575eabf"></script>
 <!-- fase 109d (#108): ocorrências de SST, investigação, plano de ação, lição aprendida, saúde (restrita) e indicadores -->
-<script src="js/sesmt_ocorrencias.js?v=8c611f5"></script>
-<script src="js/busca.js?v=8c611f5"></script>
+<script src="js/sesmt_ocorrencias.js?v=575eabf"></script>
+<script src="js/busca.js?v=575eabf"></script>
 <!-- init.js dispara a inicialização depois que tudo foi carregado -->
-<script src="js/init.js?v=8c611f5"></script>
+<script src="js/init.js?v=575eabf"></script>
 </body>
 </html>

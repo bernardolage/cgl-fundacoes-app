@@ -4796,3 +4796,32 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   #epp-maquinas { margin-bottom: var(--esp-3); }
   .epp-maquina { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--esp-2); padding: var(--esp-1) 0; }
 }
+
+/* Fase 183b: documentos do cliente e quem assina (js/cliente_documentos.js) */
+@layer componentes {
+  .cli-doc-secao { margin-bottom: var(--esp-4); }
+  .cli-doc-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); margin: var(--esp-3) 0 var(--esp-2); }
+  .cli-doc-sub { margin: 0; font-size: var(--txt-base); font-weight: 600; }
+  .cli-doc-form { margin-bottom: var(--esp-3); padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-md); background: var(--sup-0); }
+  .cli-doc-form-tit { margin: 0 0 var(--esp-2); font-size: var(--txt-base); font-weight: 600; }
+  .cli-doc-grupo { margin: var(--esp-2) 0; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); }
+  .cli-doc-grupo legend { padding: 0 var(--esp-1); font-size: var(--txt-sm); font-weight: 600; }
+  .cli-doc-form-acoes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-2); }
+}
+
+/* Fase 183a: contatos do cliente por papel (js/cliente_contatos.js) */
+@layer componentes {
+  .cli-ct-aviso { margin: var(--esp-2) 0; }
+  .cli-ct-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); margin-bottom: var(--esp-2); }
+  .cli-ct-sub { margin: var(--esp-4) 0 var(--esp-2); font-size: var(--txt-base); font-weight: 600; }
+  .cli-ct-form { margin-bottom: var(--esp-3); padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-md); background: var(--sup-0); }
+  .cli-ct-form-tit { margin: 0 0 var(--esp-2); font-size: var(--txt-base); font-weight: 600; }
+  .cli-ct-grupo { margin: var(--esp-2) 0; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); }
+  .cli-ct-grupo legend { padding: 0 var(--esp-1); font-size: var(--txt-sm); font-weight: 600; }
+  .cli-ct-papel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-4); padding: var(--esp-1) 0; }
+  .cli-ct-obras { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--esp-1) var(--esp-3); }
+  .cli-ct-form-acoes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-2); }
+  .cli-ct-email { overflow-wrap: anywhere; }
+  .orc-env-sug { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-1); }
+  .orc-env-sug:empty { display: none; }
+}

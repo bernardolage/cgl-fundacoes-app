@@ -345,6 +345,8 @@ function novoCliente(){
   cliAplicarCamposFiscais();
   abrirFichaCliVisual({ nome: "(novo)", tipo_pessoa: "juridica", ativo: true });
   if(typeof ocultarHistorico === "function") ocultarHistorico("cli-historico");
+  if(typeof carregarCliContatos === "function") carregarCliContatos(null);   // fase 183a
+  if(typeof carregarCliDocumentos === "function") carregarCliDocumentos(null);   // fase 183b
 }
 
 async function abrirCliente(id, aba){
@@ -384,6 +386,8 @@ async function abrirCliente(id, aba){
   abrirFichaCliVisual(data);
   if(aba) ativarTabCli(aba);
   if(typeof montarHistorico === "function") montarHistorico("clientes", id, "cli-historico");
+  if(typeof carregarCliContatos === "function") carregarCliContatos(id);   // fase 183a: aba Contatos e aviso
+  if(typeof carregarCliDocumentos === "function") carregarCliDocumentos(id);   // fase 183b: documentos e quem assina
 }
 
 function abrirFichaCliVisual(c){
