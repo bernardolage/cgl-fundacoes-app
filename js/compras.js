@@ -3981,12 +3981,12 @@ function cmpPodeTrocarResp(){
   const p = _cmpAtual; if(!p || !cmpPodeOperar() || p.status === "cancelado") return false;
   return ["admin","diretor","comprador"].includes(usuarioAtual?.cargo) || (!!p.criado_por && p.criado_por === usuarioAtual?.id);
 }
-/* Lote S63-c (#245): "Corrigir fornecedor" = pedido_corrigir_fornecedor no banco (has_role admin/comprador; diretor pelo
+/* Lote S63-c (#245): "Corrigir fornecedor" = pedido_corrigir_fornecedor no banco (has_role admin/comprador/financeiro; diretor pelo
    has_role). A RPC troca o fornecedor no pedido, no recebimento e nos títulos não exportados; o front só escolhe e manda. */
 let _cmpTitsAtual = [], _cmpTitsDe = null;
 function cmpPodeCorrigirForn(){
   if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
-  return ["admin","diretor","comprador"].includes(usuarioAtual?.cargo);
+  return ["admin","diretor","comprador","financeiro"].includes(usuarioAtual?.cargo);   // lote S66 (#245): + financeiro
 }
 function cmpCorrFornAbrir(){
   const p = _cmpAtual; if(!p?.id) return;
