@@ -151,6 +151,8 @@ function prodAplicarPerfil(){
   const novaCat = $("btn-nova-cat"); if(novaCat) novaCat.style.display = prodPodeEditarCategoria() && !ehSomenteLeitura() ? "" : "none";
   const pend = !!prodEditId && _prodAprov === "pendente" && prodPodeAprovar();   // lote S63-b
   ["btn-prod-aprovar", "btn-prod-ja-existe"].forEach(id => { const b = $(id); if(b) b.style.display = pend ? "" : "none"; });
+  const mescla = $("btn-prod-mesclar");   // lote S67-c (#357)
+  if(mescla) mescla.hidden = !(prodEditId && _prodAprov === "aprovado" && prodPodeMesclar());
 }
 /* ---------- Lote S63-b (#272): produto provisório ----------
    Cadastrado fora do almoxarifado, o produto nasce "aguardando aprovação" (gatilho no banco). Almoxarife, auxiliar de
@@ -160,18 +162,26 @@ function prodPodeAprovar(){
   return !!usuarioAtual && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura())
     && ["diretor", "almoxarife", "auxiliar_almoxarifado", "logistica"].includes(usuarioAtual.cargo);
 }
+/* lote S67-c (#357): mesclar duplicado já aprovado no produto certo (RPC produto_mesclar; banco confere cargo e saldo) */
+function prodPodeMesclar(){
+  return !!usuarioAtual && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura())
+    && ["diretor", "admin", "almoxarife"].includes(usuarioAtual.cargo);
+}
 let _prodAprovModo = "aprovar", _prodAprovExistente = null, _prodAprovSeq = 0;
 function prodAprovAbrir(modo){
-  if(!prodEditId || !prodPodeAprovar()) return;
-  _prodAprovModo = modo === "ja_existe" ? "ja_existe" : "aprovar"; _prodAprovExistente = null;
-  const ja = _prodAprovModo === "ja_existe";
-  $("prod-aprov-titulo").textContent = ja ? "Produto já cadastrado" : "Aprovar produto";
-  $("prod-aprov-info").textContent = ja
+  const mesclar = modo === "mesclar";
+  if(!prodEditId || !(mesclar ? prodPodeMesclar() : prodPodeAprovar())) return;
+  _prodAprovModo = mesclar ? "mesclar" : modo === "ja_existe" ? "ja_existe" : "aprovar"; _prodAprovExistente = null;
+  const ja = _prodAprovModo !== "aprovar";
+  $("prod-aprov-titulo").textContent = mesclar ? "Mesclar em outro produto" : ja ? "Produto já cadastrado" : "Aprovar produto";
+  $("prod-aprov-info").textContent = mesclar
+    ? "Escolha o produto certo. Os itens ainda abertos (pedido não recebido, requisição, separação, recebimento em conferência, OF aberta) e os códigos do fornecedor passam para ele. Este produto fica arquivado, com o histórico e as movimentações antigas. Só com saldo zero."
+    : ja
     ? "Escolha o produto que já existe no catálogo: os itens de pedido, requisição e recebimento que usam este provisório passam para ele, e o provisório é desativado."
     : "O produto entra no catálogo. Complete o que o almoxarifado define (o custo só entra se o produto ainda não tem).";
   $("prod-aprov-campos").style.display = ja ? "none" : "";
   $("prod-aprov-busca-campo").style.display = ja ? "" : "none";
-  $("btn-prod-aprov-salvar").textContent = ja ? "Trocar pelo já cadastrado" : "Aprovar";
+  $("btn-prod-aprov-salvar").textContent = mesclar ? "Mesclar" : ja ? "Trocar pelo já cadastrado" : "Aprovar";
   $("prod-aprov-min").value = $("prod-minimo")?.value || "";
   $("prod-aprov-local").value = $("prod-localizacao")?.value || "";
   $("prod-aprov-custo").value = "";
@@ -202,7 +212,19 @@ async function prodAprovBuscar(){
 }
 async function prodAprovSalvar(){
   const id = prodEditId; if(!id) return;
-  const limpa = m => String(m || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})s*:s*/, "");
+  const limpa = m => String(m || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, "");
+  if(_prodAprovModo === "mesclar"){   // lote S67-c (#357)
+    if(!_prodAprovExistente){ aviso("app-aviso", "Escolha na lista o produto certo.", "erro"); $("prod-aprov-busca").focus(); return; }
+    const { data, error } = await sb.rpc("produto_mesclar", { p_id: id, p_destino: _prodAprovExistente.id });
+    if(error){ aviso("app-aviso", "Não mesclado: " + limpa(error.message), "erro"); return; }
+    prodAprovFechar();
+    _prodTotalAtivos = null;
+    const n = k => Number(data?.[k] || 0);
+    aviso("app-aviso", `Mesclado em ${data?.codigo || _prodAprovExistente.codigo}: passaram ${n("itens_pedido")} item(ns) de pedido, ${n("itens_requisicao")} de requisição, ${n("itens_separacao")} de separação, ${n("itens_recebimento")} de recebimento, ${n("ordens_fabricacao")} OF e ${n("codigos_fornecedor")} código(s) de fornecedor. Este produto foi arquivado.`, "ok");
+    await abrirProduto(_prodAprovExistente.id);
+    carregarProdutos();
+    return;
+  }
   if(_prodAprovModo === "ja_existe"){
     if(!_prodAprovExistente){ aviso("app-aviso", "Escolha na lista o produto já cadastrado.", "erro"); $("prod-aprov-busca").focus(); return; }
     const { data, error } = await sb.rpc("produto_ja_existe", { p_id: id, p_existente: _prodAprovExistente.id });
@@ -640,6 +662,7 @@ function novoProduto(){
   prodCodInfo();
   _prodMov = null;   // lote S61 (#268)
   if($("prod-movimentos")) $("prod-movimentos").innerHTML = '<p class="vazio">Salve o produto para ver os movimentos.</p>';
+  if($("prod-historico")) $("prod-historico").innerHTML = '<p class="vazio">Salve o produto para ver o histórico.</p>';   // lote S67-c
   if($("prod-mov-badge")) $("prod-mov-badge").textContent = "";
 }
 
@@ -683,6 +706,7 @@ async function abrirProduto(id){
   abrirFichaProdVisual(data);
   prodCarregarFabricacoes(id);
   prodCarregarMovimentos(id, data);   // lote S61 (#268)
+  if(typeof montarHistorico === "function") montarHistorico("produtos", id, "prod-historico");   // lote S67-c (#357)
 }
 
 /* fase 84: aba "Fabricações" do produto: ordens em que ele é o produzido e ordens em que entra como componente */
@@ -1204,6 +1228,7 @@ function ligarProdutos(){
   // lote S63-b (#272): Aprovar / Já existe
   $("btn-prod-aprovar")?.addEventListener("click", () => prodAprovAbrir("aprovar"));
   $("btn-prod-ja-existe")?.addEventListener("click", () => prodAprovAbrir("ja_existe"));
+  $("btn-prod-mesclar")?.addEventListener("click", () => { const d = $("btn-prod-mesclar").closest("details"); if(d) d.open = false; prodAprovAbrir("mesclar"); });   // lote S67-c
   $("btn-prod-aprov-fechar")?.addEventListener("click", prodAprovFechar);
   $("prod-aprov-busca")?.addEventListener("input", debounce(prodAprovBuscar, 250));
   $("btn-prod-aprov-salvar")?.addEventListener("click", () => comBotaoTravado("btn-prod-aprov-salvar", prodAprovSalvar));
