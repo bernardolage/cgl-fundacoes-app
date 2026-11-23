@@ -23,7 +23,20 @@ const REP_STAGES = ["aberto", "em_execucao", "concluido"];
 const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: "Mecânica", eletrica: "Elétrica", pintura: "Pintura", externo: "Externo" };
 const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_pecas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,created_at,criado_por,autor:profiles!reparos_caldeiraria_criado_por_fkey(nome),acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)"
   // fase 186b (#226): reparo externo (fornecedor, envio, orçamento, pedido ligado, retorno); etapa_externa e pedido_externo são campos calculados no banco
-  + ",externo,fornecedor_id,enviado_em,nf_remessa_numero,orcamento_recebido_em,orcamento_valor,orcamento_pdf_path,pedido_id,retornou_em,nf_retorno_numero,etapa_externa,pedido_externo,fornecedor:fornecedores(razao_social,nome_fantasia)";
+  + ",externo,fornecedor_id,enviado_em,nf_remessa_numero,orcamento_recebido_em,orcamento_valor,orcamento_pdf_path,pedido_id,retornou_em,nf_retorno_numero,fornecedor:fornecedores(razao_social,nome_fantasia)";
+/* lote S67-h: etapa_externa e pedido_externo (campos calculados da fase 186b) vêm da vw_reparo_externo: a função recebe a
+   linha inteira do reparo, que o usuário não lê mais pela API (custo_horas e custo_real fora). Só dos reparos externos */
+async function repAnexarExterno(linhas){
+  const lista = [].concat(linhas || []).filter(Boolean);
+  lista.forEach(x => { x.etapa_externa = null; x.pedido_externo = null; });
+  const ids = [...new Set(lista.filter(x => x.externo).map(x => x.id))];
+  if(!ids.length) return lista;
+  const mapa = new Map(), lotes = [];
+  for(let i = 0; i < ids.length; i += 150) lotes.push(sb.from("vw_reparo_externo").select("id,etapa_externa,pedido_externo").in("id", ids.slice(i, i + 150)));
+  (await Promise.all(lotes)).forEach(r => (r.data || []).forEach(x => mapa.set(x.id, x)));
+  lista.forEach(x => { const e = mapa.get(x.id); if(e){ x.etapa_externa = e.etapa_externa; x.pedido_externo = e.pedido_externo; } });
+  return lista;
+}
 /* fase 186b: etapas do reparo externo (o status do reparo continua aberto, em execução, concluído ou cancelado) */
 const REP_ETAPAS = [["aguardando_envio", "Aguardando envio"], ["enviado", "Enviado"], ["aguardando_orcamento", "Aguardando orçamento"], ["orcamento_recebido", "Orçamento recebido"], ["pedido_aprovado", "Pedido aprovado"], ["retornou", "Retornou"]];
 const REP_PED_STATUS = { rascunho: "rascunho", em_cotacao: "em cotação", aguardando_aprovacao: "aguardando aprovação", aprovado: "aprovado", enviado: "enviado ao fornecedor", parcialmente_recebido: "recebido em parte", recebido: "recebido", cancelado: "cancelado" };
@@ -92,7 +105,7 @@ async function repFetch(){
     if(r.error){ aviso("app-aviso", "Erro ao carregar reparos: " + r.error.message, "erro"); break; }
     out.push(...(r.data || []));
   }
-  await anexarCustoMO("reparo", out);   // lote S67-h
+  await Promise.all([anexarCustoMO("reparo", out), repAnexarExterno(out)]);   // lote S67-h
   _repLista = out;
 }
 /* custo da hora da oficina (empresa_config): diretoria define; 0 até lá */
@@ -325,7 +338,7 @@ async function abrirReparo(id){
   ]);
   await aptCarregarAguardandoDoc(id);   // fase 188c
   if(r.error || !r.data){ aviso("app-aviso", "Não foi possível abrir o reparo" + (r.error ? ": " + r.error.message : "."), "erro"); return; }
-  await anexarCustoMO("reparo", r.data);   // lote S67-h
+  await Promise.all([anexarCustoMO("reparo", r.data), repAnexarExterno(r.data)]);   // lote S67-h
   abrirFichaReparo(r.data, it.data || [], hs.data || []);
 }
 function abrirFichaReparo(r, itens, horas){
