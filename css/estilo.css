@@ -4651,6 +4651,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .u-txt-aviso { color: var(--aviso-txt); }
   .u-txt-acao { color: var(--acao-txt); }
   .u-txt-fraco { color: var(--txt-fraco); }
+  /* o display do .btn-sec (camada legado) vencia o atributo hidden: o "Substituir boletim" da medição aparecia para o
+     auditor. Esta camada vem depois e devolve o sumiço a todo .btn-sec com hidden */
+  .btn-sec[hidden] { display: none; }
 }
 
 /* ---- Casca (fase 193b): barra superior única com trilha, busca Ctrl K e botões de ícone; área de conteúdo ---- */
