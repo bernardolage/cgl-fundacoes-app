@@ -300,11 +300,13 @@ async function fabAcao(acao){
     await abrirOrdemFabricacao(o.id); fabAtivarTab("componentes"); return;
   }
   if(acao === "concluir"){
+    if(!(await fabPodeConcluir(o))) return;
     if(o.destino === "acessorio"){ await fabAbrirConcluirModal(); return; }
     const pend = fabPendentes().length;
     const txt = o.destino === "estoque" ? `Concluir ${o.numero}: entram ${num(fabQtd(o))} ${o.unidade || "un"} de ${fabProdTxt(o)} no estoque com o custo real da ordem.`
       : `Concluir ${o.numero}: o custo real (${brl(o.custo_real)}) vai para ${fabDestinoTxt(o)}.`;
-    if(!confirm(txt + (pend ? `\n${pend} componente(s) ainda sem baixa saem do estoque agora.` : ""))) return;
+    if(!(await uiConfirmar({ titulo: "Concluir ordem de fabricação", confirmar: "Concluir",
+      texto: txt + (pend ? ` ${pend} componente(s) ainda sem baixa saem do estoque agora.` : "") }))) return;
     const { data, error } = await sb.rpc("fabricacao_concluir", { p_ordem_id: o.id });
     if(error){ rpcErro(error, "Não foi possível concluir"); return; }
     aviso("app-aviso", `Ordem concluída. Custo real ${brl(data?.custo_real || 0)}${o.destino === "estoque" ? ` · entrada no estoque a ${brl(data?.custo_unitario || 0)} por ${o.unidade || "un"}` : ""}.`, "ok");
@@ -318,6 +320,15 @@ async function fabAcao(acao){
   if(error){ aviso("app-aviso", "Não foi possível: " + error.message, "erro"); return; }
   aviso("app-aviso", `Ordem de fabricação: ${FAB_STATUS[acao][0].toLowerCase()}.`, "ok");
   await abrirOrdemFabricacao(o.id);
+}
+
+/* OF nova (sem código do Odoo) só conclui com horas, centro de trabalho nas horas e material; o banco também trava */
+async function fabPodeConcluir(o){
+  const { data, error } = await sb.rpc("fabricacao_pendencias_conclusao", { p_ordem: o.id });
+  if(error){ rpcErro(error, "Não foi possível conferir a ordem"); return false; }
+  if(!(data || []).length) return true;
+  aviso("app-aviso", `Para concluir a ${o.numero}: ${data.join("; ")}.`, "erro");
+  return false;
 }
 
 /* concluir com destino acessório: uma marcação por unidade; sugere a próxima da família */
