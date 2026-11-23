@@ -749,16 +749,19 @@ async function frotaAbastSincronizar(){
 /* ---------- notinha do posto e fechamento do mês (fase 186c, #281) ---------- */
 const FROTA_POSTO_BUCKET = "viagens-anexos";   // logística grava nesse bucket (logistica_pode_operar); caminho abastecimento-posto/
 let _frotaPostos = null;                         // fornecedores que são posto (nome com "posto" ou "combust", categoria diesel/combustível)
+/* o nome que só cita um posto ("RESTAURANTE AO LADO DO POSTO ...") não é posto; categoria diesel/combustível sempre entra */
+const FROTA_NAO_POSTO = /\b(restaurante|lanchonete|padaria)\b/i;
 let _frotaPostoEditId = null;
 let _frotaFechPedidos = [];
 
 async function frotaCarregarPostos(){
   if(_frotaPostos) return _frotaPostos;
-  const { data, error } = await sb.from("fornecedores").select("id,razao_social,nome_fantasia,ativo")
+  const { data, error } = await sb.from("fornecedores").select("id,razao_social,nome_fantasia,categoria,ativo")
     .or("razao_social.ilike.%posto%,nome_fantasia.ilike.%posto%,razao_social.ilike.%combust%,categoria.ilike.%diesel%,categoria.ilike.%combust%")
     .order("nome_fantasia", { ascending: true, nullsFirst: false });
   if(error){ aviso("app-aviso", "Postos: " + error.message, "erro"); return []; }
-  _frotaPostos = (data || []).filter(f => f.ativo !== false)
+  _frotaPostos = (data || []).filter(f => f.ativo !== false
+      && (/diesel|combust/i.test(f.categoria || "") || !FROTA_NAO_POSTO.test(`${f.razao_social || ""} ${f.nome_fantasia || ""}`)))
     .map(f => ({ id: f.id, nome: f.nome_fantasia && f.nome_fantasia !== f.razao_social ? `${f.nome_fantasia} (${f.razao_social})` : (f.nome_fantasia || f.razao_social) }))
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   return _frotaPostos;
