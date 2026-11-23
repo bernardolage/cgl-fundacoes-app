@@ -355,6 +355,8 @@ function abrirFichaMed(med){
 
   atualizarStatusbarMed(med.status);
   medAtualizarOrigemFicha(med); // fase 88: chip "Origem" e botão do PDF do boletim importado
+  if(med.id && typeof montarHistorico === "function") montarHistorico("medicoes", med.id, "med-historico");   // lote S67-e (#352)
+  else if($("med-historico")) $("med-historico").innerHTML = '<p class="vazio">Salve a medição para ver o histórico.</p>';
   ativarTabMed("geral");
   medAtualizarProducaoPendente(med.id);
   medRefPendAtualizar();        // fase 145a: refuros sem decisão no período
@@ -2289,6 +2291,39 @@ function medAtualizarOrigemFicha(med){
   if(chip) chip.style.display = importada ? "" : "none";
   if(txt) txt.textContent = importada ? `Boletim importado${med.importada_em ? " em " + dataBR(String(med.importada_em).slice(0, 10)) : ""}` : "—";
   if(btn) btn.style.display = _medBoletimPath ? "" : "none";
+  // lote S67-e (#352): substituir (ou anexar) o boletim; a RPC confere cargo e NFS-e de novo
+  _medBoletimMed = med && med.id ? med : null;
+  const trocar = $("btn-med-boletim-trocar");
+  if(trocar){
+    trocar.hidden = !medPodeTrocarBoletim(_medBoletimMed);
+    trocar.textContent = _medBoletimPath ? "Substituir boletim" : "Anexar boletim";
+  }
+}
+let _medBoletimMed = null;
+function medPodeTrocarBoletim(med){
+  return !!med && !!usuarioAtual && ["diretor", "financeiro"].includes(usuarioAtual.cargo)
+    && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) && !medNfseNfDoApp(med);
+}
+async function medTrocarBoletimArquivo(file){
+  const med = _medBoletimMed; if(!file || !med) return;
+  if(!/\.pdf$/i.test(file.name || "")){ aviso("app-aviso", "Escolha o boletim em PDF.", "erro"); return; }
+  if(_medBoletimPath){
+    const ok = await uiConfirmar({ titulo: "Substituir boletim", confirmar: "Substituir",
+      texto: `Trocar o boletim da medição ${med.numero || ""} por "${file.name}"? O PDF anterior continua na aba Documentos da obra, marcado como substituído, e a troca fica no histórico.` });
+    if(!ok) return;
+  }
+  const caminho = `medicoes/${med.obra_id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`;
+  // supabase-js ignora contentType com File: reembala em Blob com o MIME pela extensão
+  const blob = new Blob([await file.arrayBuffer()], { type: "application/pdf" });
+  const up = await sb.storage.from("obras-documentos").upload(caminho, blob, { contentType: "application/pdf", upsert: false });
+  if(up.error){ aviso("app-aviso", "Não foi possível enviar o PDF: " + up.error.message, "erro"); return; }
+  const { error } = await sb.rpc("medicao_substituir_boletim", { p_medicao: med.id, p_storage_path: caminho, p_nome: file.name, p_tamanho: file.size || null });
+  if(error){
+    await sb.storage.from("obras-documentos").remove([caminho]);
+    aviso("app-aviso", "Boletim não trocado: " + error.message, "erro"); return;
+  }
+  aviso("app-aviso", _medBoletimPath ? "Boletim substituído. O anterior ficou na aba Documentos da obra e no histórico." : "Boletim anexado à medição.", "ok");
+  await abrirMedicao(med.id);
 }
 async function medAbrirBoletimImportado(){
   if(!_medBoletimPath) return;
@@ -2322,6 +2357,8 @@ function ligarMedicoes(){
   $("btn-gerar-pdf-med")?.addEventListener("click", gerarPDFMedicao);
   $("btn-excluir-med")?.addEventListener("click", excluirMedicao);
   $("btn-med-boletim")?.addEventListener("click", medAbrirBoletimImportado); // fase 88
+  $("btn-med-boletim-trocar")?.addEventListener("click", () => { const i = $("med-boletim-arquivo"); if(i){ i.value = ""; i.click(); } });   // lote S67-e
+  $("med-boletim-arquivo")?.addEventListener("change", e => { const f = e.target.files?.[0]; if(f) comBotaoTravado($("btn-med-boletim-trocar"), () => medTrocarBoletimArquivo(f)); });
 
   // fase 88: modal "Importar boletim (PDF)" — aberto pela aba Medições da obra (obra_abas.js)
   $("btn-med-imp-fechar")?.addEventListener("click", fecharImportBoletimPDF);
