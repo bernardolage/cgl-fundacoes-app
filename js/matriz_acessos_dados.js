@@ -6,7 +6,7 @@
    Depois de ":" vêm os números das frases (lista `frases`) que explicam a célula.
    ==================================================================== */
 const MATRIZ_ACESSOS = {
-  retrato: "2026-11-19",
+  retrato: "2026-11-23",
   carimbo: "3a6c0b3ad81c25b2ed8e9897ea32ebb4",
   acoes: ["ver","incluir","alterar","apagar"],
   grupos: ["Geral","Cadastros","Suprimentos","Comercial e financeiro","Campo","Pessoas e segurança","Sistema","Fora do menu"],
@@ -286,7 +286,7 @@ const MATRIZ_ACESSOS = {
       "logistica": "s s s s",
       "gestor_frota": "s s s s",
       "visualizador": "x=p:8,9,6,12,2 x=p:9,6,5,12 x=p:9,6,5,8,12 x=n:2",
-      "auditor": "s p:9,6,5,12 p:9,6,5,12 n",
+      "auditor": "s n n n",
       "auxiliar_almoxarifado": "n:3 p:9,6,5,12,7 p:9,6,5,8,12,7 n:2",
       "gestor_manutencao": "s s s s",
       "juridico": "p:8,9,6,12,2 p:9,6,5,12 p:9,6,5,8,12 n:2"
