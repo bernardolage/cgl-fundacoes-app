@@ -834,7 +834,8 @@ async function eqpCarregarFilhas(e){
     // fase 89: a nota traz a viagem que a levou; a TAG também aparece como caminhão ou equipamento atendido da viagem (consulta abaixo)
     sb.from("movimentacao_itens").select("movimentacao_id,movimentacao:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_recebimento,origem_tipo,origem_descricao,destino_tipo,destino_descricao,destino_obra_id,nf_numero,interna,viagem_id,viagem:viagens(id,numero,data,status,finalidade,caminhao_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)))").eq("equipamento_id", id),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_conclusao,custo_estimado,custo_real,acessorio_id").eq("equipamento_id", id).order("data_abertura", { ascending: false }).limit(200),
-    sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,custo_real,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id,codigo_externo").eq("equipamento_id", id).order("data_prevista", { ascending: false }).limit(200),
+    // lote S67-b (#344): todas as OSs da TAG (antes .limit(200) cortava as mais antigas sem aviso)
+    lerTudo(() => sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,custo_real,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id,codigo_externo").eq("equipamento_id", id), "id"),
     sb.from("acessorio_equipamentos").select("acessorio_id").eq("equipamento_id", id),
     (typeof aceCatalogo === "function" ? aceCatalogo() : Promise.resolve([])).catch(() => []),
     sb.from("viagens").select("id,numero,data,status,finalidade,caminhao_id,equipamento_atendido_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)").or(`caminhao_id.eq.${id},equipamento_atendido_id.eq.${id}`).order("data", { ascending: false }).limit(300)
@@ -903,7 +904,8 @@ async function eqpCarregarFilhas(e){
   if(typeof custosRender === "function") custosRender("eqp-custos", { equipamento_id: id }, (total) => { const b = $("sb-eqp-custos"); if(b){ b.querySelector(".sb-num").textContent = brl(total).replace(",00", ""); b.classList.toggle("zero", !total); } });
 
   // reparos e manutenções
-  const reps = rep.data || [], mans = man.data || [];
+  const reps = rep.data || [];
+  const mans = (man.data || []).sort((a, b) => String(b.data_prevista || "9999-12-31").localeCompare(String(a.data_prevista || "9999-12-31")));   // prevista desc, sem data primeiro (como o order do banco)
   _eqpMans = mans; // fase 59: OS abre pela linha
   setSb("sb-eqp-rep", reps.length); setSb("sb-eqp-man", mans.length);
   const repSt = { aberto: "ambar", em_execucao: "ambar", concluido: "verde", cancelado: "cinza" };
@@ -913,17 +915,17 @@ async function eqpCarregarFilhas(e){
     <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${esc(repSt[r.status] || "cinza")}">${esc(repLbl[r.status] || r.status)}</span></td>
       <td>${r.acessorio_id ? "⚙️ " : ""}${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_conclusao)}</td>
       <td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td></tr>`).join("")}</tbody></table></div>`);
-  const manTipo = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
-  const manSt = { agendada: ["Aberta","azul"], em_andamento: ["Em execução","ambar"], concluida: ["Concluída","verde"], cancelada: ["Cancelada","cinza"] };
+  const manTipo = EQP_MAN_TIPO, manSt = EQP_MAN_ST;
   const podeOs = eqpPodeManutencao();
   // fase 92: a OS tem ficha própria no módulo Manutenção (atividades, mão de obra, peças, checklist); aqui fica a lista com link
-  $("eqp-man-lista").innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Ordens de serviço (manutenção)</h3>${podeOs ? `<button type="button" class="btn btn-sm" id="btn-eqp-os-nova" style="margin-left:auto;">+ Nova OS</button>` : ""}</div>
+  $("eqp-man-lista").innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Ordens de serviço (manutenção)</h3><span class="eqp-os-acoes">${mans.length ? `<select id="eqp-os-exp-filtro" class="eqp-os-exp-filtro" aria-label="OSs que vão para a planilha" title="Quais OSs vão para a planilha"><option value="concluida">Concluídas</option><option value="">Todas</option></select><button type="button" class="btn btn-sm btn-sec" id="btn-eqp-os-exportar" title="Baixa em .xlsx as OSs desta TAG">Exportar planilha</button>` : ""}${podeOs ? `<button type="button" class="btn btn-sm" id="btn-eqp-os-nova">+ Nova OS</button>` : ""}</span></div>
     <p class="meta">Preventiva, corretiva ou preditiva, com atividades, mão de obra e peças (baixa no estoque) na ficha da OS em Manutenção. OS concluída com horímetro/km atualiza a máquina.</p>` + (man.error ? `<p class="vazio">Erro: ${esc(man.error.message)}</p>` : !mans.length ? `<p class="vazio">Nenhuma OS registrada para esta TAG.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>OS</th><th>Prevista</th><th>Tipo</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Horímetro</th><th class="num">Custo</th></tr></thead>
     <tbody>${mans.map(m => `<tr data-os="${esc(m.id)}"><td><strong>${linkManutencao(m.id, m.numero || "OS")}</strong>${m.codigo_externo ? ` <span class="meta">${esc(m.codigo_externo)}</span>` : ""}</td><td>${dataBR(m.data_prevista)}</td><td>${esc(manTipo[m.tipo] || m.tipo)}</td>
       <td><span class="tag ${esc((manSt[m.status] || [])[1] || "cinza")}">${esc((manSt[m.status] || [])[0] || m.status)}</span></td>
       <td>${esc(m.descricao || "")}</td><td>${dataBR(m.data_inicio)}</td><td>${dataBR(m.data_conclusao)}</td>
       <td class="num">${m.horimetro_km != null ? num(m.horimetro_km) : "—"}</td><td class="num">${m.custo_real != null ? brl(m.custo_real) : m.custo != null ? brl(m.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>`);
+  $("btn-eqp-os-exportar")?.addEventListener("click", eqpExportarOS);
   $("btn-eqp-os-nova")?.addEventListener("click", () => {
     if(typeof manNovaOS === "function" && irParaSecao("manutencao")) manNovaOS({ equipamento_id: e.id });
     else abrirOsManutencao(null);
@@ -984,6 +986,23 @@ async function eqpCarregarTrabalho(e){
 
 /* ---------- Fase 59: OS de manutenção (tabela manutencoes, sem tela até aqui) ---------- */
 let _eqpMans = [];
+const EQP_MAN_TIPO = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
+const EQP_MAN_ST = { agendada: ["Aberta","azul"], em_andamento: ["Em execução","ambar"], concluida: ["Concluída","verde"], cancelada: ["Cancelada","cinza"] };
+/* lote S67-b (#344): as OSs da TAG em .xlsx (concluídas ou todas). O custo sai como na lista (o "ocultar valores" é só da tela). */
+function eqpExportarOS(){
+  const e = _eqpAtual; if(!e) return;
+  const filtro = $("eqp-os-exp-filtro")?.value || "";
+  const lista = _eqpMans.filter(m => !filtro || m.status === filtro);
+  if(!lista.length){ aviso("app-aviso", filtro ? "Nenhuma OS concluída nesta TAG." : "Nenhuma OS nesta TAG.", "erro"); return; }
+  const dt = d => d ? dataBR(d) : "";
+  const rows = lista.map(m => ({ "OS": m.numero || "", "Código externo": m.codigo_externo || "", "Tipo": EQP_MAN_TIPO[m.tipo] || m.tipo || "",
+    "Status": (EQP_MAN_ST[m.status] || [])[0] || m.status || "", "Descrição": m.descricao || "", "Prevista": dt(m.data_prevista),
+    "Início": dt(m.data_inicio), "Conclusão": dt(m.data_conclusao), "Horímetro/km": m.horimetro_km != null ? Number(m.horimetro_km) : "",
+    "Custo": m.custo_real != null ? Number(m.custo_real) : m.custo != null ? Number(m.custo) : "" }));
+  const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "OS");
+  const nome = String(e.codigo || "equipamento").replace(/[^\w.-]+/g, "_");
+  XLSX.writeFile(wb, `os-${nome}${filtro ? "-concluidas" : ""}-${hojeISO()}.xlsx`);
+}
 let _eqpOsId = null;
 const EQP_OS_TIPO = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
 const EQP_OS_STATUS = { agendada: "Agendada", em_andamento: "Em andamento", concluida: "Concluída", cancelada: "Cancelada" };

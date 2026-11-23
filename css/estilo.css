@@ -4829,3 +4829,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .orc-env-sug { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-1); }
   .orc-env-sug:empty { display: none; }
 }
+
+/* lote S67-b (#344): ações da lista de OSs na ficha do equipamento */
+@layer componentes {
+  .eqp-os-acoes { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); }
+  .eqp-os-exp-filtro { width: auto; }
+}

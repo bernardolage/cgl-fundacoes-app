@@ -246,6 +246,7 @@ async function carregarProdutos(){
   if(fEst === "pendentes") q = q.eq("aprovacao", "pendente");   // lote S63-b (#272)
   else if(fEst === "zero") q = q.lte("estoque_atual", 0);
   else if(fEst === "sem_custo") q = q.gt("estoque_atual", 0).lte("custo_ultimo", 0);   // hotfix saída sem custo: o saneamento
+  else if(fEst === "sem_custo_todos") q = q.lte("custo_ultimo", 0).eq("aprovacao", "aprovado");   // lote S67-a (#335): com ou sem saldo
   else if(fEst === "positivo") q = q.gt("estoque_atual", 0);
   else if(baixo) q = q.gt("estoque_minimo", 0);           // o banco não compara duas colunas: traz os que têm mínimo e filtra abaixo
   else if(prodModoPadrao()) q = q.gt("estoque_atual", 0);  // sem busca nem filtro: os que giram (com saldo)
@@ -277,8 +278,9 @@ function renderProdModo(){
   if(termo || $("prod-f-categoria")?.value || $("prod-f-estoque")?.value || $("prod-f-tipo")?.value){
     el.innerHTML = total > n ? `Mostrando ${n} de ${num(total)} resultado(s): refine a busca para ver os outros.` : "";
     // hotfix saída sem custo: a lista do saneamento sai em .xlsx (com a coluna Custo em branco) e volta pela importação
-    if($("prod-f-estoque")?.value === "sem_custo"){
-      el.innerHTML += `${el.innerHTML ? " " : ""}${num(total)} produto(s) com saldo sem custo · <a href="#" data-prod-modo="sc-xlsx">⬇ Baixar .xlsx para preencher</a>` +
+    const fEstSc = $("prod-f-estoque")?.value;
+    if(fEstSc === "sem_custo" || fEstSc === "sem_custo_todos"){
+      el.innerHTML += `${el.innerHTML ? " " : ""}${num(total)} produto(s) ${fEstSc === "sem_custo" ? "com saldo " : ""}sem custo · <a href="#" data-prod-modo="sc-xlsx">⬇ Baixar .xlsx para preencher</a>` +
         (prodPodeDefinirCusto() ? ` · <a href="#" data-prod-modo="sc-importar">⬆ Importar custos (.xlsx)</a>` : "");
     }
     return;
@@ -520,20 +522,20 @@ function prodSscExportar(){
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "SAIDAS SEM CUSTO");
   XLSX.writeFile(wb, `saidas-sem-custo-${hojeISO()}.xlsx`);
 }
-/* todos os produtos ativos com saldo e sem custo (páginas de 1.000), com a coluna Custo em branco para a importação */
+/* produtos ativos sem custo, com a coluna Custo em branco para a importação. Lote S67-a (#335): "Sem custo (todos)"
+   também traz os sem saldo (só os aprovados); "Sem custo (com saldo)" continua como era. */
 async function prodSemCustoExportar(){
-  const lista = [];
-  for(let de = 0; ; de += 1000){
-    const { data, error } = await sb.from("produtos").select("codigo,nome,unidade,estoque_atual,categoria_id").eq("ativo", true)
-      .gt("estoque_atual", 0).lte("custo_ultimo", 0).order("codigo").range(de, de + 999);
-    if(error){ aviso("app-aviso", "Não consegui listar os produtos sem custo: " + error.message, "erro"); return; }
-    lista.push(...(data || []));
-    if(!data || data.length < 1000) break;
-  }
+  const todos = $("prod-f-estoque")?.value === "sem_custo_todos";
+  const { data: lista, error } = await lerTudo(() => {
+    let q = sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,categoria_id").eq("ativo", true).lte("custo_ultimo", 0);
+    return todos ? q.eq("aprovacao", "aprovado") : q.gt("estoque_atual", 0);
+  }, "id");
+  if(error){ aviso("app-aviso", "Não consegui listar os produtos sem custo: " + error.message, "erro"); return; }
+  lista.sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
   const rows = lista.map(p => ({ "Código": p.codigo, "Nome": p.nome, "Unidade": p.unidade, "Saldo": Number(p.estoque_atual || 0),
     "Categoria": _prodCategorias[p.categoria_id] || "", "Custo": "" }));
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "SEM CUSTO");
-  XLSX.writeFile(wb, `produtos-sem-custo-${hojeISO()}.xlsx`);
+  XLSX.writeFile(wb, `produtos-sem-custo${todos ? "-todos" : ""}-${hojeISO()}.xlsx`);
 }
 /* planilha com as colunas Código e Custo (a do "Baixar .xlsx" serve); só produto sem custo recebe, o resto volta no resumo */
 async function prodImportarCustos(file){
