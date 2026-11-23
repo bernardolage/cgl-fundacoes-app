@@ -825,10 +825,12 @@ async function sstFichaFuncCarregar(){
   const le = podeVerSesmt();
   const [sit, docs] = await Promise.all([
     sb.rpc("sst_situacao", { p_funcionarios: [fid], p_obra: obraAtual || null, p_data: hojeISO() }),
-    le ? sb.from("funcionario_documentos").select("*").eq("funcionario_id", fid).not("tipo", "like", "admissao\\_%").order("emissao", { ascending: false, nullsFirst: false }) : Promise.resolve({ data: [] })
+    le ? sb.from("funcionario_documentos").select("*").eq("funcionario_id", fid).order("emissao", { ascending: false, nullsFirst: false }) : Promise.resolve({ data: [] })
   ]);
   if(fid !== funcEditId) return;
-  _sstFichaFuncDocs = docs.data || [];
+  // tipo é enum: o PostgREST recusa like nele (42883) e a lista vinha sempre vazia; os PDFs de admissão saem aqui
+  if(docs.error) aviso("app-aviso", "Documentos de segurança: " + docs.error.message, "erro");
+  _sstFichaFuncDocs = (docs.data || []).filter(d => !String(d.tipo || "").startsWith("admissao_"));
   const linhas = sit.data || [];
   const chips = linhas.length ? linhas.map(s => `<div class="chip" title="${esc(s.nome)} · ${esc(s.origem || "")}${s.valido_ate ? " · válido até " + dataBR(s.valido_ate) : ""}"><span>${esc(s.codigo)}</span><strong>${/* html */ sstTagStatus(s.status)}</strong></div>`).join("")
     : `<p class="vazio">Nenhum requisito exigido para a função${obraAtual ? " nesta obra" : ""}: a matriz ainda não cobre esta função (SESMT › Matriz).</p>`;
