@@ -4401,6 +4401,8 @@ async function custosRender(containerId, filtro, cbTotal){
   const comp = rComp.error ? null : (rComp.data || []);
   const caixa = rCx.error ? null : (rCx.data || []);
   const total = linhas.reduce((s, l) => s + Number(l.valor || 0), 0);
+  // lote S67-h: quem não vê a mão de obra recebe a linha dela com valor nulo; o total sai sem ela e avisa
+  const moRestrita = linhas.some(l => l.valor == null);
   if(cbTotal) cbTotal(total);
   const pode = cmpPodeOperar() && !leAuditor;
   const mesBR = m => m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : "";
@@ -4444,7 +4446,7 @@ async function custosRender(containerId, filtro, cbTotal){
   const temResumo = linhas.length || (comp && comp.length) || (caixa && caixa.length);
   c.innerHTML = `
     <div class="lista-topo compacta"><h3>Custos <span class="meta">${linhas.length} lançamento(s)</span></h3>
-      <strong style="margin-left:auto;" data-val-sens>Total ${brl(total)}</strong>
+      <strong style="margin-left:auto;" data-val-sens>Total ${brl(total)}${moRestrita ? ` <span class="meta" title="Os lançamentos de mão de obra entram sem valor: o seu perfil não vê o custo da mão de obra">mão de obra restrita</span>` : ""}</strong>
       ${pode ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-av">＋ Custo avulso</button>` : ""}
       ${linhas.length ? `<button type="button" class="btn-sec btn-sm" id="${esc(containerId)}-xls">Excel</button>` : ""}
     </div>
@@ -4459,7 +4461,7 @@ async function custosRender(containerId, filtro, cbTotal){
       <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${dataBR(l.data)}</td><td><span class="tag ${l.origem === "avulso" ? "ambar" : l.origem === "compra" ? "azul" : l.origem === "contrato" ? "verde" : l.origem === "combustivel" ? "ambar" : "cinza"}">${esc(CMP_ORIGEM_LBL[l.origem] || l.origem)}${l.origem === "deslocamento" && pernaDaViagem[l.origem_id] ? " · " + esc(PERNA_LBL[pernaDaViagem[l.origem_id]]) : ""}</span></td>
         <td>${esc(CMP_CAT_LBL[l.categoria] || l.categoria)}</td><td>${esc(semCodOdoo(l.descricao) || "")}</td>
         <td>${filtro.equipamento_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : "—") : filtro.centro_custo_id ? (l.obra_id ? linkObra(l.obra_id, nomeObra(l.obra_id) || "obra") : esc(nomeEq(l.equipamento_id) || "—")) : esc(nomeEq(l.equipamento_id) || "—")}</td>
-        <td>${esc(nomeForn(l.fornecedor_id) || "—")}</td><td class="meta">${esc(l.documento || "")}</td><td class="num">${brl(l.valor)}</td></tr>`).join("")}</tbody></table></div>
+        <td>${esc(nomeForn(l.fornecedor_id) || "—")}</td><td class="meta">${esc(l.documento || "")}</td><td class="num">${l.valor == null ? `<span class="meta" title="Mão de obra restrita ao seu perfil">—</span>` : brl(l.valor)}</td></tr>`).join("")}</tbody></table></div>
     ${linhas.length > 500 ? `<p class="meta">Mostrando 500 de ${linhas.length}. Use o Excel para a lista completa.</p>` : ""}`
     : `<p class="vazio">Nenhum custo registrado${filtro.equipamento_id ? " para esta TAG" : filtro.centro_custo_id ? " para este centro" : " para esta obra"}. Os custos nascem do recebimento de compra direta, da saída de estoque, de deslocamentos, manutenções, reparos e lançamentos avulsos.</p>`}`;
   // fase 135b: o toggle do Por mês redesenha só o bloco

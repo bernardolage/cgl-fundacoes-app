@@ -34,7 +34,7 @@ const FAB_STAGES = ["rascunho", "confirmada", "em_producao", "concluida"];
 const FAB_ABERTAS = ["rascunho", "planejada", "confirmada", "em_producao", "pausada"];
 const FAB_DESTINO = { estoque: "Estoque", acessorio: "Acessório", obra: "Obra", equipamento: "TAG", centro_custo: "Centro de custo" };
 const FAB_SETOR_CT = { usinagem: "Usinagem", solda: "Solda", corte: "Corte", manual: "Manual", eletrica: "Elétrica", outro: "Outro" };
-const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_real,custo_componentes,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,created_at,criado_por,autor:profiles!ordens_fabricacao_criado_por_fkey(nome),produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
+const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_componentes,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,created_at,criado_por,autor:profiles!ordens_fabricacao_criado_por_fkey(nome),produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
 
 function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "gestor_manutencao", "logistica", "almoxarife"].includes(usuarioAtual.cargo); }
 function fabEhDiretoria(){ return !!usuarioAtual && ["admin", "diretor"].includes(usuarioAtual.cargo); }
@@ -123,6 +123,7 @@ async function fabFetch(){
     if(r.error){ aviso("app-aviso", "Erro ao carregar as ordens de fabricação: " + r.error.message, "erro"); break; }
     out.push(...(r.data || []));
   }
+  await anexarCustoMO("of", out);   // lote S67-h
   _fabLista = out;
 }
 /* filtro por centro de trabalho: ordens com pelo menos uma hora lançada nele */
@@ -188,6 +189,7 @@ async function abrirOrdemFabricacao(id){
   ]);
   await aptCarregarAguardandoDoc(id);   // fase 188c
   if(o.error || !o.data){ aviso("app-aviso", "Não foi possível abrir a ordem de fabricação" + (o.error ? ": " + o.error.message : "."), "erro"); return; }
+  await anexarCustoMO("of", o.data);   // lote S67-h
   abrirFichaFabricacao(o.data, it.data || [], hs.data || []);
 }
 function abrirFichaFabricacao(o, itens, horas){

@@ -1563,6 +1563,24 @@ function podeVerCustoMO(){
   return podeVerValorObra() || (!!usuarioAtual && ["gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo));
 }
 function brlMO(v){ return podeVerCustoMO() ? brl(v || 0) : "—"; }
+/* lote S67-h: o R$ da mão de obra (custo_horas) e o total (custo_real) de reparo, OS e OF vêm da vw_custo_mo, que os
+   devolve nulos para quem não passa em pode_ver_custo_mo() (espelho de podeVerCustoMO); a leitura direta das duas colunas
+   sai da API. tipo = "reparo" | "os" | "of". Completa as linhas no lugar: até 300 linhas lê pelos ids, acima lê o tipo inteiro */
+async function anexarCustoMO(tipo, linhas){
+  const lista = [].concat(linhas || []).filter(Boolean);
+  if(!lista.length) return lista;
+  const sel = "id,custo_horas,custo_real", mapa = new Map();
+  if(lista.length > 300){
+    const r = await lerTudo(() => sb.from("vw_custo_mo").select(sel).eq("tipo", tipo), "id");
+    (r.data || []).forEach(x => mapa.set(x.id, x));
+  } else {
+    const ids = [...new Set(lista.map(x => x.id))], lotes = [];
+    for(let i = 0; i < ids.length; i += 150) lotes.push(sb.from("vw_custo_mo").select(sel).eq("tipo", tipo).in("id", ids.slice(i, i + 150)));
+    (await Promise.all(lotes)).forEach(r => (r.data || []).forEach(x => mapa.set(x.id, x)));
+  }
+  lista.forEach(x => { const c = mapa.get(x.id); x.custo_horas = c ? c.custo_horas : null; x.custo_real = c ? c.custo_real : null; });
+  return lista;
+}
 /* horas que entram sem custo (sem funcionário ou sem salário cadastrado): escreve no elemento alvo, se houver */
 async function moHorasSemValor(tipo, id, alvo){
   if(!id) return;

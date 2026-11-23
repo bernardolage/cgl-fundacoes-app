@@ -833,13 +833,14 @@ async function eqpCarregarFilhas(e){
     sb.from("mobilizacoes").select("id,obra_id,status,data_mobilizacao_prev,data_saida_real,data_chegada_real,data_desmob_real,equipamento_id,equipamentos_apoio").or(`equipamento_id.eq.${id},equipamentos_apoio.cs.{${id}}`).order("data_mobilizacao_prev", { ascending: false }),
     // fase 89: a nota traz a viagem que a levou; a TAG também aparece como caminhão ou equipamento atendido da viagem (consulta abaixo)
     sb.from("movimentacao_itens").select("movimentacao_id,movimentacao:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_recebimento,origem_tipo,origem_descricao,destino_tipo,destino_descricao,destino_obra_id,nf_numero,interna,viagem_id,viagem:viagens(id,numero,data,status,finalidade,caminhao_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)))").eq("equipamento_id", id),
-    sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_conclusao,custo_estimado,custo_real,acessorio_id").eq("equipamento_id", id).order("data_abertura", { ascending: false }).limit(200),
+    sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_conclusao,custo_estimado,acessorio_id").eq("equipamento_id", id).order("data_abertura", { ascending: false }).limit(200),
     // lote S67-b (#344): todas as OSs da TAG (antes .limit(200) cortava as mais antigas sem aviso)
-    lerTudo(() => sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,custo_real,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id,codigo_externo").eq("equipamento_id", id), "id"),
+    lerTudo(() => sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id,codigo_externo").eq("equipamento_id", id), "id"),
     sb.from("acessorio_equipamentos").select("acessorio_id").eq("equipamento_id", id),
     (typeof aceCatalogo === "function" ? aceCatalogo() : Promise.resolve([])).catch(() => []),
     sb.from("viagens").select("id,numero,data,status,finalidade,caminhao_id,equipamento_atendido_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)").or(`caminhao_id.eq.${id},equipamento_atendido_id.eq.${id}`).order("data", { ascending: false }).limit(300)
   ]);
+  await Promise.all([anexarCustoMO("reparo", rep.data), anexarCustoMO("os", man.data)]);   // lote S67-h
   if(_eqpAtual?.id !== id) return;
   const setSb = (bid, n) => { const b = $(bid); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
 
@@ -914,7 +915,7 @@ async function eqpCarregarFilhas(e){
     `<div class="tabela-rola"><table><thead><tr><th>Abertura</th><th>Status</th><th>Descrição</th><th>Conclusão</th><th class="num">Custo</th></tr></thead>
     <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${esc(repSt[r.status] || "cinza")}">${esc(repLbl[r.status] || r.status)}</span></td>
       <td>${r.acessorio_id ? "⚙️ " : ""}${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_conclusao)}</td>
-      <td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td></tr>`).join("")}</tbody></table></div>`);
+      <td class="num">${r.custo_real != null ? brl(r.custo_real) : !podeVerCustoMO() ? "—" : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td></tr>`).join("")}</tbody></table></div>`);
   const manTipo = EQP_MAN_TIPO, manSt = EQP_MAN_ST;
   const podeOs = eqpPodeManutencao();
   // fase 92: a OS tem ficha própria no módulo Manutenção (atividades, mão de obra, peças, checklist); aqui fica a lista com link
@@ -924,7 +925,7 @@ async function eqpCarregarFilhas(e){
     <tbody>${mans.map(m => `<tr data-os="${esc(m.id)}"><td><strong>${linkManutencao(m.id, m.numero || "OS")}</strong>${m.codigo_externo ? ` <span class="meta">${esc(m.codigo_externo)}</span>` : ""}</td><td>${dataBR(m.data_prevista)}</td><td>${esc(manTipo[m.tipo] || m.tipo)}</td>
       <td><span class="tag ${esc((manSt[m.status] || [])[1] || "cinza")}">${esc((manSt[m.status] || [])[0] || m.status)}</span></td>
       <td>${esc(m.descricao || "")}</td><td>${dataBR(m.data_inicio)}</td><td>${dataBR(m.data_conclusao)}</td>
-      <td class="num">${m.horimetro_km != null ? num(m.horimetro_km) : "—"}</td><td class="num">${m.custo_real != null ? brl(m.custo_real) : m.custo != null ? brl(m.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>`);
+      <td class="num">${m.horimetro_km != null ? num(m.horimetro_km) : "—"}</td><td class="num">${m.custo_real != null ? brl(m.custo_real) : !podeVerCustoMO() ? "—" : m.custo != null ? brl(m.custo) : "—"}</td></tr>`).join("")}</tbody></table></div>`);
   $("btn-eqp-os-exportar")?.addEventListener("click", eqpExportarOS);
   $("btn-eqp-os-nova")?.addEventListener("click", () => {
     if(typeof manNovaOS === "function" && irParaSecao("manutencao")) manNovaOS({ equipamento_id: e.id });
@@ -998,7 +999,7 @@ function eqpExportarOS(){
   const rows = lista.map(m => ({ "OS": m.numero || "", "Código externo": m.codigo_externo || "", "Tipo": EQP_MAN_TIPO[m.tipo] || m.tipo || "",
     "Status": (EQP_MAN_ST[m.status] || [])[0] || m.status || "", "Descrição": m.descricao || "", "Prevista": dt(m.data_prevista),
     "Início": dt(m.data_inicio), "Conclusão": dt(m.data_conclusao), "Horímetro/km": m.horimetro_km != null ? Number(m.horimetro_km) : "",
-    "Custo": m.custo_real != null ? Number(m.custo_real) : m.custo != null ? Number(m.custo) : "" }));
+    "Custo": m.custo_real != null ? Number(m.custo_real) : !podeVerCustoMO() ? "" : m.custo != null ? Number(m.custo) : "" }));
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "OS");
   const nome = String(e.codigo || "equipamento").replace(/[^\w.-]+/g, "_");
   XLSX.writeFile(wb, `os-${nome}${filtro ? "-concluidas" : ""}-${hojeISO()}.xlsx`);

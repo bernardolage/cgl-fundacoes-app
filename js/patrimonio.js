@@ -1147,11 +1147,12 @@ async function carregarVidaBemPat(b){
         if(c.data){ if(!g.ini || c.data < g.ini) g.ini = c.data; if(!g.fim || c.data > g.fim) g.fim = c.data; } porCat.set(c.categoria, g); });
       const cats = [...porCat.entries()].sort((a, b) => b[1].v - a[1].v);
       const total = cats.reduce((t, [, g]) => t + g.v, 0);
+      const moRestrita = (rc.data || []).some(c => c.valor == null);   // lote S67-h: mão de obra sem valor para quem não a vê
       const rot = (c) => (typeof CMP_CAT_LBL === "object" && CMP_CAT_LBL[c]) || c || "Sem categoria";
       gastos = cats.length
         ? `<div class="tabela-rola"><table class="pat-tabela"><thead><tr><th>Categoria</th><th class="num">Lançamentos</th><th>Período</th><th class="num">Valor</th></tr></thead><tbody>
             ${cats.map(([c, g]) => `<tr><td>${esc(rot(c))}</td><td class="num">${esc(g.n)}</td><td class="meta">${g.ini ? esc(dataBR(g.ini)) + (g.fim && g.fim !== g.ini ? " a " + esc(dataBR(g.fim)) : "") : "—"}</td><td class="num">${brl(g.v)}</td></tr>`).join("")}
-          </tbody><tfoot><tr><td colspan="3"><strong>Gastos acumulados</strong></td><td class="num"><strong>${brl(total)}</strong></td></tr></tfoot></table></div>`
+          </tbody><tfoot><tr><td colspan="3"><strong>Gastos acumulados</strong>${moRestrita ? ` <span class="meta" title="Os lançamentos de mão de obra entram sem valor: o seu perfil não vê o custo da mão de obra">mão de obra restrita</span>` : ""}</td><td class="num"><strong>${brl(total)}</strong></td></tr></tfoot></table></div>`
         : `<p class="vazio">Nenhum gasto lançado no app para este bem.</p>`;
     }
     gastos = `<h3 class="titulo-bloco">Gastos acumulados</h3>

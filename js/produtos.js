@@ -719,11 +719,12 @@ async function abrirProduto(id){
 async function prodCarregarFabricacoes(id){
   const c = $("prod-fabricacoes"); if(!c) return;
   c.innerHTML = `<p class="vazio">Carregando…</p>`;
-  const sel = "id,numero,status,descricao,quantidade,quantidade_produzida,unidade,destino,data_abertura,data_conclusao,custo_real";
+  const sel = "id,numero,status,descricao,quantidade,quantidade_produzida,unidade,destino,data_abertura,data_conclusao";
   const [prod, comp] = await Promise.all([
     sb.from("ordens_fabricacao").select(sel).eq("produto_id", id).order("data_abertura", { ascending: false }).limit(200),
     sb.from("fabricacao_itens").select("id,quantidade_prevista,quantidade_consumida,unidade,custo_unitario,ordem:ordens_fabricacao(" + sel + ")").eq("produto_id", id).limit(300)
   ]);
+  await anexarCustoMO("of", prod.data);   // lote S67-h
   if(prodEditId !== id) return;
   const st = s => (typeof fabTag === "function") ? fabTag(s) : esc(s);
   const lnk = (o) => (typeof linkFabricacao === "function") ? linkFabricacao(o.id, o.numero) : esc(o.numero);
@@ -732,7 +733,7 @@ async function prodCarregarFabricacoes(id){
   const sb2 = $("sb-prod-fab"); if(sb2){ sb2.querySelector(".sb-num").textContent = prodRows.length + compRows.length; sb2.classList.toggle("zero", !(prodRows.length + compRows.length)); }
   c.innerHTML = `<h4 style="margin:0 0 6px;">Produzido por ordem de fabricação <span class="contador">${prodRows.length}</span></h4>` +
     (prodRows.length ? `<div class="tabela-rola"><table><thead><tr><th>Nº</th><th>Abertura</th><th>Descrição</th><th class="num">Qtd</th><th>Destino</th><th class="num">Custo real</th><th>Status</th></tr></thead><tbody>` +
-      prodRows.map(o => `<tr><td>${lnk(o)}</td><td>${dataBR(o.data_abertura)}</td><td>${esc(o.descricao || "")}</td><td class="num">${num(o.quantidade_produzida > 0 ? o.quantidade_produzida : o.quantidade)} ${esc(o.unidade || "")}</td><td>${esc(o.destino || "")}</td><td class="num">${brl(o.custo_real)}</td><td>${st(o.status)}</td></tr>`).join("") + `</tbody></table></div>`
+      prodRows.map(o => `<tr><td>${lnk(o)}</td><td>${dataBR(o.data_abertura)}</td><td>${esc(o.descricao || "")}</td><td class="num">${num(o.quantidade_produzida > 0 ? o.quantidade_produzida : o.quantidade)} ${esc(o.unidade || "")}</td><td>${esc(o.destino || "")}</td><td class="num">${brlMO(o.custo_real)}</td><td>${st(o.status)}</td></tr>`).join("") + `</tbody></table></div>`
       : `<p class="vazio">Nenhuma ordem de fabricação produz este item.</p>`) +
     `<h4 style="margin:14px 0 6px;">Consumido como componente <span class="contador">${compRows.length}</span></h4>` +
     (compRows.length ? `<div class="tabela-rola"><table><thead><tr><th>Nº</th><th>Abertura</th><th>Ordem</th><th class="num">Previsto</th><th class="num">Consumido</th><th class="num">Custo unit.</th><th>Status</th></tr></thead><tbody>` +

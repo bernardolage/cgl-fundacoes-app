@@ -57,7 +57,7 @@ const MAN_SEM_ORDEM = { critico: 0, atencao: 1, sem_base: 2, ok: 3 };
 const MAN_OPERACAO = { trocar: "Trocar", inspecionar: "Inspecionar", verificar: "Verificar", limpar: "Limpar", lubrificar: "Lubrificar", amostra: "Obter amostra", outros: "Outros" };
 const MAN_CHECK_RES = { aprovado: ["Aprovado", "verde"], com_pendencias: ["Com pendências", "ambar"], reprovado: ["Reprovado", "vermelho"] };
 const MAN_TIPO_EQ = { perfuratriz: "Perfuratriz", bate_estaca: "Bate-estaca", escavadeira: "Escavadeira", retroescavadeira: "Retroescavadeira", guindaste: "Guindaste", caminhao: "Caminhão", compressor: "Compressor", gerador: "Gerador", bomba: "Bomba", ferramenta: "Ferramenta", veiculo: "Veículo", outro: "Outro" };
-const MAN_SELECT = "id,numero,tipo,status,descricao,setor,local,prioridade,equipamento_id,responsavel_id,fornecedor_id,data_prevista,data_inicio,data_conclusao,horimetro_km,km,custo,custo_pecas,custo_horas,custo_real,custo_manual,observacoes,plano_item_ids,checklist_id,origem,codigo_externo,created_at,aberto_por,autor:profiles!manutencoes_aberto_por_fkey(nome),equipamento:equipamentos(codigo,nome,tipo,horimetro,km)";
+const MAN_SELECT = "id,numero,tipo,status,descricao,setor,local,prioridade,equipamento_id,responsavel_id,fornecedor_id,data_prevista,data_inicio,data_conclusao,horimetro_km,km,custo,custo_pecas,custo_manual,observacoes,plano_item_ids,checklist_id,origem,codigo_externo,created_at,aberto_por,autor:profiles!manutencoes_aberto_por_fkey(nome),equipamento:equipamentos(codigo,nome,tipo,horimetro,km)";
 const MAN_ANEXO_BUCKET = "manutencao-anexos";
 const MAN_ANEXO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", pdf: "application/pdf", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xls: "application/vnd.ms-excel", csv: "text/csv", txt: "text/plain", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", doc: "application/msword" };
 
@@ -173,6 +173,7 @@ async function manFetchOS(){
     if(corte) q = q.or(`data_prevista.gte.${corte},data_inicio.gte.${corte},created_at.gte.${corte},status.in.(agendada,em_andamento)`);
     return q;
   });
+  await anexarCustoMO("os", _manOS);   // lote S67-h
 }
 /* lote S56b (#194): peças de estoque sem baixa, por OS (chip "Baixa pendente" da lista) */
 async function manFetchPendBaixa(){
@@ -774,6 +775,7 @@ async function abrirManutencao(id){
   ]);
   await aptCarregarAguardandoDoc(id);   // fase 188c
   if(m.error || !m.data){ aviso("app-aviso", "Não foi possível abrir a OS" + (m.error ? ": " + m.error.message : "."), "erro"); return; }
+  await anexarCustoMO("os", m.data);   // lote S67-h
   await manCarregarSeparacaoOS(id, mt.data || []);   // lote S56b (#193)
   _manPeds = [];   // fase 131b: pedidos ligados (a RLS de pedidos_compra decide quem vê)
   if(_man131b){ const pd = await sb.from("pedidos_compra").select("id,numero,status").eq("manutencao_id", id).order("created_at"); if(!pd.error) _manPeds = pd.data || []; }

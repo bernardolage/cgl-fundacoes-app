@@ -1167,11 +1167,12 @@ async function aceChipFabricacao(a){
 async function aceCarregarFilhas(a){
   const [ev, rep, comp, mov] = await Promise.all([
     sb.from("acessorio_eventos").select((_aceSemVida ? "" : "motivo_codigo,metros_vida,estacas_vida,") + "id,tipo,data,de_local_tipo,de_ref_id,de_descricao,para_local_tipo,para_ref_id,para_descricao,de_condicao,para_condicao,observacao,autor_nome,movimentacao_id,reparo_id").eq("acessorio_id", a.id).order("data", { ascending: false }).limit(300),
-    sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,observacoes").eq("acessorio_id", a.id).order("data_abertura", { ascending: false }),
+    sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_inicio,data_conclusao,custo_estimado,observacoes").eq("acessorio_id", a.id).order("data_abertura", { ascending: false }),
     sb.from("acessorio_equipamentos").select("equipamento_id").eq("acessorio_id", a.id),
     // fase 80: remessas e retornos em que a peça foi, com link de volta para a movimentação; fase 89: e a viagem que levou cada nota
     sb.from("movimentacao_itens").select("movimentacao_id,mov:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_saida,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,interna,viagem:viagens(id,numero,data,status,caminhao:equipamentos!caminhao_id(codigo)))").eq("acessorio_id", a.id)
   ]);
+  await anexarCustoMO("reparo", rep.data);   // lote S67-h
   if(_aceAtual?.id !== a.id) return;
   const setSb = (id, n) => { const b = $(id); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
   const compIds = (comp.data || []).map(c => c.equipamento_id);
@@ -1231,7 +1232,7 @@ function aceRenderReparos(reps, err){
   c.innerHTML = `<div class="lista-topo"><h3>Reparos de caldeiraria</h3>${pode ? `<button type="button" class="btn-sec btn-sm" id="btn-ace-rep-novo" style="margin-left:auto;">Abrir reparo</button>` : ""}</div>` +
     (reps.length ? `<div class="tabela-rola"><table><thead><tr><th>Abertura</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Custo</th><th>Obs.</th>${pode ? "<th></th>" : ""}</tr></thead>
     <tbody>${reps.map(r => `<tr><td>${dataBR(r.data_abertura)}</td><td><span class="tag ${r.status === "concluido" ? "verde" : r.status === "cancelado" ? "cinza" : "ambar"}">${esc(ACE_REPARO_STATUS[r.status] || r.status)}</span></td>
-      <td>${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_inicio)}</td><td>${dataBR(r.data_conclusao)}</td><td class="num">${r.custo_real != null ? brl(r.custo_real) : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td>
+      <td>${linkReparo(r.id, r.descricao || "reparo")}</td><td>${dataBR(r.data_inicio)}</td><td>${dataBR(r.data_conclusao)}</td><td class="num">${r.custo_real != null ? brl(r.custo_real) : !podeVerCustoMO() ? "—" : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td>
       <td class="meta">${esc((r.observacoes || "").replace(/^\[import raiz\]\s*/, ""))}</td>
       ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="em_execucao">Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="concluido">Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="cancelado" style="color:var(--perigo-txt);">Cancelar</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum reparo registrado para esta peça.</p>`);

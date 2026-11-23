@@ -21,7 +21,7 @@ let _repCarregado = false;
 const REP_STATUS = { aberto: ["Aberto", "azul"], em_execucao: ["Em execução", "ambar"], concluido: ["Concluído", "verde"], cancelado: ["Cancelado", "cinza"] };
 const REP_STAGES = ["aberto", "em_execucao", "concluido"];
 const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: "Mecânica", eletrica: "Elétrica", pintura: "Pintura", externo: "Externo" };
-const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_real,custo_pecas,custo_horas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,created_at,criado_por,autor:profiles!reparos_caldeiraria_criado_por_fkey(nome),acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)"
+const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_pecas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,created_at,criado_por,autor:profiles!reparos_caldeiraria_criado_por_fkey(nome),acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)"
   // fase 186b (#226): reparo externo (fornecedor, envio, orçamento, pedido ligado, retorno); etapa_externa e pedido_externo são campos calculados no banco
   + ",externo,fornecedor_id,enviado_em,nf_remessa_numero,orcamento_recebido_em,orcamento_valor,orcamento_pdf_path,pedido_id,retornou_em,nf_retorno_numero,etapa_externa,pedido_externo,fornecedor:fornecedores(razao_social,nome_fantasia)";
 /* fase 186b: etapas do reparo externo (o status do reparo continua aberto, em execução, concluído ou cancelado) */
@@ -92,6 +92,7 @@ async function repFetch(){
     if(r.error){ aviso("app-aviso", "Erro ao carregar reparos: " + r.error.message, "erro"); break; }
     out.push(...(r.data || []));
   }
+  await anexarCustoMO("reparo", out);   // lote S67-h
   _repLista = out;
 }
 /* custo da hora da oficina (empresa_config): diretoria define; 0 até lá */
@@ -324,6 +325,7 @@ async function abrirReparo(id){
   ]);
   await aptCarregarAguardandoDoc(id);   // fase 188c
   if(r.error || !r.data){ aviso("app-aviso", "Não foi possível abrir o reparo" + (r.error ? ": " + r.error.message : "."), "erro"); return; }
+  await anexarCustoMO("reparo", r.data);   // lote S67-h
   abrirFichaReparo(r.data, it.data || [], hs.data || []);
 }
 function abrirFichaReparo(r, itens, horas){
@@ -543,7 +545,7 @@ function repRenderCustos(){
     const ped = r.pedido_externo || {};
     c.innerHTML = `<div class="custos-resumo">
         <div><div class="mov-ace-sug-grupo-t">Composição</div>
-          <div class="custos-linha"><span>Conserto externo · pedido ${esc(ped.numero || "")} (${esc(REP_PED_STATUS[ped.status] || ped.status || "")})</span><strong>${brl(r.custo_real || 0)}</strong></div>
+          <div class="custos-linha"><span>Conserto externo · pedido ${esc(ped.numero || "")} (${esc(REP_PED_STATUS[ped.status] || ped.status || "")})</span><strong>${brlMO(r.custo_real)}</strong></div>
           <div class="custos-linha"><span>Peças consumidas na oficina</span><strong>${brl(r.custo_pecas || 0)}</strong></div>
           <div class="custos-linha"><span>Mão de obra da oficina (${num(horas)} h)</span><strong>${brlMO(r.custo_horas)}</strong></div>
         </div>
