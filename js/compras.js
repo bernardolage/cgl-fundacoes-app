@@ -182,6 +182,12 @@ function cmpSoSesmt(){
 }
 function cmpPodeReceber(){
   if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
+  return cmpPodeOperar() || (typeof temModuloExtra === "function" && temModuloExtra("compras"))
+    || usuarioAtual?.cargo === "auxiliar_almoxarifado";   // lote S67-d (#332): auxiliar recebe material, não cria pedido
+}
+/* lote S67-d: estornar continua com quem opera compras (ou tem o extra); a auxiliar recebe mas não estorna */
+function cmpPodeEstornar(){
+  if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
   return cmpPodeOperar() || (typeof temModuloExtra === "function" && temModuloExtra("compras"));
 }
 /* Lote S57a (#221, D-221a): "Lançar NF" de um recebimento de material = recebimento_lancar_nf no banco
@@ -1973,7 +1979,7 @@ async function cmpCarregarFilhas(id){
     if(r.status !== "confirmado") return "";
     const ts = titsPorRec[r.id] || [], b = [];
     if(verTit && cmpPodeLancarNf() && !ts.length) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-lancar" data-rec="${esc(r.id)}" title="Lança a NF deste recebimento (número, chave, vencimentos ou XML) e gera os títulos a pagar">Lançar NF</button>`);
-    if(cmpPodeReceber() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo-txt);">Estornar</button>`);
+    if(cmpPodeEstornar() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo-txt);">Estornar</button>`);
     return b.join(" ");
   };
   // hotfix 221: "🧾 Lançar NF" também no topo da ficha, para o financeiro, enquanto houver recebimento sem NF; lote S61a (#265): serviço também

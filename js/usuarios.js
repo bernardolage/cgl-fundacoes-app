@@ -22,7 +22,7 @@ const CARGOS = {
   gestor_frota: "Gestor de frota",  /* frota, equipamentos, manutenção/OS, requisições e compras (fase 77) */
   visualizador: "Visualizador",
   auditor:      "Auditor (só leitura)",  /* usuário de revisão: vê o que a diretoria vê, menos dados sensíveis; não grava (fase 79) */
-  auxiliar_almoxarifado: "Auxiliar de almoxarifado",  /* equipe do Julio: estoque, separações, produtos (consulta) e peças dos reparos; sem obras, compras nem valores (fase 90) */
+  auxiliar_almoxarifado: "Auxiliar de almoxarifado",  /* equipe do Julio: estoque, separações, produtos (edita, custo, arquiva), recebe material e peças dos reparos; sem obras nem criar pedido (fase 90; S67-d) */
   gestor_manutencao: "Gestor de manutenção",  /* Bruno: OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar (fase 92) */
   juridico:     "Jurídico (contratos)"   /* fase 180d: lê e edita contratos dos dois lados, vê o valor de cada um e nunca soma; só diretor atribui — trigger proteger_cargo_rh */
 };
@@ -43,7 +43,7 @@ const CARGO_DESCRICAO = {
   financeiro:   { frase: "Medições, recebimentos, cauções e contas a pagar; emite nota fiscal", modulos: ["medicoes", "contratos", "contaspagar"], sem: [] },
   comprador:    { frase: "Requisições, cotações, pedidos, fornecedores e contas a pagar", modulos: ["compras", "fornecedores", "contratos", "contaspagar"], sem: [] },
   almoxarife:   { frase: "Estoque, separações, produtos e recebimento de material", modulos: ["estoque", "separacoes", "produtos", "compras"], sem: [] },
-  auxiliar_almoxarifado: { frase: "Estoque, separações, consulta de produtos e peças dos reparos; sem obras, compras nem valores", modulos: ["estoque", "separacoes", "produtos", "reparos"], sem: ["obras", "compras", "medicoes", "contratos", "contaspagar"] },
+  auxiliar_almoxarifado: { frase: "Estoque, separações, produtos (edita, define custo, arquiva), recebe material de pedido e peças dos reparos; não cria pedido nem exclui produto", modulos: ["estoque", "separacoes", "produtos", "compras", "reparos"], sem: ["obras", "medicoes", "contratos", "contaspagar"] },
   gestor_acessorios: { frase: "Acessórios, reparos, fabricação e remessas; emite a nota de remessa", modulos: ["acessorios", "reparos", "fabricacao", "movimentacoes"], sem: [] },
   gestor_frota: { frase: "Frota, equipamentos, manutenção e compras da frota", modulos: ["frota", "equipamentos", "manutencao", "compras"], sem: [] },
   gestor_manutencao: { frase: "OS, planos preventivos, checklists, compras do setor, acessórios, reparos, fabricação, estoque e logística; sem clientes, medições nem contas a pagar", modulos: ["manutencao", "compras"], sem: ["clientes", "medicoes", "contratos", "contaspagar"] },

@@ -1603,8 +1603,9 @@ const SECOES_OCULTAS_POR_CARGO = {
   // fase 79: auditor (usuário de revisão) vê tudo, menos a gestão de logins
   auditor: ["usuarios"],
   // fase 90 (Bernardo, 19/10/2026): auxiliar de almoxarifado = equipe do Julio. Fica só com Início (fila de separação),
-  // Estoque, Separações, Produtos (consulta), Reparos (aba Peças) e Chamados; o resto sai do menu e irParaSecao barra.
-  auxiliar_almoxarifado: ["clientes", "fornecedores", "funcionarios", "servicos", "compras", "orcamentos", "contratos", "contaspagar", "centros",
+  // Estoque, Separações, Produtos, Reparos (aba Peças) e Chamados; o resto sai do menu e irParaSecao barra.
+  // lote S67-d (#332): Compras volta ao menu para receber material (sem criar pedido); Produtos com custo e arquivar.
+  auxiliar_almoxarifado: ["clientes", "fornecedores", "funcionarios", "servicos", "orcamentos", "contratos", "contaspagar", "centros",
     "carteira", "obras", "mobilizacoes", "equipamentos", "frota", "acessorios", "fabricacao", "medicoes", "rdo", "usuarios", "rhh"],
   // fase 92 (Bernardo, 19/10/2026, decisão 1): gestor da manutenção (Bruno) cuida de OS, planos, checklists, equipamentos, frota
   // e das compras do setor; medições e contas a pagar (podeVerContasPagar) ficam fora.

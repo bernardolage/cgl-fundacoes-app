@@ -116,9 +116,15 @@ function prodCategoriaEhSesmt(catId){
 const PROD_MSG_SO_CADASTRO = "Seu perfil edita o cadastro do produto, não o saldo, o custo nem a situação.";
 /* "tudo" (produtos_write: admin, almoxarife, comprador, gestor de acessórios; diretor), "cadastro" (módulo extra produtos),
    "sesmt" ou "" (só consulta) */
+/* lote S67-d: a auxiliar ("almox") edita o que existe; produto novo só com o extra Produtos (produto_pode_cadastrar) */
+function prodPodeCriar(){
+  const perfil = prodPerfilEdicao();
+  return !!perfil && (perfil !== "almox" || (typeof temModuloExtra === "function" && temModuloExtra("produtos")));
+}
 function prodPerfilEdicao(){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return "";
   if(["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo)) return "tudo";
+  if(usuarioAtual.cargo === "auxiliar_almoxarifado") return "almox";   // lote S67-d (#332): edita, define custo, arquiva; não exclui
   if(typeof temModuloExtra === "function" && temModuloExtra("produtos")) return "cadastro";   // lote S55
   if(usuarioAtual.cargo === "sesmt" || (typeof temModuloExtra === "function" && temModuloExtra("produtos_sesmt"))) return "sesmt";
   return "";
@@ -142,12 +148,12 @@ function prodMontarSelectCategoria(atual){
    categoria só para quem grava em categorias_produto (prodPodeEditarCategoria) */
 function prodAplicarPerfil(){
   const perfil = prodPerfilEdicao();
-  const novo = $("btn-novo-produto"); if(novo) novo.style.display = perfil ? "" : "none";
+  const novo = $("btn-novo-produto"); if(novo) novo.style.display = prodPodeCriar() ? "" : "none";
   const salvar = $("btn-salvar-prod"); if(salvar) salvar.style.display = perfil ? "" : "none";
   const etq = $("btn-prod-etiqueta"); if(etq) etq.style.display = prodEditId ? "" : "none";   // lote S66-e (#244)
   const excluir = $("btn-excluir-prod"); if(excluir) excluir.style.display = (perfil === "tudo" && prodEditId) ? "" : "none";
   const arq = $("btn-arquivar-prod");   // lote S58 (#237)
-  if(arq){ arq.style.display = (perfil === "tudo" && prodEditId) ? "" : "none"; arq.textContent = _prodAtivo ? "📦 Arquivar" : "♻️ Reativar"; }
+  if(arq){ arq.style.display = ((perfil === "tudo" || perfil === "almox") && prodEditId) ? "" : "none"; arq.textContent = _prodAtivo ? "📦 Arquivar" : "♻️ Reativar"; }
   const novaCat = $("btn-nova-cat"); if(novaCat) novaCat.style.display = prodPodeEditarCategoria() && !ehSomenteLeitura() ? "" : "none";
   const pend = !!prodEditId && _prodAprov === "pendente" && prodPodeAprovar();   // lote S63-b
   ["btn-prod-aprovar", "btn-prod-ja-existe"].forEach(id => { const b = $(id); if(b) b.style.display = pend ? "" : "none"; });
@@ -448,7 +454,7 @@ function renderProdKanban(dados){
    importação da planilha (produto_definir_custo_lote). Sem a migration a visão não aparece. */
 let _prodSsc = [];          // linhas de vw_estoque_saidas_sem_custo
 let _prodSscTem = null;     // a view existe? (null = ainda não consultou)
-function prodPodeDefinirCusto(){ return prodPerfilEdicao() === "tudo"; }
+function prodPodeDefinirCusto(){ return ["tudo", "almox"].includes(prodPerfilEdicao()); }   // lote S67-d: auxiliar também
 /* "12,50", "R$ 1.234,56" ou 12.5 → número; vazio ou texto → NaN */
 function prodNumeroBR(v){
   if(typeof v === "number") return v;
@@ -939,6 +945,7 @@ async function salvarProduto(){
   // lote S51 (#150): o SESMT grava só produto que era e continua numa categoria do SESMT (o banco confere igual)
   const perfil = prodPerfilEdicao();
   if(!perfil){ aviso("app-aviso", "Seu perfil só consulta o cadastro de produtos.", "erro"); return; }
+  if(!prodEditId && !prodPodeCriar()){ aviso("app-aviso", "Seu perfil edita os produtos existentes; produto novo pede o módulo extra Produtos.", "erro"); return; }
   if(perfil === "sesmt" && (!prodCategoriaEhSesmt(reg.categoria_id) || (prodEditId && !prodCategoriaEhSesmt(_prodCatOriginal)))){
     aviso("app-aviso", PROD_MSG_SO_SESMT, "erro"); ativarTabProd("geral"); return;
   }
@@ -998,7 +1005,7 @@ async function excluirProduto(){
    Com saldo não arquiva (o saldo sumiria das listas de estoque). O saldo é relido do banco na hora. */
 async function arquivarProduto(){
   if(!prodEditId) return;
-  if(prodPerfilEdicao() !== "tudo"){ aviso("app-aviso", "Seu perfil não arquiva produtos: peça ao almoxarifado.", "erro"); return; }
+  if(!["tudo", "almox"].includes(prodPerfilEdicao())){ aviso("app-aviso", "Seu perfil não arquiva produtos: peça ao almoxarifado.", "erro"); return; }
   const id = prodEditId;
   if(!_prodAtivo){
     const { error } = await sb.from("produtos").update({ ativo: true }).eq("id", id);
