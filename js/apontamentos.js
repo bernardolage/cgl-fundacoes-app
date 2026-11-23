@@ -242,7 +242,7 @@ async function aptAbrirAguardando(filtro){
 const APT_EXP_CARGOS = ["diretor", "admin", "gestor_acessorios", "gestor_manutencao", "rh"];
 function aptPodeEditarExpediente(){ return !!usuarioAtual && !ehSomenteLeitura() && APT_EXP_CARGOS.includes(usuarioAtual.cargo); }
 /* Divide [início, fim] do dia pelo expediente da oficina (RPC apontamento_dividir_he). Usada no "Lançar horas" e no
-   lançamento rápido da ficha da OF (js/fabricacao.js). Devolve { partes: [{inicio, fim, hora_extra}], aviso }. */
+   lançamento rápido das fichas do RP, da OS e da OF (aptDividirFicha). Devolve { partes: [{inicio, fim, hora_extra}], aviso }. */
 async function aptDividirHE(data, inicio, fim){
   const { data: partes, error } = await sb.rpc("apontamento_dividir_he", { p_data: data, p_inicio: inicio, p_fim: fim });
   if(error) throw new Error("Não foi possível conferir o expediente da oficina: " + error.message.replace(/^.*?: /, ""));
@@ -250,6 +250,43 @@ async function aptDividirHE(data, inicio, fim){
   return { partes: lista, aviso: (partes || []).map(p => p.aviso).find(Boolean) || "" };
 }
 function aptPartesTxt(partes){ return partes.map(p => `${p.inicio}–${p.fim} ${p.hora_extra ? "hora extra" : "normal"}`).join(" · "); }
+/* Ficha do RP, da OS ou da OF: a mesma divisão do "Lançar horas" (fase 188b). Quando [início, fim] passa do expediente,
+   mostra as partes e a pessoa escolhe gravar separado ou manter numa linha (com motivo, que vai para a observação).
+   reg = linha no formato da tabela de horas. Devolve { regs, avisoExp }, ou null quando a pessoa desistiu.
+   Lança erro quando não consegue ler o expediente (quem chama avisa). */
+async function aptDividirFicha(reg){
+  if(!(reg.inicio && reg.fim)) return { regs: [reg], avisoExp: "" };
+  const r = await aptDividirHE(reg.data, reg.inicio, reg.fim);
+  if(r.partes.length <= 1){
+    if(!r.aviso && r.partes[0]?.hora_extra) reg.hora_extra = true;   // toda fora do expediente
+    return { regs: [reg], avisoExp: r.aviso };
+  }
+  const faixa = `${aptHora(reg.inicio)}–${aptHora(reg.fim)}`;
+  let motivo = "";
+  const ouvir = ev => { if(ev.target && ev.target.id === "apt-ficha-motivo") motivo = ev.target.value; };
+  document.addEventListener("input", ouvir);
+  let acao;
+  try {
+    acao = await uiModal({ titulo: "Separar a hora extra", largura: "m",
+      corpoHTML: `<p>${esc(faixa)} passa do expediente da oficina e vai gravar em ${esc(r.partes.length)} linhas:</p>
+        <ul>${r.partes.map(p => `<li>${esc(p.inicio)}–${esc(p.fim)} ${p.hora_extra ? "hora extra (vai para aprovação)" : "normal"}</li>`).join("")}</ul>`
+        + uiCampo({ id: "apt-ficha-motivo", rotulo: "Motivo para manter numa linha só", tipo: "textarea", linhas: 2,
+          ajuda: "Só se escolher manter numa linha; o motivo fica na observação." }),
+      acoes: [{ id: "cancelar", texto: "Cancelar" }, { id: "uma", texto: "Manter numa linha" }, { id: "dividir", texto: "Gravar separado", primaria: true }] });
+  } finally { document.removeEventListener("input", ouvir); }
+  if(acao === "dividir") return { regs: r.partes.map(p => ({ ...reg, inicio: p.inicio, fim: p.fim, hora_extra: p.hora_extra })), avisoExp: "" };
+  if(acao !== "uma") return null;
+  if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo para manter numa linha.", "erro"); return null; }
+  reg.observacao = aptObsComMotivo(reg.observacao, motivo);
+  return { regs: [reg], avisoExp: "" };
+}
+/* Aviso depois de gravar pela ficha: o que gravou, o que foi para aprovação e o expediente não configurado */
+function aptAvisoFicha(tipo, g, nLinhas, avisoExp){
+  if(g.erro) aviso("app-aviso", g.erro, "erro");
+  else if(g.aguardando) aviso("app-aviso", `${g.gravadas ? `${g.gravadas} linha(s) normal(is) gravada(s); ` : ""}${g.aguardando} de hora extra aguardando aprovação. ${aptAvisoAprovacao(tipo)}`, "ok");
+  else if(nLinhas > 1) aviso("app-aviso", `Hora gravada em ${nLinhas} linhas.`, "ok");
+  else if(avisoExp) aviso("app-aviso", `Hora gravada. ${avisoExp}: a hora extra de dia útil não foi separada.`, "aviso");
+}
 
 /* ---------- fase 188c (#322): toda hora extra vai para aprovação, também a de dia útil ---------- */
 /* Quem aprova (decisão 9 da fase 156): OS = gestor de manutenção; RP e OF = gestor de acessórios; a diretoria aprova qualquer uma */

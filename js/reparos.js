@@ -540,13 +540,20 @@ async function repAddHoras(){
     hora_extra: $("rep-h-he").checked };   // fase 156a (HE): sábado, domingo e feriado o banco marca sozinho
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
-  if(reg.inicio && reg.fim) reg.horas = 0;   // o gatilho calcula
-  // fase 188c (#322, D9): hora extra (marcada, ou sábado, domingo e feriado) vai para aprovação do gestor de acessórios
-  const g = await aptGravarFicha("RP", _repAtual.id, [reg]);
-  if(g.erro){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
+  if(reg.inicio && reg.fim){
+    reg.horas = 0;   // o gatilho calcula
+    if(reg.fim <= reg.inicio){ aviso("app-aviso", "O fim precisa ser depois do início (hora que passa da meia-noite: uma linha por dia).", "erro"); return; }
+  }
+  // fase 188b (#322): a mesma divisão do "Lançar horas" e da ficha da OF; antes, marcar HE aqui mandava a linha inteira
+  let div;
+  try { div = await aptDividirFicha(reg); } catch(e){ aviso("app-aviso", e.message, "erro"); return; }
+  if(!div) return;
+  // fase 188c (#322, D9): a parte normal grava direto; a hora extra (marcada, ou sábado, domingo e feriado) vai para aprovação do gestor de acessórios
+  const g = await aptGravarFicha("RP", _repAtual.id, div.regs);
+  if(g.erro && !g.gravadas){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
   ["rep-h-inicio", "rep-h-fim", "rep-h-horas", "rep-h-obs"].forEach(id => $(id).value = ""); $("rep-h-he").checked = false;
   await abrirReparo(_repAtual.id); repAtivarTab("horas");
-  if(g.aguardando) aviso("app-aviso", aptAvisoAprovacao("RP") + " Ela aparece em Aguardando aprovação até lá.", "ok");
+  aptAvisoFicha("RP", g, div.regs.length, div.avisoExp);
 }
 
 /* custos */
