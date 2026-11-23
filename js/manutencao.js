@@ -219,7 +219,7 @@ function manRenderKpis(){
   set("man-kpi-abertas", abertas.length);
   set("man-kpi-atrasadas", abertas.filter(manAtrasada).length);
   set("man-kpi-concluidas", concl.length);
-  set("man-kpi-custo", brl(concl.reduce((t, m) => t + Number(m.custo_real || 0), 0)));
+  set("man-kpi-custo", brlMO(concl.reduce((t, m) => t + Number(m.custo_real || 0), 0)));
   const porTag = manPrevPorTag();
   set("man-kpi-critico", porTag.filter(t => t.n.critico > 0).length);
   set("man-kpi-atencao", porTag.filter(t => !t.n.critico && t.n.atencao > 0).length);
@@ -273,7 +273,7 @@ function renderManOS(){
         ${its.slice(0, 200).map(m => `<div class="serv-kan-card" data-id="${esc(m.id)}">
           <div class="serv-kan-card-nome"><strong>${esc(m.numero || "")}</strong> <span class="meta">${dataBR(m.data_prevista)}${manAtrasada(m) ? ' · <span class="tag vermelho">atrasada</span>' : ""}</span></div>
           <div>${esc(manEqTxt(m.equipamento ? { codigo: m.equipamento.codigo, nome: m.equipamento.nome } : null))}</div><div class="meta">${esc(m.descricao || "")}</div>
-          <div class="meta" style="display:flex;justify-content:space-between;"><span>${esc(MAN_TIPO[m.tipo] || "")}${m.setor ? " · " + esc(MAN_SETOR[m.setor] || m.setor) : ""}</span><strong>${brl(m.custo_real)}</strong></div>
+          <div class="meta" style="display:flex;justify-content:space-between;"><span>${esc(MAN_TIPO[m.tipo] || "")}${m.setor ? " · " + esc(MAN_SETOR[m.setor] || m.setor) : ""}</span><strong>${brlMO(m.custo_real)}</strong></div>
           ${m.status !== "cancelada" && _manPendBaixa[m.id] ? `<div>${manTagBaixaPend(_manPendBaixa[m.id])}</div>` : ""}
         </div>`).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
@@ -284,7 +284,7 @@ function renderManOS(){
         <td>${dataBR(m.data_prevista)}${manAtrasada(m) ? ' <span class="tag vermelho" title="data prevista vencida">!</span>' : ""}</td>
         <td>${m.equipamento_id ? linkEquipamento(m.equipamento_id, m.equipamento?.codigo || "TAG") : "—"} <span class="meta">${esc(m.equipamento?.nome || "")}</span></td>
         <td>${esc(MAN_TIPO[m.tipo] || m.tipo)}</td><td>${esc(MAN_SETOR[m.setor] || "—")}</td><td>${esc(m.descricao || "")}</td><td class="meta">${esc(manFunc(m.responsavel_id))}</td>
-        <td class="num">${manDias(m) ?? "—"}</td><td class="num">${brl(m.custo_real)}</td><td>${manTag(m.status)}${m.status !== "cancelada" && _manPendBaixa[m.id] ? " " + manTagBaixaPend(_manPendBaixa[m.id]) : ""}</td></tr>`).join("")}</tbody></table></div>`;
+        <td class="num">${manDias(m) ?? "—"}</td><td class="num">${brlMO(m.custo_real)}</td><td>${manTag(m.status)}${m.status !== "cancelada" && _manPendBaixa[m.id] ? " " + manTagBaixaPend(_manPendBaixa[m.id]) : ""}</td></tr>`).join("")}</tbody></table></div>`;
   }
 }
 
@@ -855,7 +855,7 @@ function manAtualizarCabecalho(){
   sb2("sb-man-equip", e?.codigo || "—"); sb2("sb-man-ativ", _manAtivs.length);
   sb2("sb-man-plano", (m.plano_item_ids || []).length || _manAtivs.filter(a => a.plano_item_id).length);
   sb2("sb-man-check", _manChecksOS.length + (m.checklist_id && !_manChecksOS.some(c => c.id === m.checklist_id) ? 1 : 0));
-  sb2("sb-man-custo", brl(m.custo_real || 0));
+  sb2("sb-man-custo", brlMO(m.custo_real));
   // lote S56b (#193): smart-button da separação do kit (só na preventiva)
   const sep = _manSeps.find(x => x.status !== "cancelada") || _manSeps[_manSeps.length - 1] || null;
   const bSep = $("sb-man-sep");
@@ -1129,18 +1129,19 @@ function manRenderCustos(){
       <div><div class="mov-ace-sug-grupo-t">Composição do custo</div>
         <div class="custos-linha"><span>Serviço externo (fornecedor)</span><strong>${brl(m.custo || 0)}</strong></div>
         <div class="custos-linha"><span>Peças consumidas</span><strong>${brl(m.custo_pecas || 0)}</strong></div>
-        <div class="custos-linha"><span>Mão de obra (${num(horas)} h${he ? `, ${num(he)} h de HE ×2` : ""} × ${_manCfg.custo_hora_oficina ? brl(_manCfg.custo_hora_oficina) : "hora não definida"})</span><strong>${brl(m.custo_horas || 0)}</strong></div>
-        <div class="custos-linha"><span><strong>Custo real</strong>${m.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brl(m.custo_real || 0)}</strong></div>
+        <div class="custos-linha"><span>Mão de obra (${num(horas)} h${he ? `, ${num(he)} h de HE ×2` : ""}; custo/hora de cada funcionário) <span class="meta" id="man-mo-sem"></span></span><strong>${brlMO(m.custo_horas)}</strong></div>
+        <div class="custos-linha"><span><strong>Custo real</strong>${m.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brlMO(m.custo_real)}</strong></div>
         ${compras || _manPeds.length ? `<div class="custos-linha" title="Peças e serviço recebidos pelos pedidos ligados (com IPI). Já estão no custo da TAG pelo recebimento; ficam fora do custo real da OS para não contar duas vezes."><span>Compras ligadas (${esc(manPedVivos().map(p => p.numero).join(", ") || "pedido")})</span><strong>${brl(compras)}</strong></div>
-        <div class="custos-linha"><span><strong>Total da OS com as compras</strong></span><strong>${brl(Number(m.custo_real || 0) + compras)}</strong></div>` : ""}
+        <div class="custos-linha"><span><strong>Total da OS com as compras</strong></span><strong>${brlMO(Number(m.custo_real || 0) + compras)}</strong></div>` : ""}
       </div>
       <div><div class="mov-ace-sug-grupo-t">Custo digitado à mão</div>
         <p class="meta">Use quando o custo real não sai do serviço, das peças e das horas (OS antiga da planilha).</p>
-        ${pode ? `<label class="check-inline"><input type="checkbox" id="man-custo-manual"${m.custo_manual ? " checked" : ""} /> custo manual</label>
+        ${pode && podeVerCustoMO() ? `<label class="check-inline"><input type="checkbox" id="man-custo-manual"${m.custo_manual ? " checked" : ""} /> custo manual</label>
           <input type="number" id="man-custo-valor" min="0" step="0.01" value="${esc(m.custo_real || 0)}" style="width:140px;"${m.custo_manual ? "" : " disabled"} />
           <button type="button" class="btn-sec btn-sm" id="btn-man-custo-salvar">Salvar custo</button>` : ""}
       </div></div>
     <p class="meta">Concluída, a OS entra em Custos da TAG em até três linhas: serviço externo, peças e mão de obra. A baixa das peças no estoque não conta de novo.</p>`;
+  moHorasSemValor("os", m.id, "man-mo-sem");
   $("man-custo-manual")?.addEventListener("change", e => { $("man-custo-valor").disabled = !e.target.checked; });
   $("btn-man-custo-salvar")?.addEventListener("click", async () => {
     const manual = $("man-custo-manual").checked;

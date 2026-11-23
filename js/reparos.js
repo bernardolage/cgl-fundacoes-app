@@ -149,7 +149,7 @@ function renderReparos(){
           <div class="serv-kan-card-nome"><strong>${esc(r.numero || "")}</strong> <span class="meta">${dataBR(r.data_abertura)}${r.codigo_externo ? " · " + esc(r.codigo_externo) : ""}</span></div>
           <div>${esc(repAlvoTxt(r))}</div><div class="meta">${esc(r.descricao || "")}</div>
           ${st === "_fornecedor" ? `<div class="meta">${esc(repFornNome(r) || "fornecedor não informado")} · <strong>${esc(repDiasFornecedor(r))} dia(s)</strong> desde o envio</div>` : ""}
-          <div class="meta" style="display:flex;justify-content:space-between;"><span>${esc(REP_SETOR[r.setor] || "")}</span><strong>${brl(r.custo_real)}</strong></div>
+          <div class="meta" style="display:flex;justify-content:space-between;"><span>${esc(REP_SETOR[r.setor] || "")}</span><strong>${brlMO(r.custo_real)}</strong></div>
         </div>`).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
     cont.innerHTML = `<div class="tabela-rola"><table>
@@ -157,7 +157,7 @@ function renderReparos(){
       <tbody>${dados.map(r => `<tr class="linha-clicavel" data-id="${esc(r.id)}">
         <td><strong>${esc(r.numero || "")}</strong>${r.codigo_externo ? ` <span class="meta">${esc(r.codigo_externo)}</span>` : ""}</td><td>${dataBR(r.data_abertura)}</td>
         <td>${repAlvoLink(r)}</td><td>${esc(r.descricao || "")}</td><td>${esc(REP_SETOR[r.setor] || "—")}</td><td class="meta" title="${esc(repRespNomes(r).join(", "))}">${esc(respResumo(repRespNomes(r)))}</td>
-        <td class="num">${repDias(r) ?? "—"}</td><td class="num">${brl(r.custo_real)}</td><td>${repTag(r.status)}${repNoFornecedor(r) ? " " + repTagFornecedor(r) : ""}</td></tr>`).join("")}</tbody></table></div>`;
+        <td class="num">${repDias(r) ?? "—"}</td><td class="num">${brlMO(r.custo_real)}</td><td>${repTag(r.status)}${repNoFornecedor(r) ? " " + repTagFornecedor(r) : ""}</td></tr>`).join("")}</tbody></table></div>`;
   }
 }
 
@@ -374,7 +374,7 @@ function repAtualizarCabecalho(){
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   const sb2 = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n || n === "R$ 0,00"); } };
   sb2("sb-rep-pecas", _repItens.length); sb2("sb-rep-horas", num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0)));
-  sb2("sb-rep-custo", brl(r.custo_real || 0));
+  sb2("sb-rep-custo", brlMO(r.custo_real));
   $("rep-itens-add").style.display = repPodeItens() && !novo && st !== "cancelado" ? "" : "none";   // lote S43: almoxarife também
   $("rep-horas-add").style.display = pode && !novo && st !== "cancelado" ? "" : "none";
 }
@@ -545,7 +545,7 @@ function repRenderCustos(){
         <div><div class="mov-ace-sug-grupo-t">Composição</div>
           <div class="custos-linha"><span>Conserto externo · pedido ${esc(ped.numero || "")} (${esc(REP_PED_STATUS[ped.status] || ped.status || "")})</span><strong>${brl(r.custo_real || 0)}</strong></div>
           <div class="custos-linha"><span>Peças consumidas na oficina</span><strong>${brl(r.custo_pecas || 0)}</strong></div>
-          <div class="custos-linha"><span>Mão de obra da oficina (${num(horas)} h)</span><strong>${brl(r.custo_horas || 0)}</strong></div>
+          <div class="custos-linha"><span>Mão de obra da oficina (${num(horas)} h)</span><strong>${brlMO(r.custo_horas)}</strong></div>
         </div>
         <div><div class="mov-ace-sug-grupo-t">Custo do reparo externo</div>
           <p class="meta">O custo real é o total do pedido de compra ligado e acompanha o pedido (cancelado, fica zero). Não se digita aqui.</p>
@@ -556,16 +556,17 @@ function repRenderCustos(){
   c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição</div>
         <div class="custos-linha"><span>Peças consumidas</span><strong>${brl(r.custo_pecas || 0)}</strong></div>
-        <div class="custos-linha"><span>Mão de obra (${num(horas)} h${he ? `, ${num(he)} h de HE ×2` : ""} × ${_repCustoHora ? brl(_repCustoHora) : "hora não definida"})</span><strong>${brl(r.custo_horas || 0)}</strong></div>
-        <div class="custos-linha"><span><strong>Custo real</strong>${r.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brl(r.custo_real || 0)}</strong></div>
+        <div class="custos-linha"><span>Mão de obra (${num(horas)} h${he ? `, ${num(he)} h de HE ×2` : ""}; custo/hora de cada funcionário) <span class="meta" id="rep-mo-sem"></span></span><strong>${brlMO(r.custo_horas)}</strong></div>
+        <div class="custos-linha"><span><strong>Custo real</strong>${r.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brlMO(r.custo_real)}</strong></div>
       </div>
       <div><div class="mov-ace-sug-grupo-t">Custo digitado à mão</div>
         <p class="meta">Use quando o custo real não sai das peças e das horas (serviço externo, reparo antigo da planilha).</p>
-        ${pode ? `<label class="check-inline"><input type="checkbox" id="rep-custo-manual"${r.custo_manual ? " checked" : ""} /> custo manual</label>
+        ${pode && podeVerCustoMO() ? `<label class="check-inline"><input type="checkbox" id="rep-custo-manual"${r.custo_manual ? " checked" : ""} /> custo manual</label>
           <input type="number" id="rep-custo-valor" min="0" step="0.01" value="${esc(r.custo_real || 0)}" style="width:140px;"${r.custo_manual ? "" : " disabled"} />
           <button type="button" class="btn-sec btn-sm" id="btn-rep-custo-salvar">Salvar custo</button>` : ""}
       </div></div>
     <p class="meta">Concluído, o reparo entra em Custos da TAG em duas linhas: peças e mão de obra. A baixa das peças no estoque não conta de novo.</p>`;
+  moHorasSemValor("reparo", r.id, "rep-mo-sem");
   $("rep-custo-manual")?.addEventListener("change", e => { $("rep-custo-valor").disabled = !e.target.checked; });
   $("btn-rep-custo-salvar")?.addEventListener("click", async () => {
     const manual = $("rep-custo-manual").checked;

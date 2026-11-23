@@ -161,7 +161,7 @@ function renderFabricacao(){
         ${its.slice(0, 200).map(o => `<div class="serv-kan-card" data-id="${esc(o.id)}">
           <div class="serv-kan-card-nome"><strong>${esc(o.numero || "")}</strong> <span class="meta">${dataBR(o.data_abertura)}${o.codigo_externo ? " · " + esc(o.codigo_externo) : ""}</span></div>
           <div>${esc(fabProdTxt(o))}</div><div class="meta">${fabQtdTxt(o)} · ${esc(fabDestinoTxt(o))}</div>
-          <div class="meta" style="display:flex;justify-content:space-between;"><span title="${esc(fabRespNomes(o).join(", "))}">${esc(respResumo(fabRespNomes(o)))}</span><strong>${brl(o.custo_real)}</strong></div>
+          <div class="meta" style="display:flex;justify-content:space-between;"><span title="${esc(fabRespNomes(o).join(", "))}">${esc(respResumo(fabRespNomes(o)))}</span><strong>${brlMO(o.custo_real)}</strong></div>
         </div>`).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
     cont.innerHTML = `<div class="tabela-rola"><table>
@@ -170,7 +170,7 @@ function renderFabricacao(){
         <td><strong>${esc(o.numero || "")}</strong>${o.codigo_externo ? ` <span class="meta">${esc(o.codigo_externo)}</span>` : ""}</td><td>${dataBR(o.data_abertura)}</td>
         <td>${fabProdLink(o)}${o.produto && o.descricao && o.descricao !== o.produto.nome ? ` <span class="meta">${esc(o.descricao)}</span>` : ""}</td><td class="num">${fabQtdTxt(o)}</td>
         <td>${fabDestinoLink(o)}</td><td class="meta" title="${esc(fabRespNomes(o).join(", "))}">${esc(respResumo(fabRespNomes(o)))}</td>
-        <td class="num">${fabDias(o) ?? "—"}</td><td class="num">${brl(o.custo_real)}</td><td>${fabTag(o.status)}</td></tr>`).join("")}</tbody></table></div>`;
+        <td class="num">${fabDias(o) ?? "—"}</td><td class="num">${brlMO(o.custo_real)}</td><td>${fabTag(o.status)}</td></tr>`).join("")}</tbody></table></div>`;
   }
 }
 
@@ -247,7 +247,7 @@ function fabAtualizarCabecalho(){
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   const sb2 = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n || n === "R$ 0,00"); } };
   sb2("sb-fab-comp", _fabItens.length); sb2("sb-fab-horas", num(_fabHoras.reduce((t, h) => t + Number(h.horas || 0), 0)));
-  sb2("sb-fab-custo", brl(o.custo_real || 0));
+  sb2("sb-fab-custo", brlMO(o.custo_real));
   $("fab-itens-add").style.display = pode && !novo && aberta ? "" : "none";
   $("fab-horas-add").style.display = pode && !novo && aberta ? "" : "none";
 }
@@ -304,12 +304,12 @@ async function fabAcao(acao){
     if(o.destino === "acessorio"){ await fabAbrirConcluirModal(); return; }
     const pend = fabPendentes().length;
     const txt = o.destino === "estoque" ? `Concluir ${o.numero}: entram ${num(fabQtd(o))} ${o.unidade || "un"} de ${fabProdTxt(o)} no estoque com o custo real da ordem.`
-      : `Concluir ${o.numero}: o custo real (${brl(o.custo_real)}) vai para ${fabDestinoTxt(o)}.`;
+      : `Concluir ${o.numero}: o custo real${podeVerCustoMO() ? ` (${brl(o.custo_real)})` : ""} vai para ${fabDestinoTxt(o)}.`;
     if(!(await uiConfirmar({ titulo: "Concluir ordem de fabricação", confirmar: "Concluir",
       texto: txt + (pend ? ` ${pend} componente(s) ainda sem baixa saem do estoque agora.` : "") }))) return;
     const { data, error } = await sb.rpc("fabricacao_concluir", { p_ordem_id: o.id });
     if(error){ rpcErro(error, "Não foi possível concluir"); return; }
-    aviso("app-aviso", `Ordem concluída. Custo real ${brl(data?.custo_real || 0)}${o.destino === "estoque" ? ` · entrada no estoque a ${brl(data?.custo_unitario || 0)} por ${o.unidade || "un"}` : ""}.`, "ok");
+    aviso("app-aviso", !podeVerCustoMO() ? "Ordem concluída." : `Ordem concluída. Custo real ${brl(data?.custo_real || 0)}${o.destino === "estoque" ? ` · entrada no estoque a ${brl(data?.custo_unitario || 0)} por ${o.unidade || "un"}` : ""}.`, "ok");
     if(typeof carregarProdutos === "function") carregarProdutos();
     await abrirOrdemFabricacao(o.id); fabAtivarTab("custos"); return;
   }
@@ -339,7 +339,7 @@ async function fabAbrirConcluirModal(){
   if(n > 50){ aviso("app-aviso", "Mais de 50 peças numa ordem: divida em ordens menores para informar as marcações.", "erro"); return; }
   const modeloId = o.acessorio_modelo_id || (_fabAceModelos.filter(m => m.produto_id && m.produto_id === o.produto_id).length === 1 ? _fabAceModelos.find(m => m.produto_id === o.produto_id).id : "");
   $("fab-cc-modelo").value = modeloId || "";
-  $("fab-cc-resumo").textContent = `${o.numero} · ${fabProdTxt(o)} · ${n} peça(s). Custo real da ordem ${brl(o.custo_real)}${fabPendentes().length ? " (mais os componentes ainda sem baixa)" : ""}: cada peça nasce no pátio, em bom estado, com "Fabricada na ${o.numero}".`;
+  $("fab-cc-resumo").textContent = `${o.numero} · ${fabProdTxt(o)} · ${n} peça(s). Custo real da ordem ${brlMO(o.custo_real)}${fabPendentes().length ? " (mais os componentes ainda sem baixa)" : ""}: cada peça nasce no pátio, em bom estado, com "Fabricada na ${o.numero}".`;
   await fabRenderMarcacoes(n);
   $("fab-cc-modal").style.display = "flex";
 }
@@ -368,7 +368,7 @@ async function fabConcluirComMarcacoes(){
   const { data, error } = await sb.rpc("fabricacao_concluir", { p_ordem_id: o.id, p_marcacoes: marcs, p_modelo_id: modelo });
   if(error){ aviso("app-aviso", "Não foi possível concluir: " + String(error.message).replace(/^.*?: /, ""), "erro"); return; }
   $("fab-cc-modal").style.display = "none";
-  aviso("app-aviso", `Ordem concluída: ${(data?.acessorios || []).length} peça(s) cadastrada(s) em Acessórios (${marcs.join(", ")}), custo real ${brl(data?.custo_real || 0)} (${brl(data?.custo_unitario || 0)} por peça).`, "ok");
+  aviso("app-aviso", `Ordem concluída: ${(data?.acessorios || []).length} peça(s) cadastrada(s) em Acessórios (${marcs.join(", ")})${podeVerCustoMO() ? `, custo real ${brl(data?.custo_real || 0)} (${brl(data?.custo_unitario || 0)} por peça)` : ""}.`, "ok");
   if(typeof aceInvalidar === "function") aceInvalidar();
   if(typeof carregarProdutos === "function") carregarProdutos();
   await abrirOrdemFabricacao(o.id); fabAtivarTab("custos");
@@ -472,7 +472,7 @@ function fabRenderCustos(){
   const porC = {};
   _fabHoras.forEach(h => { const k = h.centro_trabalho_id || "_"; const g = porC[k] = porC[k] || { nome: fabCentroNome(h.centro_trabalho_id) || "sem centro", custo: fabCentroCusto(h.centro_trabalho_id), normais: 0, he: 0 }; if(h.hora_extra) g.he += Number(h.horas || 0); else g.normais += Number(h.horas || 0); });
   const linhasC = Object.values(porC).sort((a, b) => (b.normais + b.he) - (a.normais + a.he)).map(g =>
-    `<div class="custos-linha"><span>${esc(g.nome)}: ${num(g.normais)} h${g.he ? ` + ${num(g.he)} h HE (×2)` : ""} × ${g.custo ? brl(g.custo) + "/h" : "hora não definida"}</span><strong>${brl((g.normais + 2 * g.he) * g.custo)}</strong></div>`).join("");
+    `<div class="custos-linha"><span class="meta">${esc(g.nome)}: ${num(g.normais)} h${g.he ? ` + ${num(g.he)} h HE (×2)` : ""}</span></div>`).join("");
   const qtd = fabQtd(o), unit = qtd > 0 ? Number(o.custo_real || 0) / qtd : 0;
   const prevTot = _fabItens.reduce((t, i) => t + Number(i.quantidade_prevista || 0) * Number(i.custo_unitario || 0), 0);
   const destinoTxt = { estoque: "Concluída, dá entrada do produto no estoque pelo custo unitário acima; o custo não entra em Custos de obra/TAG.",
@@ -483,18 +483,19 @@ function fabRenderCustos(){
   c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição</div>
         <div class="custos-linha"><span>Componentes consumidos${prevTot ? ` <span class="meta">(previsto ${brl(prevTot)})</span>` : ""}</span><strong>${brl(o.custo_componentes || 0)}</strong></div>
-        ${linhasC || `<div class="custos-linha"><span>Mão de obra (${num(horas)} h)</span><strong>${brl(o.custo_horas || 0)}</strong></div>`}
-        ${linhasC ? `<div class="custos-linha"><span>Mão de obra (${num(horas)} h)</span><strong>${brl(o.custo_horas || 0)}</strong></div>` : ""}
-        <div class="custos-linha"><span><strong>Custo real</strong>${o.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brl(o.custo_real || 0)}</strong></div>
-        <div class="custos-linha"><span>Custo unitário (${num(qtd)} ${esc(o.unidade || "un")})</span><strong>${brl(unit)}</strong></div>
+        <div class="custos-linha"><span>Mão de obra (${num(horas)} h; custo/hora de cada funcionário) <span class="meta" id="fab-mo-sem"></span></span><strong>${brlMO(o.custo_horas)}</strong></div>
+        ${linhasC}
+        <div class="custos-linha"><span><strong>Custo real</strong>${o.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brlMO(o.custo_real)}</strong></div>
+        <div class="custos-linha"><span>Custo unitário (${num(qtd)} ${esc(o.unidade || "un")})</span><strong>${brlMO(unit)}</strong></div>
       </div>
       <div><div class="mov-ace-sug-grupo-t">Custo digitado à mão</div>
         <p class="meta">Use quando o custo real não sai dos componentes e das horas (serviço externo, ordem antiga).</p>
-        ${pode ? `<label class="check-inline"><input type="checkbox" id="fab-custo-manual"${o.custo_manual ? " checked" : ""} /> custo manual</label>
+        ${pode && podeVerCustoMO() ? `<label class="check-inline"><input type="checkbox" id="fab-custo-manual"${o.custo_manual ? " checked" : ""} /> custo manual</label>
           <input type="number" id="fab-custo-valor" min="0" step="0.01" value="${esc(o.custo_real || 0)}" style="width:140px;"${o.custo_manual ? "" : " disabled"} />
           <button type="button" class="btn-sec btn-sm" id="btn-fab-custo-salvar">Salvar custo</button>` : ""}
       </div></div>
-    <p class="meta">${esc(destinoTxt)} Centros sem custo/h definido entram com zero: a diretoria define em "Centros de trabalho".</p>`;
+    <p class="meta">${esc(destinoTxt)} Hora sem funcionário com salário cadastrado usa o custo/h do centro de trabalho; sem ele, entra com zero.</p>`;
+  moHorasSemValor("of", o.id, "fab-mo-sem");
   $("fab-custo-manual")?.addEventListener("change", e => { $("fab-custo-valor").disabled = !e.target.checked; });
   $("btn-fab-custo-salvar")?.addEventListener("click", async () => {
     const manual = $("fab-custo-manual").checked;

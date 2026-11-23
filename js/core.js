@@ -1556,6 +1556,21 @@ function podeVerCentrosCusto(){
 function podeVerValorObra(){
   return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
+/* Lote S67-g (#347, Bernardo 23/11/2026): a mão de obra de reparo, OS e OF sai do custo/hora de cada funcionário. O R$ da MO
+   e o total que a contém só para quem lê o financeiro e os gestores do módulo (numa ficha com um funcionário só, MO ÷ horas
+   chegaria perto do salário); os demais veem horas e material. */
+function podeVerCustoMO(){
+  return podeVerValorObra() || (!!usuarioAtual && ["gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo));
+}
+function brlMO(v){ return podeVerCustoMO() ? brl(v || 0) : "—"; }
+/* horas que entram sem custo (sem funcionário ou sem salário cadastrado): escreve no elemento alvo, se houver */
+async function moHorasSemValor(tipo, id, alvo){
+  if(!id) return;
+  const { data, error } = await sb.rpc("custo_mo_horas_sem_valor", { p_tipo: tipo, p_id: id });
+  const el = document.getElementById(alvo);
+  if(!el || error || !(Number(data) > 0)) return;
+  el.textContent = `· ${num(data)} h sem custo (sem funcionário ou sem salário cadastrado)`;
+}
 /* Valor de aquisição restrito (Bernardo, 11/11/2026): o valor e a data de aquisição do bem e o resultado da venda (venda menos
    aquisição) são só da diretoria, do financeiro e do auditor; ADMIN NÃO LÊ. Moram em equipamentos_financeiro, que no banco só
    pode_ler_valor_bem() lê e só pode_gravar_valor_bem() grava (diretor e financeiro). O front espelha as duas listas para não
