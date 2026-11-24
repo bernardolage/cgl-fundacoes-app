@@ -1286,6 +1286,7 @@ async function iniciarApp(){
   else if(_chegouPorConvite) abrirDefinirSenha();
 
   await carregarTudo();
+  await appRestaurarTela();   // recarregou por versão nova: volta para a mesma tela, aba e obra
 }
 
 /* ---------- Definição de senha (convite / recuperação) ---------- */
@@ -1893,10 +1894,14 @@ document.addEventListener("click", async (e) => {
    - APP_VERSAO = conteúdo da meta. No repo fonte é "dev" e a verificação não roda.
    - verificarVersaoApp(): lê versao.json sem cache logo após o login, a cada 5 min, ao voltar para a
      aba e ao trocar de seção. Falha de rede ou arquivo ausente é ignorada em silêncio.
-   - appAtualizacaoPendente(info): sem modal aberto e sem formulário alterado, faixa no topo e
-     recarga em 5 s (botão "Agora"); com modal ou formulário sujo a faixa fica fixa, sem recarregar,
-     e quando o modal fecha ou o salvar passa (appFormSujo() volta a false) a recarga segue em 5 s.
-     Teto: 30 min pendente e 2 min sem tecla ou clique → recarrega mesmo assim.
+   - appAtualizacaoPendente(info): a faixa "Nova versão disponível [Atualizar]" fica fixa no topo.
+     Recarga sozinha (contagem de 5 s, botão "Agora") só quando ninguém está usando a tela: aba em
+     segundo plano OU 10 min sem tecla ou clique, e ainda sem modal aberto e sem formulário alterado.
+     Formulário alterado nunca é recarregado sozinho (24/11/2026: o teto de 30 min derrubava RDO em
+     preenchimento); qualquer tecla ou clique durante a contagem cancela.
+   - Antes de recarregar, appGuardarTela() grava em sessionStorage a seção, as abas internas ativas,
+     a obra aberta e a rolagem; appRestaurarTela() reabre tudo no fim do iniciarApp(). Sem isso a
+     recarga voltava sempre ao Início ("o sistema me tirou da aba", 24/11/2026).
    - appFormSujo(): input/change em input, select ou textarea dentro de <section> ou de modal marca
      body.dataset.sujo. Limpam a marca: um salvar que passou (comBotaoTravado com botão de gravação,
      sem exceção e sem aviso de erro na tela), a troca de seção, o Sair e o fechamento de modal/drawer.
@@ -1906,11 +1911,11 @@ document.addEventListener("click", async (e) => {
    - Depois de recarregar por atualização, avisa uma vez "Sistema atualizado em DD/MM HH:MM: …". */
 const APP_VERSAO = (document.querySelector('meta[name="app-versao"]') || {}).content || "dev";
 const APP_VERSAO_INTERVALO_MS = 5 * 60 * 1000;   // consulta periódica
-const APP_VERSAO_TETO_MS      = 30 * 60 * 1000;  // pendente há tanto tempo…
-const APP_VERSAO_INATIVO_MS   = 2 * 60 * 1000;   // …e sem tecla ou clique há tanto: recarrega
+const APP_VERSAO_OCIOSO_MS    = 10 * 60 * 1000;  // sem tecla ou clique há tanto: a tela não está em uso
 const APP_VERSAO_CONTAGEM_S   = 5;
+const APP_TELA_CHAVE          = "cgl_tela_antes_recarga";
+const APP_TELA_VALIDADE_MS    = 10 * 60 * 1000;  // tela guardada mais velha que isso não é reaberta
 let _appVersaoNova = null;          // versao.json da atualização pendente
-let _appVersaoPendenteDesde = 0;
 let _appVersaoUltimaConsulta = 0;
 let _appVersaoTimerContagem = null;
 let _appVersaoTimerVigia = null;
@@ -1967,7 +1972,65 @@ function appLimparSujo(){ delete document.body.dataset.sujo; }
 function appAvisoComErro(){
   return Array.from(document.querySelectorAll(".aviso.erro")).some(a => getComputedStyle(a).display !== "none");
 }
-function appPodeRecarregar(){ return !appModalAberto() && !appFormSujo(); }
+/* ninguém está usando a tela: aba em segundo plano ou 10 min sem tecla ou clique */
+function appTelaOciosa(){
+  return document.visibilityState === "hidden" || Date.now() - _appUltimaInteracao >= APP_VERSAO_OCIOSO_MS;
+}
+function appPodeRecarregar(){ return appTelaOciosa() && !appModalAberto() && !appFormSujo(); }
+
+/* ---- tela antes da recarga: seção, abas internas ativas, obra aberta e rolagem ---- */
+const APP_ABAS_ATIVAS = "button[data-tab].ativo, button[data-tab].ativa, button[data-sub].ativo, button[data-sub].ativa, button[data-aba].ativa, button[data-aba].ativo";
+function appVisivel(el){ return !!(el && el.offsetParent !== null); }
+function appGuardarTela(){
+  const sec = document.querySelector(".secao.ativa");
+  if(!sec || !sec.id.startsWith("sec-")) return;
+  const abas = Array.from(sec.querySelectorAll(APP_ABAS_ATIVAS)).filter(appVisivel).map(b => {
+    const attr = b.hasAttribute("data-tab") ? "data-tab" : b.hasAttribute("data-sub") ? "data-sub" : "data-aba";
+    const caixa = b.parentElement && b.parentElement.closest("[id]");
+    return { caixa: caixa ? caixa.id : null, attr, valor: b.getAttribute(attr) };
+  }).filter(a => a.caixa && a.valor);
+  const fichaObra = $("obr-ficha");
+  const obra = sec.id === "sec-obras" && typeof obraEditId !== "undefined" && obraEditId && appVisivel(fichaObra) ? obraEditId : null;
+  const rola = $("app-conteudo");
+  sessaoGravar(APP_TELA_CHAVE, JSON.stringify({
+    usuario: usuarioAtual?.id || null, secao: sec.id.slice(4), abas, obra,
+    rolagem: rola ? rola.scrollTop : 0, rolagemJanela: window.scrollY, em: Date.now()
+  }));
+}
+/* espera o botão da aba aparecer (fichas e abas montadas depois de uma consulta ao banco) */
+async function appEsperarElemento(seletor, ms){
+  const fim = Date.now() + ms;
+  while(Date.now() < fim){
+    const el = document.querySelector(seletor);
+    if(appVisivel(el)) return el;
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return null;
+}
+/* chamada no fim do iniciarApp(): reabre a tela gravada por appGuardarTela() antes da recarga */
+async function appRestaurarTela(){
+  let t = null;
+  try { t = JSON.parse(sessaoLer(APP_TELA_CHAVE) || "null"); } catch(_){}
+  sessaoApagar(APP_TELA_CHAVE);
+  if(!t || !t.secao || Date.now() - (t.em || 0) > APP_TELA_VALIDADE_MS) return;
+  if(t.usuario && usuarioAtual?.id && t.usuario !== usuarioAtual.id) return;
+  if(document.body.classList.contains("mfa-obrigatorio") || document.body.classList.contains("senha-provisoria")) return;
+  if(t.secao !== "inicio" && !irParaSecao(t.secao)) return;
+  try {
+    if(t.obra && t.secao === "obras" && typeof abrirObra === "function") await abrirObra(t.obra);
+    for(const a of t.abas || []){
+      const valor = String(a.valor).replace(/["\\]/g, "\\$&");
+      const b = await appEsperarElemento(`#${CSS.escape(a.caixa)} button[${a.attr}="${valor}"]`, 4000);
+      if(b && !b.classList.contains("ativo") && !b.classList.contains("ativa")) b.click();
+    }
+  } catch(e){ console.warn("restaurar tela:", e.message); }
+  // a rolagem por último, quando a tela já tem altura; um quadro depois para o layout assentar
+  requestAnimationFrame(() => {
+    const rola = $("app-conteudo");
+    if(rola && t.rolagem) rola.scrollTop = t.rolagem;
+    if(t.rolagemJanela) window.scrollTo(0, t.rolagemJanela);
+  });
+}
 
 /* ---- consulta ---- */
 async function verificarVersaoApp(minimoMs){
@@ -1996,21 +2059,14 @@ function appAtualizacaoPendente(info){
   // Pages propagando): espera a próxima verificação em vez de recarregar de novo
   if(tentativa && tentativa.versao === info.versao && Date.now() - tentativa.em < APP_VERSAO_INTERVALO_MS) return;
   _appVersaoNova = info;
-  _appVersaoPendenteDesde = Date.now();
   appVersaoAvaliar();
   if(!_appVersaoTimerVigia) _appVersaoTimerVigia = setInterval(appVersaoAvaliar, 1000);
 }
 
-function appVersaoTeto(){
-  const agora = Date.now();
-  return agora - _appVersaoPendenteDesde >= APP_VERSAO_TETO_MS && agora - _appUltimaInteracao >= APP_VERSAO_INATIVO_MS;
-}
-
-/* a cada segundo enquanto houver atualização pendente: conta 5 s ou segura a faixa */
+/* a cada segundo enquanto houver atualização pendente: conta 5 s (tela ociosa) ou segura a faixa */
 function appVersaoAvaliar(){
   if(!_appVersaoNova) return;
-  const livre = appPodeRecarregar() || appVersaoTeto();
-  if(livre){
+  if(appPodeRecarregar()){
     if(!_appVersaoTimerContagem) appVersaoContar();
   } else {
     if(_appVersaoTimerContagem){ clearInterval(_appVersaoTimerContagem); _appVersaoTimerContagem = null; }
@@ -2046,13 +2102,16 @@ function appVersaoFaixa(segundos){
     txt.textContent = `Nova versão publicada${quando ? " (" + quando + ")" : ""}. Atualizando em ${segundos} s…`;
     btn.textContent = "Agora";
   } else {
-    txt.textContent = "Nova versão disponível. Salve o que está fazendo e clique em Atualizar.";
+    txt.textContent = appFormSujo() || appModalAberto()
+      ? "Nova versão disponível. Salve o que está fazendo e clique em Atualizar; você volta para esta mesma tela."
+      : "Nova versão disponível. Clique em Atualizar quando puder; você volta para esta mesma tela.";
     btn.textContent = "Atualizar";
   }
 }
 
 function appRecarregarAgora(){
   if(_appVersaoNova) appRegistrarRecarga(_appVersaoNova);
+  appGuardarTela();
   location.reload();
 }
 
@@ -2101,7 +2160,9 @@ function iniciarVerificacaoVersao(){
   // lote S57b (#218): o mesmo timer de 5 min e a volta à aba atualizam o badge de menções do item Início (js/dashboard.js)
   setInterval(() => { verificarVersaoApp(); if(typeof dashAtualizarBadgeMencoes === "function") dashAtualizarBadgeMencoes(); }, APP_VERSAO_INTERVALO_MS);
   document.addEventListener("visibilitychange", () => {
-    if(document.visibilityState !== "visible") return;
+    if(document.visibilityState !== "visible"){ appVersaoAvaliar(); return; }   // foi para segundo plano: pode atualizar
+    _appUltimaInteracao = Date.now();   // voltou para a aba: está usando de novo, nada de recarregar na cara
+    if(_appVersaoTimerContagem){ clearInterval(_appVersaoTimerContagem); _appVersaoTimerContagem = null; appVersaoAvaliar(); }
     verificarVersaoApp(30000);
     if(typeof dashAtualizarBadgeMencoes === "function") dashAtualizarBadgeMencoes();
   });
