@@ -1208,10 +1208,13 @@ function ligarValSens(){
   let visivel = false;
   try { visivel = sessionStorage.getItem(VAL_SENS_CHAVE) === "1"; } catch(_){}
   valSensAplicar(visivel);
-  $("btn-val-sens")?.addEventListener("click", () => {
-    valSensAplicar(!_valSensVisivel);
+  const trocar = v => {
+    valSensAplicar(v);
     try { if(_valSensVisivel) sessionStorage.setItem(VAL_SENS_CHAVE, "1"); else sessionStorage.removeItem(VAL_SENS_CHAVE); } catch(_){}
-  });
+  };
+  $("btn-val-sens")?.addEventListener("click", () => trocar(!_valSensVisivel));
+  // hotfix 347: o botão "Mostrar valores" do aviso uiValoresOcultos (aba Custos de reparo, OS e OF) faz o mesmo que o olho
+  document.addEventListener("click", e => { if(e.target.closest?.("[data-val-mostrar]")) trocar(true); });
 }
 ligarValSens();
 
@@ -1587,6 +1590,10 @@ function podeVerCustoMO(){
   return podeVerValorObra() || (!!usuarioAtual && ["gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo));
 }
 function brlMO(v){ return podeVerCustoMO() ? brl(v || 0) : "—"; }
+/* Hotfix 347 (24/11/2026): na aba Custos de reparo, OS e OF a composição fica dentro do .custos-resumo, que o lote S59 cobre
+   com o olho fechado, enquanto a coluna Custo da lista não é coberta: o admin via só o custo final e achou que não tinha
+   permissão. O aviso uiValoresOcultos diz isso e mostra os valores num clique. Não muda quem lê: isso é podeVerCustoMO(). */
+const CUSTO_OCULTO_TXT = "Os valores da composição estão ocultos nesta tela (olho no topo).";
 /* lote S67-h: o R$ da mão de obra (custo_horas) e o total (custo_real) de reparo, OS e OF vêm da vw_custo_mo, que os
    devolve nulos para quem não passa em pode_ver_custo_mo() (espelho de podeVerCustoMO); a leitura direta das duas colunas
    sai da API. tipo = "reparo" | "os" | "of". Completa as linhas no lugar: até 300 linhas lê pelos ids, acima lê o tipo inteiro */

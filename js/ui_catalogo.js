@@ -236,6 +236,15 @@ uiRotuloValor("Cliente", esc(cliente))
       ["Etapas", `<div class="odoo-statusbar">${uiStatusbar([["orcamento", "Orçamento"], ["execucao", "Em execução"], ["concluida", "Concluída"]], "execucao")}</div>`],
       ["Vazio", uiVazio("Nenhum registro no período.")]
     ]
+  },
+  {
+    fn: "uiValoresOcultos", titulo: "Valores ocultos",
+    para: "Aviso no topo de um bloco de valores (aba Custos de reparo, OS e OF) enquanto o olho do topo está fechado: diz por que o R$ aparece coberto e mostra os valores num clique. Com os valores à mostra, some.",
+    uso: `c.innerHTML = uiValoresOcultos("Os valores da composição estão ocultos.") + '<div class="custos-resumo">…</div>'`,
+    exemplos: () => [
+      ["Com valores ocultos", `<div class="valores-ocultos">${uiValoresOcultos("Os valores da composição estão ocultos.")}</div>`],
+      ["Com valores à mostra (some)", `<div>${uiValoresOcultos()}</div>${uiVazio("O aviso não aparece.")}`]
+    ]
   }
 ];
 

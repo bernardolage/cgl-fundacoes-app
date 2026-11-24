@@ -4923,3 +4923,10 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .obr-geral-blocos .ui-secao-corpo { padding: var(--esp-3) var(--esp-4); }
   .obr-geral-blocos .ui-secao { scroll-margin-top: var(--esp-6); }
 }
+
+/* Hotfix 347: aviso "valores ocultos" (uiValoresOcultos) na aba Custos de reparo, OS e OF. Só aparece com o olho do topo
+   fechado (body.valores-ocultos do lote S59); com os valores à mostra, some. */
+@layer componentes {
+  .ui-val-ocultos { display: none; }
+  .valores-ocultos .ui-val-ocultos { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); margin: 0 0 var(--esp-3); padding: var(--esp-2) var(--esp-3); border-radius: var(--radius-sm); background: var(--info-bg); color: var(--info-txt); font-size: var(--txt-sm); }
+}

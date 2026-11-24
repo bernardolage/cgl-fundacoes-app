@@ -602,7 +602,7 @@ function repRenderCustos(){
   const horas = _repHoras.reduce((t, h) => t + Number(h.horas || 0), 0), he = _repHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
   if(r.pedido_id){   // fase 186b (D11): com pedido ligado o custo real é o total do pedido e não se digita
     const ped = r.pedido_externo || {};
-    c.innerHTML = `<div class="custos-resumo">
+    c.innerHTML = `${uiValoresOcultos(CUSTO_OCULTO_TXT)}<div class="custos-resumo">
         <div><div class="mov-ace-sug-grupo-t">Composição</div>
           <div class="custos-linha"><span>Conserto externo · pedido ${esc(ped.numero || "")} (${esc(REP_PED_STATUS[ped.status] || ped.status || "")})</span><strong>${brlMO(r.custo_real)}</strong></div>
           <div class="custos-linha"><span>Peças consumidas na oficina</span><strong>${brl(r.custo_pecas || 0)}</strong></div>
@@ -614,7 +614,7 @@ function repRenderCustos(){
       <p class="meta">O conserto entra em Custos da TAG ou da peça pelo recebimento do pedido. Peças e horas da oficina, se houver, entram pelo reparo concluído.</p>`;
     return;
   }
-  c.innerHTML = `<div class="custos-resumo">
+  c.innerHTML = `${uiValoresOcultos(CUSTO_OCULTO_TXT)}<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição</div>
         <div class="custos-linha"><span>Peças consumidas</span><strong>${brl(r.custo_pecas || 0)}</strong></div>
         <div class="custos-linha"><span>Mão de obra (${num(horas)} h${he ? `, ${num(he)} h de HE ×2` : ""}; custo/hora de cada funcionário) <span class="meta" id="rep-mo-sem"></span></span><strong>${brlMO(r.custo_horas)}</strong></div>

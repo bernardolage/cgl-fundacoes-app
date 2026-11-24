@@ -1189,7 +1189,7 @@ function manRenderCustos(){
   const pode = manPodeEditar() && !!m.id;
   const horas = _manHoras.reduce((t, h) => t + Number(h.horas || 0), 0), he = _manHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
   const compras = _manMats.filter(i => i.origem === "compra").reduce((t, i) => t + Math.round(Number(i.quantidade) * Number(i.custo_unitario) * 100) / 100, 0);   // fase 131b (= custo_compras)
-  c.innerHTML = `<div class="custos-resumo">
+  c.innerHTML = `${uiValoresOcultos(CUSTO_OCULTO_TXT)}<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição do custo</div>
         <div class="custos-linha"><span>Serviço externo (fornecedor)</span><strong>${brl(m.custo || 0)}</strong></div>
         <div class="custos-linha"><span>Peças consumidas</span><strong>${brl(m.custo_pecas || 0)}</strong></div>

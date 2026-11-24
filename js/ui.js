@@ -83,6 +83,11 @@ function uiRotuloValor(rotulo, valorHTML){
 }
 /* Estado vazio de um bloco: uma frase discreta, sem quebrar o desenho do cartão */
 function uiVazio(texto){ return `<p class="ui-vazio">${esc(texto)}</p>`; }
+/* Hotfix 347: aviso de valores ocultos (lote S59) dentro de um bloco de valores, com o botão que os mostra. Só aparece
+   enquanto o body tem .valores-ocultos; o clique em [data-val-mostrar] é ligado uma vez no core.js (ligarValSens). */
+function uiValoresOcultos(texto){
+  return `<p class="ui-val-ocultos" role="note"><span>${esc(texto || "Os valores estão ocultos nesta tela.")}</span><button type="button" class="ui-btn" data-val-mostrar title="Mostra os valores em dinheiro (o mesmo que o olho no topo da tela)">Mostrar valores</button></p>`;
+}
 
 /* ====================================================================
    FASE 193a — componentes da base (catálogo em ui.html)
