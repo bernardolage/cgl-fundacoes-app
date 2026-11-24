@@ -4847,7 +4847,8 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .epi-cns-campos .ui-campo { flex: 1 1 150px; min-width: 0; }
   .epi-cns-chk { display: inline-flex; align-items: center; gap: var(--esp-1); min-height: var(--ctl-h); font-size: var(--txt-base); white-space: nowrap; }
   .epi-cns-faixa { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); margin-bottom: var(--esp-3); }
-  .epi-cns-faixa .ui-faixa { flex: 1 1 320px; }
+  .epi-cns-faixa .ui-faixa { flex: 1 1 320px; min-width: 0; }
+  .epi-cns-faixa .ui-btn { white-space: normal; max-width: 100%; text-align: left; }
   .epi-cns-kpis { margin-bottom: var(--esp-3); }
   .epi-cns-kpis .ui-kpi { flex: 1 1 150px; }
   .epi-cns-alerta { border-color: var(--perigo-txt); }
