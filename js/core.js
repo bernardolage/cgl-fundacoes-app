@@ -1131,8 +1131,10 @@ ligarTema();   // tela de login: antes de autenticar
 
 /* lote S59 (D7, D8): os valores em dinheiro de KPIs e totais abrem cobertos, para todos os cargos; cada janela nova abre oculta.
    Proteção contra quem olha a tela, não controle de acesso. O texto continua no DOM dentro do .val-sens, então PDF e .xlsx não mudam. */
+/* Decisão de 24/11/2026 (hotfix 347): o olho cobre só KPI e total de maior valor; a composição de um registro (.custos-resumo:
+   reparo, OS, OF, pedido, pernas da mobilização) fica sempre à mostra para quem já pode ler o valor. */
 const VAL_SENS_CHAVE = "cgl_valores_visiveis";
-const VAL_SENS_ZONAS = ".ind, .dash-card, .custos-resumo, .sb-num, tfoot, #pat-conteudo, [data-val-sens]";
+const VAL_SENS_ZONAS = ".ind, .dash-card, .sb-num, tfoot, #pat-conteudo, [data-val-sens]";
 const VAL_SENS_FORA = ".val-sens, svg, option, select, textarea, script, style";
 const VAL_SENS_RE = /(?:[-−+]\s*)?R\$\s*[-−]?\s*\d[\d.,]*(?:\s*(?:mil|mi)\b)?/g;
 const VAL_SENS_TEM = /R\$\s*[-−]?\s*\d/;
@@ -1590,10 +1592,6 @@ function podeVerCustoMO(){
   return podeVerValorObra() || (!!usuarioAtual && ["gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo));
 }
 function brlMO(v){ return podeVerCustoMO() ? brl(v || 0) : "—"; }
-/* Hotfix 347 (24/11/2026): na aba Custos de reparo, OS e OF a composição fica dentro do .custos-resumo, que o lote S59 cobre
-   com o olho fechado, enquanto a coluna Custo da lista não é coberta: o admin via só o custo final e achou que não tinha
-   permissão. O aviso uiValoresOcultos diz isso e mostra os valores num clique. Não muda quem lê: isso é podeVerCustoMO(). */
-const CUSTO_OCULTO_TXT = "Os valores da composição estão ocultos nesta tela (olho no topo).";
 /* lote S67-h: o R$ da mão de obra (custo_horas) e o total (custo_real) de reparo, OS e OF vêm da vw_custo_mo, que os
    devolve nulos para quem não passa em pode_ver_custo_mo() (espelho de podeVerCustoMO); a leitura direta das duas colunas
    sai da API. tipo = "reparo" | "os" | "of". Completa as linhas no lugar: até 300 linhas lê pelos ids, acima lê o tipo inteiro */

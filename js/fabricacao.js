@@ -467,7 +467,7 @@ function fabRenderCustos(){
     obra: "Concluída, entra em Custos da obra em duas linhas: componentes (peça) e mão de obra interna.",
     equipamento: "Concluída, entra em Custos da TAG em duas linhas: componentes (peça) e mão de obra interna.",
     centro_custo: "Concluída, entra nos custos do centro em duas linhas: componentes (peça) e mão de obra interna." }[o.destino] || "";
-  c.innerHTML = `${uiValoresOcultos(CUSTO_OCULTO_TXT)}<div class="custos-resumo">
+  c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição</div>
         <div class="custos-linha"><span>Componentes consumidos${prevTot ? ` <span class="meta">(previsto ${brl(prevTot)})</span>` : ""}</span><strong>${brl(o.custo_componentes || 0)}</strong></div>
         <div class="custos-linha"><span>Mão de obra (${num(horas)} h; custo/hora de cada funcionário) <span class="meta" id="fab-mo-sem"></span></span><strong>${brlMO(o.custo_horas)}</strong></div>
