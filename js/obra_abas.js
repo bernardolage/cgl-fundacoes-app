@@ -924,7 +924,7 @@ async function carregarDocumentosDaObra(obraId){
     .order("created_at", { ascending: false });
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
 
-  const cats = Object.entries(DOC_CATEGORIAS)
+  const cats = Object.entries(DOC_CATEGORIAS).filter(([v]) => v !== "outro")   // "Outro" já é a primeira opção (padrão)
     .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   const uploader = `
     <div class="card" style="margin-bottom:14px;padding:12px;">
