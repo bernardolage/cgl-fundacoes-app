@@ -513,7 +513,7 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
   if(podeTriar && !leitura && !chamFechado(c.status)){
     const autorNome = c[CHAM_COL.abertoPor] ? chamNome(c[CHAM_COL.abertoPor]) : null;
     html += `<details class="cham-espera cham-perguntar" id="cham-perguntar">
-      <summary>❓ Perguntar a…</summary>
+      <summary>❓ Pedir resposta a alguém (o chamado fica Esperando resposta)</summary>
       <div class="grade">
         <div class="campo"><label for="cham-perg-de">Quem responde</label>
           <select id="cham-perg-de">
@@ -588,6 +588,14 @@ async function chamPerguntarChamado(){
   const texto = ($("cham-perg-texto")?.value || "").trim();
   if(de === "usuario" && !deId){ aviso("cham-ficha-aviso", "Escolha a pessoa que responde.", "erro"); return; }
   if(!texto){ aviso("cham-ficha-aviso", "Escreva a pergunta.", "erro"); $("cham-perg-texto")?.focus(); return; }
+  // lote S69-d (#336): o autor pedindo resposta a si mesmo quase sempre queria só comentar; confirma antes
+  const autorId = c[CHAM_COL.abertoPor], eu = chamEuId();
+  if(autorId && eu === autorId && (de === "autor" || (de === "usuario" && deId === autorId))){
+    const ok = await uiConfirmar({ titulo: "Pedir resposta a você mesmo",
+      texto: "Você é o autor; o chamado vai esperar a sua própria resposta. Para só comentar, use o campo de comentário.",
+      confirmar: "Pedir resposta assim mesmo", cancelar: "Voltar" });
+    if(!ok) return;
+  }
   const { data, error } = await sb.rpc("chamado_perguntar", { p_id: c.id, p_de: de, p_de_id: deId || null, p_texto: texto,
     p_sugestao_status: $("cham-perg-sugere")?.value || null });
   if(error){ aviso("cham-ficha-aviso", "Não foi possível perguntar: " + error.message, "erro"); return; }

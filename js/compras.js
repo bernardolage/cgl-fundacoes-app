@@ -571,7 +571,10 @@ function cmpDestinoDiretoDoValor(v){ return v ? cmpDestinoDoValor(v) : { ...CMP_
 function cmpNatRotulo(n){ return n ? (n.codigo ? n.codigo + " · " : "") + n.nome : ""; }
 function cmpNatTxt(it){ return cmpNatRotulo(_cmpNatMap[it.natureza_id]) || it.natureza || ""; }
 function cmpNatOptions(sel){
-  const lst = _cmpNaturezas.filter(n => n.ativo || n.id === sel);
+  // lote S69-a (#341): no select do item e do rateio a lista vem em ordem alfabética do nome; o campo `ordem` do banco
+  // continua valendo na tela de Naturezas
+  const lst = _cmpNaturezas.filter(n => n.ativo || n.id === sel)
+    .sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR", { sensitivity: "base" }));
   return `<option value="">— natureza —</option>` + lst.map(n => `<option value="${esc(n.id)}"${n.id === sel ? " selected" : ""}>${esc(cmpNatRotulo(n))}${n.ativo ? "" : " (inativa)"}</option>`).join("");
 }
 /* padrão da natureza: a única ativa marcada com o tipo (ESTOQUE ALMOXARIFADO para reposição); senão, na aplicação

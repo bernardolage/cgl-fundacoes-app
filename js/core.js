@@ -752,8 +752,31 @@ function rascunhoChave(tipo, id){ return `${RASCUNHO_PREFIXO}${usuarioAtual?.id 
 function rascunhoGuardar(chave, dados){ try { sessionStorage.setItem(chave, JSON.stringify({ em: new Date().toISOString(), dados })); return true; } catch(_){ return false; } }
 function rascunhoLer(chave){ try { const t = sessionStorage.getItem(chave); return t ? JSON.parse(t) : null; } catch(_){ return null; } }
 function rascunhoApagar(chave){ try { sessionStorage.removeItem(chave); } catch(_){} }
+/* lote S69-i (#342): rascunho que sobrevive a outra aba e a fechar o navegador (localStorage, chave com o id do usuário) e
+   vence em 7 dias. Só para o que não tem preço (a requisição); o pedido continua no sessionStorage acima. */
+const RASCUNHO_LOCAL_DIAS = 7;
+function rascunhoGuardarLocal(chave, dados){ try { localStorage.setItem(chave, JSON.stringify({ em: new Date().toISOString(), dados })); return true; } catch(_){ return false; } }
+function rascunhoLerLocal(chave){
+  try {
+    const t = localStorage.getItem(chave); if(!t) return null;
+    const r = JSON.parse(t);
+    if(!r || !r.em || Date.now() - new Date(r.em).getTime() > RASCUNHO_LOCAL_DIAS * 864e5){ localStorage.removeItem(chave); return null; }
+    return r;
+  } catch(_){ return null; }
+}
+function rascunhoApagarLocal(chave){ try { localStorage.removeItem(chave); } catch(_){} }
+/* Sair (e a sessão vencida) apaga os rascunhos das duas guardas; no localStorage, também os vencidos de outros usuários */
 function rascunhoLimparTodos(){
   try { Object.keys(sessionStorage).filter(k => k.startsWith(RASCUNHO_PREFIXO)).forEach(k => sessionStorage.removeItem(k)); } catch(_){}
+  try {
+    const meu = `${RASCUNHO_PREFIXO}${usuarioAtual?.id || "anon"}:`;
+    Object.keys(localStorage).filter(k => k.startsWith(RASCUNHO_PREFIXO)).forEach(k => { if(k.startsWith(meu)) localStorage.removeItem(k); else rascunhoLerLocal(k); });
+  } catch(_){}
+}
+/* "Há um rascunho de 14:32 (ontem) ..." para a faixa: hora, e o dia quando não é hoje */
+function rascunhoQuando(em){
+  const d = new Date(em), hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return dataLocalISO(d) === hojeISO() ? hora : `${hora} de ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
 }
 function rascunhoPergunta(em, alteradoEm, deQue){
   const hora = iso => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });

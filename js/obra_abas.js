@@ -942,8 +942,9 @@ async function carregarDocumentosDaObra(obraId){
       </div>
       <div class="form-acoes">
         <button type="button" class="btn" id="btn-doc-enviar">Enviar</button>
+        ${typeof obrPodeEditar === "function" && !obrPodeEditar() ? `<span class="meta">O documento é gravado no Enviar.</span>` : ""}
       </div>
-    </div>`;
+    </div>`;   // lote S69-c (#355): para quem não tem o Salvar da ficha
 
   if(!data || !data.length){
     cont.innerHTML = `${uploader}<p class="vazio">Nenhum documento enviado ainda.</p>`;

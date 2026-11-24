@@ -1017,6 +1017,14 @@ async function manAtivLancarHora(id){
   else if(n("aguardando")) aviso("app-aviso", `${n("gravada") ? `${n("gravada")} linha(s) normal(is) gravada(s); ` : ""}${n("aguardando")} de hora extra aguardando aprovação. ${aptAvisoAprovacao("OS")}`, "ok");
   else aviso("app-aviso", linhas.length > 1 ? `Hora gravada em ${linhas.length} linhas na aba Mão de obra.` : `Hora gravada na aba Mão de obra.${div.avisoExp ? ` ${div.avisoExp}: a hora extra de dia útil não foi separada.` : ""}`, div.avisoExp ? "aviso" : "ok");
 }
+/* lote S69-h1 (#339): outra linha da OS com a mesma atividade (texto), o mesmo executante e o mesmo dia (dia de início ou,
+   sem ele, o de conclusão). Manhã e tarde no mesmo dia são legítimas: só avisa, não impede. Devolve a outra linha ou null. */
+function manAtivRepetida(a){
+  if(!a || !a.executante_id || !String(a.atividade || "").trim()) return null;
+  const dia = a.data_inicio || a.data_fim; if(!dia) return null;
+  const k = manAtivChave(a);
+  return _manAtivs.find(x => x.id !== a.id && x.executante_id && manAtivChave(x) === k && (x.data_inicio || x.data_fim) === dia) || null;
+}
 function manRenderAtivs(){
   const tb = $("man-ativs"), pode = manPodeEditar() && _manAtual && _manAtual.status !== "cancelada" && !!_manAtual.id;
   const optF = `<option value="">—</option>` + _manFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
@@ -1045,6 +1053,7 @@ function manRenderAtivs(){
       if(["setor", "executante_id", "inicio", "fim", "observacao", "data_inicio", "data_fim"].includes(c)) v = v.trim ? (v.trim() || null) : (v || null);
       const upd = { [c]: v };
       const atv = _manAtivs.find(x => x.id === id);
+      let avisoPeriodo = "";
       // lote S54 (#169): "Executado" sem fim preenche dia e hora de hoje; hora digitada sem dia assume o início da OS (ou hoje)
       if(c === "situacao" && v === "executado" && atv){ if(!atv.fim) upd.fim = new Date().toTimeString().slice(0, 5); if(!atv.data_fim) upd.data_fim = hojeISO(); }
       if(c === "inicio" && v && atv && !atv.data_inicio) upd.data_inicio = _manAtual?.data_inicio || hojeISO();
@@ -1053,11 +1062,15 @@ function manRenderAtivs(){
         const outro = c === "data_inicio" ? atv.data_fim : atv.data_inicio;
         if(outro && (c === "data_inicio" ? v > outro : v < outro)){ aviso("app-aviso", "O dia de fim precisa ser igual ou posterior ao dia de início.", "erro"); el.value = atv[c] || ""; return; }
         const ini = _manAtual?.data_inicio, fim = _manAtual?.data_conclusao;
-        if((ini && v < ini) || (fim && v > fim)) aviso("app-aviso", `Dia fora do período da OS (${dataBR(ini)}${fim ? " a " + dataBR(fim) : " em diante"}): gravado assim mesmo.`, "aviso");
+        if((ini && v < ini) || (fim && v > fim)) avisoPeriodo = `Dia fora do período da OS (${dataBR(ini)}${fim ? " a " + dataBR(fim) : " em diante"}): gravado assim mesmo.`;
       }
       const { error } = await sb.from("manutencao_atividades").update(upd).eq("id", id);
       if(error){ aviso("app-aviso", "Não foi possível salvar a atividade: " + error.message, "erro"); return; }
       if(atv) Object.assign(atv, upd);
+      // lote S69-h1 (#339): aviso não bloqueante quando a mesma atividade do mesmo executante já está neste dia
+      const rep = ["atividade", "executante_id", "data_inicio", "data_fim"].includes(c) || upd.data_inicio || upd.data_fim ? manAtivRepetida(atv) : null;
+      const avRep = rep ? `Já existe esta atividade deste executante neste dia (linha ${rep.ordem}).` : "";
+      if(avisoPeriodo || avRep) aviso("app-aviso", [avRep, avisoPeriodo].filter(Boolean).join(" "), "aviso");
       // lote S68-c1: executante, dia e hora decidem o botão "Lançar hora" (só redesenha quando ele muda)
       const horaAntes = !!el.closest("td")?.parentElement?.querySelector(".man-a-hora, .man-a-semhora"), horaMudou = ["executante_id", "inicio", "fim", "data_inicio", "data_fim"].includes(c);
       if(c === "situacao" || Object.keys(upd).length > 1 || (horaMudou && (horaAntes || !!manAtivHoraHTML(atv)))) manRenderAtivs();
@@ -1265,6 +1278,52 @@ async function manEnviarAnexos(){
   await abrirManutencao(m.id); manAtivarTab("anexos");
 }
 
+/* lote S69-h1 (#339): dia único da atividade (início e conclusão no mesmo dia, ou só um dos dois); null = sem dia ou vários dias */
+function manAtivDiaUnico(a){
+  if(a.data_inicio && a.data_fim && a.data_inicio !== a.data_fim) return null;
+  return a.data_inicio || a.data_fim || null;
+}
+function manAtivChave(a){
+  return [String(a.atividade || "").trim().toLowerCase(), a.executante_id || String(a.executante_nome || "").trim().toLowerCase()].join("|");
+}
+function manDiaSeguinte(iso){
+  const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+/* Grupos para o PDF da OS, na ordem da primeira linha de cada grupo: a mesma atividade (texto) do mesmo executante, um dia por
+   linha, em dias seguidos, vira um grupo. Linha sem executante, sem dia ou de vários dias fica sozinha; duas linhas no mesmo
+   dia (manhã e tarde) quebram a sequência e cada uma fica no seu grupo. Devolve [[atividade, ...], ...]. */
+function manAtivGruposPDF(ativs){
+  const pos = new Map(ativs.map((a, i) => [a, i]));
+  const temExec = a => !!(a.executante_id || String(a.executante_nome || "").trim());
+  // percorre por dia (a linha de 04/11 lançada antes da de 03/11 ainda agrupa); a saída volta à ordem da OS
+  const porDia = [...ativs].sort((x, y) => String(manAtivDiaUnico(x) || "").localeCompare(String(manAtivDiaUnico(y) || "")) || pos.get(x) - pos.get(y));
+  const hora = a => `${String(a.inicio || "").slice(0, 5)}-${String(a.fim || "").slice(0, 5)}`;
+  const grupos = [], porChave = {};   // chave → grupos dessa atividade e executante
+  for(const a of porDia){
+    const dia = manAtivDiaUnico(a);
+    if(!dia || !temExec(a)){ grupos.push([a]); continue; }
+    const k = manAtivChave(a), lista = porChave[k] || (porChave[k] = []);
+    // continua um grupo que terminou na véspera; com manhã e tarde na véspera, prefere o de mesmo horário
+    const cand = lista.filter(g => manDiaSeguinte(manAtivDiaUnico(g[g.length - 1])) === dia);
+    const g = cand.find(x => hora(x[x.length - 1]) === hora(a)) || cand[0];
+    if(g){ g.push(a); continue; }
+    const novo = [a]; grupos.push(novo); lista.push(novo);
+  }
+  return grupos.sort((x, y) => Math.min(...x.map(a => pos.get(a))) - Math.min(...y.map(a => pos.get(a))));
+}
+/* "03 a 05/11 · 3 dias · 07:15–17:00"; com horários diferentes, o detalhe por dia embaixo. Devolve HTML já escapado. */
+function manAtivGrupoHTML(g){
+  const d1 = manAtivDiaUnico(g[0]), d2 = manAtivDiaUnico(g[g.length - 1]);
+  const b1 = dataBR(d1).slice(0, 5), b2 = dataBR(d2).slice(0, 5);
+  const faixa = (b1.slice(3) === b2.slice(3) ? b1.slice(0, 2) : b1) + " a " + b2;
+  const hora = a => [a.inicio, a.fim].map(h => h ? String(h).slice(0, 5) : "").filter(Boolean).join("–");
+  const horas = [...new Set(g.map(hora))];
+  const topo = [faixa, `${g.length} dias`, horas.length === 1 ? horas[0] : ""].filter(Boolean).join(" · ");
+  if(horas.length === 1) return esc(topo);
+  return esc(topo) + g.map(a => `<br/>${esc(dataBR(manAtivDiaUnico(a)).slice(0, 5))} ${esc(hora(a) || "—")}`).join("");
+}
+
 /* impressão no leiaute do modelo de OS do Bruno (html2pdf; estilo inline, fora do CSS do app) */
 async function manImprimirOS(){
   const m = _manAtual; if(!m?.id) return;
@@ -1272,11 +1331,19 @@ async function manImprimirOS(){
   const td = "border:1px solid #444;padding:3px 5px;font-size:10px;vertical-align:top;";
   const th = td + "background:#ddd;font-weight:700;";
   const setores = [...new Set(_manAtivs.map(a => a.setor || "outros"))];
-  const ativHTML = setores.map(s => `<tr><td colspan="6" style="${th}text-transform:uppercase;">${esc(MAN_SETOR[s] || s)}</td></tr>` +
-    _manAtivs.filter(a => (a.setor || "outros") === s).map(a => `<tr><td style="${td}text-align:center;">${esc(a.ordem)}</td><td style="${td}">${esc(a.atividade)}</td><td style="${td}">${esc(MAN_SITUACAO[a.situacao]?.[0] || "")}</td>
-      <td style="${td}">${esc(manFunc(a.executante_id) || a.executante_nome || "")}</td><td style="${td}">${esc(manAtivDiaHora(a.data_inicio, a.inicio, ""))}</td><td style="${td}">${esc(manAtivDiaHora(a.data_fim, a.fim, ""))}</td></tr>`).join("")).join("");   // lote S54 (#169): dia e hora
-  const vazias = Math.max(0, 8 - _manAtivs.length);
-  const linhasVazias = Array.from({ length: vazias }, (_, i) => `<tr><td style="${td}text-align:center;">${_manAtivs.length + i + 1}</td><td style="${td}">&nbsp;</td><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td></tr>`).join("");
+  // lote S69-h1 (#339): a mesma atividade do mesmo executante em dias seguidos sai numa linha só (manAtivGruposPDF)
+  const cel = (html, extra = "", span = 0) => `<td${span ? ` colspan="${esc(span)}"` : ""} style="${td}${/* html */ extra}">${/* html */ html}</td>`;   // extra = CSS fixo do próprio PDF
+  let nLinhas = 0;
+  const ativHTML = setores.map(s => `<tr>${/* html */ cel(esc(MAN_SETOR[s] || s), th.slice(td.length) + "text-transform:uppercase;", 6)}</tr>` +
+    manAtivGruposPDF(_manAtivs.filter(a => (a.setor || "outros") === s)).map(g => {
+      nLinhas++;
+      const a = g[0], u = g[g.length - 1];
+      const dias = g.length > 1 ? cel(manAtivGrupoHTML(g), "", 2)
+        : cel(esc(manAtivDiaHora(a.data_inicio, a.inicio, ""))) + cel(esc(manAtivDiaHora(a.data_fim, a.fim, "")));   // lote S54 (#169): dia e hora
+      return `<tr>${/* html */ cel(esc(a.ordem), "text-align:center;")}${/* html */ cel(esc(a.atividade))}${/* html */ cel(esc(MAN_SITUACAO[u.situacao]?.[0] || ""))}${/* html */ cel(esc(manFunc(a.executante_id) || a.executante_nome || ""))}${/* html */ dias}</tr>`;
+    }).join("")).join("");
+  const vazias = Math.max(0, 8 - nLinhas);
+  const linhasVazias = Array.from({ length: vazias }, (_, i) => `<tr>${/* html */ cel(esc(nLinhas + i + 1), "text-align:center;")}${/* html */ cel("&nbsp;")}${/* html */ cel("").repeat(4)}</tr>`).join("");
   const mats = _manMats.map((i, k) => `<tr><td style="${td}text-align:center;">${k + 1}</td><td style="${td}">${esc(semCodOdoo(i.descricao))}${i.codigo_peca ? " · " + esc(i.codigo_peca) : ""}</td><td style="${td}text-align:right;">${num(i.quantidade)} ${esc(i.unidade || "un")}</td><td style="${td}">${i.movimentacao_estoque_id ? "baixado no estoque" : i.tipo === "retirada" ? "retirada" : ""}</td></tr>`).join("")
     + Array.from({ length: Math.max(0, 4 - _manMats.length) }, (_, k) => `<tr><td style="${td}text-align:center;">${_manMats.length + k + 1}</td><td style="${td}">&nbsp;</td><td style="${td}"></td><td style="${td}"></td></tr>`).join("");
   const horas = _manHoras.map(h => `<tr><td style="${td}">${esc(manFunc(h.funcionario_id) || h.funcionario_nome || "")}</td><td style="${td}">${dataBR(h.data)}</td><td style="${td}">${h.inicio ? esc(String(h.inicio).slice(0, 5)) : ""}</td><td style="${td}">${h.fim ? esc(String(h.fim).slice(0, 5)) : ""}</td><td style="${td}text-align:right;">${num(h.horas)}</td></tr>`).join("");

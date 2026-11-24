@@ -285,7 +285,7 @@ async function renderCliFiscal(){
     ? `<p class="meta">O código IBGE da obra chega com a atualização do banco da fase 105a.</p>`
     : obrasSem.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Obra</th><th>Cliente</th><th>Cidade/UF</th><th>CEP</th></tr></thead>
-      <tbody>${obrasSem.map(o => `<tr class="linha-clicavel" data-obra-ibge="${esc(o.id)}" title="Abrir a obra na aba Endereço">
+      <tbody>${obrasSem.map(o => `<tr class="linha-clicavel" data-obra-ibge="${esc(o.id)}" title="Abrir a obra no bloco Endereço da aba Geral">
         <td><strong>${esc(o.codigo)}</strong> ${esc(o.nome || "")}</td><td>${esc(cliNome(o.cliente_id) || "—")}</td>
         <td>${esc([o.cidade, (o.uf || "").toUpperCase()].filter(Boolean).join("/") || "—")}</td><td>${o.cep ? esc(o.cep) : nada}</td></tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Todas as obras em andamento têm o município (IBGE).</p>`;

@@ -30,6 +30,7 @@ let _frotaNotasSemViagem = null;     // indicador "notas sem viagem"
 let _frotaTipoFiltro = "";           // lote S46 (#95): cartão Caminhões ativos / Veículos leves filtra a lista (caminhao | veiculo)
 let _frotaVeicEditId = null;
 let _frotaUltimaData;                // undefined = ainda não consultado; null = nenhuma viagem
+let _frotaCondutor = null;           // lote S69-f (#333): Map equipamento_id -> { nome, data, origem } do último a dirigir (60 dias)
 
 const FROTA_TIPO_LBL = { caminhao: "Caminhão", veiculo: "Veículo" };
 const FROTA_STATUS_LBL = { disponivel: "Disponível", em_uso: "Em uso", manutencao: "Manutenção", em_manutencao: "Manutenção", inativo: "Inativo", vendido: "Vendido" };
@@ -113,6 +114,7 @@ async function carregarFrota(force){
     _frotaViagens = { chave: null, dados: [] };
     _frotaDocs = null;
     _frotaAbast = { chave: null, dados: [], rodadas: [] };
+    _frotaCondutor = null;
   }
   // Mês inicial: o atual só se tiver lançamento; senão o último mês com viagem (a planilha foi importada até
   // jul/2026 e a tela abria em setembro vazio — parecia que nada tinha subido).
@@ -183,8 +185,51 @@ function frotaOndeEsta(v){
   return v.localizacao_tipo === "base" ? "Pátio" : (v.localizacao_tipo || "—");
 }
 
+/* lote S69-f (#333): o condutor não é cadastro do veículo; é o último a dirigir nos últimos 60 dias, entre a viagem
+   (concluída ou em trânsito, com o caminhão próprio) e o abastecimento do PlusFrota. O abastecimento só entra para quem
+   o lê (frota_abast_pode_ler no banco, frotaPodeVerAbast aqui); os demais veem só a viagem. Nenhuma permissão nova. */
+const FROTA_CONDUTOR_DIAS = 60;
+async function frotaCarregarCondutores(){
+  const d = new Date(); d.setDate(d.getDate() - FROTA_CONDUTOR_DIAS);
+  const desde = dataLocalISO(d);
+  const mapa = new Map();
+  // ordem = data e hora quando houver (duas no mesmo dia); a data mostrada é a do lançamento, sem fuso
+  const considerar = (equipId, nome, data, ordem, origem) => {
+    nome = String(nome || "").trim();
+    if(!equipId || !nome || !data) return;
+    const atual = mapa.get(equipId);
+    const chave = String(ordem || data);
+    if(!atual || chave > atual.ordem) mapa.set(equipId, { nome, data: String(data), ordem: chave, origem });
+  };
+  const [vg, ab] = await Promise.all([
+    lerTudo(() => sb.from("viagens").select("id,caminhao_id,data,data_saida,status,transportador_motorista,funcionario:funcionarios(nome)")
+      .not("caminhao_id", "is", null).in("status", ["concluida", "em_transito"]).gte("data", desde)),
+    frotaPodeVerAbast()
+      ? lerTudo(() => sb.from("frota_abastecimentos").select("id,equipamento_id,data,data_hora,motorista_nome,funcionario:funcionarios(nome)")
+          .not("equipamento_id", "is", null).gte("data", desde))
+      : Promise.resolve({ data: [], error: null })
+  ]);
+  (vg.data || []).forEach(v => considerar(v.caminhao_id, v.funcionario?.nome || v.transportador_motorista, v.data, v.data_saida, "viagem"));
+  (ab.data || []).forEach(a => considerar(a.equipamento_id, a.funcionario?.nome || a.motorista_nome, a.data, a.data_hora, "abastecimento"));
+  return { mapa, erro: vg.error || ab.error || null };
+}
+function frotaCondutorCel(v){
+  if(!(_frotaCondutor instanceof Map)) return '<span class="meta" title="buscando o último condutor">…</span>';
+  const c = _frotaCondutor.get(v.id);
+  if(!c) return `<span class="meta" title="sem viagem nem abastecimento nos últimos ${FROTA_CONDUTOR_DIAS} dias">—</span>`;
+  return `<span title="${esc(c.origem)} de ${dataBR(c.data)}">${esc(c.nome)}</span>`;
+}
+
 function renderFrotaVeiculos(){
   const cont = $("frota-conteudo");
+  if(_frotaCondutor === null){
+    _frotaCondutor = undefined;   // carregando: a lista sai já e a coluna se completa quando a busca volta
+    frotaCarregarCondutores().then(r => {
+      _frotaCondutor = r.mapa;
+      if(r.erro) console.warn("Condutor dos veículos:", r.erro.message);
+      if(_frotaView === "veiculos") renderFrotaVeiculos();
+    });
+  }
   const termo = ($("frota-busca")?.value || "").trim().toLowerCase();
   // fase 96: veículo vendido sai da lista operacional (continua em _frotaVeic para as viagens antigas acharem o caminhão)
   const vendidos = _frotaVeic.filter(v => bemVendido(v));   // fase 180c: inclui reserva de domínio e liberado para retirada
@@ -197,12 +242,12 @@ function renderFrotaVeiculos(){
   const fipeRef = v => v.fipe_referencia ? ` <span class="meta" title="referência FIPE">${esc(String(v.fipe_referencia).slice(5, 7))}/${esc(String(v.fipe_referencia).slice(0, 4))}</span>` : "";
   cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">${(typeof ehDiretoria === "function" && ehDiretoria()) ? `Valor FIPE da frota ativa: <strong data-val-sens>${frotaMoeda(totalFipe)}</strong> ` : "FIPE "}(${comFipe.length} de ${ativos.length} com FIPE informada${ativos.length - comFipe.length ? ` · ${ativos.length - comFipe.length} sem valor` : ""})</p>
   <div class="tabela-rola"><table>
-    <thead><tr><th>TAG</th><th>Tipo</th><th>Descrição</th><th>Placa</th><th class="num">km atual</th><th class="num">R$/km</th><th class="num">FIPE</th><th>Onde está</th><th>Status</th></tr></thead>
+    <thead><tr><th>TAG</th><th>Tipo</th><th>Descrição</th><th>Placa</th><th>Condutor</th><th class="num">km atual</th><th class="num">R$/km</th><th class="num">FIPE</th><th>Onde está</th><th>Status</th></tr></thead>
     <tbody>${lista.map(v => `<tr class="linha-clicavel" data-veic="${esc(v.id)}" ${v.ativo === false ? 'style="opacity:.55"' : ""}>
-        <td><strong>${esc(v.codigo)}</strong></td><td>${esc(FROTA_TIPO_LBL[v.tipo]) || esc(v.tipo)}</td><td>${esc(v.nome || "")}</td><td>${esc(v.placa || "—")}</td>
+        <td><strong>${esc(v.codigo)}</strong></td><td>${esc(FROTA_TIPO_LBL[v.tipo]) || esc(v.tipo)}</td><td>${esc(v.nome || "")}</td><td>${esc(v.placa || "—")}</td><td>${/* html */ frotaCondutorCel(v)}</td>
         <td class="num">${v.km != null ? frotaNum(v.km) : "—"}</td><td class="num">${v.valor_km != null ? frotaNum(v.valor_km, 2) : "—"}</td>
         <td class="num">${v.valor_fipe != null ? frotaMoeda(v.valor_fipe) + fipeRef(v) : '<span class="tag ambar" title="sem valor FIPE">—</span>'}</td>
-        <td>${esc(frotaOndeEsta(v))}</td><td>${esc(FROTA_STATUS_LBL[v.status]) || esc(v.status || "")}</td></tr>`).join("") || `<tr><td colspan="9" class="vazio">Nenhum veículo cadastrado.</td></tr>`}</tbody>
+        <td>${esc(frotaOndeEsta(v))}</td><td>${esc(FROTA_STATUS_LBL[v.status]) || esc(v.status || "")}</td></tr>`).join("") || `<tr><td colspan="10" class="vazio">Nenhum veículo cadastrado.</td></tr>`}</tbody>
   </table></div>
   ${vendidos.length ? `<p class="meta" style="margin:8px 0 0;">${vendidos.length} veículo(s) vendido(s) fora da lista: ${vendidos.map(v => esc(v.codigo)).join(", ")}. ${typeof vbAbrirPainel === "function" ? `<a href="#" id="frota-vendidos-ver">Ver em Equipamentos › Vendas</a>` : ""}</p>` : ""}`;
   $("frota-vendidos-ver")?.addEventListener("click", (e) => { e.preventDefault(); vbAbrirPainel({ busca: "" }); });

@@ -18,7 +18,8 @@ const UI_ICONES = {
   maquina:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16V8h9l4 4h5v4"/><circle cx="7.5" cy="17" r="2"/><circle cx="17.5" cy="17" r="2"/><path d="M9.5 17h6"/></svg>',
   assinatura: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="m6 16 9.5-9.5a2.1 2.1 0 0 1 3 3L9 19l-4 1z"/></svg>',
   documento:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>',
-  nota:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>'
+  nota:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  local:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>'   // lote S69-g: bloco Endereço da obra
 };
 /* ícone conhecido, ou nada: o nome vem do código, nunca do banco */
 function uiIcone(nome){ return Object.prototype.hasOwnProperty.call(UI_ICONES, nome) ? UI_ICONES[nome] : ""; }
@@ -137,13 +138,15 @@ function uiPagina(cfg){
 }
 
 /* ---- Faixa de situação: a frase do topo da ficha ("Em execução · 87% concluída · parada há 11 dias") ----
-   frases = lista de textos (vazios saem); tom = ok | aviso | perigo | info | neutro; opcoes = { erro, vazio } */
+   frases = lista de textos (vazios saem); tom = ok | aviso | perigo | info | neutro; opcoes = { erro, vazio, acoes }
+   acoes = [{ id, texto, primaria, title }]: botões no fim da faixa (button[data-faixa-acao=id]); quem chama liga o clique. */
 function uiFaixaSituacao(frases, tom, opcoes){
   const o = opcoes || {};
   if(o.erro) return `<div class="ui-faixa tom-perigo">${uiErro(o.erro)}</div>`;
   const l = (Array.isArray(frases) ? frases : [frases]).filter(x => x != null && String(x).trim() !== "");
   if(!l.length) return `<div class="ui-faixa tom-neutro"><span class="ui-faixa-txt">${esc(o.vazio || "Sem situação calculada.")}</span></div>`;
-  return `<div class="ui-faixa ${uiTom(tom)}" role="status"><span class="ui-faixa-marca" aria-hidden="true"></span><span class="ui-faixa-txt">${l.map((x, i) => (i ? '<span class="sep" aria-hidden="true"> · </span>' : "") + (i === 0 ? `<strong>${esc(x)}</strong>` : `<span>${esc(x)}</span>`)).join("")}</span></div>`;
+  const acoes = (o.acoes || []).filter(a => a && a.id).map(a => `<button type="button" class="ui-btn${a.primaria ? " ui-btn-prim" : ""}" data-faixa-acao="${esc(a.id)}"${a.title ? ` title="${esc(a.title)}"` : ""}>${esc(a.texto || a.id)}</button>`).join("");
+  return `<div class="ui-faixa ${uiTom(tom)}" role="status"><span class="ui-faixa-marca" aria-hidden="true"></span><span class="ui-faixa-txt">${l.map((x, i) => (i ? '<span class="sep" aria-hidden="true"> · </span>' : "") + (i === 0 ? `<strong>${esc(x)}</strong>` : `<span>${esc(x)}</span>`)).join("")}</span>${acoes ? `<span class="ui-faixa-acoes">${/* html */ acoes}</span>` : ""}</div>`;
 }
 
 /* ---- Abas com resumo embaixo do nome ----

@@ -299,6 +299,9 @@ async function aptGravarFicha(tipo, docId, regs){
   for(const r of regs) if(!r.hora_extra && r.data && await aptExigeAprovacao(r.data)) r.hora_extra = true;
   const he = regs.filter(r => r.hora_extra), normais = regs.filter(r => !r.hora_extra);
   if(he.some(r => !r.inicio || !r.fim)) return { gravadas: 0, aguardando: 0, erro: "Hora extra vai para aprovação e precisa de início e fim." };
+  // lote S69-h1 (#339): a mesma checagem de repetida do "Lançar horas" (aptGravarLinha); recusa antes de gravar qualquer parte
+  const rep = await aptRepetidaFicha(tipo, docId, regs);
+  if(rep) return { gravadas: 0, aguardando: 0, erro: rep };
   if(normais.length){
     const { error } = await sb.from(APT_TIPO[tipo].tabela).insert(normais);
     if(error) return { gravadas: 0, aguardando: 0, erro: error.message.replace(/^.*?: /, "") };
@@ -312,6 +315,27 @@ async function aptGravarFicha(tipo, docId, regs){
       erro: (normais.length ? "A parte normal gravou; a hora extra não foi para aprovação: " : "") + error.message.replace(/^.*?: /, "") };
   }
   return { gravadas: normais.length, aguardando: he.length, erro: "" };
+}
+/* lote S69-h1 (#339): repetida na ficha = mesma hora (documento, funcionário, data e início) já gravada na tabela do documento
+   ou já aguardando aprovação; as mensagens são as do "Lançar horas". Devolve o texto da recusa ou "" (linha sem início não confere). */
+function aptNumeroDocAtual(tipo){
+  const d = tipo === "RP" ? (typeof _repAtual !== "undefined" ? _repAtual : null)
+    : tipo === "OS" ? (typeof _manAtual !== "undefined" ? _manAtual : null)
+    : (typeof _fabAtual !== "undefined" ? _fabAtual : null);
+  return d?.numero || "este documento";
+}
+async function aptRepetidaFicha(tipo, docId, regs){
+  const doc = { tipo, id: docId, numero: aptNumeroDocAtual(tipo) };
+  for(const r of regs){
+    if(!(r.funcionario_id && r.data && r.inicio)) continue;
+    const { ja, erro } = await aptJaLancada(doc, r);
+    if(erro) return "Não foi possível conferir repetição: " + erro.message;
+    if(ja) return `Já lançada em ${doc.numero} (fim ${aptHora(ja.fim)}).`;
+    const { data: jaAp, error: eAp } = await sb.from("apontamento_aprovacoes").select("id").eq("documento_id", docId).eq("funcionario_id", r.funcionario_id).eq("data", r.data).eq("inicio", r.inicio).eq("status", "aguardando").range(0, 0);
+    if(eAp) return "Não foi possível conferir repetição: " + eAp.message;
+    if(jaAp && jaAp[0]) return "Já está aguardando aprovação.";
+  }
+  return "";
 }
 /* Hora extra aguardando aprovação de um documento: aparece na ficha numa linha à parte, fora do total e do custo (D12) */
 let _aptAgDoc = {};   // documento_id → [{funcionario_id, data, inicio, fim}] (funcionario_id: lote S68-c1)

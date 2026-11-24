@@ -957,7 +957,7 @@ async function salvarReparoAcessorios(){
   const linhas = _aceAcaoIds.map(id => {
     const a = _aceRegistros.find(x => x.id === id) || {};
     return { acessorio_id: id, equipamento_id: a.local_equipamento_id || a.equipamento_padrao_id || null,
-      descricao: `${aceDescr(a)} ${a.marcacao || ""} — ${desc}`.trim(), tipo_servico: $("ace-rp-tipo").value, status: "aberto",
+      descricao: desc, /* lote S69-b (#348): só o texto digitado; a peça já está em Peça/TAG */ tipo_servico: $("ace-rp-tipo").value, status: "aberto",
       data_abertura: $("ace-rp-data").value || hojeISO(), custo_estimado: custo,
       observacoes: [obsLocal, $("ace-rp-obs").value.trim()].filter(Boolean).join(" · ") };
   });

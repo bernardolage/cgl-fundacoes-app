@@ -235,26 +235,47 @@ function reqRascEstado(){
   return { obra: $("req-obra").value, equip: $("req-equip").value, centro: $("req-centro").value, reposicao: $("req-reposicao").checked,
     prioridade: $("req-prioridade").value, just: $("req-just").value, itens: _reqItens };
 }
+/* lote S69-i (#342): o rascunho mora no localStorage com a chave do usuário (sobrevive a outra aba e a fechar o navegador) e
+   vence em 7 dias (rascunhoLerLocal); "Sair" apaga (rascunhoLimparTodos). Enquanto a faixa Restaurar/Descartar está à vista,
+   nada é gravado por cima do rascunho guardado. */
 function reqRascGravar(){
   if(_reqRascBase === null || _reqAtual) return;
   const txt = JSON.stringify(reqRascEstado());
-  if(txt === _reqRascBase) rascunhoApagar(reqRascChave()); else rascunhoGuardar(reqRascChave(), JSON.parse(txt));
+  if(txt === _reqRascBase) rascunhoApagarLocal(reqRascChave()); else rascunhoGuardarLocal(reqRascChave(), JSON.parse(txt));
 }
 const reqRascAgendar = debounce(reqRascGravar, 400);
+function reqRascFaixa(html){
+  const el = $("req-rasc"); if(!el) return null;
+  el.innerHTML = html || ""; el.hidden = !html;
+  return el;
+}
 function reqRascOferecer(nova){
   _reqRascBase = null;
+  reqRascFaixa("");
   if(!nova) return;
-  const base = JSON.stringify(reqRascEstado()), r = rascunhoLer(reqRascChave());
-  if(r){
-    if(confirm(rascunhoPergunta(r.em, null, "de requisição"))){
-      const d = r.dados || {};
-      $("req-obra").value = d.obra || ""; $("req-equip").value = d.equip || ""; $("req-centro").value = d.centro || "";
-      $("req-reposicao").checked = !!d.reposicao; $("req-prioridade").value = d.prioridade || "normal"; $("req-just").value = d.just || "";
-      _reqItens = d.itens || [];
-      reqRenderItens();
-    } else rascunhoApagar(reqRascChave());
-  }
-  _reqRascBase = base;
+  const base = JSON.stringify(reqRascEstado()), chave = reqRascChave();
+  // rascunho da versão anterior (sessionStorage, mesma chave): passa para o localStorage na primeira abertura
+  const antigo = rascunhoLer(chave);
+  if(antigo){ if(!rascunhoLerLocal(chave)) rascunhoGuardarLocal(chave, antigo.dados); rascunhoApagar(chave); }
+  const r = rascunhoLerLocal(chave);
+  if(!r){ _reqRascBase = base; return; }
+  const d = r.dados || {}, n = (d.itens || []).length;
+  const el = reqRascFaixa(uiFaixaSituacao([`Há um rascunho de ${rascunhoQuando(r.em)} de requisição`, `${n} item(ns)${d.just ? `, "${String(d.just).slice(0, 60)}"` : ""}, ainda não salvo`], "info",
+    { acoes: [{ id: "restaurar", texto: "Restaurar", primaria: true, title: "Traz para a tela os campos e os itens do rascunho" },
+      { id: "descartar", texto: "Descartar", title: "Apaga o rascunho e segue com a requisição em branco" }] }));
+  if(!el){ _reqRascBase = base; return; }
+  el.querySelector('[data-faixa-acao="restaurar"]')?.addEventListener("click", () => {
+    $("req-obra").value = d.obra || ""; $("req-equip").value = d.equip || ""; $("req-centro").value = d.centro || "";
+    $("req-reposicao").checked = !!d.reposicao; $("req-prioridade").value = d.prioridade || "normal"; $("req-just").value = d.just || "";
+    _reqItens = d.itens || [];
+    reqRascFaixa(""); _reqRascBase = base;
+    reqRenderItens();
+  });
+  el.querySelector('[data-faixa-acao="descartar"]')?.addEventListener("click", () => {
+    rascunhoApagarLocal(chave);
+    reqRascFaixa(""); _reqRascBase = base;
+    reqRascGravar();   // o que foi digitado com a faixa à vista passa a ser o rascunho
+  });
 }
 function reqRenderItens(){
   reqRascAgendar();   // lote S60 (#177)
@@ -301,7 +322,7 @@ async function salvarRequisicao(){
   if(error){ aviso("app-aviso", "Não foi possível abrir a requisição: " + error.message, "erro"); return; }
   const { error: eIt } = await sb.from("requisicao_itens").insert(itens.map(i => ({ requisicao_id: r.id, produto_id: i.produto_id, unidade: (i.unidade || "un").trim(), quantidade_solicitada: Number(i.quantidade_solicitada) })));   // lote S55: sem descricao (item livre acabou)
   if(eIt){ await sb.from("requisicoes").delete().eq("id", r.id); aviso("app-aviso", "Erro nos itens: " + eIt.message, "erro"); return; }
-  rascunhoApagar(reqRascChave()); _reqRascBase = null;   // lote S60 (#177)
+  rascunhoApagarLocal(reqRascChave()); rascunhoApagar(reqRascChave()); _reqRascBase = null;   // lote S60 (#177); S69-i: localStorage
   aviso("app-aviso", `Requisição ${r.numero} aberta. O comprador vê em Compras › Requisições.`, "ok");
   fecharRequisicao();
   if(typeof _cmpView !== "undefined" && $("sec-compras")?.classList.contains("ativa")){ _cmpView = "requisicoes"; await cmpFetchPedidos(); renderCompras(); }

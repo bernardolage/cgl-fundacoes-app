@@ -36,6 +36,7 @@ const CAT_ITENS = [
     exemplos: () => [
       ["Em dia", uiFaixaSituacao(["Em execução", "62% concluída", "ritmo 12% acima da média", "término previsto 05/12"], "ok")],
       ["Atenção", uiFaixaSituacao(["Em execução", "87% concluída", "parada há 11 dias", "término previsto 28/11"], "aviso")],
+      ["Com ações", uiFaixaSituacao(["Há um rascunho de 14:32 de requisição", "3 item(ns), ainda não salvo"], "info", { acoes: [{ id: "restaurar", texto: "Restaurar", primaria: true }, { id: "descartar", texto: "Descartar" }] })],
       ["Vazio", uiFaixaSituacao([], "ok")],
       ["Erro", uiFaixaSituacao(null, null, { erro: "Andamento indisponível." })]
     ]

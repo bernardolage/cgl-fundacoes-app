@@ -167,7 +167,7 @@ function renderReparos(){
         </div>`).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
     cont.innerHTML = `<div class="tabela-rola"><table>
-      <thead><tr><th>Nº</th><th>Abertura</th><th>Peça / TAG</th><th>Descrição</th><th>Setor</th><th>Responsável</th><th class="num">Dias</th><th class="num">Custo</th><th>Status</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Abertura</th><th>Peça / TAG</th><th>O que precisa ser feito</th><th>Setor</th><th>Responsável</th><th class="num">Dias</th><th class="num">Custo</th><th>Status</th></tr></thead>
       <tbody>${dados.map(r => `<tr class="linha-clicavel" data-id="${esc(r.id)}">
         <td><strong>${esc(r.numero || "")}</strong>${r.codigo_externo ? ` <span class="meta">${esc(r.codigo_externo)}</span>` : ""}</td><td>${dataBR(r.data_abertura)}</td>
         <td>${repAlvoLink(r)}</td><td>${esc(r.descricao || "")}</td><td>${esc(REP_SETOR[r.setor] || "—")}</td><td class="meta" title="${esc(repRespNomes(r).join(", "))}">${esc(respResumo(repRespNomes(r)))}</td>
@@ -458,7 +458,7 @@ async function repImprimir(){
       <tr><td style="${td}">${esc(repAlvoTxt(r))}</td><td style="${td}">${esc(REP_SETOR[r.setor] || "")}</td><td style="${td}">${esc(REP_STATUS[r.status]?.[0] || r.status || "")}</td><td style="${td}">${esc(repRespNomes(r).join(", "))}</td></tr>
       <tr><td style="${th}">ABERTURA</td><td style="${th}">INÍCIO</td><td style="${th}" colspan="2">CONCLUSÃO</td></tr>
       <tr><td style="${td}">${dataBR(r.data_abertura)}</td><td style="${td}">${dataBR(r.data_inicio)}</td><td style="${td}" colspan="2">${dataBR(r.data_conclusao)}</td></tr>
-      <tr><td style="${th}" colspan="4">DESCRIÇÃO</td></tr>
+      <tr><td style="${th}" colspan="4">O QUE PRECISA SER FEITO</td></tr>
       <tr><td style="${td}" colspan="4">${esc(r.descricao || "")}</td></tr>
       <tr><td style="${th}" colspan="4">MOTIVO</td></tr>
       <tr><td style="${td}" colspan="4">${esc(r.motivo || "")}${r.observacoes ? `<br/><span style="font-size:9px;">${esc(r.observacoes)}</span>` : ""}</td></tr>
@@ -493,7 +493,7 @@ async function salvarReparo(){
     nf_retorno_numero: ext ? $("rep-x-nf-ret").value.trim() || null : null });
   if(ext && reg.enviado_em && !reg.fornecedor_id){ aviso("app-aviso", "Informe o fornecedor do conserto antes da data de envio.", "erro"); repAtivarTab("externo"); return null; }
   if(ext && reg.retornou_em && reg.enviado_em && reg.retornou_em < reg.enviado_em){ aviso("app-aviso", "O retorno não pode ser antes do envio.", "erro"); repAtivarTab("externo"); return null; }
-  if(!reg.descricao){ aviso("app-aviso", "Informe a descrição do reparo.", "erro"); repAtivarTab("geral"); return null; }
+  if(!reg.descricao){ aviso("app-aviso", "Informe o que precisa ser feito no reparo.", "erro"); repAtivarTab("geral"); return null; }
   if(!reg.acessorio_id && !reg.equipamento_id){ aviso("app-aviso", "Informe o acessório ou a TAG.", "erro"); repAtivarTab("geral"); return null; }
   let id = _repAtual.id;
   if(id){ const { error } = await sb.from("reparos_caldeiraria").update(reg).eq("id", id); if(error){ aviso("app-aviso", "Erro ao salvar: " + error.message, "erro"); return null; } }

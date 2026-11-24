@@ -4426,6 +4426,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-faixa.tom-perigo { background: var(--perigo-bg); border-color: var(--perigo-bg); } .ui-faixa.tom-perigo .ui-faixa-marca { background: var(--perigo); }
 .ui-faixa.tom-info { background: var(--info-bg); border-color: var(--info-bg); } .ui-faixa.tom-info .ui-faixa-marca { background: var(--info); }
 .ui-faixa .ui-erro { padding: 0; background: none; }
+.ui-faixa-acoes { display: flex; flex-wrap: wrap; gap: var(--esp-2); margin-left: auto; flex: none; }
+.ui-faixa:has(.ui-faixa-acoes) { flex-wrap: wrap; font-size: var(--txt-base); }
+.req-rasc-faixa { margin-bottom: var(--esp-3); }
 
 /* uiAbas */
 .ui-abas { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--esp-1); border-bottom: 1px solid var(--borda); }
@@ -4879,4 +4882,19 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .mgr-legenda i.mgr-leg-manutencao { background: var(--mgr-manutencao); }
   .mgr-svg .mgr-barra.mgr-sem-link { cursor: default; }
   .mgr-svg .mgr-barra.mgr-sem-link:hover rect { stroke: none; }
+}
+
+/* Lote S69-c (chamado 355): o Salvar da ficha da obra some (atributo hidden) para quem só consulta e anexa; o display do .btn
+   venceria o hidden do navegador */
+@layer componentes {
+  .odoo-actions-header [hidden] { display: none; }
+}
+
+/* Lote S69-g (chamado 337): aba Geral da ficha da obra em três blocos uiSecao (obrMontarAbaGeral em js/obras.js). Cabeçalho e
+   corpo enxutos como o .obf-bloco, para a densidade da antiga aba não cair. */
+@layer componentes {
+  .obr-geral-blocos .ui-secao + .ui-secao { margin-top: var(--esp-3); }
+  .obr-geral-blocos .ui-secao-cab { padding-block: var(--esp-2); }
+  .obr-geral-blocos .ui-secao-corpo { padding: var(--esp-3) var(--esp-4); }
+  .obr-geral-blocos .ui-secao { scroll-margin-top: var(--esp-6); }
 }

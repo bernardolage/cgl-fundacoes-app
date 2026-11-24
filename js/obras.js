@@ -707,6 +707,9 @@ function abrirFichaObra(obra){
   obrCarregarPrevisaoChip(obra.id);   // fase 140
 
   atualizarStatusbarObra(obra.status);
+  // lote S69-c (#355): quem não edita a obra (fora da policy obras_write) só consulta e anexa; o documento é gravado no
+  // Enviar da aba Documentos, e o Salvar da ficha daria "cannot coerce" (update sem linha)
+  const btnSalvar = $("btn-salvar-obra"); if(btnSalvar) btnSalvar.hidden = !obrPodeEditar();
   obrAtualizarConcluir(obra);   // lote S44 (L9): "Concluir obra" para o financeiro
   ativarTabObra("geral");
   // Aba Contrato: badge + anexos + assinatura do contrato vinculado
@@ -845,13 +848,41 @@ async function obrConcluirObra(){
   if(typeof carregarObras === "function") carregarObras();
 }
 
-function ativarTabObra(nome){
+/* Lote S69-g (#337): Endereço e Datas & valor deixaram de ser abas e viraram blocos uiSecao da aba Geral. Os blocos
+   nascem no index.html como <div data-obr-bloco> e aqui entram no corpo do uiSecao (os campos mudam de lugar, não de
+   id, então os listeners ligados antes continuam valendo). Roda uma vez, na primeira troca de aba. */
+const OBR_BLOCOS_GERAL = [
+  { bloco: "identificacao", icone: "documento", titulo: "Identificação" },
+  { bloco: "endereco",      icone: "local",     titulo: "Endereço" },
+  { bloco: "datas",         icone: "relogio",   titulo: "Prazos e valor" }
+];
+function obrMontarAbaGeral(){
+  const aba = document.querySelector('#obr-ficha .odoo-tab[data-tab="geral"]');
+  if(!aba || aba.dataset.blocosMontados || typeof uiSecao !== "function") return;
+  OBR_BLOCOS_GERAL.forEach(({ bloco, icone, titulo }) => {
+    const conteudo = aba.querySelector(`:scope > [data-obr-bloco="${bloco}"]`);
+    if(!conteudo) return;
+    const tmp = document.createElement("div");
+    tmp.innerHTML = uiSecao(icone, titulo, "");
+    const sec = tmp.firstElementChild;
+    sec.id = "obr-bloco-" + bloco;
+    conteudo.replaceWith(sec);
+    sec.querySelector(".ui-secao-corpo").appendChild(conteudo);
+  });
+  aba.dataset.blocosMontados = "1";
+}
+/* "endereco" e "datas" (nomes das abas antigas, ainda usados pelo painel inicial, pelo cliente e pelo erro do IBGE)
+   abrem a aba Geral e rolam até o bloco. */
+function ativarTabObra(nome, bloco){
+  obrMontarAbaGeral();
+  if(nome === "endereco" || nome === "datas"){ bloco = nome; nome = "geral"; }
   document.querySelectorAll("#obr-notebook button").forEach(b => {
     b.classList.toggle("ativo", b.dataset.tab === nome);
   });
   document.querySelectorAll("#obr-ficha .odoo-tab").forEach(t => {
     t.classList.toggle("ativa", t.dataset.tab === nome);
   });
+  if(nome === "geral" && bloco) $("obr-bloco-" + bloco)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 /* Foco num campo da ficha da obra (fase 75: "Indicar o engenheiro responsável" e jornada) */
 function obrFocarCampo(id){
@@ -1107,7 +1138,12 @@ async function salvarObra(novoStatus){
     semColunaSinal = true;
   }
   if(result.error){
-    aviso("app-aviso","Não foi possível salvar a obra: "+result.error.message,"erro");
+    // lote S69-c (#355): recusa da policy obras_write chega como 42501 ou, no update com .single(), como PGRST116
+    // ("cannot coerce the result to a single JSON object": nenhuma linha voltou)
+    const semPermissao = ehErroDePermissao(result.error) || (!obraNova && result.error.code === "PGRST116");
+    aviso("app-aviso", semPermissao
+      ? "Seu cargo consulta a obra e anexa documentos; os dados da obra só a engenharia e o comercial alteram."
+      : "Não foi possível salvar a obra: " + result.error.message, "erro");
     return;
   }
   if(semColunaSinal) console.warn("obras.sinal_abatimento_modelo ainda não existe no banco — modelo de abatimento não gravado (usa 'proporcional').");
