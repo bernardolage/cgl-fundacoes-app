@@ -187,6 +187,8 @@ let _rephDeps = null;          // departamentos (id, nome, parent_id) — carreg
 let _rephAberto = null;        // chave do colaborador com o detalhe aberto
 let _rephCarga = 0;            // token da carga (trocar o período cancela a anterior)
 let _rephPeriodo = "";         // "de|ate" da última carga
+let _rephAtivSem = [];         // lote S68-c1: atividades de OS com horário e sem hora lançada no período
+let _rephAtivAberto = false;   // lista dessas atividades aberta
 const REPH_ORIGEM = { reparo: ["RP", "Reparo"], fabricacao: ["OF", "Fabricação"], manutencao: ["OS", "Manutenção"] };
 function rephHmin(h){ return horasHM(h, { zero: true }); }   // lote S65-a: formatador único do core.js
 const REPH_ORDEM_HE = ["reparo", "fabricacao", "manutencao"];   // lote S65-a (#301): HE por origem no resumo
@@ -242,9 +244,46 @@ async function rephCarregar(){
     }
     out.push(...(r.data || []));
   }
+  await rephCarregarAtivSemHora(de, ate, out);
+  if(token !== _rephCarga) return;
   _rephLinhas = out; _rephPeriodo = `${de}|${ate}`; _rephAberto = null;
   rephDepOptions();
   rephRender();
+}
+/* lote S68-c1 (#368): atividade de OS com executante, início e fim e sem hora lançada da mesma pessoa, OS e dia (o horário
+   da aba Atividades não é hora trabalhada). Lê manutencao_atividades com início no período; atividade de vários dias conta
+   como lançada se houver qualquer hora da pessoa na OS entre o dia de início e o de fim. */
+async function rephCarregarAtivSemHora(de, ate, linhas){
+  _rephAtivSem = []; _rephAtivAberto = false;
+  const r = await lerTudo(() => sb.from("manutencao_atividades")
+    .select("id,manutencao_id,atividade,executante_id,data_inicio,data_fim,inicio,fim,manutencao:manutencoes(numero),executante:funcionarios(nome)")
+    .not("executante_id", "is", null).not("inicio", "is", null).not("fim", "is", null)
+    .gte("data_inicio", de).lte("data_inicio", ate));
+  if(r.error) return;   // o aviso é auxiliar: sem leitura, a Planilha segue sem ele
+  const horas = new Set(linhas.filter(l => l.origem === "manutencao").map(l => `${l.ordem_id}|${l.funcionario_id}|${l.data}`));
+  // hora extra aguardando aprovação também é hora lançada (ainda fora da planilha)
+  const ap = await lerTudo(() => sb.from("apontamento_aprovacoes").select("id,documento_id,funcionario_id,data")
+    .eq("tipo", "OS").eq("status", "aguardando").gte("data", de));
+  (ap.data || []).forEach(x => horas.add(`${x.documento_id}|${x.funcionario_id}|${x.data}`));
+  const nomes = {}; linhas.forEach(l => { if(l.funcionario_id && l.funcionario_nome) nomes[l.funcionario_id] = l.funcionario_nome; });
+  _rephAtivSem = (r.data || []).filter(a => {
+    const fim = a.data_fim && a.data_fim > a.data_inicio ? a.data_fim : a.data_inicio;
+    for(let d = a.data_inicio; d <= fim; d = dataLocalISO(new Date(new Date(d + "T12:00:00").getTime() + 864e5)))
+      if(horas.has(`${a.manutencao_id}|${a.executante_id}|${d}`)) return false;
+    return true;
+  }).map(a => ({ ...a, nome: a.executante?.nome || nomes[a.executante_id] || "—", numero: a.manutencao?.numero || "OS" }))
+    .sort((a, b) => String(a.data_inicio).localeCompare(String(b.data_inicio)) || a.nome.localeCompare(b.nome, "pt-BR"));
+}
+function rephAvisoAtivHTML(){
+  const l = _rephAtivSem; if(!l.length) return "";
+  const hr = t => t ? String(t).slice(0, 5) : "";
+  const lista = _rephAtivAberto ? `<div class="tabela-rola"><table>
+      <thead><tr><th>OS</th><th>Pessoa</th><th>Dia</th><th>Início–fim</th><th>Atividade</th></tr></thead>
+      <tbody>${l.map(a => `<tr><td>${linkManutencao(a.manutencao_id, a.numero)}</td><td>${esc(a.nome)}</td>
+        <td>${esc(dataBR(a.data_inicio))}${a.data_fim && a.data_fim !== a.data_inicio ? ` a ${esc(dataBR(a.data_fim))}` : ""}</td>
+        <td>${esc(hr(a.inicio))}–${esc(hr(a.fim))}</td><td class="meta">${esc(a.atividade || "")}</td></tr>`).join("")}</tbody></table></div>` : "";
+  return `<p class="meta"><span class="tag ambar">Atenção</span> ${esc(l.length)} atividade(s) de OS com horário e sem hora lançada: o início e o fim da aba Atividades não contam como hora trabalhada e não estão nesta planilha.
+    <button type="button" class="btn-sec btn-sm" id="reph-ativ-ver" title="Lista das atividades de OS (OS, pessoa, dia) com horário e sem hora lançada no período">${_rephAtivAberto ? "Fechar a lista" : "Ver a lista"}</button></p>${lista}`;
 }
 function rephChave(l){ return l.funcionario_id || (l.funcionario_nome ? "nome:" + l.funcionario_nome : "—"); }
 function rephFiltradas(){
@@ -280,7 +319,7 @@ function rephRender(){
   const linhas = rephFiltradas(), res = rephResumo(linhas);
   const tot = res.reduce((s, r) => s + r.horas, 0), totHe = res.reduce((s, r) => s + r.he, 0), totOrd = new Set(linhas.map(l => l.origem + ":" + l.ordem_id)).size;
   $("rep-contador").textContent = `${res.length} colaborador(es) · ${horasHM(tot, { zero: true })} h`;
-  if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma hora lançada em reparos, fabricação ou manutenção nesse período com esses filtros.</p>`; return; }
+  if(!linhas.length){ cont.innerHTML = rephAvisoAtivHTML() + `<p class="vazio">Nenhuma hora lançada em reparos, fabricação ou manutenção nesse período com esses filtros.</p>`; return; }
   const hr = l => l.inicio && l.fim ? `${esc(String(l.inicio).slice(0, 5))}–${esc(String(l.fim).slice(0, 5))}` : "—";   // linha do Odoo sem horário
   const detalhe = r => `<tr class="reph-det"><td colspan="9"><div class="tabela-rola" style="margin:2px 0 6px;"><table>
       <thead><tr><th>Data</th><th>Ordem</th><th>Descrição</th><th>Abertura</th><th>Início–fim</th><th class="num">Horas</th><th class="num">h:min</th><th>Obs.</th></tr></thead>
@@ -289,7 +328,7 @@ function rephRender(){
         <td class="meta">${esc(l.ordem_descricao || "")}</td><td>${dataBR(l.ordem_abertura)}</td><td>${hr(l)}</td>
         <td class="num">${num(l.horas)}</td><td class="num">${rephHmin(l.horas)}</td><td class="meta">${esc(l.observacao || "")}${l.codigo_externo ? (l.observacao ? " · " : "") + "Odoo" : ""}</td></tr>`).join("")}</tbody>
       <tfoot><tr><th colspan="5">${r.ordens.size} ordem(ns) · ${esc(r.n)} lançamento(s)</th><th class="num">${num(r.horas)}</th><th class="num">${rephHmin(r.horas)}</th><th></th></tr></tfoot></table></div></td></tr>`;
-  cont.innerHTML = `<div class="tabela-rola"><table>
+  cont.innerHTML = rephAvisoAtivHTML() + `<div class="tabela-rola"><table>
     <thead><tr><th>Colaborador</th><th>Departamento</th><th class="num">Ordens</th><th class="num">Horas</th><th class="num">Horas (h:min)</th>${REPH_ORDEM_HE.map(o => `<th class="num" title="hora extra lançada em ${esc(REPH_ORIGEM[o][1].toLowerCase())} (${esc(REPH_ORIGEM[o][0])})">HE ${esc(REPH_ORIGEM[o][0])}</th>`).join("")}<th class="num" title="hora extra das três origens: reparo, fabricação e manutenção">HE total (h:min)</th></tr></thead>
     <tbody>${res.map(r => `<tr class="linha-clicavel reph-linha" data-chave="${esc(r.chave)}" title="${_rephAberto === r.chave ? "fechar o detalhe" : "ver as ordens e os lançamentos"}">
         <td><strong>${esc(r.nome)}</strong></td><td class="meta">${esc(r.dep)}</td><td class="num">${r.ordens.size}</td>
@@ -770,6 +809,7 @@ function ligarReparos(){
   $("rep-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a")) return;
     if(_repView === "horas"){   // lote S52: a linha do colaborador abre/fecha o detalhe por ordem
+      if(e.target.closest("#reph-ativ-ver")){ _rephAtivAberto = !_rephAtivAberto; rephRender(); return; }   // lote S68-c1
       const l = e.target.closest("tr.reph-linha"); if(!l) return;
       _rephAberto = _rephAberto === l.dataset.chave ? null : l.dataset.chave; rephRender(); return;
     }

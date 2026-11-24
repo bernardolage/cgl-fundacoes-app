@@ -51,6 +51,33 @@ function estPodeEditar(){
 /* fase 144-0b: o SESMT (cargo ou módulo extra) usa o balcão só para EPI e uniforme. estPodeEditar() não muda, porque libera o resto do
    Estoque; a regra vale de novo no banco (estoque_saida_registrar). */
 function balSoEpi(){ return !estPodeEditar() && typeof sstPodeOperar === "function" && sstPodeOperar(); }
+/* lote S68-a (#365): quem lança contagem. Quem movimenta estoque conta tudo; o SESMT (cargo ou módulo extra) conta só EPI e
+   uniforme, pela mesma regra do balcão (balEhEpiAloc, hotfix 168). O banco confere de novo (estoque_ajustar). Sem produto,
+   responde se o perfil conta alguma coisa. O engenheiro sem o extra sesmt continua sem contar pelo front. */
+function estPodeContar(p){
+  if(estPodeEditar()) return true;
+  if(!balSoEpi()) return false;
+  return p === undefined ? true : balEhEpiAloc(p);
+}
+/* lote S68-e (#363): a saída de EPI e uniforme (com as saídas de hoje), a contagem e o "EPI por colaborador" moram também na aba
+   SESMT › EPI. Os cards são MOVIDOS (não copiados) para lá quando a aba abre e voltam ao lugar quando o Estoque abre: IDs e
+   eventos continuam os mesmos. */
+const EST_CARDS_EPI = ["bal-card", "est-ent-card", "epi-card"];   // ordem da aba
+const _estMarcas = {};
+let _estCardsLocal = "estoque";
+function estMoverCardsEpi(alvo){
+  const destino = alvo === "sesmt" ? $("sst-epi-aba") : null;
+  if(alvo === "sesmt" && !destino) return;
+  const local = destino ? "sesmt" : "estoque";
+  if(local === _estCardsLocal) return;
+  EST_CARDS_EPI.forEach(id => {
+    const card = $(id); if(!card) return;
+    if(!_estMarcas[id]){ _estMarcas[id] = document.createComment(" lugar do " + id + " no Estoque "); card.parentNode.insertBefore(_estMarcas[id], card); }
+    if(destino) destino.appendChild(card);
+    else _estMarcas[id].parentNode.insertBefore(card, _estMarcas[id]);
+  });
+  _estCardsLocal = local;
+}
 function estProdTxt(p){ return p ? `${prodTxt(p)}` : "—"; }
 /* fase 81: saldo acertado pela sincronização com o Odoo (scripts/importar-odoo-compras.js estoque) */
 function estChipOdoo(p){
@@ -79,9 +106,12 @@ async function carregarEstoque(force){
     _estCarregado = true;
   }
   const pode = estPodeEditar();
-  ["btn-registrar-entrada","btn-est-controlar"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
+  ["btn-est-controlar"].forEach(id => { const b = $(id); if(b) b.style.display = pode ? "" : "none"; });
   const soEpi = balSoEpi();   // fase 144-0b
-  if($("bal-card")) $("bal-card").style.display = pode || soEpi ? "" : "none";
+  const epiFora = soEpi && _estCardsLocal !== "sesmt";   // lote S68-e: no Estoque, quem só opera EPI vê o aviso de SESMT › EPI
+  if($("bal-card")){ $("bal-card").style.display = pode || soEpi ? "" : "none"; $("bal-card").hidden = epiFora; }
+  if($("est-epi-aviso")) $("est-epi-aviso").hidden = !epiFora;
+  if($("est-ent-card")) $("est-ent-card").hidden = !estPodeContar();   // lote S68-a: quem não conta nem dá entrada não vê o card
   if(soEpi){
     if($("bal-titulo")) $("bal-titulo").textContent = "Saída de EPI e uniforme";
     if($("bal-ajuda")) $("bal-ajuda").textContent = "entrega ao colaborador: o custo cai na obra, na TAG ou no setor e o item vai para a ficha de EPI de quem retira";
@@ -91,6 +121,7 @@ async function carregarEstoque(force){
   estAplicarTipo();
   // fase 100: relatório de EPI por colaborador e por obra (js/epi.js), só para quem vê
   if(typeof epiAplicarVisibilidade === "function"){ epiAplicarVisibilidade(); if(podeVerEpi()) epiRenderRelatorio("epi-conteudo"); }
+  if($("epi-card")) $("epi-card").hidden = epiFora;   // lote S68-e
   await Promise.all([carregarReposicao(), carregarUltimasEntradas(), pode || soEpi ? carregarSaidasHoje() : null, balOsPreparar(), carregarPendenciasEstoque()]);   // fase 160: + campo da OS; lote S63-d: + pendências de estoque
 }
 
@@ -830,6 +861,10 @@ async function carregarFornecedores(){
 
 /* ---------- formulário de movimento ---------- */
 function estAplicarTipo(){
+  // lote S68-a (#365): o SESMT só conta (Ajuste / inventário); a Entrada continua de quem movimenta estoque
+  if(!estPodeEditar() && estPodeContar()) _estTipo = "ajuste";
+  const bEnt = document.querySelector('#est-tipos .serv-view-btn[data-tipo="entrada"]'); if(bEnt) bEnt.hidden = !estPodeEditar();
+  $("btn-registrar-entrada").hidden = _estTipo === "entrada" ? !estPodeEditar() : !estPodeContar();
   document.querySelectorAll("#est-tipos .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.tipo === _estTipo));
   $("est-tipo-ajuda").textContent = EST_AJUDA[_estTipo] || "";
   document.querySelectorAll(".est-so-entrada").forEach(el => el.style.display = _estTipo === "entrada" ? "" : "none");
@@ -847,13 +882,14 @@ function estMostrarProdInfo(){
     estChipOdoo(p) +
     (_estTipo === "ajuste" ? (p.estoque_atualizado_em   // lote S63-d (#276)
       ? ` · <span class="meta">já contado em ${dataBR(String(p.estoque_atualizado_em).slice(0, 10))}: a nova contagem precisa de justificativa em Observações e espera o diretor</span>`
-      : ` · <span class="meta">primeira contagem no app: o estoque fica igual ao contado na hora</span>`) : "");
+      : ` · <span class="meta">primeira contagem no app: o estoque fica igual ao contado na hora</span>`) : "") +
+    (_estTipo === "ajuste" && !estPodeContar(p) ? ` · <span class="tag ambar">não é EPI nem uniforme: o SESMT conta só EPI e uniforme</span>` : "");   // lote S68-a
 }
 async function estBuscarProdutos(termo){
   if(!termo || termo.length < 2) return [];
   const t = termo.replace(/[%,()]/g, " ").trim();
   const { data } = await sb.from("produtos")
-    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,odoo_saldo_em,estoque_atualizado_em")
+    .select("id,codigo,nome,unidade,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,odoo_saldo_em,estoque_atualizado_em,categoria_custo,categoria:categorias_produto(nome)")   // lote S68-a: categoria para a regra do EPI
     .eq("ativo", true).eq("tipo_item", "produto").or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`).order("nome").limit(25);
   return data || [];
 }
@@ -906,8 +942,10 @@ function estPrepararMovimento(tipo, p){
 }
 
 async function registrarEntrada(){
-  if(!estPodeEditar()){ aviso("app-aviso", "Seu perfil não movimenta estoque.", "erro"); return; }
+  // lote S68-a (#365): a Entrada é de quem movimenta estoque; a contagem também do SESMT, só para EPI e uniforme
+  if(_estTipo === "entrada" ? !estPodeEditar() : !estPodeContar()){ aviso("app-aviso", "Seu perfil não movimenta estoque.", "erro"); return; }
   if(!_estProd){ aviso("app-aviso", "Escolha um produto.", "erro"); $("est-busca-prod").focus(); return; }
+  if(_estTipo === "ajuste" && !estPodeContar(_estProd)){ aviso("app-aviso", "O SESMT conta só EPI e uniforme.", "erro"); return; }
   const qtdInformada = Number($("ent-qtd").value);
   if($("ent-qtd").value === "" || isNaN(qtdInformada) || qtdInformada < 0){ aviso("app-aviso", "Informe a quantidade.", "erro"); return; }
   const reg = {
@@ -1161,7 +1199,9 @@ function ligarEstoque(){
   $("bal-item")?.addEventListener("blur", () => setTimeout(() => { if($("bal-item-res")) $("bal-item-res").style.display = "none"; }, 200));
   $("btn-bal-registrar")?.addEventListener("click", () => comBotaoTravado("btn-bal-registrar", registrarSaidaBalcao));
   devLigar();   // fase 83: devolução de obra
-  document.querySelector('nav button[data-secao="estoque"]')?.addEventListener("click", () => carregarEstoque(false));
+  // lote S68-e: abrir o Estoque traz de volta os cards que estavam na aba SESMT › EPI
+  document.querySelector('nav button[data-secao="estoque"]')?.addEventListener("click", () => { estMoverCardsEpi("estoque"); carregarEstoque(false); });
+  $("est-epi-link")?.addEventListener("click", (e) => { e.preventDefault(); if(typeof sstAbrirEpi === "function") sstAbrirEpi(); });
 }
 
 if(document.readyState === "loading"){

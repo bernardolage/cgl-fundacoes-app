@@ -69,6 +69,7 @@ function renderMedicoes(){
   const dados = medFiltradas();
   const cont = $("med-contador");
   if(cont) cont.textContent = `${dados.length} de ${_medRegistros.length}`;
+  if($("btn-med-xlsx")) $("btn-med-xlsx").hidden = !podeVerValorObra();   // lote S68-g: só quem já vê os valores
   if(_medView === "kanban") renderMedKanban(dados);
   else                       renderMedLista(dados);
   medRecebRenderIndicadores();                              // fase 91: A receber / Vencidas / Recebido no mês
@@ -124,6 +125,57 @@ function renderMedLista(dados){
       <th>Nº</th><th>Obra</th><th>Período</th><th>%</th><th>Status</th><th>NF/RR</th><th class="num">Valor medido</th>
     </tr></thead>
     <tbody>${/* html */ linhas}</tbody></table></div>`;
+}
+
+/* Lote S68-g (chamado 110, Vitor e Tamires): "Exportar .xlsx" da lista no leiaute das abas mensais da planilha de obras.
+   Uma linha por medição × TAG das medições filtradas na tela (medFiltradas): obra, cliente, medição, período, TAG, valor,
+   NF, emissão, vencimento, pagamento. Valor da TAG = soma dos itens dela; medição sem item sai numa linha só com o valor
+   final. TAG do item (equipamento_tag ou código do equipamento); sem TAG, a da medição; sem nenhuma, "—".
+   Leitura por lerTudo (corte de 1.000 linhas). Só para podeVerValorObra(); no banco a leitura já é por cargo. */
+async function medExportarXlsx(){
+  if(!podeVerValorObra()) return;
+  if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
+  const meds = medFiltradas();
+  if(!meds.length){ aviso("app-aviso", "Nada para exportar com esses filtros.", "erro"); return; }
+  const ids = new Set(meds.map(m => m.id));
+  const [rm, ri] = await Promise.all([
+    lerTudo(() => sb.from("medicoes").select("id,nf_data_emissao,equipamento:equipamentos(codigo),obra:obras(codigo,nome,cliente:clientes!obras_cliente_id_fkey(nome,nome_fantasia))")),
+    lerTudo(() => sb.from("medicao_itens").select("id,medicao_id,valor_total,equipamento_tag,equipamento:equipamentos(codigo)"))
+  ]);
+  const erro = rm.error || ri.error;
+  if(erro){ aviso("app-aviso", "Não foi possível ler as medições para a planilha: " + erro.message, "erro"); return; }
+  const extra = new Map(rm.data.map(x => [x.id, x]));
+  const porMed = new Map();   // medicao_id -> Map(tag -> valor)
+  ri.data.forEach(it => {
+    if(!ids.has(it.medicao_id)) return;
+    const ex = extra.get(it.medicao_id) || {};
+    const tag = (it.equipamento_tag || "").trim() || it.equipamento?.codigo || ex.equipamento?.codigo || "—";
+    if(!porMed.has(it.medicao_id)) porMed.set(it.medicao_id, new Map());
+    const t = porMed.get(it.medicao_id);
+    t.set(tag, (t.get(tag) || 0) + (Number(it.valor_total) || 0));
+  });
+  const d = v => v ? dataBR(v) : "";
+  const aoa = [["Obra", "Cliente", "Medição", "Período", "TAG", "Valor", "NF", "Emissão", "Vencimento", "Pagamento"]];
+  meds.forEach(m => {
+    const ex = extra.get(m.id) || {};
+    const ob = ex.obra || m.obra || {};
+    const cli = ob.cliente ? (ob.cliente.nome_fantasia || ob.cliente.nome || "") : "";
+    const base = [medObraTxt(m), cli, m.numero || "", medPeriodoTxt(m)];
+    const fim = [m.nf_numero ? medDocTxt(m) : "", d(ex.nf_data_emissao), d(m.nf_vencimento), d(m.recebida_em)];
+    const tags = porMed.get(m.id);
+    if(!tags || !tags.size){
+      aoa.push(base.concat([ex.equipamento?.codigo || "—", Number(m.valor_final ?? m.valor_medido) || 0], fim));
+      return;
+    }
+    [...tags.entries()].sort((a, b) => a[0].localeCompare(b[0], "pt-BR", { numeric: true }))
+      .forEach(([tag, valor]) => aoa.push(base.concat([tag, Math.round(valor * 100) / 100], fim)));
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{ wch: 34 }, { wch: 28 }, { wch: 12 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 11 }, { wch: 11 }, { wch: 11 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "MEDIÇÕES");
+  XLSX.writeFile(wb, `medicoes-${hojeISO()}.xlsx`);
+  aviso("app-aviso", `Planilha com ${aoa.length - 1} linha(s) de ${meds.length} medição(ões).`, "sucesso");
 }
 
 function renderMedKanban(dados){
@@ -2334,6 +2386,7 @@ async function medAbrirBoletimImportado(){
 
 /* ---------- Listeners ---------- */
 function ligarMedicoes(){
+  $("btn-med-xlsx")?.addEventListener("click", () => comBotaoTravado("btn-med-xlsx", medExportarXlsx));   // lote S68-g
   document.querySelectorAll("#med-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {
       document.querySelectorAll("#med-painel .serv-view-btn").forEach(x => x.classList.remove("ativo"));

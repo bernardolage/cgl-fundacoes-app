@@ -978,6 +978,45 @@ function manAtivDiaHora(dia, hora, vazio){
   const d = dia ? dataBR(dia).slice(0, 5) : "", h = hora ? String(hora).slice(0, 5) : "";
   return [d, h].filter(Boolean).join(" ") || (vazio == null ? "—" : vazio);
 }
+/* lote S68-c1 (#368): início e fim da atividade não são hora trabalhada. Atividade com executante, início e fim e sem hora
+   da mesma pessoa e dia na OS (gravada ou aguardando aprovação) mostra "Lançar hora", que grava pelo caminho do Lançar horas
+   (aptGravarLinha: repetida, divisão pelo expediente e HE para aprovação). Devolve null (nada a lançar), { dia } ou
+   { varios: true } (atividade de vários dias: uma linha por dia, pelo Lançar horas ou pela aba Mão de obra). */
+function manAtivSemHora(a){
+  if(!a || !a.executante_id || !a.inicio || !a.fim) return null;
+  const dia = a.data_inicio || a.data_fim; if(!dia) return null;
+  if(a.data_fim && a.data_inicio && a.data_fim !== a.data_inicio) return { varios: true };
+  const tem = _manHoras.some(h => h.funcionario_id === a.executante_id && h.data === dia)
+    || (_aptAgDoc[_manAtual?.id] || []).some(x => x.funcionario_id === a.executante_id && x.data === dia);
+  return tem ? null : { dia };
+}
+function manPodeLancarHoraAtiv(){
+  return !!_manAtual?.id && ["agendada", "em_andamento"].includes(_manAtual.status) && typeof aptPodeGravar === "function" && aptPodeGravar("OS");
+}
+function manAtivHoraHTML(a){
+  const s = manAtivSemHora(a); if(!s) return "";
+  if(s.varios) return ` <span class="tag cinza man-a-semhora" title="Atividade de vários dias: lance uma linha por dia na aba Mão de obra ou no Lançar horas">sem hora</span>`;
+  if(!manPodeLancarHoraAtiv()) return ` <span class="tag ambar man-a-semhora" title="Início e fim da atividade não contam como hora trabalhada e não há hora desta pessoa neste dia na OS">sem hora</span>`;
+  return ` <button type="button" class="btn-sec btn-sm man-a-hora" data-a="${esc(a.id)}" title="Grava a hora de ${esc(dataBR(s.dia))} pelo caminho do Lançar horas (hora extra vai para aprovação)">Lançar hora</button>`;
+}
+async function manAtivLancarHora(id){
+  const a = _manAtivs.find(x => x.id === id), s = manAtivSemHora(a);
+  if(!s?.dia || !manPodeLancarHoraAtiv()) return;
+  const ini = String(a.inicio).slice(0, 5), fim = String(a.fim).slice(0, 5);
+  if(fim <= ini){ aviso("app-aviso", "O fim precisa ser depois do início (hora que passa da meia-noite: uma linha por dia).", "erro"); return; }
+  let div;
+  try { div = await aptDividirFicha({ data: s.dia, inicio: ini, fim, hora_extra: false, observacao: `Atividade: ${String(a.atividade || "").slice(0, 200)}` }); }
+  catch(e){ aviso("app-aviso", e.message, "erro"); return; }
+  if(!div) return;
+  const doc = { tipo: "OS", id: _manAtual.id, numero: _manAtual.numero, status: _manAtual.status };
+  const linhas = div.regs.map(r => ({ doc, funcionario_id: a.executante_id, data: r.data, inicio: r.inicio, fim: r.fim, hora_extra: !!r.hora_extra, observacao: r.observacao, origem: "ficha" }));
+  for(const l of linhas){ try { await aptGravarLinha(l); } catch(e){ l.estado = "recusada"; l.msg = e.message; } }
+  const n = st => linhas.filter(l => l.estado === st).length, presas = linhas.filter(l => !["gravada", "aguardando"].includes(l.estado));
+  await abrirManutencao(_manAtual.id); manAtivarTab("atividades");
+  if(presas.length) aviso("app-aviso", `${n("gravada") + n("aguardando") ? `${n("gravada")} gravada(s), ${n("aguardando")} aguardando aprovação; ` : ""}não gravou: ${presas.map(l => l.msg).filter(Boolean).join(" · ")}`, n("gravada") + n("aguardando") ? "aviso" : "erro");
+  else if(n("aguardando")) aviso("app-aviso", `${n("gravada") ? `${n("gravada")} linha(s) normal(is) gravada(s); ` : ""}${n("aguardando")} de hora extra aguardando aprovação. ${aptAvisoAprovacao("OS")}`, "ok");
+  else aviso("app-aviso", linhas.length > 1 ? `Hora gravada em ${linhas.length} linhas na aba Mão de obra.` : `Hora gravada na aba Mão de obra.${div.avisoExp ? ` ${div.avisoExp}: a hora extra de dia útil não foi separada.` : ""}`, div.avisoExp ? "aviso" : "ok");
+}
 function manRenderAtivs(){
   const tb = $("man-ativs"), pode = manPodeEditar() && _manAtual && _manAtual.status !== "cancelada" && !!_manAtual.id;
   const optF = `<option value="">—</option>` + _manFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
@@ -991,11 +1030,11 @@ function manRenderAtivs(){
       <td><select class="man-a-f" data-c="situacao">${optSit}</select></td>
       <td><select class="man-a-f" data-c="executante_id">${optF}</select>${a.executante_nome && !a.executante_id ? `<div class="meta" title="nome da planilha, sem par no cadastro">${esc(a.executante_nome)}</div>` : ""}</td>
       <td><input type="date" class="man-a-f" data-c="data_inicio" value="${esc(a.data_inicio || "")}" title="Dia de início" style="width:118px;" /> <input type="time" class="man-a-f" data-c="inicio" value="${a.inicio ? esc(String(a.inicio).slice(0, 5)) : ""}" title="Hora de início" style="width:78px;" /></td>
-      <td><input type="date" class="man-a-f" data-c="data_fim" value="${esc(a.data_fim || "")}" title="Dia de conclusão" style="width:118px;" /> <input type="time" class="man-a-f" data-c="fim" value="${a.fim ? esc(String(a.fim).slice(0, 5)) : ""}" title="Hora de conclusão" style="width:78px;" /></td>
+      <td><input type="date" class="man-a-f" data-c="data_fim" value="${esc(a.data_fim || "")}" title="Dia de conclusão" style="width:118px;" /> <input type="time" class="man-a-f" data-c="fim" value="${a.fim ? esc(String(a.fim).slice(0, 5)) : ""}" title="Hora de conclusão" style="width:78px;" />${/* html */ manAtivHoraHTML(a)}</td>
       <td><input class="man-a-f" data-c="observacao" value="${esc(a.observacao || "")}" /></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo man-a-rem" data-a="${esc(a.id)}" title="remover">×</button></td></tr>`
     : `<tr><td>${esc(a.ordem)}</td><td class="meta">${esc(MAN_SETOR[a.setor] || "—")}</td><td>${esc(a.atividade)}</td><td>${manTagSit(a.situacao)}</td><td class="meta">${esc(manFunc(a.executante_id) || a.executante_nome || "—")}</td>
-      <td>${esc(manAtivDiaHora(a.data_inicio, a.inicio))}</td><td>${esc(manAtivDiaHora(a.data_fim, a.fim))}</td><td class="meta">${esc(a.observacao || "")}</td><td></td></tr>`).join("");
+      <td>${esc(manAtivDiaHora(a.data_inicio, a.inicio))}</td><td>${esc(manAtivDiaHora(a.data_fim, a.fim))}${/* html */ manAtivHoraHTML(a)}</td><td class="meta">${esc(a.observacao || "")}</td><td></td></tr>`).join("");
   if(pode){
     _manAtivs.forEach(a => { const tr = tb.querySelector(`tr[data-a="${a.id}"]`); if(!tr) return;
       tr.querySelector('[data-c="setor"]').value = a.setor || ""; tr.querySelector('[data-c="situacao"]').value = a.situacao; tr.querySelector('[data-c="executante_id"]').value = a.executante_id || ""; });
@@ -1019,8 +1058,11 @@ function manRenderAtivs(){
       const { error } = await sb.from("manutencao_atividades").update(upd).eq("id", id);
       if(error){ aviso("app-aviso", "Não foi possível salvar a atividade: " + error.message, "erro"); return; }
       if(atv) Object.assign(atv, upd);
-      if(c === "situacao" || Object.keys(upd).length > 1) manRenderAtivs();
+      // lote S68-c1: executante, dia e hora decidem o botão "Lançar hora" (só redesenha quando ele muda)
+      const horaAntes = !!el.closest("td")?.parentElement?.querySelector(".man-a-hora, .man-a-semhora"), horaMudou = ["executante_id", "inicio", "fim", "data_inicio", "data_fim"].includes(c);
+      if(c === "situacao" || Object.keys(upd).length > 1 || (horaMudou && (horaAntes || !!manAtivHoraHTML(atv)))) manRenderAtivs();
     }));
+    tb.querySelectorAll(".man-a-hora").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => manAtivLancarHora(b.dataset.a))));   // lote S68-c1 (#368)
     tb.querySelectorAll(".man-a-rem").forEach(b => b.addEventListener("click", async () => {
       const { error } = await sb.from("manutencao_atividades").delete().eq("id", b.dataset.a);
       if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }

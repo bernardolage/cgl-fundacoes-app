@@ -209,7 +209,7 @@ function _eixoServicoOrc(texto, tipoEstaca){
 async function prepararCatalogoOrc(){
   const [srv, vrt, prc, cat] = await Promise.all([
     sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao,nota_interna,tipo_estaca,ordem_exibicao").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),   // lote S65-e: ordem padrão do catálogo
-    sb.from("servico_variantes").select("id,servico_id,codigo,nome,ativo,tipo_obra,unidade,porte,faixa_prof,perna").order("codigo"),
+    sb.from("servico_variantes").select("id,servico_id,codigo,nome,descricao,ativo,tipo_obra,unidade,porte,faixa_prof,faixa_prof_min,faixa_prof_max,perna").order("codigo"),
     sb.from("servico_precos").select("variante_id,preco_referencia,vigente_desde")
       .order("vigente_desde",{ ascending:false }),
     sb.from("categorias_servico").select("id,nome,parent_id")
@@ -262,14 +262,38 @@ async function prepararCatalogoOrc(){
   _orcCatOptions = montarOpcoesCatalogoOrc(null); // catálogo completo
 }
 
-// Nome que vai para a descrição do item: nome do serviço quando as variantes estão agrupadas
-function _nomeItemCatalogoOrc(v){
+// Rótulo da variante no seletor: nome do serviço quando as variantes estão agrupadas, senão o nome da variante
+function _rotuloVarianteOrc(v){
   if(!v) return "";
   if(_orcServAgrupado[v.servico_id]){
     const s = _orcServicos.find(x => x.id === v.servico_id);
     if(s) return s.nome || v.nome || "";
   }
   return v.nome || "";
+}
+
+// Faixa de profundidade da variante em texto curto: "até 18 m", "18 a 24 m", "acima de 30 m"
+function _faixaProfTextoOrc(v){
+  const num = (x) => (x == null || x === "") ? null : Number(x);
+  const min = num(v.faixa_prof_min), max = num(v.faixa_prof_max);
+  const fmt = (x) => String(x).replace(".", ",");
+  if(min == null && max == null) return "";
+  if(max == null || max >= 999) return min ? `acima de ${fmt(min)} m` : "";
+  if(!min) return `até ${fmt(max)} m`;
+  return `${fmt(min)} a ${fmt(max)} m`;
+}
+
+// Descrição que vai para o item (lote S68-b, #367): a descrição da variante quando preenchida, senão o nome.
+// Quando outra variante ativa do mesmo serviço tem a mesma descrição e esta tem faixa de profundidade, a faixa
+// entra no fim entre parênteses ("Estaca hélice contínua Ø 500mm (24 a 30 m)"). Variantes agrupadas: nome do serviço.
+function _nomeItemCatalogoOrc(v){
+  if(!v) return "";
+  if(_orcServAgrupado[v.servico_id]) return _rotuloVarianteOrc(v);
+  const desc = (v.descricao || "").trim();
+  if(!desc) return v.nome || "";
+  const repete = _orcVariantes.some(x => x.id !== v.id && x.servico_id === v.servico_id && (x.descricao || "").trim() === desc);
+  const faixa = repete ? _faixaProfTextoOrc(v) : "";
+  return faixa ? `${desc} (${faixa})` : desc;
 }
 
 // Seleciona a variante no select: opção exata; senão a opção agrupada que a contém (o value
@@ -280,7 +304,7 @@ function _selecionarVarianteSelect(sel, vid){
   const grp = [...sel.options].find(o => o.dataset.grupo && o.dataset.grupo.split(",").includes(vid));
   if(grp){ grp.value = vid; sel.value = vid; return; }
   const v = _orcVarById[vid];
-  sel.insertAdjacentHTML("beforeend", `<option value="${esc(vid)}">${esc(v ? _nomeItemCatalogoOrc(v) : "(item)")} · fora do filtro</option>`);
+  sel.insertAdjacentHTML("beforeend", `<option value="${esc(vid)}">${esc(v ? _rotuloVarianteOrc(v) : "(item)")} · fora do filtro</option>`);
   sel.value = vid;
 }
 
@@ -512,7 +536,7 @@ function orcTrocarModelo(){
     const vu = Number(tr.querySelector(".it-vu")?.value || 0);
     const ref = _orcPrecos[v.id] != null ? Number(_orcPrecos[v.id]) : 0;
     const desc = (tr.querySelector(".it-desc")?.value || "").trim();
-    if(qtd === Number(d.qtd || 0) && Math.abs(vu - ref) < 0.005 && desc === _nomeItemCatalogoOrc(v)){ tr.remove(); removidos++; }
+    if(qtd === Number(d.qtd || 0) && Math.abs(vu - ref) < 0.005 && (desc === _nomeItemCatalogoOrc(v) || desc === (v.nome || ""))){ tr.remove(); removidos++; }   // lote S68-b: o nome também vale (item padrão gravado antes da troca)
     else mantidos++;
   });
   const n = carregarItensPadraoOrc(true);
@@ -926,7 +950,7 @@ async function preencherOrcamentoDoAssistente(r, origem){
     const v = x.variante_id ? _orcVarById[x.variante_id] : null;
     adicionarItemPreenchido({
       variante_id: v ? v.id : null,
-      descricao: v ? _nomeItemCatalogoOrc(v) : (x.descricao || ""),
+      descricao: (x.descricao || "").trim() || (v ? _nomeItemCatalogoOrc(v) : ""),   // lote S68-b: a descrição do resumo fica; catálogo só quando vazia
       quantidade: Number(x.quantidade) || 0,
       unidade: x.unidade || (v && (v.unidade || _orcServUnidade[v.servico_id])) || "un",
       valor_unitario: x.valor_unitario != null ? Number(x.valor_unitario) : 0,

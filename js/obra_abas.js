@@ -881,6 +881,14 @@ const DOC_CATEGORIAS = {
   nfs: "Nota fiscal de serviço",   /* lote S39, chamado #27 (valor do enum só na migration 20261022_loteS48_a) */
   cno: "CNO (Cadastro Nacional de Obras)",   /* lote S48, chamado #119: o RH abre pela tag CNO em Horas e alocação (#122) */
   seguro_garantia: "Seguro garantia",   /* lote S50, chamado #152 (Tamires): apólice; valor do enum só na migration 20261026_loteS50_a */
+  /* lote S68-g (chamado 110, planilha de obras do Vitor): enum na migration 20261124_loteS68g_categorias_documento */
+  proposta: "Proposta",
+  plano_execucao: "Plano de execução",
+  memoria_calculo: "Memória de cálculo",
+  aprovacao_cliente: "Aprovação do cliente",
+  comprovante_pagamento: "Comprovante de pagamento",
+  termo_quitacao: "Termo de quitação",
+  termo_encerramento: "Termo de encerramento",
   outro: "Outro"
 };
 

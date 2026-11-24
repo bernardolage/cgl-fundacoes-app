@@ -747,6 +747,11 @@ async function epiAbrirFichaFuncionario(funcionarioId){
    vai para Funcionários › visão EPI. */
 function epiAbrirRelatorio(visao){
   if(visao) { _epiRel.visao = visao; _epiRel.dados = null; }
+  // #363: quem só opera EPI (SESMT) tem o relatório na aba SESMT › EPI; no Estoque fica só o aviso
+  if(typeof balSoEpi === "function" && balSoEpi() && typeof sstAbrirEpi === "function"){
+    sstAbrirEpi().then(() => $("epi-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    return;
+  }
   const semEstoque = typeof SECOES_OCULTAS_POR_CARGO === "object" && (SECOES_OCULTAS_POR_CARGO[usuarioAtual?.cargo] || []).includes("estoque");
   if(!semEstoque && typeof irParaSecao === "function" && irParaSecao("estoque")){
     if(typeof carregarEstoque === "function") carregarEstoque(false);

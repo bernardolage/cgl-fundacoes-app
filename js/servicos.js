@@ -168,6 +168,14 @@ function renderServicos(){
   else                              renderServLista(dados);
 }
 
+/* lote S68-d (#364): unidade da variante (coluna servico_variantes.unidade, fase 40); vazia herda a do serviço,
+   com a marca "(do serviço)". O orçamento usa a mesma regra (v.unidade || unidade do serviço). */
+function servUnidadeVarHtml(v, s){
+  if(v.unidade) return esc(v.unidade);
+  const su = s && s.unidade;
+  return su ? `${esc(su)} <span class="u-txt-fraco">(do serviço)</span>` : "—";
+}
+
 /* ---------- Render: Lista ---------- */
 function renderServLista(dados){
   const cont = $("serv-conteudo");
@@ -183,7 +191,7 @@ function renderServLista(dados){
       <td>${esc(s.nome)}</td>
       <td>${esc(raiz ? raiz.nome : "—")}</td>
       <td><span class="tag ${corTipoObra(v.tipo_obra)}">${esc(SERV_TIPO_OBRA[v.tipo_obra]||v.tipo_obra||"—")}</span></td>
-      <td>${esc(s.unidade||"—")}</td>
+      <td>${/* html */ servUnidadeVarHtml(v, s)}</td>
       <td class="num">${preco!=null ? brl(preco) : '<span class="tag cinza">sem preço</span>'}</td>
     </tr>`;
   }).join("");
@@ -264,6 +272,7 @@ function renderServCatalogo(dados){
           <td>${esc(v.codigo)}</td>
           <td>${esc(v.nome)}</td>
           <td><span class="tag ${corTipoObra(v.tipo_obra)}">${esc(SERV_TIPO_OBRA[v.tipo_obra]||v.tipo_obra||"—")}</span></td>
+          <td>${/* html */ servUnidadeVarHtml(v, g.s)}</td>
           <td class="num">${preco!=null ? brl(preco) : '<span class="tag cinza">—</span>'}</td>
         </tr>`;
       }).join("");
@@ -272,12 +281,12 @@ function renderServCatalogo(dados){
           <div>
             ${servPodeOrdenar() ? `<span class="serv-ordem"><button type="button" class="btn-ordem" data-serv-ordem="-1" data-serv="${esc(g.s.id)}" title="Subir este serviço na ordem padrão (vale para o seletor do orçamento)" aria-label="Subir serviço">▲</button><button type="button" class="btn-ordem" data-serv-ordem="1" data-serv="${esc(g.s.id)}" title="Descer este serviço na ordem padrão (vale para o seletor do orçamento)" aria-label="Descer serviço">▼</button></span>` : ""}
             <strong>${esc(g.s.nome)}</strong>
-            <span class="serv-caminho">${esc(servCatCaminho(g.s.categoria_id))} · ${esc(g.s.unidade||"")}</span>
+            <span class="serv-caminho" title="Unidade do serviço: vale para as variantes sem unidade própria">${esc(servCatCaminho(g.s.categoria_id))} · ${esc(g.s.unidade||"")}</span>
           </div>
           <span class="tag ${esc(SERV_NAT_COR[g.s.natureza]||'cinza')}">${esc(SERV_NATUREZA[g.s.natureza]||g.s.natureza)}</span>
         </div>
         <div class="tabela-rola"><table>
-          <thead><tr><th>Código</th><th>Variante</th><th>Tipo de obra</th><th class="num">Preço ref.</th></tr></thead>
+          <thead><tr><th>Código</th><th>Variante</th><th>Tipo de obra</th><th>Un.</th><th class="num">Preço ref.</th></tr></thead>
           <tbody>${linhas}</tbody></table></div>
       </div>`;
     });
@@ -306,7 +315,14 @@ function abrirFichaServ(id){
     <div><span>Serviço</span><strong>${esc(s.nome)}</strong></div>
     <div><span>Categoria</span><strong>${esc(servCatCaminho(s.categoria_id))}</strong></div>
     <div><span>Natureza</span><strong>${esc(SERV_NATUREZA[s.natureza]||s.natureza)}</strong></div>
-    <div><span>Unidade</span><strong>${esc(s.unidade||"—")}</strong></div>` : "";
+    <div><span>Unidade</span><strong>${/* html */ servUnidadeVarHtml(v, s)}</strong></div>` : "";
+
+  /* lote S68-d (#364): unidade desta variante; a 1ª opção (vazia) herda a do serviço e grava null */
+  const listaUn = (typeof UNIDADES !== "undefined" ? UNIDADES : []).slice();
+  if(v.unidade && !listaUn.includes(v.unidade)) listaUn.push(v.unidade);
+  $("serv-unidade").innerHTML = `<option value="">— a do serviço (${esc((s && s.unidade) || "sem unidade")}) —</option>`
+    + listaUn.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join("");
+  $("serv-unidade").value = v.unidade || "";
 
   $("serv-codigo").value   = v.codigo || "";
   $("serv-nome").value     = v.nome || "";
@@ -385,6 +401,7 @@ $("form-servico").addEventListener("submit", async (e) => {
     nome:           $("serv-nome").value.trim(),
     descricao:      $("serv-desc").value.trim() || null,
     tipo_obra:      $("serv-tipoobra").value,
+    unidade:        $("serv-unidade").value || null,   // lote S68-d: vazio herda a unidade do serviço
     diametro_mm:    $("serv-diam").value !== "" ? Number($("serv-diam").value) : null,
     faixa_prof_min: pmin,
     faixa_prof_max: pmax,
@@ -463,7 +480,8 @@ $("form-servico").addEventListener("submit", async (e) => {
 
 /* ====================================================================
    LOTE S66-g (#316) — estrutura do serviço na ficha
-   Nome, categoria, natureza e unidade são do serviço (valem para todas as variantes). Antes só apareciam nos chips do
+   Nome, categoria, natureza e unidade são do serviço (os três primeiros valem para todas as variantes; a unidade do
+   serviço vale para as variantes sem unidade própria, lote S68-d). Antes só apareciam nos chips do
    topo, sem campo para editar (causa do "travado" do Thales). Editam: o diretor e quem tem o acesso extra vigente
    "catalogo_estrutura" (Usuários; só a diretoria concede). O banco confere no gatilho trg_servicos_estrutura_guard.
    ==================================================================== */
@@ -484,7 +502,7 @@ function servPreencherEstrutura(s){
   $("serv-s-unidade").value = s?.unidade || "";
   const pode = !!s && servPodeEstrutura();
   ["serv-s-nome", "serv-s-categoria", "serv-s-natureza", "serv-s-unidade"].forEach(id => { $(id).disabled = !pode; });
-  box.title = pode ? "Nome, categoria, natureza e unidade do serviço valem para todas as variantes"
+  box.title = pode ? "Nome, categoria e natureza do serviço valem para todas as variantes; a unidade do serviço vale para as variantes sem unidade própria"
     : "Só o diretor ou quem tem o acesso extra Estrutura do catálogo (liberado pela diretoria em Usuários) muda estes campos";
 }
 function servEstruturaValores(){

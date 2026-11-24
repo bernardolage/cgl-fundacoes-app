@@ -151,7 +151,12 @@ function sstAplicarPermissoes(){
   ["btn-sst-novo-req", "btn-sst-novo-prog", "btn-sst-importar"].forEach(id => { const b = $(id); if(b) b.style.display = opera ? "" : "none"; });
   const bEx = document.querySelector('#sst-views .serv-view-btn[data-view="exames"]');   // fase 185b: ASO só para quem lê saúde
   if(bEx) bEx.style.display = typeof asoPodeVer === "function" && asoPodeVer() ? "" : "none";
+  const bEpi = document.querySelector('#sst-views .serv-view-btn[data-view="epi"]');   // #363: aba EPI
+  if(bEpi) bEpi.hidden = !sstPodeVerEpi();
+  if(_sstView === "epi" && !sstPodeVerEpi()) _sstView = "vencimentos";
 }
+/* #363: a aba EPI aparece para quem opera o SESMT ou vê o relatório de EPI (podeVerEpi, js/epi.js) */
+function sstPodeVerEpi(){ return sstPodeOperar() || (typeof podeVerEpi === "function" && podeVerEpi()); }
 
 function sstFiltros(){
   return {
@@ -175,6 +180,12 @@ function sstFuncsFiltrados(f){
 function renderSesmt(){
   const cont = $("sst-conteudo"); if(!cont) return;
   document.querySelectorAll("#sst-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _sstView));
+  // #363: a aba EPI usa os cards do Estoque, fora do #sst-conteudo e sem os filtros de pessoa
+  const epi = _sstView === "epi";
+  cont.hidden = epi;
+  const filtros = document.querySelector("#sst-painel .serv-filtros"); if(filtros) filtros.hidden = epi;
+  if($("sst-epi-aba")) $("sst-epi-aba").hidden = !epi;
+  if(epi){ renderSstEpi(); return; }
   // filtros que só valem em algumas visões
   const soPessoas = ["vencimentos", "pessoas"].includes(_sstView);
   ["sst-f-depto", "sst-f-funcao", "sst-f-ghe"].forEach(id => { $(id).style.display = soPessoas || _sstView === "matriz" ? "" : "none"; });
@@ -800,6 +811,24 @@ async function sstObraProgramasRender(obraId){
   </div>`;
   $("btn-obr-sst-novo")?.addEventListener("click", async () => { if(!irParaSecao("sesmt")) return; await carregarSesmt(false); novoSstPrograma(obraId); });
   cont.querySelectorAll("tr[data-id]").forEach(tr => tr.addEventListener("click", async () => { if(!irParaSecao("sesmt")) return; await carregarSesmt(false); abrirSstPrograma(tr.dataset.id); }));
+}
+/* ---------- aba EPI (#363) ----------
+   A saída de EPI e uniforme com as saídas de hoje, a contagem de EPI (#365) e o "EPI por colaborador e por obra" são os cards do
+   Estoque, movidos para cá (estMoverCardsEpi em js/estoque.js): mesmos IDs, mesmo código, mesma regra no banco. */
+function renderSstEpi(){
+  const alvo = $("sst-epi-aba"); if(!alvo) return;
+  if(typeof estMoverCardsEpi !== "function" || typeof carregarEstoque !== "function"){
+    alvo.innerHTML = `<p class="vazio">A saída de EPI não carregou. Recarregue a página.</p>`; return;
+  }
+  estMoverCardsEpi("sesmt");
+  carregarEstoque(false);
+}
+async function sstAbrirEpi(){
+  if(!irParaSecao("sesmt")) return;
+  await carregarSesmt(false);
+  if(!sstPodeVerEpi()) return;
+  _sstView = "epi";
+  renderSesmt();
 }
 async function sstAbrirPainelObra(obraId){
   if(!irParaSecao("sesmt")) return;

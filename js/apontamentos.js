@@ -314,10 +314,10 @@ async function aptGravarFicha(tipo, docId, regs){
   return { gravadas: normais.length, aguardando: he.length, erro: "" };
 }
 /* Hora extra aguardando aprovação de um documento: aparece na ficha numa linha à parte, fora do total e do custo (D12) */
-let _aptAgDoc = {};   // documento_id → [{data, inicio, fim}]
+let _aptAgDoc = {};   // documento_id → [{funcionario_id, data, inicio, fim}] (funcionario_id: lote S68-c1)
 async function aptCarregarAguardandoDoc(docId){
   if(!docId) return;
-  const { data, error } = await sb.from("apontamento_aprovacoes").select("id,data,inicio,fim").eq("documento_id", docId).eq("status", "aguardando").order("data").range(0, 999);
+  const { data, error } = await sb.from("apontamento_aprovacoes").select("id,funcionario_id,data,inicio,fim").eq("documento_id", docId).eq("status", "aguardando").order("data").range(0, 999);
   _aptAgDoc[docId] = error ? [] : (data || []);
 }
 function aptTxtAguardando(docId, tipo){

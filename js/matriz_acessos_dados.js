@@ -7,7 +7,7 @@
    ==================================================================== */
 const MATRIZ_ACESSOS = {
   retrato: "2026-11-24",
-  carimbo: "ef6de5ede7ecb1b24fbbdb80b7b6df1a",
+  carimbo: "ec571afbab4d836cd2b26b8b54d8bafc",
   acoes: ["ver","incluir","alterar","apagar"],
   grupos: ["Geral","Cadastros","Suprimentos","Comercial e financeiro","Campo","Pessoas e segurança","Sistema","Fora do menu"],
   modulos: [

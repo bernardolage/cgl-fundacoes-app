@@ -9,6 +9,9 @@
    - SVG desenhado aqui, sem biblioteca. Cor só por elemento.style.fill / style.stroke com token do :root (CLAUDE.md).
    - Término da mobilização sem desmobilização: previsão da obra pelo ritmo (fase 140) ou data prevista da obra; sem
      nenhuma, a barra vai até o fim da janela ("sem término previsto"). Reserva sem término idem.
+   - Lote S68-f (chamado 366, Bruno): OS de manutenção aberta (tipo_barra 'manutencao') vira barra cinza (--mgr-manutencao) até a
+     data_prevista da OS (atrasada vai até hoje, já na view); conta como ocupada em mgrLivres; o clique abre a OS só para
+     quem tem o item Manutenção no menu (mgrVeManutencao); os demais veem só o título.
    ==================================================================== */
 
 let _mgrBarras    = [];       // linhas de vw_equipamentos_cronograma_barras
@@ -52,7 +55,8 @@ function mgrNormalizar(b, prevObra){
 }
 
 /* Dias livres entre barras consecutivas de UMA máquina: [{ de, ate, dias }] (ISO, inclusivo).
-   Barra aberta (sem término) encerra a conta: depois dela não se sabe quando a máquina fica livre. */
+   Barra aberta (sem término) encerra a conta: depois dela não se sabe quando a máquina fica livre.
+   Toda barra conta como ocupada: mobilização, reserva e OS de manutenção aberta (lote S68-f). */
 function mgrLivres(barras){
   const ord = barras.filter(Boolean).slice().sort((a, b) => a.inicio.localeCompare(b.inicio));
   const out = [];
@@ -94,6 +98,7 @@ function mgrLayout({ grupos, barras, escala, hoje, desloc }){
         if(df < jan.ini || di > jFim) return;
         const a = Math.max(di, jan.ini), z = Math.min(df, jFim);
         lay.barras.push({ x: x(a), w: (z - a + 1) * jan.px, y: yb, h: G.barra, metodo: l.metodologia || "", reserva: b.tipo_barra === "reserva",
+          manutencao: b.tipo_barra === "manutencao",
           prevista: b.tipo_barra === "mobilizacao" && ["prevista", "em_preparacao"].includes(b.status), barra: b,
           operadores: b.tipo_barra === "mobilizacao" && b.barra_id === l.mob_id ? (l.operadores || "") : "" });
       });
@@ -143,7 +148,14 @@ function mgrCor(metodo){ return MGR_COR[metodo] || "var(--txt-sec)"; }
 function mgrTitulo(b){
   const r = b.barra, linhas = [];
   const datas = `${dataBR(r.inicio)} a ${r.aberta ? "sem término previsto" : dataBR(r.fim)}${r.estimada ? " (previsão da obra; sem desmobilização prevista)" : ""}`;
-  if(b.reserva){
+  if(b.manutencao){
+    const situacao = { agendada: "Agendada", em_andamento: "Em andamento" }[r.status] || r.status;
+    const tipo = { preventiva: "preventiva", corretiva: "corretiva", preditiva: "preditiva" }[r.cliente] || r.cliente || "";
+    linhas.push(`${r.obra_nome || "OS"} · prevista até ${dataBR(r.fim)}`);
+    linhas.push(`Manutenção ${tipo}`.trim());
+    linhas.push(`Desde ${dataBR(r.inicio)}${r.fim === hojeISO() ? " (vai até hoje: prevista vencida ou para hoje)" : ""}`);
+    linhas.push(`Situação: ${situacao}`);
+  } else if(b.reserva){
     linhas.push(`Reserva: ${r.obra_nome || "obra em negociação"}`);
     if(r.cliente) linhas.push(r.cliente);
     linhas.push(datas);
@@ -206,18 +218,24 @@ function mgrDesenhar(lay){
     frente.appendChild(g);
   });
   // barras
+  const veOS = mgrVeManutencao();
   lay.barras.forEach(b => {
     const r = b.barra;
-    const g = mgrEl("g", { class: "mgr-barra" + (b.reserva ? " mgr-reserva" : ""), tabindex: 0, role: "button",
-      "data-mgr-tipo": r.tipo_barra, "data-mgr-id": r.barra_id, "data-mgr-eq": r.equipamento_id });
+    const semLink = b.manutencao && !veOS;   // OS sem o item Manutenção no menu: só o título, sem clique
+    const g = mgrEl("g", { class: "mgr-barra" + (b.reserva ? " mgr-reserva" : "") + (b.manutencao ? " mgr-manutencao" : "") + (semLink ? " mgr-sem-link" : ""),
+      tabindex: semLink ? null : 0, role: semLink ? "img" : "button",
+      "data-mgr-tipo": r.tipo_barra, "data-mgr-id": semLink ? null : r.barra_id, "data-mgr-eq": r.equipamento_id });
     const t = mgrEl("title"); t.textContent = mgrTitulo(b); g.appendChild(t);
-    const cor = mgrCor(b.metodo);
-    if(b.reserva){
+    const cor = b.manutencao ? "var(--mgr-manutencao)" : mgrCor(b.metodo);
+    if(b.manutencao){
+      g.appendChild(mgrEl("rect", { x: b.x, y: b.y, width: Math.max(b.w, 2), height: b.h, rx: 3 }, { fill: cor }));
+    } else if(b.reserva){
       g.appendChild(mgrEl("rect", { x: b.x + 0.5, y: b.y + 0.5, width: Math.max(b.w - 1, 2), height: b.h - 1, rx: 3, "fill-opacity": 0.18, "stroke-dasharray": "5 3", "stroke-width": 1.5 }, { fill: cor, stroke: cor }));
     } else {
       g.appendChild(mgrEl("rect", { x: b.x, y: b.y, width: Math.max(b.w, 2), height: b.h, rx: 3, "fill-opacity": b.prevista ? 0.55 : 1 }, { fill: cor }));
     }
-    const rot = mgrCorte(b.reserva ? `Reserva: ${r.obra_nome || ""}` : [r.obra_codigo, r.cliente].filter(Boolean).join(" · "), b.w - 8);
+    const rot = mgrCorte(b.reserva ? `Reserva: ${r.obra_nome || ""}` : b.manutencao ? `Manutenção · ${r.obra_nome || "OS"}`
+      : [r.obra_codigo, r.cliente].filter(Boolean).join(" · "), b.w - 8);
     if(rot) g.appendChild(mgrTexto({ x: b.x + 4, y: b.y + 13, class: "mgr-txt-barra" }, { fill: b.reserva || b.prevista ? "var(--txt)" : "var(--txt-sobre)" }, rot));
     if(r.aberta) g.appendChild(mgrTexto({ x: b.x + b.w - 4, y: b.y + 13, "text-anchor": "end", class: "mgr-txt-barra" }, { fill: b.reserva || b.prevista ? "var(--txt)" : "var(--txt-sobre)" }, "›"));
     frente.appendChild(g);
@@ -259,7 +277,7 @@ function renderGraficoMob(){
   const opt = (v, rot, sel) => `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(rot)}</option>`;
 
   cont.innerHTML = `
-    <p class="meta">Gráfico de equipamentos tirado das mobilizações: a barra sólida é a mobilização (mais clara quando ainda prevista), a tracejada é a reserva para obra em negociação, e o vão entre duas barras mostra os dias livres da máquina. Passe o mouse para ver datas, operador e situação; clique para abrir.</p>
+    <p class="meta">Gráfico de equipamentos tirado das mobilizações: a barra sólida é a mobilização (mais clara quando ainda prevista), a tracejada é a reserva para obra em negociação, a cinza é a máquina em manutenção (OS aberta, até a data prevista), e o vão entre duas barras mostra os dias livres da máquina. Passe o mouse para ver datas, operador e situação; clique para abrir.</p>
     <div class="mcr-filtros">
       <div class="serv-views" role="group" aria-label="Escala">${Object.keys(MGR_ESCALAS).map(k => `<button type="button" class="serv-view-btn${k === _mgrEscala ? " ativo" : ""}" data-mgr-escala="${esc(k)}">${esc(MGR_ESCALAS[k].rot)}</button>`).join("")}</div>
       <button type="button" class="btn-sec btn-sm" id="btn-mgr-ant" title="Período anterior" aria-label="Período anterior">‹</button>
@@ -271,7 +289,7 @@ function renderGraficoMob(){
       ${semData ? `<span class="meta mcr-aviso" title="Mobilização prevista sem nenhuma data: não aparece no gráfico. Informe a data na ficha da mobilização.">${semData} prevista(s) sem data</span>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-mgr-imprimir" style="margin-left:auto;" title="Abre o gráfico numa janela para imprimir em A3 paisagem">Imprimir A3</button>
     </div>
-    <div class="mgr-legenda" id="mgr-legenda">${MCR_ORDEM.map(m => `<span><i data-metodo="${esc(m)}"></i>${esc(MCR_METODO[m])}</span>`).join("")}<span><i class="mgr-leg-reserva"></i>Reserva</span><span><i class="mgr-leg-livre"></i>Dias livres</span><span><i class="mgr-leg-hoje"></i>Hoje</span></div>
+    <div class="mgr-legenda" id="mgr-legenda">${MCR_ORDEM.map(m => `<span><i data-metodo="${esc(m)}"></i>${esc(MCR_METODO[m])}</span>`).join("")}<span><i class="mgr-leg-reserva"></i>Reserva</span><span><i class="mgr-leg-manutencao"></i>Em manutenção</span><span><i class="mgr-leg-livre"></i>Dias livres</span><span><i class="mgr-leg-hoje"></i>Hoje</span></div>
     ${grupos.length ? `<div class="mgr-rola" id="mgr-rola"></div>` : uiVazio("Nenhuma máquina com esses filtros.")}`;
   if(grupos.length){
     const svg = mgrDesenhar(lay);
@@ -284,10 +302,21 @@ function renderGraficoMob(){
   mgrLigar(cont);
 }
 
+/* Lote S68-f: o item Manutenção do menu está visível para este perfil (mesmo critério de irParaSecao) */
+function mgrVeManutencao(){
+  if(typeof document === "undefined" || !document.querySelector) return false;
+  const b = document.querySelector('.sidebar-nav button[data-secao="manutencao"]');
+  return !!b && b.style.display !== "none";
+}
 function mgrAbrirBarra(g){
   if(!g) return;
-  const id = g.getAttribute("data-mgr-id"), eq = g.getAttribute("data-mgr-eq");
-  if(g.getAttribute("data-mgr-tipo") === "reserva") mcrAbrirReserva(eq, id);
+  const id = g.getAttribute("data-mgr-id"), eq = g.getAttribute("data-mgr-eq"), tipo = g.getAttribute("data-mgr-tipo");
+  if(!id) return;
+  if(tipo === "reserva") mcrAbrirReserva(eq, id);
+  else if(tipo === "manutencao"){
+    if(!mgrVeManutencao() || !irParaSecao("manutencao")) return;
+    if(typeof abrirManutencao === "function") abrirManutencao(id);
+  }
   else abrirMobilizacao(id);
 }
 function mgrLigarSvg(svg){

@@ -4361,6 +4361,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   --z-menu: 100;     /* menu "Ações", grupo de abas */
   --z-modal: 9999;   /* diálogo (o <dialog> já sobe para a camada superior do navegador) */
   --z-aviso: 10001;  /* aviso (toast) */
+  /* gráfico de Mobilizações (lote S68-f, chamado 366): barra da OS de manutenção aberta. Apelido do --neutro, que o tema escuro
+     já redefine; texto da barra em --txt-sobre (4,76:1 nos dois temas, checar-contraste) */
+  --mgr-manutencao: var(--neutro);
 }
 }
 
@@ -4864,4 +4867,16 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .epi-cns-evol .ui-pulso figcaption { display: none; }
   .epi-cns-grade-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); margin-bottom: var(--esp-2); }
   .epi-cns-grade-btns { display: inline-flex; gap: var(--esp-1); }
+}
+
+/* #365 e #363 (SESMT): o atributo hidden perde para o display do .btn-sec e do .serv-filtros; a regra devolve o sumiço */
+@layer componentes {
+  .est-ent-card [hidden], #sst-painel .serv-filtros[hidden] { display: none; }
+}
+
+/* Lote S68-f (#366): OS de manutenção aberta no gráfico de Mobilizações (js/mobilizacoes_grafico.js, prefixo mgr-) */
+@layer componentes {
+  .mgr-legenda i.mgr-leg-manutencao { background: var(--mgr-manutencao); }
+  .mgr-svg .mgr-barra.mgr-sem-link { cursor: default; }
+  .mgr-svg .mgr-barra.mgr-sem-link:hover rect { stroke: none; }
 }
