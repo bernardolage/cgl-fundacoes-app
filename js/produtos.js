@@ -151,7 +151,7 @@ function prodAplicarPerfil(){
   const novo = $("btn-novo-produto"); if(novo) novo.style.display = prodPodeCriar() ? "" : "none";
   const salvar = $("btn-salvar-prod"); if(salvar) salvar.style.display = perfil ? "" : "none";
   const etq = $("btn-prod-etiqueta"); if(etq) etq.style.display = prodEditId ? "" : "none";   // lote S66-e (#244)
-  const excluir = $("btn-excluir-prod"); if(excluir) excluir.style.display = (perfil === "tudo" && prodEditId) ? "" : "none";
+  const excluir = $("btn-excluir-prod"); if(excluir) excluir.style.display = (prodPodeExcluir() && prodEditId) ? "" : "none";
   const arq = $("btn-arquivar-prod");   // lote S58 (#237)
   if(arq){ arq.style.display = ((perfil === "tudo" || perfil === "almox") && prodEditId) ? "" : "none"; arq.textContent = _prodAtivo ? "📦 Arquivar" : "♻️ Reativar"; }
   const novaCat = $("btn-nova-cat"); if(novaCat) novaCat.style.display = prodPodeEditarCategoria() && !ehSomenteLeitura() ? "" : "none";
@@ -994,15 +994,24 @@ async function salvarProduto(){
   await abrirProduto(prodEditId);
 }
 
+/* lote S70-b (#371): exclui o perfil "tudo", o mesmo da policy produtos_write (conferida em 24/11: admin, almoxarife,
+   comprador, gestor de acessórios e de manutenção; diretor pelo has_role). Produto com histórico nunca sai (FKs restrict):
+   a mensagem aponta Mesclar ou Arquivar. Se o RLS filtrar o delete sem erro, a tela não diz mais "Produto excluído.". */
+const PROD_MSG_NAO_EXCLUI = "Seu perfil não exclui produtos: peça ao almoxarifado.";
+const PROD_MSG_TEM_HISTORICO = "Este produto tem histórico (movimentação, pedido ou requisição) e não pode ser excluído. Se é duplicado, use Mesclar; se saiu de uso, Arquivar.";
+function prodPodeExcluir(){ return prodPerfilEdicao() === "tudo"; }
+
 async function excluirProduto(){
   if(!prodEditId) return;
-  if(prodPerfilEdicao() !== "tudo"){ aviso("app-aviso", "Seu perfil não exclui produtos: peça ao almoxarifado.", "erro"); return; }   // lote S51
+  if(!prodPodeExcluir()){ aviso("app-aviso", PROD_MSG_NAO_EXCLUI, "erro"); return; }   // lote S51, S70-b
   if(!(await uiConfirmar({ titulo: "Excluir produto", texto: "Excluir este produto? A ação não pode ser desfeita.", confirmar: "Excluir", perigo: true }))) return;
-  const { error } = await sb.from("produtos").delete().eq("id", prodEditId);
+  const { data, error } = await sb.from("produtos").delete().eq("id", prodEditId).select("id");
   if(error){
-    aviso("app-aviso","Não foi possível excluir: o produto pode estar vinculado a movimentações ou requisições.","erro");
+    // 23503 = chave estrangeira: o produto tem histórico (movimentação, pedido, requisição, OF...)
+    aviso("app-aviso", error.code === "23503" ? PROD_MSG_TEM_HISTORICO : "Não foi possível excluir: " + error.message, "erro");
     return;
   }
+  if(!data || !data.length){ aviso("app-aviso", PROD_MSG_NAO_EXCLUI, "erro"); return; }   // o RLS filtrou: nada foi apagado
   aviso("app-aviso","Produto excluído.","ok");
   await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
