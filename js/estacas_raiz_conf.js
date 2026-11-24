@@ -666,7 +666,9 @@ async function excSalvarDescartar(){
 
 async function excRestaurar(execId){
   if(!excPode()) return;
-  if(!confirm("Restaurar esta execução? Ela volta para o avanço, a conferência e a medição.")) return;
+  const ok = await uiConfirmar({ titulo: "Restaurar execução", confirmar: "Restaurar",
+    texto: "Restaurar esta execução? Ela volta para o avanço, a conferência e a medição." });
+  if(!ok) return;
   const { error } = await sb.rpc("execucao_restaurar", { p_exec: execId });
   if(error){ aviso("app-aviso", error.message, "erro"); return; }
   await excAposGravar("Execução restaurada.");
