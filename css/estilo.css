@@ -4543,6 +4543,8 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-modal-x:hover { background: var(--sup-2); color: var(--txt); }
 .ui-modal-corpo { padding: var(--esp-4); overflow: auto; font-size: var(--txt-md); line-height: var(--lh-base); }
 .ui-modal-corpo > p { margin: 0; }
+.ui-pedir-campos { display: flex; flex-direction: column; gap: var(--esp-3); }
+.ui-modal-corpo > p + .ui-pedir-campos { margin-top: var(--esp-3); }
 .ui-modal-acoes { display: flex; justify-content: flex-end; gap: var(--esp-2); flex-wrap: wrap; padding: var(--esp-3) var(--esp-4); border-top: 1px solid var(--borda); }
 
 /* uiAvisar */

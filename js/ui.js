@@ -297,7 +297,8 @@ function uiProgresso(feito, total, rotulo, opcoes){
 
 /* ---- Diálogos: modal, aviso (toast) e confirmação — no lugar dos espalhados e de alert/confirm nativos ----
    uiModalHTML monta o HTML (testável); uiModal abre num <dialog> e devolve Promise com o id da ação clicada (null = fechou).
-   cfg = { titulo, corpoHTML, texto, acoes:[{ id, texto, primaria, perigo }], largura: "p" | "m" | "g", erro } */
+   cfg = { titulo, corpoHTML, texto, acoes:[{ id, texto, primaria, perigo }], largura: "p" | "m" | "g", erro,
+           comValores (true = resolve { acao, valores }, com os [name] do corpo lidos antes de fechar) } */
 function uiModalHTML(cfg){
   const c = cfg || {};
   const larg = ["p", "m", "g"].includes(c.largura) ? c.largura : "m";
@@ -318,11 +319,29 @@ function uiModal(cfg){
       if(b){ res = b.dataset.acao || null; d.close(); }
       else if(ev.target === d){ d.close(); }   // clique no véu fecha
     });
-    d.addEventListener("close", () => { d.remove(); resolve(res); });
+    const comValores = !!(cfg && cfg.comValores);
+    if(comValores){   // Enter num campo aciona o botão principal (textarea continua quebrando linha)
+      d.addEventListener("keydown", ev => {
+        if(ev.key !== "Enter" || !ev.target.matches(".ui-modal-corpo input")) return;
+        const prim = d.querySelector(".ui-modal-acoes .ui-btn-prim");
+        if(prim){ ev.preventDefault(); prim.click(); }
+      });
+    }
+    d.addEventListener("close", () => {
+      let valores = null;
+      if(comValores){   // lê os campos antes de o diálogo sair da página
+        valores = {};
+        d.querySelectorAll(".ui-modal-corpo [name]").forEach(el => { valores[el.name] = el.type === "checkbox" ? el.checked : el.value; });
+      }
+      d.remove();
+      resolve(comValores ? { acao: res, valores } : res);
+    });
     document.body.appendChild(d);
     d.showModal();
-    const foco = d.querySelector(".ui-btn-prim") || d.querySelector(".ui-modal-acoes .ui-btn");
+    const campo = comValores ? d.querySelector(".ui-modal-corpo input, .ui-modal-corpo select, .ui-modal-corpo textarea") : null;
+    const foco = campo || d.querySelector(".ui-btn-prim") || d.querySelector(".ui-modal-acoes .ui-btn");
     if(foco) foco.focus();
+    if(campo && campo.select) campo.select();
   });
 }
 /* Confirmação: Promise<boolean>. cfg = { titulo, texto, confirmar ("Confirmar"), cancelar ("Cancelar"), perigo } */
@@ -332,6 +351,26 @@ function uiConfirmar(cfg){
     { id: "nao", texto: c.cancelar || "Cancelar" },
     { id: "sim", texto: c.confirmar || "Confirmar", primaria: !c.perigo, perigo: !!c.perigo }
   ] }).then(r => r === "sim");
+}
+/* Pedir valores: modal com campos do uiCampo, no lugar do prompt() nativo.
+   cfg = { titulo, texto, campos:[cfg do uiCampo, com id], confirmar ("Confirmar"), cancelar ("Cancelar") }.
+   Promise<null (cancelou ou fechou) | { <id do campo>: valor em texto }>. A validação fica com quem chama. */
+function uiPedirValoresHTML(cfg){
+  const c = cfg || {};
+  const campos = (c.campos || []).map(f => uiCampo(Object.assign({}, f, { id: "uipv-" + uiId(f.id) }))).join("");
+  return `${c.texto ? `<p>${esc(c.texto)}</p>` : ""}<div class="ui-pedir-campos">${/* html */ campos || uiVazio("Nada a preencher.")}</div>`;
+}
+function uiPedirValores(cfg){
+  const c = cfg || {};
+  return uiModal({ titulo: c.titulo || "Informar", corpoHTML: uiPedirValoresHTML(c), largura: "p", comValores: true, acoes: [
+    { id: "nao", texto: c.cancelar || "Cancelar" },
+    { id: "sim", texto: c.confirmar || "Confirmar", primaria: true }
+  ] }).then(r => {
+    if(!r || r.acao !== "sim") return null;
+    const out = {};
+    (c.campos || []).forEach(f => { const k = uiId(f.id); out[k] = (r.valores || {})["uipv-" + k] ?? ""; });
+    return out;
+  });
 }
 /* Aviso (toast): HTML testável + função que mostra no canto. tipo = ok | aviso | perigo (ou "erro") | info.
    "ok" e "info" somem sozinhos em 4 s; "aviso" e "perigo" ficam até fechar. */

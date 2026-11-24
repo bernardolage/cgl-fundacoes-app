@@ -165,14 +165,17 @@ uiProgresso(38, 44, "concluída", { forma: "anel" })`,
     ]
   },
   {
-    fn: "uiModal · uiConfirmar · uiAvisar", titulo: "Diálogos",
-    para: "Um só modal, uma só confirmação e um só aviso no canto, no lugar de alert/confirm do navegador e dos modais espalhados.",
+    fn: "uiModal · uiConfirmar · uiPedirValores · uiAvisar", titulo: "Diálogos",
+    para: "Um só modal, uma só confirmação, um só pedido de valores e um só aviso no canto, no lugar de alert/confirm/prompt do navegador e dos modais espalhados.",
     uso: `const acao = await uiModal({ titulo: "Encerrar obra", texto: "A obra sai da lista de execução.", acoes: [{ id: "nao", texto: "Voltar" }, { id: "sim", texto: "Encerrar", primaria: true }] });
 if(await uiConfirmar({ titulo: "Excluir RDO", texto: "O RDO 18/11 será excluído.", confirmar: "Excluir", perigo: true })) { /* ... */ }
+const v = await uiPedirValores({ titulo: "Etiquetas", campos: [{ id: "qtd", rotulo: "Quantidade", tipo: "number", valor: 1 }], confirmar: "Imprimir" });
+if(v) { /* v.qtd = "1" (texto; validar aqui) */ }
 uiAvisar("RDO salvo.", "ok");   // ok e info somem em 4 s; aviso e perigo ficam`,
     exemplos: () => [
-      ["Abrir", `<div class="cat-linha"><button type="button" class="ui-btn" data-cat="modal">Abrir modal</button><button type="button" class="ui-btn" data-cat="confirmar">Confirmação de exclusão</button><button type="button" class="ui-btn" data-cat="aviso-ok">Aviso de sucesso</button><button type="button" class="ui-btn" data-cat="aviso-perigo">Aviso de erro</button></div>`],
+      ["Abrir", `<div class="cat-linha"><button type="button" class="ui-btn" data-cat="modal">Abrir modal</button><button type="button" class="ui-btn" data-cat="confirmar">Confirmação de exclusão</button><button type="button" class="ui-btn" data-cat="pedir-valores">Pedir valores</button><button type="button" class="ui-btn" data-cat="aviso-ok">Aviso de sucesso</button><button type="button" class="ui-btn" data-cat="aviso-perigo">Aviso de erro</button></div>`],
       ["Modal (desenho)", `<div class="cat-modal-amostra">${uiModalHTML({ titulo: "Encerrar obra", texto: "A obra sai da lista de execução.", acoes: [{ id: "nao", texto: "Voltar" }, { id: "sim", texto: "Encerrar", primaria: true }] })}</div>`],
+      ["Pedir valores (desenho)", `<div class="cat-modal-amostra">${uiModalHTML({ titulo: "Imprimir etiquetas", largura: "p", corpoHTML: uiPedirValoresHTML({ texto: "Folha A4 com 14 etiquetas.", campos: [{ id: "cat-qtd", rotulo: "Quantidade", tipo: "number", valor: 1 }, { id: "cat-pos", rotulo: "Posição inicial", tipo: "number", valor: 1, ajuda: "1 a 14" }] }), acoes: [{ id: "nao", texto: "Cancelar" }, { id: "sim", texto: "Imprimir", primaria: true }] })}</div>`],
       ["Erro no modal", `<div class="cat-modal-amostra">${uiModalHTML({ titulo: "Encerrar obra", erro: "Não foi possível encerrar." })}</div>`],
       ["Avisos (desenho)", `<div class="cat-linha">${uiAvisoHTML("RDO salvo.", "ok")}${uiAvisoHTML("Falta a assinatura do encarregado.", "aviso")}${uiAvisoHTML("Não foi possível salvar.", "erro")}</div>`]
     ]
@@ -295,6 +298,10 @@ function catLigar(){
     } else if(b.dataset.cat === "confirmar"){
       const ok = await uiConfirmar({ titulo: "Excluir RDO", texto: "O RDO 18/11 será excluído.", confirmar: "Excluir", perigo: true });
       uiAvisar(ok ? "RDO excluído (exemplo)." : "Exclusão cancelada.", ok ? "ok" : "info");
+    } else if(b.dataset.cat === "pedir-valores"){
+      const v = await uiPedirValores({ titulo: "Imprimir etiquetas", texto: "Folha A4 com 14 etiquetas.", confirmar: "Imprimir", campos: [
+        { id: "qtd", rotulo: "Quantidade", tipo: "number", valor: 1 }, { id: "pos", rotulo: "Posição inicial", tipo: "number", valor: 1, ajuda: "1 a 14" }] });
+      uiAvisar(v ? `Quantidade ${v.qtd}, posição ${v.pos} (exemplo).` : "Nada foi feito.", "info");
     } else if(b.dataset.cat === "aviso-ok") uiAvisar("RDO salvo.", "ok");
     else if(b.dataset.cat === "aviso-perigo") uiAvisar("Não foi possível salvar o RDO.", "perigo");
   });

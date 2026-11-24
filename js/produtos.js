@@ -466,8 +466,11 @@ function prodNumeroBR(v){
 async function prodDefinirCusto(p){
   if(!p || !p.id) return false;
   if(!prodPodeDefinirCusto()){ aviso("app-aviso", `${prodTxt(p)} está sem custo. Peça ao almoxarife ou a Compras o custo dele.`, "erro"); return false; }
-  const resp = prompt(`Custo unitário de ${prodTxt(p)} (R$ por ${p.unidade || "un"}).\nAs saídas a R$ 0,00 deste produto passam a usar este custo.`, "");
-  if(resp === null) return false;
+  const v = await uiPedirValores({ titulo: "Definir custo", confirmar: "Gravar custo",
+    texto: `${prodTxt(p)}. As saídas a R$ 0,00 deste produto passam a usar este custo.`,
+    campos: [{ id: "custo", rotulo: `Custo unitário (R$ por ${p.unidade || "un"})`, placeholder: "ex.: 12,50" }] });
+  if(!v) return false;
+  const resp = v.custo;
   const custo = prodNumeroBR(resp);
   if(!(custo > 0)){ aviso("app-aviso", "Informe um custo unitário maior que zero (ex.: 12,50).", "erro"); return false; }
   const { data, error } = await sb.rpc("produto_definir_custo", { p_produto: p.id, p_custo: Math.round(custo * 100) / 100, p_obs: null });
@@ -580,7 +583,8 @@ async function prodImportarCustos(file){
     .filter(i => i.codigo && String(i.custo).trim() !== "")
     .map(i => { const n = prodNumeroBR(i.custo); return { codigo: i.codigo, custo: isNaN(n) ? String(i.custo) : String(n) }; });
   if(!itens.length){ aviso("app-aviso", "A planilha não tem linhas com Código e Custo preenchidos.", "erro"); return; }
-  if(!confirm(`Gravar o custo de ${itens.length} produto(s)?\nSó os que estão sem custo recebem; as saídas a R$ 0,00 deles são revaloradas.`)) return;
+  if(!(await uiConfirmar({ titulo: "Importar custos", confirmar: "Gravar custos",
+    texto: `Gravar o custo de ${itens.length} produto(s)? Só os que estão sem custo recebem; as saídas a R$ 0,00 deles são revaloradas.` }))) return;
   const tot = { definidos: 0, revaloradas: 0, ignorados: [], nao_achados: [], invalidos: [] };
   for(let i = 0; i < itens.length; i += 2000){
     const { data, error } = await sb.rpc("produto_definir_custo_lote", { p_itens: itens.slice(i, i + 2000) });
@@ -633,7 +637,8 @@ async function prodSalvarTipoCategoria(){
   const cat = $("prod-categoria")?.value || "", selCat = $("prod-cat-tipo-compra");
   if(!cat || !selCat) return;
   const novo = selCat.value || null, nomeCat = _prodCategorias[cat] || "a categoria";
-  if(!confirm(`Trocar o tipo de compra padrão de ${nomeCat} para "${novo ? PROD_TIPO_COMPRA_LBL[novo] : "sem padrão (aplicação direta)"}"? Vale para os produtos dela que não têm tipo próprio.`)){ prodAtualizarTipoCompra(); return; }
+  if(!(await uiConfirmar({ titulo: "Tipo de compra da categoria", confirmar: "Trocar",
+    texto: `Trocar o tipo de compra padrão de ${nomeCat} para "${novo ? PROD_TIPO_COMPRA_LBL[novo] : "sem padrão (aplicação direta)"}"? Vale para os produtos dela que não têm tipo próprio.` }))){ prodAtualizarTipoCompra(); return; }
   const { error } = await sb.from("categorias_produto").update({ tipo_compra_padrao: novo }).eq("id", cat);
   if(error){ aviso("app-aviso", "Não foi possível gravar o tipo da categoria: " + error.message, "erro"); prodAtualizarTipoCompra(); return; }
   _prodCatTipo[cat] = novo;
@@ -990,7 +995,7 @@ async function salvarProduto(){
 async function excluirProduto(){
   if(!prodEditId) return;
   if(prodPerfilEdicao() !== "tudo"){ aviso("app-aviso", "Seu perfil não exclui produtos: peça ao almoxarifado.", "erro"); return; }   // lote S51
-  if(!confirm("Excluir este produto? A ação não pode ser desfeita.")) return;
+  if(!(await uiConfirmar({ titulo: "Excluir produto", texto: "Excluir este produto? A ação não pode ser desfeita.", confirmar: "Excluir", perigo: true }))) return;
   const { error } = await sb.from("produtos").delete().eq("id", prodEditId);
   if(error){
     aviso("app-aviso","Não foi possível excluir: o produto pode estar vinculado a movimentações ou requisições.","erro");
@@ -1023,7 +1028,8 @@ async function arquivarProduto(){
     aviso("app-aviso", `Não arquivado: ${p.codigo} tem ${num(p.estoque_atual)} ${p.unidade || "un"} em estoque. Zere o saldo antes de arquivar.`, "erro");
     return;
   }
-  if(!confirm(`Arquivar ${p.codigo} — ${p.nome}?\n\nSai das buscas de Compras, Separação e Movimentações. Pedidos antigos continuam mostrando o nome, e dá para reativar depois.`)) return;
+  if(!(await uiConfirmar({ titulo: `Arquivar ${p.codigo}`, confirmar: "Arquivar",
+    texto: `Arquivar ${p.codigo} — ${p.nome}? Sai das buscas de Compras, Separação e Movimentações. Pedidos antigos continuam mostrando o nome, e dá para reativar depois.` }))) return;
   const { error } = await sb.from("produtos").update({ ativo: false }).eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível arquivar: " + error.message, "erro"); return; }
   _prodTotalAtivos = null;
@@ -1035,7 +1041,8 @@ async function arquivarProduto(){
 
 async function criarNovaCategoria(){
   if(!prodPodeEditarCategoria()){ aviso("app-aviso", "Categoria nova é pedida ao almoxarifado ou à diretoria.", "erro"); return; }   // lote S51
-  const nome = prompt("Nome da nova categoria:");
+  const v = await uiPedirValores({ titulo: "Nova categoria", confirmar: "Criar", campos: [{ id: "nome", rotulo: "Nome da categoria", obrigatorio: true }] });
+  const nome = v && v.nome.trim();
   if(!nome) return;
   const { error } = await sb.from("categorias_produto").insert({ nome: nome.trim() });
   if(error){ aviso("app-aviso","Erro ao criar categoria: "+error.message,"erro"); return; }
@@ -1156,10 +1163,10 @@ async function prodSsvConfirmar(id){
   const ehRep = tipo === "reparo";
   const de = ehRep ? "do reparo" : "da OS", pelo = ehRep ? "pelo reparo" : "pela OS";
   const concluido = /\(concluíd[ao]\)$/.test(rot);
-  if(!confirm(`Vincular a saída de ${r.codigo} (${num(r.quantidade)} ${r.unidade || "un"}, ${dataBR(dataLocalISO(r.data))}, ${r.destino}) a ${rot}?\n\n` +
+  if(!(await uiConfirmar({ titulo: "Vincular saída", confirmar: "Vincular", texto: `Vincular a saída de ${r.codigo} (${num(r.quantidade)} ${r.unidade || "un"}, ${dataBR(dataLocalISO(r.data))}, ${r.destino}) a ${rot}? ` +
     `A peça entra na lista ${de} e o custo dela passa a contar ${pelo}. ` +
     (concluido ? `Como já está concluíd${ehRep ? "o" : "a"}, o custo sai do custo direto de ${r.destino} e entra ${de} agora.`
-               : `Ele só entra no custo quando ${ehRep ? "o reparo" : "a OS"} concluir; até lá sai do custo direto de ${r.destino}.`))) return;
+               : `Ele só entra no custo quando ${ehRep ? "o reparo" : "a OS"} concluir; até lá sai do custo direto de ${r.destino}.`) }))) return;
   await comBotaoTravado("prod-ssv-ok", async () => {
     const { error } = await sb.rpc("estoque_saida_vincular", { p_mov: id, p_tipo: tipo, p_id: alvo });
     if(error){ aviso("app-aviso", "Não vinculou: " + error.message, "erro"); return; }
@@ -1220,7 +1227,9 @@ function ligarProdutos(){
       e.preventDefault();
       if(sa.dataset.sscAcao === "xlsx") prodSscExportar();
       else if(sa.dataset.sscAcao === "ver-todos"){ _prodSscFiltro = null; prodRenderSaidasSemCusto(); prodContarSaidasSemCusto(); }   // fase 146
-      else if(sa.dataset.sscAcao === "revalorar-todos" && confirm("Gravar o custo atual nas saídas a R$ 0,00 de todos os produtos que já têm custo?")) prodSscRevalorar(null);
+      else if(sa.dataset.sscAcao === "revalorar-todos")
+        uiConfirmar({ titulo: "Revalorar saídas", confirmar: "Revalorar", texto: "Gravar o custo atual nas saídas a R$ 0,00 de todos os produtos que já têm custo?" })
+          .then(ok => { if(ok) prodSscRevalorar(null); });
       return;
     }
     const tr = e.target.closest(".linha-clicavel");
@@ -1301,14 +1310,15 @@ function prodEtiquetaHtml(p){
 }
 async function prodImprimirEtiqueta(){
   if(!prodEditId){ aviso("app-aviso", "Salve o produto antes de imprimir a etiqueta.", "erro"); return; }
-  const resp = prompt(`Quantas etiquetas deste produto? (folha A4 com ${PROD_ETQ_POR_FOLHA} etiquetas, 2 colunas × 7 linhas)`, "1");
-  if(resp === null) return;
-  const qtd = Math.round(Number(String(resp).replace(",", ".")));
+  const v = await uiPedirValores({ titulo: "Imprimir etiquetas", confirmar: "Imprimir",
+    texto: `Folha A4 com ${PROD_ETQ_POR_FOLHA} etiquetas (2 colunas × 7 linhas).`, campos: [
+      { id: "qtd", rotulo: "Quantas etiquetas", tipo: "number", valor: 1, ajuda: `1 a ${PROD_ETQ_MAX}` },
+      { id: "pos", rotulo: "Começar na posição", tipo: "number", valor: 1, ajuda: `1 a ${PROD_ETQ_POR_FOLHA}; use quando a folha já tiver etiquetas usadas` }] });
+  if(!v) return;
+  const qtd = Math.round(Number(String(v.qtd).replace(",", ".")));
   if(!(qtd >= 1 && qtd <= PROD_ETQ_MAX)){ aviso("app-aviso", `Informe de 1 a ${PROD_ETQ_MAX} etiquetas.`, "erro"); return; }
-  const ini = prompt(`Começar em qual posição da primeira folha? (1 a ${PROD_ETQ_POR_FOLHA}; use quando a folha já tiver etiquetas usadas)`, "1");
-  if(ini === null) return;
-  const pos = Math.min(PROD_ETQ_POR_FOLHA, Math.max(1, Math.round(Number(ini)) || 1));
-  const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }   // aberta no clique
+  const pos = Math.min(PROD_ETQ_POR_FOLHA, Math.max(1, Math.round(Number(v.pos)) || 1));
+  const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }   // logo depois do clique em Imprimir
   const { data: p, error } = await sb.from("produtos").select("codigo,nome,codigo_barras,aplicacao").eq("id", prodEditId).single();
   if(error){ w.close(); aviso("app-aviso", "Erro ao ler o produto: " + error.message, "erro"); return; }
   if(!(p.codigo_barras || p.codigo)){ w.close(); aviso("app-aviso", "O produto não tem código nem código de barras.", "erro"); return; }

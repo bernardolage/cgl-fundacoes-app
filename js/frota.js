@@ -861,7 +861,7 @@ async function salvarNotinhaPosto(){
 
 async function excluirNotinhaPosto(){
   if(!frotaPodeOperarPosto() || !_frotaPostoEditId) return;
-  if(!confirm("Excluir esta notinha? Se o mês do posto já estava conferido, ele volta para aberto.")) return;
+  if(!(await uiConfirmar({ titulo: "Excluir notinha", texto: "Excluir esta notinha? Se o mês do posto já estava conferido, ele volta para aberto.", confirmar: "Excluir", perigo: true }))) return;
   const n = _frotaAbast.dados.find(l => l.origem === "posto" && l.id === _frotaPostoEditId);
   const { error } = await sb.from("frota_abastecimentos_posto").delete().eq("id", _frotaPostoEditId);
   if(error){ frotaAvisoModal("fpn-aviso", "Não excluiu: " + error.message, "erro"); return; }
