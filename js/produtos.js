@@ -107,6 +107,7 @@ const PROD_MSG_SO_SESMT = "Seu perfil edita só produtos do SESMT (EPI, uniforme
 let _prodCatOriginal = null;   // categoria do produto aberto, como veio do banco (o SESMT só grava se ela for do SESMT)
 let _prodAprov = "aprovado";   // lote S63-b (#272): aprovacao do produto aberto (aprovado, pendente, substituido)
 let _prodAtivo = true;         // lote S58 (#237): situação do produto aberto; decide entre Arquivar e Reativar
+let _prodCustoSug = null;      // lote S70-d (#372): custo sugerido no cadastro do produto aberto
 function prodCategoriaEhSesmt(catId){
   return !!catId && PROD_CATEGORIAS_SESMT.includes(String(_prodCategorias[catId] || "").trim().toUpperCase());
 }
@@ -173,6 +174,33 @@ function prodPodeMesclar(){
   return !!usuarioAtual && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura())
     && ["diretor", "admin", "almoxarife"].includes(usuarioAtual.cargo);
 }
+/* lote S70-d (#372, Fabrício): no produto novo de quem não aprova e no pendente, a aba Geral traz mínimo, local e custo
+   sugerido. Mínimo e local são os mesmos campos da aba Estoque (espelhados); o custo é só sugestão (custo_sugerido): o
+   almoxarifado confirma no Aprovar, que já abre com os três preenchidos (produto_aprovar grava o custo). */
+function prodSugVisivel(){
+  return prodEditId ? _prodAprov === "pendente" : (prodPodeCriar() && !prodPodeAprovar());
+}
+function prodRenderSugestao(){
+  const box = $("prod-sug-bloco"); if(!box) return;
+  const mostrar = prodSugVisivel();
+  box.hidden = !mostrar;
+  if(!mostrar){ box.innerHTML = ""; return; }
+  const trava = prodPerfilEdicao() ? "" : " disabled";
+  const corpo = `<p class="meta">O almoxarifado confere e aprova: estes três vêm preenchidos no Aprovar. O custo é só sugestão; o que vale é o confirmado na aprovação.</p>
+    <div class="grade">
+      <div class="campo"><label for="prod-sug-minimo">Estoque mínimo</label><input id="prod-sug-minimo" type="number" min="0" step="0.001"${trava} /></div>
+      <div class="campo"><label for="prod-sug-local">Localização (depósito)</label><input id="prod-sug-local" placeholder="ex.: Prateleira A-3" autocomplete="off"${trava} /></div>
+      <div class="campo"><label for="prod-custo-sugerido">Custo sugerido (R$)</label><input id="prod-custo-sugerido" type="number" min="0" step="0.01" placeholder="preço de referência"${trava} /></div>
+    </div>`;
+  box.innerHTML = uiSecao("nota", "Para o almoxarifado aprovar", corpo, _prodAprov === "pendente" && prodEditId ? "aguardando aprovação" : "");
+  $("prod-sug-minimo").value = $("prod-minimo").value;
+  $("prod-sug-local").value = $("prod-localizacao").value;
+  $("prod-custo-sugerido").value = _prodCustoSug != null ? _prodCustoSug : "";
+  if($("prod-tipo-item")?.value === "servico"){ $("prod-sug-minimo").value = 0; $("prod-sug-minimo").disabled = true; $("prod-sug-minimo").title = "Serviço consumido não tem estoque mínimo"; }
+  $("prod-sug-minimo").addEventListener("input", e => { $("prod-minimo").value = e.target.value; });
+  $("prod-sug-local").addEventListener("input", e => { $("prod-localizacao").value = e.target.value; });
+}
+
 let _prodAprovModo = "aprovar", _prodAprovExistente = null, _prodAprovSeq = 0;
 function prodAprovAbrir(modo){
   const mesclar = modo === "mesclar";
@@ -184,13 +212,13 @@ function prodAprovAbrir(modo){
     ? "Escolha o produto certo. Os itens ainda abertos (pedido não recebido, requisição, separação, recebimento em conferência, OF aberta) e os códigos do fornecedor passam para ele. Este produto fica arquivado, com o histórico e as movimentações antigas. Só com saldo zero."
     : ja
     ? "Escolha o produto que já existe no catálogo: os itens de pedido, requisição e recebimento que usam este provisório passam para ele, e o provisório é desativado."
-    : "O produto entra no catálogo. Complete o que o almoxarifado define (o custo só entra se o produto ainda não tem).";
+    : "O produto entra no catálogo. Confira mínimo, local e custo: vêm do cadastro (o custo é a sugestão de quem cadastrou) e o que estiver aqui é o que vale.";
   $("prod-aprov-campos").style.display = ja ? "none" : "";
   $("prod-aprov-busca-campo").style.display = ja ? "" : "none";
   $("btn-prod-aprov-salvar").textContent = mesclar ? "Mesclar" : ja ? "Trocar pelo já cadastrado" : "Aprovar";
   $("prod-aprov-min").value = $("prod-minimo")?.value || "";
   $("prod-aprov-local").value = $("prod-localizacao")?.value || "";
-  $("prod-aprov-custo").value = "";
+  $("prod-aprov-custo").value = _prodCustoSug != null ? _prodCustoSug : "";   // lote S70-d: o custo sugerido no cadastro
   $("prod-aprov-busca").value = ""; $("prod-aprov-escolhido").textContent = "";
   $("prod-aprov-res").innerHTML = ""; $("prod-aprov-res").style.display = "none";
   $("prod-aprov-modal").style.display = "flex";
@@ -667,7 +695,9 @@ function novoProduto(){
   if($("prod-tipo-item")) $("prod-tipo-item").value = "produto";   // lote S55 (#175)
   prodAplicarTipoItem();
   _prodAtivo = true;
+  _prodCustoSug = null;
   prodAplicarPerfil();   // lote S51 (produto novo: sem Excluir)
+  prodRenderSugestao();   // lote S70-d
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });   // fase 105a
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
   prodCodInfo();
@@ -685,6 +715,7 @@ async function abrirProduto(id){
   if(error){ aviso("app-aviso","Erro ao abrir produto: "+error.message,"erro"); return; }
   _prodAtivo = data.ativo !== false;   // lote S58 (#237)
   _prodAprov = data.aprovacao || "aprovado";   // lote S63-b (#272)
+  _prodCustoSug = data.custo_sugerido ?? null;   // lote S70-d (#372)
   $("prod-codigo").value      = data.codigo || "";
   _prodCodNum = null; _prodCodManual = false;   // lote S56b (#197): código existente não muda pelo gerador
   $("prod-codigo").placeholder = "";
@@ -715,6 +746,7 @@ async function abrirProduto(id){
   prodAplicarCamposEpi();
   if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", data);   // fase 105a: aba Fiscal (NCM)
   prodAplicarPerfil();   // lote S51: Excluir só no cadastro inteiro
+  prodRenderSugestao();   // lote S70-d
   abrirFichaProdVisual(data);
   prodCarregarFabricacoes(id);
   prodCarregarMovimentos(id, data);   // lote S61 (#268)
@@ -887,9 +919,9 @@ function prodAplicarTipoItem(){
     tc.disabled = servico;
     tc.title = servico ? "Serviço consumido é sempre aplicação direta (obra, TAG ou setor): não entra no estoque" : tc.dataset.titulo;
   }
-  [["prod-reposicao", "Serviço consumido não entra na lista de reposição"], ["prod-minimo", "Serviço consumido não tem estoque mínimo"], ["prod-ideal", "Serviço consumido não tem estoque ideal"]].forEach(([id, dica]) => {
+  [["prod-reposicao", "Serviço consumido não entra na lista de reposição"], ["prod-minimo", "Serviço consumido não tem estoque mínimo"], ["prod-ideal", "Serviço consumido não tem estoque ideal"], ["prod-sug-minimo", "Serviço consumido não tem estoque mínimo"]].forEach(([id, dica]) => {
     const el = $(id); if(!el) return;
-    if(servico){ if(el.type === "checkbox") el.checked = false; else el.value = el.id === "prod-minimo" ? 0 : ""; }
+    if(servico){ if(el.type === "checkbox") el.checked = false; else el.value = el.id === "prod-minimo" || el.id === "prod-sug-minimo" ? 0 : ""; }
     el.disabled = servico;
     el.title = servico ? dica : "";
   });
@@ -936,6 +968,12 @@ async function salvarProduto(){
   if($("prod-tipo-compra")) reg.tipo_compra_padrao = $("prod-tipo-compra").value || null;   // fase 108b (nulo = pela categoria)
   if($("prod-tipo-item")) reg.tipo_item = $("prod-tipo-item").value === "servico" ? "servico" : "produto";   // lote S55 (#175)
   if(reg.tipo_item === "servico"){ reg.tipo_compra_padrao = "aplicacao_direta"; reg.controle_reposicao = false; reg.estoque_minimo = 0; reg.estoque_ideal = null; }
+  // lote S70-d (#372): custo sugerido só sai com o bloco "Para o almoxarifado aprovar" à vista (produto novo ou pendente)
+  if(prodSugVisivel() && $("prod-custo-sugerido")){
+    const cs = $("prod-custo-sugerido").value;
+    reg.custo_sugerido = cs === "" ? null : Number(String(cs).replace(",", "."));
+    if(reg.custo_sugerido != null && !(reg.custo_sugerido >= 0)){ aviso("app-aviso", "Custo sugerido não pode ser negativo.", "erro"); ativarTabProd("geral"); return; }
+  }
   if(_prodTemEpi){
     reg.ca = ($("prod-ca")?.value || "").trim() || null;
     const val = $("prod-epi-validade")?.value || "";
@@ -1189,6 +1227,9 @@ async function prodSsvConfirmar(id){
 
 /* ---------- Listeners ---------- */
 function ligarProdutos(){
+  // lote S70-d: a aba Estoque e o bloco "Para o almoxarifado aprovar" mostram o mesmo mínimo e local
+  $("prod-minimo")?.addEventListener("input", e => { const s = $("prod-sug-minimo"); if(s) s.value = e.target.value; });
+  $("prod-localizacao")?.addEventListener("input", e => { const s = $("prod-sug-local"); if(s) s.value = e.target.value; });
   document.querySelectorAll("#prod-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {
       document.querySelectorAll("#prod-painel .serv-view-btn").forEach(x => x.classList.remove("ativo"));

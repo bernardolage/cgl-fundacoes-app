@@ -3662,6 +3662,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .ui-secao-cab svg { width: 14px; height: 14px; flex: none; color: var(--acao-txt); }
 .ui-secao-extra { margin-left: auto; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
 .ui-secao-corpo { padding: var(--esp-4); }
+.prod-sug-bloco { margin-top: var(--esp-4); }   /* lote S70-d: "Para o almoxarifado aprovar" na aba Geral do produto */
 .ui-linha { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); }
 .ui-linha + .ui-linha { margin-top: var(--esp-2); }
 .ui-linha-txt { flex: 1; min-width: 0; }

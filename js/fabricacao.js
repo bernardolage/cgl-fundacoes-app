@@ -1,9 +1,9 @@
 /* ====================================================================
    Módulo: Fabricação (fase 84, 19/10/2026)
    Ordem de fabricação da oficina, como no Odoo (mrp.production): o que vai ser feito e quanto, os componentes
-   consumidos do estoque (RPC fabricacao_consumir), as horas por funcionário e centro de trabalho (hora extra
-   custa ×2) e o custo real que sai disso (gatilhos recalculam custo_componentes, custo_horas e custo_real, salvo
-   custo manual). Concluir (RPC fabricacao_concluir) dá entrada no estoque, cria as peças com marcação em
+   consumidos do estoque (RPC fabricacao_consumir), as horas por funcionário e centro de trabalho e o custo real que
+   sai disso: componentes + mão de obra do funcionário (HE ×2) + máquina = horas × R$/h do centro, sem ×2 (lote S70-e;
+   gatilhos recalculam custo_componentes, custo_horas, custo_maquina e custo_real, salvo custo manual). Concluir (RPC fabricacao_concluir) dá entrada no estoque, cria as peças com marcação em
    Acessórios ou lança o custo direto na obra/TAG/centro (vw_custos, ramo fabricacao).
    Painel no padrão Serviços (lista / por status), ficha no padrão Odoo. Prefixo fab-. Desenho copiado de Reparos.
    ==================================================================== */
@@ -34,7 +34,7 @@ const FAB_STAGES = ["rascunho", "confirmada", "em_producao", "concluida"];
 const FAB_ABERTAS = ["rascunho", "planejada", "confirmada", "em_producao", "pausada"];
 const FAB_DESTINO = { estoque: "Estoque", acessorio: "Acessório", obra: "Obra", equipamento: "TAG", centro_custo: "Centro de custo" };
 const FAB_SETOR_CT = { usinagem: "Usinagem", solda: "Solda", corte: "Corte", manual: "Manual", eletrica: "Elétrica", outro: "Outro" };
-const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_componentes,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,created_at,criado_por,autor:profiles!ordens_fabricacao_criado_por_fkey(nome),produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
+const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_produzida,unidade,destino,obra_id,equipamento_id,centro_custo_id,modelo_id,acessorio_modelo_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio_prevista,data_inicio,data_conclusao,custo_estimado,custo_componentes,custo_maquina,custo_manual,observacoes,codigo_externo,codigo_externo_origem,sincronizado_em,created_at,criado_por,autor:profiles!ordens_fabricacao_criado_por_fkey(nome),produto:produtos(codigo,nome,unidade,estoque_atual),equipamento:equipamentos(codigo,nome),obra:obras(codigo,nome),centro:centros_custo(codigo,nome)";
 
 function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "gestor_manutencao", "logistica", "almoxarife"].includes(usuarioAtual.cargo); }
 function fabEhDiretoria(){ return !!usuarioAtual && ["admin", "diretor"].includes(usuarioAtual.cargo); }
@@ -458,30 +458,34 @@ function fabRenderCustos(){
   const horas = _fabHoras.reduce((t, h) => t + Number(h.horas || 0), 0);
   const porC = {};
   _fabHoras.forEach(h => { const k = h.centro_trabalho_id || "_"; const g = porC[k] = porC[k] || { nome: fabCentroNome(h.centro_trabalho_id) || "sem centro", custo: fabCentroCusto(h.centro_trabalho_id), normais: 0, he: 0 }; if(h.hora_extra) g.he += Number(h.horas || 0); else g.normais += Number(h.horas || 0); });
-  const linhasC = Object.values(porC).sort((a, b) => (b.normais + b.he) - (a.normais + a.he)).map(g =>
-    `<div class="custos-linha"><span class="meta">${esc(g.nome)}: ${num(g.normais)} h${g.he ? ` + ${num(g.he)} h HE (×2)` : ""}</span></div>`).join("");
+  // lote S70-e: por centro, horas × R$/h = máquina (HE sem ×2; R$/h de hoje, a ordem fechada guarda o valor dela)
+  const linhasC = Object.values(porC).sort((a, b) => (b.normais + b.he) - (a.normais + a.he)).map(g => {
+    const h = g.normais + g.he;
+    return `<div class="custos-linha"><span class="meta">${esc(g.nome)}: ${num(h)} h${g.he ? ` (${num(g.he)} HE)` : ""} × ${brl(g.custo)}/h</span><span class="meta">${brl(Math.round(h * g.custo * 100) / 100)}</span></div>`;
+  }).join("");
   const qtd = fabQtd(o), unit = qtd > 0 ? Number(o.custo_real || 0) / qtd : 0;
   const prevTot = _fabItens.reduce((t, i) => t + Number(i.quantidade_prevista || 0) * Number(i.custo_unitario || 0), 0);
   const destinoTxt = { estoque: "Concluída, dá entrada do produto no estoque pelo custo unitário acima; o custo não entra em Custos de obra/TAG.",
     acessorio: "Concluída, cada peça nasce em Acessórios com este custo; nada entra em Custos de obra/TAG.",
-    obra: "Concluída, entra em Custos da obra em duas linhas: componentes (peça) e mão de obra interna.",
-    equipamento: "Concluída, entra em Custos da TAG em duas linhas: componentes (peça) e mão de obra interna.",
-    centro_custo: "Concluída, entra nos custos do centro em duas linhas: componentes (peça) e mão de obra interna." }[o.destino] || "";
+    obra: "Concluída, entra em Custos da obra em três linhas: componentes (peça), mão de obra interna e máquina.",
+    equipamento: "Concluída, entra em Custos da TAG em três linhas: componentes (peça), mão de obra interna e máquina.",
+    centro_custo: "Concluída, entra nos custos do centro em três linhas: componentes (peça), mão de obra interna e máquina." }[o.destino] || "";
   c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição</div>
         <div class="custos-linha"><span>Componentes consumidos${prevTot ? ` <span class="meta">(previsto ${brl(prevTot)})</span>` : ""}</span><strong>${brl(o.custo_componentes || 0)}</strong></div>
         <div class="custos-linha"><span>Mão de obra (${num(horas)} h; custo/hora de cada funcionário) <span class="meta" id="fab-mo-sem"></span></span><strong>${brlMO(o.custo_horas)}</strong></div>
+        <div class="custos-linha"><span>Máquina (${num(horas)} h × R$/h do centro de trabalho)</span><strong>${brl(o.custo_maquina || 0)}</strong></div>
         ${linhasC}
         <div class="custos-linha"><span><strong>Custo real</strong>${o.custo_manual ? " <span class=\"tag ambar\">digitado</span>" : ""}</span><strong>${brlMO(o.custo_real)}</strong></div>
         <div class="custos-linha"><span>Custo unitário (${num(qtd)} ${esc(o.unidade || "un")})</span><strong>${brlMO(unit)}</strong></div>
       </div>
       <div><div class="mov-ace-sug-grupo-t">Custo digitado à mão</div>
-        <p class="meta">Use quando o custo real não sai dos componentes e das horas (serviço externo, ordem antiga).</p>
+        <p class="meta">Use quando o custo real não sai dos componentes, da mão de obra e da máquina (serviço externo, ordem antiga).</p>
         ${pode && podeVerCustoMO() ? `<label class="check-inline"><input type="checkbox" id="fab-custo-manual"${o.custo_manual ? " checked" : ""} /> custo manual</label>
           <input type="number" id="fab-custo-valor" min="0" step="0.01" value="${esc(o.custo_real || 0)}" style="width:140px;"${o.custo_manual ? "" : " disabled"} />
           <button type="button" class="btn-sec btn-sm" id="btn-fab-custo-salvar">Salvar custo</button>` : ""}
       </div></div>
-    <p class="meta">${esc(destinoTxt)} Hora sem funcionário com salário cadastrado usa o custo/h do centro de trabalho; sem ele, entra com zero.</p>`;
+    <p class="meta">${esc(destinoTxt)} Hora sem funcionário com salário cadastrado entra com zero na mão de obra; a máquina conta pelo R$/h do centro (hora extra sem ×2).</p>`;
   moHorasSemValor("of", o.id, "fab-mo-sem");
   $("fab-custo-manual")?.addEventListener("change", e => { $("fab-custo-valor").disabled = !e.target.checked; });
   $("btn-fab-custo-salvar")?.addEventListener("click", async () => {
@@ -489,7 +493,7 @@ function fabRenderCustos(){
     const upd = manual ? { custo_manual: true, custo_real: Number($("fab-custo-valor").value || 0) } : { custo_manual: false };
     const { error } = await sb.from("ordens_fabricacao").update(upd).eq("id", o.id);
     if(error){ aviso("app-aviso", "Não foi possível salvar o custo: " + error.message, "erro"); return; }
-    aviso("app-aviso", manual ? "Custo manual salvo." : "Custo volta a ser componentes + horas.", "ok");
+    aviso("app-aviso", manual ? "Custo manual salvo." : "Custo volta a ser componentes + mão de obra + máquina.", "ok");
     await abrirOrdemFabricacao(o.id); fabAtivarTab("custos");
   });
 }
