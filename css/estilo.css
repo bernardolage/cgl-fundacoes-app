@@ -4838,3 +4838,27 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .eqp-os-acoes { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); }
   .eqp-os-exp-filtro { width: auto; }
 }
+
+/* fase 199a: aba Consumo do relatório de EPI (js/epi.js, prefixo epi-cns-) */
+@layer componentes {
+  .epi-rel > .serv-filtros[hidden] { display: none; }
+  .epi-cns-topo { display: flex; flex-direction: column; gap: var(--esp-2); margin-bottom: var(--esp-3); }
+  .epi-cns-campos { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--esp-2); }
+  .epi-cns-campos .ui-campo { flex: 1 1 150px; min-width: 0; }
+  .epi-cns-chk { display: inline-flex; align-items: center; gap: var(--esp-1); min-height: var(--ctl-h); font-size: var(--txt-base); white-space: nowrap; }
+  .epi-cns-faixa { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); margin-bottom: var(--esp-3); }
+  .epi-cns-faixa .ui-faixa { flex: 1 1 320px; }
+  .epi-cns-kpis { margin-bottom: var(--esp-3); }
+  .epi-cns-kpis .ui-kpi { flex: 1 1 150px; }
+  .epi-cns-alerta { border-color: var(--perigo-txt); }
+  .epi-cns-alerta .ui-kpi-valor { color: var(--perigo-txt); }
+  .epi-cns-cont { margin: var(--esp-2) 0; }
+  .epi-cns-ajuda { margin: 0 0 var(--esp-2); }
+  .epi-cns-sub { margin: var(--esp-4) 0 var(--esp-2); font-size: var(--txt-base); }
+  .epi-cns-clicavel tbody tr[data-id] { cursor: pointer; }
+  .epi-cns-evol { width: 120px; }
+  .epi-cns-evol .ui-pulso svg { height: 24px; }
+  .epi-cns-evol .ui-pulso figcaption { display: none; }
+  .epi-cns-grade-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); margin-bottom: var(--esp-2); }
+  .epi-cns-grade-btns { display: inline-flex; gap: var(--esp-1); }
+}

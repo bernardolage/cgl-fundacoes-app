@@ -18,7 +18,7 @@
 
 const EPI_CAT_LBL = { epi: "EPI", uniforme: "Uniforme" };
 const EPI_VISOES = [
-  ["pessoa", "Por colaborador"], ["obra", "Por obra"], ["item", "Por item"],
+  ["pessoa", "Por colaborador"], ["obra", "Por obra"], ["item", "Por item"], ["consumo", "Consumo"],
   ["vencidas", "Trocas vencidas"], ["sem_pessoa", "Sem pessoa"], ["conferencia", "Conferência de categorias"]
 ];
 const EPI_MES_LBL = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -307,17 +307,25 @@ function epiRenderRelatorio(alvoId){
     cont.dataset.epiLigado = "1";
     cont.addEventListener("click", e => epiRelClique(e, alvoId));
     cont.addEventListener("change", e => {
+      if(e.target.closest(".epi-cns")){ epiCnsMudou(e, alvoId); return; }   // fase 199a
       if(e.target.matches("[data-epi-de]")){ _epiRel.de = e.target.value || _epiRel.de; _epiRel.dados = null; epiRelCarregar(alvoId); }
       if(e.target.matches("[data-epi-ate]")){ _epiRel.ate = e.target.value || _epiRel.ate; _epiRel.dados = null; epiRelCarregar(alvoId); }
       if(e.target.matches("[data-epi-cat]")) epiConfMarcar(e.target, alvoId);
       if(e.target.matches("[data-epi-ca], [data-epi-val]")) epiConfSalvarProduto(e.target);
     });
-    cont.addEventListener("input", debounce(e => { if(e.target.matches("[data-epi-busca]")){ _epiRel.busca = e.target.value; epiRelDesenhar(alvoId); } }, 200));
+    cont.addEventListener("input", debounce(e => { if(e.target.closest(".epi-cns") && e.target.matches('[data-filtro="busca"]')){ _epiCns.busca = e.target.value; epiCnsDesenhar(alvoId, true); return; }
+      if(e.target.matches("[data-epi-busca]")){ _epiRel.busca = e.target.value; epiRelDesenhar(alvoId); } }, 200));
   }
   epiRelCarregar(alvoId);
 }
 async function epiRelCarregar(alvoId){
   const cont = $(alvoId); const corpo = cont?.querySelector(".epi-rel-corpo"); if(!corpo) return;
+  // fase 199a: a aba Consumo tem período e filtros próprios; os do relatório antigo ficam escondidos nela
+  const filtrosAntigos = cont.querySelector(".epi-rel > .serv-filtros"); if(filtrosAntigos) filtrosAntigos.hidden = _epiRel.visao === "consumo";
+  if(_epiRel.visao === "consumo"){
+    cont.querySelectorAll("[data-epi-visao]").forEach(b => b.classList.toggle("ativo", b.dataset.epiVisao === "consumo"));
+    epiCnsCarregar(alvoId); return;
+  }
   if(_epiRel.de > _epiRel.ate){ corpo.innerHTML = `<p class="vazio">O início do período é depois do fim.</p>`; return; }
   corpo.innerHTML = `<p class="vazio">Carregando…</p>`;
   const v = _epiRel.visao;
@@ -430,6 +438,7 @@ async function epiRelClique(e, alvoId){
   const bv = e.target.closest("[data-epi-visao]");
   if(bv){ _epiRel.visao = bv.dataset.epiVisao; _epiRel.dados = null; epiRelCarregar(alvoId); return; }
   if(e.target.closest("[data-epi-xlsx]")){ epiRelExportar(); return; }
+  if(e.target.closest(".epi-cns")){ epiCnsClique(e, alvoId); return; }   // fase 199a
   const tr = e.target.closest("[data-epi-func]");
   if(tr && tr.dataset.epiFunc){ epiAbrirFichaFuncionario(tr.dataset.epiFunc); return; }
   const inf = e.target.closest("[data-epi-informar]");
@@ -443,7 +452,255 @@ function epiRelExportar(){
   if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
   const rot = (EPI_VISOES.find(x => x[0] === _epiRel.visao) || [, "EPI"])[1];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas), rot.slice(0, 31));
-  XLSX.writeFile(wb, `epi-${_epiRel.visao}-${_epiRel.de}-a-${_epiRel.ate}.xlsx`);
+  const per = _epiRel.visao === "consumo" ? `${_epiCns.aba}-${_epiCns.de}-a-${_epiCns.ate}` : `${_epiRel.de}-a-${_epiRel.ate}`;
+  XLSX.writeFile(wb, `epi-${_epiRel.visao}-${per}.xlsx`);
+}
+
+/* ---------- fase 199a: aba "Consumo" (vw_epi_consumo; spec docs/specs/fase-199-consumo-epi.md) ----------
+   Consumo de EPI e uniforme por máquina, pessoa e mês. A máquina e a obra vêm da saída ou da Alocação na data (D1, D2:
+   calculado no banco). Valor pela regra da vw_custos (D3); a sede aparece pelo centro de custo (D5). Componentes do
+   js/ui.js; prefixo epi-cns-. A busca redesenha só os resultados (o campo não perde o foco). */
+const EPI_CNS_FR = "ODOO-009588";   // macacão FR (#309)
+const EPI_CNS_ABAS = [["maquina", "Por máquina"], ["pessoa", "Por pessoa"], ["mes", "Por mês"]];
+const EPI_CNS_COLS = "id,data_entrega,funcionario_id,funcionario_nome,funcao,produto_id,produto_codigo,produto_nome,categoria,quantidade,valor,maquina_id,maquina_codigo,obra_id,obra_codigo,centro_custo_id,centro_nome,situacao_alocacao";
+const EPI_CNS_FILTROS = { produto: "Produto", maquina: "Máquina", obra: "Obra", funcao: "Função", soAlocados: "Só alocados" };
+const _epiCns = { de: null, ate: null, produto: "", maquina: "", obra: "", funcao: "", soAlocados: false, aba: "maquina", grade: "brl",
+  busca: "", dados: null, chave: null, saldoFR: null, maqAberta: null };
+
+function epiCnsMesSoma(chave, n){ const [a, m] = chave.split("-").map(Number); const d = new Date(a, m - 1 + n, 1, 12); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function epiCnsMesTxt(chave){ const [a, m] = chave.split("-"); return `${EPI_MES_LBL[Number(m) - 1]}/${a.slice(2)}`; }
+/* grupo "máquina" da linha: a TAG; sem máquina, a sede pelo centro de custo, ou as linhas extras */
+function epiCnsGrupoMaq(r){
+  if(r.maquina_id) return { id: "m:" + r.maquina_id, nome: r.maquina_codigo || "—", ordem: 0 };
+  if(r.situacao_alocacao === "sede") return { id: "c:" + r.centro_custo_id, nome: "Sede · " + (r.centro_nome || "centro de custo"), ordem: 1 };
+  if(r.situacao_alocacao === "sem_pessoa") return { id: "sem_pessoa", nome: "Sem pessoa", ordem: 3 };
+  return { id: "sem_alocacao", nome: "Sem alocação", ordem: 2 };
+}
+async function epiCnsCarregar(alvoId){
+  const corpo = $(alvoId)?.querySelector(".epi-rel-corpo"); if(!corpo) return;
+  if(!_epiCns.de){ _epiCns.de = _epiCns.ate = epiMesChave(hojeISO()); }
+  if(_epiCns.de > _epiCns.ate){ corpo.innerHTML = uiErro("O início do período é depois do fim."); return; }
+  // o período, o mesmo tanto de meses antes (comparação dos KPIs) e os 6 meses até o fim (evolução e Por mês)
+  const n = epiMesesEntre(_epiCns.de, _epiCns.ate).length;
+  const ini = [epiCnsMesSoma(_epiCns.de, -n), epiCnsMesSoma(_epiCns.ate, -5)].sort()[0] + "-01", fim = epiFimDoMes(_epiCns.ate);
+  const chave = ini + "|" + fim;
+  if(_epiCns.chave !== chave || !_epiCns.dados){
+    corpo.innerHTML = uiCarregando("Carregando o consumo…");
+    const [r, fr] = await Promise.all([
+      lerTudo(() => sb.from("vw_epi_consumo").select(EPI_CNS_COLS).gte("data_entrega", ini).lte("data_entrega", fim), "id"),
+      sb.from("produtos").select("id,estoque_atual,unidade").eq("codigo", EPI_CNS_FR).maybeSingle()
+    ]);
+    if(_epiRel.visao !== "consumo") return;
+    if(r.error){
+      _epiCns.dados = null;
+      corpo.innerHTML = epiViewAusente(r.error) ? uiVazio("O painel de consumo entra quando a migration da fase 199a for aplicada no banco.") : uiErro("Não foi possível carregar o consumo: " + r.error.message);
+      return;
+    }
+    _epiCns.dados = r.data || []; _epiCns.chave = chave; _epiCns.saldoFR = fr.error ? null : fr.data;
+  }
+  epiCnsDesenhar(alvoId);
+}
+function epiCnsFiltrar(L, de, ate){
+  const t = epiNorm(_epiCns.busca.trim()), p = _epiCns.produto;
+  return L.filter(r => {
+    const m = epiMesChave(r.data_entrega);
+    if(m < de || m > ate) return false;
+    if(p.startsWith("cat:") && r.categoria !== p.slice(4)) return false;
+    if(p.startsWith("p:") && r.produto_id !== p.slice(2)) return false;
+    if(_epiCns.maquina && epiCnsGrupoMaq(r).id !== _epiCns.maquina) return false;
+    if(_epiCns.obra && r.obra_id !== _epiCns.obra) return false;
+    if(_epiCns.funcao && (r.funcao || "") !== _epiCns.funcao) return false;
+    if(_epiCns.soAlocados && r.situacao_alocacao !== "alocado") return false;
+    return !t || epiNorm([r.funcionario_nome, r.funcao, r.produto_nome, r.produto_codigo, r.maquina_codigo, r.obra_codigo, r.centro_nome].filter(Boolean).join(" ")).includes(t);
+  });
+}
+function epiCnsResumo(X){
+  const comPessoa = X.filter(r => r.funcionario_id), pessoas = new Set(comPessoa.map(r => r.funcionario_id)).size;
+  const soma = (Y, k) => Y.reduce((s, r) => s + Number(r[k] || 0), 0);
+  return { n: X.length, valor: soma(X, "valor"), pecas: soma(X, "quantidade"), pessoas,
+    medio: pessoas ? soma(comPessoa, "valor") / pessoas : 0, cobertura: X.length ? X.filter(r => r.maquina_id).length / X.length : null };
+}
+/* opções dos selects a partir do que foi carregado (valor, rótulo), em ordem de rótulo */
+function epiCnsOpcoes(D, chave, rotulo){
+  const m = new Map(); D.forEach(r => { const k = chave(r); if(k && !m.has(k)) m.set(k, rotulo(r)); });
+  return [...m.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR", { numeric: true }));
+}
+function epiCnsTopo(){
+  const D = _epiCns.dados || [];
+  const fr = D.find(r => r.produto_codigo === EPI_CNS_FR);
+  const prods = [["cat:epi", "Grupo: EPI"], ["cat:uniforme", "Grupo: Uniforme"]].concat(fr ? [["p:" + fr.produto_id, "Macacão FR"]] : [],
+    epiCnsOpcoes(D, r => r.produto_codigo === EPI_CNS_FR ? null : "p:" + r.produto_id, r => r.produto_nome || r.produto_codigo));
+  const maqs = epiCnsOpcoes(D, r => epiCnsGrupoMaq(r).id, r => epiCnsGrupoMaq(r).nome);
+  const obras = epiCnsOpcoes(D, r => r.obra_id, r => r.obra_codigo);
+  const funcoes = epiCnsOpcoes(D, r => r.funcao, r => r.funcao);
+  const rot = (k, ops) => (ops.find(o => o[0] === _epiCns[k]) || [, _epiCns[k]])[1];
+  const ativos = [
+    { id: "produto", rotulo: EPI_CNS_FILTROS.produto, valor: _epiCns.produto ? rot("produto", prods) : "" },
+    { id: "maquina", rotulo: EPI_CNS_FILTROS.maquina, valor: _epiCns.maquina ? rot("maquina", maqs) : "" },
+    { id: "obra", rotulo: EPI_CNS_FILTROS.obra, valor: _epiCns.obra ? rot("obra", obras) : "" },
+    { id: "funcao", rotulo: EPI_CNS_FILTROS.funcao, valor: _epiCns.funcao },
+    { id: "soAlocados", rotulo: EPI_CNS_FILTROS.soAlocados, valor: _epiCns.soAlocados ? "sim" : "" }
+  ];
+  return `<div class="epi-cns-campos">
+      ${uiCampo({ id: "epi-cns-de", rotulo: "De", tipo: "month", valor: _epiCns.de })}
+      ${uiCampo({ id: "epi-cns-ate", rotulo: "Até", tipo: "month", valor: _epiCns.ate })}
+      ${uiCampo({ id: "epi-cns-produto", rotulo: "Produto ou grupo", tipo: "select", opcoes: prods, valor: _epiCns.produto, placeholder: "Todos" })}
+      ${uiCampo({ id: "epi-cns-maquina", rotulo: "Máquina", tipo: "select", opcoes: maqs, valor: _epiCns.maquina, placeholder: "Todas" })}
+      ${uiCampo({ id: "epi-cns-obra", rotulo: "Obra", tipo: "select", opcoes: obras, valor: _epiCns.obra, placeholder: "Todas" })}
+      ${uiCampo({ id: "epi-cns-funcao", rotulo: "Função", tipo: "select", opcoes: funcoes, valor: _epiCns.funcao, placeholder: "Todas" })}
+      <label class="epi-cns-chk" title="Só as saídas de quem tinha alocação na data da entrega"><input type="checkbox" id="epi-cns-soaloc"${_epiCns.soAlocados ? " checked" : ""}> Só alocados</label>
+      ${fr ? `<button type="button" class="ui-btn" data-cns-acao="fr" title="Filtra o macacão FR (#309)">Macacão FR</button>` : ""}
+    </div>
+    <div class="epi-cns-filtros">${uiFiltros({ id: "epi-cns-busca", busca: _epiCns.busca, placeholder: "Buscar pessoa, função, item, TAG ou obra", filtros: ativos, total: null })}</div>`;
+}
+function epiCnsDesenhar(alvoId, soResultados){
+  const corpo = $(alvoId)?.querySelector(".epi-rel-corpo"); if(!corpo || !_epiCns.dados) return;
+  if(!soResultados || !corpo.querySelector(".epi-cns-res")){
+    corpo.innerHTML = `<div class="epi-cns" data-val-sens><div class="epi-cns-topo">${/* html */ epiCnsTopo()}</div><div class="epi-cns-res"></div></div>`;
+  }
+  corpo.querySelector(".epi-cns-res").innerHTML = epiCnsResultados();
+}
+function epiCnsResultados(){
+  const D = _epiCns.dados, de = _epiCns.de, ate = _epiCns.ate;
+  const meses = epiMesesEntre(de, ate), n = meses.length;
+  const L = epiCnsFiltrar(D, de, ate), ant = epiCnsFiltrar(D, epiCnsMesSoma(de, -n), epiCnsMesSoma(de, -1));
+  const a = epiCnsResumo(L), b = epiCnsResumo(ant);
+  const delta = (x, y) => x != null && y ? (x - y) / y : null;
+  const txtAnt = n === 1 ? "vs mês anterior" : `vs ${n} meses anteriores`;
+  const cobBaixa = a.cobertura != null && a.cobertura < 0.8;
+  let kCob = uiKpi(a.cobertura == null ? "—" : Math.round(a.cobertura * 100) + "%", "Saídas com máquina", cobBaixa ? "abaixo de 80%: falta Alocação" : "meta: 80% ou mais", { delta: delta(a.cobertura, b.cobertura), melhor: "maior", texto: txtAnt });
+  if(cobBaixa) kCob = kCob.replace('class="ui-kpi"', 'class="ui-kpi epi-cns-alerta"');
+  const kpis = `<div class="ui-kpis epi-cns-kpis">
+      ${uiKpi(brl(a.valor), "Consumo no período", `${n} ${n === 1 ? "mês" : "meses"}, ${a.n} saída(s)`, { delta: delta(a.valor, b.valor), melhor: "menor", texto: txtAnt })}
+      ${uiKpi(num(a.pecas), "Peças", null, { delta: delta(a.pecas, b.pecas), melhor: "menor", texto: txtAnt })}
+      ${uiKpi(String(a.pessoas), "Pessoas atendidas", null, { delta: delta(a.pessoas, b.pessoas), texto: txtAnt })}
+      ${uiKpi(brl(a.medio), "Custo médio por pessoa", null, { delta: delta(a.medio, b.medio), melhor: "menor", texto: txtAnt })}
+      ${/* html */ kCob}
+    </div>`;
+  // faixa: saídas com pessoa e sem alocação na data, e o saldo negativo do macacão FR
+  const semAloc = L.filter(r => r.situacao_alocacao === "sem_alocacao").length;
+  const frasesFaixa = [semAloc ? `${semAloc} saída(s) sem alocação na data` : "Toda saída com pessoa tem alocação ou centro de custo na data"];
+  const sfr = _epiCns.saldoFR, prodFR = !_epiCns.produto || _epiCns.produto === "cat:epi" || (sfr && _epiCns.produto === "p:" + sfr.id);
+  if(sfr && Number(sfr.estoque_atual) < 0 && prodFR) frasesFaixa.push(`Macacão FR com saldo negativo (${num(sfr.estoque_atual)} ${sfr.unidade || "un"}): contagem física pendente`);
+  const faixa = `<div class="epi-cns-faixa">${uiFaixaSituacao(frasesFaixa, semAloc || frasesFaixa.length > 1 ? "aviso" : "ok")}${semAloc ? `<button type="button" class="ui-btn" data-cns-acao="sem-aloc" title="Lista as pessoas sem alocação na data das saídas, para regularizar a Alocação">Ver quem está sem alocação</button>` : ""}</div>`;
+  const abas = uiAbas(EPI_CNS_ABAS.map(([id, rotulo]) => ({ id, rotulo })), { ativa: _epiCns.aba, rotulo: "Visões do consumo" });
+  let corpo = "";
+  if(_epiCns.aba === "maquina") corpo = epiCnsPorMaquina(L, D);
+  else if(_epiCns.aba === "pessoa") corpo = epiCnsPorPessoa(L, "Nenhuma saída com pessoa no período e nos filtros.");
+  else corpo = epiCnsPorMes(D);
+  return `${/* html */ faixa}${/* html */ kpis}${/* html */ abas}<p class="ui-filtros-cont epi-cns-cont" role="status">${esc(L.length.toLocaleString("pt-BR"))} saída(s) no período</p>${/* html */ corpo}`;
+}
+/* agrupa por máquina/destino: totais de L e, por mês, de D6 (só dos grupos que existem em L, ou de todos quando L é D6) */
+function epiCnsGrupos(L, D6){
+  const g = new Map();
+  const pega = r => { const x = epiCnsGrupoMaq(r); let o = g.get(x.id); if(!o){ o = { ...x, obras: new Set(), pessoas: new Set(), pecas: 0, valor: 0, porMes: {}, pecasMes: {} }; g.set(x.id, o); } return o; };
+  L.forEach(r => { const o = pega(r); if(r.obra_codigo) o.obras.add(r.obra_codigo); if(r.funcionario_id) o.pessoas.add(r.funcionario_id); o.pecas += Number(r.quantidade || 0); o.valor += Number(r.valor || 0); });
+  (D6 || []).forEach(r => { const o = g.get(epiCnsGrupoMaq(r).id); if(!o) return; const m = epiMesChave(r.data_entrega); o.porMes[m] = (o.porMes[m] || 0) + Number(r.valor || 0); o.pecasMes[m] = (o.pecasMes[m] || 0) + Number(r.quantidade || 0); });
+  return [...g.values()].sort((x, y) => x.ordem - y.ordem || y.valor - x.valor || x.nome.localeCompare(y.nome, "pt-BR", { numeric: true }));
+}
+function epiCnsPorMaquina(L, D){
+  const m6 = epiMesesEntre(epiCnsMesSoma(_epiCns.ate, -5), _epiCns.ate);
+  const lista = epiCnsGrupos(L, epiCnsFiltrar(D, m6[0], _epiCns.ate));
+  const linhas = lista.map(o => ({ id: o.id, nome: o.nome, obras: [...o.obras].sort().join(", "), pessoas: o.pessoas.size, pecas: o.pecas, valor: o.valor,
+    porPessoa: o.pessoas.size ? o.valor / o.pessoas.size : null, evol: m6.map(m => o.porMes[m] || 0) }));
+  _epiRel.linhasExport = linhas.map(l => Object.assign({ "Máquina / destino": l.nome, "Obras no período": l.obras, "Pessoas": l.pessoas, "Peças": l.pecas, "R$": Number(l.valor.toFixed(2)),
+    "R$ por pessoa": l.porPessoa == null ? "" : Number(l.porPessoa.toFixed(2)) }, Object.fromEntries(m6.map((m, i) => [epiCnsMesTxt(m), Number(l.evol[i].toFixed(2))]))));
+  const tot = epiCnsResumo(L);
+  const tabela = uiTabela({
+    colunas: [
+      { chave: "nome", rotulo: "Máquina / destino", html: l => `<strong>${esc(l.nome)}</strong>${l.id === _epiCns.maqAberta ? ' <span class="meta">▾ pessoas abaixo</span>' : ""}` },
+      { chave: "obras", rotulo: "Obras no período", html: l => l.obras ? esc(l.obras) : '<span class="meta">—</span>' },
+      { chave: "pessoas", rotulo: "Pessoas", tipo: "int" },
+      { chave: "pecas", rotulo: "Peças", tipo: "num" },
+      { chave: "valor", rotulo: "R$", tipo: "brl" },
+      { chave: "porPessoa", rotulo: "R$ por pessoa", tipo: "brl" },
+      { chave: "evol", rotulo: `Evolução (${epiCnsMesTxt(m6[0])} a ${epiCnsMesTxt(m6[m6.length - 1])})`, html: l => `<div class="epi-cns-evol">${uiPulso(l.evol, null, { rotulos: m6.map(epiCnsMesTxt), vazio: "sem consumo" })}</div>` }
+    ],
+    linhas, chaveLinha: "id", vazio: "Nenhuma saída no período e nos filtros.",
+    rodape: { nome: "Total", pessoas: tot.pessoas, pecas: tot.pecas, valor: tot.valor }
+  });
+  const aberta = _epiCns.maqAberta && linhas.find(l => l.id === _epiCns.maqAberta);
+  const pessoas = aberta ? `<h4 class="epi-cns-sub">Pessoas em ${esc(aberta.nome)}</h4>${/* html */ epiCnsPorPessoa(L.filter(r => epiCnsGrupoMaq(r).id === aberta.id), "Nenhuma pessoa nesta linha.", true)}` : "";
+  return `<p class="meta epi-cns-ajuda">Máquina e obra pela saída ou pela Alocação na data da entrega. Sem máquina, a saída vai para a sede (centro de custo) ou para "Sem alocação". Clique numa linha para ver as pessoas.</p>
+    <div class="epi-cns-clicavel" data-cns-tabela="maquina">${/* html */ tabela}</div>${/* html */ pessoas}`;
+}
+function epiCnsPorPessoa(L, vazio, interna){
+  const g = new Map();
+  L.filter(r => r.funcionario_id).forEach(r => {
+    let o = g.get(r.funcionario_id);
+    if(!o){ o = { id: r.funcionario_id, nome: r.funcionario_nome || "—", funcao: r.funcao || "", pecas: 0, valor: 0, ult: null }; g.set(r.funcionario_id, o); }
+    o.pecas += Number(r.quantidade || 0); o.valor += Number(r.valor || 0);
+    if(!o.ult || r.data_entrega >= o.ult.data_entrega) o.ult = r;
+  });
+  const lista = [...g.values()];
+  const agg = {}; lista.forEach(o => { const x = agg[o.funcao] || (agg[o.funcao] = { s: 0, n: 0 }); x.s += o.valor; x.n++; });
+  const linhas = lista.map(o => { const med = agg[o.funcao].n ? agg[o.funcao].s / agg[o.funcao].n : 0;
+    return { id: o.id, nome: o.nome, funcao: o.funcao, maquina: o.ult?.maquina_codigo || (o.ult?.situacao_alocacao === "sede" ? o.ult.centro_nome : ""), obra: o.ult?.obra_codigo || "",
+      pecas: o.pecas, valor: o.valor, media: med, dif: med ? o.valor / med - 1 : null }; }).sort((x, y) => y.valor - x.valor);
+  if(!interna) _epiRel.linhasExport = linhas.map(l => ({ "Pessoa": l.nome, "Função": l.funcao, "Máquina": l.maquina, "Obra": l.obra, "Peças": l.pecas, "R$": Number(l.valor.toFixed(2)),
+    "Média da função": Number(l.media.toFixed(2)), "vs média": l.dif == null ? "" : Math.round(l.dif * 100) + "%" }));
+  const tot = linhas.reduce((s, l) => ({ pecas: s.pecas + l.pecas, valor: s.valor + l.valor }), { pecas: 0, valor: 0 });
+  const tabela = uiTabela({
+    colunas: [
+      { chave: "nome", rotulo: "Pessoa", html: l => `<strong>${esc(l.nome)}</strong>` },
+      { chave: "funcao", rotulo: "Função" },
+      { chave: "maquina", rotulo: "Máquina (última saída)" },
+      { chave: "obra", rotulo: "Obra (última saída)" },
+      { chave: "pecas", rotulo: "Peças", tipo: "num" },
+      { chave: "valor", rotulo: "R$", tipo: "brl" },
+      { chave: "media", rotulo: "Média da função", tipo: "brl" },
+      { chave: "dif", rotulo: "vs média", html: l => l.dif == null || Math.abs(l.dif) < 0.01 ? '<span class="meta">—</span>' : `<span class="tag ${l.dif > 0.25 ? "vermelho" : l.dif > 0 ? "ambar" : "verde"}">${l.dif > 0 ? "+" : ""}${Math.round(l.dif * 100)}%</span>` }
+    ],
+    linhas, chaveLinha: "id", vazio, rodape: { nome: "Total", pecas: tot.pecas, valor: tot.valor }
+  });
+  return `<div class="epi-cns-clicavel" data-cns-tabela="pessoa" title="Clique para abrir a aba EPI da ficha">${/* html */ tabela}</div>`;
+}
+function epiCnsPorMes(D){
+  const m6 = epiMesesEntre(epiCnsMesSoma(_epiCns.ate, -5), _epiCns.ate);
+  const D6 = epiCnsFiltrar(D, m6[0], _epiCns.ate);
+  const brlG = _epiCns.grade === "brl";
+  const lista = epiCnsGrupos(D6, D6);
+  const linhas = lista.map(o => Object.assign({ id: o.id, nome: o.nome, total: brlG ? o.valor : o.pecas }, Object.fromEntries(m6.map(m => ["m" + m, (brlG ? o.porMes : o.pecasMes)[m] || 0]))));
+  _epiRel.linhasExport = linhas.map(l => Object.assign({ "Máquina / destino": l.nome }, Object.fromEntries(m6.map(m => [epiCnsMesTxt(m), Number(l["m" + m].toFixed(2))])), { [brlG ? "Total R$" : "Total peças"]: Number(l.total.toFixed(2)) }));
+  const rod = { nome: "Total", total: linhas.reduce((s, l) => s + l.total, 0) };
+  m6.forEach(m => { rod["m" + m] = linhas.reduce((s, l) => s + l["m" + m], 0); });
+  const tipo = brlG ? "brl" : "num";
+  const tabela = uiTabela({
+    colunas: [{ chave: "nome", rotulo: "Máquina / destino", html: l => `<strong>${esc(l.nome)}</strong>` }].concat(m6.map(m => ({ chave: "m" + m, rotulo: epiCnsMesTxt(m), tipo })), [{ chave: "total", rotulo: "Total", tipo }]),
+    linhas, vazio: "Nenhuma saída nos últimos 6 meses com estes filtros.", rodape: rod
+  });
+  return `<div class="epi-cns-grade-topo"><span class="meta">Últimos 6 meses até ${esc(epiCnsMesTxt(_epiCns.ate))}, com os filtros acima (o "De" não se aplica aqui).</span>
+      <span class="epi-cns-grade-btns" role="group" aria-label="Unidade da grade"><button type="button" class="ui-btn${brlG ? " ui-btn-prim" : ""}" data-cns-grade="brl">R$</button><button type="button" class="ui-btn${brlG ? "" : " ui-btn-prim"}" data-cns-grade="pecas">Peças</button></span></div>
+    ${/* html */ tabela}`;
+}
+function epiCnsMudou(e, alvoId){
+  const id = e.target.id;
+  if(id === "epi-cns-de" || id === "epi-cns-ate"){
+    const v = e.target.value; if(!v) return;
+    if(id === "epi-cns-de") _epiCns.de = v; else _epiCns.ate = v;
+    _epiCns.maqAberta = null; epiCnsCarregar(alvoId); return;
+  }
+  const mapa = { "epi-cns-produto": "produto", "epi-cns-maquina": "maquina", "epi-cns-obra": "obra", "epi-cns-funcao": "funcao" };
+  if(mapa[id]){ _epiCns[mapa[id]] = e.target.value; _epiCns.maqAberta = null; epiCnsDesenhar(alvoId); return; }
+  if(id === "epi-cns-soaloc"){ _epiCns.soAlocados = e.target.checked; epiCnsDesenhar(alvoId); }
+}
+function epiCnsClique(e, alvoId){
+  const rem = e.target.closest("[data-remover]");
+  if(rem){ const k = rem.dataset.remover; (k === "*" ? Object.keys(EPI_CNS_FILTROS) : [k]).forEach(x => { _epiCns[x] = x === "soAlocados" ? false : ""; }); _epiCns.maqAberta = null; epiCnsDesenhar(alvoId); return; }
+  const aba = e.target.closest("[data-aba]");
+  if(aba){ _epiCns.aba = aba.dataset.aba; epiCnsDesenhar(alvoId, true); return; }
+  const gr = e.target.closest("[data-cns-grade]");
+  if(gr){ _epiCns.grade = gr.dataset.cnsGrade; epiCnsDesenhar(alvoId, true); return; }
+  const ac = e.target.closest("[data-cns-acao]");
+  if(ac){
+    if(ac.dataset.cnsAcao === "sem-aloc"){ _epiCns.maquina = "sem_alocacao"; _epiCns.aba = "pessoa"; _epiCns.soAlocados = false; }
+    if(ac.dataset.cnsAcao === "fr"){ const fr = (_epiCns.dados || []).find(r => r.produto_codigo === EPI_CNS_FR); if(fr) _epiCns.produto = "p:" + fr.produto_id; }
+    _epiCns.maqAberta = null; epiCnsDesenhar(alvoId); return;
+  }
+  const tr = e.target.closest("tr[data-id]"), tab = e.target.closest("[data-cns-tabela]");
+  if(!tr || !tab) return;
+  if(tab.dataset.cnsTabela === "maquina"){ _epiCns.maqAberta = _epiCns.maqAberta === tr.dataset.id ? null : tr.dataset.id; epiCnsDesenhar(alvoId, true); return; }
+  if(tab.dataset.cnsTabela === "pessoa") epiAbrirFichaFuncionario(tr.dataset.id);
 }
 async function epiInformarRetirante(i, alvoId){
   const r = epiRelFiltrar(_epiRel.dados || [])[i]; const cont = $(alvoId);
