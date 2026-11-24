@@ -1133,7 +1133,7 @@ async function manAddHoras(){
   if(!_manAtual?.id) return;
   const reg = { manutencao_id: _manAtual.id, funcionario_id: $("man-h-func").value || null, data: $("man-h-data").value || hojeISO(),
     inicio: $("man-h-inicio").value || null, fim: $("man-h-fim").value || null, horas: $("man-h-horas").value === "" ? null : Number($("man-h-horas").value), observacao: $("man-h-obs").value.trim() || null,
-    hora_extra: $("man-h-he").checked };   // fase 156a (HE): sábado, domingo e feriado o banco marca sozinho
+    hora_extra: false };   // lote S69-j (#369): HE só automática (fim de semana, feriado e fora do expediente)
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim){
@@ -1147,7 +1147,7 @@ async function manAddHoras(){
   // fase 188c (#322, D9): a parte normal grava direto; a hora extra (marcada, ou sábado, domingo e feriado) vai para aprovação do gestor de manutenção
   const g = await aptGravarFicha("OS", _manAtual.id, div.regs);
   if(g.erro && !g.gravadas){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
-  ["man-h-inicio", "man-h-fim", "man-h-horas", "man-h-obs"].forEach(id => $(id).value = ""); $("man-h-he").checked = false;
+  ["man-h-inicio", "man-h-fim", "man-h-horas", "man-h-obs"].forEach(id => $(id).value = ""); aptMostrarHEFicha("man-h");
   await abrirManutencao(_manAtual.id); manAtivarTab("horas");
   aptAvisoFicha("OS", g, div.regs.length, div.avisoExp);
 }
@@ -1395,7 +1395,7 @@ async function manRenderResumoEquipamento(e, containerId){
   const n = { critico: 0, atencao: 0, ok: 0, sem_base: 0 }; itens.forEach(i => n[i.semaforo] = (n[i.semaforo] || 0) + 1);
   const pior = ["critico", "atencao", "sem_base", "ok"].find(s => n[s] > 0);
   const pode = manPodeEditar();
-  const orig = { rdo_abastecimento: "abastecimento do RDO", os: "OS concluída", checklist: "checklist", manual: "ajuste manual", viagem: "chegada de viagem", planilha: "planilha do Bruno", semanal: "leitura semanal" };
+  const orig = { rdo_abastecimento: "abastecimento do RDO", os: "OS concluída", checklist: "checklist", manual: "ajuste manual", viagem: "chegada de viagem", planilha: "planilha do Bruno", semanal: "leitura semanal", plusfrota: "hodômetro do PlusFrota" };
   const prox = itens.filter(i => i.restante != null).sort((a, b) => Number(a.restante) - Number(b.restante)).slice(0, 5);
   box.innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Plano preventivo</h3>
       <span style="margin-left:8px;">${itens.length ? manTagSem(pior) : '<span class="tag cinza">sem plano</span>'}</span>

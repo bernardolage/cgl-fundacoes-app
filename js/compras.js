@@ -42,8 +42,9 @@ let _cmpObras = [];             // obras abertas (planejada, em andamento, paral
 let _cmpObrasConcluidas = [];   // lote S54 (#171): concluídas entram nos selects de Compras num grupo "Concluídas" no fim; canceladas ficam fora
 let _cmpObraMap = {};           // todas as não canceladas (cmpObra resolve o nome de pedido antigo de obra concluída)
 let _cmpProdUn = {};            // lote S54 (#170): produto_id → unidade do cadastro (busca e itens carregados)
-let _cmpEquips = [];
-let _cmpEqMap = {};
+let _cmpEquips = [];             // TAGs ativas (requisição, contratos e as buscas leem daqui)
+let _cmpEquipsBaixa = [];        // lote S69-l (#353): vendidas ou baixadas, num grupo no fim dos selects de destino do custo
+let _cmpEqMap = {};              // ativas e baixadas: item salvo em TAG baixada não perde o rótulo
 let _cmpCentros = [];             // fase 76: centros de custo internos (setores e obras internas)
 let _cmpCentroMap = {};
 let _cmpAlcada = -1;              // null = sem limite; -1 = sem alçada
@@ -635,7 +636,59 @@ function cmpDestinoOptions(sel, semAcessorio){
   const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => "Obra: " + obraRotulo(o), "Aplicação direta na obra");
   const eqs = _cmpEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc(c.nome)}</option>`).join("");
-  return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Reposição de estoque (almoxarifado)</option>${/* html */ obras}<optgroup label="Aplicação direta na TAG">${eqs}</optgroup><optgroup label="Aplicação direta no setor / obra interna">${centros}</optgroup>${semAcessorio ? "" : cmpAceOptgroup(sel)}`;
+  return `<option value="estoque"${sel === "estoque" ? " selected" : ""}>Reposição de estoque (almoxarifado)</option>${/* html */ obras}<optgroup label="Aplicação direta na TAG">${eqs}</optgroup><optgroup label="Aplicação direta no setor / obra interna">${centros}</optgroup>${semAcessorio ? "" : cmpAceOptgroup(sel)}${/* html */ cmpEqBaixaOptgroup(sel, "eq:", "TAG ")}`;
+}
+/* lote S69-l (#353): TAGs vendidas ou baixadas num grupo no fim, com "(vendida em dd/mm/aaaa)". Custo tardio (reparo, peça de
+   antes da venda) tem onde cair e o item salvo nelas não perde o rótulo; a escolha com data depois da baixa pede confirmação
+   (cmpTagVendidaLigar). pre = prefixo do valor ("eq:" nos destinos, "" nos selects por id). */
+function cmpEqBaixaTxt(e){
+  if(!e || e.ativo !== false) return "";
+  const vendida = ["vendido", "vendido_reserva", "liberado_retirada"].includes(e.status);
+  return (vendida ? "vendida" : "baixada") + (e.baixa_em ? " em " + dataBR(e.baixa_em) : "");
+}
+function cmpEqBaixaOptgroup(sel, pre, rot){
+  if(!_cmpEquipsBaixa.length) return "";
+  const p = pre || "";
+  return `<optgroup label="Vendidas ou baixadas">${_cmpEquipsBaixa.map(e => `<option value="${esc(p + e.id)}"${sel === p + e.id ? " selected" : ""}>${esc(rot || "")}${esc(e.codigo)} — ${esc(e.nome || "")} (${esc(cmpEqBaixaTxt(e))})</option>`).join("")}</optgroup>`;
+}
+/* a escolha de TAG baixada com data de referência (pedido, NF, serviço ou lançamento avulso) depois da baixa pede confirmação.
+   Um ouvinte só, na captura do change: segura o evento até a resposta; "Usar esta TAG" solta o change de novo, "Escolher
+   outra" volta ao valor de antes (o de quando o campo recebeu o foco). */
+function cmpTagVendidaDoSelect(s){
+  const v = String(s.value || "");
+  const e = v.startsWith("eq:") ? _cmpEqMap[v.slice(3)] : s.id === "cmp-av-equip" ? _cmpEqMap[v] : null;
+  return e && e.ativo === false ? e : null;
+}
+function cmpTagVendidaDataRef(s){
+  const v = id => $(id)?.value || "";
+  if(s.closest("#cmp-rec-modal")) return v("cmp-rec-emissao") || v("cmp-rec-data") || hojeISO();
+  if(s.closest("#cmp-srv-modal")) return v("cmp-srv-data") || hojeISO();
+  if(s.closest("#cmp-av-modal")) return v("cmp-av-data") || hojeISO();
+  return v("cmp-data") || _cmpAtual?.data_pedido || hojeISO();
+}
+let _cmpTagVendidaLigado = false;
+function cmpTagVendidaLigar(){
+  if(_cmpTagVendidaLigado) return;
+  _cmpTagVendidaLigado = true;
+  const antes = new WeakMap();
+  const selDe = el => el?.tagName === "SELECT" ? el : el?.classList?.contains("cmp-tag-busca") ? el.closest(".cmp-tag-campo")?.previousElementSibling : null;
+  document.addEventListener("focusin", ev => { const s = selDe(ev.target); if(s?.tagName === "SELECT") antes.set(s, s.value); }, true);
+  document.addEventListener("change", ev => {
+    const s = ev.target;
+    if(s?.tagName !== "SELECT" || s._cmpVendOk) return;
+    const e = cmpTagVendidaDoSelect(s);
+    if(!e || !e.baixa_em || cmpTagVendidaDataRef(s) <= e.baixa_em) return;
+    ev.stopImmediatePropagation();
+    const ant = antes.has(s) ? antes.get(s) : ([...s.options].find(o => o.defaultSelected)?.value ?? "");
+    const venda = cmpEqBaixaTxt(e).startsWith("vendida");
+    uiConfirmar({ titulo: "TAG " + (venda ? "vendida" : "baixada"), confirmar: "Usar esta TAG", cancelar: "Escolher outra",
+      texto: `Máquina ${e.codigo} ${cmpEqBaixaTxt(e)}; confirme que o custo é de antes da ${venda ? "venda" : "baixa"}.` }).then(ok => {
+      if(!ok){ s.value = ant; return; }
+      antes.set(s, s.value);
+      s._cmpVendOk = true;
+      try { s.dispatchEvent(new Event("change", { bubbles: true })); } finally { s._cmpVendOk = false; }
+    });
+  }, true);
 }
 /* fase 108b: destino de item de aplicação direta (sem a opção do estoque; vazio = falta escolher). Fase 133: cab = o
    "Destino do custo" do cabeçalho, sem acessório (fica na linha) e com "Vários destinos (ratear)" */
@@ -643,8 +696,8 @@ function cmpDestinoDiretoOptions(sel, cab){
   const obras = cmpObraOptgroups(sel, o => "obra:" + o.id, o => obraRotulo(o), "Obra");
   const eqs = _cmpEquips.map(e => `<option value="eq:${esc(e.id)}"${sel === "eq:" + e.id ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
   const centros = _cmpCentros.filter(c => c.ativo || sel === "cc:" + c.id).map(c => `<option value="cc:${esc(c.id)}"${sel === "cc:" + c.id ? " selected" : ""}>${esc(CMP_CENTRO_TIPO[c.tipo] || "")}: ${esc([c.codigo, c.nome].filter(Boolean).join(" "))}</option>`).join("");
-  if(cab) return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou setor —</option><option value="varios"${sel === "varios" ? " selected" : ""}>Vários destinos (ratear)</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>`;
-  return `<option value=""${sel ? "" : " selected"}>— obra, TAG, centro ou acessório —</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>${cmpAceOptgroup(sel)}`;
+  if(cab) return `<option value=""${sel ? "" : " selected"}>— obra, TAG ou setor —</option><option value="varios"${sel === "varios" ? " selected" : ""}>Vários destinos (ratear)</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>${/* html */ cmpEqBaixaOptgroup(sel, "eq:", "TAG ")}`;
+  return `<option value=""${sel ? "" : " selected"}>— obra, TAG, centro ou acessório —</option>${/* html */ obras}<optgroup label="TAG">${eqs}</optgroup><optgroup label="Setor / obra interna">${centros}</optgroup>${cmpAceOptgroup(sel)}${/* html */ cmpEqBaixaOptgroup(sel, "eq:", "TAG ")}`;
 }
 function cmpCatOptions(sel){ return Object.entries(CMP_CAT_LBL).map(([k, v]) => `<option value="${esc(k)}"${k === sel ? " selected" : ""}>${esc(v)}</option>`).join(""); }
 /* ---------- lote S54 (#170): unidade na linha do pedido ----------
@@ -837,7 +890,7 @@ async function cmpCarregarBaseAgora(){
     const [fo, ob, eq, al, cc, pf, nat, s56, f133, f181b] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").neq("status", "cancelada").order("codigo", { ascending: false }),   // lote S54 (#171): concluídas entram (grupo próprio nos selects)
-      sb.from("equipamentos").select("id,codigo,nome,tipo,placa").eq("ativo", true).order("codigo"),   // fase 131a: placa na busca da TAG
+      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,ativo,status,baixa_em").order("codigo"),   // fase 131a: placa na busca da TAG; S69-l: baixadas também
       sb.rpc("compras_alcada_usuario"),
       sb.from("centros_custo").select("id,codigo,nome,tipo,ativo,odoo_naturezas").order("tipo", { ascending: false }).order("nome"),   // lote S57a (#212): naturezas sugerem o centro
       sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),   // fase 78
@@ -860,8 +913,9 @@ async function cmpCarregarBaseAgora(){
     const todasObras = ob.data || [];
     _cmpObras = todasObras.filter(o => o.status !== "concluida"); _cmpObrasConcluidas = todasObras.filter(o => o.status === "concluida");
     _cmpObraMap = {}; todasObras.forEach(o => _cmpObraMap[o.id] = o);
-    _cmpEquips = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
-    _cmpEqMap = {}; _cmpEquips.forEach(e => _cmpEqMap[e.id] = e);
+    const todosEq = (eq.data || []).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
+    _cmpEquips = todosEq.filter(e => e.ativo !== false); _cmpEquipsBaixa = todosEq.filter(e => e.ativo === false);
+    _cmpEqMap = {}; todosEq.forEach(e => _cmpEqMap[e.id] = e);
     _cmpAlcada = al.error ? -1 : (al.data === null || al.data === undefined ? null : Number(al.data));
     cmpPreencherSelectsFixos();
     _cmpCarregado = true;
@@ -1143,7 +1197,8 @@ async function cmpBuscar(){
 function cmpPreencherSelectsFixos(){
   const fornOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
   const obraOpts = ph => `<option value="">${esc(ph)}</option>` + cmpObraOptgroups("", o => o.id, o => obraRotulo(o), "Obras");   // lote S54 (#171): + grupo Concluídas
-  const eqOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
+  // lote S69-l: as baixadas entram no fim (cmp-equip espelha o destino do cabeçalho; o filtro acha pedido antigo)
+  const eqOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("") + cmpEqBaixaOptgroup("", "", "");
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
   const vForn = $("cmp-forn")?.value || "";
   set("cmp-forn", fornOpts("— escolha o fornecedor —"));
@@ -3088,6 +3143,7 @@ const CMP_TAG_GRUPOS = [["caminhao", "Caminhões"], ["veiculo", "Veículos leves
   ["compressor", "Compressores"], ["gerador", "Geradores"], ["escavadeira", "Escavadeiras"]];
 const CMP_TAG_TIPO_LBL = { caminhao: "caminhão", veiculo: "veículo leve", perfuratriz: "perfuratriz", bomba: "bomba", compressor: "compressor",
   gerador: "gerador", escavadeira: "escavadeira", retroescavadeira: "retroescavadeira", outro: "outro" };
+const CMP_TAG_GRUPO_BAIXA = 99;   // lote S69-l (#353): grupo das vendidas ou baixadas, sempre o último da busca de TAG
 let _cmpTagSoFrota = null;   // null = padrão do cargo; depois, o que a pessoa escolheu (vale para todos os campos até recarregar)
 function cmpEqFrota(e){ return !!e && (e.tipo === "caminhao" || e.tipo === "veiculo"); }
 function cmpTagSoFrota(){ return _cmpTagSoFrota === null ? ["gestor_frota", "logistica"].includes(usuarioAtual?.cargo) : _cmpTagSoFrota; }
@@ -3139,7 +3195,7 @@ function cmpCampoTag(sel, placeholder){
         if(termos.length && !casa(cmpTagBuscaTxt(x.e))) return;
         if(soFrota && !cmpEqFrota(x.e) && x.v !== sel.value){ escondidas++; return; }
         if(!ordem.includes("__tags")) ordem.push("__tags");
-        const gi = cmpTagGrupoIdx(x.e);
+        const gi = x.e.ativo === false ? CMP_TAG_GRUPO_BAIXA : cmpTagGrupoIdx(x.e);   // lote S69-l: baixadas no fim
         (tagGrupos[gi] = tagGrupos[gi] || []).push(i);
         return;
       }
@@ -3150,13 +3206,13 @@ function cmpCampoTag(sel, placeholder){
     });
     const item = i => { const x = ents[i], e = x.e, on = x.v === sel.value ? " ativo-sel" : "";   // on: classe fixa
       return e
-        ? `<div class="resultado-item${/* html */ on}" data-i="${i}"><strong>${esc(e.codigo)}</strong> ${esc(e.nome || "")}<span class="meta" style="float:right;">${esc([e.placa, CMP_TAG_TIPO_LBL[e.tipo] || e.tipo].filter(Boolean).join(" · "))}</span></div>`
+        ? `<div class="resultado-item${/* html */ on}" data-i="${i}"><strong>${esc(e.codigo)}</strong> ${esc(e.nome || "")}<span class="meta" style="float:right;">${esc([e.placa, CMP_TAG_TIPO_LBL[e.tipo] || e.tipo, cmpEqBaixaTxt(e)].filter(Boolean).join(" · "))}</span></div>`
         : `<div class="resultado-item${/* html */ on}" data-i="${i}">${esc(x.o.textContent)}</div>`; };
     const cab = rot => rot ? `<div class="cmp-tag-grupo rotulo-caps">${esc(rot)}</div>` : "";
     let html = temTag ? `<label class="cmp-tag-frota" title="Mostra só caminhões e veículos leves; desligue para ver as máquinas"><input type="checkbox"${soFrota ? " checked" : ""} /> Só frota (caminhões e veículos)</label>` : "";
     ordem.forEach(k => {
       if(k === "__tags"){
-        Object.keys(tagGrupos).map(Number).sort((a, b) => a - b).forEach(gi => { html += cab(gi < CMP_TAG_GRUPOS.length ? CMP_TAG_GRUPOS[gi][1] : "Demais TAGs") + tagGrupos[gi].map(item).join(""); });
+        Object.keys(tagGrupos).map(Number).sort((a, b) => a - b).forEach(gi => { html += cab(gi === CMP_TAG_GRUPO_BAIXA ? "Vendidas ou baixadas" : gi < CMP_TAG_GRUPOS.length ? CMP_TAG_GRUPOS[gi][1] : "Demais TAGs") + tagGrupos[gi].map(item).join(""); });
       } else html += cab(k.slice(2)) + grupos[k].map(item).join("");
     });
     if(escondidas) html += `<div class="resultado-item cmp-tag-mais" data-acao="todas">Mostrar também ${num(escondidas)} TAG(s) de máquinas</div>`;
@@ -4550,6 +4606,7 @@ async function cmpPdfPedido(semValores){
 /* ---------- ligação ---------- */
 function ligarCompras(){
   if(!$("sec-compras")) return;
+  cmpTagVendidaLigar();   // lote S69-l (#353): TAG vendida ou baixada pede confirmação
   document.querySelector('nav button[data-secao="compras"]')?.addEventListener("click", () => carregarCompras(false));
   document.querySelectorAll("#cmp-views .serv-view-btn").forEach(b => b.addEventListener("click", () => { _cmpView = b.dataset.view; renderCompras(); }));
   document.querySelectorAll("#cmp-painel .ind[data-kpi]").forEach(el => el.addEventListener("click", () => {

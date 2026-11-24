@@ -576,7 +576,7 @@ async function repAddHoras(){
   if(!_repAtual?.id) return;
   const reg = { reparo_id: _repAtual.id, funcionario_id: $("rep-h-func").value || null, data: $("rep-h-data").value || hojeISO(),
     inicio: $("rep-h-inicio").value || null, fim: $("rep-h-fim").value || null, horas: $("rep-h-horas").value === "" ? null : Number($("rep-h-horas").value), observacao: $("rep-h-obs").value.trim() || null,
-    hora_extra: $("rep-h-he").checked };   // fase 156a (HE): sábado, domingo e feriado o banco marca sozinho
+    hora_extra: false };   // lote S69-j (#369): HE só automática (fim de semana, feriado e fora do expediente)
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim){
@@ -590,7 +590,7 @@ async function repAddHoras(){
   // fase 188c (#322, D9): a parte normal grava direto; a hora extra (marcada, ou sábado, domingo e feriado) vai para aprovação do gestor de acessórios
   const g = await aptGravarFicha("RP", _repAtual.id, div.regs);
   if(g.erro && !g.gravadas){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
-  ["rep-h-inicio", "rep-h-fim", "rep-h-horas", "rep-h-obs"].forEach(id => $(id).value = ""); $("rep-h-he").checked = false;
+  ["rep-h-inicio", "rep-h-fim", "rep-h-horas", "rep-h-obs"].forEach(id => $(id).value = ""); aptMostrarHEFicha("rep-h");
   await abrirReparo(_repAtual.id); repAtivarTab("horas");
   aptAvisoFicha("RP", g, div.regs.length, div.avisoExp);
 }

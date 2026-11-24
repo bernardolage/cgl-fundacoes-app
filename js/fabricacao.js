@@ -431,7 +431,7 @@ async function fabAddHoras(){
   if(!_fabAtual?.id) return;
   const reg = { ordem_id: _fabAtual.id, funcionario_id: $("fab-h-func").value || null, centro_trabalho_id: $("fab-h-centro").value || null, data: $("fab-h-data").value || hojeISO(),
     inicio: $("fab-h-inicio").value || null, fim: $("fab-h-fim").value || null, horas: $("fab-h-horas").value === "" ? null : Number($("fab-h-horas").value),
-    hora_extra: $("fab-h-he").checked, observacao: $("fab-h-obs").value.trim() || null };
+    hora_extra: false, observacao: $("fab-h-obs").value.trim() || null };
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!reg.centro_trabalho_id){ aviso("app-aviso", "Escolha o centro de trabalho.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
@@ -446,7 +446,7 @@ async function fabAddHoras(){
   // fase 188c (#322, D9): a parte normal grava direto; a hora extra vai para aprovação do gestor de acessórios
   const g = await aptGravarFicha("OF", _fabAtual.id, div.regs);
   if(g.erro && !g.gravadas){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
-  ["fab-h-inicio", "fab-h-fim", "fab-h-horas", "fab-h-obs"].forEach(id => $(id).value = ""); $("fab-h-he").checked = false;
+  ["fab-h-inicio", "fab-h-fim", "fab-h-horas", "fab-h-obs"].forEach(id => $(id).value = ""); aptMostrarHEFicha("fab-h");
   await abrirOrdemFabricacao(_fabAtual.id); fabAtivarTab("horas");
   aptAvisoFicha("OF", g, div.regs.length, div.avisoExp);
 }

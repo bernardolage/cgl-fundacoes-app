@@ -12,6 +12,9 @@
    e feriado continuam com o dia inteiro em HE e indo para aprovação.
    Fase 188c (#322): toda hora extra vai para aprovação, também a de dia útil (a parte normal grava direto). A ficha do RP,
    da OS e da OF usa aptGravarFicha; a HE aguardando aparece na ficha fora do total (aptTxtAguardando).
+   Lote S69-j (#369): HE só automática. A caixa "HE" saiu da grade e das fichas; a HE vem só da regra (fim de semana e
+   feriado inteiros, dia útil fora do expediente pela divisão) e aparece como "HE calculada", só leitura.
+   Lote S69-k (#360): HE de RP é decidida pelo gestor de acessórios ou pelo de manutenção (OS e OF como antes).
    ==================================================================== */
 
 let _aptHoras = [];        // vw_apontamentos no período
@@ -49,6 +52,7 @@ function aptPodeLancar(){ return ["RP", "OS", "OF"].some(aptPodeGravar); }
 function aptPodeDecidir(a){
   if(!usuarioAtual || ehSomenteLeitura() || !a || a.status !== "aguardando" || a.lancado_por === usuarioAtual.id) return false;
   if(usuarioAtual.cargo === "diretor") return true;
+  if(a.tipo === "RP") return ["gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo);   // lote S69-k (#360)
   return a.tipo === "OS" ? usuarioAtual.cargo === "gestor_manutencao" : usuarioAtual.cargo === "gestor_acessorios";
 }
 
@@ -176,7 +180,7 @@ function aptRenderAprovacoes(){
       && aptFiltroBusca([_aptDocNum[a.documento_id]?.numero, aptNomeFunc(a.funcionario_id), a.observacao].join(" ")))
     .sort((a, b) => (a.status === "aguardando" ? 0 : 1) - (b.status === "aguardando" ? 0 : 1) || String(a.data).localeCompare(String(b.data)));
   $("apt-contador").textContent = `(${linhas.length})`;
-  $("apt-totais").innerHTML = `Sábado, domingo e feriado só entram na ficha do documento (e no custo) depois de aprovados. OS: gestor de manutenção; RP e OF: gestor de acessórios.`;
+  $("apt-totais").innerHTML = `Sábado, domingo e feriado só entram na ficha do documento (e no custo) depois de aprovados. OS: gestor de manutenção; RP: gestor de acessórios ou de manutenção; OF: gestor de acessórios.`;
   if(!linhas.length){ $("apt-conteudo").innerHTML = `<p class="vazio">Nenhuma hora aguardando aprovação.</p>`; return; }
   const algumDecide = linhas.some(aptPodeDecidir);
   const tagSt = { aguardando: "ambar", aprovada: "verde", recusada: "vermelho" };
@@ -289,8 +293,9 @@ function aptAvisoFicha(tipo, g, nLinhas, avisoExp){
 }
 
 /* ---------- fase 188c (#322): toda hora extra vai para aprovação, também a de dia útil ---------- */
-/* Quem aprova (decisão 9 da fase 156): OS = gestor de manutenção; RP e OF = gestor de acessórios; a diretoria aprova qualquer uma */
-function aptQuemAprova(tipo){ return tipo === "OS" ? "gestor de manutenção" : "gestor de acessórios"; }
+/* Quem aprova (decisão 9 da fase 156; RP também o gestor de manutenção, lote S69-k): OS = gestor de manutenção;
+   RP = gestor de acessórios ou de manutenção; OF = gestor de acessórios; a diretoria aprova qualquer uma */
+function aptQuemAprova(tipo){ return tipo === "OS" ? "gestor de manutenção" : tipo === "RP" ? "gestor de acessórios ou de manutenção" : "gestor de acessórios"; }
 function aptAvisoAprovacao(tipo){ return `Hora extra vai para aprovação do ${aptQuemAprova(tipo)}.`; }
 /* Ficha do RP, da OS ou da OF: as linhas normais gravam direto na tabela do documento; as de hora extra (marcadas, ou em
    sábado, domingo e feriado) vão para apontamento_aprovacoes. O banco recusa HE gravada direto (trg_*_horas_he_aprovacao).
@@ -403,9 +408,8 @@ async function aptAplicarDivisao(i){
   if(av){ l.msg = av; l.avisoExp = true; }
   else if(l.avisoExp){ l.msg = ""; l.avisoExp = false; }
   if(partes.length <= 1){
-    // parte de linha dividida, linha toda fora do expediente ou HE que o app marcou antes: segue o expediente;
-    // HE marcada à mão numa linha dentro do expediente fica como a pessoa deixou
-    if(!av && partes[0] && (l.div || partes[0].hora_extra || l.heAuto)){ l.hora_extra = partes[0].hora_extra; l.heAuto = partes[0].hora_extra; }
+    // lote S69-j: a HE segue sempre o expediente (não há mais marca à mão); fim de semana e feriado são HE inteiros
+    if(!av && partes[0]) l.hora_extra = partes[0].hora_extra || await aptExigeAprovacao(l.data);
     return true;
   }
   const grupo = l.div || ("d" + (++_aptDivSeq));
@@ -430,6 +434,30 @@ function aptManterUmaLinha(i){
   idx.slice().reverse().forEach(k => _aptGrade.splice(k, 1));
   _aptGrade.splice(idx[0], 0, una);
   aptRenderGrade();
+}
+
+/* Lote S69-j (#369): etiqueta só de leitura da HE calculada pela regra (sem caixa para marcar à mão) */
+function aptHECalculada(tipo){
+  return `<span class="tag ambar" title="hora extra calculada pela regra: sábado, domingo e feriado inteiros; em dia útil, o que passa do expediente da oficina. Custa ×2 e vai para aprovação do ${esc(aptQuemAprova(tipo))}">HE calculada</span>`;
+}
+/* Ficha do RP, da OS e da OF: mostra, só para leitura, a HE que a regra vai calcular para data, início e fim do formulário.
+   pref = "rep-h", "man-h" ou "fab-h"; o resultado vai em #<pref>-he. */
+async function aptMostrarHEFicha(pref){
+  const el = $(pref + "-he"); if(!el) return;
+  const data = $(pref + "-data")?.value || hojeISO(), ini = $(pref + "-inicio")?.value, fim = $(pref + "-fim")?.value;
+  const chave = `${data}|${ini}|${fim}`; el.dataset.chave = chave;
+  let txt = "normal", he = false;
+  try {
+    if(await aptExigeAprovacao(data)){ he = true; txt = `dia inteiro (${aptDiaSemana(data) === "sáb" || aptDiaSemana(data) === "dom" ? "fim de semana" : "feriado"})`; }
+    else if(ini && fim && fim > ini){
+      const r = await aptDividirHE(data, ini, fim);
+      const partes = r.aviso ? [] : r.partes.filter(p => p.hora_extra);
+      if(partes.length){ he = true; txt = partes.map(p => `${p.inicio}–${p.fim}`).join(", "); }
+      else if(r.aviso) txt = r.aviso;
+    } else txt = "calculada ao informar início e fim";
+  } catch(e){ txt = e.message; }
+  if(el.dataset.chave !== chave) return;   // o formulário mudou enquanto conferia
+  el.innerHTML = he ? `<span class="tag ambar">HE calculada</span> ${esc(txt)}` : esc(txt);
 }
 
 /* ---------- grade de lançamento ---------- */
@@ -524,7 +552,8 @@ function aptRenderGrade(){
   $("apt-grade").innerHTML = _aptGrade.map((l, i) => {
     const d = l.doc;
     let extra = "";
-    const he = d ? `<label class="meta" title="hora extra, custa ×2 e vai para aprovação do responsável do setor (OS: gestor de manutenção; RP e OF: gestor de acessórios); sábado, domingo e feriado vêm marcados; em dia útil, o que passa do expediente da oficina vira linha HE sozinho"><input type="checkbox" data-i="${i}" data-c="hora_extra" ${l.hora_extra ? "checked" : ""} /> HE</label>` : "";
+    // lote S69-j (#369): sem caixa; a HE é só calculada (a parte de linha dividida já mostra a sua em aptDivInfo)
+    const he = d && l.hora_extra && !l.div ? aptHECalculada(d.tipo) : "";
     if(d?.tipo === "OF") extra = `<select data-i="${i}" data-c="centro_trabalho_id">${/* html */ centros}</select>
       ${/* html */ he}`;
     else if(d?.tipo === "OS"){
@@ -578,7 +607,7 @@ async function aptGradeMudou(el){
     l.divChave = `${l.data}|${l.inicio}|${l.fim}`;
     await aptAplicarDivisao(i);   // fase 188b: a data muda o expediente (sexta tem o seu; fim de semana é HE inteiro)
     aptRenderGrade();
-  } else if(c === "hora_extra") l.heAuto = false;   // marcada ou desmarcada à mão: o app não troca sozinho
+  }
 }
 /* fase 188b: ao sair do Início ou do Fim, confere o expediente e divide a linha; o foco segue para o campo clicado */
 async function aptGradeSaiuHora(e){
@@ -662,6 +691,22 @@ async function aptGravarLinha(l){
   }
 }
 async function aptGravarGrade(){
+  // lote S69-j (#369): a HE é só automática; antes de gravar, toda linha ainda não conferida (a da foto do quadro também)
+  // passa pela divisão do expediente. Se alguma se dividir, a pessoa confere as partes e grava de novo.
+  let dividiu = false;
+  for(let i = _aptGrade.length - 1; i >= 0; i--){
+    const l = _aptGrade[i], chave = `${l.data}|${l.inicio}|${l.fim}`;
+    if(l.incluir === false || l.div || l.semDividir || l.divChave === chave) continue;
+    l.divChave = chave;
+    const antes = _aptGrade.length;
+    try { await aptAplicarDivisao(i); } catch(e){ aviso("app-aviso", e.message, "erro"); return; }
+    if(_aptGrade.length !== antes) dividiu = true;
+  }
+  if(dividiu){
+    aptRenderGrade();
+    aviso("app-aviso", "Linha que passa do expediente da oficina foi dividida em normal e hora extra. Confira as partes e clique em Gravar de novo.", "aviso");
+    return;
+  }
   const usadas = _aptGrade.filter(l => l.incluir !== false && (l.docTxt || l.funcionario_id && (l.inicio || l.fim)));
   if(!usadas.length){ aviso("app-aviso", "Preencha pelo menos uma linha.", "erro"); return; }
   for(const l of usadas){
@@ -739,5 +784,14 @@ function ligarApontamentos(){
     if(e.target.id === "btn-apt-recusar-lote"){ const ids = sel(); if(!ids.length){ aviso("app-aviso", "Selecione as horas.", "erro"); return; } comBotaoTravado(e.target, () => aptRecusar(ids)); }
   });
 }
+/* Lote S69-j: a HE calculada nas fichas do RP, da OS e da OF acompanha data, início e fim */
+function ligarHEFichas(){
+  ["rep-h", "man-h", "fab-h"].forEach(pref => ["data", "inicio", "fim"].forEach(c => {
+    const el = $(`${pref}-${c}`);
+    if(el) el.addEventListener("change", () => aptMostrarHEFicha(pref));
+  }));
+}
+if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarHEFichas);
+else ligarHEFichas();
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarApontamentos);
 else ligarApontamentos();
