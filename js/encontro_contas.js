@@ -153,7 +153,7 @@ function renderFichaEncontro(aba){
   const s = a.saldo || { total_entradas: 0, total_relatorios: 0, saldo: 0, qtd_abertos: 0 };
   const grava = eccPodeGravar();
   $("ecc-ficha-titulo").textContent = a.func.nome + (a.func.ativo === false ? " (inativo)" : "");
-  ["btn-ecc-nova-entrada", "btn-ecc-novo-relatorio", "btn-ecc-nova-prestacao", "btn-ecc-fechar"].forEach(id => $(id).style.display = grava ? "" : "none");
+  ["btn-ecc-nova-entrada", "btn-ecc-novo-relatorio", "btn-ecc-nova-prestacao", "btn-ecc-fechar", "btn-ecc-whatsapp"].forEach(id => $(id).style.display = grava ? "" : "none");
   $("ecc-statusbar").innerHTML = uiStatusbar([["aberto", "Com lançamento aberto"], ["fechado", "Tudo fechado"]], s.qtd_abertos > 0 ? "aberto" : "fechado");
   $("ecc-chip-entradas").textContent = brl(s.total_entradas);
   $("ecc-chip-relatorios").textContent = brl(s.total_relatorios);
@@ -337,6 +337,54 @@ function imprimirFechamentoEcc(id){
   w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
 }
 
+/* ---------- WhatsApp do colaborador (fase 190d, D19): vincular e desvincular o número ---------- */
+function eccFoneBR(e164){
+  const d = String(e164 || "").replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+  return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : String(e164 || "");
+}
+async function abrirWhatsAppEcc(){
+  if(!eccPodeGravar() || !_eccAtual) return;
+  const f = _eccAtual.func;
+  const [ct, fu, ms] = await Promise.all([
+    sb.from("ec_wa_contatos").select("numero_e164,vinculado_em").eq("funcionario_id", f.id).eq("ativo", true).maybeSingle(),
+    sb.from("funcionarios").select("telefone").eq("id", f.id).maybeSingle(),
+    sb.from("ec_wa_mensagens").select("created_at").eq("funcionario_id", f.id).order("created_at", { ascending: false }).limit(1)
+  ]);
+  const erro = [ct, fu, ms].find(r => r.error);
+  if(erro){ uiAvisar("Erro ao abrir o WhatsApp: " + erro.error.message, "erro"); return; }
+  const c = ct.data, ultima = (ms.data || [])[0]?.created_at;
+  if(c){
+    const corpo = uiRotuloValor("Número vinculado", uiCodigo(eccFoneBR(c.numero_e164)))
+      + uiRotuloValor("Vinculado em", esc(dataHoraBR(c.vinculado_em)))
+      + uiRotuloValor("Última mensagem", ultima ? esc(dataHoraBR(ultima)) : "Nenhuma ainda")
+      + `<p class="meta">O colaborador registra as despesas mandando a foto da notinha para o WhatsApp da CGL a partir deste número.</p>`;
+    const r = await uiModal({ titulo: "WhatsApp · " + f.nome, corpoHTML: corpo, largura: "p", acoes: [
+      { id: "fechar", texto: "Fechar" }, { id: "trocar", texto: "Trocar número" }, { id: "desvincular", texto: "Desvincular", perigo: true }] });
+    if(r === "trocar") return vincularWhatsAppEcc(eccFoneBR(c.numero_e164));
+    if(r !== "desvincular") return;
+    const ok = await uiConfirmar({ titulo: "Desvincular o WhatsApp", perigo: true, confirmar: "Desvincular",
+      texto: `Desvincular o número ${eccFoneBR(c.numero_e164)} de ${f.nome}? Ele deixa de registrar despesas pelo WhatsApp; as despesas já registradas ficam.` });
+    if(!ok) return;
+    const { error } = await sb.rpc("ec_wa_desvincular", { p_funcionario: f.id });
+    if(error){ uiAvisar(error.message, "erro"); return; }
+    uiAvisar("WhatsApp desvinculado.", "ok");
+    return;
+  }
+  return vincularWhatsAppEcc(fu.data?.telefone || "");
+}
+async function vincularWhatsAppEcc(sugerido){
+  const f = _eccAtual?.func; if(!f) return;
+  const v = await uiPedirValores({ titulo: "Vincular WhatsApp · " + f.nome, confirmar: "Vincular",
+    texto: "Número de celular com DDD (vem da ficha do funcionário). Só este número poderá registrar despesas em nome dele pelo WhatsApp da CGL.",
+    campos: [{ id: "ecc-wa-numero", rotulo: "Celular", tipo: "tel", valor: sugerido, obrigatorio: true, placeholder: "(31) 99999-0000" }] });
+  if(!v) return;
+  const numero = String(v["ecc-wa-numero"] || "").trim();
+  if(numero.replace(/\D/g, "").length < 10){ uiAvisar("Informe o celular com DDD.", "erro"); return; }
+  const { error } = await sb.rpc("ec_wa_vincular", { p_funcionario: f.id, p_numero: numero });
+  if(error){ uiAvisar(error.message, "erro"); return; }
+  uiAvisar("WhatsApp vinculado.", "ok");
+}
+
 /* ---------- smart-button "Caixa" na ficha do funcionário (D9) ---------- */
 async function eccSmartFuncionario(funcId){
   const b = $("func-sb-caixa"); if(!b) return;
@@ -369,6 +417,7 @@ function ligarEncontroContas(){
   $("btn-ecc-novo-relatorio")?.addEventListener("click", () => abrirLancamentoEcc("relatorio"));
   $("btn-ecc-nova-prestacao")?.addEventListener("click", () => abrirLancamentoEcc("prestacao"));
   $("btn-ecc-fechar")?.addEventListener("click", abrirFecharCaixaEcc);
+  $("btn-ecc-whatsapp")?.addEventListener("click", () => comBotaoTravado("btn-ecc-whatsapp", abrirWhatsAppEcc));
   document.querySelectorAll("#ecc-notebook button").forEach(b => b.addEventListener("click", () => ativarTabEncontro(b.dataset.tab)));
   document.querySelectorAll("#ecc-ficha .sb-btn[data-goto-tab]").forEach(b => b.addEventListener("click", () => ativarTabEncontro(b.dataset.gotoTab)));
   $("ecc-ficha")?.addEventListener("click", e => {
