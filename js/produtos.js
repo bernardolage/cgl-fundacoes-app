@@ -674,6 +674,7 @@ function novoProduto(){
   _prodMov = null;   // lote S61 (#268)
   if($("prod-movimentos")) $("prod-movimentos").innerHTML = '<p class="vazio">Salve o produto para ver os movimentos.</p>';
   if($("prod-historico")) $("prod-historico").innerHTML = '<p class="vazio">Salve o produto para ver o histórico.</p>';   // lote S67-c
+  if($("epi-obr-onde")) $("epi-obr-onde").hidden = true;   // fase 202b: produto novo não tem "Onde está"
   if($("prod-mov-badge")) $("prod-mov-badge").textContent = "";
 }
 
@@ -717,6 +718,7 @@ async function abrirProduto(id){
   abrirFichaProdVisual(data);
   prodCarregarFabricacoes(id);
   prodCarregarMovimentos(id, data);   // lote S61 (#268)
+  if(typeof epiObrOndeEsta === "function") epiObrOndeEsta(id);   // fase 202b: "Onde está" do EPI (base e obras)
   if(typeof montarHistorico === "function") montarHistorico("produtos", id, "prod-historico");   // lote S67-c (#357)
 }
 

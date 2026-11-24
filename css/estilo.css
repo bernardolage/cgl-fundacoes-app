@@ -4884,6 +4884,31 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .mgr-svg .mgr-barra.mgr-sem-link:hover rect { stroke: none; }
 }
 
+/* Fase 202b (#196): EPI nas obras na aba SESMT › EPI (js/epi.js, prefixo epi-obr-) */
+@layer componentes {
+  #epi-obr-card[hidden], #epi-obr-onde[hidden] { display: none; }
+  .epi-obr-topo { flex-wrap: wrap; gap: var(--esp-2); }
+  .epi-obr-acoes { display: inline-flex; flex-wrap: wrap; gap: var(--esp-1); margin-left: auto; }
+  .epi-obr-topo .ui-faixa { margin-bottom: var(--esp-2); }
+  #epi-obr-conteudo > .ui-faixa { margin-bottom: var(--esp-3); }
+  .epi-obr-ajuda { margin: var(--esp-2) 0; }
+  .epi-obr-corpo { margin-top: var(--esp-2); }
+  .epi-obr-campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--esp-3); margin-bottom: var(--esp-3); }
+  .epi-obr-planilha, .epi-obr-add { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); margin-bottom: var(--esp-2); }
+  .epi-obr-add input { flex: 1 1 320px; min-width: 0; }
+  .epi-obr-grade .ui-tabela input, .epi-obr-grade .ui-tabela select { width: 100%; min-width: 0; font-size: var(--txt-sm); }
+  .epi-obr-grade .ui-tabela td.num input { max-width: 96px; text-align: right; }
+  .epi-obr-consumo td:first-child { min-width: 200px; }
+  .epi-obr-consumo td:nth-child(2) { min-width: 240px; }
+  .epi-obr-consumo td:nth-child(5) { min-width: 110px; white-space: nowrap; }
+  .epi-obr-consumo td:nth-child(5) select { width: auto; }
+  .epi-obr-rodape { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-3); }
+  .epi-obr-rodape .meta { margin-right: auto; }
+  .epi-obr-neg { color: var(--perigo-txt); font-weight: 600; }
+  .epi-obr-onde { margin-top: var(--esp-4); }
+  .epi-obr-onde-rv { display: flex; flex-wrap: wrap; gap: var(--esp-6); margin-bottom: var(--esp-2); }
+}
+
 /* Lote S69-c (chamado 355): o Salvar da ficha da obra some (atributo hidden) para quem só consulta e anexa; o display do .btn
    venceria o hidden do navegador */
 @layer componentes {

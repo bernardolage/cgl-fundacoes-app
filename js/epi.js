@@ -785,3 +785,570 @@ if(document.readyState === "loading"){
 } else {
   ligarEpi();
 }
+
+/* ====================================================================
+   Fase 202b (#196): EPI e uniforme nas obras (spec docs/specs/fase-202-epi-obra.md, prefixo epi-obr-).
+   Card "EPI nas obras" na aba SESMT › EPI: faixa de situação, Estoque por obra (inclusive obra sem saldo), ficha da obra
+   (produtos e histórico), Pendentes de apontamento, Enviar para obra, Consumo na obra (grade funcionário × produto ×
+   quantidade × máquina), Retorno à base e Inventário da obra (só sst_pode_operar, com a planilha de conferência do Odoo).
+   No produto de EPI, "Onde está" (aba Estoque). Tudo lê de vw_epi_saldo_local e movimentacoes_estoque; grava só pelas
+   RPCs da 202a (epi_transferir, epi_consumir_obra, epi_inventario_obra, estoque_saida_desfazer). O banco confere tudo de
+   novo: saldo da base e da obra, data, quem lança. Sem a migration, aviso e tela sem quebrar.
+   ==================================================================== */
+const EPI_OBR_ATIVAS = ["em_andamento", "planejada", "paralisada"];
+const EPI_OBR_STATUS = { em_andamento: "Em andamento", planejada: "Planejada", paralisada: "Paralisada", concluida: "Concluída", cancelada: "Cancelada" };
+const EPI_OBR_MSG_MIGRATION = "O saldo de EPI por obra entra quando a migration da fase 202a estiver no banco.";
+const _epiObr = { aba: "estoque", modo: "lista", obraId: null, dados: null, erro: null, carregando: false,
+                  funcs: null, maqs: null, form: null, hist: null, histErro: null };
+function epiObrPodeOperar(){ return typeof sstPodeOperar === "function" && sstPodeOperar(); }
+function epiObrNum(v){ return Number(v) || 0; }
+function epiObrQtd(v){ return uiFmt(v, "num"); }
+function epiObrBrl(v){ return `<span data-val-sens>${uiFmt(v, "brl")}</span>`; }
+function epiObrDiaSP(iso){ return iso ? new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) : null; }
+function epiObrErroMsg(error){ return epiViewAusente(error) ? EPI_OBR_MSG_MIGRATION : (error && error.message) || "Não foi possível carregar."; }
+
+/* ---------- carga ---------- */
+async function epiObrCarregar(force){
+  const alvo = $("epi-obr-conteudo"); if(!alvo) return;
+  if(_epiObr.carregando) return;
+  if(_epiObr.dados && !force){ epiObrDesenhar(); return; }
+  _epiObr.carregando = true;
+  alvo.innerHTML = uiCarregando("Carregando o EPI nas obras…");
+  const [saldo, obras, movs] = await Promise.all([
+    lerTudo(() => sb.from("vw_epi_saldo_local").select("produto_id,produto_codigo,produto_nome,local,obra_id,obra_codigo,obra_nome,obra_status,quantidade,valor,atualizado_em"), ["produto_id", "obra_id"]),
+    lerTudo(() => sb.from("obras").select("id,codigo,nome,status")),
+    lerTudo(() => sb.from("movimentacoes_estoque").select("id,tipo,local_origem_obra_id,local_destino_obra_id,data_movimentacao,estorno_de")
+      .or("local_origem_obra_id.not.is.null,local_destino_obra_id.not.is.null"))
+  ]);
+  _epiObr.carregando = false;
+  const err = saldo.error || obras.error || movs.error;
+  if(err){ _epiObr.dados = null; _epiObr.erro = epiObrErroMsg(err); epiObrDesenhar(); return; }
+  _epiObr.erro = null;
+  _epiObr.dados = { saldo: saldo.data, obras: obras.data, movs: movs.data };
+  epiObrDesenhar();
+}
+/* produtos de EPI (da linha "base" da view: todos os EPI e uniformes), por id */
+function epiObrProdutos(){
+  const m = new Map();
+  for(const r of (_epiObr.dados?.saldo || [])) if(r.local === "base") m.set(r.produto_id, r);
+  return m;
+}
+function epiObrSaldoObra(obraId){ return (_epiObr.dados?.saldo || []).filter(r => r.local === "obra" && r.obra_id === obraId && epiObrNum(r.quantidade) !== 0); }
+/* uma linha por obra: ativas sempre (mesmo sem saldo, #242) + concluídas e canceladas que ainda têm saldo */
+function epiObrLinhasObras(){
+  const D = _epiObr.dados; if(!D) return [];
+  const porObra = new Map();
+  for(const r of D.saldo) if(r.local === "obra" && epiObrNum(r.quantidade) !== 0){
+    const a = porObra.get(r.obra_id) || { itens: 0, pecas: 0, valor: 0 };
+    a.itens++; a.pecas += epiObrNum(r.quantidade); a.valor += epiObrNum(r.valor); porObra.set(r.obra_id, a);
+  }
+  const ult = new Map();   // obra → { envio, consumo }
+  const desfeitas = new Set(D.movs.filter(m => m.estorno_de).map(m => m.estorno_de));
+  for(const m of D.movs){
+    if(m.estorno_de || desfeitas.has(m.id)) continue;
+    if(m.tipo === "transferencia" && m.local_destino_obra_id){
+      const u = ult.get(m.local_destino_obra_id) || {}; if(!u.envio || m.data_movimentacao > u.envio) u.envio = m.data_movimentacao; ult.set(m.local_destino_obra_id, u);
+    }
+    if(m.tipo === "saida" && m.local_origem_obra_id){
+      const u = ult.get(m.local_origem_obra_id) || {}; if(!u.consumo || m.data_movimentacao > u.consumo) u.consumo = m.data_movimentacao; ult.set(m.local_origem_obra_id, u);
+    }
+  }
+  return D.obras.filter(o => EPI_OBR_ATIVAS.includes(o.status) || porObra.has(o.id)).map(o => {
+    const a = porObra.get(o.id) || { itens: 0, pecas: 0, valor: 0 }; const u = ult.get(o.id) || {};
+    return { id: o.id, codigo: o.codigo, nome: o.nome, status: o.status, encerrada: !EPI_OBR_ATIVAS.includes(o.status),
+             itens: a.itens, pecas: a.pecas, valor: a.valor, envio: epiObrDiaSP(u.envio), consumo: epiObrDiaSP(u.consumo) };
+  }).sort((a, b) => (b.encerrada && b.pecas > 0) - (a.encerrada && a.pecas > 0) || String(b.codigo || "").localeCompare(String(a.codigo || "")));
+}
+
+/* ---------- desenho ---------- */
+function epiObrFaixa(){
+  if(_epiObr.erro) return uiFaixaSituacao([], null, { erro: _epiObr.erro });
+  const base = [...epiObrProdutos().values()].filter(r => epiObrNum(r.quantidade) < 0);
+  const conc = epiObrLinhasObras().filter(o => o.encerrada && o.pecas > 0);
+  const frases = [];
+  if(base.length) frases.push(`${base.length} ${base.length === 1 ? "produto de EPI com base negativa" : "produtos de EPI com base negativa"}: conte antes de enviar`);
+  if(conc.length) frases.push(`${conc.length} ${conc.length === 1 ? "obra concluída com saldo" : "obras concluídas com saldo"} (${conc.map(o => o.codigo).join(", ")}): apontar as entregas por funcionário ou retornar à base`);
+  if(!frases.length){
+    const com = epiObrLinhasObras().filter(o => o.pecas > 0).length;
+    return uiFaixaSituacao(["Saldo de EPI sem pendência", `${com} ${com === 1 ? "obra com EPI" : "obras com EPI"}`], "ok");
+  }
+  return uiFaixaSituacao(frases, conc.length ? "perigo" : "aviso");
+}
+function epiObrTopo(){
+  const op = epiObrPodeOperar();
+  const b = (id, txt, tit, prim) => `<button type="button" class="ui-btn${prim ? " ui-btn-prim" : ""}" data-acao="${esc(id)}" title="${esc(tit)}">${esc(txt)}</button>`;
+  return `<div class="lista-topo epi-obr-topo"><h3>EPI nas obras</h3><div class="epi-obr-acoes">${op ? b("enviar", "Enviar para obra", "Transferir EPI e uniforme da base (SESMT) para uma obra; não gera custo", true)
+    + b("consumo", "Consumo na obra", "Lançar o que cada funcionário recebeu na obra; baixa o saldo da obra e o custo cai na obra")
+    + b("retornar", "Retorno à base", "Devolver à base o EPI que sobrou na obra; não é custo") : ""}${b("atualizar", "Atualizar", "Ler de novo os saldos")}</div></div>`;
+}
+function epiObrDesenhar(){
+  const alvo = $("epi-obr-conteudo"); if(!alvo) return;
+  if(_epiObr.erro && !_epiObr.dados){ alvo.innerHTML = epiObrTopo() + epiObrFaixa(); return; }
+  if(!_epiObr.dados){ alvo.innerHTML = uiCarregando("Carregando o EPI nas obras…"); return; }
+  if(_epiObr.modo === "obra") return epiObrDesenharObra();
+  if(["enviar", "retornar", "consumo", "inventario"].includes(_epiObr.modo) && _epiObr.form) return epiObrDesenharForm();
+  _epiObr.modo = "lista";
+  const abas = [{ id: "estoque", rotulo: "Estoque por obra" }, { id: "pendentes", rotulo: "Pendentes de apontamento" }];
+  if(epiObrPodeOperar()) abas.push({ id: "inventario", rotulo: "Inventário da obra", resumo: "contagem física" });
+  if(!abas.some(a => a.id === _epiObr.aba)) _epiObr.aba = "estoque";
+  const L = epiObrLinhasObras();
+  let corpo;
+  if(_epiObr.aba === "pendentes"){
+    const P = L.filter(o => o.pecas > 0).sort((a, b) => (b.encerrada - a.encerrada) || b.pecas - a.pecas);
+    const dias = d => d ? Math.max(0, Math.round((new Date(hojeISO() + "T12:00") - new Date(d + "T12:00")) / 864e5)) : null;
+    corpo = `<p class="meta epi-obr-ajuda">Saldo que está na obra e ainda não foi apontado a funcionário. Ao fim da obra, o que foi entregue a cada pessoa é lançado no Consumo na obra, com a data de cada entrega; o que sobrou volta à base.</p>` + uiTabela({
+      colunas: [
+        { chave: "codigo", rotulo: "Obra", html: o => epiObrCelObra(o) },
+        { chave: "status", rotulo: "Situação", html: o => esc(EPI_OBR_STATUS[o.status] || o.status) },
+        { chave: "itens", rotulo: "Itens", tipo: "int" }, { chave: "pecas", rotulo: "Peças", tipo: "num" },
+        { chave: "valor", rotulo: "R$", tipo: "brl", html: o => epiObrBrl(o.valor) },
+        { chave: "consumo", rotulo: "Último consumo", tipo: "data" },
+        { chave: "dias", rotulo: "Dias sem apontar", tipo: "int", html: o => { const d = dias(o.consumo || o.envio); return d == null ? "—" : uiFmt(d, "int"); } }
+      ], linhas: P, chaveLinha: "id", vazio: "Nenhuma obra com EPI esperando apontamento."
+    });
+  } else if(_epiObr.aba === "inventario"){
+    corpo = epiObrListaInventario(L);
+  } else {
+    const tot = L.reduce((a, o) => ({ itens: a.itens + o.itens, pecas: a.pecas + o.pecas, valor: a.valor + o.valor }), { itens: 0, pecas: 0, valor: 0 });
+    corpo = uiTabela({
+      colunas: [
+        { chave: "codigo", rotulo: "Obra", html: o => epiObrCelObra(o) },
+        { chave: "itens", rotulo: "Itens", tipo: "int" }, { chave: "pecas", rotulo: "Peças", tipo: "num" },
+        { chave: "valor", rotulo: "R$", tipo: "brl", html: o => epiObrBrl(o.valor) },
+        { chave: "envio", rotulo: "Último envio", tipo: "data" }, { chave: "consumo", rotulo: "Último consumo", tipo: "data" }
+      ], linhas: L, chaveLinha: "id", vazio: "Nenhuma obra em andamento, planejada ou paralisada.",
+      rodape: { codigo: `${L.length} obras`, itens: tot.itens, pecas: tot.pecas, valor: tot.valor }
+    });
+  }
+  alvo.innerHTML = epiObrTopo() + epiObrFaixa() + uiAbas(abas, { ativa: _epiObr.aba, rotulo: "EPI nas obras" }) + `<div class="epi-obr-corpo epi-cns-clicavel">${/* html */ corpo}</div>`;
+}
+function epiObrCelObra(o){
+  const aviso = o.encerrada && o.pecas > 0 ? ` <span class="tag vermelho" title="Obra encerrada com EPI: apontar as entregas por funcionário ou retornar à base">${esc((EPI_OBR_STATUS[o.status] || o.status).toLowerCase())} com saldo</span>` : "";
+  const sem = !o.pecas ? ` <span class="tag cinza">sem saldo</span>` : "";
+  return `${uiCodigo(o.codigo || "—")} ${esc(o.nome || "")}${/* html */ aviso}${/* html */ sem}`;
+}
+function epiObrListaInventario(L){
+  return `<p class="meta epi-obr-ajuda">Contagem física de EPI e uniforme numa obra. A planilha de conferência traz a posição do Odoo em cada obra, só para comparar: a posição do Odoo nunca vira saldo sozinha. Escolha a obra para lançar a contagem.</p>` + uiTabela({
+    colunas: [
+      { chave: "codigo", rotulo: "Obra", html: o => epiObrCelObra(o) },
+      { chave: "status", rotulo: "Situação", html: o => esc(EPI_OBR_STATUS[o.status] || o.status) },
+      { chave: "itens", rotulo: "Itens no app", tipo: "int" }, { chave: "pecas", rotulo: "Peças no app", tipo: "num" }
+    ], linhas: L, chaveLinha: "id", vazio: "Nenhuma obra para contar."
+  });
+}
+
+/* ---------- ficha da obra: produtos e histórico ---------- */
+async function epiObrAbrirObra(obraId){
+  _epiObr.modo = "obra"; _epiObr.obraId = obraId; _epiObr.hist = null; _epiObr.histErro = null; _epiObr.form = null;
+  epiObrDesenhar();
+  const { data, error } = await lerTudo(() => sb.from("movimentacoes_estoque")
+    .select("id,tipo,quantidade,custo_unitario,documento,observacoes,data_movimentacao,created_at,registrado_por,estorno_de,local_origem_obra_id,local_destino_obra_id,produto:produtos(codigo,nome),funcionario:funcionarios!movimentacoes_estoque_funcionario_id_fkey(nome),equipamento:equipamentos(codigo)")
+    .or(`local_origem_obra_id.eq.${obraId},local_destino_obra_id.eq.${obraId}`));
+  if(_epiObr.obraId !== obraId) return;
+  _epiObr.hist = error ? [] : data.sort((a, b) => String(b.data_movimentacao).localeCompare(String(a.data_movimentacao)));
+  _epiObr.histErro = error ? epiObrErroMsg(error) : null;
+  if(_epiObr.modo === "obra") epiObrDesenhar();
+}
+function epiObrTipoMov(m, obraId){
+  if(m.estorno_de) return "Estorno do consumo";
+  if(m.tipo === "transferencia") return m.local_destino_obra_id === obraId ? (m.local_origem_obra_id ? "Transferência recebida" : "Envio da base") : (m.local_destino_obra_id ? "Transferência enviada" : "Retorno à base");
+  if(m.tipo === "saida") return "Consumo";
+  if(m.tipo === "ajuste") return "Inventário";
+  return m.documento || m.tipo;
+}
+function epiObrDesenharObra(){
+  const alvo = $("epi-obr-conteudo"); const id = _epiObr.obraId;
+  const o = (_epiObr.dados?.obras || []).find(x => x.id === id) || {};
+  const S = epiObrSaldoObra(id).sort((a, b) => String(a.produto_nome).localeCompare(String(b.produto_nome), "pt-BR"));
+  const pecas = S.reduce((s, r) => s + epiObrNum(r.quantidade), 0), valor = S.reduce((s, r) => s + epiObrNum(r.valor), 0);
+  const enc = !EPI_OBR_ATIVAS.includes(o.status);
+  const op = epiObrPodeOperar();
+  const b = (acao, txt, prim) => `<button type="button" class="ui-btn${prim ? " ui-btn-prim" : ""}" data-acao="${esc(acao)}">${esc(txt)}</button>`;
+  const topo = `<div class="lista-topo epi-obr-topo"><button type="button" class="ui-btn" data-acao="voltar">‹ EPI nas obras</button><h3>${uiCodigo(o.codigo || "—")} ${esc(o.nome || "")}</h3><div class="epi-obr-acoes">${op ? (enc ? "" : b("enviar", "Enviar para esta obra", true)) + (S.length ? b("consumo", "Consumo na obra", enc) + b("retornar", "Retorno à base") : "") + b("inventario", "Inventário") : ""}</div></div>`;
+  const faixa = uiFaixaSituacao([`${EPI_OBR_STATUS[o.status] || o.status || ""}`, `${S.length} ${S.length === 1 ? "item" : "itens"}`, `${pecas.toLocaleString("pt-BR")} peças`,
+    enc && pecas > 0 ? "concluída com saldo: apontar as entregas por funcionário ou retornar à base" : ""], enc && pecas > 0 ? "perigo" : pecas > 0 ? "info" : "neutro");
+  const prods = uiTabela({ colunas: [
+      { chave: "produto_codigo", rotulo: "Código", tipo: "codigo" }, { chave: "produto_nome", rotulo: "Produto" },
+      { chave: "quantidade", rotulo: "Quantidade", tipo: "num" }, { chave: "valor", rotulo: "R$", tipo: "brl", html: r => epiObrBrl(r.valor) }
+    ], linhas: S, vazio: "Sem EPI nesta obra.", rodape: { produto_nome: "Total", quantidade: pecas, valor } });
+  let hist;
+  if(_epiObr.histErro) hist = uiErro(_epiObr.histErro);
+  else if(!_epiObr.hist) hist = uiCarregando("Carregando o histórico…");
+  else {
+    const desfeitas = new Set(_epiObr.hist.filter(m => m.estorno_de).map(m => m.estorno_de));
+    const agora = Date.now();
+    const podeDesfazer = m => op && m.tipo === "saida" && !m.estorno_de && !desfeitas.has(m.id) && agora - new Date(m.created_at).getTime() < 10 * 60e3
+      && (m.registrado_por === usuarioAtual?.id || ["admin", "diretor"].includes(usuarioAtual?.cargo));
+    hist = uiTabela({ colunas: [
+        { chave: "data_movimentacao", rotulo: "Data", tipo: "data", html: m => uiFmt(epiObrDiaSP(m.data_movimentacao), "data") },
+        { chave: "tipo", rotulo: "Movimento", html: m => esc(epiObrTipoMov(m, id)) + (desfeitas.has(m.id) ? ' <span class="tag cinza">desfeito</span>' : "") },
+        { chave: "produto", rotulo: "Produto", html: m => `${uiCodigo(m.produto?.codigo || "")} ${esc(m.produto?.nome || "")}` },
+        { chave: "quantidade", rotulo: "Qtd", tipo: "num", html: m => epiObrQtd(m.tipo === "ajuste" ? epiObrNum(m.quantidade) : Math.abs(epiObrNum(m.quantidade))) },
+        { chave: "funcionario", rotulo: "Funcionário / contato", html: m => esc(m.funcionario?.nome || "—") },
+        { chave: "equipamento", rotulo: "Máquina", html: m => m.equipamento?.codigo ? uiCodigo(m.equipamento.codigo) : "—" },
+        { chave: "observacoes", rotulo: "Observação", html: m => esc(m.observacoes || "") },
+        { chave: "id", rotulo: "", html: m => podeDesfazer(m) ? `<button type="button" class="ui-btn" data-desfazer="${esc(m.id)}" title="Desfazer este consumo (até 10 minutos depois de lançar)">Desfazer</button>` : "" }
+      ], linhas: _epiObr.hist, vazio: "Nenhum envio, consumo, retorno ou inventário nesta obra." });
+  }
+  alvo.innerHTML = topo + faixa + `<h4 class="epi-cns-sub">Produtos na obra</h4>${/* html */ prods}<h4 class="epi-cns-sub">Histórico</h4>${/* html */ hist}`;
+}
+async function epiObrDesfazer(id, btn){
+  const ok = await uiConfirmar({ titulo: "Desfazer consumo", texto: "O saldo volta para a obra e o custo sai da obra. Desfazer?", confirmar: "Desfazer", perigo: true });
+  if(!ok) return;
+  await comBotaoTravado(btn, async () => {
+    const { error } = await sb.rpc("estoque_saida_desfazer", { p_id: id });
+    if(error){ uiAvisar(error.message, "perigo"); return; }
+    uiAvisar("Consumo desfeito.", "ok");
+    const obra = _epiObr.obraId;
+    await epiObrCarregar(true);
+    await epiObrAbrirObra(obra);
+  });
+}
+
+/* ---------- formulários: enviar, retornar, consumo, inventário ---------- */
+async function epiObrCadastros(){
+  if(!_epiObr.funcs){
+    const { data } = await lerTudo(() => sb.from("funcionarios").select("id,nome,matricula").eq("ativo", true));
+    const vistos = {};
+    _epiObr.funcs = (data || []).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR")).map(f => {
+      const n = String(f.nome || "").trim(); vistos[n] = (vistos[n] || 0) + 1;
+      return { id: f.id, rotulo: vistos[n] > 1 ? `${n} · ${f.matricula || String(f.id).slice(0, 4)}` : n };
+    });
+  }
+  if(!_epiObr.maqs){
+    const { data } = await sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).not("tipo", "in", "(caminhao,veiculo)").order("codigo");
+    _epiObr.maqs = data || [];
+  }
+}
+function epiObrFuncId(txt){ const t = String(txt || "").trim(); return (_epiObr.funcs || []).find(f => f.rotulo === t)?.id || null; }
+function epiObrProdRotulo(p){ return `${p.produto_codigo} · ${p.produto_nome}`; }
+/* abre o formulário; quem não opera o SESMT pode abrir para ver (o banco recusa ao gravar) */
+async function epiObrAbrirForm(modo, obraId){
+  await epiObrCadastros();
+  _epiObr.modo = modo;
+  _epiObr.form = { obra: obraId || "", data: hojeISO(), contato: "", obs: "", motivo: "", itens: [], planilha: null };
+  if(modo === "consumo") _epiObr.form.itens = [epiObrLinhaVazia(), epiObrLinhaVazia(), epiObrLinhaVazia()];
+  if(modo === "enviar" && obraId && !epiObrObrasDoForm().some(o => o[0] === obraId)) _epiObr.form.obra = "";
+  if((modo === "retornar" || modo === "inventario") && _epiObr.form.obra) epiObrPreencherDaObra();
+  epiObrDesenhar();
+}
+function epiObrLinhaVazia(){ return { func: "", produto: "", qtd: "", maq: "", maqAuto: false, obs: "" }; }
+/* retorno e inventário partem dos produtos que a obra tem no app */
+function epiObrPreencherDaObra(){
+  const f = _epiObr.form; if(!f || !f.obra) return;
+  f.itens = epiObrSaldoObra(f.obra).sort((a, b) => String(a.produto_nome).localeCompare(String(b.produto_nome), "pt-BR"))
+    .map(r => ({ produto: r.produto_id, qtd: "", odoo: null }));
+  if(_epiObr.modo === "inventario" && f.planilha) epiObrAplicarPlanilha();
+}
+function epiObrObrasDoForm(){
+  const D = _epiObr.dados; if(!D) return [];
+  const comSaldo = new Set(D.saldo.filter(r => r.local === "obra" && epiObrNum(r.quantidade) > 0).map(r => r.obra_id));
+  const m = _epiObr.modo;
+  return D.obras.filter(o => m === "enviar" ? EPI_OBR_ATIVAS.includes(o.status)
+      : m === "inventario" ? (EPI_OBR_ATIVAS.includes(o.status) || comSaldo.has(o.id)) : comSaldo.has(o.id))
+    .sort((a, b) => String(b.codigo || "").localeCompare(String(a.codigo || "")))
+    .map(o => [o.id, `${o.codigo} · ${o.nome || ""}${EPI_OBR_ATIVAS.includes(o.status) ? "" : " (" + (EPI_OBR_STATUS[o.status] || o.status).toLowerCase() + ")"}`]);
+}
+function epiObrSaldoNo(prodId, obraId){
+  const r = (_epiObr.dados?.saldo || []).find(x => x.produto_id === prodId && (obraId ? x.local === "obra" && x.obra_id === obraId : x.local === "base"));
+  return r ? epiObrNum(r.quantidade) : 0;
+}
+function epiObrDesenharForm(){
+  const alvo = $("epi-obr-conteudo"); const f = _epiObr.form; const m = _epiObr.modo;
+  const P = epiObrProdutos();
+  const TIT = { enviar: "Enviar para obra", retornar: "Retorno à base", consumo: "Consumo na obra", inventario: "Inventário da obra" };
+  const AJ = {
+    enviar: "Sai da base (SESMT) e fica no saldo da obra. Não gera custo: o custo nasce no consumo. Produto com base negativa não sai até a contagem.",
+    retornar: "Volta da obra para a base. Não é custo nem devolução de funcionário.",
+    consumo: "Uma linha por entrega: quem recebeu, o quê, quanto e a máquina (vem da Alocação na data e pode ser trocada). Baixa o saldo da obra; o custo cai na obra na data da utilização. Uso coletivo da obra: sem funcionário, com observação.",
+    inventario: "Contagem física nova na obra, com o motivo. Soma ao total do estoque (a base não muda). A coluna Odoo vem da planilha de conferência e serve só para comparar."
+  };
+  const obras = epiObrObrasDoForm();
+  let campos = uiCampo({ id: "epi-obr-f-obra", rotulo: m === "retornar" ? "Obra de origem" : "Obra", tipo: "select", opcoes: obras, valor: f.obra, obrigatorio: true,
+    placeholder: "Selecione a obra", ajuda: m === "consumo" || m === "retornar" ? "só as obras com saldo" : "" });
+  campos += uiCampo({ id: "epi-obr-f-data", rotulo: m === "consumo" ? "Data da utilização" : m === "inventario" ? "Data da contagem" : "Data", tipo: "date", valor: f.data, obrigatorio: true });
+  if(m === "enviar" || m === "retornar") campos += `<div class="ui-campo"><label for="epi-obr-f-contato">Contato <span class="meta">(opcional)</span></label><input id="epi-obr-f-contato" list="epi-obr-dl-func" value="${esc(f.contato)}" placeholder="quem leva ou traz" autocomplete="off"></div>`;
+  if(m === "inventario") campos += uiCampo({ id: "epi-obr-f-motivo", rotulo: "Motivo", valor: f.motivo, obrigatorio: true, placeholder: "ex.: contagem inicial da obra (planilha do Odoo conferida)" });
+  else campos += uiCampo({ id: "epi-obr-f-obs", rotulo: "Observação", valor: f.obs, placeholder: m === "consumo" ? "vale para as linhas sem observação própria" : "" });
+  const dlFunc = `<datalist id="epi-obr-dl-func">${(_epiObr.funcs || []).map(x => `<option value="${esc(x.rotulo)}"></option>`).join("")}</datalist>`;
+  const dlProd = `<datalist id="epi-obr-dl-prod">${[...P.values()].map(p => `<option value="${esc(epiObrProdRotulo(p))}"></option>`).join("")}</datalist>`;
+  let grade;
+  if(!f.obra && m !== "enviar") grade = uiVazio("Escolha a obra.");
+  else if(m === "consumo") grade = epiObrGradeConsumo();
+  else grade = epiObrGradeItens(P);
+  const tot = epiObrTotais();
+  const travar = !epiObrPodeOperar();
+  const planilha = m === "inventario" && f.obra ? `<div class="epi-obr-planilha"><button type="button" class="ui-btn" data-acao="planilha" title="Lê a planilha de conferência (aba da obra): mostra a coluna Odoo e preenche o contado se a coluna Contado vier preenchida">Abrir planilha de conferência (.xlsx)</button><input type="file" id="epi-obr-arquivo" accept=".xlsx" hidden><span class="meta">${f.planilha ? esc(f.planilha.resumo) : "colunas Código, Odoo e Contado (ou Quantidade), na aba com o código da obra"}</span></div>` : "";
+  const extra = m === "consumo" ? `<button type="button" class="ui-btn" data-acao="mais-linhas">+ 3 linhas</button>`
+    : m === "retornar" ? `<button type="button" class="ui-btn" data-acao="tudo" title="Preenche a quantidade com todo o saldo da obra">Retornar tudo</button>` : "";
+  alvo.innerHTML = `<div class="lista-topo epi-obr-topo"><button type="button" class="ui-btn" data-acao="voltar">‹ EPI nas obras</button><h3>${esc(TIT[m])}</h3></div>
+    <p class="meta epi-obr-ajuda">${esc(AJ[m])}</p>
+    <div class="epi-obr-campos">${/* html */ campos}</div>${/* html */ dlFunc}${/* html */ dlProd}${/* html */ planilha}
+    <div class="epi-obr-grade">${/* html */ grade}</div>
+    <div class="form-acoes compacta epi-obr-rodape"><span class="meta" data-val-sens>${esc(tot.txt)}</span>${/* html */ extra}
+      <button type="button" class="ui-btn ui-btn-prim" id="epi-obr-confirmar" data-acao="confirmar"${travar ? ' title="Só o SESMT lança: o banco recusa para este perfil"' : ""}>${esc(m === "inventario" ? "Lançar contagem" : m === "consumo" ? "Lançar consumo" : TIT[m])}</button></div>`;
+}
+function epiObrGradeItens(P){
+  const f = _epiObr.form, m = _epiObr.modo;
+  const origem = m === "enviar" ? null : f.obra;
+  const add = m === "retornar" ? "" : `<div class="epi-obr-add"><label for="epi-obr-add-prod" class="sr-only">Adicionar produto</label><input id="epi-obr-add-prod" list="epi-obr-dl-prod" placeholder="adicionar produto: código ou nome…" autocomplete="off"><button type="button" class="ui-btn" data-acao="add-prod">Adicionar</button></div>`;
+  const temOdoo = m === "inventario" && !!f.planilha;
+  const linhas = f.itens.map((it, i) => {
+    const p = P.get(it.produto) || { produto_codigo: "?", produto_nome: "produto não encontrado" };
+    const saldo = epiObrSaldoNo(it.produto, origem);
+    return `<tr><td class="cod">${uiCodigo(p.produto_codigo)}</td><td>${esc(p.produto_nome)}</td><td class="num${saldo < 0 ? " epi-obr-neg" : ""}">${epiObrQtd(saldo)}</td>${temOdoo ? `<td class="num">${it.odoo == null ? "—" : epiObrQtd(it.odoo)}</td>` : ""}
+      <td class="num"><label class="sr-only" for="epi-obr-q-${i}">Quantidade</label><input type="number" min="0" step="0.001" id="epi-obr-q-${i}" data-linha="${i}" data-campo="qtd" value="${esc(it.qtd)}"></td>
+      <td>${m === "retornar" ? "" : `<button type="button" class="ui-btn" data-remover-linha="${i}" aria-label="Remover linha">×</button>`}</td></tr>`;
+  }).join("");
+  const rotSaldo = m === "enviar" ? "Saldo na base" : "No app (obra)";
+  return `${/* html */ add}<div class="ui-tabela-rola"><table class="ui-tabela"><thead><tr><th>Código</th><th>Produto</th><th class="num">${esc(rotSaldo)}</th>${temOdoo ? '<th class="num">Odoo</th>' : ""}<th class="num">${esc(m === "inventario" ? "Contado" : "Quantidade")}</th><th></th></tr></thead>
+    <tbody>${/* html */ linhas || `<tr class="ui-tabela-estado"><td colspan="${temOdoo ? 6 : 5}">${uiVazio(m === "retornar" ? "A obra não tem saldo." : "Nenhum item. Adicione acima.")}</td></tr>`}</tbody></table></div>`;
+}
+function epiObrGradeConsumo(){
+  const f = _epiObr.form;
+  const S = epiObrSaldoObra(f.obra).sort((a, b) => String(a.produto_nome).localeCompare(String(b.produto_nome), "pt-BR"));
+  if(!S.length) return uiVazio("A obra não tem saldo de EPI no app. Envie da base ou lance o inventário da obra.");
+  const usado = {}; f.itens.forEach(it => { if(it.produto) usado[it.produto] = (usado[it.produto] || 0) + epiObrNum(it.qtd); });
+  const opProd = sel => `<option value="">— produto —</option>` + S.map(r => `<option value="${esc(r.produto_id)}"${r.produto_id === sel ? " selected" : ""}>${esc(epiObrProdRotulo(r))} (saldo ${esc(epiObrNum(r.quantidade).toLocaleString("pt-BR"))})</option>`).join("");
+  const opMaq = sel => `<option value="">— sem máquina —</option>` + (_epiObr.maqs || []).map(q => `<option value="${esc(q.id)}"${q.id === sel ? " selected" : ""}>${esc(q.codigo)}</option>`).join("");
+  const linhas = f.itens.map((it, i) => {
+    const saldo = it.produto ? epiObrSaldoNo(it.produto, f.obra) : null;
+    const resta = saldo == null ? null : saldo - (usado[it.produto] || 0);
+    return `<tr><td><label class="sr-only" for="epi-obr-c-func-${i}">Funcionário</label><input id="epi-obr-c-func-${i}" list="epi-obr-dl-func" data-linha="${i}" data-campo="func" value="${esc(it.func)}" placeholder="funcionário" autocomplete="off"></td>
+      <td><label class="sr-only" for="epi-obr-c-prod-${i}">Produto</label><select id="epi-obr-c-prod-${i}" data-linha="${i}" data-campo="produto">${/* html */ opProd(it.produto)}</select></td>
+      <td class="num"><label class="sr-only" for="epi-obr-c-q-${i}">Quantidade</label><input type="number" min="0" step="0.001" id="epi-obr-c-q-${i}" data-linha="${i}" data-campo="qtd" value="${esc(it.qtd)}"></td>
+      <td class="num${resta != null && resta < 0 ? " epi-obr-neg" : ""}" id="epi-obr-c-r-${i}">${resta == null ? "—" : epiObrQtd(resta)}</td>
+      <td><label class="sr-only" for="epi-obr-c-maq-${i}">Máquina</label><select id="epi-obr-c-maq-${i}" data-linha="${i}" data-campo="maq" title="Máquina da entrega; sem ela, a da Alocação na data">${/* html */ opMaq(it.maq)}</select> <span class="meta" id="epi-obr-c-maqa-${i}"${it.maqAuto ? "" : " hidden"}>Alocação</span></td>
+      <td><label class="sr-only" for="epi-obr-c-obs-${i}">Observação</label><input id="epi-obr-c-obs-${i}" data-linha="${i}" data-campo="obs" value="${esc(it.obs)}" placeholder="uso coletivo, tamanho…"></td>
+      <td><button type="button" class="ui-btn" data-remover-linha="${i}" aria-label="Remover linha">×</button></td></tr>`;
+  }).join("");
+  return `<div class="ui-tabela-rola"><table class="ui-tabela epi-obr-consumo"><thead><tr><th>Funcionário</th><th>Produto (saldo na obra)</th><th class="num">Qtd</th><th class="num">Resta</th><th>Máquina</th><th>Observação</th><th></th></tr></thead><tbody>${/* html */ linhas}</tbody></table></div>`;
+}
+/* custo pela linha da view: valor ÷ quantidade (custo_ultimo do produto); sem saldo em lugar nenhum, sem custo na prévia */
+function epiObrCusto(prodId){
+  const r = (_epiObr.dados?.saldo || []).find(x => x.produto_id === prodId && epiObrNum(x.quantidade) !== 0);
+  return r ? epiObrNum(r.valor) / epiObrNum(r.quantidade) : 0;
+}
+function epiObrTotais(){
+  const f = _epiObr.form; if(!f) return { pecas: 0, valor: 0, linhas: 0, itens: [], txt: "" };
+  const L = f.itens.filter(it => it.produto && it.qtd !== "" && it.qtd != null && (_epiObr.modo === "inventario" || epiObrNum(it.qtd) > 0));
+  const pecas = L.reduce((s, it) => s + epiObrNum(it.qtd), 0);
+  const valor = L.reduce((s, it) => s + epiObrNum(it.qtd) * epiObrCusto(it.produto), 0);
+  const txt = _epiObr.modo === "inventario" ? `${L.length} ${L.length === 1 ? "produto contado" : "produtos contados"}`
+    : `${L.length} ${L.length === 1 ? "linha" : "linhas"} · ${pecas.toLocaleString("pt-BR")} peças · ${valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
+  return { pecas, valor, linhas: L.length, itens: L, txt };
+}
+/* lê os campos do topo do formulário para o estado (antes de redesenhar) */
+function epiObrLerCampos(){
+  const f = _epiObr.form; if(!f) return;
+  if($("epi-obr-f-obra")) f.obra = $("epi-obr-f-obra").value;
+  if($("epi-obr-f-data")) f.data = $("epi-obr-f-data").value;
+  if($("epi-obr-f-contato")) f.contato = $("epi-obr-f-contato").value;
+  if($("epi-obr-f-obs")) f.obs = $("epi-obr-f-obs").value;
+  if($("epi-obr-f-motivo")) f.motivo = $("epi-obr-f-motivo").value;
+}
+/* D8 da spec: sem máquina informada, a da Alocação na data, se for desta obra (o banco aplica a mesma regra ao gravar) */
+async function epiObrMaquinaDaAlocacao(i){
+  const f = _epiObr.form; const it = f && f.itens[i]; if(!it) return;
+  const fid = epiObrFuncId(it.func);
+  if(!fid || !f.obra || (it.maq && !it.maqAuto)) return;
+  const { data, error } = await sb.rpc("epi_alocacao_na_data", { p_funcionario: fid, p_data: f.data || hojeISO() });
+  if(error || _epiObr.form !== f) return;
+  const a = (data || []).find(x => x.obra_id === f.obra);
+  if(it.maq && !it.maqAuto) return;   // a pessoa escolheu outra máquina enquanto a Alocação era lida
+  it.maq = a?.equipamento_id || ""; it.maqAuto = !!a?.equipamento_id;
+  const sel = $("epi-obr-c-maq-" + i); if(sel) sel.value = it.maq;
+  const tag = $("epi-obr-c-maqa-" + i); if(tag) tag.hidden = !it.maqAuto;
+}
+/* sem redesenhar (a grade é de digitação rápida, o foco não pode pular): "Resta" de cada linha e o total do rodapé */
+function epiObrAtualizarParcial(){
+  const f = _epiObr.form; if(!f) return;
+  if(_epiObr.modo === "consumo"){
+    const usado = {}; f.itens.forEach(it => { if(it.produto) usado[it.produto] = (usado[it.produto] || 0) + epiObrNum(it.qtd); });
+    f.itens.forEach((it, i) => {
+      const td = $("epi-obr-c-r-" + i); if(!td) return;
+      const resta = it.produto ? epiObrSaldoNo(it.produto, f.obra) - (usado[it.produto] || 0) : null;
+      td.textContent = resta == null ? "—" : Number(resta).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+      td.classList.toggle("epi-obr-neg", resta != null && resta < 0);
+    });
+  }
+  const r = document.querySelector("#epi-obr-conteudo .epi-obr-rodape .meta"); if(r) r.textContent = epiObrTotais().txt;
+}
+async function epiObrConfirmar(btn){
+  epiObrLerCampos();
+  const f = _epiObr.form, m = _epiObr.modo;
+  const t = epiObrTotais();
+  if(!f.obra) return uiAvisar("Escolha a obra.", "aviso");
+  if(!f.data) return uiAvisar("Informe a data.", "aviso");
+  if(f.data > hojeISO()) return uiAvisar("A data não pode ser futura.", "aviso");
+  if(!t.linhas) return uiAvisar(m === "inventario" ? "Informe o contado de pelo menos um produto." : "Informe a quantidade de pelo menos um item.", "aviso");
+  const P = epiObrProdutos();
+  const nome = id => { const p = P.get(id); return p ? p.produto_codigo : "?"; };
+  let rpc, args, texto;
+  if(m === "consumo"){
+    const semQuem = t.itens.find(it => !epiObrFuncId(it.func) && !String(it.obs || f.obs || "").trim());
+    if(semQuem) return uiAvisar(`Informe quem recebeu ${nome(semQuem.produto)} (uso coletivo só com observação).`, "aviso");
+    const desconhecido = t.itens.find(it => String(it.func || "").trim() && !epiObrFuncId(it.func));
+    if(desconhecido) return uiAvisar(`Funcionário não encontrado: ${desconhecido.func}. Escolha da lista.`, "aviso");
+    rpc = "epi_consumir_obra";
+    args = { p_obra: f.obra, p_data: f.data, p_itens: t.itens.map(it => ({ produto_id: it.produto, quantidade: epiObrNum(it.qtd), funcionario_id: epiObrFuncId(it.func),
+      equipamento_id: it.maq || null, observacoes: String(it.obs || "").trim() || String(f.obs || "").trim() || null })) };
+    texto = `Lançar o consumo na obra: ${t.txt}. O custo cai na obra em ${dataBR(f.data)}.`;
+  } else if(m === "inventario"){
+    if(!String(f.motivo || "").trim()) return uiAvisar("Informe o motivo do inventário.", "aviso");
+    rpc = "epi_inventario_obra";
+    args = { p_obra: f.obra, p_data: f.data, p_motivo: f.motivo.trim(), p_itens: t.itens.map(it => ({ produto_id: it.produto, quantidade: epiObrNum(it.qtd) })) };
+    const mud = t.itens.filter(it => epiObrNum(it.qtd) !== epiObrSaldoNo(it.produto, f.obra)).length;
+    texto = `Lançar a contagem de ${t.linhas} produto(s) na obra; ${mud} muda(m) o saldo do app. O total do estoque muda junto (a base não).`;
+  } else {
+    const contato = f.contato.trim() ? epiObrFuncId(f.contato) : null;
+    if(f.contato.trim() && !contato) return uiAvisar("Contato não encontrado. Escolha da lista ou deixe vazio.", "aviso");
+    rpc = "epi_transferir";
+    args = { p_origem_obra: m === "enviar" ? null : f.obra, p_destino_obra: m === "enviar" ? f.obra : null, p_data: f.data, p_contato: contato,
+      p_obs: f.obs.trim() || null, p_itens: t.itens.map(it => ({ produto_id: it.produto, quantidade: epiObrNum(it.qtd) })) };
+    texto = `${m === "enviar" ? "Enviar para a obra" : "Retornar à base"}: ${t.txt}. Não gera custo.`;
+  }
+  const ok = await uiConfirmar({ titulo: { enviar: "Enviar para obra", retornar: "Retorno à base", consumo: "Consumo na obra", inventario: "Inventário da obra" }[m], texto, confirmar: "Confirmar" });
+  if(!ok) return;
+  await comBotaoTravado(btn, async () => {
+    const { error } = await sb.rpc(rpc, args);
+    if(error){ uiAvisar(error.message, "perigo"); return; }
+    uiAvisar({ enviar: "Envio registrado.", retornar: "Retorno registrado.", consumo: "Consumo lançado. Desfazer vale por 10 minutos, na ficha da obra.", inventario: "Contagem lançada." }[m], "ok");
+    const obra = f.obra;
+    _epiObr.form = null;
+    await epiObrCarregar(true);
+    await epiObrAbrirObra(obra);
+  });
+}
+/* planilha de conferência (scripts/epi-odoo/5-posicao-por-obra.js): aba com o código da obra; Código, Odoo, Contado */
+async function epiObrLerPlanilha(file){
+  const f = _epiObr.form; if(!file || !f || typeof XLSX === "undefined") return;
+  const o = (_epiObr.dados?.obras || []).find(x => x.id === f.obra) || {};
+  let wb;
+  try { wb = XLSX.read(await file.arrayBuffer(), { type: "array" }); } catch(e){ uiAvisar("Não foi possível ler a planilha.", "perigo"); return; }
+  const cod = String(o.codigo || "");
+  const abas = wb.SheetNames.filter(n => n !== "Resumo");
+  const nomeAba = abas.find(n => n === cod) || abas.find(n => n.split(/[-/]/)[0] === cod.split(/[-/]/)[0]) || (abas.length === 1 ? abas[0] : null);
+  if(!nomeAba){ uiAvisar(`A planilha não tem a aba da obra ${cod}.`, "aviso"); return; }
+  const linhas = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { defval: "" });
+  const col = (l, nomes) => { const k = Object.keys(l).find(c => nomes.includes(epiNorm(c).trim())); return k ? l[k] : ""; };
+  const lidas = linhas.map(l => ({ codigo: String(col(l, ["codigo"]) || "").trim(), odoo: col(l, ["odoo"]), contado: col(l, ["contado", "quantidade"]) })).filter(l => l.codigo);
+  epiObrLerCampos();
+  f.planilha = { aba: nomeAba, linhas: lidas, resumo: "" };
+  epiObrAplicarPlanilha();
+  epiObrDesenhar();
+}
+function epiObrAplicarPlanilha(){
+  const f = _epiObr.form; if(!f || !f.planilha) return;
+  const porCod = new Map([...epiObrProdutos().values()].map(p => [String(p.produto_codigo).toUpperCase(), p]));
+  let novos = 0, contados = 0; const faltam = [];
+  for(const l of f.planilha.linhas){
+    const p = porCod.get(l.codigo.toUpperCase());
+    if(!p){ faltam.push(l.codigo); continue; }
+    let it = f.itens.find(x => x.produto === p.produto_id);
+    if(!it){ it = { produto: p.produto_id, qtd: "", odoo: null }; f.itens.push(it); novos++; }
+    it.odoo = l.odoo === "" ? null : epiObrNum(l.odoo);
+    if(l.contado !== "" && l.contado != null){ it.qtd = String(epiObrNum(l.contado)); contados++; }
+  }
+  f.planilha.resumo = `aba ${f.planilha.aba}: ${f.planilha.linhas.length} linha(s), ${novos} produto(s) acrescentado(s), ${contados} contado(s) preenchido(s)${faltam.length ? `; sem par no app: ${faltam.slice(0, 5).join(", ")}${faltam.length > 5 ? "…" : ""}` : ""}`;
+}
+
+/* ---------- eventos ---------- */
+function epiObrClique(e){
+  const el = e.target;
+  const aba = el.closest("[data-aba]");
+  if(aba){ _epiObr.aba = aba.dataset.aba; epiObrDesenhar(); return; }
+  const des = el.closest("[data-desfazer]");
+  if(des){ epiObrDesfazer(des.dataset.desfazer, des); return; }
+  const rem = el.closest("[data-remover-linha]");
+  if(rem && _epiObr.form){ epiObrLerCampos(); _epiObr.form.itens.splice(Number(rem.dataset.removerLinha), 1); epiObrDesenhar(); return; }
+  const b = el.closest("[data-acao]");
+  if(b){
+    const a = b.dataset.acao;
+    if(a === "atualizar") return epiObrCarregar(true);
+    if(a === "voltar"){ _epiObr.modo = "lista"; _epiObr.form = null; return epiObrDesenhar(); }
+    if(["enviar", "consumo", "retornar", "inventario"].includes(a)) return epiObrAbrirForm(a, _epiObr.modo === "obra" ? _epiObr.obraId : "");
+    if(!_epiObr.form) return;
+    if(a === "confirmar") return epiObrConfirmar(b);
+    if(a === "mais-linhas"){ epiObrLerCampos(); _epiObr.form.itens.push(epiObrLinhaVazia(), epiObrLinhaVazia(), epiObrLinhaVazia()); return epiObrDesenhar(); }
+    if(a === "tudo"){ epiObrLerCampos(); _epiObr.form.itens.forEach(it => { it.qtd = String(epiObrSaldoNo(it.produto, _epiObr.form.obra)); }); return epiObrDesenhar(); }
+    if(a === "planilha"){ $("epi-obr-arquivo")?.click(); return; }
+    if(a === "add-prod"){
+      epiObrLerCampos();
+      const txt = String($("epi-obr-add-prod")?.value || "").trim();
+      const p = [...epiObrProdutos().values()].find(x => epiObrProdRotulo(x) === txt || String(x.produto_codigo).toUpperCase() === txt.toUpperCase());
+      if(!p) return uiAvisar("Produto de EPI não encontrado. Escolha da lista.", "aviso");
+      if(!_epiObr.form.itens.some(it => it.produto === p.produto_id)) _epiObr.form.itens.push({ produto: p.produto_id, qtd: "", odoo: null });
+      epiObrDesenhar(); $("epi-obr-add-prod")?.focus();
+    }
+    return;
+  }
+  const tr = el.closest("tr[data-id]");
+  if(tr && _epiObr.modo === "lista"){
+    if(_epiObr.aba === "inventario") return epiObrAbrirForm("inventario", tr.dataset.id);
+    if(_epiObr.aba === "pendentes" && epiObrPodeOperar()) return epiObrAbrirForm("consumo", tr.dataset.id);
+    epiObrAbrirObra(tr.dataset.id);
+  }
+}
+function epiObrMudou(e){
+  const el = e.target; const f = _epiObr.form; if(!f) return;
+  if(el.id === "epi-obr-arquivo"){ if(e.type === "change"){ epiObrLerPlanilha(el.files && el.files[0]); el.value = ""; } return; }
+  if(el.id === "epi-obr-f-obra"){
+    if(e.type !== "change") return;
+    epiObrLerCampos();
+    if(_epiObr.modo === "consumo") f.itens = [epiObrLinhaVazia(), epiObrLinhaVazia(), epiObrLinhaVazia()];
+    if(_epiObr.modo === "retornar" || _epiObr.modo === "inventario") epiObrPreencherDaObra();
+    return epiObrDesenhar();
+  }
+  if(el.id === "epi-obr-f-data"){
+    if(e.type !== "change") return;
+    epiObrLerCampos(); f.itens.forEach((it, i) => { if(it.maqAuto){ it.maq = ""; it.maqAuto = false; epiObrMaquinaDaAlocacao(i); } });
+    return;
+  }
+  const i = el.dataset.linha; if(i == null) return;
+  const it = f.itens[Number(i)]; if(!it) return;
+  const campo = el.dataset.campo;
+  if(campo === "maq"){ it.maq = el.value; it.maqAuto = false; const tag = $("epi-obr-c-maqa-" + i); if(tag) tag.hidden = true; return; }
+  it[campo] = el.value;
+  if(e.type === "change" && campo === "func"){ if(it.maqAuto){ it.maq = ""; it.maqAuto = false; } epiObrMaquinaDaAlocacao(Number(i)); }
+  epiObrAtualizarParcial();
+}
+
+/* ---------- "Onde está" no produto de EPI (aba Estoque da ficha do produto) ---------- */
+async function epiObrOndeEsta(produtoId){
+  const alvo = $("epi-obr-onde"); if(!alvo) return;
+  alvo.hidden = true; alvo.innerHTML = "";
+  if(!produtoId || !podeVerEpi()) return;
+  const { data, error } = await sb.from("vw_epi_saldo_local").select("local,obra_id,obra_codigo,obra_nome,obra_status,quantidade,valor").eq("produto_id", produtoId);
+  if(typeof prodEditId !== "undefined" && prodEditId !== produtoId) return;
+  if(error){ if(!epiViewAusente(error)){ alvo.innerHTML = uiSecao("", "Onde está", uiErro(error.message)); alvo.hidden = false; } return; }
+  const base = (data || []).find(r => r.local === "base");
+  if(!base) return;   // não é EPI nem uniforme
+  const obras = (data || []).filter(r => r.local === "obra").sort((a, b) => epiObrNum(b.quantidade) - epiObrNum(a.quantidade));
+  const emObras = obras.reduce((s, r) => s + epiObrNum(r.quantidade), 0);
+  const corpo = `<div class="epi-obr-onde-rv">${uiRotuloValor("Base (SESMT)", `<span class="${epiObrNum(base.quantidade) < 0 ? "epi-obr-neg" : ""}">${epiObrQtd(base.quantidade)}</span>`)}${uiRotuloValor("Em obras", epiObrQtd(emObras))}${uiRotuloValor("Total", epiObrQtd(epiObrNum(base.quantidade) + emObras))}</div>`
+    + uiTabela({ colunas: [
+        { chave: "obra_codigo", rotulo: "Obra", html: r => `${uiCodigo(r.obra_codigo || "")} ${esc(r.obra_nome || "")}${EPI_OBR_ATIVAS.includes(r.obra_status) ? "" : ` <span class="tag vermelho">${esc((EPI_OBR_STATUS[r.obra_status] || r.obra_status || "").toLowerCase())}</span>`}` },
+        { chave: "quantidade", rotulo: "Quantidade", tipo: "num" }, { chave: "valor", rotulo: "R$", tipo: "brl", html: r => epiObrBrl(r.valor) }
+      ], linhas: obras, vazio: "Nenhuma obra com este produto." });
+  alvo.innerHTML = uiSecao("", "Onde está", corpo, `${obras.length} ${obras.length === 1 ? "obra" : "obras"}`);
+  alvo.hidden = false;
+}
+
+/* card na aba SESMT › EPI: visível para quem vê EPI; fica depois dos cards que vêm do Estoque */
+function epiObrRender(){
+  const card = $("epi-obr-card"); if(!card) return;
+  const pode = podeVerEpi();
+  card.hidden = !pode;
+  if(!pode) return;
+  const pai = $("sst-epi-aba"); if(pai && card.parentNode === pai && pai.lastElementChild !== card) pai.appendChild(card);
+  epiObrCarregar(false);
+}
+function ligarEpiObr(){
+  const c = $("epi-obr-conteudo"); if(!c) return;
+  c.addEventListener("click", epiObrClique);
+  c.addEventListener("change", epiObrMudou);
+  c.addEventListener("input", epiObrMudou);
+}
+if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarEpiObr);
+else ligarEpiObr();

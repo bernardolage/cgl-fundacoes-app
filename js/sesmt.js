@@ -822,6 +822,7 @@ function renderSstEpi(){
   }
   estMoverCardsEpi("sesmt");
   carregarEstoque(false);
+  if(typeof epiObrRender === "function") epiObrRender();   // fase 202b: EPI nas obras, depois dos cards do Estoque
 }
 async function sstAbrirEpi(){
   if(!irParaSecao("sesmt")) return;
