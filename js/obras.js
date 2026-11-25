@@ -578,7 +578,8 @@ async function renderPendenciasContratoObra(contratoId){
   if(error){ atualizarBadgeContratoObra(); return; }
   const medLinhas = (medPend?.error ? [] : (medPend?.data || [])).map(p => ({
     tipo: p.tipo === "producao_pendente" ? "medicao_producao_pendente" : "medicao_sem_itens",
-    detalhe: `Medição ${p.numero || "?"}: ${p.tipo === "producao_pendente" ? "produção pendente (" + p.detalhe + ")" : p.detalhe}`,
+    // lote S71-b (#379): sem itens, o detalhe da view já diz o que fazer ("Medição sem itens: lance o BM…")
+    detalhe: `Medição ${p.numero || "?"}: ${p.tipo === "producao_pendente" && !/^Medição sem itens/.test(p.detalhe || "") ? "produção pendente (" + p.detalhe + ")" : p.detalhe}`,
     valor_impacto: p.valor_impacto, severidade: p.severidade, medicao_id: p.medicao_id
   }));
   // a view do contrato já traz a produção pendente sem o id da medição: fica a versão clicável

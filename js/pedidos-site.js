@@ -551,7 +551,7 @@ async function psiEnviarWhatsapp(){
   if(typeof appFormSujo === "function" && appFormSujo()){ uiAvisar("Salve o orçamento antes de enviar: a proposta sai do que está gravado.", "aviso"); return; }
   const orcId = orcEditId;
   const { data: o, error } = await sb.from("orcamentos")
-    .select("id,numero,numero_revisao,data_orcamento,tipo_proposta,contato_nome,contato_telefone,whatsapp_cliente,referencia_obra,local_execucao")
+    .select("id,numero,numero_revisao,data_orcamento,tipo_proposta,contato_nome,contato_telefone,whatsapp_cliente,referencia_obra,local_execucao,clientes(nome,nome_fantasia)")
     .eq("id", orcId).single();
   if(error){ uiAvisar("Não foi possível abrir o envio: " + error.message, "perigo"); return; }
   // sem whatsapp_cliente, sugere o telefone do contato quando é celular (11 dígitos); o comercial confere
@@ -575,10 +575,8 @@ async function psiEnviarWhatsapp(){
   const btnAbrir = q('[data-acao="abrir"]');
   btnAbrir.disabled = true;
   let pdfBlob = null, aberto = false, numeroUsado = null;
-  const nomePdf = (() => {
-    const pt = typeof orcNumeroPartes === "function" ? orcNumeroPartes(o.numero, o.data_orcamento) : { num: o.numero, ano: "" };
-    return `Proposta_CGL_${String(`${pt.num || "0000"}_${pt.ano || ""}`).replace(/[^\w.-]+/g, "_")}.pdf`;
-  })();
+  // lote S71-e (#378): o mesmo nome do botão PDF ("<num>-<ano> - <CLIENTE> - <TIPO>.pdf")
+  const nomePdf = propostaNomeArquivo(o, o.clientes);
   // o PDF sai já na abertura (o mesmo do envio pela orcamento@): o clique baixa e abre o WhatsApp no mesmo gesto
   gerarPropostaPdfBlob(orcId).then(b => {
     pdfBlob = b;

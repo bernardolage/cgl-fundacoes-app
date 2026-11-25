@@ -300,7 +300,7 @@ function cmpPct(v){ return v === null || v === undefined || v === "" || !Number(
 function cmpTemRateio(it){ return Array.isArray(it._rateio) && it._rateio.length >= 1 && cmpItemTipo(it) !== "reposicao"; }
 function cmpPctFracao(f){ return (Math.round(Number(f || 0) * 10000) / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "%"; }
 function cmpRatLinhaValor(l){ return cmpDestinoValor({ ...l, destino: l.destino || (l.equipamento_id ? "equipamento" : "") }); }
-function cmpRatLinhaTxt(l){ return cmpCustoChaveTxt(cmpRatLinhaValor(l)); }
+function cmpRatLinhaTxt(l){ return cmpCustoChaveTxt(cmpRatLinhaValor(l)) + (l.destino === "obra" && l.equipamento_id ? " · TAG " + (_cmpEqMap[l.equipamento_id]?.codigo || "?") : ""); }   // lote S71-g: obra + TAG
 function cmpRateioTxt(it){ return cmpTemRateio(it) ? it._rateio.map(r => `${cmpRatLinhaTxt(r)} ${cmpPctFracao(r.fracao)}`).join(" · ") : ""; }
 function cmpDestinoRateioHTML(it){
   if(cmpTemRateio(it)) return `<div class="meta" title="${esc(cmpRateioTxt(it))}">${it._segue ? "Segue o pedido" : `Rateado em ${esc(it._rateio.length)} ${it._rateio.length === 1 ? "destino" : "destinos"}`}</div>`;
@@ -2852,7 +2852,7 @@ function cmpItemViolaSoMaquina(it){
   return cmpTemRateio(it) ? it._rateio.some(l => cmpRatLinhaViola(l, it.natureza_id)) : cmpRatLinhaViola(it, it.natureza_id);
 }
 function cmpRatLinhaDoItem(it, fracao){
-  return { destino: it.destino, equipamento_id: it.equipamento_id || null, obra_id: it.destino === "obra" ? it.obra_id || null : null,
+  return { destino: it.destino, equipamento_id: ["equipamento", "obra"].includes(it.destino) ? it.equipamento_id || null : null, obra_id: it.destino === "obra" ? it.obra_id || null : null,   // lote S71-g: obra pode levar TAG
            centro_custo_id: it.centro_custo_id || null, destino_acessorio_id: it.destino_acessorio_id || null, natureza_id: null, metodo: null, fracao: fracao ?? 1 };
 }
 /* destino do item trocado na linha: sem rateio do pedido, o rateio do item sai; com ele, o item fica com rateio próprio de 100%
@@ -2893,13 +2893,13 @@ function cmpRdAbrir(alvo){
   const total = cmpRdTotal(alvo);
   const base = it ? (cmpTemRateio(it) ? it._rateio : (it.destino && it.destino !== "estoque" ? [cmpRatLinhaDoItem(it, 1)] : []))
                   : (_cmpRatPed.length ? _cmpRatPed : []);
-  const lins = base.map(l => ({ dv: cmpRatLinhaValor(l), natureza_id: l.natureza_id || "", metodo: l.metodo || "", pct: Math.round(Number(l.fracao || 0) * 1000000) / 10000, rs: total > 0 ? cmpR2(total * Number(l.fracao || 0)) : 0 }));
-  while(lins.length < 2) lins.push({ dv: "", natureza_id: "", metodo: "", pct: 0, rs: 0 });
+  const lins = base.map(l => ({ dv: cmpRatLinhaValor(l), tag: l.destino === "obra" ? l.equipamento_id || "" : "", natureza_id: l.natureza_id || "", metodo: l.metodo || "", pct: Math.round(Number(l.fracao || 0) * 1000000) / 10000, rs: total > 0 ? cmpR2(total * Number(l.fracao || 0)) : 0 }));
+  while(lins.length < 2) lins.push({ dv: "", tag: "", natureza_id: "", metodo: "", pct: 0, rs: 0 });
   _cmpRd = { alvo, total, linhas: lins };
   $("cmp-rd-titulo").textContent = it ? `Ratear o item — ${String(semCodOdoo(it.descricao) || "item").slice(0, 60)}` : "Ratear o pedido entre obras e destinos";
   $("cmp-rd-ajuda").textContent = (it
-    ? "Cada linha leva um destino (obra, TAG, setor ou acessório), com natureza e método; vazio = os do item. O rateio do item vence o do pedido."
-    : "Vale para todos os itens de aplicação direta. Um item que precisa ser diferente (a peça de uma máquina, por exemplo) recebe rateio próprio no ⚖. Natureza e método vazios = os de cada item.")
+    ? "Cada linha leva um destino (obra, TAG, setor ou acessório) e a natureza (vazio = a do item); a linha de obra pode levar também a TAG, e o custo conta uma vez, na obra e na TAG. O método vem do item. O rateio do item vence o do pedido."
+    : "Vale para todos os itens de aplicação direta. Um item que precisa ser diferente (a peça de uma máquina, por exemplo) recebe rateio próprio no ⚖. A linha de obra pode levar também a TAG. Natureza vazia = a de cada item; o método vem de cada item.")
     + (total > 0 ? ` A soma tem de dar 100% (${brl(total)}); um campo recalcula o outro e a última linha fica com o resto dos centavos.` : " Sem preço, o rateio é só por %.")
     + " O rateio é gravado no Salvar.";
   if($("btn-cmp-rd-seguir")) $("btn-cmp-rd-seguir").style.display = it && _cmpRatPed.length ? "" : "none";
@@ -2908,7 +2908,17 @@ function cmpRdAbrir(alvo){
   $("cmp-rd-modal").style.display = "flex";
 }
 function cmpRdNatItem(){ const r = _cmpRd; return r && r.alvo !== "pedido" ? (_cmpItens[r.alvo]?.natureza_id || null) : null; }
-function cmpRdLinhaObj(l){ return { ...cmpDestinoDoValor(l.dv || ""), destino: l.dv ? cmpDestinoDoValor(l.dv).destino : "", natureza_id: l.natureza_id || null, metodo: l.metodo || null }; }
+function cmpRdLinhaObj(l){
+  const d = cmpDestinoDoValor(l.dv || "");
+  return { ...d, destino: l.dv ? d.destino : "", equipamento_id: d.destino === "obra" ? l.tag || null : d.equipamento_id,   // lote S71-g: obra + TAG (opcional)
+           natureza_id: l.natureza_id || null, metodo: l.metodo || null };   // o método não aparece mais na tela: fica o gravado, ou o do item (RPC)
+}
+/* lote S71-g (#358): TAG da linha de obra (opcional); fora de obra o campo fica desligado */
+function cmpRdTagOptions(sel){
+  const lista = cmpEquipsPorTipo();
+  const extra = sel && !lista.some(e => e.id === sel) && _cmpEqMap[sel] ? [_cmpEqMap[sel]] : [];   // TAG baixada já gravada
+  return `<option value="">— sem TAG —</option>` + extra.concat(lista).map(e => `<option value="${esc(e.id)}"${e.id === sel ? " selected" : ""}>TAG ${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
+}
 function cmpRdRender(){
   const r = _cmpRd; if(!r) return;
   const comRs = r.total > 0, natItem = cmpRdNatItem();
@@ -2918,7 +2928,7 @@ function cmpRdRender(){
     return `<tr data-i="${i}"${viola ? ` class="cmp-rd-erro" title="${esc(CMP_SO_MAQUINA_TXT)}"` : ""}>
       <td><select class="cmp-rd-dest" style="min-width:200px;max-width:260px;">${cmpDestinoDiretoOptions(l.dv)}</select>${viola ? `<div class="meta txt-perigo">só TAG ou acessório (natureza só máquina)</div>` : ""}</td>
       <td><select class="cmp-rd-nat" style="min-width:150px;max-width:190px;" title="Vazio = a natureza de cada item">${cmpNatOptions(l.natureza_id || "")}</select></td>
-      <td><select class="cmp-rd-met" style="min-width:120px;max-width:140px;" title="Vazio = o método de cada item">${cmpMetodoOptions(l.metodo || "")}</select></td>
+      <td class="cmp-rd-tagcel"><select class="cmp-rd-tag" title="TAG da obra (opcional): o custo conta uma vez, na obra e na TAG"${/^obra:./.test(l.dv || "") ? "" : " disabled"}>${/* html */ cmpRdTagOptions(l.tag || "")}</select></td>
       ${comRs ? `<td class="num"><input type="number" class="cmp-rd-rs" min="0" step="0.01" value="${esc(Number(l.rs || 0).toFixed(2))}" style="width:110px;text-align:right;" /></td>` : ""}
       <td class="num"><input type="number" class="cmp-rd-pct" min="0" max="100" step="0.0001" value="${esc(l.pct || 0)}" style="width:90px;text-align:right;" /></td>
       <td><button type="button" class="btn-sec btn-sm cmp-rd-rem" title="tirar esta linha">×</button></td>
@@ -2929,11 +2939,13 @@ function cmpRdRender(){
     const sd = tr.querySelector(".cmp-rd-dest");
     sd.addEventListener("change", () => {
       if(sd.value === "ac:"){ cmpEscolherAcessorio(id => { if(id) l.dv = "ac:" + id; cmpRdRender(); }); return; }   // lote S56: o acessório se escolhe no seletor
-      l.dv = sd.value; cmpRdRender();
+      l.dv = sd.value; if(!/^obra:/.test(l.dv)) l.tag = ""; cmpRdRender();
     });
     cmpCampoTag(sd, "obra, TAG, placa ou setor…");
     tr.querySelector(".cmp-rd-nat").addEventListener("change", e => { l.natureza_id = e.target.value; cmpRdRender(); });
-    tr.querySelector(".cmp-rd-met").addEventListener("change", e => { l.metodo = e.target.value; });
+    const st = tr.querySelector(".cmp-rd-tag");
+    st.addEventListener("change", () => { l.tag = st.value; });
+    cmpCampoTag(st, /^obra:./.test(l.dv || "") ? "TAG (opcional)…" : "só na linha de obra");
     const ip = tr.querySelector(".cmp-rd-pct"), iv = tr.querySelector(".cmp-rd-rs");
     ip.addEventListener("input", () => { l.pct = Number(ip.value || 0); if(iv){ l.rs = cmpR2(r.total * l.pct / 100); iv.value = l.rs.toFixed(2); } cmpRdSoma(); });
     if(iv) iv.addEventListener("input", () => { l.rs = cmpR2(iv.value); l.pct = r.total > 0 ? Math.round(l.rs / r.total * 1000000) / 10000 : 0; ip.value = l.pct; cmpRdSoma(); });
@@ -2998,7 +3010,7 @@ function cmpRdAplicar(){
     const it = _cmpItens[r.alvo]; if(!it) return;
     if(!novas.length){ aviso("app-aviso", "Inclua ao menos uma linha.", "erro"); return; }
     const tinha = cmpTemRateio(it);
-    if(novas.length === 1 && !_cmpRatPed.length){   // um destino só e sem rateio do pedido: é o destino do item, sem rateio
+    if(novas.length === 1 && !_cmpRatPed.length && !(novas[0].destino === "obra" && novas[0].equipamento_id)){   // um destino só e sem rateio do pedido: é o destino do item, sem rateio (obra + TAG fica como rateio de 100%, lote S71-g)
       Object.assign(it, cmpDestinoDoValor(cmpRatLinhaValor(novas[0])));
       if(novas[0].natureza_id) it.natureza_id = novas[0].natureza_id;
       if(novas[0].metodo){ it.metodo = novas[0].metodo; it._metAuto = false; }
@@ -4705,7 +4717,7 @@ function ligarCompras(){
   $("cmp-rat-modal")?.addEventListener("click", e => { if(e.target.id === "cmp-rat-modal") cmpRatFechar(); });
   // fase 186a (#236, #308): rateio do pedido e do item entre obras e destinos
   $("btn-cmp-ratped")?.addEventListener("click", () => cmpRdAbrir("pedido"));
-  $("btn-cmp-rd-add")?.addEventListener("click", () => { if(_cmpRd){ _cmpRd.linhas.push({ dv: "", natureza_id: "", metodo: "", pct: 0, rs: 0 }); cmpRdRender(); } });
+  $("btn-cmp-rd-add")?.addEventListener("click", () => { if(_cmpRd){ _cmpRd.linhas.push({ dv: "", tag: "", natureza_id: "", metodo: "", pct: 0, rs: 0 }); cmpRdRender(); } });
   $("btn-cmp-rd-igualar")?.addEventListener("click", cmpRdIgualar);
   $("btn-cmp-rd-resto")?.addEventListener("click", cmpRdResto);
   $("btn-cmp-rd-seguir")?.addEventListener("click", cmpRdSeguir);

@@ -38,6 +38,20 @@ const PROPOSTA_TIPOS = {
   outro:   { rotulo: "PROPOSTA",codigo: "RG 11.0",  revisao_padrao: "01" }
 };
 
+/* lote S71-e (#378, Thales): nome do PDF no padrão do comercial, "<num>-<ano> - <CLIENTE> - <TIPO>.pdf"
+   (ex.: "8934-2026 - PIIMO EMPREENDIMENTOS IMOBILIARIOS LTDA - RAIZ.pdf"). Mesmo padrão do anexo do e-mail
+   (enviar-orcamento, nomeAnexoProposta), sem o RG. Sem cliente sai só número e tipo; tipo fora do mapa é omitido;
+   os caracteres proibidos no Windows viram espaço. */
+const PROPOSTA_TIPO_ARQ = { helice: "HELICE", trado: "TRADO", raiz: "RAIZ", secante: "SECANTE" };
+function propostaNomeArquivo(orc, cliente){
+  const o = orc || {}, c = cliente || {};
+  const semAcento = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const p = orcNumeroPartes(o.numero, o.data_orcamento);
+  const partes = [`${p.num || "0000"}-${p.ano}`, semAcento(c.nome_fantasia || c.nome).trim().toUpperCase(),
+    PROPOSTA_TIPO_ARQ[o.tipo_proposta] || ""].filter(Boolean);
+  return partes.join(" - ").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
+}
+
 /* Fase 40: condição de pagamento padrão do modelo. É o texto que a ficha do orçamento
    traz preenchido; o que o comercial editar em orcamentos.condicoes_pagamento substitui
    esta cláusula na proposta. */
@@ -1640,10 +1654,7 @@ async function visualizarProposta(orcamentoId){
 async function baixarProposta(orcamentoId){
   try {
     const dados = await carregarDadosProposta(orcamentoId);
-    const pNum  = orcNumeroPartes(dados.orcamento.numero, dados.orcamento.data_orcamento);
-    const num   = `${pNum.num || "0000"}_${pNum.ano}`.replace(/[^\w.-]+/g, "_");
-    const tipo  = (PROPOSTA_TIPOS[dados.orcamento.tipo_proposta] || PROPOSTA_TIPOS.outro).rotulo;
-    const nomeArq = `Proposta_${tipo}_${num}.pdf`;
+    const nomeArq = propostaNomeArquivo(dados.orcamento, dados.cliente);
 
     try {
       const pdf = await gerarPropostaPdfTexto(dados);

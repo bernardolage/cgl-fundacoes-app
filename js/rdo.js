@@ -3226,11 +3226,60 @@ async function montarPreviewDias(data, origem, obraSel){
     await iaCarregarJornadaObra((selObra && selObra.value) || (_csvObraDetectada && _csvObraDetectada.id) || obraSel || null);
     // fase 173b: estaca raiz só com injeção no arquivo e sem perfuração em nenhum diário da obra (RG 11.3 e leitura por IA)
     await rdoAvisoSoInjecao(data, origem, (selObra && selObra.value) || (_csvObraDetectada && _csvObraDetectada.id) || obraSel || null);
+    // lote S71-c (#381): máquina do arquivo sem mobilização ativa na obra escolhida (só aviso, não bloqueia)
+    const maqsArquivo = rdoMaquinasDoArquivo(dias);
+    await rdoAvisoMobilizacaoImport(data, origem, (selObra && selObra.value) || (_csvObraDetectada && _csvObraDetectada.id) || obraSel || null, maqsArquivo);
     renderConferenciaIA(data);
     selObra?.addEventListener("change", async () => {
       await iaCarregarJornadaObra(selObra.value); iaRecalcularHorasNoDOM(false);
       await rdoAvisoSoInjecao(data, origem, selObra.value || null);
+      await rdoAvisoMobilizacaoImport(data, origem, selObra.value || null, maqsArquivo);
     });
+}
+/* lote S71-c (#381): máquinas citadas no arquivo, uma por dia, já casadas com o cadastro (mesma regra do import).
+   Estaca sem máquina usa a do dia; dia sem estaca usa a do dia. Texto vazio fica de fora (a mobilização única cobre). */
+function rdoMaquinasDoArquivo(dias){
+  const lista = [];
+  (dias || []).forEach(d => {
+    const doDia = (d.equipamento_texto || d.maquina || "").trim();
+    const textos = (d.estacas || []).length ? (d.estacas || []).map(e => (e.equipamento_texto || e.maquina || doDia || "").trim()) : [doDia];
+    [...new Set(textos.filter(Boolean))].forEach(t => lista.push({ texto: t, id: rdoCasarMaquinaImport(t)?.id || null, dia: d.data || null }));
+  });
+  return lista;
+}
+/* lote S71-c (#381): lógica pura do aviso. mobs = mobilizações ativas da obra ({ equipamento_id, equipamentos_apoio });
+   maquinas = [{ texto, id, dia }]. Devolve as frases do aviso ([] = nada a avisar). Máquina sem cadastro (id nulo) fica
+   com o bloco de máquinas sem correspondência da prévia, que já existe. */
+function rdoTextoAvisoMobilizacao(mobs, maquinas){
+  const lista = Array.isArray(mobs) ? mobs : [];
+  if(!lista.length) return ["A obra não tem mobilização ativa"];
+  const ids = new Set(lista.flatMap(m => [m.equipamento_id, ...(Array.isArray(m.equipamentos_apoio) ? m.equipamentos_apoio : [])]).filter(Boolean));
+  const fora = new Map();   // id → { texto, dias }
+  (maquinas || []).forEach(m => {
+    if(!m || !m.id || ids.has(m.id)) return;
+    if(!fora.has(m.id)) fora.set(m.id, { texto: m.texto || "sem código", dias: new Set() });
+    if(m.dia) fora.get(m.id).dias.add(String(m.dia).slice(0, 10));
+  });
+  return [...fora.values()].map(f => {
+    const ds = [...f.dias].sort().map(d => d.slice(8, 10) + "/" + d.slice(5, 7));
+    return `A máquina ${f.texto} do arquivo não tem mobilização ativa nesta obra` + (ds.length ? ` (${ds.join(", ")})` : "");
+  });
+}
+/* lote S71-c (#381): aviso da prévia do Maya (não bloqueia). Calcula em data.aviso_mobilizacao e, se a conferência já está
+   na tela, troca o texto. Sem obra escolhida, não avisa. */
+async function rdoAvisoMobilizacaoImport(data, origem, obraId, maquinas){
+  if(origem !== "xlsx_maya") return;
+  let frases = [];
+  if(obraId){
+    try {
+      const { data: mobs, error } = await sb.from("mobilizacoes").select("equipamento_id,equipamentos_apoio").eq("obra_id", obraId).in("status", ["em_preparacao", "em_transito", "em_obra"]);
+      if(error) throw error;
+      frases = rdoTextoAvisoMobilizacao(mobs, maquinas);
+    } catch(err){ console.warn("Aviso de máquina sem mobilização:", err.message); frases = []; }
+  }
+  data.aviso_mobilizacao = frases.length ? frases.join(" · ") : null;
+  const el = $("csv-aviso-mobilizacao");
+  if(el){ el.textContent = data.aviso_mobilizacao ? "⚠️ " + data.aviso_mobilizacao : ""; el.hidden = !data.aviso_mobilizacao; }
 }
 /* fase 173b: aviso da prévia (não bloqueia). Calcula em data.aviso_so_injecao e, se a conferência já está na tela, troca o texto. */
 async function rdoAvisoSoInjecao(data, origem, obraId){
@@ -3573,6 +3622,7 @@ function renderConferenciaIA(resp){
       ${resp?.observacoes ? `<div class="meta">${esc(resp.observacoes)}</div>` : ""}</div>
     ${duvidas.length ? `<div class="ia-duvidas">⚠️ Pontos para conferir: ${duvidas.map(esc).join(" · ")}</div>` : ""}
     <div class="ia-duvidas" id="csv-aviso-so-injecao" style="${resp?.aviso_so_injecao ? "" : "display:none;"}">${esc(resp?.aviso_so_injecao ? "⚠️ " + resp.aviso_so_injecao : "")}</div>
+    <div class="ia-duvidas" id="csv-aviso-mobilizacao"${resp?.aviso_mobilizacao ? "" : " hidden"}>${esc(resp?.aviso_mobilizacao ? "⚠️ " + resp.aviso_mobilizacao : "")}</div>
     <div class="ia-duvidas ia-jornada-aviso" style="${temJornada ? "display:none;" : ""}">${esc(iaTextoAvisoJornada())}</div>
     <div class="meta">Confira e corrija abaixo. O que estiver na tabela é exatamente o que será gravado. Linhas removidas com ✕ não entram. A função da equipe vem do cadastro de funcionários; "Função no dia" só quando o boletim disser outra.</div>
   </div>`;

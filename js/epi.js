@@ -171,12 +171,16 @@ async function epiCarregarFicha(){
   _epiFicha = { funcionarioId: id, linhas: data || [] };
   renderEpiFicha();
 }
+/* S71-f (#380): entrega de EPI pendente de assinatura = EPI (não uniforme), sem assinatura e não devolvida.
+   Mesmo critério do botão "Colher assinatura" e da ficha em PDF "só pendentes". */
+function epiPendenteAssinatura(r){ return !!r && r.categoria === "epi" && !r.assinatura_em && !r.epi_devolvido_em; }
+function epiFiltrarPendentes(L){ return (L || []).filter(epiPendenteAssinatura); }
 function renderEpiFicha(){
   const cont = $("func-epi-conteudo"); if(!cont) return;
   const L = _epiFicha.linhas, opera = epiPodeOperar();
   const ano = dataLocalISO(new Date(Date.now() - 365 * 864e5));
   const vencidas = L.filter(r => r.troca_vencida).length;
-  const pend = L.filter(r => r.categoria === "epi" && !r.assinatura_em && !r.epi_devolvido_em);
+  const pend = epiFiltrarPendentes(L);
   const chip = (n, rot, cor) => `<div class="chip"><span>${esc(rot)}</span><strong>${cor ? `<span class="tag ${esc(cor)}">${esc(n)}</span>` : esc(n)}</strong></div>`;
   cont.innerHTML = `<div class="odoo-contexto" style="margin:0 0 10px;">
       ${chip(L.length, "Entregas")}
@@ -186,6 +190,7 @@ function renderEpiFicha(){
     </div>
     <div class="form-acoes compacta" style="margin:0 0 10px;">
       <button type="button" class="btn-sec" id="btn-epi-pdf" ${L.length ? "" : "disabled"}>Ficha de EPI (PDF)</button>
+      <button type="button" class="btn-sec" id="btn-epi-pdf-pend" title="Ficha de EPI só com as entregas ainda sem assinatura">Pendentes de assinatura (PDF)</button>
       ${opera && pend.length ? `<button type="button" class="btn" id="btn-epi-assinar-pend">Colher assinatura (${pend.length} pendente${pend.length > 1 ? "s" : ""})</button>` : ""}
     </div>
     ${!L.length ? `<p class="vazio">Nenhuma entrega de EPI ou uniforme registrada para este colaborador. As entregas entram pela saída do Estoque com "Quem retira".</p>` : `
@@ -217,8 +222,9 @@ async function epiFichaClique(e){
   if(dev){ await epiDevolver(_epiFicha.linhas[Number(dev.dataset.epiDevolver)]); return; }
   const b = e.target.closest("button[id]"); if(!b) return;
   if(b.id === "btn-epi-pdf") comBotaoTravado(b, () => epiGerarFichaPdf(_epiFicha.funcionarioId));
+  if(b.id === "btn-epi-pdf-pend") comBotaoTravado(b, () => epiGerarFichaPdf(_epiFicha.funcionarioId, { soPendentes: true, avisoId: "func-epi-aviso" }));
   if(b.id === "btn-epi-assinar-pend"){
-    const pend = _epiFicha.linhas.filter(r => r.categoria === "epi" && !r.assinatura_em && !r.epi_devolvido_em);
+    const pend = epiFiltrarPendentes(_epiFicha.linhas);
     epiAbrirAssinatura({ funcionarioId: _epiFicha.funcionarioId, funcionarioNome: $("func-nome")?.value || pend[0]?.funcionario_nome,
       itens: pend.map(r => ({ id: r.id, descricao: `${dataBR(r.data_entrega)} · ${num(r.quantidade)} ${r.unidade || ""} · ${r.produto_nome}${r.ca ? " (CA " + r.ca + ")" : ""}` })),
       aoConcluir: assinou => { if(assinou) epiCarregarFicha(); } });
@@ -238,18 +244,22 @@ async function epiDevolver(r){
 
 /* Ficha de EPI em PDF (NR-6): cabeçalho com o logo, dados do colaborador, declaração, tabela com a assinatura de
    cada entrega. Gerador de PDF: estilo inline (roda fora do CSS do app), sem cor própria (bordas em currentColor). */
-async function epiGerarFichaPdf(funcionarioId){
+async function epiGerarFichaPdf(funcionarioId, { soPendentes = false, avisoId = "func-epi-aviso" } = {}){
   if(!funcionarioId) return;
-  const [{ data: f }, { data: linhas, error }] = await Promise.all([
+  // avisa no elemento da tela de onde veio; sem ele (ex.: relatório do SESMT), no aviso flutuante do js/ui.js
+  const avisar = (msg, tipo) => { if(avisoId && $(avisoId)) aviso(avisoId, msg, tipo); else if(typeof uiAvisar === "function") uiAvisar(msg, tipo === "erro" ? "perigo" : tipo); };
+  const [{ data: f }, { data: todas, error }] = await Promise.all([
     sb.from("funcionarios").select("nome,funcao,matricula,data_admissao,departamento_id").eq("id", funcionarioId).single(),
     sb.from("vw_epi_saidas").select("*").eq("funcionario_id", funcionarioId).order("data_movimentacao", { ascending: true }).limit(2000)
   ]);
-  if(error){ aviso("func-epi-aviso", epiViewAusente(error) ? EPI_MSG_MIGRATION : "Não foi possível gerar a ficha: " + error.message, "erro"); return; }
+  if(error){ avisar(epiViewAusente(error) ? EPI_MSG_MIGRATION : "Não foi possível gerar a ficha: " + error.message, "erro"); return; }
+  const linhas = soPendentes ? epiFiltrarPendentes(todas) : (todas || []);
+  if(soPendentes && !linhas.length){ avisar("Nenhuma entrega de EPI pendente de assinatura" + (f?.nome ? " para " + f.nome : "") + ".", "aviso"); return; }
   const imgs = await Promise.all((linhas || []).map(r => epiDataUrlAssinatura(r.assinatura_path)));
   const cel = "border:1px solid;padding:1.2mm 1.6mm;font-size:8.5pt;vertical-align:middle;";
   const dep = (typeof deptNome === "function" && f?.departamento_id) ? deptNome(f.departamento_id) : "—";
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;">
-    ${pdfCabecalhoHTML("Ficha de controle de entrega de EPI", "NR-6 · CGL Fundações Ltda")}
+    ${pdfCabecalhoHTML(soPendentes ? "Ficha de EPI: entregas pendentes de assinatura" : "Ficha de controle de entrega de EPI", "NR-6 · CGL Fundações Ltda")}
     <table style="width:100%;border-collapse:collapse;margin:5mm 0 3mm;" class="nao-quebrar"><tr>
       <td style="${cel}"><strong>Colaborador:</strong> ${esc(f?.nome || "—")}</td>
       <td style="${cel}"><strong>Matrícula:</strong> ${esc(f?.matricula || "—")}</td></tr>
@@ -274,7 +284,7 @@ async function epiGerarFichaPdf(funcionarioId){
   </div>`;
   const el = document.createElement("div"); el.innerHTML = html;
   const nome = String(f?.nome || "colaborador").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
-  await pdfGerar(el, { filename: `ficha-epi-${nome}-${hojeISO()}.pdf` });
+  await pdfGerar(el, { filename: `ficha-epi-${nome}${soPendentes ? "-pendentes" : ""}-${hojeISO()}.pdf` });
 }
 
 /* ====================================================================
@@ -373,15 +383,16 @@ function epiRelDesenhar(alvoId){
     if(!lista.length){ corpo.innerHTML = `<p class="vazio">Nenhuma entrega${v === "pessoa" ? " com colaborador" : ""} no período.</p>`; return; }
     corpo.innerHTML = `<p class="meta" style="margin:0 0 6px;" data-val-sens><strong>${brl(totalGeral)}</strong> em ${lista.length} ${v === "pessoa" ? "colaborador(es)" : "destino(s)"} no período${semPessoa ? ` · ${brl(semPessoa)} em saídas sem pessoa (veja "Sem pessoa")` : ""}${v === "pessoa" ? " · clique no nome para abrir a ficha de EPI" : ""}</p>
       <div class="tabela-rola"><table>
-        <thead><tr><th>${v === "pessoa" ? "Colaborador" : "Obra / destino"}</th>${v === "pessoa" ? "<th>Função</th>" : ""}${meses.map(m => `<th class="num">${epiMesRotulo(m)}</th>`).join("")}<th class="num">Total</th>${v === "pessoa" ? '<th class="num" title="Total médio por pessoa da mesma função no período">Média da função</th><th class="num">vs média</th>' : ""}</tr></thead>
+        <thead><tr><th>${v === "pessoa" ? "Colaborador" : "Obra / destino"}</th>${v === "pessoa" ? "<th>Função</th>" : ""}${meses.map(m => `<th class="num">${epiMesRotulo(m)}</th>`).join("")}<th class="num">Total</th>${v === "pessoa" ? '<th class="num" title="Total médio por pessoa da mesma função no período">Média da função</th><th class="num">vs média</th><th>Ficha</th>' : ""}</tr></thead>
         <tbody>${lista.map(g => { const med = mediaFuncao[g.funcao] || 0, dif = med ? (g.total / med - 1) * 100 : 0;
           return `<tr${v === "pessoa" ? ` class="linha-clicavel" data-epi-func="${esc(g.id)}"` : ""}>
             <td><strong>${esc(g.nome || "—")}</strong></td>${v === "pessoa" ? `<td>${esc(g.funcao || "—")}</td>` : ""}
             ${meses.map(m => `<td class="num">${g.porMes[m] ? brl(g.porMes[m]) : '<span class="meta">—</span>'}</td>`).join("")}
             <td class="num"><strong>${brl(g.total)}</strong></td>
-            ${v === "pessoa" ? `<td class="num">${brl(med)}</td><td class="num">${med && Math.abs(dif) >= 1 ? `<span class="tag ${dif > 25 ? "vermelho" : dif > 0 ? "ambar" : "verde"}">${dif > 0 ? "+" : ""}${Math.round(dif)}%</span>` : '<span class="meta">—</span>'}</td>` : ""}
+            ${v === "pessoa" ? `<td class="num">${brl(med)}</td><td class="num">${med && Math.abs(dif) >= 1 ? `<span class="tag ${dif > 25 ? "vermelho" : dif > 0 ? "ambar" : "verde"}">${dif > 0 ? "+" : ""}${Math.round(dif)}%</span>` : '<span class="meta">—</span>'}</td>
+              <td><button type="button" class="btn-sec btn-sm" data-epi-pdf-pend="${esc(g.id)}" title="Ficha de EPI em PDF só com as entregas pendentes de assinatura">Pendentes (PDF)</button></td>` : ""}
           </tr>`; }).join("")}</tbody>
-        <tfoot><tr><td${v === "pessoa" ? ' colspan="2"' : ""}><strong>Total</strong></td>${meses.map(m => `<td class="num"><strong>${brl(totMes[m] || 0)}</strong></td>`).join("")}<td class="num"><strong>${brl(totalGeral)}</strong></td>${v === "pessoa" ? "<td></td><td></td>" : ""}</tr></tfoot>
+        <tfoot><tr><td${v === "pessoa" ? ' colspan="2"' : ""}><strong>Total</strong></td>${meses.map(m => `<td class="num"><strong>${brl(totMes[m] || 0)}</strong></td>`).join("")}<td class="num"><strong>${brl(totalGeral)}</strong></td>${v === "pessoa" ? "<td></td><td></td><td></td>" : ""}</tr></tfoot>
       </table></div>`;
     return;
   }
@@ -439,6 +450,9 @@ async function epiRelClique(e, alvoId){
   if(bv){ _epiRel.visao = bv.dataset.epiVisao; _epiRel.dados = null; epiRelCarregar(alvoId); return; }
   if(e.target.closest("[data-epi-xlsx]")){ epiRelExportar(); return; }
   if(e.target.closest(".epi-cns")){ epiCnsClique(e, alvoId); return; }   // fase 199a
+  // S71-f: o botão de pendentes fica dentro da linha que abre a ficha; checar antes dela
+  const bp = e.target.closest("[data-epi-pdf-pend]");
+  if(bp){ e.stopPropagation(); comBotaoTravado(bp, () => epiGerarFichaPdf(bp.dataset.epiPdfPend, { soPendentes: true, avisoId: null })); return; }
   const tr = e.target.closest("[data-epi-func]");
   if(tr && tr.dataset.epiFunc){ epiAbrirFichaFuncionario(tr.dataset.epiFunc); return; }
   const inf = e.target.closest("[data-epi-informar]");

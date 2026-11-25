@@ -428,7 +428,14 @@ async function medAtualizarProducaoPendente(medicaoId){
   const { data, error } = await sb.from("vw_medicoes_pendencias")
     .select("detalhe").eq("medicao_id", medicaoId).eq("tipo", "producao_pendente").maybeSingle();
   if(error || !data || medEditId !== medicaoId) return; // view ausente, sem pendência ou ficha trocada
-  $("med-ficha-prodpend-txt").textContent = data.detalhe || ""; // "NF R$ X × produzido R$ Y"
+  // lote S71-b (#379): medição sem itens não é produção pendente; a view já manda lançar o BM nos itens
+  const semItens = !_medItens.length;
+  const rot = $("med-ficha-prodpend-rot");
+  if(rot) rot.textContent = semItens ? "Medição sem itens" : "Produção pendente";
+  chip.title = semItens
+    ? "A medição tem NF mas nenhum item. Lance o BM nos itens (✨ Sugerir do período) e salve: o aviso some quando os itens baterem com a NF."
+    : "A NF não bate com os itens gerados pelos diários do período. Some sozinha quando baterem (lançar os diários e usar ✨ Sugerir do período).";
+  $("med-ficha-prodpend-txt").textContent = data.detalhe || ""; // "NF R$ X × produzido R$ Y" ou "Medição sem itens: …"
   chip.style.display = "";
 }
 

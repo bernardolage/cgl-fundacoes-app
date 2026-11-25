@@ -21,7 +21,7 @@ let _repCarregado = false;
 const REP_STATUS = { aberto: ["Aberto", "azul"], em_execucao: ["Em execução", "ambar"], concluido: ["Concluído", "verde"], cancelado: ["Cancelado", "cinza"] };
 const REP_STAGES = ["aberto", "em_execucao", "concluido"];
 const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: "Mecânica", eletrica: "Elétrica", pintura: "Pintura", externo: "Externo" };
-const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_pecas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,created_at,criado_por,autor:profiles!reparos_caldeiraria_criado_por_fkey(nome),acessorio:acessorios(marcacao,familia,tipo,diametro_mm),equipamento:equipamentos(codigo,nome)"
+const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_pecas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,created_at,criado_por,autor:profiles!reparos_caldeiraria_criado_por_fkey(nome),acessorio:acessorios(marcacao,familia,tipo,diametro_mm,modelo:acessorio_modelos(descricao,medida)),equipamento:equipamentos(codigo,nome)"
   // fase 186b (#226): reparo externo (fornecedor, envio, orçamento, pedido ligado, retorno); etapa_externa e pedido_externo são campos calculados no banco
   + ",externo,fornecedor_id,enviado_em,nf_remessa_numero,orcamento_recebido_em,orcamento_valor,orcamento_pdf_path,pedido_id,retornou_em,nf_retorno_numero,fornecedor:fornecedores(razao_social,nome_fantasia)";
 /* lote S67-h: etapa_externa e pedido_externo (campos calculados da fase 186b) vêm da vw_reparo_externo: a função recebe a
@@ -53,6 +53,13 @@ function repPodeItens(){ return repPodeEditar() || (!!usuarioAtual && ["almoxari
 function repTag(st){ const o = REP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function repAlvoTxt(r){ return r.acessorio ? r.acessorio.marcacao : r.equipamento ? "TAG " + r.equipamento.codigo : "—"; }
 function repAlvoLink(r){ return r.acessorio_id ? linkAcessorio(r.acessorio_id, r.acessorio?.marcacao || "peça") : r.equipamento_id ? linkEquipamento(r.equipamento_id, "TAG " + (r.equipamento?.codigo || "")) : "—"; }
+/* lote S71-d (#348): coluna Descrição da lista = modelo da peça (descrição · medida, como em acePreencherModeloForm);
+   TAG de equipamento não tem modelo e mostra o nome do equipamento */
+function repModeloTxt(r){
+  const m = r.acessorio?.modelo;
+  if(m) return (m.descricao || "") + (m.medida && m.medida !== "-" ? " · " + m.medida : "");
+  return r.equipamento ? (r.equipamento.nome || "") : "";
+}
 function repResp(id){ const f = _repFuncs.find(x => x.id === id); return f ? f.nome : ""; }   // responsavel_id → funcionarios
 let _repExtras = [];   // lote S60 (#254): outros responsáveis da ficha aberta
 function repRespNomes(r){ return respTodos(r.responsavel_id, r.responsaveis_extra_ids, repResp); }
@@ -136,7 +143,7 @@ function repFiltrados(){
     else if(st && r.status !== st) return false;
     if(se && r.setor !== se) return false;
     if(rs && r.responsavel_id !== rs && !(r.responsaveis_extra_ids || []).includes(rs)) return false;
-    if(q && ![r.numero, r.codigo_externo, r.descricao, r.motivo, r.acessorio?.marcacao, r.equipamento?.codigo, r.observacoes].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
+    if(q && ![r.numero, r.codigo_externo, r.descricao, r.motivo, r.acessorio?.marcacao, r.equipamento?.codigo, repModeloTxt(r), r.observacoes].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
     return true;
   });
 }
@@ -146,7 +153,7 @@ function renderReparos(){
   // lote S52 (#164): a visão de horas troca os filtros (período, departamento, origem) e esconde a contagem por status
   const horas = _repView === "horas";
   document.querySelectorAll("#rep-painel [data-rep-so]").forEach(el => { el.style.display = el.dataset.repSo === (horas ? "horas" : "lista") ? "" : "none"; });
-  const busca = $("rep-busca"); if(busca) busca.placeholder = horas ? "Buscar colaborador, ordem ou departamento…" : "Buscar nº, marcação, TAG, descrição, WH/RO…";
+  const busca = $("rep-busca"); if(busca) busca.placeholder = horas ? "Buscar colaborador, ordem ou departamento…" : "Buscar nº, marcação, TAG, modelo, descrição, WH/RO…";
   if(horas){ $("rep-st-chips").innerHTML = ""; rephRender(); return; }
   const dados = repFiltrados();
   $("rep-contador").textContent = `${dados.length} de ${_repLista.length}`;
@@ -167,10 +174,10 @@ function renderReparos(){
         </div>`).join("") || `<p class="vazio">—</p>`}${its.length > 200 ? `<p class="meta">… e mais ${its.length - 200}</p>` : ""}</div>`; }).join("")}</div>`;
   } else {
     cont.innerHTML = `<div class="tabela-rola"><table>
-      <thead><tr><th>Nº</th><th>Abertura</th><th>Peça / TAG</th><th>O que precisa ser feito</th><th>Setor</th><th>Responsável</th><th class="num">Dias</th><th class="num">Custo</th><th>Status</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Abertura</th><th>Peça / TAG</th><th>Descrição</th><th>O que precisa ser feito</th><th class="num">Dias</th><th class="num">Custo</th><th>Status</th></tr></thead>
       <tbody>${dados.map(r => `<tr class="linha-clicavel" data-id="${esc(r.id)}">
         <td><strong>${esc(r.numero || "")}</strong>${r.codigo_externo ? ` <span class="meta">${esc(r.codigo_externo)}</span>` : ""}</td><td>${dataBR(r.data_abertura)}</td>
-        <td>${repAlvoLink(r)}</td><td>${esc(r.descricao || "")}</td><td>${esc(REP_SETOR[r.setor] || "—")}</td><td class="meta" title="${esc(repRespNomes(r).join(", "))}">${esc(respResumo(repRespNomes(r)))}</td>
+        <td>${repAlvoLink(r)}</td><td>${esc(repModeloTxt(r) || "—")}</td><td>${esc(r.descricao || "")}</td>
         <td class="num">${repDias(r) ?? "—"}</td><td class="num">${brlMO(r.custo_real)}</td><td>${repTag(r.status)}${repNoFornecedor(r) ? " " + repTagFornecedor(r) : ""}</td></tr>`).join("")}</tbody></table></div>`;
   }
 }
