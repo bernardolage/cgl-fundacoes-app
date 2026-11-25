@@ -674,6 +674,9 @@ async function dashAbrirRegularizar(a){
                   responsavel_inativo: { aba: "geral", foco: "obr-responsavel" },
                   sem_jornada:     { aba: "parametros", foco: "obr-jornada-entrada" },
                   sem_estacas:     { aba: "estacas", foco: null },
+                  sem_contrato:    { aba: "contrato", foco: null },          // fase 204 (R4 da conciliação)
+                  aditivo_sem_assinatura: { aba: "contrato", foco: null },   // fase 204 (R9)
+                  sem_medicao:     { aba: "medicoes", foco: null },          // fase 204 (R6)
                   obra_sem_ibge:   { aba: "endereco", foco: "obr-cep" },   // fase 105a: o CEP preenche o IBGE
                   obra_endereco_remessa: { aba: "endereco", foco: "obr-cep" } };   // hotfix NF-e de remessa A
   // fase 107a: Geodigitus. cpu_* e sync parada → ficha da CPU (uma só) ou visão Computadores de bordo filtrada;

@@ -219,6 +219,10 @@ function prodAprovAbrir(modo){
   $("prod-aprov-min").value = $("prod-minimo")?.value || "";
   $("prod-aprov-local").value = $("prod-localizacao")?.value || "";
   $("prod-aprov-custo").value = _prodCustoSug != null ? _prodCustoSug : "";   // lote S70-d: o custo sugerido no cadastro
+  // hotfix #372: serviço consumido não tem estoque mínimo (como no bloco "Para o almoxarifado aprovar")
+  const servico = $("prod-tipo-item")?.value === "servico";
+  $("prod-aprov-min").disabled = servico; $("prod-aprov-min").title = servico ? "Serviço consumido não tem estoque mínimo" : "";
+  if(servico) $("prod-aprov-min").value = 0;
   $("prod-aprov-busca").value = ""; $("prod-aprov-escolhido").textContent = "";
   $("prod-aprov-res").innerHTML = ""; $("prod-aprov-res").style.display = "none";
   $("prod-aprov-modal").style.display = "flex";

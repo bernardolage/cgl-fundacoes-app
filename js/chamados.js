@@ -494,13 +494,18 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
         </div>`) : ""}
     </div>`;
   }
-  if(ehAutor && !leitura && chamResolvidoRecente(c) && !c.confirmado_em){
+  if(ehAutor && !leitura && chamResolvidoRecente(c)){
     const ate = new Date(new Date(c.resolvido_em).getTime() + CHAM_REABRIR_DIAS * 86400000);
     // lote S55 (#185): com a coluna confirmado_em no banco, "✅ Funcionou" e "↩️ Ainda não" lado a lado; a caixa do motivo
     // só aparece ao clicar "Ainda não" (segundo clique reabre, texto obrigatório). Antes da migration, o fluxo da S47.
-    const comConfirmacao = chamTemConfirmacao(c);
+    // hotfix #372: quem já clicou "Funcionou" (por engano, inclusive) ainda pode reabrir dentro do prazo, só com "Não resolveu".
+    const confirmado = !!c.confirmado_em;
+    const comConfirmacao = chamTemConfirmacao(c) && !confirmado;
+    const aviso = confirmado ? "<strong>Você confirmou que funcionou.</strong> Se não ficou certo, ainda pode reabrir"
+      : comConfirmacao ? "<strong>Confira a correção.</strong> Funcionou? Confirme aqui. Se não ficou certo, você pode reabrir"
+      : "<strong>Confira a correção.</strong> Se não ficou certo, você pode reabrir";
     html += `<div class="cham-espera">
-      <div><strong>Confira a correção.</strong> ${comConfirmacao ? "Funcionou? Confirme aqui. Se não ficou certo, você pode reabrir" : "Se não ficou certo, você pode reabrir"} até ${esc(ate.toLocaleDateString("pt-BR"))}.</div>
+      <div>${/* html */ aviso} até ${esc(ate.toLocaleDateString("pt-BR"))}.</div>
       <div id="cham-reabrir-wrap" ${comConfirmacao ? 'style="display:none;"' : ""}>
         <textarea id="cham-reabrir-texto" rows="2" placeholder="O que continua errado? (obrigatório)"></textarea>
       </div>
