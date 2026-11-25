@@ -4931,3 +4931,12 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .ui-val-ocultos { display: none; }
   .valores-ocultos .ui-val-ocultos { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); margin: 0 0 var(--esp-3); padding: var(--esp-2) var(--esp-3); border-radius: var(--radius-sm); background: var(--info-bg); color: var(--info-txt); font-size: var(--txt-sm); }
 }
+
+/* Fase 206c: bloco "Endereço de entrega" da janela Emitir NF-e (remessa): as quatro escolhas lado a lado e a lista da
+   busca de obra ou fornecedor */
+@layer componentes {
+  #mov-ent-bloco { margin-bottom: var(--esp-3); }
+  .mov-ent-opcoes { display: flex; flex-wrap: wrap; gap: var(--esp-2) var(--esp-4); margin-bottom: var(--esp-3); }
+  .mov-ent-lista { list-style: none; margin: var(--esp-2) 0 0; padding: 0; display: grid; gap: var(--esp-1); max-height: 16rem; overflow-y: auto; }
+  .mov-ent-lista .ui-btn { width: 100%; justify-content: flex-start; text-align: left; white-space: normal; padding-block: var(--esp-1); }
+}

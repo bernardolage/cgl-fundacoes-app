@@ -262,6 +262,10 @@ function mostrarFichaMovimentacao(){
   $("mov-transp-endereco").value = m.transp_endereco || "";
   $("mov-transp-municipio").value = m.transp_municipio || "";
   $("mov-transp-uf").value = m.transp_uf || "";
+  $("mov-retirada-balcao").checked = m.retirada_balcao === true;          // fase 206c
+  $("mov-retirada-nome").value = m.retirada_nome || "";
+  $("mov-retirada-cpf").value = m.retirada_cpf ? movCpfFormatado(m.retirada_cpf) : "";
+  movRetiradaVisivel();
   if($("mov-transp-busca")) $("mov-transp-busca").value = "";
   $("mov-motorista").value = m.motorista || "";
   $("mov-nf-numero").value = m.nf_numero || "";
@@ -354,6 +358,15 @@ function ligarBuscaTransportadora(){
 function toggleTransportadorVisivel(){
   const tipo = $("mov-frete").value;
   $("bloco-transportador").style.display = (tipo === "terceiro") ? "" : "none";
+  movRetiradaVisivel();
+}
+/* fase 206c: retirada no balcão (só com frete por terceiro); nome e CPF aparecem com a marcação */
+function movRetiradaVisivel(){
+  $("mov-retirada-campos").hidden = !($("mov-frete").value === "terceiro" && $("mov-retirada-balcao").checked);
+}
+function movCpfFormatado(v){
+  const d = String(v || "").replace(/\D/g, "");
+  return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : d;
 }
 
 /* ---------- Statusbar + chips ---------- */
@@ -767,6 +780,10 @@ function coletarDadosForm(){
     transp_municipio: $("mov-transp-municipio").value.trim() || null,
     transp_uf: $("mov-transp-uf").value || null,
     transp_placa: $("mov-transp-placa").value.trim() || null,
+    // fase 206c: só vale com frete por terceiro (o banco exige nome e CPF com a marcação)
+    retirada_balcao: $("mov-frete").value === "terceiro" && $("mov-retirada-balcao").checked,
+    retirada_nome: $("mov-retirada-nome").value.trim() || null,
+    retirada_cpf: $("mov-retirada-cpf").value.replace(/\D/g, "") || null,
     motorista: $("mov-motorista").value.trim() || null,
     nf_numero: $("mov-nf-numero").value.trim() || null,
     nf_serie: $("mov-nf-serie").value.trim() || "1",
@@ -811,6 +828,14 @@ async function movSalvarAgora(novoStatus){
     aviso("app-aviso","Há acessórios na carga: escolha a obra de destino para as peças ficarem vinculadas a ela.", "erro");
     ativarTab("cabecalho"); $("mov-destino-obra")?.focus();
     return null;
+  }
+  if(dados.retirada_balcao){                                     // fase 206c (decisões 2 e 3)
+    const falta = [!dados.retirada_nome ? "o nome" : "", !fiscalDocValido(dados.retirada_cpf || "") || (dados.retirada_cpf || "").length !== 11 ? "um CPF válido" : ""].filter(Boolean);
+    if(falta.length){
+      aviso("app-aviso", `Retirada no balcão: informe ${falta.join(" e ")} de quem retira.`, "erro");
+      ativarTab("transporte"); (!dados.retirada_nome ? $("mov-retirada-nome") : $("mov-retirada-cpf"))?.focus();
+      return null;
+    }
   }
 
   let movId = movimentacaoAtual.id;
@@ -954,6 +979,10 @@ async function verificarMDFRecomendado(){
   }
 }
 
+function movConfirmarRecebida(){
+  return uiConfirmar({ titulo: "Marcar como recebida", texto: "Marcar como RECEBIDA? Isso atualiza a localização dos equipamentos e acessórios automaticamente.", confirmar: "Marcar como recebida" });
+}
+
 /* ---------- Statusbar clicável (avança/recua status) ---------- */
 function ligarStatusbarClicavel(){
   document.querySelectorAll("#mov-statusbar .stage").forEach(el => {
@@ -971,7 +1000,7 @@ function ligarStatusbarClicavel(){
         return;
       }
       if(novo === "recebida"){
-        if(!confirm("Marcar como RECEBIDA? Isso atualiza a localização dos equipamentos e acessórios automaticamente.")) return;
+        if(!(await movConfirmarRecebida())) return;
       }
       await salvarMovimentacao(novo);
     });
@@ -1066,7 +1095,7 @@ async function movNcmSalvar(idx, inp){
     if(t2 === t && id2 !== id && (_movFiscalItens[`${t2}:${id2}`] || {}).modelo === modelo && !movItemFiscal(o).ncm) iguais.set(id2, o);
   });
   let extras = 0;
-  if(iguais.size && confirm(`Aplicar o NCM ${fmt} também às ${iguais.size} outra(s) linha(s) do mesmo modelo que estão sem NCM?`)){
+  if(iguais.size && await uiConfirmar({ titulo: "NCM do mesmo modelo", texto: `Aplicar o NCM ${fmt} também às ${iguais.size} outra(s) linha(s) do mesmo modelo que estão sem NCM?`, confirmar: "Aplicar" })){
     for(const id2 of iguais.keys()){ if(await movNcmGravar(t, id2, d)) extras++; }
   }
   aviso("app-aviso", `NCM ${fmt} gravado no cadastro${extras ? ` e em mais ${extras} item(ns) do mesmo modelo` : ""}. Vale para as próximas notas; nota já emitida não muda.`, "ok");
@@ -1308,19 +1337,160 @@ async function movNfeSimularMostrar(){
     corpo: movNfeResumoHtml(d, obraCad) + previa + `<details><summary class="meta">JSON que vai para a Focus</summary><pre class="mov-nfe-json">${esc(JSON.stringify(d.nfe, null, 2))}</pre></details>`
   });
 }
+/* mov-entrega-puro-inicio — HTML do bloco "Endereço de entrega" da janela Emitir NF-e (fase 206c). Só esc() e js/ui.js;
+   testado por scripts/testar-fase206.mjs. O endereço sai sempre de um cadastro (decisão 6): obra da remessa, cliente,
+   outra obra ou fornecedor; a function focus-nfe (confirmar_entrega) grava a escolha e a assinatura da nota. */
+const MOV_ENT_ORIGENS = [["obra", "Obra da remessa"], ["cliente", "Cliente"], ["outra_obra", "Outra obra"], ["fornecedor", "Fornecedor"]];
+function movEntregaResultadosHtml(lista, erro){
+  if(erro) return uiErro(erro);
+  if(!lista) return "";
+  if(!lista.length) return uiVazio("Nada encontrado. Confira o nome, o código ou o CNPJ.");
+  return `<ul class="mov-ent-lista">${lista.map(x => `<li><button type="button" class="ui-btn" data-mov-ent-escolha="${esc(x.id)}" title="Usar este endereço"><span><strong>${esc(x.nome || "—")}</strong>${x.doc ? ` ${uiCodigo(x.doc)}` : ""}<br><span class="meta">${esc(x.endereco || "sem endereço")}</span></span></button></li>`).join("")}</ul>`;
+}
+function movEntregaHtml(cfg){
+  const c = cfg || {}, r = c.resumo || {}, e = c.estado || {};
+  const retorno = c.tipo === "retorno", rot = retorno ? "retirada" : "entrega";
+  const titulo = `Endereço de ${rot}`;
+  const rotOrigem = o => o === "obra" ? (retorno ? "Obra do retorno" : "Obra da remessa") : (MOV_ENT_ORIGENS.find(x => x[0] === o) || [, o])[1];
+  if(c.confirmada){
+    const be = r.bloco_entrega;
+    const txt = be ? `${be.nome || ""} · ${be.endereco || ""}` : `a nota sai só com o endereço do cliente, sem local de ${rot}`;
+    return uiSecao("local", titulo, `<div class="dist-aviso ok"><strong>Endereço confirmado (${esc(rotOrigem(r.entrega_origem || e.origem))}):</strong> ${esc(txt)}</div>
+      <div class="form-acoes compacta"><button type="button" class="ui-btn" data-mov-ent="trocar" title="Escolher outro endereço e confirmar de novo">Trocar endereço</button></div>`, "confirmado");
+  }
+  const origem = e.origem || "obra";
+  const opcoes = `<div class="mov-ent-opcoes" role="radiogroup" aria-label="De onde vem o endereço">${MOV_ENT_ORIGENS.map(([v]) =>
+    `<label class="check-inline"><input type="radio" name="mov-ent-origem" value="${esc(v)}"${v === origem ? " checked" : ""} /> ${esc(rotOrigem(v))}</label>`).join("")}</div>`;
+  let alvo = "", podeConfirmar = true;
+  if(origem === "obra"){
+    const bo = r.bloco_obra;
+    alvo = bo ? uiRotuloValor("Vai na nota", `${uiCodigo(bo.codigo || "—")}${bo.nome ? ` · ${esc(bo.nome)}` : ""}<br>${esc(bo.endereco || "endereço incompleto")}`) : uiVazio("O documento não tem obra.");
+    podeConfirmar = !!bo;
+  } else if(origem === "cliente"){
+    const bd = r.bloco_destinatario;
+    alvo = bd ? uiRotuloValor("Cliente", `<strong>${esc(bd.nome || "—")}</strong><br>${esc(bd.endereco || "endereço incompleto")}<br><span class="meta">A nota sai sem local de ${esc(rot)}: vale o endereço do cliente.</span>`) : uiVazio("A obra não tem cliente vinculado.");
+    podeConfirmar = !!bd;
+  } else {
+    const forn = origem === "fornecedor", x = e.escolha;
+    const busca = `<div class="campo largo"><label for="mov-ent-busca">${forn ? "Buscar fornecedor (razão social, fantasia ou CNPJ)" : "Buscar obra (código ou nome)"}</label><input id="mov-ent-busca" autocomplete="off" value="${esc(e.termo || "")}" placeholder="ao menos 2 letras" /></div><div id="mov-ent-resultados"></div>`;
+    const cepRuim = forn && x && String(x.cep || "").replace(/\D/g, "").length !== 8;
+    alvo = (x ? uiRotuloValor("Vai na nota", `<strong>${esc(x.nome || "—")}</strong>${x.doc ? ` ${uiCodigo(x.doc)}` : ""}<br>${esc(x.endereco || "sem endereço")}`) : uiVazio(forn ? "Escolha o fornecedor na busca." : "Escolha a obra na busca."))
+      + (cepRuim ? `<div class="dist-aviso alerta">CEP do fornecedor inválido: corrija em Fornecedores antes de confirmar.</div>` : "")
+      + busca;
+    podeConfirmar = !!x && !cepRuim;
+  }
+  const dica = c.retirada && origem !== "fornecedor"
+    ? `<p class="nota">Na retirada no balcão, o local costuma ser a agência da transportadora: escolha Fornecedor.</p>` : "";
+  return uiSecao("local", titulo, `${opcoes}${dica}${/* html */ alvo}${e.erro ? uiErro(e.erro) : ""}
+    <div class="form-acoes compacta"><button type="button" class="ui-btn ui-btn-prim" data-mov-ent="confirmar"${podeConfirmar ? "" : " disabled"} title="Grava este endereço e refaz a prévia; o botão de emitir aparece depois">Confirmar endereço</button></div>
+    <p class="nota">Confirme o endereço para liberar a emissão. Se a remessa mudar depois, é preciso confirmar de novo.</p>`);
+}
+/* mov-entrega-puro-fim */
+
+/* estado da janela Emitir: última prévia (d), aviso da obra e a escolha do endereço */
+let _movEnt = null;
+function movEntEndereco(o){
+  const rua = [o.logradouro, o.numero].filter(Boolean).join(", ");
+  const cid = [o.cidade, String(o.uf || "").toUpperCase()].filter(Boolean).join("/");
+  return [rua, o.bairro, cid, o.cep ? `CEP ${o.cep}` : ""].filter(Boolean).join(" · ");
+}
+function movEntRedesenhar(){
+  const el = $("mov-ent-bloco");
+  if(!el || !_movEnt) return;
+  el.innerHTML = movEntregaHtml({ tipo: movimentacaoAtual.tipo, resumo: _movEnt.d.resumo, estado: _movEnt.estado, confirmada: false, retirada: movimentacaoAtual.retirada_balcao });
+}
+async function movEntBuscar(termo){
+  const caixa = $("mov-ent-resultados");
+  if(!caixa || !_movEnt) return;
+  const e = _movEnt.estado;
+  e.termo = termo;
+  const t = String(termo || "").replace(/[,()%*\\]/g, " ").trim();
+  if(t.length < 2){ caixa.innerHTML = ""; return; }
+  caixa.innerHTML = uiCarregando("Buscando…");
+  let lista = null, erro = null;
+  if(e.origem === "outra_obra"){
+    const { data, error } = await sb.from("obras").select("id,codigo,nome,status,logradouro,numero,bairro,cidade,uf,cep")
+      .neq("status", "cancelada").or(`codigo.ilike.%${t}%,nome.ilike.%${t}%`).order("codigo", { ascending: false }).limit(20);
+    erro = error?.message;
+    lista = (data || []).map(o => ({ id: o.id, nome: `${o.codigo || ""} · ${o.nome || ""}`, endereco: movEntEndereco(o) }));
+  } else {
+    const dig = t.replace(/\D/g, "");
+    const filtro = [`razao_social.ilike.%${t}%`, `nome_fantasia.ilike.%${t}%`].concat(dig.length >= 3 ? [`cpf_cnpj.ilike.%${dig}%`] : []).join(",");
+    const { data, error } = await sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,logradouro,numero,bairro,cidade,uf,cep")
+      .eq("ativo", true).or(filtro).order("razao_social").limit(20);
+    erro = error?.message;
+    lista = (data || []).map(f => ({ id: f.id, nome: f.razao_social || f.nome_fantasia, doc: f.cpf_cnpj, cep: f.cep, endereco: movEntEndereco(f) }));
+  }
+  if(_movEnt.estado !== e || e.termo !== termo) return;   // outra busca começou depois
+  _movEnt.resultados = lista;
+  caixa.innerHTML = movEntregaResultadosHtml(erro ? null : lista, erro ? "Não foi possível buscar: " + erro : null);
+}
+async function movEntConfirmar(btn){
+  const e = _movEnt?.estado;
+  if(!e) return;
+  btn.disabled = true;
+  const corpo = { movimentacao_id: movimentacaoAtual.id, origem: e.origem };
+  if(e.origem === "outra_obra") corpo.obra_id = e.escolha?.id;
+  if(e.origem === "fornecedor") corpo.fornecedor_id = e.escolha?.id;
+  const r = await fiscalChamarFocus("confirmar_entrega", corpo);
+  if(r.erro){ e.erro = r.erro; movEntRedesenhar(); return; }
+  e.erro = null;
+  movNfeEmitirMostrar(r.data);
+}
+function ligarMovEntrega(){
+  const corpo = $("mov-nfe-modal-corpo");
+  if(!corpo) return;
+  const buscar = debounce((v) => movEntBuscar(v), 300);
+  corpo.addEventListener("change", (ev) => {
+    const rd = ev.target.closest('input[name="mov-ent-origem"]');
+    if(!rd || !_movEnt) return;
+    _movEnt.estado = { origem: rd.value };
+    _movEnt.resultados = null;
+    movEntRedesenhar();
+    $("mov-ent-busca")?.focus();
+  });
+  corpo.addEventListener("input", (ev) => { if(ev.target.id === "mov-ent-busca") buscar(ev.target.value); });
+  corpo.addEventListener("click", (ev) => {
+    if(!_movEnt) return;
+    const esc0 = ev.target.closest("[data-mov-ent-escolha]");
+    if(esc0){
+      _movEnt.estado.escolha = (_movEnt.resultados || []).find(x => String(x.id) === esc0.dataset.movEntEscolha) || null;
+      _movEnt.estado.termo = "";
+      movEntRedesenhar();
+      return;
+    }
+    const b = ev.target.closest("[data-mov-ent]");
+    if(!b) return;
+    if(b.dataset.movEnt === "confirmar") movEntConfirmar(b);
+    if(b.dataset.movEnt === "trocar"){
+      _movEnt.estado = { origem: _movEnt.d.resumo?.entrega_origem || "obra" };
+      movNfeEmitirMostrar({ ..._movEnt.d, entrega_confirmada: false });
+    }
+  });
+}
+
 async function movNfeEmitir(){
   if(!(await movNfeSalvarAntes())) return;
   const [d, obraCad] = await Promise.all([movNfeSimular(false), movNfeCadastroObra(movimentacaoAtual)]);
   if(!d) return;
+  _movEnt = { obraCad, estado: { origem: d.resumo?.entrega_origem || "obra" }, resultados: null };
+  movNfeEmitirMostrar(d);
+}
+/* fase 206c: a janela tem o bloco do endereço em cima; o botão de emitir só aparece com o endereço confirmado e a nota
+   igual à conferida (d.entrega_confirmada, que a function calcula pela assinatura) */
+function movNfeEmitirMostrar(d){
   const prod = d.ambiente === "producao";
   const doc = movimentacaoAtual;
+  _movEnt.d = d;
+  const confirmada = !!d.entrega_confirmada;
+  const bloco = movEntregaHtml({ tipo: doc.tipo, resumo: d.resumo, estado: _movEnt.estado, confirmada, retirada: doc.retirada_balcao });
   movNfeModal({
     titulo: `Emitir NF-e · ${doc.numero}`,
-    corpo: movNfeResumoHtml(d, obraCad),
+    corpo: `<div id="mov-ent-bloco">${/* html */ bloco}</div>` + movNfeResumoHtml(d, _movEnt.obraCad),
     botao: prod ? "🧾 Emitir em PRODUÇÃO" : "🧾 Emitir em homologação",
-    onOk: (d.pendencias || []).length ? null : async () => {
-      if(prod && !confirm("Emitir a NF-e em PRODUÇÃO, com valor fiscal na SEFAZ?")) return;
-      const r = await fiscalChamarFocus("emitir", { movimentacao_id: doc.id });
+    onOk: ((d.pendencias || []).length || !confirmada) ? null : async () => {
+      if(prod && !(await uiConfirmar({ titulo: "Emitir em produção", texto: "Emitir a NF-e em PRODUÇÃO, com valor fiscal na SEFAZ?", confirmar: "Emitir", perigo: true }))) return;
+      const r = await fiscalChamarFocus("emitir", { movimentacao_id: doc.id, assinatura: d.assinatura });
       movNfeModalFechar();
       if(r.erro){
         const pend = r.corpo?.pendencias || [];
@@ -1437,6 +1607,8 @@ function ligarFichaMovimentacao(){
   $("btn-nova-movimentacao")?.addEventListener("click", novaMovimentacao);
   $("btn-voltar-mov")?.addEventListener("click", voltarParaLista);
   $("mov-frete")?.addEventListener("change", toggleTransportadorVisivel);
+  $("mov-retirada-balcao")?.addEventListener("change", movRetiradaVisivel);   // fase 206c
+  $("mov-retirada-cpf")?.addEventListener("blur", (e) => { e.target.value = movCpfFormatado(e.target.value); });
   ligarBuscaTransportadora();   // lote S46 (#88)
   $("mov-origem-tipo")?.addEventListener("change", toggleObraCampos);
   $("mov-destino-tipo")?.addEventListener("change", toggleObraCampos);
@@ -1459,11 +1631,11 @@ function ligarFichaMovimentacao(){
   });
   $("btn-marcar-transito")?.addEventListener("click", () => comBotaoTravado("btn-marcar-transito", () => salvarMovimentacao("em_transito")));
   $("btn-marcar-recebida")?.addEventListener("click", async () => {
-    if(!confirm("Marcar como RECEBIDA? Isso atualiza a localização dos equipamentos e acessórios automaticamente.")) return;
+    if(!(await movConfirmarRecebida())) return;
     await comBotaoTravado("btn-marcar-recebida", () => salvarMovimentacao("recebida"));
   });
   $("btn-cancelar")?.addEventListener("click", async () => {
-    if(!confirm("Cancelar esta movimentação?")) return;
+    if(!(await uiConfirmar({ titulo: "Cancelar movimentação", texto: "Cancelar esta movimentação?", confirmar: "Cancelar movimentação", cancelar: "Voltar", perigo: true }))) return;
     await comBotaoTravado("btn-cancelar", () => salvarMovimentacao("cancelada"));
   });
 
@@ -1483,6 +1655,7 @@ function ligarFichaMovimentacao(){
   $("btn-mov-nfe-cancelar")?.addEventListener("click", movNfeCancelar);
   $("btn-mov-nfe-inutilizar")?.addEventListener("click", movNfeInutilizar);
   $("btn-mov-nfe-modal-fechar")?.addEventListener("click", movNfeModalFechar);
+  ligarMovEntrega();   // fase 206c
   $("btn-mov-nfe-modal-ok")?.addEventListener("click", () => comBotaoTravado("btn-mov-nfe-modal-ok", () => _movNfeModalOk ? _movNfeModalOk() : null));
 
   // Notebook (abas internas)
