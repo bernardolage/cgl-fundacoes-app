@@ -80,11 +80,151 @@ async function carregarUsuarios(){
   }
   _usuarios = error ? [] : (data || []);
   renderUsuarios();
-  carregarRespServico();
-  carregarPoliticaSessaoCard();
-  carregarPalavrasEtapaCard();   // fase 94
-  carregarFiscalEmpresaCard();   // fase 105a
-  if(typeof geoEmpresaCarregarCard === "function") geoEmpresaCarregarCard();   // fase 107a: parâmetros do Geodigitus
+  // fase 205: os cards das outras abas (fiscal, Geodigitus, responsáveis, RDO, sessão) carregam na primeira abertura da
+  // aba (cfgCarregarAba); aqui só o resumo da barra de abas. Uma carga nova da lista zera as abas já lidas
+  _cfgCarregadas = { usuarios: true };
+  if(_cfgAba !== "usuarios") cfgCarregarAba(_cfgAba);
+  cfgCarregarResumo();
+}
+
+/* ---------- Configurações (fase 205) ----------
+   O antigo módulo Usuários virou Configurações: seção, menu e ids continuam "usuarios"/usr-* (decisão D1 da spec); o
+   que é novo leva cfg-. Cinco abas, uma visível por vez (cfg-aba-<id>); cada uma lê seus cards na primeira abertura.
+   Quem vê e quem grava não mudou: diretor e admin pelo menu, card por card como antes. */
+/* cfg-puro-inicio — só montam HTML (testados com vm em scripts/testar-fase205.mjs) */
+const CFG_ABAS = [
+  { id: "usuarios",    rotulo: "Usuários e acessos" },
+  { id: "empresa",     rotulo: "Empresa e fiscal" },
+  { id: "integracoes", rotulo: "Integrações" },
+  { id: "operacao",    rotulo: "Operação" },
+  { id: "seguranca",   rotulo: "Segurança" }
+];
+/* "2026-11-25" (ou timestamp) → "25/11/2026"; texto puro, quem monta o HTML escapa */
+function cfgData(v){
+  const p = String(v || "").slice(0, 10).split("-");
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(v || "");
+}
+function cfgDataHora(v){
+  const d = new Date(v);
+  return isNaN(d) ? String(v || "") : d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function cfgPlural(n, um, varios){ return `${n} ${Number(n) === 1 ? um : varios}`; }
+/* Barra de abas. r = resumo lido (null = leitura falhou ou não feita: abas sem resumo, nunca trava a barra).
+   Campo ausente em r (undefined) também deixa aquela aba sem resumo. */
+function cfgAbasHTML(r, ativa){
+  const x = r || {};
+  const tem = k => !!r && x[k] !== undefined;
+  const resumo = {
+    usuarios:    tem("ativos") ? cfgPlural(x.ativos, "ativo", "ativos") : "",
+    empresa:     tem("certificado") ? (x.certificado ? "certificado até " + cfgData(x.certificado) : "sem certificado") : "",
+    integracoes: tem("geo") ? "Geodigitus " + (x.geo ? "ligado" : "desligado") : "",
+    operacao:    tem("responsaveis") ? cfgPlural(x.responsaveis, "responsável", "responsáveis") : "",
+    seguranca:   tem("mfa") ? `MFA em ${cfgPlural(x.mfa, "cargo", "cargos")}${x.inatividade != null ? " · sai após " + x.inatividade + " min" : ""}` : ""
+  };
+  return uiAbas(CFG_ABAS.map(a => ({ id: a.id, rotulo: a.rotulo, resumo: resumo[a.id] })), { ativa, rotulo: "Partes das configurações" });
+}
+/* Integrações › Focus NFe e PlusFrota: só leitura; a Focus grava em Empresa e fiscal, o PlusFrota não tem tela */
+function cfgIntegracoesHTML(d, erro){
+  const tit = "Focus NFe e PlusFrota (só consulta)";
+  if(erro) return uiSecao("documento", tit, uiErro(erro));
+  if(!d) return uiSecao("documento", tit, uiVazio("Sem dados das integrações para mostrar."));
+  const AMB = { producao: "Produção", homologacao: "Homologação" };
+  const amb = v => AMB[v] || v || "não definido";
+  const webhook = d.fiscal_focus_webhook_registrado_em
+    ? esc(cfgDataHora(d.fiscal_focus_webhook_registrado_em) + (d.fiscal_focus_webhook_ambiente ? " · " + amb(d.fiscal_focus_webhook_ambiente) : ""))
+    : "não registrado";
+  const corpo =
+    uiRotuloValor("Focus · ambiente da emissão", esc(amb(d.fiscal_ambiente))) +
+    uiRotuloValor("Focus · webhook registrado em", webhook) +
+    uiRotuloValor("Certificado A1 válido até", d.fiscal_certificado_validade ? esc(cfgData(d.fiscal_certificado_validade)) : "sem certificado") +
+    `<p><button type="button" class="link-mini" data-cfg-aba="empresa" title="Abre a aba onde se alteram os dados fiscais, o certificado e o webhook">Alterar em Empresa e fiscal</button></p>` +
+    uiRotuloValor("PlusFrota · sincronização", `${d.plusfrota_sync_ativo ? "ligada" : "desligada"} <span class="meta">(sem tela para ligar ou desligar)</span>`);
+  return uiSecao("documento", tit, corpo);
+}
+/* Operação › Parâmetros de outros módulos: o valor de hoje e o link para o módulo onde se altera (decisão D5) */
+function cfgParametrosHTML(d, erro){
+  const tit = "Parâmetros de outros módulos (só consulta)";
+  if(erro) return uiSecao("maquina", tit, uiErro(erro));
+  if(!d) return uiSecao("maquina", tit, uiVazio("Sem parâmetros para mostrar."));
+  const link = (secao, nome) => ` <button type="button" class="link-mini" data-cfg-secao="${esc(secao)}" title="Abre ${esc(nome)}, onde este valor se altera">Alterar em ${esc(nome)}</button>`;
+  const n = v => v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR");
+  const corpo =
+    uiRotuloValor("Hora da oficina", (d.custo_hora_oficina != null ? uiFmt(d.custo_hora_oficina, "brl") + " por hora" : "não definida") + link("reparos", "Reparos")) +
+    uiRotuloValor("Atenção da manutenção", esc(`${n(d.manutencao_atencao_h)} h · ${n(d.manutencao_atencao_km)} km antes do vencimento`) + link("manutencao", "Manutenção")) +
+    uiRotuloValor("Almoxarife de plantão", (d.plantao ? esc(d.plantao) : "não definido") + link("separacoes", "Separações"));
+  return uiSecao("maquina", tit, corpo);
+}
+/* cfg-puro-fim */
+
+let _cfgAba = "usuarios";
+let _cfgCarregadas = { usuarios: true };
+let _cfgResumo = null;
+
+function cfgRenderCabecalho(){
+  if(typeof uiPagina !== "function") return;
+  const cab = $("cfg-cab");
+  if(cab && !cab.firstChild) cab.innerHTML = uiPagina({ titulo: "Configurações", sub: "Usuários e acessos, dados da empresa, integrações e parâmetros do sistema." });
+  const abas = $("cfg-abas");
+  if(abas) abas.innerHTML = cfgAbasHTML(_cfgResumo, _cfgAba);
+}
+/* só troca o que se vê (sem ler nada) */
+function cfgMostrarAba(id){
+  if(!CFG_ABAS.some(a => a.id === id)) id = "usuarios";
+  _cfgAba = id;
+  CFG_ABAS.forEach(a => { const el = $("cfg-aba-" + a.id); if(el) el.hidden = a.id !== id; });
+  cfgRenderCabecalho();
+}
+/* troca de aba e lê os cards dela na primeira vez; serve aos links de dentro do módulo e a quem abre uma aba de fora */
+function cfgAbrirAba(id){
+  cfgMostrarAba(id);
+  cfgCarregarAba(_cfgAba);
+}
+function cfgCarregarAba(id){
+  if(_cfgCarregadas[id]) return;
+  _cfgCarregadas[id] = true;
+  if(id === "empresa") carregarFiscalEmpresaCard();   // fase 105a
+  else if(id === "integracoes"){
+    if(typeof geoEmpresaCarregarCard === "function") geoEmpresaCarregarCard();   // fase 107a
+    cfgCarregarIntegracoes();
+  } else if(id === "operacao"){
+    carregarRespServico();          // fase 75
+    carregarPalavrasEtapaCard();    // fase 94
+    cfgCarregarParametros();
+  } else if(id === "seguranca") carregarPoliticaSessaoCard();   // fase 87
+}
+/* resumo da barra: uma leitura leve de empresa_config e a contagem dos responsáveis; erro deixa a aba sem resumo */
+async function cfgCarregarResumo(){
+  if(!["diretor", "admin"].includes(usuarioAtual?.cargo)) return;
+  const r = { ativos: _usuarios.filter(u => u.ativo !== false).length };
+  const [cfg, resp] = await Promise.all([
+    sb.from("empresa_config").select("fiscal_certificado_validade,geodigitus_sync_ativo,sessao_mfa_cargos,sessao_inatividade_min").eq("id", 1).maybeSingle(),
+    sb.from("responsaveis_servico").select("id", { count: "exact", head: true })
+  ]);
+  if(!cfg.error && cfg.data){
+    r.certificado = cfg.data.fiscal_certificado_validade || null;
+    r.geo = !!cfg.data.geodigitus_sync_ativo;
+    r.mfa = (cfg.data.sessao_mfa_cargos || []).length;
+    r.inatividade = cfg.data.sessao_inatividade_min;
+  }
+  if(!resp.error && resp.count != null) r.responsaveis = resp.count;
+  _cfgResumo = r;
+  cfgRenderCabecalho();
+}
+async function cfgCarregarIntegracoes(){
+  const alvo = $("cfg-integ-leitura"); if(!alvo) return;
+  alvo.innerHTML = uiCarregando();
+  const { data, error } = await sb.from("empresa_config")
+    .select("fiscal_ambiente,fiscal_focus_webhook_registrado_em,fiscal_focus_webhook_ambiente,fiscal_certificado_validade,plusfrota_sync_ativo")
+    .eq("id", 1).maybeSingle();
+  alvo.innerHTML = cfgIntegracoesHTML(data, error ? "Não foi possível ler as integrações: " + error.message : null);
+}
+async function cfgCarregarParametros(){
+  const alvo = $("cfg-param-leitura"); if(!alvo) return;
+  alvo.innerHTML = uiCarregando();
+  const { data, error } = await sb.from("empresa_config")
+    .select("custo_hora_oficina,manutencao_atencao_h,manutencao_atencao_km,almoxarife_padrao_id").eq("id", 1).maybeSingle();
+  const d = data ? Object.assign({}, data, { plantao: data.almoxarife_padrao_id ? (_usuarios.find(u => u.id === data.almoxarife_padrao_id)?.nome || "?") : null }) : null;
+  alvo.innerHTML = cfgParametrosHTML(d, error ? "Não foi possível ler os parâmetros: " + error.message : null);
 }
 
 /* ---------- Dados fiscais da empresa (fase 105a) ----------
@@ -173,7 +313,7 @@ async function trocarPapelRespServico(id, papel){
 
 async function excluirRespServico(id){
   const r = _respServico.find(x => x.id === id);
-  if(!r || !confirm(`Remover ${r.pessoa?.nome || "esta pessoa"} de ${RESP_TIPO[r.tipo_servico]} (${RESP_AREA[r.area]})?`)) return;
+  if(!r || !(await uiConfirmar({ titulo: "Remover responsável", texto: `Remover ${r.pessoa?.nome || "esta pessoa"} de ${RESP_TIPO[r.tipo_servico]} (${RESP_AREA[r.area]})?`, confirmar: "Remover", perigo: true }))) return;
   const { error } = await sb.from("responsaveis_servico").delete().eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
   await carregarRespServico();
@@ -218,7 +358,7 @@ async function salvarPoliticaSessao(){
     aviso("app-aviso", "Prazos inválidos: inatividade de 1 a 1440 min, sessão máxima de 1 a 168 h, manter conectado de 1 a 90 dias.", "erro");
     return;
   }
-  if(!reg.sessao_mfa_cargos.includes("diretor") && !confirm("Diretor fora da lista de MFA obrigatório. Tem certeza?")) return;
+  if(!reg.sessao_mfa_cargos.includes("diretor") && !(await uiConfirmar({ titulo: "Política de sessão", texto: "Diretor fora da lista de MFA obrigatório. Tem certeza?", confirmar: "Salvar assim", perigo: true }))) return;
   const { error } = await sb.from("empresa_config").update(reg).eq("id", 1);
   if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
   aviso("app-aviso", "Política de sessão salva. Vale para quem entrar ou recarregar a partir de agora (e já nesta aba).", "ok");
@@ -264,7 +404,7 @@ async function encerrarSessoesUsr(){
   if(!usrEditId) return;
   const u = _usuarios.find(x => x.id === usrEditId);
   const nome = u?.nome || "este usuário";
-  if(!confirm(`Encerrar as sessões abertas de ${nome}? Ele sai do sistema em todos os aparelhos e precisa entrar de novo.`)) return;
+  if(!(await uiConfirmar({ titulo: "Encerrar sessões", texto: `Encerrar as sessões abertas de ${nome}? Ele sai do sistema em todos os aparelhos e precisa entrar de novo.`, confirmar: "Encerrar", perigo: true }))) return;
   const { data, error } = await sb.rpc("sessoes_encerrar_usuario", { p_user: usrEditId, p_motivo: "ficha do usuário" });
   if(error){ aviso("app-aviso", "Não foi possível encerrar as sessões: " + error.message, "erro"); return; }
   const n = Number(data) || 0;
@@ -405,6 +545,7 @@ function renderUsrKanban(dados){
 
 /* ---------- Painel <-> Ficha ---------- */
 function mostrarPainelUsr(){
+  cfgMostrarAba("usuarios");   // fase 205: menu e "← Voltar" sempre abrem a aba Usuários e acessos
   $("usr-painel").style.display = "";
   $("usr-ficha").style.display = "none";
   usrEditId = null;
@@ -516,6 +657,7 @@ function novoUsuario(){
 }
 
 function abrirUsuario(id){
+  cfgMostrarAba("usuarios");   // fase 205: atalhos de fora (tela inicial, chamado) chegam na aba certa
   preencherCargosFicha();
   const u = _usuarios.find(x => x.id === id);
   if(!u){ aviso("app-aviso","Usuário não encontrado.","erro"); return; }
@@ -684,7 +826,7 @@ async function salvarUsuario(){
 
 async function resetarSenhaUsr(){
   if(!usrEditEmail) return;
-  if(!confirm(`Enviar link de redefinição de senha para ${usrEditEmail}?`)) return;
+  if(!(await uiConfirmar({ titulo: "Resetar senha", texto: `Enviar link de redefinição de senha para ${usrEditEmail}?`, confirmar: "Enviar link" }))) return;
   const btn = $("btn-reset-senha-usr");
   btn.disabled = true;
   const txt = btn.textContent;
@@ -757,6 +899,15 @@ function ligarUsuarios(){
   $("btn-usr-rdo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-salvar", salvarPalavrasEtapa));   // fase 94
   $("btn-usr-rdo-solo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-solo-salvar", salvarSoloClassificacoes));   // fase 101
   $("btn-usr-sessoes-todas")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessoes-todas", encerrarTodasSessoes));
+
+  // fase 205: barra de abas e links das seções só leitura (troca de aba e ida a outro módulo)
+  $("usr-painel")?.addEventListener("click", (e) => {
+    const aba = e.target.closest("#cfg-abas [data-aba], [data-cfg-aba]");
+    if(aba){ cfgAbrirAba(aba.dataset.aba || aba.dataset.cfgAba); return; }
+    const sec = e.target.closest("[data-cfg-secao]");
+    if(sec && typeof irParaSecao === "function") irParaSecao(sec.dataset.cfgSecao);
+  });
+  cfgRenderCabecalho();
 
   const navUsr = document.querySelector('nav button[data-secao="usuarios"]');
   if(navUsr) navUsr.addEventListener("click", mostrarPainelUsr);

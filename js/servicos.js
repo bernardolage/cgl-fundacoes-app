@@ -483,7 +483,7 @@ $("form-servico").addEventListener("submit", async (e) => {
    Nome, categoria, natureza e unidade são do serviço (os três primeiros valem para todas as variantes; a unidade do
    serviço vale para as variantes sem unidade própria, lote S68-d). Antes só apareciam nos chips do
    topo, sem campo para editar (causa do "travado" do Thales). Editam: o diretor e quem tem o acesso extra vigente
-   "catalogo_estrutura" (Usuários; só a diretoria concede). O banco confere no gatilho trg_servicos_estrutura_guard.
+   "catalogo_estrutura" (Configurações › Usuários e acessos; só a diretoria concede). O banco confere no gatilho trg_servicos_estrutura_guard.
    ==================================================================== */
 function servPodeEstrutura(){
   if(!servPodeOrdenar()) return false;
@@ -503,7 +503,7 @@ function servPreencherEstrutura(s){
   const pode = !!s && servPodeEstrutura();
   ["serv-s-nome", "serv-s-categoria", "serv-s-natureza", "serv-s-unidade"].forEach(id => { $(id).disabled = !pode; });
   box.title = pode ? "Nome, categoria e natureza do serviço valem para todas as variantes; a unidade do serviço vale para as variantes sem unidade própria"
-    : "Só o diretor ou quem tem o acesso extra Estrutura do catálogo (liberado pela diretoria em Usuários) muda estes campos";
+    : "Só o diretor ou quem tem o acesso extra Estrutura do catálogo (liberado pela diretoria em Configurações › Usuários e acessos) muda estes campos";
 }
 function servEstruturaValores(){
   return { nome: $("serv-s-nome").value.trim(), categoria_id: $("serv-s-categoria").value || null,

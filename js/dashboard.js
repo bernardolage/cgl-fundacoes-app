@@ -592,7 +592,7 @@ async function dashCarregarSeguranca(){
     const quem = [a.nome, cargo].filter(Boolean).join(" · ");
     const clic = !!a.usuario_id && ["sem_mfa", "convite_pendente", "troca_cargo", "sessoes_encerradas"].includes(a.tipo);
     const quando = a.quando ? new Date(a.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-    return `<div class="dash-pendencia-item${clic ? " clicavel" : ""}" data-seg="${i}"${clic ? ' title="Abrir em Usuários"' : ""}>
+    return `<div class="dash-pendencia-item${clic ? " clicavel" : ""}" data-seg="${i}"${clic ? ' title="Abrir em Configurações › Usuários e acessos"' : ""}>
       <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(DASH_SEG_TIPO[a.tipo] || a.tipo)}</strong>${quem ? ` · ${esc(quem)}` : ""}
         <div class="meta" title="${esc(a.detalhe || "")}">${esc(a.detalhe || "")}${quando ? ` · ${esc(quando)}` : ""}</div></div>

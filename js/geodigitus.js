@@ -17,7 +17,7 @@
    - Fase 162: a ação "Perfil" de cada estaca das Chegadas e o selo do RDO, agora clicável, abrem o perfil e o replay da
      estaca (abrirPerfilEstaca, em js/estaca_perfil.js). É leitura: aparece para todo usuário que vê a tela.
    - Card "Geodigitus" na Sala de Comando (geoCarregarCardSala, chamado por dashboard.js).
-   - Bloco Geodigitus em Usuários › parâmetros da empresa (empresa_config.geodigitus_*, só diretor e admin).
+   - Bloco Geodigitus em Configurações › Integrações (empresa_config.geodigitus_*, só diretor e admin).
    Regra 1 da fase: o Geodigitus é a fonte primária das estacas de hélice e secante; o Maya complementa.
    Sem a migration da 107a aplicada, cada parte some ou avisa, sem erro na tela.
    ==================================================================== */
@@ -765,7 +765,7 @@ function geoCliqueCard(alvo){
   });
 }
 
-/* ---------- Usuários › parâmetros da empresa: bloco Geodigitus (empresa_config_admin_write = diretor e admin) ---------- */
+/* ---------- Configurações › Integrações: bloco Geodigitus (empresa_config_admin_write = diretor e admin) ---------- */
 async function geoEmpresaCarregarCard(){
   const card = $("usr-geo-card"); if(!card) return;
   const pode = !!usuarioAtual && ["diretor", "admin"].includes(usuarioAtual.cargo);

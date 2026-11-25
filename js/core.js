@@ -1511,7 +1511,7 @@ function podeVerComercial(){
   return !!usuarioAtual && ["diretor", "comercial", "auditor"].includes(usuarioAtual.cargo);
 }
 /* Hotfix 113 (21/10/2026): módulo liberado além do cargo, por usuário e com validade (profiles.modulos_extras /
-   modulos_extras_ate; só diretoria/admin gravam, tela Usuários). Espelha tem_modulo_extra() do banco. Hoje só
+   modulos_extras_ate; só diretoria/admin gravam, tela Configurações › Usuários e acessos). Espelha tem_modulo_extra() do banco. Hoje só
    "orcamentos" (o Frederico Vaz apoia o Thales nas férias dele). Serviços continua só comercial/diretoria. */
 function temModuloExtra(modulo){
   if(!usuarioAtual || !Array.isArray(usuarioAtual.modulos_extras) || !usuarioAtual.modulos_extras.includes(modulo)) return false;
@@ -1684,7 +1684,7 @@ const SECOES_OCULTAS_POR_CARGO = {
 /* Mostra/esconde os itens do menu conforme o cargo. Chamado no login; isolado para poder ser testado. */
 function aplicarMenuPorCargo(perfil){
   const ehDiretorOuAdmin = !!perfil && ["diretor","admin"].includes(perfil.cargo);
-  /* item "Usuários" só aparece para diretor/admin */
+  /* item "Configurações" (seção usuarios) só aparece para diretor/admin */
   const navUsr = $("nav-usuarios");
   if(navUsr) navUsr.style.display = ehDiretorOuAdmin ? "" : "none";
 
@@ -1732,7 +1732,7 @@ function aplicarMenuPorCargo(perfil){
   const podeMob = typeof MOB_CARGOS_EDITAM !== "undefined" && !!perfil && MOB_CARGOS_EDITAM.includes(perfil.cargo);
   ["btn-mob-nova", "btn-obr-criar-mob"].forEach(id => { const b = $(id); if(b) b.style.display = podeMob ? "" : "none"; });
 
-  // Só esconde: reexibir aqui mostraria "Usuários" (oculto do auditor) a todos os cargos. Sair recarrega a página.
+  // Só esconde: reexibir aqui mostraria "Configurações" (oculto do auditor) a todos os cargos. Sair recarrega a página.
   // Lote S55 (#180): seção liberada por módulo extra válido (SECOES_POR_MODULO_EXTRA) não é escondida pelo cargo.
   (SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || []).forEach(s => {
     if(secaoLiberadaPorExtra(s)) return;
@@ -1755,7 +1755,7 @@ function aplicarMenuPorCargo(perfil){
 }
 function irParaSecao(secao){
   const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"]`);
-  // item escondido do menu (Usuários, Carteira, Serviços, Orçamentos…) = módulo fora do perfil: não navega por atalho
+  // item escondido do menu (Configurações, Carteira, Serviços, Orçamentos…) = módulo fora do perfil: não navega por atalho
   if(b && b.style.display === "none"){ aviso("app-aviso", "Seu perfil não tem acesso a este módulo.", "erro"); return false; }
   if(b){ b.click(); return true; }
   // fase 89: seção sem item no menu (ficha do documento de movimentação) — o gate decide, o item ativo do menu fica
@@ -2212,7 +2212,7 @@ function iniciarVerificacaoVersao(){
 
 /* ====================== POLÍTICA DE SESSÃO (fase 87) ======================
    Decisão do Bernardo em 16/10/2026: ninguém fica logado por acaso. Prazos em empresa_config (mudam
-   em Usuários → Política de sessão, sem código): sessao_inatividade_min (240), sessao_maxima_h (12),
+   em Configurações › Segurança, sem código): sessao_inatividade_min (240), sessao_maxima_h (12),
    sessao_lembrar_dias (7) e sessao_mfa_cargos ({diretor,admin,rh,financeiro}).
    - Inatividade: keydown, pointerdown, touchstart, scroll e a volta para a aba marcam atividade
      (cgl_ultima_atividade no mesmo storage da sessão: compartilhado entre abas quando é localStorage).

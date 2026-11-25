@@ -8,8 +8,8 @@
      Sem rede (ou com a ViaCEP fora), o usuário digita: nada trava.
    - fiscalColunaExiste(): o front não quebra antes da migration 20261022_fase105a_cadastro_fiscal.sql. Cada tela
      pergunta uma vez se a coluna nova existe e, sem ela, esconde/desliga os campos novos e não os manda no salvar.
-   - Bloco "Dados fiscais da empresa" (empresa_config.fiscal_*): desenhado em Usuários (diretor/admin) e na visão
-     "Pendências fiscais" de Clientes (gestor de acessórios, financeiro e logística não veem Usuários). Só quem passa
+   - Bloco "Dados fiscais da empresa" (empresa_config.fiscal_*): desenhado em Configurações › Empresa e fiscal (diretor/admin) e na visão
+     "Pendências fiscais" de Clientes (gestor de acessórios, financeiro e logística não veem Configurações). Só quem passa
      em podeEmitirFiscal() (core.js; fiscal_pode_emitir() no banco) grava; o admin vê e não edita (decisão 6).
    - NCM de produtos, equipamentos e acessórios: js/fiscal_ncm.js.
    - Fase 105b (NF-e de remessa/retorno pela Focus NFe): fiscalChamarFocus() fala com a edge function focus-nfe; o bloco

@@ -44,7 +44,7 @@ const MATRIZ_ACESSOS = {
     {"id":"sesmt","rotulo":"SESMT","grupo":"Pessoas e segurança"},
     {"id":"sesmt-ocorrencias","rotulo":"Ocorrências SST","grupo":"Pessoas e segurança"},
     {"id":"chamados","rotulo":"Chamados","grupo":"Sistema"},
-    {"id":"usuarios","rotulo":"Usuários","grupo":"Sistema"},
+    {"id":"usuarios","rotulo":"Configurações","grupo":"Sistema"},
     {"id":"movimentacoes","rotulo":"Documento de movimentação (remessa e retorno)","grupo":"Fora do menu"},
     {"id":"diario-campo","rotulo":"Diário de campo (celular)","grupo":"Fora do menu"}
   ],

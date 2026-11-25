@@ -1411,7 +1411,7 @@ function renderBoletimSoloRows(idx){
   return solos.map((s, si) => `<tr data-solo-idx="${si}">
     <td><input type="number" step="0.01" min="0" class="blt-solo-ini col-sm" value="${esc(s.inicio_ml??'')}" /></td>
     <td><input type="number" step="0.01" min="0" class="blt-solo-fim col-sm" value="${esc(s.final_ml??'')}" /></td>
-    <td><input type="text" class="blt-solo-class" list="rdo-solo-classif-lista" value="${esc(s.classificacao||'')}" style="min-width:200px;" title="Sugestões em Usuários › Parâmetros do RDO; aceita texto livre" /></td>
+    <td><input type="text" class="blt-solo-class" list="rdo-solo-classif-lista" value="${esc(s.classificacao||'')}" style="min-width:200px;" title="Sugestões em Configurações › Operação; aceita texto livre" /></td>
     <td><select class="blt-solo-ferr"><option value="">—</option>${Object.entries(FERRAMENTAS_RAIZ).map(([v,l]) => `<option value="${esc(v)}"${s.ferramenta===v?' selected':''}>${esc(l)}</option>`).join('')}</select></td>
     <td class="col-acao"><button type="button" class="btn-sec btn-sm btn-blt-solo-rem txt-perigo" data-si="${si}">×</button></td>
   </tr>`).join('');
