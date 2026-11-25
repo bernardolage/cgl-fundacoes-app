@@ -95,6 +95,7 @@ const CMP_COLS_S56 = ",nf_informada,km_informado";
 /* fase 133: tipo de compra e destino do custo no cabeçalho; sem a migration (42703) o painel segue sem eles */
 const CMP_COLS_133 = ",tipo_compra,destino_centro_custo_id";
 let _cmp133 = false;              // fase 133: migration aplicada (tipo no cabeçalho, pedido_reabrir, enviado volta a rascunho)
+let _cmpS72a = false;             // lote S72a (#374): migration aplicada (icms_st e outras_despesas no pedido e no recebimento)
 let _cmpS56 = false;             // lote S56: migration loteS56a aplicada (NF e km no pedido, fator do XML, destino acessório)
 let _cmpAceMap = {};              // lote S56 (#202): acessorio_id -> { marcacao, familia, jogo, local… } (rótulos do destino)
 let _cmpAcePick = null;           // lote S56 (#202): callback do seletor de acessório aberto
@@ -206,6 +207,21 @@ function cmpQtdCasasAviso(v){
 /* lote S55 (#175): produto do tipo serviço consumido (tipo_item = servico): só aplicação direta, nunca estoque */
 let _cmpProdSrv = {};   // produto_id → true (busca, cadastro rápido e itens carregados)
 function cmpProdutoEhServico(it){ return !!it && !!it.produto_id && _cmpProdSrv[it.produto_id] === true; }
+/* lote S72-d (#383): tipo de compra padrão do produto (o do produto vence o da categoria). Produto que costuma ir para o
+   estoque e é marcado como aplicação direta pede confirmação (troca na linha, no cabeçalho e no envio para aprovação). */
+let _cmpProdPadrao = {};   // produto_id → "reposicao" | "aplicacao_direta" | null
+function cmpProdPadraoGuardar(p){
+  if(!p?.id || (!("tipo_compra_padrao" in p) && !p.categoria)) return;   // objeto sem os campos (cadastro rápido) não apaga o que já se sabe
+  _cmpProdPadrao[p.id] = p.tipo_compra_padrao || p.categoria?.tipo_compra_padrao || null;
+}
+function cmpItemCostumaEstoque(it){ return !!it?.produto_id && _cmpProdPadrao[it.produto_id] === "reposicao" && !cmpProdutoEhServico(it); }
+async function cmpConfirmarDiretoDeEstoque(itens){
+  const l = (itens || []).filter(cmpItemCostumaEstoque);
+  if(!l.length) return true;
+  const nomes = l.slice(0, 6).map(it => String(semCodOdoo(it.descricao) || "").slice(0, 60)).join("; ") + (l.length > 6 ? ` e mais ${l.length - 6}` : "");
+  return uiConfirmar({ titulo: "Produto de estoque", confirmar: "Lançar como aplicação direta", cancelar: "Voltar",
+    texto: `Este produto costuma ir para o estoque. Lançar como aplicação direta na obra? (${nomes})` });
+}
 function cmpTagServico(p){ return p && p.tipo_item === "servico" ? ' <span class="tag azul" title="Serviço consumido: aplicação direta, sem estoque">serviço</span>' : ""; }
 function cmpForn(id){ const f = _cmpFornMap[id]; return f ? f.razao_social : ""; }
 function cmpObra(id){ const o = _cmpObraMap[id]; return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || ""); }
@@ -284,7 +300,7 @@ async function cmpAceRenderBusca(){
 function cmpMsgErro(e){ return String(e?.message || e || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""); }
 /* ---------- lote S53 (#166): IPI por item ----------
    valor_total = round(q × unitário, 2) e valor_ipi = round(valor_total × ipi / 100, 2), como as colunas geradas do banco;
-   o ICMS é só informativo. Total do pedido = itens + IPI + frete − desconto (fn_pedido_compra_total). */
+   o ICMS é só informativo. Total do pedido = itens + IPI + frete − desconto + ICMS ST + outras despesas (fn_pedido_compra_total; lote S72a). */
 function cmpItemBase(it){ return Math.round(Number(it.quantidade || 0) * Number(it.valor_unitario || 0) * 100) / 100; }
 function cmpItemIpi(it){ return Math.round(cmpItemBase(it) * Number(it.ipi_percentual || 0)) / 100; }
 function cmpItemTotal(it){ return Math.round((cmpItemBase(it) + cmpItemIpi(it)) * 100) / 100; }
@@ -541,7 +557,7 @@ function cmpItensAddEstado(){
   const m = $("cmp-itens-sem-tipo"); if(m) m.style.display = sem ? "" : "none";
 }
 /* tipo do cabeçalho trocado com itens: confirma e lista o que muda; serviço e item sem produto do catálogo ficam aplicação direta */
-function cmpTipoCabMudou(){
+async function cmpTipoCabMudou(){
   const sel = $("cmp-tipo"), novo = sel.value, ant = sel.dataset.prev || "";
   if(novo === ant) return;
   if(!novo && _cmpItens.length){ aviso("app-aviso", "O pedido já tem itens: escolha reposição de estoque ou aplicação direta.", "erro"); sel.value = ant; return; }
@@ -559,6 +575,7 @@ function cmpTipoCabMudou(){
       + (ficam.length ? `\n\n${ficam.length} item(ns) continuam aplicação direta, como exceção (serviço ou item sem produto do catálogo não entra no estoque):\n${lista(ficam)}` : "");
     if(!confirm(msg)){ sel.value = ant; return; }
   }
+  if(novo === "aplicacao_direta" && !(await cmpConfirmarDiretoDeEstoque(muda))){ sel.value = ant; return; }   // lote S72-d (#383)
   sel.dataset.prev = novo;
   if(novo === "reposicao") cmpDestCabDefinir("");   // entrega na Base, sem TAG nem destino no cabeçalho
   muda.forEach(it => cmpAplicarTipoItem(it, novo));
@@ -887,7 +904,7 @@ async function cmpCarregarBase(force){
 }
 async function cmpCarregarBaseAgora(){
   {
-    const [fo, ob, eq, al, cc, pf, nat, s56, f133, f181b] = await Promise.all([
+    const [fo, ob, eq, al, cc, pf, nat, s56, f133, f181b, s72a] = await Promise.all([
       sb.from("fornecedores").select("id,razao_social,nome_fantasia,cpf_cnpj,email,telefone,cidade,uf,condicao_pagamento_padrao,prazo_entrega_dias").eq("ativo", true).order("razao_social"),
       sb.from("obras").select("id,codigo,nome,status").neq("status", "cancelada").order("codigo", { ascending: false }),   // lote S54 (#171): concluídas entram (grupo próprio nos selects)
       sb.from("equipamentos").select("id,codigo,nome,tipo,placa,ativo,status,baixa_em").order("codigo"),   // fase 131a: placa na busca da TAG; S69-l: baixadas também
@@ -897,9 +914,11 @@ async function cmpCarregarBaseAgora(){
       sb.from("naturezas_custo").select("id,codigo,nome,categoria_custo,tipo_compra_padrao,odoo_nome,ativo,ordem,so_maquina").order("ordem").order("nome"),   // fase 108b; 186a: so_maquina
       sb.from("pedido_compra_itens").select("destino_acessorio_id").limit(1),   // lote S56: a coluna nova diz se a migration loteS56a está no banco
       sb.from("pedidos_compra").select("tipo_compra").limit(1),   // fase 133: idem para a migration da 133
-      sb.from("pedidos_compra").select("viagem_id").limit(1)   // fase 181b: idem para a migration da 181b
+      sb.from("pedidos_compra").select("viagem_id").limit(1),   // fase 181b: idem para a migration da 181b
+      sb.from("recebimentos").select("icms_st").limit(1)   // lote S72a: idem para a migration da S72a
     ]);
     _cmp181b = !f181b.error;
+    _cmpS72a = !s72a.error;
     if(!_cmp181b && CMP_COLS.includes(CMP_COLS_181B)) CMP_COLS = CMP_COLS.replace(CMP_COLS_181B, "");
     _cmpS56 = !s56.error;
     if(!_cmpS56 && CMP_COLS.includes(CMP_COLS_S56)) CMP_COLS = CMP_COLS.replace(CMP_COLS_S56, "");
@@ -1499,7 +1518,7 @@ async function cmpDuplicarPedido(){
   cmpRascGravar(); _cmpRascBase = null;   // o rascunho local do pedido de origem fica guardado, como no Voltar
   const [{ data: p, error }, it] = await Promise.all([
     sb.from("pedidos_compra").select("id,numero,fornecedor_id,centro_custo_id,local_entrega,obra_id,equipamento_id,tipo_compra,destino_centro_custo_id,observacoes").eq("id", orig.id).single(),
-    sb.from("pedido_compra_itens").select("*, produto:produtos(unidade,tipo_item), funcionario:funcionarios(nome)").eq("pedido_id", orig.id).order("ordem").order("created_at")
+    sb.from("pedido_compra_itens").select("*, produto:produtos(unidade,tipo_item,tipo_compra_padrao,categoria:categorias_produto(tipo_compra_padrao)), funcionario:funcionarios(nome)").eq("pedido_id", orig.id).order("ordem").order("created_at")
   ]);
   if(error || !p){ aviso("app-aviso", "Não foi possível ler o pedido para duplicar" + (error ? ": " + error.message : "."), "erro"); return; }
   if(it.error){ aviso("app-aviso", "Itens não carregaram: " + it.error.message, "erro"); return; }
@@ -1509,6 +1528,7 @@ async function cmpDuplicarPedido(){
     i.descricao = semCodOdoo(i.descricao);
     if(i.produto_id && produto?.unidade) _cmpProdUn[i.produto_id] = produto.unidade;
     if(i.produto_id) _cmpProdSrv[i.produto_id] = produto?.tipo_item === "servico";
+    if(i.produto_id && produto) cmpProdPadraoGuardar({ id: i.produto_id, ...produto });   // lote S72-d (#383)
     const l = rat[id], novo = { ...i, _funcNome: funcionario?.nome || null, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo };
     if(l && l.linhas.length){ novo._rateio = l.linhas.map(x => ({ ...x })); novo._segue = l.segue; novo._rateioDirty = true; }   // o rateio é gravado no 1º salvar
     return novo;
@@ -1529,7 +1549,7 @@ async function abrirPedido(id){
   await cmpCarregarBase(false);
   const [{ data: p, error }, it] = await Promise.all([
     sb.from("pedidos_compra").select("*, fornecedor:fornecedores(razao_social), solicitante:profiles!pedidos_compra_solicitante_id_fkey(nome), aprovador:profiles!pedidos_compra_aprovador_id_fkey(nome)" + (_cmp181b ? ", viagem:viagens!pedidos_compra_viagem_id_fkey(numero)" : "")).eq("id", id).single(),   // fase 181b: viagem do frete
-    sb.from("pedido_compra_itens").select("*, produto:produtos(unidade,tipo_item), funcionario:funcionarios(nome)").eq("pedido_id", id).order("ordem").order("created_at")   // lote S54 (#170): unidade do cadastro; S55: tipo_item; S57a (#212): colaborador
+    sb.from("pedido_compra_itens").select("*, produto:produtos(unidade,tipo_item,tipo_compra_padrao,categoria:categorias_produto(tipo_compra_padrao)), funcionario:funcionarios(nome)").eq("pedido_id", id).order("ordem").order("created_at")   // lote S54 (#170): unidade do cadastro; S55: tipo_item; S57a (#212): colaborador
   ]);
   if(error || !p){ aviso("app-aviso", "Não foi possível abrir o pedido" + (error ? ": " + error.message : "."), "erro"); return; }
   if(it.error){ aviso("app-aviso", "Itens não carregaram: " + it.error.message, "erro"); return; }
@@ -1538,6 +1558,7 @@ async function abrirPedido(id){
     i.descricao = semCodOdoo(i.descricao);   // descrição antiga, gravada com o código do Odoo
     if(i.produto_id && produto?.unidade) _cmpProdUn[i.produto_id] = produto.unidade;   // lote S54 (#170)
     if(i.produto_id) _cmpProdSrv[i.produto_id] = produto?.tipo_item === "servico";    // lote S55 (#175)
+    if(i.produto_id && produto) cmpProdPadraoGuardar({ id: i.produto_id, ...produto });   // lote S72-d (#383)
     return { ...i, _funcNome: funcionario?.nome || null, _natAuto: !i.natureza_id && !i.natureza, _metAuto: !i.metodo };
   });
   // lote S53 (#149) e fase 186a (#236, #308): rateio dos itens por destino (na ordem gravada) e o rateio do pedido
@@ -1555,6 +1576,7 @@ function cmpRascEstado(){
   const ids = _cmpItens.map(i => i.produto_id).filter(Boolean);
   return { cab: cmpColetarCabecalho(), tipo: cmpTipoCab(), dest: $("cmp-dest-custo")?.value || "", itens: _cmpItens,   // fase 133: tipo e destino do custo
     un: Object.fromEntries(ids.map(id => [id, _cmpProdUn[id]])), srv: Object.fromEntries(ids.map(id => [id, _cmpProdSrv[id]])),
+    pad: Object.fromEntries(ids.map(id => [id, _cmpProdPadrao[id] ?? null])),   // lote S72-d (#383)
     ratPed: _cmpRatPed, ratPedDirty: _cmpRatPedDirty };   // fase 186a: rateio do pedido
 }
 function cmpRascGravar(){
@@ -1576,12 +1598,13 @@ function cmpRascOferecer(p){
 function cmpRascRestaurar(d){
   const c = d.cab || {};
   const campos = { "cmp-forn": c.fornecedor_id, "cmp-data": c.data_pedido, "cmp-prev": c.previsao_entrega, "cmp-cond": c.condicao_pagamento, "cmp-local": c.local_entrega,
-    "cmp-obra": c.obra_id, "cmp-equip": c.equipamento_id, "cmp-centro": c.centro_custo_id, "cmp-resp-receb": c.responsavel_recebimento_id, "cmp-frete": c.frete, "cmp-desc": c.desconto, "cmp-obs": c.observacoes };
+    "cmp-obra": c.obra_id, "cmp-equip": c.equipamento_id, "cmp-centro": c.centro_custo_id, "cmp-resp-receb": c.responsavel_recebimento_id, "cmp-frete": c.frete, "cmp-desc": c.desconto, "cmp-obs": c.observacoes,
+    "cmp-icms-st": c.icms_st, "cmp-outras": c.outras_despesas };   // lote S72a (#374)
   Object.entries(campos).forEach(([id, v]) => { const el = $(id); if(el) el.value = v ?? ""; });
   if(Array.isArray(d.ratPed)){ _cmpRatPed = d.ratPed; _cmpRatPedDirty = !!d.ratPedDirty; }   // fase 186a
   if(d.tipo !== undefined){ $("cmp-tipo").value = d.tipo || ""; $("cmp-tipo").dataset.prev = d.tipo || ""; cmpDestCabDefinir(d.dest || ""); }   // fase 133
   cmpFornAtualizar("cmp-forn");
-  Object.assign(_cmpProdUn, d.un || {}); Object.assign(_cmpProdSrv, d.srv || {});
+  Object.assign(_cmpProdUn, d.un || {}); Object.assign(_cmpProdSrv, d.srv || {}); Object.assign(_cmpProdPadrao, d.pad || {});
   _cmpItens = d.itens || [];
   renderItensPedido();
   const aces = _cmpItens.map(i => i.destino_acessorio_id).filter(Boolean);
@@ -1608,10 +1631,13 @@ function abrirFichaPedido(p){
   $("cmp-cond").value = p.condicao_pagamento || ""; $("cmp-local").value = p.local_entrega || "base";
   $("cmp-obra").value = p.obra_id || ""; $("cmp-equip").value = p.equipamento_id || ""; $("cmp-centro").value = p.centro_custo_id || "";
   $("cmp-frete").value = p.frete ?? 0; $("cmp-desc").value = p.desconto ?? 0; $("cmp-obs").value = p.observacoes || "";
+  // lote S72a (#374): ICMS ST e outras despesas ao lado de frete e desconto (só com a migration no banco)
+  if($("cmp-icms-st")){ $("cmp-icms-st").value = p.icms_st ?? 0; $("cmp-outras").value = p.outras_despesas ?? 0;
+    $("cmp-icms-st-campo").hidden = !_cmpS72a; $("cmp-outras-campo").hidden = !_cmpS72a; }
   $("cmp-ficha").querySelectorAll(".odoo-tab[data-tab=cabecalho] input, .odoo-tab[data-tab=cabecalho] select, .odoo-tab[data-tab=cabecalho] textarea").forEach(el => el.disabled = !ed);
   // lote S65-d (#312): condição de pagamento, frete e desconto moram na aba Financeiro; quem recebe não os vê no Cabeçalho.
   // Na aba, aparecem para quem lê contas a pagar e para quem edita o rascunho (precisa preenchê-los)
-  ["cmp-cond", "cmp-frete", "cmp-desc"].forEach(id => { if($(id)) $(id).disabled = !ed; });
+  ["cmp-cond", "cmp-frete", "cmp-desc", "cmp-icms-st", "cmp-outras"].forEach(id => { if($(id)) $(id).disabled = !ed; });
   if($("cmp-fin-campos")) $("cmp-fin-campos").style.display = ed || (typeof podeVerContasPagar === "function" && podeVerContasPagar()) ? "" : "none";
   // fase 133: tipo de compra primeiro (rascunho antigo: pelos itens) e destino do custo (pelos itens; sem destino neles, pelo cabeçalho)
   const tipo0 = cmpTipoInicial(p, _cmpItens);
@@ -1676,9 +1702,13 @@ function cmpAtualizarStatusbar(st){
   });
   $("cmp-statusbar").title = st === "cancelado" ? "Pedido cancelado" : "Status do pedido";
 }
+/* lote S72a (#374): ICMS ST e outras despesas do pedido em edição (0 sem a migration) */
+function cmpPedIcmsSt(){ return _cmpS72a ? Number($("cmp-icms-st")?.value || 0) : 0; }
+function cmpPedOutras(){ return _cmpS72a ? Number($("cmp-outras")?.value || 0) : 0; }
 function cmpAtualizarChips(){
   const p = _cmpAtual; if(!p) return;
-  const total = cmpSomaItens(_cmpItens) + cmpSomaIpi(_cmpItens) + Number($("cmp-frete").value || 0) - Number($("cmp-desc").value || 0);   // lote S53 (#166): o IPI entra no total
+  const total = cmpSomaItens(_cmpItens) + cmpSomaIpi(_cmpItens) + Number($("cmp-frete").value || 0) - Number($("cmp-desc").value || 0)   // lote S53 (#166): o IPI entra no total
+    + cmpPedIcmsSt() + cmpPedOutras();   // lote S72a (#374)
   cmpRenderRodapeItens();
   $("cmp-chip-num").textContent = p.numero || "(novo)";
   const chOdoo = $("cmp-chip-odoo");   // fase 65: pedido importado do Odoo
@@ -2018,7 +2048,7 @@ function ativarTabPedido(nome){
 async function cmpCarregarFilhas(id){
   const bLanc0 = $("btn-cmp-lancar-nf"); if(bLanc0){ bLanc0.style.display = "none"; bLanc0.dataset.rec = ""; }   // hotfix 221: some até carregar os recebimentos deste pedido
   const [rec, tit] = await Promise.all([
-    sb.from("recebimentos").select("id,status,tipo,nf_numero,nf_serie,nf_chave,nf_data_emissao,fornecedor_id,data_recebimento,total_nf,frete,vencimento,parcelas,observacoes,itens:recebimento_itens(id,descricao,unidade,quantidade_aceita,valor_unitario_nf,destino,obra_id,equipamento_id,centro_custo_id,destino_acessorio_id),anexos:recebimento_anexos(id,nome,storage_path)").eq("pedido_id", id).order("data_recebimento", { ascending: false }),
+    sb.from("recebimentos").select("id,status,tipo,nf_numero,nf_serie,nf_chave,nf_data_emissao,fornecedor_id,data_recebimento,total_nf,frete," + (_cmpS72a ? "icms_st,outras_despesas," : "") + "vencimento,parcelas,observacoes,duplicatas,itens:recebimento_itens(id,descricao,unidade,quantidade_aceita,valor_unitario_nf,destino,obra_id,equipamento_id,centro_custo_id,destino_acessorio_id,produto_id,movimentacao_estoque_id,pedido_item_id),anexos:recebimento_anexos(id,nome,storage_path)").eq("pedido_id", id).order("data_recebimento", { ascending: false }),
     sb.from("titulos_pagar").select("*, recebimento:recebimentos!inner(pedido_id)").eq("recebimento.pedido_id", id).order("vencimento"),
     cmpCarregarConferencias(id)   // fase 102: conferência de cada recebimento (linha no cartão abaixo)
   ]);
@@ -2040,6 +2070,14 @@ async function cmpCarregarFilhas(id){
     if(cmpPodeEstornar() && !ts.some(t => t.exportado_em)) b.push(`<button type="button" class="btn-sec btn-sm cmp-rec-estornar" data-rec="${esc(r.id)}" title="Desfaz este recebimento: devolve o estoque, apaga os títulos ainda não exportados e o pedido volta a aguardar o recebimento" style="color:var(--perigo-txt);">Estornar</button>`);
     return b.join(" ");
   };
+  // lote S72-d (#383): "Mover para estoque" no item de aplicação direta já recebido (financeiro e diretoria; o banco confere o resto)
+  const moverItem = (r, i) => r.status === "confirmado" && r.tipo !== "servico" && !cmpProdutoEhServico(i) && cmpPodeMoverEstoque() && i.produto_id && !i.movimentacao_estoque_id
+    && i.destino && !["estoque", "acessorio"].includes(i.destino) && Number(i.quantidade_aceita || 0) > 0 && !(titsPorRec[r.id] || []).some(t => t.exportado_em)
+    ? ` <button type="button" class="btn-sec btn-sm cmp-rec-mover" data-rec="${esc(r.id)}" data-item="${esc(i.id)}" title="Passa este item para o estoque: entrada com o custo da NF e o custo sai do destino atual">Mover para estoque</button>` : "";
+  // lote S72-c (#382): "Corrigir valor" no item já recebido (financeiro e diretoria; some com título exportado ou duplicatas do XML)
+  const corrigirValor = (r, i) => r.status === "confirmado" && i.pedido_item_id && cmpPodeMoverEstoque() && !(titsPorRec[r.id] || []).some(t => t.exportado_em)
+    && !(Array.isArray(r.duplicatas) && r.duplicatas.length)
+    ? ` <button type="button" class="btn-sec btn-sm cmp-rec-valor" data-rec="${esc(r.id)}" data-item="${esc(i.id)}" title="Corrige o valor unitário deste item no pedido, no recebimento, na entrada do estoque e nos títulos ainda não exportados">Corrigir valor</button>` : "";
   // hotfix 221: "🧾 Lançar NF" também no topo da ficha, para o financeiro, enquanto houver recebimento sem NF; lote S61a (#265): serviço também
   const bLanc = $("btn-cmp-lancar-nf");
   const semNf = verTit && cmpPodeLancarNf() ? recs.filter(r => r.status === "confirmado" && !(titsPorRec[r.id] || []).length) : [];
@@ -2047,13 +2085,15 @@ async function cmpCarregarFilhas(id){
   $("cmp-rec-lista").innerHTML = rec.error ? `<p class="vazio">Erro: ${esc(rec.error.message)}</p>` : !recs.length ? `<p class="vazio">Nenhum recebimento. Use "Receber material" ou "Receber NF" quando a mercadoria chegar.</p>` :
     recs.map(r => `<div class="card compacto" style="margin-bottom:10px;"><div class="lista-topo compacta"><h3>${r.tipo === "servico" ? "Serviço" : "NF"} ${esc(r.nf_numero || (r.tipo === "servico" ? "" : "—"))}${r.nf_serie ? "/" + esc(r.nf_serie) : ""}${r.status === "confirmado" && r.nf_numero && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="meta">(anotada)</span>' : ""} <span class="meta">recebid${r.tipo === "servico" ? "o" : "a"} em ${dataBR(r.data_recebimento)}</span>${CMP_REC_TIPO[r.tipo] ? ` <span class="tag ${esc(CMP_REC_TIPO[r.tipo][1])}">${esc(CMP_REC_TIPO[r.tipo][0])}</span>` : ""}${r.status === "confirmado" && verTit && !(titsPorRec[r.id] || []).length ? ' <span class="tag ambar">aguardando NF</span>' : ""}</h3>
       <span style="margin-left:auto;">${/* html */ acoesRec(r)} ${r.status === "confirmado" ? '<span class="tag verde">Confirmado</span>' : r.status === "cancelado" ? '<span class="tag cinza">Cancelado</span>' : '<span class="tag ambar">Conferindo</span>'} <strong>${brl(r.total_nf)}</strong></span></div>
-      <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(semCodOdoo(i.descricao))}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${cmpBrl4(i.valor_unitario_nf)}</td><td class="meta">${esc(cmpDestinoTxt(i))}</td></tr>`).join("")}</tbody></table>
+      <table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Unit.</th><th>Destino</th></tr></thead><tbody>${(r.itens || []).map(i => `<tr><td>${esc(semCodOdoo(i.descricao))}</td><td class="num">${num(i.quantidade_aceita)}</td><td class="num">${cmpBrl4(i.valor_unitario_nf)}${/* html */ corrigirValor(r, i)}</td><td class="meta">${esc(cmpDestinoTxt(i))}${/* html */ moverItem(r, i)}</td></tr>`).join("")}</tbody></table>
       ${r.observacoes ? `<p class="meta" style="margin:6px 0 0;">${esc(r.observacoes)}</p>` : ""}
       ${cmpConferenciaLinha(r.id)}
       ${(r.anexos || []).length ? `<div class="meta" style="margin-top:6px;">📎 ${r.anexos.map(a => `<a href="#" class="cmp-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}">${esc(a.nome)}</a>`).join(" · ")}</div>` : ""}</div>`).join("");
   $("cmp-rec-lista").querySelectorAll(".cmp-anexo").forEach(a => a.addEventListener("click", e => { e.preventDefault(); cmpAbrirAnexo(a.dataset.path, a.dataset.nome); }));
   $("cmp-rec-lista").querySelectorAll(".cmp-rec-lancar").forEach(b => b.addEventListener("click", () => abrirLancarNf(b.dataset.rec)));   // lote S57a (#221)
   $("cmp-rec-lista").querySelectorAll(".cmp-rec-estornar").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => cmpEstornarRecebimento(b.dataset.rec))));   // lote S57a (#206)
+  $("cmp-rec-lista").querySelectorAll(".cmp-rec-mover").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => cmpMoverParaEstoque(b.dataset.rec, b.dataset.item))));   // lote S72-d (#383)
+  $("cmp-rec-lista").querySelectorAll(".cmp-rec-valor").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => cmpCorrigirValorItem(b.dataset.rec, b.dataset.item))));   // lote S72-c (#382)
   cmpAtualizarChipFinanceiro(recs, tit.error ? [] : tits);   // fase 102
   $("cmp-tit-lista").innerHTML = !podeVerContasPagar() ? `<p class="vazio">Os títulos deste pedido ficam em Contas a pagar; seu perfil não tem acesso a esse módulo.</p>` : tit.error ? `<p class="vazio">Erro: ${esc(tit.error.message)}</p>` : !tits.length ? `<p class="vazio">Nenhum título. Eles nascem no recebimento da NF quando há vencimento informado.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>Vencimento</th><th>NF</th><th>Parcela</th><th class="num">Valor</th><th>Exportado ao financeiro</th></tr></thead><tbody>${tits.map(t => `<tr><td><strong>${dataBR(t.vencimento)}</strong></td><td>${esc(t.nf_numero || "—")}</td><td>${esc(t.parcela)}/${esc(t.total_parcelas)}</td><td class="num">${brl(t.valor)}</td><td>${t.exportado_em ? `<span class="tag verde">${dataBR(String(t.exportado_em).slice(0, 10))}</span>` : '<span class="tag ambar">pendente</span>'}</td></tr>`).join("")}</tbody></table></div>`;
@@ -2304,7 +2344,7 @@ function cmpProdutoEscolhido(p){
   if(!it || it.produto_id){ cmpAddItem(p); return; }
   if(!p?.id) return;
   if(p.unidade) _cmpProdUn[p.id] = p.unidade;
-  _cmpProdSrv[p.id] = p.tipo_item === "servico";
+  _cmpProdSrv[p.id] = p.tipo_item === "servico"; cmpProdPadraoGuardar(p);   // lote S72-d (#383)
   Object.assign(it, { produto_id: p.id, descricao: `${prodTxt(p)}` });
   renderItensPedido();
   aviso("app-aviso", `Item ligado a ${prodTxt(p)}${p.tipo_item === "servico" ? "" : ": já dá para escolher Reposição de estoque"}. Salve o pedido para gravar.`, "ok");
@@ -2630,16 +2670,19 @@ function cmpRenderRodapeItens(){
   if(!_cmpItens.length){ tf.innerHTML = ""; return; }
   const itens = cmpSomaItens(_cmpItens), ipi = cmpSomaIpi(_cmpItens), frete = Number($("cmp-frete").value || 0), desc = Number($("cmp-desc").value || 0);
   const linha = (rot, val, forte) => `<tr><td colspan="6" style="text-align:right;${forte ? "font-weight:700;" : ""}">${esc(rot)}</td><td class="num"${forte ? ' style="font-weight:700;"' : ""}>${esc(val)}</td><td colspan="7"></td></tr>`;
+  const st = cmpPedIcmsSt(), outras = cmpPedOutras();   // lote S72a (#374)
   tf.innerHTML = linha("Itens", brl(itens)) + (ipi ? linha("IPI", brl(ipi)) : "") + (frete ? linha("Frete", brl(frete)) : "") + (desc ? linha("Desconto", "− " + brl(desc)) : "")
-    + linha("Total", brl(itens + ipi + frete - desc), true);
+    + (st ? linha("ICMS ST", brl(st)) : "") + (outras ? linha("Outras despesas", brl(outras)) : "")
+    + linha("Total", brl(itens + ipi + frete - desc + st + outras), true);
 }
 function cmpAtualizarSbItens(){
   cmpRascAgendar();   // lote S60 (#177): adicionar, remover e trocar item passam por aqui
   const sbi = $("sb-cmp-itens"); if(sbi){ sbi.querySelector(".sb-num").textContent = _cmpItens.length; sbi.classList.toggle("zero", !_cmpItens.length); } }
 /* fase 108b: trocar o tipo em rascunho. Reposição: destino estoque, sem método; aplicação direta: destino pelo
    cabeçalho (ou a escolher) e método pela obra. A natureza só é recalculada enquanto não foi escolhida à mão. */
-function cmpTrocarTipoItem(it, tipo){
+async function cmpTrocarTipoItem(it, tipo){
   if(tipo === "reposicao" && cmpProdutoEhServico(it)){ aviso("app-aviso", "Serviço consumido não entra no estoque: informe a obra, a TAG ou o setor.", "erro"); renderItensPedido(); return; }   // lote S55 (#175)
+  if(tipo === "aplicacao_direta" && cmpItemTipo(it) !== "aplicacao_direta" && !(await cmpConfirmarDiretoDeEstoque([it]))){ renderItensPedido(); return; }   // lote S72-d (#383)
   cmpAplicarTipoItem(it, tipo);
   renderItensPedido();
   if(tipo === "aplicacao_direta") cmpAplicarMetodoPadrao(it);
@@ -2664,7 +2707,7 @@ function cmpAplicarTipoItem(it, tipo){
 function cmpAddItem(p){
   if(!p?.id) return;
   if(p.unidade) _cmpProdUn[p.id] = p.unidade;   // lote S54 (#170): unidade do cadastro = padrão da linha
-  const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv;
+  const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv; cmpProdPadraoGuardar(p);   // lote S72-d (#383)
   // fase 133: o item herda o tipo do cabeçalho (antes o produto sugeria); sem tipo não entra item. Serviço consumido em
   // pedido de reposição fica aplicação direta, como exceção
   const cab = cmpTipoCab();
@@ -3073,7 +3116,7 @@ async function cmpBuscarProdutos(termo){
   let q = sb.from("produtos").select(`id,codigo,nome,unidade,estoque_atual,custo_ultimo,categoria_custo,fornecedor_padrao_id,tipo_compra_padrao,tipo_item,categoria:categorias_produto${sesmt ? "!inner" : ""}(nome,tipo_compra_padrao)`).eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%`);
   if(sesmt) q = q.in("categoria.nome", CMP_CATS_EPI);
   const { data } = await q.order("nome").limit(25);   // lote S55: tipo_item
-  (data || []).forEach(p => { _cmpProdSrv[p.id] = p.tipo_item === "servico"; });
+  (data || []).forEach(p => { _cmpProdSrv[p.id] = p.tipo_item === "servico"; cmpProdPadraoGuardar(p); });   // lote S72-d: + padrão
   return data || [];
 }
 function cmpLigarBusca(inpId, listaId, aoEscolher){
@@ -3298,7 +3341,8 @@ function cmpColetarCabecalho(){
     ...(_cmp133 ? { tipo_compra: tipo, destino_centro_custo_id: !repo && dv.startsWith("cc:") ? dv.slice(3) : null } : {}),
     centro_custo_id: $("cmp-centro").value || null,
     responsavel_recebimento_id: $("cmp-resp-receb").value || _cmpAtual?.solicitante_id || null,   // fase 78 (pedido novo sem escolha: o gatilho põe o solicitante)
-    frete: Number($("cmp-frete").value || 0), desconto: Number($("cmp-desc").value || 0), observacoes: $("cmp-obs").value.trim() || null
+    frete: Number($("cmp-frete").value || 0), desconto: Number($("cmp-desc").value || 0), observacoes: $("cmp-obs").value.trim() || null,
+    ...(_cmpS72a ? { icms_st: cmpPedIcmsSt(), outras_despesas: cmpPedOutras() } : {})   // lote S72a (#374)
   };
 }
 /* lote S63-e: a recusa da RLS ("row-level security") vira a regra do SESMT para quem só tem o extra */
@@ -3441,6 +3485,8 @@ async function cmpAcao(acao){
       if(cmpTipoCab() === "aplicacao_direta" && !$("cmp-dest-custo").value){ aviso("app-aviso", "Escolha o destino do custo no Cabeçalho (obra, TAG, setor ou Vários destinos, um por item).", "erro"); ativarTabPedido("cabecalho"); return; }
       const semNat = _cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta" && !i.natureza_id && !i.natureza).length;
       if(semNat && !confirm(`${semNat} item(ns) de aplicação direta sem natureza do gasto. Enviar para aprovação assim mesmo?`)){ ativarTabPedido("itens"); return; }
+      // lote S72-d (#383): produto que costuma ir para o estoque, marcado como aplicação direta
+      if(!(await cmpConfirmarDiretoDeEstoque(_cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta")))){ ativarTabPedido("itens"); return; }
       // fase 131b: manutenção de caminhão ou veículo sem OS ligada pede o km (vira leitura da TAG)
       if(cmpKmFaltando(_cmpAtual)){
         const sid = await salvarPedido(true); if(!sid) return;
@@ -3518,6 +3564,37 @@ function cmpRecModoCampos(modo){
   const z = $("cmp-rec-xml-zona"); if(z) z.style.display = material ? "none" : "";
   ["cmp-rec-data", "cmp-rec-obs"].forEach(id => { const c = $(id)?.closest(".campo"); if(c) c.style.display = lancar ? "none" : ""; });
   const add = $("cmp-rec-add"); if(add) add.style.display = lancar ? "none" : "";
+  // lote S72a (#374): ICMS ST e outras despesas na Receber NF e no Lançar NF. No material o banco põe a parte do pedido na
+  // confirmação; a compra direta (RPC compra_direta_registrar) ainda não recebe os dois
+  const semDesp = !_cmpS72a || material || modo === "compra_direta";
+  ["cmp-rec-icms-st", "cmp-rec-outras"].forEach(id => { const c = $(id + "-campo"); if(c) c.hidden = semDesp; if($(id)){ $(id).value = ""; $(id).placeholder = ""; } });
+}
+/* lote S72a (#374): parte do ICMS ST e das outras despesas do pedido que cabe ao que está sendo recebido, a mesma conta de
+   recebimento_confirmar quando os campos ficam vazios: proporcional ao valor recebido (quantidade × preço do pedido ÷ itens do
+   pedido), limitada ao saldo; quando o recebimento fecha o pedido, o saldo inteiro */
+function cmpRecDespPedido(){
+  const r = _cmpRec, p = r?.pedido, zero = { st: 0, out: 0 };
+  if(!_cmpS72a || !p || r.modo === "lancar_nf") return zero;
+  const st = Number(p.icms_st || 0), out = Number(p.outras_despesas || 0);
+  if(!(st + out)) return zero;
+  const ja = (_cmpRecsAtual || []).filter(x => x.status === "confirmado")
+    .reduce((a, x) => ({ st: a.st + Number(x.icms_st || 0), out: a.out + Number(x.outras_despesas || 0) }), { st: 0, out: 0 });
+  const itensPed = _cmpItens || [];
+  const totItens = itensPed.reduce((s, it) => s + Math.round(Number(it.quantidade || 0) * Number(it.valor_unitario || 0) * 100) / 100, 0);
+  const qtdRec = id => (r.itens || []).filter(x => x.pedido_item_id === id).reduce((s, x) => s + Number(x.quantidade_nf || 0), 0);
+  const base = itensPed.reduce((s, it) => s + qtdRec(it.id) * Number(it.valor_unitario || 0), 0);
+  const fecha = itensPed.length > 0 && itensPed.every(it => Number(it.quantidade_recebida || 0) + qtdRec(it.id) >= Number(it.quantidade || 0));
+  const fr = totItens > 0 ? Math.min(base / totItens, 1) : 0;
+  const parte = (v, j) => { const saldo = Math.max(0, Math.round((v - j) * 100) / 100); return fecha ? saldo : Math.min(Math.round(v * fr * 100) / 100, saldo); };
+  return { st: parte(st, ja.st), out: parte(out, ja.out) };
+}
+/* valor do campo ou, vazio, a parte do pedido (mostrada como placeholder) */
+function cmpRecDesp(){
+  if(!_cmpS72a || $("cmp-rec-icms-st-campo")?.hidden) return { st: 0, out: 0 };
+  const ped = cmpRecDespPedido(), v = id => $(id).value === "" ? null : Number($(id).value || 0);
+  $("cmp-rec-icms-st").placeholder = ped.st ? `do pedido: ${brl(ped.st)}` : "";
+  $("cmp-rec-outras").placeholder = ped.out ? `do pedido: ${brl(ped.out)}` : "";
+  return { st: v("cmp-rec-icms-st") ?? ped.st, out: v("cmp-rec-outras") ?? ped.out };
 }
 function abrirRecebimento(pedido, modo){
   const semPedido = !pedido;
@@ -3594,6 +3671,7 @@ function abrirLancarNf(recId){
   _cmpRec.anot = r.nf_numero ? { nf: r.nf_numero, serie: r.nf_serie || "", emissao: r.nf_data_emissao || "", total: Number(r.total_nf) > 0 ? Number(r.total_nf) : null } : null;
   $("cmp-rec-emissao").value = r.nf_data_emissao || ""; $("cmp-rec-frete").value = Number(r.frete) ? r.frete : "";
   $("cmp-rec-total").value = Number(r.total_nf) > 0 ? r.total_nf : "";   // fase 152: total anotado (ou o valor do serviço); material sem anotação grava 0
+  if(_cmpS72a){ $("cmp-rec-icms-st").value = Number(r.icms_st) ? r.icms_st : ""; $("cmp-rec-outras").value = Number(r.outras_despesas) ? r.outras_despesas : ""; }   // lote S72a: a parte do pedido posta na confirmação
   if(_cmpRec.anot && $("cmp-rec-anot")){
     const a = _cmpRec.anot;
     $("cmp-rec-anot").textContent = `Anotado no recebimento: NF ${a.nf}${a.serie ? "/" + a.serie : ""}${a.emissao ? " · emissão " + dataBR(a.emissao) : ""}${a.total != null ? " · " + brl(a.total) : ""}. Confira com a nota antes de lançar.`;
@@ -3620,6 +3698,7 @@ async function cmpConfirmarLancarNf(){
     nf_data_emissao: $("cmp-rec-emissao").value || null, vencimento: venc, parcelas: Math.max(1, Number($("cmp-rec-parc").value || 1)), duplicatas: dups,
     frete: Number($("cmp-rec-frete").value || 0), total_nf: Number($("cmp-rec-total").value || 0) || null, xml_texto: r.xml?.texto || null,
     competencia: $("cmp-rec-comp")?.value ? $("cmp-rec-comp").value + "-01" : null };   // fase 135b
+  if(_cmpS72a){ dados.icms_st = Number($("cmp-rec-icms-st").value || 0); dados.outras_despesas = Number($("cmp-rec-outras").value || 0); }   // lote S72a (#374)
   // fase 152 (D-152b): número ou total diferentes do anotado avisam e aceitam; o banco grava os dois no histórico (nf_divergente)
   if(r.anot){
     const normNf = v => String(v || "").trim().toUpperCase().replace(/^0+/, "");
@@ -3648,6 +3727,73 @@ async function cmpEstornarRecebimento(recId){
   if(error){ aviso("app-aviso", "Recebimento não estornado: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   aviso("app-aviso", `${rot.charAt(0).toUpperCase() + rot.slice(1)} estornado. Receba de novo o que chegou de fato.`, "ok");
   if(typeof aceInvalidar === "function") aceInvalidar();
+  if(typeof carregarProdutos === "function") carregarProdutos();
+  const pid = _cmpAtual?.id;
+  await cmpFetchPedidos();
+  if(pid) await abrirPedido(pid);
+}
+/* Lote S72-d (#383): item recebido como aplicação direta que devia ir para o estoque. A RPC
+   recebimento_item_reclassificar_estoque (financeiro e diretoria) passa o item do pedido e o do recebimento a destino estoque,
+   lança a entrada com o custo da NF e grava o motivo no log; a NF, a competência e os títulos não mudam. */
+function cmpPodeMoverEstoque(){
+  if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
+  return ["diretor", "financeiro"].includes(usuarioAtual?.cargo);
+}
+async function cmpMoverParaEstoque(recId, itemId){
+  const r = (_cmpRecsAtual || []).find(x => x.id === recId), i = (r?.itens || []).find(x => x.id === itemId);
+  if(!r || !i) return;
+  const rot = r.nf_numero ? `NF ${r.nf_numero}` : `recebimento de ${dataBR(r.data_recebimento)}`;
+  const v = await uiPedirValores({ titulo: "Mover para o estoque", confirmar: "Mover para estoque",
+    texto: `${semCodOdoo(i.descricao) || "Item"} (${num(i.quantidade_aceita)} × ${cmpBrl4(i.valor_unitario_nf)}, ${rot}) hoje está em ${cmpDestinoTxt(i) || "aplicação direta"}. Ele entra no estoque com o custo da NF e o custo sai desse destino. A NF, a competência e os títulos não mudam.`,
+    campos: [{ id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, obrigatorio: true, placeholder: "Ex.: uniforme é reposição de estoque" }] });
+  if(!v) return;
+  const motivo = String(v.motivo || "").trim();
+  if(motivo.length < 5){ aviso("app-aviso", "Informe o motivo de mover o item para o estoque (5 letras ou mais).", "erro"); return; }
+  const { error } = await sb.rpc("recebimento_item_reclassificar_estoque", { p_rec_item: itemId, p_motivo: motivo });
+  if(error){ aviso("app-aviso", "Item não movido: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
+  aviso("app-aviso", "Item movido para o estoque: a entrada foi lançada com o custo da NF.", "ok");
+  if(typeof carregarProdutos === "function") carregarProdutos();
+  const pid = _cmpAtual?.id;
+  await cmpFetchPedidos();
+  if(pid) await abrirPedido(pid);
+}
+/* Lote S72-c (#382): valor unitário errado em item já recebido. A RPC pedido_item_corrigir_valor (financeiro e diretoria)
+   grava o valor no item do pedido, na linha do recebimento, na entrada do estoque, no custo do produto (se for a última
+   entrada), no total do recebimento sem NF lançada e refaz os títulos não exportados. As saídas feitas depois com o custo
+   antigo só mudam se o usuário escolher (pergunta 3: não por padrão; a contagem fica à vista). */
+async function cmpContarSaidasCustoAntigo(movId){
+  if(!movId) return 0;
+  const { data: m, error } = await sb.from("movimentacoes_estoque").select("produto_id,created_at,custo_unitario").eq("id", movId).maybeSingle();
+  if(error || !m || !(Number(m.custo_unitario) > 0)) return 0;
+  const { count } = await sb.from("movimentacoes_estoque").select("id", { count: "exact", head: true })
+    .eq("produto_id", m.produto_id).eq("tipo", "saida").is("estorno_de", null).gt("created_at", m.created_at).eq("custo_unitario", m.custo_unitario);
+  return count || 0;
+}
+async function cmpCorrigirValorItem(recId, itemId){
+  const r = (_cmpRecsAtual || []).find(x => x.id === recId), i = (r?.itens || []).find(x => x.id === itemId);
+  if(!r || !i || !i.pedido_item_id) return;
+  const nSai = await cmpContarSaidasCustoAntigo(i.movimentacao_estoque_id);
+  const nTit = (_cmpTitsAtual || []).filter(t => t.recebimento_id === r.id && !t.exportado_em).length;
+  const muda = [i.movimentacao_estoque_id ? "a entrada no estoque" : "", nTit ? `${nTit} título(s) ainda não exportado(s), refeitos com o valor novo` : "",
+    r.nf_numero ? "" : "o total do recebimento"].filter(Boolean);
+  const campos = [
+    { id: "valor", rotulo: "Novo valor unitário (R$)", tipo: "number", obrigatorio: true, placeholder: String(i.valor_unitario_nf ?? "") },
+    { id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, obrigatorio: true, placeholder: "Ex.: a NF veio a R$ 190 por unidade" }
+  ];
+  if(nSai) campos.push({ id: "saidas", rotulo: `Saídas feitas depois com o custo antigo: ${nSai}`, tipo: "select", valor: "nao",
+    opcoes: [["nao", "Manter o custo antigo nas saídas"], ["sim", `Também corrigir as ${nSai} saída(s) feitas depois com o custo antigo`]] });
+  const v = await uiPedirValores({ titulo: "Corrigir valor do item", confirmar: "Corrigir valor",
+    texto: `${semCodOdoo(i.descricao) || "Item"}: ${num(i.quantidade_aceita)} × ${cmpBrl4(i.valor_unitario_nf)}. O valor muda no pedido e neste recebimento${muda.length ? ", em " + muda.join(", ") : ""}. ${nSai ? `Há ${nSai} saída(s) feita(s) depois com o custo antigo: por padrão elas ficam como estão.` : "Nenhuma saída feita depois com o custo antigo."}`,
+    campos });
+  if(!v) return;
+  const novo = Number(String(v.valor || "").replace(",", "."));
+  if(!(novo > 0)){ aviso("app-aviso", "Informe o novo valor unitário (maior que zero).", "erro"); return; }
+  const motivo = String(v.motivo || "").trim();
+  if(motivo.length < 5){ aviso("app-aviso", "Informe o motivo da correção (5 letras ou mais).", "erro"); return; }
+  const { data, error } = await sb.rpc("pedido_item_corrigir_valor", { p_item: i.pedido_item_id, p_novo: novo, p_motivo: motivo, p_revalorar_saidas: v.saidas === "sim" });
+  if(error){ aviso("app-aviso", "Valor não corrigido: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
+  const d = data || {};
+  aviso("app-aviso", `Valor corrigido para ${cmpBrl4(novo)}: ${Number(d.entradas || 0)} entrada(s) no estoque, ${Number(d.titulos_refeitos || 0)} título(s) refeito(s), ${Number(d.saidas_revaloradas || 0)} de ${Number(d.saidas_custo_antigo || 0)} saída(s) com o custo antigo corrigida(s).`, "ok");
   if(typeof carregarProdutos === "function") carregarProdutos();
   const pid = _cmpAtual?.id;
   await cmpFetchPedidos();
@@ -3882,8 +4028,10 @@ function cmpRiPicker(tr, inp){
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 200));
 }
 function cmpRecSoma(){
-  const s = (_cmpRec?.itens || []).reduce((a, it) => a + Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0), 0) + Number($("cmp-rec-frete").value || 0);
-  $("cmp-rec-soma").textContent = `Total dos itens + frete: ${brl(s)}`;
+  const desp = cmpRecDesp();   // lote S72a (#374): ICMS ST e outras despesas (digitados ou a parte do pedido)
+  const s = (_cmpRec?.itens || []).reduce((a, it) => a + Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0), 0) + Number($("cmp-rec-frete").value || 0)
+    + desp.st + desp.out;
+  $("cmp-rec-soma").textContent = desp.st + desp.out ? `Total dos itens + frete + ICMS ST e outras despesas: ${brl(s)}` : `Total dos itens + frete: ${brl(s)}`;
   // lote S56 (#205): Confirmar fica travado enquanto houver linha do XML em outra unidade sem o fator de conversão
   const b = $("btn-cmp-rec-confirmar");
   if(b && _cmpRec){
@@ -3895,7 +4043,7 @@ function cmpRecSoma(){
    consumido não vai para o estoque: nasce com destino do pedido ou "obra" a escolher. */
 function cmpRecAddItem(p){
   if(!p?.id) return;
-  const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv;
+  const srv = p.tipo_item === "servico"; _cmpProdSrv[p.id] = srv; cmpProdPadraoGuardar(p);   // lote S72-d (#383)
   const d = _cmpRec.pedido ? cmpDestinoDoValor(cmpDestinoPadraoDe(_cmpRec.pedido)) : _cmpRec.os ? cmpDestinoDoValor("eq:" + _cmpRec.os.equipamento_id) : { destino: "estoque", obra_id: null, equipamento_id: null };   // fase 131b: nota da oficina nasce na TAG da OS
   if(srv && d.destino === "estoque"){ d.destino = "obra"; d.obra_id = _cmpRec.pedido?.obra_id || null; }
   _cmpRec.itens.push({ pedido_item_id: null, produto_id: p.id, produto_txt: `${prodTxt(p)}`, casamento: "manual", livre: false, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", pendente: null, quantidade_nf: 1,
@@ -3954,7 +4102,10 @@ async function confirmarRecebimento(){
     frete: material ? 0 : Number($("cmp-rec-frete").value || 0), vencimento: venc, parcelas: material ? 1 : Math.max(1, Number($("cmp-rec-parc").value || 1)), total_nf: material && !nfNum ? 0 : Number($("cmp-rec-total").value || 0), observacoes: $("cmp-rec-obs").value.trim() || null,
     duplicatas: dups, xml_texto: material ? null : (r.xml?.texto || null),
     contrato_id: (!r.pedido && $("cmp-rec-contrato")?.value) || null, // fase 57
-    ...(!material && _cmpRecCompEd && $("cmp-rec-comp")?.value ? { competencia: $("cmp-rec-comp").value + "-01" } : {})   // fase 135b
+    ...(!material && _cmpRecCompEd && $("cmp-rec-comp")?.value ? { competencia: $("cmp-rec-comp").value + "-01" } : {}),   // fase 135b
+    // lote S72a (#374): os dois vazios vão como 0 e o banco põe a parte do pedido; com um preenchido, o outro vai com a parte do pedido
+    ...(_cmpS72a && !material && ($("cmp-rec-icms-st").value !== "" || $("cmp-rec-outras").value !== "")
+      ? (d => ({ icms_st: d.st, outras_despesas: d.out }))(cmpRecDesp()) : {})
   };
   const { data: rec, error } = await sb.from("recebimentos").insert(cab).select("id").single();
   if(error){ aviso("app-aviso", "Erro ao criar o recebimento: " + error.message, "erro"); return; }
@@ -4253,7 +4404,7 @@ function cmpLerXmlNfe(text){
     chave, numero: g(ide, "nNF"), serie: g(ide, "serie"), emissao: (g(ide, "dhEmi") || g(ide, "dEmi")).slice(0, 10), natureza: g(ide, "natOp"),
     emit: { cnpj: (g(emit, "CNPJ") || g(emit, "CPF")).replace(/\D/g, ""), nome: g(emit, "xNome"), fantasia: g(emit, "xFant"), ie: g(emit, "IE"), fone: g(ender, "fone"), cidade: g(ender, "xMun"), uf: g(ender, "UF"), cep: g(ender, "CEP"), logradouro: g(ender, "xLgr"), numero: g(ender, "nro"), bairro: g(ender, "xBairro") },
     dest_cnpj: (g(dest, "CNPJ") || g(dest, "CPF")).replace(/\D/g, ""),
-    totais: { vNF: Number(g(tot, "vNF") || 0), vProd: Number(g(tot, "vProd") || 0), vFrete: Number(g(tot, "vFrete") || 0), vDesc: Number(g(tot, "vDesc") || 0), vIPI: Number(g(tot, "vIPI") || 0), vST: Number(g(tot, "vST") || 0) },
+    totais: { vNF: Number(g(tot, "vNF") || 0), vProd: Number(g(tot, "vProd") || 0), vFrete: Number(g(tot, "vFrete") || 0), vDesc: Number(g(tot, "vDesc") || 0), vIPI: Number(g(tot, "vIPI") || 0), vST: Number(g(tot, "vST") || 0), vOutro: Number(g(tot, "vOutro") || 0) },   // lote S72a: vOutro
     itens, duplicatas
   };
 }
@@ -4297,6 +4448,9 @@ async function cmpImportarXml(file){
   $("cmp-rec-nf").value = nf.numero; $("cmp-rec-serie").value = nf.serie || "1"; $("cmp-rec-chave").value = nf.chave; $("cmp-rec-emissao").value = nf.emissao;
   cmpRecCompSync();   // fase 135b
   $("cmp-rec-frete").value = nf.totais.vFrete || ""; $("cmp-rec-total").value = nf.totais.vNF || "";
+  // lote S72a (#374): ICMS ST e outras despesas acessórias da nota (vST e vOutro do total)
+  const despXml = _cmpS72a && !$("cmp-rec-icms-st-campo")?.hidden ? (nf.totais.vST || 0) + (nf.totais.vOutro || 0) : 0;
+  if(_cmpS72a && !$("cmp-rec-icms-st-campo")?.hidden){ $("cmp-rec-icms-st").value = nf.totais.vST || ""; $("cmp-rec-outras").value = nf.totais.vOutro || ""; }
   if(nf.duplicatas.length){ _cmpRec.duplicatas = nf.duplicatas; $("cmp-rec-venc").value = nf.duplicatas[0].vencimento; $("cmp-rec-parc").value = nf.duplicatas.length; }
   else { _cmpRec.duplicatas = null; }
   // fornecedor pelo CNPJ
@@ -4312,7 +4466,7 @@ async function cmpImportarXml(file){
   if(_cmpRec.modo === "lancar_nf"){
     if(!forn) avisos.push(`⚠ emitente ${esc(nf.emit.nome)} (${esc(nf.emit.cnpj)}) não está no cadastro de fornecedores`);
     const recebido = (_cmpRec.itens || []).reduce((s, it) => s + Number(it.quantidade_nf || 0) * Number(it.valor_unitario_nf || 0), 0);
-    const difR = nf.totais.vNF - recebido - (nf.totais.vFrete || 0);
+    const difR = nf.totais.vNF - recebido - (nf.totais.vFrete || 0) - despXml;
     info.innerHTML = `✔ NF <strong>${esc(nf.numero)}</strong> de <strong>${esc(nf.emit.nome)}</strong> · total ${brl(nf.totais.vNF)}`
       + (nf.duplicatas.length ? ` · ${nf.duplicatas.length} duplicata(s)` : " · sem duplicatas no XML: informe o vencimento")
       + (Math.abs(difR) >= 0.05 ? ` · <strong>o total da NF difere do material recebido + frete em ${brl(difR)}</strong> (IPI/ST/desconto ou quantidade diferente: confira antes de lançar)` : "")
@@ -4334,7 +4488,7 @@ async function cmpImportarXml(file){
   const destPadrao = cmpDestinoDoValor(_cmpRec.pedido ? cmpDestinoPadraoDe(_cmpRec.pedido) : _cmpRec.os ? "eq:" + _cmpRec.os.equipamento_id : "estoque");   // fase 131b
   _cmpRec._xmlMap = { cod: mapCod, ean: mapEan, fator: mapFator, destPadrao };
   const somaItens = nf.itens.reduce((s, d) => s + d.qCom * d.vUnCom, 0);
-  const dif = nf.totais.vNF - somaItens - (nf.totais.vFrete || 0);
+  const dif = nf.totais.vNF - somaItens - (nf.totais.vFrete || 0) - despXml;   // lote S72a: ST e outras despesas já vêm nos campos próprios
   let resumo;
   if(_cmpRec.pedido){
     // lote S56 (#205): recebimento de pedido — o pedido é a fonte da verdade. Cada linha do XML é ASSOCIADA a uma linha do
@@ -4562,7 +4716,7 @@ async function cmpPdfPedido(semValores){
   semValores = semValores === true || cotacao;
   // lote S53 (#166): total com IPI (itens + IPI + frete − desconto, como o banco); colunas % IPI / % ICMS e a linha do IPI
   const totItens = cmpSomaItens(itens), totIpi = cmpSomaIpi(itens);
-  const total = totItens + totIpi + Number(p.frete || 0) - Number(p.desconto || 0);
+  const total = totItens + totIpi + Number(p.frete || 0) - Number(p.desconto || 0) + Number(p.icms_st || 0) + Number(p.outras_despesas || 0);   // lote S72a
   const cel = (txt, extra) => `<td style="border:1px solid #ccd;padding:5px;${esc(extra || "")}">${/* html */ txt}</td>`;
   const th = (txt, extra) => `<th style="border:1px solid #ccd;padding:5px;${esc(extra || "")}">${esc(txt)}</th>`;
   const titulo = semValores ? (cotacao ? `SOLICITAÇÃO DE COTAÇÃO ${esc(p.numero)}` : `PEDIDO DE COMPRA ${esc(p.numero)} — sem valores`) : `PEDIDO DE COMPRA ${esc(p.numero)}`;
@@ -4580,7 +4734,9 @@ async function cmpPdfPedido(semValores){
   const cabecalhoTabela = semValores
     ? `<tr style="background:#eef3fa;">${th("#", "text-align:left;")}${th("Descrição", "text-align:left;")}${th("Un")}${th("Qtd", "text-align:right;")}</tr>`
     : `<tr style="background:#eef3fa;">${th("#", "text-align:left;")}${th("Descrição", "text-align:left;")}${th("Un")}${th("Qtd", "text-align:right;")}${th("Unitário", "text-align:right;")}${th("% IPI", "text-align:right;")}${th("% ICMS", "text-align:right;")}${th("Total com IPI", "text-align:right;")}</tr>`;
-  const rodapeTabela = semValores ? "" : `<tfoot><tr><td colspan="7" style="padding:4px;text-align:right;">Itens</td><td style="padding:4px;text-align:right;">${brl(totItens)}</td></tr>${totIpi ? `<tr><td colspan="7" style="padding:4px;text-align:right;">IPI</td><td style="padding:4px;text-align:right;">${brl(totIpi)}</td></tr>` : ""}${Number(p.frete) ? `<tr><td colspan="7" style="padding:4px;text-align:right;">Frete</td><td style="padding:4px;text-align:right;">${brl(p.frete)}</td></tr>` : ""}${Number(p.desconto) ? `<tr><td colspan="7" style="padding:4px;text-align:right;">Desconto</td><td style="padding:4px;text-align:right;">− ${brl(p.desconto)}</td></tr>` : ""}
+  // lote S72a (#374): linha do rodapé numa função só; ICMS ST e outras despesas entram como o frete
+  const linhaTot = (rot, val) => `<tr><td colspan="7" style="padding:4px;text-align:right;">${esc(rot)}</td><td style="padding:4px;text-align:right;">${esc(val)}</td></tr>`;
+  const rodapeTabela = semValores ? "" : `<tfoot>${linhaTot("Itens", brl(totItens))}${totIpi ? linhaTot("IPI", brl(totIpi)) : ""}${Number(p.frete) ? linhaTot("Frete", brl(p.frete)) : ""}${Number(p.desconto) ? linhaTot("Desconto", "− " + brl(p.desconto)) : ""}${Number(p.icms_st) ? linhaTot("ICMS ST", brl(p.icms_st)) : ""}${Number(p.outras_despesas) ? linhaTot("Outras despesas", brl(p.outras_despesas)) : ""}
         <tr><td colspan="7" style="padding:6px;text-align:right;font-weight:700;">TOTAL</td><td style="padding:6px;text-align:right;font-weight:700;">${brl(total)}</td></tr></tfoot>`;
   const rodapeTexto = semValores
     ? `Favor informar preço unitário, IPI/ICMS, frete, prazo de entrega, condição de pagamento e validade da proposta, citando o número acima. Contato: ${esc(usuarioAtual?.nome || "")}.`
@@ -4694,7 +4850,7 @@ function ligarCompras(){
   $("cmp-ace-busca")?.addEventListener("input", debounce(cmpAceRenderBusca, 250));
   $("btn-cmp-ace-fechar")?.addEventListener("click", () => cmpAceFechar(null));
   $("cmp-ace-modal")?.addEventListener("click", e => { if(e.target.id === "cmp-ace-modal") cmpAceFechar(null); });
-  ["cmp-frete","cmp-desc"].forEach(id => $(id)?.addEventListener("input", cmpAtualizarChips));
+  ["cmp-frete","cmp-desc","cmp-icms-st","cmp-outras"].forEach(id => $(id)?.addEventListener("input", cmpAtualizarChips));
   $("cmp-forn")?.addEventListener("change", e => { e.target.dataset.limpo = e.target.value ? "" : "1"; });   // lote S65-d (#310): a pessoa tirou o fornecedor (×)
   $("cmp-forn")?.addEventListener("change", () => { const f = _cmpFornMap[$("cmp-forn").value]; if(f?.condicao_pagamento_padrao && !$("cmp-cond").value) $("cmp-cond").value = f.condicao_pagamento_padrao;
     if(f?.prazo_entrega_dias && !$("cmp-prev").value){ const d = new Date(); d.setDate(d.getDate() + Number(f.prazo_entrega_dias)); $("cmp-prev").value = d.toISOString().slice(0, 10); cmpAtualizarChips(); } });
@@ -4742,7 +4898,7 @@ function ligarCompras(){
   // recebimento
   $("btn-cmp-rec-fechar")?.addEventListener("click", fecharRecebimento);
   $("btn-cmp-rec-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-cmp-rec-confirmar", confirmarRecebimento));
-  $("cmp-rec-frete")?.addEventListener("input", cmpRecSoma);
+  ["cmp-rec-frete", "cmp-rec-icms-st", "cmp-rec-outras"].forEach(id => $(id)?.addEventListener("input", cmpRecSoma));   // lote S72a: ICMS ST e outras despesas
   $("cmp-rec-forn")?.addEventListener("change", cmpRecPreencherContratos); // fase 57
   $("btn-cmp-rec-xml")?.addEventListener("click", () => $("cmp-rec-xml").click());
   $("cmp-rec-xml")?.addEventListener("change", e => { const f = e.target.files && e.target.files[0]; if(f) cmpImportarXml(f); });

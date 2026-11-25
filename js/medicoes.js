@@ -2533,6 +2533,9 @@ function medLiquido(m){
   return Math.round((vf - (Number(m.retencao_valor) || 0) - iss - fed) * 100) / 100;
 }
 function medRecebSaldo(m){ return Math.max(0, Math.round((medLiquido(m) - (Number(m.recebido_valor) || 0)) * 100) / 100); }
+/* lote S72-b (#376): baixa do principal de um recebimento = dinheiro que entrou − juros/multa + desconto concedido
+   (a mesma conta do fn_medicao_recebimentos_sync, que grava recebido_valor) */
+function medRecebBaixa(r){ return Math.round(((Number(r.valor) || 0) - (Number(r.juros) || 0) + (Number(r.desconto) || 0)) * 100) / 100; }
 /* Situação do recebimento: sem_nf | a_receber | parcial | vencida | recebida */
 function medRecebSituacao(m){
   if(m.status === "recebida") return "recebida";
@@ -2946,7 +2949,7 @@ async function medRecebCarregarFicha(med){
   if(!med || !med.id){ cont.innerHTML = `<p class="vazio">Salve a medição para registrar recebimentos.</p>`; return; }
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
   const { data, error } = await sb.from("medicao_recebimentos")
-    .select("id,data,valor,forma,banco,observacoes,confirmado_por,created_at,quem:confirmado_por(nome)")
+    .select("id,data,valor,desconto,juros,forma,banco,observacoes,confirmado_por,created_at,quem:confirmado_por(nome)")
     .eq("medicao_id", med.id).order("data").order("created_at");
   if(medEditId !== med.id) return;
   if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler os recebimentos (${esc(error.message)}).</p>`; return; }
@@ -2958,7 +2961,9 @@ function renderMedRecebFicha(med){
   const cont = $("med-receb-conteudo");
   if(!cont) return;
   const podeOp = medCauPodeOperar();
-  const liq = medLiquido(med), recebido = _medRecebLista.reduce((s, r) => s + (Number(r.valor) || 0), 0);
+  const somaCampo = (f) => Math.round(_medRecebLista.reduce((s, r) => s + f(r), 0) * 100) / 100;
+  const liq = medLiquido(med), recebido = somaCampo(medRecebBaixa);   // lote S72-b: principal baixado
+  const entrou = somaCampo(r => Number(r.valor) || 0), totDesc = somaCampo(r => Number(r.desconto) || 0), totJuros = somaCampo(r => Number(r.juros) || 0);
   const saldo = Math.max(0, Math.round((liq - recebido) * 100) / 100);
   const sit = medRecebSituacao({ ...med, recebido_valor: recebido });
   const SIT = { sem_nf: ["Sem documento fiscal", "cinza"], a_receber: ["A receber", "ambar"], parcial: ["Recebida em parte", "azul"], vencida: ["Vencida", "vermelho"], recebida: ["Recebida", "verde"] };
@@ -2967,11 +2972,13 @@ function renderMedRecebFicha(med){
   const linhas = _medRecebLista.map(r => `<tr>
       <td>${dataBR(r.data)}</td>
       <td class="num">${brl(r.valor)}</td>
+      <td class="num">${Number(r.desconto) ? brl(r.desconto) : "—"}</td>
+      <td class="num">${Number(r.juros) ? brl(r.juros) : "—"}</td>
       <td>${r.forma === "permuta" ? '<span class="tag ambar" title="Fase 98: crédito do imóvel em permuta, gerado pela medição (muda pelo % de permuta na aba Geral)">Permuta</span>' : esc(MED_RECEB_FORMAS[r.forma] || r.forma || "—")}</td>
       <td>${esc(r.banco || "—")}</td>
       <td>${esc(r.observacoes || "")}</td>
       <td class="meta">${esc((r.quem && r.quem.nome) || "—")}</td>
-      <td class="col-acao">${podeOp && r.forma !== "permuta" ? `<button type="button" class="btn-sec btn-sm txt-perigo" data-receb-del="${esc(r.id)}" title="Apagar este lançamento (a soma e o status da medição são refeitos no banco)">×</button>` : ""}</td>
+      <td class="col-acao">${podeOp && r.forma !== "permuta" ? `<button type="button" class="btn-sec btn-sm" data-receb-edit="${esc(r.id)}" title="Corrigir data, valor, desconto, juros/multa, forma, banco ou observações deste lançamento">Editar</button> <button type="button" class="btn-sec btn-sm txt-perigo" data-receb-del="${esc(r.id)}" title="Apagar este lançamento (a soma e o status da medição são refeitos no banco)">×</button>` : ""}</td>
     </tr>`).join("");
   cont.innerHTML = `
     <div class="odoo-contexto" style="padding:0 0 12px;">
@@ -2982,21 +2989,25 @@ function renderMedRecebFicha(med){
       ${chip("Retenção", brl(med.retencao_valor || 0), "Caução que o cliente segura (aba Caução)")}
       ${chip("ISS retido", med.iss_retido_fonte === false ? "não" : brl(med.iss_valor || 0), "ISS retido na fonte pelo cliente")}
       ${chip("Líquido a receber", `<span style="color:var(--sucesso-txt);">${brl(liq)}</span>`, "valor final − retenção − ISS retido − retenções federais (fases 47 e 105c)")}
-      ${chip("Recebido", brl(recebido))}
+      ${chip("Recebido", brl(recebido), "Principal baixado: dinheiro que entrou − juros/multa + desconto concedido")}
+      ${totDesc ? chip("Descontos", brl(totDesc), "Descontos concedidos ao cliente: baixam o principal sem entrar dinheiro") : ""}
+      ${totJuros ? chip("Juros/multa", brl(totJuros), "Juros/multa por atraso recebidos: entram dinheiro sem baixar o principal") : ""}
       ${chip("Saldo", `<span class="${saldo > 0.009 ? "txt-perigo" : ""}">${brl(saldo)}</span>`)}
       ${chip("Situação", `${sit === "parcial" && medRecebParcialEtq(med, recebido) ? "" : `<span class="tag ${esc(SIT[sit][1])}">${esc(SIT[sit][0])}</span>`}${["vencida", "parcial", "sem_nf"].includes(sit) ? medRecebParcialEtq(med, recebido) : ""}`)}
     </div>
     <h4 class="titulo-bloco">Recebimentos confirmados <small class="meta">(a medição fica "recebida" sozinha quando a soma atinge o líquido)</small></h4>
     ${_medRecebLista.length ? `<div class="tabela-rola"><table>
-      <thead><tr><th>Data</th><th class="num">Valor</th><th>Forma</th><th>Banco</th><th>Observações</th><th>Confirmado por</th><th class="col-acao"></th></tr></thead>
+      <thead><tr><th>Data</th><th class="num" title="Dinheiro que entrou na conta">Valor</th><th class="num" title="Desconto concedido ao cliente: baixa o principal sem entrar dinheiro">Desconto</th><th class="num" title="Juros/multa por atraso contidos no valor: não baixam o principal">Juros/multa</th><th>Forma</th><th>Banco</th><th>Observações</th><th>Confirmado por</th><th class="col-acao"></th></tr></thead>
       <tbody>${/* html */ linhas}</tbody>
-      <tfoot><tr><th>Total</th><th class="num">${brl(recebido)}</th><th colspan="5"></th></tr></tfoot>
+      <tfoot><tr><th>Total</th><th class="num">${brl(entrou)}</th><th class="num">${brl(totDesc)}</th><th class="num">${brl(totJuros)}</th><th colspan="5" class="meta" title="Principal baixado = valor − juros/multa + desconto">Principal baixado: ${brl(recebido)}</th></tr></tfoot>
     </table></div>` : `<p class="vazio">Nenhum recebimento confirmado ainda.</p>`}
     ${podeOp && temNf && !["rascunho", "enviada", "rejeitada"].includes(med.status) ? `
     <h4 class="titulo-bloco" style="margin-top:14px;">Confirmar recebimento</h4>
     <div class="grade">
       <div class="campo"><label>Data</label><input id="med-receb-data" type="date" value="${hojeISO()}" /></div>
       <div class="campo"><label>Valor (R$)</label><input id="med-receb-valor" type="number" step="0.01" min="0.01" value="${saldo > 0 ? saldo.toFixed(2) : ""}" placeholder="parcial é comum" /></div>
+      <div class="campo"><label for="med-receb-desconto">Desconto concedido (R$)</label><input id="med-receb-desconto" type="number" step="0.01" min="0" value="" placeholder="0,00" title="Abatimento dado ao cliente: baixa o principal sem entrar dinheiro" /></div>
+      <div class="campo"><label for="med-receb-juros">Juros/multa (R$)</label><input id="med-receb-juros" type="number" step="0.01" min="0" value="" placeholder="0,00" title="Parte do valor recebido que é juros ou multa por atraso: não baixa o principal" /></div>
       <div class="campo"><label>Forma</label><select id="med-receb-forma">${Object.entries(MED_RECEB_FORMAS).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></div>
       <div class="campo"><label>Banco</label><input id="med-receb-banco" list="med-cau-bancos" placeholder="Itaú, Caixa…" /></div>
       <div class="campo largo"><label>Observações</label><input id="med-receb-obs" placeholder="ex.: 2ª parcela, desconto de alimentação…" /></div>
@@ -3008,15 +3019,35 @@ function renderMedRecebFicha(med){
              : `<p class="nota">Só o financeiro, o admin e a diretoria confirmam recebimentos.</p>`))}`;
   $("btn-med-receb-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-med-receb-confirmar", () => medRecebConfirmar(med)));
   cont.querySelectorAll("[data-receb-del]").forEach(b => b.addEventListener("click", () => medRecebApagar(med, b.dataset.recebDel)));
+  cont.querySelectorAll("[data-receb-edit]").forEach(b => b.addEventListener("click", () => medRecebEditar(med, b.dataset.recebEdit)));
+}
+/* lote S72-b: confere valor, desconto e juros/multa; devolve mensagem de erro ou "" */
+function medRecebValidar(valor, desconto, juros){
+  if(!(valor > 0)) return "Informe o valor recebido.";
+  if(!(desconto >= 0)) return "O desconto não pode ser negativo.";
+  if(!(juros >= 0)) return "Os juros/multa não podem ser negativos.";
+  if(juros > valor) return "Os juros/multa não podem passar do valor recebido.";
+  return "";
+}
+/* Baixa acima do saldo pede confirmação (uiConfirmar); saldo = líquido − baixa dos outros lançamentos */
+async function medRecebConfereSaldo(med, baixa, ignorarId){
+  const outros = _medRecebLista.filter(r => r.id !== ignorarId).reduce((s, r) => s + medRecebBaixa(r), 0);
+  const saldo = Math.max(0, Math.round((medLiquido(med) - outros) * 100) / 100);
+  if(baixa <= saldo + 0.005) return true;
+  return uiConfirmar({ titulo: "Baixa acima do saldo", confirmar: "Confirmar assim mesmo",
+    texto: `A baixa do principal (${brl(baixa)} = valor − juros/multa + desconto) passa do saldo a receber ${brl(saldo)}. Confirmar assim mesmo?` });
 }
 async function medRecebConfirmar(med){
   const valor = Number($("med-receb-valor")?.value);
+  const desconto = Number($("med-receb-desconto")?.value || 0);
+  const juros = Number($("med-receb-juros")?.value || 0);
   const data = $("med-receb-data")?.value;
-  if(!(valor > 0)){ aviso("app-aviso", "Informe o valor recebido.", "erro"); return; }
+  const erro = medRecebValidar(valor, desconto, juros);
+  if(erro){ aviso("app-aviso", erro, "erro"); return; }
   if(!data){ aviso("app-aviso", "Informe a data do recebimento.", "erro"); return; }
-  const saldo = Math.max(0, medLiquido(med) - _medRecebLista.reduce((s, r) => s + (Number(r.valor) || 0), 0));
-  if(valor > saldo + 0.005 && !confirm(`Valor ${brl(valor)} acima do saldo a receber ${brl(saldo)}. Confirmar assim mesmo?`)) return;
-  const reg = { medicao_id: med.id, data, valor, forma: $("med-receb-forma")?.value || "transferencia",
+  const baixa = medRecebBaixa({ valor, desconto, juros });
+  if(!(await medRecebConfereSaldo(med, baixa, null))) return;
+  const reg = { medicao_id: med.id, data, valor, desconto, juros, forma: $("med-receb-forma")?.value || "transferencia",
     banco: ($("med-receb-banco")?.value || "").trim() || null, observacoes: ($("med-receb-obs")?.value || "").trim() || null };
   const { error } = await sb.from("medicao_recebimentos").insert(reg);
   if(error){ aviso("app-aviso", "Não foi possível confirmar o recebimento: " + error.message, "erro"); return; }
@@ -3026,9 +3057,46 @@ async function medRecebConfirmar(med){
   await abrirMedicao(med.id);
   ativarTabMed("recebimento");
 }
+/* lote S72-b: corrigir um lançamento (ex.: lançar o desconto de R$ 0,01 num recebimento já confirmado).
+   Permuta não se edita aqui: vem do % de permuta da medição. A soma e o status são refeitos no banco. */
+async function medRecebEditar(med, id){
+  const r = _medRecebLista.find(x => x.id === id);
+  if(!r || r.forma === "permuta") return;
+  const num = (v) => (Number(v) || 0).toFixed(2);
+  const v = await uiPedirValores({ titulo: "Editar recebimento", confirmar: "Gravar",
+    texto: "Baixa do principal = valor − juros/multa + desconto. A soma e o status da medição são refeitos no banco.",
+    campos: [
+      { id: "data", rotulo: "Data", tipo: "date", valor: r.data, obrigatorio: true },
+      { id: "valor", rotulo: "Valor recebido (R$)", tipo: "number", valor: num(r.valor), obrigatorio: true, ajuda: "Dinheiro que entrou na conta" },
+      { id: "desconto", rotulo: "Desconto concedido (R$)", tipo: "number", valor: num(r.desconto) },
+      { id: "juros", rotulo: "Juros/multa (R$)", tipo: "number", valor: num(r.juros) },
+      { id: "forma", rotulo: "Forma", tipo: "select", valor: r.forma, opcoes: Object.entries(MED_RECEB_FORMAS) },
+      { id: "banco", rotulo: "Banco", valor: r.banco || "" },
+      { id: "obs", rotulo: "Observações", valor: r.observacoes || "" }
+    ] });
+  if(!v) return;
+  const valor = Number(String(v.valor).replace(",", "."));
+  const desconto = Number(String(v.desconto || 0).replace(",", "."));
+  const juros = Number(String(v.juros || 0).replace(",", "."));
+  const erro = medRecebValidar(valor, desconto, juros);
+  if(erro){ uiAvisar(erro, "erro"); return; }
+  if(!v.data){ uiAvisar("Informe a data do recebimento.", "erro"); return; }
+  if(!(await medRecebConfereSaldo(med, medRecebBaixa({ valor, desconto, juros }), id))) return;
+  const { error } = await sb.from("medicao_recebimentos").update({ data: v.data, valor, desconto, juros,
+    forma: v.forma || r.forma || "transferencia", banco: String(v.banco || "").trim() || null,
+    observacoes: String(v.obs || "").trim() || null }).eq("id", id);
+  if(error){ uiAvisar("Não foi possível gravar o recebimento: " + error.message, "erro"); return; }
+  _medRecebMes = null;
+  uiAvisar("Recebimento corrigido. Soma e status da medição refeitos no banco.", "ok");
+  await carregarMedicoes();
+  await abrirMedicao(med.id);
+  ativarTabMed("recebimento");
+}
 async function medRecebApagar(med, id){
   const r = _medRecebLista.find(x => x.id === id);
-  if(!r || !confirm(`Apagar o recebimento de ${brl(r.valor)} em ${dataBR(r.data)}?`)) return;
+  if(!r) return;
+  if(!(await uiConfirmar({ titulo: "Apagar recebimento", confirmar: "Apagar", perigo: true,
+    texto: `Apagar o recebimento de ${brl(r.valor)} em ${dataBR(r.data)}?` }))) return;
   const { error } = await sb.from("medicao_recebimentos").delete().eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível apagar: " + error.message, "erro"); return; }
   _medRecebMes = null;
