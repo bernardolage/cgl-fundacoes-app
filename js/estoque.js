@@ -754,6 +754,7 @@ function renderSaidasHoje(){
 
 
 let _devItens = [], _devQuem = null, _devObras = null;
+const _devCusto = new Map();
 async function devAbrir(){
   const b = $("est-dev-body"); if(!b) return;
   const abre = b.style.display === "none"; b.style.display = abre ? "" : "none";
@@ -784,14 +785,41 @@ function renderDevItens(){
   $("est-dev-contador").textContent = _devItens.length ? `${_devItens.length} item(ns)` : "";
   if(!_devItens.length){ tb.innerHTML = `<tr><td colspan="6" class="vazio">Nenhum item. Bipe, busque acima ou use "Ver o que foi para a obra".</td></tr>`; return; }
   tb.innerHTML = _devItens.map((it, i) => `<tr data-i="${i}">
-      <td><strong>${esc(it.p.codigo)}</strong></td><td>${esc(it.p.nome)}</td>
+      <td><strong>${esc(it.p.codigo)}</strong></td><td>${esc(it.p.nome)}<br><span class="meta dev-custo" data-i="${i}"></span></td>
       <td class="num">${num(it.p.estoque_atual || 0)} <span class="meta">${esc(it.p.unidade || "un")}</span></td>
       <td><input type="number" class="dev-q" step="0.001" min="0.001" value="${esc(it.quantidade)}" style="width:86px;text-align:right;" /></td>
       <td><input class="dev-o" value="${esc(it.observacoes || "")}" placeholder="opcional" style="width:100%;" /></td>
       <td><button type="button" class="btn-sec btn-sm dev-rem" title="tirar">×</button></td></tr>`).join("");
-  tb.querySelectorAll(".dev-q").forEach(el => el.addEventListener("change", e => { _devItens[Number(e.target.closest("tr").dataset.i)].quantidade = Number(e.target.value || 0); }));
+  tb.querySelectorAll(".dev-q").forEach(el => el.addEventListener("change", e => { _devItens[Number(e.target.closest("tr").dataset.i)].quantidade = Number(e.target.value || 0); devMostrarCustos(); }));
   tb.querySelectorAll(".dev-o").forEach(el => el.addEventListener("input", e => { _devItens[Number(e.target.closest("tr").dataset.i)].observacoes = e.target.value; }));
   tb.querySelectorAll(".dev-rem").forEach(el => el.addEventListener("click", e => { _devItens.splice(Number(e.target.closest("tr").dataset.i), 1); renderDevItens(); }));
+  devMostrarCustos();
+}
+
+
+async function devMostrarCustos(){
+  const obra = $("est-dev-obra")?.value;
+  const spans = [...document.querySelectorAll("#est-dev-itens .dev-custo")];
+  if(!obra){ spans.forEach(s => { s.textContent = ""; }); return; }
+  for(const s of spans){
+    const it = _devItens[Number(s.dataset.i)]; if(!it) continue;
+    const chave = obra + "|" + it.p.id;
+    if(!_devCusto.has(chave)){
+      const { data, error } = await sb.rpc("estoque_devolucao_custo", { p_obra: obra, p_produto: it.p.id });
+      if(error){ s.textContent = ""; continue; }
+      _devCusto.set(chave, (data || [])[0] || null);
+    }
+    const c = _devCusto.get(chave); if(!c){ s.textContent = ""; continue; }
+    const un = it.p.unidade || "un", qtd = Number(it.quantidade || 0), custo = Number(c.custo_unitario || 0);
+    if(c.origem === "saidas_obra"){
+      const saldo = Number(c.saldo_valor || 0);
+      s.textContent = custo * qtd > saldo
+        ? `Sai da obra ${brl(saldo)} no total: é o que ainda está lançado nela (média das saídas: ${brl(custo)}/${un}).`
+        : `Sai da obra a ${brl(custo)}/${un} (média das saídas para esta obra).`;
+    } else {
+      s.textContent = `Sem saída para esta obra: sai a ${brl(custo)}/${un} (último custo do produto).`;
+    }
+  }
 }
 
 async function devVerSaidas(){
@@ -822,7 +850,7 @@ async function registrarDevolucaoObra(){
   });
   if(error){ aviso("app-aviso", "Devolução não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   aviso("app-aviso", `Devolução registrada: ${(data || []).length} item(ns) de volta ao estoque${_devQuem ? " (trouxe " + _devQuem.nome + ")" : ""}.`, "ok");
-  _devItens = []; _devQuem = null; $("est-dev-quem").value = ""; $("est-dev-saidas").style.display = "none";
+  _devItens = []; _devQuem = null; _devCusto.clear(); $("est-dev-quem").value = ""; $("est-dev-saidas").style.display = "none";
   renderDevItens();
   if($("sec-produtos")?.classList.contains("ativa") && typeof carregarProdutos === "function") carregarProdutos();
   await Promise.all([carregarReposicao(), carregarUltimasEntradas(), carregarPendenciasEstoque()]);
@@ -840,6 +868,7 @@ function devLigar(){
   }, 200));
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 200));
   $("btn-est-dev-toggle")?.addEventListener("click", devAbrir);
+  $("est-dev-obra")?.addEventListener("change", devMostrarCustos);
   $("est-dev-item")?.addEventListener("keydown", async e => {
     if(e.key !== "Enter") return; e.preventDefault();
     const t = $("est-dev-item").value.trim(); if(!t) return;
